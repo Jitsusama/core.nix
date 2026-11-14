@@ -1,7 +1,7 @@
 //! warp: how WARP's link stands, read from warp-cli, WARP's own client,
-//! every figure it gives in its own unit.
+//! every figure it gives in its own unit, in the terminal kit's shape, as
+//! `warp --help` says (`help()`):
 //!
-//! Usage:
 //!   warp             the page: the link, the tunnel, TLS, the settings, DNS
 //!   warp --json      the same as one record (model.rs; warp.json beside this)
 //!   warp connect     bring WARP up, as the launcher's :connect does
@@ -22,13 +22,15 @@
 //! the link is watched, every two seconds, so the launcher starts no
 //! process to read WARP or to switch it.
 //!
-//! It exits 0 having read WARP or switched it, 2 on a word it doesn't
-//! know, 3 when there's no warp-cli, so no WARP to read, 4 when WARP's
-//! service isn't answering, 5 when warp-cli said what it can't read, 6
-//! when the organisation holds the switch and 7 when warp-cli wouldn't
-//! switch it, each said in a line, never a trace; with --json, as
-//! { error, said } or the switch's record too. Serving, it runs until
-//! stopped, and ends 1 only when it can't listen on its socket.
+//! It ends with the kit's codes (docs/commands.md): 0 having read WARP or
+//! switched it, 64 on a word it doesn't take, 66 when there's no warp-cli,
+//! so no WARP to read, 69 when WARP's service isn't answering, 65 when
+//! warp-cli said what it can't read, 77 when the organisation holds the
+//! switch and 1 when warp-cli wouldn't switch it, each said on stderr,
+//! never a trace. With --json, a failure prints its record too, as
+//! { error, said } or the switch's, which serve.rs hands the shell. Serving, it runs until stopped, and ends 1 only when it can't
+//! listen on its socket. Nothing reads these codes: the shell asks
+//! `warp serve` over its socket instead.
 
 mod ask;
 #[cfg(test)]
@@ -45,41 +47,27 @@ use std::io::Write as _;
 use std::process::ExitCode;
 
 use ask::{Ask, WarpCli};
-use read::Failure;
+use terminal_kit::{Exit, Failure, Help};
 
-const USAGE: &str = "usage: warp [connect | disconnect] [--json] | warp serve SOCKET";
-
-/// What a run prints, and how it ends.
+/// What a run prints on stdout, and how it ends.
 #[derive(Debug, PartialEq)]
 struct Ran {
-    code: u8,
     out: String,
-    err: String,
+    ended: Result<(), Failure>,
 }
 
-fn run(args: &[String], cli: &impl Ask) -> Ran {
-    let json = args.iter().any(|arg| arg == "--json");
-    let words: Vec<&str> = args
-        .iter()
-        .map(String::as_str)
-        .filter(|arg| *arg != "--json")
-        .collect();
-    let act = match words.as_slice() {
+/// A run over the words the kit left, the record rather than the page
+/// where `json`.
+fn run(words: &[String], json: bool, cli: &impl Ask) -> Ran {
+    let act = match words {
         [] => None,
-        ["connect"] => Some(switch::Act::Connect),
-        ["disconnect"] => Some(switch::Act::Disconnect),
-        [word] => {
-            return Ran {
-                code: 2,
-                out: String::new(),
-                err: format!("warp: {word} isn't a word warp knows\n{USAGE}\n"),
-            };
-        }
+        [word] if word == "connect" => Some(switch::Act::Connect),
+        [word] if word == "disconnect" => Some(switch::Act::Disconnect),
         _ => {
             return Ran {
-                code: 2,
                 out: String::new(),
-                err: format!("warp: one word at a time\n{USAGE}\n"),
+                ended: Err(Failure::new(Exit::Usage, "warp takes one word at a time")
+                    .try_this("warp --help")),
             };
         }
     };
@@ -91,102 +79,138 @@ fn run(args: &[String], cli: &impl Ask) -> Ran {
     }
     match read::read(cli) {
         Ok(warp) if json => Ran {
-            code: 0,
             out: format!(
                 "{}\n",
                 serde_json::to_string(&warp).expect("the record is JSON")
             ),
-            err: String::new(),
+            ended: Ok(()),
         },
         Ok(warp) => Ran {
-            code: 0,
             out: page::page(&warp),
-            err: String::new(),
+            ended: Ok(()),
         },
         Err(failure) => failed(&failure, json),
     }
 }
 
-/// A failure, said in a line, and with --json as a record too, ending with
-/// its code.
-fn failed(failure: &Failure, json: bool) -> Ran {
-    let (code, kind, said, line) = match failure {
-        Failure::NotInstalled(at) => (
-            3,
+/// A reading that failed, as the kit says a failure, and with --json as
+/// the `{ error, said }` record the shell reads through serve.rs too.
+fn failed(failure: &read::Failure, json: bool) -> Ran {
+    let (kind, said, ended) = match failure {
+        read::Failure::NotInstalled(at) => (
             "not-installed",
             at,
-            format!("{at} isn't installed, so there's no WARP here to read"),
+            Failure::new(
+                Exit::NotFound,
+                format!("{at} isn't installed, so there's no WARP here to read"),
+            ),
         ),
-        Failure::NotAnswering(why) => (
-            4,
+        read::Failure::NotAnswering(why) => (
             "not-answering",
             why,
-            format!("WARP's service isn't answering: {why}"),
+            Failure::new(Exit::Unavailable, "WARP's service isn't answering").because(why),
         ),
-        Failure::Unreadable(why) => (5, "unreadable", why, why.clone()),
+        read::Failure::Unreadable(why) => (
+            "unreadable",
+            why,
+            Failure::new(Exit::BadInput, "warp-cli said what warp can't read").because(why),
+        ),
     };
     Ran {
-        code,
         out: if json {
             format!("{}\n", serde_json::json!({ "error": kind, "said": said }))
         } else {
             String::new()
         },
-        err: format!("warp: {line}\n"),
+        ended: Err(ended),
     }
 }
 
-/// A switch, said in a line, on the output where it was done and as an
-/// error where it wasn't, and with --json as its record, ending with its
-/// code.
+/// A switch, said in a line on stdout where it was done and as a failure
+/// where it wasn't, with --json as its record either way.
 fn switched_ran(switched: &switch::Switched, json: bool) -> Ran {
-    let code = match switched.refused {
-        None => 0,
-        Some("held") => 6,
-        Some(_) => 7,
+    let out = if json {
+        format!(
+            "{}\n",
+            serde_json::to_string(switched).expect("the record is JSON")
+        )
+    } else if switched.refused.is_none() {
+        format!("{}\n", switched.said)
+    } else {
+        String::new()
     };
-    let line = format!("{}\n", switched.said);
-    Ran {
-        code,
-        out: if json {
-            format!(
-                "{}\n",
-                serde_json::to_string(switched).expect("the record is JSON")
-            )
-        } else if code == 0 {
-            line.clone()
-        } else {
-            String::new()
-        },
-        err: if code == 0 {
-            String::new()
-        } else {
-            format!("warp: {line}")
-        },
-    }
+    let ended = match switched.refused {
+        None => Ok(()),
+        Some("held") => Err(Failure::new(Exit::Refused, &switched.said)),
+        Some(_) => Err(Failure::new(Exit::Failed, &switched.said)),
+    };
+    Ran { out, ended }
+}
+
+/// What `warp --help` says, and the words the kit walks.
+fn help() -> Help {
+    let reading = |help: Help| {
+        help.exit(Exit::NotFound, "there's no warp-cli to ask")
+            .exit(Exit::Unavailable, "WARP's service isn't answering")
+            .exit(Exit::BadInput, "warp-cli said what it can't read")
+    };
+    let switching = |name: &str, about: &str, does: &str| {
+        reading(
+            Help::new(name, about)
+                .example(&format!("warp {name}"), does)
+                .example(&format!("warp {name} --json"), "the switch, as a record")
+                .exit(Exit::Refused, "the organisation holds the switch")
+                .exit(Exit::Failed, "warp-cli wouldn't switch it"),
+        )
+    };
+    reading(
+        Help::new("warp", "how WARP's link stands, read from warp-cli")
+            .example("warp", "the link, tunnel, TLS, settings and DNS")
+            .example("warp --json", "the same, as one record")
+            .subcommand(switching("connect", "brings WARP up", "bring WARP up"))
+            .subcommand(switching("disconnect", "takes WARP down", "take WARP down"))
+            .subcommand(
+                Help::new("serve", "holds the link for the shell, over a socket")
+                    .argument("<socket>", "where the shell asks")
+                    .example(
+                        "warp serve $XDG_RUNTIME_DIR/daemons/warp.sock",
+                        "what its unit runs",
+                    )
+                    .exit(Exit::Failed, "the socket couldn't be listened on"),
+            ),
+    )
+}
+
+/// The link held for the shell over `socket`, until stopped.
+fn serving(socket: &str) -> Result<(), Failure> {
+    let shaper = std::env::var_os("WARP_SHAPER")
+        .map(|status| serve::Shaper::at(std::path::PathBuf::from(status)));
+    serve::serve(std::path::Path::new(socket), WarpCli::from_env(), shaper).map_err(|why| {
+        Failure::new(Exit::Failed, format!("{socket} couldn't be listened on"))
+            .because(why.to_string())
+    })
 }
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if let [serving, socket] = args.as_slice()
-        && serving == "serve"
-    {
-        let shaper = std::env::var_os("WARP_SHAPER")
-            .map(|status| serve::Shaper::at(std::path::PathBuf::from(status)));
-        return match serve::serve(std::path::Path::new(socket), WarpCli::from_env(), shaper) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(why) => {
-                eprintln!("warp: {socket} couldn't be listened on: {why}");
-                ExitCode::from(1)
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        match context.args.as_slice() {
+            [serve, socket] if serve == "serve" => return serving(socket),
+            [serve, ..] if serve == "serve" => {
+                return Err(Failure::new(Exit::Usage, "serve takes one socket")
+                    .try_this("warp serve --help"));
             }
-        };
-    }
-    let ran = run(&args, &WarpCli::from_env());
-    // A closed pipe, as `warp | head` gives, changes nothing about the
-    // reading, so it isn't said.
-    let _ = std::io::stdout().write_all(ran.out.as_bytes());
-    let _ = std::io::stderr().write_all(ran.err.as_bytes());
-    ExitCode::from(ran.code)
+            _ => {}
+        }
+        let ran = run(
+            &context.args,
+            context.format().is_json(),
+            &WarpCli::from_env(),
+        );
+        // A closed pipe, as `warp | head` gives, changes nothing about the
+        // reading, so it isn't said.
+        let _ = std::io::stdout().write_all(ran.out.as_bytes());
+        ran.ended
+    })
 }
 
 #[cfg(test)]
@@ -199,6 +223,19 @@ mod tests {
 
     fn args(words: &[&str]) -> Vec<String> {
         words.iter().map(|word| (*word).to_string()).collect()
+    }
+
+    /// The code a run ends with, as the kit would end it.
+    fn code(ran: &Ran) -> u8 {
+        ran.ended
+            .as_ref()
+            .map_or_else(|failure| failure.exit.code(), |()| 0)
+    }
+
+    /// What a failed run says failed, and why where it says.
+    fn said_failed(ran: &Ran) -> (&str, Option<&str>) {
+        let failure = ran.ended.as_ref().expect_err("the run failed");
+        (failure.what.as_str(), failure.why.as_deref())
     }
 
     fn down() -> Contract {
@@ -215,88 +252,110 @@ mod tests {
 
     #[test]
     fn the_page_is_printed_by_default_and_the_record_with_json() {
-        let page = run(&args(&[]), &Contract::whole());
-        assert_eq!(page.code, 0);
+        let page = run(&args(&[]), false, &Contract::whole());
+        assert_eq!(page.ended, Ok(()), "the reading failed");
         assert!(
             page.out.starts_with("WARP \u{b7} connected"),
             "{}",
             page.out
         );
-        assert_eq!(page.err, "");
-        let record = run(&args(&["--json"]), &Contract::whole());
-        assert_eq!(record.code, 0);
+        let record = run(&args(&[]), true, &Contract::whole());
+        assert_eq!(record.ended, Ok(()), "the reading failed");
         let printed: Value = serde_json::from_str(&record.out).expect("it prints JSON");
         let golden: Value = serde_json::from_str(
             &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/warp.json"))
                 .expect("warp.json is there"),
         )
         .expect("warp.json is JSON");
-        assert_eq!(printed, golden);
+        assert_eq!(printed, golden, "the record isn't warp.json");
     }
 
     #[test]
-    fn each_failure_is_said_in_a_line_and_ends_with_its_own_code() {
-        let none = run(&args(&[]), &missing());
+    fn each_failure_is_said_and_ends_with_the_kits_code_for_it() {
+        let none = run(&args(&[]), false, &missing());
         assert_eq!(
-            (none.code, none.out.as_str(), none.err.as_str()),
+            (code(&none), none.out.as_str(), said_failed(&none)),
             (
-                3,
+                66,
                 "",
-                "warp: warp-cli isn't installed, so there's no WARP here to read\n"
-            )
+                (
+                    "warp-cli isn't installed, so there's no WARP here to read",
+                    None
+                )
+            ),
+            "no warp-cli is said wrongly"
         );
-        let quiet = run(&args(&[]), &down());
+        let quiet = run(&args(&[]), false, &down());
         assert_eq!(
-            (quiet.code, quiet.out.as_str(), quiet.err.as_str()),
+            (code(&quiet), quiet.out.as_str(), said_failed(&quiet)),
             (
-                4,
+                69,
                 "",
-                "warp: WARP's service isn't answering: No such file or directory (os error 2)\n"
-            )
+                (
+                    "WARP's service isn't answering",
+                    Some("No such file or directory (os error 2)")
+                )
+            ),
+            "a quiet service is said wrongly"
         );
-        let odd = run(&args(&[]), &refusing());
+        let odd = run(&args(&[]), false, &refusing());
         assert_eq!(
-            (odd.code, odd.out.as_str(), odd.err.as_str()),
+            (code(&odd), odd.out.as_str(), said_failed(&odd)),
             (
-                5,
+                65,
                 "",
-                "warp: warp-cli status said InvalidAccountType: Invalid account type.\n"
-            )
+                (
+                    "warp-cli said what warp can't read",
+                    Some("warp-cli status said InvalidAccountType: Invalid account type.")
+                )
+            ),
+            "an unreadable answer is said wrongly"
         );
     }
 
     #[test]
     fn a_failure_with_json_is_a_record_saying_which_and_why() {
-        let quiet = run(&args(&["--json"]), &down());
-        assert_eq!(quiet.code, 4);
+        let quiet = run(&args(&[]), true, &down());
+        assert_eq!(code(&quiet), 69, "a quiet service ended wrongly");
         let said: Value = serde_json::from_str(&quiet.out).expect("it prints JSON");
         assert_eq!(
             said,
             serde_json::json!({
                 "error": "not-answering",
                 "said": "No such file or directory (os error 2)"
-            })
+            }),
+            "a quiet service's record is wrong"
         );
-        let none = run(&args(&["--json"]), &missing());
-        assert_eq!(none.code, 3);
+        let none = run(&args(&[]), true, &missing());
+        assert_eq!(code(&none), 66, "no warp-cli ended wrongly");
         let said: Value = serde_json::from_str(&none.out).expect("it prints JSON");
-        assert_eq!(said["error"], "not-installed");
+        assert_eq!(
+            said["error"], "not-installed",
+            "no warp-cli's record is wrong"
+        );
     }
 
     #[test]
-    fn a_word_it_doesnt_know_is_refused_with_its_usage() {
-        let ran = run(&args(&["reconnect"]), &Contract::whole());
+    fn more_than_one_word_is_refused_as_usage() {
+        let two = run(&args(&["connect", "disconnect"]), false, &Contract::whole());
+        assert_eq!(code(&two), 64, "two words weren't refused");
         assert_eq!(
-            (ran.code, ran.out.as_str(), ran.err.as_str()),
-            (
-                2,
-                "",
-                "warp: reconnect isn't a word warp knows\n\
-                 usage: warp [connect | disconnect] [--json] | warp serve SOCKET\n"
-            )
+            said_failed(&two).0,
+            "warp takes one word at a time",
+            "the refusal says the wrong thing"
         );
-        let two = run(&args(&["connect", "disconnect"]), &Contract::whole());
-        assert_eq!(two.code, 2);
+    }
+
+    #[test]
+    fn a_word_it_doesnt_know_is_refused_before_anything_is_asked() {
+        let ending = terminal_kit::run(
+            &help(),
+            "0",
+            &terminal_kit::Environment::default(),
+            args(&["reconnect"]),
+            |_| panic!("an unknown word reached warp's body"),
+        );
+        assert_eq!(ending.exit, Exit::Usage, "{}", ending.stderr);
     }
 
     #[expect(
@@ -338,17 +397,17 @@ mod tests {
     #[test]
     fn disconnect_takes_warp_down_and_says_when_it_comes_back() {
         let cli = Contract::whole().with("disconnect", done());
-        let ran = run(&args(&["disconnect"]), &cli);
+        let ran = run(&args(&["disconnect"]), false, &cli);
         assert_eq!(
-            (ran.code, ran.out.as_str(), ran.err.as_str()),
+            (code(&ran), ran.out.as_str()),
             (
                 0,
-                "WARP is disconnected, and comes back by itself in 2 min\n",
-                ""
-            )
+                "WARP is disconnected, and comes back by itself in 2 min\n"
+            ),
+            "the disconnect is said wrongly"
         );
-        let record = run(&args(&["disconnect", "--json"]), &cli);
-        assert_eq!(record.code, 0);
+        let record = run(&args(&["disconnect"]), true, &cli);
+        assert_eq!(code(&record), 0, "the disconnect failed");
         let said: Value = serde_json::from_str(&record.out).expect("it prints JSON");
         assert_eq!(
             (
@@ -362,7 +421,8 @@ mod tests {
                 &Value::Bool(true),
                 &Value::Null,
                 &Value::from(2)
-            )
+            ),
+            "the disconnect's record is wrong"
         );
     }
 
@@ -371,54 +431,58 @@ mod tests {
         let cli = Contract::whole()
             .with("status", disconnected())
             .with("connect", done());
-        let ran = run(&args(&["connect"]), &cli);
+        let ran = run(&args(&["connect"]), false, &cli);
         assert_eq!(
-            (ran.code, ran.out.as_str(), ran.err.as_str()),
-            (0, "WARP is connecting\n", "")
+            (code(&ran), ran.out.as_str()),
+            (0, "WARP is connecting\n"),
+            "the connect is said wrongly"
         );
     }
 
     #[test]
-    fn a_switch_the_organisation_holds_ends_with_its_own_code() {
+    fn a_switch_the_organisation_holds_is_refused() {
         let cli = Contract::whole()
             .with("settings", held())
             .with("disconnect", done());
-        let ran = run(&args(&["disconnect"]), &cli);
+        let ran = run(&args(&["disconnect"]), false, &cli);
         assert_eq!(
-            (ran.code, ran.out.as_str(), ran.err.as_str()),
+            (code(&ran), ran.out.as_str(), said_failed(&ran)),
             (
-                6,
+                77,
                 "",
-                "warp: example holds WARP's switch, so it's left connected\n"
-            )
+                ("example holds WARP's switch, so it's left connected", None)
+            ),
+            "a held switch is said wrongly"
         );
-        let record = run(&args(&["disconnect", "--json"]), &cli);
-        assert_eq!(record.code, 6);
+        let record = run(&args(&["disconnect"]), true, &cli);
+        assert_eq!(code(&record), 77, "a held switch wasn't refused");
         let said: Value = serde_json::from_str(&record.out).expect("it prints JSON");
         assert_eq!(
             (&said["refused"], &said["organisation"]),
-            (&Value::from("held"), &Value::from("example"))
+            (&Value::from("held"), &Value::from("example")),
+            "a held switch's record doesn't say who holds it"
         );
     }
 
     #[test]
-    fn a_switch_warp_cli_refuses_ends_with_its_own_code() {
+    fn a_switch_warp_cli_refuses_fails() {
         // The contract refuses a question it isn't given.
         let cli = Contract::whole().with("status", disconnected());
-        let ran = run(&args(&["connect"]), &cli);
+        let ran = run(&args(&["connect"]), false, &cli);
         assert_eq!(
-            (ran.code, ran.out.as_str(), ran.err.as_str()),
+            (code(&ran), ran.out.as_str(), said_failed(&ran)),
             (
-                7,
+                1,
                 "",
-                "warp: warp-cli wouldn't connect: Invalid account type.\n"
-            )
+                ("warp-cli wouldn't connect: Invalid account type.", None)
+            ),
+            "a refused switch is said wrongly"
         );
     }
 
     #[test]
     fn a_switch_with_no_warp_to_ask_fails_as_a_reading_does() {
-        let ran = run(&args(&["disconnect"]), &missing());
-        assert_eq!(ran.code, 3);
+        let ran = run(&args(&["disconnect"]), false, &missing());
+        assert_eq!(code(&ran), 66, "a switch with no warp-cli ended wrongly");
     }
 }

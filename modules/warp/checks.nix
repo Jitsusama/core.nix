@@ -14,14 +14,14 @@ onLinux {
   # them, an endpoint given as no address is none and a figure left out is
   # unknown rather than zero; no warp-cli, a service not answering or one
   # that hangs, and a status refused or garbled are each told apart, said
-  # in a line and ended with a code of their own, and with --json as a
-  # record; a part besides the status that warp-cli won't give is unknown
+  # as the terminal kit says a failure and ended with the kit's code for
+  # it; a word it doesn't take is refused before warp-cli is asked; a part besides the status that warp-cli won't give is unknown
   # and the rest still reads; an override in force says how long it has
   # left; each page matches its golden one (src/golden/), connected,
   # degraded and disconnected; and connect and disconnect leave a switch
   # the organisation holds as it is, asking warp-cli nothing, say WARP
   # already as asked, say when WARP always on comes back, and say warp-cli
-  # refusing in its words, each ending with its own code; and serving the
+  # refusing in its words, each ending with the kit's code for it; and serving the
   # shell, a status or reason a listening warp-cli tells, other than the
   # last, has the link read at once, and a figure moving or a DNS log
   # doesn't.
