@@ -29,18 +29,20 @@ import time
 from pathlib import Path
 from typing import Any
 
-# The ids this client gives the objects it makes, as the wire protocol has the client choose.
+# The ids this client gives the objects it makes, as the wire protocol has the client choose,
+# each the next unused, in the order it makes them.
 DISPLAY = 1
 REGISTRY = 2
-COMPOSITOR = 3
-SHM = 4
-WM_BASE = 5
-SURFACE = 6
-XDG_SURFACE = 7
-TOPLEVEL = 8
-POOL = 9
+LISTED = 3
+COMPOSITOR = 4
+SHM = 5
+WM_BASE = 6
+POOL = 7
+SURFACE = 8
+XDG_SURFACE = 9
+TOPLEVEL = 10
 # Ids from here on are callbacks and buffers, one each.
-FIRST_FREE = 10
+FIRST_FREE = 11
 
 # The wl_shm format with no alpha, and the pool's size: a 1280x800 screen of it, twice.
 XRGB8888 = 1
@@ -149,8 +151,7 @@ class Window:
         """Bind wl_compositor, wl_shm and xdg_wm_base from the registry, and make the pool."""
         wanted = {"wl_compositor": (COMPOSITOR, 4), "wl_shm": (SHM, 1), "xdg_wm_base": (WM_BASE, 2)}
         self.send(message(DISPLAY, 1, struct.pack("<I", REGISTRY)))
-        callback = self.new_id()
-        self.send(message(DISPLAY, 0, struct.pack("<I", callback)))
+        self.send(message(DISPLAY, 0, struct.pack("<I", LISTED)))
         found: dict[str, tuple[int, int]] = {}
         while True:
             source, opcode, payload = self.event()
@@ -160,7 +161,7 @@ class Window:
                 (version,) = struct.unpack_from("<I", payload, at)
                 if interface in wanted:
                     found[interface] = (name, version)
-            if source == callback:
+            if source == LISTED:
                 break
         for interface, (target, most) in wanted.items():
             if interface not in found:
