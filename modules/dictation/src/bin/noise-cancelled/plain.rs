@@ -10,7 +10,9 @@
 //! which wakes its capture so the worker hears it (worker.rs). Nothing is
 //! cleaned while it's heard, and nothing it hears leaves memory but the
 //! scorer's numbers. A microphone whose twin is recorded from is the
-//! twin's call, and judged as that.
+//! twin's call, and judged as that. Which app the call is in, and what it
+//! records from, is said in the journal, so each app's calls show whether
+//! it hears a twin.
 
 use std::collections::BTreeSet;
 use std::io::BufReader;
@@ -26,11 +28,13 @@ use serde_json::Value;
 /// How long to wait before following the graph again once pw-dump ends.
 const AGAIN: Duration = Duration::from_mins(1);
 
-/// The graph and the call, and the microphones told to be heard.
+/// The graph and the call, the microphones told to be heard, and what the
+/// call was last said to record from.
 pub struct Follower {
     graph: Graph,
     call: Call,
     heard: BTreeSet<String>,
+    said: Option<(String, BTreeSet<String>)>,
 }
 
 impl Default for Follower {
@@ -39,6 +43,7 @@ impl Default for Follower {
             graph: Graph::default(),
             call: Call::Off,
             heard: BTreeSet::new(),
+            said: None,
         }
     }
 }
@@ -63,6 +68,26 @@ impl Follower {
             self.heard.clone_from(&heard);
             heard
         })
+    }
+
+    /// What to say of the call once it's on, each time its app or what it
+    /// records from changes, so Joel's calls show whether each app hears a
+    /// twin (plan item 8).
+    pub fn recording(&mut self) -> Option<String> {
+        let now = match self.call {
+            Call::On => self.graph.call_records_from(),
+            Call::Off | Call::Starting(_) | Call::Ending(_) => None,
+        };
+        if now == self.said {
+            return None;
+        }
+        self.said.clone_from(&now);
+        let (app, from) = now?;
+        let from: Vec<&str> = from.iter().map(String::as_str).collect();
+        Some(format!(
+            "the call in {app} records from {}",
+            from.join(" and ")
+        ))
     }
 
     /// How long until the call starts or ends if nothing changes.
@@ -123,6 +148,9 @@ fn followed(told: &impl Fn(BTreeSet<String>)) -> Result<(), String> {
         }
         if let Some(microphones) = follower.stepped(Instant::now()) {
             told(microphones);
+        }
+        if let Some(said) = follower.recording() {
+            eprintln!("noise-cancelled: {said}");
         }
     }
     let _ = dump.wait();
