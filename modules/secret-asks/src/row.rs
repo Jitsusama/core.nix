@@ -141,6 +141,9 @@ pub fn row(held: &Held, home: &str, words: &Words) -> Value {
     let ask = &held.ask;
     let digest = digest(ask, &held.tree);
     let key = format!("row:{PLACE}:{}", ask.id);
+    // An act names the ask alone, by its thing, never by its row's key
+    // too, so a forged act has one form to match, not two.
+    let thing = format!("ask:{}", ask.id);
     let eyebrow = match &ask.quest {
         Some((_, title)) => words.fill("from", &[("session", &ask.session), ("quest", title)]),
         None => ask.session.clone(),
@@ -189,7 +192,7 @@ pub fn row(held: &Held, home: &str, words: &Words) -> Value {
     let acts = if held.state == State::Waiting {
         let act = |verb: &str| {
             json!({"key": format!("verb:{verb}"),
-                   "ask": {"ask": verb, "key": key, "digest": digest}})
+                   "ask": {"ask": verb, "key": thing, "digest": digest}})
         };
         json!([act("release"), act("refuse")])
     } else {
@@ -197,7 +200,7 @@ pub fn row(held: &Held, home: &str, words: &Words) -> Value {
     };
     json!({
         "key": key,
-        "thing": format!("ask:{}", ask.id),
+        "thing": thing,
         "place": PLACE,
         "kind": "ask",
         "state": held.state.name(),
