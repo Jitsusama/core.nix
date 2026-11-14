@@ -193,6 +193,7 @@
         pause-for-calls = pkgs.callPackage ../../modules/spotify/pause-for-calls/package.nix { };
         pi-packages = pkgs.callPackage ../../modules/pi-packages/package.nix { };
         pi-spawner = pkgs.callPackage ../../modules/pi/spawner/package.nix { };
+        pineapple-slack = pkgs.callPackage ../../modules/pineapple/package.nix { };
         plymouth-waits = pkgs.callPackage ../../modules/plymouth/waits/package.nix { };
         recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };

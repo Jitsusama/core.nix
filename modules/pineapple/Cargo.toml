@@ -1,7 +1,7 @@
 # pineapple: whether a message someone wrote is the safe word that stops
-# Joel's agents, and what it stops. A library with no program yet: the
-# readers and the enforcer that will use it come later (src/lib.rs says
-# how the pieces fit).
+# Joel's agents, and what it stops. The library judges (src/lib.rs says
+# how the pieces fit); pineapple-slack reads Slack for it, in shadow
+# (src/bin/pineapple-slack.rs), and the enforcer comes later.
 [package]
 name = "pineapple"
 version = "0.1.0"
@@ -12,8 +12,13 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
-[dev-dependencies]
-# Only the cases read JSON: sayings.json is the one table of what counts,
-# shared with whatever else judges a saying, so the library itself needs
-# nothing.
+[dependencies]
+# Slack's answers, the log and the stop records are all JSON, and
+# sayings.json is the one table of what counts, shared with whatever else
+# judges a saying.
 serde_json = "1.0"
+# Slack's client and Joel's sign-in, through its door that only reads
+# (../slack), so nothing here can write to Slack.
+slack-people = { path = "../slack" }
+# The shape every command of ours takes: its flags, help, errors and ink.
+terminal-kit = { path = "../terminal-kit" }
