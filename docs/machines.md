@@ -219,7 +219,7 @@ if its pieces did no work either, read as CPU time and bytes written
 from their cgroups here and from each builder's `health.json`, and
 never after an hour of quiet.
 
-A small machine that builds its own system can set `batches = { };`. Once
+A small NixOS machine can set `batches = { };`. Once
 its system needs more than `batches.pieces` built, 100 unless set, they
 build a batch at a time, the pieces built from none of the others first.
 The Nix daemon's worker serving one build grows with what it's given, so
@@ -228,6 +228,9 @@ Each batch, and the system's own build after them, starts only once Linux
 says the memory available and the swap free come to `batches.roomMiB`
 together, 6 GiB unless set. An update that waits `batches.within` seconds
 for that, half an hour unless set, fails and leaves the machine as it is.
+Building `elsewhere`, what isn't light goes to the builders in batches
+too, since the worker grows wherever the pieces build, with no wait for
+room, and the light pieces left build here in batches after.
 
 A switch that would restart what a hold covers is built, then waits. The
 ask that brings the hold's grant switches to what was built, though main
