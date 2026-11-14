@@ -688,7 +688,7 @@ mod tests {
                 "sh".to_owned(),
                 "-c".to_owned(),
                 format!(
-                    "echo started; (sleep 8; touch {}) & sleep 120",
+                    "echo started; sh -c 'sleep 60; touch {}' & sleep 120",
                     left.display()
                 ),
             ],
@@ -720,7 +720,17 @@ mod tests {
             closed.recv_timeout(Duration::from_secs(30)).is_ok(),
             "the command outlived its caller"
         );
-        std::thread::sleep(Duration::from_secs(9));
+        let mark = folder.path().to_string_lossy().into_owned();
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !carrying(&mark).is_empty() && Instant::now() < deadline {
+            // A look every tenth of a second, for the group's end.
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(
+            carrying(&mark),
+            Vec::<u32>::new(),
+            "what it started went on"
+        );
         assert!(!left.exists(), "what it started went on");
     }
 
@@ -792,6 +802,12 @@ mod tests {
         );
     }
 
+    /// Waits for the run's files to go, then for every process carrying the
+    /// test's folder in its words to end, rather than racing a fixed sleep
+    /// against the command's own: under load the watch's look, every 2 s
+    /// against a beat stamped in whole seconds, came after the command's 8 s
+    /// (2 of 5 runs failed on a loaded machine, 14 November). The command
+    /// now sleeps a minute, so only a kill keeps it from touching `left`.
     #[test]
     fn a_run_nothing_follows_ends_with_all_it_started() {
         let folder = tempfile::tempdir().unwrap();
@@ -803,18 +819,36 @@ mod tests {
                 "sh".to_owned(),
                 "-c".to_owned(),
                 format!(
-                    "echo started; (sleep 8; touch {0}) & sleep 8; touch {0}",
+                    "echo started; sh -c 'sleep 60; touch {0}' & sleep 60; touch {0}",
                     left.display()
                 ),
             ],
         };
         started_then_lost(&asked, "unwatched", folder.path(), "1");
-        std::thread::sleep(Duration::from_secs(10));
+        let run = folder.path().join("nix-offload-runs/unwatched");
+        let mark = folder.path().to_string_lossy().into_owned();
+        let deadline = Instant::now() + Duration::from_secs(45);
+        while (run.exists() || !carrying(&mark).is_empty()) && Instant::now() < deadline {
+            // A look every tenth of a second, for the watch that ends it.
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert!(!run.exists(), "its files stayed");
+        assert_eq!(carrying(&mark), Vec::<u32>::new(), "what it started ran on");
         assert!(!left.exists(), "it ran on unwatched");
-        assert!(
-            !folder.path().join("nix-offload-runs/unwatched").exists(),
-            "its files stayed"
-        );
+    }
+
+    /// The processes whose words hold `mark`, this test's own aside.
+    fn carrying(mark: &str) -> Vec<u32> {
+        let me = std::process::id();
+        std::fs::read_dir("/proc")
+            .unwrap()
+            .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<u32>().ok())
+            .filter(|&pid| pid != me)
+            .filter(|pid| {
+                std::fs::read(format!("/proc/{pid}/cmdline"))
+                    .is_ok_and(|words| String::from_utf8_lossy(&words).contains(mark))
+            })
+            .collect()
     }
 
     #[test]
