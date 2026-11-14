@@ -1501,7 +1501,7 @@ Provider {
             windowed(one) ? act("session", { later: true, run: toSession(one) }) : null,
             act("feedback", {
                 ask: Words.of("verb:agents:landed:feedback").ask ?? "",
-                chip: one.what,
+                chip: one.name ?? one.what,
                 state: () => provider.fedBack,
                 given: words => provider.feedback(one.key, words)
             }),
@@ -1516,7 +1516,10 @@ Provider {
         const landing = one => thing(Object.assign({
             thing: true,
             key: `agents:landed:${one.key}`,
-            name: one.what,
+            // What it asks Joel to do where it asks anything, else what
+            // landed, as the daemon names it (landed.rs), the same here
+            // and in For You.
+            name: one.name ?? one.what,
             verb: Words.verb(`verb:agents:landed:${goes(one) || "read"}`),
             glyph: Words.glyph("agents:landed"),
             hue: "action",
@@ -1544,7 +1547,7 @@ Provider {
             // A place's drawer is drawn once it names what it holds, as a
             // Recent's is (Launcher.qml's drawable); with nothing landed,
             // it has nothing to say past its row.
-            heldNames: landings.map(one => one.what),
+            heldNames: landings.map(one => one.name ?? one.what),
             drawer: landings.length === 0 ? undefined : () => ({
                 eyebrow: (Words.field.drawer ?? {}).place ?? "",
                 title: Words.name("agents:landed"),
@@ -1597,7 +1600,7 @@ Provider {
         const today = String(Calendars.today ?? "");
         const row = (one, fields) => thing(Object.assign({
             thing: true,
-            name: one.what,
+            name: one.name ?? one.what,
             verb: "go to",
             glyph: Theme.glyph.toTry,
             readsLanding: one.key,

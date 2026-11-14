@@ -161,6 +161,24 @@ function balanced(words, room, width, least) {
     return best === null ? null : best.lines;
 }
 
+// A title shown whole, as a landing asking Joel something is (VKCF3Z,
+// 2026-11-13, c2d01d53): as titleLines lays it where that cuts none of
+// it, else on as many lines as its words fill, each as full as it fits,
+// so nothing of it is left out.
+function titleWhole(title, room, width, ellipsis) {
+    const two = titleLines(title, room, width, ellipsis);
+    if (two.length < 2 || !two[1].endsWith(ellipsis)) {
+        return two;
+    }
+    const words = title.split(SPACES).filter(word => !ONLY_SPACES.test(word));
+    return words.reduce((lines, word) => {
+        const last = lines.length - 1;
+        const longer = last < 0 ? word : `${lines[last]} ${word}`;
+        return last >= 0 && fitting(longer, room, width)
+            ? lines.slice(0, last).concat([longer]) : lines.concat([word]);
+    }, []);
+}
+
 // Words too many for two lines: the first as full as it fits, the second
 // the words after it that fit with `ellipsis`, so it ends at a whole word.
 function cutToTwo(words, room, width, ellipsis) {

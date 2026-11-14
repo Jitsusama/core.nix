@@ -122,6 +122,11 @@
       "name": "Change"
     },
     {
+      "id": "agents:changed",
+      "in": "agents",
+      "name": "What Changed"
+    },
+    {
       "id": "agents:item",
       "in": "agents",
       "name": "Item"

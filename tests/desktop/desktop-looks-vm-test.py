@@ -640,12 +640,19 @@ CLOSED = [
 # try, which waits in For You until it's read (VKCF3Z, 2026-11-10).
 STOPPED = "Stop Waits for a Second Return"
 CLOSING = "A Session Closes From the Launcher"
+# Its line for Joel, a first sentence long enough that its row cuts at a word and its drawer's
+# title runs past two lines, whole, with the rest after its facts (VKCF3Z, c2d01d53).
+TRYING = (
+    "Press dd on a session in Agents to close it, and answer when it asks whether its folder"
+    " and its branch should stay"
+)
+TRYING_REST = "It asks first, so a slip of the keys loses nothing."
 LANDINGS = [
     {"at": "2026-11-07T11:31:00Z", "ref": "core.nix#2140", "what": STOPPED,
      "url": "https://example.org/core.nix/pull/2140"},
     {"at": "2026-11-07T11:25:00Z", "ref": "PLAN-20261022-TESTQC#2", "what": "Ticked alone"},
     {"at": "2026-11-07T11:19:00Z", "ref": "core.nix#2138", "what": CLOSING,
-     "person": "Press dd on a session to close it"},
+     "person": f"{TRYING}. {TRYING_REST}"},
 ]  # fmt: skip
 # How full the builder's context is and what its turns took, as the harness's usage keeps them
 # by gen_ai's names; today's counts show only on the day they're of.
@@ -1003,16 +1010,18 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
     desktop.down_to("To Try")
     desktop.shoot(f"launcher-for-you-to-try-at-{shot}")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == [CLOSING])
+    desktop.launcher_until(lambda shown: shown["rows"] == [TRYING])
     desktop.launcher_until(
         lambda shown: (
-            shown["drawer"]["out"] is True and shown["drawer"]["body"] == LANDINGS[2]["person"]
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["title"] == TRYING
+            and shown["drawer"]["body"] == TRYING_REST
         )
     )
     desktop.shoot(f"launcher-for-you-landing-at-{shot}")
     # Return steps into it where it lives, Agents \u203a Landed, and reads it.
     desktop.machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", CLOSING])
+    desktop.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", TRYING])
     desktop.step_out()
     desktop.step_out()
     desktop.down_to("Landed")
@@ -1020,14 +1029,16 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
     desktop.shoot(f"launcher-agents-landed-at-{shot}")
     desktop.follow()
     # Newest first: the one landed yesterday, then the one from 7 Nov.
-    desktop.launcher_until(lambda shown: shown["rows"] == [CLOSING, STOPPED])
-    desktop.down_to(CLOSING)
+    desktop.launcher_until(lambda shown: shown["rows"] == [TRYING, STOPPED])
+    desktop.down_to(TRYING)
     selected = desktop.showing()["selected"]
     # A day before today, as a row says one, never its ref, which its drawer says last.
     assert selected["side"] not in {"", "core.nix#2138"}, f"at {shot}: {selected}"
     desktop.launcher_until(
         lambda shown: (
-            shown["drawer"]["out"] is True and shown["drawer"]["body"] == LANDINGS[2]["person"]
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["title"] == TRYING
+            and shown["drawer"]["body"] == TRYING_REST
         )
     )
     desktop.shoot(f"launcher-agents-landed-in-at-{shot}")
@@ -1039,8 +1050,8 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
     desktop.launcher_until(lambda shown: "To Try" not in shown["rows"])
     desktop.down_to("History")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: CLOSING in shown["rows"])
-    desktop.down_to(CLOSING)
+    desktop.launcher_until(lambda shown: TRYING in shown["rows"])
+    desktop.down_to(TRYING)
     side = desktop.showing()["selected"]["side"]
     assert side.startswith("read "), f"at {shot} a landing read says {side!r} in History"
     desktop.shoot(f"launcher-for-you-history-at-{shot}")

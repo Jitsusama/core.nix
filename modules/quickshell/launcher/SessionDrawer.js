@@ -56,6 +56,11 @@ function shown(drawer, words) {
         title: String(drawer.title ?? ""),
         facts,
         body: String(drawer.body ?? ""),
+        // Whether its words are prose, and whether its title and prose
+        // are shown whole, as a landing asking Joel something is
+        // (modules/agents/src/landed.rs).
+        prose: drawer.prose === true,
+        whole: drawer.whole === true,
         // Its identifiers, which Drawer.qml folds under z a.
         nerd: drawer.nerd ?? []
     };
