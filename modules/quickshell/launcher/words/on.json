@@ -614,6 +614,7 @@
       },
       "said": {
         "count": "{count} times",
+        "refused": "{verb} didn't take: {why}",
         "you": "you",
         "someone": "someone",
         "stopped": "{who} stopped your agents on {reach}",

@@ -12,6 +12,7 @@ import qs
 import Quickshell
 import QtQuick
 import "ForYou.js" as ForYou
+import "../Confirm.js" as Confirm
 
 Provider {
     id: provider
@@ -32,10 +33,12 @@ Provider {
     }
 
     // A verb the daemon offers on a row: its words the launcher's, by the
-    // act's key, and Return on it the daemon's ask. What the daemon refused
-    // is said in the journal, since the row it was on stays until it moves.
+    // act's key, and Return on it the daemon's ask, asked once first where
+    // the daemon serves it costly (a resume, which undoes someone's safe
+    // word). What the daemon refused is said in the foot, since the row it
+    // was on stays and nothing else would show why nothing moved.
     function verbOf(act) {
-        return thing({
+        return thing(Object.assign({
             key: act.key,
             name: Words.name(act.key),
             verb: Words.verb(act.key),
@@ -43,9 +46,17 @@ Provider {
             hue: "action",
             run: () => daemon.ask(act.ask, answer => {
                 if (answer?.error)
-                    console.warn(`pineapple refused ${act.key}: ${answer.error.message ?? ""}`);
+                    provider.refused(act, String(answer.error.message ?? ""));
             })
-        });
+        }, Confirm.asking(act)));
+    }
+
+    // Says in the foot that the daemon refused a press, and why.
+    function refused(act, why) {
+        const said = Words.of("for-you:source:pineapple").said ?? {};
+        console.warn(`pineapple refused ${act.key}: ${why}`);
+        provider.launcher?.tellOnOpen([[Words.name("for-you:source:pineapple"),
+            ForYou.filled(said.refused, { verb: Words.name(act.key), why }), Theme.alert]]);
     }
 
     function drawerOf(one) {
@@ -93,9 +104,11 @@ Provider {
     }
 
     // What For You is given (ForYou.js's given): each row a thing to do now,
-    // weighed by how long it has waited.
+    // weighed by how long it has waited and, for a stop, by the sessions it
+    // parked, which wait on Joel as a session's want does.
     readonly property var forYou: records.map(one => ({
         row: provider.rowOf(one),
-        thing: { kind: "todo", ready: true, takes: 1, since: one.since ?? null }
+        thing: { kind: "todo", ready: true, takes: 1, since: one.since ?? null,
+            blocks: Number(one.parked ?? 0) }
     }))
 }
