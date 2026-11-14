@@ -2827,7 +2827,8 @@
     the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"
     or "when will it rain" answer when it next rains, here or in a place; here is the location, by
     its town or else its position, ahead of the place set and then the time zone, and the footer
-    says which
+    says which; the weather's own drawer says it in brief: now, where, the next hours, the rain
+    while it's due, and each day
   '';
   the-launcher-answers-what-is-asked = ''
     sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's

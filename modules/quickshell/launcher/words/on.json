@@ -45,7 +45,12 @@
         "range": "{low} to {high}",
         "wetHours": "over {hours} h",
         "dayRain": "{chance} chance",
-        "at": "{day} \u00b7 {clock}"
+        "at": "{day} \u00b7 {clock}",
+        "lead": "{sky} at {warmth}, feeling like {feels}",
+        "leadPlain": "{sky} at {warmth}",
+        "rainFrom": "rain likely from {clock}",
+        "rainNow": "raining now",
+        "dry": "no rain due in the next {hours} hours"
       }
     },
     {

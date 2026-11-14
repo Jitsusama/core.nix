@@ -304,6 +304,7 @@
   ];
   "launcher/Weather.qml" = [
     "launcher/Moment.js"
+    "launcher/NowDrawers.js"
     "launcher/Numbers.js"
   ];
   "launcher/Windows.qml" = [

@@ -1,6 +1,6 @@
-// The cases of Now's Time and Date drawers (launcher/NowDrawers.js), which
-// ../answers.qml runs with every other place's; its opening comment says how.
-// The words are words.json's for Time and Date.
+// The cases of Now's Time, Date and Weather drawers (launcher/NowDrawers.js),
+// which ../answers.qml runs with every other place's; its opening comment
+// says how. The words are words.json's for Time, Date and Weather.
 .import "common.js" as Common
 .import "../NowDrawers.js" as NowDrawers
 
@@ -27,6 +27,33 @@ const DATE_NAMES = {
     title: "Date", iso: "ISO Date", season: "Season", moon: "Moon", quarter: "Quarter",
     weekDate: "ISO Week Date", julian: "Julian Day"
 };
+
+const WEATHER_SAID = {
+    range: "{low} to {high}",
+    lead: "{sky} at {warmth}, feeling like {feels}",
+    leadPlain: "{sky} at {warmth}",
+    rainFrom: "rain likely from {clock}",
+    rainNow: "raining now",
+    dry: "no rain due in the next {hours} hours"
+};
+const WEATHER_NAMES = {
+    title: "Weather", place: "Forecast For", next: "Next {hours} Hours", rain: "Rain"
+};
+
+// A Saturday afternoon in Toronto, rain due from three, and its week.
+function afternoon(change) {
+    return NowDrawers.weather(Object.assign({
+        sky: "mostly clear", warmth: "12\u00b0", feels: "10\u00b0",
+        place: "Toronto, from your time zone", hours: 12, low: "6\u00b0", high: "12\u00b0",
+        rainFrom: "15:00", rain: "from 15:00 \u00b7 70%",
+        days: [
+            { name: "Today", low: "6\u00b0", high: "14\u00b0", sky: "light rain" },
+            { name: "Tomorrow", low: "3\u00b0", high: "9\u00b0", sky: "overcast" },
+            { name: "Monday", low: "2\u00b0", high: "11\u00b0", sky: "clear" }
+        ],
+        said: WEATHER_SAID, names: WEATHER_NAMES
+    }, change));
+}
 
 function toronto(clock, clockSide) {
     return NowDrawers.time({
@@ -107,5 +134,38 @@ function run(failures) {
     same("one day left is a day", last.body,
         "Week 46, day 364 of 365, with 1 day left in the year; autumn has 1 day to go.");
     same("one day of the season is a day", last.facts[1].value, "autumn \u00b7 1 day left");
+
+    // Weather's: what it's like now and the rain to come in a sentence,
+    // then where, the next hours, the rain while it's due, and each day
+    // as its row says it.
+    const wet = afternoon({});
+    same("Weather's drawer's sentence", wet.body,
+        "Mostly clear at 12\u00b0, feeling like 10\u00b0; rain likely from 15:00.");
+    same("Weather's drawer's facts", facts(wet), [
+        "Forecast For: Toronto, from your time zone",
+        "Next 12 Hours: 6\u00b0 to 12\u00b0",
+        "Rain: from 15:00 \u00b7 70%",
+        "Today: 6\u00b0 to 14\u00b0 \u00b7 light rain",
+        "Tomorrow: 3\u00b0 to 9\u00b0 \u00b7 overcast",
+        "Monday: 2\u00b0 to 11\u00b0 \u00b7 clear"
+    ]);
+    same("Weather's drawer is prose under its title", [wet.title, wet.prose, wet.nerd.length],
+        ["Weather", true, 0]);
+    same("rain already falling says so", afternoon({ rainFrom: "now" }).body,
+        "Mostly clear at 12\u00b0, feeling like 10\u00b0; raining now.");
+
+    // With no rain due, Rain gives up its fact, as its row gives up its
+    // place, and the sentence says none is due.
+    const dry = afternoon({ rainFrom: "", rain: "" });
+    same("no rain due is said", dry.body,
+        "Mostly clear at 12\u00b0, feeling like 10\u00b0; no rain due in the next 12 hours.");
+    same("no rain due has no Rain fact", facts(dry).some(fact => fact.startsWith("Rain")),
+        false);
+
+    // A forecast with no feeling or no hours says what it has.
+    same("no feeling says the warmth alone", afternoon({ feels: null }).body,
+        "Mostly clear at 12\u00b0; rain likely from 15:00.");
+    same("no hours have no range", facts(afternoon({ low: null, high: null }))[1],
+        "Rain: from 15:00 \u00b7 70%");
     return asked;
 }

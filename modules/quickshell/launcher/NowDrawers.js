@@ -1,5 +1,5 @@
-// The drawers of Now's Time and Date, worked out apart from their places
-// (Clocks.qml, Today.qml) so tests/answers/now-drawers.js holds them in
+// The drawers of Now's Time, Date and Weather, worked out apart from their
+// places (Clocks.qml, Today.qml, Weather.qml) so tests/answers/now-drawers.js holds them in
 // Qt's own engine. Each gives a little more than its row's line, never the
 // whole place (Joel, 2026-11-11: "side drawers for just about every item
 // giving me more details, not as much as if i opened it up"): a sentence
@@ -99,5 +99,48 @@ function date(at) {
             { label: at.names.weekDate, value: at.weekDate },
             { label: at.names.julian, value: at.dayNumber }
         ]
+    };
+}
+
+// What the rain does in the next hours, in the sentence: from when it's
+// likely, now if it already is, or that none is due.
+function rainWords(at) {
+    const said = at.said;
+    if (at.rainFrom === "") {
+        return filled(said.dry, { hours: at.hours });
+    }
+    return at.rainFrom === "now" ? said.rainNow : filled(said.rainFrom, { clock: at.rainFrom });
+}
+
+// Weather's drawer, from the forecast as Weather.qml says it: `sky`,
+// `warmth` and `feels`, what it's like now (`feels` null where the
+// forecast gives none); `place`, where it's for and how that was found;
+// `hours`, how many are ahead, and `low` and `high`, their warmth;
+// `rainFrom`, the first hour likely to rain, "now", or "" with none
+// due, and `rain`, the Rain row's own side; `days`, each `{ name, low,
+// high, sky }` from today; and `said` and `names`. It says what Weather
+// holds in brief: now, the place, the next hours and the rain when it's
+// due, then each coming day as its row does, never every figure, which
+// Conditions and each day hold a step in (Joel, 2026-11-14: "weather has
+// no drawer thing giving any details while all of its neighbours do").
+function weather(at) {
+    const said = at.said;
+    const now = at.feels === null ? filled(said.leadPlain, { sky: at.sky, warmth: at.warmth })
+        : filled(said.lead, { sky: at.sky, warmth: at.warmth, feels: at.feels });
+    return {
+        title: at.names.title,
+        body: `${sentence(now)}; ${rainWords(at)}.`,
+        prose: true,
+        facts: valued([
+            { label: at.names.place, value: at.place },
+            { label: filled(at.names.next, { hours: at.hours }),
+                value: at.low === null || at.high === null ? ""
+                    : filled(said.range, { low: at.low, high: at.high }) },
+            { label: at.names.rain, value: at.rainFrom === "" ? "" : at.rain }
+        ].concat(at.days.map(day => ({
+            label: day.name,
+            value: `${filled(said.range, { low: day.low, high: day.high })} \u00b7 ${day.sky}`
+        })))),
+        nerd: []
     };
 }
