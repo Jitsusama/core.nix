@@ -265,20 +265,7 @@ pub fn ask(line: &str) -> Ask {
             words: text("words").unwrap_or_default(),
             limit: count("limit").unwrap_or(SEARCHED),
         },
-        "reveal" | "copy" | "code" => {
-            let Some(key) = text("key").filter(|key| named(key).is_some()) else {
-                return Ask::Unknown {
-                    id,
-                    ask: format!("{asked} without an entry's key"),
-                };
-            };
-            let detail = text("detail");
-            match asked {
-                "reveal" => Ask::Reveal { id, key, detail },
-                "copy" => Ask::Copy { id, key, detail },
-                _ => Ask::Code { id, key },
-            }
-        }
+        "reveal" | "copy" | "code" => entry_act(id, asked, text("key"), text("detail")),
         "let-in" => Ask::LetIn {
             id,
             manager: text("manager").unwrap_or_default(),
@@ -294,6 +281,22 @@ pub fn ask(line: &str) -> Ask {
             id,
             ask: other.to_owned(),
         },
+    }
+}
+
+/// A reveal, copy or code, which names one entry by its key, or an
+/// unknown ask when it names none.
+fn entry_act(id: Value, asked: &str, key: Option<String>, detail: Option<String>) -> Ask {
+    let Some(key) = key.filter(|key| named(key).is_some()) else {
+        return Ask::Unknown {
+            id,
+            ask: format!("{asked} without an entry's key"),
+        };
+    };
+    match asked {
+        "reveal" => Ask::Reveal { id, key, detail },
+        "copy" => Ask::Copy { id, key, detail },
+        _ => Ask::Code { id, key },
     }
 }
 
