@@ -1173,7 +1173,9 @@ in
     ];
   };
   # Crouched to pounce: ears up and eye forward, paws flat, rump raised
-  # behind, unlike stretching, whose head is down.
+  # behind, unlike stretching, whose head is down. Its tail lies low out of
+  # sight: perched on a mark, under the mark's ink, a tip drawn behind the
+  # rump poked past the ink's edge as a stray pixel (VKCF3Z, f355f9f4).
   pouncing = {
     glyph = nerd "f03e9";
     console = "m";
@@ -1181,7 +1183,7 @@ in
     pixels = [
       "....##.."
       "...####."
-      "#.#.####"
+      "#.#.###."
       "###.###."
       "#.#####."
       "#######."
