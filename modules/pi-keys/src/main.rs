@@ -527,23 +527,35 @@ fn threads_of(window: &Window) -> Option<At> {
     let scope = scopes
         .iter()
         .find(|s| s.file_name().and_then(|n| n.to_str()) == Some(unit))?;
-    let named: Vec<(u32, String)> = processes(scope)
-        .into_iter()
-        .filter_map(|pid| {
-            let comm = fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
-            Some((pid, comm.trim_end().to_owned()))
-        })
-        .collect();
     Some(At {
         window: window.id,
         kitty: Watched::open(window.pid?)?,
-        pi: Watched::open(path::pi_of(&named)?)?,
+        pi: Watched::open(path::pi_below(&processes(scope), &running())?)?,
     })
 }
 
 /// How long some task has waited for a CPU since boot, in microseconds.
 fn cpu_waited_us() -> Option<u64> {
     context::waited(&fs::read_to_string("/proc/pressure/cpu").ok()?)
+}
+
+/// Every process running, by pid, parent and name, from /proc.
+fn running() -> Vec<path::Process> {
+    fs::read_dir("/proc")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let pid: u32 = entry.file_name().to_str()?.parse().ok()?;
+            let stat = fs::read_to_string(entry.path().join("stat")).ok()?;
+            // The name sits in parentheses and may hold spaces, so the
+            // parent is read after its last closing one.
+            let (head, tail) = stat.rsplit_once(')')?;
+            let name = head.split_once('(')?.1.to_owned();
+            let parent = tail.split_whitespace().nth(1)?.parse().ok()?;
+            Some(path::Process { pid, parent, name })
+        })
+        .collect()
 }
 
 fn processes(scope: &FsPath) -> Vec<u32> {
