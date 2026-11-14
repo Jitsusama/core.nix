@@ -11,6 +11,7 @@
 //! [`text`]: who stopped what, the words said, and where. And it sends
 //! from the safe word's own reader, never from an agent or a tool.
 
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use serde_json::Value;
@@ -213,6 +214,47 @@ fn confirmed(info: &Value, joel: &str) -> bool {
     channel["is_im"].as_bool() == Some(true) && channel["user"].as_str() == Some(joel)
 }
 
+/// What phoned.jsonl keeps for an alert that may have gone, whose answer
+/// was lost.
+pub const UNSURE: &str = "unsure";
+
+/// How many sends an alert gets whose answers were lost, so one that
+/// landed unheard reaches Joel's phone twice at most (KP0L6A).
+const UNSURE_TRIES: usize = 2;
+
+/// The alerts done with, by [`told_as`], from phoned.jsonl's lines: told,
+/// written down in shadow, or sent as often as an unsure one may be.
+#[must_use]
+pub fn done(phoned: &[Value]) -> HashSet<String> {
+    let mut unsure: HashMap<String, usize> = HashMap::new();
+    let mut done = HashSet::new();
+    for line in phoned {
+        if line["sent"] == UNSURE {
+            *unsure.entry(told_as(line)).or_default() += 1;
+        } else {
+            done.insert(told_as(line));
+        }
+    }
+    done.extend(
+        unsure
+            .into_iter()
+            .filter(|(_, tries)| *tries >= UNSURE_TRIES)
+            .map(|(told, _)| told),
+    );
+    done
+}
+
+/// What an alert is told as, its row and the saying it shows, as the
+/// launcher's daemon tells it.
+#[must_use]
+pub fn told_as(line: &Value) -> String {
+    format!(
+        "{}@{}",
+        line["key"].as_str().unwrap_or_default(),
+        line["saying"].as_str().unwrap_or_default()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -220,6 +262,27 @@ mod tests {
     use super::*;
 
     const JOEL: &str = "U0JOEL0001";
+
+    fn phoned(key: &str, sent: &Value) -> Value {
+        json!({"key": key, "saying": "stopped", "sent": sent})
+    }
+
+    #[test]
+    fn an_alert_whose_answer_was_lost_is_sent_once_more_and_no_more() {
+        let once = [phoned("a", &json!(UNSURE))];
+        assert!(done(&once).is_empty(), "one unsure send is tried again");
+        let twice = [phoned("a", &json!(UNSURE)), phoned("a", &json!(UNSURE))];
+        assert!(
+            done(&twice).contains("a@stopped"),
+            "a second unsure send is the last"
+        );
+        let told = [phoned("b", &json!(true)), phoned("c", &json!(false))];
+        assert_eq!(
+            done(&told).len(),
+            2,
+            "one told, and one written down in shadow, are done"
+        );
+    }
 
     #[test]
     fn the_alert_says_who_stopped_what_the_words_and_where() {

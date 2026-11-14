@@ -42,13 +42,13 @@
 //! message a while after a newer one. Starting with nothing kept, it
 //! begins ten minutes back rather than judging Slack's whole history.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::gate::{Asked, gate};
-use pineapple::phone::{self, Alert, Missed, OwnIm};
+use pineapple::phone::{self, Alert, Missed, OwnIm, UNSURE, done, told_as};
 use pineapple::record::{self, Source};
 use pineapple::reply::{self, Post};
 use pineapple::resume;
@@ -438,35 +438,6 @@ fn tell_phone(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path)
     }
 }
 
-/// What phoned.jsonl keeps for an alert that may have gone, whose answer
-/// was lost.
-const UNSURE: &str = "unsure";
-
-/// How many sends an alert gets whose answers were lost, so one that
-/// landed unheard reaches Joel's phone twice at most (KP0L6A).
-const UNSURE_TRIES: usize = 2;
-
-/// The alerts done with: told, written down in shadow, or sent as often as
-/// an unsure one may be.
-fn done(phoned: &[Value]) -> HashSet<String> {
-    let mut unsure: HashMap<String, usize> = HashMap::new();
-    let mut done = HashSet::new();
-    for line in phoned {
-        if line["sent"] == UNSURE {
-            *unsure.entry(told_as(line)).or_default() += 1;
-        } else {
-            done.insert(told_as(line));
-        }
-    }
-    done.extend(
-        unsure
-            .into_iter()
-            .filter(|(_, tries)| *tries >= UNSURE_TRIES)
-            .map(|(told, _)| told),
-    );
-    done
-}
-
 /// The lines of a log kept as JSON lines, those that read.
 fn lines(path: &Path) -> Vec<Value> {
     std::fs::read_to_string(path)
@@ -474,16 +445,6 @@ fn lines(path: &Path) -> Vec<Value> {
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect()
-}
-
-/// What an alert is told as, its row and the saying it shows, as the
-/// launcher's daemon tells it.
-fn told_as(line: &Value) -> String {
-    format!(
-        "{}@{}",
-        line["key"].as_str().unwrap_or_default(),
-        line["saying"].as_str().unwrap_or_default()
-    )
 }
 
 /// What the reader acts with: where replies go, the words they say, and
@@ -652,13 +613,11 @@ fn judge(
     }
 }
 
-/// Ends the stops Joel's own "pineapple resume" names, as his press in the
-/// launcher does: what it reaches, or every stop when it reaches
-/// everything. Only stops said before it, since Slack's search indexes late
-/// and a round can judge a resume beside a stop said after it (KP0L6A). In
-/// shadow, and until Slack resumes are let go live, it ends only the stops
-/// written in shadow, so it never ends one that stands for real. `at` is
-/// when it's heard, in milliseconds, and when it was said, in microseconds.
+/// Ends the stops Joel's own "pineapple resume" names (src/resume.rs):
+/// what it reaches, or every stop when it reaches everything. In shadow,
+/// and until Slack resumes are let go live, only the stops written in
+/// shadow. `at` is when it's heard, in milliseconds, and when it was
+/// said, in microseconds.
 fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str, shadow: bool) {
     let (now, said) = at;
     let shadow = shadow || !SLACK_RESUMES_LIVE;
@@ -667,9 +626,7 @@ fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str,
             Target::Everything => "all".to_owned(),
             named => named.to_string(),
         };
-        let ended = resume::resume_only(stops, &scope, now, "joel", |record| {
-            (!shadow || record["shadow"] != false) && said_by(record).is_some_and(|at| at <= said)
-        });
+        let ended = resume::as_joel(stops, &scope, now, said, shadow);
         match ended {
             Ok(ids) if ids.is_empty() => {}
             Ok(ids) if shadow => eprintln!("<5>a resume, in shadow, of {}: {link}", ids.join(", ")),
@@ -677,17 +634,6 @@ fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str,
             Err(error) => eprintln!("<3>couldn't resume what Joel named: {error}"),
         }
     }
-}
-
-/// When a stop was said, in microseconds: as its record writes Slack's
-/// timestamp, else when it was heard; none when it says neither, and such
-/// a stop is left for the launcher's press rather than ended unseen.
-fn said_by(record: &Value) -> Option<u128> {
-    record["said_at"].as_str().and_then(micros).or_else(|| {
-        record["heard_at"]
-            .as_u64()
-            .map(|at| u128::from(at) * u128::from(MILLIS))
-    })
 }
 
 /// Say a reply the rules let through, and whether it counts as said: in
@@ -777,30 +723,4 @@ fn seconds() -> u64 {
 
 fn millis() -> u64 {
     u64::try_from(since_epoch().as_millis()).unwrap_or(u64::MAX)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn phoned(key: &str, sent: &Value) -> Value {
-        json!({"key": key, "saying": "stopped", "sent": sent})
-    }
-
-    #[test]
-    fn an_alert_whose_answer_was_lost_is_sent_once_more_and_no_more() {
-        let once = [phoned("a", &json!(UNSURE))];
-        assert!(done(&once).is_empty(), "one unsure send is tried again");
-        let twice = [phoned("a", &json!(UNSURE)), phoned("a", &json!(UNSURE))];
-        assert!(
-            done(&twice).contains("a@stopped"),
-            "a second unsure send is the last"
-        );
-        let told = [phoned("b", &json!(true)), phoned("c", &json!(false))];
-        assert_eq!(
-            done(&told).len(),
-            2,
-            "one told, and one written down in shadow, are done"
-        );
-    }
 }
