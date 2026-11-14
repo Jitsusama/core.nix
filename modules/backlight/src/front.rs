@@ -87,8 +87,8 @@ async fn follow(socket: PathBuf, tell: watch::Sender<Option<String>>) {
             }
             Err(_) => {}
         }
-        if let Some(now) = front.lost() {
-            tell.send_replace(now);
+        if front.lost() {
+            tell.send_replace(None);
         }
         tokio::time::sleep(AGAIN).await;
     }
@@ -111,8 +111,8 @@ async fn hear(stream: UnixStream, front: &mut Front, tell: &watch::Sender<Option
             eprintln!("<4>niri refused its event stream: {why}");
             return;
         }
-        if let Some(now) = front.hear(&event) {
-            tell.send_replace(now);
+        if front.hear(&event) {
+            tell.send_replace(front.in_front().map(str::to_owned));
         }
     }
 }
@@ -126,9 +126,14 @@ pub struct Front {
 }
 
 impl Front {
-    /// Hears one of niri's events. Gives the program keeping its own
-    /// colours now in front, or none, when that changed.
-    pub fn hear(&mut self, event: &Value) -> Option<Option<String>> {
+    /// The program keeping its own colours in front, as last said.
+    pub fn in_front(&self) -> Option<&str> {
+        self.said.as_deref()
+    }
+
+    /// Hears one of niri's events, and says whether the program keeping
+    /// its own colours in front changed.
+    pub fn hear(&mut self, event: &Value) -> bool {
         if let Some(all) = event.get("WindowsChanged") {
             self.windows.clear();
             self.focused = None;
@@ -137,24 +142,27 @@ impl Front {
                 self.window(window);
             }
         } else if let Some(window) = event.get("WindowOpenedOrChanged") {
-            self.window(window.get("window")?);
+            if let Some(window) = window.get("window") {
+                self.window(window);
+            }
         } else if let Some(closed) = event.get("WindowClosed") {
-            let id = closed.get("id").and_then(Value::as_u64)?;
-            self.windows.remove(&id);
-            if self.focused == Some(id) {
-                self.focused = None;
+            if let Some(id) = closed.get("id").and_then(Value::as_u64) {
+                self.windows.remove(&id);
+                if self.focused == Some(id) {
+                    self.focused = None;
+                }
             }
         } else if let Some(focus) = event.get("WindowFocusChanged") {
             self.focused = focus.get("id").and_then(Value::as_u64);
         } else {
-            return None;
+            return false;
         }
         self.said()
     }
 
-    /// niri's stream ended, so nothing is known to be in front. Gives none
-    /// when that changed.
-    pub fn lost(&mut self) -> Option<Option<String>> {
+    /// niri's stream ended, so nothing is known to be in front. Says
+    /// whether that changed what was.
+    pub fn lost(&mut self) -> bool {
         self.windows.clear();
         self.focused = None;
         self.said()
@@ -175,18 +183,17 @@ impl Front {
         }
     }
 
-    /// The program keeping its own colours in front now, when that's not
-    /// what was last said.
-    fn said(&mut self) -> Option<Option<String>> {
+    /// Takes the program keeping its own colours in front now, and says
+    /// whether that's not what was last said.
+    fn said(&mut self) -> bool {
         let now = self
             .focused
             .and_then(|id| self.windows.get(&id))
             .filter(|app_id| keeps_its_colours(app_id))
             .cloned();
-        (now != self.said).then(|| {
-            self.said.clone_from(&now);
-            now
-        })
+        let changed = now != self.said;
+        self.said = now;
+        changed
     }
 }
 
@@ -208,29 +215,46 @@ mod tests {
             window(1, "kitty", true),
             window(2, "gimp", false),
         ]}}));
+        assert!(!begun, "a terminal in front was said to keep its colours");
         assert_eq!(
-            begun, None,
-            "a terminal in front was said to keep its colours"
+            front.in_front(),
+            None,
+            "a terminal was taken for an image editor"
         );
         front
     }
+
+    /// Hears an event, and gives whether it changed what's in front and
+    /// what's in front after it.
+    fn heard<'a>(front: &'a mut Front, event: &Value) -> (bool, Option<&'a str>) {
+        let changed = front.hear(event);
+        (changed, front.in_front())
+    }
+
+    /// Its stream's end, as `heard`.
+    fn lost(front: &mut Front) -> (bool, Option<&str>) {
+        let changed = front.lost();
+        (changed, front.in_front())
+    }
+
+    const GIMP: Option<&str> = Some("gimp");
 
     #[test]
     fn gimp_given_the_focus_is_in_front_until_it_loses_it() {
         let mut front = desktop();
         assert_eq!(
-            front.hear(&json!({"WindowFocusChanged": {"id": 2}})),
-            Some(Some("gimp".to_owned())),
+            heard(&mut front, &json!({"WindowFocusChanged": {"id": 2}})),
+            (true, GIMP),
             "GIMP given the focus wasn't said"
         );
         assert_eq!(
-            front.hear(&json!({"WindowFocusChanged": {"id": 2}})),
-            None,
+            heard(&mut front, &json!({"WindowFocusChanged": {"id": 2}})),
+            (false, GIMP),
             "the same focus was said again"
         );
         assert_eq!(
-            front.hear(&json!({"WindowFocusChanged": {"id": 1}})),
-            Some(None),
+            heard(&mut front, &json!({"WindowFocusChanged": {"id": 1}})),
+            (true, None),
             "GIMP losing the focus wasn't said"
         );
     }
@@ -239,8 +263,11 @@ mod tests {
     fn gimp_opening_with_the_focus_is_in_front() {
         let mut front = desktop();
         assert_eq!(
-            front.hear(&json!({"WindowOpenedOrChanged": {"window": window(3, "gimp", true)}})),
-            Some(Some("gimp".to_owned())),
+            heard(
+                &mut front,
+                &json!({"WindowOpenedOrChanged": {"window": window(3, "gimp", true)}})
+            ),
+            (true, GIMP),
             "a GIMP window opened in front wasn't said"
         );
     }
@@ -250,8 +277,8 @@ mod tests {
         let mut front = desktop();
         let _ = front.hear(&json!({"WindowFocusChanged": {"id": 2}}));
         assert_eq!(
-            front.hear(&json!({"WindowClosed": {"id": 2}})),
-            Some(None),
+            heard(&mut front, &json!({"WindowClosed": {"id": 2}})),
+            (true, None),
             "GIMP closing left it in front"
         );
     }
@@ -261,8 +288,8 @@ mod tests {
         let mut front = desktop();
         let _ = front.hear(&json!({"WindowFocusChanged": {"id": 2}}));
         assert_eq!(
-            front.hear(&json!({"WindowFocusChanged": {"id": null}})),
-            Some(None),
+            heard(&mut front, &json!({"WindowFocusChanged": {"id": null}})),
+            (true, None),
             "an empty workspace left GIMP in front"
         );
     }
@@ -271,8 +298,16 @@ mod tests {
     fn niri_gone_leaves_nothing_in_front() {
         let mut front = desktop();
         let _ = front.hear(&json!({"WindowFocusChanged": {"id": 2}}));
-        assert_eq!(front.lost(), Some(None), "GIMP stayed in front of no niri");
-        assert_eq!(front.lost(), None, "nothing in front was said twice");
+        assert_eq!(
+            lost(&mut front),
+            (true, None),
+            "GIMP stayed in front of no niri"
+        );
+        assert_eq!(
+            lost(&mut front),
+            (false, None),
+            "nothing in front was said twice"
+        );
     }
 
     #[test]
@@ -280,8 +315,11 @@ mod tests {
         let mut front = desktop();
         let _ = front.hear(&json!({"WindowFocusChanged": {"id": 2}}));
         assert_eq!(
-            front.hear(&json!({"WorkspacesChanged": {"workspaces": []}})),
-            None,
+            heard(
+                &mut front,
+                &json!({"WorkspacesChanged": {"workspaces": []}})
+            ),
+            (false, GIMP),
             "a workspace's change moved what's in front"
         );
     }

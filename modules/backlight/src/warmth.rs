@@ -84,6 +84,10 @@ pub fn for_room(room: f64) -> u16 {
     steps * STEP
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "the lid, Joel's say, the night and the program in front each hold apart"
+)]
 pub struct Warmth {
     /// The warmth the screen is set to, as far as this daemon knows.
     shown: u16,
