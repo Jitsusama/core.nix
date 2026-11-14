@@ -291,6 +291,24 @@ QtObject {
             Expect.same("a line said here the void hasn't kept yet waits first",
                 shown(Said.gathered([Said.begun("VOID", "new", "new", at(18, 1))], lines,
                     events, seen))[0], "new");
+            // The steer inbox can file a later line's reply under an earlier one, which then
+            // names the later line's key, and would show its answers (Joel at 23:39 on
+            // 2026-11-13: "every entry is supposedly waiting on the same thing").
+            const misfiled = [served(18, 56, "the to try view", ""),
+                served(18, 58, "the cat drops", "")].map(one => Said.fromServed("VOID",
+                Object.assign(one, { reply: "XY9H5C has it \u00b7 undo 18:59" })));
+            const routings = [routedAt(18, 57), routedAt(18, 59)];
+            Expect.same("each line keeps the void's own routing, never a later line's",
+                Said.gathered([], misfiled, routings, {}).map(one => Said.keyOf(one)),
+                ["2026-11-13 18:59", "2026-11-13 18:57"]);
+            Expect.same("with no routings to read, a line keeps its reply's key",
+                Said.gathered([], misfiled, [], {}).map(one => Said.keyOf(one)),
+                ["2026-11-13 18:59", "2026-11-13 18:59"]);
+            const pickedUp = waiting.concat([{ line: "2026-11-13 16:32", msg: "t1632",
+                who: "Your orchestrator", event: "taken", at: "16:40", text: "On it." }]);
+            Expect.same("a line taken up whose words he has seen no longer comes first",
+                shown(Said.gathered([], lines, pickedUp, seen)),
+                ["line 17:49", "line 17:48", "line 17:46"]);
             Expect.same("a talk not delivered, failed without a word back, or :take's asking, "
                 + "is no line", [Said.unanswered({ words: "", stage: "", reply: "" }),
                     Said.unanswered({ words: "hi", stage: "failed", reply: "" }),

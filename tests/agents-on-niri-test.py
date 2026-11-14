@@ -1973,3 +1973,61 @@ def test_super_s_line_says_whether_it_is_up_for_a_switch_to_wait_on(shell: Shell
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
     marked("closed")
+
+
+def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
+    shell: Shell, shoot: Callable[[str], None]
+) -> None:
+    """Super+S's line stands inside the screen however many lines show, and j and k scroll.
+
+    Joel's line showed so many lines with answers he hadn't seen that it ran off the bottom
+    of the screen, with no way to reach the rest (2026-11-13 23:39, [ff6c6197]). They stand
+    no taller than the screen has room for, and j and k in normal go down and up them.
+    """
+    replies = STEER / "VOID" / "replies"
+    # The Super+S cases before it make these, but a missing folder isn't what this one checks.
+    replies.mkdir(parents=True, exist_ok=True)
+    (STATE / "void").mkdir(parents=True, exist_ok=True)
+    now = datetime.now().astimezone()
+    events = []
+    said = [f"line {back}" for back in range(20)]
+    for back, words in enumerate(said):
+        at = now - timedelta(minutes=40 + back)
+        clock = at.strftime("%H:%M")
+        lines = [
+            {"stage": "delivered", "at": at.isoformat(), "session": "s-void", "from": "joel",
+             "text": words},
+            {"stage": "replied", "at": at.isoformat(),
+             "text": f"Your orchestrator has it \u00b7 undo {clock}"},
+        ]  # fmt: skip
+        laid = replies / f"talk-{int(at.timestamp() * 1000)}.jsonl.tmp"
+        laid.write_text("".join(json.dumps(line) + "\n" for line in lines))
+        laid.rename(laid.with_suffix(""))
+        key = f"{at.strftime('%Y-%m-%d')} {clock}"
+        events += [
+            {"line": key, "msg": f"r{back}", "who": "your orchestrator", "event": "routed"},
+            {"line": key, "msg": f"a{back}", "who": "Delta", "event": "answered",
+             "at": clock, "text": "Done, merged, and live after the next switch. " * 4},
+        ]  # fmt: skip
+    with (STATE / "void" / "answers.jsonl").open("a") as file:
+        file.writelines(json.dumps(event) + "\n" for event in events)
+    line = shell.ipc("line")
+    shell.as_account(line)
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["keys"] and {talk["line"] for talk in shown["line"]["talks"]} >= set(said)
+        )
+    )
+    # As far from the screen's foot as its top stands from the screen's top.
+    stands = shell.showing()["line"]
+    assert 0 < stands["bottom"] <= stands["screen"] - stands["top"], stands
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
+    shell.send_key("j")
+    shell.launcher_until(lambda shown: shown["line"]["scrolled"] == 1)
+    shell.send_key("k")
+    shell.launcher_until(lambda shown: shown["line"]["scrolled"] == 0)
+    # Pictured once the keys have come back round, so a surface still taking its size is not.
+    shoot("many")
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
