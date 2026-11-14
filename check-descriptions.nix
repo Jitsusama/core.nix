@@ -2061,6 +2061,10 @@
   pineapple-passes-clippy = ''
     clippy finds nothing in pineapple, the judge of the safe word that stops Joel's agents
   '';
+  pineapple-slack-starts-with-the-sign-in = ''
+    the reader of Slack for the safe word starts once pi has signed in, comes back after a switch
+    and a failure, runs in the background slice and reads as its own name in ps
+  '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
     no pi-claude beside it, and a work machine's pi is unchanged

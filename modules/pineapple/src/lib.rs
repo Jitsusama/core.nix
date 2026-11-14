@@ -3,7 +3,7 @@
 //! Anyone who sees his agents going wrong may tag him with "pineapple
 //! override", and what it names stops: one pull request, a quest, a
 //! repository, a realm or everything. Only Joel starts them again. This
-//! library is the judging half, with no reading or stopping of its own:
+//! library is the judging half, with what a reader needs beside it:
 //!
 //! - [`judge`] says whether a saying is the safe word, a resume, an ask to
 //!   stop without it, or a near miss (no tag, a quote, talked about, a
@@ -11,15 +11,24 @@
 //! - [`reach`] turns what the words named, with what the place it was said
 //!   in is about, into what the stop reaches, falling back to everything
 //!   when nothing narrower is found.
+//! - [`decide`] says what follows from a saying heard in a place: what it
+//!   stops or resumes, how loudly Joel is told, and what its writer is
+//!   answered.
+//! - [`slack`] turns Slack's answers into messages to judge, and
+//!   [`record`] writes down what was decided, a stop's record included.
 //!
-//! Readers hand it sayings from each platform, Slack first, and the
-//! enforcer acts on what it decides. The cases in sayings.json are the one
-//! table of what counts, so anything else judging a saying can be held to
-//! the same answers.
+//! Readers hand it sayings from each platform, Slack first
+//! (src/bin/pineapple-slack.rs), and the enforcer acts on what it
+//! decides. The cases in sayings.json are the one table of what counts,
+//! so anything else judging a saying can be held to the same answers.
 
+mod decide;
 mod judge;
+pub mod record;
 mod scope;
+pub mod slack;
 mod words;
 
+pub use decide::{Decision, Heard, Reply, Tell, decide};
 pub use judge::{Joel, Judgement, Platform, Saying, Verdict, Waved, judge};
 pub use scope::{Context, Reach, Target, reach};
