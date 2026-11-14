@@ -456,7 +456,6 @@ async fn run() -> Result<(), Box<dyn Error>> {
             runtime.join("whereabouts/here.json"),
         ),
         relay_down: None,
-        beside: Beside::new(Instant::now()),
         evening: evening(&kept)?,
         evening_due: Some(Instant::now()),
         panel: Panel::find(Path::new("/sys/class/drm")),
@@ -555,8 +554,6 @@ struct Backlight<'a> {
     night: Nightly,
     /// Until when what sets the warmth is let be, after it couldn't.
     relay_down: Option<Instant>,
-    /// The screens beside the panel, which the night light warms too.
-    beside: Beside,
     /// When the screen dims in the evening, if it does, and when the clock
     /// is next looked at for it.
     evening: Option<Tonight>,
@@ -581,8 +578,8 @@ const PANEL_RESTS: Duration = Duration::from_mins(1);
 const NIGHT_WHITE: u16 = 4000;
 
 /// The night light: its white, whether Joel has it on and where that's
-/// kept, where whereabouts says the laptop is, what it wants now, and when
-/// to look again.
+/// kept, where whereabouts says the laptop is, what it wants now, when to
+/// look again, and the screens beside the panel, which take it alone.
 struct Nightly {
     white: u16,
     on: bool,
@@ -591,6 +588,7 @@ struct Nightly {
     plan: Option<Plan>,
     wants: u16,
     due: Option<Instant>,
+    beside: Beside,
 }
 
 impl Nightly {
@@ -605,6 +603,7 @@ impl Nightly {
             plan: None,
             wants: WHITE,
             due: Some(Instant::now()),
+            beside: Beside::new(Instant::now()),
         }
     }
 }

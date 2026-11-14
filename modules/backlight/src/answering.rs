@@ -133,7 +133,7 @@ impl Backlight<'_> {
             }
         }
         if kelvin != self.night.wants {
-            self.beside.look_now(Instant::now());
+            self.night.beside.look_now(Instant::now());
         }
         self.night.wants = kelvin;
         if let Some((warmth, _)) = &mut self.warmth {
@@ -210,7 +210,7 @@ impl Backlight<'_> {
             eprintln!("<6>the screens' warmth started again at {WHITE} K");
         }
         self.relay_down = None;
-        self.beside.forget(Instant::now());
+        self.night.beside.forget(Instant::now());
         self.warm(Warmth::reset);
     }
 
@@ -223,31 +223,31 @@ impl Backlight<'_> {
             return;
         };
         let bus = relay.inner().connection().clone();
-        self.beside.looked(now);
+        self.night.beside.looked(now);
         let panel = self.screen.connector();
         let shown = beside::shown(Path::new("/sys/class/drm"), panel.as_deref());
         let kelvin = self.night.wants;
-        for screen in self.beside.owed(&shown, kelvin, now) {
+        for screen in self.night.beside.owed(&shown, kelvin, now) {
             let answer = match relay_for(&bus, &screen).await {
                 Ok(relay) => ask::twice(ask::MOMENT, || set_warmth(&relay, kelvin)).await,
                 Err(error) => Some(Err(Refused::Else(error.to_string()))),
             };
             let why = match answer {
                 Some(Ok(())) => {
-                    if self.beside.took(&screen, kelvin) && kelvin < WHITE {
+                    if self.night.beside.took(&screen, kelvin) && kelvin < WHITE {
                         eprintln!("<6>the night light warms {screen} toward {kelvin} K");
                     }
                     continue;
                 }
                 Some(Err(Refused::NotShown)) => {
-                    self.beside.missed(&screen, now);
+                    self.night.beside.missed(&screen, now);
                     continue;
                 }
                 Some(Err(Refused::Else(why))) => why,
                 None => "wl-gammarelay-rs didn't answer".to_owned(),
             };
             eprintln!("<4>can't warm {screen}, so the screens beside the panel are let be: {why}");
-            self.beside.rest(now + RELAY_RESTS);
+            self.night.beside.rest(now + RELAY_RESTS);
             return;
         }
     }
@@ -496,7 +496,7 @@ impl Backlight<'_> {
             None => warmth,
         };
         let night = self.warmth.as_ref().and(self.night.due);
-        let beside = self.warmth.as_ref().and(self.beside.wake());
+        let beside = self.warmth.as_ref().and(self.night.beside.wake());
         [
             self.follow.wake(Instant::now()),
             keys,
@@ -546,7 +546,7 @@ impl Backlight<'_> {
         if self.warmth.is_some() && self.night.due.is_some_and(|due| due <= now) {
             self.look_at_night();
         }
-        if self.warmth.is_some() && self.beside.wake().is_some_and(|due| due <= now) {
+        if self.warmth.is_some() && self.night.beside.wake().is_some_and(|due| due <= now) {
             self.warm_beside(now).await;
         }
         if self.evening_due.is_some_and(|due| due <= now) {
