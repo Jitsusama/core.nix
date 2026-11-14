@@ -895,8 +895,9 @@ range = true
 # Forgotten, a network with its password or a device with its pairing, or a
 # notice taken away unread: it can't be brought back as it was. A network's
 # password or a device's pairing costs a lot to give again, so it's costly;
-# a notice's Forget It says how u brings it back, and a session to reopen
-# says it costs nothing, so neither asks. wifid and bluez's place should
+# the notices daemon serves a notice's Forget It as costing nothing, as
+# d's says how u brings it back, and a session to reopen says it costs
+# nothing, so neither asks. wifid and bluez's place should
 # each serve costly on their own Forget (KP0L6A to place, by 2026-11-30).
 [acts.forget]
 ends = true
