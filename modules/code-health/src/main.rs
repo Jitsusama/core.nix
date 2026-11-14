@@ -12,7 +12,9 @@
 //! the form cadence reads, and `<date>-named.json` beside it naming what
 //! each figure counted, so a figure that rose is traced to its files. A
 //! repository it can't read is said and left out, as cadence leaves out
-//! any source it can't read; it fails only when it reads none.
+//! any source it can't read; it fails only when it reads none. It answers
+//! with each repository's figures and the files it wrote, wrapped to the
+//! terminal, or as `code-health.day/1` under `--json`.
 //!
 //!     code-health --repo NAME=CHECKOUT... [--ref NAME=REF]...
 //!         [--under NAME=FOLDER]... [--into FOLDER]
@@ -28,13 +30,28 @@ mod merges;
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use jiff::{Timestamp, Zoned};
+use serde_json::json;
+use terminal_kit::{Context, Exit, Failure, Help, Pen, Room, layout};
 
 /// The merges timed: those of the last day, as the read runs each day.
 const DAY: i64 = 24 * 60 * 60;
+
+/// The flags it takes, each with a value.
+const FLAGS: [&str; 4] = ["--repo", "--ref", "--under", "--into"];
+
+/// How a figure is said to a person, by its measure: those of the day's
+/// merges are medians, and one of them is minutes.
+fn figure_said(measure: &str, figure: f64) -> String {
+    match measure {
+        "edit-to-merge" => format!("{figure} min, the median"),
+        "files-per-change" => format!("{figure}, the median"),
+        _ => format!("{figure}"),
+    }
+}
 
 /// A repository to read: where its checkout is, which ref, and which
 /// folder of it.
@@ -45,18 +62,47 @@ struct Repo {
     under: String,
 }
 
+fn help() -> Help {
+    Help::new(
+        "code-health",
+        "writes the day's figures of how messy each repository is",
+    )
+    .example(
+        "code-health --repo core=~/src/core.nix",
+        "reads core at origin/main, for cadence",
+    )
+    .example(
+        "code-health --repo zone=~/world --ref zone=main --under zone=home/me",
+        "reads one folder of a larger repository",
+    )
+    .option(
+        "--repo NAME=CHECKOUT",
+        "a repository to read, by the name cadence says",
+    )
+    .option("--ref NAME=REF", "the ref it's read at; origin/main")
+    .option(
+        "--under NAME=FOLDER",
+        "the folder that's it in a larger one",
+    )
+    .option(
+        "--into FOLDER",
+        "where the day's files go; ~/.local/state/code-health",
+    )
+    .exit(Exit::Failed, "the day's files couldn't be written")
+    .exit(Exit::NotFound, "no repository could be read")
+}
+
 fn main() -> ExitCode {
-    let arguments: Vec<String> = env::args().skip(1).collect();
-    let (repos, into) = match parse(&arguments) {
-        Ok(parsed) => parsed,
-        Err(error) => {
-            eprintln!("code-health: {error}");
-            return ExitCode::from(2);
-        }
-    };
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), run)
+}
+
+fn run(context: &Context) -> Result<(), Failure> {
+    let (repos, into) = parse(&context.args)
+        .map_err(|what| Failure::new(Exit::Usage, what).try_this("code-health --help"))?;
     let into = into.unwrap_or_else(state);
     let mut figures = BTreeMap::new();
     let mut named = BTreeMap::new();
+    let mut left_out = BTreeMap::new();
     for (name, repo) in &repos {
         match git::files(&repo.checkout, &repo.reference, &repo.under) {
             Ok((paths, files)) => {
@@ -78,27 +124,109 @@ fn main() -> ExitCode {
                                 health.named.insert("files-per-change", named);
                             }
                         }
-                        Err(error) => eprintln!("code-health: {name}'s merges left out: {error}"),
+                        Err(error) => {
+                            let _ = context.tell(
+                                "caution",
+                                "warning",
+                                &format!("{name}'s merges left out: {error}"),
+                            );
+                        }
                     }
                 }
-                eprintln!("code-health: {name}: {:?}", health.figures);
                 figures.insert(name.clone(), health.figures);
                 named.insert(name.clone(), health.named);
             }
-            Err(error) => eprintln!("code-health: {name} left out: {error}"),
+            Err(error) => {
+                let _ = context.tell("caution", "warning", &format!("{name} left out: {error}"));
+                left_out.insert(name.clone(), error);
+            }
         }
     }
     if figures.is_empty() {
-        eprintln!("code-health: no repository was read");
-        return ExitCode::FAILURE;
+        return Err(Failure::new(Exit::NotFound, "no repository could be read")
+            .because("each was left out, as its line above says"));
     }
     let date = Zoned::now().strftime("%Y-%m-%d").to_string();
-    match write(&into, &date, &figures, &named) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("code-health: {error}");
-            ExitCode::FAILURE
-        }
+    write(&into, &date, &figures, &named).map_err(|what| Failure::new(Exit::Failed, what))?;
+    let day = Day {
+        date: &date,
+        into: &into,
+        figures: &figures,
+        left_out: &left_out,
+    };
+    if context.format().is_json() {
+        context.answer(&day.json())
+    } else {
+        context.say(&day.said(&context.out, context.room))
+    }
+    .map_err(|error| {
+        Failure::new(Exit::Failed, "the answer couldn't be said").because(error.to_string())
+    })
+}
+
+/// What a day's read found, as it's answered.
+struct Day<'a> {
+    date: &'a str,
+    into: &'a Path,
+    figures: &'a BTreeMap<String, BTreeMap<&'static str, f64>>,
+    left_out: &'a BTreeMap<String, String>,
+}
+
+impl Day<'_> {
+    fn files(&self) -> [PathBuf; 2] {
+        [
+            self.into.join(format!("{}.json", self.date)),
+            self.into.join(format!("{}-named.json", self.date)),
+        ]
+    }
+
+    /// The figures for a script, as unrounded as they're written.
+    fn json(&self) -> serde_json::Value {
+        json!({
+            "schema": "code-health.day/1",
+            "date": self.date,
+            "written": self.files(),
+            "figures": self.figures,
+            "left_out": self.left_out,
+        })
+    }
+
+    /// Each repository's figures as facts under its name, a measure's
+    /// words parted where its name joins them, and the files written last.
+    fn said(&self, pen: &Pen, room: Room) -> String {
+        let mut blocks: Vec<Vec<String>> = self
+            .figures
+            .iter()
+            .map(|(repo, figures)| {
+                let said: Vec<(String, String)> = figures
+                    .iter()
+                    .map(|(measure, figure)| {
+                        (measure.replace('-', " "), figure_said(measure, *figure))
+                    })
+                    .collect();
+                let facts: Vec<(&str, Option<&str>)> = said
+                    .iter()
+                    .map(|(label, value)| (label.as_str(), Some(value.as_str())))
+                    .collect();
+                std::iter::once(pen.title(repo))
+                    .chain(
+                        layout::facts(&facts, "", pen, room.less(2))
+                            .into_iter()
+                            .map(|line| format!("  {line}")),
+                    )
+                    .collect()
+            })
+            .collect();
+        let written = self
+            .files()
+            .map(|file| file.display().to_string())
+            .join(" and ");
+        blocks.push(layout::paragraph(
+            &format!("Written to {written}."),
+            0,
+            room.for_prose(),
+        ));
+        layout::joined(blocks)
     }
 }
 
@@ -110,6 +238,12 @@ fn parse(arguments: &[String]) -> Result<(BTreeMap<String, Repo>, Option<PathBuf
     let mut into = None;
     let mut given = arguments.iter();
     while let Some(flag) = given.next() {
+        if !FLAGS.contains(&flag.as_str()) {
+            return Err(format!(
+                "no flag called {flag}; the flags are {}",
+                FLAGS.join(", ")
+            ));
+        }
         let value = given
             .next()
             .ok_or_else(|| format!("{flag} wants a value"))?;
@@ -138,7 +272,7 @@ fn parse(arguments: &[String]) -> Result<(BTreeMap<String, Repo>, Option<PathBuf
             "--under" => {
                 unders.insert(name, said);
             }
-            _ => return Err(format!("{flag} isn't something code-health takes")),
+            _ => unreachable!("FLAGS names every flag but --into, taken above"),
         }
     }
     for (name, reference) in refs {
@@ -232,6 +366,29 @@ mod tests {
         assert!(
             parse(&said("--into /out")).is_err(),
             "no repository was taken"
+        );
+    }
+
+    #[test]
+    fn an_unknown_flag_is_named_before_its_value_is_read() {
+        let refused = parse(&said("--rep core")).expect_err("an unknown flag was taken");
+        assert!(
+            refused.starts_with("no flag called --rep"),
+            "the unknown flag wasn't named: {refused}"
+        );
+    }
+
+    #[test]
+    fn a_merges_figure_says_it_is_a_median() {
+        assert_eq!(
+            figure_said("edit-to-merge", 40.5),
+            "40.5 min, the median",
+            "edit to merge should be said in minutes, as a median"
+        );
+        assert_eq!(
+            figure_said("long-files", 98.0),
+            "98",
+            "a count should be said bare"
         );
     }
 
