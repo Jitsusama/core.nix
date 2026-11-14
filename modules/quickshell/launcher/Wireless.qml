@@ -26,7 +26,7 @@
 // they need to serve the launcher"; Y2YBTS's 17a4dc7e, 2026-11-13). What's
 // left is what only the shell can do: open the sign-in page, turn the
 // radio at :set and trust a network at :setl. The cards look for networks
-// only while the launcher is open, and read a link only while its network
+// only while Wi-Fi's rows are shown, and read a link only while its network
 // is ahead. What needs no row is in WirelessPlate.js.
 import qs
 import QtQuick
@@ -94,16 +94,33 @@ Provider {
         empty: on ? "Looking for networks\u2026" : "Wi-Fi is off."
     })
 
-    // Looking for networks costs the radio's power, so the cards look only
-    // while the launcher is there to show what they hear, or while a
-    // terminal's `launcher show` walked into Wi-Fi (Launcher.qml's
-    // terminalSees), so a network asked for cold is in the list.
+    // Looking for networks takes the card off its own channel for 5 to 6 s,
+    // over each of its 100, so its link waits: a look every 10 s took the
+    // gateway's ping from a p95 of 39 ms to 132 (2026-11-14). So the cards
+    // look only while Wi-Fi's rows are there to show what they hear: Wi-Fi
+    // or something in it held, or a find from the root showing a row of
+    // its, the launcher open; or while a terminal's `launcher show` walked
+    // into Wi-Fi (Launcher.qml's terminalSees), so a network asked for cold
+    // is in the list. Until then the launcher open anywhere had them look.
+    readonly property bool looksForNetworks: {
+        const launcher = provider.launcher;
+        if (!on || launcher === null)
+            return false;
+        if (terminalLooks)
+            return true;
+        if (!launcher.open)
+            return false;
+        const held = launcher.held ?? [];
+        if (held.length > 0)
+            return held.some(step => step.row?.from === provider);
+        return (launcher.typed ?? "") !== ""
+            && (launcher.matches ?? []).some(row => row?.from === provider);
+    }
     Timer {
         interval: 10000
         repeat: true
         triggeredOnStart: true
-        running: provider.on && provider.launcher !== null
-            && (provider.launcher.open || provider.terminalLooks)
+        running: provider.looksForNetworks
         onTriggered: {
             if (provider.terminalLooks && !provider.launcher.open)
                 provider.lookedFrom = Wifi.looks;

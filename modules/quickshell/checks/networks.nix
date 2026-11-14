@@ -15,6 +15,56 @@
   singleton,
   ...
 }:
+let
+  # A Wi-Fi case run through the real Wireless.qml, ReadyRows.qml and
+  # Daemon.qml, with the launcher stood in by the case itself and Wifi's card
+  # and the sign-in stood in here.
+  wifiCase =
+    name: case:
+    let
+      # Kept in Nix because each only stands in for what Wireless.qml reads
+      # of the card and the sign-in, a card on and nothing saved.
+      wifi = singleton "Wifi.qml" ''
+        property var cards: [{ name: "wlan0" }]
+        property var saved: []
+        property var nearby: []
+        property bool radio: true
+        property bool described: true
+        property int looks: 0
+        readonly property var joined: null
+        function isSaved(name) { return null; }
+        function isJoined(name) { return false; }
+      '';
+      signIn = singleton "SignIn.qml" ''
+        readonly property string network: ""
+        function open() {}
+      '';
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what the shell runs them with.
+    pkgs.runCommandLocal name { } ''
+      mkdir -p launcher runtime && chmod 700 runtime
+      ${copied [
+        "Daemon.qml"
+        "Words.qml"
+        "launcher/Provider.qml"
+        "launcher/ReadyRows.qml"
+        "launcher/Wireless.qml"
+        "launcher/words.json"
+      ]}
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${wifi} Wifi.qml
+      cp ${signIn} SignIn.qml
+      cp ${case} shell.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/Until.qml} Until.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+in
 {
   # The Home Network is offered wherever eero's module brings its daemon,
   # and nowhere else. The provider asks for the daemon's unit by name, so
@@ -82,49 +132,12 @@
 
   # Wi-Fi joins a network by the acts wifid serves on its row, asking each
   # word a join needs in the field before it's sent (tests/wifi-acts.qml),
-  # through the real Wireless.qml, ReadyRows.qml and Daemon.qml, the
-  # launcher's asking and Wifi's card stood in.
-  wifi-asks-each-word-a-join-needs-first =
-    let
-      # Kept in Nix because each only stands in for what Wireless.qml reads
-      # of the card and the sign-in, a card on and nothing saved.
-      wifi = singleton "Wifi.qml" ''
-        property var cards: [{ name: "wlan0" }]
-        property var saved: []
-        property var nearby: []
-        property bool radio: true
-        property bool described: true
-        property int looks: 0
-        readonly property var joined: null
-        function isSaved(name) { return null; }
-        function isJoined(name) { return false; }
-      '';
-      signIn = singleton "SignIn.qml" ''
-        readonly property string network: ""
-        function open() {}
-      '';
-    in
-    # Kept in Nix because each line copies a file Nix gives it beside the
-    # cases, or sets what the shell runs them with.
-    pkgs.runCommandLocal "wifi-asks-each-word-a-join-needs-first" { } ''
-      mkdir -p launcher runtime && chmod 700 runtime
-      ${copied [
-        "Daemon.qml"
-        "Words.qml"
-        "launcher/Provider.qml"
-        "launcher/ReadyRows.qml"
-        "launcher/Wireless.qml"
-        "launcher/words.json"
-      ]}
-      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${wifi} Wifi.qml
-      cp ${signIn} SignIn.qml
-      cp ${../../../tests/wifi-acts.qml} shell.qml
-      cp ${../../../tests/lib/Expect.js} Expect.js
-      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
-      touch $out
-    '';
+  # with the launcher's asking stood in.
+  wifi-asks-each-word-a-join-needs-first = wifiCase "wifi-asks-each-word-a-join-needs-first" ../../../tests/wifi-acts.qml;
+
+  # Wi-Fi's cards look for networks only while its rows are shown, Wi-Fi
+  # held or a find showing a row of its, or a terminal's show walked in, and
+  # never with the launcher open on another place (tests/wifi-looks.qml),
+  # since each look takes the card off its channel for seconds.
+  wifi-looks-only-while-its-rows-are-shown = wifiCase "wifi-looks-only-while-its-rows-are-shown" ../../../tests/wifi-looks.qml;
 }
