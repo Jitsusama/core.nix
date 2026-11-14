@@ -30,7 +30,7 @@ use crate::ask::{self, Ask};
 use crate::mask::{MOST_BYTES, masked};
 use crate::reading::{self, Outcome};
 use crate::row::{self, Held, STAYS_MS, State};
-use crate::tree;
+use crate::tree::{self, Checkout};
 use crate::words::Words;
 
 /// The most an ask's file may hold, so a huge one is no ask.
@@ -41,6 +41,25 @@ const LOOKS_EVERY: Duration = Duration::from_millis(20);
 /// The least time a line must have been on screen for a yes to it to be
 /// a yes to what it said.
 pub const LEAST_SHOWN_MS: i64 = 500;
+/// What an agent is told of a release from a repository's own checkout,
+/// whose packed refs and top stay read-only, so it can tag but not
+/// commit (ISXEG8, 14 November); its row says the same to Joel.
+const TAGS_ONLY: &str =
+    "Commits: can't from here, only tags. Ask again from a worktree (pi's work tool) to commit.";
+/// What an agent is told of a release from a tree whose `.git` no
+/// worktree vouches for, whose history is never opened.
+const NO_HISTORY: &str = "Commits: can't from here, nor tags, since its .git is a link or names \
+     a worktree that doesn't name it back. Ask again from a worktree (pi's work tool).";
+
+/// What an agent is told of what a release can't write of its history,
+/// where its tree is kept as `checkout` says.
+fn uncommitting(checkout: &Checkout) -> Option<&'static str> {
+    match checkout {
+        Checkout::Own { .. } => Some(TAGS_ONLY),
+        Checkout::Unvouched { .. } => Some(NO_HISTORY),
+        Checkout::None | Checkout::Worktree { .. } => None,
+    }
+}
 /// The most of a command's output kept to be masked: twice what an answer
 /// carries, so a value printed where the answer is cut is still masked.
 const MOST_READ_BYTES: usize = 2 * MOST_BYTES;
@@ -150,10 +169,11 @@ pub trait Releaser: Send + Sync {
     ///
     /// Where it can't be made, saying why.
     fn command(&self, ask: &Ask, value: &Secret) -> Result<Command, String>;
-    /// What to tell the agent of what the releaser did once the command
-    /// that began at `started` ended, a sentence each; nothing by default.
-    fn after(&self, ask: &Ask, started: SystemTime) -> Vec<String> {
-        let _ = (ask, started);
+    /// What to tell the agent of what the releaser did once a release was
+    /// answered, its command run or not, a sentence each; nothing by
+    /// default.
+    fn after(&self, ask: &Ask) -> Vec<String> {
+        let _ = ask;
         Vec::new()
     }
 }
@@ -465,13 +485,13 @@ impl Engine {
         self.reading(&ask, Outcome::Released, said);
         self.changed();
         let engine = Arc::clone(self);
-        std::thread::spawn(move || engine.run_released(&ask));
+        std::thread::spawn(move || engine.run_released(&ask, &tree.checkout));
         json!({"releasing": true})
     }
 
     /// Reads the value and runs the command with it, then says what came
-    /// of it.
-    fn run_released(&self, ask: &Ask) {
+    /// of it, and what it can't have done where its tree is `kept`.
+    fn run_released(&self, ask: &Ask, kept: &Checkout) {
         let started = now_ms();
         let ran = self
             .releaser
@@ -488,6 +508,18 @@ impl Engine {
                        "why": if exit.is_none() { "stopped at the time limit" } else { "" }}),
             ),
         };
+        let mut notes: Vec<String> = self
+            .setting
+            .says_commits
+            .then(|| uncommitting(kept))
+            .flatten()
+            .map(str::to_owned)
+            .into_iter()
+            .collect();
+        notes.extend(self.releaser.after(ask));
+        if !notes.is_empty() {
+            said["note"] = json!(notes.join(" "));
+        }
         said["version"] = json!(ask::VERSION);
         said["id"] = json!(ask.id);
         said["started"] = json!(started);

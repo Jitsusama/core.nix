@@ -12,6 +12,9 @@
 //! which starts nothing; then status runs over a git folder made for the
 //! read, holding only that commit, with the tree's index and objects named
 //! outright and no config, attributes or hooks of the tree's at all.
+//!
+//! Where its history is kept is read from files alone, git never run: its
+//! own checkout, a worktree git vouches for, or a `.git` it wouldn't.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -53,8 +56,47 @@ pub enum Checkout {
 
 /// Where the history of the tree at `path` is kept.
 pub fn checkout(path: &Path) -> Checkout {
-    let _ = path;
-    Checkout::None
+    let Some((dot_git, meta)) = path.ancestors().find_map(|folder| {
+        let dot_git = folder.join(".git");
+        std::fs::symlink_metadata(&dot_git)
+            .ok()
+            .map(|meta| (dot_git, meta))
+    }) else {
+        return Checkout::None;
+    };
+    // A link is never vouched for: one to another worktree's `.git` file
+    // would resolve to where that worktree's folder names it back.
+    if meta.is_dir() {
+        return Checkout::Own { dot_git };
+    }
+    match meta.is_file().then(|| worktree(&dot_git)).flatten() {
+        Some((common, own)) => Checkout::Worktree {
+            dot_git,
+            common,
+            own,
+        },
+        None => Checkout::Unvouched { dot_git },
+    }
+}
+
+/// The repository and the worktree's own git folder a worktree's `.git`
+/// file names, where git's own record agrees: the folder is one of the
+/// repository's worktrees and says it is this one, so a `.git` file a
+/// command wrote can't open another's history.
+fn worktree(dot_git: &Path) -> Option<(PathBuf, PathBuf)> {
+    let read = |path: &Path| std::fs::read_to_string(path).ok();
+    let resolved = |path: &Path| std::fs::canonicalize(path).ok();
+    let text = read(dot_git)?;
+    let named = text.strip_prefix("gitdir:")?.trim();
+    let own = resolved(&dot_git.parent()?.join(named))?;
+    let common = resolved(&own.join(read(&own.join("commondir"))?.trim()))?;
+    let back = resolved(&own.join(read(&own.join("gitdir"))?.trim()))?;
+    let folder = |path: &Path| std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir());
+    let belongs = own.parent() == Some(common.join("worktrees").as_path())
+        && Some(back) == resolved(dot_git)
+        && folder(&own)
+        && folder(&common.join("objects"));
+    belongs.then_some((common, own))
 }
 
 /// git's empty tree, given as where attributes come from so none apply.

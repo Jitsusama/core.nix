@@ -448,8 +448,12 @@ fn release(running: &Running, id: &str, argv: &[String]) -> Release {
     client.ask(&yes(&row, 812));
     let answer = answer(running, id);
     assert_eq!(answer["state"], "ran", "the answer: {answer}");
-    let args = running.bwrapped().lines().map(str::to_owned).collect();
-    Release { row, answer, args }
+    let bwrapped = running.bwrapped().lines().map(str::to_owned).collect();
+    Release {
+        row,
+        answer,
+        args: bwrapped,
+    }
 }
 
 /// Releases a listed ask whose command says its value.

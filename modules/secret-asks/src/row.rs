@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::ask::{Ask, VERSION};
-use crate::tree::Tree;
+use crate::tree::{Checkout, Tree};
 use crate::words::Words;
 
 /// The place the rows are in.
@@ -70,7 +70,7 @@ pub fn digest(ask: &Ask, tree: &Tree) -> String {
         .quest
         .as_ref()
         .map(|(id, title)| json!({"id": id, "title": title}));
-    let said = json!([
+    let mut said = json!([
         VERSION,
         ask.id,
         ask.asked_ms,
@@ -85,11 +85,28 @@ pub fn digest(ask: &Ask, tree: &Tree) -> String {
         ask.given,
         ask.minutes
     ]);
+    // Where a release can't commit is said in the row, so a yes is to it;
+    // a tree that commits adds nothing, keeping the digests it had.
+    if let (Some(kept), Value::Array(said)) = (uncommitting(&tree.checkout), &mut said) {
+        said.push(json!(kept));
+    }
     let hash = Sha256::digest(said.to_string().as_bytes());
     hash.iter().fold(String::new(), |mut hex, byte| {
         let _ = write!(hex, "{byte:02x}");
         hex
     })
+}
+
+/// The word saying a release in a tree kept as `checkout` can't commit,
+/// or none where it can or there's no history to write.
+fn uncommitting(checkout: &Checkout) -> Option<&'static str> {
+    match checkout {
+        // Its packed refs and the top beside its settings stay read-only
+        // (ISXEG8, 14 November), so it tags but can't commit.
+        Checkout::Own { .. } => Some("tagsOnly"),
+        Checkout::Unvouched { .. } => Some("noHistory"),
+        Checkout::None | Checkout::Worktree { .. } => None,
+    }
 }
 
 /// A word of the command, quoted as a POSIX shell would need it, so a
@@ -150,7 +167,6 @@ fn outcome(held: &Held, words: &Words) -> Option<Value> {
 /// `says_commits` has it say where a release can't commit, for a releaser
 /// whose command writes a worktree's history alone.
 pub fn row(held: &Held, home: &str, words: &Words, says_commits: bool) -> Value {
-    let _ = says_commits;
     let ask = &held.ask;
     let digest = digest(ask, &held.tree);
     let key = format!("row:{PLACE}:{}", ask.id);
@@ -187,6 +203,9 @@ pub fn row(held: &Held, home: &str, words: &Words, says_commits: bool) -> Value 
             "said": words.fill("trusts", &[("tree", &tree_name(&ask.tree))]),
         }),
     ];
+    if let Some(kept) = uncommitting(&held.tree.checkout).filter(|_| says_commits) {
+        facts.push(json!({"name": words.fill("fact:commits", &[]), "said": words.fill(kept, &[])}));
+    }
     let changes = match held.tree.uncommitted {
         Some(0) => None,
         Some(count) => Some(words.fill("uncommitted", &[("count", &count.to_string())])),
@@ -252,7 +271,6 @@ pub fn summary(held: &[&Held], words: &Words) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tree::Checkout;
     use std::path::PathBuf;
 
     fn held(state: State, uncommitted: Option<u64>) -> Held {

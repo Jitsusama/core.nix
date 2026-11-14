@@ -365,6 +365,7 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) -> boo
             profiles: given.profiles,
             hidden: given.hidden,
             overlays: given.overlays,
+            seen: std::sync::Mutex::default(),
         }),
         changed,
     ));
