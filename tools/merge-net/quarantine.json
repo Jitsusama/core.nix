@@ -374,5 +374,15 @@
       "test_a_session_whose_attach_its_host_refuses_keeps_its_window"
     ],
     "test": "vm-desktop-moves-keep-their-window"
+  },
+  {
+    "at": 1794624253,
+    "commit": "467ec1a20da37f9e7ef094c4b9b7c72d9058c1fe",
+    "owner_pr": 4173,
+    "reason": "failed, then passed, at 467ec1a20da3",
+    "subtests": [
+      "test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
   }
 ]
