@@ -262,15 +262,19 @@ const SAID_FROM = 25;
 
 // The answer of `work`, its time on `clock` (ms) kept in `parts` by its
 // name, { name, ms }, summed with the part of that name already kept: a
-// provider asked twice in one making is one part. With no parts, it's
-// only run, since nothing is timing a making.
+// provider asked twice in one making is one part. A part timed inside it,
+// as a provider's Recent inside a program's own, is its own part alone,
+// so no time is counted twice and a making's rest stays what no part
+// spent. With no parts, it's only run, since nothing is timing a making.
 function timed(parts, name, clock, work) {
     if (!parts) {
         return work();
     }
+    const spent = () => parts.reduce((sum, part) => sum + part.ms, 0);
+    const before = spent();
     const began = clock();
     const answer = work();
-    const ms = clock() - began;
+    const ms = clock() - began - (spent() - before);
     const kept = parts.find(part => part.name === name);
     if (kept) {
         kept.ms += ms;

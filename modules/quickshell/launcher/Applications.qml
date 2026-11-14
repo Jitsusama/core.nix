@@ -1616,7 +1616,11 @@ Provider {
         return timedMaking(`${entry.id}'s acts`, () => controlsMade(entry, start, below));
     }
 
+    // Each part timed by its name, as a drawer's are: Google Calendar's
+    // acts took 122 ms on Joel's shell with every part but other
+    // providers' left in the rest (2026-11-13).
     function controlsMade(entry, start, below) {
+        const part = (name, work) => Program.timed(making.parts, name, provider.now, work);
         const looked = {};
         const same = given => provider.names(entry, given, looked);
         const given = givenActs(entry.id);
@@ -1627,10 +1631,12 @@ Provider {
         const leading = given.filter(row => row.leads === true && !copying(row));
         const doing = given.filter(row => row.leads !== true && !copying(row));
         const copies = given.filter(copying);
-        if (stepsIn(entry)) {
-            return leading.concat(doing, openGroup(entry), recent(entry), notices(same), keysOf(entry),
-                copies);
-        }
+        const open = () => part("its open tabs", () => openGroup(entry));
+        const lately = () => part("its recent", () => recent(entry));
+        const sent = () => part("its notices", () => notices(same));
+        const keys = () => part("its keys", () => keysOf(entry));
+        if (stepsIn(entry))
+            return leading.concat(doing, open(), lately(), sent(), keys(), copies);
         const windows = running[entry.id] ?? [];
         const latest = windows[0] ?? null;
         const acts = (latest ? [said("verb:program:switch", "", {
@@ -1639,13 +1645,13 @@ Provider {
             })] : []).concat([said("verb:start", "", { run: start }),
             said("verb:below", "", { chord: provider.launcher?.belowChord ?? [], run: below })]);
         const taken = provider.taken();
-        const player = playerOf(same);
-        const streams = streamsOf(same);
-        const recorders = recordersOf(same);
-        return acts.slice(0, 1).concat(leading, acts.slice(1), menu(entry, taken), doing,
-            openGroup(entry), windowsOf(entry, heldWindows(entry)), recent(entry),
-            notices(same), keysOf(entry),
-            latest ? [quit(entry, windows)] : [],
+        const player = part("the player", () => playerOf(same));
+        const streams = part("its sound", () => streamsOf(same));
+        const recorders = part("its sound", () => recordersOf(same));
+        return acts.slice(0, 1).concat(leading, acts.slice(1),
+            part("its menu", () => menu(entry, taken)), doing, open(),
+            part("its windows", () => windowsOf(entry, heldWindows(entry))), lately(), sent(),
+            keys(), latest ? [part("its quit", () => quit(entry, windows))] : [],
             player ? [media(player)] : [],
             streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],
             copies);
