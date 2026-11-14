@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
@@ -59,6 +60,62 @@ pub fn look(proc: &Path) -> BTreeMap<String, Vec<Held>> {
         seen.entry(name).or_default().push(held);
     }
     seen
+}
+
+/// Ask `ps` for each watched program's copies, where there's no `/proc`
+/// to look in, as on a Mac. Its copies put nothing out to swap, since `ps`
+/// doesn't say what a process has there.
+#[must_use]
+pub fn asked() -> BTreeMap<String, Vec<Held>> {
+    Command::new("/bin/ps")
+        .args(["-axo", "rss=,etime=,comm="])
+        .output()
+        .ok()
+        .filter(|said| said.status.success())
+        .map(|said| from_ps(&String::from_utf8_lossy(&said.stdout)))
+        .unwrap_or_default()
+}
+
+/// The watched programs' copies in what `ps -o rss=,etime=,comm=` said: a
+/// line a process, its memory in KiB, how long it has run, and the path
+/// it was started by, which may hold spaces.
+fn from_ps(said: &str) -> BTreeMap<String, Vec<Held>> {
+    let mut seen: BTreeMap<String, Vec<Held>> = BTreeMap::new();
+    for line in said.lines() {
+        let Some((kib, rest)) = line.trim_start().split_once(' ') else {
+            continue;
+        };
+        let Some((ran, path)) = rest.trim_start().split_once(' ') else {
+            continue;
+        };
+        let name = path.rsplit('/').next().unwrap_or(path);
+        if !WATCHED.contains(&name) {
+            continue;
+        }
+        let (Ok(kib), Some(age)) = (kib.parse::<u64>(), seconds_of(ran)) else {
+            continue;
+        };
+        seen.entry(name.to_owned()).or_default().push(Held {
+            kib,
+            swap_kib: 0,
+            age,
+        });
+    }
+    seen
+}
+
+/// The seconds in how long `ps` says a process has run, as `[[dd-]hh:]mm:ss`.
+fn seconds_of(ran: &str) -> Option<u64> {
+    let (days, clock) = ran.split_once('-').unwrap_or(("0", ran));
+    let mut seconds = days.parse::<u64>().ok()? * 86_400;
+    let parts: Vec<&str> = clock.split(':').collect();
+    if !(2..=3).contains(&parts.len()) {
+        return None;
+    }
+    for (part, worth) in parts.iter().rev().zip([1, 60, 3_600]) {
+        seconds += part.parse::<u64>().ok()? * worth;
+    }
+    Some(seconds)
 }
 
 /// The last part of the path a process was started by.
@@ -232,6 +289,34 @@ mod tests {
         );
         assert_eq!(seen["quickshell"][0].age, 7_200, "the shell, by its path");
         assert_eq!(seen.len(), 2, "nothing else is watched: {seen:?}");
+    }
+
+    #[test]
+    fn the_watched_programs_are_found_in_what_ps_says() {
+        let said = concat!(
+            "  1000 01:00:00 /nix/store/x-pi/bin/pi\n",
+            "443328 04-20:03:50 pi\n",
+            "   512 05:07 /Users/someone/My Tools/pi\n",
+            "  2048 00:09 /Applications/Some App.app/Contents/MacOS/Some App\n",
+            "    20 00:09 /bin/bash\n",
+            "a line ps never says\n",
+        );
+        let held = |kib, age| Held {
+            kib,
+            swap_kib: 0,
+            age,
+        };
+        let seen = from_ps(said);
+        assert_eq!(
+            seen.get("pi"),
+            Some(&vec![
+                held(1_000, 3_600),
+                held(443_328, 4 * 86_400 + 20 * 3_600 + 3 * 60 + 50),
+                held(512, 5 * 60 + 7),
+            ]),
+            "each pi, by its path or its bare name, with its days, hours and minutes"
+        );
+        assert_eq!(seen.len(), 1, "nothing else is watched: {seen:?}");
     }
 
     #[test]

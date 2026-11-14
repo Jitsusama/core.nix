@@ -49,6 +49,7 @@ pub struct Follower {
     trials: Option<trials::Reader>,
     sessions: Option<sessions::Reader>,
     proc: Option<PathBuf>,
+    asks_ps: bool,
     presences: Option<PathBuf>,
     cgroups: Option<(PathBuf, String)>,
     guards: Vec<PathBuf>,
@@ -91,6 +92,7 @@ impl Follower {
             trials: None,
             sessions: None,
             proc: None,
+            asks_ps: false,
             presences: None,
             cgroups: None,
             guards: Vec::new(),
@@ -201,17 +203,29 @@ impl Follower {
         }
     }
 
+    /// Ask `ps` what the watched programs hold, where there's no `proc`.
+    #[must_use]
+    pub fn minding_by_ps(self) -> Self {
+        Self {
+            asks_ps: true,
+            ..self
+        }
+    }
+
     /// Keep what each watched program's copies hold now, at `at`.
     pub fn mind(&mut self, at: i64) {
-        let Some(proc) = &self.proc else {
+        if self.proc.is_none() && !self.asks_ps {
             return;
-        };
+        }
         if date_of(at, &self.zone) != self.day.date {
             return;
         }
         // Every watched program is kept each look, none running when none
         // was seen, so one that stopped doesn't go on showing its last.
-        let mut seen = memory::look(proc);
+        let mut seen = self
+            .proc
+            .as_deref()
+            .map_or_else(memory::asked, memory::look);
         for name in memory::WATCHED {
             let copies = seen.remove(name).unwrap_or_default();
             self.day
@@ -495,6 +509,8 @@ pub fn follow(into: &Path) -> io::Result<()> {
     follower = follower.guarding(disk::statuses(runtime.as_deref(), source.guard_status()));
     if let Some(processes) = source.processes() {
         follower = follower.minding(processes);
+    } else if source.asks_ps() {
+        follower = follower.minding_by_ps();
     }
     let home = std::env::var_os("HOME").map(PathBuf::from);
     follower = follower.reporting(source.reports(home.as_deref()));
