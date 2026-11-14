@@ -55,6 +55,7 @@ let
       changes = about.changes or false;
       undoable = about.undoable or false;
       guarded = about.guarded or false;
+      costly = about.costly or false;
       range = about.range or false;
       ends = about.ends or false;
       starts = about.starts or false;

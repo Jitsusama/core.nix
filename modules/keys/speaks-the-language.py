@@ -83,6 +83,7 @@ FIELDS = {
     "changes",
     "undoable",
     "guarded",
+    "costly",
     "range",
     "ends",
     "starts",
@@ -234,17 +235,30 @@ def shape_faults(language: dict[str, Any]) -> list[str]:
             f"{name} belongs to a {kind}, which the language doesn't name"
             for kind in sorted(set(act["kinds"]) - set(language["kinds"]))
         ]
-        if act.get("undoable") and not act.get("changes"):
-            faults.append(f"{name} can be undone, but changes nothing")
-        if act.get("ends") and not act.get("changes"):
-            faults.append(f"{name} ends something, but changes nothing")
-        if act.get("starts") and not act.get("changes"):
-            faults.append(f"{name} starts something, but changes nothing")
-        if act.get("guarded"):
-            if not act.get("changes"):
-                faults.append(f"{name} guards itself, but it never asks, since it changes nothing")
-            elif act.get("undoable"):
-                faults.append(f"{name} guards itself, but it never asks, since it can be undone")
+        faults += flag_faults(name, act)
+    return faults
+
+
+def flag_faults(name: str, act: dict[str, Any]) -> list[str]:
+    """Find a flag of an act's amiss: one saying it changes, guards or costs where it can't."""
+    said = {"undoable": "can be undone", "ends": "ends something", "starts": "starts something"}
+    faults = [
+        f"{name} {says}, but changes nothing"
+        for flag, says in said.items()
+        if act.get(flag) and not act.get("changes")
+    ]
+    if act.get("guarded"):
+        if not act.get("changes"):
+            faults.append(f"{name} guards itself, but it never asks, since it changes nothing")
+        elif act.get("undoable"):
+            faults.append(f"{name} guards itself, but it never asks, since it can be undone")
+    if act.get("costly"):
+        if not act.get("changes"):
+            faults.append(f"{name} costs a lot, but it changes nothing")
+        elif act.get("undoable"):
+            faults.append(f"{name} costs a lot, but it can be undone")
+        elif act.get("guarded"):
+            faults.append(f"{name} costs a lot, but it guards itself")
     return faults
 
 

@@ -364,6 +364,40 @@ let
       says = "stray guards itself, but it never asks, since it changes nothing";
     }
     {
+      name = "a-cost-on-nothing";
+      adds = ''
+        [acts.stray]
+        keys = ["<C-x>"]
+        kinds = []
+        costly = true
+      '';
+      says = "stray costs a lot, but it changes nothing";
+    }
+    {
+      name = "a-cost-on-an-undoing";
+      adds = ''
+        [acts.stray]
+        keys = ["<C-x>"]
+        kinds = []
+        changes = true
+        undoable = true
+        costly = true
+      '';
+      says = "stray costs a lot, but it can be undone";
+    }
+    {
+      name = "a-cost-on-a-guard";
+      adds = ''
+        [acts.stray]
+        keys = ["<C-x>"]
+        kinds = []
+        changes = true
+        guarded = true
+        costly = true
+      '';
+      says = "stray costs a lot, but it guards itself";
+    }
+    {
       name = "a-field-unknown";
       adds = ''
         [acts.stray]

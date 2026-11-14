@@ -24,14 +24,20 @@
 # names. An act with a command and no keys is named only on the command
 # line, as most of a row's acts are.
 #
-# Six flags say what an act does to the world, each false unless set:
+# Seven flags say what an act does to the world, each false unless set:
 # changes, that it changes something beyond where the eye is, as Forget It
 # does and moving doesn't; undoable, that u takes the change back while the
-# surface stays open, so it acts at once, where a change that can't be
-# undone asks once first; guarded, that such a change asks nothing on one
-# thing all the same, since it guards itself, as a program asks before it
-# loses work, or a prompt written and sent was the asking, though a range
-# of more than one still asks once, naming how many; range, that it
+# surface stays open; guarded, that it guards itself though it can't be
+# undone, as a program asks before it loses work, or a prompt written and
+# sent was the asking; costly, that it can't be undone and costs a lot, as
+# a network forgotten with its password, a meeting cancelled for everyone
+# or the machine rebooted, so d and the command line ask once first,
+# answered by Return, and a range asks once naming how many (Joel,
+# 2026-11-13: "we should only require confirmation if it is really a
+# dangerous action or an action of significant consequence"); anything
+# else that changes acts at once. Costly is a stopgap for an act a daemon
+# serves: one serving its own costly is asked by that, as agentsd says of
+# a session's Close by its work in flight; range, that it
 # takes rows, as :3,5d and a visual selection give them; ends, that it
 # ends or takes away, as Disconnect It, Forget It, Close It and :reboot
 # do, so Return never runs it from any mode: d or the command line carries
@@ -887,7 +893,11 @@ undoable = true
 range = true
 
 # Forgotten, a network with its password or a device with its pairing, or a
-# notice taken away unread: it can't be brought back as it was.
+# notice taken away unread: it can't be brought back as it was. A network's
+# password or a device's pairing costs a lot to give again, so it's costly;
+# a notice's Forget It says how u brings it back, and a session to reopen
+# says it costs nothing, so neither asks. wifid and bluez's place should
+# each serve costly on their own Forget (KP0L6A to place, by 2026-11-30).
 [acts.forget]
 ends = true
 command = "forget"
@@ -895,6 +905,7 @@ short = "forg"
 kinds = ["list"]
 changes = true
 range = true
+costly = true
 
 # A device paired, Bluetooth's word, so a network never takes it: a Wi-Fi
 # network's New Password is :password and Account Over {method} :signin.
@@ -967,12 +978,15 @@ short = "lea"
 kinds = ["list"]
 changes = true
 
+# Showing the screen to everyone in a call can't be taken back once seen,
+# so it's costly.
 [acts.share]
 starts = true
 command = "share"
 short = "sha"
 kinds = ["list"]
 changes = true
+costly = true
 
 [acts.pause]
 command = "pause"
@@ -1225,7 +1239,8 @@ changes = true
 undoable = true
 range = true
 
-# A meeting called off for everyone in it. Cancel the Meeting.
+# A meeting called off for everyone in it. Cancel the Meeting. Everyone
+# invited is told, which can't be taken back, so it's costly.
 [acts.cancel]
 ends = true
 command = "cancel"
@@ -1233,6 +1248,7 @@ short = "can"
 kinds = ["list"]
 changes = true
 range = true
+costly = true
 
 # A person kept at the top of their place, or with ! no longer. Favourite.
 [acts.favourite]
@@ -1253,33 +1269,38 @@ changes = true
 undoable = true
 
 # A firmware security setting fwupd changes to what the next level needs:
-# Secure It. Not :fix, since Neovim's :fixdel takes it; it asks once,
-# since only fwupd's undo takes it back.
+# Secure It. Not :fix, since Neovim's :fixdel takes it; fwupd's undo takes
+# it back, so it acts at once.
 [acts.secure]
 command = "secure"
 short = "sec"
 kinds = ["list"]
 changes = true
 
-# A firmware's new version put on the device. Install {version}.
+# A firmware's new version put on the device. Install {version}. It takes
+# the device out of use while it's written and can't be taken back, so
+# it's costly.
 [acts.install]
 ends = true
 command = "install"
 short = "inst"
 kinds = ["list"]
 changes = true
+costly = true
 
 # A ZSA board flashed with this machine's build, which takes it out of use
 # while it's written, as an install does a device: Flash the Keyboard. An
-# act, not an option, since what it leaves behind isn't a setting.
+# act, not an option, since what it leaves behind isn't a setting. Costly,
+# as an install is.
 [acts.flash]
 ends = true
 command = "flash"
 short = "fla"
 kinds = ["list"]
 changes = true
+costly = true
 
-# The session's acts, each asking once: :lock is Neovim's :lockmarks, so
+# The session's acts: :lock is Neovim's :lockmarks, so
 # the screen's lock is :lockscreen.
 [acts.lockscreen]
 ends = true
@@ -1295,12 +1316,16 @@ short = "sus"
 kinds = ["list"]
 changes = true
 
+# Logging out, rebooting and powering off end every window and session,
+# so each is costly, where the lock and sleep give everything back as it
+# was. Their rows arm on Return all the same (Arming.js).
 [acts.logout]
 ends = true
 command = "logout"
 short = "log"
 kinds = ["list"]
 changes = true
+costly = true
 
 [acts.reboot]
 ends = true
@@ -1308,6 +1333,7 @@ command = "reboot"
 short = "reb"
 kinds = ["list"]
 changes = true
+costly = true
 
 [acts.poweroff]
 ends = true
@@ -1315,6 +1341,7 @@ command = "poweroff"
 short = "pow"
 kinds = ["list"]
 changes = true
+costly = true
 
 # A VM's own acts, each apart from the machine's so no line meant for a VM
 # can reach the machine it runs on. Started, Start It, as :boot, since
@@ -1340,7 +1367,7 @@ changes = true
 guarded = true
 
 # Its power cut, as pulling its plug would, Force It Off: whatever it
-# hadn't written is lost, so it asks once. Its short form clears Vim's
+# hadn't written is lost, so it's costly. Its short form clears Vim's
 # :for.
 [acts.forceoff]
 ends = true
@@ -1348,6 +1375,7 @@ command = "forceoff"
 short = "forc"
 kinds = ["list"]
 changes = true
+costly = true
 
 # To the window that way, as his splits go. No kind holds these: a surface
 # with windows side by side takes them.
