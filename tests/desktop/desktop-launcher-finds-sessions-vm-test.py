@@ -24,7 +24,6 @@ from desktop_session import (
     ARRANGED,
     HARNESS,
     INBOX,
-    LAUNCHER_OPEN,
     PI_PRESENCE,
     PI_WINDOW,
     SHELL_STARTS,
@@ -412,9 +411,8 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
 
 
 def test_an_orchestrator_is_paused_with_no_words(desktop: Desktop) -> None:
-    """An orchestrator is paused with no words, an act in its inbox."""
+    """An orchestrator is paused with no words, an act in its inbox, the launcher open on it."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     an_orchestrator(desktop)
     into_lighthouse(desktop)
     # Pause is done by its command, its row's own act, at once: resuming it
@@ -427,7 +425,16 @@ def test_an_orchestrator_is_paused_with_no_words(desktop: Desktop) -> None:
         desktop.in_session(f'cat {INBOX}/*.json | grep -q \'"act":"pause"\''),
         timeout=dt.timedelta(seconds=10),
     )
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # An ask keeps the launcher open, an act's row as a row's own first act, so Joel sees what
+    # it became (ReadyRows.js's leaving; #4138, 2026-11-13).
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and shown["path"] == ["Agents"]
+            and (shown["selected"] or {}).get("name") == LIGHTHOUSE
+        )
+    )
+    desktop.close_launcher()
 
 
 def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_pi_on_another(

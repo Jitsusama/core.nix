@@ -385,16 +385,6 @@
     "test": "vm-disk-guard-keeps-the-disk"
   },
   {
-    "at": 1794626115,
-    "commit": "467ec1a20da37f9e7ef094c4b9b7c72d9058c1fe",
-    "owner_pr": 4138,
-    "reason": "has been broken since #4138, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "subtests": [
-      "test_an_orchestrator_is_paused_with_no_words"
-    ],
-    "test": "vm-desktop-launcher-finds-sessions"
-  },
-  {
     "at": 1794627705,
     "commit": "4515bb9f1e9dd08dce992c5885406b16d49da645",
     "owner_pr": 4202,
