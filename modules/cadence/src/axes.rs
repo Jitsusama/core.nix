@@ -17,6 +17,7 @@
 
 mod asks;
 mod counted;
+mod faults;
 mod landings;
 mod launcher;
 mod measure;

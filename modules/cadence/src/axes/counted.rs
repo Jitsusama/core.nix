@@ -433,6 +433,55 @@ pub fn corrected(s: &Sources) -> Reading {
     .his()
 }
 
+/// The agents' sessions health saw end without parking today, each a
+/// session whose work stopped where it stood rather than being put down:
+/// an agent lost mid-task is work that didn't reach him, so the bar is
+/// none. Read from our side, since he may not have been waiting on it.
+#[must_use]
+pub fn died(s: &Sources) -> Reading {
+    Reading::new(
+        "{} agents gone without parking today",
+        s.health
+            .as_ref()
+            .and_then(|f| f.get("health.agents.died").copied()),
+        "",
+        "85PKB2",
+    )
+    .bar(Bar::AtMost(0.0))
+    .from("health's day file, from pi's sessions")
+}
+
+/// A key typed into pi, at its worst window of the day: the wait one key
+/// in a hundred passed, held to the design's budget for a key to what it
+/// changed at the 99th, 100 ms. pi-keys models the keys rather than
+/// timing his own, so it's a stand-in.
+#[must_use]
+pub fn typing(s: &Sources) -> Reading {
+    Reading::new(
+        "the slowest key in a hundred typed into pi {}, in its worst window today",
+        s.health
+            .as_ref()
+            .and_then(|f| f.get("health.typing.worst-p99-ms").copied()),
+        " ms",
+        "85PKB2",
+    )
+    .bar(Bar::AtMost(100.0))
+    .from("health's day file, from pi-keys' modelled keys")
+}
+
+/// Health's day file for the day `now` falls in, on this machine's clock.
+#[must_use]
+pub fn health_file(state_home: &Path, now: i64) -> std::path::PathBuf {
+    let date = Timestamp::from_second(now)
+        .map(|t| {
+            t.to_zoned(TimeZone::system())
+                .strftime("%Y-%m-%d")
+                .to_string()
+        })
+        .unwrap_or_default();
+    state_home.join(format!("health/{date}.json"))
+}
+
 fn count(n: usize) -> f64 {
     f64::from(u32::try_from(n).unwrap_or(u32::MAX))
 }
@@ -441,13 +490,6 @@ fn count(n: usize) -> f64 {
 /// health's file for the day `now` falls in: files only.
 #[must_use]
 pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
-    let date = Timestamp::from_second(now)
-        .map(|t| {
-            t.to_zoned(TimeZone::system())
-                .strftime("%Y-%m-%d")
-                .to_string()
-        })
-        .unwrap_or_default();
     Sources {
         findings: folder
             .join("findings.jsonl")
@@ -458,7 +500,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
             .flatten()
             .flatten()
             .any(|e| e.path().extension().is_some_and(|x| x == "json")),
-        health: fs::read_to_string(state_home.join(format!("health/{date}.json")))
+        health: fs::read_to_string(health_file(state_home, now))
             .ok()
             .map(|json| healths(&json)),
     }
@@ -701,6 +743,35 @@ mod tests {
                 (Some(0.0), "80ECO2", true),
             ],
             "chrome had no worst moment today, so it lost none rather than reading unread"
+        );
+    }
+
+    #[test]
+    fn agents_lost_and_pis_worst_typing_are_held_to_their_bars_from_our_side() {
+        let s = Sources {
+            health: Some(BTreeMap::from([
+                ("health.agents.died".to_owned(), 5.0),
+                ("health.typing.worst-p99-ms".to_owned(), 1_208.2),
+            ])),
+            ..Sources::default()
+        };
+        let (lost, keys) = (died(&s), typing(&s));
+        assert_eq!(
+            lost.words(),
+            "5 agents gone without parking today, at most 0"
+        );
+        assert_eq!(
+            keys.words(),
+            "the slowest key in a hundred typed into pi 1,208 ms, in its worst window today, \
+             at most 100 ms"
+        );
+        assert!(
+            lost.out() && keys.out() && !lost.his && !keys.his,
+            "a lost agent or a second's key was in spec, or read from his side"
+        );
+        assert_eq!(
+            typing(&Sources::default()).words(),
+            "the slowest key in a hundred typed into pi, in its worst window today: no reading yet"
         );
     }
 
