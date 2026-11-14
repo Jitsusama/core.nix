@@ -85,9 +85,10 @@ Scope {
     // 50 ms (2026-11-12: "time from trigger to visible on the screen"), said once for each
     // notice the line shows as it comes; null once said, or once it's plain the line won't
     // show it. It's said apart, since a median of 86 ms and a p90 of 621 ms over the 30
-    // notices Joel had in the day to 2026-11-14 didn't say which to make quicker: whether its layer was mapped
-    // for it, then until the first frame after began its sync (a new layer waits there on
-    // niri's configure), then that frame's sync, render and swap, then until niri showed it.
+    // notices Joel had in the day to 2026-11-14 didn't say which to make quicker: whether
+    // its layer was mapped for it, then until the first frame after began its sync (a new
+    // layer waits there on niri's configure), then that frame's sync, render and swap, then
+    // until niri showed it.
     property var timing: null
     // When its layer was last mapped, which happens as the front changes, just before the
     // notice it names is said to have come.
