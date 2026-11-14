@@ -1616,10 +1616,18 @@ Provider {
         return timedMaking(`${entry.id}'s acts`, () => controlsMade(entry, start, below));
     }
 
+    // Each of its own parts is timed by name, as the drawer's are, so a
+    // slow one says which: Mail's acts took 47 ms on Joel's shell, 46 of
+    // them none of the other providers' (2026-11-13).
     function controlsMade(entry, start, below) {
+        const part = (name, work) => Program.timed(making.parts, name, provider.now, work);
         const looked = {};
         const same = given => provider.names(entry, given, looked);
         const given = givenActs(entry.id);
+        const open = part("what it has open", () => openGroup(entry));
+        const lately = part("its recent", () => recent(entry));
+        const sent = part("its notices", () => notices(same));
+        const keys = part("its shortcuts", () => keysOf(entry));
         const copying = row => row.verb === "copy";
         // An act given to lead, as signing in again does while a program
         // is signed out, comes straight after Return's own, since it's
@@ -1628,8 +1636,7 @@ Provider {
         const doing = given.filter(row => row.leads !== true && !copying(row));
         const copies = given.filter(copying);
         if (stepsIn(entry)) {
-            return leading.concat(doing, openGroup(entry), recent(entry), notices(same), keysOf(entry),
-                copies);
+            return leading.concat(doing, open, lately, sent, keys, copies);
         }
         const windows = running[entry.id] ?? [];
         const latest = windows[0] ?? null;
@@ -1639,12 +1646,13 @@ Provider {
             })] : []).concat([said("verb:start", "", { run: start }),
             said("verb:below", "", { chord: provider.launcher?.belowChord ?? [], run: below })]);
         const taken = provider.taken();
-        const player = playerOf(same);
-        const streams = streamsOf(same);
-        const recorders = recordersOf(same);
-        return acts.slice(0, 1).concat(leading, acts.slice(1), menu(entry, taken), doing,
-            openGroup(entry), windowsOf(entry, heldWindows(entry)), recent(entry),
-            notices(same), keysOf(entry),
+        const player = part("the player", () => playerOf(same));
+        const streams = part("its sound", () => streamsOf(same));
+        const recorders = part("its sound", () => recordersOf(same));
+        const own = part("its menu", () => menu(entry, taken));
+        const others = part("its windows", () => windowsOf(entry, heldWindows(entry)));
+        return acts.slice(0, 1).concat(leading, acts.slice(1), own, doing, open, others,
+            lately, sent, keys,
             latest ? [quit(entry, windows)] : [],
             player ? [media(player)] : [],
             streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],
