@@ -293,10 +293,9 @@ function next(stop, cols, at) {
 // `to` on `cols` (MarginCatPaths.js's columns()): each stop in turn, each
 // with `how` it got there, the seat left out. On its seat's ledge it walks
 // to it; on the tops, its seat on one, it walks along them to it, leaping
-// each gap between. Given `ends`, it ends instead at the first stop that
-// `ends` takes, `to` only where it makes for. Null where there's no way.
+// each gap between. Null where there's no way.
 function quickest(open, trip, cols, at) {
-    const { from, to, ends } = trip;
+    const { from, to } = trip;
     const goal = standing(cols, to, at) ?? { c: -1, row: 0 };
     const length = Math.hypot(to.x - from.x, to.y - from.y);
     const line = stop => {
@@ -322,14 +321,8 @@ function quickest(open, trip, cols, at) {
             }
             return stops;
         }
-        if (ends?.(here.stop)) {
-            // Ending here, it still has the way across to `to` to go.
-            const end = { kind: "seat", c: -1, x: here.stop.x, y: here.stop.y };
-            const ms = (Math.abs(to.x - here.stop.x) / at.cell / WALKS) * 1000;
-            open.push({ stop: end, ms: here.ms + ms, back: here });
-        }
         const seat = { kind: "seat", c: -1, x: to.x, y: to.y };
-        if (!ends && here.stop.kind === "ledge" && (goal.row === 0 ? here.stop.row === 0
+        if (here.stop.kind === "ledge" && (goal.row === 0 ? here.stop.row === 0
             : here.stop.c === goal.c && here.stop.row === goal.row)) {
             const gaps = cols.filter(one => one.left > Math.min(here.stop.x, to.x) + at.wide
                 && one.left < Math.max(here.stop.x, to.x) + at.wide).length;
@@ -364,38 +357,7 @@ function up(from, to, cols, at) {
     return open.length > 0 ? quickest(open, { from, to }, cols, at) : null;
 }
 
-// The quickest way from a ledge it stands on at `from` to its seat `to`,
-// beginning with where it stands. Null where it stands on none, or there's
-// no way.
-function between(from, to, cols, at) {
-    const on = standing(cols, from, at);
-    if (on === null) {
-        return null;
-    }
-    const stop = { kind: "ledge", c: on.c, x: from.x, y: from.y, row: on.row, how: "stands" };
-    return quickest([{ stop, ms: 0, back: null }], { from, to }, cols, at);
-}
-
 // The quickest way from any `stop` to its seat `to`, beginning with it.
 function route(stop, to, cols, at) {
     return quickest([{ stop, ms: 0, back: null }], { from: stop, to }, cols, at);
-}
-
-// The quickest way from a ledge it stands on at `from` off its window,
-// `making` for `toward`: down onto a column's side at its bottom, `down`,
-// to drop from there where `lands` takes its `x`; or else onto a
-// column's top, to leap up from. Null where it stands on none, or
-// there's no way.
-function off(from, cols, at, making) {
-    const { toward, down, lands } = making;
-    const on = standing(cols, from, at);
-    if (on === null) {
-        return null;
-    }
-    const stop = { kind: "ledge", c: on.c, x: from.x, y: from.y, row: on.row, how: "stands" };
-    const ends = down
-        ? one => one.kind === "side" && near(one.y, cols[one.c].bottom - at.tall)
-            && (!lands || lands(one.x))
-        : one => one.kind === "ledge" && one.row === 0;
-    return quickest([{ stop, ms: 0, back: null }], { from, to: toward, ends }, cols, at);
 }

@@ -114,8 +114,8 @@ PanelWindow {
     // How often this screen draws, in ms, as its last walk showed.
     property real frameMs: 1000 / 60
     // The workspace this screen shows, its id and index, so a move
-    // between two has it ride its column off with the world and climb
-    // to its new seat (VKCF3Z, 074321bd), and the one it showed.
+    // between two has it hold its ground through the slide and walk to
+    // its new seat (VKCF3Z, 074321bd, 4d18ade4), and the one it showed.
     readonly property var space: {
         void Niri.revision;
         const name = modelData?.name ?? "";
@@ -124,11 +124,9 @@ PanelWindow {
         return shows ? { id: shows.id, idx: shows.idx } : null;
     }
     property var spaceWas: null
-    // The move between workspaces under way (Paths.moves), the
-    // workspace it left and the window it goes to once niri says it,
-    // and its quarter turn as it climbs.
+    // The move between workspaces under way (Paths.moves), the window
+    // it goes to once niri says it, and its quarter turn as it climbs.
     property var moving: null
-    property var movingFrom: null
     property var movingTo: null
     property int turn: 0
     // The margin's marks, where they're drawn (Paths.marks), which it
@@ -273,15 +271,14 @@ PanelWindow {
             window.FramePresentation.ask();
     }
 
-    // A move from workspace `was` to the one `way` below (1) or above (-1): it rides its column
-    // the whole slide from where it sits, and its way to its new seat comes once niri says the
-    // new workspace's column (steer).
-    function moveFrom(way: int, was: var): void {
+    // A move to the workspace `way` below (1) or above (-1): it holds where it sits the whole
+    // slide, and its way to its new seat comes once niri says the new workspace's column
+    // (steer).
+    function moveTo(way: int): void {
         halt();
         resting.stop();
         leaving.stop();
         movingTo = null;
-        movingFrom = was;
         moving = plan(way, { x: place.x, y: place.y }, null);
         shown = [];
         costs = [];
@@ -293,15 +290,11 @@ PanelWindow {
             window.FramePresentation.ask();
     }
 
-    // A move's plan from `from` to its seat `to`, or only its ride where
-    // `to` is null, over a workspace's height and niri's gap between
-    // two, a tenth of the screen's height in whole device pixels, as
-    // niri's monitor.rs lays them, and over the windows of both.
+    // A move's plan from `from` to its seat `to` over the new workspace's
+    // windows, or only its hold through the slide where `to` is null.
     function plan(way: int, from: var, to: var): var {
-        const gap = Math.max(1, Math.round(modelData.height * 0.1 * ratio)) / ratio;
         return Paths.moves(from, to, {
             way,
-            step: modelData.height + gap,
             wide: size,
             tall: size,
             air: cell,
@@ -314,24 +307,23 @@ PanelWindow {
             spring: Theme.motion.spring,
             ahead: MarginCat.behind(frameMs, "slide"),
             frame: frameMs,
-            was: tilesOf(movingFrom),
             now: tilesOf(space?.id),
             marks: marksLit
         });
     }
 
-    // Where a move goes as niri says the new workspace's columns: on
-    // the ride, its way found again each time niri says any, since
-    // none of the ride depends on them; once it's on its way, a seat
+    // Where a move goes as niri says the new workspace's columns: as it
+    // holds, its way found again each time niri says any, since none of
+    // the hold depends on them; once it's on its way, a seat
     // moved or the keys gone to another window cut it short, and it
     // walks on from where it's got to (cut()).
     function steer(): void {
         if (there === null)
             return;
-        const riding = mover.elapsedTime * 1000 + moving.ahead < moving.beats[0].ends;
+        const holding = mover.elapsedTime * 1000 + moving.ahead < moving.beats[0].ends;
         const same = Math.round(there.x * ratio) === Math.round(moving.to.x * ratio)
             && Math.round(there.y * ratio) === Math.round(moving.to.y * ratio);
-        if (riding) {
+        if (holding) {
             movingTo = wanted;
             moving = plan(moving.way, moving.from, { x: there.x, y: there.y });
         } else if (movingTo === null || wanted !== movingTo || !same) {
@@ -339,14 +331,13 @@ PanelWindow {
         }
     }
 
-    // A move cut short past its ride, the keys gone to another window
+    // A move cut short past its hold, the keys gone to another window
     // or its seat moved: on from wherever it's got to, as a walk, so
     // it's never put anywhere it didn't get to (WCJQSG 2bd7c7c6).
     function cut(): void {
         tell("move");
         mover.stop();
         moving = null;
-        movingFrom = null;
         movingTo = null;
         // No halt(): its pose and facing carry into the walk, never a
         // frame of it sitting between.
@@ -359,7 +350,6 @@ PanelWindow {
         tell("move");
         mover.stop();
         moving = null;
-        movingFrom = null;
         movingTo = null;
         turn = 0;
         halt();
@@ -373,11 +363,11 @@ PanelWindow {
         if (was === null || space === null || was.id === space.id)
             return;
         const way = Math.sign(space.idx - was.idx);
-        // A move begun on a move under way rides on from where it's got
-        // to, rather than being put on its seat first.
+        // A move begun on a move under way holds where it's got to,
+        // rather than being put on its seat first.
         if (place !== null && way !== 0 && !window.scene.asleep && !Niri.overview
             && !window.scene.shared)
-            moveFrom(way, was.id);
+            moveTo(way);
         else if (moving !== null)
             arrive();
     }
@@ -602,8 +592,8 @@ PanelWindow {
         id: mover
         onTriggered: {
             const now = Paths.frame(window.moving, mover.elapsedTime * 1000);
-            // A ride with no column at its end leaves it nowhere, as
-            // moving to an empty workspace did before it rode.
+            // A hold with no column at its end leaves it nowhere, as
+            // an empty workspace has no seat for it.
             if (now.done
                 || (now.beat !== window.moving.beats[0].name && window.movingTo === null)) {
                 window.arrive();

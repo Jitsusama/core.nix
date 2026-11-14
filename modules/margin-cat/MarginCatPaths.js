@@ -229,51 +229,6 @@ function arrives(way, to) {
     holds(way, "lands", MarginCat.LANDS);
 }
 
-// Down a workspace: off the old one's windows (`was`) the way
-// Routes.off finds, toward its seat, down a column's side to its bottom,
-// and a drop from there straight down onto what's under it on the new one
-// (`now`, Falls.under): a column's top where one is, and clear of the
-// marks where it can be, or the screen's bottom. Never across the air
-// between them, as a cat can't (Joel, 2026-11-13 17:22, by WCJQSG
-// fc3f716a: "it would not be able to drop down near the center of a
-// window below"). With nothing under the side it hangs on, it pushes
-// off the wall onto the near edge of a window a cat's width across, as a
-// falling cat grabs a corner (Falls.grabbed), never further in. Standing
-// on none of them, it drops from where it is. Where it lands, as
-// Falls.under says.
-function down(way, was, now, to) {
-    const at = way.at;
-    const goal = to.x + at.wide / 2;
-    const lit = at.marks;
-    const clear = spot => !lit || !Routes.inMarks(spot, lit.each / 4, at);
-    const lands = spot => clear(spot) && now.some(column => spot < column.right
-        && spot + at.wide > column.left);
-    const near = spot => clear(spot) && Falls.pushes(spot, now, at, clear) !== null;
-    const toward = { x: to.x, y: way.y };
-    const stops = [lands, near, clear, null].reduce((found, where) => found
-        ?? Routes.off(way, was, at, { toward, down: true, lands: where }), null);
-    if (stops !== null) {
-        follows(way, stops, was, null);
-    }
-    const above = { x: way.x, y: -at.tall - at.cell };
-    const x = Falls.under(above, now, at).kind !== "floor" ? way.x
-        : Falls.pushes(way.x, now, at, clear) ?? way.x;
-    const onto = Falls.under({ x, y: above.y }, now, at);
-    way.turn = 0;
-    way.facing = Math.sign(goal - (x + at.wide / 2)) || way.facing;
-    // It lets go, falling out of sight to just above the screen's top,
-    // clear of the window it hung on, and from there falls in, so all of
-    // its fall that's seen is a fall, no faster than a dropped thing falls
-    // however far that is.
-    Ways.leap(way, above, 0, "drops");
-    Ways.falls(way, { x, y: onto.y }, "drops");
-    holds(way, "lands", MarginCat.LANDS);
-    if (onto.kind === "floor") {
-        holds(way, "shakes", Falls.SHAKES);
-    }
-    return Object.assign({}, onto, { how: "stands" });
-}
-
 // Along a route's `stops` (MarginCatRoutes.js) over `now`'s columns from
 // the first, where it is, past the `lit` marks: up and down sides, along
 // ledges and tops, over edges and across gaps with a leap.
@@ -349,33 +304,6 @@ function seats(way, to, now, lit) {
     arrives(way, to);
 }
 
-// Up a workspace, between `worlds`: up onto a top of the old one's
-// windows (`was`, the one it rode on its `home`), the way
-// Routes.off finds, then off it, up across the gap between workspaces
-// onto the side of a column on the new one (`now`), and on up the way
-// Routes.up finds through its windows: up a side, over onto a ledge and
-// along it, across the gap to the next column with a leap, and over a
-// top. Null where it finds none, no side being on the screen.
-function up(way, worlds, to) {
-    const { home, was, now } = worlds;
-    const at = way.at;
-    const stops = Routes.up({ x: way.x, y: at.height }, to, now, at);
-    if (stops === null) {
-        return null;
-    }
-    const climbs = Routes.off(way, was, at, { toward: { x: stops[0].x, y: way.y }, down: false });
-    if (climbs !== null) {
-        follows(way, climbs, was, null);
-    }
-    const top = climbs === null ? home : was[climbs[climbs.length - 1].c];
-    const first = stops[0];
-    along(way, Math.min(Math.max(first.x, top.left), top.right - at.wide), [top], null);
-    holds(way, "crouches", MarginCat.CROUCHES);
-    comesUp(way, first);
-    follows(way, stops, now, at.marks);
-    return stops;
-}
-
 // From under the screen up onto the side a route up begins on (`first`):
 // out of sight to just under the screen's bottom, and from there up onto
 // the column's side, so all of its leap that's seen is one.
@@ -399,15 +327,26 @@ function comesUp(way, first) {
 // an edge or falls (MarginCatFalls.js), and sets off from there. Null
 // where it's already there, to the screen's pixel.
 function walk(from, to, at) {
-    const pixel = one => Math.round(one * at.ratio);
-    if (pixel(from.x) === pixel(to.x) && pixel(from.y) === pixel(to.y)) {
+    if (there(from, to, at)) {
         return null;
     }
+    return Ways.timed(onward(Ways.begun(at, from), to, at));
+}
+
+// Whether `from` is `to`, to the screen's pixel.
+function there(from, to, at) {
+    const pixel = one => Math.round(one * at.ratio);
+    return pixel(from.x) === pixel(to.x) && pixel(from.y) === pixel(to.y);
+}
+
+// A walk's legs onto `way`, from wherever it has got to, over `at`'s
+// `cols`, as walk() says.
+function onward(way, to, at) {
     const cols = at.cols ?? [];
     const level = place => (Routes.standing(cols, place, at)?.row ?? 0) === 0;
+    const legs = way.legs.length;
     // Off the tops, to or from a window stacked under another, it finds
     // its way there, setting off the way its route first goes.
-    const way = Ways.begun(at, from);
     let start = Falls.settle(way, cols, at);
     if (start.kind === "perched") {
         way.turn = 0;
@@ -424,7 +363,7 @@ function walk(from, to, at) {
             comesUp(way, stops[0]);
         }
     }
-    const fell = way.legs.length > 0;
+    const fell = way.legs.length > legs;
     const dir = Math.sign((stops?.[1] ?? to).x - way.x) || at.facing || 1;
     if (!at.hurried || at.facing !== dir) {
         way.facing = dir;
@@ -439,58 +378,33 @@ function walk(from, to, at) {
         follows(way, stops, cols, at.marks);
     }
     seats(way, to, cols, at.marks);
-    return Ways.timed(way);
+    return way;
 }
 
-// A move between workspaces, `way` 1 to the one below and -1 above, a
-// workspace's `step` apart (its height and niri's gap). Through niri's
-// slide it stays on its old column, moving with it exactly as the world
-// moves (MarginCat.slid), off the screen's top or bottom. Then it finds
-// its way to its seat `to` on the new workspace's columns (`now`, tiles as
-// columns() takes them) from the old one's (`was`): down its old column's
-// side and a drop, or up through the new one's windows (up()); then along
-// the tops to its seat, as a walk goes. With nowhere to go, `to` null or
-// no way up, it only rides: its frames `ahead` ms in, as late as it hears
-// (MarginCat.behind), a frame more carried up, and caught up (Ways.rides).
+// A move between workspaces, `way` 1 to the one below and -1 above. Through
+// niri's slide it holds its ground, seated on the glass as the bar is while
+// the world slides under it, rather than riding its window off the screen
+// and coming back in somewhere else, which read as a teleport, and which
+// the shell, hearing of a slide when niri is half done, could never keep in
+// step with (VKCF3Z 4138e938, 4d18ade4). Once the slide settles it walks to
+// its seat `to` on the new workspace's columns (`now`, tiles as columns()
+// takes them) from where it held, as any walk does: on the ledge under it,
+// as on a tiled workspace, whose tops land where the old ones were; out of
+// a window's face the nearest way, never down through it; or a fall onto
+// what's under it from the air. With nowhere to go, `to` null, it only
+// holds. Its frames are `ahead` ms in, as late as it hears
+// (MarginCat.behind), so the walk sets off as niri's slide stops.
 function moves(from, to, at) {
-    const slow = at.slowdown ?? 1;
-    const spring = Object.assign({}, at.spring, { slowdown: slow });
-    const dy = -at.way * at.step;
+    const spring = Object.assign({}, at.spring, { slowdown: at.slowdown ?? 1 });
     const ahead = (at.ahead ?? 0) + (at.way > 0 ? at.frame ?? 0 : 0);
     const way = Ways.begun(at, from);
-    Ways.rides(way, { x: from.x, y: from.y + dy }, { ms: MarginCat.slides(spring), late: ahead,
-        edge: t => MarginCat.slid(t, spring), away: at.way < 0, frame: at.frame,
-        room: at.height === undefined ? Number.POSITIVE_INFINITY : from.y + at.step - at.height });
-    const was = columns(at.was, dy);
+    Ways.leg(way, "rides", from, { ms: MarginCat.slides(spring), slide: () => 0,
+        posed: () => null });
     const now = columns(at.now, 0);
-    const rides = () => Object.assign(Ways.timed(way), { way: at.way, ahead });
-    if (to === null || now.length === 0) {
-        return rides();
+    if (to !== null && now.length > 0 && !there(from, to, at)) {
+        onward(way, to, Object.assign({}, at, { cols: now, hurried: false }));
     }
-    const home = under(was, from.x, at.wide) ?? {
-        left: from.x, right: from.x + at.wide, top: from.y + dy + at.tall + at.air,
-        bottom: from.y + dy + at.step, rows: []
-    };
-    const legs = way.legs.length;
-    holds(way, "thinks", at.pause ?? 0);
-    if (at.way > 0) {
-        const onto = down(way, was, now, to);
-        // Up from the screen's bottom it fell to, or off the top it
-        // dropped onto to a window stacked under another.
-        const tops = (Routes.standing(now, to, at)?.row ?? 0) === 0;
-        const stops = onto.kind === "floor" ? Routes.route(onto, to, now, at)
-            : tops ? null : Routes.between(way, to, now, at);
-        if (stops !== null) {
-            follows(way, stops, now, at.marks);
-        }
-    } else if (up(way, { home, was, now }, to) === null) {
-        way.legs.length = legs;
-        way.x = from.x;
-        way.y = from.y + dy;
-        return rides();
-    }
-    seats(way, to, now, at.marks);
-    return rides();
+    return Object.assign(Ways.timed(way), { way: at.way, ahead });
 }
 
 // Where a way has it `t` ms in (MarginCatWays.js's frame), and a move as
