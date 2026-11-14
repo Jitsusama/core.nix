@@ -90,7 +90,7 @@ function falls(way, to, name) {
     const seconds = ground <= speed.reaches ? Math.sqrt((2 * ground) / speed.gravity)
         : speed.until + (ground - speed.reaches) / speed.most;
     const ms = Math.max(LEAPS_AT_LEAST, seconds * MarginCat.MS);
-    leg(way, "falls", to, { name: name ?? "falls", pose: "leaping", speed, ms });
+    leg(way, "falls", to, { name: name ?? "falls", pose: "falling", speed, ms });
 }
 
 // A fall's speed: its gravity and the fastest it falls, in pixels a
@@ -151,7 +151,7 @@ function rides(way, to, ride) {
         slide = t => (ground * edge(t) - behind(t)) / ground;
         if (lifts !== null && lands - lifts >= SHOWN) {
             const crouches = ms - lands >= SHOWN ? lands + MarginCat.LANDS : lands;
-            posed = t => t >= lifts && t < lands ? "leaping"
+            posed = t => t >= lifts && t < lands ? "falling"
                 : t >= lands && t < crouches ? "pouncing" : null;
         }
     }
@@ -248,6 +248,23 @@ function timed(way) {
     return { from, to: { x: way.x, y: way.y }, facing: way.facing, stride, beats, ends };
 }
 
+// A leap's pose `ms` into it, `whole` ms long, `peak` its share of the way
+// at the top: the stretched drawing rising, tucked about the top for a
+// fifth of it and never less than SHOWN, then reaching down, each pose seen
+// at least SHOWN or folded into the tuck (RSCH-20261113-24R2QV, finding 3).
+function aloft(ms, whole, peak) {
+    const tuck = Math.min(whole, Math.max(SHOWN, whole / 5));
+    let tucks = Math.min(Math.max(0, peak * whole - tuck / 2), whole - tuck);
+    let untucks = tucks + tuck;
+    if (tucks < SHOWN) {
+        tucks = 0;
+    }
+    if (whole - untucks < SHOWN) {
+        untucks = whole;
+    }
+    return ms < tucks ? "leaping" : ms < untucks ? "tucked" : "falling";
+}
+
 // Where a way has it `t` ms in: its `x` and `y`, the top left of its box;
 // its `pose` by the theme's name, or null for its own as it rides; its
 // `turn`, a quarter turn clockwise (1) or back (-1) as it climbs; the way
@@ -279,18 +296,20 @@ function frame(route, t) {
     }
     const x = from.x + (to.x - from.x) * s;
     let y = from.y + (to.y - from.y) * s;
+    let leaps = null;
     if (beat.kind === "leaps") {
         // A parabola through both ends and its apex, as a thing thrown.
         const rise = Math.sqrt(Math.max(0, from.y - beat.apex));
         const fall = Math.sqrt(Math.max(0, to.y - beat.apex));
         const peak = rise + fall === 0 ? 0.5 : rise / (rise + fall);
         y = beat.apex + (rise + fall) ** 2 * (p - peak) ** 2;
+        leaps = aloft(t - beat.begins, beat.ends - beat.begins, peak);
     }
     const strides = STRIDING[beat.kind];
     const ground = Math.abs(x - from.x) + Math.abs(y - from.y);
     const stepped = beat.bounds > 0 ? Math.floor(2 * beat.bounds * p)
         : Math.floor(ground / beat.stride);
     const pose = strides ? strides[stepped % 2]
-        : beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
+        : leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
     return { x, y, pose, turn: beat.turn, facing: beat.facing, beat: beat.name, done: false };
 }
