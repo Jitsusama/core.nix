@@ -90,6 +90,14 @@ QtObject {
         expect("one hosted here keeps the words to view it",
             JSON.stringify(hosted.attach) === JSON.stringify(viewing),
             JSON.stringify(hosted));
+        // And asleep in the host, since viewing it is what wakes it there.
+        const sleeping = Pi.sorted({ "session:s-host": { state: "ended", standing: "parked",
+            here: true, at: "2026-11-08T01:00:00Z", attach: viewing,
+            presence: presence("s-host", "A009", { state: "parked",
+                hosted: { host: "work-background", conversation: "s-host" } }) } }).resting[0];
+        expect("one asleep in the host keeps the words to view it",
+            JSON.stringify(sleeping?.attach) === JSON.stringify(viewing),
+            JSON.stringify(sleeping));
 
         const records = Pi.sessions(sorted, "skiff");
         const of = id => records.find(one => one["gen_ai.conversation.id"] === id);
