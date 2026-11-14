@@ -26,6 +26,7 @@ mod network;
 mod open;
 mod plans;
 mod readings;
+mod repository;
 mod responds;
 pub mod review;
 mod served;
