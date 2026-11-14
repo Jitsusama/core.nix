@@ -29,6 +29,9 @@ httparse = "1"
 graphql-parser = "0.4"
 # GraphQL's bodies, the mutation list, and the control socket's lines.
 serde_json = "1"
+# A review's body read key by key, so a second "event" can't hide behind
+# the first (src/judge.rs).
+serde = "1"
 # The process on a client's end of a socket, for the session it claims
 # (src/peer.rs).
 libc = "0.2"

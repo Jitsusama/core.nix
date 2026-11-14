@@ -318,6 +318,7 @@ dependencies = [
  "libc",
  "rcgen",
  "rustls",
+ "serde",
  "serde_json",
  "tempfile",
  "terminal-kit",

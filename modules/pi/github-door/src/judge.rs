@@ -6,11 +6,13 @@
 //! secrets, hooks, authorizations, applications, installations, or
 //! actions' secrets and variables. Writes pass only to issues and their
 //! comments, labels and reactions, pull requests other than their
-//! opening, their reviews and review comments, GraphQL mutations on the
-//! list (src/graphql.rs), and git's fetch. Branch protection and rulesets
-//! may be read, never written. A push, a pull request opened and a merge
-//! are refused naming the route that does them; every other write is
-//! refused as not allowed.
+//! opening, their pending or commenting reviews and review comments,
+//! GraphQL mutations on the list (src/graphql.rs), and git's fetch.
+//! Branch protection and rulesets may be read, never written. A
+//! repository's own label is never deleted, since that takes it off every
+//! issue. A push, a pull request opened, a merge and a review's verdict
+//! (an approval, changes requested, a dismissal) are refused naming the
+//! route that does them; every other write is refused as not allowed.
 
 use crate::graphql::{self, Carried};
 use crate::said::{Refusal, Seen, Why};
@@ -21,6 +23,11 @@ const PUSH_ROUTE: &str = "push through the work tool (work push)";
 const PROPOSE_ROUTE: &str = "open a pull request with review_offer propose";
 /// The route for a merge.
 const MERGE_ROUTE: &str = "merge with review_offer merge";
+/// The route for a review's verdict.
+const VERDICT_ROUTE: &str = "review through the review tools (review_draft), outside the fence";
+/// The one event a review sent from inside may carry, beside none at all,
+/// which leaves it pending.
+const COMMENTING: &str = "COMMENT";
 
 /// The segments that mark credentials wherever a resource is named.
 const CREDENTIALS: [&str; 19] = [
@@ -334,6 +341,13 @@ fn repo_write(call: &Call<'_>, rest: &[String]) -> Result<(), Refusal> {
             format!("a branch merged; {MERGE_ROUTE}"),
         ));
     }
+    if is(first, "labels") && method == "DELETE" {
+        return Err(Refusal::new(
+            Why::NotAllowed,
+            "a repository's label deleted, which takes it off every issue; \
+             an issue's own label may be taken off",
+        ));
+    }
     if any_of(first, &["issues", "labels"]) {
         return Ok(());
     }
@@ -381,10 +395,10 @@ fn pull_write(call: &Call<'_>, rest: &[String]) -> Result<(), Refusal> {
             3 | 4 => at(2, "reactions") && matches!(method, "POST" | "DELETE"),
             _ => false,
         },
+        _ if at(1, "reviews") => return review_write(call, &rest[2..]),
         _ => {
-            // Reviewers asked, reviews and their comments, and replies.
+            // Reviewers asked, review comments, and replies.
             (at(1, "requested_reviewers") && rest.len() == 2)
-                || at(1, "reviews")
                 || (at(1, "comments") && method == "POST")
         }
     };
@@ -393,6 +407,100 @@ fn pull_write(call: &Call<'_>, rest: &[String]) -> Result<(), Refusal> {
     } else {
         Err(not_allowed(call))
     }
+}
+
+/// The verdict on a REST write under a pull request's `reviews`, given
+/// the segments after it. A review may be started, edited, commented and
+/// taken back while pending, but an approval, changes requested or a
+/// dismissal would move what a merge waits on, in the person's name.
+fn review_write(call: &Call<'_>, rest: &[String]) -> Result<(), Refusal> {
+    let method = call.method;
+    let at = |index: usize, word: &str| is(rest.get(index), word);
+    let sent = match rest.len() {
+        // A review started, pending or with its event.
+        0 => method == "POST",
+        // A pending review's text edited, or the pending review deleted.
+        1 => return passing(call, matches!(method, "PUT" | "DELETE")),
+        2 if at(1, "dismissals") => {
+            return Err(Refusal::new(
+                Why::Verdict,
+                format!("a review dismissed; {VERDICT_ROUTE}"),
+            ));
+        }
+        // A pending review submitted with its event.
+        2 if at(1, "events") => method == "POST",
+        _ => false,
+    };
+    if !sent {
+        return Err(not_allowed(call));
+    }
+    let query = call.target.split_once('?').map_or("", |(_, query)| query);
+    if query_param(query, "event").is_some() {
+        return Err(Refusal::new(
+            Why::Verdict,
+            format!("a review's event sent in its query, which isn't read; {VERDICT_ROUTE}"),
+        ));
+    }
+    let events = events_in(call.body)
+        .ok_or_else(|| Refusal::new(Why::Unreadable, "a review whose body isn't a JSON object"))?;
+    let commenting = events.iter().all(|event| {
+        event
+            .as_str()
+            .is_some_and(|event| event.eq_ignore_ascii_case(COMMENTING))
+    });
+    if commenting {
+        Ok(())
+    } else {
+        Err(Refusal::new(
+            Why::Verdict,
+            format!("a review approving or requesting changes; {VERDICT_ROUTE}"),
+        ))
+    }
+}
+
+/// Allowed, or refused as not allowed.
+fn passing(call: &Call<'_>, passes: bool) -> Result<(), Refusal> {
+    if passes {
+        Ok(())
+    } else {
+        Err(not_allowed(call))
+    }
+}
+
+/// Every `event` a JSON body's top level gives, each one where a key is
+/// given twice, since which of two GitHub keeps isn't the door's to
+/// guess. Nothing, for an empty body; `None`, for one that isn't an
+/// object.
+fn events_in(body: &[u8]) -> Option<Vec<serde_json::Value>> {
+    use serde::de::{Deserializer, MapAccess, Visitor};
+
+    struct Events;
+    impl<'de> Visitor<'de> for Events {
+        type Value = Vec<serde_json::Value>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a JSON object")
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut events = Vec::new();
+            while let Some(key) = map.next_key::<String>()? {
+                let value = map.next_value::<serde_json::Value>()?;
+                if key == "event" {
+                    events.push(value);
+                }
+            }
+            Ok(events)
+        }
+    }
+
+    if body.iter().all(u8::is_ascii_whitespace) {
+        return Some(Vec::new());
+    }
+    let mut reader = serde_json::Deserializer::from_slice(body);
+    let events = (&mut reader).deserialize_map(Events).ok()?;
+    reader.end().ok()?;
+    Some(events)
 }
 
 /// The verdict on a call to github.com: git's fetch and every read pass,
@@ -507,6 +615,11 @@ mod tests {
         passes("DELETE", Host::Api, "/repos/o/r/issues/4/sub_issue");
         passes("POST", Host::Api, "/repos/o/r/labels");
         passes("PATCH", Host::Api, "/repos/o/r/labels/bug");
+        assert_eq!(
+            why("DELETE", Host::Api, "/repos/o/r/labels/bug"),
+            Some(Why::NotAllowed),
+            "a repository's label deleted would leave every issue"
+        );
         passes("POST", Host::Api, "/repos/o/r/issues/4/reactions");
         passes(
             "DELETE",
@@ -522,13 +635,106 @@ mod tests {
         passes("PATCH", Host::Api, "/repos/o/r/pulls/4");
         passes("POST", Host::Api, "/repos/o/r/pulls/4/requested_reviewers");
         passes("POST", Host::Api, "/repos/o/r/pulls/4/reviews");
-        passes("POST", Host::Api, "/repos/o/r/pulls/4/reviews/7/events");
-        passes("PUT", Host::Api, "/repos/o/r/pulls/4/reviews/7/dismissals");
+        passes("PUT", Host::Api, "/repos/o/r/pulls/4/reviews/7");
+        passes("DELETE", Host::Api, "/repos/o/r/pulls/4/reviews/7");
         passes("POST", Host::Api, "/repos/o/r/pulls/4/comments");
         passes("POST", Host::Api, "/repos/o/r/pulls/4/comments/8/replies");
         passes("PATCH", Host::Api, "/repos/o/r/pulls/comments/8");
         passes("DELETE", Host::Api, "/repos/o/r/pulls/comments/8");
         passes("POST", Host::Api, "/repos/o/r/pulls/comments/8/reactions");
+    }
+
+    fn reviewed(target: &str, body: &[u8]) -> Option<Why> {
+        judge(
+            &Call {
+                method: "POST",
+                host: Host::Api,
+                target,
+                body,
+            },
+            &[],
+        )
+        .err()
+        .map(|refusal| refusal.why)
+    }
+
+    #[test]
+    fn a_pending_or_commenting_review_passes() {
+        for target in [
+            "/repos/o/r/pulls/4/reviews",
+            "/repos/o/r/pulls/4/reviews/7/events",
+        ] {
+            for body in [
+                &b""[..],
+                br#"{"body": "approve of the names"}"#,
+                br#"{"event": "COMMENT", "body": "x"}"#,
+                br#"{"event": "comment"}"#,
+            ] {
+                assert_eq!(
+                    reviewed(target, body),
+                    None,
+                    "{target} {}",
+                    String::from_utf8_lossy(body)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_review_approving_requesting_changes_or_dismissed_is_refused_with_its_route() {
+        for target in [
+            "/repos/o/r/pulls/4/reviews",
+            "/repos/o/r/pulls/4/reviews/7/events",
+            "/repositories/1/pulls/4/Reviews",
+        ] {
+            for body in [
+                &br#"{"event": "APPROVE"}"#[..],
+                br#"{"event": "request_changes", "body": "x"}"#,
+                br#"{"event": "COMMENT", "event": "APPROVE"}"#,
+                br#"{"\u0065vent": "APPROVE"}"#,
+                br#"{"event": null}"#,
+                br#"{"event": ["APPROVE"]}"#,
+            ] {
+                assert_eq!(
+                    reviewed(target, body),
+                    Some(Why::Verdict),
+                    "{target} {}",
+                    String::from_utf8_lossy(body)
+                );
+            }
+        }
+        let dismissed = judged("PUT", Host::Api, "/repos/o/r/pulls/4/reviews/7/dismissals")
+            .expect_err("refused");
+        assert_eq!(dismissed.why, Why::Verdict);
+        assert!(
+            dismissed.detail.contains("review_draft"),
+            "a dismissal names the review tools"
+        );
+        assert_eq!(
+            reviewed("/repos/o/r/pulls/4/reviews?event=APPROVE", b""),
+            Some(Why::Verdict)
+        );
+    }
+
+    #[test]
+    fn a_review_whose_body_cant_be_read_is_refused() {
+        for body in [
+            &b"event=APPROVE"[..],
+            br#"[{"event": "APPROVE"}]"#,
+            br#"{"event": "COMMENT"} {"event": "APPROVE"}"#,
+            b"\x1f\x8b\x08",
+        ] {
+            assert_eq!(
+                reviewed("/repos/o/r/pulls/4/reviews", body),
+                Some(Why::Unreadable),
+                "{}",
+                String::from_utf8_lossy(body)
+            );
+        }
+        assert_eq!(
+            why("PATCH", Host::Api, "/repos/o/r/pulls/4/reviews"),
+            Some(Why::NotAllowed)
+        );
     }
 
     #[test]

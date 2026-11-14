@@ -45,6 +45,9 @@ pub enum Why {
     PullCreate,
     /// A merge, or auto-merge turned on.
     Merge,
+    /// A pull request approved, changes requested, or a review dismissed,
+    /// each of which moves what a merge waits on.
+    Verdict,
     /// Anything under tokens, keys, secrets, hooks, authorizations,
     /// applications, installations, or actions' secrets and variables.
     Credentials,
@@ -83,6 +86,7 @@ impl Why {
             Why::ReceivePack => "receive-pack",
             Why::PullCreate => "pull-create",
             Why::Merge => "merge",
+            Why::Verdict => "verdict",
             Why::Credentials => "credentials",
             Why::RepoSettings => "repo-settings",
             Why::Protection => "protection",
