@@ -689,6 +689,22 @@
       "why": "The terminal and pi each scroll back through what they showed, and each group says what holds it beside it."
     },
     {
+      "word": "github",
+      "things": [
+        "shortcuts:github",
+        "shortcuts:neovim:github"
+      ],
+      "why": "GitHub's own keys on its pages and Neovim's for GitHub are both GitHub's, and each says what holds it beside it."
+    },
+    {
+      "word": "going places",
+      "things": [
+        "shortcuts:spotify:going",
+        "shortcuts:github:going"
+      ],
+      "why": "Spotify and GitHub each go to their own places by keys, and each group says which program's it is beside it."
+    },
+    {
       "word": "lap",
       "things": [
         "lap",

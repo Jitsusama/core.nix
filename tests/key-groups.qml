@@ -432,6 +432,36 @@ QtObject {
                 "Google Calendar - roadmap - Google Slides", ["google-slides", "chrome", "desktop"]],
             // A page only mentioning one, and another program's document
             // named for one, are neither.
+            // GitHub, its own keys over Chrome's, by the marks its titles
+            // carry: a repository's code at a branch, a pull request or an
+            // issue by its number, a commit by its hash, its home with what
+            // it's for, or GitHub's own name; or by a site window's app id.
+            ["google-chrome", "core.nix/modules at main \u00B7 Jitsusama/core.nix - Google Chrome",
+                ["github", "chrome", "desktop"]],
+            ["google-chrome", "Turn It On by Jitsusama \u00B7 Pull Request #75 \u00B7 example/infra"
+                + " - Google Chrome", ["github", "chrome", "desktop"]],
+            ["google-chrome", "A Bug \u00B7 Issue #12 \u00B7 philc/vimium - Google Chrome",
+                ["github", "chrome", "desktop"]],
+            ["google-chrome", "Keep Signing \u00B7 Jitsusama/core.nix@4adde12 - Google Chrome",
+                ["github", "chrome", "desktop"]],
+            ["google-chrome", "philc/vimium: The hacker's browser. - Google Chrome",
+                ["github", "chrome", "desktop"]],
+            ["google-chrome", "Notifications \u00B7 GitHub - Google Chrome",
+                ["github", "chrome", "desktop"]],
+            ["google-chrome", "GitHub - philc/vimium: The hacker's browser. - Google Chrome",
+                ["github", "chrome", "desktop"]],
+            ["chrome-github.com__-Default", "Dashboard", ["github", "chrome", "desktop"]],
+            // A forge that names its pages as GitHub does, but for those
+            // marks, is Chrome's alone, as is a name with a slash in it
+            // and a page that only mentions GitHub.
+            ["google-chrome", "docs/guide \u00B7 example/site - Google Chrome",
+                ["chrome", "desktop"]],
+            ["google-chrome", "Pull requests \u00B7 example/site - Google Chrome",
+                ["chrome", "desktop"]],
+            ["google-chrome", "Notes/Ideas: A Plan \u00B7 Planner - Google Chrome",
+                ["chrome", "desktop"]],
+            ["google-chrome", "GitHub - Wikipedia - Google Chrome", ["chrome", "desktop"]],
+            ["org.pwmt.zathura", "A Bug \u00B7 Issue #12 \u00B7 philc/vimium", ["zathura", "desktop"]],
             ["google-chrome", "Calendar apps compared - Google Chrome", ["chrome", "desktop"]],
             ["google-chrome", "Google Docs - Wikipedia - Google Chrome", ["chrome", "desktop"]],
             ["org.pwmt.zathura", "Notes - Google Docs", ["zathura", "desktop"]],
