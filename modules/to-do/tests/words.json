@@ -19,7 +19,15 @@
         "waitedFor": "waiting {span}",
         "ended": "session ended",
         "concluded": "quest concluded",
-        "takes": "{minutes} min"
+        "takes": "{minutes} min",
+        "history": "{how} {time}",
+        "opened": "opened",
+        "cleared": "cleared",
+        "resolved": "resolved",
+        "expired": "expired",
+        "quiet": "went quiet",
+        "review": "{at} review",
+        "diff": "{at} diff"
       }
     },
     { "id": "on:waiting:since", "name": "Waiting Since" },
@@ -32,6 +40,9 @@
     { "id": "on:waiting:check", "name": "Check" },
     { "id": "on:waiting:checked", "name": "Last Checked" },
     { "id": "on:waiting:item", "name": "Item" },
+    { "id": "on:waiting:resolved", "name": "Resolved" },
+    { "id": "on:waiting:target", "name": "Target" },
+    { "id": "on:waiting:look", "name": "Look" },
     {
       "id": "verb:on:waiting:done",
       "name": "Mark It Done",
