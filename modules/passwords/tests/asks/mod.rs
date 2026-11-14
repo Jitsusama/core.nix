@@ -812,9 +812,12 @@ fn a_git_a_released_command_made_is_set_aside_and_one_long_set_aside_goes() {
     for kept in [&stale, &fresh] {
         std::fs::create_dir_all(kept.join("hooks")).unwrap();
     }
+    // The command's PATH holds only the profiles, bash's folder alone
+    // here, so mkdir is named by where it is.
     let planting = format!(
-        "mkdir -p '{tree}/a/.git' && : > '{tree}/a/.git/config' && mkdir -p '{tree}/b' \
+        "{mkdir} -p '{tree}/a/.git' && : > '{tree}/a/.git/config' && {mkdir} -p '{tree}/b' \
          && echo 'gitdir: /elsewhere' > '{tree}/b/.git'",
+        mkdir = stored_folder("mkdir").join("mkdir").display(),
         tree = tree.display()
     );
     let argv = vec![
@@ -823,6 +826,11 @@ fn a_git_a_released_command_made_is_set_aside_and_one_long_set_aside_goes() {
         planting,
     ];
     let released = release(&running, "2223456789abcdef0123456789abcdef", &argv);
+    assert_eq!(
+        released.answer["exit"], 0,
+        "the command planted nothing: {}",
+        released.answer
+    );
     for planted in ["a", "b"] {
         let folder = tree.join(planted);
         assert!(

@@ -286,11 +286,12 @@ impl Passwords {
         };
         let tree = Path::new(&ask.tree);
         let (Some(before), Some((found, aside))) = (before, gits(tree)) else {
+            let why = format!("its tree holds over {MOST_LOOKED} entries");
             eprintln!(
-                "<4>passwords: didn't look for a .git {} made: {UNLOOKED}",
+                "<4>passwords: didn't look for a .git {} made: {why}",
                 ask.id
             );
-            return vec![format!("Didn't look for a .git it made, since {UNLOOKED}.")];
+            return vec![format!("Didn't look for a .git it made, since {why}.")];
         };
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -533,9 +534,6 @@ fn history(tree: &Path) -> Vec<OsString> {
     }
     args
 }
-
-/// Why a tree's `.git`s weren't looked for.
-const UNLOOKED: &str = "its tree holds over 200000 entries";
 
 /// The names in a `.git` folder that say what later git runs there do,
 /// beside the hooks in its `hooks`.
