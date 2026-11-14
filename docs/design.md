@@ -1057,9 +1057,15 @@ off, pounced on and sent away (Joel, 2026-11-12: "bat balls of yarn and
 stuff"). A move leaps and lands as its walks do, in whole cells, each
 drawing held two frames at 60 Hz, and keeps to its window's column and
 off the marks; a pounce or the yarn thinks a moment first and walks back
-after. The yarn is drawn in the cat's cells and hue, turns a drawing for
-each two cells it rolls, slows as a rolling ball does, and fades in and
-out, never popping into or out of sight, a key cutting it short included.
+after. The yarn is drawn in the cat's cells and hue, a ball with a wound
+line across it and its loose end lying flat behind, never a strand
+standing up, which beside the bar's music reads as a note. It rolls out
+from behind its window's column's edge (or the marks', where they're
+nearer) and is sent back behind it, drawn only within that room, so it
+never appears or goes in open space; faster from further off, slowing as
+a rolling ball does, and turning a drawing for each two cells it rolls,
+or more where two would show a drawing under two frames. A key cutting
+it short fades it where it lay.
 Each beat is drawn a quarter either way, no play comes twice running, a
 key ends any at once, and it keeps still in Do Not Disturb, on a call,
 locked, and where no screen draws it. After three
