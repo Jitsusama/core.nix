@@ -808,7 +808,7 @@ Scope {
             verb: "go to",
             stays: true,
             weight: 1,
-            prepared: Fuzzy.prepare(""),
+            prepared: Fuzzy.kept(""),
             keywords: withSynonyms(named(source)).keywords,
             named: true
         });
@@ -2227,11 +2227,14 @@ Scope {
         const says = sidesOf(source);
         const row = Object.assign(whole(source, false, false), { weight: source.weight },
             says.side !== null ? says : {});
-        row.prepared = Fuzzy.prepare(row.name);
+        // Made again at each joining, as daemons answer while it opens, so
+        // its words are the ones made ready before (Fuzzy.kept), which
+        // stay the same while it's called the same.
+        row.prepared = Fuzzy.kept(row.name);
         // With the other words the vocabulary gives it, as "eero", the
         // name on the Home Network's boxes, finds the place rather than a
         // node whose model says it.
-        row.keywords = Fuzzy.prepare([row.name, collection.noun]
+        row.keywords = Fuzzy.kept([row.name, collection.noun]
             .concat(Words.of(source.settings.name).words ?? []).join(" "));
         // Its words are what a person calls it, so they count as its name.
         row.named = true;
@@ -3490,10 +3493,12 @@ Scope {
     // for it (jitsusama.quickshell.launcher.synonyms), so a habit of Joel's
     // finds it. Made once for each row, and never twice for the same one.
     function withSynonyms(row) {
-        const more = (Providers.launcher.synonyms[row.key] ?? []).concat(oldNames(row));
-        if (more.length === 0 || row.synonymised)
+        if (row.synonymised)
             return row;
-        row.keywords = Fuzzy.prepare([row.keywords ? row.keywords.text : ""].concat(more)
+        const more = (Providers.launcher.synonyms[row.key] ?? []).concat(oldNames(row));
+        if (more.length === 0)
+            return row;
+        row.keywords = Fuzzy.kept([row.keywords ? row.keywords.text : ""].concat(more)
             .join(" ").trim());
         row.synonymised = true;
         return row;

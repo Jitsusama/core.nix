@@ -14,8 +14,47 @@ const LATELY_DAYS = 6;
 // How wide a clock's hours and minutes are written.
 const DIGITS = 2;
 
+// The days whose midnights have been worked out lately, each from its
+// midnight to the next, so a row's day is found among them rather than
+// worked out again. Working one out takes the engine's local time, and
+// glibc looks at the zone's file for each (tzset stats /etc/localtime
+// while TZ is unset): 20 ms of Joel's 8 openings from 09:18 to 09:30 on
+// 2026-11-14 went there, as each drawn place's rows said their days
+// again. They're forgotten once a minute is up, so a zone the laptop
+// moves into (clock-follows) is followed within one.
+const DAYS_KEPT = 8;
+let daysKept = [];
+let daysKeptSince = 0;
+let daysWorkedOut = 0;
+
 function midnight(date) {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    const time = date.getTime();
+    const now = Date.now();
+    if (now - daysKeptSince >= MINUTE || now < daysKeptSince) {
+        daysKept = [];
+        daysKeptSince = now;
+    }
+    const kept = daysKept.find(one => time >= one.from && time < one.to);
+    if (kept !== undefined) {
+        return kept.from;
+    }
+    const [year, month, dayOfMonth] = [date.getFullYear(), date.getMonth(), date.getDate()];
+    const from = new Date(year, month, dayOfMonth).getTime();
+    daysWorkedOut += 1;
+    if (Number.isNaN(from)) {
+        return from;
+    }
+    if (daysKept.length >= DAYS_KEPT) {
+        daysKept.shift();
+    }
+    daysKept.push({ from, to: new Date(year, month, dayOfMonth + 1).getTime() });
+    return from;
+}
+
+// How many midnights have been worked out rather than found kept, so a
+// case can tell a day found again from one worked out.
+function midnightsWorkedOut() {
+    return daysWorkedOut;
 }
 
 // How many days before `now` a moment's day is, by the calendar, so a
