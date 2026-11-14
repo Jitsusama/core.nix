@@ -10,10 +10,15 @@
 //! network's own traffic too, so its very busiest minutes aren't the
 //! connection's. Its added delay is each second's own delay over its
 //! reflectors' least, as the controller reads it (src/replay.rs): out for
-//! the upload, back for the download. Whether the shaper was on comes from
+//! the upload, back for the download. Each is also given with the Wi-Fi
+//! hop's own queue taken off, the gateway's rise as the controller reads
+//! it (src/oneway.rs's `Air`), since no cut of ours drains that one; what
+//! is left is the delay the shaper answers for, with the connection's past
+//! the gateway. Whether the shaper was on comes from
 //! its unit's jobs in the journal, so a day reads the same with it on and
 //! off, and the two are told apart.
 
+use crate::oneway::Air;
 use crate::rate::{float, whole};
 use crate::record;
 use crate::replay::{self, Sample};
@@ -62,10 +67,16 @@ pub struct Delay {
 
 /// A direction under load, over some of the day's minutes.
 #[derive(Clone, Debug, PartialEq, Serialize)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "the day file's readers hold to loaded_minutes"
+)]
 pub struct Loaded {
     pub loaded_minutes: usize,
     /// None when no second under load heard a reflector.
     pub added_delay_ms: Option<Delay>,
+    /// The same seconds' added delay less the Wi-Fi hop's own queue.
+    pub added_delay_less_air_ms: Option<Delay>,
 }
 
 /// A direction under load over the day, and with the shaper on and off.
@@ -79,6 +90,8 @@ pub struct Way {
     /// Whether the day's added delay under load kept to the bar; None when
     /// nothing was under load.
     pub meets_bar: Option<bool>,
+    /// Whether the added delay less the air kept to the bar.
+    pub meets_bar_less_air: Option<bool>,
 }
 
 /// The bars, as the file states them.
@@ -128,6 +141,7 @@ struct Minute {
     kbit: [f64; 2],
     seconds: u64,
     delay: [Vec<f64>; 2],
+    less_air: [Vec<f64>; 2],
 }
 
 impl Minute {
@@ -155,20 +169,27 @@ fn loaded(
     keep: impl Fn(u64) -> bool,
 ) -> Loaded {
     let mut count = 0;
-    let mut delays = Vec::new();
+    let (mut delays, mut less_air) = (Vec::new(), Vec::new());
     for minute in minutes.iter().filter(|&(&at, _)| keep(at)).map(|(_, m)| m) {
         if minute.mean(way) >= LOADED * full {
             count += 1;
             delays.extend(minute.delay[way].iter().copied());
+            less_air.extend(minute.less_air[way].iter().copied());
         }
     }
-    let delays = sorted(delays);
     Loaded {
         loaded_minutes: count,
-        added_delay_ms: rank(&delays, 0.5)
-            .zip(rank(&delays, 0.9))
-            .map(|(p50, p90)| Delay { p50, p90 }),
+        added_delay_ms: delay(delays),
+        added_delay_less_air_ms: delay(less_air),
     }
+}
+
+/// The median and 90th percentile of some delays, or None of none.
+fn delay(values: Vec<f64>) -> Option<Delay> {
+    let values = sorted(values);
+    rank(&values, 0.5)
+        .zip(rank(&values, 0.9))
+        .map(|(p50, p90)| Delay { p50, p90 })
 }
 
 fn way(minutes: &BTreeMap<u64, Minute>, way: usize, on: &dyn On) -> Way {
@@ -177,16 +198,14 @@ fn way(minutes: &BTreeMap<u64, Minute>, way: usize, on: &dyn On) -> Way {
         .unwrap_or(0.0)
         .max(FULL_LEAST_KBIT);
     let all = loaded(minutes, way, full, |_| true);
-    let meets_bar = all
-        .added_delay_ms
-        .as_ref()
-        .map(|d| d.p90 <= ADDED_DELAY_P90_MS);
+    let meets = |d: Option<&Delay>| d.map(|d| d.p90 <= ADDED_DELAY_P90_MS);
     Way {
         full_kbit: full.round(),
         shaper_on: loaded(minutes, way, full, |m| on.on(m)),
         shaper_off: loaded(minutes, way, full, |m| !on.on(m)),
+        meets_bar: meets(all.added_delay_ms.as_ref()),
+        meets_bar_less_air: meets(all.added_delay_less_air_ms.as_ref()),
         all,
-        meets_bar,
     }
 }
 
@@ -214,8 +233,15 @@ pub fn summarise(
         }
     });
     let mut minutes: BTreeMap<u64, Minute> = BTreeMap::new();
+    let mut air = Air::default();
+    let mut last_ms: Option<u64> = None;
     replay::seconds(counted, |began_ms, second| {
         let at = began_ms + whole(second.t_s * 1_000.0);
+        // The air's baseline is followed from before midnight too, as the
+        // reflectors' least is.
+        let dt = last_ms.map_or(0.0, |last| float(at.saturating_sub(last)) / 1_000.0);
+        last_ms = Some(at);
+        let air_ms = air.delay(second.gateway_ms, dt);
         if !inside(at) {
             return;
         }
@@ -225,6 +251,9 @@ pub fn summarise(
         minute.seconds += 1;
         minute.delay[0].extend(second.up_delay_ms);
         minute.delay[1].extend(second.down_delay_ms);
+        let less = |d: f64| (d - air_ms).max(0.0);
+        minute.less_air[0].extend(second.up_delay_ms.map(less));
+        minute.less_air[1].extend(second.down_delay_ms.map(less));
     });
     let never = Never;
     let shaper: &dyn On = on.unwrap_or(&never);
@@ -572,6 +601,63 @@ mod tests {
         assert_eq!(
             got.down.meets_bar, None,
             "nothing to hold down to: {:?}",
+            got.down
+        );
+    }
+
+    #[test]
+    fn the_wi_fi_hops_rise_is_told_apart_from_the_added_delay() {
+        // As on 13 and 14 November: downloads queued at the access point,
+        // the gateway's round trip rising with the delay coming down.
+        // Ten minutes downloading 50 Mbit/s with 45 ms back, the gateway
+        // up from 4 ms to 44, after a quiet minute that heard the least.
+        // Between bursts the gateway answers at its least, here one second
+        // in twenty, which keeps the air's baseline where it was.
+        let mut samples = vec![Sample::Pool {
+            at: 0,
+            network: Some("home".into()),
+            link: None,
+        }];
+        let mut rx = 0;
+        for s in 0..660 {
+            let quiet = s < 60;
+            rx += if quiet { 0 } else { 50_000 * 1_000 / 8 };
+            samples.push(Sample::Stamp {
+                at: s * 1_000 + 500,
+                reflector: REFLECTOR,
+                out: 10.0,
+                back: if quiet { 10.0 } else { 55.0 },
+                rx,
+                tx: 0,
+            });
+            samples.push(Sample::Gateway {
+                at: s * 1_000 + 700,
+                rtt: if quiet || s % 20 == 0 { 4.0 } else { 44.0 },
+                rx,
+                tx: 0,
+            });
+        }
+        let got = day(samples, 660_000, None);
+        let all = got.down.all.added_delay_ms.clone().expect("a delay");
+        assert!(
+            (44.0..=46.0).contains(&all.p90),
+            "the delay felt coming down: {all:?}"
+        );
+        let past = got
+            .down
+            .all
+            .added_delay_less_air_ms
+            .clone()
+            .expect("a delay less the air");
+        // The gateway's 40 ms rise, less its 8 ms of jitter, is the air's.
+        assert!(
+            (12.0..=15.0).contains(&past.p90),
+            "the delay past the Wi-Fi hop: {past:?}"
+        );
+        assert_eq!(
+            (got.down.meets_bar, got.down.meets_bar_less_air),
+            (Some(false), Some(true)),
+            "over the bar, but not for what's past the air: {:?}",
             got.down
         );
     }
