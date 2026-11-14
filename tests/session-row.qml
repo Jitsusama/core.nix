@@ -233,6 +233,11 @@ QtObject {
         Landed.landedSide(landedSides, "2026-11-07T11:19:00Z", "2026-11-08", counted);
         if (worked !== 3)
             failures.push(`a landing's side kept past its day: worked ${worked} times`);
+        const talking = [{ at: "2026-11-07T11:19:00Z", saying: "replying" },
+            { at: "2026-11-07T11:19:00Z", saying: "" }, { at: "2026-11-07T11:19:00Z" }]
+            .map(one => Landed.sideOf(one, landedSides, "2026-11-08", counted)).join(" | ");
+        if (talking !== "replying | yesterday | yesterday")
+            failures.push(`a landing's side while Joel's words go: "${talking}"`);
 
         // Agents' Recent is the agents daemon's (modules/agents/src/recent.rs),
         // which lists, leaves out and notes each; when one closed, at its

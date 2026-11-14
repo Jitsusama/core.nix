@@ -364,12 +364,16 @@ QtObject {
                 "B."), talkAt(17, 0, "three", "over", "C."), talkAt(16, 0, "four", "read", "D."),
                 talkAt(15, 0, "five", "replied", "E."), talkAt(14, 0, "", "delivered")];
             const saidOf = shownTalks => shownTalks.map(one => one.words);
-            Expect.same("an answer not yet heard shows first, then the newest three, none "
-                + "without words", saidOf(Session.sessionTalks([], heardTalks)),
-                ["five", "one", "two", "three"]);
-            Expect.same("one said here and not yet delivered shows first",
+            Expect.same("those served show as the daemon picked and ordered them",
+                saidOf(Session.sessionTalks([], heardTalks)),
+                ["one", "two", "three", "four", "five", ""]);
+            Expect.same("one said here the daemon hasn't served yet shows first",
                 saidOf(Session.sessionTalks([Session.toSession("six", when(20, 0))], heardTalks))[0],
                 "six");
+            Expect.same("one said here and served from its session's inbox shows once, as sent",
+                Session.sessionTalks([Session.toSession("six", when(20, 0))],
+                    [talkAt(20, 0, "six", "sent")]).map(one => one.id),
+                [`talk-${when(20, 0)}`]);
             Expect.same("one said here and delivered shows once, as served",
                 Session.sessionTalks([Session.toSession("six", when(20, 0))],
                     [talkAt(20, 0, "six", "delivered")]).map(one => one.stage), ["delivered"]);

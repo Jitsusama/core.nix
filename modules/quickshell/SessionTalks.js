@@ -6,18 +6,15 @@
 // so what's open outlives the shell. tests/talk-line.qml holds it to its cases in Qt's own
 // engine.
 //
-// A stopgap: merging what's said here with what's served, and choosing which talks show and in
-// what order, is the agents daemon's work, as the daemons are the data layer. It stays here
-// until KP0L6A's agents daemon serves each session's talks so, due Sat 2026-11-21 (Y2YBTS's
-// review of #4272), and then this file goes; a talk said but not yet recorded may stay the
-// shell's, as KP0L6A tells by Mon 2026-11-16.
+// Which talks show, and in what order, is the agents daemon's, as the daemons are the data
+// layer (modules/agents/src/inboxes.rs): each open one, then the newest few, a talk still
+// waiting in its session's inbox among them as sent. Only the words just said stay this
+// shell's, for the moment before the daemon hears them land, so Return shows them at once.
 .pragma library
 
 .import "TalkLine.js" as Said
 .import "Told.js" as Told
 
-// The stages after which a talk is done with: heard, ended, or never delivered.
-const CLOSED = ["read", "over", "failed"];
 // The stages whose reply is whole.
 const WHOLE = ["replied", "over", "read"];
 
@@ -27,21 +24,17 @@ function toSession(words, since) {
         stage: "sent", reply: "", why: "" };
 }
 
-// Whether a talk said here is the one the session's talks hold, delivered a moment after.
+// Whether a talk said here is one the daemon serves, waiting in its inbox or delivered: the
+// same words, served no earlier than said, by Told.js's slack for the harness's clock.
 function delivers(served, here) {
     return Told.talkOf([served], here.words, Date.parse(here.at)) !== null;
 }
 
-// A session's talks as the launcher shows them, each once: those served, and those said here
-// not yet delivered. Open ones, waiting or answered and not yet heard, come first and all of
-// them; then the newest of the rest, as many as the line keeps of its own.
+// A session's talks as the launcher shows them, each once: those said here that the daemon
+// hasn't served yet, newest first, then those it serves, as it picked and ordered them.
 function sessionTalks(here, served) {
-    const talks = (served ?? []).filter(one => String(one?.words ?? "") !== "");
-    const lines = talks.concat((here ?? []).filter(one => !talks.some(kept => delivers(kept,
-        one))));
-    lines.sort((one, other) => Date.parse(other.at) - Date.parse(one.at));
-    const opened = lines.filter(one => !CLOSED.includes(one.stage));
-    return opened.concat(lines.filter(one => !opened.includes(one)).slice(0, Said.KEPT_TALKS));
+    const talks = served ?? [];
+    return (here ?? []).filter(one => !talks.some(kept => delivers(kept, one))).concat(talks);
 }
 
 // How a session's talk reads under the field, in exchange()'s shape: his words, when he said
