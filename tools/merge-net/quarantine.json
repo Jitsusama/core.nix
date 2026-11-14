@@ -261,5 +261,15 @@
       "test_each_track_is_full_once_the_image_is_read"
     ],
     "test": "vm-boot-says-it-wakes-from-hibernation"
+  },
+  {
+    "at": 1794614356,
+    "commit": "5782337e6e457780754e6e5684e6c69bd92827dd",
+    "owner_pr": 4145,
+    "reason": "failed, then passed, at 5782337e6e45",
+    "subtests": [
+      "test_neovims_page_is_shot_at_each_scale"
+    ],
+    "test": "vm-desktop-looks-programs"
   }
 ]
