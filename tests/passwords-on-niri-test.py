@@ -25,6 +25,7 @@ import os
 import shlex
 import shutil
 import time
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -53,6 +54,9 @@ UNLOCKS = 2
 CHROME_GIVEN = LOGS.resolve() / "chrome-given.log"
 # The act opening an entry's website, in Chrome, where 1Password's extension fills it.
 WEBSITE = "Open the Website"
+# How long a place opened from outside is watched for asking as Joel: an ask a moment
+# after the opening reaches the stand-in in well under a second.
+QUIET = timedelta(seconds=3)
 
 
 def stand_in_chrome() -> None:
@@ -376,3 +380,32 @@ def test_a_place_opened_from_outside_the_launcher_asks_nothing_as_joel(shell: Sh
     since = asked()[before:]
     assert all(one.get("asked") is not True for one in since), f"asked as Joel: {since}"
     assert "let-in" not in asks()[before:], f"it asked to be let in: {since}"
+
+
+def test_a_place_a_terminal_or_the_catalogue_opens_asks_nothing_as_joel(shell: Shell) -> None:
+    """Passwords opened by `launcher do` or the catalogue's run asks as none, as `collection` does.
+
+    Both open a place for any process of the account's. Passwords hears it was opened inside
+    the walk today, so it lists nothing; were it told a moment later, the place would still be
+    the one told, so it would list without `asked`. Its asks are watched for a few seconds
+    after, since what's proven is that none comes.
+    """
+    walk = f"qs -p {shell.folder} ipc call -- launcher"
+    catalogue = json.loads(shell.as_account(f"{walk} list"))
+    place = next(one for one in catalogue if one["words"] == "Passwords" and one["in"] == "")
+    opens = {
+        "launcher do": f"{walk} doing {shlex.quote(json.dumps({'steps': ['Passwords']}))}",
+        "the catalogue's run": f"{walk} run {shlex.quote(place['id'])}",
+    }
+    for way, command in opens.items():
+        shell.launcher_until(lambda shown: not shown["open"])
+        before = len(asked())
+        shell.as_account(command)
+        shell.launcher_until(lambda shown: shown["held"] == ["passwords"])
+        quiet_until = time.monotonic() + QUIET.total_seconds()
+        while time.monotonic() < quiet_until:
+            since = asked()[before:]
+            assert all(one.get("asked") is not True for one in since), f"{way} asked: {since}"
+            assert "let-in" not in asks()[before:], f"{way} asked to be let in: {since}"
+            time.sleep(0.1)
+        shell.close_launcher()
