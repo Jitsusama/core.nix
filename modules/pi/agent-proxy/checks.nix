@@ -17,7 +17,7 @@
   # builders' key, started by the first ssh that asks, on a socket in a
   # folder only the account can reach, linked from where fenced commands
   # found it before, told of those hosts and of each agent behind it, or
-  # of the builders' key and the machines files lending builders; a Mac
+  # of the builders' key and root's file of the builders lent; a Mac
   # gets none.
   pi-agent-proxy-runs-only-with-machines =
     let
@@ -42,7 +42,7 @@
             {
               jitsusama.pi.agentProxy = {
                 builderKey = "/home/someone/.local/state/nix-offload/store_ed25519";
-                lentMachines = [ "/run/nix-offload/machines" ];
+                lentFiles = [ "/run/nix-offload-lines/lent" ];
                 upstreams = [ ];
               };
             }
@@ -64,7 +64,7 @@
         && lib.toList socket.Symlinks == [ "%t/pi-agent.sock" ]
         && !(lib.hasInfix "--key" start)
         && lib.hasInfix "--key /home/someone/.local/state/nix-offload/store_ed25519" lends
-        && lib.hasInfix "--lent /run/nix-offload/machines" lends
+        && lib.hasInfix "--lent /run/nix-offload-lines/lent" lends
         && !(lib.hasInfix "--upstream" lends)
         && lib.hasInfix "--upstream" start
         && lib.hasInfix "%t/agents.sock" start
@@ -84,7 +84,7 @@
   # builders' key listed first and signing a login as nix-offload to a
   # builder lent now, and no other: not as another account, not to a host
   # that isn't lent, not to a standing builder, not once a builder leaves
-  # the machines file, and no agent's key for a lent builder; an agent
+  # root's file, and no agent's key for a lent builder; an agent
   # behind that never answers given up on; and each login signed and each
   # refusal said in one line of a fixed shape, with its host, its reason
   # as a word from a fixed set, and the session the client claims.

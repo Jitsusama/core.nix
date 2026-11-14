@@ -8,9 +8,14 @@
 //! login as `nix-offload` to a lent builder, proved by the builder's own
 //! signature over the session (src/bind.rs). Which builders are lent
 //! changes as builders come and go, so their host keys are read afresh
-//! at each binding from root's machines files (`--lent`), which only
-//! nix-offload's lines account writes, once the cloud vouches for each
-//! builder's host key; a command can't write them.
+//! at each binding from root's file of the builders it vouches for now
+//! (`--lent`), which only nix-offload's lines account writes, once the
+//! cloud vouches for each builder's host key; a command can't write it.
+//! Each of its lines names one builder:
+//!
+//! ```text
+//! <lender> <instance> <key-type> <base64-key>
+//! ```
 
 use std::fs;
 use std::path::PathBuf;
@@ -22,27 +27,27 @@ use ssh_key::{PrivateKey, PublicKey};
 /// one the proxy signs a login with that key for.
 pub const ACCOUNT: &[u8] = b"nix-offload";
 
-/// What every alias nix-offload names a lent builder by starts with.
-const ALIAS: &str = "nix-offload";
+/// What every name nix-offload reaches a lent builder by starts with.
+const LENDER: &str = "nix-offload";
 
-/// The field of a machines line carrying its host key: base64 of
-/// `ssh-ed25519 KEY`, or `-`.
-const HOST_KEY_FIELD: usize = 7;
+/// The only kind of host key a lent builder is taken with.
+const ED25519: &str = "ssh-ed25519";
 
-/// Root's machines files, read afresh at each binding.
+/// Root's files of the builders it vouches for, read afresh at each
+/// binding.
 #[derive(Default)]
 pub struct Lent(Vec<PathBuf>);
 
 impl Lent {
-    /// The machines files at `files`.
+    /// The files at `files`.
     pub fn new(files: Vec<PathBuf>) -> Self {
         Lent(files)
     }
 
-    /// Whether `host` is the host key of a builder lent now: a line of a
-    /// machines file naming a nix-offload alias with exactly that ed25519
-    /// key. A file that can't be read, and a line that can't be, or that
-    /// names another kind of key, lend nothing.
+    /// Whether `host` is the host key of a builder lent now: a line of
+    /// one of the files naming a nix-offload lender with exactly that
+    /// ed25519 key. A file that can't be read, and a line of any other
+    /// shape, or naming another kind of key, lend nothing.
     pub fn lends(&self, host: &KeyData) -> bool {
         self.0.iter().any(|file| {
             fs::read_to_string(file)
@@ -51,51 +56,24 @@ impl Lent {
     }
 }
 
-/// The host key a machines line lends, when it names a nix-offload alias
-/// and an ed25519 host key that reads.
+/// The host key a line lends, when it's `<lender> <instance> ssh-ed25519
+/// <key>` with a nix-offload lender and a key that reads.
 fn lent_host(line: &str) -> Option<KeyData> {
-    let fields: Vec<&str> = line.split_whitespace().collect();
-    let uri = fields.first()?;
-    let rest = uri
-        .strip_prefix("ssh-ng://")
-        .or_else(|| uri.strip_prefix("ssh://"))?;
-    let host = rest.split('?').next()?;
-    let alias = host.rsplit('@').next()?;
-    if !alias.starts_with(ALIAS) {
+    if line.starts_with('#') {
         return None;
     }
-    let decoded = base64(fields.get(HOST_KEY_FIELD)?)?;
-    let text = String::from_utf8(decoded).ok()?;
-    let key = PublicKey::from_openssh(text.trim()).ok()?;
-    match key.key_data() {
-        KeyData::Ed25519(_) => Some(key.key_data().clone()),
+    let fields: Vec<&str> = line.split(' ').collect();
+    let [lender, instance, kind, key] = fields[..] else {
+        return None;
+    };
+    if !lender.starts_with(LENDER) || instance.is_empty() || kind != ED25519 {
+        return None;
+    }
+    let read = PublicKey::from_openssh(&format!("{kind} {key}")).ok()?;
+    match read.key_data() {
+        KeyData::Ed25519(_) => Some(read.key_data().clone()),
         _ => None,
     }
-}
-
-/// `text` decoded from standard base64, padded or not; nothing when any
-/// character isn't base64's.
-fn base64(text: &str) -> Option<Vec<u8>> {
-    let mut out = Vec::with_capacity(text.len() * 3 / 4);
-    let mut held = 0u32;
-    let mut bits = 0;
-    for byte in text.trim_end_matches('=').bytes() {
-        let value = match byte {
-            b'A'..=b'Z' => byte - b'A',
-            b'a'..=b'z' => byte - b'a' + 26,
-            b'0'..=b'9' => byte - b'0' + 52,
-            b'+' => 62,
-            b'/' => 63,
-            _ => return None,
-        };
-        held = (held << 6) | u32::from(value);
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push(u8::try_from((held >> bits) & 0xff).ok()?);
-        }
-    }
-    Some(out)
 }
 
 /// The builders' key, read from its file at each use, since the machine
@@ -136,72 +114,46 @@ impl Key {
 mod tests {
     use super::*;
 
-    const HOST: &str =
-        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJBWcxb/Blaqt1auOtE+F8QUWrUotiC5qBJ+UuEWdVCb";
-
-    fn encoded(text: &str) -> String {
-        const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let mut out = String::new();
-        for chunk in text.as_bytes().chunks(3) {
-            let mut block = [0u8; 3];
-            block[..chunk.len()].copy_from_slice(chunk);
-            let value =
-                (u32::from(block[0]) << 16) | (u32::from(block[1]) << 8) | u32::from(block[2]);
-            for at in 0..=chunk.len() {
-                let six = usize::try_from((value >> (18 - 6 * at)) & 63).expect("six bits fit");
-                out.push(char::from(ALPHABET[six]));
-            }
-            for _ in chunk.len()..3 {
-                out.push('=');
-            }
-        }
-        out
-    }
+    const KEY: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIJBWcxb/Blaqt1auOtE+F8QUWrUotiC5qBJ+UuEWdVCb";
 
     fn key() -> KeyData {
-        PublicKey::from_openssh(HOST)
+        PublicKey::from_openssh(&format!("{ED25519} {KEY}"))
             .expect("reads")
             .key_data()
             .clone()
     }
 
     #[test]
-    fn a_line_naming_a_nix_offload_alias_lends_its_host_key() {
-        let line = format!(
-            "ssh-ng://hook@nix-offload?compress=true x86_64-linux /k 16 1 big-parallel - {}",
-            encoded(HOST)
+    fn a_line_naming_a_nix_offload_lender_lends_its_host_key() {
+        let hook = format!("nix-offload offload-abc123 ssh-ed25519 {KEY}");
+        assert_eq!(
+            lent_host(&hook),
+            Some(key()),
+            "the first lender's builder is lent"
         );
-        assert_eq!(lent_host(&line), Some(key()), "the hook's builder is lent");
-        let more = format!(
-            "ssh-ng://nix-offload-vm-4 x86_64-linux /k 4 1 - - {}",
-            encoded(HOST)
-        );
-        assert_eq!(lent_host(&more), Some(key()), "a VM builder is lent");
+        let vm = format!("nix-offload-vm-4 offload-vm-4-def456 ssh-ed25519 {KEY}");
+        assert_eq!(lent_host(&vm), Some(key()), "a VM lender's builder is lent");
     }
 
     #[test]
-    fn a_standing_builder_lends_nothing() {
-        let line = format!(
-            "ssh-ng://equilibrius-linux x86_64-linux /k 4 0.5 big-parallel - {}",
-            encoded(HOST)
-        );
+    fn another_lender_lends_nothing() {
+        let line = format!("standing-builder offload-abc123 ssh-ed25519 {KEY}");
         assert_eq!(
             lent_host(&line),
             None,
-            "a machine that isn't lent is never one"
+            "a machine nix-offload doesn't lend is never one"
         );
     }
 
     #[test]
-    fn a_line_without_a_key_that_reads_lends_nothing() {
+    fn a_line_of_another_shape_lends_nothing() {
         for line in [
-            "ssh-ng://nix-offload x86_64-linux /k 4 1 - - -".to_owned(),
-            "ssh-ng://nix-offload x86_64-linux /k 4 1 - - not*base64".to_owned(),
-            format!(
-                "ssh-ng://nix-offload x86_64-linux /k 4 1 - - {}",
-                encoded("ssh-ed25519 broken")
-            ),
-            "ssh-ng://nix-offload x86_64-linux".to_owned(),
+            format!("# nix-offload offload-abc123 ssh-ed25519 {KEY}"),
+            format!("nix-offload  offload-abc123 ssh-ed25519 {KEY}"),
+            format!("nix-offload offload-abc123 ssh-ed25519 {KEY} a comment"),
+            format!("nix-offload ssh-ed25519 {KEY}"),
+            "nix-offload offload-abc123 ssh-ed25519 broken".to_owned(),
+            format!("ssh-ng://nix-offload x86_64-linux /k 4 1 - - {KEY}"),
             String::new(),
         ] {
             assert_eq!(lent_host(&line), None, "{line:?} lends nothing");
@@ -210,18 +162,29 @@ mod tests {
 
     #[test]
     fn another_kind_of_host_key_lends_nothing() {
-        let rsa = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQC7";
-        let line = format!(
-            "ssh-ng://nix-offload x86_64-linux /k 4 1 - - {}",
-            encoded(rsa)
-        );
-        assert_eq!(lent_host(&line), None, "only an ed25519 host key is lent");
+        let rsa = "nix-offload offload-abc123 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQC7";
+        assert_eq!(lent_host(rsa), None, "only an ed25519 host key is lent");
     }
 
     #[test]
-    fn base64_reads_padded_and_bare_and_refuses_strangers() {
-        assert_eq!(base64("aGk=").as_deref(), Some(&b"hi"[..]), "padded");
-        assert_eq!(base64("aGk").as_deref(), Some(&b"hi"[..]), "bare");
-        assert_eq!(base64("a-k"), None, "a character outside base64");
+    fn a_file_lends_each_of_its_builders_and_none_once_gone() {
+        let folder =
+            std::env::temp_dir().join(format!("pi-agent-proxy-lent-{}", std::process::id()));
+        fs::create_dir_all(&folder).expect("a folder for the file");
+        let file = folder.join("lent");
+        fs::write(
+            &file,
+            format!("# vouched for now\nnix-offload offload-abc123 ssh-ed25519 {KEY}\n"),
+        )
+        .expect("the file is written");
+        let lent = Lent::new(vec![file.clone()]);
+        assert!(lent.lends(&key()), "a builder the file names is lent");
+
+        fs::write(&file, "").expect("the file is emptied");
+        assert!(!lent.lends(&key()), "an empty file lends none");
+
+        fs::remove_file(&file).expect("the file is removed");
+        assert!(!lent.lends(&key()), "a missing file lends none");
+        let _ = fs::remove_dir_all(&folder);
     }
 }

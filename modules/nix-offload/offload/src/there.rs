@@ -80,6 +80,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use crate::held;
 use crate::kept;
@@ -2662,13 +2663,15 @@ pub fn reach(
     // on 8 November an agent waiting on its person stalled every lender's
     // ssh at login for 18 minutes, so each builder failed its proofs and
     // was given back. Inside pi's agent fence the key is hidden, reading
-    // empty or not at all, and the fence's own agent holds it instead and
+    // empty or refused, and the fence's own agent holds it instead and
     // signs only these logins; ssh then finds the key's public half beside
     // it and asks that agent, which answers within 5 s or is given up on.
     if let Some(key) = &lent.key {
         command.args(["-o", "IdentitiesOnly=yes"]);
-        if holds_key(Path::new(key)) {
+        if !hidden(Path::new(key)) {
             command.args(["-o", "IdentityAgent=none"]);
+        } else if let Some(host_key) = &lent.host_key {
+            vouched(Path::new(VOUCHED), alias, host_key, VOUCHED_PATIENCE)?;
         }
         command.args(["-i", key]);
     }
@@ -2683,12 +2686,66 @@ pub fn reach(
     Ok((command, known, said))
 }
 
-/// Whether `file` holds a key this process can read: not a hidden one,
-/// which reads empty or can't be opened.
-fn holds_key(file: &Path) -> bool {
-    fs::File::open(file)
-        .and_then(|opened| opened.metadata())
-        .is_ok_and(|metadata| metadata.len() > 0)
+/// Root's file of the builders it vouches for now, the only ones the
+/// fence's agent signs a builder's login for, one a line as `<lender>
+/// <instance> <key-type> <base64-key>`.
+const VOUCHED: &str = "/run/nix-offload-lines/lent";
+
+/// How long a fenced run waits for root to vouch for a builder it was
+/// just lent: root asks the cloud for the builder, its disk and its
+/// audit log first, which on 14 November took 12 s, and can take
+/// minutes.
+const VOUCHED_PATIENCE: Duration = Duration::from_secs(60);
+
+/// Wait until `file` vouches for `lender`'s builder with `host_key`, for
+/// at most `patience`, saying so; past it, why the login can't be
+/// signed. Only a run whose key is hidden waits, since only the fence's
+/// agent reads the file.
+fn vouched(file: &Path, lender: &str, host_key: &str, patience: Duration) -> Result<(), String> {
+    let wanted = format!("{lender} ");
+    let names = |text: &str| {
+        text.lines().any(|line| {
+            line.strip_prefix(&wanted)
+                .and_then(|rest| rest.split_once(' '))
+                .is_some_and(|(_, key)| key == host_key)
+        })
+    };
+    let started = std::time::Instant::now();
+    let mut said = false;
+    loop {
+        if fs::read_to_string(file).is_ok_and(|text| names(&text)) {
+            return Ok(());
+        }
+        if started.elapsed() >= patience {
+            return Err(format!(
+                "root hasn't vouched for {lender}'s builder in {} within {} s, so the fence's \
+                 agent won't sign its login",
+                file.display(),
+                patience.as_secs()
+            ));
+        }
+        if !said {
+            eprintln!(
+                "there: waiting up to {} s for root to vouch for {lender}'s builder",
+                patience.as_secs()
+            );
+            said = true;
+        }
+        // Root writes the file whole once it vouches; a second between
+        // reads costs a waiting run little and the file's reader less.
+        std::thread::sleep(Duration::from_secs(1));
+    }
+}
+
+/// Whether `file` is a key hidden from this process, as the fence hides
+/// one: it reads empty, or reading it is refused. A key that isn't there
+/// at all isn't hidden, so ssh fails on it as it always has rather than
+/// asking an agent.
+fn hidden(file: &Path) -> bool {
+    match fs::File::open(file).and_then(|opened| opened.metadata()) {
+        Ok(metadata) => metadata.len() == 0,
+        Err(error) => error.kind() == std::io::ErrorKind::PermissionDenied,
+    }
 }
 
 /// Runs `command`, unpacking the tarball it writes into `out`, and gives
@@ -5085,46 +5142,81 @@ mod tests {
         let keys = tempfile::tempdir().unwrap();
         let key = keys.path().join("store_ed25519");
         fs::write(&key, "a private key").unwrap();
+        let missing = keys.path().join("missing_ed25519");
 
-        let args = reached_with(&key);
+        for key in [key, missing] {
+            let args = reached_with(&key);
 
+            assert!(
+                args.windows(2)
+                    .any(|pair| pair == ["-o", "IdentityAgent=none"]),
+                "a key that reads, or isn't there, keeps the agent out: {args:?}"
+            );
+            assert!(
+                args.windows(2)
+                    .any(|pair| pair == ["-o", "IdentitiesOnly=yes"]),
+                "{args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_builder_root_vouches_for_is_waited_on_no_longer() {
+        let folder = tempfile::tempdir().unwrap();
+        let file = folder.path().join("lent");
+        fs::write(
+            &file,
+            "# vouched for now\nnix-offload-vm offload-vm-abc ssh-ed25519 AAAA\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            vouched(&file, "nix-offload-vm", "ssh-ed25519 AAAA", Duration::ZERO),
+            Ok(())
+        );
+        let refused = vouched(&file, "nix-offload", "ssh-ed25519 AAAA", Duration::ZERO);
         assert!(
-            args.windows(2)
-                .any(|pair| pair == ["-o", "IdentityAgent=none"]),
-            "{args:?}"
+            refused
+                .as_ref()
+                .is_err_and(|why| why.contains("nix-offload's builder")),
+            "another lender's builder isn't vouched for by this one's line: {refused:?}"
+        );
+        let other = vouched(&file, "nix-offload-vm", "ssh-ed25519 BBBB", Duration::ZERO);
+        assert!(other.is_err(), "nor is another host key: {other:?}");
+        let missing = vouched(
+            &folder.path().join("none"),
+            "nix-offload-vm",
+            "ssh-ed25519 AAAA",
+            Duration::ZERO,
         );
         assert!(
-            args.windows(2)
-                .any(|pair| pair == ["-o", "IdentitiesOnly=yes"]),
-            "{args:?}"
+            missing.is_err(),
+            "nor is anything without the file: {missing:?}"
         );
     }
 
     #[test]
     fn a_builder_whose_key_is_hidden_is_reached_through_the_agent() {
         let keys = tempfile::tempdir().unwrap();
-        let empty = keys.path().join("hidden_ed25519");
-        fs::write(&empty, "").unwrap();
-        let missing = keys.path().join("missing_ed25519");
+        let key = keys.path().join("hidden_ed25519");
+        fs::write(&key, "").unwrap();
 
-        for key in [empty, missing] {
-            let args = reached_with(&key);
+        let args = reached_with(&key);
 
-            assert!(
-                !args.iter().any(|arg| arg == "IdentityAgent=none"),
-                "a hidden key leaves the agent to sign: {args:?}"
-            );
-            assert!(
-                args.windows(2)
-                    .any(|pair| pair == ["-o", "IdentitiesOnly=yes"]),
-                "only the builders' key is offered still: {args:?}"
-            );
-            assert!(
-                args.windows(2)
-                    .any(|pair| pair[0] == "-i" && pair[1] == key.to_string_lossy()),
-                "ssh finds the key's public half beside it: {args:?}"
-            );
-        }
+        assert!(
+            !args.iter().any(|arg| arg == "IdentityAgent=none"),
+            "a hidden key leaves the agent to sign: {args:?}"
+        );
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["-o", "IdentitiesOnly=yes"]),
+            "only the builders' key is offered still: {args:?}"
+        );
+        assert!(
+            args.windows(2)
+                .any(|pair| pair[0] == "-i" && pair[1] == key.to_string_lossy()),
+            "ssh finds the key's public half beside it: {args:?}"
+        );
     }
 
     #[test]

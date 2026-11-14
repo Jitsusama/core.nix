@@ -240,17 +240,19 @@ in
         The private key nix-offload logs in to the builders it's lent with,
         which the proxy holds for fenced commands so the key itself stays
         hidden from them. It signs with it only a login as nix-offload to a
-        builder a file in lentMachines names now, never any other.
+        builder a file in lentFiles names now, never any other.
       '';
     };
-    lentMachines = lib.mkOption {
+    lentFiles = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
-      example = [ "/run/nix-offload/machines" ];
+      example = [ "/run/nix-offload-lines/lent" ];
       description = ''
-        The Nix machines files naming the builders lent now, read afresh at
-        each login: a line whose host is a nix-offload alias lends its
-        ed25519 host key to builderKey's logins.
+        The files root writes of the builders it vouches for now, read
+        afresh at each login, one builder a line as `<lender> <instance>
+        <key-type> <base64-key>`: a nix-offload lender's ed25519 host key
+        is lent to builderKey's logins. Never a file the account can write,
+        or a command could lend itself a host of its own.
       '';
     };
     upstreams = lib.mkOption {
@@ -390,8 +392,8 @@ in
       {
         assertion =
           config.jitsusama.pi.agentProxy.builderKey != null
-          -> config.jitsusama.pi.agentProxy.lentMachines != [ ];
-        message = "jitsusama.pi.agentProxy.builderKey is given, but no file in jitsusama.pi.agentProxy.lentMachines names the builders it may sign for.";
+          -> config.jitsusama.pi.agentProxy.lentFiles != [ ];
+        message = "jitsusama.pi.agentProxy.builderKey is given, but no file in jitsusama.pi.agentProxy.lentFiles names the builders it may sign for.";
       }
     ];
 
@@ -479,7 +481,7 @@ in
           ++ lib.concatMap (file: [
             "--lent"
             file
-          ]) config.jitsusama.pi.agentProxy.lentMachines
+          ]) config.jitsusama.pi.agentProxy.lentFiles
         )
       );
     };

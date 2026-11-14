@@ -11,7 +11,7 @@
 //! that host's signature over the other's identifier.
 //!
 //! A host is one this agent is told of when `--hosts` names it, or when
-//! a machines file names it as a builder lent now (src/lent.rs), read
+//! root's file names it as a builder lent now (src/lent.rs), read
 //! afresh at each binding; a session with a lent builder is marked so,
 //! since only the builders' key signs for one, and only as their account.
 

@@ -3122,7 +3122,7 @@
   pi-agent-proxy-runs-only-with-machines = ''
     pi's SSH agent proxy runs only where it's given machines or the builders' key, never on a Mac,
     started by the first ssh that asks on a socket in a folder only the account reaches, told of
-    those hosts and the agents behind it, or of the builders' key and the machines files lending
+    those hosts and the agents behind it, or of the builders' key and root's file of builders lent
   '';
   pi-agent-proxy-signs-only-logins = ''
     pi-agent-proxy lists the keys of the agents behind it and signs a login only once the host it

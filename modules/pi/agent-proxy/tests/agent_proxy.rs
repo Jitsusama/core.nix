@@ -1,8 +1,13 @@
 //! The proxy as ssh reaches it: the real program on a socket of its own,
 //! a fake agent behind it that signs whatever reaches it, and host keys
 //! made for each test, so every refusal is seen not to reach the agent.
-//! Some proxies also hold a builders' key and lend it to the builders a
-//! machines file names, as nix-offload's lent builders are reached.
+//! Some proxies also hold a builders' key and lend it to the builders
+//! root's file names, as nix-offload's lent builders are reached.
+//!
+//! Long because each case drives the real program through the same
+//! helpers, a socket, a fake agent and keys made for it, and its cases
+//! are each a refusal a fenced command must meet, which read best beside
+//! the logins they stop.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -123,8 +128,8 @@ impl Proxy {
     }
 
     /// A proxy told of the hosts in `hosts` that also holds `builders`'s
-    /// key and lends it to the builders `machines` names, a machines
-    /// file's text.
+    /// key and lends it to the builders `machines` names, the text of
+    /// root's file of the builders it vouches for.
     fn lending(name: &str, hosts: &str, builders: &Ed25519Keypair, machines: &str) -> Self {
         Self::launch(name, hosts, Some((builders, machines)), Behind::Signing)
     }
@@ -135,9 +140,10 @@ impl Proxy {
         Self::launch(name, "", Some((builders, machines)), Behind::Stalled)
     }
 
-    /// Write the machines file a lending proxy reads afresh at each bind.
+    /// Write the file of lent builders a lending proxy reads afresh at
+    /// each bind.
     fn lend(&self, machines: &str) {
-        fs::write(self.dir.join("machines"), machines).expect("the machines file is written");
+        fs::write(self.dir.join("lent"), machines).expect("the lent builders are written");
     }
 
     fn launch(
@@ -173,12 +179,12 @@ impl Proxy {
                 .to_openssh(LineEnding::LF)
                 .expect("a builders' key writes");
             fs::write(dir.join("builders"), written.as_bytes()).expect("the key is written");
-            fs::write(dir.join("machines"), machines).expect("the machines file is written");
+            fs::write(dir.join("lent"), machines).expect("the lent builders are written");
             command
                 .arg("--key")
                 .arg(dir.join("builders"))
                 .arg("--lent")
-                .arg(dir.join("machines"));
+                .arg(dir.join("lent"));
         }
         let child = command
             .stderr(Stdio::from(
@@ -715,35 +721,13 @@ fn says_each_refusal_and_signature_in_one_fixed_shape() {
     );
 }
 
-/// `bytes` in base64, as a machines file carries a builder's host key.
-fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::new();
-    for chunk in bytes.chunks(3) {
-        let joined = chunk.iter().enumerate().fold(0u32, |joined, (at, byte)| {
-            joined | u32::from(*byte) << (16 - 8 * at)
-        });
-        for at in 0..=chunk.len() {
-            let six = usize::try_from(joined >> (18 - 6 * at) & 63).expect("six bits fit");
-            out.push(char::from(ALPHABET[six]));
-        }
-        for _ in chunk.len()..3 {
-            out.push('=');
-        }
-    }
-    out
-}
-
-/// A machines file's line for a builder at `alias` with `host`'s key,
-/// as root's offload helper writes one.
-fn machine(alias: &str, host: &Ed25519Keypair) -> String {
+/// The line for a builder lent by `lender` with `host`'s key, as root
+/// writes one in its file of the builders it vouches for.
+fn machine(lender: &str, host: &Ed25519Keypair) -> String {
     let key = PublicKey::from(KeyData::Ed25519(host.public))
         .to_openssh()
         .expect("a host key writes");
-    format!(
-        "ssh-ng://hook@{alias}?compress=true x86_64-linux /etc/nix/offload_ed25519 16 1 big-parallel big-parallel {}\n",
-        base64(key.as_bytes())
-    )
+    format!("{lender} offload-{lender}-abc123 {key}\n")
 }
 
 /// The builders' key made for these tests, with its wire blob.
@@ -919,7 +903,7 @@ fn lends_only_to_builders_named_as_such() {
         "standing",
         "",
         &builders,
-        &machine("equilibrius-linux", &standing),
+        &machine("standing-builder", &standing),
     );
 
     let (_, taken) = bound(&proxy, &standing, &blob, b"a standing builder's session");
@@ -936,7 +920,7 @@ fn lends_only_to_builders_named_as_such() {
 }
 
 #[test]
-fn stops_lending_once_a_builder_leaves_the_machines_file() {
+fn stops_lending_once_a_builder_leaves_roots_file() {
     let (builders, _) = builders();
     let (builder, blob) = host(3);
     let proxy = Proxy::lending("leaves", "", &builders, &machine("nix-offload", &builder));
