@@ -296,7 +296,7 @@ ShellRoot {
     function ready() {
         if (root.waiting === "the programs"
                 && ["tester", "quiet", "radio", "browser", "pair", "org.example.viewer",
-                    "sketch", "keyed", "bare"]
+                    "sketch", "keyed", "lone"]
                     .every(id => root.program(id) !== undefined)
                 && applications.recents.of("quiet").length === 2
                 && applications.recents.of("tester").length === 3
@@ -902,7 +902,7 @@ ShellRoot {
                 program("sketch").actsOnly, false);
             same("as does one with keys of its own", program("keyed").actsOnly, false);
             same("and neither makes its step to say so", applications.stepsMade - made, 0);
-            same("one with neither starts only", program("bare").actsOnly, true);
+            same("one with neither starts only", program("lone").actsOnly, true);
 
             const quiet = program("quiet").verbs();
             same("a program with keys of its own holds them, and only its new windows besides",

@@ -217,9 +217,9 @@
         Name=Keyed
         Exec=keyed
       '';
-      bare = entry "bare" ''
-        Name=Bare
-        Exec=bare
+      lone = entry "lone" ''
+        Name=Lone
+        Exec=lone
       '';
       # A program whose entry's id isn't its command, as zathura's isn't.
       viewer = entry "viewer" ''
@@ -240,7 +240,7 @@
       cp ${viewer} share/applications/org.example.viewer.desktop
       cp ${sketch} share/applications/sketch.desktop
       cp ${keyed} share/applications/keyed.desktop
-      cp ${bare} share/applications/bare.desktop
+      cp ${lone} share/applications/lone.desktop
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       ${copied [
         "Daemon.qml"
