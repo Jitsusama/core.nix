@@ -7811,7 +7811,14 @@ Scope {
     // apart from its making in its line (Pacing.drawerCame).
     property real drawerRested: 0
     function lettersTyped() {
-        lettersAt = KeyTimes.now();
+        // Said for the desktop test, which judges only letters that came
+        // quicker than the rest: a loaded builder spaced wtype's letters
+        // past it, and the drawers that rested between them failed it
+        // (Y2YBTS, 2026-11-14, ed99cdc6 and 5dc9f833).
+        const typed = KeyTimes.now();
+        Report.say(`letter typed ${Math.round(typed - lettersAt)} ms after the one before, `
+            + `resting ${Pacing.lettersRest()}`);
+        lettersAt = typed;
         const pressed = KeyTimes.pressed();
         lettersPressed = pressed > 0 ? pressed : lettersAt;
         if (lettersResting.running)
