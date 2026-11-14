@@ -1369,6 +1369,16 @@ ShellRoot {
             expect("the caret's bar ends where the hint's first letter starts, off its ink",
                 bar !== null && bar.width > 0 && Math.abs(barEnd - firstLetter) <= 0.5,
                 `bar ends at ${barEnd}, the letter at ${firstLetter}`);
+            // After the last letter typed it starts where that letter ends.
+            typedInput.cursorPosition = typedInput.length;
+            const lastEnds = typedInput.mapToItem(null,
+                typedInput.positionToRectangle(typedInput.length).x, 0).x;
+            const typedBar = root.byName(typedField, "caret");
+            const typedBarFrom = typedBar === null ? -Infinity
+                : typedBar.mapToItem(null, 0, 0).x;
+            expect("after the last letter, the caret's bar starts where that letter ends",
+                Math.abs(typedBarFrom - lastEnds) <= 0.5,
+                `bar from ${typedBarFrom}, the last letter ends at ${lastEnds}`);
             // Where what's typed wraps, a hint too long for a line wraps as
             // typing it would, whole, the field growing for it, rather than cut.
             const wrapping = drawn(wrappedHint, []).find(t => t.text === wrappedHint.hint);
