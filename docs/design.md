@@ -1503,9 +1503,11 @@ works the same way everywhere.
   line; Context; then Its Sessions for an orchestration, or its Host
   where it isn't on this machine. One with neither stops at four. What
   its quest is about is the prose under them, with no name and without
-  the title the drawer already says, five lines shut and the rest under
-  z a: at 47 to 282 letters it is prose, not a fact, and as a fact it
-  wrapped past the first screen (VKCF3Z, a2101591). The rest is folded
+  the title the drawer already says, drawn whole with its title, as a
+  landing asking Joel something is, since z a opens the fold rather than
+  reading on: at 47 to 282 letters it is prose, not a fact, and as a fact
+  it wrapped past the first screen (VKCF3Z, a2101591, e3bb38e5); what
+  runs past the card is its more line's. The rest is folded
   under z a, in order: Model, Turns Today, Tokens, Cache, its Session,
   Context Rebuilt, what it Hears, its Last Landing with when, its
   Budget, its Quest, how that stands said only where it isn't active,

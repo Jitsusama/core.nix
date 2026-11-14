@@ -238,7 +238,8 @@ pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known
         .filter_map(|place| place.iter().find_map(|id| taken(&mut told, id)))
         .collect();
     // Its prose: what it stands for at the top, else what its quest is
-    // about, five lines shut and the rest under z a (Drawer.qml).
+    // about, drawn whole, since z a opens the fold rather than reading on
+    // (VKCF3Z, e3bb38e5); what runs past the card is its more line's.
     let stands_for = session.stands_for();
     let prose = if stands_for.is_empty() {
         taken(&mut told, "works")
@@ -266,6 +267,7 @@ pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known
     });
     if prose.is_some() {
         drawn["drawer"]["prose"] = json!(true);
+        drawn["drawer"]["whole"] = json!(true);
     }
     if !nerd.is_empty() {
         drawn["drawer"]["nerd"] = Value::Array(nerd);
