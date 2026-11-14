@@ -303,10 +303,12 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) {
         return;
     };
     let user = std::env::var("USER").unwrap_or_default();
+    // The system's programs and the account's own, as home-manager puts
+    // them in /etc/profiles; never `~/.nix-profile`, a link the account
+    // owns, which an agent could repoint (asks.rs's chosen_by_root).
     let profiles = vec![
         PathBuf::from("/run/current-system/sw/bin"),
         PathBuf::from(format!("/etc/profiles/per-user/{user}/bin")),
-        home.join(".nix-profile/bin"),
     ];
     let references = given
         .managers
