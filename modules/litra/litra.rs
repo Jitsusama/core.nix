@@ -209,6 +209,65 @@ fn kelvin(asked: u16) -> u16 {
     (asked.clamp(WARMEST, COOLEST) + 50) / 100 * 100
 }
 
+/// The share of its own brightness, in percent, a light keeps on a call
+/// after Joel's wind-down.
+const EVENING_SHARE: u32 = 70;
+/// When the evening ends, in minutes after midnight, as rhythm's does.
+const MORNING: u16 = 6 * 60;
+
+/// A light's brightness, in its own units, and its warmth.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Setting {
+    units: u16,
+    kelvin: u16,
+}
+
+impl Setting {
+    /// What a light that has said everything is set to.
+    fn of(state: &State) -> Option<Self> {
+        let _ = state;
+        None
+    }
+
+    /// The setting a call after the wind-down lights it at.
+    fn for_evening(self) -> Self {
+        self
+    }
+}
+
+/// A light's own setting, from what it shows as a call lights it and what
+/// was kept of it: the kept one while the light still shows the evening's
+/// of it, since the evening left it there, and otherwise what it shows,
+/// which Joel set.
+fn own(seen: Setting, kept: Option<Setting>) -> Setting {
+    let _ = kept;
+    seen
+}
+
+/// The own settings kept, by each light's serial, one a line.
+fn read_kept(text: &str) -> Vec<(String, Setting)> {
+    let _ = text;
+    Vec::new()
+}
+
+/// The own settings kept, as `read_kept` reads them.
+fn written_kept(kept: &[(String, Setting)]) -> String {
+    let _ = kept;
+    String::new()
+}
+
+/// Tonight's wind-down, in minutes after midnight, from rhythm's profile.
+fn wind_down(profile: &str) -> Option<u16> {
+    let _ = profile;
+    None
+}
+
+/// Whether a minute of the day is after the wind-down and before morning.
+fn evening(now: u16, wind_down: u16) -> bool {
+    let _ = (now, wind_down);
+    false
+}
+
 struct Light {
     file: File,
 }
@@ -1133,5 +1192,147 @@ mod tests {
         }
         assert!(folder_gone(&events));
         assert!(!folder_gone(&events[..24]));
+    }
+
+    #[test]
+    fn an_evening_call_lights_it_warm_and_a_little_lower() {
+        let own = Setting {
+            units: 200,
+            kelvin: 5000,
+        };
+        assert_eq!(
+            own.for_evening(),
+            Setting {
+                units: 140,
+                kelvin: WARMEST
+            }
+        );
+        let dim = Setting {
+            units: 25,
+            kelvin: 4000,
+        };
+        assert_eq!(
+            dim.for_evening().units,
+            DIMMEST,
+            "the evening took it below the least it gives"
+        );
+    }
+
+    #[test]
+    fn a_light_tells_its_setting_once_it_has_said_everything() {
+        let said = State {
+            on: Some(false),
+            units: Some(120),
+            kelvin: Some(4500),
+        };
+        assert_eq!(
+            Setting::of(&said),
+            Some(Setting {
+                units: 120,
+                kelvin: 4500
+            })
+        );
+        let short = State {
+            kelvin: None,
+            ..said
+        };
+        assert_eq!(Setting::of(&short), None);
+    }
+
+    #[test]
+    fn its_own_setting_survives_the_evening_but_not_joels_hand() {
+        let mine = Setting {
+            units: 200,
+            kelvin: 5000,
+        };
+        let evenings = Setting {
+            units: 140,
+            kelvin: WARMEST,
+        };
+        assert_eq!(
+            own(evenings, Some(mine)),
+            mine,
+            "the evening's was taken for his"
+        );
+        let picked = Setting {
+            units: 90,
+            kelvin: 3500,
+        };
+        assert_eq!(own(picked, Some(mine)), picked, "his own pick was undone");
+        assert_eq!(own(picked, None), picked);
+    }
+
+    #[test]
+    fn own_settings_are_kept_by_serial() {
+        let kept = vec![
+            (
+                "2241FE30".to_owned(),
+                Setting {
+                    units: 200,
+                    kelvin: 5000,
+                },
+            ),
+            (
+                "9A1C".to_owned(),
+                Setting {
+                    units: 20,
+                    kelvin: 2700,
+                },
+            ),
+        ];
+        assert_eq!(read_kept(&written_kept(&kept)), kept);
+        assert_eq!(
+            read_kept("2241FE30 200\nnonsense\n\n9A1C 20 2700\n"),
+            kept[1..],
+            "a line short of a setting was taken"
+        );
+    }
+
+    #[test]
+    fn tonights_wind_down_is_read_from_rhythms_profile() {
+        let profile = concat!(
+            r#"{"v": 1, "basis": "learned", "tonight": "22:45", "#,
+            r#""windDown": "20:15", "sunset": "17:05"}"#
+        );
+        assert_eq!(wind_down(profile), Some(20 * 60 + 15));
+        assert_eq!(wind_down(r#"{"windDown":"00:30"}"#), Some(30));
+        assert_eq!(wind_down(r#"{"windDown": "25:00"}"#), None);
+        assert_eq!(wind_down(r#"{"windDown": null}"#), None);
+        assert_eq!(wind_down(""), None);
+    }
+
+    #[test]
+    fn the_evening_runs_from_the_wind_down_to_morning() {
+        let at = |hour: u16, minute: u16| hour * 60 + minute;
+        let down = at(20, 15);
+        for (now, is) in [
+            (at(12, 0), false),
+            (at(20, 14), false),
+            (at(20, 15), true),
+            (at(23, 59), true),
+            (at(0, 30), true),
+            (at(5, 59), true),
+            (at(6, 0), false),
+        ] {
+            assert_eq!(
+                evening(now, down),
+                is,
+                "at {now} after a wind-down at 20:15"
+            );
+        }
+        let late = at(0, 30);
+        for (now, is) in [
+            (at(23, 0), false),
+            (at(0, 29), false),
+            (at(0, 30), true),
+            (at(5, 0), true),
+            (at(6, 0), false),
+        ] {
+            assert_eq!(
+                evening(now, late),
+                is,
+                "at {now} after a wind-down at 00:30"
+            );
+        }
     }
 }
