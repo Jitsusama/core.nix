@@ -11,7 +11,7 @@
 //! finding wants no reply, so his words went into a void (Joel,
 //! 2026-11-13 19:30: "saying to an agent feels like the void"); a talk
 //! is answered, and how it went and the answer are served on the
-//! landing's drawer as `said` (`told`). Only with nobody to hear it does
+//! landing as `said` (`told`). Only with nobody to hear it does
 //! it go as a finding to the quest's group, where a session coming to
 //! the quest reads it.
 
@@ -154,7 +154,7 @@ fn talked(node: &Path, address: &str, text: &str, now_ms: u128) -> Result<String
 /// The answer to Joel's feedback `said` (`{landing, words}`, the landing
 /// by its record's key), sent through the node at `node` and kept in the
 /// file at `kept`, at `now_ms`, in milliseconds since the epoch, with the
-/// line kept, which the drawer's `said` is made from. The answer says how
+/// line kept, which the landing's `said` is made from. The answer says how
 /// it went (`by`: `talk` or `finding`), who it went to and the talk's or
 /// message's id, or why it didn't go. Who it went to is the session's
 /// name, as `routes` names it for a talk and the landing does for a
@@ -225,7 +225,7 @@ pub fn answer(
 }
 
 /// The lines kept in the file at `path` of words sent as talks, the ones
-/// a landing's drawer says how they went, read as the daemon starts.
+/// a landing says how they went, read as the daemon starts.
 pub fn kept(path: &Path) -> Vec<Value> {
     let Ok(text) = fs::read_to_string(path) else {
         return Vec::new();
@@ -237,62 +237,55 @@ pub fn kept(path: &Path) -> Vec<Value> {
 }
 
 /// What Joel said of each landing among `records` as talks, as `lines`
-/// keep them, served on its drawer as `said`, newest first: his words,
-/// when in milliseconds, who heard them, how it went in Talks' own word
-/// as `talks` (by id) say, `sent` before a record of it comes, and the
-/// reply once it's replied. While the newest is on its way, the landing
-/// says so as `saying`, the word its row's side leads with, as an Agents
-/// row says a talk waiting.
+/// keep them, served on the landing as `said`, the newest few as a
+/// session's talks done with are (`inboxes::KEPT`), newest first, each a talk
+/// as the launcher draws a session's (inboxes.rs): its id, when, his
+/// words, its stage as `talks` (by id) say, `sent` before a record of it
+/// comes, what it has replied and why it failed, and who heard it. On
+/// the landing rather than its drawer, which only a watch naming it is
+/// sent. While the newest is on its way, the landing says so as
+/// `saying`, the word its row's side leads with, as an Agents row says a
+/// talk waiting.
 pub fn told<S: std::hash::BuildHasher>(
     records: &mut [Value],
     lines: &[Value],
     talks: &HashMap<String, Talk, S>,
     words: &Words,
 ) {
-    let mut drawers: HashMap<String, Vec<Value>> = HashMap::new();
     for record in records.iter_mut().filter(|one| one["kind"] == "landed") {
         let key = record["key"].as_str().unwrap_or("");
-        let mut said: Vec<(&Value, &str, &str)> = lines
+        let mut said: Vec<(&Value, Option<&Talk>)> = lines
             .iter()
             .filter(|line| line["landing"] == key)
-            .map(|line| {
-                let talk = talks.get(line["sent"].as_str().unwrap_or(""));
-                let stage = talk.map_or("", |talk| talk.stage.as_str());
-                let reply = talk.map_or("", |talk| talk.reply.as_str());
-                (line, if stage.is_empty() { "sent" } else { stage }, reply)
-            })
+            .map(|line| (line, talks.get(line["sent"].as_str().unwrap_or(""))))
             .collect();
         if said.is_empty() {
             continue;
         }
-        said.sort_by_key(|(line, _, _)| std::cmp::Reverse(line["at"].as_u64().unwrap_or(0)));
-        let word = |stage: &str| {
-            let word = words.talk_stages.word(stage);
-            if word.is_empty() { stage } else { word }.to_owned()
-        };
-        let (_, newest, _) = said[0];
-        if !matches!(newest, "replied" | "failed" | "read" | "over") {
-            record["landed"]["saying"] = json!(word(newest));
+        said.sort_by_key(|(line, _)| std::cmp::Reverse(line["at"].as_u64().unwrap_or(0)));
+        said.truncate(crate::inboxes::KEPT);
+        let stages: Vec<&str> = said
+            .iter()
+            .map(|(_, talk)| talk.map_or("", |talk| talk.stage.as_str()))
+            .map(|stage| if stage.is_empty() { "sent" } else { stage })
+            .collect();
+        if !matches!(stages[0], "replied" | "failed" | "read" | "over") {
+            let word = words.talk_stages.word(stages[0]);
+            let word = if word.is_empty() { stages[0] } else { word };
+            record["landed"]["saying"] = json!(word);
         }
-        let drawer = record["landed"]["drawer"].as_str().unwrap_or("").to_owned();
-        let said = said
-            .into_iter()
-            .map(|(line, stage, reply)| {
-                json!({"words": line["words"],
-                    "at": line["at"].as_u64().unwrap_or(0).saturating_mul(1000),
-                    "to": line["to"], "stage": word(stage),
-                    "reply": if stage == "replied" { reply } else { "" }})
+        let said: Vec<Value> = said
+            .iter()
+            .zip(&stages)
+            .map(|((line, talk), stage)| {
+                let ms = line["at"].as_i64().unwrap_or(0).saturating_mul(1000);
+                json!({"id": line["sent"], "at": crate::clock::text_of(ms),
+                    "words": line["words"], "stage": stage,
+                    "reply": talk.map_or("", |talk| talk.reply.as_str()),
+                    "why": talk.map_or("", |talk| talk.why.as_str()), "to": line["to"]})
             })
             .collect();
-        drawers.insert(drawer, said);
-    }
-    for record in records
-        .iter_mut()
-        .filter(|one| one["kind"] == crate::landed::DRAWER)
-    {
-        if let Some(said) = record["key"].as_str().and_then(|key| drawers.remove(key)) {
-            record["drawer"]["said"] = json!(said);
-        }
+        record["landed"]["said"] = json!(said);
     }
 }
 
@@ -446,7 +439,7 @@ mod tests {
                 &json!("talk-7000"),
                 &json!("SKIFF")
             ),
-            "kept with the talk's id, by which its drawer says how it went"
+            "kept with the talk's id, by which its landing says how it went"
         );
         assert_eq!(
             super::kept(&kept),
@@ -468,13 +461,11 @@ mod tests {
     }
 
     #[test]
-    fn the_drawer_says_how_each_talk_went_and_the_row_while_its_on_its_way() {
+    fn each_landing_says_how_each_talk_went_and_its_row_while_its_on_its_way() {
         let records = || {
             vec![
                 json!({"key": "landed:agents:k", "kind": "landed",
                     "landed": {"drawer": "landed-drawer:agents:k"}}),
-                json!({"key": "landed-drawer:agents:k", "kind": "landed-drawer",
-                    "drawer": {"title": "Quiet Rows"}}),
                 json!({"key": "landed:agents:other", "kind": "landed",
                     "landed": {"drawer": "landed-drawer:agents:other"}}),
             ]
@@ -489,6 +480,7 @@ mod tests {
                 id: id.to_owned(),
                 stage: stage.to_owned(),
                 reply: reply.to_owned(),
+                why: if stage == "failed" { "gone" } else { "" }.to_owned(),
                 ..Talk::default()
             };
             (id.to_owned(), talk)
@@ -498,21 +490,21 @@ mod tests {
         let talks: HashMap<String, Talk> = [talk("talk-5", "replied", "Brightened.")].into();
         told(&mut said, &lines, &talks, &words);
         assert_eq!(
-            said[1]["drawer"]["said"],
+            said[0]["landed"]["said"],
             json!([
-                {"words": "better", "at": 9000, "to": "The Skiff", "stage": "sent",
-                    "reply": ""},
-                {"words": "too dim", "at": 5000, "to": "The Skiff", "stage": "replied",
-                    "reply": "Brightened."}
+                {"id": "talk-9", "at": "1970-01-01T00:00:09.000Z", "words": "better",
+                    "stage": "sent", "reply": "", "why": "", "to": "The Skiff"},
+                {"id": "talk-5", "at": "1970-01-01T00:00:05.000Z", "words": "too dim",
+                    "stage": "replied", "reply": "Brightened.", "why": "", "to": "The Skiff"}
             ]),
-            "newest first, sent before a record of it comes, the reply once replied"
+            "newest first, talks as a session's are drawn, sent before a record of it comes"
         );
         assert_eq!(
             said[0]["landed"]["saying"], "sent",
             "its row says it's on its way"
         );
         assert!(
-            said[2]["landed"].get("saying").is_none(),
+            said[1]["landed"].get("saying").is_none() && said[1]["landed"].get("said").is_none(),
             "a landing nothing was said of says nothing"
         );
         let mut said = records();
@@ -521,10 +513,11 @@ mod tests {
         assert_eq!(
             (
                 said[0]["landed"].get("saying"),
-                &said[1]["drawer"]["said"][0]["stage"]
+                &said[0]["landed"]["said"][0]["stage"],
+                &said[0]["landed"]["said"][0]["why"]
             ),
-            (None, &json!("not delivered")),
-            "one that went no further says so in its drawer, its row back as it was"
+            (None, &json!("failed"), &json!("gone")),
+            "one that went no further says why, its row back as it was"
         );
         let talks: HashMap<String, Talk> = [talk("talk-9", "replying", "Half")].into();
         let mut said = records();
@@ -532,10 +525,22 @@ mod tests {
         assert_eq!(
             (
                 &said[0]["landed"]["saying"],
-                &said[1]["drawer"]["said"][0]["reply"]
+                &said[0]["landed"]["said"][0]["reply"]
             ),
-            (&json!("replying"), &json!("")),
-            "a reply half written is the talk's, not yet the drawer's"
+            (&json!("replying"), &json!("Half")),
+            "a reply half written is shown as it's written, as a session's is"
+        );
+        let lines = [1, 2, 3, 4].map(|at| line(at, "again"));
+        let mut said = records();
+        told(&mut said, &lines, &HashMap::new(), &words);
+        let ids: Vec<&Value> = said[0]["landed"]["said"]
+            .as_array()
+            .map(|said| said.iter().map(|one| &one["id"]).collect())
+            .unwrap_or_default();
+        assert_eq!(
+            ids,
+            [&json!("talk-4"), &json!("talk-3"), &json!("talk-2")],
+            "only the newest few are shown, as a session's talks done with are"
         );
     }
 

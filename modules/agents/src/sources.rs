@@ -60,8 +60,8 @@ pub enum Heard {
     /// Where the windows of sessions moving onto pi's host sat, all of
     /// them, as the shell says each time one's kept or let go.
     KeepPlaces(KeptPlaces),
-    /// The line kept of Joel's words on a landing sent as a talk, whose
-    /// drawer says how it went (feedback.rs).
+    /// The line kept of Joel's words on a landing sent as a talk, which
+    /// the landing says how it went of (feedback.rs).
     FedBack(Value),
     /// The talks waiting in each session's inbox, all of them, as one
     /// lands or is taken (inboxes.rs).
@@ -414,7 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn what_joel_said_of_a_landing_is_served_on_its_drawer_as_its_talk_goes() {
+    fn what_joel_said_of_a_landing_is_served_on_it_as_its_talk_goes() {
         let paths = paths_in(&std::env::temp_dir().join("agents-fed-back-unwritten"));
         let mut inputs = Inputs::default();
         inputs.hear(
@@ -438,14 +438,10 @@ mod tests {
             &paths,
         );
         let (records, _) = inputs.landed();
-        let drawer = records
-            .iter()
-            .find(|one| one["kind"] == crate::landed::DRAWER)
-            .expect("its drawer");
         assert_eq!(
             (
                 &records[0]["landed"]["saying"],
-                &drawer["drawer"]["said"][0]["stage"]
+                &records[0]["landed"]["said"][0]["stage"]
             ),
             (&json!("delivered"), &json!("delivered")),
             "the talk's stage on the landing's row and in its drawer"

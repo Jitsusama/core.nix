@@ -23,7 +23,7 @@ use crate::talks::Talk;
 pub const KIND: &str = "talks";
 /// How many talks done with are shown after the open ones, as Super+S's
 /// line keeps its own (TalkLine.js's `KEPT_TALKS`).
-const KEPT: usize = 3;
+pub const KEPT: usize = 3;
 /// The stages after which a talk is done with: heard, ended, or never
 /// delivered.
 const CLOSED: [&str; 3] = ["read", "over", "failed"];

@@ -90,7 +90,7 @@ pub struct Inputs {
     /// landing of core's waits on before To Try holds it.
     pub carried: Carried,
     /// The lines kept of Joel's words on landings sent as talks, which
-    /// their drawers say how each went of.
+    /// their landings say how each went of.
     pub fed_back: Vec<Value>,
     /// The talks waiting in each session's inbox, not yet taken, by its
     /// address in capitals (inboxes.rs).
