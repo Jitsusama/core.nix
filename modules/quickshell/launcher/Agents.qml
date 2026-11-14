@@ -1491,12 +1491,27 @@ Provider {
     }
 
     property string fedBack: ""
+    // What Joel said of each landing, by its key, newest first, each as the launcher shows a
+    // talk (TalkLine.js's exchange shape): his words, and where they went. Only this shell's,
+    // until the agents daemon serves what came back of each (KP0L6A, 2026-11-13 [6454c1e5]).
+    property var fedBackOn: ({})
+    function feedbackTalks(key) {
+        return fedBackOn[key] ?? [];
+    }
     function feedback(key, words) {
         const text = words.trim();
         if (text === "")
             return;
         const said = Words.of("agents:landed").said ?? {};
+        const at = Date.now();
+        const told = stands => {
+            const talk = { line: text, answers: [], waiting: "", stands, by: "",
+                side: Qt.formatTime(new Date(at), "HH:mm"), at };
+            fedBackOn = Object.assign({}, fedBackOn, { [key]: [talk].concat(
+                (fedBackOn[key] ?? []).filter(one => one.at !== at)).slice(0, 3) });
+        };
         fedBack = String(said.sending ?? "");
+        told(fedBack);
         rowsKind?.ask({ ask: "feedback", landing: `landed:agents:${key}`, words: text },
             answer => {
                 const to = String(answer?.to ?? "");
@@ -1508,6 +1523,7 @@ Provider {
                     : why !== undefined ? String(why)
                     : String(said.unsent ?? "")
                         .replace("{why}", String(answer?.error?.message ?? ""));
+                told(fedBack);
             });
     }
     // Where a landing lives, Agents \u203a Landed \u203a it, which For You's rows
@@ -1586,6 +1602,7 @@ Provider {
                 ask: Words.of("verb:agents:landed:feedback").ask ?? "",
                 chip: one.name ?? one.what,
                 state: () => provider.fedBack,
+                talks: () => provider.feedbackTalks(one.key),
                 given: words => provider.feedback(one.key, words)
             }),
             one.person !== "" ? copyRow({

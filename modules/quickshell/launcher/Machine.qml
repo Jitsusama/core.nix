@@ -489,6 +489,10 @@ Provider {
             holder)) {
             const state = SessionRow.state(session.presence, Sessions.asks(session), false);
             const sided = Holders.talkSide(session.title, String(standing[state] ?? ""));
+            // Its talk shows under the field as Agents' Talk shows one.
+            const talking = (provider.launcher?.sources ?? [])
+                .find(one => one.settings.name === "agents")
+                ?.talking(session.address, session.title) ?? null;
             rows.push(act("talk", {
                 key: `verb:disk:talk:${holder.path}:${session.address}`,
                 side: sided.map(item => item.said).join(" \u00b7 "),
@@ -497,11 +501,15 @@ Provider {
                 ask: (talk.ask ?? "").replace("{name}", session.title),
                 chip: session.title,
                 state: () => provider.talked,
+                talks: talking?.talks,
+                heard: talking?.heard,
                 given: words => {
                     const said = `${words.trim()} ${about}`;
-                    if (words.trim() !== "" && Sessions.talk(session.address, said))
+                    if (words.trim() !== "" && Sessions.talk(session.address, said)) {
+                        talking?.said(said);
                         provider.talked = (talk.said?.sent ?? "")
                             .replace("{name}", session.title);
+                    }
                 }
             }));
         }
