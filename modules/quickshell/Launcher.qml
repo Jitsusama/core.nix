@@ -1122,11 +1122,21 @@ Scope {
         oneJump(() => walkTo(spot));
     }
 
+    // Each step's row is found among what the step before offers, never
+    // among what's listed, so the steps on the way are passed through:
+    // only the last is searched and drawn, and one before it is listed
+    // when - climbs back onto it. Listing Landed's 2,600 landings on the
+    // way to one took about 40 of To Try's 84 ms Return (2026-11-14).
     function walkTo(spot) {
         const came = here();
         held = [];
-        restart("");
-        for (const step of spot.trail) {
+        const last = spot.trail.length - 1;
+        if (last < 0)
+            restart("");
+        // Whether what's listed is what the step held offers: only once a
+        // step searched, as the last does and a place found deeper does.
+        let listed = last < 0;
+        for (const [depth, step] of spot.trail.entries()) {
             // From the top, a place or an answer home is, such as Disk;
             // inside a collection, its things and then its parts, as it
             // shows them, so Agents leads on to Quests.
@@ -1134,12 +1144,21 @@ Scope {
             const rows = held.length === 0 ? categories.concat(home())
                 : from ? offered.concat(partsOf(from)) : offered;
             const row = rows.find(one => steadyId(one) === step) ?? null;
-            const listedAt = matches.findIndex(one => steadyId(one) === step);
+            const listedAt = listed ? matches.findIndex(one => steadyId(one) === step) : -1;
             if (listedAt >= 0)
                 current = listedAt;
+            // Where a step passed through stood, for - to stand it there
+            // again, since nothing listed it to read it from.
+            const stood = listed ? {} : { typed: "", at: Math.max(0, rows.indexOf(row)),
+                above: 0 };
             const first = held.length === 0;
-            if (row === null || !enter(row))
+            const searchedBefore = root.searched;
+            if (row === null || !enter(row, { passing: depth < last, stood: stood })) {
+                if (!listed)
+                    listHeld();
                 return;
+            }
+            listed = depth === last || root.searched !== searchedBefore;
             if (first)
                 held = [Object.assign({}, held[0], came)].concat(held.slice(1));
         }
@@ -4740,9 +4759,13 @@ Scope {
 
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
     // there was anywhere to go.
-    function enter(row) {
+    // A walk (walkTo) says how each step is taken: one it only passes
+    // through (`passing`) isn't searched, and where it stood (`stood`) is
+    // kept for -; a walk learns no pick, since nothing was typed for it.
+    function enter(row, walk) {
         if (!row || row.gone)
             return false;
+        const passing = walk?.passing === true;
         traces.began("step", { into: row.key ?? "", depth: held.length });
         // A step is timed to its frame as a key is, named by the arrow and
         // the row, so a slow place shows in the journal and the trials
@@ -4767,13 +4790,14 @@ Scope {
         // it next time (VKCF3Z, 2026-11-12), however it was stepped into.
         // One that can't be taken back is learned only once done, so a
         // step into powering off and back out teaches nothing.
-        const meant = held.length === 0 && typed.trim() !== "" && !!row.key && !row.confirm;
+        const meant = walk === undefined && held.length === 0 && typed.trim() !== ""
+            && !!row.key && !row.confirm;
         // A place found from the top that sits in another is stepped into
         // through it, so the path says where it lives.
         if (held.length === 0 && row.category && placesAbove(row.category).length > 0) {
             if (meant)
                 learnAfterFrame(typed, row.key);
-            intoCategory(row.category, typed);
+            intoCategory(row.category, walk === undefined ? typed : "");
             return went();
         }
         if (steppedAsLed(row))
@@ -4796,8 +4820,8 @@ Scope {
         // folder it came from, though it was stepped into without being
         // selected, as the file picker holds each folder on the way to
         // where it opens; Return steps into the selection, so it's the same.
-        held = held.concat([Object.assign(here(), { key: steadyId(row), row: row,
-            rows: into ?? [], learned: meant })]);
+        held = held.concat([Object.assign(here(), walk?.stood ?? {}, { key: steadyId(row),
+            row: row, rows: into ?? [], learned: meant })]);
         const pushed = Date.now();
         if (row.from)
             row.from.opened();
@@ -4813,6 +4837,19 @@ Scope {
         // it holds (Joel, 2026-10-26: stepping in keeps the match). A step
         // whose line holds its words, as a save's name, puts them back.
         searchParts = null;
+        if (!passing)
+            listStepped(row);
+        // Said as a key's are: making the step's lists, what each part of
+        // stepping took, and the search that drew its rows, whose parts
+        // restart() left.
+        searchParts = trials.stepped(searchParts, { began, made, pushed, opened,
+            ended: Date.now(), making: spent });
+        keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
+        return went();
+    }
+
+    // Lists what a step into a row holds, the row's words in the line.
+    function listStepped(row) {
         restart(row.words?.() ?? "");
         placeCaret(row);
         if (row.from) {
@@ -4822,13 +4859,14 @@ Scope {
                 list.positionViewAtIndex(matched, ListView.Contain);
             }
         }
-        // Said as a key's are: making the step's lists, what each part of
-        // stepping took, and the search that drew its rows, whose parts
-        // restart() left.
-        searchParts = trials.stepped(searchParts, { began, made, pushed, opened,
-            ended: Date.now(), making: spent });
-        keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
-        return went();
+    }
+
+    // Lists what the step held holds, where a walk stopped at a step it
+    // was only passing through.
+    function listHeld() {
+        const onto = held.length > 0 ? held[held.length - 1].row : null;
+        restart(onto?.words?.() ?? "");
+        placeCaret(onto);
     }
 
     // What the field is asking for words for, such as a password: the step
