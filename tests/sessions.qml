@@ -201,6 +201,12 @@ ShellRoot {
         expect("known as the daemon knows it, and rung for, being new",
             Sessions.key(live) === "LIVE01 question-1" && Sessions.ringing === live,
             `${Sessions.key(live)} ${Sessions.ringing?.address}`);
+        // Its presence holds no want, as one let go before the daemon says
+        // so holds none, so its notice says the want as the daemon does.
+        const rung = Sessions.rungSaid(live);
+        expect("its notice says what the daemon's want says, its presence holding none",
+            rung.summary === "Live One needs your yes" && rung.message === "ship it?",
+            JSON.stringify(rung));
         expect("its label shown, cut at its folder",
             live.title === "Live One" && live.folder === "core.nix", `${live.title} ${live.folder}`);
         expect("its quest's title and its folder as its record says them, not its label",
@@ -860,7 +866,8 @@ ShellRoot {
             // one stopped on his keys since now, which rings, and one whose
             // run is stuck, which For You lists but never rings for.
             { key: "want:agents:LIVE01", kind: "want", address: "LIVE01",
-                since: new Date().toISOString(), rings: true, known: "LIVE01 question-1" },
+                since: new Date().toISOString(), rings: true, known: "LIVE01 question-1",
+                wants: "approval", said: "ship it?" },
             { key: "want:agents:OTHER2", kind: "want", address: "OTHER2",
                 since: new Date().toISOString(), rings: false, known: "OTHER2 blocked" }]);
     }

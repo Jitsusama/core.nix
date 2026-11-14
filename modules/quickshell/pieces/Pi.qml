@@ -43,7 +43,7 @@ Piece {
     // glyph alone while sessions sit idle.
     glance: needing !== "" ? needing : working
     title: "pi"
-    hint: !first ? value : `${first.title} ${Sessions.wanted(first.presence.wants)}`
+    hint: !first ? value : `${first.title} ${Sessions.wanted(first.presence.wants.kind)}`
     context: !first ? "" : wanting.length === 1 ? (first.presence.wants.said ?? "")
         : `and ${wanting.length - 1} more`
     // Each one's window, the oldest want first, in What's On.
@@ -75,6 +75,7 @@ Piece {
     arrives: ringing !== null
     withdraws: true
     telling: ringing === null ? "" : Sessions.key(ringing)
-    summary: ringing === null ? hint : `${ringing.title} ${Sessions.wanted(ringing.presence.wants)}`
-    message: ringing === null ? context : String(ringing.presence.wants.said ?? "")
+    readonly property var rungSaid: ringing === null ? null : Sessions.rungSaid(ringing)
+    summary: rungSaid === null ? hint : rungSaid.summary
+    message: rungSaid === null ? context : rungSaid.message
 }

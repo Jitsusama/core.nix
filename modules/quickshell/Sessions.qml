@@ -2372,9 +2372,22 @@ Singleton {
     // What a want is, in words after the session's name: "needs you",
     // the one phrase for waiting on Joel everywhere, and a yes or a stuck
     // run said within it (VKCF3Z, 2026-11-06), as the vocabulary has them.
-    function wanted(wants) {
+    // `kind` is the want's kind, a question, a yes or a stuck run.
+    function wanted(kind) {
         const said = Words.of("agents:wants").said ?? {};
-        return String(said[wants.kind] ?? said.question ?? "");
+        return String(said[kind] ?? said.question ?? "");
+    }
+
+    // What the notice of a want that rings says, { summary, message }, as
+    // the daemon serves that want: its record rings a pace after the
+    // session's presence has let it go, and a presence read then said
+    // nothing (net, 14 November).
+    function rungSaid(session) {
+        const want = rang(session);
+        return {
+            summary: `${session.title} ${wanted(want?.wants)}`,
+            message: String(want?.said ?? "")
+        };
     }
 
     // A session's quest's whole title and its folder's name, as its record
