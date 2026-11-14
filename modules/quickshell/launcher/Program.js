@@ -301,6 +301,16 @@ function makingSaid(what, took, parts) {
         + each.map(part => `${part.name} ${part.ms}`).join(", ");
 }
 
+// How many pages a browser has open, from its source's lines (id, window,
+// in front, last looked at, address, title), counted as its Tabs row lists
+// them without making one: a page an address, however many tabs show it,
+// and a tab with none no page. Its tabs took 43 to 84 ms making on Joel's
+// shell only to be counted (2026-11-13).
+function pagesOpen(lines) {
+    return new Set(lines.map(line => line.split("\t")[4] ?? "")
+        .filter(address => address !== "")).size;
+}
+
 // A program's drawer: { eyebrow, title, facts, body }. What it is is said
 // in our word, "program", its desktop entry's generic name staying in its
 // row's note (VKCF3Z, 2026-11-08).
