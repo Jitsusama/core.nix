@@ -1010,6 +1010,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # tested, so it reads the same at any hour; the evening's own cases
         # are its unit tests (modules/backlight/src/evening.rs, follow.rs).
         jitsusama.backlight.evening.start = lib.mkIf (area == "shows-then-rests") null;
+        # Awake with no keys, the cat plays every few seconds, as it's meant
+        # to, so where the shell at rest is proven to draw nothing it dozes
+        # off soon, as it does once Joel has left the keys a while, and the
+        # measures start once it's asleep.
+        jitsusama.quickshell.cat.dozes = lib.mkIf (area == "shows-then-rests") 10;
         # The test types nothing for long stretches while it reads the
         # journal, so it never counts as away, and its notices go by
         # themselves when they're meant to.
