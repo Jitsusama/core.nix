@@ -17,7 +17,9 @@ pub const BRIGHTENING: Duration = Duration::from_secs(1);
 /// How long dimmer light has to hold.
 pub const DIMMING: Duration = Duration::from_secs(4);
 
-/// How long a move to a dimmer level glides.
+/// How long a move to a dimmer level glides. The eye stays adapted to the
+/// brighter room for minutes, so a screen that drops in a second reads dark
+/// until it catches up; the light's research asks for 20 to 30 seconds.
 pub const FADING: Duration = Duration::from_secs(25);
 
 /// A move the light asked for, waiting to see whether the light holds.
@@ -75,25 +77,34 @@ impl Steer {
     }
 }
 
-/// A move from one brightness to another, eased out the way the desktop's
-/// surfaces move: quick to start, settling gently. A longer way takes longer,
-/// from a quarter of a second to a second.
+/// A move from one brightness to another. Brighter, it's eased out the way
+/// the desktop's surfaces move: quick to start, settling gently, and a longer
+/// way takes longer, from a quarter of a second to a second. Dimmer, it
+/// glides over `FADING`, taking the same share off each moment, since the
+/// eye sees brightness by ratio and an even ratio reads as an even fade.
 #[derive(Clone, Copy, Debug)]
 pub struct Ramp {
     from: f64,
     to: f64,
     start: Instant,
     length: Duration,
+    dims: bool,
 }
 
 impl Ramp {
     pub fn new(from: f64, to: f64, start: Instant) -> Self {
-        let length = Duration::from_millis(250) + Duration::from_secs_f64(0.75 * (to - from).abs());
+        let dims = to < from && to > 0.0;
+        let length = if dims {
+            FADING
+        } else {
+            Duration::from_millis(250) + Duration::from_secs_f64(0.75 * (to - from).abs())
+        };
         Ramp {
             from,
             to,
             start,
             length,
+            dims,
         }
     }
 
@@ -107,6 +118,9 @@ impl Ramp {
         let share = (now.saturating_duration_since(self.start).as_secs_f64()
             / self.length.as_secs_f64())
         .min(1.0);
+        if self.dims {
+            return self.from * (self.to / self.from).powf(share);
+        }
         let eased = 1.0 - (1.0 - share).powi(3);
         self.from + (self.to - self.from) * eased
     }
