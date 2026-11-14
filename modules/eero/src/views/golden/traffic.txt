@@ -1,34 +1,34 @@
 home · traffic over 25 hours · read 1 min 7 s ago
 
-traffic    down                    up
-home     167 GB  ⣿⣷⣶⣴⣴⣶⣼⣷⣦⣶  72.7 GB   ⣷⣿⣤⣄⣀⣠⣼⣷⣿⣷
-Hall     150 MB  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀  10.1 MB   ⣾⣶⣧⣤⣤⣦⣶⣶⣶⣴
-Study    142 MB  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀   3.68 MB  ⣤⣦⣧⣤⣤⣤⣤⣤⣤⣤
-Den      142 MB  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀   3.64 MB  ⣤⣤⣇⣤⣤⣤⣤⣤⣤⣤
+traffic    down                   up
+home     167 GB  ⣿⣷⣶⣴⣴⣶⣼⣷⣦⣶  72.7 GB  ⣷⣿⣤⣄⣀⣠⣼⣷⣿⣷
+Hall     150 MB  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀  10.1 MB  ⣾⣶⣧⣤⣤⣦⣶⣶⣶⣴
+Study    142 MB  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀  3.68 MB  ⣤⣦⣧⣤⣤⣤⣤⣤⣤⣤
+Den      142 MB  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀  3.64 MB  ⣤⣤⣇⣤⣤⣤⣤⣤⣤⣤
 
-day         hour   home down         up  Hall down      up  Study down        up  Den down        up
-2026-11-06  17:00    0 B        0 B           0 B     0 B       0 B       0 B       0 B       0 B
-            18:00    9.63 GB    4.60 GB     647 kB  514 kB    126 kB    197 kB    131 kB    194 kB
-            19:00   10.1 GB     4.14 GB     791 kB  603 kB    124 kB    195 kB    133 kB    197 kB
-            20:00   12.6 GB     4.58 GB     746 kB  590 kB    129 kB    196 kB    136 kB    252 kB
-            21:00    9.70 GB    4.86 GB     698 kB  548 kB    133 kB    220 kB    145 kB    219 kB
-            22:00    8.44 GB    4.52 GB     689 kB  518 kB    126 kB    192 kB    129 kB    196 kB
-            23:00    8.09 GB    3.76 GB     681 kB  539 kB    127 kB    197 kB    133 kB    208 kB
-2026-11-07  00:00    9.60 GB    4.19 GB     382 kB  350 kB    128 kB    251 kB    132 kB    200 kB
-            01:00    7.46 GB    4.67 GB     424 kB  377 kB    128 kB    198 kB    135 kB    195 kB
-            02:00    5.00 GB    1.59 GB     137 MB  635 kB    140 MB    478 kB    140 MB    496 kB
-            03:00    5.53 GB    1.40 GB     368 kB  261 kB     89.9 kB   96.0 kB   56.9 kB   60.5 kB
-            04:00    2.16 GB    1.32 GB     351 kB  257 kB     86.4 kB   90.8 kB   94.9 kB   86.5 kB
-            05:00    5.04 GB  462 MB        366 kB  258 kB    103 kB    111 kB     83.3 kB   90.3 kB
-            06:00    4.11 GB  174 MB        357 kB  255 kB     80.3 kB   89.1 kB   85.1 kB   93.3 kB
-            07:00    5.30 GB  281 MB        449 kB  318 kB     93.1 kB  102 kB     98.7 kB  187 kB
-            08:00    7.71 GB  297 MB        591 kB  369 kB     80.3 kB   91.3 kB   87.5 kB   97.5 kB
-            09:00    7.73 GB    1.23 GB     438 kB  290 kB     80.6 kB   90.1 kB   80.2 kB   89.8 kB
-            10:00    4.00 GB    2.09 GB     752 kB  467 kB     93.4 kB  179 kB     88.6 kB   93.2 kB
-            11:00    8.49 GB    4.22 GB     759 kB  483 kB     79.6 kB   92.7 kB   87.0 kB  100 kB
-            12:00    9.03 GB    4.14 GB     681 kB  444 kB     86.5 kB   97.7 kB   85.8 kB   97.0 kB
-            13:00    6.01 GB    3.83 GB     785 kB  487 kB     95.5 kB  107 kB     99.0 kB  105 kB
-            14:00    5.88 GB    4.08 GB     659 kB  419 kB     95.0 kB  106 kB     79.1 kB   91.8 kB
-            15:00    4.22 GB    4.47 GB     516 kB  341 kB     81.3 kB   96.1 kB   85.5 kB   96.3 kB
-            16:00    6.09 GB    4.26 GB     462 kB  314 kB     87.5 kB   98.0 kB   87.3 kB   97.5 kB
-            17:00    5.10 GB    3.55 GB     434 kB  446 kB    102 kB    110 kB     93.8 kB  102 kB
+day         hour   home down       up  Hall down      up  Study down       up  Den down       up
+2026-11-06  17:00       0 B      0 B        0 B     0 B         0 B      0 B       0 B      0 B
+            18:00    9.63 GB  4.60 GB     647 kB  514 kB      126 kB   197 kB    131 kB   194 kB
+            19:00    10.1 GB  4.14 GB     791 kB  603 kB      124 kB   195 kB    133 kB   197 kB
+            20:00    12.6 GB  4.58 GB     746 kB  590 kB      129 kB   196 kB    136 kB   252 kB
+            21:00    9.70 GB  4.86 GB     698 kB  548 kB      133 kB   220 kB    145 kB   219 kB
+            22:00    8.44 GB  4.52 GB     689 kB  518 kB      126 kB   192 kB    129 kB   196 kB
+            23:00    8.09 GB  3.76 GB     681 kB  539 kB      127 kB   197 kB    133 kB   208 kB
+2026-11-07  00:00    9.60 GB  4.19 GB     382 kB  350 kB      128 kB   251 kB    132 kB   200 kB
+            01:00    7.46 GB  4.67 GB     424 kB  377 kB      128 kB   198 kB    135 kB   195 kB
+            02:00    5.00 GB  1.59 GB     137 MB  635 kB      140 MB   478 kB    140 MB   496 kB
+            03:00    5.53 GB  1.40 GB     368 kB  261 kB     89.9 kB  96.0 kB   56.9 kB  60.5 kB
+            04:00    2.16 GB  1.32 GB     351 kB  257 kB     86.4 kB  90.8 kB   94.9 kB  86.5 kB
+            05:00    5.04 GB   462 MB     366 kB  258 kB      103 kB   111 kB   83.3 kB  90.3 kB
+            06:00    4.11 GB   174 MB     357 kB  255 kB     80.3 kB  89.1 kB   85.1 kB  93.3 kB
+            07:00    5.30 GB   281 MB     449 kB  318 kB     93.1 kB   102 kB   98.7 kB   187 kB
+            08:00    7.71 GB   297 MB     591 kB  369 kB     80.3 kB  91.3 kB   87.5 kB  97.5 kB
+            09:00    7.73 GB  1.23 GB     438 kB  290 kB     80.6 kB  90.1 kB   80.2 kB  89.8 kB
+            10:00    4.00 GB  2.09 GB     752 kB  467 kB     93.4 kB   179 kB   88.6 kB  93.2 kB
+            11:00    8.49 GB  4.22 GB     759 kB  483 kB     79.6 kB  92.7 kB   87.0 kB   100 kB
+            12:00    9.03 GB  4.14 GB     681 kB  444 kB     86.5 kB  97.7 kB   85.8 kB  97.0 kB
+            13:00    6.01 GB  3.83 GB     785 kB  487 kB     95.5 kB   107 kB   99.0 kB   105 kB
+            14:00    5.88 GB  4.08 GB     659 kB  419 kB     95.0 kB   106 kB   79.1 kB  91.8 kB
+            15:00    4.22 GB  4.47 GB     516 kB  341 kB     81.3 kB  96.1 kB   85.5 kB  96.3 kB
+            16:00    6.09 GB  4.26 GB     462 kB  314 kB     87.5 kB  98.0 kB   87.3 kB  97.5 kB
+            17:00    5.10 GB  3.55 GB     434 kB  446 kB      102 kB   110 kB   93.8 kB   102 kB

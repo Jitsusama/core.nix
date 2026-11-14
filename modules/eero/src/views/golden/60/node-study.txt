@@ -28,13 +28,13 @@ ports
   2     no link      –  1.00 Gb/s   –   –
 
 devices · 9
-  device              band      signal           rx
-  laptop computer 1   5 GHz    −75 dBm  432 Mb/s
-  generic 4           5 GHz    −20 dBm  433 Mb/s
-  audio 1             2.4 GHz  −29 dBm   48.0 Mb/s
-  media streamer 1    5 GHz    −43 dBm  325 Mb/s
-  unknown computer 1  5 GHz    −57 dBm    1.20 Gb/s
-  thermostat 1        5 GHz    −65 dBm  390 Mb/s
-  game console 1      2.4 GHz  −66 dBm   72.2 Mb/s
-  generic 1           5 GHz    −68 dBm  360 Mb/s
-  phone 1             5 GHz    −69 dBm   48.0 Mb/s
+  device              band      signal         rx       down
+  laptop computer 1   5 GHz    −75 dBm   432 Mb/s   130 kb/s
+  generic 4           5 GHz    −20 dBm   433 Mb/s  2.23 kb/s
+  audio 1             2.4 GHz  −29 dBm  48.0 Mb/s     0 b/s
+  media streamer 1    5 GHz    −43 dBm   325 Mb/s     0 b/s
+  unknown computer 1  5 GHz    −57 dBm  1.20 Gb/s  11.5 Mb/s
+  thermostat 1        5 GHz    −65 dBm   390 Mb/s   132 b/s
+  game console 1      2.4 GHz  −66 dBm  72.2 Mb/s     0 b/s
+  generic 1           5 GHz    −68 dBm   360 Mb/s     0 b/s
+  phone 1             5 GHz    −69 dBm  48.0 Mb/s     0 b/s

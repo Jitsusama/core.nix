@@ -50,6 +50,9 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
     // The corner names what the table measures, so its heading and its
     // rows start at one edge.
     summary.header(&["speed", "", "lowest", "mean", "highest"]);
+    // The spark goes first, since the figures beside it say what it
+    // draws, and then the ends, so the mean stays.
+    summary.gives_way_by(&["", "lowest", "highest"]);
     for (word, way) in [("down", 0), ("up", 1)] {
         // Oldest first, so the spark reads left to right as time did.
         let values: Vec<f64> = tests
@@ -80,6 +83,8 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
 
     let mut table = Table::new(&[Align::Left, Align::Left, Align::Point, Align::Point]);
     table.header(&["tested", "", "down", "up"]);
+    // How long ago a test was is what its minute says, in other words.
+    table.gives_way_by(&[""]);
     for test in tests {
         let at = test.at.as_deref().and_then(clock::parse);
         table.row(vec![

@@ -23,11 +23,11 @@ radios
   5 GHz high      149  80 MHz  97 %  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇        1
 
 ports
-  port  link                           speed
-  1     linked                     1.00 Gb/s  WAN · backhaul
-  2     linked ● under its best  100 Mb/s
+  port  link                         speed
+  1     linked                   1.00 Gb/s  WAN · backhaul
+  2     linked ● under its best   100 Mb/s
 
 devices · 2
-  device     band      signal          rx      down       up
-  generic 3  2.4 GHz  −48 dBm   72.2 Mb/s  98.2 b/s  154 b/s
-  phone 1    5 GHz    −52 dBm  313 Mb/s     0 b/s      0 b/s
+  device     band      signal         rx      down       up
+  generic 3  2.4 GHz  −48 dBm  72.2 Mb/s  98.2 b/s  154 b/s
+  phone 1    5 GHz    −52 dBm   313 Mb/s     0 b/s    0 b/s

@@ -72,20 +72,32 @@ fn page(view: &View, model: &HomeNetwork) -> String {
 /// whole wide screen, as docs/commands.md sets every view at.
 const WIDTHS: [usize; 4] = [60, 80, 100, 140];
 
+/// Narrower than any of them, as a phone's terminal or a third of a
+/// screen is, where a page still runs no line past the edge, though it's
+/// held to no golden page there.
+const NARROW: [usize; 2] = [40, 50];
+
 /// A page set in a terminal each of the widths wide runs no line past its
 /// edge, and is held to its golden page at that width, in a folder named
 /// for it, where it's set otherwise than into a pipe; where it isn't,
 /// there's no page there, so a page that fits as it is reads as one.
 fn fits(name: &str, view: &View, model: &HomeNetwork) {
     let piped = page(view, model);
-    for width in WIDTHS {
+    let within = |width: usize| {
         let set = text(view, model, &soon(), &Ink::plain(), Room::Cells(width)).unwrap();
         for line in set.lines() {
             assert!(
-                line.chars().count() <= width,
+                terminal_kit::layout::width(line) <= width,
                 "{name} at {width} runs past the edge: {line}"
             );
         }
+        set
+    };
+    for width in NARROW {
+        within(width);
+    }
+    for width in WIDTHS {
+        let set = within(width);
         let file = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src/views/golden")
             .join(width.to_string())

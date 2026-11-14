@@ -82,14 +82,17 @@ pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
             row(&mut table, Some(node), device);
         }
     }
-    page.table(0, table);
+    // The devices on now and those that aren't lead with the same
+    // columns, which line up from one table into the next.
+    page.shared_table(0, table);
     off(&mut page, model, clock);
     page
 }
 
-/// The devices eero knows that aren't on now, the last on first: when each
-/// was, and where and how it was on then. Their link's figures are of a
-/// link that's gone, so the model doesn't keep them.
+/// The devices eero knows that aren't on now, the last on first: where and
+/// how each was on then, in the columns the devices on now lead with, and
+/// when. Their link's figures are of a link that's gone, so the model
+/// doesn't keep them.
 fn off(page: &mut Page, model: &HomeNetwork, clock: &Clock) {
     if model.devices_off.is_empty() {
         return;
@@ -102,11 +105,11 @@ fn off(page: &mut Page, model: &HomeNetwork, clock: &Clock) {
     page.blank();
     let mut table = Table::new(&[Align::Left; 7]);
     table.header(&[
-        "device", "kind", "last on", "node", "band", "profile", "made by",
+        "node", "device", "kind", "band", "last on", "profile", "made by",
     ]);
-    // When and where it was last on say most of a device that's gone.
+    // Where and when it was last on say most of a device that's gone.
     table.gives_way_by(&["kind", "profile", "made by", "band"]);
-    table.shortens(0, NAMES);
+    table.shortens(1, NAMES);
     for device in &model.devices_off {
         let band = if device.ethernet {
             vec![plain("Ethernet")]
@@ -115,21 +118,21 @@ fn off(page: &mut Page, model: &HomeNetwork, clock: &Clock) {
         };
         let profile = device.profile.as_deref().map(|id| profile_named(model, id));
         table.row(vec![
+            maybe(device.node.as_deref(), |id| {
+                vec![plain(location(model, Some(id)))]
+            }),
             vec![plain(off_name(device))],
             maybe(device.kind.as_deref(), |kind| vec![plain(words(kind))]),
+            band,
             maybe(
                 device.last_active.as_deref().and_then(super::clock::parse),
                 |at| vec![plain(clock.ago(at))],
             ),
-            maybe(device.node.as_deref(), |id| {
-                vec![plain(location(model, Some(id)))]
-            }),
-            band,
             said(profile),
             said(device.manufacturer.as_deref()),
         ]);
     }
-    page.table(0, table);
+    page.shared_table(0, table);
 }
 
 /// The name of the profile with an id, or the id where eero names none.

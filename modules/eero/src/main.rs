@@ -202,7 +202,7 @@ fn watch(context: &Context, words: &[&str]) -> Result<(), Failure> {
         view: &view,
         json: context.format().is_json(),
         ink: &views::theme::ink(context.out.inks()),
-        room: Room::of_stdout(&context.environment),
+        room: &|| Room::of_stdout(&context.environment),
     };
     watch::watch(&how, &mut io::stdout().lock())
         .map_err(|why| Failure::new(Exit::Failed, "the watch stopped").because(why))

@@ -6,13 +6,14 @@
 //! since the daemon tells every watch each new model, and watching the
 //! network ahead reads it at the fast pace: watching is looking, and the
 //! daemon should know it. When the daemon isn't listening, the page says
-//! so and the watch tries again until it is.
+//! so and the watch tries again until it is. On a terminal it looks at
+//! the width each second, and a page set for another width is set again.
 
 use std::io::{self, BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use terminal_kit::Room;
@@ -25,6 +26,14 @@ use crate::views::{self, Clock, Ink, View};
 /// there: soon enough to catch it starting, rare enough to cost nothing.
 const AGAIN: Duration = Duration::from_secs(5);
 
+/// How often a terminal's width is looked at: soon enough that a page
+/// follows a resized window, and one call to the terminal each time.
+const RESIZED: Duration = if cfg!(test) {
+    Duration::from_millis(10)
+} else {
+    Duration::from_secs(1)
+};
+
 /// Where the daemon listens.
 fn socket() -> Result<PathBuf, String> {
     std::env::var_os("XDG_RUNTIME_DIR")
@@ -32,14 +41,14 @@ fn socket() -> Result<PathBuf, String> {
         .ok_or_else(|| "XDG_RUNTIME_DIR isn't set".into())
 }
 
-/// How a watch draws: which view, as text or JSON, with what ink,
-/// and in what room: a terminal's width, drawn over the last page, or a
-/// pipe's, after it.
+/// How a watch draws: which view, as text or JSON, with what ink, and
+/// in what room, found again for each page: a terminal's width, drawn
+/// over the last page, or a pipe's, after it.
 pub struct Watch<'a> {
     pub view: &'a View,
     pub json: bool,
     pub ink: &'a Ink,
-    pub room: Room,
+    pub room: &'a dyn Fn() -> Room,
 }
 
 /// Draws a view, then again with each change, until stopped.
@@ -60,7 +69,7 @@ pub fn watch(how: &Watch, out: &mut impl Write) -> Result<(), String> {
             Err(error) => {
                 let page = absent(&socket, &error);
                 if said.as_ref() != Some(&page) {
-                    draw(how, out, &page)?;
+                    draw((how.room)(), out, &page)?;
                     said = Some(page);
                 }
             }
@@ -120,23 +129,40 @@ pub fn follow(
     // Bytes of a line not yet whole, kept across a timeout so a model
     // written as the page is redrawn is still read in full.
     let mut line = Vec::new();
-    draw(how, out, "eero: waiting for eero-daemon's first reading\n")?;
+    draw(
+        (how.room)(),
+        out,
+        "eero: waiting for eero-daemon's first reading\n",
+    )?;
+    // The room the last page was set in, whether a new model waits to be
+    // drawn, and when the last page's ages next read differently.
+    let (mut drawn, mut fresh, mut due) = (None, false, None::<Instant>);
     loop {
-        let next = match &model {
-            Some(model) => {
+        let room = (how.room)();
+        if let Some(model) = &model {
+            let aged = due.is_some_and(|due| Instant::now() >= due);
+            // JSON holds no ages and no widths, so only a new model draws
+            // it again.
+            let resized = !how.json && drawn != Some(room);
+            if fresh || aged || resized {
                 let now = clock();
                 let page = if how.json {
                     views::json(how.view, model)
                 } else {
-                    views::text(how.view, model, &now, how.ink, how.room)
+                    views::text(how.view, model, &now, how.ink, room)
                 };
-                draw(how, out, &page?)?;
-                // JSON holds no ages, so only a new model draws it again.
-                (!how.json).then(|| next_change(model, &now))
+                draw(room, out, &page?)?;
+                (drawn, fresh) = (Some(room), false);
+                due = (!how.json)
+                    .then(|| Instant::now() + Duration::from_secs(next_change(model, &now)));
             }
-            None => None,
-        };
-        let timeout = next.map(Duration::from_secs);
+        }
+        let mut wait = due.map(|due| due.saturating_duration_since(Instant::now()));
+        if !how.json && model.is_some() && room.cells().is_some() {
+            wait = Some(wait.map_or(RESIZED, |wait| wait.min(RESIZED)));
+        }
+        // A wait of nothing would wait for ever, so the least is a moment.
+        let timeout = wait.map(|wait| wait.max(Duration::from_millis(1)));
         reading
             .get_ref()
             .set_read_timeout(timeout)
@@ -144,7 +170,7 @@ pub fn follow(
         match reading.read_until(b'\n', &mut line) {
             Ok(0) => {
                 draw(
-                    how,
+                    (how.room)(),
                     out,
                     "eero: eero-daemon stopped; waiting for it to start\n",
                 )?;
@@ -153,6 +179,7 @@ pub fn follow(
             Ok(_) if line.ends_with(b"\n") => {
                 if let Some(network) = told(&line)? {
                     model = Some(network);
+                    fresh = true;
                 }
                 line.clear();
             }
@@ -178,8 +205,8 @@ fn next_change(model: &HomeNetwork, clock: &Clock) -> u64 {
 /// cleared to its end and everything below it cleared, which doesn't
 /// blank the screen between pages as clearing it first would. Anywhere
 /// else each page follows the last, for a reader to take in turn.
-fn draw(how: &Watch, out: &mut impl Write, page: &str) -> Result<(), String> {
-    let written = if how.room.cells().is_some() {
+fn draw(room: Room, out: &mut impl Write, page: &str) -> Result<(), String> {
+    let written = if room.cells().is_some() {
         let mut over = String::from("\x1b[H");
         for line in page.lines() {
             over.push_str(line);
@@ -217,7 +244,7 @@ mod tests {
             view,
             json,
             ink: &ink,
-            room: Room::Unbounded,
+            room: &|| Room::Unbounded,
         };
         let mut out = Vec::new();
         follow(&how, ours, &mut out, &clock).unwrap();
@@ -283,7 +310,7 @@ mod tests {
             view: &View::Status,
             json: false,
             ink: &ink,
-            room: Room::Unbounded,
+            room: &|| Room::Unbounded,
         };
 
         let refused = follow(&how, ours, &mut Vec::new(), &clock).unwrap_err();
@@ -317,17 +344,61 @@ mod tests {
 
     #[test]
     fn on_a_terminal_a_page_is_drawn_over_the_last() {
+        let mut out = Vec::new();
+
+        draw(Room::Cells(80), &mut out, "one\ntwo\n").unwrap();
+
+        assert_eq!(out, b"\x1b[Hone\x1b[K\ntwo\x1b[K\n\x1b[J");
+    }
+
+    #[test]
+    fn a_terminal_made_narrower_is_drawn_again_at_its_new_width() {
+        let model: HomeNetwork = serde_json::from_str(MODEL).unwrap();
+        let (ours, mut theirs) = UnixStream::pair().unwrap();
+        theirs.write_all(line(&model).as_bytes()).unwrap();
+        // The daemon stays a while, so the watch looks at the width again.
+        let daemon = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(200));
+            drop(theirs);
+        });
+        // The width is looked at for the waiting line, before the first
+        // model, and for its page; after that the terminal is narrower.
+        let looked = std::cell::Cell::new(0);
+        let room = || {
+            looked.set(looked.get() + 1);
+            Room::Cells(if looked.get() <= 3 { 140 } else { 60 })
+        };
         let ink = Ink::plain();
         let how = Watch {
-            view: &View::Status,
+            view: &View::Nodes,
             json: false,
             ink: &ink,
-            room: Room::Cells(80),
+            room: &room,
         };
         let mut out = Vec::new();
 
-        draw(&how, &mut out, "one\ntwo\n").unwrap();
+        follow(&how, ours, &mut out, &clock).unwrap();
+        daemon.join().unwrap();
 
-        assert_eq!(out, b"\x1b[Hone\x1b[K\ntwo\x1b[K\n\x1b[J");
+        let out = String::from_utf8(out).unwrap();
+        let widest: Vec<usize> = out
+            .split("\x1b[H")
+            .filter(|page| page.contains(" · 3 nodes · "))
+            .map(|page| {
+                page.lines()
+                    .map(|line| terminal_kit::layout::width(line.trim_end_matches("\x1b[K")))
+                    .max()
+                    .unwrap_or(0)
+            })
+            .collect();
+        assert_eq!(
+            widest.len(),
+            2,
+            "one page at each width, not one a look: {widest:?}"
+        );
+        assert!(
+            widest[0] > 60 && widest[1] <= 60,
+            "the second page fits the narrower terminal: {widest:?}"
+        );
     }
 }
