@@ -13,15 +13,15 @@
 
 use std::io::{BufRead, Write};
 use std::path::Path;
-use std::process::ExitCode;
 
 use dictation::language::LanguageModel;
 use dictation::openvino::Priority;
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure};
 
 /// What this ends with when there's too little memory to load the model,
 /// sysexits' temporary failure, so the daemon knows to wait and ask again.
-pub const SHORT_OF_MEMORY: u8 = 75;
+pub const SHORT_OF_MEMORY: Exit = Exit::TryAgain;
 
 /// The memory that must be free beyond the model's own size, in bytes. A
 /// model on the GPU takes about its size on disk in system memory that
@@ -30,26 +30,29 @@ pub const SHORT_OF_MEMORY: u8 = 75;
 const MARGIN: u64 = 10 << 30;
 
 /// Answers prompts with the model in `dir`, as the module's comment says.
-pub fn serve(dir: &Path) -> ExitCode {
-    let mut model = match load(dir) {
-        Ok(model) => model,
-        Err(Unloaded::Short(why)) => {
-            eprintln!("call-transcripts: {why}");
-            return ExitCode::from(SHORT_OF_MEMORY);
+///
+/// # Errors
+///
+/// `SHORT_OF_MEMORY` when there's too little memory to load the model,
+/// and failed when it doesn't load, a prompt isn't JSON or the model
+/// fails to answer.
+pub fn serve(dir: &Path) -> Result<(), Failure> {
+    let mut model = load(dir).map_err(|unloaded| match unloaded {
+        Unloaded::Short(why) => Failure::new(SHORT_OF_MEMORY, why),
+        Unloaded::Failed(why) => {
+            Failure::new(Exit::Failed, format!("the summarizer didn't load: {why}"))
         }
-        Err(Unloaded::Failed(why)) => {
-            eprintln!("call-transcripts: the summarizer didn't load: {why}");
-            return ExitCode::FAILURE;
-        }
-    };
+    })?;
     let mut out = std::io::stdout().lock();
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
         let asked: Value = match serde_json::from_str(&line) {
             Ok(asked) => asked,
             Err(why) => {
-                eprintln!("call-transcripts: a prompt isn't JSON: {why}");
-                return ExitCode::FAILURE;
+                return Err(Failure::new(
+                    Exit::Failed,
+                    format!("a prompt isn't JSON: {why}"),
+                ));
             }
         };
         let prompt = asked["prompt"].as_str().unwrap_or_default();
@@ -65,12 +68,14 @@ pub fn serve(dir: &Path) -> ExitCode {
                 }
             }
             Err(why) => {
-                eprintln!("call-transcripts: the summarizer failed to answer: {why}");
-                return ExitCode::FAILURE;
+                return Err(Failure::new(
+                    Exit::Failed,
+                    format!("the summarizer failed to answer: {why}"),
+                ));
             }
         }
     }
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 /// Why the model wasn't loaded.
