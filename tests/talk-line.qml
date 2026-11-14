@@ -362,11 +362,11 @@ QtObject {
                 Session.spoken(justSent, "x", toIt, () => "yesterday").side, "yesterday 20:30");
             const heardTalks = [talkAt(19, 0, "one", "read", "A."), talkAt(18, 0, "two", "read",
                 "B."), talkAt(17, 0, "three", "over", "C."), talkAt(16, 0, "four", "read", "D."),
-                talkAt(15, 0, "five", "replied", "E."), talkAt(14, 0, "", "delivered")];
+                talkAt(15, 0, "five", "replied", "E."), talkAt(14, 0, "six", "delivered")];
             const saidOf = shownTalks => shownTalks.map(one => one.words);
             Expect.same("those served show as the daemon picked and ordered them",
                 saidOf(Session.sessionTalks([], heardTalks)),
-                ["one", "two", "three", "four", "five", ""]);
+                ["one", "two", "three", "four", "five", "six"]);
             Expect.same("one said here the daemon hasn't served yet shows first",
                 saidOf(Session.sessionTalks([Session.toSession("six", when(20, 0))], heardTalks))[0],
                 "six");
