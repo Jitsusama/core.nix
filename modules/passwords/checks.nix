@@ -28,7 +28,11 @@ onLinux {
   # alone and saying no secret in an answer or a log; what it found is kept
   # in the state folder for Joel alone, holding no secret nor any hash,
   # outlives the daemon, and holds since when trouble was found until a
-  # check finds none, each told to a watch. The command's tests
+  # check finds none, each told to a watch. A secret ask is drawn only for
+  # a reference listed to release, none listed drawing none, and only
+  # Joel's yes on its own key, for what was drawn and once it was shown
+  # long enough, releases the value, into the asked command alone in a
+  # stand-in bubblewrap, masked in what it prints. The command's tests
   # run too: each answer set
   # in columns under a header for a person and tab-separated for a
   # program, its --json the daemon's answer with no secret but show's, a
