@@ -27,19 +27,21 @@ onLinux {
   pineapple-passes-clippy = passesClippy "pineapple-passes-clippy" (
     pkgs.callPackage ./package.nix { }
   );
-  # pineapple-slack starts once pi has signed in to Slack, comes back as
-  # the new one after a switch and after it fails, runs with what Joel
-  # uses, and reads as its own name in ps.
+  # pineapple-slack starts at login, reads pi's Slack sign-in from the
+  # keyring as slack-unreads does, comes back as the new one after a
+  # switch and after it fails, runs in the background slice, and reads as
+  # its own name in ps.
   pineapple-slack-starts-with-the-sign-in =
     let
       home = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.pineapple ]; } ]);
       unit = home.systemd.user.services.pineapple-slack;
-      credentials = "${home.xdg.configHome}/agentic-harness/slack/credentials.json";
     in
     holds "pineapple-slack-starts-with-the-sign-in"
-      "pineapple-slack lacks its sign-in start, switch restart, restart, slice or name."
+      "pineapple-slack lacks its login start, keyring, switch restart, restart, slice or name."
       (
-        home.systemd.user.paths.pineapple-slack.Path.PathExists == credentials
+        lib.elem "default.target" unit.Install.WantedBy
+        && !(home.systemd.user.paths ? pineapple-slack)
+        && lib.any (lib.hasPrefix "SIGN_IN_KEYRING=/nix/store/") (lib.toList unit.Service.Environment)
         && unit.Unit.X-SwitchMethod == "restart"
         && unit.Service.Restart == "on-failure"
         && unit.Service.Slice == "background.slice"
