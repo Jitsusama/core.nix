@@ -34,28 +34,19 @@
 //! its version, every thirty seconds. Nothing is spawned.
 //!
 //! A controller can stop answering while the kernel still says its adapter
-//! is up, as one wedged in its firmware does, and then nothing it carries
-//! works. One that's up and answers nothing it's asked for three looks in
-//! a row is said to have stopped, in `stopped.json` beside the file,
-//! written only when what it says changes, with what it sits on so the
-//! shell can give the command that starts it again:
-//!
-//! ```json
-//! {"adapters": [{"name": "hci0", "device": "0000:00:14.7",
-//!   "driver": "/sys/bus/pci/drivers/btintel_pcie"}]}
-//! ```
-//!
-//! Once stopped it's asked only every thirty seconds, since each command
-//! it can't answer is a second waited and a line in the kernel's log, and
-//! it's taken off the list the first time it answers again.
+//! is up, so what each is asked is heard for whether it answers
+//! (src/hearing.rs), and one that's stopped is named in `stopped.json`
+//! beside the file.
 //!
 //! Usage: bluetooth-links [FILE]   (/run/bluetooth-links/links.json unless
 //! given)
 
 mod hci;
+mod hearing;
 mod reply;
 
 use hci::{Radio, Seen, Unanswered};
+use hearing::{Hearings, Heeding, Stopped};
 use reply::{Adapter, Connection, Version};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -70,15 +61,6 @@ const TICK: Duration = Duration::from_secs(5);
 const FILE: &str = "/run/bluetooth-links/links.json";
 /// How many looks a history keeps: as many as the launcher's graphs draw.
 const KEPT: usize = 20;
-/// How many looks in a row an adapter that's up is asked something and
-/// answers nothing before it's said to have stopped: one could fall in a
-/// busy moment, three in a row can't.
-const SILENT: u32 = 3;
-/// How often, in looks, an adapter that's asked nothing else is asked its
-/// version to hear that it still answers: every thirty seconds, so an idle
-/// controller isn't woken each look. One that's stopped is asked as often,
-/// to hear it come back.
-const HEARD_EVERY: u64 = 6;
 
 /// What one look at the links found.
 #[derive(Debug, Serialize, PartialEq)]
@@ -237,73 +219,18 @@ struct Counted {
     traffic: Vec<u64>,
 }
 
-/// Whether an adapter that's up answers: how many looks in a row it was
-/// asked something and answered nothing, and the look it was last asked
-/// anything at.
-#[derive(Clone, Copy)]
-struct Hearing {
-    unanswered: u32,
-    asked: u64,
-}
-
-impl Hearing {
-    const fn stopped(self) -> bool {
-        self.unanswered >= SILENT
-    }
-
-    /// Whether it's been long enough since it was last asked anything to
-    /// ask it again.
-    const fn due(self, look: u64) -> bool {
-        look.saturating_sub(self.asked) >= HEARD_EVERY
-    }
-
-    /// Whether it's left unasked this look: one that's stopped is asked
-    /// only now and then, to hear it come back, since each command it
-    /// can't answer is a second waited and a line in the kernel's log.
-    const fn hushed(self, look: u64) -> bool {
-        self.stopped() && !self.due(look)
-    }
-}
-
-/// The controller as asked within one look, noting of each adapter
-/// whether it answered anything it was asked: true once it has, false
-/// while all it was asked went unanswered. A socket that failed says
-/// nothing of the controller, so it notes nothing.
-struct Heeding<'a, C> {
-    controller: &'a mut C,
-    heard: HashMap<u16, bool>,
-}
-
-impl<C: Controller> Heeding<'_, C> {
-    fn ask(&mut self, adapter: u16, opcode: u16, handle: u16) -> Option<Vec<u8>> {
-        let said = self.controller.ask(adapter, opcode, handle);
-        match said {
-            Ok(_) | Err(Unanswered::Refused(_)) => {
-                self.heard.insert(adapter, true);
-            }
-            Err(Unanswered::Silent) => {
-                self.heard.entry(adapter).or_insert(false);
-            }
-            Err(Unanswered::Broken(_)) => {}
-        }
-        said.ok()
-    }
-}
-
 /// What's kept between looks: the adapters as last written with nothing
 /// connected, so they're written once, each link's history, each adapter's
 /// counters, each adapter's version, which never changes, and whether each
-/// adapter that's up answers, with how many looks there have been and the
-/// names of those that stopped.
+/// adapter that's up answers, with how many looks there have been.
 #[derive(Default)]
 struct Watch {
     quiet: Option<Vec<Told>>,
     histories: HashMap<String, History>,
     counted: HashMap<u16, Counted>,
     versions: HashMap<u16, Version>,
-    hearings: HashMap<u16, Hearing>,
+    hearings: Hearings,
     looks: u64,
-    stopped: Vec<String>,
 }
 
 /// Bytes a second between two reads of a counter. A counter that went
@@ -316,65 +243,9 @@ fn per_second(now: u32, before: u32, over: Duration) -> u64 {
 }
 
 impl Watch {
-    /// The adapters that are up but have stopped answering, by name, as
-    /// of the last look.
-    fn stopped(&self) -> Vec<String> {
-        self.stopped.clone()
-    }
-
     /// Whether an adapter is left unasked this look.
     fn hushed(&self, adapter: u16) -> bool {
-        self.hearings
-            .get(&adapter)
-            .is_some_and(|hearing| hearing.hushed(self.looks))
-    }
-
-    /// Hears from what each adapter that's up was asked this look whether
-    /// it answers, first asking its version of one that was asked nothing
-    /// while it's due, or while it's yet to be heard to stop or answer
-    /// again. An adapter down or gone starts afresh, since bringing it up
-    /// again starts its controller again.
-    fn hear(&mut self, heeding: &mut Heeding<'_, impl Controller>, adapters: &[Adapter]) {
-        let look = self.looks;
-        self.hearings.retain(|id, _| {
-            adapters
-                .iter()
-                .any(|adapter| adapter.id == *id && adapter.up)
-        });
-        for adapter in adapters.iter().filter(|adapter| adapter.up) {
-            let hearing = *self.hearings.entry(adapter.id).or_insert(Hearing {
-                unanswered: 0,
-                asked: look,
-            });
-            let doubted = hearing.unanswered > 0 && !hearing.stopped();
-            if !heeding.heard.contains_key(&adapter.id) && (doubted || hearing.due(look)) {
-                let said = heeding.ask(adapter.id, reply::READ_LOCAL_VERSION, 0);
-                if let Some(version) = said.as_deref().and_then(reply::version) {
-                    self.versions.insert(adapter.id, version);
-                }
-            }
-            let unanswered = match heeding.heard.get(&adapter.id) {
-                Some(true) => 0,
-                Some(false) => hearing.unanswered.saturating_add(1),
-                None => continue,
-            };
-            self.hearings.insert(
-                adapter.id,
-                Hearing {
-                    unanswered,
-                    asked: look,
-                },
-            );
-        }
-        self.stopped = adapters
-            .iter()
-            .filter(|adapter| {
-                self.hearings
-                    .get(&adapter.id)
-                    .is_some_and(|hearing| hearing.stopped())
-            })
-            .map(|adapter| adapter.name.clone())
-            .collect();
+        self.hearings.hushed(adapter, self.looks)
     }
 
     /// One look, at `at` seconds since 1970 and `clock` on a clock that
@@ -407,7 +278,8 @@ impl Watch {
                 link(&mut heeding, *adapter, connection, hushed)
             })
             .collect();
-        self.hear(&mut heeding, &seen.adapters);
+        self.hearings
+            .hear(&mut heeding, &seen.adapters, self.looks, &mut self.versions);
         let linked: Vec<&str> = links.iter().map(|link| link.address.as_str()).collect();
         self.histories
             .retain(|address, _| linked.contains(&address.as_str()));
@@ -541,41 +413,6 @@ fn link(
     }
 }
 
-/// The adapters that have stopped answering, as `stopped.json` says them.
-#[derive(Debug, Serialize, PartialEq, Eq)]
-struct Stopped {
-    adapters: Vec<Halted>,
-}
-
-/// An adapter that stopped answering: its name, and the kernel's names
-/// for the device it sits on and for that device's driver's folder in
-/// sysfs, by which the driver is let go of the device and given it back,
-/// starting the controller again; null where sysfs doesn't say, as of a
-/// virtual adapter.
-#[derive(Debug, Serialize, PartialEq, Eq)]
-struct Halted {
-    name: String,
-    device: Option<String>,
-    driver: Option<String>,
-}
-
-/// What an adapter sits on, from sysfs under `sysfs`: its `device` links
-/// to the device by its name, as `0000:00:14.7` for a PCI chip or
-/// `1-10:1.0` for a USB one's interface, and that device's `driver` to
-/// its driver's folder, as `/sys/bus/pci/drivers/btintel_pcie`.
-fn sits_on(sysfs: &Path, name: &str) -> Halted {
-    let device = sysfs.join("class/bluetooth").join(name).join("device");
-    let named = |path: PathBuf| path.to_str().map(String::from);
-    Halted {
-        name: name.into(),
-        device: fs::read_link(&device)
-            .ok()
-            .and_then(|link| link.file_name().map(PathBuf::from))
-            .and_then(named),
-        driver: fs::canonicalize(device.join("driver")).ok().and_then(named),
-    }
-}
-
 /// Writes what's said beside the file and renames it into place, so a
 /// reader never sees it half written, readable by everyone.
 fn write(file: &Path, report: &impl Serialize) -> io::Result<()> {
@@ -623,11 +460,11 @@ fn main() {
             // Written again next time, though it says nothing new.
             watch.quiet = None;
         }
-        let names = watch.stopped();
+        let names = watch.hearings.stopped();
         if said.as_ref() != Some(&names) {
             let adapters = names
                 .iter()
-                .map(|name| sits_on(Path::new("/sys"), name))
+                .map(|name| hearing::sits_on(Path::new("/sys"), name))
                 .collect();
             match write(&stopped, &Stopped { adapters }) {
                 Ok(()) => said = Some(names),
@@ -649,12 +486,12 @@ mod tests {
     /// reply for, by opcode and handle, refusing the rest; or, `silent`,
     /// answers nothing, as one wedged in its firmware.
     #[derive(Default)]
-    struct StandIn {
-        adapters: Vec<Adapter>,
-        listed: Vec<(u16, Connection)>,
-        replies: HashMap<(u16, u16), Vec<u8>>,
-        asked: Vec<u16>,
-        silent: bool,
+    pub struct StandIn {
+        pub adapters: Vec<Adapter>,
+        pub listed: Vec<(u16, Connection)>,
+        pub replies: HashMap<(u16, u16), Vec<u8>>,
+        pub asked: Vec<u16>,
+        pub silent: bool,
     }
 
     impl Controller for StandIn {
@@ -687,7 +524,7 @@ mod tests {
         }
     }
 
-    fn mouse() -> Connection {
+    pub fn mouse() -> Connection {
         Connection {
             handle: 0x0040,
             address: "C3:9C:E3:2A:F3:6E".into(),
@@ -697,7 +534,7 @@ mod tests {
         }
     }
 
-    fn radio(received: u32, sent: u32) -> Adapter {
+    pub fn radio(received: u32, sent: u32) -> Adapter {
         Adapter {
             id: 0,
             name: "hci0".into(),
@@ -708,7 +545,7 @@ mod tests {
         }
     }
 
-    fn seconds(count: u64) -> Duration {
+    pub fn seconds(count: u64) -> Duration {
         Duration::from_secs(count)
     }
 
@@ -891,138 +728,6 @@ mod tests {
             .filter(|step| watch.tick(&mut controller, 1, seconds(step * 5)).is_some())
             .count();
         assert_eq!(written, KEPT + 1, "traffic was written {written} times");
-    }
-
-    /// Ticks the watch over `looks` more looks, five seconds apart from
-    /// look `from`, saying after each which adapters have stopped.
-    fn watched(
-        watch: &mut Watch,
-        controller: &mut StandIn,
-        from: u64,
-        looks: u64,
-    ) -> Vec<Vec<String>> {
-        (from..from + looks)
-            .map(|step| {
-                watch.tick(controller, step * 5, seconds(step * 5));
-                watch.stopped()
-            })
-            .collect()
-    }
-
-    #[test]
-    fn a_controller_answering_nothing_has_stopped_after_three_looks() {
-        let mut watch = Watch::default();
-        let mut controller = StandIn {
-            adapters: vec![radio(0, 0)],
-            listed: vec![(0, mouse())],
-            ..StandIn::default()
-        };
-        watched(&mut watch, &mut controller, 0, 4);
-        controller.silent = true;
-        let said = watched(&mut watch, &mut controller, 4, 3);
-        assert_eq!(
-            said,
-            vec![vec![], vec![], vec!["hci0".to_string()]],
-            "three looks unanswered weren't said, or fewer were"
-        );
-        controller.asked.clear();
-        watched(&mut watch, &mut controller, 7, HEARD_EVERY - 1);
-        assert!(
-            controller.asked.is_empty(),
-            "one that stopped was asked its link's commands each look"
-        );
-        controller.silent = false;
-        let back = watched(&mut watch, &mut controller, 7 + HEARD_EVERY - 1, 1);
-        assert_eq!(
-            back,
-            vec![Vec::<String>::new()],
-            "its answering again went unheard"
-        );
-    }
-
-    #[test]
-    fn an_idle_controller_is_asked_now_and_then() {
-        let mut watch = Watch::default();
-        let version = vec![0x00, 0x0e, 0x00, 0x01, 0x0e, 0x02, 0x00, 0x00, 0x01];
-        let mut controller = StandIn {
-            adapters: vec![radio(0, 0)],
-            replies: HashMap::from([((reply::READ_LOCAL_VERSION, 0), version)]),
-            ..StandIn::default()
-        };
-        watched(&mut watch, &mut controller, 0, 1 + 6 * HEARD_EVERY);
-        assert_eq!(
-            controller.asked.len(),
-            7,
-            "an idle controller wasn't asked its version, then once every thirty seconds"
-        );
-        controller.silent = true;
-        let said = watched(&mut watch, &mut controller, 1 + 6 * HEARD_EVERY, 9);
-        assert_eq!(
-            said.iter().position(|stopped| !stopped.is_empty()),
-            Some(7),
-            "an idle controller that stopped answering wasn't found within 45 s"
-        );
-    }
-
-    #[test]
-    fn an_adapter_down_or_gone_has_not_stopped() {
-        let mut watch = Watch::default();
-        let mut controller = StandIn {
-            adapters: vec![radio(0, 0)],
-            listed: vec![(0, mouse())],
-            silent: true,
-            ..StandIn::default()
-        };
-        watched(&mut watch, &mut controller, 0, 3);
-        assert_eq!(watch.stopped(), vec!["hci0".to_string()]);
-        controller.adapters[0].up = false;
-        controller.listed.clear();
-        assert_eq!(
-            watched(&mut watch, &mut controller, 3, 1),
-            vec![Vec::<String>::new()],
-            "an adapter taken down was still said to have stopped"
-        );
-        controller.adapters.clear();
-        assert_eq!(
-            watched(&mut watch, &mut controller, 4, 1),
-            vec![Vec::<String>::new()]
-        );
-    }
-
-    #[test]
-    fn what_an_adapter_sits_on_is_read_from_sysfs() {
-        use std::os::unix::fs::symlink;
-        let sysfs = std::env::temp_dir().join(format!("bluetooth-sysfs-{}", std::process::id()));
-        let chip = sysfs.join("devices/pci0000:00/0000:00:14.7");
-        fs::create_dir_all(chip.join("bluetooth/hci0")).unwrap();
-        fs::create_dir_all(sysfs.join("bus/pci/drivers/btintel_pcie")).unwrap();
-        fs::create_dir_all(sysfs.join("class/bluetooth")).unwrap();
-        symlink(
-            "../../devices/pci0000:00/0000:00:14.7/bluetooth/hci0",
-            sysfs.join("class/bluetooth/hci0"),
-        )
-        .unwrap();
-        symlink("../../../0000:00:14.7", chip.join("bluetooth/hci0/device")).unwrap();
-        symlink("../../../bus/pci/drivers/btintel_pcie", chip.join("driver")).unwrap();
-        let driver = fs::canonicalize(sysfs.join("bus/pci/drivers/btintel_pcie")).unwrap();
-        assert_eq!(
-            sits_on(&sysfs, "hci0"),
-            Halted {
-                name: "hci0".into(),
-                device: Some("0000:00:14.7".into()),
-                driver: driver.to_str().map(String::from),
-            }
-        );
-        assert_eq!(
-            sits_on(&sysfs, "hci1"),
-            Halted {
-                name: "hci1".into(),
-                device: None,
-                driver: None,
-            },
-            "an adapter sysfs doesn't know sat on something"
-        );
-        fs::remove_dir_all(&sysfs).unwrap();
     }
 
     #[test]
