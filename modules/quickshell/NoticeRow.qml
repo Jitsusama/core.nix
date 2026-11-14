@@ -49,6 +49,8 @@ Item {
     // What it says, as styled text.
     property string words
     property string from
+    // How many more wait behind it, in strong, or nothing (VKCF3Z, 2026-11-13).
+    property string count
     property string when
 
     // A link in its words was clicked.
@@ -158,6 +160,7 @@ Item {
         mark: row.pictured ? row.mark : ""
         hue: row.markHue
         name: row.from
+        count: row.count
         side: row.when
     }
 }

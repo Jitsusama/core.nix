@@ -581,15 +581,20 @@ Scope {
         }
     }
 
-    // What a notice's signing line says on the right: how many more wait behind it and
-    // when it came, or, for one saying how it stands, that and its time, "sent · 12:40"
-    // (VKCF3Z, 2026-11-12).
-    function whenOf(notification, more) {
+    // What a notice's signing line says on the right after how many more wait: when it
+    // came, or, for one saying how it stands, that and its time, "sent · 12:40" (VKCF3Z,
+    // 2026-11-12).
+    function whenOf(notification) {
         const now = clock.date.getTime();
-        return (more > 0 ? `${more} more \u00b7 ` : "")
-            + (notification.said !== ""
-                ? `${notification.said} \u00b7 ${When.clock(notification.at)}`
-                : root.since(root.arrivedAt(notification.id) || now, now));
+        return notification.said !== ""
+            ? `${notification.said} \u00b7 ${When.clock(notification.at)}`
+            : root.since(root.arrivedAt(notification.id) || now, now);
+    }
+
+    // How many more wait behind the one in front, as its signing line counts them, or
+    // nothing when none do.
+    function countOf(more) {
+        return more > 0 ? `${more} more` : "";
     }
 
     // The arrival line, where the front notice shows while the stack draws none of them
@@ -601,7 +606,8 @@ Scope {
         shown: root.shown
         talking: root.talking
         holding: root.holding
-        whenOf: (notification, more) => root.whenOf(notification, more)
+        whenOf: notification => root.whenOf(notification)
+        countOf: more => root.countOf(more)
         onClicked: notification => root.choose(notification)
         onLinked: href => root.follow(href)
     }
@@ -948,7 +954,8 @@ Scope {
                         words: card.modelData.words.styled
                         onLinked: href => root.follow(href)
                         from: card.from.name
-                        when: root.whenOf(card.modelData, more)
+                        count: root.countOf(more)
+                        when: root.whenOf(card.modelData)
                     }
 
                     // Five seconds when the sender doesn't say, and ten for

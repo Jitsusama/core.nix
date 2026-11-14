@@ -1,7 +1,9 @@
 // A card's signature, as a notice's and what's playing sign theirs: the mark
 // of what sent it, unless it stands in the card's mark column instead, the
 // name Joel knows it by, and on the right when it came or where it is, at
-// Note. Without a mark, the name's ink starts the line. Its gaps are
+// Note, after how many more wait in strong where any do, a dot between
+// them: a count is state, and state words are strong (VKCF3Z,
+// line-colour-and-space, 2026-11-13). Without a mark, the name's ink starts the line. Its gaps are
 // measured to the ink (docs/design.md, The Ladder): the mark a mark rung
 // from the name, the name at least an items rung from what's on the right,
 // which ends flush with the item. The item is as tall as the line's
@@ -15,7 +17,12 @@ Item {
     property string mark
     property color hue: Theme.text
     property string name
+    property string count
     property string side
+
+    // What's drawn on the right in Note's ink: the side, after a dot when a
+    // count stands before it.
+    readonly property string trail: count === "" ? side : `\u00b7 ${side}`
 
     readonly property rect capital: drawn(capitalInk.tightBoundingRect)
     readonly property rect marked: drawn(markInk.tightBoundingRect)
@@ -76,7 +83,14 @@ Item {
     TextMetrics {
         id: sideInk
         font: drawnFace.font
-        text: signature.side
+        text: signature.trail
+    }
+    // The count and the space after it, in the shell's own pixels, so the
+    // count stands where it did as the start of one string with the side.
+    TextMetrics {
+        id: countAdvance
+        font: face.font
+        text: signature.count === "" ? "" : `${signature.count} `
     }
 
     Text {
@@ -93,7 +107,8 @@ Item {
             : glyph.x + signature.marked.x + signature.marked.width + Theme.space.rung.mark
                 - signature.named.x
         y: signature.capital.height - baselineOffset
-        width: Math.max(0, at.x + signature.sided.x - Theme.space.rung.items - x)
+        width: Math.max(0, (signature.count === "" ? at.x + signature.sided.x : counted.x)
+            - Theme.space.rung.items - x)
         text: signature.name
         textFormat: Text.PlainText
         elide: Text.ElideRight
@@ -105,9 +120,20 @@ Item {
         id: at
         x: signature.width - signature.sided.x - signature.sided.width
         y: signature.capital.height - baselineOffset
-        text: signature.side
+        text: signature.trail
         textFormat: Text.PlainText
         color: Theme.level.note.colour
+        font: face.font
+    }
+
+    Text {
+        id: counted
+        x: at.x - countAdvance.advanceWidth
+        y: signature.capital.height - baselineOffset
+        visible: signature.count !== ""
+        text: signature.count
+        textFormat: Text.PlainText
+        color: Theme.strong
         font: face.font
     }
 }
