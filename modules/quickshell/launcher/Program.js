@@ -258,7 +258,10 @@ function facts(known, named, said) {
 // part spent is said in the journal. Most take 4 to 17 ms, and the bar from
 // a key to the screen is 50, which five of 26 drawers' making alone missed
 // in Joel's journal, with nothing saying which part was dear (2026-11-13).
-const SAID_FROM = 25;
+// From a fifth of the bar, since a drawer's following and its frame take
+// the rest: Slack's spent 10 to 22 ms working out its row's drawer within
+// drawers 72 and 76 ms from Joel's key, unsaid under 25 (2026-11-14).
+const SAID_FROM = 10;
 
 // The answer of `work`, its time on `clock` (ms) kept in `parts` by its
 // name, { name, ms }, summed with the part of that name already kept: a
