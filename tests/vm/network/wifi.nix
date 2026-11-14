@@ -21,7 +21,8 @@
 # awake while a charger is plugged in, and dozes once both are pulled.
 # The shell, as an account of the machine's and no other, is told all of
 # it over varlink as it changes, and can have wifid check again, trust a
-# network or forget one, though never one Nix declares. The tests are in
+# network or forget one, though never one Nix declares; on the launcher's
+# rows socket it can move the card to another access point of its network. The tests are in
 # wifi/, an area to a file, each run in order through pytest on a machine
 # of its own, so the areas run side by side; wifid as they reach it is
 # wifi/wifi_session.py.
@@ -355,6 +356,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         pkgs.iw
         pkgs.dig
         pkgs.curl
+        # For asking acts on the launcher's rows socket as the launcher does.
+        pkgs.socat
       ];
     };
 

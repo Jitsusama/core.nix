@@ -1,7 +1,8 @@
 """The Wi-Fi test's joins-when-asked area.
 
 Here the shell has wifid join, leave, sign in and save, the radios go off and on, a card stuck or
-unanswered moves on, and the card dozes only on battery. tests/vm/network/wifi.nix runs this through
+unanswered moves on, an account moves the card to another access point, and the card dozes only
+on battery. tests/vm/network/wifi.nix runs this through
 pytest inside the driver (tests/lib/vm_pytest.py), and its opening comment says what the test
 proves. The tests run in the order written, each taking the machine on from where the one before
 left it, so one run alone with -k starts from the boot and may not find what an earlier one set up.
@@ -453,6 +454,46 @@ def test_a_card_whose_access_point_doesnt_answer_moves_to_another_of_its_network
     machine.succeed(
         f"wpa_cli -i wlan2 set_network {lantern} priority {ranked}"
         " && systemctl stop lantern-two && systemctl start lantern"
+    )
+
+
+# Comparing one access point's air with another's needs the card moved
+# to each in turn, and only root and wpa_supplicant's group reach its
+# bus, so an account asks wifid on the launcher's rows socket
+# (2026-11-14). Lantern's second access point is the weaker, which the
+# card wouldn't choose itself.
+def test_a_card_moves_to_another_access_point_of_its_network_when_asked(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """A card moves to another access point of its network when asked."""
+    machine.succeed("systemctl start lantern-two")
+    status, _, said = wifid.joining({"name": "Lantern"})
+    assert status == 0, said
+    wifid.joined("Lantern")
+
+    def hears_the_second(_: bool) -> bool:
+        """Have the cards look, and say whether they heard Lantern's second."""
+        wifid.ask("Scan")
+        return "02:00:00:00:05:00" in machine.succeed("wpa_cli -i wlan2 scan_results")
+
+    retry(hears_the_second, timeout=timedelta(seconds=60))
+    machine.succeed("wpa_cli -i wlan2 status | grep -qx bssid=02:00:00:00:00:00")
+    answer = wifid.acting({"act": "roam", "bssid": "02:00:00:00:05:00"})
+    assert answer == {"id": 1, "done": True}, answer
+    machine.wait_until_succeeds(
+        "s=$(wpa_cli -i wlan2 status)"
+        ' && echo "$s" | grep -qx wpa_state=COMPLETED'
+        ' && echo "$s" | grep -qx bssid=02:00:00:00:05:00',
+        timeout=timedelta(seconds=30),
+    )
+    unheard = wifid.acting({"act": "roam", "bssid": "02:00:00:00:09:00"})
+    assert unheard["error"]["refused"] == "NotNearby", unheard
+    machine.succeed("systemctl stop lantern-two")
+    machine.wait_until_succeeds(
+        "s=$(wpa_cli -i wlan2 status)"
+        ' && echo "$s" | grep -qx wpa_state=COMPLETED'
+        ' && echo "$s" | grep -qx bssid=02:00:00:00:00:00',
+        timeout=timedelta(seconds=60),
     )
 
 

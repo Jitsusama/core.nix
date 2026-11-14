@@ -1839,6 +1839,10 @@ impl Wifid<'_> {
                 let _ = done.send(self.scan().await);
                 return;
             }
+            Ask::Roam { bssid, done } => {
+                let _ = done.send(self.roam(&bssid).await);
+                return;
+            }
             Ask::Leave { name, done } => {
                 let _ = done.send(self.leave(&name).await);
                 return;
@@ -1906,6 +1910,25 @@ impl Wifid<'_> {
             })?;
             println!("<6>{card} left {name}, as asked");
         }
+        Ok(())
+    }
+
+    /// Moves the card on an access point's network to it. wpa_supplicant
+    /// roams by its own choosing, so this is for whoever compares one
+    /// access point with another, as two channels' air was (2026-11-14).
+    async fn roam(&self, bssid: &str) -> Result<(), Refused> {
+        let card = self.state.borrow().roamer(bssid)?;
+        let roamed = match self.supplicant.get_interface(&card).await {
+            Ok(at) => match interface(self.bus, at).await {
+                Ok(interface) => interface.roam(bssid).await,
+                Err(error) => Err(error),
+            },
+            Err(error) => Err(error),
+        };
+        roamed.map_err(|error| Refused::Failed {
+            reason: format!("{card} didn't move to {bssid}: {error}"),
+        })?;
+        println!("<6>{card} moved to {bssid}, as asked");
         Ok(())
     }
 
