@@ -854,16 +854,16 @@ def orchestrators_drawer_names_its_repo(desktop: Desktop, title: str, shot: str)
 def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     """Shoot a session past 80% full, its drawer giving its figures by gen_ai's names."""
     desktop.down_to(title)
-    # Its step leads, its figures follow what it spent, then its quest and machine, and what
-    # its quest is about, long, comes last, so the first screen holds the rest (Joel and
-    # VKCF3Z, 2026-11-07).
-    first = ["Doing", "Spent Today", "Context", "Last Turn", "Model"]
-    later = ["Context Rebuilt", "Quest", "Machine", "Working On"]
+    # Its glance holds six facts at most, in VKCF3Z's order (2b03e43c), its step first; here,
+    # with no sessions of its own, it stops at four, what its quest is about the prose under
+    # them (a2101591). The rest is folded under z a.
+    glance = ["Doing", "Last Turn", "Spent Today", "Context"]
+    folded = ["Model", "Session", "Context Rebuilt", "Quest", "Machine"]
     desktop.launcher_until(
         lambda shown: (
             shown["drawer"]["shown"]
-            and shown["drawer"]["facts"][: len(first)] == first
-            and shown["drawer"]["facts"][-len(later) :] == later
+            and shown["drawer"]["facts"] == glance
+            and shown["drawer"]["nerd"] == folded
         )
     )
     side = desktop.showing()["selected"]["side"]
@@ -878,15 +878,12 @@ def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     # Its spend today carries its hours as Graph's spark.
     assert drawn["Spent Today"] == "spark", f"at {shot}: {drawer}"
     assert drawer["laidOneWay"], f"at {shot} its facts mix beside and under: {drawer}"
-    # How it stands is its row's, so Doing says its step alone, and its quest, active, its id.
+    # How it stands is its row's, so Doing says its step alone.
     assert drawer["values"][0] == "edit Drawer.qml", f"at {shot}: {drawer}"
-    assert drawer["values"][-3] == "QEST-20261022-TESTQD", f"at {shot}: {drawer}"
-    # What it's doing, its spend and how full it is are on its first screen, even this
-    # short one's, before any it says are more.
+    # Its whole glance is on its first screen, even this short one's, what its quest is about
+    # running to about 290 letters as every real session's does.
     said = str(drawer.get("moreSays") or "")
-    hidden = int(said.split(maxsplit=1)[0]) if said else 0
-    led = first[: first.index("Context") + 1]
-    assert len(drawer["facts"]) - hidden >= len(led), f"at {shot} it hides {said}: {drawer}"
+    assert not said, f"at {shot} its glance hides {said}: {drawer}"
     desktop.shoot(f"launcher-agents-figures-at-{shot}")
 
 

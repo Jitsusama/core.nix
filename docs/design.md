@@ -1496,12 +1496,21 @@ works the same way everywhere.
   figure kept longest while room runs short and the money giving way
   before how it stands, since its drawer says the spend. Its drawer's
   first screen holds what matters of it, never only its title (Joel,
-  2026-11-07): Doing, its step alone ("edit Drawer.qml"), since how it
-  stands is its row's, and none where it has no step; Needs You For;
-  its Last Landing; what it spent; its figures; Context Rebuilt; its
-  Quest, how that stands said only where it isn't active; its Machine;
-  and Working On last, as words, without the title the drawer already
-  says (VKCF3Z, 2026-11-07). A row's note says no title again either,
+  2026-11-07), as a glance of six facts at most (VKCF3Z, 2b03e43c):
+  Needs You For where it needs him, else Doing, its step alone ("edit
+  Drawer.qml"), since how it stands is its row's, and none where it has
+  no step; Last Turn; Spent Today, its councils and fleets on that
+  line; Context; then Its Sessions for an orchestration, or its Host
+  where it isn't on this machine. One with neither stops at four. What
+  its quest is about is the prose under them, with no name and without
+  the title the drawer already says, five lines shut and the rest under
+  z a: at 47 to 282 letters it is prose, not a fact, and as a fact it
+  wrapped past the first screen (VKCF3Z, a2101591). The rest is folded
+  under z a, in order: Model, Turns Today, Tokens, Cache, its Session,
+  Context Rebuilt, what it Hears, its Last Landing with when, its
+  Budget, its Quest, how that stands said only where it isn't active,
+  Its Own, and its Machine; one at the top, whose prose is what it
+  stands for, folds what its quest is about last. A row's note says no title again either,
   and gives way at a whole word, never a letter and an ellipsis. Agents
   is a place with sources, as Passwords is (Joel, 2026-11-07: "password
   management should be a universal concern with 1password being a
@@ -1512,8 +1521,9 @@ works the same way everywhere.
   sessions; and an act its source can't do is absent, never dimmed.
   Its figures go by
   OpenTelemetry's gen_ai names: Context ("142k of 200k") and Last Turn
-  first, then Model, Turns Today, Tokens and Cache, today's only on the
-  day the harness counts them; none is money, so sharing hides none.
+  in the glance, since they move as it works, and Model, Turns Today,
+  Tokens and Cache folded, today's only on the day the harness counts
+  them; none is money, so sharing hides none.
   Context draws Meter's stroke of how full after its value, in warning
   from 80%, and its own spend today Graph's spark of its hours, scaled
   to the day's busiest hour of any session, so a quiet one reads quiet;
