@@ -102,11 +102,14 @@ fn answer(line: &str, now: u64) -> Value {
             ask_ts.replace('.', "")
         ),
     });
-    if line.contains("/api/users.conversations") {
-        return json!({"ok": true, "channels": [
-            {"id": "D0OTHER001", "is_im": true, "user": "U0OTHER001"},
-            {"id": "D0SELF0001", "is_im": true, "user": JOEL},
-        ], "response_metadata": {"next_cursor": ""}});
+    // Slack names the IM for whoever is asked for, and makes none here.
+    if line.contains("/api/conversations.open") {
+        let (id, user) = if line.contains(&format!("users={JOEL}&")) {
+            ("D0SELF0001", JOEL)
+        } else {
+            ("D0OTHER001", "U0OTHER001")
+        };
+        return json!({"ok": true, "channel": {"id": id, "is_im": true, "user": user}});
     }
     if line.contains("/api/conversations.info") && line.contains("D0SELF0001") {
         return json!({"ok": true, "channel": {"id": "D0SELF0001", "is_im": true, "user": JOEL}});
@@ -212,10 +215,28 @@ fn the_one_reply(home: &Path) -> Value {
         .expect("a reply's line is JSON")
 }
 
-/// Holds that the stand-in was asked only Slack's methods that read:
-/// searching and reading threads, and looking for Joel's own IM, which
-/// the reader does once as it starts.
+/// Holds that the stand-in was asked only Slack's methods that post
+/// nothing: searching and reading threads, and looking for Joel's own IM,
+/// which the reader does once as it starts, for him alone and never
+/// making one. That lookup, conversations.open, is write-scoped all the
+/// same, and marks his IM open again if he closed it, so the list isn't
+/// strictly read-only.
 fn only_reads(asked: &Mutex<Vec<String>>) {
+    let opened: Vec<String> = asked
+        .lock()
+        .expect("what was asked")
+        .iter()
+        .filter(|line| line.contains("/api/conversations.open"))
+        .cloned()
+        .collect();
+    assert!(
+        opened.iter().all(|line| {
+            line.contains(&format!(
+                "?users={JOEL}&prevent_creation=true&return_im=true "
+            ))
+        }),
+        "Joel's own IM is looked for with him alone, and never made: {opened:?}"
+    );
     let methods: Vec<String> = asked
         .lock()
         .expect("what was asked")
@@ -227,14 +248,14 @@ fn only_reads(asked: &Mutex<Vec<String>>) {
     let reading = [
         "search.messages",
         "conversations.replies",
-        "users.conversations",
+        "conversations.open",
         "conversations.info",
     ];
     assert!(
         methods
             .iter()
             .all(|method| reading.contains(&method.as_str())),
-        "only reading methods are asked: {methods:?}"
+        "only methods that post nothing are asked: {methods:?}"
     );
 }
 
