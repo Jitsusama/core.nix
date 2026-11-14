@@ -277,12 +277,13 @@ fn stand_ins(second: &Path, vm: &[PathBuf], at: u64) -> (Vec<String>, Vec<String
 /// having failed its proofs, with its store full or with no proof yet,
 /// saying so as that changes. Where root's prover writes `root`, that
 /// says, since only an account the daemon trusts can prove a builder
-/// beside; elsewhere it's proven here when due, with `nix`. One unproven
-/// waits for its first proof, a few seconds, since its store may be full.
+/// beside; elsewhere it's proven here when due, with `nix`, unless `trust`
+/// hears that Nix doesn't trust this account. One unproven waits for its
+/// first proof, a few seconds, since its store may be full.
 fn kept_beside(
     (kept, earlier): (&mut Vec<(String, Keeper)>, &[Health]),
     line: &str,
-    (nix, root): (&str, &Path),
+    (nix, root, trust): (&str, &Path, &mut Trust),
     now: Instant,
 ) -> bool {
     let index = kept
@@ -302,7 +303,7 @@ fn kept_beside(
     let uri = line.split_whitespace().next().unwrap_or_default();
     if let Some(health) = proof::standing_health(root, uri, &keeper.health.builder, seconds()) {
         keeper.health = health;
-    } else {
+    } else if !trust.untrusted(nix, now) {
         let (proving, nix) = (line.to_owned(), nix.to_owned());
         keeper.keep(now, seconds(), move || {
             proof::through_daemon(&proving, &nix, proof::WITHIN)
@@ -338,6 +339,41 @@ fn kept_beside(
 /// reads none unless it names its own: on 12 November six read this
 /// machine's, which named none of their builders, and failed outside the
 /// build's sandbox.
+/// Whether Nix trusts this account, as it last said: asked again at most
+/// every [`TRUST_AGAIN`], since only a switch changes it.
+#[derive(Default)]
+pub struct Trust {
+    said: Option<(bool, Instant)>,
+}
+
+/// How long what Nix said of this account's trust is taken as still so.
+const TRUST_AGAIN: Duration = Duration::from_secs(300);
+
+impl Trust {
+    /// Whether `nix`'s daemon says it doesn't trust this account, saying
+    /// so once it starts to. A builder beside that root's prover hasn't
+    /// proven then keeps how it last stood, rather than a proof here
+    /// failing it with builders Nix ignores, as it would once the person's
+    /// account left Nix's trusted users (ISXEG8, 14 November).
+    fn untrusted(&mut self, nix: &str, now: Instant) -> bool {
+        if let Some((untrusted, at)) = self.said
+            && now.saturating_duration_since(at) < TRUST_AGAIN
+        {
+            return untrusted;
+        }
+        let untrusted = proof::untrusted(nix);
+        if untrusted && self.said.is_none_or(|(was, _)| !was) {
+            eprintln!(
+                "nix-offload: Nix doesn't trust this account, so a builder beside that root's \
+                 prover hasn't proven waits for it, as it last stood, rather than being proven \
+                 here with builders Nix would ignore"
+            );
+        }
+        self.said = Some((untrusted, now));
+        untrusted
+    }
+}
+
 #[cfg(not(test))]
 const STANDING: &str = proof::STANDING;
 #[cfg(test)]
@@ -517,6 +553,8 @@ pub struct Machines {
     nix: String,
     /// Where root's prover says how the builders beside stand.
     root: PathBuf,
+    /// Whether Nix trusts this account to prove the builders beside here.
+    trust: Trust,
     /// The file naming what frees each builder beside, read again with
     /// `lists`, once `freeing_from` gives it.
     freeing_from: Option<PathBuf>,
@@ -559,6 +597,7 @@ impl Machines {
             earlier: Vec::new(),
             nix: "nix".to_owned(),
             root: PathBuf::from(STANDING),
+            trust: Trust::default(),
             freeing_from: None,
             freeing: Vec::new(),
             cloud: None,
@@ -799,7 +838,7 @@ impl Machines {
                 && !kept_beside(
                     (&mut self.kept, &self.earlier),
                     &builder.line,
-                    (&self.nix, &self.root),
+                    (&self.nix, &self.root, &mut self.trust),
                     now,
                 )
             {
@@ -1429,15 +1468,16 @@ mod tests {
         let before = heard(kept);
         let ending = Instant::now() + Duration::from_secs(5);
         // No prover of root's writes here, so the builder is proven through `nix`.
-        let proving = (nix, Path::new("/nonexistent/nix-offload-standing.json"));
-        let mut dropped = kept_beside((kept, &[]), line, proving, now);
+        let root = Path::new("/nonexistent/nix-offload-standing.json");
+        let mut trust = Trust::default();
+        let mut dropped = kept_beside((kept, &[]), line, (nix, root, &mut trust), now);
         // One just kept has heard no proof yet.
         let unheard = |kept: &Vec<(String, Keeper)>| {
             heard(kept) == before || heard(kept) == Some((None, None, 0, None))
         };
         while unheard(kept) && Instant::now() < ending {
             std::thread::sleep(Duration::from_millis(10));
-            dropped = kept_beside((kept, &[]), line, proving, now);
+            dropped = kept_beside((kept, &[]), line, (nix, root, &mut trust), now);
         }
         assert_ne!(heard(kept), before, "no proof ended");
         dropped
@@ -1503,6 +1543,44 @@ mod tests {
             health[0].state(),
             State::Dropped,
             "a quiet prover vouches for nothing"
+        );
+    }
+
+    #[test]
+    fn a_builder_beside_waits_on_roots_prover_where_nix_doesnt_trust_the_account() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let nix = dir.path().join("nix");
+        let built = dir.path().join("built");
+        executable(
+            &nix,
+            &format!(
+                "#!/bin/sh\n\
+                 if [ \"$3\" = store ]; then echo '{{\"trusted\":false}}'; exit 0; fi\n\
+                 touch '{}'\n\
+                 exit 1\n",
+                built.display()
+            ),
+        );
+        let nix = nix.display().to_string();
+        let root = Path::new("/nonexistent/nix-offload-standing.json");
+        let line = "ssh-ng://work x86_64-linux - 8 1 big-parallel,benchmark";
+        let (mut kept, mut trust) = (Vec::new(), Trust::default());
+        let began = Instant::now();
+        for due in [began, began + proof::EVERY, began + proof::EVERY * 2] {
+            assert!(
+                kept_beside((&mut kept, &[]), line, (&nix, root, &mut trust), due),
+                "a builder beside nobody proved was named for builds"
+            );
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(
+            !built.exists(),
+            "a builder beside was proven through a Nix that ignores this account's builders"
+        );
+        assert_eq!(
+            kept[0].1.health.state(),
+            State::Unproven,
+            "a builder beside was judged with no proof of root's or its own"
         );
     }
 

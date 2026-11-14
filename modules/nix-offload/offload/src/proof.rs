@@ -555,6 +555,24 @@ pub fn through_daemon(line: &str, nix: &str, within: Duration) -> Proven {
     proven_through(line, nix, within, COREUTILS)
 }
 
+/// Whether the daemon `nix` reaches says it doesn't trust this account.
+/// It heeds `--builders` only from an account it trusts and drops an
+/// untrusted one's with a warning alone, so a proof through it would build
+/// nothing and fail every builder it proves. An answer that can't be read
+/// says nothing, and the proof goes ahead as it always has.
+pub fn untrusted(nix: &str) -> bool {
+    Command::new(nix)
+        .args(["--extra-experimental-features", "nix-command"])
+        .args(["store", "info", "--json"])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .filter(|said| said.status.success())
+        .and_then(|said| serde_json::from_slice::<Value>(&said.stdout).ok())
+        .is_some_and(|info| info["trusted"] == Value::Bool(false) || info["trusted"] == 0)
+}
+
 /// The coreutils this program was built with, whose df a proof through
 /// the daemon measures its builder's store with.
 const COREUTILS: Option<&str> = option_env!("NIX_OFFLOAD_COREUTILS");
