@@ -77,6 +77,7 @@
 
 mod alone;
 mod building;
+mod carry;
 mod checks;
 mod evaluating;
 mod first;
@@ -674,8 +675,10 @@ fn kept_base(root: &str, base: &str, system: &str, noted: &mut Run) -> Result<Ex
     let _alone = turn::taken(&lock, || {
         eprintln!("changed-checks: another keep of {short} runs here, so this waits for it");
     })?;
-    reads::keep_base(root, base, system, noted)?;
-    alone::keep(root, base, system, noted);
+    let carried = carry::keep(root, base, system, noted, |noted| {
+        reads::keep_base(root, base, system, noted)
+    })?;
+    alone::keep(root, base, system, carried, noted);
     eprintln!("kept {system}'s checks at {short}");
     Ok(ExitCode::SUCCESS)
 }

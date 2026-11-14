@@ -214,7 +214,7 @@ impl Reads {
     }
 
     /// A record as kept, when it was made from `tree`.
-    fn from_kept(text: &str, tree: &str) -> Option<Self> {
+    pub(crate) fn from_kept(text: &str, tree: &str) -> Option<Self> {
         let kept: Value = serde_json::from_str(text).ok()?;
         if kept.get("tree")?.as_str()? != tree {
             return None;
@@ -660,7 +660,7 @@ fn sweep(folder: &Path) {
 }
 
 /// Keep `reads`, read from `tree`, at `at`, whole or not at all.
-fn write(at: &Path, reads: &Reads, tree: &str) -> Result<(), String> {
+pub(crate) fn write(at: &Path, reads: &Reads, tree: &str) -> Result<(), String> {
     let writing = at.with_extension("writing");
     let failed = |error: std::io::Error| format!("{}: {error}", at.display());
     fs::write(&writing, reads.kept(tree).to_string()).map_err(failed)?;
