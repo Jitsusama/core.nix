@@ -6029,9 +6029,15 @@ Scope {
         const begun = KeyTimes.now();
         // The frame about to begin, as FramePresentation will number it.
         const frame = surface.FramePresentation.framesBegun + 1;
+        // Whether the selection is drawn on its row in this frame, so a
+        // check sees the bar and the lit row agree on a key's first frame
+        // (Joel, 2026-11-13 23:38: the highlight dragged behind).
+        const onRow = root.current < 0
+            || Math.abs(list.pickY - list.fillAt(root.current)) < 0.5;
         for (const key of keysDrawing.waiting) {
             key.begun = begun;
             key.frame = frame;
+            key.onRow = onRow;
             keysAwaited += 1;
             presentedAwait(key.pressed, at => keyPresented(key.pressed, at, key));
         }
@@ -10170,7 +10176,7 @@ Scope {
     function keyPresented(from, at, key) {
         keysReached += 1;
         const times = surface.FramePresentation.timesOf(key.frame ?? 0);
-        const one = { from, at, heard: key.heard, begun: key.begun,
+        const one = { from, at, heard: key.heard, begun: key.begun, onRow: key.onRow,
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null };
         keysPresented = keysPresented.concat([one]).slice(-keysKept);
         // A key that set no glide going stood where it went at its first
