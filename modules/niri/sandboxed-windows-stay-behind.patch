@@ -16,6 +16,12 @@ a workspace OpenNextWindowOn asked for an app ID, since it names its
 app ID itself; it ignores a parent, so a dialog stays with it; and it
 goes fullscreen where it is rather than onto another output.
 
+The workspace is added at the window's first configure, so a window
+that never maps still leaves it: while Joel is on the last empty
+workspace he briefly has two empty ones after it. That is no leak;
+niri removes the spare one as he moves away, as it does any empty
+workspace not at the end.
+
 Its xdg-activation marks a window urgent at most: a token a sandbox
 makes activates no window, its own or another client's, now or when
 that window maps, and a sandbox's own window isn't activated by any

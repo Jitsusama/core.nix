@@ -9,8 +9,11 @@ opening a window must not move Joel's keys. This runs pi-fence-display on the ne
 2. A sandbox's window opens: the focus stays on Joel's, and the window lands on a workspace no
    screen shows.
 3. Joel's window makes an activation token from his focus and the sandbox uses it on its own
-   window: the focus stays where it was.
-4. Joel goes to the empty workspace at the end, and a second sandbox's window opens: the
+   window: the focus stays on the same window and workspace, the sandbox's window stays behind,
+   and it's marked urgent.
+4. The sandbox makes a token and Joel's program uses it on a second window of his: the focus
+   stays on his first, and the second is marked urgent.
+5. Joel goes to the empty workspace at the end, and a second sandbox's window opens: the
    workspace he's on is still the focused one, and the window is elsewhere.
 
 Every case is checked and reported before the stand-in fails.
@@ -189,12 +192,11 @@ class Connection:
         return surface
 
     def token(self, surface: int) -> str:
-        """Make an activation token from this connection's newest keyboard enter."""
-        if self.entered is None:
-            sys.exit("Joel's window was never given the keyboard")
+        """Make an activation token from this connection's newest keyboard enter, if it had one."""
         token = self.made()
         self.send(self.bound["xdg_activation_v1"], 1, struct.pack("<I", token))
-        self.send(token, 0, struct.pack("<II", self.entered, self.bound["wl_seat"]))
+        if self.entered is not None:
+            self.send(token, 0, struct.pack("<II", self.entered, self.bound["wl_seat"]))
         self.send(token, 2, struct.pack("<I", surface))
         self.send(token, 3)
         _, payload = self.wait_for(token, "an activation token")
@@ -276,7 +278,7 @@ def kept(before: int | None, failures: list[str], case: str) -> None:
 
 
 def main() -> None:
-    """Run the four cases against pi-fence-display's socket, and fail on any that didn't hold."""
+    """Run the five cases against pi-fence-display's socket, and fail on any that didn't hold."""
     runtime = Path(os.environ["XDG_RUNTIME_DIR"])
     filtered = runtime / "pi-fence-wayland"
     with subprocess.Popen([sys.argv[1], "--socket", str(filtered)]) as display:
@@ -297,7 +299,7 @@ def main() -> None:
 
 
 def run(joel: Connection, filtered: Path) -> list[str]:
-    """Run the four cases, Joel's window on `joel` and the sandbox's on the filtered socket."""
+    """Run the five cases, Joel's window on `joel` and the sandbox's on the filtered socket."""
     failures: list[str] = []
     joels_surface = joel.window("joel.window")
     joels = int(opened("joel.window", joel)["id"])
@@ -317,10 +319,34 @@ def run(joel: Connection, filtered: Path) -> list[str]:
     if focused_window() != joels:
         ask({"Action": {"FocusWindow": {"id": joels}}})
         settle(joel, sandbox)
+    focused = focused_workspace()
+    if joel.entered is None:
+        sys.exit("Joel's window was never given the keyboard")
     token = joel.token(joels_surface)
     sandbox.activate(token, sandboxes_surface)
     settle(joel, sandbox)
-    kept(joels, failures, "a sandbox activating its window with Joel's token")
+    case = "a sandbox activating its window with Joel's token"
+    kept(joels, failures, case)
+    if focused_workspace() != focused:
+        failures.append(f"{case}: the focus went to another workspace")
+    activated = opened("pi.fence.window", joel, sandbox)
+    behind(activated, focused, failures, case)
+    # Urgency is all an activation may leave, where niri says what's urgent.
+    if not activated.get("is_urgent", True):
+        failures.append(f"{case}: the sandbox's window wasn't marked urgent")
+
+    # A token the sandbox makes, used by Joel's own program on his own window, moves nothing
+    # either: Joel's second window waits behind his first, marked urgent.
+    case = "Joel's program activating its window with the sandbox's token"
+    joels_other_surface = joel.window("joel.other")
+    joels_other = int(opened("joel.other", joel, sandbox)["id"])
+    ask({"Action": {"FocusWindow": {"id": joels}}})
+    settle(joel, sandbox)
+    joel.activate(sandbox.token(sandboxes_surface), joels_other_surface)
+    settle(joel, sandbox)
+    kept(joels, failures, case)
+    if not opened("joel.other", joel, sandbox).get("is_urgent", True):
+        failures.append(f"{case}: Joel's window {joels_other} wasn't marked urgent")
 
     ask({"Action": {"FocusWorkspace": {"reference": {"Id": empty_workspace()}}}})
     settle(joel, sandbox)
