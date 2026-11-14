@@ -12,5 +12,8 @@ publish = false
 # The signature over what's packed, and the public key it's checked with.
 rsa = { version = "0.9", features = ["sha2"] }
 sha2 = "0.10"
+# Its help, exits and answers, as every command here says them.
+serde_json = "1"
+terminal-kit = { path = "../../terminal-kit" }
 # The folder zipped, as a CRX3 holds it.
 zip = { version = "2", default-features = false, features = ["deflate"] }

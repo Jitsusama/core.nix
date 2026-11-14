@@ -160,6 +160,7 @@
         swayidle-away = script "swayidle-away" ../../modules/swayidle/away.sh { };
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
+        chrome-pack-extension = pkgs.callPackage ../../modules/chrome/pack-extension/package.nix { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };
         chrome-recent-sites = pkgs.callPackage ../../modules/chrome/recent-sites/package.nix { };
         chrome-session = pkgs.callPackage ../../modules/chrome/session/package.nix { };

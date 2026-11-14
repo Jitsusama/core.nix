@@ -50,11 +50,6 @@
     "kit"
     "helps"
   ];
-  chrome-pack-extension = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   chrony-network-servers = [ "helps" ];
   claude-statusline = [
     "kit"
