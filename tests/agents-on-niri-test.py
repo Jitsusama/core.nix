@@ -1289,6 +1289,12 @@ def made_by_agents(shell: Shell) -> int:
     return int(json.loads(shell.as_account(shell.ipc("made")))["rows"]["agents"])
 
 
+def made_lately(shell: Shell) -> str:
+    """Say the last rows Agents made, each marked shut or walked as the launcher was then."""
+    lately = json.loads(shell.as_account(shell.ipc("made")))["lately"]["agents"]
+    return ", ".join(lately) or "none"
+
+
 def sortings_taken(shell: Shell) -> int:
     """Give how many sortings of pi's sessions the shell has taken, each a change it heard."""
     sorts = f"qs -p {shell.folder} ipc call pi sorts"
@@ -1302,16 +1308,20 @@ def test_a_shut_launcher_makes_no_agents_rows_as_a_session_comes_and_lands(shell
     what his openings wait behind (2026-11-10).
     """
     shell.launcher_closed()
-    before, taken = made_by_agents(shell), sortings_taken(shell)
+    warmed(shell)
+    made_settled(shell)
+    before = made_by_agents(shell)
     landing = {"at": datetime.now(UTC).isoformat(), "ref": "core.nix#2141", "what": "Arrived"}
-    lay("ARRIVE", "Arriving Quest", {"state": "listening", "busy": False, "landings": [landing]})
-    # Taken once the shell has sorted it in, which makes whatever its change makes at once.
-    deadline = time.monotonic() + 10
-    while sortings_taken(shell) == taken:
-        assert time.monotonic() < deadline, "the shell never took the arriving session"
-        time.sleep(0.1)
+    arrived_shut(
+        shell,
+        lambda: lay(
+            "ARRIVE", "Arriving Quest", {"state": "listening", "busy": False, "landings": [landing]}
+        ),
+    )
     made = made_by_agents(shell) - before
-    assert made == 0, f"the shut launcher made {made} of Agents' rows as a session arrived"
+    assert made == 0, (
+        f"the shut launcher made {made} of Agents' rows as a session arrived: {made_lately(shell)}"
+    )
     shell.as_account(shell.ipc("collection", "agents"))
     shell.launcher_ready()
     shell.launcher_until(lambda shown: "Arriving Quest" in shown["rows"])
@@ -1319,6 +1329,25 @@ def test_a_shut_launcher_makes_no_agents_rows_as_a_session_comes_and_lands(shell
     shell.down_to("Landed")
     shell.step_in()
     shell.launcher_until(lambda shown: "Arrived" in shown["rows"])
+
+
+def arrived_shut(shell: Shell, arrive: Callable[[], None]) -> None:
+    """Have a session arrive with the launcher shut, and wait until the shell has heard all of it.
+
+    It's heard twice, once as pi's source sorts it in and once in the line the agents daemon tells
+    Agents of it at once, its row new (daemon-serve's serve.rs), in either order. Counted after
+    the first alone, a loaded run counted the rows the line made only as it fell first (#4090).
+    """
+    taken, lines = sortings_taken(shell), agents_lines(shell)
+    arrive()
+    deadline = time.monotonic() + 10
+    while sortings_taken(shell) == taken or agents_lines(shell) == lines:
+        assert time.monotonic() < deadline, (
+            f"the shell took {sortings_taken(shell) - taken} sortings and heard"
+            f" {agents_lines(shell) - lines} of Agents' lines as a session arrived"
+        )
+        time.sleep(0.1)
+    made_settled(shell)
 
 
 def rows_answer(said: Json) -> Json:
@@ -1390,19 +1419,18 @@ def test_the_first_letter_typed_at_home_makes_a_few_rows_after_one_arrived_while
     to prove, by its own count; opening here warms Agents, which that count leaves out.
     """
     shell.launcher_closed()
-    taken = sortings_taken(shell)
-    lay("TIDEPL", "Tidepool Quest", {"state": "listening", "busy": False})
-    deadline = time.monotonic() + 10
-    while sortings_taken(shell) == taken:
-        assert time.monotonic() < deadline, "the shell never took the arriving session"
-        time.sleep(0.1)
+    arrived_shut(
+        shell, lambda: lay("TIDEPL", "Tidepool Quest", {"state": "listening", "busy": False})
+    )
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     made_settled(shell)
     opened = made_by_agents(shell)
     shell.type_in("tidepool", selecting="Tidepool Quest")
     made = made_by_agents(shell) - opened
-    assert made <= FIRST_LETTER_MAKES, f"typing at home made {made} of Agents' rows, not a few"
+    assert made <= FIRST_LETTER_MAKES, (
+        f"typing at home made {made} of Agents' rows, not a few: {made_lately(shell)}"
+    )
 
 
 # The most rows the first letter at home makes after a session arrived while shut: the arriving
@@ -1415,6 +1443,26 @@ FIRST_LETTER_MAKES = 5
 
 # How long Agents makes no row before an opening's work is taken as done: many frames.
 SETTLED = 0.5
+
+
+# What the shell says once it has warmed every source and kept home and each chord's place
+# (Launcher.qml's warmNext), and how long a case waits for it.
+WARMED_SAID = "places kept as the shell started"
+WARMED = 30
+
+
+def warmed(shell: Shell) -> None:
+    """Wait until the shell has warmed its sources, so no count takes in Agents' turn of it.
+
+    Warming wraps every session's row shut, a new one's too, so the first letter finds them
+    wrapped. Each opening puts it off until the launcher has been shut a second and a half, so
+    after the openings before it, it fell inside a shut test's count as an arrival's rows
+    (`agent:ARRIVE shut` made from warmNext, 2026-11-13).
+    """
+    deadline = time.monotonic() + WARMED
+    while WARMED_SAID.encode() not in shell.log.read_bytes()[shell.launched :]:
+        assert time.monotonic() < deadline, f"the shell never finished warming:\n{shell.tail()}"
+        time.sleep(0.1)
 
 
 def made_settled(shell: Shell) -> None:

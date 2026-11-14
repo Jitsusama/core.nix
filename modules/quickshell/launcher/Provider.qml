@@ -491,13 +491,32 @@ Scope {
     // launcher can say which made what as it opened (Launcher.qml's
     // madeSince), and the records it looked at. Plain counts in an object,
     // so making a row notifies nothing.
-    readonly property var tally: ({ rows: 0, looked: 0 })
+    // What it made last, by key, and whether the launcher was shut or its
+    // catalogue walked then, is kept too (`lately`), so a check that
+    // counts too many says which rows they were and when. The launcher
+    // writes shut and walked here as they change, since a row made in a
+    // binding that read its open or cataloguing would be made again by
+    // every opening.
+    readonly property var tally: ({ rows: 0, looked: 0, lately: [], shut: true, walked: false })
+    readonly property int tallyKept: 16
+    function tallied(fields) {
+        tally.rows += 1;
+        // A collection makes thousands of rows as it opens, so a row made
+        // open and unwalked is kept by its key alone, building no string.
+        const key = fields?.key ?? fields?.name ?? "";
+        const shut = tally.shut;
+        const walked = tally.walked;
+        tally.lately.push(shut || walked
+            ? `${key}${shut ? " shut" : ""}${walked ? " walked" : ""}` : key);
+        if (tally.lately.length > tallyKept)
+            tally.lately.shift();
+    }
 
     // A collection's row: a thing whose name is made ready to match only
     // when it's first drawn, since a collection has thousands. Member.js
     // says why its getter comes first, even for a row made from a row.
     function member(fields) {
-        tally.rows += 1;
+        tallied(fields);
         return Member.made({
             what: provider.what,
             chord: [],
@@ -816,7 +835,7 @@ Scope {
     // A row with what's left unsaid filled in, its name and keywords
     // prepared for matching once rather than on every key.
     function thing(fields) {
-        tally.rows += 1;
+        tallied(fields);
         const made = Object.assign({
             // An act done to a thing (its key `verb:`) isn't of the
             // thing's kind: Return does what its name says, so the foot

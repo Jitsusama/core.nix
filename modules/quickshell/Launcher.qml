@@ -7353,9 +7353,11 @@ Scope {
         // composed and how many rows were drawn afresh, for the check that a
         // source nobody sees makes none, the list refreshes no sooner than
         // its pace lets, and an arrow takes no change as its own, composes
-        // nothing and draws no row afresh.
+        // nothing and draws no row afresh. The last rows each source made
+        // (lately) say which a count past its bar was.
         function made(): string {
             return JSON.stringify({ rows: root.tallies(), looked: root.tallies("looked"),
+                lately: root.tallies("lately"),
                 refreshes: root.refreshesDone, paced: root.refreshesPaced,
                 keyed: root.refreshesKeyed, walked: root.livesMade, composed: root.rowsMade,
                 drawn: root.rowsDrawn, built: root.rowsBuilt });
@@ -8930,7 +8932,21 @@ Scope {
         }
     }
 
+    // Whether it's shut or walked, written into each source's plain tally
+    // rather than read there, so a row a binding makes depends on neither.
+    function tallyMarked() {
+        for (const source of sources) {
+            if (source.tally) {
+                source.tally.shut = !open;
+                source.tally.walked = cataloguing;
+            }
+        }
+    }
+    onCataloguingChanged: tallyMarked()
+    onSourcesChanged: tallyMarked()
+
     onOpenChanged: {
+        tallyMarked();
         // Each part of an opening's own work, timed as it's done, so the
         // line its frame says names what an opening slow to draw spent its
         // time on (Joel, 2026-11-10: the launcher takes forever to load).
