@@ -56,12 +56,13 @@
       start = lib.head (lib.toList home.systemd.user.services.pi-agent-proxy.Service.ExecStart);
     in
     holds "pi-agent-proxy-runs-only-with-machines"
-      "pi's SSH agent proxy runs with no hosts or builders' key, or on a Mac, listens elsewhere than %t/pi-agent/agent.sock or to more than the account, isn't linked from %t/pi-agent.sock, or isn't told of its hosts, the agents behind it, or the builders' key and the builders lent."
+      "pi's SSH agent proxy runs with no hosts or builders' key, or on a Mac, listens elsewhere than %t/pi-agent/agent.sock or to more than the account, isn't linked from %t/pi-agent.sock or doesn't clear what stands there first, or isn't told of its hosts, the agents behind it, or the builders' key and the builders lent."
       (
         lib.head (lib.toList socket.ListenStream) == "%t/pi-agent/agent.sock"
         && lib.head (lib.toList socket.SocketMode) == "0600"
         && lib.head (lib.toList socket.DirectoryMode) == "0700"
         && lib.toList socket.Symlinks == [ "%t/pi-agent.sock" ]
+        && lib.hasSuffix "/bin/rm -f %t/pi-agent.sock" (lib.head (lib.toList socket.ExecStartPre))
         && !(lib.hasInfix "--key" start)
         && lib.hasInfix "--key /home/someone/.local/state/nix-offload/store_ed25519" lends
         && lib.hasInfix "--lent /run/nix-offload-lines/lent" lends
