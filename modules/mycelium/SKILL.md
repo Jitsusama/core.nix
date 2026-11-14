@@ -42,6 +42,19 @@ and `last_turn`. A machine cell has `state` (such as `ready`), `busy` (a
 percentage from 0 to 100 of the last ten seconds some task waited on a
 processor; past 50 is busy) and `runs` (how many sessions it runs).
 
+A realm can hold thousands of cells, far more JSON than belongs in your
+context. Summarize with `jq` before reading, and read the whole output
+only for one network or one cell:
+
+```sh
+# What needs the person, and what's stuck.
+mycelium cells -o json | jq -c 'select(.standing == "needs-you" or .standing == "stuck")
+  | {title, standing, asks, doing, machine}'
+# The ten networks with the most sessions moving, counts only.
+mycelium networks -o json | jq -sc '[.[] | select(.kind == "network")]
+  | sort_by(-.counts.moving) | .[:10] | map({short, title, shape, counts})'
+```
+
 ## Answering
 
 Answer in words, short, worst first, the way the person would scan it:
@@ -65,7 +78,7 @@ budget, the spend-watch skill is the better source.
 A few lines answer "what's it doing?"; one network or one cell gets a few
 more. Name networks by title or short name and cells by title, never by a
 bare address or a quest id unless asked. Never paste the JSON; count and
-summarise it. Say the time you read it, since it moves.
+summarize it. Say the time you read it, since it moves.
 
 ## What You Don't Do
 
