@@ -104,7 +104,7 @@ Provider {
         make: (row, key) => top.thing(row, key,
             Object.assign(provider.topReopens(row), provider.topDrawer(row)))
         actMade: (key, one, row) => provider.topTalk(key, one, row)
-            ?? provider.topSessionActs(one)
+            ?? provider.topGoTo(one)
         maker: provider
         drawn: provider.launcher?.open ?? false
     }
@@ -151,18 +151,15 @@ Provider {
         });
     }
 
-    // Close on a served orchestration, asked first saying what stays, as a
-    // session's own Close is (sessionAct), since what it leaves is worked
-    // out here from the session's folder: a stopgap until the agents
-    // daemon serves what Close leaves with the act (KP0L6A). Go To is the
-    // shell's too, since only the shell moves niri's focus (acts.rs): asked
+    // Go To on a served orchestration is the shell's, as a session's own is
+    // (sessionAct), since only the shell moves niri's focus (acts.rs): asked
     // of the daemon, it answered nothing and said it couldn't
-    // (moves-keep-their-window, 2026-11-13). Null for any other act, or a
-    // session not here.
-    function topSessionActs(one) {
-        const id = { "verb:agent:close": "close", "verb:agent:switch": "switch" }[one.key];
-        const session = id ? sessionAt(one.ask?.address) : null;
-        return session ? sessionAct(session, id) : null;
+    // (moves-keep-their-window, 2026-11-13). Close is the daemon's, served
+    // saying what stays (ReadyRows.js's asking). Null for any other act, or
+    // a session not here.
+    function topGoTo(one) {
+        const session = one.key === "verb:agent:switch" ? sessionAt(one.ask?.address) : null;
+        return session ? sessionAct(session, "switch") : null;
     }
 
     // A served row naming its session's drawer, "drawer:agents-top:<address>",
@@ -906,18 +903,12 @@ Provider {
             .map(id => sessionAct(session, id));
     }
 
-    // What Close leaves of a session: its worktree, where it works in a
-    // folder under a trees folder, as the harness's and World's trees both
-    // are cut, else its folder, and its quest's to-dos, which stay
-    // until each is done.
+    // What Close leaves of a session, its worktree or folder and its quest's
+    // to-dos, as the agents daemon serves it with its row's Close (row.rs's
+    // act); "" before its row is told.
     function leaves(session) {
-        const presence = session.presence ?? {};
-        const cwd = String(presence.cwd ?? "");
-        const inTree = cwd.includes("/trees/");
-        const quest = presence.quest ?? presence.questInfo?.id ?? "";
-        const needs = quest === "" ? 0
-            : WaitingOnYou.items.filter(item => item.quest === quest).length;
-        return SessionRow.leaves(inTree, needs, Words.of("agents").said ?? {});
+        const acts = rowsKind?.held?.[`row:agents:${session.address}`]?.row?.acts ?? [];
+        return String(acts.find(one => one.key === "verb:agent:close")?.leaves ?? "");
     }
 
     // Whether a session has a window to go to: its own here, or one its

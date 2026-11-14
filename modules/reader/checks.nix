@@ -165,6 +165,7 @@ onLinux {
       cp ${../quickshell/Hearing.js} Hearing.js
       cp ${../quickshell/FileFacts.js} FileFacts.js
       cp ${../quickshell/When.js} When.js
+      cp ${../quickshell/Confirm.js} Confirm.js
       ${lib.concatMapStrings (file: ''
         cp ${launcher + "/${file}"} launcher/${file}
       '') launched}

@@ -79,6 +79,15 @@ function actOf(holder, act, holderKind) {
     return holder && holderKind !== "place" ? holder : act;
 }
 
+// What a served act's ask says of it, where its daemon serves that: whom
+// it names (`askedAs`) and what stays once it's done (`leaves`), as
+// Agents' Close says "Close 8IDU4E? Its worktree and 1 to-do stay.";
+// nothing for one that serves neither (ReadyRows.qml).
+function asking(act) {
+    const leaves = String(act?.leaves ?? "");
+    return leaves === "" ? {} : { askedAs: String(act.askedAs ?? ""), leaves };
+}
+
 // The same ask in its parts: its head, what it does and to what; the
 // clause saying what stays, where one does; and the keys after it, so
 // fitted can give the clause way alone.

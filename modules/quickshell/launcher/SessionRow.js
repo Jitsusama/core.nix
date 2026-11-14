@@ -74,21 +74,6 @@ function acts(standing, windowed, here) {
     return ids;
 }
 
-// What Close's ask says stays, so ending a session never reads as losing
-// its work (VKCF3Z, 2026-11-06, in to-dos since 2026-11-08: "Close
-// 8IDU4E? Its worktree and 1 to-do stay."): its worktree, or its folder
-// where it works outside one, and its quest's to-dos, by their count, in the agents'
-// words (`said`).
-function leaves(inTree, needs, said) {
-    const place = inTree ? said.tree : said.folder;
-    if (needs === 0) {
-        return String(said.stays ?? "").replace("{kept}", place);
-    }
-    const items = String((needs === 1 ? said.toDo : said.toDos) ?? "")
-        .replace("{count}", needs);
-    return String(said.stay ?? "").replace("{kept}", `${place} ${said.and} ${items}`);
-}
-
 // The theme's role its glyph is drawn in: a program's, as a live one
 // is, and muted for one paused, parked or closed, which never looks live
 // (#2052; VKCF3Z, 2026-11-07), colour going on glyphs while its name

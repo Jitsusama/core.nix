@@ -412,6 +412,7 @@ impl Inputs {
         let family = |quest: &str| self.family(quest);
         let listed = |address: &str| self.listed(address);
         let windowed = |session: Session| session.windowed();
+        let to_dos = |quest: &str| self.needs(quest).len();
         let known = Known {
             joel_can: &joel_can,
             jobs: &jobs,
@@ -420,6 +421,7 @@ impl Inputs {
             listed: &listed,
             windowed: &windowed,
             sharing: self.sharing,
+            needs: &to_dos,
         };
         let mut reopens = self.reopens();
         let recent = self.recent(&reopens);
