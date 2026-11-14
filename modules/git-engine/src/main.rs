@@ -13,8 +13,10 @@
 //! looks every half minute for packs that changed in a repository nobody
 //! is asking about, closing them so a repack's old packs free their space.
 //!
-//! `git-engine --once DIR` answers once, one field to a line, for trying it
-//! by hand.
+//! `git-engine --once DIR` answers once, its fields as facts, or as
+//! `git-engine.answer/1` with `--json`, for trying it by hand. Its help and
+//! refusals are the terminal kit's (docs/commands.md); serving, stdout is
+//! the protocol's alone.
 
 mod attrs;
 mod config;
@@ -240,60 +242,173 @@ fn serve(options: &Options) -> std::io::Result<()> {
 
 use std::os::unix::ffi::OsStrExt;
 
-fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("--once") {
-        let dir = args
-            .get(1)
-            .map_or_else(|| PathBuf::from("."), PathBuf::from);
-        let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
-        let options = options(&args[2.min(args.len())..]);
-        let started = std::time::Instant::now();
-        let answer = Engine::default().ask(&dir, &options, true);
-        let took = started.elapsed();
-        let Some(answer) = answer else {
-            println!("norepo");
-            std::process::exit(1);
-        };
-        let names = [
-            "workdir",
-            "commit",
-            "local_branch",
-            "remote_branch",
-            "remote_name",
-            "remote_url",
-            "action",
-            "index_size",
-            "staged",
-            "unstaged",
-            "conflicted",
-            "untracked",
-            "ahead",
-            "behind",
-            "stashes",
-            "tag",
-            "unstaged_deleted",
-            "staged_new",
-            "staged_deleted",
-            "push_remote_name",
-            "push_remote_url",
-            "push_ahead",
-            "push_behind",
-            "skip_worktree",
-            "assume_unchanged",
-            "encoding",
-            "summary",
-        ];
-        for (name, value) in names.iter().zip(fields(&answer)) {
-            println!("{name}={value}");
-        }
-        eprintln!("answered in {took:?}");
-        return;
-    }
-    if serve(&options(&args)).is_err() {
-        std::process::exit(1);
-    }
+use terminal_kit::{Exit, Failure, Help};
+
+fn help() -> Help {
+    Help::new(
+        "git-engine",
+        "answers the prompt's questions about a repository",
+    )
+    .example("git-engine --once .", "what the prompt would be told here")
+    .example(
+        "git-engine -s 1 -u 1",
+        "serves gitstatusd's protocol on stdin, as the prompt starts it",
+    )
+    .command("--once DIR", "answers once for DIR, its fields as facts")
+    .exit(Exit::Failed, "the prompt's pipe broke")
+    .exit(Exit::NotFound, "DIR is in no repository, or isn't there")
 }
+
+fn main() -> std::process::ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        match context.args.split_first() {
+            Some((once, rest)) if once == "--once" => once_for(context, rest),
+            _ => {
+                // gitstatus's flags each start with a dash, a value after
+                // one included where it's a negative count, so a bare word
+                // was never meant for the engine.
+                if let Some(word) = stray(&context.args) {
+                    return Err(Failure::new(Exit::Usage, format!("it takes no {word}"))
+                        .try_this("git-engine --help"));
+                }
+                serve(&options(&context.args)).map_err(|error| {
+                    Failure::new(Exit::Failed, "the prompt's pipe broke").because(error.to_string())
+                })
+            }
+        }
+    })
+}
+
+/// The first word that is neither a flag of gitstatusd's nor a value one
+/// of them takes.
+fn stray(args: &[String]) -> Option<&str> {
+    let mut at = 0;
+    while at < args.len() {
+        let arg = args[at].as_str();
+        match arg.strip_prefix('-') {
+            Some("e" | "U" | "W" | "D") => {}
+            Some(_) => at += 1,
+            None => return Some(arg),
+        }
+        at += 1;
+    }
+    None
+}
+
+/// The fields of an answer that are words; the rest are counts.
+const WORDS: [&str; 12] = [
+    "workdir",
+    "commit",
+    "local_branch",
+    "remote_branch",
+    "remote_name",
+    "remote_url",
+    "action",
+    "tag",
+    "push_remote_name",
+    "push_remote_url",
+    "encoding",
+    "summary",
+];
+
+/// Answers once for the folder `rest` names, `.` without one, as facts or
+/// as `git-engine.answer/1`.
+fn once_for(context: &terminal_kit::Context, rest: &[String]) -> Result<(), Failure> {
+    let given = rest
+        .first()
+        .map_or_else(|| PathBuf::from("."), PathBuf::from);
+    let Ok(dir) = std::fs::canonicalize(&given) else {
+        return Err(Failure::new(
+            Exit::NotFound,
+            format!("there's no folder {}", given.display()),
+        ));
+    };
+    let options = options(&rest[1.min(rest.len())..]);
+    let started = Instant::now();
+    let answer = Engine::default().ask(&dir, &options, true);
+    let took = started.elapsed();
+    let Some(answer) = answer else {
+        return Err(Failure::new(
+            Exit::NotFound,
+            format!("{} is in no repository", dir.display()),
+        ));
+    };
+    let said: Vec<(&str, String)> = NAMES.into_iter().zip(fields(&answer)).collect();
+    let micros = u64::try_from(took.as_micros()).unwrap_or(u64::MAX);
+    let written = if context.format().is_json() {
+        let mut facts = serde_json::Map::new();
+        for (name, value) in &said {
+            let value = if WORDS.contains(name) {
+                serde_json::Value::from(value.as_str())
+            } else {
+                // A count of -1 is one the index wasn't read for.
+                value
+                    .parse::<u64>()
+                    .map_or(serde_json::Value::Null, serde_json::Value::from)
+            };
+            facts.insert((*name).to_owned(), value);
+        }
+        context.answer(&serde_json::json!({
+            "schema": "git-engine.answer/1",
+            "fields": facts,
+            "took_us": micros,
+        }))
+    } else {
+        let labels: Vec<String> = said
+            .iter()
+            .map(|(name, _)| name.replace('_', " "))
+            .collect();
+        let took = format!("{} ms", micros.div_ceil(1000));
+        let facts: Vec<(&str, Option<&str>)> = labels
+            .iter()
+            .zip(&said)
+            .map(|(label, (_, value))| {
+                let value = match value.as_str() {
+                    "" => None,
+                    "-1" => Some("not counted"),
+                    value => Some(value),
+                };
+                (label.as_str(), value)
+            })
+            .chain(std::iter::once(("took", Some(took.as_str()))))
+            .collect();
+        let lines = terminal_kit::layout::facts(&facts, "none", &context.out, context.room);
+        context.say(&(lines.join("\n") + "\n"))
+    };
+    written
+        .map_err(|error| Failure::new(Exit::Failed, "it couldn't write").because(error.to_string()))
+}
+
+/// Each field of an answer, by the name gitstatusd's protocol gives it.
+const NAMES: [&str; 27] = [
+    "workdir",
+    "commit",
+    "local_branch",
+    "remote_branch",
+    "remote_name",
+    "remote_url",
+    "action",
+    "index_size",
+    "staged",
+    "unstaged",
+    "conflicted",
+    "untracked",
+    "ahead",
+    "behind",
+    "stashes",
+    "tag",
+    "unstaged_deleted",
+    "staged_new",
+    "staged_deleted",
+    "push_remote_name",
+    "push_remote_url",
+    "push_ahead",
+    "push_behind",
+    "skip_worktree",
+    "assume_unchanged",
+    "encoding",
+    "summary",
+];
 
 #[cfg(test)]
 mod tests {
@@ -308,6 +423,25 @@ mod tests {
         std::fs::create_dir_all(dir.join(".git/refs/heads")).unwrap();
         std::fs::write(dir.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
         dir
+    }
+
+    fn words(line: &str) -> Vec<String> {
+        line.split_whitespace().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn takes_every_flag_gitstatus_gives_it() {
+        let given = words("-s 1 -u -1 -c 1 -d 1 -m -1 -e -U -W -D -t 32 -v FATAL");
+        assert_eq!(stray(&given), None, "gitstatus's own flags were refused");
+    }
+
+    #[test]
+    fn refuses_a_bare_word() {
+        assert_eq!(
+            stray(&words("-s 1 -U here")),
+            Some("here"),
+            "a word no flag takes went unseen"
+        );
     }
 
     #[test]

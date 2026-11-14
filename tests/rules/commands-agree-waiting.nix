@@ -71,11 +71,6 @@
   ];
   disk-guard-merged-on-github = [ "helps" ];
   eero = [ "inks" ];
-  git-engine = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   gnome-keyring-unlock = [ "helps" ];
   guide = [
     "kit"

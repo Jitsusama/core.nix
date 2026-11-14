@@ -12,3 +12,7 @@ publish = false
 # zlib, for objects and packs: pure Rust, so it builds anywhere the prompt
 # runs.
 miniz_oxide = "0.9"
+# What --once answers with --json.
+serde_json = "1"
+# Its help, refusals and facts, as every command here says them.
+terminal-kit = { path = "../terminal-kit" }

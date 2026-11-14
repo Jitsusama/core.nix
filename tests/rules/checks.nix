@@ -186,6 +186,7 @@
         firmware-notice = pkgs.callPackage ../../modules/firmware-notice/package.nix { };
         firmware-settings = pkgs.callPackage ../../modules/firmware-settings/package.nix { };
         gcloud-broker = pkgs.callPackage ../../modules/gcloud-broker/package.nix { };
+        git-engine = pkgs.callPackage ../../modules/git-engine/package.nix { };
         github-broker = pkgs.callPackage ../../modules/github-broker/package.nix { };
         inherit google;
         google-people = google;
