@@ -1067,19 +1067,22 @@ in
   # stretched out long, its forelegs reaching ahead and its hind legs
   # thrown back, its tail streaming up behind, so a leap never reads as
   # a stride or a climb (Joel, 2026-11-13: "when crossing across gaps
-  # between windows, the kitty should jump").
+  # between windows, the kitty should jump"). It keeps walking's head
+  # and a body two rows thick, as lit as the other poses, since one drawn
+  # thin with a leg a pixel wide read as a spider at its size (VKCF3Z,
+  # 44b79227).
   leaping = {
     glyph = nerd "f03e9";
     console = "m";
     means = "the margin's cat, in one of its own poses";
     pixels = [
+      ".......#"
       "#.#....#"
-      "###....#"
-      "#.#...#."
-      ".######."
-      "..####.."
-      ".#....#."
-      "#......#"
+      "###...#."
+      "#.#..##."
+      "#######."
+      "########"
+      "##....##"
       "#......#"
     ];
   };
