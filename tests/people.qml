@@ -316,7 +316,10 @@ ShellRoot {
         seeking("eli@example.com", "a stranger found by their email", () => {
             const eli = found("eli@example.com");
             expect("found", names(eli) === "Eli Fenwick", names(eli));
-            expect("who stands unknown says nothing", eli[0].side === "", eli[0].side);
+            // Here is UTC, so his Toronto time is apart, and said as one
+            // listed says theirs.
+            expect("who stands unknown says only their time",
+                /^Toronto \u00b7 \d\d:\d\d$/u.test(eli[0].side), eli[0].side);
         }),
         seeking("gus", "one with only an email, named from it", () => {
             const gus = found("gus");
@@ -661,12 +664,13 @@ ShellRoot {
                     names(people.persons()));
             }
         },
-        // Found among everyone, as one Tuple or Google found is, so her row
-        // says nothing of how she stands.
+        // Found, nobody listing her, she says how she stands in Slack, as
+        // one listed does.
         seeking("quill", "one Slack found is found as the daemon serves her", () => {
             const zoe = found("quill");
-            expect("by Slack's name for her", names(zoe) === "Zo\u00eb \"Zed\" Quill"
-                && zoe[0].side === "", `${names(zoe)} ${zoe[0]?.side}`);
+            expect("by Slack's name for her, as she stands there",
+                names(zoe) === "Zo\u00eb \"Zed\" Quill" && zoe[0].side === "active",
+                `${names(zoe)} ${zoe[0]?.side}`);
         }),
         {
             // Slack answers an address it knows nobody by with no id, and
