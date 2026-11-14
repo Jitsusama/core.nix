@@ -100,13 +100,21 @@ impl Source {
     }
 
     /// Where each process can be looked at, which only Linux has: a Mac's
-    /// memory and the agents that died aren't read yet.
+    /// memory is asked of `ps` instead, and the agents that died there
+    /// aren't read yet.
     #[must_use]
     pub fn processes(self) -> Option<&'static Path> {
         match self {
             Self::Journal => Some(Path::new("/proc")),
             Self::UnifiedLog => None,
         }
+    }
+
+    /// Whether the watched programs' memory is asked of `ps`, as on a Mac,
+    /// which has no `/proc` to look in.
+    #[must_use]
+    pub const fn asks_ps(self) -> bool {
+        matches!(self, Self::UnifiedLog)
     }
 
     /// Where each group of processes says what processor time it used,

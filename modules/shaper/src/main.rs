@@ -40,6 +40,7 @@ mod qdisc;
 mod rate;
 mod record;
 mod replay;
+mod room;
 #[cfg(test)]
 mod sim;
 mod stamp;
@@ -591,7 +592,7 @@ fn run(options: &Options) -> ExitCode {
     let mut last_fill: Option<Instant> = None;
     let mut filled = String::new();
     let mut reach = classes::Local::default();
-    let mut vpns: (BTreeMap<String, Vpn>, cost::Cost) = (BTreeMap::new(), cost::Cost::default());
+    let mut vpns = Vpns::default();
     let mut last_kept = Instant::now();
     // Listing every process costs more than a step can spend, so the pi
     // sessions are found every few seconds, and whether each runs a typed
@@ -639,7 +640,7 @@ fn run(options: &Options) -> ExitCode {
                 .first()
                 .and_then(|p| shaped.get(p))
                 .map(|s| (s.applied.0, s.applied.1, s.straight));
-            follow_vpns(&mut vpns, &options.vpns, base, t);
+            follow_vpns(&mut vpns, &options.vpns, (base, order.first()), t);
             reach = local(&shaped, &vpns.0);
             watch_real_time(&mut shaped, (now - began).as_secs_f64());
             if let Some(l) = live.as_mut() {
@@ -807,25 +808,63 @@ fn moved(applied: Option<u64>, kbit: u64) -> bool {
     applied.is_none_or(|a| a.abs_diff(kbit) * 100 > a)
 }
 
+/// The VPNs the shaper holds, with what their packets cost the uplink past
+/// their count and what they give up for its bulk.
+type Vpns = (BTreeMap<String, Vpn>, cost::Cost, room::Room);
+
+/// What the VPNs give up of their upload for the uplink's own bulk, in
+/// kbit/s, from their bulk tins, read in `read`, the uplink's, `beside`,
+/// and its rate, `line` (room.rs says why), at `t` seconds.
+fn give_room(
+    room: &mut room::Room,
+    read: &[String],
+    (beside, line): (Option<&qdisc::Tin>, Option<u64>),
+    t: f64,
+) -> u64 {
+    let (Some(beside), Some(line)) = (beside, line) else {
+        return 0;
+    };
+    let bulk: Vec<qdisc::Tin> = read.iter().filter_map(|json| qdisc::bulk(json)).collect();
+    if bulk.is_empty() {
+        return 0;
+    }
+    let inside = qdisc::Tin {
+        bytes: bulk.iter().map(|tin| tin.bytes).sum(),
+        backlog: bulk.iter().map(|tin| tin.backlog).sum(),
+        ..qdisc::Tin::default()
+    };
+    let was = room.given();
+    let given = room.sample(&inside, beside, line, t);
+    if was == 0 && given > 0 {
+        eprintln!("the uplink's bulk waits behind the VPNs' bulk; the VPNs make room");
+    } else if was > 0 && given == 0 {
+        eprintln!("the VPNs' bulk has its room back");
+    }
+    given
+}
+
 /// Keeps a CAKE on each VPN that's there, each way, at its share of the
 /// primary uplink's rates, less what its own packets cost the uplink past
-/// what its CAKE counts, and lets go of one that's gone or has no uplink to
-/// ride. What a VPN receives goes straight in, past its IFB, while the
-/// uplink's does. Read at `t` seconds.
+/// what its CAKE counts and the room its bulk makes for the uplink's, and
+/// lets go of one that's gone or has no uplink to ride. What a VPN receives
+/// goes straight in, past its IFB, while the uplink's does. Read at `t`
+/// seconds.
 fn follow_vpns(
-    (applied, spent): &mut (BTreeMap<String, Vpn>, cost::Cost),
+    (applied, spent, room): &mut Vpns,
     names: &[String],
-    base: Option<(u64, u64, bool)>,
+    (base, primary): (Option<(u64, u64, bool)>, Option<&String>),
     t: f64,
 ) {
-    let counted: Option<u64> = applied
+    // The primary uplink's bulk tin, beside the VPNs riding it.
+    let beside = primary.and_then(|p| {
+        qdisc::bulk(&sh(&words(&format!("tc -s -j qdisc show dev {p}"))).unwrap_or_default())
+    });
+    let read: Vec<String> = applied
         .keys()
-        .map(|name| {
-            qdisc::counted_bytes(
-                &sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default(),
-            )
-        })
-        .sum();
+        .map(|name| sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default())
+        .collect();
+    let counted: Option<u64> = read.iter().map(|json| qdisc::counted_bytes(json)).sum();
+    let given = give_room(room, &read, (beside.as_ref(), base.map(|b| b.0)), t);
     let carried = sh(&words(&format!(
         "nft -j list counter inet {TABLE} {}",
         cost::COUNTER
@@ -851,7 +890,9 @@ fn follow_vpns(
             continue;
         };
         let ifb = qdisc::ifb(index);
-        let up = qdisc::vpn_rate(up).saturating_sub(extra).max(FLOOR.up);
+        let up = qdisc::vpn_rate(up)
+            .saturating_sub(extra + given)
+            .max(FLOOR.up);
         let down = qdisc::vpn_rate(down).max(FLOOR.down);
         let was = applied.get(name);
         // A VPN brought back up is a new device, with a new index.

@@ -1,7 +1,8 @@
 //! Each call judged in the shadow: what the scorer would have chosen for
 //! it, kept beside what Joel chose, so it can be checked against his ear
 //! before it ever chooses for him (plan items 16 and 17). Nothing changes
-//! what a call hears.
+//! what a call hears; once its line is kept, chooses.rs may change what
+//! the next call there is cleaned with.
 //!
 //! While a microphone is recorded from, the first ten seconds of its
 //! speech are held in memory: frames 15 dB or more over its room's floor
@@ -9,8 +10,9 @@
 //! ends with three seconds or more of it, a thread of its own cleans that
 //! speech every way and scores each (score.rs), then drops the sound. A
 //! line of numbers and names alone goes in `judged`, beside the picks:
-//! when, which microphone, where, what it ran, which way scored best, and
-//! every way's marks.
+//! when, which microphone, where (by name and by key, so a spot renamed
+//! keeps its calls), what it ran, which way scored best, and every way's
+//! marks.
 
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
@@ -20,9 +22,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
+use crate::chooses;
+use crate::chosen::Chosen;
 use crate::denoise::{Cleaner, FRAME};
 use crate::room;
 use crate::score::{self, Marks};
+use crate::spot::Spot;
 use crate::ways;
 
 /// The frames heard before speech counts: a second, while the room's floor
@@ -83,25 +88,28 @@ pub struct Call {
     /// The microphone's node, and its name as Sound gives it.
     pub node: String,
     pub microphone: String,
-    /// Where it was, by Joel's name for the spot.
-    pub spot: String,
+    /// Where it was.
+    pub spot: Spot,
     /// What it was cleaned with.
     pub running: Cleaner,
     pub speech: Vec<f32>,
 }
 
-/// Judges `call` in a thread of its own, keeping its line in `file`.
-pub fn judge(models: PathBuf, file: Option<PathBuf>, call: Call) {
+/// Judges `call` in a thread of its own, keeping its line in `judged`
+/// beside the picks, then choosing what the next call there cleans with
+/// when the calls say so.
+pub fn judge(models: PathBuf, chosen: Chosen, call: Call) {
     std::thread::spawn(move || {
         let Some(line) = judged(&models, &call) else {
             return;
         };
         eprintln!(
             "noise-cancelled: {}'s call at {} would have cleaned with {}, not {}",
-            call.node, call.spot, line["best"], call.running
+            call.node, call.spot.name, line["best"], call.running
         );
-        if let Some(file) = file {
+        if let Some(file) = chosen.beside("judged") {
             kept(&file, &line);
+            chooses::decided(&chosen, &call.node, &call.spot);
         }
     });
 }
@@ -146,7 +154,8 @@ pub fn said(call: &Call, marks: &BTreeMap<&'static str, Marks>, at: u64) -> Valu
         "at": at,
         "microphone": call.microphone,
         "node": call.node,
-        "spot": call.spot,
+        "spot": call.spot.name,
+        "key": call.spot.key,
         "running": call.running.to_string(),
         "best": best(marks),
         "marks": each,

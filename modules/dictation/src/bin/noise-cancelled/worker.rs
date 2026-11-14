@@ -163,7 +163,7 @@ fn run(models: &Path, chosen: &Chosen, offers: &mut Offers, asks: &Receiver<Ask>
         let mut calls = Vec::new();
         let wanted = settled(&mut microphones, chosen, offers, &mut calls);
         for call in calls {
-            shadow::judge(models.to_owned(), chosen.beside("judged"), call);
+            shadow::judge(models.to_owned(), chosen.clone(), call);
         }
         if wanted.is_empty() {
             offers.stand(chosen);
@@ -198,8 +198,8 @@ fn run(models: &Path, chosen: &Chosen, offers: &mut Offers, asks: &Receiver<Ask>
 /// the spot the machine is at when it starts being recorded, kept until it
 /// stops, and nothing once it has, telling `offers` how long it was
 /// recorded from and where, and adding a call with speech enough to
-/// `calls`, to be judged in the shadow. The spot is read only then, once a
-/// pass. Answers every cleaner wanted now, each once.
+/// `calls`, to be judged in the shadow, which may choose what it cleans
+/// with there next. The spot is read only then, once a pass. Answers every cleaner wanted now, each once.
 fn settled(
     microphones: &mut HashMap<u32, Microphone>,
     chosen: &Chosen,
@@ -220,7 +220,7 @@ fn settled(
                     calls.push(Call {
                         node: ends.microphone.clone(),
                         microphone: ends.description.clone(),
-                        spot: at.name.clone(),
+                        spot: at.clone(),
                         running,
                         speech: microphone.speech.taken(),
                     });

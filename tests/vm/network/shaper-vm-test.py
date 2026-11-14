@@ -567,7 +567,8 @@ def test_tunnel_goes_as_best_effort(tunnel: Connection) -> None:
     The connection's queue sees a tunnel as one flow, so whatever comes next inside it waits
     behind what that flow holds: sent as bulk, an app's first packets inside waited in the
     connection's bulk queue, and were dropped there, before anything could move the tunnel
-    out of it. The tunnel's own queue sorts what it carries instead.
+    out of it. The tunnel's own queue sorts what it carries instead, and while bulk beside
+    the tunnel waits behind it, the tunnel gives up some of its rate, so the two share.
     """
     client = tunnel.client
     inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
@@ -575,6 +576,21 @@ def test_tunnel_goes_as_best_effort(tunnel: Connection) -> None:
     # The connection counts the tunnel's own packets, a megabyte's worth and more, so its
     # queue can give up what they cost past what it counted.
     client.succeed("nft list counter inet shaper vpnout | grep -Eq 'bytes [0-9]{7,}'")
+    loads = {
+        "bulk-beside": f"{BIN}/cat /dev/zero > /dev/tcp/{tunnel.far}/5201",
+        "bulk-inside": f"{BIN}/cat /dev/zero > /dev/tcp/10.9.0.2/5201",
+    }
+    for unit, script in loads.items():
+        client.succeed(
+            f"systemd-run -M alice@ --user --slice=jobs.slice --unit={unit}"
+            f" {BIN}/bash -c '{script}'"
+        )
+    try:
+        client.wait_until_succeeds(
+            "journalctl -u shaper | grep -q 'the VPNs make room'", timeout=SHAPING
+        )
+    finally:
+        client.succeed(f"systemctl -M alice@ --user stop {' '.join(loads)}")
 
 
 def test_route_moves(on_eth2: Connection) -> None:
