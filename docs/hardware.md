@@ -181,10 +181,8 @@ cs35l56 sdw:0:2:01fa:3557:01:2: error -EBUSY: Failed to get spk-id-gpios
 ```
 
 [Junjie Cao's fix][3], from Intel, takes the interrupt without claiming the
-pin. The media maintainer accepted it in September 2026 and it's marked for
-the stable series; Omarchy carries the same fix for this laptop. Drop the
-patch once nixpkgs's kernel includes it: the build fails when a patch no
-longer applies, which says when.
+pin. The media maintainer accepted it in September 2026, and it reached the
+stable series in 7.3.4, so the kernel has it and no patch here carries it.
 
 With the CVS bridge out of the way, the amplifiers still race each other for
 the pin. They probe at once, and each requests it exclusively, reads it and

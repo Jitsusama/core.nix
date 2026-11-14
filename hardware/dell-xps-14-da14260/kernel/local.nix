@@ -1,27 +1,13 @@
 # The XPS 14's kernel patches applied in this order, after the camera's
-# (../camera/camera.nix) and before next: the ones written here, and
-# cvs-wake-irq, taken from elsewhere, which waits to be filed into next/ at
-# the stack's next regeneration, since filing it reorders the patches. The
-# camera's list holds three more that wait the same way, which kernel/README
-# names.
-{ lib, pkgs, ... }:
+# (../camera/camera.nix) and before next: the ones written here. The
+# camera's list holds three taken from elsewhere, which wait to be filed
+# into next/ at the stack's next regeneration, since filing them reorders
+# the patches; kernel/README names them.
+{ lib, ... }:
 {
   # After the camera's own, which take the default place, and before next
   # (1600), as the stack was made.
   boot.kernelPatches = lib.mkOrder 1100 [
-    {
-      # Without it the camera's CVS bridge holds the pin all four amplifiers
-      # read their speaker ID from, so none of them bind and there's no sound
-      # card. From Intel, and accepted into the media tree: message
-      # 20260913133017.624919-1-junjie.cao@intel.com on linux-media, as
-      # fetchpatch made it. It's kept here because the list's patchwork now
-      # turns away every fetch, under the name and hash it was fetched by, so
-      # its store path, and the kernel built from it, stay as they were.
-      name = "cvs-wake-irq";
-      patch = pkgs.runCommand "cvs-wake-irq.patch" {
-        outputHash = "sha256-javJIhGW6mUlgQjgUTgKCEqpD7704+t8zZLtVTe72Dw=";
-      } "cp ${./local/cvs-wake-irq.patch} $out";
-    }
     {
       # The CVS bridge's wake interrupt leaves an active-low flag on that
       # same pin, so the first amplifier to read its speaker ID reads it
