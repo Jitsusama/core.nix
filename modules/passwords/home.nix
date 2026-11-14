@@ -21,6 +21,14 @@
 # the account's state folder, so For You's to-do for it outlives a reboot;
 # never a hash or a password.
 #
+# Secret asks are answered by the same daemon, for the references
+# jitsusama.passwords.releases lists alone, each read by the manager whose
+# `references` prefix it starts with: an agent's ask is a row among
+# Passwords' own, and only a yes on the daemon's socket releases it, into
+# one command run in bubblewrap (src/asks.rs). Any client of that socket
+# could say yes, so nothing is listed until the shell alone is answered.
+# None listed, the default, is off: no folder is watched and no row drawn.
+#
 # `passwords` completes in zsh with the completion it writes itself
 # (completion.nix), which offers the entries and details the daemon holds
 # and never asks a manager anything, so a Tab can't make 1Password ask
@@ -30,6 +38,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   ...
 }:
@@ -44,10 +53,21 @@ let
     builtins.toJSON {
       # Its name as Joel reads it and its own link to an entry, for the
       # rows the daemon serves the launcher (src/rows.rs).
-      managers = map (manager: {
-        inherit (manager) name command called;
-        shows = if manager.shows == null then "" else manager.shows;
-      }) managers;
+      managers = map (
+        manager:
+        {
+          inherit (manager) name command called;
+          shows = if manager.shows == null then "" else manager.shows;
+        }
+        // lib.optionalAttrs (manager.references != null) { inherit (manager) references; }
+      ) managers;
+      # What a secret ask may release, and the programs asks are answered
+      # with: git reads an ask's tree, bubblewrap runs its command, and
+      # loginctl says whether the session is locked, when no yes counts.
+      inherit (config.jitsusama.passwords) releases;
+      git = lib.getExe pkgs.git;
+      bwrap = lib.getExe pkgs.bubblewrap;
+      loginctl = "${pkgs.systemd}/bin/loginctl";
     }
   );
   # The launcher's vocabulary, which the daemon says its rows in.
@@ -55,6 +75,18 @@ let
 in
 {
   imports = [ quickshell ];
+
+  options.jitsusama.passwords.releases = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [ ];
+    example = [ "op://Private/Release Test/password" ];
+    description = ''
+      The references a secret ask may have released, each matched whole,
+      and read by the manager whose references start as it does. None, the
+      default, turns asks off: the daemon watches no folder, and the
+      launcher draws no ask. It holds references, never values.
+    '';
+  };
 
   options.jitsusama.passwords.managers = lib.mkOption {
     type = lib.types.attrsOf (
@@ -107,6 +139,16 @@ in
               manager whose program can't be shown one.
             '';
           };
+          references = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "op://";
+            description = ''
+              What the references it releases to a secret ask start with, or
+              none for a manager that releases nothing. It's asked `release`
+              with the `reference` and `asked`, and answers its `value`.
+            '';
+          };
           fills = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
@@ -129,6 +171,19 @@ in
   };
 
   config = lib.mkIf (managers != [ ]) {
+    # The experiment watches the same asks folder, and would answer what
+    # this daemon serves, so the two never run together.
+    assertions = [
+      {
+        assertion = config.jitsusama.passwords.releases == [ ] || !(options.jitsusama ? secret-asks);
+        message = ''
+          jitsusama.passwords.releases turns on the passwords daemon's own
+          secret asks, so the secret-asks experiment, which watches the same
+          folder, can't be imported beside it.
+        '';
+      }
+    ];
+
     home.packages = [
       passwords
       (pkgs.callPackage ./completion.nix { })
