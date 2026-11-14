@@ -338,6 +338,29 @@ fn a_yes_while_locked_reads_nothing() {
 }
 
 #[test]
+fn an_act_names_the_ask_alone_and_a_yes_keyed_by_its_row_reads_nothing() {
+    let setting = Setting::new("row-keyed");
+    let mut client = setting.watching();
+    let id = setting.ask(ITEM);
+    let drawn = row(&mut client, &id);
+    let thing = format!("ask:{id}");
+    for at in [0, 1] {
+        assert_eq!(
+            drawn["acts"][at]["ask"]["key"], thing,
+            "an act names more than its ask: {drawn}"
+        );
+    }
+    // A second form of key would widen what a forged act could match, so
+    // the row's own is refused.
+    let mut yes = acting(&drawn, 0);
+    yes["key"] = json!(format!("row:asks:{id}"));
+    yes["shown"] = json!(812);
+    let said = client.ask(&yes);
+    assert_eq!(said["error"]["code"], "refused", "a row-keyed yes: {said}");
+    assert_eq!(setting.op_ran(), 0, "op ran for a row-keyed yes");
+}
+
+#[test]
 fn a_no_refuses_and_reads_nothing() {
     let setting = Setting::new("no");
     let mut client = setting.watching();
