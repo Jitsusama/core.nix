@@ -101,6 +101,18 @@ in
       };
       Service = {
         ExecStart = "${lib.getExe dictation} serve ${model}";
+        # Everything it reaches, niri, PipeWire, wtype's compositor and
+        # notices' D-Bus, is a Unix socket, and netlink is how devices are
+        # found, so no IP socket can be opened: nothing said leaves the
+        # machine, whatever a model does. A user manager can't attach the
+        # BPF that IPAddressDeny and DevicePolicy need and ignores both,
+        # so neither is set; the address families already deny every IP
+        # socket.
+        RestrictAddressFamilies = [
+          "AF_UNIX"
+          "AF_NETLINK"
+        ];
+        NoNewPrivileges = true;
         CacheDirectory = [
           "dictation"
           "dictation-tidy"
