@@ -104,6 +104,9 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
     };
     let mut filled = 0;
     let mut value_next = false;
+    // The words that led here, as a try-line types them again: each
+    // subcommand by its name, and each name as given.
+    let mut typed = vec![root.name.clone()];
     for (at, word) in args.iter().enumerate() {
         if value_next {
             value_next = false;
@@ -119,6 +122,7 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
         let here = walked.chain.last().copied().unwrap_or(root);
         if takes_name(here, filled) {
             filled += 1;
+            typed.push(quoted(word));
             continue;
         }
         if let Some(sub) = here
@@ -127,6 +131,7 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
             .find(|sub| sub.name == *word || sub.aliases.contains(word))
         {
             walked.words[at].clone_from(&sub.name);
+            typed.push(sub.name.clone());
             walked.chain.push(sub);
             filled = 0;
             continue;
@@ -143,9 +148,20 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
         } else {
             flags::unknown("command", word, &here.command_names())
         };
-        return Err(failure.try_this(format!("{path} --help")));
+        typed.push("--help".to_owned());
+        return Err(failure.try_this(typed.join(" ")));
     }
     Ok(walked)
+}
+
+/// A word as a shell reads it back whole: in double quotes where it holds
+/// a space or is empty, as `"Main Floor"`.
+fn quoted(word: &str) -> String {
+    if word.is_empty() || word.contains(char::is_whitespace) {
+        format!("\"{}\"", word.replace('"', "\\\""))
+    } else {
+        word.to_owned()
+    }
 }
 
 #[cfg(test)]
@@ -262,6 +278,22 @@ mod tests {
         assert_eq!(failure.then.as_deref(), Some("eero --help"));
         let failure = walk(&help, &words("internet sqn")).expect_err("sqn is no command");
         assert_eq!(failure.then.as_deref(), Some("eero internet --help"));
+    }
+
+    #[test]
+    fn the_try_line_keeps_the_names_typed_on_the_way() {
+        // Without the name, eero nodes devices --help would ask for a node
+        // called devices.
+        let help = eero();
+        let typed: Vec<String> = ["node", "Main Floor", "devices", "extra"]
+            .map(str::to_owned)
+            .to_vec();
+        let failure = walk(&help, &typed).expect_err("extra is one too many");
+        assert_eq!(
+            failure.then.as_deref(),
+            Some("eero nodes \"Main Floor\" devices --help"),
+            "the try-line lost the node's name, or didn't quote it"
+        );
     }
 
     #[test]
