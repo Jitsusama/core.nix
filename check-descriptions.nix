@@ -1584,7 +1584,7 @@
   niri-opens-sandboxed-windows-behind = ''
     the session's niri, nested in the sandbox, opens a sandbox's windows on a workspace no screen
     shows without moving the focus, even with an activation token from the focused window or while
-    the focused workspace is the empty one at the end
+    the focused workspace is the empty one at the end, and Joel still goes to one by its id
   '';
   niri-patches-add-no-settings = ''
     no patch of niri's adds a setting a niri started before it would refuse at a switch, all of its
