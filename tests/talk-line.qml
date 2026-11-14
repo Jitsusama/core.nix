@@ -15,24 +15,77 @@ QtObject {
         try {
             const kitty = { app_id: "kitty", title: "π - Tune the launcher" };
             const session = { to: "TESTQA", name: "Tune the launcher" };
-            const rows = Said.attached(kitty, "kitty", session);
-            Expect.same("a pi window attaches its window and its session",
-                rows.map(row => row.text),
-                ["kitty · π - Tune the launcher", "Tune the launcher · TESTQA"]);
+            const rows = Said.attached({ window: kitty, program: "kitty", session });
+            Expect.same("a pi window attaches its window and its session, each with its mark "
+                    + "and its note", rows.map(row => [row.kind, row.mark, row.text, row.note]),
+                [["window", "windows", "π - Tune the launcher", "kitty"],
+                    ["session", "agent", "Tune the launcher", "TESTQA"]]);
             Expect.same("a window with no title attaches only what else it has",
-                Said.attached({ app_id: "foot", title: "" }, "Foot", null), []);
-            Expect.same("none focused attaches nothing", Said.attached(null, "", null), []);
+                Said.attached({ window: { app_id: "foot", title: "" }, program: "Foot" }), []);
+            Expect.same("none focused attaches nothing",
+                Said.attached({ window: null, program: "" }), []);
             Expect.same("his words go first, what's attached under the heading the void reads",
                 Said.said("  is this the right fix? ", rows),
                 "is this the right fix?\n\nAttached:\n- window: kitty · π - Tune the launcher\n"
                     + "- pi session: Tune the launcher · TESTQA");
             Expect.same("nothing attached sends his words alone",
                 Said.said("hello", []), "hello");
-            Expect.same("the quiet line names who hears it and the window, the session left to "
-                + "the window's title", Said.about("void", rows),
-                "void · kitty · π - Tune the launcher");
-            Expect.same("with no window it names who hears it alone", Said.about("void", []),
-                "void");
+            Expect.same("a pi window shows its session alone, its title saying the same",
+                Said.shownRows(rows).map(row => row.kind), ["session"]);
+
+            // Chrome's tab in front of the window it's said over (brief, slice C), matched
+            // by title until the programs daemon serves it by window (FEH1HE [85b5425e]).
+            const chrome = { app_id: "google-chrome", title: "Pull requests - Google Chrome" };
+            const sites = [
+                { front: false, title: "Pull requests", address: "https://old.example" },
+                { front: true, title: "Pull requests", address: "https://github.com/pulls" },
+                { front: true, title: "Inbox", address: "https://mail.example" }];
+            const tab = Said.tabOf(chrome, "Google Chrome", sites);
+            Expect.same("the tab in front titled as the window is its tab", tab,
+                { title: "Pull requests", address: "https://github.com/pulls" });
+            Expect.same("two in front titled alike can't be told apart, so none is taken",
+                Said.tabOf(chrome, "Google Chrome", sites.concat([{ front: true,
+                    title: "Pull requests", address: "https://github.com/other" }])), null);
+            Expect.same("a window no tab is in front of has none",
+                Said.tabOf({ title: "Settings - Google Chrome" }, "Google Chrome", sites), null);
+            const browsed = Said.attached({ window: chrome, program: "Google Chrome", tab });
+            Expect.same("a browser's window is titled without its program, and its tab shown "
+                    + "in its place", [browsed[0].text, Said.shownRows(browsed).map(row =>
+                    [row.mark, row.text, row.note])],
+                ["Pull requests", [["web", "Pull requests", "github.com/pulls"]]]);
+            Expect.same("the tab goes to the void by its title and address, the window as before",
+                Said.said("merge which?", browsed), "merge which?\n\nAttached:\n"
+                    + "- window: Google Chrome · Pull requests - Google Chrome\n"
+                    + "- tab: Pull requests · https://github.com/pulls");
+
+            // Ctrl+R * and + attach the selection and the clipboard, as Vim's registers.
+            const registerWords = { selection: "selection", clipboard: "clipboard",
+                lines: "{count} lines" };
+            const selected = Said.registered([], "*", "  the beacon's key\n", registerWords);
+            Expect.same("* attaches the selection, its words on the line and its kind noted",
+                selected.map(row => [row.kind, row.mark, row.text, row.note]),
+                [["selection", "lines", "the beacon's key", "selection"]]);
+            const both = Said.registered(selected, "+", "\nfn main() {\n    run();\n}",
+                registerWords);
+            Expect.same("+ attaches the clipboard after it, its first line with words and how "
+                + "many lines", both.map(row => [row.kind, row.text, row.note]),
+                [["selection", "the beacon's key", "selection"],
+                    ["clipboard", "fn main() {", "clipboard · 3 lines"]]);
+            Expect.same("the same register again takes its row's place",
+                Said.registered(both, "*", "another", registerWords).map(row => row.text),
+                ["another", "fn main() {"]);
+            Expect.same("an empty register lets go of what it held",
+                Said.registered(both, "*", "  \n", registerWords).map(row => row.kind),
+                ["clipboard"]);
+            Expect.same("any other register attaches nothing",
+                Said.registered(both, "a", "text", registerWords), both);
+            Expect.same("a register's text goes whole, a line of many under its row, indented",
+                Said.said("what's wrong here?", Said.attached({ window: null, program: "", registers: both })),
+                "what's wrong here?\n\nAttached:\n- selection: the beacon's key\n"
+                    + "- clipboard:\n  fn main() {\n      run();\n  }");
+            const huge = Said.registered([], "+", "x".repeat(5000), registerWords)[0].sent;
+            Expect.same("a huge copy is cut, saying where", [huge.length,
+                huge.endsWith("[cut at 4000 characters]")], [4025, true]);
 
             const words = { sent: "sent", taking: "taking it back", taken: "taken back" };
             const since = Date.parse("2026-11-13T09:40:00.000Z");

@@ -35,8 +35,22 @@ Scope {
     // it comes up; the session in it comes a moment later, from the agents daemon.
     property var window: null
     property var session: null
-    readonly property var rows: Said.attached(window, program, session)
+    readonly property var rows: Said.attached({
+        window: root.window,
+        program: root.program,
+        session: root.session,
+        tab: root.tab,
+        registers: root.registers
+    })
+    // The rows shown of them under a hairline before it's sent, the window
+    // left to a tab or a session that already names it (TalkLine.js).
+    readonly property var shownRows: Said.shownRows(rows)
     property string program: ""
+    // What Ctrl+R * and Ctrl+R + attached, the selection and the clipboard
+    // as Vim names its registers, kept with the words until they're sent.
+    property var registers: []
+    // The tab in front of a Chrome window it's said over, or null.
+    readonly property var tab: browsing ? Said.tabOf(window, program, sites) : null
     // The talks Returns in this shell began (TalkLine.js's begun), newest first, as each goes.
     property var saidHere: []
     // Every line the line shows: those said here and those the void keeps, which outlive the
@@ -184,6 +198,50 @@ Scope {
         }
     }
 
+    // Chrome's open tabs, as the programs daemon serves them, watched only while the line is
+    // up over a Chrome window, so it reads Chrome's tabs for nothing else (TalkLine.js's
+    // tabOf). A stopgap until FEH1HE's programs daemon serves each window's front tab by
+    // niri's window id, due Sat 14 November 01:00 ([85b5425e]).
+    readonly property string browser: "google-chrome"
+    readonly property bool browsing: up && (window?.app_id ?? "") === browser
+    Daemon {
+        id: browserTabs
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/programs.sock`
+        kind: "opened"
+        live: false
+        connects: root.browsing
+        ahead: root.browsing ? [`opened:${root.browser}`] : []
+    }
+    readonly property var sites: browserTabs.revision >= 0
+        ? browserTabs.held[`opened:${browser}`]?.sites ?? [] : []
+
+    // The selection, read from the clipboard's history only as Ctrl+R * asks for it and
+    // never kept but as what's attached, as On the Selection reads it (OnSelection.qml),
+    // over a connection held only while the line is up.
+    Daemon {
+        id: selection
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/clipboard-history.sock`
+        kind: "selection"
+        live: false
+        connects: root.up
+    }
+
+    // Ctrl+R and a register: * attaches the selection, + the clipboard, each a row; any
+    // other attaches nothing.
+    function attach(name) {
+        if (name === "+") {
+            registers = Said.registered(registers, name, Copied.text, said);
+            return;
+        }
+        if (name !== "*")
+            return;
+        selection.find({ ask: "get", keys: ["selection:primary"] }, answer => {
+            const record = (answer?.records ?? []).find(one => one?.key === "selection:primary");
+            if (record !== undefined)
+                root.registers = Said.registered(root.registers, name, record.text, root.said);
+        });
+    }
+
     // A window's program as it names itself, where the desktop has an entry by its app id.
     function programOf(app) {
         return (DesktopEntries.byId(app) ?? DesktopEntries.byId(app.toLowerCase()))?.name || app;
@@ -207,6 +265,7 @@ Scope {
         launcher.drafts.handed(key, hears.to, sent);
         agents()?.say(hears, sent);
         saidHere = [Said.begun(hears.to, text, sent, Date.now())].concat(saidHere);
+        registers = [];
         prompt.clear();
     }
 
@@ -346,10 +405,18 @@ Scope {
                 // Where what's typed ends: its last line's baseline.
                 readonly property real typedEnds: caps + prompt.wrapsTall
                 readonly property bool talking: root.talk !== null
-                // The talks a group under what's typed, the hairline halfway between, so the
-                // room over it and under it is the same to the ink.
-                readonly property real lineAt: typedEnds + 2 * pitch + beat
-                readonly property real ruleAt: Math.round((typedEnds + lineAt - caps) / 2)
+                // What goes with it a region under what's typed, under a hairline halfway
+                // between, so the room over it and under it is the same to the ink; the
+                // talks another under that, the same way.
+                readonly property bool attaching: root.shownRows.length > 0
+                readonly property real attachedAt: typedEnds + 2 * pitch + beat
+                readonly property real attachedRuleAt: Math.round((typedEnds + attachedAt - caps)
+                    / 2)
+                // The last row's baseline.
+                readonly property real attachedEnds: attachedAt - pitch + attached.height
+                readonly property real talksFrom: attaching ? attachedEnds : typedEnds
+                readonly property real lineAt: talksFrom + 2 * pitch + beat
+                readonly property real ruleAt: Math.round((talksFrom + lineAt - caps) / 2)
                 // The last talk's last baseline.
                 readonly property real talksEnd: lineAt - pitch + spoken.height
                 readonly property real textAt: prompt.fieldX - card.inset
@@ -386,6 +453,8 @@ Scope {
                         glyphWidth: 0
                         hint: root.hears === null ? root.said.nobody ?? "" : root.words.ask ?? ""
                         aside: ""
+                        registers: true
+                        onRegistered: name => root.attach(name)
                         onAccepted: root.send()
                         onTextChanged: root.typed()
                         onCaretChanged: root.typed()
@@ -409,6 +478,89 @@ Scope {
                         onLetGo: how => {
                             root.commanding = false;
                             prompt.resume("normal");
+                        }
+                    }
+                }
+
+                // What's attached its region, inset to inset, never meeting the frame.
+                Rectangle {
+                    visible: body.attaching
+                    y: body.attachedRuleAt
+                    width: parent.width
+                    height: Theme.border
+                    color: Theme.edge
+                }
+
+                // What goes with the line once it's sent, a row each, muted, as it's
+                // context rather than anything to act on: its mark on the lead's column,
+                // in its kind's hue where it has one, its words on the text column, and at
+                // the right its note, which gives way first, so a row is one line (brief,
+                // slice C). Marks: a window's, the web's, an agent's, text's lines and the
+                // clipboard's; a browser's tab and a pi window's session wear the
+                // program's hue as the window does, and his own words, the selection and
+                // the clipboard, the muted text's, as the launcher's copies wear text's
+                // (Copies.qml), the designer's choice.
+                Column {
+                    id: attached
+                    visible: body.attaching
+                    y: body.attachedAt - body.pitch
+                    width: parent.width
+
+                    Repeater {
+                        model: root.shownRows
+
+                        Item {
+                            id: attachment
+
+                            required property var modelData
+                            readonly property real pitch: Theme.level.words.pitch
+                            // The note's room once the words have theirs, and whether
+                            // there's enough of it for the note to be read.
+                            readonly property real noteRoom: width - Theme.space.rung.groups
+                                - (body.textAt + whatText.implicitWidth)
+                            readonly property bool noted: attachment.modelData.note !== ""
+                                && noteRoom >= Math.min(noteText.implicitWidth,
+                                    6 * Theme.space.beat)
+
+                            width: attached.width
+                            height: pitch
+
+                            Mark {
+                                x: 0
+                                line: whatText.y + whatText.baselineOffset
+                                text: Theme.glyph[attachment.modelData.mark] ?? ""
+                                color: attachment.modelData.hue === "program" ? Theme.program
+                                    : Theme.muted
+                            }
+
+                            Text {
+                                id: whatText
+                                x: body.textAt
+                                y: attachment.pitch - baselineOffset
+                                width: (attachment.noted ? noteText.x
+                                    - Theme.space.rung.groups : attachment.width) - x
+                                text: attachment.modelData.text
+                                textFormat: Text.PlainText
+                                color: Theme.muted
+                                elide: Text.ElideRight
+                                font.family: Theme.level.words.family
+                                font.pointSize: Theme.level.words.pointSize
+                                font.variableAxes: Theme.level.words.variableAxes
+                            }
+
+                            Text {
+                                id: noteText
+                                visible: attachment.noted
+                                width: Math.min(implicitWidth, attachment.noteRoom)
+                                x: attachment.width - width
+                                anchors.baseline: whatText.baseline
+                                text: attachment.modelData.note
+                                textFormat: Text.PlainText
+                                color: Theme.muted
+                                elide: Text.ElideMiddle
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
+                            }
                         }
                     }
                 }
@@ -587,10 +739,11 @@ Scope {
                 Text {
                     id: foot
                     x: body.textAt
-                    y: (body.talking ? body.talksEnd : body.typedEnds) + body.pitch + body.beat
+                    y: (body.talking ? body.talksEnd : body.talksFrom) + body.pitch + body.beat
                         - baselineOffset
                     width: (offer.visible ? offer.x - Theme.space.rung.groups : parent.width) - x
-                    text: root.hears === null ? "" : Said.about(root.said.hearer ?? "", root.rows)
+                    // Who hears it alone: what goes with it is its own rows above.
+                    text: root.hears === null ? "" : root.said.hearer ?? ""
                     textFormat: Text.PlainText
                     color: Theme.muted
                     elide: Text.ElideRight
@@ -646,7 +799,8 @@ Scope {
     function shown() {
         return { up, keys: up && prompt.Window.active, typed: prompt.text, mode: prompt.mode,
             caret: prompt.caret, hears: root.hears === null ? "" : root.said.hearer ?? "",
-            about: foot.text, lines: prompt.typedLines, talk: root.talk?.said ?? "",
+            about: foot.text, attached: root.shownRows.map(row => ({ kind: row.kind,
+                text: row.text, note: row.note })), lines: prompt.typedLines, talk: root.talk?.said ?? "",
             standing: root.standingOf(root.exchanges[0] ?? null), talks: root.exchanges,
             takes: offer.visible, commanding,
             top: up ? surface.margins.top + card.reach : -1,

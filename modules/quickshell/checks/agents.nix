@@ -19,7 +19,8 @@
 {
   # An agent's row does, on Return, the act its state makes harmless, its
   # rows the agents daemon's, made from the realm's own node's sessions, as
-  # a workstation's are (tests/agents-on-niri-test.py).
+  # a workstation's are (tests/agents-on-niri-test.py). The clipboard's
+  # history serves what Super+S's line attaches by Ctrl+R * and Ctrl+R +.
   an-agents-return-does-its-harmless-act-on-niri = launcherOnNiri {
     name = "an-agents-return-does-its-harmless-act-on-niri";
     tests = ../../../tests/agents-on-niri-test.py;
@@ -27,6 +28,8 @@
       "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}"
       "AGENTS=${lib.getExe (pkgs.callPackage ../../agents/package.nix { })}"
       "WORDS=${(import ../launcher/words.nix).file}"
+      "CLIPBOARD=${lib.getExe (pkgs.callPackage ../clipboard/package.nix { })}"
+      "CLIPBOARD_WORDS=${(import ../launcher/words.nix).file}"
     ];
   };
 

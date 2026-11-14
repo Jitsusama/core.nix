@@ -1479,7 +1479,9 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     line is one frame a step inside the top of the screen, over his window: what's typed
     wraps as it grows, the void hears it, named quietly beside the window it's said over,
     which goes with the words, and Return keeps it up, saying they went (VKCF3Z, 2026-11-13
-    [092d52ca]).
+    [092d52ca]). What goes with them shows under a hairline before they're sent, a row each,
+    and Ctrl+R * and Ctrl+R + attach the selection and the clipboard, as Vim's registers
+    (Joel, 2026-11-12: "i often want to talk about what i'm looking at").
     """
     line = shell.ipc("line")
     words = (
@@ -1489,11 +1491,13 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     since = shell.mark()
     shell.as_account(line)
     shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["hears"] == "void")
-    # Quiet beside who hears it, the window it's said over, by its title, once niri has
-    # said it to the shell.
-    shell.launcher_until(lambda shown: shown["line"]["about"].endswith(said_over))
+    # Under what's typed, the window it's said over, by its title, once niri has said it to
+    # the shell; the foot names who hears it alone.
+    shell.launcher_until(
+        lambda shown: [row["text"] for row in shown["line"]["attached"]] == [said_over]
+    )
     about = shell.showing()["line"]["about"]
-    assert about.startswith("void \u00b7 "), about
+    assert about == "void", about
     # It says how long it took to reach the screen, held to Joel's 50 ms (VKCF3Z, e8b4139e).
     deadline = time.monotonic() + 10
     while not (
@@ -1525,7 +1529,25 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     shell.launcher_until(lambda shown: not shown["line"]["up"])
     shell.as_account(line)
     shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["typed"] == words)
-    # Return sends them, the window attached, and the line stays up saying whom they wait on.
+    # Ctrl+R * attaches what's selected and Ctrl+R + what's copied, each a row under the
+    # window's, the line's words as they were.
+    # wl-copy stays behind to serve each, so it's given nothing to hold open.
+    shell.as_account("printf %s 'the cut title' | wl-copy --primary > /dev/null 2>&1")
+    shell.as_account("printf %s 'twitches while it reads on' | wl-copy > /dev/null 2>&1")
+    attach(shell, "*", [("window", said_over), ("selection", "the cut title")])
+    attach(
+        shell,
+        "+",
+        [
+            ("window", said_over),
+            ("selection", "the cut title"),
+            ("clipboard", "twitches while it reads on"),
+        ],
+    )
+    assert shell.showing()["line"]["typed"] == words, shell.showing()["line"]
+    shoot("attached")
+    # Return sends them, what's attached with them, and the line stays up saying whom they
+    # wait on, attaching only its window again.
     shell.send_key("ret")
     shell.launcher_until(
         lambda shown: (
@@ -1546,7 +1568,10 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
         assert time.monotonic() < deadline, "the line never reached the void's inbox"
         time.sleep(0.1)
     assert "\n\nAttached:\n- window: " in sent[0], sent
-    assert sent[0].endswith(said_over), sent
+    assert sent[0].endswith(
+        f"{said_over}\n- selection: the cut title\n- clipboard: twitches while it reads on"
+    ), sent
+    assert [row["kind"] for row in shell.showing()["line"]["attached"]] == ["window"]
     shoot("sent")
     times = re.findall(
         r"talk line: up (\d+) ms", shell.log.read_bytes()[since:].decode(errors="replace")
@@ -1554,6 +1579,29 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     logging.getLogger(__name__).info("the line was up after %s ms each time", times)
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def attach(shell: Shell, register: str, rows: list[tuple[str, str]]) -> None:
+    """Press Ctrl+R and the register until the line's attached rows are the rows given.
+
+    A copy reaches the clipboard's history, and the shell from it, a moment after wl-copy
+    returns, and a register attached while it's empty attaches nothing, so it's pressed again.
+    """
+    deadline = time.monotonic() + 10
+    while True:
+        shell.send_key("ctrl-r")
+        shell.send_chars(register)
+        try:
+            shell.launcher_until(
+                lambda shown: (
+                    [(row["kind"], row["text"]) for row in shown["line"]["attached"]] == rows
+                ),
+                timedelta(seconds=1),
+            )
+        except AssertionError:
+            assert time.monotonic() < deadline, shell.showing()["line"]
+        else:
+            return
 
 
 def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
@@ -1748,7 +1796,9 @@ def test_return_on_the_void_in_agents_opens_super_s_line_over_the_window_left(
         lambda shown: not shown["open"] and shown["line"]["up"] and shown["line"]["keys"]
     )
     # Over the window the launcher went from, which goes with what's said.
-    shell.launcher_until(lambda shown: shown["line"]["about"].endswith(said_over))
+    shell.launcher_until(
+        lambda shown: [row["text"] for row in shown["line"]["attached"]] == [said_over]
+    )
     # Its talks kept: the case before's newest answer.
     standing = shell.showing()["line"]["standing"]
     assert standing == "The cat's clips, and the void.", shell.showing()["line"]
