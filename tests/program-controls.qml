@@ -897,11 +897,11 @@ ShellRoot {
             // of every row Programs lists as its keys are weighed, and
             // making each one's step to learn it took 44 of an 84 ms
             // showing under load (vm-desktop-keeps-pace, 2026-11-14).
-            const made = applications.made.steps;
+            const made = applications.stepsCounted.made;
             same("a closed program with an action of its own holds more than starting",
                 program("sketch").actsOnly, false);
             same("as does one with keys of its own", program("keyed").actsOnly, false);
-            same("and neither makes its step to say so", applications.made.steps - made, 0);
+            same("and neither makes its step to say so", applications.stepsCounted.made - made, 0);
             same("one with neither starts only", program("lone").actsOnly, true);
 
             const quiet = program("quiet").verbs();
