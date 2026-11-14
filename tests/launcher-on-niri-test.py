@@ -3658,9 +3658,26 @@ class StandIn:
     (`unserved`), which come with the answer, as an ended quest's do.
     """
 
-    def __init__(self, path: Path, *, later: tuple[str, ...] = (), searches: bool = False) -> None:
-        """Listen on `path`, holding nothing yet, answering a watch of each `later` once let."""
+    def __init__(
+        self,
+        path: Path,
+        *,
+        later: tuple[str, ...] = (),
+        searches: bool = False,
+        refusing: tuple[str, ...] = (),
+        refused_for: float = 0.0,
+    ) -> None:
+        """Listen on `path`, holding nothing yet, answering a watch of each `later` once let.
+
+        A watch beginning with one of `refusing`, asked within `refused_for` seconds of the
+        socket being made, drops its connection, which Daemon.qml tries again two seconds on:
+        the split reconnect of H6EDLC's traces (2026-11-13, e02a43bf), forced.
+        """
         self.path = path
+        self.refusing = refusing
+        self.refusing_until = time.monotonic() + refused_for
+        # Each watch dropped, with when, in monotonic ms, so a case can say the split happened.
+        self.refused: list[tuple[float, str]] = []
         self.held: dict[str, Json] = {}
         self.searches = searches
         self.unserved: dict[str, Json] = {}
@@ -3761,7 +3778,14 @@ class StandIn:
                 if asked.get("ask") == "hello":
                     self.write(client, {"id": "hello", "version": 1, "state": "answering"})
                 elif asked.get("ask") == "watch" and asked.get("id") in ("all", "ahead"):
-                    self.write(client, {"id": asked["id"]}, watching=self.watched(asked))
+                    watching = self.watched(asked)
+                    if self.refusing:
+                        at = time.monotonic() * 1000
+                        print(f"split-rig watch {asked['id']} {watching!r} at {at:.0f}")
+                    if self.refuses(watching):
+                        self.drop(client, watching)
+                        return
+                    self.write(client, {"id": asked["id"]}, watching=watching)
                 elif asked.get("ask") == "search" and self.searches:
                     self.write(client, {"id": asked.get("id"), **self.found(asked)})
                 elif asked.get("ask") == "unwatch":
@@ -3770,6 +3794,23 @@ class StandIn:
                     self.write(client, {"id": asked.get("id")})
                 else:
                     self.write(client, {"id": asked.get("id"), "records": []})
+
+    def refuses(self, watching: str) -> bool:
+        """Give whether a watch of `watching`, asked now, drops its connection."""
+        if time.monotonic() >= self.refusing_until:
+            return False
+        return any(watching.startswith(refused) for refused in self.refusing)
+
+    def drop(self, client: socket.socket, watching: str) -> None:
+        """Let a client go as a daemon not yet answering would, saying which watch it asked."""
+        at = time.monotonic() * 1000
+        with self.lock:
+            self.refused.append((at, watching))
+            self.clients.pop(client, None)
+            with contextlib.suppress(OSError):
+                client.shutdown(socket.SHUT_RDWR)
+            client.close()
+        print(f"split-rig refused {watching!r} at {at:.0f}")
 
     def found(self, asked: Json) -> Json:
         """Give a search's answer: each row whose name has a word each word typed begins.
@@ -4382,6 +4423,63 @@ def test_a_drawer_apart_told_as_its_daemon_comes_back_is_drawn(
     finally:
         back.close()
     assert watched, "Power's rows were never watched once its daemon came back"
+    assert drawn, f"Charge never drew the drawer apart it came to name: {shown}"
+
+
+@pytest.mark.parametrize("refusing", ["place:power", "keys:"])
+def test_a_drawer_apart_through_a_split_reconnect_is_drawn(
+    shell: Shell, machine: StandIn, refusing: str
+) -> None:
+    """Charge, drawn from rows kept through a gap, draws the drawer its row comes to name.
+
+    The machine daemon's socket made again brings the shell's connections back in two waves
+    (H6EDLC, 2026-11-13, e02a43bf). Here the wave is forced: watches beginning `refusing` are
+    dropped for two and a half seconds, so their connection comes back two seconds on, while
+    Charge is drawn from what was held before, a row naming no drawer.
+    """
+    walk = (("Machine", "Power"), ("Power", "Battery"), ("Battery", "Charge"))
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("machine", selecting="Machine")
+    for step, holding in walk:
+        shell.down_to(step)
+        shell.step_in()
+        shell.launcher_until(holds(holding))
+    shell.close_launcher()
+    machine.close()
+    key = "drawer:power:charge"
+    head, charge = battery(80)
+    drawer = {"title": "Charge", "facts": [{"name": "energy_now", "said": "40,000,000"}]}
+    back = StandIn(machine.path, refusing=(refusing,), refused_for=2.5)
+    print(f"split-rig made the socket at {time.monotonic() * 1000:.0f}")
+    try:
+        back.told(
+            [
+                head,
+                {**charge, "row": {**charge["row"], "drawer": key}},
+                {"key": key, "kind": "drawer", "drawer": drawer},
+            ],
+            [],
+        )
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.type_in("machine", selecting="Machine")
+        for step, holding in walk:
+            shell.down_to(step)
+            shell.step_in()
+            shell.launcher_until(holds(holding))
+        shell.down_to("Charge")
+        print(f"split-rig on Charge at {time.monotonic() * 1000:.0f}")
+        try:
+            shell.launcher_until(lambda shown: "40,000,000" in shown["drawer"]["values"])
+            drawn = True
+        except AssertionError:
+            drawn = False
+        shown = shell.showing()["drawer"]
+        shell.close_launcher()
+    finally:
+        back.close()
+    assert back.refused, f"no watch beginning {refusing!r} came while it was refused"
     assert drawn, f"Charge never drew the drawer apart it came to name: {shown}"
 
 
