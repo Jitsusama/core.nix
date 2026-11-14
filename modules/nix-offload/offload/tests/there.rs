@@ -2773,6 +2773,35 @@ fn a_changed_run_gives_the_other_lent_builder_the_checks_its_base_kept() {
     assert_eq!(asked.len(), 1, "the copy was sent as a run: {asked:?}");
 }
 
+#[test]
+fn what_each_check_read_alone_is_given_where_no_vm_tests_reads_are_kept() {
+    // Keeps trace each VM test alone and keep no joint trace of them, and
+    // on 14 November neither builder held the other's alone records, so 15
+    // of 38 keeps carried from an older record than the newest.
+    let changed = Changed::new();
+    let more = changed.second();
+    fs::write(changed.bin.join("kept-nix-offload-more"), &changed.head).unwrap();
+    fs::write(
+        changed.bin.join("kept-checks-nix-offload-more"),
+        "{\"a\":\"x\"}",
+    )
+    .unwrap();
+    fs::write(
+        changed.bin.join("kept-alone-nix-offload-more"),
+        "{\"checks\":{}}",
+    )
+    .unwrap();
+    let (ran, _) = changed.run_beside(&["--name-only", "--system", "x86_64-linux"], &more);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        fs::read_to_string(changed.bin.join("took-kept-nix-offload"))
+            .ok()
+            .as_deref(),
+        Some("{\"a\":\"x\"}{\"checks\":{}}"),
+        "the other builder wasn't given what each check read alone, after the checks"
+    );
+}
+
 /// `changed`'s main moved on from its kept head in a folder of its own,
 /// with a change on it in another, and a lent builder listing the kept
 /// head's checks.
