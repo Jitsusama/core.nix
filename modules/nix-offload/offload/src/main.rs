@@ -1319,14 +1319,17 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     };
     let at = there::at_of(&source);
     let (checkout, bundle) = changed::checked_out(source);
+    // One name wherever it goes, since a run sent on to the other builder
+    // starts afresh there and never shares this one's files.
+    let run = command::run_name();
     let sending = there::Sending {
-        command: command::command(&checkout, &asked),
+        command: command::command(&checkout, &asked, &run),
         bundle,
     };
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let more = more_dir();
     let lenders = [dir.as_path(), more.as_path()];
-    let on = |store: &str| command::on(store, &sending, &asked, &scratch, ["ssh", "nix"]);
+    let on = |store: &str| command::on(store, &sending, &asked, &run, &scratch, ["ssh", "nix"]);
     let mut status = changed::in_turn(lenders, std::process::id())
         .iter()
         .filter_map(|lender| standing(lender))
