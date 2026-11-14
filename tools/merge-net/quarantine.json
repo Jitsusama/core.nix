@@ -456,15 +456,5 @@
       "test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
-  },
-  {
-    "at": 1794656096,
-    "commit": "712539a9e59d96174d28f2f817eb1247f7258446",
-    "owner_pr": 4290,
-    "reason": "failed, then passed, at 712539a9e59d",
-    "subtests": [
-      "test_a_service_that_wont_stop_holds_a_reboot_a_minute"
-    ],
-    "test": "vm-reboot-cannot-hang"
   }
 ]

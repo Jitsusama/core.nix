@@ -21,8 +21,8 @@ use std::thread::Scope;
 use serde_json::{Value, json};
 
 use super::{
-    AT_ONCE, Outcome, SEARCHES, SPLITS, World, attempt, clear_hold_of, fixed_forward, list_flaky,
-    listed_on_main, lock, same_drv, search, settle,
+    AT_ONCE, Outcome, SEARCHES, SPLITS, World, attempt, clear_hold_of, fixed_forward,
+    list_flaky_unless_mended, listed_on_main, lock, same_drv, search, settle,
 };
 use crate::state::{State, short};
 
@@ -378,7 +378,7 @@ impl<'a> Settler<'a> {
                 {
                     Ok(())
                 } else {
-                    list_flaky(world, state, head, test, *owner)
+                    list_flaky_unless_mended(world, state, head, test, *owner)
                 };
                 self.end(test, || listed)
             }
