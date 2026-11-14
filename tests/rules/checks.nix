@@ -178,7 +178,9 @@
         pi-packages = pkgs.callPackage ../../modules/pi-packages/package.nix { };
         recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
+        shell-weighs = pkgs.callPackage ../../modules/quickshell/shell-weighs/package.nix { };
         spend-watch = pkgs.callPackage ../../modules/spend-watch/package.nix { };
+        vm-first = pkgs.callPackage ../../modules/nix-daemon/vm-first/package.nix { };
         xwayland-satellite = pkgs.callPackage ../../modules/niri/xwayland-satellite.nix { };
       };
     waiting = import ./commands-agree-waiting.nix;
