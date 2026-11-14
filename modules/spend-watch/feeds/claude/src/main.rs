@@ -6,6 +6,10 @@
 //! The config folder is Claude Code's, whose `.credentials.json` holds the
 //! plan's sign-in; `config_folder` in the library says which it is when
 //! none is given.
+//!
+//! It takes the shape every command of ours does (docs/commands.md),
+//! through the terminal kit. Its stdout is the feed contract spend-watch
+//! reads in every form, so `--format` says only how a failure is told.
 
 mod anthropic;
 
@@ -17,29 +21,63 @@ use std::{env, thread};
 
 use claude_plan_feed::{Feed, Heard, Schedule, config_folder, heard};
 use jiff::Timestamp;
+use terminal_kit::{Exit, Failure, Help};
 
 use anthropic::Anthropic;
 
+fn help() -> Help {
+    Help::new(
+        "claude-plan-feed",
+        "how a Claude plan stands, for spend-watch",
+    )
+    .command(
+        "[CONFIG_FOLDER]",
+        "speaks the feed contract, hearing the pace on stdin",
+    )
+    .example("claude-plan-feed ~/.claude", "the plan signed in there")
+    .exit(Exit::Failed, "it couldn't write to the watch")
+    .exit(Exit::Config, "no folder given or named, and no HOME")
+}
+
 fn main() -> ExitCode {
-    let Some(home) = env::var_os("HOME").map(PathBuf::from) else {
-        eprintln!("claude-plan-feed: no HOME to find Claude Code's config folder in");
-        return ExitCode::FAILURE;
-    };
-    let folder = config_folder(
-        env::args_os().nth(1).map(PathBuf::from),
-        env::var_os("PI_CLAUDE_CONFIG_DIR").map(PathBuf::from),
-        &home,
-    );
-    let mut feed = Feed::new(folder.join(".credentials.json"));
-    match watch(&mut feed, &mut Anthropic::new(), &listen()) {
-        Ok(()) => ExitCode::SUCCESS,
-        // The watch has gone, so there's no one left to tell.
-        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("claude-plan-feed: can't write to the watch: {error}");
-            ExitCode::FAILURE
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let given = match context.args.as_slice() {
+            [] => None,
+            [folder] => Some(PathBuf::from(folder)),
+            _ => {
+                return Err(Failure::new(
+                    Exit::Usage,
+                    "claude-plan-feed takes one config folder at most",
+                )
+                .try_this("claude-plan-feed --help"));
+            }
+        };
+        let named = env::var_os("PI_CLAUDE_CONFIG_DIR")
+            .filter(|named| !named.is_empty())
+            .map(PathBuf::from);
+        // HOME is only where a folder is looked for, so one given or named
+        // needs none.
+        let home = env::var_os("HOME")
+            .filter(|home| !home.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| (given.is_some() || named.is_some()).then(PathBuf::new))
+            .ok_or_else(|| {
+                Failure::new(
+                    Exit::Config,
+                    "there's no HOME to find Claude Code's config folder in",
+                )
+                .try_this("claude-plan-feed ~/.claude")
+            })?;
+        let folder = config_folder(given, named, &home);
+        let mut feed = Feed::new(folder.join(".credentials.json"));
+        match watch(&mut feed, &mut Anthropic::new(), &listen()) {
+            // The watch has gone, so there's no one left to tell.
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+            Err(error) => Err(Failure::new(Exit::Failed, "it couldn't write to the watch")
+                .because(error.to_string())),
         }
-    }
+    })
 }
 
 /// Reads the plan whenever the schedule says, until stdout closes.

@@ -10,5 +10,10 @@ publish = false
 [dependencies]
 # Chrome's history, with SQLite built in, as spend-watch has it.
 rusqlite = { version = "0.37", features = ["bundled"] }
-# Which pages are the web's, by the rule Chrome's open pages are held to.
-chrome-session = { path = "../session" }
+# Which pages are the web's, by the rule Chrome's open pages are held to:
+# the library alone, not its program.
+chrome-session = { path = "../session", default-features = false }
+# The shape every command of ours takes (docs/commands.md), and the JSON it
+# answers in.
+terminal-kit = { path = "../../terminal-kit" }
+serde_json = "1.0"

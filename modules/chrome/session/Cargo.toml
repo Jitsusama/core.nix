@@ -8,7 +8,18 @@ edition = "2024"
 license = "MIT"
 publish = false
 
+[dependencies]
+# The shape every command of ours takes (docs/commands.md), and the JSON it
+# answers in: the program's alone, so the crates reading the library by
+# path (the programs daemon's) build without them.
+terminal-kit = { path = "../../terminal-kit", optional = true }
+serde_json = { version = "1.0", optional = true }
+
 [features]
+default = ["program"]
+# The chrome-session program, which a crate naming the library leaves out
+# with `default-features = false`.
+program = ["dep:terminal-kit", "dep:serde_json"]
 # Session files written as Chrome writes them, for a test standing a
 # profile in for Chrome's, as the programs daemon's do.
 written = []
@@ -19,3 +30,4 @@ path = "src/lib.rs"
 [[bin]]
 name = "chrome-session"
 path = "src/main.rs"
+required-features = ["program"]

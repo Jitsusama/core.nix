@@ -20,18 +20,26 @@
 //! nine (downloads.rs): each one's path, its size in bytes, when it
 //! finished in seconds since 1970, or nothing where Chrome kept no time,
 //! and the address of the page it came from, tab-separated.
+//!
+//! It takes the shape every command of ours does (docs/commands.md),
+//! through the terminal kit. The launcher reads those lines through a
+//! pipe, so there they stay as they are; into a terminal they're a table
+//! fitting its width (said.rs), and with `--json` they're the records of
+//! a `chrome-recent-sites.sites/1` or `chrome-recent-sites.downloads/1`
+//! object.
 
 mod downloads;
+mod said;
 
 use std::collections::HashSet;
 use std::env;
 use std::fs;
-use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use chrome_session::{host, on_the_web, one_line};
 use rusqlite::Connection;
+use terminal_kit::{Exit, Failure, Help};
 
 /// As many as 1 to 9 can pick.
 const MOST: usize = 9;
@@ -122,44 +130,72 @@ fn from_history<T>(
     read
 }
 
-/// Each line printed, or what stopped it.
-fn print(lines: impl IntoIterator<Item = String>) -> Result<(), String> {
-    let mut out = io::stdout().lock();
-    lines
-        .into_iter()
-        .try_for_each(|line| writeln!(out, "{line}"))
-        .map_err(|error| error.to_string())
+fn help() -> Help {
+    Help::new("chrome-recent-sites", "the sites Chrome visited lately")
+        .command("[PROFILE]", "a site a line, newest first, nine at most")
+        .command(
+            "downloads [PROFILE]",
+            "the files it downloaded that are still there",
+        )
+        .example(
+            "chrome-recent-sites",
+            "what Chrome's Default profile visited",
+        )
+        .example("chrome-recent-sites downloads", "what it downloaded")
+        .exit(Exit::Failed, "its history couldn't be read, or said")
+        .exit(Exit::Config, "no PROFILE given, and no HOME to find one in")
 }
 
 fn main() -> ExitCode {
-    let mut arguments = env::args_os().skip(1).peekable();
-    let downloaded = arguments.next_if(|first| first == "downloads").is_some();
-    let profile = match arguments.next() {
-        Some(profile) => PathBuf::from(profile),
-        None => PathBuf::from(env::var_os("HOME").unwrap_or_default())
-            .join(".config/google-chrome/Default"),
-    };
-    let scratch = env::var_os("XDG_RUNTIME_DIR").map_or_else(env::temp_dir, PathBuf::from);
-    let printed = if downloaded {
-        from_history(&profile, &scratch, |history| {
-            downloads::downloads(history, downloads::on_disk)
-        })
-        .and_then(|found| print(found.iter().map(downloads::Download::line)))
-    } else {
-        read(&profile, &scratch).and_then(|found| {
-            print(found.iter().map(|site| {
-                let visited = site.visited.map(|at| at.to_string()).unwrap_or_default();
-                format!("{}\t{}\t{visited}", site.address, site.title)
-            }))
-        })
-    };
-    match printed {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("chrome-recent-sites: {error}");
-            ExitCode::FAILURE
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let (downloaded, profile) = match context.args.as_slice() {
+            [first, rest @ ..] if first == "downloads" => (true, rest),
+            all => (false, all),
+        };
+        let profile = match profile {
+            [] => default_profile()?,
+            [profile] => PathBuf::from(profile),
+            _ => {
+                return Err(Failure::new(
+                    Exit::Usage,
+                    "chrome-recent-sites takes one profile at most",
+                )
+                .try_this("chrome-recent-sites --help"));
+            }
+        };
+        let scratch = env::var_os("XDG_RUNTIME_DIR").map_or_else(env::temp_dir, PathBuf::from);
+        let unread = |error: String| {
+            Failure::new(Exit::Failed, "Chrome's history couldn't be read").because(error)
+        };
+        let unsaid = |error: std::io::Error| {
+            Failure::new(
+                Exit::Failed,
+                "what Chrome's history holds couldn't be written",
+            )
+            .because(error.to_string())
+        };
+        if downloaded {
+            let found = from_history(&profile, &scratch, |history| {
+                downloads::downloads(history, downloads::on_disk)
+            })
+            .map_err(unread)?;
+            said::downloads(context, &found).map_err(unsaid)
+        } else {
+            let found = read(&profile, &scratch).map_err(unread)?;
+            said::sites(context, &found).map_err(unsaid)
         }
-    }
+    })
+}
+
+/// Chrome's Default profile, under HOME.
+fn default_profile() -> Result<PathBuf, Failure> {
+    let home = env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .ok_or_else(|| {
+            Failure::new(Exit::Config, "there's no HOME to find Chrome's profile in")
+                .try_this("chrome-recent-sites ~/.config/google-chrome/Default")
+        })?;
+    Ok(PathBuf::from(home).join(".config/google-chrome/Default"))
 }
 
 #[cfg(test)]
