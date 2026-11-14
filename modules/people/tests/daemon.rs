@@ -618,13 +618,14 @@ fn one_found_says_how_they_stand_as_one_listed_does() {
             .into_iter()
             .flatten()
             .find(|record| record["key"] == key)
-            .map(|record| record["row"].clone())
-            .unwrap_or(Value::Null)
+            .map_or(Value::Null, |record| record["row"].clone())
     };
     // A listed row's `order` places it in the listing, which a search's
     // answer is ordered by itself.
     let mut listed = row_of(&listing["records"], "row:people:ada@example.com");
-    listed.as_object_mut().map(|row| row.remove("order"));
+    if let Some(row) = listed.as_object_mut() {
+        row.remove("order");
+    }
     let said = client.ask(&json!({"id": 3, "ask": "search", "words": "ada brightwater"}));
     assert_eq!(
         row_of(&said["records"], "person:ada@example.com"),

@@ -343,7 +343,9 @@ impl Person {
     /// under it unless that's their name, and the key their drawer is told
     /// by. So the shell words and builds nothing of it. Their zone ends the
     /// side, as a time the shell's clock says, and only where it's apart
-    /// from Joel's (VKCF3Z, 0cea8a93: "London · 17:02").
+    /// from Joel's (VKCF3Z, 0cea8a93: "London · 17:02"). It's the same row
+    /// listed or found by a search, so someone nobody lists says how they
+    /// stand as one listed does, by every source that says.
     pub fn row(&self) -> Value {
         let known = self.key.strip_prefix("person:").unwrap_or(&self.key);
         let mut side: Vec<Value> = Vec::new();
@@ -362,14 +364,6 @@ impl Person {
             "note": if self.name == self.email { "" } else { self.email.as_str() },
             "drawer": drawer::key(self),
         })
-    }
-
-    /// As `row`, found among everyone by a search, so saying nothing of how they stand.
-    pub fn found(&self) -> Value {
-        let mut row = self.row();
-        row["glyph"] = json!("person");
-        row["side"] = json!([]);
-        row
     }
 }
 
@@ -690,12 +684,6 @@ pub(crate) mod tests {
             away.row()["side"],
             json!([{"zone": "Europe/London", "as": "zone"}]),
             "their zone is the last of their side, for the shell's clock to say"
-        );
-        let found = favourite.found();
-        assert_eq!(
-            (found["glyph"].clone(), found["side"].clone()),
-            (json!("person"), json!([])),
-            "found among everyone, they say nothing of how they stand"
         );
     }
 
