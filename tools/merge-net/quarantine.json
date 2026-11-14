@@ -468,17 +468,6 @@
   },
   {
     "at": 1794696680,
-    "commit": "b74621b75155fb33e898fb3bdf3a65786e6a912f",
-    "owner_pr": 4404,
-    "reason": "failed twice at b74621b75155, where #4404 merged; it is kept rather than reverted, since Joel uses its Super+N, and its owner fixes it forward and takes it off this list",
-    "subtests": [
-      "test_a_session_another_starts_goes_to_its_senders_workspace_from_the_sessions_kitty",
-      "test_agents_reopens_each_session_where_it_sat"
-    ],
-    "test": "vm-desktop-launcher-finds-sessions"
-  },
-  {
-    "at": 1794696680,
     "commit": "b3168dd9ad230175227bf66a99f29d245e6889fb",
     "owner_pr": 4429,
     "reason": "warns of Sessions.qml and pieces/Pi.qml reading wants #4429 moved, failing twice at b3168dd9ad23; its owner fixes it forward and takes it off this list",
