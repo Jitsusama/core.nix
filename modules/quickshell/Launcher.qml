@@ -11670,17 +11670,10 @@ Scope {
                                 return false;
                             }
 
-                            // The selection stands on its row, and the list
-                            // scrolls to show it, in the frame after the key
-                            // that moved it, as Vim's cursorline does: the
-                            // bar gliding while the row's words lit at once
-                            // put the two on different rows for a frame or
-                            // two (Joel, 2026-11-13 23:38: "the selection
-                            // can drag behind what is actually currently
-                            // active"; VKCF3Z, 9d5caf24). Whether the
-                            // rows shown have been laid out since they last
-                            // came afresh, so reveal can read where a row
-                            // stands rather than leave it to Qt's estimate.
+                            // Whether the rows shown have been laid out since
+                            // they last came afresh, so reveal can read where
+                            // a row stands rather than leave it to Qt's
+                            // estimate.
                             property bool settled: false
                             readonly property var shown: root.matches
                             property string typedWas: ""
@@ -11706,6 +11699,15 @@ Scope {
                                 Qt.callLater(root.settledNow);
                             }
 
+                            // The selection stands on its row, and the list
+                            // scrolls to show it, in the frame after the key
+                            // that moved it, as Vim's cursorline does: the
+                            // bar gliding while the row's words lit at once
+                            // put the two on different rows for a frame or
+                            // two (Joel, 2026-11-13 23:38: "the selection
+                            // can drag behind what is actually currently
+                            // active"; VKCF3Z, 9d5caf24).
+                            //
                             // Where the selection is drawn, set by pick as
                             // the selection or its rows change, since where
                             // a row stands is read from the rows drawn,
