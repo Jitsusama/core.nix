@@ -283,7 +283,7 @@ Provider {
 
             socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
             kind: ["row", "summary", "recent", "landed", "landed-days", "try", "closed",
-                "want"]
+                "want", "talks"]
             watching: provider.opened() ? ({ place: "agents" })
                 : ({ place: "agents", every: provider.shutPace })
             paced: provider.launcher
@@ -331,6 +331,8 @@ Provider {
     property int recentMoves: 0
     // Says the closed orchestrators' records moved.
     property int closedMoves: 0
+    // Says a session's talks moved, as the field showing them reads them.
+    property int talksMoves: 0
 
     // Takes what the daemon said moved: each row's key gone or changed let
     // go, and each changed put back where its order places it. A drawer or
@@ -355,6 +357,8 @@ Provider {
             triesMoves += 1;
         if (moved.some(key => String(key).startsWith("closed:")))
             closedMoves += 1;
+        if (moved.some(key => String(key).startsWith("talks:")))
+            talksMoves += 1;
         if (!moved.some(rowKey))
             return;
         for (const key of moved) {
@@ -852,7 +856,7 @@ Provider {
     // it shows an answer he hasn't heard, that he has, so the daemon keeps it no longer open.
     function talking(address, name) {
         const to = String(address).toUpperCase();
-        const served = () => Said.sessionTalks(saidTo[to] ?? [], talksOf(to));
+        const served = () => Said.sessionTalks(saidTo[to] ?? [], servedTalks(to));
         const stages = Words.of("orchestrators:talk").said ?? {};
         const words = Object.assign({}, Words.of("agents:line").said ?? {}, {
             unsent: stages.failed ?? "",
@@ -939,6 +943,13 @@ Provider {
     // Joel's talks with the session at `address`, as Orchestrators.qml folds them.
     function talksOf(address) {
         return provider.source("orchestrators")?.talks?.[String(address).toUpperCase()] ?? [];
+    }
+
+    // The talks of the session at `address` as the agents daemon picks and orders them for the
+    // field (modules/agents/src/inboxes.rs), read again as they move.
+    function servedTalks(address) {
+        void talksMoves;
+        return (rowsKind?.held ?? {})[`talks:agents:${String(address).toUpperCase()}`]?.talks ?? [];
     }
 
     // Says `text` to the session at `address` as Talk does: what Take It Back tells the void.
@@ -1493,12 +1504,35 @@ Provider {
     }
 
     property string fedBack: ""
-    // What Joel said of each landing, by its key, newest first, each as the launcher shows a
-    // talk (TalkLine.js's exchange shape): his words, and where they went. Only this shell's,
-    // until the agents daemon serves what came back of each (KP0L6A, 2026-11-13 [6454c1e5]).
+    // What Joel said of each landing here, by its key, newest first, each a talk as
+    // SessionTalks.js's toSession makes one with where it went as `stands`: shown until the
+    // daemon serves it on the landing, and alone when it went as a finding, which no talk
+    // follows.
     property var fedBackOn: ({})
+    // What Joel said of the landing at `key` as the launcher shows a talk: the landing's talks
+    // as the daemon serves them (modules/agents/src/feedback.rs's told), each said as a
+    // session's talk is, after those said here it hasn't served yet.
     function feedbackTalks(key) {
-        return fedBackOn[key] ?? [];
+        void landedMoves;
+        const served = (rowsKind?.held ?? {})[`landed:agents:${key}`]?.landed?.said ?? [];
+        const said = Words.of("agents:landed").said ?? {};
+        const stages = Words.of("orchestrators:talk").said ?? {};
+        const words = Object.assign({}, Words.of("agents:line").said ?? {}, {
+            unsent: stages.failed ?? "",
+            stages
+        });
+        const days = { yesterday: String(said.yesterday ?? ""),
+            date: (date, format) => Qt.formatDate(date, format) };
+        const dayOf = since => When.day(since, Date.now(), days);
+        const sentTo = to => to === "" ? String(said.sentAway ?? "")
+            : String(said.sent ?? "").replace("{to}", to);
+        const here = (fedBackOn[key] ?? []).filter(one => !served.some(kept =>
+            Said.delivers(kept, one))).map(one => Object.assign(Said.spoken(one, "", words,
+            dayOf), { stands: one.stands }));
+        return here.concat(served.map(one => {
+            const to = String(one.to ?? "");
+            return Said.spoken(one, to, Object.assign({}, words, { sent: sentTo(to) }), dayOf);
+        }));
     }
     function feedback(key, words) {
         const text = words.trim();
@@ -1506,11 +1540,11 @@ Provider {
             return;
         const said = Words.of("agents:landed").said ?? {};
         const at = Date.now();
+        const since = new Date(at).toISOString();
         const told = stands => {
-            const talk = { line: text, answers: [], waiting: "", stands, by: "",
-                side: Qt.formatTime(new Date(at), "HH:mm"), at };
+            const talk = Object.assign(Said.toSession(text, at), { stands });
             fedBackOn = Object.assign({}, fedBackOn, { [key]: [talk].concat(
-                (fedBackOn[key] ?? []).filter(one => one.at !== at)).slice(0, 3) });
+                (fedBackOn[key] ?? []).filter(one => one.at !== since)).slice(0, 3) });
         };
         fedBack = String(said.sending ?? "");
         told(fedBack);
@@ -1555,7 +1589,7 @@ Provider {
             })
         };
         return {
-            side: Landed.landedSide(landedSides, one.at, String(Calendars.today ?? ""), when),
+            side: Landed.sideOf(one, landedSides, String(Calendars.today ?? ""), when),
             // None until the daemon tells it, a moment after it's first
             // drawn, as a session's drawer comes.
             drawer: () => {

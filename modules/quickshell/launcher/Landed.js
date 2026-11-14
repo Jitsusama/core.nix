@@ -39,3 +39,11 @@ function landedSide(sides, at, day, said) {
     }
     return sides.sides.get(moment);
 }
+
+// A landing's side, `one` as the daemon serves it: while what Joel said of it is on its way,
+// the word its talk's stage says (`saying`), as a session's row says its talk's, so he sees it
+// go without opening it; otherwise when it landed, as landedSide says.
+function sideOf(one, sides, day, said) {
+    const saying = String(one?.saying ?? "");
+    return saying !== "" ? saying : landedSide(sides, one?.at, day, said);
+}

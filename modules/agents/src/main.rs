@@ -78,6 +78,7 @@ const DOMAIN: Domain = Domain {
         "arrangement",
         "kept-places",
         "want",
+        "talks",
     ],
     sole: &[],
     named_only: &["landed-drawer"],
@@ -92,6 +93,12 @@ const USAGE: &str = "usage: agents --vocabulary WORDS [--node NODE] --to-do TODO
 /// This boot, as Linux names it, or none where it isn't said, when no
 /// boot's sessions are offered as the last boot's.
 const BOOT_ID: &str = "/proc/sys/kernel/random/boot_id";
+
+/// What Joel said of landings, kept beside what he has read, never
+/// rewritten, for the daily loop that reads on from where it left off
+/// (80ECO2, 2026-11-11), and read as the daemon starts for how each talk
+/// of it went.
+const FEEDBACK: &str = "feedback.jsonl";
 
 /// Where everything it reads and serves is.
 struct Args {
@@ -218,17 +225,15 @@ fn own(
         if said["ask"] == "tell" {
             return Some(tell::answer(said, &routes, node.as_deref(), now));
         }
-        // Joel's words on a landing, sent to whoever landed it.
+        // Joel's words on a landing, sent to whoever landed it, and the
+        // line kept of a talk told the loop, whose drawer says how it went.
         if said["ask"] == "feedback" {
-            // Whole seconds, as cadence keeps its days (80ECO2, 2026-11-11).
-            let at = u64::try_from(now / 1000).unwrap_or(0);
-            return Some(feedback::answer(
-                said,
-                &landings,
-                node.as_deref(),
-                &kept,
-                at,
-            ));
+            let (answer, line) =
+                feedback::answer(said, &landings, &routes, node.as_deref(), &kept, now);
+            if let Some(line) = line.filter(|line| line["by"] == "talk") {
+                let _ = told.send(Heard::FedBack(line));
+            }
+            return Some(answer);
         }
         if let Some(answered) = wants.answer(said, node.as_deref(), now) {
             return Some(answered);
@@ -296,6 +301,7 @@ fn started(words: Words, paths: &Paths) -> Inputs {
             .unwrap_or_else(|| Arrangement::from_shell(&paths.shells)),
         kept_places: KeptPlaces::read(&paths.kept_places)
             .unwrap_or_else(|| KeptPlaces::from_shell(&paths.shells)),
+        fed_back: feedback::kept(&paths.landed.with_file_name(FEEDBACK)),
         ..Inputs::default()
     }
 }
@@ -324,7 +330,7 @@ fn main() -> ExitCode {
     let wants = Wants::default();
     // Kept beside what Joel has read, never rewritten, for the daily loop
     // that reads on from where it left off (80ECO2, 2026-11-11).
-    let kept = args.landed.with_file_name("feedback.jsonl");
+    let kept = args.landed.with_file_name(FEEDBACK);
     let own = own(
         to.clone(),
         args.node.clone(),
@@ -367,6 +373,13 @@ fn main() -> ExitCode {
         steer: args.steer,
         shells: args.shells,
     };
+    // Without them only talks not yet taken go unshown, so every row is
+    // still served.
+    if let Err(why) = sources::follow_inboxes(&paths.steer, to.clone()) {
+        eprintln!(
+            "agents: can't hear the sessions' inboxes, so talks not yet taken go unshown: {why}"
+        );
+    }
     if let Err(why) = sources::follow_files(&paths, to) {
         eprintln!("agents: can't hear the files it reads: {why}");
         return ExitCode::FAILURE;

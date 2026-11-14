@@ -6,6 +6,7 @@
       "name": "Talks",
       "term": "Agents/talk",
       "said": {
+        "sent": "sent",
         "delivered": "delivered",
         "reading": "reading",
         "replying": "replying",

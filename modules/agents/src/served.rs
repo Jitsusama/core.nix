@@ -69,6 +69,9 @@ pub struct Made {
     windows: Vec<Value>,
     /// What each session asks Joel, a whole record (wants.rs).
     wants: Vec<Value>,
+    /// Each session's talks as the launcher shows them, a whole record
+    /// (inboxes.rs).
+    talks: Vec<Value>,
 }
 
 impl Made {
@@ -112,6 +115,12 @@ impl Made {
     #[must_use]
     pub fn with_wants(self, wants: Vec<Value>) -> Self {
         Self { wants, ..self }
+    }
+
+    /// The same, with each session's talks as the launcher shows them.
+    #[must_use]
+    pub fn with_talks(self, talks: Vec<Value>) -> Self {
+        Self { talks, ..self }
     }
 
     /// The same, with the top level's rows after Agents' own (top.rs),
@@ -204,6 +213,7 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
         closed: Vec::new(),
         windows: Vec::new(),
         wants: Vec::new(),
+        talks: Vec::new(),
     }
 }
 
@@ -314,7 +324,8 @@ impl Served {
             .chain(made.landed)
             .chain(made.closed)
             .chain(made.windows)
-            .chain(made.wants);
+            .chain(made.wants)
+            .chain(made.talks);
         for whole in wholes {
             if let Some(key) = whole["key"].as_str() {
                 records.insert(key.to_owned(), whole);

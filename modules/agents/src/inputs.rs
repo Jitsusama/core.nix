@@ -22,6 +22,8 @@ use crate::carried::Carried;
 use crate::clock;
 use crate::closed;
 use crate::drawer;
+use crate::feedback;
+use crate::inboxes;
 use crate::kept_places::KeptPlaces;
 use crate::landed::{self, Reading};
 use crate::recent;
@@ -30,7 +32,7 @@ use crate::row::{self, Known, Row, Shown, Words};
 use crate::served;
 use crate::session::{self, JoelCan, Lives, Session};
 use crate::summary;
-use crate::talks;
+use crate::talks::{self, Talk};
 use crate::top;
 use crate::wants;
 use crate::windows;
@@ -87,6 +89,12 @@ pub struct Inputs {
     /// What of core's merges the running system carries, which a
     /// landing of core's waits on before To Try holds it.
     pub carried: Carried,
+    /// The lines kept of Joel's words on landings sent as talks, which
+    /// their landings say how each went of.
+    pub fed_back: Vec<Value>,
+    /// The talks waiting in each session's inbox, not yet taken, by its
+    /// address in capitals (inboxes.rs).
+    pub unsent: HashMap<String, Vec<Talk>>,
 }
 
 impl Inputs {
@@ -339,6 +347,15 @@ impl Inputs {
             .filter_map(|(_, one)| Some((one["id"].as_str()?, one["title"].as_str()?)))
             .collect();
         landed::drawn(&mut records, &self.words, &titles);
+        if !self.fed_back.is_empty() {
+            let talks: HashMap<String, Talk> = self
+                .talks
+                .records()
+                .map(|(_, one)| talks::folded(one))
+                .map(|talk| (talk.id.clone(), talk))
+                .collect();
+            feedback::told(&mut records, &self.fed_back, &talks, &self.words);
+        }
         (records, held)
     }
 
@@ -495,6 +512,10 @@ impl Inputs {
         .with_closed(closed)
         .with_windows(windows::records(&sessions, &self.windows, &orchestrating))
         .with_wants(wants::records(&sessions, &joel_can))
+        .with_talks(inboxes::records(
+            &talks::by_address(self.talks.records().map(|(_, one)| one)),
+            &self.unsent,
+        ))
     }
 
     /// Each session's drawer, the facts of a talk it answered, or of one
@@ -998,6 +1019,30 @@ mod tests {
         assert_eq!(
             summary_of(&shown),
             "1 needs you \u{b7} 1 working \u{b7} $214 today"
+        );
+    }
+
+    #[test]
+    fn a_talk_waiting_in_an_inbox_is_served_with_its_sessions_talks_and_moves_them_alone() {
+        let mut inputs = inputs();
+        let mut shown = served(&inputs);
+        let sent = Talk {
+            id: "talk-9".to_owned(),
+            at: "2026-11-14T09:00:00.000Z".to_owned(),
+            words: "too dim".to_owned(),
+            stage: "sent".to_owned(),
+            ..Talk::default()
+        };
+        inputs.unsent = [("P".to_owned(), vec![sent])].into();
+        let moved = shown.take(inputs.made());
+        assert_eq!(
+            moved.changed,
+            vec![
+                json!({"key": "talks:agents:P", "kind": "talks", "address": "P", "talks": [
+                {"id": "talk-9", "at": "2026-11-14T09:00:00.000Z", "words": "too dim",
+                 "stage": "sent", "after": "", "reply": "", "why": "", "came": ""}]})
+            ],
+            "its session's talks, served whole, and nothing else moves"
         );
     }
 }

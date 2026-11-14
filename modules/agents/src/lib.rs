@@ -32,6 +32,8 @@
 //! - `tell`: whom a line Joel says from anywhere goes to, and sending it.
 //! - `feedback`: what Joel says of a landing, sent where it came from.
 //! - `wants`: what each session asks Joel, and his answer sent to it.
+//! - `inboxes`: each session's talks as the launcher shows them under
+//!   its field, those still waiting in its inbox among them.
 //! - `carried`: what of core's, the harness's and mycelium's merges the
 //!   running system carries.
 
@@ -45,6 +47,7 @@ pub mod drawer;
 pub mod feedback;
 pub mod figures;
 pub mod file;
+pub mod inboxes;
 pub mod inputs;
 pub mod kept_places;
 pub mod landed;

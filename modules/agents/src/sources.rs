@@ -5,6 +5,7 @@
 //! followed as every daemon of the shell follows one (daemon-serve's
 //! `watch`).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -16,8 +17,10 @@ use crate::answered;
 use crate::arrangement::Arrangement;
 use crate::carried::{Carried, Said};
 use crate::file::{self, Files};
+use crate::inboxes::{self, Inboxes};
 use crate::inputs::Inputs;
 use crate::kept_places::KeptPlaces;
+use crate::talks::Talk;
 
 /// Something a source said.
 #[derive(Debug)]
@@ -57,6 +60,12 @@ pub enum Heard {
     /// Where the windows of sessions moving onto pi's host sat, all of
     /// them, as the shell says each time one's kept or let go.
     KeepPlaces(KeptPlaces),
+    /// The line kept of Joel's words on a landing sent as a talk, which
+    /// the landing says how it went of (feedback.rs).
+    FedBack(Value),
+    /// The talks waiting in each session's inbox, all of them, as one
+    /// lands or is taken (inboxes.rs).
+    Inboxes(HashMap<String, Vec<Talk>>),
 }
 
 /// Where the files the rows are made from are kept.
@@ -148,6 +157,23 @@ impl Paths {
     }
 }
 
+/// Follows the talks waiting in each session's inbox under `steer`,
+/// handing them all to `to` at the start and again as one lands or is
+/// taken.
+pub fn follow_inboxes(steer: &Path, to: Sender<Heard>) -> std::io::Result<()> {
+    let mut watched = Inboxes::open(steer)?;
+    let root = steer.to_owned();
+    let _ = to.send(Heard::Inboxes(inboxes::waiting(&root)));
+    thread::spawn(move || {
+        while watched.heard().is_ok() {
+            if to.send(Heard::Inboxes(inboxes::waiting(&root))).is_err() {
+                return;
+            }
+        }
+    });
+    Ok(())
+}
+
 /// Follows the files the rows are made from, handing each that lands to
 /// `to`, after handing them all once, as they stand at the start.
 pub fn follow_files(paths: &Paths, to: Sender<Heard>) -> std::io::Result<()> {
@@ -235,6 +261,8 @@ impl Inputs {
                 }
                 self.kept_places = kept;
             }
+            Heard::FedBack(line) => self.fed_back.push(line),
+            Heard::Inboxes(waiting) => self.unsent = waiting,
         }
     }
 
@@ -383,6 +411,41 @@ mod tests {
             "written for the next start"
         );
         let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn what_joel_said_of_a_landing_is_served_on_it_as_its_talk_goes() {
+        let paths = paths_in(&std::env::temp_dir().join("agents-fed-back-unwritten"));
+        let mut inputs = Inputs::default();
+        inputs.hear(
+            Heard::Landings(json!({"records": [{"key": "landing:s:o#1", "session": "s",
+                "ref": "o#1", "at": "2026-11-11T01:00:00Z", "what": "One"}]})),
+            &paths,
+        );
+        inputs.hear(
+            Heard::FedBack(
+                json!({"at": 7, "landing": "landed:agents:s o#1 2026-11-11T01:00:00Z",
+                "words": "too dim", "by": "talk", "sent": "talk-7000", "to": "The Skiff"}),
+            ),
+            &paths,
+        );
+        inputs.hear(
+            Heard::Talks(
+                json!({"records": [{"key": "talk:S:talk-7000", "address": "S",
+                "id": "talk-7000", "lines": [{"stage": "delivered", "text": "too dim",
+                "at": "2026-11-11T01:02:00Z"}]}]}),
+            ),
+            &paths,
+        );
+        let (records, _) = inputs.landed();
+        assert_eq!(
+            (
+                &records[0]["landed"]["saying"],
+                &records[0]["landed"]["said"][0]["stage"]
+            ),
+            (&json!("delivered"), &json!("delivered")),
+            "the talk's stage on the landing's row and in its drawer"
+        );
     }
 
     #[test]
