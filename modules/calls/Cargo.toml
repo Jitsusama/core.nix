@@ -17,6 +17,8 @@ path = "src/main.rs"
 
 [dependencies]
 serde_json = "1.0"
+# The shape every command of ours takes: its flags, help, errors and exits.
+terminal-kit = { path = "../terminal-kit" }
 
 [dev-dependencies]
 tempfile = "3"

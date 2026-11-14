@@ -281,7 +281,7 @@ class Timing:
         # A builder stalling the VM held a freeze for 50 s on 5 November, past the 25 s systemctl
         # waits for its answer by default, though the unit froze. FREEZING is longer than that.
         wait = f"SYSTEMD_BUS_TIMEOUT={round(FREEZING.total_seconds())}"
-        self.desktop.as_account(f"{wait} systemctl --user {verb} stress-jobs")
+        self.desktop.as_account(f"{wait} systemctl --user {verb} stress-jobs", timeout=2 * FREEZING)
         self.desktop.machine.succeed(f"{wait} systemctl {verb} stress-build")
         self.loading = on
 

@@ -106,6 +106,11 @@ FROM_THE_CORNER = 100
 # other machines and builds, a cold kitty or GIMP took past 30
 # seconds, and a wait on a program starting fails then, not the step.
 STARTING = timedelta(seconds=120)
+# The longest one command run in the session may take on a quiet host, more on
+# a busy one: these are quick asks of the shell, niri and systemd, so one past
+# this never answers. On 14 November a launcher toggle that never answered
+# held a run of vm-desktop-launcher-finds-sessions for an hour.
+ANSWERING = timedelta(seconds=120)
 # How far apart typed keys go. QEMU's virtio keyboard holds about 64 events, four a key,
 # and drops what comes while it's full; at the driver's 10 ms a key, a guest starved
 # for 180 ms on a loaded builder lost the middle of "quarterly numbers", leaving "qs",
@@ -152,8 +157,9 @@ MARGIN = "niri msg layers | grep -q margin"
 # The margin's cells: the theme's gap, open or shut, since nothing grows.
 CELL = 12
 NOTICES = "niri msg layers | grep -q notifications"
-# The arrival line, mapped only while it shows a notice.
-NOTICE_LINE = "niri msg layers | grep -q notice-line"
+# The arrival line showing a notice: its layer stays mapped while it's
+# quiet, off the screen, so the shell says rather than niri's layers.
+NOTICE_LINE = "qs ipc call notices shows | grep -q ."
 
 # Tuple's log, where tuple-call hears a call ring, which only a call
 # writes, and which the daemon rewrites as it starts.
@@ -404,9 +410,14 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Give a command that prints each notice kept that jq's `where` holds of, or fails."""
         return self.in_session(f"jq -ec '.notices[] | select({where})' {self.NOTICES_KEPT}")
 
-    def as_account(self, command: str) -> str:
-        """Run a command as the account, inside its session, and give what it printed."""
-        return self.machine.succeed(self.in_session(command))
+    def as_account(self, command: str, timeout: timedelta = ANSWERING) -> str:
+        """Run a command as the account, inside its session, and give what it printed.
+
+        It fails once it has run past the timeout, allowing for how busy the host is,
+        rather than holding the run until the driver's own end.
+        """
+        allowed = timeout * vm_helpers.pace(vm_helpers.busyness())
+        return self.machine.succeed(self.in_session(command), timeout=allowed)
 
     # What whereabouts keeps of where the laptop is, read back as it starts.
     KEPT_HERE = "$XDG_RUNTIME_DIR/whereabouts/here.json"

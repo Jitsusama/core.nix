@@ -8,7 +8,7 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Output};
 use std::time::{Duration, Instant};
 
 struct World {
@@ -57,18 +57,24 @@ impl World {
 
     /// What a-call-is-on exits with, and how long it took.
     fn asked(&self) -> (i32, Duration) {
+        let started = Instant::now();
+        let told = self.told(&[self.runtimes.to_str().expect("a folder as text")]);
+        (told.status.code().expect("an exit code"), started.elapsed())
+    }
+
+    /// All a-call-is-on says when asked with `args`.
+    fn told(&self, args: &[&str]) -> Output {
         let path = format!(
             "{}:{}",
             self.stand_ins.display(),
             std::env::var("PATH").unwrap_or_default()
         );
-        let started = Instant::now();
-        let status = Command::new(env!("CARGO_BIN_EXE_a-call-is-on"))
-            .arg(&self.runtimes)
+        Command::new(env!("CARGO_BIN_EXE_a-call-is-on"))
+            .args(args)
             .env("PATH", path)
-            .status()
-            .expect("a-call-is-on ran");
-        (status.code().expect("an exit code"), started.elapsed())
+            .env_remove("JOURNAL_STREAM")
+            .output()
+            .expect("a-call-is-on ran")
     }
 }
 
@@ -131,6 +137,34 @@ fn what_records_without_calling_is_no_call_and_waits_for_nothing() {
 }
 
 #[test]
+fn a_call_on_or_none_is_said_by_the_exit_alone() {
+    let world = World::new();
+    world.account("1000", "[]");
+    let runtimes = world.runtimes.to_str().expect("a folder as text");
+    let told = world.told(&[runtimes]);
+    assert_eq!(told.status.code(), Some(1), "no call isn't 1: {told:?}");
+    assert!(
+        told.stdout.is_empty() && told.stderr.is_empty(),
+        "a no said something: {told:?}"
+    );
+}
+
+#[test]
+fn a_question_asked_wrongly_is_refused_with_its_help() {
+    let world = World::new();
+    let told = world.told(&["/run/user", "/run/more"]);
+    assert_eq!(
+        told.status.code(),
+        Some(64),
+        "two folders weren't refused: {told:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("a-call-is-on --help"),
+        "the refusal names no help: {told:?}"
+    );
+}
+
+#[test]
 fn nobody_logged_in_is_no_call() {
     let world = World::new();
     fs::remove_dir(&world.runtimes).expect("removed");
@@ -148,8 +182,14 @@ fn a_pipewire_that_wont_answer_cant_tell() {
     let world = World::new();
     let folder = world.account("1000", "[]");
     fs::write(folder.join("fails"), "").expect("failing");
-    assert_eq!(world.asked().0, 2);
+    assert_eq!(world.asked().0, 69);
     let world = World::new();
     world.account("1000", "not a graph");
-    assert_eq!(world.asked().0, 2);
+    let runtimes = world.runtimes.to_str().expect("a folder as text");
+    let told = world.told(&[runtimes]);
+    assert_eq!(told.status.code(), Some(69), "a bad graph told: {told:?}");
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("couldn't tell whether a call is on"),
+        "it didn't say it couldn't tell: {told:?}"
+    );
 }

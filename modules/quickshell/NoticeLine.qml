@@ -10,10 +10,13 @@
 // sender's mark in its own hue, the accent nowhere since no keys come here, and colour on
 // glyphs, never on text.
 //
-// Its layer is mapped only while it shows a notice, so a quiet desktop draws nothing and
-// wakes nothing for it (Y2YBTS, 2026-11-13). A notice stays as long as its card would have,
-// the stack's time for it, which keeps counting while the line shows it; a critical one
-// stays until it's dealt with. Only Joel's own click acts on it.
+// Its layer stays mapped while it's quiet, as the launcher's and the talk line's do: off the
+// screen but a clear pixel, taking no pointer, and drawn only as what it shows changes, so a
+// quiet desktop draws nothing for it. A notice coming then draws on a layer niri already
+// has, rather than waiting on a new one's first configure, which took most of the line's
+// 117 to 329 ms in the desktop test (Y2YBTS, 2026-11-14). A notice stays as long as its
+// card would have, the stack's time for it, which keeps counting while the line shows it; a
+// critical one stays until it's dealt with. Only Joel's own click acts on it.
 pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Services.Notifications
@@ -32,6 +35,8 @@ Scope {
     property bool talking: false
     // Whether the held list has the notices and the keys, until it goes with the stack.
     property bool holding: false
+    // Whether the surface is let go for a turn to be made again, as a screen comes or goes.
+    property bool remaking: false
     // What its signing line says on the right: how many more wait, given their number, and
     // then when the notice came.
     property var countOf: more => ""
@@ -50,7 +55,14 @@ Scope {
     // A link in its words was clicked.
     signal linked(string href)
 
-    onUpChanged: Report.say(`${up ? "lines" : "unlines"} notice ${notice?.summary ?? ""}`)
+    onUpChanged: {
+        Report.say(`${up ? "lines" : "unlines"} notice ${notice?.summary ?? ""}`);
+        if (!up)
+            return;
+        shownAt = KeyTimes.now();
+        if (timing !== null)
+            surface.FramePresentation.ask();
+    }
 
     // Where its card is drawn, as a fraction of its screen across and down, and what niri
     // blurs beside what's drawn, in the surface's points, for Notifications.qml's `front` to
@@ -86,13 +98,12 @@ Scope {
     // notice the line shows as it comes; null once said, or once it's plain the line won't
     // show it. It's said apart, since a median of 86 ms and a p90 of 621 ms over the 30
     // notices Joel had in the day to 2026-11-14 didn't say which to make quicker: whether
-    // its layer was mapped for it, then until the first frame after began its sync (a new
-    // layer waits there on niri's configure), then that frame's sync, render and swap, then
-    // until niri showed it.
+    // it came to a quiet line or one up already, then until the first frame after began its
+    // sync, then that frame's sync, render and swap, then until niri showed it.
     property var timing: null
-    // When its layer was last mapped, which happens as the front changes, just before the
-    // notice it names is said to have come.
-    property real mappedAt: 0
+    // When the line last came up from quiet, which happens as the front changes, just before
+    // the notice it names is said to have come.
+    property real shownAt: 0
     Connections {
         target: Notices
 
@@ -114,9 +125,9 @@ Scope {
         if (!times.synchronizing || !times.swapped)
             return "";
         const since = (from, to) => Math.round(to - from);
-        // Mapped in the same moment it came, as a quiet line is, or up already.
-        const mapped = mappedAt > timing.heard - 50 ? "mapped for it" : "up already";
-        return `: ${mapped}, ${since(timing.heard, times.synchronizing)} until its frame began, `
+        // Up in the same moment it came, as a quiet line is, or up already.
+        const was = shownAt > timing.heard - 50 ? "quiet till then" : "up already";
+        return `: ${was}, ${since(timing.heard, times.synchronizing)} until its frame began, `
             + `${since(times.synchronizing, times.swapped)} drawing it and `
             + `${since(times.swapped, at)} until niri showed it`;
     }
@@ -137,29 +148,31 @@ Scope {
         id: surface
 
         Counted { name: "notice-line" }
-        visible: root.up
-        // Mapped as it comes up, its first frame is the one the timing waits for.
-        onVisibleChanged: {
-            if (!visible)
-                return;
-            root.mappedAt = KeyTimes.now();
-            if (root.timing !== null)
-                surface.FramePresentation.ask();
-        }
+        visible: !root.remaking
+        // Made again for another screen, its first frame is the one the timing waits for.
+        onVisibleChanged: if (visible && root.timing !== null) surface.FramePresentation.ask()
         screen: root.launcher?.focusedScreen ?? Quickshell.screens[0] ?? null
         anchors.top: true
         anchors.left: true
+        // Off the screen while quiet, but its last clear pixel in the corner the launcher's
+        // and the talk line's already keep theirs in.
+        readonly property bool placed: root.up && surface.screen !== null
+        readonly property real top: surface.placed ? Theme.space.rung.screen - card.reach
+            : 1 - surface.implicitHeight
+        readonly property real left: surface.placed
+            ? Math.round((surface.screen.width - card.width) / 2) - card.reach
+            : 1 - surface.implicitWidth
         // Quickshell's type files can't place margins, so qmllint can't.
-        margins.top: Theme.space.rung.screen - card.reach // qmllint disable unqualified
+        margins.top: surface.top // qmllint disable unqualified
         // The same holds for the left margin.
-        margins.left: !surface.screen ? 0 // qmllint disable unqualified
-            : Math.round((surface.screen.width - card.width) / 2) - card.reach
+        margins.left: surface.left // qmllint disable unqualified
         implicitWidth: card.width + 2 * card.reach
         implicitHeight: card.height + 2 * card.reach
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
-        mask: card.area
-        BackgroundEffect.blurRegion: card.area
+        // Nothing to click or blur while quiet.
+        mask: root.up ? card.area : nowhere
+        BackgroundEffect.blurRegion: root.up ? card.area : nowhere
         WlrLayershell.layer: WlrLayer.Overlay
         // Never the keys, so a notice coming can't take a word Joel's typing.
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
@@ -168,6 +181,10 @@ Scope {
         FramePresentation.onDiscarded: frame => {
             if (root.timing !== null)
                 surface.FramePresentation.ask();
+        }
+
+        Region {
+            id: nowhere
         }
 
         Card {
@@ -201,8 +218,9 @@ Scope {
                 words: root.notice?.words?.styled ?? ""
                 onLinked: href => root.linked(href)
                 from: sender.name
-                count: root.notice === null ? "" : root.countOf(root.more)
-                when: root.notice === null ? "" : root.whenOf(root.notice)
+                // Only while it's up, so a time ticking on draws nothing off the screen.
+                count: !root.up ? "" : root.countOf(root.more)
+                when: !root.up ? "" : root.whenOf(root.notice)
             }
         }
     }

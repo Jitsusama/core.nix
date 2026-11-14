@@ -308,8 +308,10 @@
     "launcher/NowDrawers.js"
     "launcher/Numbers.js"
   ];
+  "launcher/WindowTargets.qml" = [ "launcher/HeldWindows.js" ];
   "launcher/Windows.qml" = [
     "Fuzzy.js"
+    "launcher/AgentWindows.js"
     "launcher/HeldWindows.js"
     "launcher/KeyLayers.js"
     "launcher/Order.js"

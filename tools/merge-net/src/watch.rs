@@ -428,6 +428,20 @@ fn confirmed_apart(world: &dyn World, state: &State, commit: &str, check: &str) 
         && !subtests::none_selected(&lines)
         && !subtests::unbuildable(&lines);
     if !failed {
+        // Kept as the subtests' pass, so a search on them needn't begin
+        // where they already passed alone (`narrowed_at`).
+        if code == Some(0)
+            && let Err(why) = state.record(
+                commit,
+                &narrowed,
+                Ran::Passed,
+                code,
+                &log,
+                began.elapsed().as_secs(),
+            )
+        {
+            state.say(&why);
+        }
         state.say(&format!(
             "{check} didn't fail again at {} on {} alone, so it runs whole",
             short(commit),
@@ -1749,7 +1763,12 @@ fn search(
     if fixed()? {
         return Ok(None);
     }
-    let (bad, narrowed) = if narrowed != test && bad.as_deref() == Some(head) {
+    // The bisect counts the last merge to change the test as failing, run
+    // or not, and that is often not the head: on 14 November #4426 was
+    // blamed for vm-desktop-launcher-waits-on-joel so, its subtest having
+    // passed alone at every merge run and at the head itself, where the
+    // merge before it, #4429, had broken the test.
+    let (bad, narrowed) = if narrowed != test && bad.is_some() && bad.as_ref() == merges.last() {
         alone_at_head(
             world,
             state,
@@ -1826,6 +1845,18 @@ fn narrowed_at(world: &dyn World, state: &State, head: &str, test: &str) -> Stri
         })
         .collect();
     let narrowed = subtests::narrowed(test, &at_head);
+    // Subtests that passed alone at the head fail only beside the others,
+    // so no step run on them alone can say where they broke. On
+    // 14 November vm-desktop-launcher-waits-on-joel's passed alone there
+    // at 15:23 and its search still ran them alone at six merges.
+    if narrowed != test && state.runs(head, &narrowed).contains(&Ran::Passed) {
+        state.say(&format!(
+            "{} passed alone at {}, so the search runs {test} whole",
+            subtests::subtests_of(&narrowed).join(", "),
+            short(head)
+        ));
+        return test.to_owned();
+    }
     if narrowed != test {
         state.say(&format!(
             "searching {test} on the subtests that failed in both its runs at {}: {}",
@@ -1837,7 +1868,8 @@ fn narrowed_at(world: &dyn World, state: &State, head: &str, test: &str) -> Stri
 }
 
 /// The merge to blame and the check that found it, once a search narrowed
-/// to `narrowed` blamed the last of `merges`, the head. A bisect counts
+/// to `narrowed` blamed the last of `merges`, the head or the last merge
+/// before it to change the test. A bisect counts
 /// its last merge as failing without a run there, so subtests that pass
 /// alone even at the head, failing only after the others run, put the
 /// blame on it. On 14 November vm-desktop-launcher-waits-on-joel's two
@@ -3009,6 +3041,42 @@ mod tests {
     }
 
     #[test]
+    fn a_search_runs_whole_where_its_subtests_passed_alone_at_the_head() {
+        let state = state("searched-whole-once-passed-apart");
+        state.set_heads("s", "s").unwrap();
+        state.make().unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 m2 h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("h", "vm-a::test_b", &[0])
+        .exits("m2", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("m2"),
+            "vm-a broke at m2"
+        );
+        let alone: Vec<(String, String)> = world
+            .built()
+            .into_iter()
+            .filter(|(_, check)| check == "vm-a::test_b")
+            .collect();
+        assert_eq!(
+            alone,
+            vec![("h".to_owned(), "vm-a::test_b".to_owned())],
+            "test_b passed alone at the head, so the search ran vm-a whole from its first step"
+        );
+    }
+
+    #[test]
     fn a_subtest_that_passes_alone_leaves_the_whole_test_to_say() {
         let state = state("unconfirmed-apart");
         let world = Stand {
@@ -3507,6 +3575,7 @@ mod tests {
             ..Stand::default()
         }
         .exits("h", "vm-a", &[1, 1])
+        .exits("h", "vm-a::test_b", &[1])
         .exits("m2", "vm-a::test_b", &[1, 1])
         .exits("m3", "vm-a::test_b", &[1, 1]);
         assert_eq!(
@@ -3738,6 +3807,34 @@ mod tests {
     }
 
     #[test]
+    fn subtests_that_pass_alone_at_the_last_merge_to_change_the_test_send_it_whole() {
+        let state = state("subtests-pass-alone-before-head");
+        state.set_heads("s", "s").unwrap();
+        state.make().unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 m2 m3 h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            still: vec![("h".to_owned(), "vm-a".to_owned())],
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("m3", "vm-a", &[1, 1])
+        .exits("m2", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("m2"),
+            "test_b passes alone at m3, the last merge to change vm-a, so only the whole test \
+             can say m2 broke it"
+        );
+    }
+
+    #[test]
     fn a_search_runs_only_the_subtest_that_failed_at_its_head() {
         let state = state("searches-a-subtest");
         state.set_heads("s", "s").unwrap();
@@ -3750,6 +3847,7 @@ mod tests {
             ..Stand::default()
         }
         .exits("h", "vm-a", &[1, 1])
+        .exits("h", "vm-a::test_b", &[1])
         .exits("m2", "vm-a::test_b", &[1, 1])
         .exits("m3", "vm-a::test_b", &[1, 1]);
         assert_eq!(
@@ -4291,6 +4389,7 @@ mod tests {
             ..Stand::default()
         }
         .exits("h", "vm-a", &[1, 1])
+        .exits("h", "vm-a::test_b", &[1])
         .exits("m1", "vm-a::test_b", &[1, 1])
         .exits("m2", "vm-a::test_b", &[1, 1])
         .exits("m3", "vm-a::test_b", &[1, 1]);

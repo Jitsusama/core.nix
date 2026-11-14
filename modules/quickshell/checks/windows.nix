@@ -82,6 +82,7 @@
         "launcher/Previewer.qml"
         "launcher/Provider.qml"
         "launcher/ReadyRows.qml"
+        "launcher/WindowTargets.qml"
         "launcher/Windows.qml"
         "launcher/words.json"
       ]}

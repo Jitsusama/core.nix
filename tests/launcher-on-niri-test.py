@@ -2699,6 +2699,71 @@ def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell
                 shell.close(window)
 
 
+def test_a_window_that_needs_joel_says_so_and_return_takes_him_there(shell: Shell) -> None:
+    """A window niri marks urgent says it needs Joel, and going to it takes him there.
+
+    niri marks a window urgent as it asks for the focus unfocused, as a sandboxed program's
+    does opening behind on a workspace no screen shows (JMJ7J4, 2026-11-14), but no row read
+    it. Its row now says "needs you" with its glyph in the alert, its drawer says since when,
+    and Desktop's Windows counts it; going to it focuses it on its workspace, which clears its
+    urgency and its count (VKCF3Z, 2026-11-14 [961bf73d]).
+    """
+
+    def listed(title: str) -> Json:
+        return next(one for one in shell.windows() if one["title"] == title)
+
+    def shown(path: str) -> Json:
+        asked = f"qs -p {shell.folder} ipc call -- launcher show {shlex.quote(path)}"
+        return cast("Json", json.loads(shell.as_account(asked)))
+
+    def until(test: Callable[[], bool], what: str) -> None:
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        while not test():
+            assert time.monotonic() < deadline, f"{what} never came: {shell.windows()}"
+            time.sleep(launcher_on_niri.POLL)
+
+    def row() -> Json:
+        return named_row(shown("\u203adesktop\u203awindows"), "Sanderling Notes") or {}
+
+    def counted() -> str:
+        return str((named_row(shown("\u203adesktop"), "Windows") or {}).get("side", ""))
+
+    # Joel stays in the window opened last, on the first workspace, while the one asking for
+    # him waits on the second.
+    asking = shell.opened("Sanderling Notes")
+    here = shell.opened("Turnstone Notes")
+    try:
+        shell.as_account(
+            f"niri msg action move-window-to-workspace --window-id {asking['id']} --focus false 2"
+        )
+        until(lambda: "workspace 2" in row().get("side", ""), "Its row on the second")
+        assert row().get("count") is None, f"a window needing nobody said so: {row()}"
+        shell.as_account(f"niri msg action set-window-urgent --id {asking['id']}")
+        until(lambda: row().get("count") == "needs you", "Its needing Joel")
+        marked = row()
+        assert marked.get("hue") == "alert", f"its glyph wasn't in the alert: {marked}"
+        # Only the row a path names says its drawer.
+        named = shown("\u203adesktop\u203awindows\u203asanderling notes").get("row") or {}
+        facts = [one["label"] for one in (named.get("drawer") or {}).get("facts", [])]
+        assert "Needs You Since" in facts, f"its drawer didn't say since when: {named}"
+        assert counted() == "1 needs you", f"Desktop's Windows said {counted()!r}"
+        said = {"steps": ["desktop", "windows", "sanderling notes"], "path": [], "words": ""}
+        went = json.loads(
+            shell.as_account(
+                f"qs -p {shell.folder} ipc call -- launcher doing {shlex.quote(json.dumps(said))}"
+            )
+        )
+        assert went.get("done") is True, f"going to it wasn't done: {went}"
+        until(lambda: listed("Sanderling Notes")["is_focused"] is True, "Its focus")
+        went_to = listed("Sanderling Notes")
+        assert went_to["is_urgent"] is False, f"the window still needed Joel there: {went_to}"
+        until(lambda: counted() != "1 needs you", "Its count letting go")
+    finally:
+        shell.as_account("niri msg action focus-workspace 1")
+        shell.close(asking)
+        shell.close(here)
+
+
 def named_row(shown: Json, name: str) -> Json | None:
     """Give the row a terminal's answer shows by this name, or None."""
     return next((row for row in shown.get("rows") or [] if row["name"] == name), None)

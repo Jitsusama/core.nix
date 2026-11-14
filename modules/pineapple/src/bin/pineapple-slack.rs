@@ -12,7 +12,8 @@
 //! resumes it. `pineapple-slack`, or `pineapple-slack heard`, says the
 //! newest decisions, in the form `--format` asks for (docs/commands.md).
 //!
-//! It is in shadow: every stop's record says so, it tells nobody and
+//! Unless `run` is given `--live`, it is in shadow: every stop's record
+//! says so, it tells nobody and
 //! answers nobody, and nothing acting on records takes a shadow one for a
 //! stop. Each reply it would have sent is put through Joel's rules against
 //! spam (src/gate.rs) all the same: the log names the rule that let it
@@ -41,13 +42,13 @@
 //! message a while after a newer one. Starting with nothing kept, it
 //! begins ten minutes back rather than judging Slack's whole history.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::gate::{Asked, gate};
-use pineapple::phone::{self, Alert, Missed, OwnIm};
+use pineapple::phone::{self, Alert, Missed, OwnIm, UNSURE, done, told_as};
 use pineapple::record::{self, Source};
 use pineapple::reply::{self, Post};
 use pineapple::resume;
@@ -70,10 +71,6 @@ const COUNT: &str = "20";
 
 /// How many of the newest decisions `heard` says.
 const NEWEST: usize = 20;
-
-/// Whether its stops are only written down: until Joel has read two days
-/// of its log and said so, they are (the plan's item 10).
-const SHADOW: bool = true;
 
 /// Whether Joel's resume said in Slack may end a live stop. Not yet, even
 /// once the reader leaves shadow: anything posting with his sign-in reads
@@ -118,7 +115,7 @@ impl Judged {
 fn help() -> Help {
     Help::new(
         "pineapple-slack",
-        "reads Slack for the safe word that stops Joel's agents, in shadow",
+        "reads Slack for the safe word that stops Joel's agents",
     )
     .example("pineapple-slack", "the newest decisions, the same as heard")
     .example("pineapple-slack heard --json", "the same, for a script")
@@ -130,7 +127,18 @@ fn help() -> Help {
     )
     .subcommand(
         Help::new("run", "the reader itself, as its service runs it")
-            .example("pineapple-slack run", "reads Slack until stopped")
+            .example(
+                "pineapple-slack run",
+                "reads Slack until stopped, in shadow",
+            )
+            .example(
+                "pineapple-slack run --live",
+                "the same, its stops standing, its replies and alerts said",
+            )
+            .option(
+                "--live",
+                "acts on what it hears; only writes it down unless given",
+            )
             .option("--origin URL", "asks a stand-in for Slack there")
             .option(
                 "--every MS",
@@ -150,10 +158,7 @@ fn main() -> ExitCode {
         };
         match command {
             "heard" => none_after(rest).and_then(|()| heard(context)),
-            "run" => {
-                let (origin, every) = run_options(rest)?;
-                run(&origin, every)
-            }
+            "run" => run(&run_options(rest)?),
             word => Err(flags::unknown("command", word, &commands)),
         }
     })
@@ -173,14 +178,27 @@ fn none_after(rest: &[String]) -> Result<(), Failure> {
     }
 }
 
-/// Where run asks Slack, and how often, from its `--origin` and `--every`.
-fn run_options(rest: &[String]) -> Result<(String, Duration), Failure> {
+/// How the reader runs: where it asks Slack, how often, and whether it
+/// acts on what it hears.
+struct Run {
+    origin: String,
+    every: Duration,
+    /// Whether its stops, replies, alerts and resumes are only written
+    /// down: unless its service says `--live`, they are, so nothing that
+    /// runs it unasked, a test or a machine not yet let go live, acts.
+    shadow: bool,
+}
+
+/// How run runs, from its `--live`, `--origin` and `--every`.
+fn run_options(rest: &[String]) -> Result<Run, Failure> {
     let mut origin = SLACK.to_owned();
     let mut every = EVERY;
+    let mut shadow = true;
     let mut args = rest.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--verbose" | "-v" => {}
+            "--live" => shadow = false,
             "--origin" => {
                 origin = args.next().cloned().ok_or_else(|| {
                     Failure::new(Exit::Usage, "--origin takes a URL")
@@ -197,10 +215,17 @@ fn run_options(rest: &[String]) -> Result<(String, Duration), Failure> {
                             .try_this("pineapple-slack run --every 500")
                     })?;
             }
-            other => return Err(flags::unknown("option", other, &["--origin", "--every"])),
+            other => {
+                let known = ["--live", "--origin", "--every"];
+                return Err(flags::unknown("option", other, &known));
+            }
         }
     }
-    Ok((origin, every))
+    Ok(Run {
+        origin,
+        every,
+        shadow,
+    })
 }
 
 fn env_dir(var: &str, fallback: &str) -> PathBuf {
@@ -300,33 +325,35 @@ fn said(decisions: &[Value]) -> String {
 }
 
 /// The reader, which runs until its service stops it.
-fn run(origin: &str, every: Duration) -> Result<(), Failure> {
+fn run(how: &Run) -> Result<(), Failure> {
     let credentials = credentials();
     let state = state();
-    let slack = Slack::new(origin);
-    let replier = Replier {
-        origin: origin.to_owned(),
+    let slack = Slack::new(&how.origin);
+    let reader = Reader {
+        origin: how.origin.clone(),
         words: Words::from_object(REPLIES).unwrap_or_default(),
+        shadow: how.shadow,
     };
     let mut judged = read_judged(&state).unwrap_or_else(|| Judged {
         since: format!("{}.000000", seconds().saturating_sub(LOOK_BACK)),
         keys: Vec::new(),
     });
     let mut phone = Phone {
-        origin: origin.to_owned(),
+        origin: how.origin.clone(),
         own: None,
         looked: false,
+        shadow: how.shadow,
     };
     loop {
         match Account::read(&credentials) {
             Some(account) if !account.user.is_empty() => {
-                round(&slack, &replier, &account, &state, &mut judged);
+                round(&slack, &reader, &account, &state, &mut judged);
                 tell_phone(&slack, &mut phone, &account, &state);
             }
             Some(_) => eprintln!("<4>the Slack sign-in doesn't say who Joel is"),
             None => eprintln!("<4>no Slack sign-in yet, so nothing is read"),
         }
-        std::thread::sleep(every);
+        std::thread::sleep(how.every);
     }
 }
 
@@ -338,6 +365,8 @@ struct Phone {
     /// finding is tried against Slack whether or not an alert comes, and
     /// then again only when an alert finds none.
     looked: bool,
+    /// Whether alerts are only written down, as the reader is in shadow.
+    shadow: bool,
 }
 
 /// Tells Joel's phone each alert the launcher's daemon wrote down in the
@@ -372,7 +401,7 @@ fn tell_phone(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path)
             words: &words,
             link: &link,
         };
-        let shadow = SHADOW || line["shadow"] != false;
+        let shadow = phone.shadow || line["shadow"] != false;
         let sent = match (&phone.own, shadow) {
             (_, true) => {
                 eprintln!("<5>Joel's phone, in shadow: {link}");
@@ -409,35 +438,6 @@ fn tell_phone(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path)
     }
 }
 
-/// What phoned.jsonl keeps for an alert that may have gone, whose answer
-/// was lost.
-const UNSURE: &str = "unsure";
-
-/// How many sends an alert gets whose answers were lost, so one that
-/// landed unheard reaches Joel's phone twice at most (KP0L6A).
-const UNSURE_TRIES: usize = 2;
-
-/// The alerts done with: told, written down in shadow, or sent as often as
-/// an unsure one may be.
-fn done(phoned: &[Value]) -> HashSet<String> {
-    let mut unsure: HashMap<String, usize> = HashMap::new();
-    let mut done = HashSet::new();
-    for line in phoned {
-        if line["sent"] == UNSURE {
-            *unsure.entry(told_as(line)).or_default() += 1;
-        } else {
-            done.insert(told_as(line));
-        }
-    }
-    done.extend(
-        unsure
-            .into_iter()
-            .filter(|(_, tries)| *tries >= UNSURE_TRIES)
-            .map(|(told, _)| told),
-    );
-    done
-}
-
 /// The lines of a log kept as JSON lines, those that read.
 fn lines(path: &Path) -> Vec<Value> {
     std::fs::read_to_string(path)
@@ -447,24 +447,16 @@ fn lines(path: &Path) -> Vec<Value> {
         .collect()
 }
 
-/// What an alert is told as, its row and the saying it shows, as the
-/// launcher's daemon tells it.
-fn told_as(line: &Value) -> String {
-    format!(
-        "{}@{}",
-        line["key"].as_str().unwrap_or_default(),
-        line["saying"].as_str().unwrap_or_default()
-    )
-}
-
-/// Where replies go and the words they say.
-struct Replier {
+/// What the reader acts with: where replies go, the words they say, and
+/// whether its stops, replies and resumes are only written down.
+struct Reader {
     origin: String,
     words: Words,
+    shadow: bool,
 }
 
 /// One search of each kind, and each new message judged and written down.
-fn round(slack: &Slack, replier: &Replier, account: &Account, state: &Path, judged: &mut Judged) {
+fn round(slack: &Slack, reader: &Reader, account: &Account, state: &Path, judged: &mut Judged) {
     let joel = Joel {
         slack_ids: vec![account.user.clone()],
         logins: Vec::new(),
@@ -492,7 +484,7 @@ fn round(slack: &Slack, replier: &Replier, account: &Account, state: &Path, judg
             judged.keys.push(message.key());
             continue;
         }
-        judge(slack, replier, account, state, &joel, message);
+        judge(slack, reader, account, state, &joel, message);
         judged.keys.push(message.key());
     }
     let over = judged.keys.len().saturating_sub(KEPT);
@@ -529,7 +521,7 @@ fn search(slack: &Slack, account: &Account, query: &str) -> Option<Vec<Message>>
 /// One message judged where it was said, and written down.
 fn judge(
     slack: &Slack,
-    replier: &Replier,
+    reader: &Reader,
     account: &Account,
     state: &Path,
     joel: &Joel,
@@ -580,19 +572,19 @@ fn judge(
         age: read_at.saturating_sub(said_at),
     };
     let gated = gate(&asked, &sent, read_at, replies_off(state));
-    let line = record::line(&source, &decision, gated, now, SHADOW);
+    let line = record::line(&source, &decision, gated, now, reader.shadow);
     if let Err(error) = record::append(&state.join("decisions.jsonl"), &line) {
         eprintln!("<3>couldn't write a decision down: {error}");
     }
     if gated.goes() {
         let named: Vec<String> = decision.reaches.iter().map(ToString::to_string).collect();
-        let post = reply::post(message, decision.reply, &named, &replier.words);
-        if answer(replier, account, message, post.as_ref()) {
+        let post = reply::post(message, decision.reply, &named, &reader.words);
+        if answer(reader, account, message, post.as_ref()) {
             let one = record::sent(
                 &source,
                 decision.reply,
                 read_at,
-                SHADOW,
+                reader.shadow,
                 &reply::kept(post.as_ref()),
             );
             if let Err(error) = record::append(&went_out, &one) {
@@ -601,9 +593,10 @@ fn judge(
         }
     }
     if decision.stops() {
-        let stop = record::stop(&source, &decision, now, SHADOW);
+        let stop = record::stop(&source, &decision, now, reader.shadow);
         match record::keep(&state.join("stops"), &key, &stop) {
-            Ok(true) => eprintln!("<5>a stop, in shadow: {}", message.link),
+            Ok(true) if reader.shadow => eprintln!("<5>a stop, in shadow: {}", message.link),
+            Ok(true) => eprintln!("<5>a stop: {}", message.link),
             Ok(false) => {}
             Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
         }
@@ -615,28 +608,25 @@ fn judge(
             &decision.reaches,
             (now, said),
             &message.link,
+            reader.shadow,
         );
     }
 }
 
-/// Ends the stops Joel's own "pineapple resume" names, as his press in the
-/// launcher does: what it reaches, or every stop when it reaches
-/// everything. Only stops said before it, since Slack's search indexes late
-/// and a round can judge a resume beside a stop said after it (KP0L6A). In
-/// shadow, and until Slack resumes are let go live, it ends only the stops
-/// written in shadow, so it never ends one that stands for real. `at` is
-/// when it's heard, in milliseconds, and when it was said, in microseconds.
-fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str) {
+/// Ends the stops Joel's own "pineapple resume" names (src/resume.rs):
+/// what it reaches, or every stop when it reaches everything. In shadow,
+/// and until Slack resumes are let go live, only the stops written in
+/// shadow. `at` is when it's heard, in milliseconds, and when it was
+/// said, in microseconds.
+fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str, shadow: bool) {
     let (now, said) = at;
-    let shadow = SHADOW || !SLACK_RESUMES_LIVE;
+    let shadow = shadow || !SLACK_RESUMES_LIVE;
     for reach in reaches {
         let scope = match reach {
             Target::Everything => "all".to_owned(),
             named => named.to_string(),
         };
-        let ended = resume::resume_only(stops, &scope, now, "joel", |record| {
-            (!shadow || record["shadow"] != false) && said_by(record).is_some_and(|at| at <= said)
-        });
+        let ended = resume::as_joel(stops, &scope, now, said, shadow);
         match ended {
             Ok(ids) if ids.is_empty() => {}
             Ok(ids) if shadow => eprintln!("<5>a resume, in shadow, of {}: {link}", ids.join(", ")),
@@ -646,22 +636,11 @@ fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str)
     }
 }
 
-/// When a stop was said, in microseconds: as its record writes Slack's
-/// timestamp, else when it was heard; none when it says neither, and such
-/// a stop is left for the launcher's press rather than ended unseen.
-fn said_by(record: &Value) -> Option<u128> {
-    record["said_at"].as_str().and_then(micros).or_else(|| {
-        record["heard_at"]
-            .as_u64()
-            .map(|at| u128::from(at) * u128::from(MILLIS))
-    })
-}
-
 /// Say a reply the rules let through, and whether it counts as said: in
 /// shadow each does, said or not, so the rules are tried as they will be;
 /// out of it, only one Slack took.
-fn answer(replier: &Replier, account: &Account, message: &Message, post: Option<&Post>) -> bool {
-    if SHADOW {
+fn answer(reader: &Reader, account: &Account, message: &Message, post: Option<&Post>) -> bool {
+    if reader.shadow {
         eprintln!("<5>a reply, in shadow: {}", message.link);
         return true;
     }
@@ -672,7 +651,7 @@ fn answer(replier: &Replier, account: &Account, message: &Message, post: Option<
         );
         return false;
     };
-    match reply::send(&replier.origin, account, post) {
+    match reply::send(&reader.origin, account, post) {
         Ok(()) => {
             eprintln!("<5>a reply, said: {}", message.link);
             true
@@ -744,30 +723,4 @@ fn seconds() -> u64 {
 
 fn millis() -> u64 {
     u64::try_from(since_epoch().as_millis()).unwrap_or(u64::MAX)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn phoned(key: &str, sent: &Value) -> Value {
-        json!({"key": key, "saying": "stopped", "sent": sent})
-    }
-
-    #[test]
-    fn an_alert_whose_answer_was_lost_is_sent_once_more_and_no_more() {
-        let once = [phoned("a", &json!(UNSURE))];
-        assert!(done(&once).is_empty(), "one unsure send is tried again");
-        let twice = [phoned("a", &json!(UNSURE)), phoned("a", &json!(UNSURE))];
-        assert!(
-            done(&twice).contains("a@stopped"),
-            "a second unsure send is the last"
-        );
-        let told = [phoned("b", &json!(true)), phoned("c", &json!(false))];
-        assert_eq!(
-            done(&told).len(),
-            2,
-            "one told, and one written down in shadow, are done"
-        );
-    }
 }
