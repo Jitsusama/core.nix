@@ -36,7 +36,8 @@ onLinux {
   slack-finds-who-it-knows = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in slack-people, its tests included.
   slack-passes-clippy = passesClippy "slack-passes-clippy" (pkgs.callPackage ./package.nix { });
-  # slack-unreads starts once pi has signed in to Slack, comes back as the
+  # slack-unreads starts at login, reads pi's sign-in from the keyring,
+  # comes back as the
   # new one after a switch, is restarted once its watchdog hears nothing,
   # and takes its ask in For You with it however it stops, so For You
   # never shows what nothing is keeping current.
