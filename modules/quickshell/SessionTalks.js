@@ -9,7 +9,8 @@
 // A stopgap: merging what's said here with what's served, and choosing which talks show and in
 // what order, is the agents daemon's work, as the daemons are the data layer. It stays here
 // until KP0L6A's agents daemon serves each session's talks so, due Sat 2026-11-21 (Y2YBTS's
-// review of #4272), and then this file goes.
+// review of #4272), and then this file goes; a talk said but not yet recorded may stay the
+// shell's, as KP0L6A tells by Mon 2026-11-16.
 .pragma library
 
 .import "TalkLine.js" as Said
