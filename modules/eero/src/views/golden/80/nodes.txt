@@ -1,6 +1,6 @@
-home · 3 nodes · read 1 min 7 s ago
+home · 3 nodes · read 1 m 7 s ago
 
-node   state   backhaul                   bars  devices  firmware
-Hall   online  Ethernet                 5 of 5        2  v7.17.4-5
-Study  online  Wi-Fi 5.8 GHz from Hall  5 of 5        9  v7.17.4-5
-Den    online  Wi-Fi 5.8 GHz from Hall  5 of 5        4  v7.17.4-5
+node   state   heartbeat     backhaul                   bars  devices  firmware
+Hall   online  1 m 59 s ago  Ethernet                 5 of 5        2  v7.17.4-5
+Study  online  2 m 4 s ago   Wi-Fi 5.8 GHz from Hall  5 of 5        9  v7.17.4-5
+Den    online  1 m 50 s ago  Wi-Fi 5.8 GHz from Hall  5 of 5        4  v7.17.4-5

@@ -1,12 +1,12 @@
-tablet 1 · 02:00:00:00:00:01 · read 1 min 7 s ago
+tablet 1 · 02:00:00:00:00:01 · read 1 m 7 s ago
 
 kind         tablet · Apple iPad
 name         tablet 1 · nickname – · hostname tablet 1
 hardware     02:00:00:00:00:01 · a private address
 addresses    10.0.0.29 · fe80::1
 reserved     none
-on since     2026-11-07 17:42, 13 min 15 s ago
-last active  2026-11-07 17:49, 6 min 10 s ago
+on since     2026-11-07 17:42, 13 m 15 s ago
+last active  2026-11-07 17:49, 6 m 10 s ago
 first seen   2026-02-09 15:08, 271 d 2 h ago
 node         Den · Wi-Fi
 network      home · WPA2 · subnet main · guest no

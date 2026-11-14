@@ -1,4 +1,4 @@
-home · internet · read 1 min 7 s ago
+home · internet · read 1 m 7 s ago
 
 state            ✕ disconnected · ✕ provider down
                  mesh connected
@@ -38,7 +38,7 @@ firmware
   update waiting  ● yes
   can update now  no
   updates at      02:00, the network's time
-  last started    2026-11-07 02:19, 15 h 36 min ago
+  last started    2026-11-07 02:19, 15 h 36 m ago
 
 Thread
   state    off

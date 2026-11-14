@@ -30,7 +30,7 @@ mod text;
 pub mod theme;
 mod traffic;
 
-pub use clock::{Clock, changes_in, span};
+pub use clock::{Clock, changes_in, span_on_desktop};
 pub use text::Ink;
 
 /// A rate given in Mb/s as plain text, as every view sets one, for a line

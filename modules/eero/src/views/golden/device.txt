@@ -1,12 +1,12 @@
-unknown computer 1 · 02:00:00:00:00:08 · read 1 min 7 s ago
+unknown computer 1 · 02:00:00:00:00:08 · read 1 m 7 s ago
 
 kind         unknown computer · made by Intel Corporate
 name         unknown computer 1 · nickname – · hostname unknown computer 1
 hardware     02:00:00:00:00:08 · its maker's address
 addresses    10.0.0.20 · fe80::5
 reserved     none
-on since     2026-11-07 10:31, 7 h 24 min ago
-last active  2026-11-07 17:49, 6 min 10 s ago
+on since     2026-11-07 10:31, 7 h 24 m ago
+last active  2026-11-07 17:49, 6 m 10 s ago
 first seen   2026-10-06 18:09, 31 d 23 h ago
 node         Study · Wi-Fi
 network      home · WPA2 · subnet main · guest no

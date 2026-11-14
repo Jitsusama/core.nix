@@ -22,7 +22,7 @@ use std::collections::BTreeMap;
 
 use crate::model::{BackhaulKind, CloudState, Device, Event, HomeNetwork, Node, OutageSeenBy};
 use crate::time;
-use crate::views::{counted, device_name, listed, node_name, span};
+use crate::views::{counted, device_name, listed, node_name, span_on_desktop};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Urgency {
@@ -202,9 +202,10 @@ fn seen(model: &HomeNetwork) -> Option<i64> {
         .max()
 }
 
-/// Seconds from one moment to a later one, as a length of time.
+/// Seconds from one moment to a later one, as a length of time a notice
+/// says, on the desktop.
 fn lasted(from: i64, to: i64) -> String {
-    span(u64::try_from(to - from).unwrap_or(0))
+    span_on_desktop(u64::try_from(to - from).unwrap_or(0))
 }
 
 /// The internet going out or coming back. One already said to be out, and

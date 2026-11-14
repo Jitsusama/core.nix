@@ -273,8 +273,8 @@ mod tests {
         assert_eq!(
             heads,
             [
-                "home · firmware · read 1 min 7 s ago",
-                "cabin · firmware · read 1 min 7 s ago"
+                "home · firmware · read 1 m 7 s ago",
+                "cabin · firmware · read 1 m 7 s ago"
             ]
         );
         assert!(out.starts_with("eero: waiting for eero-daemon's first reading\n"));

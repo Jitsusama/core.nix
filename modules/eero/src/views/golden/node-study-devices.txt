@@ -1,4 +1,4 @@
-home · Study · 9 devices on now · read 1 min 7 s ago
+home · Study · 9 devices on now · read 1 m 7 s ago
 
 node   device              kind              band      ch   signal    SNR         rx  MCS  NSS         tx  MCS  NSS       down         up  address
 Study  laptop computer 1   laptop computer   5 GHz     52  −75 dBm  33 dB   432 Mb/s    4    2   961 Mb/s    9    2   130 kb/s  14.5 kb/s  10.0.0.26
@@ -13,7 +13,7 @@ Study  laptop computer 1   laptop computer   5 GHz     52  −75 dBm  33 dB   43
 
 3 devices not on now
 
-node   device              kind              band     last on          profile  made by
-Study  game console 2      game console      5 GHz    1 h 17 min ago   –        AzureWave Technology Inc.
-Study  unknown computer 2  unknown computer  5 GHz    12 h 51 min ago  –        Intel Corporate
-Study  02:00:00:00:00:20   generic           2.4 GHz  4 d ago          –        –
+node   device              kind              band     last on        profile  made by
+Study  game console 2      game console      5 GHz    1 h 17 m ago   –        AzureWave Technology Inc.
+Study  unknown computer 2  unknown computer  5 GHz    12 h 51 m ago  –        Intel Corporate
+Study  02:00:00:00:00:20   generic           2.4 GHz  4 d ago        –        –
