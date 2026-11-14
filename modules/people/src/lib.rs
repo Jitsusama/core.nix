@@ -761,6 +761,31 @@ mod tests {
         assert_eq!(book.everyone().count(), 1);
     }
 
+    // A daemon started again, as a switch does, hears everyone anew. What
+    // it serves of someone whose sources say the same reads as it did, so
+    // the shell keeps their row rather than making it again: stamped with
+    // the moment each was heard, Joel's first letter after such a switch
+    // made 136 and 137 people's rows (his journal, 2026-11-14 09:38 and
+    // 17:07), every one alike but for that moment.
+    #[test]
+    fn someone_said_the_same_reads_the_same_whenever_they_were_heard() {
+        let ada = |name: &str| Heard::Person {
+            address: "ada@example.com".to_owned(),
+            entry: json!({"name": name}),
+        };
+        let served = |name: &str, now| {
+            let mut book = Book::of(&["slack".to_owned()]);
+            book.take("slack", ada(name), now);
+            book.record("person:ada@example.com").unwrap().json()
+        };
+        assert_eq!(served("Ada", 9), served("Ada", 5), "heard again, as before");
+        assert_ne!(
+            served("Ada L", 5)["said"],
+            served("Ada", 5)["said"],
+            "what's said moved, so its stamp does"
+        );
+    }
+
     #[test]
     fn a_calendars_address_is_no_one_and_answers_at_once() {
         let mut book = Book::of(&["google".to_owned()]);
