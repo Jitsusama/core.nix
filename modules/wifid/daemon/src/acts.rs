@@ -14,11 +14,16 @@
 //! {"id": 8, "stage": "online", "said": "connected to Lantern", "done": true}
 //! ```
 //!
+//! A roam to an access point wifid no longer hears looks for it once
+//! before refusing it as `NotNearby`.
+//!
 //! What wifid won't do is an error coded `refused`, its `refused` the
 //! varlink interface's name for why, as `WrongPassword`. Each stage and
 //! refusal is `said` in the launcher's words for it (launcher/words/wifi.json),
 //! as the vocabulary the connection's rows are made in has them, so the
 //! shell's foot says them as they are (2026-11-13).
+
+use std::time::Duration;
 
 use serde_json::{Value, json};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -190,17 +195,42 @@ pub async fn act(
     }
 }
 
-/// Moves the card to the access point at `bssid`.
+/// How long a roam waits for the look it asked for: one over every
+/// channel took 5 to 6 s (2026-11-14).
+const LOOKING: Duration = Duration::from_secs(15);
+
+/// Moves the card to the access point at `bssid`, looking for it first
+/// where it isn't heard. wpa_supplicant forgets an access point 180 s
+/// after it last heard it, and with nothing looking more than hourly most
+/// of the air is forgotten by the time a roam's asked: Main Floor's own
+/// radio 5 m away was refused (2026-11-14). The look is waited for here,
+/// apart from the main loop, which hears it end.
 async fn roam(
     asks: &mpsc::Sender<Ask>,
-    _state: watch::Receiver<State>,
+    mut state: watch::Receiver<State>,
     bssid: &str,
 ) -> Result<(), Refused> {
-    once(asks, |done| Ask::Roam {
+    let roaming = |done| Ask::Roam {
         bssid: bssid.to_owned(),
         done,
-    })
-    .await
+    };
+    match once(asks, roaming).await {
+        Err(Refused::NotNearby) => {}
+        answered => return answered,
+    }
+    let before = state.borrow_and_update().looks();
+    once(asks, |done| Ask::Scan { done }).await?;
+    // Only whether it ended is kept, since the state it's read from is
+    // held locked for as long as it's borrowed.
+    let looked = state.wait_for(|now| now.looks() != before);
+    let ended = tokio::time::timeout(LOOKING, looked)
+        .await
+        .map(|ended| ended.is_ok());
+    match ended {
+        Ok(true) => once(asks, roaming).await,
+        Ok(false) => Err(stopping()),
+        Err(_) => Err(Refused::NotNearby),
+    }
 }
 
 /// Asks the main loop one thing and waits for its answer.
