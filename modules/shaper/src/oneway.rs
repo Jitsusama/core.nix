@@ -701,8 +701,11 @@ impl Way {
                     .iter()
                     .map(|&(_, c)| c)
                     .fold(carried, f64::max);
-                self.plateau =
-                    Some(plateau.min(most / HOLD).max(self.reached(at) * UNSEEN_FLOOR));
+                self.plateau = Some(
+                    plateau
+                        .min(most / HOLD)
+                        .max(self.reached(at) * UNSEEN_FLOOR),
+                );
             }
             self.elsewhere = None;
             // Only the line sets what got through while something of ours
@@ -1137,7 +1140,10 @@ mod tests {
             ..quiet(1_400.0, 300.0)(at)
         });
         let plateau = c.up.plateau.expect("a plateau");
-        assert!(plateau >= 3_800.0, "a start's slow seconds taught {plateau}");
+        assert!(
+            plateau >= 3_800.0,
+            "a start's slow seconds taught {plateau}"
+        );
     }
 
     // The same seconds behind a VPN whose round trip stands over what it
@@ -1163,7 +1169,10 @@ mod tests {
             ..quiet(1_400.0, 300.0)(at)
         });
         let plateau = c.up.plateau.expect("a plateau");
-        assert!(plateau >= 3_800.0, "a start behind a slow VPN taught {plateau}");
+        assert!(
+            plateau >= 3_800.0,
+            "a start behind a slow VPN taught {plateau}"
+        );
     }
 
     // A network whose line fell to half what was learned of it: the
@@ -1177,7 +1186,10 @@ mod tests {
         };
         let mut c = Controller::from_learned(learned, Learned::default());
         let limits = run_flow_queued(&mut c, 0.0, 90.0, 6_000.0);
-        assert!(near(limits, 5_700.0), "held under the fallen line: {limits:?}");
+        assert!(
+            near(limits, 5_700.0),
+            "held under the fallen line: {limits:?}"
+        );
     }
 
     #[test]
