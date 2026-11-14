@@ -153,6 +153,15 @@ QtObject {
         expect("never through its face", sideOn.beats.filter(through).map(beat => beat.name),
             []);
 
+        // Its seat on a floating window on a new workspace: it holds
+        // through the slide, then drops straight onto it as a walk does.
+        const moved = Paths.moves({ x: 900, y: 7 }, { x: 346, y: 291 },
+            world({ way: 1, now: tiles, floats: [low], spring: { damping: 1, stiffness: 1600,
+                epsilon: 0.001 } }));
+        expect("moved to a seat on one, it holds, then drops straight onto it",
+            [names(moved)[0], ends(named(moved, "falls")), names(moved).slice(-2)],
+            ["rides", [346, 7, 346, 291], ["falls", "lands"]]);
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length > 0 ? 1 : 0);

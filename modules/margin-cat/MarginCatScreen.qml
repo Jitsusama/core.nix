@@ -304,8 +304,10 @@ PanelWindow {
     }
 
     // A move's plan from `from` to its seat `to` over the new workspace's
-    // windows, or only its hold through the slide where `to` is null.
+    // windows, its floating ones too, or only its hold through the slide
+    // where `to` is null.
     function plan(way: int, from: var, to: var): var {
+        const tiles = tilesOf(space?.id);
         return Paths.moves(from, to, {
             way,
             wide: size,
@@ -320,7 +322,8 @@ PanelWindow {
             spring: Theme.motion.spring,
             ahead: MarginCat.behind(frameMs, "slide"),
             frame: frameMs,
-            now: tilesOf(space?.id),
+            now: tiles,
+            floats: Floats.of(tiles, 0),
             marks: marksLit
         });
     }
