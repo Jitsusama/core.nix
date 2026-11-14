@@ -6,7 +6,8 @@
 //! everyone watched; one that stops is started again and asked again
 //! about everyone watched; a roster is searched and watched by who it
 //! lists; one a source found when asked is searched with their row and
-//! drawer ready; what's held is known by key with no source asked; and an ask
+//! drawer ready; one found says how they stand as one listed does, by
+//! every source; what's held is known by key with no source asked; and an ask
 //! or kind it doesn't know is refused.
 
 use std::process::{Command, Stdio};
@@ -445,7 +446,8 @@ fn a_roster_is_searched_and_watched_by_who_it_lists() {
     let said = client.ask(&json!({"id": 1, "ask": "search", "words": "ada"}));
     assert_eq!(keys(&said), ["person:ada@example.com", "person:tuple:7"]);
     // Each comes with the row it's found as, the person it is as its
-    // `thing`, saying nothing of how they stand.
+    // `thing`, saying nothing of how they stand, since Tuple here is
+    // given no word for it.
     let row = &said["records"][0]["row"];
     assert_eq!(
         (&row["key"], &row["thing"], &row["side"]),
@@ -553,7 +555,7 @@ fn who_is_held_is_known_by_key_with_no_source_asked() {
 #[test]
 fn one_a_source_found_when_asked_is_searched_with_their_row_and_drawer_ready() {
     // KNOWING says how it was asked as `way`, read here as how one stands,
-    // as Slack's presence is, which a search's row still leaves unsaid.
+    // as Slack's presence is.
     let stands = json!({"field": "way", "words": {"step": {"word": "available", "order": 0}}});
     let running = Running::started("found", &[("slack", KNOWING)], &[("slack", stands)], &[]);
     let mut client = running.client();
@@ -575,10 +577,76 @@ fn one_a_source_found_when_asked_is_searched_with_their_row_and_drawer_ready() {
             &found["row"]["name"],
             &found["row"]["side"]
         ),
-        (&json!("person:ada@example.com"), &json!("ada"), &json!([])),
-        "her row, found among everyone so saying nothing of how she stands: {said}"
+        (
+            &json!("person:ada@example.com"),
+            &json!("ada"),
+            &json!([{"said": "around"}])
+        ),
+        "her row, saying how Slack said she stands: {said}"
     );
     assert_eq!(found["drawer"]["title"], "ada", "and her drawer: {said}");
+}
+
+#[test]
+fn one_found_says_how_they_stand_as_one_listed_does() {
+    // Tuple says everyone unasked, Slack only those asked about, and
+    // Google, here the same stand-in as Slack, says nothing of how
+    // anyone stands.
+    let tuple = json!({"field": "status", "words": {"unknown": {"word": "available", "order": 0}}});
+    let slack = json!({"field": "way", "words": {"step": {"word": "call", "order": 1}}});
+    let running = Running::started(
+        "stood",
+        &[("tuple", ROSTER), ("slack", KNOWING), ("google", KNOWING)],
+        &[("tuple", tuple), ("slack", slack)],
+        &[],
+    );
+    let mut client = running.client();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while client.ask(&json!({"id": 0, "ask": "health"}))["people"] != 3 {
+        assert!(Instant::now() < deadline, "the roster was never held");
+        // The roster's three lines land as the source starts, asked about
+        // again each 20 ms until the deadline.
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    client.ask(
+        &json!({"id": 1, "ask": "get", "keys": ["person:grace@example.com"], "patience": 5000}),
+    );
+    let listing = client.ask(&json!({"id": 2, "ask": "list", "kind": "listing"}));
+    let row_of = |records: &Value, key: &str| {
+        records
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|record| record["key"] == key)
+            .map(|record| record["row"].clone())
+            .unwrap_or(Value::Null)
+    };
+    // A listed row's `order` places it in the listing, which a search's
+    // answer is ordered by itself.
+    let mut listed = row_of(&listing["records"], "row:people:ada@example.com");
+    listed.as_object_mut().map(|row| row.remove("order"));
+    let said = client.ask(&json!({"id": 3, "ask": "search", "words": "ada brightwater"}));
+    assert_eq!(
+        row_of(&said["records"], "person:ada@example.com"),
+        listed,
+        "Ada, a favourite, found as she's listed: {said} {listing}"
+    );
+    // Tuple's word for one nobody lists is said as for one listed.
+    let said = client.ask(&json!({"id": 4, "ask": "search", "words": "fenwick"}));
+    assert_eq!(
+        row_of(&said["records"], "person:eli@example.com")["side"],
+        json!([{"said": "around"}]),
+        "Eli, by Tuple: {said}"
+    );
+    // And Slack's for one it was asked about, which Google's silence
+    // beside it leaves said.
+    let said = client.ask(&json!({"id": 5, "ask": "search", "words": "grace"}));
+    let grace = row_of(&said["records"], "person:grace@example.com");
+    assert_eq!(
+        (&grace["side"], &grace["glyph"]),
+        (&json!([{"said": "in a call"}]), &json!("person")),
+        "Grace, by Slack and Google: {said}"
+    );
 }
 
 /// The keys of records, in the order told.
