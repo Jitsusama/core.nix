@@ -2059,6 +2059,73 @@ fn a_keep_beside_a_gate_keeps_the_record_after_each_vm_test_it_traces() {
 }
 
 #[test]
+fn a_keep_carrying_past_a_vm_test_main_reached_keeps_none_of_its_old_reads() {
+    // Without the joint trace a carried VM test is judged by what it read
+    // alone, so old reads kept for one main reached would let a gate skip it.
+    let stand_in = vm_traced_alone("carry-vm-reached");
+    let ran = stand_in.run(&KEEPING);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    filed_as(&stand_in, RECORDED);
+    fs::write(stand_in.path("diff.between"), "M\tvm-x.nix\n").expect("written");
+    // Main's change has vm-x read a file it didn't.
+    let reads_anew =
+        "openat(AT_FDCWD</tmp>, \"SOURCE/vm-x-new.nix\", O_RDONLY) = 9<SOURCE/vm-x-new.nix>\n";
+    fs::write(
+        stand_in.path("trace.vm-x"),
+        format!("{VM_ALONE}{reads_anew}"),
+    )
+    .expect("written");
+
+    let ran = stand_in.run(&KEEPING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("carries from 9876543210fe"),
+        "the keep didn't carry: {}",
+        text(&ran.stderr)
+    );
+    let kept = alone_record(&stand_in, ALONE);
+    let paths = kept["paths"].as_array().expect("the paths read");
+    let anew = paths
+        .iter()
+        .position(|path| path == "vm-x-new.nix")
+        .unwrap_or_else(|| panic!("vm-x kept what it read before main reached it: {kept}"));
+    assert!(
+        kept["checks"]["vm-x"]["read"]
+            .as_array()
+            .is_some_and(|read| read.contains(&serde_json::json!(anew))),
+        "vm-x kept what it read before main reached it: {kept}"
+    );
+    assert!(
+        !kept["checks"]["vm-y"].is_null(),
+        "vm-y's reads, which main reached nothing of, weren't carried: {kept}"
+    );
+    assert!(
+        !stand_in.path(READS).exists(),
+        "what the VM tests read together was kept, though main reached it"
+    );
+
+    // A gate there judges the VM tests by what each read alone.
+    stand_in.checks("working", VM_MOVED);
+    fs::write(stand_in.path("diff"), "M\ttests/x.nix\n").expect("written");
+    let ran = stand_in.run(&GATING);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "changed  vm-y\n",
+        "a gate at a base without the joint trace evaluated a VM test it didn't reach"
+    );
+    assert!(
+        text(&ran.stderr).contains(
+            "evaluates 1 of x86_64-linux's 2 VM tests, since the change reaches nothing \
+             the other 1 read at 0123456789ab"
+        ),
+        "{}",
+        text(&ran.stderr)
+    );
+}
+
+#[test]
 fn keeps_beside_a_gate_past_their_bound_trace_the_vm_tests_left_longest_first() {
     // On 13 November gates judged from records 50 to 160 files behind
     // main, so beside a gate a keep begins no VM trace past a bound but
