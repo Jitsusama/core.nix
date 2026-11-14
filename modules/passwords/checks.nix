@@ -31,8 +31,9 @@ onLinux {
   # in the state folder for Joel alone, holding no secret nor any hash,
   # outlives the daemon, and holds since when trouble was found until a
   # check finds none, each told to a watch. The daemon can't be read
-  # through /proc by the account's other processes, and ends as soon as
-  # whatever ran it closes its end. The command's tests run too: no
+  # through /proc by the account's other processes, says nothing of its
+  # own on the shell's pipe whether it ends well, fails or panics, and ends
+  # as soon as whatever ran it closes its end. The command's tests run too: no
   # command reaches an entry or a secret, each refused as asked wrongly
   # with nothing on stdout and nothing typed after it said back; each
   # mistyped one says what it needs; and a bare run and the help, which

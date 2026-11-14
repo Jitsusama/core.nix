@@ -1833,7 +1833,8 @@
     held list or get without asking a manager, gives a secret only to the ask for it, never to a
     watch, or to the clipboard marked sensitive and cleared when its time is up, refuses a copy
     before reading any secret while no copier is named, can't be read through /proc by the
-    account's other processes nor write a core dump, ends once whatever ran it closes its end,
+    account's other processes nor write a core dump, says nothing of its own on the shell's pipe
+    whether it ends well, fails or panics, ends once whatever ran it closes its end,
     says a one-time code's period, gives a one-time code's detail as its code and
     never its seed, says a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
     serves each entry's row and drawer keyed by its place, in the account's own words and with no

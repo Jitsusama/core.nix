@@ -162,14 +162,23 @@ struct Daemon {
 type Shared = Arc<(Mutex<Daemon>, Condvar)>;
 
 fn main() -> ExitCode {
-    terminal_kit::main(
-        &cli::help(),
-        env!("CARGO_PKG_VERSION"),
-        |context| match cli::parse(&context.args)? {
-            cli::Command::Daemon { managers, words } => daemon(&managers, words.as_deref()),
-            command => cli::run(context, &command),
-        },
-    )
+    terminal_kit::main(&cli::help(), env!("CARGO_PKG_VERSION"), |context| {
+        command_line(context, daemon)
+    })
+}
+
+/// What the words ask, the daemon among them, which is handed in so a
+/// test can stand in for it: the kit writes to stdout only what a body
+/// answers, and this answers nothing on the daemon's path, which leaves
+/// the shell's pipe to the daemon's own answers alone.
+fn command_line(
+    context: &terminal_kit::Context,
+    daemon: impl FnOnce(&str, Option<&str>) -> Result<(), Failure>,
+) -> Result<(), Failure> {
+    match cli::parse(&context.args)? {
+        cli::Command::Daemon { managers, words } => daemon(&managers, words.as_deref()),
+        command => cli::run(context, &command),
+    }
 }
 
 /// The daemon, from its start to the shell closing its end, when it ends
@@ -1236,3 +1245,7 @@ fn audit_read(shared: &Shared, id: &Value) -> Value {
     }
     answer
 }
+
+#[cfg(test)]
+#[path = "main_tests.rs"]
+mod tests;
