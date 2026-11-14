@@ -14,7 +14,8 @@ waits_at_most=${2:-3600}
 runtime=${XDG_RUNTIME_DIR:?}
 mark="${runtime}/quickshell-launcher"
 
-if [[ "$(readlink "${runtime}/quickshell-files" 2>/dev/null)" == "${files}" ]]; then
+linked=$(readlink "${runtime}/quickshell-files" 2>/dev/null || true)
+if [[ ${linked} == "${files}" ]]; then
   exit 0
 fi
 if ! systemctl --user --quiet is-active quickshell.service; then
@@ -28,18 +29,21 @@ fi
 in_use() {
   test -e "${mark}" || return 1
   grep -qx open "${mark}" 2>/dev/null && return 0
-  local written
+  local written now
   written=$(stat -c %Y "${mark}" 2>/dev/null) || return 1
-  test $(($(date +%s) - written)) -lt 30
+  now=$(date +%s)
+  test $((now - written)) -lt 30
 }
 
 started=$(date +%s)
 while in_use; do
-  if (($(date +%s) - started >= waits_at_most)); then
+  now=$(date +%s)
+  if ((now - started >= waits_at_most)); then
     echo "the launcher stayed in use $((waits_at_most / 60)) min, so the shell takes its new files now"
     exec systemctl --user restart quickshell.service
   fi
   sleep 1
 done
-echo "the shell takes its new files, the launcher shut 30 s, $(($(date +%s) - started)) s after the switch"
+now=$(date +%s)
+echo "the shell takes its new files, the launcher shut 30 s, $((now - started)) s after the switch"
 exec systemctl --user restart quickshell.service

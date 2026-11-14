@@ -54,7 +54,8 @@ said=$(bash "${script}" new 1)
 restarted || wrong "a launcher shut a moment ago held the shell past its bound: ${said}"
 [[ ${said} == *"stayed in use"* ]] ||
   wrong "a launcher shut a moment ago wasn't waited on as in use: ${said}"
-(($(date +%s) - started >= 1)) || wrong "it didn't wait for its bound"
+ended=$(date +%s)
+((ended - started >= 1)) || wrong "it didn't wait for its bound"
 
 case_of
 echo open > run/quickshell-launcher
