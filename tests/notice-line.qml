@@ -62,18 +62,23 @@ QtObject {
             Line.more(front(3, null, 2), -1), 2);
         Expect.same("no front heard counts none", Line.more(null, -1), 0);
 
-        // [what, chimes, the sound, held, now, the last knock, knocks]
+        // [what, chimes, alarms, the sound, held, now, the last knock, knocks]
         const knocking = [
-            ["a message to Joel knocks", true, "knock.oga", false, 10000, 0, true],
-            ["any other notice comes without a sound", false, "knock.oga", false, 10000, 0,
-                false],
-            ["no sound set knocks nothing", true, "", false, 10000, 0, false],
-            ["held, it never knocks", true, "knock.oga", true, 10000, 0, false],
-            ["a burst knocks once", true, "knock.oga", false, 10000, 9000, false],
-            ["two seconds on, it knocks again", true, "knock.oga", false, 11000, 9000, true]
+            ["a message to Joel knocks", true, false, "knock.oga", false, 10000, 0, true],
+            ["any other notice comes without a sound", false, false, "knock.oga", false, 10000,
+                0, false],
+            ["no sound set knocks nothing", true, false, "", false, 10000, 0, false],
+            ["held, it never knocks", true, false, "knock.oga", true, 10000, 0, false],
+            ["a burst knocks once", true, false, "knock.oga", false, 10000, 9000, false],
+            ["two seconds on, it knocks again", true, false, "knock.oga", false, 11000, 9000,
+                true],
+            ["the safe word knocks", false, true, "knock.oga", false, 10000, 0, true],
+            ["the safe word knocks even held", false, true, "knock.oga", true, 10000, 0, true],
+            ["the safe word with no sound set knocks nothing", false, true, "", true, 10000, 0,
+                false]
         ];
-        for (const [what, chimes, sound, held, now, last, want] of knocking)
-            Expect.same(what, Knock.knocks({ chimes, sound, held }, now, last), want);
+        for (const [what, chimes, alarms, sound, held, now, last, want] of knocking)
+            Expect.same(what, Knock.knocks({ chimes, alarms, sound, held }, now, last), want);
 
         Qt.exit(0);
     }

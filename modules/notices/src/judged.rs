@@ -20,6 +20,10 @@ use crate::notice::{Notice, Urgency};
 /// stays until it's answered.
 const LEVELS: [&str; 4] = ["history", "count", "card", "urgent"];
 
+/// The category the safe word's daemon (modules/pineapple) sends its
+/// stops, alerts and asks to resume in.
+const SAFE_WORD: &str = "pineapple.stop";
+
 /// The level a notice gets: what it asks for, a card or, critical, an
 /// urgent one, but never past its sender's level. A sender with no level,
 /// or one not known, reaches as far as it asks.
@@ -100,7 +104,8 @@ impl Judge {
     /// urgency, or saying it answers with the `x-answers` hint, never does.
     /// From a sender the machine says who's Joel in, one not to him is
     /// counted at most, and one to him that's shown `chimes`, so the shell
-    /// sounds it.
+    /// sounds it. One the safe word sends, critical, `alarms`, so the shell
+    /// sounds it even while notices are held or a call is on.
     pub fn judge(&self, notice: &mut Notice, quiet: bool) {
         let name = notice.app.to_lowercase();
         let to = self
@@ -137,6 +142,12 @@ impl Judge {
         notice.urgent = reach.urgent;
         notice.held = !reach.shown || (quiet && !reach.urgent);
         notice.chimes = to == Some(To::Him) && !notice.held;
+        // Someone stopping Joel's agents with his safe word is heard
+        // through Quiet and a call, since someone is unhappy with what
+        // they did (2026-11-14); one its level keeps from the screen
+        // stays as quiet as he set it.
+        notice.alarms =
+            notice.category == SAFE_WORD && notice.urgency == Urgency::Critical && !notice.held;
         notice.missed = reach.counted
             && notice.urgency != Urgency::Low
             && !self.senders.answering.contains(&name)
@@ -286,6 +297,29 @@ mod tests {
         let mut quiet = said("[work] in #busy", "Grace: on it");
         judge.to_him(&mut quiet, true);
         assert!(!quiet.chimes, "a reply held by quiet chimed");
+    }
+
+    #[test]
+    fn a_safe_word_stop_sounds_even_while_quiet_and_nothing_else_does() {
+        let stop = |urgency| Notice {
+            category: "pineapple.stop".into(),
+            ..from("pineapple", urgency)
+        };
+        let mut quiet = stop(Urgency::Critical);
+        judge().judge(&mut quiet, true);
+        let judged = (quiet.held, quiet.alarms);
+        assert_eq!(judged, (false, true), "a stop under Quiet didn't sound");
+        let mut plain = stop(Urgency::Normal);
+        judge().judge(&mut plain, false);
+        assert!(!plain.alarms, "a stop not sent critical sounded as one");
+        let mut other = from("mail", Urgency::Critical);
+        judge().judge(&mut other, true);
+        assert!(!other.alarms, "another critical notice sounded as a stop");
+        let mut kept = stop(Urgency::Critical);
+        let mut levels = judge();
+        levels.levels.insert("pineapple".into(), "history".into());
+        levels.judge(&mut kept, false);
+        assert!(!kept.alarms, "a stop its level keeps back sounded");
     }
 
     #[test]

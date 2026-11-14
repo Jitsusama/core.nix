@@ -2250,7 +2250,9 @@ works the same way everywhere.
   is asked which it was (`notices.senders.<name>.posted`); a reply, or no
   answer within 3 seconds, is to him. What's to him knocks once, a soft, short knock on
   wood (`sounds.addressed`), once for a burst, never while notices are held
-  or a call is on, and never taken for the bell. The desktop
+  or a call is on, and never taken for the bell. Someone stopping his
+  agents with his safe word (a critical notice in `pineapple.stop`)
+  knocks the same way even then, since it can't wait. The desktop
   makes one other sound, softly, and it means something needs him now: when a
   pi session first stands stopped on his keys, a question or a yes
   (`sounds.wants`), never for a run that ended blocked while he was away
