@@ -47,6 +47,21 @@ function stands(top, at) {
     return top - at.tall - at.air;
 }
 
+// The column under the cat's middle at `x`, or the nearest one to it.
+function columnAt(cols, x, wide) {
+    const middle = x + wide / 2;
+    let nearest = null;
+    let far = Infinity;
+    for (const column of cols) {
+        const away = Math.max(column.left - middle, middle - column.right, 0);
+        if (away < far) {
+            far = away;
+            nearest = column;
+        }
+    }
+    return nearest;
+}
+
 // The ledge over each window of a column it fits on: its top, the margin
 // above it, and each gap between two windows stacked in it it fits in, as
 // { row, y } by its window's index.
