@@ -101,17 +101,12 @@ pub(super) fn clear(
     let keeps = crate::keeps::load(&env.state).map_err(|error| {
         Failure::new(Exit::Failed, "the keeps can't be read").because(error.to_string())
     })?;
-    if let Some(keep) = crate::keeps::covering(&keeps, &path) {
-        // The folder kept may hold this one, and it's that keep to let go.
-        let kept = keeps
-            .keys()
-            .filter(|kept| path.starts_with(kept))
-            .max_by_key(|kept| kept.components().count())
-            .unwrap_or(&path);
+    // The folder kept may hold this one, and it's that keep to let go.
+    if let Some((kept, keep)) = crate::keeps::kept_over(&keeps, &path) {
         return Err(
             Failure::new(Exit::Failed, format!("{} stays", path.display()))
                 .because(format!("you keep it: {}", keep.reason))
-                .try_this(format!("disk-guard unkeep {}", kept.display())),
+                .try_this(format!("disk-guard keeps {} remove", kept.display())),
         );
     }
     crate::clears::ask(&env.state, &path, now()).map_err(|error| {

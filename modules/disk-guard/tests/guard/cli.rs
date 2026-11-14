@@ -889,6 +889,119 @@ fn a_keep_needs_a_folder_there_and_a_reason() {
     );
 }
 
+#[test]
+fn keeps_add_and_remove_are_keep_and_unkeep_on_its_folder() {
+    assert_eq!(
+        parse(&words("keeps -- --odd add the only copies")).unwrap(),
+        parse(&words("keep -- --odd the only copies")).unwrap(),
+        "keeps FOLDER add WHY is keep FOLDER WHY"
+    );
+    assert_eq!(
+        parse(&words("keeps -- --odd remove")).unwrap(),
+        parse(&words("unkeep -- --odd")).unwrap(),
+        "keeps FOLDER remove is unkeep FOLDER"
+    );
+    assert_eq!(
+        parse(&words("keeps")).unwrap(),
+        Command::Keeps { path: None },
+        "keeps alone lists them"
+    );
+    assert_eq!(
+        parse(&words("keeps /srv")).unwrap(),
+        Command::Keeps {
+            path: Some(PathBuf::from("/srv"))
+        },
+        "a folder alone asks for the keep covering it"
+    );
+    for (line, says) in [
+        ("keeps /srv add", "needs a reason"),
+        ("keeps /srv remove now", "takes nothing after it"),
+        ("keeps /srv ad mine", "add"),
+    ] {
+        let refused = parse(&words(line)).unwrap_err();
+        assert_eq!(refused.exit, Exit::Usage, "{line}: {refused:?}");
+        assert!(
+            refused.what.contains(says) || refused.why.iter().any(|why| why.contains(says)),
+            "{line} is refused saying {says:?}: {refused:?}"
+        );
+    }
+}
+
+// Whatever typed the words before keeps, the machine's daemon before
+// this change among them, hears exactly what it heard.
+#[test]
+fn the_old_words_answer_as_the_new_ones_do() {
+    let machine = Machine::new();
+    let photos = machine.root.join("photos");
+    fs::create_dir_all(&photos).unwrap();
+    let path = photos.display();
+    for json in ["", "--json "] {
+        let old = machine.run(&format!("keep {json}-- {path} the only copies"));
+        let old_gone = machine.run(&format!("unkeep {json}-- {path}"));
+        let new = machine.run(&format!("keeps {json}-- {path} add the only copies"));
+        let new_gone = machine.run(&format!("keeps {json}-- {path} remove"));
+        assert_eq!(old, new, "keeps add answers as keep did ({json:?})");
+        assert_eq!(
+            old_gone, new_gone,
+            "keeps remove answers as unkeep did ({json:?})"
+        );
+        assert_eq!(old.0, 0, "{old:?}");
+    }
+}
+
+#[test]
+fn keeps_lists_each_keep_and_names_the_one_covering_a_folder() {
+    let machine = Machine::new();
+    let (code, out, _) = machine.run("keeps");
+    assert_eq!((code, out.as_str()), (0, "Nothing is kept.\n"));
+    let photos = machine.root.join("photos");
+    fs::create_dir_all(photos.join("2019")).unwrap();
+    let (code, _, err) = machine.run(&format!("keeps {} add the only copies", photos.display()));
+    assert_eq!(code, 0, "{err}");
+    let (code, out, _) = machine.run("keeps");
+    assert_eq!(code, 0);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines.len(), 2, "a header and one keep: {out}");
+    assert!(lines[0].starts_with("FOLDER"), "{out}");
+    let photos = photos.canonicalize().unwrap();
+    // A person reads the home folder as `~`, as the guard's status says it.
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let said = disk_guard::words::tilde(&photos, home.as_deref());
+    assert!(
+        lines[1].starts_with(&said)
+            && lines[1].contains(" you ")
+            && lines[1].ends_with("the only copies"),
+        "each line names its folder, who kept it and why: {out}"
+    );
+    let (code, out, _) = machine.run("keeps --json");
+    assert_eq!(code, 0);
+    let listed: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(listed["schema"], "disk-guard.keeps/1", "{listed}");
+    assert_eq!(
+        (&listed["keeps"][0]["path"], &listed["keeps"][0]["declared"]),
+        (&serde_json::json!(photos), &false.into()),
+        "{listed}"
+    );
+    let within = photos.join("2019");
+    let (code, out, _) = machine.run(&format!("keeps {}", within.display()));
+    assert_eq!(code, 0);
+    assert!(
+        out.contains(&said) && out.contains("the only copies"),
+        "a folder within a keep names the folder kept and why: {out}"
+    );
+    let (code, out, _) = machine.run(&format!("keeps --json {}", within.display()));
+    assert_eq!(code, 0);
+    let covering: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+        (&covering["schema"], &covering["kept"]["path"]),
+        (&"disk-guard.kept/1".into(), &serde_json::json!(photos)),
+        "{covering}"
+    );
+    let (code, _, err) = machine.run(&format!("keeps {}", machine.root.display()));
+    assert_eq!(code, 66, "a folder nothing covers isn't kept: {err}");
+    assert!(err.contains("isn't kept"), "{err}");
+}
+
 // The machine's daemon runs these for the launcher's disk piece and
 // words the sentence itself, so each says its facts, never a sentence.
 #[test]

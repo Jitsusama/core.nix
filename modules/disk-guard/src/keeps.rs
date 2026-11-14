@@ -2,7 +2,7 @@
 //! each with his reason. A holder the guard would clear can still be
 //! something he has a use for that no process shows, and a reason of his
 //! own is one the guard can't argue with. The file sits in the guard's
-//! state, written by `disk-guard keep` and `unkeep`, and the daemon reads
+//! state, written by `disk-guard keeps FOLDER add` and `remove`, and the daemon reads
 //! it afresh each time it surveys and each time it writes its status, so
 //! a keep holds from the next step without a restart.
 //!
@@ -28,8 +28,8 @@ pub struct Keep {
     pub reason: String,
     pub at: f64,
     /// Whether the machine's configuration declares it, rather than
-    /// `disk-guard keep`: it goes when the configuration stops naming it,
-    /// and `unkeep` leaves it to the configuration.
+    /// `disk-guard keeps FOLDER add`: it goes when the configuration stops
+    /// naming it, and `remove` leaves it to the configuration.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub declared: bool,
 }
@@ -123,11 +123,17 @@ pub fn unkeep(state: &Path, path: &Path) -> io::Result<bool> {
 
 /// The keep that covers `path`: one on it or on a folder holding it.
 pub fn covering<'a>(keeps: &'a Keeps, path: &Path) -> Option<&'a Keep> {
+    kept_over(keeps, path).map(|(_, keep)| keep)
+}
+
+/// The folder kept that covers `path`, the nearest holding it, and its
+/// keep: the one to let go for `path` to be offered again.
+pub fn kept_over<'a>(keeps: &'a Keeps, path: &Path) -> Option<(&'a Path, &'a Keep)> {
     keeps
         .iter()
         .filter(|(kept, _)| path.starts_with(kept))
         .max_by_key(|(kept, _)| kept.components().count())
-        .map(|(_, keep)| keep)
+        .map(|(kept, keep)| (kept.as_path(), keep))
 }
 
 /// Whether clearing `path` would take anything kept: it lies in a kept
