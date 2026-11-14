@@ -1538,14 +1538,17 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     )
     since = shell.mark()
     shell.as_account(line)
-    shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["hears"] == "void")
+    shell.launcher_until(
+        lambda shown: shown["line"]["keys"] and shown["line"]["hears"] == "to the void"
+    )
     # Under what's typed, the window it's said over, by its title, once niri has said it to
-    # the shell; the foot names who hears it alone.
+    # the shell; the foot names who hears it, in words rather than a stray name (VKCF3Z,
+    # 2026-11-13 [00c78048]).
     shell.launcher_until(
         lambda shown: [row["text"] for row in shown["line"]["attached"]] == [said_over]
     )
     about = shell.showing()["line"]["about"]
-    assert about == "void", about
+    assert about == "to the void", about
     # It says how long it took to reach the screen, held to Joel's 50 ms (VKCF3Z, e8b4139e).
     logging.getLogger(__name__).info(
         "the line was up %s ms after it was asked", line_was_up(shell, since)

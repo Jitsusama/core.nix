@@ -31,12 +31,26 @@ const KINDS = {
 // copied log doesn't bury his words: the clipboard keeps copies far larger.
 const LONGEST = 4000;
 
+// What a title's own words and a program's name are set apart by.
+const JOINTS = [" - ", " \u2013 ", " \u2014 ", " | "];
+
+// The name pi goes by, which a pi session's row notes, and the letter it
+// leads its kitty window's title with, "π - name".
+const PI = "pi";
+const PI_LEAD = "\u03c0";
+
 // What a window says of itself in its title, without the program's name
 // after it, as Chrome titles a window "page - Google Chrome" (Provider.qml's
-// tidy).
+// tidy), nor pi's letter before it, which the row's mark says, set small
+// and odd in the words' face (VKCF3Z, 2026-11-13 [00c78048]).
 function titled(title, program) {
-    const whole = String(title ?? "").trim();
-    for (const joint of [" - ", " \u2013 ", " \u2014 ", " | "]) {
+    let whole = String(title ?? "").trim();
+    for (const joint of JOINTS) {
+        if (whole.startsWith(PI_LEAD + joint)) {
+            whole = whole.slice(PI_LEAD.length + joint.length);
+        }
+    }
+    for (const joint of JOINTS) {
         if (program !== "" && whole.endsWith(joint + program)) {
             return whole.slice(0, whole.length - joint.length - program.length);
         }
@@ -83,7 +97,7 @@ function shortAddress(address) {
 // What goes with a line, a row each: the window it's said over, as its
 // program names itself, and its title; the tab in front, where it's a
 // browser's (tabFrom); the pi session that window is, where it's one, by its
-// name and address; and what he attached of the registers (registered). A
+// name and noted as pi's, sent with its address; and what he attached of the registers (registered). A
 // window with no title, or none focused, attaches nothing of itself.
 function attached({ window, program, session, tab, registers }) {
     const rows = [];
@@ -96,7 +110,7 @@ function attached({ window, program, session, tab, registers }) {
             `${tab.title} \u00b7 ${tab.address}`));
     }
     if (session) {
-        rows.push(row("session", session.name, session.to, `${session.name} \u00b7 ${session.to}`));
+        rows.push(row("session", session.name, PI, `${session.name} \u00b7 ${session.to}`));
     }
     return rows.concat(registers ?? []);
 }

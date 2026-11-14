@@ -100,7 +100,7 @@
       "glyph": "reply",
       "ask": "Say anything, and the void passes it to its owner.",
       "said": {
-        "hearer": "void",
+        "hearer": "to the void",
         "nobody": "nobody to hear it",
         "sent": "sent",
         "taking": "taking it back",

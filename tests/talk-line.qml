@@ -17,9 +17,15 @@ QtObject {
             const session = { to: "TESTQA", name: "Tune the launcher" };
             const rows = Said.attached({ window: kitty, program: "kitty", session });
             Expect.same("a pi window attaches its window and its session, each with its mark "
-                    + "and its note", rows.map(row => [row.kind, row.mark, row.text, row.note]),
-                [["window", "windows", "π - Tune the launcher", "kitty"],
-                    ["session", "agent", "Tune the launcher", "TESTQA"]]);
+                    + "and its note, the session noted as pi's (VKCF3Z, 2026-11-13 [00c78048])",
+                rows.map(row => [row.kind, row.mark, row.text, row.note]),
+                [["window", "windows", "Tune the launcher", "kitty"],
+                    ["session", "agent", "Tune the launcher", "pi"]]);
+            Expect.same("a pi window its session isn't known for yet shows its title without "
+                    + "pi's lead", Said.shownRows(Said.attached({ window: kitty, program: "kitty" }))
+                    .map(row => row.text), ["Tune the launcher"]);
+            Expect.same("a title that only begins with pi's letter keeps it",
+                Said.attached({ window: { title: "π day" }, program: "Foot" })[0].text, "π day");
             Expect.same("a window with no title attaches only what else it has",
                 Said.attached({ window: { app_id: "foot", title: "" }, program: "Foot" }), []);
             Expect.same("none focused attaches nothing",
