@@ -30,7 +30,11 @@
 //! says it. A card is heard for the route that plays each of its devices,
 //! since a card's device takes its levels on that route. Each client of
 //! the socket is answered in clients.rs.
+//!
+//! Its unit alone starts it, in the terminal kit's shape, as
+//! `sound --help` says (asked.rs).
 
+mod asked;
 mod clients;
 mod profiler;
 
@@ -41,11 +45,13 @@ use std::os::fd::FromRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use asked::{asked, help};
 use clients::{Watch, serve};
 use pipewire as pw;
 use profiler::Profiler;
@@ -64,12 +70,13 @@ use serde_json::{Value, json};
 use sound::acts::Move;
 use sound::devices::{Change, Devices, direction, said_state};
 use sound::levels::{channels, format, levels, offered, profile, route};
-use sound::naming::{Naming, followed, read_or_none};
+use sound::naming::{Naming, followed};
 use sound::parts::served;
 use sound::rows::Words;
 use sound::streams::playing;
 use sound::timing::Timings;
 use sound::{desk, drawer};
+use terminal_kit::{Exit, Failure};
 use windows::entries::Entries;
 use windows::marks::Marks;
 
@@ -116,35 +123,26 @@ struct Daemon {
     desk: BTreeMap<String, Value>,
 }
 
-const USAGE: &str = "usage: sound SOCKET [--vocabulary WORDS] [--marks MARKS]";
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        // The kit catches a panic for as long as its body runs, which is
+        // the daemon's whole life, so its threads say theirs as Rust does,
+        // to the journal, rather than into the kit's keeping.
+        drop(std::panic::take_hook());
+        let (socket, words, marks) = asked(&context.args)?;
+        hold(&socket, words, marks)
+    })
+}
 
-fn main() {
-    let mut args = std::env::args().skip(1);
-    let Some(socket) = args.next().map(PathBuf::from) else {
-        eprintln!("{USAGE}");
-        std::process::exit(64);
-    };
-    // Without its words, a row says the vocabulary's ids for them, as
-    // the launcher's Sound does, and without marks a program wears the
-    // launcher's, rather than the daemon not starting.
-    let (mut words, mut marks) = (Words::default(), Marks::default());
-    while let Some(flag) = args.next() {
-        match (flag.as_str(), args.next()) {
-            ("--vocabulary", Some(path)) => words = read_or_none(&path, Words::from_vocabulary),
-            ("--marks", Some(path)) => marks = read_or_none(&path, Marks::read),
-            _ => {
-                eprintln!("{USAGE}");
-                std::process::exit(64);
-            }
-        }
-    }
-    let listener = match listen(&socket) {
-        Ok(listener) => listener,
-        Err(why) => {
-            eprintln!("<3>couldn't listen on {}: {why}", socket.display());
-            std::process::exit(71);
-        }
-    };
+/// Holds the devices and answers the socket for as long as it runs.
+fn hold(socket: &Path, words: Words, marks: Marks) -> Result<(), Failure> {
+    let listener = listen(socket).map_err(|why| {
+        Failure::new(
+            Exit::Failed,
+            format!("it couldn't listen on {}", socket.display()),
+        )
+        .because(why.to_string())
+    })?;
     let shared = Arc::new(Mutex::new(Daemon {
         held: BTreeMap::new(),
         watches: Vec::new(),
@@ -197,6 +195,7 @@ fn main() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
     }
+    Ok(())
 }
 
 fn now_ms() -> u64 {

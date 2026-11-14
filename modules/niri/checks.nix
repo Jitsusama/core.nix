@@ -283,6 +283,42 @@ onLinux {
         touch $out
       '';
 
+  # A sandbox's window, one opened through pi-fence-display's
+  # wp-security-context-v1 socket as a fenced command's would be, opens on
+  # a workspace no screen shows and never takes the focus, whether it opens,
+  # uses a token from Joel's window, or opens while he's on the empty
+  # workspace at the end (sandboxed-windows-stay-behind.patch). The
+  # account's niri, nested in the sandbox, gets a stand-in window of Joel's
+  # and the sandbox's (tests/opens-sandboxed-windows-behind.py).
+  niri-opens-sandboxed-windows-behind =
+    let
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;
+      display = pkgs.callPackage ../pi/fence-display/package.nix { };
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "niri-opens-sandboxed-windows-behind"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          pkgs.dbus
+          pkgs.python3
+          pkgs.sway-unwrapped
+        ];
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+          python3 ${./tests}/opens-sandboxed-windows-behind.py ${lib.getExe display}
+        touch $out
+      '';
+
   # Xwayland without a cookie lets any account on the machine connect, read
   # the keys typed into X11 windows and type into them. The session's
   # xwayland-satellite, started on demand by the account's niri nested in

@@ -21,6 +21,8 @@ serde_json = "1.0"
 # sender wears it (../windows); the entries are found where the programs
 # daemon finds them (../programs).
 programs = { path = "../programs" }
+# The shape every command of ours takes: its flags, help, errors and exits.
+terminal-kit = { path = "../terminal-kit" }
 windows = { path = "../windows" }
 
 [dev-dependencies]

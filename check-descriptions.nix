@@ -1573,6 +1573,11 @@
     no niri key opens its screenshot screen, its key list or a quit that asks, and the launcher's
     Log Out quits without asking
   '';
+  niri-opens-sandboxed-windows-behind = ''
+    the session's niri, nested in the sandbox, opens a sandbox's windows on a workspace no screen
+    shows without moving the focus, even with an activation token from the focused window or while
+    the focused workspace is the empty one at the end
+  '';
   niri-patches-add-no-settings = ''
     no patch of niri's adds a setting a niri started before it would refuse at a switch, all of its
     settings with it, but srgb-gamut's, in every niri booted since, and opens-next-window-on's
@@ -4717,6 +4722,12 @@
     secret, an account's name, its server's domain and password in turn, each set in the ask and
     sent after the last; a step out partway sends nothing and says so; a join's steps and a
     refusal are said in the foot, never a card; and no password is shown
+  '';
+  wifi-looks-only-while-its-rows-are-shown = ''
+    the launcher's Wi-Fi asks wifid to look for networks only while its rows are shown: Wi-Fi or
+    something in it held, or a find from the root showing a row of its, the launcher open, or a
+    terminal's show walked into it; never open on another place, at home or on another's find,
+    and at once on stepping in
   '';
   wifid-passes-clippy = ''
     clippy finds nothing in wifid, its sign-in window or their tests

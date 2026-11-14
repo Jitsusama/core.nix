@@ -58,10 +58,17 @@ function clear(place, cols, at, inWindow) {
 // Where it can stand or hang at `place` on `cols`: a stop as
 // MarginCatRoutes.js's are, or null where it's in the air.
 function holding(place, cols, at) {
-    if (cols.length === 0 || at.height === undefined) {
-        // With no windows, or no screen's height, it walks the margin
-        // at the height it's at.
+    if (at.height === undefined) {
+        // With no screen's height, it walks the margin at the height
+        // it's at.
         return { kind: "ledge", c: -1, x: place.x, y: place.y, row: 0, how: "stands" };
+    }
+    // With no windows, nothing holds it but the floor, so a workspace
+    // emptied under it lets it fall there (VKCF3Z, e5a3ee44).
+    if (cols.length === 0) {
+        return Math.abs(place.y - Routes.floor(at)) <= at.cell
+            ? { kind: "floor", c: -1, x: place.x, y: Routes.floor(at), row: 0, how: "stands" }
+            : null;
     }
     const on = Routes.standing(cols, place, at);
     if (on !== null) {
