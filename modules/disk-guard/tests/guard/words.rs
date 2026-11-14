@@ -30,7 +30,7 @@ fn a_disk_filling_fast_says_when_it_fills() {
             &room("/", Band::Healthy, 300 * GIB, Some(5.0 * 3600.0)),
             None
         ),
-        "The disk has 300.0 GiB free. At this rate it fills in 5.0 h."
+        "The disk has 300.0 GiB free. At this rate it fills in 5 h."
     );
     assert_eq!(
         filesystem(
