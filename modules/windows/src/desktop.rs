@@ -17,7 +17,7 @@ use std::time::Instant;
 use serde_json::{Value, json};
 
 use crate::capture::Captures;
-use crate::entries::{Entries, tidy, unmarked};
+use crate::entries::{Entries, own_name};
 use crate::order::{Order, Putting};
 
 /// What hearing one event did.
@@ -241,8 +241,7 @@ impl Desktop {
             .iter()
             .map(|(window, _, session, named)| {
                 let title = window["title"].as_str().unwrap_or("");
-                let own = tidy(title, &named.program);
-                let own = if *session { unmarked(own) } else { own };
+                let own = own_name(title, &named.program, *session);
                 let shown = if own.is_empty() {
                     named.program.clone()
                 } else {
@@ -556,28 +555,6 @@ mod tests {
             json!({"id": 10, "title": "pi", "app_id": "kitty", "entry": "kitty", "program": "kitty"})
         );
         assert_eq!(said["desktop"]["output"], "eDP-1");
-    }
-
-    #[test]
-    fn a_sessions_window_is_named_without_pis_mark() {
-        let mut desktop = heard(BEGINNING);
-        hear(
-            &mut desktop,
-            r#"{"WindowOpenedOrChanged":{"window":{"id":10,"title":"\u03c0 - Tune the launcher - core.nix","app_id":"pi-session.3","pid":100,"workspace_id":1,"is_focused":true,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[1,1]},"focus_timestamp":{"secs":1000,"nanos":500000000}}}}"#,
-        );
-        hear(
-            &mut desktop,
-            r#"{"WindowOpenedOrChanged":{"window":{"id":13,"title":"\u03c0 - notes","app_id":"foot","pid":103,"workspace_id":1,"is_focused":false,"is_floating":true,"is_urgent":false,"layout":{"pos_in_scrolling_layout":null},"focus_timestamp":null}}}"#,
-        );
-        let said = records(&desktop);
-        // The row's mark already says it's pi's, so its name needn't.
-        assert_eq!(said["window:10"]["named"], "Tune the launcher - core.nix");
-        assert_eq!(
-            said["window:10"]["title"],
-            "\u{3c0} - Tune the launcher - core.nix"
-        );
-        // Another program's title is its own, a leading pi and all.
-        assert_eq!(said["window:13"]["named"], "\u{3c0} - notes");
     }
 
     #[test]

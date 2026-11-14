@@ -179,10 +179,18 @@ pub fn tidy<'a>(title: &'a str, program: &str) -> &'a str {
     title
 }
 
+/// A window's own name: its title tidied of its program's name and, a
+/// session's, of pi's mark leading it. Every reader of the name follows,
+/// so one window never has two names.
+pub fn own_name<'a>(title: &'a str, program: &str, session: bool) -> &'a str {
+    let own = tidy(title, program);
+    if session { unmarked(own) } else { own }
+}
+
 /// A session's title without pi's mark leading it, as pi titles its
 /// window "π - <session>", since the row already marks it pi's: the same
 /// mark written as text as Chrome's trailing name (VKCF3Z, 2026-11-13).
-pub fn unmarked(title: &str) -> &str {
+fn unmarked(title: &str) -> &str {
     let Some(rest) = title.strip_prefix('\u{3c0}') else {
         return title;
     };
@@ -395,6 +403,20 @@ mod tests {
         assert_eq!(tidy("Slack", "Slack"), "Slack");
         assert_eq!(tidy("about kitty", "kitty"), "about kitty");
         assert_eq!(tidy("anything", ""), "anything");
+    }
+
+    #[test]
+    fn only_a_sessions_window_is_named_without_pis_mark() {
+        let title = "\u{3c0} - Tune the launcher - core.nix";
+        assert_eq!(
+            own_name(title, "kitty", true),
+            "Tune the launcher - core.nix"
+        );
+        assert_eq!(own_name(title, "foot", false), title);
+        assert_eq!(
+            own_name("Inbox - Google Chrome", "Google Chrome", false),
+            "Inbox"
+        );
     }
 
     #[test]
