@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
-use crate::{Root, rounded};
+use crate::{Root, heat, rounded};
 
 const SUPPLIES: &str = "/sys/class/power_supply";
 
@@ -33,10 +33,22 @@ pub const SETTINGS_AGAIN: Duration = Duration::from_secs(5);
 /// its health, so a supply read each second asks the firmware once a
 /// minute. A limit set here is read again at once (`forget`). A file
 /// that's there but answered nothing keeps what it said last, and is read
-/// again `SETTINGS_AGAIN` on, once.
-#[derive(Default)]
+/// again `SETTINGS_AGAIN` on, once. Each battery's temperature that was
+/// slow to read, and when, is kept here too.
 pub struct Settings {
     read: HashMap<String, Read>,
+    temperatures: HashMap<String, (Instant, Option<u64>)>,
+    temperature_slow_from: Duration,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            read: HashMap::new(),
+            temperatures: HashMap::new(),
+            temperature_slow_from: heat::SLOW_FILE,
+        }
+    }
 }
 
 /// A battery's settings as last read, when, and how many reads running
@@ -119,6 +131,11 @@ impl Settings {
             },
         );
         set
+    }
+
+    /// The temperature of the battery in `folder`, in tenths of a degree.
+    fn temperature(&mut self, root: &Root, folder: &str, _now: Instant) -> Option<u64> {
+        root.number(&format!("{folder}/temp"))
     }
 
     /// Read the battery `name` again at its next read, as once its limit
@@ -298,7 +315,8 @@ pub fn record(
     let (charge_type, charge_types) = chosen(set.types);
     let (usb_type, usb_types) = chosen(at("usb_type"));
     // The kernel counts a battery's temperature in tenths of a degree.
-    let temperature = whole("temp")
+    let temperature = settings
+        .temperature(root, &folder, now)
         .and_then(|t| u32::try_from(t).ok())
         .map(|t| rounded(f64::from(t) / 10.0, 1));
     json!({
@@ -565,6 +583,46 @@ mod tests {
         );
         let moved = (json!("2025-03-08"), json!("Overheat"));
         assert_eq!(later, moved, "kept past a minute");
+    }
+
+    /// A battery's temperature slow to read is read again only once kept
+    /// `SLOW_KEPT`, as a slow zone's is: on Joel's laptop it's a call to
+    /// the firmware, 6 to 54 ms each second Power is watched, where the
+    /// battery's other figures answer in under 0.1 ms (2026-11-14). Which
+    /// counts as slow is set here, as for zones.
+    #[test]
+    fn a_slow_battery_temperature_is_read_again_only_once_kept_a_while() {
+        let root = std::env::temp_dir().join(format!("machine-temp-{}", std::process::id()));
+        let at = root.join("sys/class/power_supply/BAT0");
+        std::fs::create_dir_all(&at).unwrap();
+        let write = |tenths: &str| std::fs::write(at.join("temp"), format!("{tenths}\n")).unwrap();
+        write("370");
+        let held = Root::new(&root);
+        let said = |settings: &mut Settings, at: Instant| {
+            record(&held, "BAT0", &Value::Null, settings, at)["temperature_c"].clone()
+        };
+        let mut slow = Settings {
+            temperature_slow_from: Duration::ZERO,
+            ..Settings::default()
+        };
+        let mut quick = Settings {
+            temperature_slow_from: Duration::MAX,
+            ..Settings::default()
+        };
+        let first = Instant::now();
+        said(&mut slow, first);
+        said(&mut quick, first);
+        write("415");
+        let soon = first + Duration::from_secs(1);
+        let after = (said(&mut slow, soon), said(&mut quick, soon));
+        let kept = said(&mut slow, first + heat::SLOW_KEPT);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            after,
+            (json!(37.0), json!(41.5)),
+            "the slow one kept, the quick read"
+        );
+        assert_eq!(kept, json!(41.5), "kept past SLOW_KEPT");
     }
 
     // A Dell's firmware read fails when the kernel finds no 64 KiB buffer
