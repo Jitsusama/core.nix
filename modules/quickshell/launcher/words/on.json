@@ -595,6 +595,17 @@
       "empty": "Nothing unread from the desktop."
     },
     {
+      "id": "for-you:source:screen",
+      "in": "on:waiting",
+      "name": "On Screen",
+      "verb": "more",
+      "glyph": "notifications",
+      "said": {
+        "count": "{count} on screen"
+      },
+      "empty": "Nothing on screen."
+    },
+    {
       "id": "for-you:source:passwords",
       "in": "on:waiting",
       "name": "Passwords"
