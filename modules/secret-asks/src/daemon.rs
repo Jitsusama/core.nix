@@ -321,7 +321,7 @@ impl Daemon {
     fn release(self: &Arc<Self>, said: &Value) -> Value {
         let Some(id) = said["key"]
             .as_str()
-            .and_then(|key| key.strip_prefix("row:asks:"))
+            .and_then(|key| key.strip_prefix("ask:"))
         else {
             return self.refusal("refused", "no such ask", "gone");
         };
@@ -470,7 +470,7 @@ impl Daemon {
     fn refuse(&self, said: &Value) -> Value {
         let Some(id) = said["key"]
             .as_str()
-            .and_then(|key| key.strip_prefix("row:asks:"))
+            .and_then(|key| key.strip_prefix("ask:"))
         else {
             return self.refusal("refused", "no such ask", "gone");
         };
