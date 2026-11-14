@@ -282,9 +282,11 @@ fn read_kept(text: &str) -> Vec<(String, Setting)> {
 
 /// The own settings kept, as `read_kept` reads them.
 fn written_kept(kept: &[(String, Setting)]) -> String {
-    kept.iter()
-        .map(|(serial, own)| format!("{serial} {} {}\n", own.units, own.kelvin))
-        .collect()
+    use std::fmt::Write as _;
+    kept.iter().fold(String::new(), |mut text, (serial, own)| {
+        let _ = writeln!(text, "{serial} {} {}", own.units, own.kelvin);
+        text
+    })
 }
 
 /// A time of day, `HH:MM`, in minutes after midnight.
@@ -812,13 +814,13 @@ fn follow(folder: &Path, lock: Option<&Path>, evening: Option<&Evening>) -> Exit
         // and so is one plugged back in under its old name.
         let now = plugged(Path::new("/sys"), Path::new("/dev"));
         if Some(wanted) != lit || now != lights_seen {
-            if !wanted {
-                put_out_all();
-            } else {
+            if wanted {
                 if lit != Some(true) {
                     for_evening = evening.is_some_and(|evening| tonight(evening.profile));
                 }
                 light_all(for_evening, evening.map(|evening| evening.kept));
+            } else {
+                put_out_all();
             }
             lit = Some(wanted);
             lights_seen = now;
