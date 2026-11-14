@@ -48,8 +48,11 @@ FIRST_FREE = 11
 XRGB8888 = 1
 POOL_SIZE = 1280 * 800 * 4 * 2
 
-# The widths each resize asks for in turn, and how many resizes there are.
+# The widths each resize asks for in turn, and how many resizes there are. The first resize
+# warms up, unjudged: the sandbox's software GL builds niri's resize shader as it first draws
+# one, stalling niri for longer than the whole animation.
 WIDTHS = (480, 720)
+WARM_UP = 1
 RESIZES = 6
 # The nested niri's frame, at 60 Hz, half of which a resize's layout has to reach IPC within,
 # at the median: a commit meeting a paced refresh waits for most of a frame.
@@ -337,8 +340,13 @@ def main() -> None:
     id_ = reports.window("stand-in")
     window.roundtrip()
 
+    for round_ in range(WARM_UP):
+        resize(window, reports, id_, round_, [])
     failures: list[str] = []
-    latencies = [resize(window, reports, id_, round_, failures) for round_ in range(RESIZES)]
+    latencies = [
+        resize(window, reports, id_, round_, failures)
+        for round_ in range(WARM_UP, WARM_UP + RESIZES)
+    ]
     median = statistics.median(latencies)
     print(f"a resize's layout reached IPC a median {1000 * median:.1f} ms after its commit")
     if median > WITHIN:
