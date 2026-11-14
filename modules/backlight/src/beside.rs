@@ -10,6 +10,9 @@
 //! niri has on, looked at every few seconds, which costs a folder's read.
 //! A screen just on takes the night's white at once, since it's lighting
 //! up anyway; after that the night's own small steps are its glide.
+//!
+//! While a program that keeps its own colours is in front (front.rs), the
+//! screens take their own white at once, and the night's once it leaves.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -56,6 +59,8 @@ pub struct Beside {
     missed: BTreeMap<String, (u8, Instant)>,
     due: Option<Instant>,
     rests: Option<Instant>,
+    /// Whether a program that keeps its own colours is in front.
+    kept: bool,
 }
 
 impl Beside {
@@ -132,6 +137,22 @@ impl Beside {
     /// let be.
     pub fn look_now(&mut self, now: Instant) {
         self.due = Some(self.rests.map_or(now, |rests| rests.max(now)));
+    }
+
+    /// Whether a program that keeps its own colours is in front
+    /// (front.rs), when the screens hold their own white whatever the
+    /// night; they're looked at once when that changes.
+    pub fn keep_white(&mut self, kept: bool, now: Instant) {
+        if self.kept != kept {
+            self.kept = kept;
+            self.look_now(now);
+        }
+    }
+
+    /// Whether the screens hold their own white whatever the night.
+    #[must_use]
+    pub fn keeps_white(&self) -> bool {
+        self.kept
     }
 
     /// The relay started again at its own white, so every screen is set
@@ -315,6 +336,25 @@ mod tests {
             beside.wake(),
             Some(until + Duration::from_secs(1)),
             "the night's step after the rest waits"
+        );
+    }
+
+    #[test]
+    fn a_program_keeping_its_colours_gives_the_screens_their_white_at_once() {
+        let now = Instant::now();
+        let mut beside = Beside::new(now);
+        beside.looked(now);
+        let later = now + Duration::from_secs(1);
+        beside.keep_white(true, later);
+        assert!(
+            beside.keeps_white(),
+            "the screens took the night in front of GIMP"
+        );
+        assert_eq!(beside.wake(), Some(later), "GIMP's white waits for a look");
+        beside.keep_white(false, later);
+        assert!(
+            !beside.keeps_white(),
+            "the night didn't come back once GIMP left"
         );
     }
 }

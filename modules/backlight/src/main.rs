@@ -56,6 +56,11 @@
 //! Every call to wl-gammarelay-rs is given a moment to answer (ask.rs), so
 //! the warmth never holds the brightness, the keys or the lid.
 //!
+//! While a program that keeps its own colours, such as GIMP, is in front,
+//! as niri's event stream says (front.rs), every screen holds its own
+//! white and its brightness, so the colours Joel picks are the colours
+//! shown; once it leaves the front they follow again.
+//!
 //! In the evening, by the local clock, the screen eases to 70% of what the
 //! curve asks for, and back in the morning (evening.rs), looked at each
 //! minute, never jumping, and never dimming past what Joel set in that light
@@ -85,6 +90,7 @@ mod dbus;
 mod evening;
 mod facts;
 mod follow;
+mod front;
 mod keep;
 mod keyboard;
 mod light;
@@ -352,6 +358,17 @@ async fn keep_the_open_level() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// The standard curve the command line names, and the night white after
+/// it.
+fn arguments() -> Result<(Curve, u16), Box<dyn Error>> {
+    let standard = env::args_os()
+        .nth(1)
+        .ok_or("usage: backlight <standard curve> [night white] [evening]")?;
+    let curve = Curve::read(&fs::read_to_string(&standard)?)
+        .ok_or_else(|| format!("{} holds no curve", Path::new(&standard).display()))?;
+    Ok((curve, night_white()?))
+}
+
 /// The night white the command line gives, after the standard curve, or
 /// the night light's own.
 fn night_white() -> Result<u16, String> {
@@ -404,12 +421,7 @@ fn learned_curve(standard: Curve, learned: &Path) -> io::Result<(Curve, bool)> {
 }
 
 async fn run() -> Result<(), Box<dyn Error>> {
-    let standard = env::args_os()
-        .nth(1)
-        .ok_or("usage: backlight <standard curve> [night white] [evening]")?;
-    let standard = Curve::read(&fs::read_to_string(&standard)?)
-        .ok_or_else(|| format!("{} holds no curve", Path::new(&standard).display()))?;
-    let night_white = night_white()?;
+    let (standard, night_white) = arguments()?;
 
     let Some(screen) = Screen::find(Path::new("/sys/class/backlight"))? else {
         eprintln!("<5>this machine has no backlight to set");
@@ -477,6 +489,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         backlight.warmed(kelvin);
     }
     sensors = sensors.filter(|_| missing(readings.as_ref(), warm.as_ref(), &backlight));
+    let mut front = front::listen();
 
     loop {
         let wake = backlight.wake();
@@ -503,6 +516,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
             again = relay_started(&mut started) => if again {
                 backlight.relay_started();
             },
+            keeps = front::changed(&mut front) => backlight.in_front(keeps),
             () = until(wake) => backlight.step().await,
             changed = monitors.changed() => {
                 changed?;

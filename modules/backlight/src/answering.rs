@@ -164,6 +164,32 @@ impl Backlight<'_> {
         self.warm(|warmth, now| warmth.follow_the_room(follows, now));
     }
 
+    /// A program that keeps its own colours came to the front, or none is
+    /// there now (front.rs): while one is, the screens hold their own white
+    /// and their brightness, and after it they follow again.
+    pub(crate) fn in_front(&mut self, keeps: Option<String>) {
+        let held = keeps.is_some();
+        if held == self.night.beside.keeps_white() {
+            return;
+        }
+        match keeps {
+            Some(program) => eprintln!(
+                "<6>{program} keeps its own colours, so the screens hold their own white and \
+                 brightness"
+            ),
+            None => eprintln!("<6>the screens' white and brightness follow again"),
+        }
+        let now = Instant::now();
+        self.follow.keep_still(held);
+        self.night.beside.keep_white(held, now);
+        // Told directly rather than through `warm`, which would take the
+        // glide for one toward the room's light.
+        if let Some((warmth, _)) = &mut self.warmth {
+            warmth.keep_white(held, now);
+        }
+        self.say_warmth();
+    }
+
     /// Tells the shell how the warmth stands, when that changed: the
     /// warmth, whether it follows the room, whether a sensor sees colour
     /// and the room's settled colour while the screen follows it (warmth.rs
@@ -226,7 +252,11 @@ impl Backlight<'_> {
         self.night.beside.looked(now);
         let panel = self.screen.connector();
         let shown = beside::shown(Path::new("/sys/class/drm"), panel.as_deref());
-        let kelvin = self.night.wants;
+        let kelvin = if self.night.beside.keeps_white() {
+            WHITE
+        } else {
+            self.night.wants
+        };
         for screen in self.night.beside.owed(&shown, kelvin, now) {
             let answer = match relay_for(&bus, &screen).await {
                 Ok(relay) => ask::twice(ask::MOMENT, || set_warmth(&relay, kelvin)).await,
