@@ -1322,41 +1322,44 @@ in
     ];
   };
   # The margin cat's ball of yarn, a thing of its own rather than the cat:
-  # a ball four cells across on the ground line, its loose strand curling
-  # up, so it rolls on its own cells. The icon font has no yarn, so its
-  # glyph is the round ball with a seam (the tennis ball's).
+  # a ball four cells high on the ground line, a wound line across it, and
+  # its loose end leaving its side to lie flat along the ground behind it,
+  # so it reads as yarn at 1x rather than a note beside the bar's music
+  # (VKCF3Z, edf2b2c2). It's drawn in the cat's eight cells, so it stands
+  # on the cat's ground line. The icon font has no yarn, so its glyph is
+  # the round ball with a seam (the tennis ball's).
   yarn = {
     glyph = nerd "f0507";
     console = "o";
     means = "the margin cat's ball of yarn";
     pixels = [
-      ".....##."
-      "....#..#"
-      ".....#.."
-      "......#."
-      "..###.#."
-      ".#.#.#.."
-      ".##.##.."
+      "........"
+      "........"
+      "........"
+      "........"
       "..###..."
+      ".##..#.."
+      ".#..###."
+      "..###.##"
     ];
   };
   # The yarn rolling, drawn rolling left as the cat's profiles face: its
-  # seam turned one way and then the other, a drawing for each two cells it
-  # covers, so it turns as it goes rather than sliding, and its loose
-  # strand flicking up behind it.
+  # wound line turned one way and then the other, a drawing for each stretch
+  # of ground it covers, so it turns as it goes rather than sliding, and
+  # its loose end trailing behind it.
   yarnRollingA = {
     glyph = nerd "f0507";
     console = "o";
     means = "the margin cat's ball of yarn";
     pixels = [
-      "......#."
-      ".....#.#"
-      ".....#.."
-      "....#..."
+      "........"
+      "........"
+      "........"
+      "........"
       "..###..."
-      ".#..##.."
-      ".##..#.."
-      "..###..."
+      ".#.###.."
+      ".##.###."
+      "..###.##"
     ];
   };
   yarnRollingB = {
@@ -1364,14 +1367,14 @@ in
     console = "o";
     means = "the margin cat's ball of yarn";
     pixels = [
-      ".....##."
-      "......#."
-      ".....#.."
-      "....#..."
+      "........"
+      "........"
+      "........"
+      "........"
       "..###..."
-      ".##..#.."
-      ".#..##.."
-      "..###..."
+      ".###.#.."
+      ".##.###."
+      "..###.##"
     ];
   };
   # The padlock, as locked's is, beside anything typed that stays hidden.

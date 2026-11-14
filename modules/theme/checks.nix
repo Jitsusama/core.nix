@@ -72,8 +72,11 @@
   # glyph does (docs/design.md, Marks one height): square, its ink touching
   # its top and bottom rows, and centred across to within a cell, so each
   # pose of the cat stands on the same middle line at the same height. The
-  # three empty places' marks, the margin's cat's own poses and its yarn
-  # are drawn, so it can't pass on none.
+  # cat's yarn is a thing on the ground beside it, not a mark, so it's held
+  # to that instead: drawn in the sitting cat's own square of cells, and
+  # standing on their bottom row, the cat's ground line, however low it
+  # lies. The three empty places' marks, the margin's cat's own poses and
+  # its yarn are drawn, so it can't pass on none.
   every-pixel-mark-stands-level =
     let
       glyphs = import ./glyphs.nix { inherit lib; };
@@ -93,7 +96,16 @@
         && inked (lib.head rows) != [ ]
         && inked (lib.last rows) != [ ]
         && lib.max left right - lib.min left right <= 1;
-      crooked = lib.attrNames (lib.filterAttrs (_: mark: !level mark.pixels) drawn);
+      grounded =
+        rows:
+        let
+          cells = lib.length glyphs.nothingHere.pixels;
+        in
+        lib.length rows == cells
+        && lib.all (row: lib.stringLength row == cells) rows
+        && inked (lib.last rows) != [ ];
+      stands = name: if lib.hasPrefix "yarn" name then grounded else level;
+      crooked = lib.attrNames (lib.filterAttrs (name: mark: !stands name mark.pixels) drawn);
       missing = lib.filter (name: !(drawn ? ${name})) [
         "batting"
         "blinking"
