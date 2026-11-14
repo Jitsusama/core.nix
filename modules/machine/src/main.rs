@@ -94,8 +94,8 @@ use machine::words::Words;
 use machine::{
     Root, acts, boot, camera, clock_ms, counts, disk, disk_rows, firmware, firmware_rows, guard,
     heat, heat_rows, kept, keyboards, light, links, machine_rows, memory, now_ms, power_rows,
-    processor, rounded, rows, screen_acts, sleep, status, steered, supply, telemetry, tree, units,
-    using, written::Written,
+    processor, rounded, rows, screen_acts, sleep, spent::Spent, status, steered, supply, telemetry,
+    tree, units, using, written::Written,
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -261,34 +261,42 @@ impl Reader {
 
     /// Reads the kinds of these that are heard as their files are
     /// written (`HEARD`).
-    fn heard(&mut self, kinds: &HashSet<String>) -> Vec<Value> {
+    fn heard(&mut self, kinds: &HashSet<String>, spent: &mut Spent) -> Vec<Value> {
         let wants = |kind: &str| kinds.contains(kind);
         let mut records = Vec::new();
         if let Some(files) = self.steered.as_ref() {
             if wants("brightness") {
                 records.extend(steered::brightness(&self.root, files));
+                spent.ended("brightness", Instant::now());
             }
             if wants("warmth") {
                 records.extend(steered::warmth(&self.root, files));
+                spent.ended("warmth", Instant::now());
             }
         }
         if wants("camera") {
             records.extend(camera::cameras(&self.root));
+            spent.ended("camera", Instant::now());
         }
         if wants("link") {
             records.extend(links::links(&self.root));
+            spent.ended("link", Instant::now());
         }
         if wants("keyboards") {
             records.push(keyboards::connected(&self.root));
+            spent.ended("keyboards", Instant::now());
         }
         if wants("capslock") {
             records.push(keyboards::capslock(&self.root));
+            spent.ended("capslock", Instant::now());
         }
         if wants("layer") {
             records.extend(keyboards::layer(&self.root, self.layer.as_deref()));
+            spent.ended("layer", Instant::now());
         }
         if wants("counts") {
             records.extend(counts::boards(&self.root));
+            spent.ended("counts", Instant::now());
         }
         if wants("status") {
             let mut told = self.statuses.records(
@@ -302,24 +310,28 @@ impl Reader {
                     .told(&self.root, record, clock_ms(), self.page_b);
             }
             records.extend(told);
+            spent.ended("status", Instant::now());
         }
         records
     }
 
     /// Reads these kinds, as rates from their last read, the trees of
-    /// these pids among them, with what the buses last said.
+    /// these pids among them, with what the buses last said; and what
+    /// each kind read took, in microseconds.
     fn read(
         &mut self,
         kinds: &HashSet<String>,
         trees: &BTreeSet<u32>,
         buses: &Buses,
-    ) -> Vec<Value> {
+    ) -> (Vec<Value>, BTreeMap<&'static str, u64>) {
         let health = &buses.health;
         let at = clock_ms();
         let mut records = Vec::new();
+        let mut spent = Spent::from(Instant::now());
         let wants = |kind: &str| kinds.contains(kind);
         if wants("processor") {
             records.extend(self.processor_record(at));
+            spent.ended("processor", Instant::now());
         }
         if wants("memory") {
             let now = memory::counters(&self.root, at);
@@ -330,6 +342,7 @@ impl Reader {
                 self.page_b,
             ));
             self.memory = Some(now);
+            spent.ended("memory", Instant::now());
         }
         if wants("disk") {
             let names = disk::disks(&self.root);
@@ -346,75 +359,104 @@ impl Reader {
                 ));
             }
             self.disks = Some(now);
+            spent.ended("disk", Instant::now());
         }
         if wants("boot") {
             records.push(boot::record(&self.root, boot::asleep_s()));
+            spent.ended("boot", Instant::now());
         }
         if wants("sensor") {
             records.extend(heat::sensors(&self.root, &mut self.sensors, Instant::now()));
+            spent.ended("sensor", Instant::now());
         }
         if wants("zone") {
             records.extend(heat::zones(&self.root, &mut self.sensors, Instant::now()));
+            spent.ended("zone", Instant::now());
         }
         if wants("cooling") {
             records.extend(heat::cooling(&self.root, &mut self.sensors, Instant::now()));
+            spent.ended("cooling", Instant::now());
         }
         if wants("firmware") {
             records.extend(buses.firmware.iter().cloned());
+            spent.ended("firmware", Instant::now());
         }
         if wants("sleep") {
             records.push(sleep::record(&self.root));
+            spent.ended("sleep", Instant::now());
         }
         if wants("backlight") {
             records.extend(light::backlights(&self.root));
+            spent.ended("backlight", Instant::now());
         }
         if wants("light") {
             records.extend(buses.light.iter().cloned());
+            spent.ended("light", Instant::now());
         }
-        records.extend(self.heard(kinds));
+        records.extend(self.heard(kinds, &mut spent));
         if wants("awake") {
             records.push(sleep::awake(&buses.logind));
+            spent.ended("awake", Instant::now());
         }
         if wants("kept") {
             records.extend(kept::locks(&self.root, self.runtime.as_deref()));
+            spent.ended("kept", Instant::now());
         }
         if wants("profile") {
             records.push(kept::profile(&self.root, &buses.profile));
+            spent.ended("profile", Instant::now());
         }
         if wants("telemetry") {
             records.push(telemetry::record(buses.telemetry));
+            spent.ended("telemetry", Instant::now());
         }
         if wants("supply") {
-            for name in supply::supplies(&self.root) {
-                let said = buses.upower.get(&name).cloned().unwrap_or(Value::Null);
-                let now = Instant::now();
-                records.push(supply::record(
-                    &self.root,
-                    &name,
-                    &said,
-                    &mut self.charging,
-                    now,
-                ));
-            }
+            records.extend(self.supplies(&buses.upower));
+            spent.ended("supply", Instant::now());
         }
-        // The programs and the trees share one read of every process, and
-        // each measures its rates from whichever read came last.
-        let trees_wanted = wants("tree") && !trees.is_empty();
-        if wants("using") || trees_wanted {
-            let now = using::counters(&self.root, at);
-            if wants("using") {
-                records.extend(using::records(&now, self.programs.as_ref(), self.page_b));
-            }
-            if trees_wanted {
-                records.extend(tree::records(
-                    trees,
-                    &now,
-                    self.programs.as_ref(),
-                    self.page_b,
-                ));
-            }
-            self.programs = Some(now);
+        if wants("using") || (wants("tree") && !trees.is_empty()) {
+            records.extend(self.programs_and_trees(wants("using"), wants("tree"), trees, at));
+            spent.ended("using", Instant::now());
         }
+        (records, spent.by_kind())
+    }
+
+    /// Each power supply's record, with what `UPower` last said of it.
+    fn supplies(&mut self, upower: &BTreeMap<String, Value>) -> Vec<Value> {
+        supply::supplies(&self.root)
+            .into_iter()
+            .map(|name| {
+                let said = upower.get(&name).cloned().unwrap_or(Value::Null);
+                supply::record(&self.root, &name, &said, &mut self.charging, Instant::now())
+            })
+            .collect()
+    }
+
+    /// The programs' records where `using` asks them, and these pids'
+    /// trees where `trees_too` says. They share one read of every process, and each measures its
+    /// rates from whichever read came last, so their time is one kind's,
+    /// `using`.
+    fn programs_and_trees(
+        &mut self,
+        using: bool,
+        trees_too: bool,
+        trees: &BTreeSet<u32>,
+        at: u64,
+    ) -> Vec<Value> {
+        let mut records = Vec::new();
+        let now = using::counters(&self.root, at);
+        if using {
+            records.extend(using::records(&now, self.programs.as_ref(), self.page_b));
+        }
+        if trees_too && !trees.is_empty() {
+            records.extend(tree::records(
+                trees,
+                &now,
+                self.programs.as_ref(),
+                self.page_b,
+            ));
+        }
+        self.programs = Some(now);
         records
     }
 }
@@ -476,7 +518,10 @@ struct Daemon {
     hurried: HashSet<String>,
     /// When the last sleep began and ended, as logind's signal said.
     slept: Arc<Mutex<Value>>,
+    /// How long each of the last reads took, in microseconds.
     took: VecDeque<u64>,
+    /// What each kind of those reads took, in the same order.
+    kinds_took: VecDeque<BTreeMap<&'static str, u64>>,
 }
 
 struct Shared {
@@ -730,6 +775,7 @@ fn shared(root: &Root, words: Option<Words>, served: Arc<Served>) -> Shared {
             hurried: HashSet::new(),
             slept: Arc::new(Mutex::new(Value::Null)),
             took: VecDeque::new(),
+            kinds_took: VecDeque::new(),
         }),
         reader: Mutex::new(Reader {
             fixed: processor::fixed(root),
@@ -1044,12 +1090,14 @@ fn read_making(shared: &Shared, kinds: &HashSet<String>, asked: &[String], place
         (buses, trees)
     };
     let started = Instant::now();
-    let records = lock(&shared.reader).read(kinds, &trees, &buses);
+    let (records, kinds_took) = lock(&shared.reader).read(kinds, &trees, &buses);
     let took = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
     let mut daemon = lock(&shared.daemon);
     daemon.took.push_back(took);
+    daemon.kinds_took.push_back(kinds_took);
     while daemon.took.len() > TIMES {
         daemon.took.pop_front();
+        daemon.kinds_took.pop_front();
     }
     let now = Instant::now();
     for kind in kinds {
@@ -2099,10 +2147,14 @@ fn sources(daemon: &Daemon) -> Value {
 }
 
 /// What health says beside what every daemon's says: how long the last
-/// reads took.
+/// reads took, and what each kind of each took, so a slow read says
+/// what held it.
 fn health(shared: &Shared) -> Value {
     let daemon = lock(&shared.daemon);
-    json!({"took_us": daemon.took.iter().collect::<Vec<_>>()})
+    json!({
+        "took_us": daemon.took.iter().collect::<Vec<_>>(),
+        "kinds_took_us": daemon.kinds_took.iter().collect::<Vec<_>>(),
+    })
 }
 
 /// The answer to an act, the daemon's own ask, on a thread of its own;
