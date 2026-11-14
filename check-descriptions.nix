@@ -1547,6 +1547,10 @@
   niri-starts-able-to-go-first = ''
     the session's niri starts through its wrapper, which holds CAP_SYS_NICE
   '';
+  a-mac-signs-what-it-builds = ''
+    a Mac's Nix is given a line to sign with its own key, made before /etc under the name given
+    or the Mac's own
+  '';
   nix-builds-yield-to-the-person = ''
     Nix's builds run at a lower weight than the person's programs
   '';
