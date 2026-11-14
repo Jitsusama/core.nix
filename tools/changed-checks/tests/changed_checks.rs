@@ -2060,7 +2060,8 @@ fn a_keep_beside_a_gate_keeps_the_record_after_each_vm_test_it_traces() {
         .expect("mkfifo runs");
     assert!(made.success(), "no pipe to hold vm-y's trace on");
 
-    let keep = stand_in.started(&KEEPING, &[]);
+    // One at a time, so vm-x's trace is done before vm-y's begins.
+    let keep = stand_in.started(&KEEPING, &[("CHANGED_CHECKS_AT_ONCE_BESIDE_A_GATE", "1")]);
     // Open once vm-y's trace waits on it, so vm-x's is done.
     let holding = fs::File::options()
         .write(true)

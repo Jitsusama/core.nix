@@ -258,7 +258,7 @@ fn record(
     let each = if ordinary.is_empty() {
         BTreeMap::new()
     } else {
-        let may_begin = || !crate::pressure::memory_stalled();
+        let may_begin = |_| !crate::pressure::memory_stalled();
         traced(
             &ordinary,
             &derivations,
@@ -300,7 +300,7 @@ fn record(
             &derivations,
             tracing,
             &mut evaluation,
-            (|| paced.may_begin(), || paced.stops(), keep_each),
+            (|asked| paced.may_begin(asked), || paced.stops(), keep_each),
         );
         let kept = vm_each
             .into_inner()
@@ -322,15 +322,15 @@ fn record(
 /// traces and caches named after `at`, noting what it took as a chunk of
 /// `evaluation`, and give what each whose derivation is `derivations`'
 /// read, handing each to `each_read` as it's traced. One is traced at a
-/// time, and more only while `may_begin` says so; none is begun once
-/// `stop` says to.
+/// time, and more only while `may_begin` says so, given how many of those
+/// are under way; none is begun once `stop` says to.
 fn traced<'a>(
     names: &[&'a String],
     derivations: &Derivations,
     (source, system, at): (&str, &str, &Path),
     evaluation: &mut Evaluation,
     (may_begin, stop, each_read): (
-        impl Fn() -> bool + Sync,
+        impl Fn(usize) -> bool + Sync,
         impl Fn() -> bool + Sync,
         impl Fn(&'a str, &Reads) + Sync,
     ),
@@ -339,7 +339,10 @@ fn traced<'a>(
     let strace = reads::strace();
     let numbered: Vec<(usize, &String)> = names.iter().copied().enumerate().collect();
     let began = Instant::now();
+    let asked = gating::Asked::default();
+    let may_begin = || asked.ask(&may_begin);
     let traced = checks::each_at_once(&numbered, at_once_here(), may_begin, |&(number, name)| {
+        let _begun = asked.begun();
         if stop() {
             return Ok(None);
         }
