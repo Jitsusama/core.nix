@@ -79,7 +79,12 @@ Scope {
     // The notice it showed had its time, for Notifications.qml to rest it.
     signal rested(var notification)
 
-    onUpChanged: Report.say(`${up ? "lines" : "unlines"} notice ${notice?.summary ?? ""}`)
+    onUpChanged: {
+        Report.say(`${up ? "lines" : "unlines"} notice ${notice?.summary ?? ""}`);
+        Qt.callLater(root.count);
+    }
+    onCriticalChanged: Qt.callLater(root.count)
+    onAwayChanged: Qt.callLater(root.count)
     // Come onto the screen from quiet, its first frame there is the one the timing waits for.
     onShownChanged: {
         if (!shown)
@@ -90,16 +95,24 @@ Scope {
     }
     // Another notice in front starts its own time in full.
     onChosenChanged: {
-        if (resting.running)
-            resting.restart();
+        Qt.callLater(root.count);
         reported.changed();
     }
 
-    // Counted while the line shows a notice that can go, and Joel's here to read it.
+    // Starts the time of the notice the line shows afresh, while it can go and Joel's here to
+    // read it, or stops it. Said once what the line shows has settled, so the time is the new
+    // notice's. Started by hand rather than bound: a timer stops itself once it fires, and a
+    // binding that still reads true would never start it again for the next notice in front.
+    function count() {
+        resting.stop();
+        if (!up || critical || away)
+            return;
+        resting.interval = Line.lasts(notice?.expireTimeout ?? 0, notice?.actions?.length ?? 0);
+        resting.start();
+    }
+
     Timer {
         id: resting
-        running: root.up && !root.critical && !root.away
-        interval: Line.lasts(root.notice?.expireTimeout ?? 0, root.notice?.actions?.length ?? 0)
         onTriggered: root.rested(root.notice)
     }
 
