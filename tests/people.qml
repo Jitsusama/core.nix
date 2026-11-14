@@ -667,6 +667,24 @@ ShellRoot {
             const zoe = found("quill");
             expect("by Slack's name for her", names(zoe) === "Zo\u00eb \"Zed\" Quill"
                 && zoe[0].side === "", `${names(zoe)} ${zoe[0]?.side}`);
+        }),
+        {
+            // Slack answers an address it knows nobody by with no id, and
+            // the daemon holds that answer as any other.
+            what: "one Slack knows nobody by is asked about",
+            run: () => slack().ask({ emails: ["noone@example.com"] }),
+            holds: () => slack().known["noone@example.com"] !== undefined,
+            check: () => expect("Slack knows nobody by it",
+                !slack().known["noone@example.com"].id, "")
+        },
+        // Such a one is no one of Slack's, so the daemon's record of them
+        // makes no person a search finds.
+        seeking("noone@example.com", "one Slack knows nobody by is found by no one", () => {
+            const noone = found("noone@example.com");
+            expect("nobody found", noone.length === 0, names(noone));
+            expect("and nobody held",
+                !people.persons().some(person => person.key === "noone@example.com"),
+                names(people.persons()));
         })
     ]
 

@@ -90,18 +90,18 @@ PersonSource {
     // taken as one change, since each change makes everyone anew.
     property var pending: ({})
 
-    // How one stands in Slack, from what Slack told the daemon of them,
-    // for their note: active, away or in a huddle in People's words
-    // (words.json), a presence it doesn't know said as it is, and their
-    // status's emoji as its mark, which People weighs with what other
-    // sources say (Person.standing). The daemon words those it lists and
-    // finds the same way, from Slack's `stands` in its module.
     // One it was asked about and knows nobody by, said with no id, is no
     // one of Slack's.
     function knows(entry) {
         return Boolean(entry.id);
     }
 
+    // How one stands in Slack, from what Slack told the daemon of them,
+    // for their note: active, away or in a huddle in People's words
+    // (words.json), a presence it doesn't know said as it is, and their
+    // status's emoji as its mark, which People weighs with what other
+    // sources say (Person.standing). The daemon words those it lists and
+    // finds the same way, from Slack's `stands` in its module.
     function stood(entry) {
         const presence = presences[entry.presence ?? ""];
         return {
