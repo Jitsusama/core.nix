@@ -404,5 +404,15 @@
       "test_an_orchestrator_is_paused_with_no_words"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
+  },
+  {
+    "at": 1794627705,
+    "commit": "4515bb9f1e9dd08dce992c5885406b16d49da645",
+    "owner_pr": 4202,
+    "reason": "failed, then passed, at 4515bb9f1e9d",
+    "subtests": [
+      "test_a_session_its_host_wont_take_carries_on_as_plain_pi_in_its_window"
+    ],
+    "test": "vm-desktop-moves-keep-their-window"
   }
 ]
