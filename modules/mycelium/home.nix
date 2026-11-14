@@ -543,6 +543,10 @@ in
         package
         completion
       ];
+
+      # So an agent asked what the sessions are doing answers from the node,
+      # in words, the same model every other view draws.
+      home.file.".pi/agent/skills/mycelium/SKILL.md".source = ./SKILL.md;
     }
     (lib.mkIf (cfg.realm != null) {
       home.sessionVariables = {
