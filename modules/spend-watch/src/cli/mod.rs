@@ -369,7 +369,7 @@ fn findings(context: &Context, config: &Config) -> Result<(), Failure> {
     }
     let said = findings
         .iter()
-        .map(said_finding)
+        .map(|finding| said_finding(finding, context.room))
         .collect::<Vec<_>>()
         .join("\n");
     wrote(context.say(&said))
@@ -407,19 +407,24 @@ fn finding(context: &Context, config: &Config, key: &str) -> Result<(), Failure>
     if context.format().is_json() {
         return answer(context, "spend-watch.finding/1", one);
     }
-    wrote(context.say(&said_finding(one)))
+    wrote(context.say(&said_finding(one, context.room)))
 }
 
-/// One finding as a person reads it, in `findings` and `findings <key>`.
-fn said_finding(finding: &crate::findings::Finding) -> String {
-    format!(
-        "{}{}: {}\n  {}\n  key {}\n",
+/// One finding as a person reads it, in `findings` and `findings <key>`:
+/// its title hung after its severity and its detail set two cells in,
+/// each wrapped at whole words to the room, since a meter's title and a
+/// burn's detail run past a narrow terminal.
+fn said_finding(finding: &crate::findings::Finding, room: terminal_kit::layout::Room) -> String {
+    let prose = room.for_prose();
+    let lead = format!(
+        "{}{}: ",
         finding.severity.name(),
         if finding.marked { ", expected" } else { "" },
-        finding.title,
-        finding.detail,
-        finding.key
-    )
+    );
+    let title =
+        terminal_kit::layout::hung(&finding.title, terminal_kit::layout::width(&lead), prose);
+    let detail = terminal_kit::layout::paragraph(&finding.detail, 2, prose).join("\n");
+    format!("{lead}{title}\n{detail}\n  key {}\n", finding.key)
 }
 
 /// `sessions <id>`: all one session has spent, and the budget it draws

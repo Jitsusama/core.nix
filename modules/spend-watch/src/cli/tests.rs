@@ -214,3 +214,51 @@ fn an_import_beside_a_running_daemon_is_to_try_again() {
     let imported = ran(dir.path(), &["import"]);
     assert_eq!(imported.exit, Exit::TryAgain, "{}", imported.stderr);
 }
+
+fn long_finding() -> crate::findings::Finding {
+    serde_json::from_value(json!({
+        "key": "burn:2026-11-14", "detector": "burn", "severity": "note",
+        "title": "a burn in a quest whose title runs well past a narrow terminal",
+        "detail": "$138 in the last hour against $47 in a working hour; past what eight weeks crossed",
+        "dollars": 138.0, "surprise": 2.0, "badge": "$138/h",
+        "session": null, "quest": null, "action": null, "cap": false,
+    }))
+    .expect("a finding this test writes reads")
+}
+
+// A long title hangs under its own first word and a long detail keeps its
+// inset, so neither runs past a narrow terminal, as a burn's did at 80.
+#[test]
+fn a_long_finding_wraps_under_its_words() {
+    let said = said_finding(&long_finding(), terminal_kit::layout::Room::Cells(40));
+    let lines: Vec<&str> = said.lines().collect();
+    let past: Vec<&&str> = lines
+        .iter()
+        .filter(|line| line.chars().count() > 40)
+        .collect();
+    assert!(past.is_empty(), "lines past 40 cells: {past:?}\n{said}");
+    assert!(
+        lines[0].starts_with("note: a burn"),
+        "the title follows its severity:\n{said}"
+    );
+    assert!(
+        lines[1].starts_with("      "),
+        "the title's next line hangs under it:\n{said}"
+    );
+    assert_eq!(
+        lines.last(),
+        Some(&"  key burn:2026-11-14"),
+        "the key is last:\n{said}"
+    );
+}
+
+// Into a pipe a finding is three lines, so grep finds a title whole.
+#[test]
+fn a_finding_into_a_pipe_keeps_each_part_on_one_line() {
+    let said = said_finding(&long_finding(), terminal_kit::layout::Room::Unbounded);
+    assert_eq!(
+        said.lines().count(),
+        3,
+        "title, detail and key, one line each:\n{said}"
+    );
+}

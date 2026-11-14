@@ -1103,7 +1103,7 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
         status.says,
         "The disk is filling, with 210 B free. \
          The guard is clearing builds and caches nobody has used lately. \
-         At this rate it fills in 60 s.",
+         At this rate it fills in 1 m.",
         "said again from the fresh measure, filling to the moment it was due"
     );
     assert_eq!(

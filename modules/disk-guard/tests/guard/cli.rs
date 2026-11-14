@@ -232,7 +232,7 @@ fn status_tells_of_each_guard_that_wrote_one() {
     assert!(out.contains("/home"), "{out}");
     assert!(out.contains("filling"), "{out}");
     assert!(out.contains("150.0 GiB free of 1000.0 GiB"), "{out}");
-    assert!(out.contains("nearly-full in 2.0 h"), "{out}");
+    assert!(out.contains("nearly-full in 2 h"), "{out}");
     assert!(out.contains("freed 4.2 GiB"), "{out}");
     assert!(!out.contains("system guard"), "{out}");
 
@@ -242,7 +242,7 @@ fn status_tells_of_each_guard_that_wrote_one() {
     );
     let (_, out, _) = machine.run("status");
     assert!(out.contains("system guard"), "{out}");
-    assert!(out.contains("not heard from for 10 min"), "{out}");
+    assert!(out.contains("not heard from for 10 m"), "{out}");
 
     let (code, out, _) = machine.run("status --json");
     assert_eq!(code, 0);
@@ -461,7 +461,7 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
     // The newest entry, after what the rotated file still holds.
     let row = said.lines().last().unwrap_or_default();
     assert!(
-        row.contains("pass") && row.contains("1.0 GiB") && row.ends_with("reached in 60 s"),
+        row.contains("pass") && row.contains("1.0 GiB") && row.ends_with("reached in 1 m"),
         "a pass should say it was one, what it freed, how it ended and how long it took: {said}"
     );
     let answer: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
@@ -663,9 +663,9 @@ fn explain_says_how_each_band_would_treat_a_path() {
         &lines[1..],
         [
             "  in use: by nothing",
-            "  healthy: after 30.0 d idle",
-            "  filling: after 7.0 d idle",
-            "  nearly-full: after 24.0 h idle",
+            "  healthy: after 30 d idle",
+            "  filling: after 7 d idle",
+            "  nearly-full: after 1 d idle",
             "  critically-full: at once",
         ],
         "{out}"
@@ -757,7 +757,7 @@ fn plan_reads_the_survey_the_daemon_kept() {
     let (code, out, err) = machine.run("plan --band filling");
     assert_eq!(code, 0, "{err}");
     assert!(
-        out.starts_with("From the survey the daemon's last pass made, 10 min ago"),
+        out.starts_with("From the survey the daemon's last pass made, 10 m"),
         "{out}"
     );
     assert!(out.contains("seen.txt"), "what that survey saw: {out}");
