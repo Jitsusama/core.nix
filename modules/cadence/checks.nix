@@ -36,7 +36,11 @@ onLinux {
   # lines, each key weighed alike, and a day without them has none; of the
   # ledger, a finding goes to the longest prefix's owner, is kept once and
   # closes two days after its last, each owner is told once in one message,
-  # and a finding past its date is late once; and of the axes, each reading
+  # and a finding past its date is late once; of the units, a loop of three
+  # restarts in fifteen minutes (13 November's slack-unreads, replayed) is
+  # told at the tick after its third, once a spell, a failed unit from when it
+  # failed, a daemon signed out at once and one silent or unreachable once it
+  # holds, each with its last error and owner; and of the axes, each reading
   # is parsed from the card, the measure, the mesh, the notices and niri, a
   # figure past its bar marks its axis with its owner, a reading nothing
   # measures says so, and an axis is found by the start of its name.

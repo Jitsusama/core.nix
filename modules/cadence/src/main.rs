@@ -17,7 +17,12 @@
 //! orchestrator told (revive.rs says which are left down).
 //!
 //! Given an orchestrator, each tick also tells an orchestrator of any session of
-//! its that has sat idle two hours, once for each idle spell (idle.rs).
+//! its that has sat idle two hours, once for each idle spell (idle.rs), and
+//! tells it and the unit's owner (by `--owner`, else the watcher) of any of
+//! the account's units restarting in a loop, failed, or a daemon whose
+//! socket reads signed out or doesn't answer, once for each spell
+//! (units.rs). `cadence units [--at SECONDS]` says what that watch reads
+//! and would tell, sending nothing; at a moment past, from the journal.
 //!
 //! `cadence day`, run each evening by a timer of its own, reads the day
 //! just ended against the days before it and sends the orchestrator its note
@@ -31,8 +36,9 @@
 //! `cadence review`, run each Friday evening by a timer, sends the week's
 //! noise and blind spots to the addresses it's given (axes/review.rs).
 //!
-//!     cadence tick [--watcher ADDRESS --orchestrator ADDRESS]
+//!     cadence tick [--watcher ADDRESS --orchestrator ADDRESS] [--owner PREFIX=ADDRESS]...
 //!         [--restart WORDS [--revive ADDRESS]... [--skip ADDRESS]...]
+//!     cadence units [--at SECONDS]
 //!     cadence day [--orchestrator ADDRESS [--watcher ADDRESS] [--owner PREFIX=ADDRESS]...]
 //!     cadence axes [AXIS]
 //!     cadence review [--to ADDRESS]...
@@ -60,8 +66,10 @@ mod revive;
 mod speed;
 mod start;
 mod stats;
+mod units;
 mod watch;
 
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::io;
@@ -91,6 +99,7 @@ struct Args {
     restart: Option<String>,
     orchestrators: Vec<String>,
     skip: Vec<String>,
+    owners: BTreeMap<String, String>,
 }
 
 fn main() -> ExitCode {
@@ -98,6 +107,7 @@ fn main() -> ExitCode {
     match args.next().as_deref() {
         Some("tick") => {}
         Some("day") => return day(args),
+        Some("units") => return units_now(args),
         Some("axes") => return axes::run(args),
         Some("review") => return axes::review::run(args),
         Some("owe") => {
@@ -111,8 +121,10 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: cadence tick [--watcher ADDRESS --orchestrator ADDRESS] [--restart WORDS \
+                "usage: cadence tick [--watcher ADDRESS --orchestrator ADDRESS] \
+                 [--owner PREFIX=ADDRESS]... [--restart WORDS \
                  [--revive ADDRESS]... [--skip ADDRESS]...]\n       \
+                 {UNITS_USAGE}\n       \
                  {DAY_USAGE}\n       \
                  cadence axes [AXIS]\n       \
                  cadence review [--to ADDRESS]...\n       {}",
@@ -127,6 +139,7 @@ fn main() -> ExitCode {
         restart: None,
         orchestrators: Vec::new(),
         skip: Vec::new(),
+        owners: BTreeMap::new(),
     };
     while let Some(flag) = args.next() {
         let value = args.next();
@@ -136,6 +149,10 @@ fn main() -> ExitCode {
             ("--restart", Some(v)) => parsed.restart = Some(v),
             ("--revive", Some(v)) => parsed.orchestrators.push(v),
             ("--skip", Some(v)) => parsed.skip.push(v),
+            ("--owner", Some(v)) if v.contains('=') => {
+                let (prefix, address) = v.split_once('=').unwrap_or_default();
+                parsed.owners.insert(prefix.to_owned(), address.to_owned());
+            }
             _ => {
                 eprintln!("cadence: {flag} isn't a flag it takes, or has no value");
                 return ExitCode::from(2);
@@ -149,6 +166,41 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+const UNITS_USAGE: &str = "cadence units [--at SECONDS]";
+
+/// Says what the unit watch reads and would tell now, or at `--at`
+/// from the journal alone, sending nothing and keeping nothing.
+fn units_now(mut args: impl Iterator<Item = String>) -> ExitCode {
+    let at = match (args.next().as_deref(), args.next()) {
+        (None, _) => None,
+        (Some("--at"), Some(v)) if v.parse::<i64>().is_ok() => v.parse().ok(),
+        _ => {
+            eprintln!("usage: {UNITS_USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    let now = now_ms() / 1000;
+    let runtime = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    let read = units::read(at.unwrap_or(now), at.is_none(), runtime.as_deref());
+    let tells = units::due(
+        &read,
+        &mut units::Told::default(),
+        at.unwrap_or(now),
+        units::last_error,
+        clock,
+    );
+    println!(
+        "{} restarts in fifteen minutes, {} units failed, {} daemons asked",
+        read.restarts.len(),
+        read.failed.len(),
+        read.daemons.len()
+    );
+    for tell in &tells {
+        println!("{}", tell.text);
+    }
+    ExitCode::SUCCESS
 }
 
 const DAY_USAGE: &str =
@@ -227,6 +279,11 @@ fn run(args: &Args) -> io::Result<()> {
             eprintln!("cadence: telling of idle sessions: {err}");
         }
     }
+    if let Some(orchestrator) = &args.orchestrator
+        && let Err(err) = tell_units(&mesh, &folder, orchestrator, args, now)
+    {
+        eprintln!("cadence: telling of broken units: {err}");
+    }
     if let Some(watcher) = &args.watcher
         && let Err(err) = tell_reverted(&mesh, &state_home.join("net"), &folder, watcher, now)
     {
@@ -302,6 +359,47 @@ fn tell_reverted(
             // Not told, so the next tick tells it again.
             told.reverts.remove(&tell.key);
             failed = Some(err);
+        }
+    }
+    write_whole(&path, &serde_json::to_string_pretty(&told)?)?;
+    failed.map_or(Ok(()), Err)
+}
+
+/// Tells the orchestrator, and each unit's owner or else the watcher, of
+/// the units broken, remembering in `units.json` which spells were told.
+fn tell_units(
+    mesh: &Mesh,
+    folder: &Path,
+    orchestrator: &str,
+    args: &Args,
+    now: i64,
+) -> io::Result<()> {
+    let path = folder.join("units.json");
+    let mut told: units::Told = fs::read(&path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    let runtime = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    let read = units::read(now, true, runtime.as_deref());
+    let mut failed = None;
+    for tell in units::due(&read, &mut told, now, units::last_error, clock) {
+        let owner = units::owner(&tell.unit, &args.owners).or_else(|| args.watcher.clone());
+        let mut to = vec![orchestrator.to_owned()];
+        to.extend(owner.filter(|o| !o.eq_ignore_ascii_case(orchestrator)));
+        // A finding: each acts on it in its next turn, and nothing waits
+        // on an answer.
+        for address in &to {
+            if let Err(err) = mesh.send(&message(address, "finding", tell.text.clone())) {
+                failed = Some(err);
+            }
+        }
+        if failed.is_some() {
+            // Not told, so the next tick tells it again.
+            if let Some(spell) = told.spells.get_mut(&tell.key) {
+                spell.told = false;
+            }
+        } else {
+            println!("{} (to {})", tell.text, to.join(", "));
         }
     }
     write_whole(&path, &serde_json::to_string_pretty(&told)?)?;
