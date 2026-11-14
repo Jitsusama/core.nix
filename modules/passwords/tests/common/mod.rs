@@ -139,14 +139,15 @@ impl Running {
 
     /// The daemon with RELEASING as 1Password, reading `op://`
     /// references, these listed as `releases`, a stand-in bubblewrap,
-    /// and a runtime folder of its own, whose `secret-asks` holds the
-    /// asks (`asks`).
+    /// and a runtime folder and home of its own, whose `secret-asks`
+    /// holds the asks (`asks`) and whose home is the account's (`home`).
     pub fn releasing(test: &str, releases: &[&str]) -> Running {
         let words = std::env::var("LAUNCHER_WORDS")
             .expect("LAUNCHER_WORDS names no vocabulary; passwords-holds-no-secret hands it one");
         let folder = Running::folder_of(test);
         let bwrap = folder.join("bwrap");
         let runtime = folder.join("runtime");
+        let home = folder.join("home");
         let also = json!({
             "releases": releases,
             "git": "git",
@@ -158,6 +159,7 @@ impl Running {
             &[("1password", RELEASING)],
             &[
                 ("XDG_RUNTIME_DIR", runtime.to_str().unwrap()),
+                ("HOME", home.to_str().unwrap()),
                 ("RELEASED_VALUE", RELEASED_VALUE),
             ],
             &words,

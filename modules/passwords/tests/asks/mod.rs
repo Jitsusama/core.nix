@@ -259,6 +259,60 @@ fn an_ask_to_run_a_program_outside_the_root_owned_folders_is_refused() {
     assert!(!released(&running), "the manager was asked to release");
 }
 
+/// A profile the account may repoint, as `~/.nix-profile` is a link it
+/// owns, planted at the store's own bash: an agent could point it at a
+/// program it built itself, which is in the store too.
+fn planted_profile(running: &Running) -> PathBuf {
+    let profile = running.folder.join("home/.nix-profile");
+    std::fs::create_dir_all(&profile).unwrap();
+    let bin = profile.join("bin");
+    std::os::unix::fs::symlink(stored_bash().parent().unwrap(), &bin).unwrap();
+    bin
+}
+
+#[test]
+fn a_program_named_through_a_profile_the_account_may_repoint_is_refused() {
+    let running = Running::releasing("asks-repointed", &[LISTED]);
+    planted_profile(&running);
+    let id = "7123456789abcdef0123456789abcdef";
+    put_up(&running, id, LISTED, &["bash", "-c", "true"]);
+    let answer = answer(&running, id);
+    assert_eq!(answer["state"], "refused", "the answer: {answer}");
+    assert_eq!(
+        answer["why"], "not a root-owned program",
+        "the answer: {answer}"
+    );
+    assert!(!released(&running), "the manager was asked to release");
+}
+
+#[test]
+fn a_released_commands_path_leaves_out_a_profile_the_account_may_repoint() {
+    let running = Running::releasing("asks-path", &[LISTED]);
+    let planted = planted_profile(&running);
+    let id = "8123456789abcdef0123456789abcdef";
+    let bash = stored_bash();
+    put_up(
+        &running,
+        id,
+        LISTED,
+        &[
+            bash.to_str().unwrap(),
+            "-c",
+            "printf 'path %s\\n' \"$PATH\"",
+        ],
+    );
+    let mut client = running.client();
+    let row = row_of(&mut client, id);
+    client.ask(&yes(&row, 812));
+    let answer = answer(&running, id);
+    assert_eq!(answer["state"], "ran", "the answer: {answer}");
+    let said = answer["output"].as_str().unwrap_or_default();
+    assert!(
+        said.starts_with("path ") && !said.contains(planted.parent().unwrap().to_str().unwrap()),
+        "the command's PATH holds the account's own profile: {said}"
+    );
+}
+
 #[test]
 fn a_yes_on_the_rows_key_or_too_soon_releases_nothing_and_a_no_refuses() {
     let running = Running::releasing("asks-no", &[LISTED]);
