@@ -1020,11 +1020,11 @@ while a call shares the screen; a screenshot shows it, as it shows the
 marks. At rest it draws no frame. Once the keys rest two seconds on
 another column it walks there, never for keys passing through, so h and l
 tapped along the columns leave it sitting. A walk is animated, moved a
-whole device pixel's step each frame the screen draws, with character
+whole cell of its own art each frame the screen draws, with character
 (Joel, 2026-11-12: "we need proper smooth animations with character to
 them"): it stands and turns its head the way it's going, stops a moment
 to think, draws back a cell crouched, then walks, easing in and out, its
-two strides stepped by the ground it covers so its feet never slide. It
+four strides stepped by the ground it covers so its feet never slide. It
 walks on a cell and a half past its seat, steps back onto it and crouches
 a moment as it stops. The walk's own curve eases in as well as out, the
 one exception to the theme's ease-out, since a cat gathers speed from a
