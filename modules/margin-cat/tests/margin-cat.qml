@@ -471,6 +471,12 @@ QtObject {
         expect("rising before it and falling after",
             [Paths.frame(across, top.begins).pose, Paths.frame(across, top.ends - 1).pose],
             ["leaping", "falling"]);
+        // The shortest hop, level: a fifth of it is under two 60 Hz frames.
+        const hop = Ways.begun({ cell: 1, wide: 8, tall: 8 }, { x: 100, y: 400 });
+        Ways.leap(hop, { x: 110, y: 400 }, 0);
+        expect("a hop too short to hold the tuck skips it rather than flash it",
+            posed(Ways.timed(hop), "leaps").map(one => [one.pose, one.ms >= 33]),
+            [["leaping", true], ["falling", true]]);
         expect("never a jump between two frames", smooth(seen(across)), true);
         expect("a walk along one column leaps nothing",
             Paths.walk(seat(100), seat(400), world({ pause: 0 })).beats
