@@ -1579,6 +1579,10 @@
   niri-starts-able-to-go-first = ''
     the session's niri starts through its wrapper, which holds CAP_SYS_NICE
   '';
+  niri-tells-a-resize-at-once = ''
+    the session's niri, nested in the sandbox, reports a window's resize over IPC within half a
+    frame of the commit taking it, saying a resize moves the tile and how long ago it began
+  '';
   a-mac-signs-what-it-builds = ''
     a Mac's Nix is given a line to sign with its own key, made before /etc under the name given
     or the Mac's own

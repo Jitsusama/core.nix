@@ -248,6 +248,41 @@ onLinux {
         touch $out
       '';
 
+  # A window's resize reaches IPC within a refresh of the commit that takes
+  # it, rather than a paced frame later (refreshes-once-a-frame.patch), and
+  # its layout says a resize is moving the tile and how long ago it began,
+  # longer on a later report (tiled-positions.patch): the margin cat rides
+  # a window's edge from those reports. The account's niri, nested in the
+  # sandbox, resizes a stand-in window over and over
+  # (tests/tells-a-resize-at-once.py).
+  niri-tells-a-resize-at-once =
+    let
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "niri-tells-a-resize-at-once"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          pkgs.dbus
+          pkgs.python3
+          pkgs.sway-unwrapped
+        ];
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+          python3 ${./tests/tells-a-resize-at-once.py}
+        touch $out
+      '';
+
   # Xwayland without a cookie lets any account on the machine connect, read
   # the keys typed into X11 windows and type into them. The session's
   # xwayland-satellite, started on demand by the account's niri nested in
