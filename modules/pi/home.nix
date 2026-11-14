@@ -446,12 +446,18 @@ in
     # journal. The socket sits in a folder of its own so the fence can let
     # the folder in, which still holds the socket systemd makes anew when
     # the socket unit restarts; %t/pi-agent.sock links to it meanwhile.
+    # systemd never makes a link over a file already there, and a machine
+    # switched from the socket's old place keeps its old, dead socket at
+    # that path until it boots, so the old path refused every client on
+    # 14 November 2026 until it was cleared by hand. Clearing it before
+    # the socket starts lets systemd make the link.
     systemd.user.sockets.pi-agent-proxy = lib.mkIf proxied {
       Unit.Description = "The SSH agent pi's fenced commands reach, signing only logins to the hosts it's told of";
       Socket = {
         ListenStream = "%t/pi-agent/agent.sock";
         SocketMode = "0600";
         DirectoryMode = "0700";
+        ExecStartPre = "${pkgs.coreutils}/bin/rm -f %t/pi-agent.sock";
         Symlinks = [ "%t/pi-agent.sock" ];
         Service = "pi-agent-proxy.service";
       };
