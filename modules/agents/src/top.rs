@@ -665,9 +665,10 @@ mod tests {
         assert_eq!(stop["depth"], 1, "each is a step in: {stop}");
         assert_eq!(stop["thing"], "verb:agent:stop", "each is its act: {stop}");
         // Close is asked first, naming its session and saying what stays,
-        // from the row inside and from the orchestration's own acts alike.
+        // from the row inside and from the orchestration's own acts alike,
+        // since one at work loses its turn.
         let close = json!({"key": "verb:agent:close", "ask": {"ask": "close", "address": "O"},
-            "askedAs": "O", "leaves": "its folder stays (O)."});
+            "askedAs": "O", "leaves": "its folder stays (O).", "costly": true});
         let inside = found(&rows, "row:agents-top:O:close");
         assert_eq!(
             inside["acts"],
