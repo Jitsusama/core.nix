@@ -134,6 +134,26 @@ fn what_freed_something_failed_at_nothing_or_ran_while_healthy_isnt_an_error() {
     healthy.band = Band::Healthy;
     assert_eq!(failing(&healthy), None, "upkeep on a healthy disk");
 }
+
+// On 14 November two switches each rooted paths a pass had listed as
+// garbage, and each left an error line though the guard lists again.
+#[test]
+fn a_batch_gone_stale_since_the_listing_isnt_an_error() {
+    let stale = || Outcome::Failed("3 paths came alive since the listing".to_string());
+    let switched = report(0, vec![Outcome::Kept("in use".to_string()), stale()]);
+    assert_eq!(
+        failing(&switched),
+        None,
+        "a stale batch read as a failing guard"
+    );
+    let both = report(0, vec![stale(), Outcome::Failed("refused".to_string())]);
+    let failing = failing(&both).expect("a refusal beside a stale batch is still failing");
+    assert_eq!(
+        (failing.failed, failing.last.as_str()),
+        (1, "refused"),
+        "a stale batch was counted among the failures"
+    );
+}
 const HOUR: f64 = 3600.0;
 
 const PRODUCER: Class = Class::Producer {

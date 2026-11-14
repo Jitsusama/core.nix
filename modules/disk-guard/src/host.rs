@@ -3,7 +3,7 @@
 
 use crate::activity::{self, Process, Use};
 use crate::anchor::Dir;
-use crate::band::{Band, Space};
+use crate::band::{Band, Space, Thresholds};
 use crate::commands::{self, Job, Output, Ran};
 use crate::pace::{Pacer, Settling, Stopped};
 use crate::pass::{Disk, Outcome, Reclaimer};
@@ -12,7 +12,7 @@ use crate::reclaim::{self, Looker};
 use crate::survey::{Action, Offer};
 use crate::vouch::{self, Answer};
 use crate::{garbage, socket, workspaces};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, HashMap};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -318,7 +318,25 @@ pub struct Reclaim<'a> {
     refused: Vec<String>,
     band: Band,
     pacer: Option<Rc<RefCell<Pacer>>>,
+    /// The other filesystems the guard watches, which this pass gives way
+    /// to once one grows short of room.
+    elsewhere: Vec<Elsewhere>,
+    /// When `elsewhere` was last measured.
+    looked: Cell<Option<Instant>>,
 }
+
+/// Another filesystem the guard watches, as it was when a pass began.
+/// Passes run one after another, and on 14 November two on the system
+/// disk took 11 minutes each while a cargo build image beside it filled to
+/// its last 16 KiB, unmeasured until they ended.
+pub struct Elsewhere {
+    pub path: PathBuf,
+    pub thresholds: Thresholds,
+    pub band: Band,
+}
+
+/// How often a pass measures the other filesystems it gives way to.
+const LOOK_ELSEWHERE: Duration = Duration::from_secs(5);
 
 /// How long the system daemon may take over the garbage a user daemon asks
 /// it to collect: a pass of many batches, each measured.
@@ -339,7 +357,40 @@ impl<'a> Reclaim<'a> {
             refused: Vec::new(),
             band: Band::Healthy,
             pacer: None,
+            elsewhere: Vec::new(),
+            looked: Cell::new(None),
         }
+    }
+
+    /// Gives way, ending the pass before its next candidate, once one of
+    /// `elsewhere` reads a worse band than it did as the pass began and
+    /// than this pass's own, so the next step passes there first.
+    #[must_use]
+    pub fn giving_way(mut self, elsewhere: Vec<Elsewhere>) -> Self {
+        self.elsewhere = elsewhere;
+        self
+    }
+
+    /// The filesystem of `elsewhere` grown short of room, measured at most
+    /// every [`LOOK_ELSEWHERE`].
+    fn worse_elsewhere(&self) -> Option<&Path> {
+        if self
+            .looked
+            .get()
+            .is_some_and(|at| at.elapsed() < LOOK_ELSEWHERE)
+        {
+            return None;
+        }
+        self.looked.set(Some(Instant::now()));
+        self.elsewhere
+            .iter()
+            .find(|other| {
+                crate::sys::space(&other.path).is_ok_and(|space| {
+                    let now = other.thresholds.band(&space, other.band);
+                    now > other.band && now > self.band
+                })
+            })
+            .map(|other| other.path.as_path())
     }
 
     /// Tells `pacer` of every entry a removal unlinks, so it can rest
@@ -430,6 +481,20 @@ impl<'a> Reclaim<'a> {
 }
 
 impl Reclaimer for Reclaim<'_> {
+    fn stopping(&self) -> bool {
+        if commands::stop_waiting() {
+            return true;
+        }
+        let Some(path) = self.worse_elsewhere() else {
+            return false;
+        };
+        eprintln!(
+            "disk-guard: {} grew short of room, so this pass gives way to it",
+            path.display()
+        );
+        true
+    }
+
     fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
         let Some(action) = self.actions.get(&candidate.path) else {
             return Outcome::Failed("no source offered it".to_owned());

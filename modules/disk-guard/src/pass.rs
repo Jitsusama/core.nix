@@ -178,13 +178,16 @@ pub fn timed_out(why: &str) -> bool {
     why.contains(" ran past ")
 }
 
-/// How `report` went wrong, if it's a pass that ought to be told.
+/// How `report` went wrong, if it's a pass that ought to be told. A
+/// batch given up on as stale isn't a failure: a switch roots new paths
+/// between the listing and the delete, and the guard mends it by listing
+/// again. On 14 November each of two switches left an error line so.
 pub fn failing(report: &Report) -> Option<Failing> {
     let failures: Vec<&str> = report
         .actions
         .iter()
         .filter_map(|(_, outcome)| match outcome {
-            Outcome::Failed(why) => Some(why.as_str()),
+            Outcome::Failed(why) if !crate::garbage::stale(why) => Some(why.as_str()),
             _ => None,
         })
         .collect();
