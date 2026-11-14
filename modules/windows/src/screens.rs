@@ -596,6 +596,20 @@ fn backlit<'a>(
         .map(|name| name.as_str())
 }
 
+/// The Warmth's rows inside `screen`, the row of the screen `name` that
+/// holds the light (light/warmth.rs).
+fn warmth(name: &str, screen: &str, seen: &Seen, words: &Words) -> Vec<Value> {
+    let part = |id: &str| words.told.part(id);
+    let inside = light::warmth::Inside {
+        name,
+        screen,
+        named: &part,
+        numbers: &words.numbers,
+        now: seen.now,
+    };
+    light::warmth::rows(seen.light, &inside, &words.light)
+}
+
 /// A row's key in the place.
 pub fn key(id: &str) -> String {
     format!("row:{PLACE}:{id}")
@@ -699,14 +713,7 @@ pub fn rows(
         let stands = standing(output);
         let screen = key(&format!("display:{name}"));
         if holds == Some(name.as_str()) && in_the_room(name, shown.len()) {
-            let inside = light::warmth::Inside {
-                name,
-                screen: &screen,
-                named: &part,
-                numbers: &words.numbers,
-                now: seen.now,
-            };
-            rows.extend(light::warmth::rows(seen.light, &inside, &words.light));
+            rows.extend(warmth(name, &screen, seen, words));
         }
         if stands == "lit" && output["logical"].is_object() {
             rows.extend(settings::rows(name, output, words));

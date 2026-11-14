@@ -82,11 +82,10 @@ fn by_day_the_warmth_steps_into_its_switches_then_its_figures() {
         json!([{"key": "verb:more", "step": "rows"}]),
         "the Warmth's Return doesn't step into its rows"
     );
-    assert_eq!(
+    assert!(
         made[1..]
             .iter()
             .all(|inside| inside["parent"] == WARMTH && inside["depth"] == 2),
-        true,
         "what a step into the Warmth holds isn't inside it"
     );
 }
