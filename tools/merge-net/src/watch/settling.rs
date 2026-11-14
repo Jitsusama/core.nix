@@ -21,8 +21,8 @@ use std::thread::Scope;
 use serde_json::{Value, json};
 
 use super::{
-    AT_ONCE, Outcome, SEARCHES, SPLITS, World, attempt, clear_hold_of, fixed_forward,
-    list_flaky_unless_mended, listed_on_main, lock, same_drv, search, settle,
+    AT_ONCE, Outcome, SEARCHES, SPLITS, World, ask_before_settling, attempt, clear_hold_of,
+    fixed_forward, list_flaky_unless_mended, listed_on_main, lock, same_drv, search, settle,
 };
 use crate::state::{State, short};
 
@@ -366,6 +366,9 @@ impl<'a> Settler<'a> {
         match job {
             Job::Search { base, head, test } => {
                 let found = search(world, state, base, head, test, &|| self.splits())?;
+                if let Some(found) = &found {
+                    ask_before_settling(world, state, head, found);
+                }
                 self.end(test, || match found {
                     Some(found) => settle(world, state, base, head, found),
                     None => Ok(()),

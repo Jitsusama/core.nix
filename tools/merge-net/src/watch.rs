@@ -1947,6 +1947,26 @@ fn never_built(state: &State, commit: &str, subtests: &str) -> bool {
     built_none
 }
 
+/// Run `found`'s test at main's newest head as `settle` will ask there,
+/// before the write it is settled in, so that write reads what was
+/// recorded rather than running it, unless main moved again meanwhile. A
+/// net leaving waits for that write: on 14 November a watcher told at
+/// 17:18 that another build was installed waited to 18:19 on settles
+/// running their tests at main's newest head inside theirs.
+fn ask_before_settling(world: &dyn World, state: &State, head: &str, found: &Found) {
+    let test = match found {
+        Found::Merge(found) if !listed_on_main(world, head, &found.test) => &found.test,
+        Found::Before { test, .. } => test,
+        Found::Merge(_) | Found::Unsettled { .. } => return,
+    };
+    let Ok(newest) = world.head() else {
+        return;
+    };
+    if newest != head && !same_drv(world, &newest, head, test) {
+        attempt_together(world, state, &newest, test);
+    }
+}
+
 /// Hold switching on what a search found and revert it, list a test that
 /// failed at the base too, or keep a test whose search couldn't tell to
 /// run again at the next head. A test main's newest head passes is none of
@@ -4108,6 +4128,44 @@ mod tests {
             "the net waited for its search to end before it left"
         );
         assert_eq!(left.1, 1, "the search wasn't kept for the next build");
+    }
+
+    #[test]
+    fn a_net_leaving_waits_on_no_run_at_main_s_newest_head_a_settle_asks() {
+        // 14 November: a watcher told at 17:18 that another build was
+        // installed waited to 18:19 on its settles, which ran their tests
+        // at main's newest head, and a revert's checks, in their writes.
+        let state = state("leaves-before-newest");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            runs_for: Duration::from_millis(300),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        let settler = Settler::new(&world, &state);
+        settler.hand(search_for("vm-a"));
+        let recorded = std::thread::scope(|scope| {
+            settler.start(scope);
+            world.wait_while(|built| built.is_empty(), "the search's runs");
+            *world.moved.lock().unwrap() = Some("n".into());
+            world.wait_while(
+                |built| !built.iter().any(|(commit, _)| commit == "n"),
+                "the run at main's newest head",
+            );
+            let recorded = settler.leave(|| state.runs("n", "vm-a").len());
+            settler.close();
+            recorded
+        });
+        assert_eq!(
+            recorded, 0,
+            "the net leaving waited for the settle's runs at main's newest head to end"
+        );
+        assert!(
+            world.waited_out.lock().unwrap().is_empty(),
+            "main's newest head was never run"
+        );
     }
 
     #[test]
