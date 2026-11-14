@@ -21,6 +21,8 @@ rustPlatform.buildRustPackage rec {
       ../slack/src
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
+      ../daemon-client/Cargo.toml
+      ../daemon-client/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
       ../terminal-kit/Cargo.toml

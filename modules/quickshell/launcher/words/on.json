@@ -600,6 +600,38 @@
       "name": "Passwords"
     },
     {
+      "id": "for-you:source:pineapple",
+      "in": "on:waiting",
+      "name": "Safe Word",
+      "verb": "open",
+      "glyph": "stopped",
+      "tells": {
+        "stop": "Your agents stopped here until you resume them. Return opens where it was said.",
+        "asked": "Nothing stopped. Stop it yourself if they meant it.",
+        "joke": "Nothing stopped. Stop it yourself if it wasn't a joke.",
+        "no-tag": "Nothing stopped, since only a tag of you counts. Stop it yourself if they meant it.",
+        "resume": "Only you resume. Resume it if you agree."
+      },
+      "said": {
+        "count": "{count} times",
+        "you": "you",
+        "someone": "someone",
+        "stopped": "{who} stopped your agents on {reach}",
+        "stoppedAll": "{who} stopped all your agents, naming nothing narrower",
+        "asked": "{who} asked you to stop your agents, without the safe word",
+        "joke": "{who} said the safe word as a joke, so nothing stopped",
+        "noTag": "{who} said the safe word without tagging you, so nothing stopped",
+        "resumeAsked": "{who} asked you to resume {reach}",
+        "reach:everything": "everything",
+        "reach:pr": "pull request {repo}#{number}",
+        "reach:branch": "branch {branch} of {repo}",
+        "reach:repo": "the {repo} repository",
+        "reach:quest": "quest {quest}",
+        "reach:realm": "the {realm} realm",
+        "reach:named": "{name}"
+      }
+    },
+    {
       "id": "on:waiting:history",
       "in": "on",
       "name": "History",

@@ -20,19 +20,28 @@
 //!   [`record`] writes down what was decided, a stop's record included.
 //! - [`resume`] lists the stops standing and marks those Joel resumes,
 //!   for his own command (src/bin/pineapple.rs), which refuses under pi.
+//! - [`tell`] makes the rows Joel is shown in the launcher's Needs You,
+//!   with the presses each offers, and [`acts`] takes those presses
+//!   back; [`serve`] serves them on a socket of its own, taking a press
+//!   only from his shell ([`peer`]), and knocks as a row first appears.
 //!
 //! Readers hand it sayings from each platform, Slack first
 //! (src/bin/pineapple-slack.rs), and the enforcer acts on what it
 //! decides. The cases in sayings.json are the one table of what counts,
 //! so anything else judging a saying can be held to the same answers.
 
+pub mod acts;
 mod decide;
 pub mod gate;
 mod judge;
+pub mod peer;
 pub mod record;
 pub mod resume;
 mod scope;
+pub mod serve;
 pub mod slack;
+pub mod tell;
+pub mod vocabulary;
 mod words;
 
 pub use decide::{Decision, Heard, Reply, Tell, decide};

@@ -52,6 +52,8 @@ pub fn line(
         "by_joel": decision.by_joel,
         "reaches": decision.reaches.iter().map(ToString::to_string).collect::<Vec<_>>(),
         "fell_back": decision.fell_back,
+        "would_reach": decision.would_reach.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "would_fall_back": decision.would_fall_back,
         "tell": decision.tell.to_string(),
         "reply": decision.reply.to_string(),
         "gate": gate.to_string(),
