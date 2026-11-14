@@ -14,7 +14,8 @@ use std::time::Duration;
 /// What one act asks done.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Act {
-    /// Brings a session's window forward, as `spend-watch go` does.
+    /// Brings a session's window forward, as `spend-watch sessions ID go`
+    /// does.
     Go(String),
     /// Starts a program the line offers, such as a feed's sign-in.
     Launch(Vec<String>),
@@ -55,28 +56,53 @@ pub fn asked(act: &str, key: &str, line: Option<&Value>) -> Result<Act, Refusal>
     match act {
         "run" => {
             let run = words("run");
-            match run.as_slice() {
-                [] => Err(refused("bad-act", format!("{key} has nothing to run"))),
-                [program, go, session] if program == "spend-watch" && go == "go" => {
-                    Ok(Act::Go(session.clone()))
-                }
-                // The bar's mark runs the command line's own ask, done
-                // here rather than in a program of its own.
-                [program, findings, expect, finding]
-                    if program == "spend-watch" && findings == "findings" && expect == "expect" =>
-                {
-                    Ok(Act::Expect(finding.clone()))
-                }
-                _ => Ok(Act::Launch(run)),
+            if run.is_empty() {
+                return Err(refused("bad-act", format!("{key} has nothing to run")));
             }
+            if let Some(session) = gone_to(&run) {
+                return Ok(Act::Go(session.to_owned()));
+            }
+            // The bar's mark runs the command line's own ask, done here
+            // rather than in a program of its own.
+            if let Some(finding) = expected(&run) {
+                return Ok(Act::Expect(finding.to_owned()));
+            }
+            Ok(Act::Launch(run))
         }
         // The line's expect is the command line's own ask, `spend-watch
-        // findings expect <key>`, so its last word is the finding's key.
-        "expect" => match words("expect").last() {
-            Some(finding) => Ok(Act::Expect(finding.clone())),
-            None => Err(refused("bad-act", format!("{key} is expected already"))),
-        },
+        // findings <key> expect`, or `findings expect <key>` in a line
+        // written before.
+        "expect" => {
+            let said = words("expect");
+            match expected(&said).or_else(|| said.last().map(String::as_str)) {
+                Some(finding) => Ok(Act::Expect(finding.to_owned())),
+                None => Err(refused("bad-act", format!("{key} is expected already"))),
+            }
+        }
         _ => Err(refused("unknown-act", format!("no act {act:?} here"))),
+    }
+}
+
+/// The session a line's words bring forward: `spend-watch sessions ID
+/// go`, or `spend-watch go ID` in a line written before.
+pub fn gone_to(run: &[String]) -> Option<&str> {
+    let words: Vec<&str> = run.iter().map(String::as_str).collect();
+    match words.as_slice() {
+        ["spend-watch", "sessions" | "session", session, "go"] | ["spend-watch", "go", session] => {
+            Some(session)
+        }
+        _ => None,
+    }
+}
+
+/// The finding a line's words mark expected: `spend-watch findings KEY
+/// expect`, or `spend-watch findings expect KEY` in a line written before.
+fn expected(run: &[String]) -> Option<&str> {
+    let words: Vec<&str> = run.iter().map(String::as_str).collect();
+    match words.as_slice() {
+        ["spend-watch", "findings" | "finding", "expect", finding]
+        | ["spend-watch", "findings" | "finding", finding, "expect"] => Some(finding),
+        _ => None,
     }
 }
 
@@ -115,9 +141,37 @@ mod tests {
     fn burn() -> Value {
         json!({
             "key": "finding:burn:s1",
+            "run": ["spend-watch", "sessions", "s1", "go"],
+            "expect": ["spend-watch", "findings", "burn:s1", "expect"]
+        })
+    }
+
+    // A line a pass wrote before the command line's words moved still
+    // does what it offered, since the shell may hold one a while.
+    #[test]
+    fn a_line_in_the_old_words_still_acts() {
+        let key = "finding:burn:s1";
+        let old = json!({
+            "key": key,
             "run": ["spend-watch", "go", "s1"],
             "expect": ["spend-watch", "findings", "expect", "burn:s1"]
-        })
+        });
+        assert_eq!(
+            asked("run", key, Some(&old)),
+            Ok(Act::Go("s1".into())),
+            "the old go should still bring the session forward"
+        );
+        assert_eq!(
+            asked("expect", key, Some(&old)),
+            Ok(Act::Expect("burn:s1".into())),
+            "the old expect should still name the finding"
+        );
+        let mark = json!({"key": key, "run": ["spend-watch", "findings", "expect", "burn:s1"]});
+        assert_eq!(
+            asked("run", key, Some(&mark)),
+            Ok(Act::Expect("burn:s1".into())),
+            "the old mark should still be done in the daemon"
+        );
     }
 
     #[test]
@@ -142,7 +196,7 @@ mod tests {
         );
         let mark = json!({
             "key": "status:mark:burn:s1",
-            "run": ["spend-watch", "findings", "expect", "burn:s1"]
+            "run": ["spend-watch", "findings", "burn:s1", "expect"]
         });
         assert_eq!(
             asked("run", "status:mark:burn:s1", Some(&mark)),

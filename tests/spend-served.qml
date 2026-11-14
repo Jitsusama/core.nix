@@ -504,8 +504,8 @@ ShellRoot {
         shown.findings = [{
             key: "finding:burn:s1", name: "A burn in Aquifer", side: "alert",
             copy: "A burn in Aquifer.", role: "alert",
-            run: ["spend-watch", "go", "s1"], verb: "go to",
-            expect: ["spend-watch", "findings", "expect", "burn:s1"]
+            run: ["spend-watch", "sessions", "s1", "go"], verb: "go to",
+            expect: ["spend-watch", "findings", "burn:s1", "expect"]
         }];
         shown.shown = ["finding:burn:s1"].concat(shown.shown);
         shown.summaryRows = ["finding:burn:s1"].concat(shown.summaryRows);

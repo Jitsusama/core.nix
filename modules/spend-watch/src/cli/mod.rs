@@ -80,12 +80,8 @@ pub fn help() -> Help {
                 .example("spend-watch refresh", "the shell's figures, read again")
                 .exit(Exit::Unavailable, "the daemon isn't running to ask"),
         )
-        .subcommand(
-            reads("go", "bring a session's terminal forward")
-                .example("spend-watch go ID", "its window, in front")
-                .argument("<session>", "the session's id")
-                .exit(Exit::NotFound, "no such session is open"),
-        )
+        .subcommand(sessions_help())
+        .subcommand(old_go_help())
         .subcommand(
             Help::new("contract", "a feed's contract")
                 .example(
@@ -220,7 +216,11 @@ pub fn act(context: &Context, help: &Help) -> Result<(), Failure> {
         ["report", rest @ ..] => report_command(context, &config(&path)?, rest),
         ["budgets"] => budgets(context, &config(&path)?, session.as_deref()),
         ["findings"] => findings(context, &config(&path)?),
-        ["findings", "expect", key] => expect(context, &config(&path)?, key),
+        // The old order first, which notices written before still say.
+        ["findings", "expect", key] | ["findings", key, "expect"] => {
+            expect(context, &config(&path)?, key)
+        }
+        ["findings", key] => finding(context, &config(&path)?, key),
         ["backtest"] => {
             let config = config(&path)?;
             let (history, picture) = picture(&config)?;
@@ -230,7 +230,11 @@ pub fn act(context: &Context, help: &Help) -> Result<(), Failure> {
         }
         ["tokens", "replay", from, to] => replay(context, &config(&path)?, from, to),
         ["refresh"] => refresh(context, &config(&path)?),
-        ["go", session] => go(context, &config(&path)?, session),
+        ["sessions" | "session"] => report_command(context, &config(&path)?, &["by", "session"]),
+        ["sessions" | "session", id] => session_spend(context, &config(&path)?, id),
+        ["sessions" | "session", session, "go"] | ["go", session] => {
+            go(context, &config(&path)?, session)
+        }
         ["contract", "check", file] => contract(context, file),
         ["check-config", file] => check_config(context, file),
         ["show"] => show(context, &config(&path)?, false),
@@ -251,15 +255,51 @@ pub fn act(context: &Context, help: &Help) -> Result<(), Failure> {
     }
 }
 
-/// `findings`, and marking one expected.
+/// `findings`, one of them, and marking one expected.
 fn findings_help() -> Help {
-    reads("findings", "what holds now")
+    reads("findings", "what holds now, or one finding")
+        .alias("finding")
         .example("spend-watch findings", "each finding standing")
+        .example("spend-watch findings KEY", "the one whose key starts so")
+        .example("spend-watch findings KEY expect", "KEY stops notifying")
+        .argument("<key>", "a finding's key, or its start")
+        .exit(Exit::NotFound, "no finding has that key")
+        .subcommand(
+            reads("expect", "marks the finding as expected")
+                .example("spend-watch findings KEY expect", "KEY stops notifying")
+                .exit(Exit::NotFound, "no finding has that key"),
+        )
+        // The order notices written before still say.
         .subcommand(
             reads("expect", "marks a finding as expected")
-                .example("spend-watch findings expect KEY", "KEY stops notifying")
-                .argument("<key>", "the finding's key, as findings gives it")
-                .exit(Exit::NotFound, "no finding has that key"),
+                .argument("<key>", "the finding's key")
+                .unlisted(),
+        )
+}
+
+/// `go <session>`, which notices written before `sessions ID go` still
+/// say.
+fn old_go_help() -> Help {
+    reads("go", "bring a session's terminal forward")
+        .example("spend-watch go ID", "its window, in front")
+        .argument("<session>", "the session's id")
+        .exit(Exit::NotFound, "no such session is open")
+        .unlisted()
+}
+
+/// `sessions`: the week by session, one's spend, or its window.
+fn sessions_help() -> Help {
+    reads("sessions", "the week by session, or one session")
+        .alias("session")
+        .example("spend-watch sessions", "the week, cut by session")
+        .example("spend-watch sessions ID", "all it spent, and from what")
+        .example("spend-watch sessions ID go", "its window, in front")
+        .argument("<session>", "a session's whole id")
+        .exit(Exit::NotFound, "no session by that id has spent")
+        .subcommand(
+            reads("go", "bring its terminal forward")
+                .example("spend-watch sessions ID go", "its window, in front")
+                .exit(Exit::NotFound, "no such session is open"),
         )
 }
 
@@ -501,22 +541,84 @@ fn findings(context: &Context, config: &Config) -> Result<(), Failure> {
     }
     let said = findings
         .iter()
-        .map(|finding| {
-            format!(
-                "{}{}: {}\n  {}\n  key {}\n",
-                finding.severity.name(),
-                if finding.marked { ", expected" } else { "" },
-                finding.title,
-                finding.detail,
-                finding.key
-            )
-        })
+        .map(said_finding)
         .collect::<Vec<_>>()
         .join("\n");
     wrote(context.say(&said))
 }
 
-/// `findings expect <key>`: marks the finding whose key is it, or starts
+/// `findings <key>`: the standing finding whose key is it, or alone
+/// starts so, as `findings` says each.
+fn finding(context: &Context, config: &Config, key: &str) -> Result<(), Failure> {
+    no_own_form(context, "findings")?;
+    let history = History::open(&config.history()).map_err(unread)?;
+    let standing = crate::findings::standing(&history).map_err(unread)?;
+    let exact: Vec<_> = standing
+        .iter()
+        .filter(|finding| finding.key == key)
+        .collect();
+    let found = if exact.is_empty() {
+        standing
+            .iter()
+            .filter(|finding| finding.key.starts_with(key))
+            .collect()
+    } else {
+        exact
+    };
+    let [one] = found.as_slice() else {
+        return Err(if found.is_empty() {
+            Failure::new(Exit::NotFound, format!("no finding {key}"))
+                .because("none standing has that key, or starts so")
+                .try_this("spend-watch findings")
+        } else {
+            Failure::new(Exit::Usage, format!("{} findings start {key}", found.len()))
+                .because("a key's start has to name one")
+                .try_this("spend-watch findings")
+        });
+    };
+    if context.format().is_json() {
+        return answer(context, "spend-watch.finding/1", one);
+    }
+    wrote(context.say(&said_finding(one)))
+}
+
+/// One finding as a person reads it, in `findings` and `findings <key>`.
+fn said_finding(finding: &crate::findings::Finding) -> String {
+    format!(
+        "{}{}: {}\n  {}\n  key {}\n",
+        finding.severity.name(),
+        if finding.marked { ", expected" } else { "" },
+        finding.title,
+        finding.detail,
+        finding.key
+    )
+}
+
+/// `sessions <id>`: all one session has spent, and the budget it draws
+/// on, as `budgets --session` says it beside the budgets.
+fn session_spend(context: &Context, config: &Config, id: &str) -> Result<(), Failure> {
+    no_own_form(context, "sessions")?;
+    let (_, picture) = picture(config)?;
+    let standing = crate::standing::standing(&picture, config, Some(id));
+    let Some(session) = standing.session.filter(|session| session.budget.is_some()) else {
+        return Err(
+            Failure::new(Exit::NotFound, format!("no session {id} has spent"))
+                .because("a session is named by its whole id")
+                .try_this("spend-watch sessions"),
+        );
+    };
+    if context.format().is_json() {
+        return answer(context, "spend-watch.session/1", &session);
+    }
+    wrote(context.say(&format!(
+        "Session {} draws on {}: {} in all.\n",
+        session.id,
+        session.budget.as_deref().unwrap_or("nothing yet"),
+        session.spent.shown
+    )))
+}
+
+/// `findings <key> expect`: marks the finding whose key is it, or starts
 /// so, expected.
 fn expect(context: &Context, config: &Config, key: &str) -> Result<(), Failure> {
     no_own_form(context, "findings")?;
@@ -608,7 +710,7 @@ fn refresh(context: &Context, config: &Config) -> Result<(), Failure> {
     wrote(context.say(&format!("{said}\n")))
 }
 
-/// `go <session>`: brings a session's terminal forward.
+/// `sessions <session> go`: brings a session's terminal forward.
 fn go(context: &Context, config: &Config, session: &str) -> Result<(), Failure> {
     no_own_form(context, "go")?;
     crate::go::go(&config.registry, session).map_err(|unbrought| match unbrought {

@@ -100,9 +100,9 @@ pub(crate) fn unpriced(text: &str) -> Option<String> {
 }
 
 pub(crate) fn action_kind(action: &crate::findings::Action) -> &'static str {
-    match action.run.get(1).map(String::as_str) {
-        Some("go") => "go",
-        _ if action.name.to_lowercase().contains("sign in") => "sign-in",
+    match crate::acts::gone_to(&action.run) {
+        Some(_) => "go",
+        None if action.name.to_lowercase().contains("sign in") => "sign-in",
         _ => "ask",
     }
 }
@@ -220,8 +220,8 @@ fn actions(picture: &Picture, top: Option<&Finding>) -> Vec<ShellAction> {
             run: vec![
                 "spend-watch".into(),
                 "findings".into(),
-                "expect".into(),
                 top.key.clone(),
+                "expect".into(),
             ],
         });
     }

@@ -134,8 +134,64 @@ fn a_feed_breaking_the_contract_is_bad_input() {
 #[test]
 fn going_to_a_session_not_open_is_missing() {
     let dir = tempfile::tempdir().expect("a folder");
-    let gone = ran(dir.path(), &["go", "01a1"]);
+    let gone = ran(dir.path(), &["sessions", "01a1", "go"]);
     assert_eq!(gone.exit, Exit::NotFound, "{}", gone.stderr);
+}
+
+// The words notices wrote before each resource took its own command
+// still answer, exactly as the new ones do, since a notice outlives a
+// switch.
+#[test]
+fn the_old_words_answer_as_the_new_ones() {
+    let dir = tempfile::tempdir().expect("a folder");
+    for (old, new) in [
+        (vec!["go", "01a1"], vec!["sessions", "01a1", "go"]),
+        (
+            vec!["findings", "expect", "burn:s1"],
+            vec!["findings", "burn:s1", "expect"],
+        ),
+    ] {
+        let (was, is) = (ran(dir.path(), &old), ran(dir.path(), &new));
+        assert_eq!(
+            (was.exit, &was.stdout, &was.stderr),
+            (is.exit, &is.stdout, &is.stderr),
+            "{old:?} should answer as {new:?} does"
+        );
+    }
+}
+
+// A session or a finding that isn't there is missing, and says where to
+// look, rather than an empty answer.
+#[test]
+fn one_session_or_finding_not_there_is_missing() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let session = ran(dir.path(), &["sessions", "01a1"]);
+    assert_eq!(session.exit, Exit::NotFound, "{}", session.stderr);
+    assert!(
+        session.stderr.contains("spend-watch sessions"),
+        "a missing session should say where to look: {}",
+        session.stderr
+    );
+    let finding = ran(dir.path(), &["findings", "burn:s1"]);
+    assert_eq!(finding.exit, Exit::NotFound, "{}", finding.stderr);
+    assert!(
+        finding.stderr.contains("spend-watch findings"),
+        "a missing finding should say where to look: {}",
+        finding.stderr
+    );
+}
+
+// Bare `sessions` is the week cut by session, the report's own.
+#[test]
+fn the_sessions_are_the_week_by_session() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let sessions = ran(dir.path(), &["sessions", "--json"]);
+    let report = ran(dir.path(), &["report", "by", "session", "--json"]);
+    assert_eq!(sessions.exit, Exit::Done, "{}", sessions.stderr);
+    assert_eq!(
+        sessions.stdout, report.stdout,
+        "sessions should be the report by session"
+    );
 }
 
 // Asking a daemon that isn't running is its being unavailable, so a

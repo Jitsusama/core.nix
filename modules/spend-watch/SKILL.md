@@ -66,6 +66,6 @@ days. Cuts: quest, model, agent, repo, session, tool, day, source, budget.
   named in a log but not in the config; its spend still counts.
 - A forecast's range is its 80% one, checked against the history by
   `spend-watch backtest`.
-- A finding marked expected (`spend-watch findings expect <key>`) stays in
+- A finding marked expected (`spend-watch findings <key> expect`) stays in
   the collection but never asks for the person again. Mark one only when
   the person says it was expected.
