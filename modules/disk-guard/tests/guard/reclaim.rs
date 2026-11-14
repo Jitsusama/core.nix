@@ -2,7 +2,7 @@ use disk_guard::activity::Use;
 use disk_guard::anchor::Dir;
 use disk_guard::pass::Outcome;
 use disk_guard::plan::{Candidate, Class};
-use disk_guard::reclaim::{Looker, entry, remove_in_place, target};
+use disk_guard::reclaim::{Looker, entry, left_unemptied, remove_in_place, target};
 use std::collections::VecDeque;
 use std::fs;
 use std::io;
@@ -235,6 +235,33 @@ fn an_entry_that_is_a_subvolume_of_its_own_goes_whole() {
     );
     assert_eq!(outcome, Outcome::Reclaimed);
     assert!(!scratch.exists(), "gone, subvolume and all");
+}
+
+/// An earlier pass's trash holding what this account can't remove, as
+/// root's files that a session run as root left in a quest's scratch, is
+/// kept and says why, rather than failing every pass as it did on 14
+/// November. A test's account owns all it makes, which the guard empties
+/// anyway, so the refusal is handed in as the walk would meet it.
+#[test]
+fn a_trash_holding_what_the_account_cannot_remove_is_kept() {
+    let refused = io::Error::from(io::ErrorKind::PermissionDenied);
+    let outcome = left_unemptied(&refused);
+    assert!(
+        matches!(&outcome, Outcome::Kept(why) if why.contains("may not remove")),
+        "failed rather than kept: {outcome:?}"
+    );
+}
+
+/// Any other trouble emptying an earlier pass's trash still fails the
+/// entry, so a disk that's failing is never taken for a keep.
+#[test]
+fn a_trash_that_cannot_be_emptied_otherwise_fails() {
+    let broken = io::Error::from(io::ErrorKind::Other);
+    let outcome = left_unemptied(&broken);
+    assert!(
+        matches!(&outcome, Outcome::Failed(why) if why.starts_with("emptying what an earlier")),
+        "kept rather than failed: {outcome:?}"
+    );
 }
 
 #[test]

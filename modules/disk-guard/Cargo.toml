@@ -28,3 +28,10 @@ zbus = { version = "5", features = ["p2p"] }
 [[test]]
 name = "guard"
 path = "tests/guard/main.rs"
+
+# Its own program, since a test harness's threads would take the signal it
+# sends (tests/held-stop.rs).
+[[test]]
+name = "held-stop"
+path = "tests/held-stop.rs"
+harness = false
