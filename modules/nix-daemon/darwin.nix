@@ -68,12 +68,7 @@ in
     # After /etc is written: restart Nix only when the line it reads differs
     # from the one it was last restarted for.
     system.activationScripts.postActivation.text = lib.mkAfter ''
-      line=$(/usr/bin/shasum -a 256 /etc/nix/signing.conf | /usr/bin/cut -d' ' -f1)
-      if [ "$line" != "$(/bin/cat ${read} 2>/dev/null)" ] &&
-        /bin/launchctl print system/${cfg.label} >/dev/null 2>&1; then
-        echo "restarting ${cfg.label}, so it signs what it builds" >&2
-        /bin/launchctl kickstart -k system/${cfg.label} && echo "$line" > ${read}
-      fi
+      ${pkgs.bash}/bin/bash ${./restart-for-signing.sh} ${cfg.label} ${read}
     '';
 
     environment.etc."nix/signing.conf".text = ''
