@@ -220,11 +220,6 @@
     "exits"
     "helps"
   ];
-  passwords = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   passwords-1password = [
     "kit"
     "helps"

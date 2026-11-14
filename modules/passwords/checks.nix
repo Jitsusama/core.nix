@@ -31,10 +31,13 @@ onLinux {
   # in the state folder for Joel alone, holding no secret nor any hash,
   # outlives the daemon, and holds since when trouble was found until a
   # check finds none, each told to a watch. The daemon can't be read
-  # through /proc by the account's other processes, and ends as soon as
-  # whatever ran it closes its end. The command's tests run too: no
-  # command reaches an entry or a secret, and each mistyped one says what
-  # it needs. Its rows are said in the account's own vocabulary, every
+  # through /proc by the account's other processes, says nothing of its
+  # own on the shell's pipe whether it ends well, fails or panics, and ends
+  # as soon as whatever ran it closes its end. The command's tests run too: no
+  # command reaches an entry or a secret, each refused as asked wrongly
+  # with nothing on stdout and nothing typed after it said back; each
+  # mistyped one says what it needs; and a bare run and the help, which
+  # fits 60 columns, say passwords are in the launcher. Its rows are said in the account's own vocabulary, every
   # word of them its, as the shell says them.
   passwords-holds-no-secret = pkgs.callPackage ./package.nix {
     words =
@@ -42,8 +45,9 @@ onLinux {
         (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
   };
   # passwords keys lists what an SSH agent holds where 1Password's
-  # listens, ~/.1password/agent.sock: a row a key, its type, size,
-  # fingerprint, comment and public half, the same as --json, nothing for
+  # listens, ~/.1password/agent.sock: a table under a head counting them,
+  # a row a key, its type, size, fingerprint, comment and public half,
+  # drawn whole into a pipe, and JSON naming passwords.keys/1, no row for
   # an agent holding nothing, and how to turn it on when none listens. Its
   # agent is a stand-in ssh-agent the tests start in a home of their own,
   # holding a key made for them, so 1Password's is never reached

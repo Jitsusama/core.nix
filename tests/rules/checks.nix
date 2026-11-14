@@ -182,6 +182,7 @@
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
         open-now = recentFiles;
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
+        passwords = pkgs.callPackage ../../modules/passwords/package.nix { };
         pi-packages = pkgs.callPackage ../../modules/pi-packages/package.nix { };
         recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
