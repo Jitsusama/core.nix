@@ -9459,11 +9459,21 @@ Scope {
         homeHeld = false;
         homeUnheld = why;
     }
+    // Each way it opens whole after the first says so too: 19 of Joel's
+    // chords into home opened whole over three days, 92 to 247 ms to their
+    // frames, with no line saying home wasn't held, so none was kept or it
+    // couldn't be held again (2026-11-14).
     function homeRescued() {
-        if (homeKept.length === 0)
+        if (homeKept.length === 0) {
+            if (openingsDrawn > 0)
+                console.warn("launcher: home wasn't held as its chord came, and none was"
+                    + ` kept: ${homeUnheld}`);
             return false;
+        }
         console.warn(`launcher: home wasn't held as its chord came: ${homeUnheld}`);
         keepHome();
+        if (!homeHeld)
+            console.warn(`launcher: home couldn't be held again: ${homeUnheld}`);
         return homeHeld;
     }
 
