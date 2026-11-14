@@ -322,6 +322,10 @@ pub trait Interface {
     /// that's fresh and from a new look if not.
     fn reassociate(&self) -> zbus::Result<()>;
 
+    /// Moves to another access point of the network it's on, by that
+    /// access point's address.
+    fn roam(&self, bssid: &str) -> zbus::Result<()>;
+
     /// What the card's driver reads of its link now: signal, noise, rates,
     /// as a dictionary inside a variant.
     fn signal_poll(&self) -> zbus::Result<OwnedValue>;

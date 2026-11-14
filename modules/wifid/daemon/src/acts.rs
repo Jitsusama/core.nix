@@ -7,6 +7,8 @@
 //! ```text
 //! {"id": 7, "ask": "act", "act": "leave", "network": "Lantern"}
 //! {"id": 7, "done": true}
+//! {"id": 9, "ask": "act", "act": "roam", "bssid": "6c:ae:f6:c1:84:26"}
+//! {"id": 9, "done": true}
 //! {"id": 8, "ask": "act", "act": "join", "network": "Lantern", "password": "..."}
 //! {"id": 8, "stage": "joining", "said": "connecting to Lantern\u{2026}", "done": false}
 //! {"id": 8, "stage": "online", "said": "connected to Lantern", "done": true}
@@ -77,6 +79,10 @@ fn asking(said: &Value) -> Result<Asking, (&'static str, String)> {
             done,
         },
         "scan" => Ask::Scan { done },
+        "roam" => Ask::Roam {
+            bssid: address(said)?,
+            done,
+        },
         "leave" => Ask::Leave {
             name: network()?,
             done,
@@ -93,6 +99,20 @@ fn asking(said: &Value) -> Result<Asking, (&'static str, String)> {
         other => return Err(("unknown-act", format!("no act {other:?} here"))),
     };
     Ok(Asking::Once(ask, answer))
+}
+
+/// The access point a `roam` ask names, by its address, in lower case as
+/// wpa_supplicant writes it.
+fn address(said: &Value) -> Result<String, (&'static str, String)> {
+    let bssid = said.get("bssid").and_then(Value::as_str).unwrap_or("");
+    let parts: Vec<&str> = bssid.split(':').collect();
+    let hex = |part: &&str| part.len() == 2 && part.chars().all(|digit| digit.is_ascii_hexdigit());
+    if parts.len() == 6 && parts.iter().all(hex) {
+        Ok(bssid.to_ascii_lowercase())
+    } else {
+        let why = "say the access point by its address, as 6c:ae:f6:c1:84:26";
+        Err(("bad-ask", why.to_owned()))
+    }
 }
 
 /// Does what one `act` ask says through wifid's main loop, telling the
@@ -267,6 +287,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn roaming_asks_for_the_access_point_by_its_address() {
+        let heard = acted(
+            json!({"act": "roam", "bssid": "6C:AE:F6:C1:84:26"}),
+            |ask| {
+                let Ask::Roam { bssid, done } = ask else {
+                    panic!("asked {ask:?}, not to roam");
+                };
+                assert_eq!(
+                    bssid, "6c:ae:f6:c1:84:26",
+                    "written as wpa_supplicant writes it"
+                );
+                done.send(Ok(())).expect("answered");
+            },
+        )
+        .await;
+        assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
+    }
+
+    #[tokio::test]
     async fn a_refused_act_says_why_as_varlink_names_it() {
         let heard = acted(json!({"act": "forget", "network": "Lantern"}), |ask| {
             let Ask::Forget { done, .. } = ask else {
@@ -420,5 +459,9 @@ mod tests {
         assert_eq!(heard[0]["error"]["code"], "bad-ask");
         let heard = acted(json!({"act": "radio"}), drop).await;
         assert_eq!(heard[0]["error"]["code"], "bad-ask");
+        for bssid in [json!(null), json!("next door"), json!("6c:ae:f6:c1:84")] {
+            let heard = acted(json!({"act": "roam", "bssid": bssid}), drop).await;
+            assert_eq!(heard[0]["error"]["code"], "bad-ask", "roaming to {bssid}");
+        }
     }
 }
