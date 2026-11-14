@@ -3,9 +3,9 @@ for a burst of conversations.
 
 Every conversation a host starts or wakes opens its own MCP connections,
 and each resolves the server's headers afresh, running any command they
-name with execSync. On optimus that command fetches a gateway token
-through dev, ruby and gpg, about 0.27 s, during which every conversation
-in the host stands still; ten waking together stood still ten times.
+name with execSync. A command that fetches a token through a few
+programs can take about 0.27 s, during which every conversation in the
+host stands still; ten waking together stand still ten times.
 
 Run the command through exec instead, and let every connection opened
 within 30 s share that one run, so a burst runs it once. A run that

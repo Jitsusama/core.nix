@@ -4,8 +4,8 @@ copied, without cloning it a second time.
 Each conversation's start refreshes its providers' models twice, once
 from the store alone and once over the network, and each time the store
 returns a copy of the provider's catalogue that pi-ai then clones again.
-On optimus the catalogues are 336 KB of JSON, and the second clone alone
-cost about 0.07 s of every wake. Every store pi ships already answers
+With a few providers signed in the catalogues come to about 336 KB of
+JSON, and the second clone alone costs about 0.07 s of every wake. Every store pi ships already answers
 with a copy of its own, so the provider can't change what the store
 holds either way.
 
