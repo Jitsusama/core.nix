@@ -17,6 +17,9 @@ pub const BRIGHTENING: Duration = Duration::from_secs(1);
 /// How long dimmer light has to hold.
 pub const DIMMING: Duration = Duration::from_secs(4);
 
+/// How long a move to a dimmer level glides.
+pub const FADING: Duration = Duration::from_secs(25);
+
 /// A move the light asked for, waiting to see whether the light holds.
 #[derive(Clone, Copy, Debug)]
 struct Pending {
@@ -217,5 +220,41 @@ mod tests {
             Duration::from_millis(250) + Duration::from_secs_f64(0.0375)
         );
         assert_eq!(long.length, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn a_dimmer_way_glides_down_over_seconds() {
+        let start = Instant::now();
+        let ramp = Ramp::new(0.8, 0.2, start);
+        let second = start + Duration::from_secs(1);
+        assert!(!ramp.done(second), "dimmed within a second");
+        assert!(
+            ramp.at(second) > 0.7,
+            "at {} after a second",
+            ramp.at(second)
+        );
+        assert!(ramp.done(start + FADING), "still dimming after {FADING:?}");
+        assert!(
+            (ramp.at(start + FADING) - 0.2).abs() < 1e-9,
+            "arrived at {}",
+            ramp.at(start + FADING)
+        );
+    }
+
+    #[test]
+    fn dimming_takes_the_same_share_off_each_moment() {
+        let start = Instant::now();
+        let ramp = Ramp::new(0.8, 0.2, start);
+        let quarter = FADING / 4;
+        let quarters: Vec<f64> = (0..=4)
+            .map(|step| ramp.at(start + quarter * step))
+            .collect();
+        for pair in quarters.windows(2) {
+            let share = pair[1] / pair[0];
+            assert!(
+                (share - 0.25_f64.powf(0.25)).abs() < 1e-6,
+                "a quarter took {share} of {quarters:?}"
+            );
+        }
     }
 }

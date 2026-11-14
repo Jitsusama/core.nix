@@ -520,6 +520,24 @@ mod tests {
     }
 
     #[test]
+    fn a_brighter_room_mid_glide_is_followed_at_once() {
+        // A lamp switched on while the screen glides down is followed
+        // within its second, not once the glide ends.
+        let start = Instant::now();
+        let mut follow = following(1000.0, 0.8, start);
+        let _ = follow.heard(10.0, 0.8, start);
+        follow.start(0.8, start + DIMMING).unwrap();
+        let lit = start + DIMMING + Duration::from_secs(5);
+        let shown = follow.step(lit).unwrap();
+        let _ = follow.heard(1000.0, shown, lit);
+        assert_eq!(
+            follow.start(shown, lit + BRIGHTENING),
+            Some(0.8),
+            "the lamp waited on the glide"
+        );
+    }
+
+    #[test]
     fn with_the_lid_shut_its_dark_moves_nothing() {
         let start = Instant::now();
         let mut follow = following(1000.0, 0.8, start);
