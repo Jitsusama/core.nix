@@ -501,13 +501,14 @@ ShellRoot {
             return;
         // Each window is opened with an app id of its own, which its process
         // is told, so the node's record of what it holds names it as niri
-        // lists it; a hosted one's viewer, by its session's id.
+        // lists it; a hosted one's viewer, a sleeper's too, by its session's
+        // id.
         const asks = Niri.spawns.map(command => asked(command)).filter(one => one !== null);
         const named = asks.map(one => [one.classed]);
         const socket = `${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.sock`;
         expect("each window is asked of the sessions' socket with an app id of its own",
             asks.every(one => one.socket === socket
-                && /^pi-((session|spawned)\.\d+|hosted\.s-hosted)$/.test(one.classed))
+                && /^pi-((session|spawned)\.\d+|hosted\.s-(hosted|sleeper))$/.test(one.classed))
             && new Set(named.map(([told]) => told)).size === named.length,
             JSON.stringify(asks.map(one => [one.socket, one.classed])));
         // What the script does with them is its own case's
