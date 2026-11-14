@@ -1643,12 +1643,13 @@ def attach_both(shell: Shell, said_over: str) -> None:
     # wl-copy stays behind to serve each, so it's given nothing to hold open.
     shell.as_account("printf %s 'the cut title' | wl-copy --primary > /dev/null 2>&1")
     shell.as_account("printf %s 'twitches while it reads on' | wl-copy > /dev/null 2>&1")
-    attach(shell, "*", [("window", said_over), ("selection", "the cut title")])
+    shown = own_title(said_over)
+    attach(shell, "*", [("window", shown), ("selection", "the cut title")])
     attach(
         shell,
         "+",
         [
-            ("window", said_over),
+            ("window", shown),
             ("selection", "the cut title"),
             ("clipboard", "twitches while it reads on"),
         ],
