@@ -2147,8 +2147,8 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
     # j picks the newest, and a line picked far down is scrolled into view.
     shell.send_key("j")
     shell.launcher_until(lambda shown: shown["line"]["picked"] == 0)
-    # Past the lines the screen has room for at either scale.
-    far = 8
+    # Past the lines the screen has room for at either scale: at 1.5x the ninth still fits.
+    far = 15
     shell.send_chars(f"{far}j")
     shell.launcher_until(
         lambda shown: shown["line"]["picked"] == far and shown["line"]["scrolled"] > 0
@@ -2158,7 +2158,8 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
     shell.send_key("ret")
     shell.launcher_until(lambda shown: (shown["line"]["thread"] or {}).get("line") == picked)
     shell.send_chars("za")
-    shell.launcher_until(lambda shown: shown["line"]["nerdy"])
+    # Pictured once niri has given it the fold's size, so a surface still at the last is not.
+    shell.launcher_until(lambda shown: shown["line"]["nerdy"] and shown["line"]["sized"])
     shoot("thread")
     shell.send_chars("-")
     shell.launcher_until(

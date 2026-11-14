@@ -712,6 +712,9 @@ Scope {
             bottom: up ? surface.margins.top + card.reach + card.height : -1,
             screen: surface.screen?.height ?? 0, scrolled: spoken.scrolled, picked,
             thread: root.thread, nerdy, threadScrolled: threadView.scrolled,
+            // Whether niri has given the surface the size it asks for, so a picture of it
+            // isn't taken while it still stands at the last.
+            sized: surface.height === surface.implicitHeight,
             over: { focused: Niri.focused, known: Object.keys(Niri.windows).length,
                 title: root.window?.title ?? "" } };
     }
