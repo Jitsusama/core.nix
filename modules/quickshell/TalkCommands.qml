@@ -66,10 +66,13 @@ Item {
         interactive: false
         boundsBehavior: Flickable.StopAtBounds
         model: commands.shown
-        currentIndex: commands.chosen
-        onCurrentIndexChanged: {
-            if (currentIndex >= 0)
-                positionViewAtIndex(currentIndex, ListView.Contain);
+        // The chosen line is the menu's own, not the view's current one, which a ListView
+        // sets to its first row as a model comes, so with nothing chosen yet the first line
+        // stood on the selection's ground as if Tab had chosen it.
+        readonly property int chosen: commands.chosen
+        onChosenChanged: {
+            if (chosen >= 0)
+                positionViewAtIndex(chosen, ListView.Contain);
             else
                 positionViewAtBeginning();
         }
@@ -83,7 +86,7 @@ Item {
 
             width: rows.width
             height: commands.rowTall
-            selected: command.index === rows.currentIndex
+            selected: command.index === rows.chosen
             shown: commands.up
             name: command.named
             plainName: command.named
