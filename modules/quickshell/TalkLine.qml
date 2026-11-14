@@ -73,7 +73,57 @@ Scope {
         blockLoading: true
         printErrors: false
     }
-    Component.onCompleted: seen = Said.seenIn(seenFile.text())
+    Component.onCompleted: {
+        seen = Said.seenIn(seenFile.text());
+        markUp();
+    }
+
+    // Says whether the line is up, in $XDG_RUNTIME_DIR/quickshell-talk-line, as the launcher's
+    // open mark does, so a switch restarting the shell waits while Joel is saying something
+    // (quickshell-takes-new-files): "open" or "closed", written as it changes and once as the
+    // shell starts; the unit removes it as the shell stops. Open is written off the shell's
+    // thread, so the line comes up unheld, and closed blocks, so it's said by the time the line
+    // has gone; a word wanted while another is still being written follows once that one is.
+    FileView {
+        id: upMark
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/quickshell-talk-line`
+        printErrors: false
+        onSaved: root.upMarkWritten()
+        onSaveFailed: error => root.upMarkFailed(error)
+    }
+    onUpChanged: markUp()
+    property string upMarkSays: ""
+    property string upMarkWriting: ""
+    function markUp() {
+        const word = up ? "open" : "closed";
+        if (word === upMarkSays)
+            return;
+        upMarkSays = word;
+        if (upMarkWriting === "")
+            writeUpMark();
+    }
+    function writeUpMark() {
+        const blocking = upMarkSays !== "open";
+        upMark.blockWrites = blocking;
+        upMarkWriting = blocking ? "" : upMarkSays;
+        upMark.setText(`${upMarkSays}\n`);
+    }
+    // One it couldn't write leaves a switch reading the last word, so that's said, once a
+    // shell, since each time the line comes up would say it again.
+    property bool upMarkFailSaid: false
+    function upMarkFailed(error) {
+        if (!upMarkFailSaid) {
+            upMarkFailSaid = true;
+            console.warn(`talk line: couldn't write its mark: ${FileViewError.toString(error)}`);
+        }
+        upMarkWritten();
+    }
+    function upMarkWritten() {
+        const written = upMarkWriting;
+        upMarkWriting = "";
+        if (written !== "" && written !== upMarkSays)
+            writeUpMark();
+    }
     function sawShown() {
         const after = Said.seenAfter(seen, talks, events, Date.now());
         if (JSON.stringify(after) === JSON.stringify(seen))
