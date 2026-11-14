@@ -428,6 +428,20 @@ fn confirmed_apart(world: &dyn World, state: &State, commit: &str, check: &str) 
         && !subtests::none_selected(&lines)
         && !subtests::unbuildable(&lines);
     if !failed {
+        // Kept as the subtests' pass, so a search on them needn't begin
+        // where they already passed alone (`narrowed_at`).
+        if code == Some(0)
+            && let Err(why) = state.record(
+                commit,
+                &narrowed,
+                Ran::Passed,
+                code,
+                &log,
+                began.elapsed().as_secs(),
+            )
+        {
+            state.say(&why);
+        }
         state.say(&format!(
             "{check} didn't fail again at {} on {} alone, so it runs whole",
             short(commit),
@@ -1831,6 +1845,18 @@ fn narrowed_at(world: &dyn World, state: &State, head: &str, test: &str) -> Stri
         })
         .collect();
     let narrowed = subtests::narrowed(test, &at_head);
+    // Subtests that passed alone at the head fail only beside the others,
+    // so no step run on them alone can say where they broke. On
+    // 14 November vm-desktop-launcher-waits-on-joel's passed alone there
+    // at 15:23 and its search still ran them alone at six merges.
+    if narrowed != test && state.runs(head, &narrowed).contains(&Ran::Passed) {
+        state.say(&format!(
+            "{} passed alone at {}, so the search runs {test} whole",
+            subtests::subtests_of(&narrowed).join(", "),
+            short(head)
+        ));
+        return test.to_owned();
+    }
     if narrowed != test {
         state.say(&format!(
             "searching {test} on the subtests that failed in both its runs at {}: {}",
@@ -3015,6 +3041,42 @@ mod tests {
     }
 
     #[test]
+    fn a_search_runs_whole_where_its_subtests_passed_alone_at_the_head() {
+        let state = state("searched-whole-once-passed-apart");
+        state.set_heads("s", "s").unwrap();
+        state.make().unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 m2 h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("h", "vm-a::test_b", &[0])
+        .exits("m2", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("m2"),
+            "vm-a broke at m2"
+        );
+        let alone: Vec<(String, String)> = world
+            .built()
+            .into_iter()
+            .filter(|(_, check)| check == "vm-a::test_b")
+            .collect();
+        assert_eq!(
+            alone,
+            vec![("h".to_owned(), "vm-a::test_b".to_owned())],
+            "test_b passed alone at the head, so the search ran vm-a whole from its first step"
+        );
+    }
+
+    #[test]
     fn a_subtest_that_passes_alone_leaves_the_whole_test_to_say() {
         let state = state("unconfirmed-apart");
         let world = Stand {
@@ -3513,6 +3575,7 @@ mod tests {
             ..Stand::default()
         }
         .exits("h", "vm-a", &[1, 1])
+        .exits("h", "vm-a::test_b", &[1])
         .exits("m2", "vm-a::test_b", &[1, 1])
         .exits("m3", "vm-a::test_b", &[1, 1]);
         assert_eq!(
@@ -3784,6 +3847,7 @@ mod tests {
             ..Stand::default()
         }
         .exits("h", "vm-a", &[1, 1])
+        .exits("h", "vm-a::test_b", &[1])
         .exits("m2", "vm-a::test_b", &[1, 1])
         .exits("m3", "vm-a::test_b", &[1, 1]);
         assert_eq!(
@@ -4325,6 +4389,7 @@ mod tests {
             ..Stand::default()
         }
         .exits("h", "vm-a", &[1, 1])
+        .exits("h", "vm-a::test_b", &[1])
         .exits("m1", "vm-a::test_b", &[1, 1])
         .exits("m2", "vm-a::test_b", &[1, 1])
         .exits("m3", "vm-a::test_b", &[1, 1]);
