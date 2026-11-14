@@ -12,6 +12,7 @@ import qs
 import Quickshell
 import QtQuick
 import "ForYou.js" as ForYou
+import "../Confirm.js" as Confirm
 
 Provider {
     id: provider
@@ -32,20 +33,37 @@ Provider {
     }
 
     // A verb the daemon offers on a row: its words the launcher's, by the
-    // act's key, and Return on it the daemon's ask. What the daemon refused
-    // is said in the journal, since the row it was on stays until it moves.
+    // act's key, and Return on it the daemon's ask. One the daemon serves
+    // costly, a resume, which undoes someone's safe word, arms on its first
+    // Return, saying what a second does, as secret asks' Release It does;
+    // a command's flags can't say it, since resume's are every Resume's.
+    // What the daemon refused is said in the foot, since the row it was on
+    // stays and nothing else would show why nothing moved, in the
+    // vocabulary's words for its code: its own message is for its journal.
     function verbOf(act) {
-        return thing({
+        const arms = act.costly === true ? Words.of(act.key).said?.arms ?? "" : "";
+        return thing(Object.assign({
             key: act.key,
             name: Words.name(act.key),
             verb: Words.verb(act.key),
             glyph: Words.glyph(act.key),
             hue: "action",
+            arms,
             run: () => daemon.ask(act.ask, answer => {
                 if (answer?.error)
-                    console.warn(`pineapple refused ${act.key}: ${answer.error.message ?? ""}`);
+                    provider.refused(act, answer.error);
             })
-        });
+        }, Confirm.asking(act)));
+    }
+
+    // Says in the foot that the daemon refused a press, and why, as Joel
+    // would say it; a code with no words of its own is said as a failure.
+    function refused(act, error) {
+        const said = Words.of("for-you:source:pineapple").said ?? {};
+        const why = said[`refused:${error.code}`] ?? said["refused:failed"];
+        console.warn(`pineapple refused ${act.key}: ${error.message ?? ""}`);
+        provider.launcher?.tellOnOpen([[Words.name("for-you:source:pineapple"),
+            ForYou.filled(said.refused, { verb: Words.name(act.key), why }), Theme.alert]]);
     }
 
     function drawerOf(one) {
@@ -93,9 +111,11 @@ Provider {
     }
 
     // What For You is given (ForYou.js's given): each row a thing to do now,
-    // weighed by how long it has waited.
+    // weighed by how long it has waited and, for a stop, by the sessions it
+    // parked, which wait on Joel as a session's want does.
     readonly property var forYou: records.map(one => ({
         row: provider.rowOf(one),
-        thing: { kind: "todo", ready: true, takes: 1, since: one.since ?? null }
+        thing: { kind: "todo", ready: true, takes: 1, since: one.since ?? null,
+            blocks: Number(one.parked ?? 0) }
     }))
 }

@@ -29,6 +29,7 @@ from desktop_session import (
     PI_WINDOW,
     STARTING,
     drawn_held_still,
+    for_you_read,
     kept,
     laid_out,
     retry,
@@ -927,6 +928,76 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
             ),
             timeout=dt.timedelta(seconds=10),
         )
+
+
+SAFE_WORD = "$HOME/.local/state/pineapple"
+# Past the key language's wait (300 ms), so a second Return isn't taken for the first doubled.
+PAST_THE_WAIT = 0.5
+
+
+def test_a_safe_word_stop_resumes_only_on_a_second_return(desktop: Desktop) -> None:
+    """A live safe-word stop is in For You, and its Resume arms before it lifts it.
+
+    A resume undoes someone's safe word, so the daemon serves it costly: its first Return arms
+    it, the foot saying what a second does, and only that second Return resumes it (Joel,
+    2026-11-13: "only require confirmation if it is really a dangerous action or an action of
+    significant consequence").
+    """
+    machine = desktop.machine
+    stop = f"{SAFE_WORD}/stops/vm-safe-word.json"
+    title = "Someone stopped your agents on quest SAFEQA"
+    kept(
+        desktop,
+        stop,
+        {
+            "id": "vm-safe-word",
+            "shadow": False,
+            "said_by": "U0OTHER001",
+            "where": "https://example.slack.com/archives/C1/p1",
+            "words": "pineapple override",
+            "said_at": 10,
+            "heard_at": 10,
+            "by_joel": False,
+            "reaches": ["quest:SAFEQA"],
+            "fell_back": False,
+            "resumed": None,
+        },
+    )
+
+    def resumed() -> object:
+        """Say who resumed the stop, as its record says, or None while it stands."""
+        record = json.loads(desktop.as_account(f"cat {stop}"))
+        return (record.get("resumed") or {}).get("by")
+
+    try:
+        retry(lambda _: title in waiting_inside(desktop)[1], timeout=dt.timedelta(seconds=30))
+        waiting_opened(desktop)
+        desktop.step_in("ret")
+        picked(desktop, title)
+        # Return on the stop opens where it was said, so its verbs are gone into.
+        desktop.follow()
+        desktop.launcher_until(lambda shown: "Resume" in shown["rows"])
+        desktop.down_to("Resume")
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["returned"].get("act") == "armed"
+                and shown["armed"] == "again resumes"
+                and "\u21b5 again resumes" in (shown["selected"] or {}).get("told", [])
+            )
+        )
+        assert resumed() is None, "the first Return on Resume resumed the stop"
+        time.sleep(PAST_THE_WAIT)
+        machine.send_key("ret")
+        retry(lambda _: resumed() == "joel", timeout=dt.timedelta(seconds=10))
+    finally:
+        desktop.as_account(f"rm -f {stop} {SAFE_WORD}/acted.jsonl")
+        # The live stop knocked with a critical notice, which would stand in front of every
+        # card after it and, put away unread, keep For You's tray lit, so it's read.
+        if desktop.showing()["open"]:
+            desktop.close_launcher()
+        desktop.as_account("qs ipc call notices putAway || true")
+        for_you_read(desktop)
 
 
 def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desktop) -> None:

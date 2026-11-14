@@ -17,8 +17,14 @@
 //! week old; an alert acted on comes back only for a saying heard since.
 //! Each row says whether it's in shadow, which the server never serves
 //! and only writes down (src/serve.rs).
+//!
+//! Resume and Approve are served costly, so the launcher asks once
+//! before either: each undoes someone's safe word, which Joel counts as
+//! of significant consequence, while a stop or a dismissal acts at once.
+//! A stop also says how many sessions it parked, as the harness writes
+//! them to parked.jsonl, so For You weighs it by the work waiting on it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
@@ -43,16 +49,20 @@ pub struct Kept {
     pub decisions: Vec<Value>,
     /// Every press Joel made, as acts.rs wrote it.
     pub acted: Vec<Value>,
+    /// Every session a live stop parked, as the harness wrote it.
+    pub parked: Vec<Value>,
 }
 
-/// What's kept under the state folder `state`: stops/, decisions.jsonl
-/// and acted.jsonl; a torn line is skipped, as everywhere else.
+/// What's kept under the state folder `state`: stops/, decisions.jsonl,
+/// acted.jsonl and parked.jsonl; a torn line is skipped, as everywhere
+/// else.
 #[must_use]
 pub fn kept(state: &Path) -> Kept {
     Kept {
         stops: resume::standing(&state.join("stops")),
         decisions: lines(&state.join("decisions.jsonl")),
         acted: lines(&state.join("acted.jsonl")),
+        parked: lines(&state.join("parked.jsonl")),
     }
 }
 
@@ -71,7 +81,7 @@ pub fn rows(kept: &Kept, now: u64, words: &Words) -> Vec<Value> {
     let mut rows: Vec<Value> = kept
         .stops
         .iter()
-        .map(|stop| stop_row(stop, &kept.decisions, words))
+        .map(|stop| stop_row(stop, kept, words))
         .collect();
     rows.extend(alert_rows(kept, now, words));
     rows.sort_by_key(|row| row["since"].as_u64().unwrap_or(0));
@@ -93,7 +103,23 @@ fn strings(value: &Value, field: &str) -> Vec<String> {
 }
 
 fn act(verb: &str, key: &str) -> Value {
-    json!({"key": format!("verb:{KIND}:{verb}"), "ask": {"ask": verb, "key": key}})
+    let costly = matches!(verb, "resume" | "approve");
+    json!({
+        "key": format!("verb:{KIND}:{verb}"),
+        "ask": {"ask": verb, "key": key},
+        "costly": costly,
+    })
+}
+
+/// How many sessions the stop `id` parked, each counted once however
+/// often it was parked again.
+fn parked(id: &str, kept: &Kept) -> usize {
+    kept.parked
+        .iter()
+        .filter(|line| line["stop"] == id)
+        .filter_map(|line| line["session"].as_str())
+        .collect::<BTreeSet<_>>()
+        .len()
 }
 
 fn who(by_joel: bool, words: &Words) -> String {
@@ -109,7 +135,8 @@ fn sentence(text: &str) -> String {
     })
 }
 
-fn stop_row(stop: &Standing, decisions: &[Value], words: &Words) -> Value {
+fn stop_row(stop: &Standing, kept: &Kept, words: &Words) -> Value {
+    let decisions = &kept.decisions;
     let record = &stop.record;
     let key = format!("{KIND}:{}", stop.id);
     let reaches = strings(record, "reaches");
@@ -160,6 +187,7 @@ fn stop_row(stop: &Standing, decisions: &[Value], words: &Words) -> Value {
         "reaches": reaches,
         "fell_back": fell_back,
         "count": repeats + 1,
+        "parked": parked(&stop.id, kept),
         "shadow": record["shadow"] != false,
         "acts": acts,
     })
@@ -354,6 +382,12 @@ mod tests {
                 line("slack:C1:2.0", "slack:C1:0.5", "stop", 20),
             ],
             acted: Vec::new(),
+            parked: vec![
+                json!({"stop": "slack:C1:1.0", "session": "s1"}),
+                json!({"stop": "slack:C1:1.0", "session": "s1"}),
+                json!({"stop": "slack:C1:1.0", "session": "s2"}),
+                json!({"stop": "slack:C9:9.0", "session": "s3"}),
+            ],
         };
         let rows = rows(&kept, 30, &words());
         assert_eq!(rows.len(), 1, "one row: the repeat isn't a stop of its own");
@@ -365,6 +399,9 @@ mod tests {
         );
         assert_eq!(row["count"], 2, "said twice in its thread");
         assert_eq!(verbs(row), ["resume", "widen"], "resume and widen");
+        assert_eq!(row["acts"][0]["costly"], true, "a resume asks once first");
+        assert_eq!(row["acts"][1]["costly"], false, "a widen acts at once");
+        assert_eq!(row["parked"], 2, "two sessions parked, each once");
         assert_eq!(row["shadow"], false, "a live stop is served");
     }
 
