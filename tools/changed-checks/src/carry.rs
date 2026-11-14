@@ -20,7 +20,10 @@
 //! over 2 hours old, gate or not. A whole keep past a record names each
 //! check a carry would have given another derivation, so a carry that went
 //! wrong shows. Derivations a gate kept first may have been carried, so
-//! they count as a carry.
+//! they count as a carry; past the bound they're set aside and the keep
+//! evaluates whole all the same, naming each check a gate kept otherwise.
+//! On 14 November two keeps past the bound found their bases kept by gates
+//! and evaluated nothing, counting a seventh and an eighth carry.
 
 use std::fs;
 use std::time::Duration;
@@ -72,13 +75,42 @@ pub fn keep(
             }
         }
     }
-    let fresh = !checks::keeping(&crate::cache(), base, system).exists();
-    whole(noted)?;
+    let path = checks::keeping(&crate::cache(), base, system);
+    let aside = path.with_extension("gated");
+    let bounded = record
+        .as_ref()
+        .is_some_and(|record| record.refused.is_some());
+    let moved = |from: &std::path::Path, to: &std::path::Path| {
+        fs::rename(from, to).map_err(|error| format!("{}: {error}", from.display()))
+    };
+    if bounded && path.exists() {
+        moved(&path, &aside)?;
+    }
+    let fresh = !path.exists();
+    if let Err(why) = whole(noted) {
+        // Put back what a gate kept, so later gates on the base needn't
+        // evaluate it again.
+        if aside.exists() && !path.exists() {
+            moved(&aside, &path)?;
+        }
+        return Err(why);
+    }
     if !fresh {
         return Ok(record.map_or(0, |record| record.carried + 1));
     }
-    if let Some(record) = &record {
-        drifted(root, base, system, record);
+    let Ok(Some(evaluated)) = checks::read_kept(&path) else {
+        return Ok(0);
+    };
+    if let Ok(Some(gated)) = checks::read_kept(&aside) {
+        drifted(base, system, &evaluated, &gated, "a gate kept");
+    }
+    // Gone or not, it's no longer needed.
+    let _ = fs::remove_file(&aside);
+    if let Some(record) = &record
+        && let Some(carry) = alone::carry(root, base, system, (&record.head, &record.known))
+    {
+        let than = format!("carrying from {} gave", short(&record.head));
+        drifted(base, system, &evaluated, &carry.known, &than);
     }
     Ok(0)
 }
@@ -180,17 +212,10 @@ fn vm_read(root: &str, base: &str, system: &str, head: &str) -> Result<(), Strin
     reads::write(&at, &read, &reads::tree(root, base)?)
 }
 
-/// Say which checks a carry from `record` would have given other
-/// derivations than `base`'s keep evaluated whole.
-fn drifted(root: &str, base: &str, system: &str, record: &Record) {
-    let Ok(Some(whole)) = checks::read_kept(&checks::keeping(&crate::cache(), base, system)) else {
-        return;
-    };
-    let Some(carry) = alone::carry(root, base, system, (&record.head, &record.known)) else {
-        return;
-    };
-    let differ: Vec<&str> = carry
-        .known
+/// Say which checks `than` gave other derivations, `known`, than `base`'s
+/// keep evaluated whole, `whole`.
+fn drifted(base: &str, system: &str, whole: &Derivations, known: &Derivations, than: &str) {
+    let differ: Vec<&str> = known
         .iter()
         .filter(|(name, derivation)| whole.get(*name) != Some(*derivation))
         .map(|(name, _)| name.as_str())
@@ -198,10 +223,9 @@ fn drifted(root: &str, base: &str, system: &str, record: &Record) {
     if !differ.is_empty() {
         eprintln!(
             "changed-checks: evaluated whole at {}, {system}'s {} came to other derivations than \
-             carrying from {} gave",
+             {than}",
             short(base),
-            differ.join(", "),
-            short(&record.head)
+            differ.join(", ")
         );
     }
 }
