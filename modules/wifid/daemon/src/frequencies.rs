@@ -49,9 +49,32 @@ impl Avoided {
 
     /// The `freq_list` the network is joined with, or none where it keeps
     /// every channel.
-    pub fn list(&self, _network: &str) -> Option<String> {
-        None
+    pub fn list(&self, network: &str) -> Option<String> {
+        let ranges = self.0.get(network).filter(|ranges| !ranges.is_empty())?;
+        let avoided = |frequency: &u32| {
+            ranges
+                .iter()
+                .any(|range| (range.from..=range.to).contains(frequency))
+        };
+        let kept: Vec<String> = channels()
+            .filter(|frequency| !avoided(frequency))
+            .map(|frequency| frequency.to_string())
+            .collect();
+        Some(kept.join(" "))
     }
+}
+
+/// Every standard channel's centre, in MHz, lowest first: 2.4 GHz's 1 to 13
+/// and Japan's 14, 5 GHz's 36 to 144 and 149 to 177 four apart (149 sits
+/// 25 MHz above 144, off the step below it), and 6 GHz's 1 to 233 four
+/// apart. It's a table rather than what the card says it tunes to, so the
+/// list needs nothing asked of the card; wpa_supplicant passes over a
+/// frequency the card can't reach.
+fn channels() -> impl Iterator<Item = u32> {
+    let low = (2412..=2472).step_by(5).chain([2484]);
+    let middle = (5180..=5720).step_by(20).chain((5745..=5885).step_by(20));
+    let high = (5955..=7115).step_by(20);
+    low.chain(middle).chain(high)
 }
 
 #[cfg(test)]

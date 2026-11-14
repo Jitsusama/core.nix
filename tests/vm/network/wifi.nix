@@ -291,6 +291,16 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         ];
       };
 
+      # The Inn's card is kept off the Office's and Lantern's channels, 1 to
+      # 6, the way a machine keeps its home network off a crowded one; the
+      # Inn's own, 11, stays.
+      jitsusama.wifid.avoid."Roadside Inn" = [
+        {
+          from = 2412;
+          to = 2437;
+        }
+      ];
+
       # Roadside Inn is declared in Nix, whole, the way a machine's own
       # networks are. Eight lighthouses more, out of range, each with a
       # password systemd sealed to the machine as it boots, the way a

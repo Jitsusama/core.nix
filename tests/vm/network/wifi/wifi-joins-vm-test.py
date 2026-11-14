@@ -79,6 +79,18 @@ def test_wifid_gives_wpa_supplicant_the_card_which_joins_nixs_network(
     wifid.answers("front-desk.inn", "10.43.0.1")
 
 
+@pytest.mark.usefixtures("wifid")
+def test_and_keeps_the_card_on_it_off_the_frequencies_nix_avoids(machine: BaseMachine) -> None:
+    """And keeps the card on it off the frequencies Nix avoids there, and on every other."""
+    inn = machine.succeed(
+        "wpa_cli -i wlan2 list_networks | awk -F'\\t' '$2 == \"Roadside Inn\" {print $1}'"
+    ).strip()
+    kept = machine.succeed(f"wpa_cli -i wlan2 get_network {inn} freq_list").split()
+    assert kept[0] == "2442", kept
+    assert str(INN_FREQUENCY) in kept, kept
+    assert {"5180", "5745", "7115"} <= set(kept), kept
+
+
 def test_wifid_finds_the_inn_wants_a_sign_in_and_where(wifid: Wifid) -> None:
     """The Inn is found to want a sign-in, and where."""
     wifid.says("Roadside Inn on wlan2 wants a sign-in at http://front-desk.inn/sign-in")

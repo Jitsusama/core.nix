@@ -21,152 +21,194 @@ let
   wifid = pkgs.callPackage ./package.nix { };
 in
 {
-  imports = [
-    ../systemd-networkd/nixos.nix
-    ../wpa_supplicant/nixos.nix
-  ];
-
-  environment.etc."wifid/wifid.conf".source = ./wifid.conf;
-
-  users.groups.wifi = { };
-  users.users = lib.mapAttrs (_: _: {
-    extraGroups = [ "wifi" ];
-  }) config.home-manager.users;
-  # Each of them has the sign-in window too.
-  home-manager.sharedModules = [ ./home.nix ];
-
-  # systemd keeps the socket while wifid starts again, so whoever's talking
-  # to it waits a moment rather than finding nothing there.
-  systemd.sockets.wifid = {
-    description = "Where the shell talks to wifid";
-    wantedBy = [ "sockets.target" ];
-    listenStreams = [ "/run/wifid/io.jitsusama.Wifi" ];
-    socketConfig = {
-      # Where varlinkctl list-registry finds it, beside systemd's own.
-      Symlinks = [ "/run/varlink/registry/io.jitsusama.Wifi" ];
-      FileDescriptorName = "varlink";
-      SocketGroup = "wifi";
-      SocketMode = "0660";
-      DirectoryMode = "0755";
+  # Kept off a frequency, a card joins and roams on the others alone, which
+  # differs by the networks a machine is taken to (daemon/src/frequencies.rs).
+  options.jitsusama.wifid.avoid = lib.mkOption {
+    type = lib.types.attrsOf (
+      lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            from = lib.mkOption {
+              type = lib.types.ints.positive;
+              description = "Where the range starts, in MHz.";
+            };
+            to = lib.mkOption {
+              type = lib.types.ints.positive;
+              description = "Where it ends, in MHz, this one kept off too.";
+            };
+          };
+        }
+      )
+    );
+    default = { };
+    example = {
+      Home = [
+        {
+          from = 5735;
+          to = 5835;
+        }
+      ];
     };
+    description = ''
+      The frequencies each network's cards are kept off, by the network's
+      name. A network named here joins and roams only on every other
+      channel; the rest keep every channel. Changing it has wifid give the
+      network to wpa_supplicant again, so a card on it rejoins once.
+    '';
   };
 
-  # The launcher's rows, which wifid tells apart from varlink by the name
-  # systemd hands it each socket under.
-  systemd.sockets.wifid-rows = {
-    description = "Where the launcher reads Wi-Fi's rows";
-    wantedBy = [ "sockets.target" ];
-    listenStreams = [ "/run/wifid/rows" ];
-    socketConfig = {
-      Service = "wifid.service";
-      FileDescriptorName = "rows";
-      SocketGroup = "wifi";
-      SocketMode = "0660";
-      DirectoryMode = "0755";
-    };
-  };
+  config = {
+    imports = [
+      ../systemd-networkd/nixos.nix
+      ../wpa_supplicant/nixos.nix
+    ];
 
-  systemd.services.wifid = {
-    description = "Wi-Fi networks, joined and checked for a sign-in";
-    # It reads wifid.conf once, as it starts.
-    restartTriggers = [ config.environment.etc."wifid/wifid.conf".source ];
-    wants = [ "wpa_supplicant.service" ];
-    requires = [
-      "wifid.socket"
-      "wifid-rows.socket"
-    ];
-    after = [
-      "wifid.socket"
-      "wifid-rows.socket"
-      "wpa_supplicant.service"
-      "systemd-networkd.service"
-    ];
-    wantedBy = [ "multi-user.target" ];
-    # Without wifid no card joins anything, so it never stays down: it
-    # comes back however it ended, the bus going away included, waiting a
-    # little longer each time up to a minute, and is never given up on.
-    # Starting again leaves every card on its network.
-    startLimitIntervalSec = 0;
-    serviceConfig = {
-      ExecStart = lib.getExe wifid;
-      # Both sockets, varlink's first, each by its name.
-      Sockets = [
+    environment.etc."wifid/wifid.conf".source = ./wifid.conf;
+    environment.etc."wifid/avoid.json".text = builtins.toJSON config.jitsusama.wifid.avoid;
+
+    users.groups.wifi = { };
+    users.users = lib.mapAttrs (_: _: {
+      extraGroups = [ "wifi" ];
+    }) config.home-manager.users;
+    # Each of them has the sign-in window too.
+    home-manager.sharedModules = [ ./home.nix ];
+
+    # systemd keeps the socket while wifid starts again, so whoever's talking
+    # to it waits a moment rather than finding nothing there.
+    systemd.sockets.wifid = {
+      description = "Where the shell talks to wifid";
+      wantedBy = [ "sockets.target" ];
+      listenStreams = [ "/run/wifid/io.jitsusama.Wifi" ];
+      socketConfig = {
+        # Where varlinkctl list-registry finds it, beside systemd's own.
+        Symlinks = [ "/run/varlink/registry/io.jitsusama.Wifi" ];
+        FileDescriptorName = "varlink";
+        SocketGroup = "wifi";
+        SocketMode = "0660";
+        DirectoryMode = "0755";
+      };
+    };
+
+    # The launcher's rows, which wifid tells apart from varlink by the name
+    # systemd hands it each socket under.
+    systemd.sockets.wifid-rows = {
+      description = "Where the launcher reads Wi-Fi's rows";
+      wantedBy = [ "sockets.target" ];
+      listenStreams = [ "/run/wifid/rows" ];
+      socketConfig = {
+        Service = "wifid.service";
+        FileDescriptorName = "rows";
+        SocketGroup = "wifi";
+        SocketMode = "0660";
+        DirectoryMode = "0755";
+      };
+    };
+
+    systemd.services.wifid = {
+      description = "Wi-Fi networks, joined and checked for a sign-in";
+      # It reads wifid.conf and avoid.json once, as it starts.
+      restartTriggers = [
+        config.environment.etc."wifid/wifid.conf".source
+        config.environment.etc."wifid/avoid.json".text
+      ];
+      wants = [ "wpa_supplicant.service" ];
+      requires = [
         "wifid.socket"
         "wifid-rows.socket"
       ];
-      Restart = "always";
-      RestartSec = "1s";
-      RestartSteps = 6;
-      RestartMaxDelaySec = "1min";
-      StateDirectory = "wifid";
-      StateDirectoryMode = "0700";
-      UMask = "0077";
-      # networkd reads what wifid writes here, so it must exist before the
-      # filesystem is made read-only around wifid.
-      ReadWritePaths = [ "/run/systemd/network" ];
-      CapabilityBoundingSet = "";
-      NoNewPrivileges = true;
-      LockPersonality = true;
-      MemoryDenyWriteExecute = true;
-      # The radios' switches are the one device wifid needs, to say whether
-      # Wi-Fi is on and turn it off and on for the shell. A machine without
-      # them still starts wifid, which then shows Wi-Fi on.
-      PrivateDevices = true;
-      BindPaths = [ "-/dev/rfkill" ];
-      DeviceAllow = [ "/dev/rfkill rw" ];
-      PrivateTmp = true;
-      ProtectClock = true;
-      ProtectControlGroups = true;
-      ProtectHome = true;
-      ProtectHostname = true;
-      ProtectKernelLogs = true;
-      ProtectKernelModules = true;
-      ProtectKernelTunables = true;
-      ProtectSystem = "strict";
-      RestrictAddressFamilies = [
-        "AF_UNIX"
-        "AF_INET"
-        "AF_INET6"
-        # nl80211, which says a card's station and tuning (nl80211.rs).
-        "AF_NETLINK"
+      after = [
+        "wifid.socket"
+        "wifid-rows.socket"
+        "wpa_supplicant.service"
+        "systemd-networkd.service"
       ];
-      RestrictNamespaces = true;
-      RestrictRealtime = true;
-      SystemCallArchitectures = "native";
-      SystemCallFilter = [ "@system-service" ];
+      wantedBy = [ "multi-user.target" ];
+      # Without wifid no card joins anything, so it never stays down: it
+      # comes back however it ended, the bus going away included, waiting a
+      # little longer each time up to a minute, and is never given up on.
+      # Starting again leaves every card on its network.
+      startLimitIntervalSec = 0;
+      serviceConfig = {
+        ExecStart = lib.getExe wifid;
+        # Both sockets, varlink's first, each by its name.
+        Sockets = [
+          "wifid.socket"
+          "wifid-rows.socket"
+        ];
+        Restart = "always";
+        RestartSec = "1s";
+        RestartSteps = 6;
+        RestartMaxDelaySec = "1min";
+        StateDirectory = "wifid";
+        StateDirectoryMode = "0700";
+        UMask = "0077";
+        # networkd reads what wifid writes here, so it must exist before the
+        # filesystem is made read-only around wifid.
+        ReadWritePaths = [ "/run/systemd/network" ];
+        CapabilityBoundingSet = "";
+        NoNewPrivileges = true;
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        # The radios' switches are the one device wifid needs, to say whether
+        # Wi-Fi is on and turn it off and on for the shell. A machine without
+        # them still starts wifid, which then shows Wi-Fi on.
+        PrivateDevices = true;
+        BindPaths = [ "-/dev/rfkill" ];
+        DeviceAllow = [ "/dev/rfkill rw" ];
+        PrivateTmp = true;
+        ProtectClock = true;
+        ProtectControlGroups = true;
+        ProtectHome = true;
+        ProtectHostname = true;
+        ProtectKernelLogs = true;
+        ProtectKernelModules = true;
+        ProtectKernelTunables = true;
+        ProtectSystem = "strict";
+        RestrictAddressFamilies = [
+          "AF_UNIX"
+          "AF_INET"
+          "AF_INET6"
+          # nl80211, which says a card's station and tuning (nl80211.rs).
+          "AF_NETLINK"
+        ];
+        RestrictNamespaces = true;
+        RestrictRealtime = true;
+        SystemCallArchitectures = "native";
+        SystemCallFilter = [ "@system-service" ];
+      };
     };
-  };
 
-  # The boot waits for the network only while there's one to wait for:
-  # wifid answers Settled once a card or cable reaches beyond the machine,
-  # Wi-Fi is off, or every card has looked and heard no saved network it
-  # can join. networkd's own wait can't tell a card still joining from one
-  # with nothing to join, so it's turned off. Thirty seconds is a backstop.
-  systemd.network.wait-online.enable = false;
-  systemd.services.wifid-online = {
-    description = "Wait for Wi-Fi to join what it can";
-    wantedBy = [ "network-online.target" ];
-    before = [
-      "network-online.target"
-      "shutdown.target"
-    ];
-    requires = [ "wifid.socket" ];
-    after = [ "wifid.socket" ];
-    conflicts = [ "shutdown.target" ];
-    unitConfig.DefaultDependencies = false;
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-      ExecStart = lib.escapeShellArgs [
-        "${config.systemd.package}/bin/varlinkctl"
-        "call"
-        "--timeout=30"
-        "/run/wifid/io.jitsusama.Wifi"
-        "io.jitsusama.Wifi.Settled"
-        "{}"
+    # The boot waits for the network only while there's one to wait for:
+    # wifid answers Settled once a card or cable reaches beyond the machine,
+    # Wi-Fi is off, or every card has looked and heard no saved network it
+    # can join. networkd's own wait can't tell a card still joining from one
+    # with nothing to join, so it's turned off. Thirty seconds is a backstop.
+    systemd.network.wait-online.enable = false;
+    systemd.services.wifid-online = {
+      description = "Wait for Wi-Fi to join what it can";
+      wantedBy = [ "network-online.target" ];
+      before = [
+        "network-online.target"
+        "shutdown.target"
       ];
+      requires = [ "wifid.socket" ];
+      after = [ "wifid.socket" ];
+      conflicts = [ "shutdown.target" ];
+      unitConfig.DefaultDependencies = false;
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = lib.escapeShellArgs [
+          "${config.systemd.package}/bin/varlinkctl"
+          "call"
+          "--timeout=30"
+          "/run/wifid/io.jitsusama.Wifi"
+          "io.jitsusama.Wifi.Settled"
+          "{}"
+        ];
+      };
     };
-  };
 
-  systemd.tmpfiles.rules = [ "d /run/systemd/network 0755 root root -" ];
+    systemd.tmpfiles.rules = [ "d /run/systemd/network 0755 root root -" ];
+  };
 }
