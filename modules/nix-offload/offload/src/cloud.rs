@@ -10,11 +10,17 @@
 //! `cloud-token TOKEN`, an access token the service asks the cloud with,
 //! and says the token again while it holds the builder, since one lasts
 //! an hour and the service asks whenever it starts. Each lender writes
-//! them in its folder, `instance` and `cloud-token`, before the machines
-//! line, and empties both once nothing is lent. Even a lender only for
+//! them before the machines line, and empties both once nothing is
+//! lent: the instance in its folder, as `instance`, and the token in
+//! [`TOKENS`], named by its folder's own name. Even a lender only for
 //! `there` does, since its builder stands in for the first lender's in
 //! the lines root reads, and its own folder vouches for it. The token is
 //! readable by the service's account alone, which an ACL on it names.
+//!
+//! Every token is in the one folder, made at boot, rather than in each
+//! lender's, so a sandbox hides every lender's token by one name, even
+//! a lender's made after the sandbox was: the token can do anything the
+//! cloud account can, and nothing a sandbox runs needs it.
 
 use std::fs;
 use std::io::Write;
@@ -32,6 +38,13 @@ pub const ACCOUNT: &str = "nix-offload-lines";
 
 /// Where the machine's accounts are named.
 pub const ACCOUNTS: &str = "/etc/passwd";
+
+/// Where every lender keeps its token, as nixos.nix makes it.
+pub const TOKENS: &str = "/run/nix-offload-tokens";
+
+/// What a lender's token was called in its own folder, before tokens
+/// moved to [`TOKENS`], removed as a lender starts so none is left there.
+const LEFT_BEHIND: &str = "cloud-token";
 
 /// What the helper said of where its builder is: its instance, `NAME
 /// ZONE`, and the token the cloud is asked about it with, each once said.
@@ -70,12 +83,20 @@ pub struct Cloud {
 }
 
 impl Cloud {
-    /// The files in `dir`, the token readable by [`ACCOUNT`] as
-    /// `accounts` names it.
-    pub fn in_dir(dir: &Path, accounts: &Path) -> Self {
+    /// The instance in `dir` and the token in `tokens`, named by `dir`'s
+    /// own name, readable by [`ACCOUNT`] as `accounts` names it. A token
+    /// left in `dir` from before is removed.
+    pub fn in_dir(dir: &Path, tokens: &Path, accounts: &Path) -> Self {
+        let left = dir.join(LEFT_BEHIND);
+        if let Err(error) = fs::remove_file(&left)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            eprintln!("nix-offload: removing {}: {error}", left.display());
+        }
+        let name = dir.file_name().unwrap_or(dir.as_os_str());
         Self {
             instance: dir.join("instance"),
-            token: dir.join("cloud-token"),
+            token: tokens.join(name),
             accounts: accounts.to_owned(),
             written: None,
         }
@@ -267,73 +288,111 @@ mod tests {
     #[test]
     fn the_token_is_the_services_alone_and_both_empty_once_none_is_lent() {
         let folder = tempfile::tempdir().expect("a folder");
-        let dir = folder.path();
-        let accounts = dir.join("passwd");
+        let (dir, tokens) = folders(folder.path());
+        let accounts = folder.path().join("passwd");
         fs::write(
             &accounts,
             format!("{ACCOUNT}:x:65534:65534::/var/empty:/bin/false\n"),
         )
         .expect("written");
-        let mut cloud = Cloud::in_dir(dir, &accounts);
+        let mut cloud = Cloud::in_dir(&dir, &tokens, &accounts);
         let place = Place {
             instance: Some("lend-5 us-central1-a".to_owned()),
             token: Some("ya29.x".to_owned()),
         };
         cloud.say(Some(&place));
-        let read = |name: &str| fs::read_to_string(dir.join(name)).expect("a file");
-        let mode = |name: &str| fs::metadata(dir.join(name)).expect("a file").mode() & 0o777;
-        assert_eq!(read("instance"), "lend-5 us-central1-a\n");
-        assert_eq!(read("cloud-token"), "ya29.x\n");
+        let (instance, token) = (dir.join("instance"), tokens.join(LENDER));
+        let read = |path: &Path| fs::read_to_string(path).expect("a file");
+        let mode = |path: &Path| fs::metadata(path).expect("a file").mode() & 0o777;
+        assert_eq!(read(&instance), "lend-5 us-central1-a\n");
         assert_eq!(
-            (named_in(&dir.join("cloud-token")), mode("cloud-token")),
-            handed_over(dir),
+            read(&token),
+            "ya29.x\n",
+            "the token is in the tokens folder, by its lender's name"
+        );
+        assert!(
+            !dir.join(LEFT_BEHIND).exists(),
+            "no token is in the lender's own folder"
+        );
+        assert_eq!(
+            (named_in(&token), mode(&token)),
+            handed_over(&tokens),
             "the token is read by the service's account and named for no other, its group \
              bits the ACL's mask; or, where no ACL may be set, the lender's alone"
         );
-        assert_eq!(mode("instance"), 0o644, "the instance is anyone's");
+        assert_eq!(mode(&instance), 0o644, "the instance is anyone's");
         cloud.say(None);
         assert_eq!(
-            (read("instance"), read("cloud-token")),
+            (read(&instance), read(&token)),
             (String::new(), String::new())
+        );
+    }
+
+    /// The name the lender's folder has in these tests.
+    const LENDER: &str = "nix-offload-vm-5";
+
+    /// A lender's folder and a tokens folder beside it, in `folder`.
+    fn folders(folder: &Path) -> (PathBuf, PathBuf) {
+        let (dir, tokens) = (folder.join(LENDER), folder.join("tokens"));
+        for made in [&dir, &tokens] {
+            fs::create_dir(made).expect("a folder");
+        }
+        (dir, tokens)
+    }
+
+    #[test]
+    fn a_token_left_in_the_lenders_folder_is_removed() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let (dir, tokens) = folders(folder.path());
+        fs::write(dir.join(LEFT_BEHIND), "ya29.old\n").expect("written");
+        let _cloud = Cloud::in_dir(&dir, &tokens, &folder.path().join("passwd"));
+        assert!(
+            !dir.join(LEFT_BEHIND).exists(),
+            "the token left from before the move is gone as the lender starts"
         );
     }
 
     #[test]
     fn without_the_account_the_token_is_still_written_the_lenders_alone() {
         let folder = tempfile::tempdir().expect("a folder");
-        let dir = folder.path();
-        let accounts = dir.join("passwd");
+        let (dir, tokens) = folders(folder.path());
+        let accounts = folder.path().join("passwd");
         fs::write(&accounts, "root:x:0:0::/root:/bin/sh\n").expect("written");
-        let mut cloud = Cloud::in_dir(dir, &accounts);
+        let mut cloud = Cloud::in_dir(&dir, &tokens, &accounts);
         cloud.say(Some(&Place {
             instance: Some("lend-5 us-central1-a".to_owned()),
             token: Some("ya29.x".to_owned()),
         }));
-        let read = |name: &str| fs::read_to_string(dir.join(name)).expect("a file");
-        let mode = |name: &str| fs::metadata(dir.join(name)).expect("a file").mode() & 0o777;
+        let (instance, token) = (dir.join("instance"), tokens.join(LENDER));
+        let read = |path: &Path| fs::read_to_string(path).expect("a file");
         assert_eq!(
-            (read("instance"), read("cloud-token")),
+            (read(&instance), read(&token)),
             ("lend-5 us-central1-a\n".to_owned(), "ya29.x\n".to_owned())
         );
-        assert_eq!(mode("cloud-token"), 0o600, "a token nobody else may read");
+        assert_eq!(
+            fs::metadata(&token).expect("a file").mode() & 0o777,
+            0o600,
+            "a token nobody else may read"
+        );
         #[cfg(target_os = "linux")]
-        assert_eq!(named_in(&dir.join("cloud-token")), Vec::new());
+        assert_eq!(named_in(&token), Vec::new());
     }
 
     #[test]
     fn an_account_that_comes_has_the_same_token_written_again_for_it() {
         let folder = tempfile::tempdir().expect("a folder");
-        let dir = folder.path();
-        let accounts = dir.join("passwd");
+        let (dir, tokens) = folders(folder.path());
+        let token = tokens.join(LENDER);
+        let accounts = folder.path().join("passwd");
         fs::write(&accounts, "root:x:0:0::/root:/bin/sh\n").expect("written");
-        let mut cloud = Cloud::in_dir(dir, &accounts);
+        let mut cloud = Cloud::in_dir(&dir, &tokens, &accounts);
         let place = Place {
             instance: Some("lend-5 us-central1-a".to_owned()),
             token: Some("ya29.x".to_owned()),
         };
         // Each write renames a new draft into place, so a file written
         // again is another inode.
-        let inode = || fs::metadata(dir.join("cloud-token")).expect("a file").ino();
+        let inode = || fs::metadata(&token).expect("a file").ino();
         cloud.say(Some(&place));
         let first = inode();
         cloud.say(Some(&place));
@@ -355,19 +414,13 @@ mod tests {
             first,
             "the token is written again once the account comes"
         );
-        assert_eq!(
-            fs::read_to_string(dir.join("cloud-token")).expect("a file"),
-            "ya29.x\n"
-        );
+        assert_eq!(fs::read_to_string(&token).expect("a file"), "ya29.x\n");
         #[cfg(target_os = "linux")]
         {
-            let mode = fs::metadata(dir.join("cloud-token"))
-                .expect("a file")
-                .mode()
-                & 0o777;
+            let mode = fs::metadata(&token).expect("a file").mode() & 0o777;
             assert_eq!(
-                (named_in(&dir.join("cloud-token")), mode),
-                handed_over(dir),
+                (named_in(&token), mode),
+                handed_over(&tokens),
                 "the token written again is the account's to read"
             );
         }

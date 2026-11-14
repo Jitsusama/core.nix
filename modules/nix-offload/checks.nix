@@ -77,13 +77,14 @@ onLinux {
             {
               uri = "ssh-ng://nix-offload?compress=true";
               instance = "/run/nix-offload/instance";
-              token = "/run/nix-offload/cloud-token";
+              token = "/run/nix-offload-tokens/nix-offload";
             }
           ]
         && read.hookKey == "/etc/nix/offload_ed25519.pub"
         && lib.hasSuffix "-startup-script" read.startupScript
         && read.images == [ "https://compute.example/images/a-" ]
         && lib.elem "d /run/nix-offload-lines 0755 nix-offload-lines nix-offload-lines -" lined.config.systemd.tmpfiles.rules
+        && lib.elem "d /run/nix-offload-tokens 2750 someone nix-offload-lines -" lined.config.systemd.tmpfiles.rules
         && failing lined.config == [ ]
         && bare.config.nix.settings.builders == "@/run/nix-offload/machines"
         && failing bare.config != [ ]

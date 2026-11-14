@@ -2384,7 +2384,11 @@ fn machines_of(settings: &Settings) -> Machines {
     // Every lender says where its builder is, since another's builder
     // stands in for the first's in the lines root reads, and each line
     // is vouched for by its own lender's folder.
-    .in_cloud(cloud::Cloud::in_dir(dir, Path::new(cloud::ACCOUNTS)));
+    .in_cloud(cloud::Cloud::in_dir(
+        dir,
+        Path::new(cloud::TOKENS),
+        Path::new(cloud::ACCOUNTS),
+    ));
     // Only the lender for every build has others stand in for it: the
     // rest lend only to `there`, which reads no file for any work.
     if settings.only_there {
@@ -3825,9 +3829,14 @@ exec sleep 60
         let (settings, machines) = holding(folder.path(), &journal);
         executable(&settings.helper, PLACES);
         let dir = folder.path();
-        let mut machines = machines.in_cloud(cloud::Cloud::in_dir(dir, &dir.join("no-groups")));
+        let tokens = dir.join("tokens");
+        fs::create_dir(&tokens).unwrap();
+        let mut machines =
+            machines.in_cloud(cloud::Cloud::in_dir(dir, &tokens, &dir.join("no-groups")));
         let mut lent = adopt(&settings, &mut machines, 3600).expect("taken back");
         let read = |name: &str| fs::read_to_string(dir.join(name)).unwrap_or_default();
+        let lender = dir.file_name().unwrap().to_str().unwrap();
+        let token = || fs::read_to_string(tokens.join(lender)).unwrap_or_default();
         assert_eq!(
             read("instance"),
             "lend-5 us-central1-a\n",
@@ -3840,10 +3849,10 @@ exec sleep 60
             thread::sleep(Duration::from_millis(20));
         }
         named(dir, &mut machines, Some(&lent), None);
-        assert_eq!(read("cloud-token"), "fresh\n", "the token it said last");
+        assert_eq!(token(), "fresh\n", "the token it said last");
         named(dir, &mut machines, None, None);
         assert_eq!(
-            (read("instance"), read("cloud-token")),
+            (read("instance"), token()),
             (String::new(), String::new()),
             "nothing lent, nothing placed"
         );
