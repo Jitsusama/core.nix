@@ -23,12 +23,13 @@ pub struct Walked<'a> {
 }
 
 impl Walked<'_> {
-    /// The deepest help, titled with its whole path, as `eero devices`,
-    /// and taking its parent's exits where it names none of its own.
+    /// The deepest help, titled with its whole path and the names the way
+    /// down needs, as `eero nodes <name> devices`, and taking its parent's
+    /// exits where it names none of its own.
     pub fn shown(&self) -> Help {
         let deepest = self.chain.last().copied().cloned();
         let mut shown = deepest.unwrap_or_else(|| Help::new("", ""));
-        shown.name = self.path();
+        shown.name = self.titled();
         if shown.exits.is_empty()
             && let Some(parent) = self.chain.iter().rev().find(|help| !help.exits.is_empty())
         {
@@ -37,7 +38,25 @@ impl Walked<'_> {
         shown
     }
 
-    /// The path the words name, as `eero nodes devices`.
+    /// The path as a help's title says it: each level above the deepest
+    /// with the arguments it takes before the next, since a subcommand
+    /// under a name needs one. The deepest's own are its help's to list.
+    fn titled(&self) -> String {
+        let above = self.chain.len().saturating_sub(1);
+        self.chain
+            .iter()
+            .enumerate()
+            .flat_map(|(at, help)| {
+                let needs = if at < above { &help.arguments[..] } else { &[] };
+                std::iter::once(help.name.as_str())
+                    .chain(needs.iter().map(|argument| argument.name.as_str()))
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// The path the words name, as `eero nodes devices`: a command, as a
+    /// try-line says it.
     pub fn path(&self) -> String {
         self.chain
             .iter()
@@ -192,6 +211,24 @@ mod tests {
             "a node called devices was read as the subcommand"
         );
         assert_eq!(path("nodes devices devices"), "eero nodes devices");
+    }
+
+    #[test]
+    fn a_subcommands_help_is_titled_with_the_names_it_needs() {
+        let help = eero();
+        let walked = walk(&help, &words("nodes Study devices")).expect("a node's devices");
+        assert_eq!(
+            walked.shown().name,
+            "eero nodes <name> devices",
+            "the title left out the name a node's devices need"
+        );
+        assert_eq!(walked.path(), "eero nodes devices");
+        let walked = walk(&help, &words("nodes Study")).expect("a node");
+        assert_eq!(
+            walked.shown().name,
+            "eero nodes",
+            "a level's own arguments are its help's, not its title's"
+        );
     }
 
     #[test]
