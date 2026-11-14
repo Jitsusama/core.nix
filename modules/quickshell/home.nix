@@ -427,9 +427,8 @@ let
         inherit (b) does run also;
         glyph = actionGlyph b.run;
         chord = map face' (lib.splitString "+" b.chord);
-        # Super+N takes the notices on screen, and opens For You's Desktop
-        # when there are none (launcher/Now.qml's leadsTo), so the launcher
-        # steps into it.
+        # Super+N opens For You's Desktop (launcher/Now.qml's leadsTo), on
+        # the card in front while one is up, so the launcher steps into it.
         opens =
           if opensCollection b.run then
             lib.last b.run

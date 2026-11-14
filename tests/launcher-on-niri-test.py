@@ -2331,7 +2331,7 @@ def test_the_held_notices_are_vims_quickfix_list(shell: Shell) -> None:
         with shell.told(f"shows card {summary}"):
             shell.as_account(f"notify-send --expire-time=60000 '{summary}' 'one of three'")
     with shell.told("keys notices"), shell.told("notice cursor Alpha"):
-        shell.take_notices()
+        shell.hold_notices()
     moves = [
         (["k"], "Bravo"),
         (["k"], "Charlie"),
@@ -2367,6 +2367,25 @@ def test_the_held_notices_are_vims_quickfix_list(shell: Shell) -> None:
     with shell.told("lets notices go"):
         shell.send_chars("q")
         shell.send_key("ret")
+    shell.as_account("qs ipc call notices putAway")
+    shell.notices_gone()
+
+
+def test_super_n_opens_the_notices_on_the_card_in_front_and_again_closes(shell: Shell) -> None:
+    """Super+N, with cards up, opens the launcher's notices on the one in front; again, it closes.
+
+    Notices are the launcher's rows, so its keys, acts and drawer take the held stack's place.
+    The card in front is the oldest, never the row first in Desktop, so the cursor landing on
+    it shows the landing chose it. The cards step aside while it's open, and come back after.
+    """
+    for summary in ["Kestrel", "Lapwing"]:
+        with shell.told(f"shows card {summary}"):
+            shell.as_account(f"notify-send --expire-time=60000 '{summary}' 'one of two'")
+    shell.take_notices()
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Kestrel")
+    shell.take_notices()
+    shell.launcher_closed()
     shell.as_account("qs ipc call notices putAway")
     shell.notices_gone()
 

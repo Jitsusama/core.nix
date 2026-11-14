@@ -507,9 +507,9 @@ def refresh_and_hold_are_traced(desktop: Desktop, heard: str) -> None:
     """See a source's refresh traced in its opening, and a hold of the notices sent as its own.
 
     Keep Awake starting changes the session's rows while the launcher is open, and the refresh
-    is a span saying which source, how long it took and how many rows were listed. Super+N
-    holding the notices is a trace of the service "notices": the hold its root, ended as the
-    keys are let go, and j's act a span under it (Y2YBTS, 2026-11-07).
+    is a span saying which source, how long it took and how many rows were listed. The stack
+    held is a trace of the service "notices": the hold its root, ended as Super+N lets the
+    keys go, and j's act a span under it (Y2YBTS, 2026-11-07).
     """
     machine = desktop.machine
     desktop.as_account("qs ipc call launcher toggle")
@@ -543,7 +543,7 @@ def refresh_and_hold_are_traced(desktop: Desktop, heard: str) -> None:
     with desktop.told("shows card Traced"):
         desktop.as_account("notify-send --expire-time=60000 'Traced' 'held and let go'")
     with desktop.told("keys notices"):
-        machine.send_key("meta_l-n")
+        desktop.hold_notices()
     machine.send_key("j")
     with desktop.told("lets notices go"):
         machine.send_key("meta_l-n")

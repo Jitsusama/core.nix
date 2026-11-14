@@ -62,7 +62,7 @@ def holds_the_notices(shell: Shell) -> None:
     with shell.told("shows card Alpha"):
         shell.as_account("notify-send --expire-time=60000 'Alpha' 'held'")
     with shell.told("keys notices"):
-        shell.take_notices()
+        shell.hold_notices()
 
 
 def notices_answer_then_let_go(shell: Shell) -> None:
@@ -146,7 +146,7 @@ def test_held_notices_take_the_keys_from_the_launcher_and_a_notice_arriving_neve
     shell.send_chars("a")
     shell.launcher_until(lambda shown: shown["keys"] and shown["typed"] == "a")
     with shell.told("keys notices"):
-        shell.take_notices()
+        shell.hold_notices()
     shell.launcher_until(lambda shown: not shown["keys"])
     notices_answer_then_let_go(shell)
     # Let go, the notices give the keys back to the launcher, still open beneath them.

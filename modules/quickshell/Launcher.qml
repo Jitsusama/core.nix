@@ -3296,6 +3296,7 @@ Scope {
         listedLately = RowsKept.lately(listedLately, matches,
             Object.values(placesKept).map(kept => kept.matches).concat([homeKept]));
         rowsMade += 1;
+        landed();
         noteKeys();
         noteFigures();
         noteDigits();
@@ -3638,6 +3639,8 @@ Scope {
     // so where the launcher is still says where the place left was left.
     onHeldChanged: {
         Qt.callLater(rowsPlaced);
+        // A row to land on was for the place it opened into (intoOn).
+        landOn = null;
         const left = placeHeld;
         placeHeld = held;
         // Every place's gutter starts as wide as home's, its numbers as
@@ -8563,6 +8566,29 @@ Scope {
             askDone();
     }
 
+    // Opens into a collection as into does, the cursor going to the first
+    // row `wanted` takes, as Super+N lands on the notice in front
+    // (Notifications.qml). The opening never waits for that row: it's drawn
+    // with what's there, and the cursor moves the moment the row is,
+    // in the same frame where it's there already (Y2YBTS, 2026-11-13
+    // [b712b9f2]). Stepping elsewhere or closing first lets it go.
+    property var landOn: null
+    function intoOn(name, wanted) {
+        into(name);
+        landOn = wanted;
+        landed();
+    }
+    function landed() {
+        if (landOn === null)
+            return;
+        const at = matches.findIndex(row => landOn(row));
+        if (at < 0)
+            return;
+        landOn = null;
+        current = at;
+        list.positionViewAtIndex(current, ListView.Contain);
+    }
+
     // Opens into a collection as its chord does: closed, a place kept from
     // its last opening is drawn at once and filled in after its frame
     // (intoKept), as home is. Only a chord's opening is, since what else
@@ -8911,6 +8937,7 @@ Scope {
         if (!open) {
             Report.say("closing");
             drafts.flush();
+            landOn = null;
         }
         else
             spotsBegin();

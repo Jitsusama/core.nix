@@ -354,8 +354,12 @@ class Shell:
         subprocess.run(["wtype", "-d", str(KEY_PACE_MS), "--", text], check=True)
 
     def take_notices(self) -> None:
-        """Take the notices by the keys, by what Super+N runs, since wtype never reaches it."""
+        """Open the notices in the launcher, by what Super+N runs, as wtype never reaches it."""
         self.as_account(os.environ["TAKE_NOTICES"])
+
+    def hold_notices(self) -> None:
+        """Hold the stack by the keys as Vim's quickfix list, as Super+N did before."""
+        self.as_account("qs ipc call notices hold")
 
     def notices_gone(self, timeout: timedelta = WAITING) -> None:
         """Wait until niri lists no notices' layer."""
