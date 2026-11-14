@@ -299,11 +299,15 @@ QtObject {
         const most = xs[middle + 1] - xs[middle];
         expect("it eases in, slow at first and fastest midway", first < most / 4, true);
         expect("and eases out", xs[xs.length - 1] - xs[xs.length - 2] < most / 4, true);
-        expect("in its two strides", Array.from(new Set(frames.map(frame => frame.pose))).sort(),
-            ["walkingA", "walkingB"]);
+        // Each pair of legs apart two strides and gathered two, the hind pair
+        // a stride behind (RSCH-20261113-24R2QV's rule 4).
+        const walk = ["walkingA", "walkingC", "walkingB", "walkingD"];
+        expect("in its four strides, in turn",
+            frames.filter((frame, i) => i === 0 || frame.pose !== frames[i - 1].pose)
+                .slice(0, 5).map(frame => frame.pose), [...walk, walk[0]]);
         expect("each stride a stretch of ground, never a frame's time",
-            frames.every(frame => frame.pose === ["walkingA", "walkingB"][
-                Math.floor((frame.x - 99) / going.stride) % 2]), true);
+            frames.every(frame => frame.pose === walk[
+                Math.floor((frame.x - 99) / going.stride) % walk.length]), true);
         const changes = frames.filter((frame, i) => i > 0 && frame.pose !== frames[i - 1].pose);
         expect("as many strides as its way holds, the last ending as it stops",
             changes.length, Math.ceil((201.5 - 99) / going.stride) - 1);

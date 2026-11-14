@@ -45,6 +45,8 @@
           "tucked"
           "walkingA"
           "walkingB"
+          "walkingC"
+          "walkingD"
         ]
         [
           "heat"
@@ -102,6 +104,8 @@
         "tailSwish"
         "walkingA"
         "walkingB"
+        "walkingC"
+        "walkingD"
         "yarn"
       ];
       said = "crooked ${builtins.toJSON crooked}, undrawn ${builtins.toJSON missing}";
@@ -135,6 +139,8 @@
         "tucked"
         "walkingA"
         "walkingB"
+        "walkingC"
+        "walkingD"
       ];
       drawn = lib.filter (name: (glyphs.${name}.pixels or [ ]) != [ ]) poses;
       missing = lib.subtractLists drawn poses;

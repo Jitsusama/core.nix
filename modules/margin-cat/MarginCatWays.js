@@ -31,8 +31,10 @@ const SURGES = 0.3;
 // reads as lost.
 const UNSEEN = 360;
 // The beats it walks or climbs, its strides stepped by the ground it
-// covers, and the poses of each stride.
-const STRIDING = { goes: ["walkingA", "walkingB"], climbs: ["walkingA", "walkingB"] };
+// covers, and the poses of each stride in turn: each pair of legs apart
+// two strides and gathered two, the hind pair a stride behind.
+const WALKS = ["walkingA", "walkingC", "walkingB", "walkingD"];
+const STRIDING = { goes: WALKS, climbs: WALKS };
 // The pose of each beat it holds still, or nearly: standing as it turns,
 // thinks or settles; crouched as it gathers itself, lands or perches on
 // a mark or shoved by a window; batting at the first mark before it hops
@@ -316,7 +318,7 @@ function frame(route, t) {
     const strides = STRIDING[beat.kind];
     const last = Math.max(beat.begins, beat.ends - SHOWN);
     const pose = strides
-        ? beat.held ?? strides[strode(beat, t < last ? spot : placed(route, beat, last)) % 2]
+        ? beat.held ?? strides[strode(beat, t < last ? spot : placed(route, beat, last)) % strides.length]
         : spot.leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
     return { x: spot.x, y: spot.y, pose, turn: beat.turn, facing: beat.facing,
         beat: beat.name, done: false };

@@ -1028,11 +1028,14 @@ in
       ".######."
     ];
   };
-  # The margin's cat walking between windows, two strides in profile
-  # facing along the ground as stretching's head does: its legs apart, then
-  # gathered, the tail's tip swaying a cell between them. Its body holds
-  # still across the two, so the walk steps rather than jitters (2RCBOJ,
-  # ee5a4b12).
+  # The margin's cat walking between windows, four strides in profile
+  # facing along the ground as stretching's head does: both pairs of legs
+  # apart (A), the forelegs gathered (C), both gathered (B), then the
+  # forelegs apart again (D), so each pair is apart two strides and
+  # gathered two and the hind pair steps a stride behind the fore
+  # (RSCH-20261113-24R2QV's rule 4). The tail's tip sways a cell every
+  # two strides. Its body holds still across the four, so the walk steps
+  # rather than jitters (2RCBOJ, ee5a4b12); B is also how it stands.
   walkingA = {
     glyph = nerd "f03e9";
     console = "m";
@@ -1061,6 +1064,36 @@ in
       ".######."
       ".#...#.."
       "##..##.."
+    ];
+  };
+  walkingC = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      "......#."
+      "#.#...#."
+      "###...#."
+      "#.#####."
+      "#######."
+      ".######."
+      ".#...#.."
+      "##..#.#."
+    ];
+  };
+  walkingD = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      ".......#"
+      "#.#...#."
+      "###...#."
+      "#.#####."
+      "#######."
+      ".######."
+      ".#...#.."
+      "#.#.##.."
     ];
   };
   # The margin's cat rising into the air across a gap, or onto a window's
