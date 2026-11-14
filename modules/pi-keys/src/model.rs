@@ -54,8 +54,13 @@ impl Why {
     /// milliseconds, that's largest; a tie goes to running, then to
     /// waiting, so a burst is never put down to the queue on a guess.
     pub fn of(cpu: f64, wait: f64, d: f64) -> Why {
-        let _ = (cpu, wait, d);
-        Why::Ran
+        if cpu >= wait && cpu >= d {
+            Why::Ran
+        } else if wait >= d {
+            Why::Queued
+        } else {
+            Why::Disk
+        }
     }
 }
 
@@ -70,7 +75,9 @@ pub struct Spans {
 }
 
 impl Spans {
-    /// Bursts whose cause isn't told.
+    /// Bursts whose cause isn't told, as tests about the timing alone
+    /// give them; the sampler always tells it.
+    #[cfg(test)]
     pub fn new(spans: Vec<(f64, f64)>) -> Self {
         Self::sorted(spans.into_iter().map(|(a, b)| (a, b, None)).collect())
     }
@@ -92,8 +99,11 @@ impl Spans {
     /// What held the thread through the burst a key arriving at `t` lands
     /// in, when it lands in one whose cause is told.
     pub fn why(&self, t: f64) -> Option<Why> {
-        let _ = t;
-        None
+        let i = self
+            .starts
+            .partition_point(|start| *start <= t)
+            .checked_sub(1)?;
+        (t < self.ends[i]).then_some(self.whys[i]).flatten()
     }
 
     /// How long a key arriving at `t` waits for the burst it lands in.
@@ -173,15 +183,20 @@ pub fn keys(
             let start = instant(at_pi, draw.next() * total);
             let mut t = start;
             let mut waits = [0.0; 5];
+            let mut pi_why = None;
             for (hop, (_, thread)) in HOPS.iter().enumerate() {
-                waits[hop] = path.of(*thread).residual(t);
+                let spans = path.of(*thread);
+                waits[hop] = spans.residual(t);
+                if *thread == Thread::Pi && waits[hop] > LOST {
+                    pi_why = spans.why(t);
+                }
                 t += waits[hop] + COST[hop];
             }
             let vblank = frame - t.rem_euclid(frame);
             Key {
                 total: t + vblank - start,
                 waits,
-                pi_why: None,
+                pi_why,
             }
         })
         .collect()
@@ -250,7 +265,8 @@ pub fn summary(keys: &[Key]) -> Option<Summary> {
         max: totals[totals.len() - 1],
         late: share(totals.iter().filter(|t| **t > LATE).count()),
         lost_at: [lost(Thread::Niri), lost(Thread::Kitty), lost(Thread::Pi)],
-        pi_lost_by: [0.0; 3],
+        pi_lost_by: [Why::Ran, Why::Queued, Why::Disk]
+            .map(|why| share(keys.iter().filter(|key| key.pi_why == Some(why)).count())),
     })
 }
 
