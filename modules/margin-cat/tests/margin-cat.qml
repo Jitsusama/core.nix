@@ -447,8 +447,30 @@ QtObject {
         expect("as high as the room above has, never off the screen",
             flight.every(at => at.y >= 0), true);
         expect("long enough to be seen", leaps.ends - leaps.begins >= 160, true);
-        expect("stretched out in the air, never mid-stride",
-            Array.from(new Set(flight.map(at => at.pose))), ["leaping"]);
+        // Each pose a beat of the route shows, in order, and for how many ms.
+        const posed = (route, name) => {
+            const beat = route.beats.find(one => one.name === name);
+            const shown = [];
+            for (let t = beat.begins; t < beat.ends; t++) {
+                const pose = Paths.frame(route, t).pose;
+                if (shown.length && shown[shown.length - 1].pose === pose)
+                    shown[shown.length - 1].ms += 1;
+                else
+                    shown.push({ pose, ms: 1 });
+            }
+            return shown;
+        };
+        const aloft = posed(across, "leaps");
+        expect("rising, tucked at the top, then reaching down, never mid-stride",
+            aloft.map(one => one.pose), ["leaping", "tucked", "falling"]);
+        expect("each seen two frames at 60 Hz", aloft.every(one => one.ms >= 33), true);
+        const top = across.beats.find(beat => beat.name === "leaps");
+        const highest = flight.reduce((best, at) => at.y < best.y ? at : best);
+        expect("tucked at the leap's highest",
+            Paths.frame(across, highest.t).pose, "tucked");
+        expect("rising before it and falling after",
+            [Paths.frame(across, top.begins).pose, Paths.frame(across, top.ends - 1).pose],
+            ["leaping", "falling"]);
         expect("never a jump between two frames", smooth(seen(across)), true);
         expect("a walk along one column leaps nothing",
             Paths.walk(seat(100), seat(400), world({ pause: 0 })).beats
@@ -627,6 +649,8 @@ QtObject {
                 Paths.frame(bare, bare.ends)],
             [true, true, { x: 100, y: 792, pose: null, turn: 0, facing: 1, beat: "sits",
                 done: true }]);
+        expect("reaching down all the way",
+            posed(bare, "falls").map(one => one.pose), ["falling"]);
         const risen = Paths.walk({ x: 300, y: 792 }, seat(300), world({ pause: 0 }));
         const onFace = at => at.x < 615.5 && at.x + 8 > 16.5 && at.y < 783.5 && at.y + 8 > 16.5;
         expect("windows come, it climbs to its seat by an edge, never up a face",
@@ -688,7 +712,7 @@ QtObject {
         const falling = runs(each(dropped, 191)).filter(one => one.pose !== null);
         expect("falling in the falling drawing, landing crouched, each seen two frames at 60 Hz",
             [falling.map(one => one.pose), falling.every(one => one.ms >= 33)],
-            [["leaping", "pouncing"], true]);
+            [["falling", "pouncing"], true]);
         const pressed = riding(300, { away: true, room: 20 });
         expect("never more than its room behind, before what follows passes through it",
             each(pressed, 191).every(one => edgeAt(300, one.t) - one.y <= 20 + 1e-6), true);
