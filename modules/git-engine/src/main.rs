@@ -254,7 +254,7 @@ fn help() -> Help {
         "git-engine -s 1 -u 1",
         "serves gitstatusd's protocol on stdin, as the prompt starts it",
     )
-    .command("--once DIR", "answers once for DIR, its fields as facts")
+    .option("--once DIR", "answers once for DIR, its fields as facts")
     .exit(Exit::Failed, "the prompt's pipe broke")
     .exit(Exit::NotFound, "DIR is in no repository, or isn't there")
 }
