@@ -293,8 +293,7 @@ fn writer(
     }
     let bundles = kept
         .as_ref()
-        .map(|kept| carried::kept(&mut Directory::new(kept)))
-        .unwrap_or_default();
+        .map_or_default(|kept| carried::kept(&mut Directory::new(kept)));
     // A machine whose bundle the writer keeps has its stick signed with it,
     // unless another, a key, or none was given.
     let given = bundle.is_some();

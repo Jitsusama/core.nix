@@ -193,8 +193,7 @@ impl Meter {
             (reading.clone(), pace)
         };
         let (reading, pace) = reading;
-        let elapsed =
-            |since: Option<Instant>| since.map_or_default(|since| since.elapsed());
+        let elapsed = |since: Option<Instant>| since.map_or_default(|since| since.elapsed());
         match reading.stage {
             Some((stage, since)) => {
                 let pace = match pace {

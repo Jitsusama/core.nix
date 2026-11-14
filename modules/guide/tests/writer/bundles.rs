@@ -17,9 +17,7 @@ use crate::common::Scratch;
 /// A bundle as a machine's install seals it, as far as a writer reads one
 /// it carries on: which machine's it is, and when it was sealed.
 fn bundle(machine: &str, sealed: Option<u64>) -> Vec<u8> {
-    let sealed = sealed
-        .map(|at| format!(r#","sealed":{at}"#))
-        .unwrap_or_default();
+    let sealed = sealed.map_or_default(|at| format!(r#","sealed":{at}"#));
     format!(
         r#"{{"format":1,"machine":"{machine}","opened_by":["the Nano"],"owner":"22f0175f-c166-49d2-96ab-c61575cddac5","db":"ab","to_keys":"a","to_passphrase":"b","keys":"c"{sealed}}}"#
     )
