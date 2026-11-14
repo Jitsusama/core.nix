@@ -437,7 +437,7 @@ fn first_width(measuring: bool) -> page::Width {
 fn help() -> Help {
     Help::new("reader", "shows a markdown file as a page to read")
         .example("reader notes.md", "shows notes.md where it was left")
-        .command("[FILE]", "shows the file, or a page of files to read")
+        .argument("[file]", "the file; a page of files to read without one")
         .option("--at LETTER", "opens at the mark kept under LETTER")
         .option(
             "--measure",
