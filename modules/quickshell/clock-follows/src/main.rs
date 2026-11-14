@@ -352,15 +352,32 @@ fn help() -> Help {
         "clock-follows",
         "moves the clock's zone to where the laptop is",
     )
-    .command(
-        "show [STATE]",
-        "where the clock last moved, if it follows; bare run",
+    .subcommand(
+        Help::new("show", "where the clock last moved, and if it follows")
+            .example("clock-follows show", "the same as bare clock-follows")
+            .argument("[state]", "the state folder, if not the account's"),
     )
-    .command(
-        "follow SOCKET STATE PROGRAM",
-        "watches whereabouts and sets the zone",
+    .subcommand(
+        Help::new("follow", "watches whereabouts and sets the zone")
+            .example(
+                "clock-follows follow SOCKET STATE PROGRAM",
+                "as its service runs it",
+            )
+            .argument("<socket>", "where whereabouts are told")
+            .argument("<state>", "the folder its moves are kept in")
+            .argument("<program>", "what sets the zone")
+            .exit(Exit::Failed, "the zone couldn't be set, or its state kept"),
     )
-    .command("put-back STATE PROGRAM", "puts the zone back where it was")
+    .subcommand(
+        Help::new("put-back", "puts the zone back where it was")
+            .example(
+                "clock-follows put-back STATE PROGRAM",
+                "the zone before it moved",
+            )
+            .argument("<state>", "the folder its moves are kept in")
+            .argument("<program>", "what sets the zone")
+            .exit(Exit::Failed, "the zone couldn't be set"),
+    )
     .example(
         "clock-follows",
         "where the clock last moved, and if it follows you",
