@@ -36,6 +36,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::gate::{Asked, gate};
 use pineapple::record::{self, Source};
+use pineapple::resume;
 use pineapple::slack::{Message, found, micros, root};
 use pineapple::{Context, Heard, Joel, Platform, decide};
 use serde_json::{Value, json};
@@ -358,7 +359,11 @@ fn judge(slack: &Slack, account: &Account, state: &Path, joel: &Joel, message: &
     let said_at =
         micros(&message.ts).map_or(0, |at| u64::try_from(at / MICROS).unwrap_or(u64::MAX));
     let replies = state.join("replies.jsonl");
-    let sent = record::ledger(&std::fs::read_to_string(&replies).unwrap_or_default());
+    // A stop Joel resumed no longer holds its thread's reply back.
+    let sent = record::ledger(&resume::cleared(
+        &std::fs::read_to_string(&replies).unwrap_or_default(),
+        &state.join("stops"),
+    ));
     let asked = Asked {
         reply: decision.reply,
         thread: &thread,

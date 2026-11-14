@@ -128,6 +128,7 @@
         deviceCheck = pkgs.callPackage ../../modules/device-check/package.nix { };
         google = pkgs.callPackage ../../modules/google/package.nix { };
         slack = pkgs.callPackage ../../modules/slack/package.nix { };
+        pineapple = pkgs.callPackage ../../modules/pineapple/package.nix { };
         recentFiles = pkgs.callPackage ../../modules/open-with/recent-files.nix { };
         # A script whose help is in our shape, run as its module's wrapper
         # runs it: `before` sets what the wrapper sets, and `words` go ahead
@@ -193,7 +194,8 @@
         pause-for-calls = pkgs.callPackage ../../modules/spotify/pause-for-calls/package.nix { };
         pi-packages = pkgs.callPackage ../../modules/pi-packages/package.nix { };
         pi-spawner = pkgs.callPackage ../../modules/pi/spawner/package.nix { };
-        pineapple-slack = pkgs.callPackage ../../modules/pineapple/package.nix { };
+        inherit pineapple;
+        pineapple-slack = pineapple;
         plymouth-waits = pkgs.callPackage ../../modules/plymouth/waits/package.nix { };
         quickshell-hands-over = import ../../modules/quickshell/hands-over.nix { inherit pkgs; };
         recent-files = recentFiles;

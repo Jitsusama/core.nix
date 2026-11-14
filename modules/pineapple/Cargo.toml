@@ -1,7 +1,8 @@
 # pineapple: whether a message someone wrote is the safe word that stops
 # Joel's agents, and what it stops. The library judges (src/lib.rs says
 # how the pieces fit); pineapple-slack reads Slack for it, in shadow
-# (src/bin/pineapple-slack.rs), and the enforcer comes later.
+# (src/bin/pineapple-slack.rs), and pineapple is Joel's own command to
+# list stops and resume them (src/bin/pineapple.rs), refused under pi.
 [package]
 name = "pineapple"
 version = "0.1.0"
