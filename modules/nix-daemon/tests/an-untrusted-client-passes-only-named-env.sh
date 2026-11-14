@@ -77,8 +77,8 @@ case_ malformed NIX_LISTED malformed: \
   --option impure-env not-a-pair-sneaky
 
 if ! grep -q "impure-env variable 'NIX_UNLISTED'" "$here/client.log"; then
-  printf 'FAIL: the client was never told its unnamed variable was dropped:\n%s\n' \
-    "$(cat "$here/client.log")" >&2
+  printf 'FAIL: the client was never told its unnamed variable was dropped:\n' >&2
+  cat "$here/client.log" >&2
   failed=1
 fi
 # A value may be a credential, so none reaches a warning or a log.
@@ -90,8 +90,10 @@ for log in "$here/client.log" "$here/door.log"; do
 done
 
 if ((failed)); then
-  printf 'The client was told:\n%s\nThe door logged:\n%s\n' \
-    "$(cat "$here/client.log")" "$(cat "$here/door.log")" >&2
+  printf 'The client was told:\n' >&2
+  cat "$here/client.log" >&2
+  printf 'The door logged:\n' >&2
+  cat "$here/door.log" >&2
   exit 1
 fi
 echo "An untrusted client hands a fixed-output build the variables the daemon names, and only them"
