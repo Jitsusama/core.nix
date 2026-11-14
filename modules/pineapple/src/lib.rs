@@ -26,6 +26,8 @@
 //!   with the presses each offers, and [`acts`] takes those presses
 //!   back; [`serve`] serves them on a socket of its own, taking a press
 //!   only from his shell ([`peer`]), and knocks as a row first appears.
+//! - [`phone`] says the same alert in Joel's own note-to-self IM in
+//!   Slack, the one place it can send to, so it reaches his phone.
 //!
 //! Readers hand it sayings from each platform, Slack first
 //! (src/bin/pineapple-slack.rs), and the enforcer acts on what it
@@ -37,6 +39,7 @@ mod decide;
 pub mod gate;
 mod judge;
 pub mod peer;
+pub mod phone;
 pub mod record;
 pub mod reply;
 pub mod resume;

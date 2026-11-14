@@ -505,6 +505,7 @@ let
       cp ${test} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/lib/NoticesDaemon.qml} NoticesDaemon.qml
+      cp ${../../../tests/lib/LooksDaemon.qml} LooksDaemon.qml
       cp ${../../../tests/lib/Watch.js} Watch.js
       cp ${facts} Facts.qml
       cp ${waiting} WaitingOnYou.qml

@@ -93,7 +93,13 @@
 # without asking, as a browser is: it only ever asks to a city's accuracy,
 # and what it learns stays in the account's runtime directory, leaving
 # only to a hundredth of a degree: to Nominatim, for its town, and to
-# Open-Meteo, for its zone and its weather.
+# Open-Meteo, for its zone and its weather. At a city's accuracy GeoClue
+# had the card scan for networks every five minutes, each scan taking it
+# off its channel for seconds and each a chance to roam, so
+# geoclue-looks-hourly.patch scans hourly, and GeoClue still hears every
+# scan wpa_supplicant makes as it joins a network somewhere new. Only the
+# service runs the patched GeoClue, so nothing built against its library
+# is built again.
 { pkgs, ... }:
 let
   # The Qt the shell is built with: nixpkgs' own, its JavaScript engine
@@ -228,6 +234,9 @@ in
 
   services.geoclue2 = {
     enable = true;
+    package = pkgs.geoclue2.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ ./geoclue-looks-hourly.patch ];
+    });
     geoProviderUrl = "https://api.beacondb.net/v1/geolocate";
     appConfig.whereabouts = {
       isAllowed = true;

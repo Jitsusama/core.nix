@@ -5,7 +5,37 @@
 # app-<launcher>-<id>-<pid>.scope, rather than staying in whatever opened
 # it. Like gio-launch-desktop, it says which process the entry started.
 # Where the account's systemd can't be reached it runs the program as it is.
-# usage: launched <program> [argument...]
+# Its help and failures take the shape every command of ours does
+# (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+launched  run an entry's program in a scope of its own
+
+  What GLib starts each program from a desktop entry
+  through: the program gets a scope of its own in
+  app.slice, named for its entry. Without the account's
+  systemd, the program runs as it is.
+
+EXAMPLES
+  launched mpv film.mkv
+
+EXIT
+  64  no program was named
+  else the program's own, or systemd-run's
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
+
+if [ "$#" -eq 0 ]; then
+  printf '%s\n' "launched takes the program to run" \
+    "  try  launched --help" >&2
+  exit 64
+fi
+
 entry=${GIO_LAUNCHED_DESKTOP_FILE:-}
 if [ -n "$entry" ]; then
   export GIO_LAUNCHED_DESKTOP_FILE_PID=$$

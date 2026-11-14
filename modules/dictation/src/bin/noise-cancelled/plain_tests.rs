@@ -78,6 +78,58 @@ fn a_call_on_hears_the_microphone_it_runs_until_its_over() {
     );
 }
 
+/// Chrome recording from `from`'s one port, as pw-dump prints the wiring.
+fn wired_from(from: u64) -> Value {
+    json!([
+        {"id": 31, "type": "PipeWire:Interface:Port",
+         "info": {"direction": "output", "props": {"node.id": 30}}},
+        {"id": 36, "type": "PipeWire:Interface:Port",
+         "info": {"direction": "output", "props": {"node.id": 35}}},
+        {"id": 35, "type": "PipeWire:Interface:Node", "info": {"state": "running", "props": {
+            "media.class": "Audio/Source", "node.name": "noise-cancelled.alsa_input.mv7",
+        }}},
+        {"id": 41, "type": "PipeWire:Interface:Port",
+         "info": {"direction": "input", "props": {"node.id": 40}}},
+        {"id": 45, "type": "PipeWire:Interface:Link",
+         "info": {"output-port-id": from, "input-port-id": 41}},
+    ])
+}
+
+#[test]
+fn the_call_is_said_once_on_and_again_when_what_it_records_from_changes() {
+    let mut follower = Follower::default();
+    let start = Instant::now();
+    follower.take(&json!([mv7("running"), chrome()]));
+    follower.take(&wired_from(31));
+    follower.stepped(start);
+    assert_eq!(
+        follower.recording(),
+        None,
+        "a moment's recording was said as a call"
+    );
+    follower.stepped(start + Duration::from_secs(3));
+    assert_eq!(
+        follower.recording().as_deref(),
+        Some("the call in chrome records from alsa_input.mv7"),
+        "the call's app and microphone weren't said"
+    );
+    assert_eq!(follower.recording(), None, "the same call was said twice");
+    follower.take(&wired_from(36));
+    follower.stepped(start + Duration::from_secs(4));
+    assert_eq!(
+        follower.recording().as_deref(),
+        Some("the call in chrome records from noise-cancelled.alsa_input.mv7"),
+        "the call moving to the twin wasn't said"
+    );
+    follower.take(&json!([{"id": 45, "info": null}]));
+    follower.stepped(start + Duration::from_secs(5));
+    assert_eq!(
+        follower.recording(),
+        None,
+        "a call let go of its microphone was said to record from nothing"
+    );
+}
+
 #[test]
 fn a_microphone_running_once_a_call_is_on_is_heard_then() {
     let mut follower = Follower::default();

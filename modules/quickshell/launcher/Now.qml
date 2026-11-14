@@ -1028,9 +1028,6 @@ Provider {
         const now = Date.now();
         const say = forYouSaid(now);
         const waits = one.state === "waiting";
-        const session = lookSession(one);
-        const quest = one.quest ? WaitingOnYou.ownerOf(one.quest) : null;
-        const from = quest?.title || one.quest || session?.title || one.session || "";
         const target = ["pr", "page", "diff"].includes(one.kind) ? one.target : "";
         const facts = [
             fact("weight", waits ? ForYou.weightSaid(lookThing(one), now, say) : ""),
@@ -1042,16 +1039,25 @@ Provider {
             // the nerdy bits, where y copies it (Y2YBTS, 2026-11-12).
             fact("target", ForYou.pointsAt(one.kind, target, say))
         ].filter(each => each.value !== "");
-        return {
-            // Who it's from, and how their quest stands where it isn't
-            // active, in place of a Session fact saying it again.
-            eyebrow: waitingSaid("from", { from: ForYou.sessionSaid(from, quest?.status),
-                kind: say.look }),
-            eyebrowNames: true,
+        return Object.assign(lookFrom(one, say), {
             title: one.title,
             facts: facts,
             nerd: [fact("target", target), fact("look", one.id)],
             body: one.words
+        });
+    }
+
+    // Who a look is from, its drawer's eyebrow: its quest by its title in
+    // the index, and how that stands where it isn't active, in place of a
+    // Session fact saying it again, else its session.
+    function lookFrom(one, say) {
+        const session = lookSession(one);
+        const quest = one.quest ? WaitingOnYou.ownerOf(one.quest) : null;
+        const from = quest?.title || one.quest || session?.title || one.session || "";
+        return {
+            eyebrow: waitingSaid("from", { from: ForYou.sessionSaid(from, quest?.status),
+                kind: say.look }),
+            eyebrowNames: true
         };
     }
 
@@ -1190,55 +1196,128 @@ Provider {
     // since each says when it was done as a moment the day's turning
     // moves. Both verbs and targets ask for them at each step, and making
     // all 594 to 679 of Joel's anew took 43 to 92 ms of steps of 81 to 152
-    // (2026-11-13). The notices' rows come ready from the notices daemon,
-    // each listed as served (row.rs's notices-history); joining them with
-    // the rest is a stopgap until For You's rows are served whole.
+    // (2026-11-13). The notices' rows come ready from the notices daemon
+    // (row.rs's notices-history) and the looks' from the to-do daemon
+    // (doneLooks), each listed as served, and joined as each is ordered
+    // rather than sorted again: making Joel's 470 looks done with took
+    // 104 to 226 ms of a fresh shell's first step (2026-11-14). Joining
+    // them with the rest is a stopgap until For You's rows are served
+    // whole.
     readonly property var historyKept: keeper()
     function historyRows(from) {
         const now = Date.now();
         const served = source("notices")?.pastRows(pastOf(from)) ?? [];
         const ours = from === undefined;
-        return keptAlike(historyKept, from ?? "", [served, cameDone,
+        const looked = ours ? lookedRows() : null;
+        return keptAlike(historyKept, from ?? "", [served, looked, cameDone,
             ours ? looks.history : null, ours ? doneItems : null, ours ? given.done : null,
-            new Date(now).toDateString()], () => madeHistory(from, served, now));
+            new Date(now).toDateString()], () => madeHistory(from, served, looked, now));
     }
-    function madeHistory(from, served, now) {
+    function madeHistory(from, served, looked, now) {
         const came = from === undefined ? cameDone
             : cameDone.filter(one => one.source === from);
-        // The notices done with, each its row as the notices daemon
-        // serves History's.
-        const past = served.map(one => ({ at: one.doneAt, row: () => one }));
         const say = forYouSaid(now);
-        const day = new Date(now).toDateString();
-        if (from === undefined)
-            keepingBegun(historyLooks);
-        const ours = from === undefined ? looks.history.map(one => ({
-            at: one.resolved ?? one.since, row: () => keptAlike(historyLooks, one.file,
-                [one, day], () => provider.keptLook(one, now)) }))
+        // The looks done with that the shell holds and the to-do daemon
+        // doesn't serve: one answered while its session hasn't written it
+        // so (Looks.js's taken), or settled while the daemon hasn't told it
+        // yet, and every one while the daemon serves none. Few, they're made
+        // here and sorted with what else the shell holds.
+        const apart = from === undefined ? lookedApart(looked) : [];
+        const ours = from === undefined ? apart.map(one => ({
+            at: one.resolved ?? one.since, row: () => provider.keptLook(one, now) }))
             .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })),
                 given.done.map(one => ({ at: one.done.at,
                     row: () => provider.givenDone(one, say) })))
             : [];
-        const rows = ours.concat(came.map(one => ({ at: one.at,
-            row: () => provider.cameDoneRow(one) })), past);
-        const made = Order.sorted(rows, Order.stream(one => one.at)).map(one => one.row());
-        if (from === undefined)
-            keptOnly(historyLooks);
-        return made;
+        const own = Order.sorted(ours.concat(came.map(one => ({ at: one.at,
+            row: () => provider.cameDoneRow(one) }))), Order.stream(one => one.at))
+            .map(one => ({ at: one.at, row: one.row() }));
+        const done = list => list.map(row => ({ at: row.doneAt, row: row }));
+        return Order.merged([done(looked ?? []), done(served), own],
+            Order.stream(one => one.at)).map(one => one.row);
     }
-    // Each look done with, its History row kept while the look and the
-    // day are the same: one is parsed again only as its text changes and
-    // split again only as the hour turns, and done with, its row reads
-    // nothing else but the day its moment is said against. Working out
-    // all 470 of Joel's sides again as one notice was read took 53 to
-    // 113 ms of the step, and kept, 18 to 50 (2026-11-14). A stopgap, as
-    // the first step still makes them all, until FEH1HE's to-do daemon
-    // serves each look's History row ready, as the notices' come, by
-    // Sat 14 Nov 22:00.
-    readonly property var historyLooks: keeper()
+    // A served look as the shell holds it, by its id, since the daemon's
+    // names no file, or as the daemon read it where the shell holds none.
+    function lookHeld(held) {
+        return looks.history.find(each => each.id === held.id)
+            ?? Object.assign({}, held, { file: "" });
+    }
+    // Opening a served look: as the shell opens its own, and one the shell
+    // holds no file of, still waiting or gone quiet, settled by the daemon
+    // by its id (FEH1HE, 2026-11-14).
+    function openServed(one) {
+        openLook(one);
+        if (one.file === "" && (one.state === "waiting" || one.state === "quiet"))
+            lookStream.ask({ ask: "settle-look", look: one.id, state: "opened",
+                how: waitingSaid("openedHow", {}) }, () => {});
+    }
+    // The looks done with in the shell's own split that doneLooks doesn't
+    // serve, by their ids.
+    function lookedApart(looked) {
+        const served = new Set(looked.map(row => row.look));
+        return looks.history.filter(one => !served.has(one.id));
+    }
     // How many times a look's side has been worked out, which a step
     // that changed no look adds nothing to.
     readonly property var looksWeighed: ({ times: 0 })
+
+    // The looks done with, each its History row as the to-do daemon
+    // serves it ready (FEH1HE, 2026-11-14), newest done with first, held
+    // over a connection of their own whether or not the launcher's open,
+    // so a fresh shell's first step into History finds them made. Only
+    // what the shell alone knows is its own: who a look is from, as the
+    // index names its quest, and going to a terminal's session.
+    ReadyRows {
+        id: doneLooks
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/to-do.sock`
+        place: "looks-history"
+        beside: ["summary"]
+        maker: provider
+        drawn: provider.launcher?.open ?? false
+        make: (row, key) => doneLooks.thing(row, key, provider.lookServed(row, key))
+    }
+    // One list of the served rows while their places stand, as the
+    // daemon's rows() gives a new list each time.
+    readonly property var lookedPage: ({ at: -1, rows: [] })
+    function lookedRows() {
+        if (lookedPage.at !== doneLooks.placings) {
+            lookedPage.rows = doneLooks.rows();
+            lookedPage.at = doneLooks.placings;
+        }
+        return lookedPage.rows;
+    }
+    // A served look's row, its key the one the shell's own gave it, so
+    // the launcher keeps its place: Return opens it as the shell's own
+    // does, the look as the shell holds it, so one gone quiet is written
+    // opened, and its drawer says who it's from.
+    function lookServed(row, key) {
+        const held = row.held ?? {};
+        const one = () => provider.lookHeld(held);
+        const opens = held.kind === "terminal" ? "verb:on:waiting:go" : "verb:on:look:open";
+        const inside = () => [thing({
+            key: `verb:on:look:open:${held.id}`,
+            verb: Words.verb(opens),
+            name: Words.name(opens),
+            glyph: Words.glyph(opens),
+            hue: "action",
+            later: true,
+            run: () => provider.openServed(one())
+        })];
+        return {
+            key: `on:look:${held.id}`,
+            look: held.id,
+            doneAt: held.doneAt ?? 0,
+            forYou: row.forYou ?? { kind: "look", source: "looks" },
+            verb: Words.verb(opens),
+            later: true,
+            run: () => provider.openServed(one()),
+            verbs: inside,
+            targets: inside,
+            actsOnly: false,
+            drawer: () => Object.assign({}, doneLooks.drawerOf(row, key),
+                provider.lookFrom(one(), forYouSaid(Date.now())))
+        };
+    }
     // What a source gave that's done, in History as its source made it,
     // saying at its side how it went and when, "read 14:02", as every row
     // there does.

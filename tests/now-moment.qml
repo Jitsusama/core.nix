@@ -24,8 +24,11 @@
 // banded once for each change, asked again it bands nothing, and the
 // files an opening reads are taken together, one read as it was not at all.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
-// Long because its cases run in turn on one Now, its stand-ins and one
-// stand-in notices daemon, which each file split from it would build again.
+// History lists the looks done with as the to-do daemon serves them,
+// making none itself, among the notices by when each was done.
+// Long because its cases run in turn on one Now, its stand-ins and its
+// stand-in notices and to-do daemons, which each file split from it would
+// build again.
 import qs
 import Quickshell
 import QtQuick
@@ -430,8 +433,8 @@ ShellRoot {
             at: root.lookedAt, resolvedAt: root.lookedAt, target: "https://example.com",
             title: `Looked at ${id}`, why: "Because.", state: "opened" });
         now.lookTexts = { "d.json": doneLook("d"), "e.json": doneLook("e") };
-        now.historyRows();
         weighedBefore = now.looksWeighed.times;
+        now.historyRows();
         historyBefore = stepIn().history;
         steppedBefore = heldMade();
         madeBefore = madeNow();
@@ -493,13 +496,25 @@ ShellRoot {
             expect("one notice read, History makes only its row again",
                 fresh.length === 1 && fresh[0].notice === 2,
                 JSON.stringify(fresh.map(row => row.key)));
-            // For You's History holds the looks done with too, whose sides
-            // a notice read changes nothing of: 470 of Joel's worked out
-            // again took 53 to 113 ms of a step (2026-11-14).
-            const held = now.historyRows().filter(row => row.key.startsWith("on:look:"));
-            expect("one notice read, For You's History works out no look's side again",
+            // For You's History holds the looks done with too, as the
+            // to-do daemon serves their rows, so the shell works out none
+            // of their sides, stepping in first or again: Joel's 470 made
+            // here took 104 to 226 ms of a fresh shell's first step
+            // (2026-11-14).
+            const history = now.historyRows();
+            const held = history.filter(row => row.key.startsWith("on:look:"));
+            expect("For You's History lists the looks as served, making none itself",
                 held.length === 2 && now.looksWeighed.times === weighedBefore,
-                `${held.length} looks, ${now.looksWeighed.times - weighedBefore} sides again`);
+                `${held.length} looks, ${now.looksWeighed.times - weighedBefore} sides made`);
+            // Its Return opens the look as the shell holds it, so one gone
+            // quiet is written opened, though the daemon names no file.
+            expect("a served look opens as the shell holds it",
+                now.lookHeld({ id: "d" }).file === "d.json",
+                JSON.stringify(now.lookHeld({ id: "d" })));
+            const dated = history.filter(row => typeof row.doneAt === "number");
+            expect("For You's History joins the looks and notices by when each was done",
+                dated.every((row, at) => at === 0 || dated[at - 1].doneAt >= row.doneAt),
+                JSON.stringify(dated.map(row => [row.key, row.doneAt])));
             now.lookTexts = looksBefore;
             expect("a search answered before the notices changed waits for its answer again",
                 pastNotices.awaits("notice") === true, JSON.stringify(pastNotices.answers.kept));
@@ -576,6 +591,13 @@ ShellRoot {
     // The notices daemon, serving the rows of the notices a case gives.
     NoticesDaemon {
         id: noticesDaemon
+    }
+    // The to-do daemon, serving History's rows of the looks done with,
+    // those the History case's look files hold.
+    LooksDaemon {
+        looks: ["d", "e"].map(id => ({ id: id, kind: "page",
+            title: `Looked at ${id}`, why: "Because.", how: "opened",
+            doneAt: Date.parse(root.lookedAt) }))
     }
     Connections {
         target: pastNotices

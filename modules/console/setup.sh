@@ -8,7 +8,31 @@
 # no font. A failure on a console now drawing graphics is that, said and
 # done with; each login prompt sets its own console's font anyway
 # (nixos.nix). Any other failure is the setup's.
-# The header written above this (./nixos.nix) names the setup by path.
+# The header written above this (./nixos.nix) names the setup by path. Its
+# help takes the shape every command of ours does (docs/commands.md), by
+# hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+console-setup  set a console's font and keymap
+
+  As systemd-vconsole-setup does, for the run udev starts
+  as a graphics driver takes the console over. A console
+  taken for graphics meanwhile wants no font, so that
+  isn't a failure.
+
+EXAMPLES
+  console-setup /dev/tty1
+
+EXIT
+  0   set, or the console was taken for graphics
+  else the setup's own
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 "$setup" "$@" && exit 0
 status=$?
