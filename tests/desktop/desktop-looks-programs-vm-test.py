@@ -873,14 +873,16 @@ def test_passwords_and_a_copy_are_shot_at_each_scale(
 ) -> None:
     """Shoot Passwords, an entry read in full, the margin's mark once copied, and 1Password.
 
-    1Password is asked through the stand-in op (tests/desktop.nix) as the place opens, and
-    until it answers the place leads with 1Password locked, so it's opened again once it has.
+    1Password is asked through the stand-in op (tests/desktop.nix) as Joel steps in, by keys,
+    since a place opened over qs ipc asks as nobody; until it answers the place leads with
+    1Password locked, so it's opened again once it has.
     """
     favourite = "Lighthouse Console"
     for scale in at_each_scale:
         at = at_scale(desktop, scale)
-        desktop.as_account("qs ipc call launcher collection passwords")
-        desktop.launcher_ready()
+        desktop.answer("passwords")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Passwords")
+        desktop.step_in("ret")
         desktop.launcher_until(lambda shown: favourite in shown["rows"])
         desktop.close_launcher()
         desktop.as_account("qs ipc call launcher collection passwords")

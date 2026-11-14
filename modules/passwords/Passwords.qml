@@ -75,11 +75,13 @@ Provider {
     Daemon {
         id: daemon
 
-        // Never reached while the place is off, so a daemon an agent
-        // started by hand is never asked, and Joel's step in never has his
-        // manager let in a daemon every agent could then ask.
-        socket: provider.off ? ""
-            : `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/passwords.sock`
+        // The shell's own child, with no socket another process could
+        // reach, so what Joel's manager lets it read is the shell's alone.
+        // Never run while the place is off. It copies nothing unless a
+        // copier is named, which only the checks do until agents are
+        // fenced off the clipboard; null keeps one out of its environment.
+        command: provider.off ? [] : provider.settings.daemon ?? []
+        environment: ({ PASSWORDS_COPIER: provider.settings.copier ?? null })
         kind: "entry"
         // Entries change as a manager is read, so each is kept by key and
         // a manager's standing told as it changes.
@@ -102,6 +104,18 @@ Provider {
     // can't have a password backdoor here"). It then holds one row, saying
     // so and opening the browser his manager's own extension fills in.
     readonly property bool off: settings.off === true
+    // Whether the launcher is walked from outside it, as `qs ipc call
+    // launcher run`, `doing` and `show` walk it for any process of the
+    // account's. While it is, the place holds no row and no act, and asks
+    // its daemon nothing, so only Joel's keys in the launcher reach an
+    // entry, a manager's let-in or a check.
+    readonly property bool outside: provider.launcher?.cataloguing === true
+    // Whether a line from outside the launcher opened it into this place,
+    // over qs ipc or its socket, which any process of the account's can
+    // write and no chord of Joel's does. Opened so, the place lists as
+    // nobody, so 1Password never asks him for what another process opened;
+    // what he types asks as him.
+    readonly property bool told: provider.launcher?.toldInto === settings.name
 
     // The manager whose browser extension fills sign-ins in, and that
     // browser, which the place offers while it's off; null where none has.
@@ -127,30 +141,54 @@ Provider {
     }
 
     // The one row while it's off: Return opens the browser a manager's
-    // extension fills sign-ins in, which needs no clipboard. Its drawer
-    // says why it's off, which its name alone doesn't.
+    // extension fills sign-ins in, which needs no clipboard, or else what
+    // Managers.js's offOpens says, going into its drawer when nothing can
+    // open. Its drawer says why it's off, which its name alone doesn't, and
+    // with nothing to open, why and what would. The entries are read as a
+    // binding, so one read before they're loaded is read again once they
+    // are, which DesktopEntries.byId isn't.
     readonly property var offRow: {
-        const manager = offManager;
-        const browser = offBrowser;
+        const ids = DesktopEntries.applications.values.map(entry => entry.id);
+        const listed = id => (id ?? "") !== "" && ids.includes(id) ? DesktopEntries.byId(id) : null;
+        const opens = Managers.offOpens(managers, one => listed(one.fills),
+            one => listed(one.program));
         const name = Words.name("passwords:off");
-        return Object.assign(thing({
+        const manager = opens.manager?.called ?? "";
+        const row = {
             key: "passwords:off",
             name: name,
-            verb: Words.verb("passwords:off"),
             glyph: Words.glyph("passwords:off"),
-            note: manager === null ? ""
-                : String(said.offNote ?? "").replace("{manager}", manager.called),
+            note: String(said[opens.note] ?? "").replace("{manager}", manager),
             hue: "alert",
             leads: true,
             // An act with something to say beyond its name, so its drawer
             // comes out (Launcher.qml's detailed).
             thing: true,
-            drawer: { title: name, body: offAbout },
-            run: () => {
-                if (browser !== null)
-                    Niri.spawn(provider.command(browser));
-            }
-        }), { named: Fuzzy.letters([name.toLowerCase()]), worded: 0 });
+            drawer: { title: name, body: provider.offDrawn(opens) }
+        };
+        Object.assign(row, opens.act === "open" ? {
+            verb: Words.verb("passwords:off"),
+            run: () => Niri.spawn(provider.command(opens.opened))
+        } : {
+            verb: "show",
+            stays: true,
+            run: () => provider.launcher?.intoDrawer?.()
+        });
+        return Object.assign(thing(row), { named: Fuzzy.letters([name.toLowerCase()]),
+            worded: 0 });
+    }
+
+    // What the off row's drawer says: why it's off and what Return opens
+    // (offAbout), or when nothing can open, why it's off, why nothing opens
+    // and what would.
+    function offDrawn(opens) {
+        if (opens.act !== "drawer")
+            return offAbout;
+        const tells = Words.of("passwords:off").tells ?? {};
+        const why = Words.of("passwords").tells?.offWhy ?? "";
+        const lacks = opens.manager === null ? tells.noManager ?? ""
+            : String(tells.noApp ?? "").replace("{manager}", opens.manager.called ?? "");
+        return [why, lacks, tells.would].filter(one => (one ?? "") !== "").join(" ");
     }
 
     // How long after an ask of Joel's a manager's window may come and still
@@ -197,6 +235,12 @@ Provider {
         return (manager?.fills ?? "") === "" ? null : DesktopEntries.byId(manager.fills);
     }
 
+    // The desktop entry of a manager's own app, or null where the machine
+    // hasn't it.
+    function appOf(manager) {
+        return (manager?.program ?? "") === "" ? null : DesktopEntries.byId(manager.program);
+    }
+
     // Whether a manager can't read until Joel lets the launcher in.
     function signedOut(manager) {
         return daemon.sources[manager.name]?.state === "signed-out";
@@ -225,6 +269,8 @@ Provider {
     readonly property var all: {
         if (provider.off)
             return [provider.offRow];
+        if (provider.outside)
+            return [];
         const rows = everyone;
         const byKey = {};
         for (const row of rows)
@@ -293,7 +339,7 @@ Provider {
     // entry's health comes back on its record by the watch, and the answer
     // says only why it couldn't, if it couldn't.
     function checkEvery() {
-        if (checking || off)
+        if (checking || off || outside)
             return;
         checking = true;
         checkWhy = "";
@@ -602,7 +648,7 @@ Provider {
     // read it until it's cleared (Clearing.qml).
     function copySecret(key, detail, what) {
         const record = recordOf(key);
-        if (record === null)
+        if (record === null || outside)
             return;
         const copy = { key: key, title: Passwords.titleOf(record),
             detail: what, clears: 0, lapses: 0, period: 0 };
@@ -701,7 +747,7 @@ Provider {
     // before Return is (Launcher.qml's tellOnOpen): never nothing, as when
     // 1Password keeps its command out and no prompt ever comes.
     function letIn(manager) {
-        if (off)
+        if (off || outside)
             return;
         handOver();
         daemon.ask({ ask: "let-in", manager: manager.name, patience: 120000 }, answer => {
@@ -719,7 +765,7 @@ Provider {
     property bool listedThisTime: false
 
     function listAsked() {
-        if (listedThisTime || off)
+        if (listedThisTime || off || outside)
             return;
         listedThisTime = true;
         handOver();
@@ -734,7 +780,7 @@ Provider {
 
     function getAsked(key, asked) {
         const had = gotThisTime[key];
-        if (off || had === "asked" || (!asked && had === "rested"))
+        if (off || outside || had === "asked" || (!asked && had === "rested"))
             return;
         // Read in full already, from resting on it, so stepping in needs
         // nothing more.
@@ -764,7 +810,10 @@ Provider {
     }
 
     function opened() {
-        listAsked();
+        if (told && !off && !outside)
+            daemon.ask({ ask: "list", fresh: true }, null);
+        else
+            listAsked();
     }
 
     // Stepping into an entry, wherever it's listed, reads it in full, so
@@ -844,6 +893,8 @@ Provider {
     function looksThrough() {
         if (off)
             return [offRow];
+        if (outside)
+            return [];
         return everyone.concat(attention, [checkRow]);
     }
 
@@ -917,6 +968,8 @@ Provider {
             return [];
         if (off)
             return [offRow];
+        if (outside)
+            return [];
         if (signedOut(manager)) {
             const key = "verb:passwords:let-in";
             return [thing({

@@ -8,24 +8,26 @@
 # there only where some manager is.
 #
 # The passwords daemon (src/main.rs) runs each manager, holding every
-# entry without its secrets over $XDG_RUNTIME_DIR/daemons/passwords.sock in
-# the shell's daemon interface, for the shell and for `passwords`, the
-# command that asks it. A secret goes from its manager only to whoever
-# asked to see it, or to the clipboard, marked sensitive and cleared after
-# 90 seconds; nothing here or there keeps one. An audit, only when Joel
-# asks, reads every password to find those reused and those breached,
-# hashing each in the daemon's memory and sending Have I Been Pwned the
-# first five characters of a hash alone; the unit restricts no network, so
-# that reaches it as it is. What the last check found, each troubled
-# entry's two counts and when trouble was found and cleared, is kept in
-# the account's state folder, so For You's to-do for it outlives a reboot;
-# never a hash or a password.
+# entry without its secrets, and answers the shell alone: the Passwords
+# place runs it as its own child and asks it over its standard input and
+# output, in the shell's daemon interface. There's no unit and no socket,
+# since every agent runs as Joel, and a daemon any of them could reach
+# would answer them with whatever 1Password let it read (2026-11-10, Joel:
+# "we can't have a password backdoor here"); 1Password lets in each
+# process tree apart, so a daemon an agent starts must ask Joel itself. A
+# secret goes from its manager only to the ask for it; nothing is copied
+# while no copier is named, which nothing names until agents are fenced
+# off the clipboard. An audit, only when Joel asks, reads every password
+# to find those reused and those breached, hashing each in the daemon's
+# memory and sending Have I Been Pwned the first five characters of a
+# hash alone. What the last check found, each troubled entry's two counts
+# and when trouble was found and cleared, is kept in the account's state
+# folder, so For You's to-do for it outlives a reboot; never a hash or a
+# password.
 #
-# `passwords` completes in zsh with the completion it writes itself
-# (completion.nix), which offers the entries and details the daemon holds
-# and never asks a manager anything, so a Tab can't make 1Password ask
-# Joel to let it in. `passwords help` says each command, what it prints
-# for a person and for a program, and its exit statuses.
+# `passwords` is left with `keys`, the public keys 1Password's SSH agent
+# holds, and completes in zsh with the completion it writes itself
+# (completion.nix). No command reaches the daemon.
 { quickshell }:
 {
   config,
@@ -173,64 +175,13 @@ in
         shows = if manager.shows == null then "" else manager.shows;
         fills = if manager.fills == null then "" else manager.fills;
       }) managers;
-    };
-
-    # The passwords daemon. It isn't in background.slice: what it holds is
-    # what the launcher shows as Joel steps into Passwords, so it answers
-    # ahead of the work behind.
-    systemd.user.services.passwords = {
-      Unit = {
-        Description = "Holds Joel's passwords ready for the shell, without their secrets";
-        # Restarted after a switch reloads the units, it comes back with the
-        # managers the switch named, as the new one.
-        X-SwitchMethod = "restart";
-        # Its socket is systemd's, handed to it as it starts. It runs with
-        # the graphical session, whose display wl-copy copies to and where
-        # a password manager's own app, as 1Password's, answers.
-        Requires = [ "passwords.socket" ];
-        After = [
-          "passwords.socket"
-          "graphical-session.target"
-        ];
-        PartOf = [ "graphical-session.target" ];
-      };
-      Service = {
-        ExecStart = lib.concatStringsSep " " [
-          (lib.getExe passwords)
-          "daemon"
-          "%t/daemons/passwords.sock"
-          "${managersFile}"
-          "${words}"
-        ];
-        # wl-copy holds a copied secret on the clipboard until it's cleared.
-        Environment = [ "PASSWORDS_COPIER=${lib.getExe' pkgs.wl-clipboard "wl-copy"}" ];
-        Restart = "on-failure";
-        RestartSec = 5;
-        # What the checks found is kept in ~/.local/state/passwords, made
-        # by systemd for Joel alone; it's the one thing the daemon writes.
-        StateDirectory = "passwords";
-        StateDirectoryMode = "0700";
-        # No secret it holds is ever written, and a core dump would write one.
-        LimitCORE = 0;
-      };
-      # Nothing starts it, nor its socket below, until agents are fenced
-      # off Joel's runtime folder and Wayland: every agent runs as his uid,
-      # so any of them could ask it to reveal, copy or give a code once
-      # 1Password lets it in (2026-11-10, Joel: "we can't have a password
-      # backdoor here"). It runs only when started by hand, as the desktop's
-      # VM tests do; the Passwords place says it can't reach it meanwhile.
-    };
-
-    # Its socket, held by systemd whether or not the daemon runs, so the
-    # shell asking while it starts waits on it rather than finding no
-    # socket; asking starts it, should it have stopped.
-    systemd.user.sockets.passwords = {
-      Unit.Description = "Where the shell asks the passwords daemon";
-      Socket = {
-        ListenStream = "%t/daemons/passwords.sock";
-        SocketMode = "0600";
-        DirectoryMode = "0700";
-      };
+      # The daemon the place runs as its own child, for the shell's life.
+      daemon = [
+        (lib.getExe passwords)
+        "daemon"
+        "${managersFile}"
+        "${words}"
+      ];
     };
   };
 }

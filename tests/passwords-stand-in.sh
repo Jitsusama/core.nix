@@ -5,12 +5,13 @@
 # anything asked before it's let in, as op does when Joel dismisses
 # 1Password's prompt. The first let-in is refused too, as a dismissed prompt's
 # is, so the test can say the launcher tells why; the second lets it in, and it
-# knows GitHub and a bank card. Each ask is logged to the file it's given, so
-# the test can say what was asked and when.
+# knows GitHub and a bank card. Each ask is logged to the file it's given, or
+# else to $PASSWORDS_ASKED, as the shell's passwords daemon runs it with the
+# test's environment, so the test can say what was asked and when.
 #
-# usage: passwords-stand-in.sh LOG
+# usage: passwords-stand-in.sh [LOG]
 
-log=$1
+log=${1:-$PASSWORDS_ASKED}
 let_in=false
 asked_in=0
 locked='"1Password asks you to let the launcher in"'

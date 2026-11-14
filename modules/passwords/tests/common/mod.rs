@@ -1,13 +1,16 @@
-//! What the daemon's tests and the command's share: the daemon running
-//! with stand-in password managers of its own, a client on its socket, a
-//! stand-in for Have I Been Pwned on a local port, and a wait on
-//! something coming to hold.
+//! What the daemon's tests share: the daemon running with stand-in
+//! password managers of its own, asked over its standard input and output
+//! as the shell asks it, a stand-in for Have I Been Pwned on a local port,
+//! and a wait on something coming to hold.
 
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
-use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::rc::Rc;
+use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -61,12 +64,20 @@ printf '%s\n' "$*" > "$COPIED.flags"
 while :; do sleep 1; done
 "#;
 
-/// The daemon, running with these managers, and where its test keeps
-/// what each manager logged.
+/// The daemon, running with these managers, its one channel, and where
+/// its test keeps what each manager logged.
 pub struct Running {
     daemon: Child,
-    pub socket: PathBuf,
+    channel: Rc<RefCell<Channel>>,
     pub folder: PathBuf,
+}
+
+/// The daemon's standard input, each line it said, and those said that
+/// no ask has taken yet, as a watch's while an ask waits on its answer.
+struct Channel {
+    writing: Option<ChildStdin>,
+    lines: Receiver<String>,
+    unheard: VecDeque<Value>,
 }
 
 impl Running {
@@ -115,10 +126,8 @@ impl Running {
         std::fs::write(&copier, format!("#!/bin/sh\n{COPIER}")).unwrap();
         std::fs::set_permissions(&copier, std::os::unix::fs::PermissionsExt::from_mode(0o755))
             .unwrap();
-        let socket = folder.join("daemons/passwords.sock");
-        let daemon = Command::new(env!("CARGO_BIN_EXE_passwords"))
+        let mut daemon = Command::new(env!("CARGO_BIN_EXE_passwords"))
             .arg("daemon")
-            .arg(&socket)
             .arg(&managers_file)
             .arg(words)
             .env("PASSWORDS_COPIER", &copier)
@@ -126,30 +135,57 @@ impl Running {
             .env("COPIED", folder.join("copied"))
             .env("XDG_STATE_HOME", folder.join("state"))
             .envs(set.iter().copied())
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
             // What it and its managers log, kept so a test can say no
             // secret was logged.
             .stderr(std::fs::File::create(folder.join("logged")).unwrap())
             .spawn()
             .unwrap();
-        let running = Running {
+        let writing = daemon.stdin.take();
+        let reading = BufReader::new(daemon.stdout.take().unwrap());
+        let (told, lines) = mpsc::channel();
+        std::thread::spawn(move || {
+            for line in reading.lines() {
+                let Ok(line) = line else { break };
+                if told.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+        let channel = Rc::new(RefCell::new(Channel {
+            writing,
+            lines,
+            unheard: VecDeque::new(),
+        }));
+        Running {
             daemon,
-            socket,
+            channel,
             folder,
-        };
-        until("the socket is there", || running.socket.exists());
-        running
+        }
     }
 
+    /// A client of the one channel: each shares what's said on it, and an
+    /// ask leaves what isn't its answer for the others to hear.
     pub fn client(&self) -> Client {
-        let stream = UnixStream::connect(&self.socket).unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(20)))
-            .unwrap();
         Client {
-            reading: BufReader::new(stream.try_clone().unwrap()),
-            writing: stream,
+            channel: Rc::clone(&self.channel),
         }
+    }
+
+    /// Closes the daemon's standard input, as the shell going does.
+    pub fn close(&self) {
+        self.channel.borrow_mut().writing = None;
+    }
+
+    /// The daemon's process id.
+    pub fn pid(&self) -> u32 {
+        self.daemon.id()
+    }
+
+    /// Whether the daemon has ended.
+    pub fn ended(&mut self) -> bool {
+        self.daemon.try_wait().unwrap().is_some()
     }
 
     pub fn copied(&self) -> PathBuf {
@@ -176,32 +212,65 @@ impl Drop for Running {
 }
 
 pub struct Client {
-    reading: BufReader<UnixStream>,
-    writing: UnixStream,
+    channel: Rc<RefCell<Channel>>,
 }
 
 impl Client {
     pub fn say(&mut self, asked: &Value) {
-        writeln!(self.writing, "{asked}").unwrap();
+        let mut channel = self.channel.borrow_mut();
+        let writing = channel.writing.as_mut().expect("the channel was closed");
+        writeln!(writing, "{asked}").unwrap();
+        writing.flush().unwrap();
     }
 
+    /// The next line said, one no ask took first.
     pub fn hear(&mut self) -> Value {
-        let mut line = String::new();
-        self.reading.read_line(&mut line).unwrap();
-        serde_json::from_str(&line).unwrap_or_else(|_| panic!("not a line of JSON: {line:?}"))
+        let mut channel = self.channel.borrow_mut();
+        if let Some(heard) = channel.unheard.pop_front() {
+            return heard;
+        }
+        next(&channel)
     }
 
-    /// Asks one thing and hears its answer, passing over any other.
+    /// Asks one thing and hears its answer, leaving every other line said
+    /// meanwhile for the next to hear.
     pub fn ask(&mut self, asked: &Value) -> Value {
         let id = asked["id"].clone();
         self.say(asked);
+        let mut channel = self.channel.borrow_mut();
+        if let Some(at) = channel.unheard.iter().position(|heard| heard["id"] == id) {
+            return channel.unheard.remove(at).unwrap();
+        }
         loop {
-            let heard = self.hear();
+            let heard = next(&channel);
             if heard["id"] == id {
                 return heard;
             }
+            channel.unheard.push_back(heard);
         }
     }
+
+    /// Every line said that nothing has heard yet.
+    pub fn unheard(&mut self) -> Vec<Value> {
+        let mut channel = self.channel.borrow_mut();
+        while let Ok(line) = channel.lines.try_recv() {
+            channel.unheard.push_back(json_of(&line));
+        }
+        channel.unheard.drain(..).collect()
+    }
+}
+
+/// The next line the daemon says, within 20 seconds.
+fn next(channel: &Channel) -> Value {
+    let line = channel
+        .lines
+        .recv_timeout(Duration::from_secs(20))
+        .expect("the daemon said nothing for 20 s");
+    json_of(&line)
+}
+
+fn json_of(line: &str) -> Value {
+    serde_json::from_str(line).unwrap_or_else(|_| panic!("not a line of JSON: {line:?}"))
 }
 
 /// A stand-in for Have I Been Pwned's range API on a local port, answering

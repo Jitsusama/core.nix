@@ -14,10 +14,12 @@
 # Passwords serves the Linux desktop's shell, and builds only on Linux.
 onLinux {
   # The passwords daemon's tests run as it builds, with stand-in password
-  # managers in the shell: a list holds every entry and no secret, even
-  # one a manager gives with its secrets on; a held list or get asks no
-  # manager anything; a secret goes only to the client that asked to see
-  # it, or to the clipboard marked sensitive, cleared when its time is up;
+  # managers in the shell, each asked over the daemon's own standard input
+  # and output, as the shell asks it: a list holds every entry and no
+  # secret, even one a manager gives with its secrets on; a held list or
+  # get asks no manager anything; a secret goes only to the ask for it,
+  # never to a watch, or to the clipboard marked sensitive, cleared when
+  # its time is up, and copying is refused while no copier is named;
   # a one-time code says its period, and its detail gives the code, never
   # its seed; a manager signed out is said so and
   # gives no secret; a watch hears entries arrive; an ask or kind it
@@ -28,14 +30,12 @@ onLinux {
   # alone and saying no secret in an answer or a log; what it found is kept
   # in the state folder for Joel alone, holding no secret nor any hash,
   # outlives the daemon, and holds since when trouble was found until a
-  # check finds none, each told to a watch. The command's tests
-  # run too: each answer set
-  # in columns under a header for a person and tab-separated for a
-  # program, its --json the daemon's answer with no secret but show's, a
-  # title and a detail's label naming what they name, each exit status the
-  # usage says, and what completion asks answered from what's held.
-  # Its rows are said in the account's own vocabulary, every word of them
-  # its, as the shell says them.
+  # check finds none, each told to a watch. The daemon can't be read
+  # through /proc by the account's other processes, and ends as soon as
+  # whatever ran it closes its end. The command's tests run too: no
+  # command reaches an entry or a secret, and each mistyped one says what
+  # it needs. Its rows are said in the account's own vocabulary, every
+  # word of them its, as the shell says them.
   passwords-holds-no-secret = pkgs.callPackage ./package.nix {
     words =
       pkgs.writeText "words.json"
@@ -62,11 +62,9 @@ onLinux {
     '';
   });
   # passwords completes in zsh, typed in a real line editor with the real
-  # passwords and the completion home.nix installs, against a daemon with
-  # a stand-in manager: its commands, each entry by its title once a list
-  # has read it, an entry's details by their labels once it's been read in
-  # full, each manager, and --json; and no Tab asks the manager anything
-  # (tests/passwords-completion.zsh).
+  # passwords and the completion home.nix installs: its commands and
+  # --json, and none of the commands that reached an entry before the
+  # daemon answered the launcher alone (tests/passwords-completion.zsh).
   passwords-completes-in-zsh =
     let
       passwords = pkgs.callPackage ./package.nix { };
@@ -80,59 +78,54 @@ onLinux {
         ];
       }
       ''
-        export HOME=$PWD PASSWORDS_SOCKET=$PWD/run/passwords.sock ASKED=$PWD/asked.log
-        mkdir -m 700 run
-        cat > managers.json <<EOF
-        {"managers": [{"name": "keeping",
-          "command": ["${lib.getExe pkgs.bash}", "${./tests/keeping-manager.sh}", "$ASKED"]}]}
-        EOF
-        passwords daemon "$PASSWORDS_SOCKET" managers.json &
-        daemon=$!
-        for _ in $(seq 100); do
-          [ -S "$PASSWORDS_SOCKET" ] && passwords health | grep -q answering && break
-          sleep 0.1
-        done
-        status=0
+        export HOME=$PWD
         zsh -f ${./tests/passwords-completion.zsh} \
-          ${pkgs.callPackage ./completion.nix { }}/share/zsh/site-functions/_passwords || status=$?
-        kill $daemon
-        [ $status = 0 ] || exit $status
+          ${pkgs.callPackage ./completion.nix { }}/share/zsh/site-functions/_passwords
         touch $out
       '';
   # clippy finds nothing in the passwords daemon, its tests included.
   passwords-passes-clippy = passesClippy "passwords-passes-clippy" (
     pkgs.callPackage ./package.nix { }
   );
-  # On a machine with 1Password, the daemon runs it as a password manager
-  # on the daemons' socket, which systemd holds, with wl-copy to copy, no
-  # core dump to write a secret in and a state folder of its own to keep
-  # what the checks found, and the launcher's Passwords provider knows its
-  # program.
+  # On a machine with 1Password, the launcher's Passwords provider runs the
+  # daemon itself, with 1Password's manager, and nothing else can: there's
+  # no unit and no socket for it, and no copier is named, so nothing is
+  # copied until agents are fenced off the clipboard. The place stays off
+  # meanwhile, and the provider knows 1Password's program.
   passwords-runs-each-password-manager =
     let
       home = account graphical;
-      service = home.systemd.user.services.passwords or { };
-      started = lib.concatStringsSep " " (lib.toList (service.Service.ExecStart or ""));
       provider = home.jitsusama.quickshell.launcher.providers.passwords or { };
+      daemon = lib.concatStringsSep " " (provider.daemon or [ ]);
     in
     holds "passwords-runs-each-password-manager"
       "The passwords daemon doesn't run 1Password's manager as it should."
       (
-        lib.hasInfix "%t/daemons/passwords.sock" started
-        && (home.systemd.user.sockets.passwords.Socket.ListenStream or "") == "%t/daemons/passwords.sock"
-        && (service.Service.LimitCORE or null) == 0
-        # Nothing starts it or its socket until agents are fenced (home.nix).
-        && !(service ? Install.WantedBy)
-        && !(home.systemd.user.sockets.passwords ? Install.WantedBy)
-        # And the place reaches no daemon meanwhile.
+        lib.hasInfix "/bin/passwords daemon /nix/store/" daemon
+        && !(home.systemd.user.services ? passwords)
+        && !(home.systemd.user.sockets ? passwords)
+        && !(provider ? copier)
         && (provider.off or false)
-        && (service.Service.StateDirectory or null) == "passwords"
-        && lib.elem "graphical-session.target" (service.Unit.PartOf or [ ])
-        && lib.any (lib.hasInfix "PASSWORDS_COPIER=") (lib.toList (service.Service.Environment or [ ]))
         && home.jitsusama.passwords.managers ? "1password"
         && lib.any (lib.hasSuffix "/op") home.jitsusama.passwords.managers."1password".command
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
       );
+  # Nothing of the Passwords place, nor the daemon interface it asks its
+  # daemon through, answers the shell's IPC, so no `qs ipc call` another
+  # process makes reaches a secret or lets a manager in, now or once
+  # something is added: only Joel's keys in the launcher do.
+  the-passwords-answer-no-ipc =
+    let
+      read = map builtins.readFile [
+        ./Passwords.qml
+        ./Copied.qml
+        ./Clearing.qml
+        ../quickshell/Daemon.qml
+      ];
+    in
+    holds "the-passwords-answer-no-ipc"
+      "The Passwords place or its daemon's interface answers the shell's IPC."
+      (!lib.any (text: lib.hasInfix "IpcHandler" text || lib.hasInfix "Ipc." text) read);
   # Each kind's mark, who's listed with nothing typed and in what order,
   # what a row says, an entry's acts and their order, opening it where its
   # manager fills only on a web page, its link in its manager's program, its drawer's eyebrow, and its facts saying every
@@ -140,7 +133,8 @@ onLinux {
   # its password reused and breached once every password is checked and
   # nothing before, those needing attention and the foot counting a copy
   # down are Passwords.js's, a manager's entries by vault and what its
-  # drawer says it holds Managers.js's, and For You's one to-do for what
+  # drawer says it holds and what the place's one row opens while it's off
+  # Managers.js's, and For You's one to-do for what
   # the last check found, whether it stands or is done, its side and its
   # weight, Checked.js's, run in Qt's own engine (tests/passwords.qml),
   # beside the launcher's own wording of how long ago (Ago.js) and of a

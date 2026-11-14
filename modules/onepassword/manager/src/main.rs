@@ -26,6 +26,13 @@
 //! turned the setting on, and an Unlock with the app closed that did
 //! nothing).
 //!
+//! Every agent runs as Joel, and a program just started may have its
+//! memory and descriptors read by any process of the same account, so the
+//! manager turns its dumpable flag off and writes no core dump before it
+//! reads anything: no other process can open its pipes and ask it through
+//! the op 1Password let in as its child. It ends with the passwords daemon
+//! that ran it, which has the kernel end it as the daemon goes.
+//!
 //! An audit (`audit`, asked by Joel alone) gives every login's password at
 //! once, `{"passwords": [{"entry", "value"}]}`, from the cheapest op can
 //! give them: its list of logins and passwords piped to one `op item get -
@@ -33,7 +40,7 @@
 
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -53,7 +60,11 @@ const REACHES_WITHIN: Duration = Duration::from_secs(15);
 /// How often op is run again while it can't yet reach that app.
 const REACHING_AGAIN: Duration = Duration::from_secs(1);
 
-fn main() {
+fn main() -> ExitCode {
+    if let Err(error) = harden() {
+        eprintln!("<3>couldn't keep its memory from the account: {error}");
+        return ExitCode::FAILURE;
+    }
     let given = given();
     let config_home = std::env::var("XDG_CONFIG_HOME").ok();
     let home = std::env::var("HOME").ok();
@@ -84,6 +95,27 @@ fn main() {
             continue;
         };
         say(&manager.answer(&asked));
+    }
+    ExitCode::SUCCESS
+}
+
+/// Keeps its memory and descriptors from the account's other processes,
+/// and any core dump unwritten, or answers why it couldn't.
+fn harden() -> std::io::Result<()> {
+    let none = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: prctl and setrlimit read only the integers and the limit
+    // given here, and change only this process.
+    let hardened = unsafe {
+        libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0) == 0
+            && libc::setrlimit(libc::RLIMIT_CORE, &raw const none) == 0
+    };
+    if hardened {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
     }
 }
 

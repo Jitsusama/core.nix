@@ -1101,13 +1101,17 @@ READ_ON_TWICE = dt.timedelta(seconds=30)
 CHECKED = "~/.local/state/passwords/checked.json"
 HOUR_MS = 3_600_000
 TODO = "Change the Passwords the Check Found"
+# Ends the passwords daemon, which the shell runs as its own child and starts again two
+# seconds on, reading what it keeps as it starts. The bracket keeps the pattern from matching
+# the shell that runs pkill.
+RESTART_PASSWORDS = "pkill -f '/bin/[p]asswords daemon'"
 
 
 def walk_passwords_for_you(desktop: Desktop) -> None:
     """Walk For You's one to-do for what the last check found, read as the daemon starts.
 
     What a check found is written where the daemon keeps it, and the daemon started again, so
-    it's read from its unit's state folder as after a boot; For You then holds one to-do for
+    it's read from its state folder as after a boot; For You then holds one to-do for
     it, saying how many are breached and reused, and Return steps into those logins alone, read
     from 1Password through op's stand-in. One path through that wiring is all this walks: the
     to-do's cases are the-passwords-show-every-figure-but-the-secret's and
@@ -1129,7 +1133,7 @@ def walk_passwords_for_you(desktop: Desktop) -> None:
         f"install -d -m 700 ~/.local/state/passwords && umask 077 && "
         f"printf %s {shlex.quote(json.dumps(kept))} > {CHECKED}"
     )
-    desktop.as_account("systemctl --user restart passwords.service")
+    desktop.as_account(RESTART_PASSWORDS)
     shots = desktop.values["shots"]
     try:
         if shots:
@@ -1200,7 +1204,7 @@ def walk_passwords_for_you(desktop: Desktop) -> None:
         if shots:
             desktop.as_account("niri msg output winit scale 1")
         # Every subtest after finds the daemon as it was, holding no check.
-        desktop.as_account(f"rm -f {CHECKED} && systemctl --user restart passwords.service")
+        desktop.as_account(f"rm -f {CHECKED} && {RESTART_PASSWORDS}")
 
 
 def into_the_todo(desktop: Desktop) -> None:
@@ -1222,10 +1226,11 @@ def into_the_todo(desktop: Desktop) -> None:
 
 
 def walk_passwords(desktop: Desktop) -> None:
-    """Walk Passwords, stepped into: 1Password read through its unit, and a password copied.
+    """Walk Passwords, stepped into: 1Password read through the shell's daemon, and a copy.
 
-    The passwords daemon's own unit runs 1Password's own manager, which asks a stand-in for op
-    (desktop/op-stand-in.sh), and copies through the unit's wl-copy to the session's clipboard.
+    The passwords daemon the shell runs runs 1Password's own manager, which asks a stand-in for
+    op (desktop/op-stand-in.sh), and copies through the wl-copy the VM alone names as its
+    copier to the session's clipboard, since a real machine copies nothing yet.
     One path through that wiring is all this walks: what the place lists, says and copies, case
     by case, is the-passwords-show-every-figure-but-the-secret's and
     the-passwords-place-copies-through-its-daemon-on-niri's.
