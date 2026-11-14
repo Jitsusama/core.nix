@@ -5,7 +5,7 @@ use super::reads::running;
 use super::{Env, failed, read_config};
 use crate::config::Scope;
 use crate::daemon::{Guard, Places};
-use crate::serve::{answering, hold, steps, stopping};
+use crate::serve::{answering, hold, leave_when_held_up, steps, stopping};
 use std::fs;
 use std::io::{self, Write};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
@@ -102,6 +102,8 @@ pub(super) fn daemon(
     // A stop waits, blocked, until a step ends, and a survey's walks once
     // held one for 35 s; the survey asks as it goes and ends early.
     guard.stop_when(Box::new(crate::commands::stop_waiting));
+    // A step that doesn't ask, as some walks don't, is left mid-way.
+    leave_when_held_up(io::stderr()).map_err(failed)?;
     if let Some(hearing) = hearing {
         guard.hear(hearing);
     }

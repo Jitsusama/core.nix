@@ -119,12 +119,15 @@ or launchd, and [`home.nix`][2] the account's.
   thread of its own while the pass beats, since the desktop calls a guard
   silent for two minutes dead. `src/pace.rs` holds it; `pacing` in the
   config sets the batch and the rest.
-- **Stopping.** A daemon takes its stop signal between steps, so a pass
-  is never cut off halfway, and a waiting stop ends a rest and starts no
-  new command. A survey only reads, and its walks take minutes on a full
-  home, so it asks as it walks whether a stop waits and ends there. Its
-  step then takes nothing, since a checkout it never reached would look
-  gone. One held a switch's stop for 35 s before.
+- **Stopping.** A daemon takes its stop signal between steps, and a
+  waiting stop ends a rest and starts no new command. A survey only
+  reads, and its walks take minutes on a full home, so it asks as it
+  walks whether a stop waits and ends there. Its step then takes
+  nothing, since a checkout it never reached would look gone. One held a
+  switch's stop for 35 s before. A step that doesn't ask is left mid-way
+  once a stop has waited 500 ms (`leave_when_held_up` in
+  `src/serve.rs`), which is as safe as systemd's kill at 1 s, since
+  state is written beside and renamed into place.
 - **Removal.** Everything is reached through directories opened beneath the
   source's root, never through a symlink, another filesystem or `..`. A
   target is renamed into a trash beside it, judged again, then emptied; a
