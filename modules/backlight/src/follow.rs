@@ -236,12 +236,12 @@ impl Follow {
         }
     }
 
-    /// Starts the move the light asked for, from `shown`, once it's due and
-    /// none is under way, and gives where it goes.
+    /// Starts the move the light asked for, from `shown`, once it's due, and
+    /// gives where it goes. One under way gives way to it from where it has
+    /// reached, since a glide down takes 25 seconds and a lamp switched on
+    /// meanwhile shouldn't wait it out; light heard mid-move is weighed
+    /// against where the move goes, so only a real change is due.
     pub fn start(&mut self, shown: f64, now: Instant) -> Option<f64> {
-        if self.ramp.is_some() {
-            return None;
-        }
         let to = self.steer.due(now)?;
         self.ramp = Some(Ramp::new(shown, to, now));
         Some(to)
@@ -517,6 +517,24 @@ mod tests {
         assert_eq!(follow.wake(start), Some(start + DIMMING));
         let arrived = moved(&mut follow, 0.8, start + DIMMING).unwrap();
         assert!((arrived - 0.2).abs() < 1e-9, "arrived at {arrived}");
+    }
+
+    #[test]
+    fn a_brighter_room_mid_glide_is_followed_at_once() {
+        // A lamp switched on while the screen glides down is followed
+        // within its second, not once the glide ends.
+        let start = Instant::now();
+        let mut follow = following(1000.0, 0.8, start);
+        let _ = follow.heard(10.0, 0.8, start);
+        follow.start(0.8, start + DIMMING).unwrap();
+        let lit = start + DIMMING + Duration::from_secs(5);
+        let shown = follow.step(lit).unwrap();
+        let _ = follow.heard(1000.0, shown, lit);
+        assert_eq!(
+            follow.start(shown, lit + BRIGHTENING),
+            Some(0.8),
+            "the lamp waited on the glide"
+        );
     }
 
     #[test]
