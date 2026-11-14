@@ -1985,7 +1985,7 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
     no taller than the screen has room for, and j and k in normal go down and up them.
     """
     replies = STEER / "VOID" / "replies"
-    # Earlier cases make it too, but this one is run alone for its pictures.
+    # The Super+S cases before it make these, but a missing folder isn't what this one checks.
     replies.mkdir(parents=True, exist_ok=True)
     (STATE / "void").mkdir(parents=True, exist_ok=True)
     now = datetime.now().astimezone()
