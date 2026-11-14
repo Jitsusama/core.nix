@@ -137,7 +137,8 @@
   # What Super+S's line sends with Joel's words, the quiet line naming who
   # hears it, and its talk sent, answered and taken back inside the line, as
   # tests/talk-line.qml holds TalkLine.js to in Qt's own engine, with a
-  # session's talk under the launcher's field, which SessionTalks.js says.
+  # session's talk under the launcher's field, which SessionTalks.js says,
+  # and a line opened as its thread, which TalkThread.js makes.
   the-talk-line-says-what-became-of-its-words =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -147,6 +148,7 @@
       ${copied [
         "SessionTalks.js"
         "TalkLine.js"
+        "TalkThread.js"
       ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

@@ -10,6 +10,7 @@ import QtQuick
 import "Expect.js" as Expect
 import "TalkLine.js" as Said
 import "SessionTalks.js" as Session
+import "TalkThread.js" as Thread
 
 QtObject {
     Component.onCompleted: {
@@ -379,6 +380,58 @@ QtObject {
                     [talkAt(20, 0, "six", "delivered")]).map(one => one.stage), ["delivered"]);
             Expect.same("a reply not yet heard is to be told heard",
                 [Session.unheard(heardTalks[4]), Session.unheard(heardTalks[0])], [true, false]);
+
+            // A line opened as its thread: his words whole, then every event of its key in
+            // the order written, superseded ones too, each with who and when, and the nerdy
+            // bits for the fold (8GYNJ6 [851e94b2]).
+            const threadWords = { has: "{who} has it", tookUp: "{who} took it up",
+                letGo: "{who} let it go", taken: "taken back" };
+            const threaded = Object.assign(Said.begun("VOID", "is the fix in?", "is the fix in?",
+                when(20, 30)), { key: "2026-11-13 20:30" });
+            const threadEvents = [
+                { line: "2026-11-13 20:30", msg: "m1", owner: "WCJQSG",
+                    who: "Your orchestrator", event: "routed", at: "20:30" },
+                { line: "2026-11-13 20:29", msg: "x", who: "Elsewhere", event: "routed" },
+                { line: "2026-11-13 20:30", msg: "m2", re: "m1", who: "Your orchestrator",
+                    event: "taken", at: "20:31", text: "On it." },
+                { line: "2026-11-13 20:30", msg: "m3", re: "m1", who: "Delta", event: "answered",
+                    at: "20:40", text: "Not yet." },
+                { line: "2026-11-13 20:30", msg: "m4", re: "m1", supersedes: "m3", who: "Delta",
+                    event: "landed", at: "20:52", text: "Merged." },
+                { line: "2026-11-13 20:30", msg: "m5", who: "Delta", event: "let-go",
+                    at: "20:53" }
+            ];
+            const thread = Thread.threadOf(threaded, threadEvents, threadWords);
+            Expect.same("a thread holds his words, when he said them, and every event of its key",
+                [thread.line, thread.side, thread.steps.map(step => [step.text, step.by,
+                    step.side, step.answer])],
+                ["is the fix in?", "20:30", [
+                    ["Your orchestrator has it", "", "20:30", false],
+                    ["On it.", "Your orchestrator", "20:31", true],
+                    ["Not yet.", "Delta", "20:40", true],
+                    ["Merged.", "Delta", "20:52", true],
+                    ["Delta let it go", "", "20:53", false]]]);
+            Expect.same("its fold names the line's key, and each event's kind and messages",
+                [thread.nerd, thread.steps[0].nerd, thread.steps[3].nerd],
+                ["line 2026-11-13 20:30", "routed \u00b7 msg m1 \u00b7 to WCJQSG",
+                    "landed \u00b7 msg m4 \u00b7 re m1 \u00b7 replaces m3"]);
+            Expect.same("taken up with no words, it says who took it up",
+                Thread.threadOf(threaded, [{ line: "2026-11-13 20:30", event: "taken",
+                    who: "Delta", at: "20:31" }], threadWords).steps[0].text,
+                "Delta took it up");
+            Expect.same("a line the void hasn't written of holds only his words",
+                [Thread.threadOf(Said.begun("VOID", "hi", "hi", when(21, 0)), threadEvents,
+                    threadWords).steps, Thread.threadOf(Said.begun("VOID", "hi", "hi",
+                    when(21, 0)), threadEvents, threadWords).nerd], [[], ""]);
+            Expect.same("an earlier day's thread says which beside its time",
+                Thread.threadOf(threaded, [], threadWords, () => "yesterday").side,
+                "yesterday 20:30");
+            // j and k pick a line in the list: the first j the newest, then on, never past
+            // either end; k with none picked picks the newest too.
+            Expect.same("j and k pick lines, never past either end",
+                [Thread.picking(-1, 1, 4), Thread.picking(0, 1, 4), Thread.picking(2, 5, 4),
+                    Thread.picking(1, -3, 4), Thread.picking(-1, -1, 4), Thread.picking(-1, 1, 0)],
+                [0, 1, 3, 0, 0, -1]);
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);

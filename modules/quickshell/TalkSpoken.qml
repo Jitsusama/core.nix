@@ -7,7 +7,9 @@
 // two before it stay in view (the designer's choice). They stand no taller than `room`, in
 // whole lines, and scroll there a line at a time, by the wheel and by j and k in normal, so
 // the card never runs off the screen (Joel at 23:39 on 2026-11-13, [ff6c6197]: "it also clips
-// past the bottom of the screen ... i still can't really scroll through them").
+// past the bottom of the screen ... i still can't really scroll through them"). In normal, j
+// and k pick a line instead, on the selection's ground, and the list scrolls to keep it in
+// view, so Return can open it as its thread (TalkThread.qml).
 pragma ComponentBehavior: Bound
 import qs
 import QtQuick
@@ -26,6 +28,10 @@ Item {
     required property bool up
     // How tall it may stand.
     property real room: Infinity
+    // The line j and k picked, which stands on the selection's ground, or -1 for none.
+    property int picked: -1
+    // How far left of it the frame's inside edge is, which the ground reaches out to.
+    property real reach: 0
 
     readonly property real pitch: Theme.level.words.pitch
     // How tall every line stands, shown or not.
@@ -41,6 +47,18 @@ Item {
         view.contentY = Math.max(0, Math.min(furthest, (scrolled + count) * pitch));
     }
 
+    // Scrolled the fewest whole lines that bring the picked line in, all of it where there's
+    // room, else its top.
+    function reveal() {
+        const told = shownLines.itemAt(picked);
+        if (told === null)
+            return;
+        const top = Math.floor(told.y / pitch) * pitch;
+        const below = Math.ceil((told.y + told.height - height) / pitch) * pitch;
+        view.contentY = Math.max(0, Math.min(top, Math.max(view.contentY, below)));
+    }
+
+    onPickedChanged: reveal()
     onUpChanged: {
         if (up)
             view.contentY = 0;
@@ -48,9 +66,11 @@ Item {
 
     // Clipped a descent under the last baseline, so the last line's tails show and no part
     // of the next line's capitals does; let go anywhere, it comes to rest on a whole line.
+    // As wide as the frame's inside, so a ground can reach its edges, the lines the reach in.
     Flickable {
         id: view
-        width: spoken.width
+        x: -spoken.reach
+        width: spoken.width + 2 * spoken.reach
         height: spoken.height + face.descent
         contentWidth: width
         contentHeight: spoken.whole + face.descent
@@ -68,10 +88,12 @@ Item {
 
         Column {
             id: lines
-            width: view.width
+            x: spoken.reach
+            width: spoken.width
             spacing: spoken.gap
 
             Repeater {
+                id: shownLines
                 model: spoken.exchanges
 
                 Item {
@@ -91,6 +113,17 @@ Item {
                     // name (Joel at 17:49 on 2026-11-13, [0adc518f]).
                     readonly property real column: width - clock.width
                         - Theme.space.rung.groups - spoken.textAt
+
+                    // Its band, as much over its first line's ink as under its last, which
+                    // keeps it inside its own lines' room: at rest the first stands whole
+                    // under the view's top, and none meets the next line's ink.
+                    Ground {
+                        visible: told.index === spoken.picked
+                        ink: "selection"
+                        from: spoken.reach
+                        width: told.width + 2 * spoken.reach
+                        height: told.height + face.descent + told.pitch - face.ascent
+                    }
 
                     TextMetrics {
                         id: clock
