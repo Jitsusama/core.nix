@@ -653,8 +653,8 @@ The rest follows from the ladder:
   command line's, the held list and the drawer's lines. A selection inside a
   line covers its characters exactly, as Vim's Visual does, and so does a
   find's wash.
-- **One hairline**: a logical pixel snapped to the device, from the frame's
-  inside edge to its inside edge, never touched by a ground.
+- **One hairline**: a logical pixel snapped to the device, inset to inset as
+  Regions says, never touched by a ground.
 
 ## Colour
 
