@@ -14,6 +14,8 @@
 //! and never one under way. Each cleaner in use has its model loaded once,
 //! however many microphones share it. A call on a microphone never picked
 //! for where it was made offers Choose by Ear once it's over (offer.rs).
+//! A call recording from a microphone itself, skipping noise cancelling,
+//! is heard the same way (plain.rs), with nothing cleaned or loaded.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -31,6 +33,7 @@ use crate::offer::{CALL, Offers};
 use crate::room::Room;
 use crate::shadow::{self, Call, Speech};
 use crate::spot::Spot;
+use crate::ways::Way;
 
 /// How long the model stays loaded once nothing records from a source.
 const UNUSED: Duration = Duration::from_mins(2);
@@ -43,6 +46,10 @@ const RETRY: Duration = Duration::from_mins(1);
 pub struct Shared {
     /// Whether something records from the source, so its frames are wanted.
     pub wanted: AtomicBool,
+    /// Whether a call records from the microphone itself rather than the
+    /// source (plain.rs), so its frames are heard to be judged, never
+    /// cleaned.
+    pub listened: AtomicBool,
     /// Counts each time recording starts, so the source drops what was
     /// cleaned before it.
     pub started: AtomicU32,
@@ -165,7 +172,7 @@ fn run(models: &Path, chosen: &Chosen, offers: &mut Offers, asks: &Receiver<Ask>
         for call in calls {
             shadow::judge(models.to_owned(), chosen.clone(), call);
         }
-        if wanted.is_empty() {
+        if wanted.is_empty() && !hearing(&microphones) {
             offers.stand(chosen);
         } else {
             offers.withheld(chosen);
@@ -199,7 +206,10 @@ fn run(models: &Path, chosen: &Chosen, offers: &mut Offers, asks: &Receiver<Ask>
 /// stops, and nothing once it has, telling `offers` how long it was
 /// recorded from and where, and adding a call with speech enough to
 /// `calls`, to be judged in the shadow, which may choose what it cleans
-/// with there next. The spot is read only then, once a pass. Answers every cleaner wanted now, each once.
+/// with there next. A call that skips noise cancelling, heard on the
+/// microphone itself (plain.rs), is settled the same way, cleaning with
+/// nothing and judged as raw; a twin's call comes first. The spot is read
+/// only then, once a pass. Answers every cleaner wanted now, each once.
 fn settled(
     microphones: &mut HashMap<u32, Microphone>,
     chosen: &Chosen,
@@ -209,36 +219,22 @@ fn settled(
     let mut wanted = Vec::new();
     let mut spot = None;
     for microphone in microphones.values_mut() {
-        if !microphone.ends.shared.wanted.load(Ordering::Acquire) {
-            let running = microphone.cleaner.take();
-            if let Some((began, at)) = microphone.began.take() {
-                let ends = &microphone.ends;
-                if let Some(running) = running
-                    && began.elapsed() >= CALL
-                    && microphone.speech.enough()
-                {
-                    calls.push(Call {
-                        node: ends.microphone.clone(),
-                        microphone: ends.description.clone(),
-                        spot: at.clone(),
-                        running,
-                        speech: microphone.speech.taken(),
-                    });
-                }
-                let floor = microphone.room.floor();
-                if let Some(floor) = floor {
-                    eprintln!(
-                        "noise-cancelled: {}'s room at {} sat at {floor} dBFS",
-                        ends.microphone, at.name
-                    );
-                }
-                offers.heard(
-                    chosen,
-                    &ends.microphone,
-                    &ends.description,
-                    &at,
-                    began.elapsed(),
-                    floor,
+        let shared = &microphone.ends.shared;
+        let listened = shared.listened.load(Ordering::Acquire);
+        if !shared.wanted.load(Ordering::Acquire) {
+            let heard_going = microphone.cleaner.is_none() && microphone.began.is_some();
+            if !(listened && heard_going) {
+                ended(microphone, chosen, offers, calls);
+            }
+            if listened && microphone.began.is_none() {
+                let spot = spot.get_or_insert_with(|| chosen.spot());
+                microphone.began = Some((Instant::now(), spot.clone()));
+                microphone.room = Room::default();
+                microphone.speech = Speech::default();
+                eprintln!(
+                    "noise-cancelled: hearing a call on {} at {}, which skips noise \
+                     cancelling, to judge it",
+                    microphone.ends.microphone, spot.name
                 );
             }
             continue;
@@ -263,6 +259,49 @@ fn settled(
         }
     }
     wanted
+}
+
+/// Whether a call that skips noise cancelling is being heard on any
+/// microphone, which keeps an offer from standing as a twin's call does.
+fn hearing(microphones: &HashMap<u32, Microphone>) -> bool {
+    microphones
+        .values()
+        .any(|microphone| microphone.cleaner.is_none() && microphone.began.is_some())
+}
+
+/// Once a microphone is no longer recorded from, or heard: tells `offers`
+/// how long and where, and adds its call to `calls` when it lasted and
+/// spoke enough to judge, as raw when nothing cleaned it.
+fn ended(microphone: &mut Microphone, chosen: &Chosen, offers: &mut Offers, calls: &mut Vec<Call>) {
+    let running = microphone.cleaner.take().map_or(Way::Raw, Way::Cleaned);
+    let Some((began, at)) = microphone.began.take() else {
+        return;
+    };
+    let ends = &microphone.ends;
+    if began.elapsed() >= CALL && microphone.speech.enough() {
+        calls.push(Call {
+            node: ends.microphone.clone(),
+            microphone: ends.description.clone(),
+            spot: at.clone(),
+            running,
+            speech: microphone.speech.taken(),
+        });
+    }
+    let floor = microphone.room.floor();
+    if let Some(floor) = floor {
+        eprintln!(
+            "noise-cancelled: {}'s room at {} sat at {floor} dBFS",
+            ends.microphone, at.name
+        );
+    }
+    offers.heard(
+        chosen,
+        &ends.microphone,
+        &ends.description,
+        &at,
+        began.elapsed(),
+        floor,
+    );
 }
 
 /// The model, loading it unless it's loaded or was refused a moment ago.
@@ -333,6 +372,16 @@ fn clean(microphone: &mut Microphone, model: Option<&Loaded>) {
     let ends = &mut microphone.ends;
     if !ends.shared.wanted.load(Ordering::Acquire) {
         microphone.denoiser = None;
+        if microphone.began.is_some() {
+            // A call heard on the microphone itself: its room and speech
+            // are kept to judge, and nothing is cleaned or given.
+            let mut frame = [0.0; FRAME];
+            while ends.heard.pop_entire_slice(&mut frame).is_ok() {
+                microphone.room.heard(&frame);
+                microphone.speech.heard(&frame, microphone.room.floor());
+            }
+            return;
+        }
         let stale = ends.heard.slots();
         if let Ok(chunk) = ends.heard.read_chunk(stale) {
             chunk.commit_all();

@@ -46,11 +46,14 @@ pub fn agreement(scored: &str) -> (usize, usize) {
 
 /// The cleaner the last two calls judged on `node` at the spot keyed `key`
 /// both say cleans better than what ran, by [`MARGIN`] overall, or none.
+/// A call that skipped noise cancelling, which ran raw, counts for
+/// nothing: what's chosen here cleans the twin, which it never heard.
 pub fn better(judged: &str, node: &str, key: &str) -> Option<Cleaner> {
     let here: Vec<Value> = calls(judged)
         .filter(|call| {
             call.get("node").and_then(Value::as_str) == Some(node)
                 && call.get("key").and_then(Value::as_str) == Some(key)
+                && call.get("running").and_then(Value::as_str) != Some("raw")
         })
         .collect();
     let [.., before, last] = here.as_slice() else {

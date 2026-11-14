@@ -1,13 +1,16 @@
 //! PipeWire's graph as `pw-dump --monitor` prints it, a JSON array of the
 //! whole graph and then one of each change, kept so a call's two sides can
-//! be found in it: what the call app records from, and what it plays.
+//! be found in it: what the call app records from, and what it plays; and
+//! which microphones run, for noise-cancelled to hear a call that skips it.
 //!
 //! Each object pw-dump prints replaces the one held by its id, and one
 //! printed with no info is gone.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use serde_json::Value;
+
+use crate::microphone::OURS;
 
 /// The graph's objects by id.
 #[derive(Default, Debug)]
@@ -57,6 +60,23 @@ impl Graph {
             })
             .map(|(id, _)| id)
             .min()
+    }
+
+    /// The microphones running now, by node name: devices' own sources,
+    /// which something records from, and never a filter's source or a
+    /// noise-cancelled twin.
+    pub fn microphones_running(&self) -> BTreeSet<String> {
+        self.of_type("PipeWire:Interface:Node")
+            .filter_map(|(_, node)| {
+                let info = &node["info"];
+                let props = &info["props"];
+                let name = props["node.name"].as_str()?;
+                let microphone = props["media.class"] == "Audio/Source"
+                    && !props["device.id"].is_null()
+                    && !name.starts_with(OURS);
+                (microphone && info["state"] == "running").then(|| name.to_owned())
+            })
+            .collect()
     }
 
     /// The node named `name`, as a recorder of ours is.
@@ -231,6 +251,32 @@ mod tests {
         assert_eq!(graph.links().len(), 1);
         graph.take(&json!([{"id": 40, "info": null}]));
         assert_eq!(graph.call(), None);
+    }
+
+    /// A source as pw-dump prints it: a device's when `device` is some.
+    fn source(id: u64, name: &str, device: Option<u64>, state: &str) -> Value {
+        json!({
+            "id": id, "type": "PipeWire:Interface:Node",
+            "info": {"state": state, "props": {
+                "media.class": "Audio/Source", "node.name": name, "device.id": device,
+            }},
+        })
+    }
+
+    #[test]
+    fn only_a_devices_own_source_running_is_a_microphone_running() {
+        let mut graph = Graph::default();
+        graph.take(&json!([
+            source(30, "alsa_input.mv7", Some(70), "running"),
+            source(31, "alsa_input.laptop", Some(71), "suspended"),
+            source(32, "shure_mv7_voice", None, "running"),
+            source(33, "noise-cancelled.alsa_input.mv7", Some(70), "running"),
+        ]));
+        assert_eq!(
+            graph.microphones_running(),
+            BTreeSet::from(["alsa_input.mv7".to_owned()]),
+            "a suspended microphone, a filter's source or a twin was taken for one running"
+        );
     }
 
     #[test]

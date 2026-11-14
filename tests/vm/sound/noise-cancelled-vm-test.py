@@ -160,10 +160,11 @@ def joel(machine: BaseMachine, values: dict[str, Any]) -> Iterator[Joel]:
     joel.run("systemctl --user start pipewire.service")
     machine.wait_for_unit("wireplumber.service", "joel")
     plug_in(joel, "microphone")
-    # Keeping picks where the trial does, so a pick ranks the twin once it's made again.
+    # Keeping picks where the trial does, so a pick ranks the twin once it's made again, with
+    # pw-dump on its path as the module gives it, to follow calls.
     joel.run(
-        "systemd-run --user --unit=noise-cancelled noise-cancelled serve"
-        f" {values['model']} deepfilternet {PICKED}"
+        "systemd-run --user --unit=noise-cancelled --setenv=PATH=/run/current-system/sw/bin"
+        f" noise-cancelled serve {values['model']} deepfilternet {PICKED}"
     )
     try:
         joel.wait_until_said(f"offering {DESCRIPTION}", ANSWERS_WITHIN)
@@ -326,3 +327,21 @@ def test_a_twin_outranks_its_microphone_once_a_cleaned_pick_is_kept(
     )
     rank = twin_rank(joel)
     assert rank == str(RANK + 1), f"after a cleaned pick, the twin ranks {rank!r}"
+
+
+def test_a_call_on_the_microphone_itself_is_heard_and_nothing_cleaned(joel: Joel) -> None:
+    """A call recording from the microphone itself wakes the capture, loading no cleaner."""
+    # PipeWire's PulseAudio server names a stream for the program that opened it.
+    joel.run('cp "$(readlink -f "$(command -v pacat)")" zoom')
+    loaded = joel.said().count("the model loaded")
+    capture = f'test "$(pw-dump | jq -r {shlex.quote(RUNNING)})"'
+    joel.run(
+        f"systemd-run --user --collect --unit=call ./zoom --record --device={MICROPHONE} /dev/null"
+    )
+    try:
+        joel.wait_until_said(f"hearing a call on {MICROPHONE} at", ANSWERS_WITHIN)
+        joel.wait_for(f"{capture} = running", ANSWERS_WITHIN)
+        assert joel.said().count("the model loaded") == loaded, "a cleaner loaded for the call"
+    finally:
+        joel.run("systemctl --user stop call")
+    joel.wait_for(f"{capture} != running", ANSWERS_WITHIN)
