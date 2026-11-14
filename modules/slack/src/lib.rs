@@ -964,16 +964,24 @@ mod tests {
     /// A folder of the test's own, holding the file with `file` and a
     /// keyring reader that runs `reader`.
     fn kept_in(test: &str, file: &str, reader: &str) -> (PathBuf, PathBuf) {
-        use std::os::unix::fs::PermissionsExt;
         let folder = std::env::temp_dir().join(format!("slack-account-{test}"));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).expect("the test's folder is made");
         let path = folder.join("credentials.json");
         std::fs::write(&path, file).expect("the file is written");
         let keyring = folder.join("keyring");
-        std::fs::write(&keyring, format!("#!/bin/sh\n{reader}\n")).expect("the reader is written");
-        std::fs::set_permissions(&keyring, std::fs::Permissions::from_mode(0o755))
-            .expect("the reader runs");
+        // Written by a shell of its own, never by this process: a test
+        // forking beside this one would hold the reader open for writing
+        // until its child ran, and running the reader meanwhile fails as a
+        // text file busy, so the file is read over it (seen once in
+        // google's like test on a builder, 2026-11-14).
+        let written = std::process::Command::new("/bin/sh")
+            .args(["-c", r#"printf '%s\n' "$2" > "$1" && chmod 755 "$1""#, "sh"])
+            .arg(&keyring)
+            .arg(format!("#!/bin/sh\n{reader}"))
+            .status()
+            .expect("the reader's shell runs");
+        assert!(written.success(), "the reader wasn't written");
         (keyring, path)
     }
 
