@@ -117,6 +117,11 @@
       "name": "Drive"
     },
     {
+      "id": "shortcuts:github",
+      "in": "shortcuts",
+      "name": "GitHub"
+    },
+    {
       "id": "shortcuts:slack",
       "in": "shortcuts",
       "name": "Slack",
@@ -1025,6 +1030,26 @@
       "id": "shortcuts:google-drive:files",
       "in": "shortcuts",
       "name": "Handling a File"
+    },
+    {
+      "id": "shortcuts:github:going",
+      "in": "shortcuts",
+      "name": "Going Places"
+    },
+    {
+      "id": "shortcuts:github:code",
+      "in": "shortcuts",
+      "name": "Reading Code"
+    },
+    {
+      "id": "shortcuts:github:lists",
+      "in": "shortcuts",
+      "name": "Narrowing a List"
+    },
+    {
+      "id": "shortcuts:github:changes",
+      "in": "shortcuts",
+      "name": "An Issue or Change"
     }
   ]
 }
