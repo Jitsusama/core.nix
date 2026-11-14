@@ -146,12 +146,23 @@ Provider {
     readonly property bool steppedIn: launcher !== null && launcher.open
         && launcher.held.some(step => step.row?.live === provider)
 
+    // Whether its answer is a row listed in the place held last, as
+    // Machine's Heat is: said again, only that row is asked again
+    // (Launcher.qml's relive), so its headline moves with each change
+    // for little. Said only while shown or stepped into, Machine's Heat
+    // row kept the heat it first heard for as long as Machine was open.
+    readonly property bool listed: launcher !== null && launcher.open
+        && launcher.held.length > 0
+        && (launcher.held[launcher.held.length - 1].rows ?? []).some(row => row.asker === provider)
+
     // Whether the daemon has said anything since Heat's rows came into
     // sight: its first rows are answered at once, shown or not, so
     // Machine's Heat row is there as soon as they are; after that, a
-    // shown answer moves with each, and one stepped into as its rows come
-    // or go, so the processor's own parts are listed once its telemetry
-    // first reads, however soon the answer was stepped into.
+    // shown or listed answer moves with each, and one stepped into as its
+    // rows come or go, so the processor's own parts are listed once its
+    // telemetry first reads, however soon the answer was stepped into.
+    // Stepped into, its rows are things that move in place, and saying
+    // each change would make the step again each second.
     property bool heardSinceOpen: false
     property string placedAnswered: ""
     onSeenChanged: {
@@ -180,7 +191,7 @@ Provider {
                 // Machine's Heat row is Heat's answer, so the places held
                 // are said again with it.
                 provider.launcher?.placesRead?.();
-            } else if (provider.shown || (moved && provider.steppedIn)) {
+            } else if (provider.shown || provider.listed || (moved && provider.steppedIn)) {
                 provider.answered();
             }
         }

@@ -43,6 +43,9 @@ READ = timedelta(seconds=5)
 # How long a terminal's show counts as seeing its rows (Launcher.qml's terminalSeeing), and a
 # second past it. Nothing says the window closed, so the case waits it out.
 SEEING_ENDS = timedelta(seconds=4)
+# How long a place's members take to say their first answers once it's stepped into, each of
+# which makes the step again: a change told after it is said only by the row it moves.
+SETTLED = timedelta(seconds=3)
 # How long before its line a chord is said to have run, well past any opening's own time here.
 CHORD_AGO = timedelta(seconds=2)
 # How long the shell is held stopped just after a chord, well past any opening's own time here.
@@ -4201,6 +4204,63 @@ def test_a_charge_told_in_batterys_step_is_said_there(shell: Shell, machine: Sta
     shell.close_launcher()
     assert watched, "Power's rows were never watched in Battery's step"
     assert selected["side"] == "77%", selected
+
+
+def heat(degrees: int) -> list[Json]:
+    """Give Heat's headline and Processor row at `degrees`, as heat_rows.rs serves them."""
+    said = f"{degrees}.0 \u00b0C"
+    graph = {"shape": "bar", "values": [degrees / 100], "warn": False}
+    row = {
+        "key": "row:heat:processor",
+        "thing": "heat:processor",
+        "place": "heat",
+        "kind": "figure",
+        "order": 1,
+        "depth": 0,
+        "name": "Processor",
+        "side": [{"said": said, "keep": 3}],
+        "graph": graph,
+        "acts": [{"key": "verb:copy", "copy": said}],
+    }
+    head = {"said": f"{said} at its hottest, in the processor", "graph": graph}
+    return [
+        {"key": "head:heat", "kind": "head", "head": head},
+        {"key": "row:heat:processor", "kind": "row", "row": row},
+    ]
+
+
+def test_heat_told_while_machine_is_shown_is_said_in_its_row(
+    shell: Shell, machine: StandIn
+) -> None:
+    """Machine's Heat row says the heat the daemon told last, not the heat it told first.
+
+    Heat said a change again only while its own answer was shown, or as its rows came or went
+    while stepped into, and Machine's Heat row, listed in Machine's step, is neither: so the
+    row kept the heat it first heard for as long as Machine was open, while the daemon read the
+    sensors each second for it.
+    """
+
+    def says(degrees: int) -> Callable[[Json], bool]:
+        # Heat's row is named Heat, its headline at its side, as each listed thing reads.
+        heard = f"Heat \u00b7 {degrees}.0 \u00b0C"
+        return lambda shown: any(thing["reads"].startswith(heard) for thing in shown["things"])
+
+    machine.told(heat(52), [])
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("machine", selecting="Machine")
+    shell.step_in()
+    shell.launcher_until(says(52))
+    time.sleep(SETTLED.total_seconds())
+    machine.told(heat(61), [])
+    try:
+        shell.launcher_until(says(61))
+        said = True
+    except AssertionError:
+        said = False
+    shown = [thing["reads"] for thing in shell.showing()["things"]]
+    shell.close_launcher()
+    assert said, f"Machine's Heat row kept the heat it first heard: {shown}"
 
 
 def holds(name: str) -> Callable[[Json], bool]:
