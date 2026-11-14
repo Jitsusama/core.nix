@@ -1348,12 +1348,21 @@ fn list_flaky(
     owner: Option<u64>,
 ) -> Result<(), String> {
     let reason = format!("failed, then passed, at {}", short(head));
-    let made = world.quarantine(test, &failing_at(state, head, test), owner, head, &reason);
+    let failing = failing_at(state, head, test);
+    let made = (!listed_by_subtests_on_main(world, test, &failing))
+        .then(|| world.quarantine(test, &failing, owner, head, &reason));
     // On 10 November a refused merge was kept only in the finding, and the
     // list it would have landed sat unmerged for an hour and a half.
     match &made {
-        Ok(landed) => state.say(&format!("listed {test} as quarantined in #{}", landed.pr)),
-        Err(why) => state.say(&format!("listing {test} as quarantined failed: {why}")),
+        Some(Ok(landed)) => {
+            state.say(&format!("listed {test} as quarantined in #{}", landed.pr));
+        }
+        Some(Err(why)) => state.say(&format!("listing {test} as quarantined failed: {why}")),
+        None => state.say(&format!(
+            "{test} failed, then passed, at {}, and main lists it by subtests already, so \
+             its list stays as it is",
+            short(head)
+        )),
     }
     state.find(&json!({
         "kind": "flaky",
@@ -1361,11 +1370,25 @@ fn list_flaky(
         "commit": head,
         "owner_pr": owner,
         "log": state.log(head, test, 1).display().to_string(),
-        "quarantine_pr": made.as_ref().ok().map(|merged| merged.pr),
-        "quarantine_error": made.err(),
+        "quarantine_pr": made.as_ref().and_then(|made| made.as_ref().ok().map(|it| it.pr)),
+        "quarantine_error": made.as_ref().and_then(|made| made.as_ref().err()),
         "at": now(),
     }))?;
     Ok(())
+}
+
+/// Whether main's newest head lists `test` by subtests that hold what
+/// failed in it: every subtest named in `failing`, or any, where the
+/// failure named none, as a run that timed out names none. A list never
+/// lists whole a test it lists by subtests (quarantine.rs), so listing
+/// one again changes nothing: at 20:11 on 13 November git refused that
+/// empty change for vm-desktop-launcher-finds-sessions, and the net said
+/// its listing had failed.
+fn listed_by_subtests_on_main(world: &dyn World, test: &str, failing: &BTreeSet<String>) -> bool {
+    newest_known(world).is_some_and(|newest| {
+        let listed = world.listed_subtests(&newest, test);
+        !listed.is_empty() && failing.is_subset(&listed)
+    })
 }
 
 /// Tell `test`'s owner that it stalled twice at `head`.
@@ -3044,6 +3067,37 @@ mod tests {
             *world.quarantine_subtests.lock().unwrap(),
             [names("test_b").into_iter().collect::<BTreeSet<_>>()],
             "only test_b failed, so only it is listed"
+        );
+    }
+
+    #[test]
+    fn a_flaky_test_main_lists_by_subtests_failing_in_none_named_is_told_not_listed() {
+        // At 20:11 on 13 November vm-desktop-launcher-finds-sessions timed
+        // out once, naming no subtest, while main listed two of its
+        // subtests; a list never lists such a test whole, so the change
+        // came out empty, git refused it, and the net said it had failed.
+        let state = state("flaky-held-subtest");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            listed_by_subtest: vec![("vm-a".into(), names("test_b"))],
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 0]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h".into())
+        );
+        assert!(
+            world.put_in_quarantine.lock().unwrap().is_empty(),
+            "main lists vm-a by test_b, yet the net listed it again"
+        );
+        let found = findings(&state);
+        assert_eq!(found[0]["kind"], "flaky", "its owner isn't told: {found:?}");
+        assert!(
+            found[0]["quarantine_error"].is_null(),
+            "a test main lists was said to have failed listing: {found:?}"
         );
     }
 
