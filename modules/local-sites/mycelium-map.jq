@@ -1,37 +1,14 @@
 # Shapes what the realm's node says now into the one file the mycelium site's
-# map reads, now.json, from the four answers mycelium-map.sh passes in:
-# $s from `mycelium sessions`, $w from `mycelium swarm --json`, $m from
-# `mycelium machines` and $g from `mycelium messages`. It keeps only what the
-# map draws: the live sessions, ended ones left out, each team, each machine,
-# and the latest messages' senders and groups, never their words. Nothing
-# here judges; the page does, so the model has one reader.
+# map reads, now.json, from the three answers mycelium-map.sh passes in:
+# $n from `mycelium networks -o json`, $m from `mycelium machines` and $g
+# from `mycelium messages`. The networks and their cells pass as mycelium
+# draws them, so the map and `mycelium networks` show one record; the
+# machines add what their cells leave out (memory, disk, power) and the
+# messages only their senders and groups, never their words.
 {
   at: (now | todate),
-  sessions: [
-    $s[0].Ok.Sessions[]
-    | select(.state == "busy" or .state == "idle")
-    | {
-        id, address, title, machine, state, quest,
-        since: (.since // .presence.since),
-        step: (.step // .presence.step),
-        wants: (.wants.said // null),
-        paused: (.presence.paused == true),
-        parked: (.presence.state == "parked"),
-        project: (.presence.questInfo.title // null),
-        repo: (.presence.repo // null),
-        groups: [.groups[] | select(startswith("peer.") | not)],
-        lead_of: (.presence.orchestrates // null),
-        cost_today: (.presence.usage["pi.cost.usd"].today // null),
-        context: (.presence.usage.context // null),
-        turns_today: (.presence.usage.turns.today // null),
-        last_turn: (.presence.usage.turns.last.at // null)
-      }
-  ],
-  teams: [
-    $w[]
-    | select(.kind == "team")
-    | {key: (.key | ltrimstr("team:")), title, within, lead, members, counts, worst, bridges, landed, liaisons}
-  ],
+  networks: [$n[] | select(.kind == "network")],
+  cells: [$n[] | select(.kind == "cell" and .type == "session")],
   machines: [
     $m[0].Ok.Machines[]
     | {
