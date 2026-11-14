@@ -203,6 +203,17 @@
     # refuse. render-deadline-action.patch turns it on and off while niri
     # runs: `niri-deadline on`, below, tries it on Joel's own GPU, and `off`
     # puts it back.
+    #
+    # niri tells a sandbox's client apart only to hide globals from it, so
+    # a window a fenced command opened through pi-fence-display took the
+    # focus on the workspace Joel was using, and a token from his window
+    # let it take it again; no window rule can single out a sandbox, since
+    # it names its own app ID. The patch
+    # (sandboxed-windows-stay-behind.patch) opens a window of any
+    # wp-security-context-v1 client on the empty workspace at the end of
+    # the focused output, adding one after it while Joel is there, never
+    # activates it, and lets an activation reach it as urgency at most. It
+    # rests on the connection rather than a setting, so it adds none.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -238,6 +249,7 @@
         ./suspends-hidden-windows.patch
         ./renders-by-the-deadline.patch
         ./render-deadline-action.patch
+        ./sandboxed-windows-stay-behind.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

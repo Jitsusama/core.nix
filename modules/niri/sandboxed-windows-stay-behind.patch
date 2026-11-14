@@ -1,0 +1,314 @@
+Open a sandbox's windows behind what is shown, and never focus them
+
+niri tells a sandbox's client apart, one connected through a
+wp-security-context-v1 socket, only to hide the privileged globals
+from it. Its windows open as anyone's do: on the focused workspace,
+focused when its rules, an activation token or niri's smart policy
+say so. No window rule can single it out either, since rules match
+only what the client says of itself. So a fenced agent's window would
+take Joel's place and his keys.
+
+A sandbox's new window now opens on the empty workspace at the end of
+the focused output, one added after it when Joel is on that one, and
+never activates, whatever its rules or tokens say. A workspace that
+went or came into view before it maps is chosen again. It never takes
+a workspace OpenNextWindowOn asked for an app ID, since it names its
+app ID itself; it ignores a parent, so a dialog stays with it; and it
+goes fullscreen where it is rather than onto another output.
+
+The workspace is added at the window's first configure, so a window
+that never maps still leaves it: while Joel is on the last empty
+workspace he briefly has two empty ones after it. That is no leak;
+niri removes the spare one as he moves away, as it does any empty
+workspace not at the end.
+
+Its xdg-activation marks a window urgent at most: a token a sandbox
+makes activates no window, its own or another client's, now or when
+that window maps, and a sandbox's own window isn't activated by any
+token. It adds no setting, since a sandbox's connection is what
+decides it.
+
+diff --git a/src/handlers/compositor.rs b/src/handlers/compositor.rs
+index da24b4c..2f505bf 100644
+--- a/src/handlers/compositor.rs
++++ b/src/handlers/compositor.rs
+@@ -21,7 +21,7 @@ use smithay::{delegate_compositor, delegate_shm};
+ use super::xdg_shell::add_mapped_toplevel_pre_commit_hook;
+ use crate::handlers::XDG_ACTIVATION_TOKEN_TIMEOUT;
+ use crate::layout::{ActivateWindow, AddWindowTarget, LayoutElement as _};
+-use crate::niri::{CastTarget, ClientState, LockState, State, WindowOpening};
++use crate::niri::{client_is_restricted, CastTarget, ClientState, LockState, State, WindowOpening};
+ use crate::utils::transaction::Transaction;
+ use crate::utils::{is_mapped, send_scale_transform};
+ use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped};
+@@ -92,6 +92,32 @@ impl CompositorHandler for State {
+ 
+                     let toplevel = window.toplevel().expect("no X11 support");
+ 
++                    // A sandbox's window opens behind what is shown, as it was configured to,
++                    // unless that workspace went or came into view meanwhile, when it opens on
++                    // the one behind now.
++                    let restricted = toplevel
++                        .wl_surface()
++                        .client()
++                        .is_some_and(|client| client_is_restricted(&client));
++                    let opens_on = if restricted {
++                        let layout = &mut self.niri.layout;
++                        opens_on
++                            .filter(|opening| {
++                                layout.find_workspace_by_id(opening.workspace).is_some()
++                                    && !layout.workspace_is_shown(opening.workspace)
++                            })
++                            .or_else(|| {
++                                layout
++                                    .empty_workspace_behind()
++                                    .map(|workspace| WindowOpening {
++                                        workspace,
++                                        column: None,
++                                    })
++                            })
++                    } else {
++                        opens_on
++                    };
++
+                     let (
+                         rules,
+                         width,
+@@ -158,16 +184,20 @@ impl CompositorHandler for State {
+                     let is_floating = rules.compute_open_floating(toplevel);
+ 
+                     // Figure out if we should activate the window. One a workspace was asked
+-                    // for opens there behind whatever has the focus.
+-                    let activate = opens_on.map(|_| ActivateWindow::No).or_else(|| {
+-                        rules.open_focused.map(|focus| {
+-                            if focus {
+-                                ActivateWindow::Yes
+-                            } else {
+-                                ActivateWindow::No
+-                            }
+-                        })
+-                    });
++                    // for opens there behind whatever has the focus, and a sandbox's never takes
++                    // the focus, whatever its rules or its activation token say.
++                    let activate = opens_on
++                        .map(|_| ActivateWindow::No)
++                        .or(restricted.then_some(ActivateWindow::No))
++                        .or_else(|| {
++                            rules.open_focused.map(|focus| {
++                                if focus {
++                                    ActivateWindow::Yes
++                                } else {
++                                    ActivateWindow::No
++                                }
++                            })
++                        });
+                     let activate = activate.unwrap_or_else(|| {
+                         // Check the token timestamp again in case the window took a while between
+                         // requesting activation and mapping.
+@@ -186,8 +216,10 @@ impl CompositorHandler for State {
+                         }
+                     });
+ 
++                    // A sandbox's dialog opens where its window does, not beside a parent shown.
+                     let parent = toplevel
+                         .parent()
++                        .filter(|_| !restricted)
+                         .and_then(|parent| self.niri.layout.find_window_and_output(&parent))
+                         // Only consider the parent if we configured the window for the same
+                         // output.
+diff --git a/src/handlers/mod.rs b/src/handlers/mod.rs
+index e56104e..31e8632 100644
+--- a/src/handlers/mod.rs
++++ b/src/handlers/mod.rs
+@@ -86,7 +86,7 @@ use smithay::{
+ pub use crate::handlers::xdg_shell::KdeDecorationsModeState;
+ use crate::layout::workspace::WorkspaceId;
+ use crate::layout::ActivateWindow;
+-use crate::niri::{DndIcon, NewClient, State};
++use crate::niri::{client_id_is_restricted, client_is_restricted, DndIcon, NewClient, State};
+ use crate::protocols::ext_workspace::{self, ExtWorkspaceHandler, ExtWorkspaceManagerState};
+ use crate::protocols::foreign_toplevel::{
+     self, ForeignToplevelHandler, ForeignToplevelManagerState,
+@@ -827,12 +827,26 @@ delegate_gamma_control!(State);
+ 
+ struct UrgentOnlyMarker;
+ 
++/// Marks a token a sandbox made, which can mark a window urgent but activate none, its own or
++/// another client's.
++struct MadeInSandboxMarker;
++
+ impl XdgActivationHandler for State {
+     fn activation_state(&mut self) -> &mut XdgActivationState {
+         &mut self.niri.activation_state
+     }
+ 
+     fn token_created(&mut self, _token: XdgActivationToken, data: XdgActivationTokenData) -> bool {
++        if data
++            .client_id
++            .clone()
++            .is_some_and(|id| client_id_is_restricted(&self.niri.display_handle, id))
++        {
++            data.user_data.insert_if_missing(|| MadeInSandboxMarker);
++            data.user_data.insert_if_missing(|| UrgentOnlyMarker);
++            return true;
++        }
++
+         // Tokens without a serial are urgency-only. This is not specified, but it seems to be the
+         // common client behavior.
+         //
+@@ -878,10 +892,16 @@ impl XdgActivationHandler for State {
+         token_data: XdgActivationTokenData,
+         surface: WlSurface,
+     ) {
++        // A sandbox asking to activate its own window, or handing out a token it made, marks the
++        // window urgent at most: neither moves the focus, now or when the window maps.
++        let sandboxed = token_data.user_data.get::<MadeInSandboxMarker>().is_some()
++            || surface
++                .client()
++                .is_some_and(|client| client_is_restricted(&client));
+         if token_data.timestamp.elapsed() < XDG_ACTIVATION_TOKEN_TIMEOUT {
+             if let Some((mapped, _)) = self.niri.layout.find_window_and_output_mut(&surface) {
+                 let window = mapped.window.clone();
+-                if token_data.user_data.get::<UrgentOnlyMarker>().is_some() {
++                if sandboxed || token_data.user_data.get::<UrgentOnlyMarker>().is_some() {
+                     mapped.set_urgent(true);
+                     self.niri.queue_redraw_all();
+                 } else {
+@@ -889,7 +909,12 @@ impl XdgActivationHandler for State {
+                     self.niri.layer_shell_on_demand_focus = None;
+                     self.niri.queue_redraw_all();
+                 }
+-            } else if let Some(unmapped) = self.niri.unmapped_windows.get_mut(&surface) {
++            } else if let Some(unmapped) = self
++                .niri
++                .unmapped_windows
++                .get_mut(&surface)
++                .filter(|_| !sandboxed)
++            {
+                 unmapped.activation_token_data = Some(token_data);
+             }
+         }
+diff --git a/src/handlers/xdg_shell.rs b/src/handlers/xdg_shell.rs
+index d25ded1..7d36d46 100644
+--- a/src/handlers/xdg_shell.rs
++++ b/src/handlers/xdg_shell.rs
+@@ -42,7 +42,7 @@ use crate::input::resize_grab::ResizeGrab;
+ use crate::input::touch_resize_grab::TouchResizeGrab;
+ use crate::input::{PointerOrTouchStartData, DOUBLE_CLICK_TIME};
+ use crate::layout::ActivateWindow;
+-use crate::niri::{CastTarget, PopupGrabState, State};
++use crate::niri::{client_is_restricted, CastTarget, PopupGrabState, State, WindowOpening};
+ use crate::utils::transaction::Transaction;
+ use crate::utils::{
+     get_monotonic_time, output_matches_name, send_scale_transform, update_tiled_state,
+@@ -628,7 +628,13 @@ impl XdgShellHandler for State {
+ 
+             let window = mapped.window.clone();
+ 
+-            if let Some(requested_output) = requested_output {
++            // A sandbox's window goes fullscreen where it is, rather than onto another output's
++            // shown workspace.
++            let restricted = toplevel
++                .wl_surface()
++                .client()
++                .is_some_and(|client| client_is_restricted(&client));
++            if let Some(requested_output) = requested_output.filter(|_| !restricted) {
+                 if Some(&requested_output) != current_output {
+                     self.niri.layout.move_to_output(
+                         Some(&window),
+@@ -1040,10 +1046,27 @@ impl State {
+ 
+         // A workspace asked for this window's app ID (OpenNextWindowOn) goes before every rule,
+         // so the window opens there from its first frame rather than being moved after.
+-        let app_id = with_toplevel_role(toplevel, |role| role.app_id.clone());
+-        let opens_on = app_id
+-            .as_deref()
+-            .and_then(|app_id| self.niri.take_window_opening(app_id));
++        //
++        // A sandbox's window opens behind what is shown instead, and never takes a workspace asked
++        // for an app ID, since it names its app ID itself.
++        let opens_on = if toplevel
++            .wl_surface()
++            .client()
++            .is_some_and(|client| client_is_restricted(&client))
++        {
++            self.niri
++                .layout
++                .empty_workspace_behind()
++                .map(|workspace| WindowOpening {
++                    workspace,
++                    column: None,
++                })
++        } else {
++            let app_id = with_toplevel_role(toplevel, |role| role.app_id.clone());
++            app_id
++                .as_deref()
++                .and_then(|app_id| self.niri.take_window_opening(app_id))
++        };
+ 
+         let Some(unmapped) = self.niri.unmapped_windows.get_mut(toplevel.wl_surface()) else {
+             error!("window must be present in unmapped_windows in send_initial_configure()");
+diff --git a/src/layout/mod.rs b/src/layout/mod.rs
+index cd61c59..0588f3f 100644
+--- a/src/layout/mod.rs
++++ b/src/layout/mod.rs
+@@ -1280,6 +1280,24 @@ impl<W: LayoutElement> Layout<W> {
+         }
+     }
+ 
++    /// The empty workspace at the end of the active monitor, for a window that opens behind
++    /// what is shown. When that workspace is the one shown, an empty one is added after it.
++    pub fn empty_workspace_behind(&mut self) -> Option<WorkspaceId> {
++        let monitor = self.active_monitor()?;
++        let last = monitor.workspaces.len() - 1;
++        if monitor.active_workspace_idx() == last || monitor.workspaces[last].has_windows_or_name()
++        {
++            monitor.add_workspace_bottom();
++        }
++        monitor.workspaces.last().map(Workspace::id)
++    }
++
++    /// Whether a monitor shows this workspace.
++    pub fn workspace_is_shown(&self, id: WorkspaceId) -> bool {
++        self.monitors()
++            .any(|monitor| monitor.active_workspace_ref().id() == id)
++    }
++
+     pub fn find_workspace_by_id(&self, id: WorkspaceId) -> Option<(usize, &Workspace<W>)> {
+         match &self.monitor_set {
+             MonitorSet::Normal { ref monitors, .. } => {
+diff --git a/src/niri.rs b/src/niri.rs
+index 1e4d82f..e566242 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -6952,6 +6952,30 @@ impl ClientData for ClientState {
+     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+ }
+ 
++/// Whether a client connected through a security context, as a sandbox's does, and so must never
++/// take the focus or open where it is seen.
++pub fn client_is_restricted(client: &Client) -> bool {
++    client
++        .get_data::<ClientState>()
++        .is_some_and(|state| state.restricted)
++}
++
++/// Whether the client with this id connected through a security context. A client that is gone
++/// is taken as unrestricted, since it can no longer open or focus anything.
++///
++/// Through the backend handle rather than `Client::from_id`, which wayland-server keeps to itself.
++pub fn client_id_is_restricted(display: &DisplayHandle, id: ClientId) -> bool {
++    display
++        .backend_handle()
++        .get_client_data(id)
++        .ok()
++        .and_then(|data| {
++            data.downcast_ref::<ClientState>()
++                .map(|state| state.restricted)
++        })
++        .unwrap_or(false)
++}
++
+ /// The output a window's own surface was last drawn on, or none where no output's last frame
+ /// held it, as each render keeps it.
+ fn primary_output(mapped: &Mapped) -> Option<Output> {

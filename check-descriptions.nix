@@ -1573,6 +1573,11 @@
     no niri key opens its screenshot screen, its key list or a quit that asks, and the launcher's
     Log Out quits without asking
   '';
+  niri-opens-sandboxed-windows-behind = ''
+    the session's niri, nested in the sandbox, opens a sandbox's windows on a workspace no screen
+    shows without moving the focus, even with an activation token from the focused window or while
+    the focused workspace is the empty one at the end
+  '';
   niri-patches-add-no-settings = ''
     no patch of niri's adds a setting a niri started before it would refuse at a switch, all of its
     settings with it, but srgb-gamut's, in every niri booted since, and opens-next-window-on's
