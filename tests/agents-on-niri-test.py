@@ -1499,15 +1499,9 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     about = shell.showing()["line"]["about"]
     assert about == "void", about
     # It says how long it took to reach the screen, held to Joel's 50 ms (VKCF3Z, e8b4139e).
-    deadline = time.monotonic() + 10
-    while not (
-        up := re.search(
-            r"talk line: up (\d+) ms", shell.log.read_bytes()[since:].decode(errors="replace")
-        )
-    ):
-        assert time.monotonic() < deadline, shell.tail()
-        time.sleep(0.1)
-    logging.getLogger(__name__).info("the line was up %s ms after it was asked", up[1])
+    logging.getLogger(__name__).info(
+        "the line was up %s ms after it was asked", line_was_up(shell, since)
+    )
     shown = shell.showing()
     assert not shown["open"], shown
     assert shown["line"]["mode"] == "insert", shown["line"]
@@ -1531,19 +1525,7 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["typed"] == words)
     # Ctrl+R * attaches what's selected and Ctrl+R + what's copied, each a row under the
     # window's, the line's words as they were.
-    # wl-copy stays behind to serve each, so it's given nothing to hold open.
-    shell.as_account("printf %s 'the cut title' | wl-copy --primary > /dev/null 2>&1")
-    shell.as_account("printf %s 'twitches while it reads on' | wl-copy > /dev/null 2>&1")
-    attach(shell, "*", [("window", said_over), ("selection", "the cut title")])
-    attach(
-        shell,
-        "+",
-        [
-            ("window", said_over),
-            ("selection", "the cut title"),
-            ("clipboard", "twitches while it reads on"),
-        ],
-    )
+    attach_both(shell, said_over)
     assert shell.showing()["line"]["typed"] == words, shell.showing()["line"]
     shoot("attached")
     # Return sends them, what's attached with them, and the line stays up saying whom they
@@ -1557,16 +1539,7 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
         )
     )
     inbox = STEER / "VOID"
-    deadline = time.monotonic() + 10
-    while not (
-        sent := [
-            text
-            for one in inbox.glob("*.json")
-            if (text := str(json.loads(one.read_text()).get("text", ""))).startswith(words)
-        ]
-    ):
-        assert time.monotonic() < deadline, "the line never reached the void's inbox"
-        time.sleep(0.1)
+    sent = reached(inbox, words)
     assert "\n\nAttached:\n- window: " in sent[0], sent
     assert sent[0].endswith(
         f"{said_over}\n- selection: the cut title\n- clipboard: twitches while it reads on"
@@ -1579,6 +1552,51 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     logging.getLogger(__name__).info("the line was up after %s ms each time", times)
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def line_was_up(shell: Shell, since: int) -> str:
+    """Give how many milliseconds the line took to reach the screen, once it says."""
+    deadline = time.monotonic() + 10
+    while not (
+        up := re.search(
+            r"talk line: up (\d+) ms", shell.log.read_bytes()[since:].decode(errors="replace")
+        )
+    ):
+        assert time.monotonic() < deadline, shell.tail()
+        time.sleep(0.1)
+    return up[1]
+
+
+def reached(inbox: Path, words: str) -> list[str]:
+    """Give what reached the inbox beginning with the words, once anything has."""
+    deadline = time.monotonic() + 10
+    while not (
+        sent := [
+            text
+            for one in inbox.glob("*.json")
+            if (text := str(json.loads(one.read_text()).get("text", ""))).startswith(words)
+        ]
+    ):
+        assert time.monotonic() < deadline, "the line never reached the void's inbox"
+        time.sleep(0.1)
+    return sent
+
+
+def attach_both(shell: Shell, said_over: str) -> None:
+    """Select a title and copy a line, then attach each by its register, under the window."""
+    # wl-copy stays behind to serve each, so it's given nothing to hold open.
+    shell.as_account("printf %s 'the cut title' | wl-copy --primary > /dev/null 2>&1")
+    shell.as_account("printf %s 'twitches while it reads on' | wl-copy > /dev/null 2>&1")
+    attach(shell, "*", [("window", said_over), ("selection", "the cut title")])
+    attach(
+        shell,
+        "+",
+        [
+            ("window", said_over),
+            ("selection", "the cut title"),
+            ("clipboard", "twitches while it reads on"),
+        ],
+    )
 
 
 def attach(shell: Shell, register: str, rows: list[tuple[str, str]]) -> None:

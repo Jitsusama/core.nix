@@ -44,21 +44,23 @@ function titled(title, program) {
     return whole;
 }
 
-// The tab in front of a Chrome window, from the tabs the programs daemon
-// serves as `opened:google-chrome`: the one in front of its window whose
-// title is the window's, as niri titles Chrome's windows by it
-// (Applications.qml's heldWindows). Two in front by the same title can't be
-// told apart, so neither is taken; null where none is. A stopgap until
-// FEH1HE's programs daemon serves each window's front tab by niri's window
-// id, due Sat 14 November 01:00 ([85b5425e]).
-function tabOf(window, program, sites) {
-    const title = titled(window?.title, program);
-    if (title === "") {
+// What the programs daemon is asked for the tab in front of a browser's
+// window, by niri's id for it: it matches the window's title to that tab and
+// answers nothing where two could be it (FEH1HE, core #4190).
+function tabKey(app, window) {
+    return `front:${app}:${window}`;
+}
+
+// The tab its answer names, or null where it names none or one without an
+// address: the window it's in front of, its title and its address.
+function tabFrom(answer, app, window) {
+    const key = tabKey(app, window);
+    const front = (answer?.records ?? []).find(record => record?.key === key);
+    const address = String(front?.address ?? "");
+    if (address === "") {
         return null;
     }
-    const fronts = (sites ?? []).filter(site => site?.front === true
-        && String(site.title ?? "").trim() === title && String(site.address ?? "") !== "");
-    return fronts.length === 1 ? { title, address: String(fronts[0].address) } : null;
+    return { window, title: String(front.title ?? "").trim() || address, address };
 }
 
 // One row: its kind, the mark it wears and its hue, what it says on the
@@ -80,7 +82,7 @@ function shortAddress(address) {
 
 // What goes with a line, a row each: the window it's said over, as its
 // program names itself, and its title; the tab in front, where it's a
-// browser's (tabOf); the pi session that window is, where it's one, by its
+// browser's (tabFrom); the pi session that window is, where it's one, by its
 // name and address; and what he attached of the registers (registered). A
 // window with no title, or none focused, attaches nothing of itself.
 function attached({ window, program, session, tab, registers }) {

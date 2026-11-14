@@ -50,8 +50,9 @@ Scope {
     // What Ctrl+R * and Ctrl+R + attached, the selection and the clipboard
     // as Vim names its registers, kept with the words until they're sent.
     property var registers: []
-    // The tab in front of a Chrome window it's said over, or null.
-    readonly property var tab: browsing ? Said.tabOf(window, program, sites) : null
+    // The tab in front of the Chrome window it's said over, as the programs daemon answers
+    // it (askTab), or null.
+    property var tab: null
     // The talks Returns in this shell began (TalkLine.js's begun), newest first, as each goes.
     property var saidHere: []
     // Every line the line shows: those said here and those the void keeps, which outlive the
@@ -199,22 +200,40 @@ Scope {
         }
     }
 
-    // Chrome's open tabs, as the programs daemon serves them, watched only while the line is
-    // up over a Chrome window, so it reads Chrome's tabs for nothing else (TalkLine.js's
-    // tabOf). A stopgap until FEH1HE's programs daemon serves each window's front tab by
-    // niri's window id, due Sat 14 November 01:00 ([85b5425e]).
+    // The tab in front of a Chrome window, asked of the programs daemon by niri's id for the
+    // window as the line comes up over it, or as it's said over another, over a connection
+    // held only while it's up over one, so it reads Chrome's tabs for nothing else. The
+    // daemon matches the window's title to its front tab and answers none on a tie (FEH1HE,
+    // core #4190). The tab stands while the window does, so a title the window changes as
+    // it loads leaves the row as it was rather than dropping it to ask again.
     readonly property string browser: "google-chrome"
     readonly property bool browsing: up && (window?.app_id ?? "") === browser
     Daemon {
-        id: browserTabs
+        id: fronts
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/programs.sock`
-        kind: "opened"
+        kind: "front"
         live: false
         connects: root.browsing
-        ahead: root.browsing ? [`opened:${root.browser}`] : []
+        onWireChanged: root.askTab()
     }
-    readonly property var sites: browserTabs.revision >= 0
-        ? browserTabs.held[`opened:${browser}`]?.sites ?? [] : []
+    onBrowsingChanged: askTab()
+    onWindowChanged: askTab()
+    function askTab() {
+        const over = window?.id ?? null;
+        if (!browsing || over === null) {
+            tab = null;
+            return;
+        }
+        if (tab !== null && tab.window === over)
+            return;
+        tab = null;
+        if (fronts.wire === null)
+            return;
+        fronts.find({ ask: "get", keys: [Said.tabKey(browser, over)] }, answer => {
+            if (root.browsing && (root.window?.id ?? null) === over)
+                root.tab = Said.tabFrom(answer, root.browser, over);
+        });
+    }
 
     // The selection, read from the clipboard's history only as Ctrl+R * asks for it and
     // never kept but as what's attached, as On the Selection reads it (OnSelection.qml),

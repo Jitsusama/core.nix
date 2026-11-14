@@ -33,21 +33,24 @@ QtObject {
             Expect.same("a pi window shows its session alone, its title saying the same",
                 Said.shownRows(rows).map(row => row.kind), ["session"]);
 
-            // Chrome's tab in front of the window it's said over (brief, slice C), matched
-            // by title until the programs daemon serves it by window (FEH1HE [85b5425e]).
-            const chrome = { app_id: "google-chrome", title: "Pull requests - Google Chrome" };
-            const sites = [
-                { front: false, title: "Pull requests", address: "https://old.example" },
-                { front: true, title: "Pull requests", address: "https://github.com/pulls" },
-                { front: true, title: "Inbox", address: "https://mail.example" }];
-            const tab = Said.tabOf(chrome, "Google Chrome", sites);
-            Expect.same("the tab in front titled as the window is its tab", tab,
-                { title: "Pull requests", address: "https://github.com/pulls" });
-            Expect.same("two in front titled alike can't be told apart, so none is taken",
-                Said.tabOf(chrome, "Google Chrome", sites.concat([{ front: true,
-                    title: "Pull requests", address: "https://github.com/other" }])), null);
-            Expect.same("a window no tab is in front of has none",
-                Said.tabOf({ title: "Settings - Google Chrome" }, "Google Chrome", sites), null);
+            // Chrome's tab in front of the window it's said over (brief, slice C), as the
+            // programs daemon serves it by niri's window id (FEH1HE, core #4190).
+            const chrome = { id: 7, app_id: "google-chrome",
+                title: "Pull requests - Google Chrome" };
+            Expect.same("the front tab is asked for by its browser and window",
+                Said.tabKey("google-chrome", 7), "front:google-chrome:7");
+            const tab = Said.tabFrom({ records: [{ key: "front:google-chrome:7", kind: "front",
+                app: "google-chrome", window: 7, title: "Pull requests",
+                address: "https://github.com/pulls" }] }, "google-chrome", 7);
+            Expect.same("the tab its answer names is the window's tab", tab,
+                { window: 7, title: "Pull requests", address: "https://github.com/pulls" });
+            Expect.same("an answer naming none, as on a tie, gives none",
+                Said.tabFrom({ records: [] }, "google-chrome", 7), null);
+            Expect.same("an answer for another window gives none",
+                Said.tabFrom({ records: [{ key: "front:google-chrome:8", title: "Inbox",
+                    address: "https://mail.example" }] }, "google-chrome", 7), null);
+            Expect.same("no answer, the daemon not there, gives none",
+                Said.tabFrom(null, "google-chrome", 7), null);
             const browsed = Said.attached({ window: chrome, program: "Google Chrome", tab });
             Expect.same("a browser's window is titled without its program, and its tab shown "
                     + "in its place", [browsed[0].text, Said.shownRows(browsed).map(row =>
