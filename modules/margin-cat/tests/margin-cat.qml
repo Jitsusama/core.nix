@@ -671,6 +671,33 @@ QtObject {
         const left = resized(narrowed, { x: 874, y: 507 });
         expect("its column narrowed out from under it, it falls",
             [left.beats[0].name, left.beats.some(beat => beat.name === "rides")], ["falls", false]);
+        // A row of its column closed under it, and the window over it grown
+        // down over where it sat, as niri lays a column out again (Joel,
+        // 2026-11-14 17:24: "when a row in a column is deleted, it seems to
+        // hang out in the middle then walk across, that is not believable"):
+        // at once, it falls ahead of that window's edge onto what's under
+        // where the edge stops, lands, and climbs to its seat by an edge,
+        // never shoved across a face, never gliding.
+        const rowGone = ided.filter(tile => tile.id !== 3).map(tile => tile.id !== 2 ? tile
+            : Object.assign({}, tile, { height: 768 }));
+        const dropsOut = Paths.walk({ x: 532, y: 307 }, { x: 532, y: 7 }, among({
+            hurried: true, closed: true, cols: Paths.columns(rowGone, 0),
+            before: Paths.columns(ided, 0), ahead: 72, frame: 1000 / 60 }));
+        const dropBeats = dropsOut.beats.map(beat => beat.name);
+        expect("a row closed under it, it falls at once onto the floor, never shoved or thinking",
+            [dropBeats[0], dropsOut.beats[0].to.y, dropBeats.includes("shoved"),
+                dropBeats.includes("thinks")], ["rides", 792, false, false]);
+        const dropping = seen(dropsOut).filter(at => at.beat === "rides");
+        expect("from where it sat, only ever down, in the falling drawing, landing crouched",
+            [Paths.frame(dropsOut, 0).y, dropping.every((at, i) => i === 0
+                || at.y >= dropping[i - 1].y), posed(dropsOut, "rides").map(one => one.pose),
+                dropBeats.slice(1, 3)], [307, true, ["falling"], ["lands", "shakes"]]);
+        const grownFace = at => at.x < 831.5 && at.x + 8 > 432.5 && at.y < 783.5
+            && at.y + 8 > 16.5;
+        const climbedOut = seen(dropsOut).filter(at => at.t >= dropsOut.beats[0].ends);
+        expect("and from the floor to its seat by an edge, in no face, never gliding",
+            [climbedOut.some(grownFace), dropBeats.includes("climbs"), glides(dropsOut),
+                smooth(seen(dropsOut)), ends(dropsOut)], [false, true, false, true, [532, 7]]);
 
         expect("with nothing on the new workspace it only holds",
             Paths.moves(seat(100), seat(100), world({ way: 1, now: [] })).beats
