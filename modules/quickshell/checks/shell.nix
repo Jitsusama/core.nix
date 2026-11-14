@@ -136,6 +136,24 @@
         touch $out
       '';
 
+  # The handover waits for the old shell's launcher and Super+S's line to be shut before
+  # ending it, restarts instead on a locked screen, and leaves the old shell the unit's when
+  # the new one fails as it loads (modules/quickshell/tests/hands-over.sh).
+  the-shell-hands-over-only-once-its-surfaces-are-shut =
+    pkgs.runCommandLocal "the-shell-hands-over-only-once-its-surfaces-are-shut"
+      {
+        nativeBuildInputs = [
+          pkgs.jq
+          pkgs.procps
+          pkgs.util-linux
+        ];
+      }
+      ''
+        ${lib.getExe' pkgs.coreutils "timeout"} 120 ${lib.getExe pkgs.bash} \
+          ${../tests/hands-over.sh} ${../shell-hands-over.sh}
+        touch $out
+      '';
+
   # The shell's allocator keeps one arena rather than one for each of its
   # threads, since each arena holds freed memory of its own that it hands
   # back only slowly (the unit's Environment says how much it saves).

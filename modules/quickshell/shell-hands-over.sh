@@ -76,13 +76,19 @@ for ((i = 0; i < 100; i++)); do
   sleep 0.1
 done
 
-# Ended open, the old launcher would vanish under Joel, so it's handed over
-# once he has closed it, for up to a minute, past which a switch has waited
-# long enough.
+# Ended open, the old launcher would vanish under Joel, and Super+S's line
+# with what he was saying in it, so it's handed over once he has closed
+# them, for up to a minute, past which a switch has waited long enough.
+# The new shell wrote "closed" in the line's mark as it loaded, and the old
+# one writes only as its line changes, so "open" there now is the old
+# shell's line, come up since.
+talking="$XDG_RUNTIME_DIR/quickshell-talk-line"
 for ((i = 0; i < 600; i++)); do
   shown="$("$1" ipc --pid "$old" call launcher showing 2>/dev/null || true)"
   open="$(jq -r .open <<<"$shown" 2>/dev/null || true)"
-  [ "$open" = true ] || break
+  line=""
+  read -r line 2>/dev/null <"$talking" || true
+  [ "$open" = true ] || [ "$line" = open ] || break
   sleep 0.1
 done
 
