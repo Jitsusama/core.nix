@@ -13,9 +13,10 @@
 .pragma library
 
 // The fields of a window record Niri.qml's watch is told, and only as one
-// of them changes (the daemon's `fields`).
+// of them changes (the daemon's `fields`): `file`, the document a window
+// shows, for Super+S's line to send.
 const WINDOW_FIELDS = ["id", "order", "title", "named", "untitled", "program", "app_id",
-    "opened", "session", "pid", "workspace", "floating", "urgent", "column", "down"];
+    "opened", "session", "pid", "file", "workspace", "floating", "urgent", "column", "down"];
 
 // The fields a list of windows draws from, so a change to one is a change
 // `revision` counts; when a window was used, and where it sits, aren't.
@@ -79,6 +80,9 @@ function windowOf(record, focused, tile) {
     };
     if (record.session === true) {
         window.session = true;
+    }
+    if (typeof record.file === "string" && record.file !== "") {
+        window.file = record.file;
     }
     return window;
 }
