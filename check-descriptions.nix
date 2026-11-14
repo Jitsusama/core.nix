@@ -3178,7 +3178,8 @@
   pi-clipboard-door-reaches-only-the-fence = ''
     pi's clipboard door starts from a socket in a folder only the account reaches, tagged in the
     journal, its shims linked from a folder of their own, and the sandboxed display runs with the
-    graphical session at %t/pi-fence/wayland, in a folder that outlives a restart; a Mac gets none
+    graphical session at %t/pi-fence-display/wayland, in a folder of its own that outlives a restart;
+    a Mac gets none
   '';
   pi-fence-clipboard-holds-on-niri = ''
     on a real niri, the sandboxed display offers windows' protocols and none of the privileged
