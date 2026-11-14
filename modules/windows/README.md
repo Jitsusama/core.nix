@@ -30,6 +30,7 @@ first frame lists them in that order, and a retitle wakes nothing.
 | `window:<niri id>`  | its app id as the shell knows it, and as opened | the row's key, its glyph      |
 |                     | whether it holds a session                      | Agents' join                  |
 |                     | title, and `named`: without its program's name  | the row's name                |
+|                     | and, a session's, without pi's leading `π - `   | the row's name, Super+S's line |
 |                     | `untitled`: whether that's its program's alone  | whether it's its program's row |
 |                     | its entry's id, and its program's name          | the row's side, Shift+Return  |
 |                     | `owner`: the program it counts for              | each program's windows        |

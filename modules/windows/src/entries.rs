@@ -179,6 +179,21 @@ pub fn tidy<'a>(title: &'a str, program: &str) -> &'a str {
     title
 }
 
+/// A session's title without pi's mark leading it, as pi titles its
+/// window "π - <session>", since the row already marks it pi's: the same
+/// mark written as text as Chrome's trailing name (VKCF3Z, 2026-11-13).
+pub fn unmarked(title: &str) -> &str {
+    let Some(rest) = title.strip_prefix('\u{3c0}') else {
+        return title;
+    };
+    for joint in [" - ", " \u{2013} ", " \u{2014} ", " | "] {
+        if let Some(own) = rest.strip_prefix(joint).filter(|own| !own.is_empty()) {
+            return own;
+        }
+    }
+    title
+}
+
 /// What a watched folder is to whoever follows the entries.
 #[derive(Default)]
 struct Watched {
@@ -380,5 +395,18 @@ mod tests {
         assert_eq!(tidy("Slack", "Slack"), "Slack");
         assert_eq!(tidy("about kitty", "kitty"), "about kitty");
         assert_eq!(tidy("anything", ""), "anything");
+    }
+
+    #[test]
+    fn a_sessions_title_loses_pis_mark_before_a_joint() {
+        assert_eq!(unmarked("\u{3c0} - Tune the launcher"), "Tune the launcher");
+        assert_eq!(
+            unmarked("\u{3c0} \u{2013} Faster Refs - world"),
+            "Faster Refs - world"
+        );
+        assert_eq!(unmarked("\u{3c0} | Notes"), "Notes");
+        assert_eq!(unmarked("\u{3c0}"), "\u{3c0}");
+        assert_eq!(unmarked("\u{3c0}thon - notes"), "\u{3c0}thon - notes");
+        assert_eq!(unmarked("pi"), "pi");
     }
 }
