@@ -1,7 +1,31 @@
 # shellcheck shell=bash
 # Unlocks the login keyring as the session starts, with a random password
 # sealed to the TPM for this account on this install, making both the first
-# time, then runs the keyring's daemon in this service's place.
+# time, then runs the keyring's daemon in this service's place. Its help
+# takes the shape every command of ours does (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+gnome-keyring-unlock  unlock the login keyring at sign-in
+
+  Opens it with a password sealed to the TPM for this
+  account on this install, making both the first time,
+  then runs the keyring's daemon in its place. Its
+  service runs it, naming STATE_DIRECTORY.
+
+EXAMPLES
+  STATE_DIRECTORY=~/.local/state/gnome-keyring \
+    gnome-keyring-unlock
+
+EXIT
+  1   a keyring has a password that isn't sealed
+  else systemd-creds' or the daemon's own
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 sealed="$STATE_DIRECTORY/login.cred"
 keyring="${XDG_DATA_HOME:-$HOME/.local/share}/keyrings/login.keyring"
