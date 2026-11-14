@@ -1005,8 +1005,8 @@ in
       ".....##."
       "#.#.###."
       "######.."
-      "#.###.#."
-      "###...#."
+      "#.####.#"
+      "###..##."
       "####..##"
     ];
   };
@@ -1060,11 +1060,11 @@ in
       "#######."
       ".######."
       ".#...#.."
-      ".#...#.."
+      "##..##.."
     ];
   };
-  # The margin's cat in the air across a gap, or onto a window's side:
-  # stretched out long, its forelegs reaching ahead and its hind legs
+  # The margin's cat rising into the air across a gap, or onto a window's
+  # side: the first of a leap's three drawings, stretched out long, its forelegs reaching ahead and its hind legs
   # thrown back, its tail streaming up behind, so a leap never reads as
   # a stride or a climb (Joel, 2026-11-13: "when crossing across gaps
   # between windows, the kitty should jump"). It keeps walking's head
@@ -1084,6 +1084,42 @@ in
       "########"
       "##....##"
       "#......#"
+    ];
+  };
+  # A leap's top: its back arched and its legs folded under, a compact
+  # ball between the stretch of the rise and the reach of the fall, as
+  # a leap's top is drawn in five beats (RSCH-20261113-24R2QV, finding 3).
+  tucked = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      "....##.."
+      "#.#.###."
+      "###.####"
+      "#.######"
+      "#######."
+      ".#####.."
+      "..#.#..."
+      ".##.##.."
+    ];
+  };
+  # A leap's fall, and every drop and fall to a floor: its forelegs
+  # reaching down for the ground ahead, its hind legs and tail trailing
+  # up behind, so the way down reads apart from the way up.
+  falling = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      "......##"
+      "#.#...#."
+      "###..##."
+      "#.####.#"
+      "#######."
+      "######.#"
+      "##......"
+      "#......."
     ];
   };
   # The sitting cat (nothingHere's) with a forepaw raised beside its head,
