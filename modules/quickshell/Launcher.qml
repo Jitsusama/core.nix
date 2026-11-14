@@ -10397,7 +10397,8 @@ Scope {
     function feltBegin(from, fromChord) {
         if (feltTicking.running)
             feltSaid();
-        feltTicks = Pacing.feltBegun(KeyTimes.now());
+        feltTicks = Pacing.feltBegun(KeyTimes.now(), Heap.collected());
+        feltCollectedFrom = feltTicks.collected;
         feltFrom = from;
         feltFromChord = fromChord;
         feltSpans = [];
@@ -10408,6 +10409,9 @@ Scope {
     // its longest stall says what it ran into (Pacing.stallSpent). Nothing
     // binds to it, so it's added to in place.
     property var feltSpans: []
+    // The collector's count when the opening began, so its line says what
+    // collecting took of it.
+    property real feltCollectedFrom: 0
     function feltSpan(name, from) {
         if (feltTicking.running)
             feltSpans.push({ name, from, to: KeyTimes.now() });
@@ -10437,7 +10441,7 @@ Scope {
     }
     function feltTicked() {
         const now = KeyTimes.now();
-        feltTicks = Pacing.feltTicked(feltTicks, now, feltPace);
+        feltTicks = Pacing.feltTicked(feltTicks, now, feltPace, Heap.collected());
         if (feltTicks.usable >= 0 || !cardUp || now - feltFrom > feltGiveUp)
             feltSaid();
     }
@@ -10457,12 +10461,14 @@ Scope {
             ? `, ${Math.round(stallAt - feltFrom)} ms in: `
                 + Pacing.stallSpent(feltSpans, stallAt, stallAt + feltTicks.stall)
             : "";
+        const collecting = Pacing.collectorSaid(feltTicks.stallCollected,
+            Heap.collected() - feltCollectedFrom);
         feltSpans = [];
         console.info(usable >= 0
             ? `launcher: opening usable ${usable} ms from ${from}, its longest stall ${stalled} ms`
-                + ranInto
+                + ranInto + collecting
             : `launcher: opening not usable ${waited} ms from ${from}, its longest stall`
-                + ` ${stalled} ms` + ranInto + (cardUp ? "" : ", closed first"));
+                + ` ${stalled} ms` + ranInto + (cardUp ? "" : ", closed first") + collecting);
     }
     Timer {
         id: feltTicking
