@@ -236,6 +236,24 @@ in
       touch $out
     '';
 
+  # An opening joins the launcher's rows again each time a daemon answers,
+  # walking only the sources that changed since and indexing the list in
+  # one walk, as tests/joined.qml holds launcher/Joined.js to it in Qt's
+  # own engine.
+  the-launcher-joins-only-what-changed =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-joins-only-what-changed" { } ''
+      cp ${../../../tests/joined.qml} joined.qml
+      cp ${../launcher/Joined.js} Joined.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml joined.qml
+      touch $out
+    '';
+
   # Recent means one thing in every place it stands: the last nine things,
   # newest first, each once, never what's open, as tests/recent.qml holds
   # launcher/Recent.js to it in Qt's own engine.

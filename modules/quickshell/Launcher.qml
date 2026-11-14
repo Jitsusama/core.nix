@@ -75,6 +75,7 @@ import "launcher/Showing.js" as Showing
 import "launcher/Spots.js" as Spots
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
+import "launcher/Joined.js" as Joined
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
@@ -745,6 +746,8 @@ Scope {
     // How many times it's been joined, for the check that a closed
     // launcher joins nothing.
     property int choicesJoined: 0
+    // Each source's rows as the last joining made them, by the source.
+    property var sourcesJoined: new Map()
     function stale() {
         choicesStale = true;
         // While a kept opening's sources wake, each would join it whole
@@ -758,12 +761,14 @@ Scope {
         const began = KeyTimes.now();
         choicesStale = false;
         const out = [];
+        // Only the sources whose things changed since are walked again
+        // (Joined.js's rowsOf).
+        const kept = { before: sourcesJoined, now: new Map() };
         for (const source of sources) {
-            for (const row of source.things) {
-                if (!(row.key.startsWith("action:") && standIns.includes(row.name)))
-                    out.push(withSynonyms(row));
-            }
+            for (const row of Joined.rowsOf(source, standIns, kept, withSynonyms))
+                out.push(row);
         }
+        sourcesJoined = kept.now;
         // One that's no place of its own (`placed: false`), as Notices,
         // whose notices For You holds, is never found by its name, though
         // what it holds is (gathering).
@@ -837,19 +842,12 @@ Scope {
     // names it), such as Slack's theme of Slack, by the key of what they're
     // part of: listed inside it, and found from outside only by a word past
     // its name, so "slack" is Slack and "slack theme" the theme.
-    readonly property var keyed: {
-        const out = {};
-        for (const choice of choices)
-            out[choice.key] = choice;
-        return out;
-    }
-    readonly property var partsOfRows: {
-        const out = {};
-        for (const choice of choices)
-            if (choice.of)
-                out[choice.of] = (out[choice.of] ?? []).concat([choice]);
-        return out;
-    }
+    readonly property var keyed: choicesIndexed.keyed
+    readonly property var partsOfRows: choicesIndexed.partsOfRows
+    // The three made in one walk, each row's name said plainly once for
+    // as long as it's there (Joined.js's indexes).
+    readonly property var choicesIndexed: Joined.indexes(choices, Rank.plainly, namesPlainly)
+    readonly property var namesPlainly: new Map()
 
     // Whether a part is left out of a search, every word typed only
     // naming what it's part of.
@@ -3406,14 +3404,7 @@ Scope {
 
     // The keys of the rows named each name, so a name typed whole is first
     // over another row latched there (Rank.js's latched).
-    readonly property var namedAs: {
-        const out = {};
-        for (const choice of choices) {
-            const name = Rank.plainly(choice.name);
-            (out[name] ?? (out[name] = [])).push(choice.key);
-        }
-        return out;
-    }
+    readonly property var namedAs: choicesIndexed.namedAs
 
     // Every row there is now, by key, each with the fewest letters it's
     // learned at, for forgetting the picks of those that are gone: what the
