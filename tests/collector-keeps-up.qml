@@ -5,9 +5,10 @@
 // chunk that call ran out of was a new one, each left holding a few of the
 // rows it kept: the heap stood 30 MB heavier for the rest of the run. The
 // `the-collector-keeps-up` check runs this as the shell: with a heap already
-// holding what a started shell holds, one call making 150 MB of garbage
-// around a scattered few it keeps grows its memory by under 60 MB. It exits
-// 1, saying what was wrong, if it doesn't.
+// holding what a started shell holds, one call making 1.5 million objects
+// around a scattered few it keeps grows its memory by under 200 MB, where
+// Qt 6.12.0 grew it by about 430. It exits 1, saying what was wrong, if it
+// doesn't.
 import Quickshell
 import QtQuick
 import "Memory.js" as Memory
@@ -42,7 +43,7 @@ ShellRoot {
             Qt.callLater(() => Qt.exit(1));
             return;
         }
-        if (grew >= 60) {
+        if (grew >= 200) {
             console.error(`one long call grew memory by ${grew} MB`);
             Qt.callLater(() => Qt.exit(1));
             return;
