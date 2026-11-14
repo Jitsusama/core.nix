@@ -273,14 +273,16 @@ fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str, words: &Words
         || json!({ "ask": "mark", "notices": [notice.id], "read": !notice.read }),
         |action| invoke(&action.id),
     );
+    // Marking notices read, and forgetting them, cost too little to ask
+    // first, though neither can be put back: the launcher asks only before
+    // what costs a lot (Joel, 2026-11-13), and before more than five that
+    // can't be put back unless each is served as costing little (VKCF3Z,
+    // 2026-11-14), so :%delete over every notice reads them at once. The
+    // language's costly on Forget is a network's or a device's.
     acts.push(json!({
         "key": "verb:notice:read", "name": words.name("verb:notice:read", state),
-        "glyph": words.glyph("verb:notice:read", state), "ask": ask,
+        "glyph": words.glyph("verb:notice:read", state), "ask": ask, "costly": false,
     }));
-    // Forgetting a notice costs too little to ask first, though it can't
-    // be put back: the launcher asks only before what costs a lot (Joel,
-    // 2026-11-13), and the language's costly on Forget is a network's or
-    // a device's.
     if notice.live {
         acts.push(json!({
             "key": "verb:notice:forget", "ask": { "ask": "dismiss", "notices": [notice.id] },
@@ -1040,6 +1042,10 @@ mod tests {
         assert_eq!(
             acts[4]["costly"], false,
             "forgetting a notice costs too little to ask first"
+        );
+        assert_eq!(
+            acts[3]["costly"], false,
+            "marking a notice read costs too little to ask first"
         );
         assert_eq!(
             acts[2]["also"],
