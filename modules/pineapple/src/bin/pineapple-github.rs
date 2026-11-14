@@ -32,10 +32,11 @@
 //! Another site speaking GitHub's API is read the same way, named by
 //! `--origin` and `--site` so its keys and what it keeps are its own. One
 //! with no notifications to ask, nor a way to ask who Joel is, is given
-//! his address with `--authored-by` and his login with `--login`: each
-//! round then searches for the pull requests he opened that changed, and
-//! what he says there is known by his address. A pull request he only
-//! commented on isn't read there.
+//! his address with `--authored-by`, his login with `--login`, and each
+//! repository to search with `--repo`, since such a site searches only
+//! within one: each round then searches for the pull requests he opened
+//! there that changed, and what he says is known by his address. A pull
+//! request he only commented on isn't read there.
 //!
 //! How far it has read is kept in judged-<site>.json: from when, and the
 //! keys of what it judged, so a restart neither judges anything twice nor
@@ -146,6 +147,10 @@ fn help() -> Help {
                 "--login LOGIN",
                 "Joel's login there, for a site that won't say",
             )
+            .option(
+                "--repo OWNER/NAME",
+                "a repository searched by author, given once for each",
+            )
             .option("--every MS", "how often it asks, a minute unless given"),
     )
 }
@@ -175,6 +180,9 @@ struct Run {
     authored_by: Option<String>,
     /// Joel's login, for a site that can't be asked who he is.
     login: Option<String>,
+    /// The repositories searched by author, one search each, since such a
+    /// site searches only within one.
+    repos: Vec<String>,
     every: Duration,
     /// Whether its stops and resumes are only written down: unless its
     /// service says `--live`, they are, so nothing that runs it unasked
@@ -183,13 +191,14 @@ struct Run {
 }
 
 /// How run runs, from its `--live`, `--origin`, `--site`, `--authored-by`,
-/// `--login` and `--every`.
+/// `--login`, `--repo` and `--every`.
 fn run_options(rest: &[String]) -> Result<Run, Failure> {
     let mut how = Run {
         origin: GITHUB.to_owned(),
         site: SITE.to_owned(),
         authored_by: None,
         login: None,
+        repos: Vec::new(),
         every: EVERY,
         shadow: true,
     };
@@ -226,6 +235,13 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
                         .try_this("pineapple-github run --login joel.example")
                 })?);
             }
+            "--repo" => {
+                let repo = args.next().filter(|repo| repo.split('/').count() == 2);
+                how.repos.push(repo.cloned().ok_or_else(|| {
+                    Failure::new(Exit::Usage, "--repo takes a repository as OWNER/NAME")
+                        .try_this("pineapple-github run --repo example/shop")
+                })?);
+            }
             "--every" => {
                 how.every = args
                     .next()
@@ -243,16 +259,22 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
                     "--site",
                     "--authored-by",
                     "--login",
+                    "--repo",
                     "--every",
                 ];
                 return Err(flags::unknown("option", other, &known));
             }
         }
     }
-    if how.authored_by.is_some() && how.login.is_none() {
-        return Err(Failure::new(Exit::Usage, "--authored-by needs --login")
-            .because("a site searched by author can't be asked who Joel is")
-            .try_this("pineapple-github run --authored-by joel@example.com --login joel"));
+    if how.authored_by.is_some() && (how.login.is_none() || how.repos.is_empty()) {
+        return Err(
+            Failure::new(Exit::Usage, "--authored-by needs --login and a --repo")
+                .because("a site searched by author can't say who Joel is, nor search it all")
+                .try_this(
+                    "pineapple-github run --authored-by joel@example.com --login joel \
+                     --repo example/shop",
+                ),
+        );
     }
     Ok(how)
 }
@@ -526,15 +548,19 @@ fn who(github: &GitHub<'_>, how: &Run) -> Option<String> {
 /// pull requests he opened, as a search finds them.
 fn changed(github: &GitHub<'_>, how: &Run, since: &str) -> Result<Vec<Thread>, Unread> {
     if let Some(address) = &how.authored_by {
-        let query = format!("is:pr author:{address} updated:>={since}");
-        let asked = [
-            ("q", query.as_str()),
-            ("sort", "updated"),
-            ("order", "desc"),
-            ("per_page", PAGE),
-        ];
-        let answer = github.all("/search/issues", &asked)?;
-        return Ok(found(&answer, &how.site));
+        let mut threads = Vec::new();
+        for repo in &how.repos {
+            let query = format!("is:pr repo:{repo} author:{address} updated:>={since}");
+            let asked = [
+                ("q", query.as_str()),
+                ("sort", "updated"),
+                ("order", "desc"),
+                ("per_page", PAGE),
+            ];
+            let answer = github.all("/search/issues", &asked)?;
+            threads.extend(found(&answer, &how.site));
+        }
+        return Ok(threads);
     }
     let asked = [
         ("participating", "true"),

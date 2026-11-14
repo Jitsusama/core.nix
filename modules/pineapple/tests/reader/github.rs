@@ -311,6 +311,8 @@ fn github_a_site_with_no_notifications_is_read_by_what_joel_opened() {
         "joel@example.com",
         "--login",
         LOGIN,
+        "--repo",
+        "example/shop",
     ];
     let mut reading = github_reader(&home, &origin, &site);
     until_decided(&home, 4);
@@ -338,8 +340,8 @@ fn github_a_site_with_no_notifications_is_read_by_what_joel_opened() {
     assert!(
         asked
             .iter()
-            .any(|line| line.contains("author%3Ajoel%40example.com")),
-        "it searches by his address: {asked:?}"
+            .any(|line| line.contains("repo%3Aexample%2Fshop%20author%3Ajoel%40example.com")),
+        "it searches the repository named, by his address: {asked:?}"
     );
     drop(asked);
     let read = Command::new(env!("CARGO_BIN_EXE_pineapple-github"))
