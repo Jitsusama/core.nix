@@ -7709,7 +7709,34 @@ Scope {
     function drawerUnread(row) {
         return typeof row?.drawerUnread === "function" && row.drawerUnread();
     }
+    // The row the selection has rested on (Pacing.selectionRest), or null
+    // while it moves, so what a place there holds watches its daemon ahead
+    // of a step in (Seen.js) and the step's own frame says how it stands.
+    // The same row told again by its daemon, selected anew, keeps resting,
+    // so its watch never stops and starts on each telling.
+    property var restsOn: null
+    function selectionMoved() {
+        if (open && selected !== null && restsOn !== null
+            && (selected.key ?? "") !== "" && selected.key === restsOn.key) {
+            restsOn = selected;
+            return;
+        }
+        // Set only as it changes, so an arrow while nothing rests asks
+        // nothing of every provider's Seen.seen again.
+        if (restsOn !== null)
+            restsOn = null;
+        if (open && selected !== null)
+            selectionResting.restart();
+        else
+            selectionResting.stop();
+    }
+    Timer {
+        id: selectionResting
+        interval: Pacing.selectionRest()
+        onTriggered: root.restsOn = root.open ? root.selected : null
+    }
     onSelectedChanged: {
+        selectionMoved();
         // A row its daemon tells again while its drawer is still to follow,
         // or still to come, is selected anew with no key being handled, and
         // keeps the key that reached it: Every Count, told each second, lost
@@ -8991,6 +9018,9 @@ Scope {
 
     onOpenChanged: {
         tallyMarked();
+        // An opening's selection rests anew, never on the last opening's.
+        restsOn = null;
+        selectionMoved();
         // Each part of an opening's own work, timed as it's done, so the
         // line its frame says names what an opening slow to draw spent its
         // time on (Joel, 2026-11-10: the launcher takes forever to load).
