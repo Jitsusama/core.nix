@@ -51,12 +51,6 @@
     "helps"
   ];
   chrony-network-servers = [ "helps" ];
-  claude-statusline = [
-    "kit"
-    "exits"
-    "inks"
-    "helps"
-  ];
   clipboard-history = [
     "kit"
     "exits"

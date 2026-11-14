@@ -25,9 +25,9 @@ let
     5
   ];
 
-  # The status line, told the file of the theme's colours for its parts.
-  withColours = ".*/bin/claude-statusline [^ ]*-claude-statusline-colours[.]json";
-  runsWithColours = command: builtins.match withColours command != null;
+  # The status line, asked for ink, since Claude Code reads it through a pipe.
+  inked = ".*/bin/claude-statusline --color always";
+  runsInked = command: builtins.match inked command != null;
 in
 {
   # Both kinds of workstation show Claude Code the status line, in settings
@@ -41,7 +41,7 @@ in
             claude:
             claude.mutableSettings
             && claude.settings.statusLine.type == "command"
-            && runsWithColours claude.settings.statusLine.command
+            && runsInked claude.settings.statusLine.command
           )
           [
             linux
@@ -51,14 +51,16 @@ in
 
   # The status line's tests run as it builds (statusline/), and the command a
   # workstation gives Claude Code draws a session's folder in the theme's
-  # strong colour.
+  # strong colour, read from the account's theme as kitty's environment has it.
   claude-status-line-says-how-it-stands =
     pkgs.runCommandLocal "claude-status-line-says-how-it-stands" { }
       ''
+        mkdir -p config/jitsusama
+        cp ${linuxAccount.xdg.configFile."jitsusama/theme.json".source} config/jitsusama/theme.json
         echo '{"workspace": {"current_dir": "/src/core.nix"}}' \
-          | ${linux.settings.statusLine.command} > line
-        grep -qF "$(printf '\033[1;38;2;${strongDrawn}m')" line
-        grep -qF ' core.nix' line
+          | XDG_CONFIG_HOME=$PWD/config COLORTERM=truecolor TERM=xterm-kitty \
+            ${linux.settings.statusLine.command} > line
+        grep -qF "$(printf '\033[1;38;2;${strongDrawn}m')core.nix" line
         touch $out
       '';
 
@@ -68,6 +70,7 @@ in
   );
 
   # The status line's tests run as it builds: the context its transcript
-  # holds, rounded as it reads, and colours it can't read named.
+  # holds, rounded as it reads, ink only where asked, and a session it
+  # can't read named.
   claude-statusline-says-how-full-the-context-is = pkgs.callPackage ./statusline/package.nix { };
 }

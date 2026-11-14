@@ -4,12 +4,10 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use serde_json::Value;
+use terminal_kit::Pen;
 
-/// Marks from the icon font, which the theme's monospaced face carries.
-const FOLDER: char = '\u{f07b}';
-const MODEL: char = '\u{f2db}';
-const CONTEXT: char = '\u{f019}';
-const SEPARATOR: char = '\u{e0b1}';
+/// What parts the line, drawn in the rules' colour.
+const BETWEEN: &str = "·";
 
 /// Tokens in a thousand, and the count of thousands from which a whole number
 /// of them reads plainly enough.
@@ -22,68 +20,6 @@ const READ: [&str; 3] = [
     "cache_creation_input_tokens",
     "cache_read_input_tokens",
 ];
-
-/// A colour, as a terminal draws one from its red, green and blue.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Colour {
-    red: u8,
-    green: u8,
-    blue: u8,
-}
-
-impl Colour {
-    /// Read a colour written `#rrggbb`.
-    pub fn parse(written: &str) -> Result<Self, String> {
-        let refused = || format!("{written} isn't a colour written #rrggbb");
-        let hex = written
-            .strip_prefix('#')
-            .filter(|hex| hex.len() == 6 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
-            .ok_or_else(refused)?;
-        let channel = |at: usize| u8::from_str_radix(&hex[at..at + 2], 16).map_err(|_| refused());
-        Ok(Self {
-            red: channel(0)?,
-            green: channel(2)?,
-            blue: channel(4)?,
-        })
-    }
-}
-
-/// Each part's colour, by what the part is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Colours {
-    pub folder: Colour,
-    pub model: Colour,
-    pub context: Colour,
-    pub separator: Colour,
-}
-
-impl Colours {
-    /// Read each part's colour from a JSON object naming them.
-    pub fn from_json(written: &str) -> Result<Self, String> {
-        let colours: Value = serde_json::from_str(written)
-            .map_err(|error| format!("the colours aren't JSON: {error}"))?;
-        let part = |name: &str| {
-            colours
-                .get(name)
-                .and_then(Value::as_str)
-                .ok_or_else(|| format!("the colours give no {name}"))
-                .and_then(Colour::parse)
-        };
-        Ok(Self {
-            folder: part("folder")?,
-            model: part("model")?,
-            context: part("context")?,
-            separator: part("separator")?,
-        })
-    }
-}
-
-/// Whether a part is drawn bold.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Weight {
-    Regular,
-    Bold,
-}
 
 /// The session Claude Code describes after a turn.
 pub struct Session(Value);
@@ -124,16 +60,6 @@ impl Session {
     pub fn transcript(&self) -> Option<&Path> {
         self.text("/transcript_path").map(Path::new)
     }
-}
-
-/// Give the text in a colour, as a terminal draws it.
-pub fn paint(text: &str, colour: Colour, weight: Weight) -> String {
-    let Colour { red, green, blue } = colour;
-    let bold = match weight {
-        Weight::Regular => "",
-        Weight::Bold => "1;",
-    };
-    format!("\x1b[{bold}38;2;{red};{green};{blue}m{text}\x1b[0m")
 }
 
 /// Give a count of tokens in thousands, to a tenth below ten thousand.
@@ -177,34 +103,34 @@ pub fn context_tokens(transcript: &str) -> Option<u64> {
 }
 
 /// Give the status line for the session, and the context's size when an
-/// answer has read some.
-pub fn status(session: &Session, colours: &Colours, read: Option<u64>) -> String {
+/// answer has read some. Colour goes on the marks, each its kind's: the
+/// folder a place on the machine, the model a program, the context's
+/// size the room left. Of the words, only the folder is strong, as a
+/// title.
+pub fn status(session: &Session, pen: &Pen, read: Option<u64>) -> String {
     let mut parts = vec![
-        paint(
-            &format!("{FOLDER} {}", session.folder()),
-            colours.folder,
-            Weight::Bold,
+        format!(
+            "{}{}",
+            pen.marked("folder", "machine"),
+            pen.title(session.folder())
         ),
-        paint(
-            &format!("{MODEL} {}", session.model()),
-            colours.model,
-            Weight::Regular,
-        ),
+        format!("{}{}", pen.marked("agent", "program"), session.model()),
     ];
     if let Some(read) = read {
-        parts.push(paint(
-            &format!("{CONTEXT} {}", thousands(read)),
-            colours.context,
-            Weight::Regular,
+        parts.push(format!(
+            "{}{}",
+            pen.marked("tokens", "success"),
+            thousands(read)
         ));
     }
-    let separator = paint(&SEPARATOR.to_string(), colours.separator, Weight::Regular);
-    parts.join(&format!(" {separator} "))
+    parts.join(&format!(" {} ", pen.role("rule", BETWEEN)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use terminal_kit::Ink;
+    use terminal_kit::ink::Colours;
 
     /// Write a colour as the theme does, from its red, green and blue. The
     /// tests build theirs from channels, so no look is named in the code.
@@ -212,14 +138,34 @@ mod tests {
         format!("#{red:02x}{green:02x}{blue:02x}")
     }
 
-    fn colours() -> Colours {
-        let colours = serde_json::json!({
-            "folder": hex(1, 2, 3),
-            "model": hex(4, 5, 6),
-            "context": hex(7, 8, 9),
-            "separator": hex(10, 11, 12),
-        });
-        Colours::from_json(&colours.to_string()).expect("the colours are good")
+    /// A theme of the roles and marks the line draws with.
+    fn theme() -> Value {
+        let mark = |glyph: &str| serde_json::json!({"glyph": glyph, "console": glyph});
+        serde_json::json!({
+            "colours": {
+                "strong": hex(1, 2, 3),
+                "machine": hex(4, 5, 6),
+                "program": hex(7, 8, 9),
+                "success": hex(10, 11, 12),
+                "rule": hex(13, 14, 15),
+            },
+            "terminal": {},
+            "marks": {"folder": mark("F"), "agent": mark("A"), "tokens": mark("T")},
+        })
+    }
+
+    /// The pen a terminal drawing 24-bit colour has.
+    fn inked() -> Pen {
+        let ink = Ink {
+            colours: Colours::Truecolour,
+            console: false,
+        };
+        Pen::new(ink, Some(&theme()))
+    }
+
+    /// The same marks with no ink, as into a pipe.
+    fn plain() -> Pen {
+        Pen::new(Ink::plain(), Some(&theme()))
     }
 
     fn session(written: &str) -> Session {
@@ -232,22 +178,22 @@ mod tests {
 
     #[test]
     fn under_ten_thousand_reads_to_a_tenth() {
-        assert_eq!(thousands(1234), "1.2k");
+        assert_eq!(thousands(1234), "1.2k", "a tenth of a thousand");
     }
 
     #[test]
     fn ten_thousand_and_more_reads_whole() {
-        assert_eq!(thousands(45_678), "46k");
+        assert_eq!(thousands(45_678), "46k", "whole thousands");
     }
 
     #[test]
     fn a_half_reads_to_the_even_thousand_below() {
-        assert_eq!(thousands(12_500), "12k");
+        assert_eq!(thousands(12_500), "12k", "a half rounds to even");
     }
 
     #[test]
     fn nothing_reads_as_nought() {
-        assert_eq!(thousands(0), "0");
+        assert_eq!(thousands(0), "0", "nothing isn't 0.0k");
     }
 
     #[test]
@@ -261,7 +207,11 @@ mod tests {
             )),
         ]
         .join("\n");
-        assert_eq!(context_tokens(&transcript), Some(3210));
+        assert_eq!(
+            context_tokens(&transcript),
+            Some(3210),
+            "the last answer's read tokens, cached ones too"
+        );
     }
 
     #[test]
@@ -271,60 +221,36 @@ mod tests {
             "{not json".to_owned(),
             "42".to_owned(),
         ];
-        assert_eq!(context_tokens(&transcript.join("\n")), Some(7));
+        assert_eq!(
+            context_tokens(&transcript.join("\n")),
+            Some(7),
+            "lines that aren't answers are passed over"
+        );
     }
 
     #[test]
     fn no_answer_says_nothing() {
-        assert_eq!(context_tokens(""), None);
-        assert_eq!(context_tokens(r#"{"type": "user"}"#), None);
-    }
-
-    #[test]
-    fn a_colour_is_drawn_as_its_red_green_and_blue() {
-        let orange = Colour::parse(&hex(255, 128, 0)).expect("a colour");
+        assert_eq!(context_tokens(""), None, "an empty transcript");
         assert_eq!(
-            paint("a", orange, Weight::Regular),
-            "\x1b[38;2;255;128;0ma\x1b[0m"
-        );
-        assert_eq!(
-            paint("a", orange, Weight::Bold),
-            "\x1b[1;38;2;255;128;0ma\x1b[0m"
+            context_tokens(r#"{"type": "user"}"#),
+            None,
+            "a transcript with no answer"
         );
     }
 
     #[test]
-    fn only_a_colour_written_hash_rrggbb_is_read() {
-        for written in ["ff8000", "#ff80", "#ff80000", "#gg8000", "#ff800\u{e9}"] {
-            assert!(Colour::parse(written).is_err(), "{written}");
-        }
-    }
-
-    #[test]
-    fn colours_missing_a_part_say_which() {
-        let partial = serde_json::json!({"folder": hex(0, 0, 0), "model": hex(0, 0, 0)});
-        let refused = Colours::from_json(&partial.to_string());
-        assert_eq!(refused, Err("the colours give no context".to_owned()));
-    }
-
-    #[test]
-    fn it_shows_the_folder_and_the_model_in_the_themes_colours() {
+    fn it_shows_the_folder_and_the_model() {
         let shown = status(
             &session(
                 r#"{"workspace": {"current_dir": "/home/someone/src/core.nix"},
                     "model": {"id": "claude-opus-4-6", "display_name": "Opus 4.6"}}"#,
             ),
-            &colours(),
+            &plain(),
             None,
         );
-        let separator = paint("\u{e0b1}", colours().separator, Weight::Regular);
         assert_eq!(
-            shown,
-            [
-                paint("\u{f07b} core.nix", colours().folder, Weight::Bold),
-                paint("\u{f2db} Opus 4.6", colours().model, Weight::Regular),
-            ]
-            .join(&format!(" {separator} "))
+            shown, "F core.nix · A Opus 4.6",
+            "the folder, then the model"
         );
     }
 
@@ -332,23 +258,45 @@ mod tests {
     fn it_shows_the_context_when_an_answer_has_read_some() {
         let shown = status(
             &session(r#"{"model": {"id": "x"}}"#),
-            &colours(),
+            &plain(),
             Some(12_500),
         );
-        assert!(shown.ends_with(&paint("\u{f019} 12k", colours().context, Weight::Regular)));
+        assert!(
+            shown.ends_with(" · T 12k"),
+            "the context's size last: {shown:?}"
+        );
+    }
+
+    #[test]
+    fn colour_goes_on_the_marks_and_the_folder_is_strong() {
+        let shown = status(
+            &session(r#"{"workspace": {"current_dir": "/src/core.nix"}, "model": {"id": "x"}}"#),
+            &inked(),
+            Some(1234),
+        );
+        assert_eq!(
+            shown,
+            concat!(
+                "\x1b[38;2;4;5;6mF\x1b[0m \x1b[1;38;2;1;2;3mcore.nix\x1b[0m",
+                " \x1b[38;2;13;14;15m·\x1b[0m \x1b[38;2;7;8;9mA\x1b[0m x",
+                " \x1b[38;2;13;14;15m·\x1b[0m \x1b[38;2;10;11;12mT\x1b[0m 1.2k",
+            ),
+            "each mark in its kind's colour, the model and the size plain"
+        );
     }
 
     #[test]
     fn a_model_without_a_name_is_shown_by_its_id_or_as_unknown() {
         assert_eq!(
             session(r#"{"model": {"id": "x", "display_name": ""}}"#).model(),
-            "x"
+            "x",
+            "an empty name gives way to the id"
         );
-        assert_eq!(session("{}").model(), "unknown");
+        assert_eq!(session("{}").model(), "unknown", "no model at all");
     }
 
     #[test]
     fn a_session_without_a_folder_shows_one_unknown() {
-        assert_eq!(session("{}").folder(), "unknown");
+        assert_eq!(session("{}").folder(), "unknown", "no folder at all");
     }
 }

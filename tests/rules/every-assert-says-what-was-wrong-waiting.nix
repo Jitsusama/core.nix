@@ -25,8 +25,6 @@
   "modules/calls/src/lib.rs" = 5;
   "modules/chrome/open-tabs/host/src/main.rs" = 1;
   "modules/chrome/pack-extension/src/main.rs" = 1;
-  "modules/claude/statusline/src/line.rs" = 1;
-  "modules/claude/statusline/tests/statusline.rs" = 2;
   "modules/collector/src/otlp.rs" = 2;
   "modules/collector/src/pressure.rs" = 4;
   "modules/collector/src/when.rs" = 3;

@@ -11,18 +11,9 @@ let
   inherit (config.jitsusama.theme) appearance colours terminal;
   mix = import ../theme/mix.nix { inherit lib; };
 
-  # The status line (statusline/), and each part's colour in the theme for
-  # what it is: the folder strong, the model a program's, the context's
-  # size a success, and the separators the rules'.
+  # The status line (statusline/), which reads the theme's roles and marks
+  # at each run, as every command on the terminal kit does.
   statusline = pkgs.callPackage ./statusline/package.nix { };
-  statuslineColours = builtins.toFile "claude-statusline-colours.json" (
-    builtins.toJSON {
-      folder = colours.strong;
-      model = colours.program;
-      context = colours.success;
-      separator = colours.rule;
-    }
-  );
 
   # A diff's lines and words are tinted backgrounds under the text, so a
   # change reads at a glance without the text itself changing colour. The
@@ -104,7 +95,8 @@ in
     mutableSettings = true;
     settings.statusLine = {
       type = "command";
-      command = "${lib.getExe statusline} ${statuslineColours}";
+      # Claude Code reads it through a pipe, where it would draw no ink.
+      command = "${lib.getExe statusline} --color always";
     };
   };
   programs.git.ignores = [ "CLAUDE.local.md" ];
