@@ -83,11 +83,6 @@
     "exits"
     "helps"
   ];
-  hibernate-unlock = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   inkscape-drawings = [ "helps" ];
   ir-camera-pipeline = [ "helps" ];
   jobs-broker = [

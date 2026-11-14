@@ -191,6 +191,7 @@
         inherit google;
         google-people = google;
         google-rows = google;
+        hibernate-unlock = pkgs.callPackage ../../modules/hibernate/unlock/package.nix { };
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         key-counts = pkgs.callPackage ../../modules/key-counts/package.nix { };
         lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
