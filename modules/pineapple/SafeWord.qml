@@ -36,7 +36,8 @@ Provider {
     // act's key, and Return on it the daemon's ask, asked once first where
     // the daemon serves it costly (a resume, which undoes someone's safe
     // word). What the daemon refused is said in the foot, since the row it
-    // was on stays and nothing else would show why nothing moved.
+    // was on stays and nothing else would show why nothing moved, in the
+    // vocabulary's words for its code: its own message is for its journal.
     function verbOf(act) {
         return thing(Object.assign({
             key: act.key,
@@ -46,15 +47,17 @@ Provider {
             hue: "action",
             run: () => daemon.ask(act.ask, answer => {
                 if (answer?.error)
-                    provider.refused(act, String(answer.error.message ?? ""));
+                    provider.refused(act, answer.error);
             })
         }, Confirm.asking(act)));
     }
 
-    // Says in the foot that the daemon refused a press, and why.
-    function refused(act, why) {
+    // Says in the foot that the daemon refused a press, and why, as Joel
+    // would say it; a code with no words of its own is said as a failure.
+    function refused(act, error) {
         const said = Words.of("for-you:source:pineapple").said ?? {};
-        console.warn(`pineapple refused ${act.key}: ${why}`);
+        const why = said[`refused:${error.code}`] ?? said["refused:failed"];
+        console.warn(`pineapple refused ${act.key}: ${error.message ?? ""}`);
         provider.launcher?.tellOnOpen([[Words.name("for-you:source:pineapple"),
             ForYou.filled(said.refused, { verb: Words.name(act.key), why }), Theme.alert]]);
     }

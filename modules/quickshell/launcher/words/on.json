@@ -615,6 +615,11 @@
       "said": {
         "count": "{count} times",
         "refused": "{verb} didn't take: {why}",
+        "refused:gone": "it had already moved on",
+        "refused:not-offered": "it isn't offered there now",
+        "refused:not-joel": "only your own launcher may act on a stop",
+        "refused:no-peer": "it couldn't tell this was your launcher",
+        "refused:failed": "its record couldn't be written",
         "you": "you",
         "someone": "someone",
         "stopped": "{who} stopped your agents on {reach}",
