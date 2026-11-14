@@ -2,9 +2,9 @@
 
 memory-tune.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 An account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU,
-swappiness and swap's read-ahead to a listed value, as an agent measuring them under load would,
-outside any session. An account outside wheel can't, and an administrator can't set a value the
-rules don't list.
+swappiness, swap's read-ahead, proactive compaction and the free memory floor to a listed
+value, as an agent measuring them under load would, outside any session. An account outside
+wheel can't, and an administrator can't set a value the rules don't list.
 Each test puts what it changed back as it ends, so any runs alone.
 """
 
@@ -24,6 +24,8 @@ HUGEPAGES = "/sys/kernel/mm/transparent_hugepage/enabled"
 LRU_GEN = "/sys/kernel/mm/lru_gen/enabled"
 SWAPPINESS = "/proc/sys/vm/swappiness"
 PAGE_CLUSTER = "/proc/sys/vm/page-cluster"
+COMPACTION = "/proc/sys/vm/compaction_proactiveness"
+MIN_FREE = "/proc/sys/vm/min_free_kbytes"
 
 
 def start(machine: BaseMachine, account: str, unit: str) -> tuple[int, str]:
@@ -50,7 +52,11 @@ def reverted(machine: BaseMachine) -> Iterator[BaseMachine]:
     lru_gen = read(machine, LRU_GEN)
     swappiness = read(machine, SWAPPINESS)
     page_cluster = read(machine, PAGE_CLUSTER)
+    compaction = read(machine, COMPACTION)
+    min_free = read(machine, MIN_FREE)
     yield machine
+    machine.succeed(f"sysctl -w vm.min_free_kbytes={min_free}")
+    machine.succeed(f"sysctl -w vm.compaction_proactiveness={compaction}")
     machine.succeed(f"sysctl -w vm.page-cluster={page_cluster}")
     machine.succeed(f"sysctl -w vm.swappiness={swappiness}")
     machine.succeed(f"sysctl -w vm.watermark_scale_factor={scale}")
@@ -90,6 +96,22 @@ def test_an_administrator_sets_swaps_read_ahead_without_a_password(reverted: Bas
     status, said = start(reverted, "someone", "memory-page-cluster@3")
     assert status == 0, said
     assert read(reverted, PAGE_CLUSTER) == "3", "page-cluster wasn't set"
+
+
+def test_an_administrator_sets_proactive_compaction_without_a_password(
+    reverted: BaseMachine,
+) -> None:
+    status, said = start(reverted, "someone", "memory-compaction@40")
+    assert status == 0, said
+    assert read(reverted, COMPACTION) == "40", "compaction_proactiveness wasn't set"
+
+
+def test_an_administrator_sets_the_free_memory_floor_without_a_password(
+    reverted: BaseMachine,
+) -> None:
+    status, said = start(reverted, "someone", "memory-min-free@131072")
+    assert status == 0, said
+    assert read(reverted, MIN_FREE) == "131072", "min_free_kbytes wasn't set"
 
 
 def test_an_account_outside_wheel_is_refused(reverted: BaseMachine) -> None:

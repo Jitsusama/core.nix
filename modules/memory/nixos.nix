@@ -18,6 +18,8 @@ let
   space = "${pkgs.procps}/bin/sysctl -w vm.watermark_scale_factor=%i";
   swappiness = "${pkgs.procps}/bin/sysctl -w vm.swappiness=%i";
   pageCluster = "${pkgs.procps}/bin/sysctl -w vm.page-cluster=%i";
+  compaction = "${pkgs.procps}/bin/sysctl -w vm.compaction_proactiveness=%i";
+  minFree = "${pkgs.procps}/bin/sysctl -w vm.min_free_kbytes=%i";
   hugepages = "/sys/kernel/mm/transparent_hugepage/enabled";
   lruGen = "/sys/kernel/mm/lru_gen/enabled";
 in
@@ -112,7 +114,7 @@ in
   ];
 
   # The machine's administrators, agents included since they work as Joel's
-  # account, may change five of the kernel's memory settings for as long as
+  # account, may change seven of the kernel's memory settings for as long as
   # the machine runs without a password (memory-tune.rules), so an A/B of
   # them under load waits for no one. On 30 October kswapd gave up on the
   # whole machine under builds, and the settings that might have caused it,
@@ -121,10 +123,14 @@ in
   # kill that day came with half of memory in clean cache, and so could how
   # many neighbouring pages a swap-in reads with the one asked for, once a
   # pi window coming back read its heap from disk a fault at a time on 10
-  # November. Each unit writes its instance and only a value the rules list:
+  # November. So could how hard the kernel compacts free memory ahead of
+  # need, and the floor of free memory it keeps, once the kernel failed to
+  # find 64 KB together eight times on 14 November, for Wi-Fi's queues among
+  # others. Each unit writes its instance and only a value the rules list:
   # `systemctl start memory-watermarks@100`, `memory-hugepages@madvise`,
-  # `memory-lru-gen@n`, `memory-swappiness@60` or `memory-page-cluster@3`
-  # (2^3 pages at most). The most one can do is
+  # `memory-lru-gen@n`, `memory-swappiness@60`, `memory-page-cluster@3`
+  # (2^3 pages at most), `memory-compaction@40` or
+  # `memory-min-free@131072` (in KiB). The most one can do is
   # make reclaim worse until it's put back, never reach another setting. A
   # switch that changes the sysctls writes them back; otherwise start the
   # unit again with the value this file sets. At boot huge pages return to
@@ -136,6 +142,8 @@ in
   systemd.services."memory-lru-gen@" = tune "multi-gen LRU" (write lruGen);
   systemd.services."memory-swappiness@" = tune "swappiness" swappiness;
   systemd.services."memory-page-cluster@" = tune "swap read-ahead" pageCluster;
+  systemd.services."memory-compaction@" = tune "proactive compaction" compaction;
+  systemd.services."memory-min-free@" = tune "free memory floor" minFree;
 
   # When pressure lasts, systemd-oomd stops the whole runaway group, such as a
   # build, rather than whichever process the kernel picks.
