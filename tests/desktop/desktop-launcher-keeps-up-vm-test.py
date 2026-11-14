@@ -216,7 +216,9 @@ class Turns:
         """Freeze the stand-ins where they stand, or let them change again."""
         verb = "freeze" if frozen else "thaw"
         wait = f"SYSTEMD_BUS_TIMEOUT={round(FREEZING.total_seconds())}"
-        self.desktop.as_account(f"{wait} systemctl --user {verb} stand-in-sessions crowd-load")
+        self.desktop.as_account(
+            f"{wait} systemctl --user {verb} stand-in-sessions crowd-load", timeout=2 * FREEZING
+        )
         self.frozen = frozen
         if frozen:
             self.settle()
