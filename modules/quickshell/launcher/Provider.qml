@@ -493,16 +493,19 @@ Scope {
     // so making a row notifies nothing.
     // What it made last, by key, and whether the launcher was shut or its
     // catalogue walked then, is kept too (`lately`), so a check that
-    // counts too many says which rows they were and when.
-    readonly property var tally: ({ rows: 0, looked: 0, lately: [] })
+    // counts too many says which rows they were and when. The launcher
+    // writes shut and walked here as they change, since a row made in a
+    // binding that read its open or cataloguing would be made again by
+    // every opening.
+    readonly property var tally: ({ rows: 0, looked: 0, lately: [], shut: true, walked: false })
     readonly property int tallyKept: 16
     function tallied(fields) {
         tally.rows += 1;
         // A collection makes thousands of rows as it opens, so a row made
         // open and unwalked is kept by its key alone, building no string.
         const key = fields?.key ?? fields?.name ?? "";
-        const shut = !(launcher?.open ?? false);
-        const walked = launcher?.cataloguing ?? false;
+        const shut = tally.shut;
+        const walked = tally.walked;
         tally.lately.push(shut || walked
             ? `${key}${shut ? " shut" : ""}${walked ? " walked" : ""}` : key);
         if (tally.lately.length > tallyKept)

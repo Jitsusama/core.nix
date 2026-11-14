@@ -8932,7 +8932,21 @@ Scope {
         }
     }
 
+    // Whether it's shut or walked, written into each source's plain tally
+    // rather than read there, so a row a binding makes depends on neither.
+    function tallyMarked() {
+        for (const source of sources) {
+            if (source.tally) {
+                source.tally.shut = !open;
+                source.tally.walked = cataloguing;
+            }
+        }
+    }
+    onCataloguingChanged: tallyMarked()
+    onSourcesChanged: tallyMarked()
+
     onOpenChanged: {
+        tallyMarked();
         // Each part of an opening's own work, timed as it's done, so the
         // line its frame says names what an opening slow to draw spent its
         // time on (Joel, 2026-11-10: the launcher takes forever to load).
