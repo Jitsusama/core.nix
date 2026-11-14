@@ -148,10 +148,6 @@ fn help() -> Help {
 
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        // The kit catches a panic for as long as its body runs, which is
-        // the daemon's whole life, so its threads say theirs as Rust does,
-        // to the journal, rather than into the kit's keeping.
-        drop(std::panic::take_hook());
         let asked = asked(&context.args)?;
         keep(&asked.socket, asked.kept, &asked.words, asked.aloud)
     })
