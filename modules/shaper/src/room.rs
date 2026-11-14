@@ -82,9 +82,12 @@ impl Room {
             (self.give + gap * CLOSE * dt.min(1.0)).clamp(0.0, self.give + sent_inside)
         } else {
             // The connection's bulk has room to spare: it keeps what it
-            // uses past its own sixteenth, and the VPN takes back the rest.
+            // uses past its own sixteenth, and the VPN takes back the rest,
+            // half of it a second. A copy's queue empties between its
+            // bursts, so on 13 November taking it all back at once made
+            // room and took it back every one to four seconds.
             let used = (sent_beside - float(line) / 16.0).max(0.0) * ROOMY;
-            self.give.min(used)
+            self.give - (self.give - used).max(0.0) * CLOSE * dt.min(1.0)
         };
         if self.give < NOTHING {
             self.give = 0.0;
@@ -183,13 +186,34 @@ mod tests {
             room.give
         );
         let (inside, beside) = room.seen.map_or((0, 0), |s| (s.inside, s.beside));
-        let given = room.sample(
+        let mut given = 0;
+        for second in 1..=10 {
+            given = room.sample(
+                &tin(inside + second * 600_000, true),
+                &tin(beside, false),
+                whole(LINE),
+                31.0 + float(second),
+            );
+        }
+        assert_eq!(given, 0, "the VPN still gives {given} kbit/s");
+    }
+
+    #[test]
+    fn a_moment_the_bulk_beside_holds_no_queue_keeps_most_of_what_was_given() {
+        let mut room = Room::default();
+        share(&mut room, (10_000.0, 10_000.0), 30);
+        let before = room.give;
+        let (inside, beside) = room.seen.map_or((0, 0), |s| (s.inside, s.beside));
+        let given = float(room.sample(
             &tin(inside + 600_000, true),
             &tin(beside, false),
             whole(LINE),
             32.0,
+        ));
+        assert!(
+            given >= before / 2.0 - 1.0,
+            "a second's empty queue beside took {given:.0} of {before:.0} kbit/s back"
         );
-        assert_eq!(given, 0, "the VPN still gives {given} kbit/s");
     }
 
     #[test]
