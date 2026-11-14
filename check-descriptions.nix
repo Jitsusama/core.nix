@@ -3508,7 +3508,8 @@
   the-notices-land-on-niri = ''
     the account's notices, on its real niri nested in a headless sway in the sandbox, draw a notice
     sent as a card on niri's notices layer and on the arrival line, an overlay layer that takes no
-    keys and is mapped only while a notice shows, and what Super+Shift+N runs puts a critical one
+    keys and stays mapped while it's quiet, showing nothing, and what Super+Shift+N runs puts a
+    critical one
     away unread in the history; and Google Drive's notice that answers a save is kept unmissed, by
     its x-answers hint, while its failure is missed
   '';

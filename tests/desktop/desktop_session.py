@@ -152,8 +152,9 @@ MARGIN = "niri msg layers | grep -q margin"
 # The margin's cells: the theme's gap, open or shut, since nothing grows.
 CELL = 12
 NOTICES = "niri msg layers | grep -q notifications"
-# The arrival line, mapped only while it shows a notice.
-NOTICE_LINE = "niri msg layers | grep -q notice-line"
+# The arrival line showing a notice: its layer stays mapped while it's
+# quiet, off the screen, so the shell says rather than niri's layers.
+NOTICE_LINE = "qs ipc call notices shows | grep -q ."
 
 # Tuple's log, where tuple-call hears a call ring, which only a call
 # writes, and which the daemon rewrites as it starts.

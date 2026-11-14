@@ -431,6 +431,13 @@ Scope {
             Notices.seen();
         }
 
+        // What the arrival line shows, "notice", or nothing while it's quiet, for a test to
+        // wait on: its layer stays mapped either way (NoticeLine.qml), so niri's list of
+        // layers can't say.
+        function shows(): string {
+            return line.up ? "notice" : "";
+        }
+
         // Where the front card is drawn, as a fraction of the screen across
         // and down, for a test to click on it, since no shot says where a
         // card without a coloured mark is; what it's signed, the glyph it
@@ -611,6 +618,7 @@ Scope {
         launcher: root.launcher
         talking: root.talking
         holding: root.holding
+        remaking: root.remaking
         whenOf: notification => root.whenOf(notification)
         countOf: more => root.countOf(more)
         onClicked: notification => root.choose(notification)
