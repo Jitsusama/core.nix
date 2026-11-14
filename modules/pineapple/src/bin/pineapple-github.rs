@@ -19,6 +19,11 @@
 //! his agents post as his GitHub account all day and one could forge it;
 //! his press in the launcher resumes the rest.
 //!
+//! A round spends Joel's rate limit, which gh and his agents share: two
+//! requests, and two to four more for each pull request or issue that
+//! changed, a page more for each hundred of a long list. One his limit
+//! refuses is tried again whole, so nothing it couldn't read is skipped.
+//!
 //! Unless `run` is given `--live`, it is in shadow: every stop's record
 //! says so, and nothing acting on records takes a shadow one for a stop.
 //! GitHub is GitHub's own, unless a test names a stand-in with `--origin`
@@ -70,6 +75,11 @@ const NO_REPLIES: &str = "no-replies-here";
 
 /// How many of a list one request asks for, GitHub's most.
 const PAGE: &str = "100";
+
+/// The most pages one list is read to: three thousand of anything, far
+/// past a night's notifications, so a list naming pages without end
+/// can't hold a round.
+const PAGES: usize = 30;
 
 /// What it keeps of how far it has read, beside the Slack reader's.
 const JUDGED: &str = "judged-github.json";
@@ -257,7 +267,8 @@ enum Unread {
     /// What was asked for is gone, or not Joel's to read: the round goes
     /// on without it.
     Gone(String),
-    /// GitHub couldn't be asked now: the round is tried again whole.
+    /// GitHub couldn't be asked now, its rate limit included: the round
+    /// is tried again whole.
     Failed(String),
 }
 
@@ -269,9 +280,45 @@ struct GitHub<'a> {
 }
 
 impl GitHub<'_> {
-    /// One GET, and its answer.
+    /// One GET of a path, and its answer.
     fn get(&self, path: &str, query: &[(&str, &str)]) -> Result<Value, Unread> {
-        let mut request = self.agent.get(format!("{}{path}", self.origin));
+        let url = format!("{}{path}", self.origin);
+        self.ask(&url, query).map(|(said, _)| said)
+    }
+
+    /// A whole list, page after page as GitHub's `Link` header names them,
+    /// so a long one isn't cut at its first hundred. A next page anywhere
+    /// but GitHub's own origin isn't asked, so Joel's sign-in goes nowhere
+    /// else, and the round is tried again.
+    fn all(&self, path: &str, query: &[(&str, &str)]) -> Result<Value, Unread> {
+        let (said, mut next) = self.ask(&format!("{}{path}", self.origin), query)?;
+        let Value::Array(mut list) = said else {
+            return Ok(said);
+        };
+        let own = format!("{}/", self.origin);
+        let mut pages = 1;
+        while let Some(url) = next {
+            if !url.starts_with(&own) {
+                let why = format!("GitHub named a next page elsewhere: {url}");
+                return Err(Unread::Failed(why));
+            }
+            if pages == PAGES {
+                eprintln!("<4>{path} runs past {PAGES} pages, and the rest isn't read");
+                break;
+            }
+            let (more, after) = self.ask(&url, &[])?;
+            list.extend(more.as_array().into_iter().flatten().cloned());
+            next = after;
+            pages += 1;
+        }
+        Ok(Value::Array(list))
+    }
+
+    /// One GET of a URL on GitHub's origin: its answer, and the next page
+    /// when it's one of a list.
+    fn ask(&self, url: &str, query: &[(&str, &str)]) -> Result<(Value, Option<String>), Unread> {
+        let path = url.strip_prefix(self.origin).unwrap_or(url);
+        let mut request = self.agent.get(url);
         for (name, value) in query {
             request = request.query(name, value);
         }
@@ -283,6 +330,20 @@ impl GitHub<'_> {
             .call()
             .map_err(|error| Unread::Failed(format!("couldn't reach GitHub: {error}")))?;
         let status = answer.status().as_u16();
+        let header = |name: &str| {
+            let value = answer.headers().get(name)?;
+            value.to_str().ok().map(str::to_owned)
+        };
+        let next = header("link")
+            .as_deref()
+            .and_then(github::next_page)
+            .map(str::to_owned);
+        let remaining = header("x-ratelimit-remaining");
+        let limited = github::rate_limited(
+            status,
+            remaining.as_deref(),
+            header("retry-after").is_some(),
+        );
         let said: Value = answer
             .body_mut()
             .read_json()
@@ -292,7 +353,8 @@ impl GitHub<'_> {
             format!("GitHub answered {status} for {path}: {message}")
         };
         match status {
-            200 => Ok(said),
+            200 => Ok((said, next)),
+            _ if limited => Err(Unread::Failed(format!("{}, its rate limit", why()))),
             403 | 404 | 410 => Err(Unread::Gone(why())),
             _ => Err(Unread::Failed(why())),
         }
@@ -324,7 +386,7 @@ fn round(github: &GitHub<'_>, state: &Path, judged: &mut Judged, shadow: bool) {
         ("since", since.as_str()),
         ("per_page", PAGE),
     ];
-    let threads = match github.get("/notifications", &asked) {
+    let threads = match github.all("/notifications", &asked) {
         Ok(answer) => notified(&answer),
         Err(Unread::Gone(why) | Unread::Failed(why)) => {
             eprintln!("<4>couldn't ask GitHub what changed: {why}");
@@ -362,8 +424,8 @@ fn round(github: &GitHub<'_>, state: &Path, judged: &mut Judged, shadow: bool) {
 }
 
 /// What was said on a pull request or issue since `since`, each with it
-/// and the place it's about. Reviews can't be asked for by time, so the
-/// first hundred are read and the round keeps those since.
+/// and the place it's about. Reviews can't be asked for by time, so all
+/// are read and the round keeps those since.
 fn said_on(
     github: &GitHub<'_>,
     thread: &Thread,
@@ -380,12 +442,12 @@ fn said_on(
     let context = thread.context(&opening);
     let recent = [("since", since), ("per_page", PAGE)];
     let mut found = github::said(&opened, thread, Kind::Opening);
-    let comments = github.get(&format!("{base}/issues/{number}/comments"), &recent)?;
+    let comments = github.all(&format!("{base}/issues/{number}/comments"), &recent)?;
     found.extend(github::said(&comments, thread, Kind::Comment));
     if thread.pull {
-        let on_lines = github.get(&format!("{base}/pulls/{number}/comments"), &recent)?;
+        let on_lines = github.all(&format!("{base}/pulls/{number}/comments"), &recent)?;
         found.extend(github::said(&on_lines, thread, Kind::ReviewComment));
-        let reviews = github.get(
+        let reviews = github.all(
             &format!("{base}/pulls/{number}/reviews"),
             &[("per_page", PAGE)],
         )?;

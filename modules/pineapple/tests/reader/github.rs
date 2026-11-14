@@ -3,18 +3,24 @@
 //! phrase stops nothing, a quoted one is waved off, and what doesn't name
 //! the word or Joel isn't judged at all; it only asks, never posts nor
 //! marks anything read, and a restart judges nothing twice. Joel's own
-//! resume said there ends only shadow stops, even let go live.
+//! resume said there ends only shadow stops, even let go live. A round
+//! GitHub's rate limit refuses is read again rather than skipped, and a
+//! list's later pages are read too.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use pineapple::github::stamp;
 use serde_json::{Value, json};
 
-use super::{PACE, PATIENCE, a_stop, answering, decisions, each, home, resumed, until_decided};
+use super::{
+    Answered, PACE, PATIENCE, a_stop, answering, answering_whole, decisions, each, home, resumed,
+    until_decided,
+};
 
 /// The stand-in's Joel on GitHub.
 const LOGIN: &str = "joel.example";
@@ -181,6 +187,81 @@ fn github_a_stop_on_a_pull_request_reaches_it_in_shadow_and_is_judged_once() {
         read["read_at"].as_u64().is_some(),
         "it says when GitHub was read: {read}"
     );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_round_its_rate_limit_refuses_is_read_again_not_skipped() {
+    let refused = Arc::new(AtomicBool::new(false));
+    let once = Arc::clone(&refused);
+    let (origin, _) = answering_whole(move |line, now| {
+        let comments = line.contains(" /repos/example/shop/issues/12/comments?");
+        if comments && !once.swap(true, Ordering::SeqCst) {
+            return Answered {
+                status: 403,
+                headers: vec![("x-ratelimit-remaining", "0".to_owned())],
+                body: json!({"message": "API rate limit exceeded"}),
+            };
+        }
+        Answered::ok(answer(line, now))
+    });
+    let home = home();
+    let mut reading = github_reader(&home, &origin, &[]);
+    until_decided(&home, 3);
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    assert!(refused.load(Ordering::SeqCst), "the limit was met");
+    assert_eq!(
+        each(&decisions(&home), "verdict"),
+        ["stop", "waved:quoted", "stop-asked"],
+        "what was said where the limit refused is judged the round after"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_second_page_of_notifications_is_read_too() {
+    let at: Arc<OnceLock<String>> = Arc::new(OnceLock::new());
+    let own = Arc::clone(&at);
+    let (origin, asked) = answering_whole(move |line, now| {
+        if line.contains(" /notifications?page=2 ") {
+            return Answered::ok(answer(" /notifications? ", now));
+        }
+        if line.contains(" /notifications?") {
+            // Known before the reader starts, so before it asks.
+            let origin = own.get().expect("the stand-in's origin");
+            let next = format!("<{origin}/notifications?page=2>; rel=\"next\"");
+            return Answered {
+                status: 200,
+                headers: vec![("Link", next)],
+                body: json!([{"subject": {"type": "Issue",
+                    "url": "https://api.example.com/repos/example/other/issues/5"},
+                    "repository": {"full_name": "example/other"}}]),
+            };
+        }
+        Answered::ok(answer(line, now))
+    });
+    at.set(origin.clone()).expect("the origin is known once");
+    let home = home();
+    let mut reading = github_reader(&home, &origin, &[]);
+    until_decided(&home, 3);
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    assert_eq!(
+        each(&decisions(&home), "verdict"),
+        ["stop", "waved:quoted", "stop-asked"],
+        "the pull request on the second page is read"
+    );
+    let asked = asked.lock().expect("what was asked");
+    assert!(
+        asked
+            .iter()
+            .any(|line| line.contains("/repos/example/other/issues/5 ")),
+        "the first page's issue is read too: {asked:?}"
+    );
+    drop(asked);
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 

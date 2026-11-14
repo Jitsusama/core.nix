@@ -1,11 +1,16 @@
 //! GitHub's answers, read for the safe word: the pull requests and issues
 //! Joel takes part in that changed, as his notifications name them, and
 //! what was said on each, its opening, comments, review comments and
-//! reviews, with who said it, whether a bot did, and when. Whether one
-//! was edited isn't kept: that only holds a public reply back, and none
-//! is said on GitHub. A tag is
+//! reviews, with who said it, whether a bot did, and when. A tag is
 //! `@login` there. Only reading; the program asks
 //! (src/bin/pineapple-github.rs).
+//!
+//! What was said is judged once, by when it was first said: the word added
+//! later by editing an old comment or a description isn't heard, as an
+//! edited Slack message isn't. That is a limit of what the safe word
+//! hears, not only of replies, and saying it again in a new comment is
+//! heard. Whether one was edited isn't kept, since it would only hold a
+//! public reply back, and none is said on GitHub.
 
 use serde_json::Value;
 
@@ -197,11 +202,33 @@ pub fn seconds(at: &str) -> Option<u64> {
     let (year, month, day) = (date.next()?.ok()?, date.next()?.ok()?, date.next()?.ok()?);
     let mut time = time.splitn(3, ':').map(str::parse::<u64>);
     let (hour, minute, second) = (time.next()?.ok()?, time.next()?.ok()?, time.next()?.ok()?);
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 {
+    // Sixty, for the leap second a clock may write.
+    let out = hour > 23 || minute > 59 || second > 60;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || out {
         return None;
     }
     let days = u64::try_from(days_from_civil(year, month, day)).ok()?;
     Some(days * DAY + hour * 3600 + minute * 60 + second)
+}
+
+/// The next page a `Link` header names, as GitHub pages a long list.
+#[must_use]
+pub fn next_page(link: &str) -> Option<&str> {
+    link.split(',').find_map(|part| {
+        let (url, rel) = part.split_once(';')?;
+        let names_next = rel.split(';').any(|one| one.trim() == "rel=\"next\"");
+        let url = url.trim().strip_prefix('<')?.strip_suffix('>')?;
+        names_next.then_some(url)
+    })
+}
+
+/// Whether GitHub refused for its rate limit rather than because what
+/// was asked is gone: a 429, or a 403 saying none is left or when to ask
+/// again. Joel's limit is shared with gh and every agent signed in as him,
+/// so it runs out, and a round it stops has to be tried again whole.
+#[must_use]
+pub fn rate_limited(status: u16, remaining: Option<&str>, retry_after: bool) -> bool {
+    status == 429 || (status == 403 && (remaining == Some("0") || retry_after))
 }
 
 /// A time as GitHub reads one in `since`.
@@ -367,9 +394,44 @@ mod tests {
     }
 
     #[test]
+    fn a_long_list_names_its_next_page_and_its_last_names_none() {
+        let link = "<https://api.example.com/notifications?page=2>; rel=\"next\", \
+                    <https://api.example.com/notifications?page=5>; rel=\"last\"";
+        assert_eq!(
+            next_page(link),
+            Some("https://api.example.com/notifications?page=2")
+        );
+        let last = "<https://api.example.com/notifications?page=1>; rel=\"first\", \
+                    <https://api.example.com/notifications?page=4>; rel=\"prev\"";
+        assert_eq!(next_page(last), None);
+        assert_eq!(next_page(""), None);
+    }
+
+    #[test]
+    fn a_rate_limit_is_told_from_something_gone() {
+        assert!(rate_limited(429, None, false), "too many requests");
+        assert!(rate_limited(403, Some("0"), false), "none left");
+        assert!(rate_limited(403, Some("12"), true), "a secondary limit");
+        assert!(!rate_limited(403, Some("12"), false), "not his to read");
+        assert!(!rate_limited(404, Some("0"), false), "gone");
+    }
+
+    #[test]
+    fn a_second_past_sixty_is_no_time() {
+        assert_eq!(seconds("2023-11-14T22:13:61Z"), None);
+        assert!(seconds("2016-12-31T23:59:60Z").is_some(), "a leap second");
+    }
+
+    #[test]
     fn worth_judging_is_the_phrase_or_a_tag() {
-        assert!(worth_judging("Pineapple override", "joel.example"));
-        assert!(worth_judging("@Joel.Example please stop", "joel.example"));
-        assert!(!worth_judging("looks good", "joel.example"));
+        assert!(
+            worth_judging("Pineapple override", "joel.example"),
+            "the phrase, in any case"
+        );
+        assert!(
+            worth_judging("@Joel.Example please stop", "joel.example"),
+            "a tag of Joel, in any case"
+        );
+        assert!(!worth_judging("looks good", "joel.example"), "neither");
     }
 }
