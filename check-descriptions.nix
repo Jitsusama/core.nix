@@ -3146,6 +3146,33 @@
     builders' key only nix-offload's login to a builder lent now, and no agent's key for one; and it
     says each login signed and each refusal in one line of a fixed shape, its host and why as a word
   '';
+  pi-clipboard-door-keeps-secrets = ''
+    pi-clipboard-door answers a client only when the kernel puts it below a bubblewrap of this
+    account, for that bubblewrap's session and never the one it claims; it never reads a password
+    manager's secret, refuses a request unread, past 64 MiB or for a type not offered, and its shims
+    take wl-clipboard's options as getopt does, refuse any other by name and exit as it does; each
+    copy, paste and refusal is one line of a fixed shape, never with what was copied
+  '';
+  pi-clipboard-door-passes-clippy = ''
+    clippy finds nothing in pi-clipboard-door or its tests, the clipboard a fenced pi command
+    reaches, and its wl-copy and wl-paste
+  '';
+  pi-clipboard-door-reaches-only-the-fence = ''
+    pi's clipboard door starts from a socket in a folder only the account reaches, tagged in the
+    journal, its shims linked from a folder of their own, and the sandboxed display runs with the
+    graphical session at %t/pi-fence/wayland, in a folder that outlives a restart; a Mac gets none
+  '';
+  pi-fence-clipboard-holds-on-niri = ''
+    on a real niri, the sandboxed display offers windows' protocols and none of the privileged
+    ones; a fenced command copies and pastes both selections through the door, is refused a secret
+    and an option it doesn't take; a command outside is refused; and the journal names the
+    bubblewrap's session, never the one claimed or what was copied; shell-preview's nested niri
+    opens on the sandboxed display and takes wtype's keys, which the display itself refuses
+  '';
+  pi-fence-display-passes-clippy = ''
+    clippy finds nothing in pi-fence-display or its tests, the sandboxed display pi's fenced
+    commands open windows on
+  '';
   pi-github-door-lets-only-allowed-calls-through = ''
     pi-github-door sends a fenced call on to GitHub with the person's token in the placeholder's
     place only when it's allowed; a merge, a push, a pull request opened, a credential, a

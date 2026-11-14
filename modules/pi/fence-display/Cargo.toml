@@ -1,0 +1,16 @@
+# The display a fenced pi command reaches: a Wayland socket the compositor
+# treats as a sandbox's, made through wp-security-context-v1 (src/main.rs
+# says why and how).
+[package]
+name = "pi-fence-display"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Its help and refusals, as every command here says them.
+terminal-kit = { path = "../../terminal-kit" }
+wayland-client = "0.31"
+# wp-security-context-v1, among the staging protocols.
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
