@@ -73,6 +73,13 @@ function below(cols, x, y, at) {
     return near;
 }
 
+// Where the cat stands at either end of each column's top. Qt's engine
+// has no flatMap, so they are gathered with reduce.
+function tops(cols, at) {
+    return cols.reduce((found, column) =>
+        found.concat([column.left, column.right - at.wide]), []);
+}
+
 // Off the floating window it stands on, or the one closed from under it
 // (`at.floated`, as they were), before it sets off for `to` on another
 // window: straight up onto the nearest ledge over its top within a leap,
@@ -92,8 +99,8 @@ function off(way, cols, to, at) {
         return false;
     }
     const reach = { wide: at.wide, at, up: LEAPS_UP * at.tall };
-    const xs = closed ? [way.x] : cols.flatMap(column => [column.left, column.right - at.wide])
-        .concat([way.x]).map(x => Math.min(Math.max(x, from.left), from.right - at.wide));
+    const xs = closed ? [way.x] : tops(cols, at).concat([way.x])
+        .map(x => Math.min(Math.max(x, from.left), from.right - at.wide));
     let up = null;
     for (const x of xs) {
         const ledge = over(cols, x, way.y, reach);
@@ -158,7 +165,7 @@ function onto(from, to, cols, at) {
     }
     const y = Routes.stands(it.top, at);
     const all = { wide: at.wide, at, up: Infinity };
-    const xs = [to.x].concat(cols.flatMap(column => [column.left, column.right - at.wide]))
+    const xs = [to.x].concat(tops(cols, at))
         .map(x => Math.min(Math.max(x, it.left), it.right - at.wide));
     const above = xs.map(x => over(cols, x, y, all)).filter(one => one !== null);
     if (above.length > 0) {
