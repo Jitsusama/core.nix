@@ -8781,9 +8781,13 @@ Scope {
         // the card's height is home's.
         entering = open || homeKept.length > 0 ? source : null;
         // Opened by it, the place is shown rather than home (openingInto).
+        // What reruns as it opens, its place's own opening and its search
+        // are felt apart in an opening's stall (filled).
+        const opened = KeyTimes.now();
         openingInto = !open;
         open = true;
         openingInto = false;
+        feltSpan("opening", opened);
         // A name a source leads somewhere deeper, as Now leads "notices"
         // to For You's Desktop (`leadsTo`), opens on its place and steps
         // through those rows as Joel would, so - climbs back out the same
@@ -8802,7 +8806,10 @@ Scope {
             return;
         held = [placeStep(source)];
         entering = null;
+        const placed = KeyTimes.now();
         source.opened();
+        feltSpan("the place opening", placed);
+        const searched = KeyTimes.now();
         restart("");
         // Every place opens on its first row, the same each time, so Joel
         // knows where the keys are before he looks (VKCF3Z, 2026-10-29). A
@@ -8811,6 +8818,7 @@ Scope {
         const lead = source.leading ? source.leading() : null;
         if (lead)
             enter(lead);
+        feltSpan("searching", searched);
         openedHere();
     }
 
@@ -9714,17 +9722,25 @@ Scope {
         // Its sources wake a few a frame from the next (wakeNext), so home,
         // or the place a chord opened, is found again here from what each
         // made last.
+        // Each part of the fill is felt by its own name inside filling,
+        // which held 31 to 68 ms of Joel's openings' longest stalls with
+        // nothing saying which part (BXNMUC, 2026-11-14, 09:18 to 09:45).
+        const ordering = KeyTimes.now();
         wakeQueue = wakingOrder();
         for (const source of wakeQueue)
             source.asleep = true;
+        feltSpan("ordering waking", ordering);
         wakeSlices = [];
         waking = true;
         // A place a chord opened, opened whole now, as its chord would.
         const place = openInto;
-        if (place !== "")
+        if (place !== "") {
             into(place);
-        else
+        } else {
+            const opened = KeyTimes.now();
             open = true;
+            feltSpan("opening", opened);
+        }
         wakeBegan = KeyTimes.now();
         feltSpan("filling", began);
         wakeLater();
