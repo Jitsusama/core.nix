@@ -2,8 +2,8 @@
 # Starts the shell's notices (notices.qml, in the account's shell folder) on
 # the niri nested-niri.sh runs, sends a notice as a program does, and checks
 # the shell drew its card on a layer niri lists as the notices', and showed
-# it on the arrival line, an overlay layer that takes no keys and is mapped
-# only while there's a notice to show. Then a
+# it on the arrival line, an overlay layer that takes no keys and stays
+# mapped, off the screen, while it's quiet. Then a
 # critical one, which stays until it's dealt with, is put away by what
 # Super+Shift+N runs, and kept in the history unread. And a sender whose
 # notices are missed until seen keeps one that answers what Joel just did,
@@ -36,31 +36,38 @@ drawing=$!
 trap "kill $drawing 2> /dev/null || true" EXIT
 
 says "Configuration Loaded"
-# The arrival line is mapped only while it shows a notice, so a quiet
-# desktop has nothing of it to draw.
-line='any(.[]; .namespace == "notice-line")'
-if niri msg --json layers | jq -e "$line" > /dev/null; then
-  echo "The arrival line is mapped with no notice to show." >&2
+# What the line shows, "notice", or nothing while it's quiet.
+shows() {
+  qs -p "$shell" ipc call notices shows
+}
+# Whether niri lists the arrival line, an overlay layer that never takes the
+# keys, waiting while a loaded machine sends its first frame.
+line='any(.[]; .namespace == "notice-line" and .layer == "Overlay"
+  and .keyboard_interactivity == "None")'
+listed() {
+  for _ in $(seq "$saying"); do
+    niri msg --json layers | jq -e "$line" > /dev/null && return 0
+    sleep 0.1
+  done
+  echo "niri lists no arrival line on the overlay layer without the keys $1:" >&2
+  niri msg --json layers >&2
+  exit 1
+}
+# Kept mapped while quiet, a notice draws on a layer niri already has rather
+# than waiting on a new one's first frame (NoticeLine.qml).
+listed "while it's quiet"
+if [ -n "$(shows)" ]; then
+  echo "The arrival line shows '$(shows)' with no notice." >&2
   exit 1
 fi
 notify-send --app-name=Check "A notice" "Sent as a program sends one."
 says "report[shows card A notice]"
-# It shows on the arrival line, an overlay layer that never takes the keys.
 says "report[lines notice A notice]"
-landed=false
-for _ in $(seq "$saying"); do
-  if niri msg --json layers | jq -e 'any(.[]; .namespace == "notice-line"
-      and .layer == "Overlay" and .keyboard_interactivity == "None")' > /dev/null; then
-    landed=true
-    break
-  fi
-  sleep 0.1
-done
-if [ "$landed" != true ]; then
-  echo "niri lists no arrival line on the overlay layer without the keys:" >&2
-  niri msg --json layers >&2
+if [ "$(shows)" != notice ]; then
+  echo "The arrival line shows '$(shows)' rather than the notice." >&2
   exit 1
 fi
+listed "with a notice on it"
 # The card is made before its window is drawn, and niri lists the layer
 # once it has the window's first frame, which a loaded machine can take a
 # while to send.
@@ -112,16 +119,13 @@ notify-send --urgency=critical Standup "in five minutes"
 says "report[shows card Standup]"
 "$@"
 says "report[gone notifications]"
-# Every notice put away, the arrival line goes with them.
+# Every notice put away, the arrival line shows nothing, still mapped.
 says "report[unlines notice"
-for _ in $(seq "$saying"); do
-  niri msg --json layers | jq -e "$line" > /dev/null || break
-  sleep 0.1
-done
-if niri msg --json layers | jq -e "$line" > /dev/null; then
-  echo "The arrival line is still mapped with every notice put away." >&2
+if [ -n "$(shows)" ]; then
+  echo "The arrival line shows '$(shows)' with every notice put away." >&2
   exit 1
 fi
+listed "once it's quiet again"
 # The history is written a moment after the cards go.
 unread='any(.notices[]; .summary == "Standup" and (.read | not))'
 for _ in $(seq "$saying"); do

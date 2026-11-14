@@ -17,8 +17,8 @@
 }:
 {
   # The notices draw a notice a program sends as a card on a layer niri
-  # lists and on the arrival line, which takes no keys and is mapped only
-  # while a notice shows, and Super+Shift+N puts away one that stays
+  # lists and on the arrival line, which takes no keys and stays mapped off
+  # the screen while it's quiet, and Super+Shift+N puts away one that stays
   # (tests/notices-on-niri.sh). Away only after an hour, since nobody types
   # here but the check.
   the-notices-land-on-niri = noticesOnNiri {
