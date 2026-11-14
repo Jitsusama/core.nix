@@ -1,9 +1,9 @@
 # shellcheck shell=bash
 # The guard's Nix collects garbage while other programs connect to its
-# roots socket and leave at once. Nix 2.34's collector takes each client
-# on a thread of its own, and one that left before its thread was
-# registered left a stale entry; the next client given the same
-# descriptor ended the collector with std::terminate. On 11 November that
+# roots socket and leave at once. Nix's collector, in 2.34 and 2.35,
+# takes each client on a thread of its own, and one that left before its
+# thread was registered left a stale entry; the next client given the
+# same descriptor ended the collector with std::terminate. On 11 November that
 # aborted the machine guard's deletes at 06:16 and 11:54, and an
 # unpatched Nix aborts here in every round.
 #

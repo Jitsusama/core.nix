@@ -162,7 +162,7 @@
     '';
 
   # The machine guard's Nix collects garbage while programs hand it roots
-  # and leave at once, as an unpatched 2.34 doesn't
+  # and leave at once, as an unpatched 2.34 or 2.35 doesn't
   # (tests/nix-collects-beside-leaving-clients.sh). The race shows on
   # tmpfs, as /dev/shm is in the build sandbox.
   disk-guard-nix-collects-beside-leaving-clients =
