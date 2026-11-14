@@ -178,6 +178,9 @@ function rides(way, cols, at) {
         return;
     }
     let to = null;
+    // How far it may fall behind a top going from under it: none under
+    // another window, whose bottom comes down as close behind it.
+    let room = Number.POSITIVE_INFINITY;
     if (held.kind === "side") {
         to = { x: Routes.sideX(column, held.side, at), y: Math.min(Math.max(way.y,
             column.top - at.tall), column.bottom - at.tall) };
@@ -187,6 +190,7 @@ function rides(way, cols, at) {
         const middle = way.x + column.left - was.left + at.wide / 2;
         if (row && middle >= column.left && middle <= column.right) {
             to = { x: middle - at.wide / 2, y: Routes.stands(row.top, at) };
+            room = column.rows.indexOf(row) > 0 ? 0 : room;
         }
     }
     if (to === null || Math.hypot(to.x - way.x, to.y - way.y) < 0.01
@@ -196,12 +200,14 @@ function rides(way, cols, at) {
         return;
     }
     // Told of the resize `ahead` ms after niri set its edge going, it
-    // starts as far in (MarginCat.behind).
+    // starts as far in (MarginCat.behind), and a frame further where its
+    // top comes up into it, since behind is in the window's face.
     const spring = Object.assign({}, at.spring, { slowdown: at.slowdown ?? 1 });
     const ms = MarginCat.slides(spring);
-    const ahead = Math.min(at.ahead ?? 0, ms);
-    Ways.leg(way, "rides", to, { ms: ms - ahead,
-        slide: t => MarginCat.slid(t + ahead, spring) });
+    const away = held.kind !== "side" && to.y > way.y;
+    const ahead = Math.min((at.ahead ?? 0) + (away ? 0 : at.frame ?? 0), ms);
+    Ways.rides(way, to, { ms: ms - ahead, edge: t => MarginCat.slid(t + ahead, spring),
+        away, room, frame: at.frame });
 }
 
 // From wherever it is on a way, onto something that holds it on

@@ -246,7 +246,8 @@ PanelWindow {
             cols: Paths.columns(tilesOf(space?.id), 0),
             before: saw ? Paths.columns(saw, 0) : null,
             spring: Theme.motion.spring,
-            ahead: MarginCat.behind(frameMs),
+            ahead: MarginCat.behind(frameMs, "resize"),
+            frame: frameMs,
             marks: marksLit
         });
         goingTo = wanted;
@@ -310,7 +311,8 @@ PanelWindow {
             height: modelData.height,
             slowdown: Theme.motion.slowdown,
             spring: Theme.motion.spring,
-            ahead: MarginCat.behind(frameMs),
+            ahead: MarginCat.behind(frameMs, "slide"),
+            frame: frameMs,
             was: tilesOf(movingFrom),
             now: tilesOf(space?.id),
             marks: marksLit

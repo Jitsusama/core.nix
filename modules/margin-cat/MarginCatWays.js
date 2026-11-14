@@ -14,6 +14,9 @@ const GRAVITY = 400;
 const FALLS_AT_MOST = 54;
 // The shortest a leap may last, so even a small one is seen.
 const LEAPS_AT_LEAST = 160;
+// The shortest a pose may show, in ms: two frames at 60 Hz, so no drawing
+// flashes for one.
+const SHOWN = 33;
 // It climbs in bounds, as a cat goes up a tree rather than a lift up a
 // shaft: one each `BOUNDS` of its heights, surging and gripping by
 // `SURGES` either side of the pace it walks, so a climb reads as quick
@@ -103,6 +106,59 @@ function falling(at) {
 function fallen(speed, s) {
     return s <= speed.until ? (speed.gravity * s * s) / 2
         : speed.reaches + speed.most * (s - speed.until);
+}
+
+// Riding niri's motion to `to` over `ride.ms`, `ride.edge` its share of
+// the way at each ms of the leg, the shell hearing of it `ride.late` ms
+// in. Its first frames catch up to the edge without a jump (VKCF3Z,
+// 2026-11-13 a36e05f9). Carried, its seat coming up into it, it closes
+// within two frames in the pose it has. Left in the air, its seat going
+// from under it (`ride.away`), it goes on with the edge and falls the gap
+// the edge opened before it heard, at gravity's pace or faster where it
+// must sit flush by the time the edge stops, and never more than
+// `ride.room` behind, before what follows would pass through it; past two
+// cells in the falling drawing, landing crouched, and no pose for less
+// than two frames at 60 Hz.
+function rides(way, to, ride) {
+    const at = way.at;
+    const late = ride.late ?? 0;
+    const edge = t => ride.edge(t + late);
+    const ms = ride.ms - late;
+    const ground = Math.hypot(to.x - way.x, to.y - way.y);
+    // Carried, it closes over two frames, never shorter than two at 60 Hz:
+    // niri drew a resize's frames 16 ms apart on a 120 Hz rig.
+    const closes = 2 * Math.max(ride.frame, MarginCat.MS / 60);
+    let slide = t => edge(t) * (ride.frame > 0 ? Math.min(1, t / closes) : 1);
+    let posed = () => null;
+    if (ride.away && ground > 0) {
+        let stops = ms;
+        while (stops > 1 && ground * (1 - edge(stops - 1)) < 1) {
+            stops -= 1;
+        }
+        const left = ground * edge(0);
+        const gravity = Math.max(GRAVITY * at.cell, (2 * left) / (stops / MarginCat.MS) ** 2);
+        const behind = t => Math.min(ride.room ?? Number.POSITIVE_INFINITY,
+            Math.max(0, left - (gravity * (t / MarginCat.MS) ** 2) / 2));
+        const flies = 2 * at.cell;
+        let lifts = null;
+        let lands = stops;
+        for (let t = 0; t <= stops; t++) {
+            if (lifts === null && behind(t) > flies) {
+                lifts = t;
+            } else if (lifts !== null && behind(t) < 0.5) {
+                lands = t;
+                break;
+            }
+        }
+        slide = t => (ground * edge(t) - behind(t)) / ground;
+        if (lifts !== null && lands - lifts >= SHOWN) {
+            const crouches = ms - lands >= SHOWN ? lands + MarginCat.LANDS : lands;
+            posed = t => t >= lifts && t < lands ? "leaping"
+                : t >= lands && t < crouches ? "pouncing" : null;
+        }
+    }
+    leg(way, "rides", to, { ms: ride.ms, slide: t => slide(t - late),
+        posed: t => posed(t - late) });
 }
 
 // Up or down a column's side to `y`, the top of its box, each gap between
@@ -237,6 +293,7 @@ function frame(route, t) {
     const ground = Math.abs(x - from.x) + Math.abs(y - from.y);
     const stepped = beat.bounds > 0 ? Math.floor(2 * beat.bounds * p)
         : Math.floor(ground / beat.stride);
-    const pose = strides ? strides[stepped % 2] : beat.pose ?? null;
+    const pose = strides ? strides[stepped % 2]
+        : beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
     return { x, y, pose, turn: beat.turn, facing: beat.facing, beat: beat.name, done: false };
 }
