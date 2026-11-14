@@ -215,6 +215,7 @@
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         zoom-opens = script "zoom-opens" ../../modules/zoom/opens.sh { words = "a-window"; };
         a-call-is-on = pkgs.callPackage ../../modules/calls/package.nix { };
+        agents = pkgs.callPackage ../../modules/agents/package.nix { };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
         bluetooth-links = pkgs.callPackage ../../modules/bluetooth-links/package.nix { };
         cadence-spec = pkgs.callPackage ../../modules/cadence/spec/package.nix { };
@@ -244,6 +245,7 @@
         inherit google;
         google-people = google;
         google-rows = google;
+        guide = pkgs.callPackage ../../modules/guide/package.nix { };
         hibernate-unlock = pkgs.callPackage ../../modules/hibernate/unlock/package.nix { };
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         key-counts = pkgs.callPackage ../../modules/key-counts/package.nix { };
@@ -284,7 +286,9 @@
             { };
         timekeeping = pkgs.callPackage ../../modules/quickshell/timekeeping/package.nix { };
         timers = pkgs.callPackage ../../modules/quickshell/timers/package.nix { };
+        update-to-main = pkgs.callPackage ../../modules/update-to-main/package.nix { };
         vm-first = pkgs.callPackage ../../modules/nix-daemon/vm-first/package.nix { };
+        warp = pkgs.callPackage ../../modules/warp/package.nix { };
         windows = pkgs.callPackage ../../modules/windows/package.nix { };
         without-syncfs = pkgs.callPackage ../../modules/nix-daemon/without-syncfs/package.nix { };
         xwayland-satellite = pkgs.callPackage ../../modules/niri/xwayland-satellite.nix { };

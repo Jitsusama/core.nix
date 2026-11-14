@@ -9,6 +9,8 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The shape every command of ours takes: its flags, help, errors and exits.
+terminal-kit = { path = "../terminal-kit" }
 # The serving side every daemon of the shell shares (../daemon-serve).
 daemon-serve = { path = "../daemon-serve" }
 # Files another program writes whole and renames into place, heard as each
