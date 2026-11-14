@@ -17,9 +17,30 @@
 # rather than the plan, and the provider refuses to start beside it, so none
 # of it reaches Claude Code from here.
 #
-# usage: pi-claude [pi's own arguments]
-#        pi-claude login
+# Its own help, in the shape every command of ours takes (docs/commands.md),
+# says what it adds to pi and leaves the rest to pi's.
 set -euo pipefail
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+pi-claude  pi on your own Claude plan
+
+  It starts on the plan's model unless given --model, and
+  never joins the work mesh. Every other word is pi's, as
+  pi --help says.
+
+EXAMPLES
+  pi-claude        a session on the plan
+  pi-claude login  sign in to the plan
+
+EXIT
+  pi's own, or Claude Code's for login
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 if [ -n "$OWN_LOGIN" ]; then
   config=${PI_CLAUDE_CONFIG_DIR:-$HOME/.claude}

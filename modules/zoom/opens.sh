@@ -7,11 +7,33 @@
 # number and a plain passcode are passed on, so a link can't steer the
 # window anywhere but Zoom.
 # usage: opens.sh WINDOW [LINK], WINDOW opening a URL in a window of its
-# own, as jitsusama.zoom.window says.
+# own, as jitsusama.zoom.window says. Its help takes the shape every
+# command of ours does (docs/commands.md), by hand.
 set -euo pipefail
 
 window=$1
 link=${2-}
+
+case "$link" in
+-h | --help)
+  cat << 'EOF'
+zoom-opens  open Zoom's web client in a window of its own
+
+  A meeting's zoommtg: or zoomus: link joins the meeting,
+  with its passcode; anything else, or nothing, opens the
+  web client's home.
+
+EXAMPLES
+  zoom-opens 'zoommtg://zoom.us/join?confno=123&pwd=ab'
+  zoom-opens
+
+EXIT
+  0   opened, else the window's own
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 web=https://app.zoom.us/wc
 
 query=

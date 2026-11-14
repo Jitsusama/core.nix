@@ -5,12 +5,35 @@
 # after where the graphics buffers read back meanwhile were counted, on a
 # machine that counts them (restores.bt).
 # polkit lets an account in wheel start and stop its own trace and nobody
-# else's (nixos.nix), so it asks for no password.
-#
-# usage: niri-off-cpu <seconds>
+# else's (nixos.nix), so it asks for no password. Its help and failures
+# take the shape every command of ours does (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+niri-off-cpu  trace when your niri waits off the CPU
+
+  Each wait of 8 ms or more is written with what held it
+  and the kernel stack it waited in; the file's path is
+  the last line said.
+
+EXAMPLES
+  niri-off-cpu 30   trace for 30 seconds
+  niri-off-cpu 600  the longest it traces, ten minutes
+
+EXIT
+  0   traced
+  1   the trace couldn't start, and the journal says why
+  64  asked wrongly
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 if [ "$#" -ne 1 ] || ! [[ $1 =~ ^[1-9][0-9]*$ ]] || [ "$1" -gt 600 ]; then
-  echo "usage: niri-off-cpu <seconds, 1 to 600>" >&2
+  printf '%s\n' "niri-off-cpu takes the seconds to trace, 1 to 600" \
+    "  try  niri-off-cpu 30" >&2
   exit 64
 fi
 

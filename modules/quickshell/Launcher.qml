@@ -75,6 +75,7 @@ import "launcher/Showing.js" as Showing
 import "launcher/Spots.js" as Spots
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
+import "launcher/Joined.js" as Joined
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
@@ -745,6 +746,8 @@ Scope {
     // How many times it's been joined, for the check that a closed
     // launcher joins nothing.
     property int choicesJoined: 0
+    // Each source's rows as the last joining made them, by the source.
+    property var sourcesJoined: new Map()
     function stale() {
         choicesStale = true;
         // While a kept opening's sources wake, each would join it whole
@@ -758,12 +761,14 @@ Scope {
         const began = KeyTimes.now();
         choicesStale = false;
         const out = [];
+        // Only the sources whose things changed since are walked again
+        // (Joined.js's rowsOf).
+        const kept = { before: sourcesJoined, now: new Map() };
         for (const source of sources) {
-            for (const row of source.things) {
-                if (!(row.key.startsWith("action:") && standIns.includes(row.name)))
-                    out.push(withSynonyms(row));
-            }
+            for (const row of Joined.rowsOf(source, standIns, kept, withSynonyms))
+                out.push(row);
         }
+        sourcesJoined = kept.now;
         // One that's no place of its own (`placed: false`), as Notices,
         // whose notices For You holds, is never found by its name, though
         // what it holds is (gathering).
@@ -837,19 +842,12 @@ Scope {
     // names it), such as Slack's theme of Slack, by the key of what they're
     // part of: listed inside it, and found from outside only by a word past
     // its name, so "slack" is Slack and "slack theme" the theme.
-    readonly property var keyed: {
-        const out = {};
-        for (const choice of choices)
-            out[choice.key] = choice;
-        return out;
-    }
-    readonly property var partsOfRows: {
-        const out = {};
-        for (const choice of choices)
-            if (choice.of)
-                out[choice.of] = (out[choice.of] ?? []).concat([choice]);
-        return out;
-    }
+    readonly property var keyed: choicesIndexed.keyed
+    readonly property var partsOfRows: choicesIndexed.partsOfRows
+    // The three made in one walk, each row's name said plainly once for
+    // as long as it's there (Joined.js's indexes).
+    readonly property var choicesIndexed: Joined.indexes(choices, Rank.plainly, namesPlainly)
+    readonly property var namesPlainly: new Map()
 
     // Whether a part is left out of a search, every word typed only
     // naming what it's part of.
@@ -3406,14 +3404,7 @@ Scope {
 
     // The keys of the rows named each name, so a name typed whole is first
     // over another row latched there (Rank.js's latched).
-    readonly property var namedAs: {
-        const out = {};
-        for (const choice of choices) {
-            const name = Rank.plainly(choice.name);
-            (out[name] ?? (out[name] = [])).push(choice.key);
-        }
-        return out;
-    }
+    readonly property var namedAs: choicesIndexed.namedAs
 
     // Every row there is now, by key, each with the fewest letters it's
     // learned at, for forgetting the picks of those that are gone: what the
@@ -7811,7 +7802,14 @@ Scope {
     // apart from its making in its line (Pacing.drawerCame).
     property real drawerRested: 0
     function lettersTyped() {
-        lettersAt = KeyTimes.now();
+        // Said for the desktop test, which judges only letters that came
+        // quicker than the rest: a loaded builder spaced wtype's letters
+        // past it, and the drawers that rested between them failed it
+        // (Y2YBTS, 2026-11-14, ed99cdc6 and 5dc9f833).
+        const typed = KeyTimes.now();
+        Report.say(`letter typed ${Math.round(typed - lettersAt)} ms after the one before, `
+            + `resting ${Pacing.lettersRest()}`);
+        lettersAt = typed;
         const pressed = KeyTimes.pressed();
         lettersPressed = pressed > 0 ? pressed : lettersAt;
         if (lettersResting.running)
@@ -8781,9 +8779,13 @@ Scope {
         // the card's height is home's.
         entering = open || homeKept.length > 0 ? source : null;
         // Opened by it, the place is shown rather than home (openingInto).
+        // What reruns as it opens, its place's own opening and its search
+        // are felt apart in an opening's stall (filled).
+        const opened = KeyTimes.now();
         openingInto = !open;
         open = true;
         openingInto = false;
+        feltSpan("opening", opened);
         // A name a source leads somewhere deeper, as Now leads "notices"
         // to For You's Desktop (`leadsTo`), opens on its place and steps
         // through those rows as Joel would, so - climbs back out the same
@@ -8802,7 +8804,10 @@ Scope {
             return;
         held = [placeStep(source)];
         entering = null;
+        const placed = KeyTimes.now();
         source.opened();
+        feltSpan("the place opening", placed);
+        const searched = KeyTimes.now();
         restart("");
         // Every place opens on its first row, the same each time, so Joel
         // knows where the keys are before he looks (VKCF3Z, 2026-10-29). A
@@ -8811,6 +8816,7 @@ Scope {
         const lead = source.leading ? source.leading() : null;
         if (lead)
             enter(lead);
+        feltSpan("searching", searched);
         openedHere();
     }
 
@@ -9714,17 +9720,25 @@ Scope {
         // Its sources wake a few a frame from the next (wakeNext), so home,
         // or the place a chord opened, is found again here from what each
         // made last.
+        // Each part of the fill is felt by its own name inside filling,
+        // which held 31 to 68 ms of Joel's openings' longest stalls with
+        // nothing saying which part (BXNMUC, 2026-11-14, 09:18 to 09:45).
+        const ordering = KeyTimes.now();
         wakeQueue = wakingOrder();
         for (const source of wakeQueue)
             source.asleep = true;
+        feltSpan("ordering waking", ordering);
         wakeSlices = [];
         waking = true;
         // A place a chord opened, opened whole now, as its chord would.
         const place = openInto;
-        if (place !== "")
+        if (place !== "") {
             into(place);
-        else
+        } else {
+            const opened = KeyTimes.now();
             open = true;
+            feltSpan("opening", opened);
+        }
         wakeBegan = KeyTimes.now();
         feltSpan("filling", began);
         wakeLater();

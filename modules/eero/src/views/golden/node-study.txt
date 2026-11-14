@@ -1,13 +1,13 @@
-Study · eero Pro 6 · read 1 min 7 s ago
+Study · eero Pro 6 · read 1 m 7 s ago
 
-state            online · heartbeat 2 min 4 s ago
+state            online · heartbeat 2 m 4 s ago
 backhaul         Wi-Fi 5.8 GHz from Hall · 5 of 5 bars
 model            eero Pro 6 · K010011 · serial SERIAL0002
 addresses        10.0.0.88 · fe80::b/64
 hardware         02:00:00:00:00:25
 firmware         v7.17.4-5 · up to date · support ends –
-up               15 h 31 min · rebooted 2026-11-07 02:22, 15 h 32 min ago
-on eero's cloud  19 min 36 s
+up               15 h 31 m · rebooted 2026-11-07 02:22, 15 h 32 m ago
+on eero's cloud  19 m 36 s
 joined           2020-11-13 16:50, 5 y 360 d ago
 light            on · 100 %
 power            USB

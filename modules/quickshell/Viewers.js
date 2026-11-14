@@ -38,13 +38,24 @@ function viewersDue(kept, sessions, now, screen) {
     const { workspaces, since, away } = screen ?? {};
     const open = [];
     const still = {};
-    for (const id of Object.keys(kept).filter(one => now - kept[one].at <= KEPT_FOR)) {
+    for (const id of Object.keys(kept)) {
         const place = kept[id];
         const session = sessions.find(one => one.presence?.session === id
             && one.presence?.hosted);
         const viewable = session !== undefined && Array.isArray(session.attach)
             && session.attach.length > 0;
-        if (session?.window) {
+        if (place.slept === true) {
+            // A sleeper is any session of its id, held or hosted.
+            const sleeper = sessions.find(one => one.presence?.session === id);
+            const woke = sleeperDue(place, sleeper, now, workspaces ?? {});
+            if (woke.into !== null && (sleeper.held || viewable)) {
+                open.push({ session: sleeper, into: woke.into });
+            } else if (woke.kept !== null || woke.into !== null) {
+                still[id] = woke.kept ?? place;
+            }
+        } else if (now - place.at > KEPT_FOR) {
+            // Lapsed, its session most likely never moved.
+        } else if (session?.window) {
             // Its viewer is open, so its place is done with.
         } else if (!viewable || away !== true || !(place.at >= since) || parkedHere(session)) {
             still[id] = place;
@@ -60,12 +71,47 @@ function viewersDue(kept, sessions, now, screen) {
     return { open, kept: still };
 }
 
-// Whether a hosted `session`, as Sessions.qml lists it, is parked in its
-// host, as the mesh says in its presence (the harness's park.ts): viewing
-// it would wake it.
+// Of a place kept as its session went to sleep, in pi's host or in its
+// mycelium holder (`slept`, as Sessions.qml's keepPlaceAsleep keeps it),
+// what's still to keep and where its window opens now, if anywhere. Its
+// window closed so a sleeper costs next to nothing, and anything that
+// needs it wakes it where it sleeps (Joel,
+// 14 November: sessions put to sleep have no windows, and are resumed
+// whenever needed, at once). So its viewer opens once it has been seen
+// asleep and is awake again, while Joel is here too and from a place kept
+// before this shell started, since it's waking that opens it and never a
+// switch; but never on the workspace he's on (viewerPlace), and never
+// while it sleeps. Until it has been seen asleep it waits, its window
+// still open as its place is kept just before it closes, or gone before
+// the host has parked it, and lapses as any place does; once seen it's
+// kept however long it sleeps. One whose viewer is open again, by Go To
+// or by waking, is let go.
+function sleeperDue(place, session, now, workspaces) {
+    const kept = { kept: place, into: null };
+    if (session === undefined) {
+        return place.asleep === true || now - place.at <= KEPT_FOR ? kept
+            : { kept: null, into: null };
+    }
+    if (parkedHere(session)) {
+        return { kept: Object.assign({}, place, { asleep: true }), into: null };
+    }
+    if (place.asleep !== true) {
+        return now - place.at > KEPT_FOR ? { kept: null, into: null } : kept;
+    }
+    if (session.window) {
+        return { kept: null, into: null };
+    }
+    const into = viewerPlace(place, workspaces);
+    return into === null ? kept : { kept: null, into };
+}
+
+// Whether a `session`, as Sessions.qml lists it, is parked: in pi's host,
+// as the mesh says in its presence (the harness's park.ts), where viewing
+// it would wake it, or by its holder, as its record's state says.
 function parkedHere(session) {
     const parked = session?.presence?.parked;
-    return parked !== undefined && parked !== null && parked !== false;
+    return parked !== undefined && parked !== null && parked !== false
+        || session?.presence?.state === "parked";
 }
 
 // Where a moved session's viewer opens, always a place niri is told of,

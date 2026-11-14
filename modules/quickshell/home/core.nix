@@ -55,6 +55,7 @@
   "launcher/Wanted.js"
   "launcher/Standing.js"
   "launcher/Steady.js"
+  "launcher/Joined.js"
   "launcher/RowsKept.js"
   "launcher/Order.js"
   "launcher/PlaceRow.js"

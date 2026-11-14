@@ -910,6 +910,29 @@ def test_a_step_into_landed_weighs_the_keys_of_one_of_each_run_alike(shell: Shel
     shell.close_launcher()
 
 
+def test_landed_read_again_with_nothing_changed_looks_at_no_landing(shell: Shell) -> None:
+    """Stepping into Landed, then into a landing there, looks at Landed's landings once.
+
+    Landed's rows are read again at each step through it, and each read looked at every one
+    of Joel's 2,600 landings again, 27 to 39 ms a time, four times in To Try's Return
+    (2026-11-14), though nothing they're made from had changed.
+    """
+    opened(shell)
+    shell.launcher_until(lambda shown: "Landed" in shown["rows"])
+    shell.down_to("Landed")
+    launcher_on_niri.weighed_held_still(shell)
+    before = landings_looked(shell)
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
+    # Return would read it, as it goes nowhere; Tab steps into its verbs alone.
+    shell.step_in("tab")
+    shell.launcher_until(lambda shown: "Say What You Make of It" in shown["rows"])
+    launcher_on_niri.weighed_held_still(shell)
+    looked = landings_looked(shell) - before
+    assert looked <= len(LANDINGS), f"two steps through Landed looked at {looked} landings"
+    shell.close_launcher()
+
+
 def made_through(shell: Shell, change: Callable[[], None]) -> int:
     """Give how many rows Agents made as the shell heard what `change` changed, a second on."""
     lines, before = agents_lines(shell), made_by_agents(shell)
@@ -1441,6 +1464,11 @@ def made_by_agents(shell: Shell) -> int:
     return int(json.loads(shell.as_account(shell.ipc("made")))["rows"]["agents"])
 
 
+def landings_looked(shell: Shell) -> int:
+    """Give how many records Agents has looked at since the shell started, its landings."""
+    return int(json.loads(shell.as_account(shell.ipc("made")))["looked"]["agents"])
+
+
 def made_lately(shell: Shell) -> str:
     """Say the last rows Agents made, each marked shut or walked as the launcher was then."""
     lately = json.loads(shell.as_account(shell.ipc("made")))["lately"]["agents"]
@@ -1716,8 +1744,9 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     shown = shell.showing()
     assert not shown["open"], shown
     assert shown["line"]["mode"] == "insert", shown["line"]
-    # A step inside the top, as niri lays an overlay: the window under it keeps the rest.
-    assert 0 < shown["line"]["top"] < 100, shown["line"]  # noqa: PLR2004
+    # A quarter down, where the launcher opens, so the two sit as one (Joel, 2026-11-14 09:44:
+    # "i want them to feel like more of part of the same").
+    assert abs(shown["line"]["top"] - shown["line"]["screen"] / 4) < 1, shown["line"]
     shoot("empty")
     shell.send_chars(words)
     # A sentence or two wraps at a whole word, never scrolling off its start.

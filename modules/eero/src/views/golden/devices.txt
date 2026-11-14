@@ -1,4 +1,4 @@
-home · 15 devices on now · read 1 min 7 s ago
+home · 15 devices on now · read 1 m 7 s ago
 
 node   device              kind              band       ch   signal    SNR         rx  MCS  NSS         tx  MCS  NSS       down         up  address
 Hall   generic 3           generic           2.4 GHz     6  −48 dBm  59 dB  72.2 Mb/s    7    1     –         –    –  98.2 b/s    154 b/s   10.0.0.99
@@ -21,13 +21,13 @@ Den    generic 2           generic           5 GHz      52  −37 dBm  71 dB  1.
 
 9 devices not on now
 
-node   device              kind              band      last on          profile  made by
-Study  game console 2      game console      5 GHz     1 h 17 min ago   –        AzureWave Technology Inc.
-Den    phone 1             phone             5 GHz     2 h 58 min ago   –        –
-Hall   generic 5           generic           Ethernet  9 h 40 min ago   –        Dell Inc.
-Den    02:00:00:00:00:1b   generic           5 GHz     9 h 42 min ago   –        –
-Den    02:00:00:00:00:1c   generic           2.4 GHz   10 h 21 min ago  –        –
-Study  unknown computer 2  unknown computer  5 GHz     12 h 51 min ago  –        Intel Corporate
-Den    phone 2             phone             2.4 GHz   22 h 56 min ago  –        –
-Den    02:00:00:00:00:1f   generic           5 GHz     2 d ago          –        –
-Study  02:00:00:00:00:20   generic           2.4 GHz   4 d ago          –        –
+node   device              kind              band      last on        profile  made by
+Study  game console 2      game console      5 GHz     1 h 17 m ago   –        AzureWave Technology Inc.
+Den    phone 1             phone             5 GHz     2 h 58 m ago   –        –
+Hall   generic 5           generic           Ethernet  9 h 40 m ago   –        Dell Inc.
+Den    02:00:00:00:00:1b   generic           5 GHz     9 h 42 m ago   –        –
+Den    02:00:00:00:00:1c   generic           2.4 GHz   10 h 21 m ago  –        –
+Study  unknown computer 2  unknown computer  5 GHz     12 h 51 m ago  –        Intel Corporate
+Den    phone 2             phone             2.4 GHz   22 h 56 m ago  –        –
+Den    02:00:00:00:00:1f   generic           5 GHz     2 d ago        –        –
+Study  02:00:00:00:00:20   generic           2.4 GHz   4 d ago        –        –

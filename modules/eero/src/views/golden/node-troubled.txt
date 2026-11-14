@@ -1,13 +1,13 @@
-Hall · eero Pro 6 · gateway · read 1 min 7 s ago
+Hall · eero Pro 6 · gateway · read 1 m 7 s ago
 
-state            online · heartbeat 1 min 59 s ago
+state            online · heartbeat 1 m 59 s ago
 backhaul         Ethernet · 5 of 5 bars
 model            eero Pro 6 · K010011 · serial SERIAL0003
 addresses        10.0.0.1 · fe80::7/64 · fe80::8/64
 hardware         02:00:00:00:00:21
 firmware         v7.17.4-5 · up to date · support ends –
-up               15 h 31 min · rebooted 2026-11-07 02:22, 15 h 33 min ago
-on eero's cloud  15 h 6 min
+up               15 h 31 m · rebooted 2026-11-07 02:22, 15 h 33 m ago
+on eero's cloud  15 h 6 m
 joined           2020-11-13 16:47, 5 y 360 d ago
 light            on · 100 %
 power            USB

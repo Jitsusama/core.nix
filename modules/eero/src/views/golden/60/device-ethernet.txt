@@ -1,4 +1,4 @@
-printer 1 · 02:00:00:00:00:13 · read 1 min 7 s ago
+printer 1 · 02:00:00:00:00:13 · read 1 m 7 s ago
 
 kind         printer · HP · made by Hewlett Packard
 name         printer 1 · nickname printer 1
@@ -6,8 +6,8 @@ name         printer 1 · nickname printer 1
 hardware     02:00:00:00:00:13 · its maker's address
 addresses    10.0.0.31
 reserved     10.0.0.30
-on since     2026-11-07 02:26, 15 h 28 min ago
-last active  2026-11-07 17:49, 6 min 10 s ago
+on since     2026-11-07 02:26, 15 h 28 m ago
+last active  2026-11-07 17:49, 6 m 10 s ago
 first seen   2020-11-13 17:18, 5 y 360 d ago
 node         Den · Ethernet
 network      home · WPA2 · subnet main · guest no

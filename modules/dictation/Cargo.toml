@@ -27,6 +27,8 @@ png = "0.18"
 # thread and its denoiser through rings that never lock or allocate.
 rtrb = "0.4"
 serde_json = "1.0"
+# The shape every command of ours takes (docs/commands.md).
+terminal-kit = { path = "../terminal-kit" }
 # meaning's models read their words as Hugging Face's tokenizers do,
 # from each model's own tokenizer.json, so what the NPU is given is the
 # tokens the model was trained on. Oniguruma's patterns, built from its

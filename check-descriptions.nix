@@ -3034,6 +3034,11 @@
     a list the launcher shows keeps its order and its selection as what's in it changes, but an
     answer given only while nothing else was goes once something comes
   '';
+  the-launcher-joins-only-what-changed = ''
+    joining the launcher's rows again makes ready only the rows of sources whose things or
+    stand-ins changed, lets go of a source that's gone, and indexes the rows by key, name and
+    what they're part of in one walk, saying each name plainly once while it's there
+  '';
   the-launcher-closes-only-for-keys-it-held = ''
     the open launcher holds its keys once its card is active and niri says no window has them,
     so an opening right after a closing stays open as the closing's late focus arrives; held, a
@@ -3707,8 +3712,9 @@
   '';
   the-shell-hands-over-only-once-its-surfaces-are-shut = ''
     the old shell is ended in a handover only once its launcher and Super+S's line are shut,
-    even one come up while the new shell loaded; a locked screen restarts the shell instead,
-    and a new shell that fails as it loads leaves the old one the unit's
+    even one come up while the new shell loaded or opened by a chord heard just after it was
+    found shut, whose socket is put back; a locked screen restarts the shell instead, and a
+    new shell that fails as it loads leaves the old one the unit's
   '';
   the-shell-takes-a-switchs-files-at-idle = ''
     after a switch the shell is handed over onto its new files once the launcher and Super+S's

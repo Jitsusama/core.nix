@@ -249,12 +249,14 @@ def test_it_says_beforehand_whether_the_image_fits(swapping: QemuMachine) -> Non
     swapping.succeed(
         "awk '/^MemTotal:/ { print $2 * 1024 }' /proc/meminfo > /sys/power/reserved_size"
     )
+    # A failure is said on stderr, as every command on the terminal kit says
+    # one, so stdout carries nothing to mistake for an answer.
     try:
-        status, said = swapping.execute("hibernate-unlock fits")
+        status, said = swapping.execute("hibernate-unlock fits 2>&1 >/dev/null")
     finally:
         swapping.succeed(f"echo {RESERVE} > /sys/power/reserved_size")
     assert status == 1, f"it exited {status}"
-    assert said.startswith("Not enough memory to hibernate: "), said
+    assert "there isn't enough memory to hibernate" in said, said
     assert "Nothing was changed." in said, said
 
 

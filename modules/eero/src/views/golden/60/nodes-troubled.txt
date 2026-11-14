@@ -1,4 +1,4 @@
-home · 3 nodes · read 1 min 7 s ago
+home · 3 nodes · read 1 m 7 s ago
 
 node   state      backhaul                 devices
 Hall   online     Ethernet                       2

@@ -318,8 +318,8 @@ fn an_unreachable_cloud_is_said_with_how_old_the_reading_is() {
     assert_eq!(
         head,
         [
-            "home · read 15 min 17 s ago",
-            "✕ eero's cloud unreachable since 2026-11-07 17:56 (14 min ago): timed out",
+            "home · read 15 m 17 s ago",
+            "✕ eero's cloud unreachable since 2026-11-07 17:56 (14 m ago): timed out",
             "",
         ]
     );
@@ -338,7 +338,7 @@ fn a_reading_grown_old_says_how_old_and_how_to_start_the_daemon() {
     assert_eq!(
         page.lines().nth(1),
         Some(
-            "● nothing new for 2 h 5 min; eero-daemon may have stopped: \
+            "● nothing new for 2 h 5 m; eero-daemon may have stopped: \
              systemctl --user start eero-daemon"
         )
     );
@@ -413,7 +413,7 @@ fn a_device_not_on_now_says_where_and_when_it_last_was() {
     );
     assert_eq!(
         refused.unwrap_err(),
-        "phone 2 isn't on now; it was last on Den, 2026-11-06 18:58, 22 h 56 min ago"
+        "phone 2 isn't on now; it was last on Den, 2026-11-06 18:58, 22 h 56 m ago"
     );
 }
 

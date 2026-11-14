@@ -71,15 +71,74 @@ use dictation::parakeet::Parakeet;
 use dictation::takes::{Cutter, Take};
 use dictation::transcript::{Line, Side, markdown};
 use dictation::wav;
+use terminal_kit::{Exit, Failure, Help};
 
-const USAGE: &str = "usage: call-transcripts serve SOCKET MODEL_DIR [SUMMARIZER] CALLS \
-    | ask SUMMARIZER_DIR \
-    | transcribe MODEL_DIR MINE.wav THEIRS.wav \
-    | hear MODEL_DIR CLIP.wav... \
-    | summarize SUMMARIZER_DIR TITLE TRANSCRIPT.md [NAME]";
+use crate::ask::SHORT_OF_MEMORY;
+
+fn help() -> Help {
+    Help::new("call-transcripts", "writes down what's said on calls")
+        .example("call-transcripts serve S ~/m ~/s ~/c", "what its unit runs")
+        .example("call-transcripts hear ~/m a.wav", "what a.wav says")
+        .subcommand(
+            Help::new(
+                "serve",
+                "follows calls, writing each down and summing it up",
+            )
+            .argument("<socket>", "where the shell asks")
+            .argument("<model-dir>", "the speech model's folder")
+            .argument("[summarizer]", "the program answering as ask does")
+            .argument("<calls>", "the folder each call is kept in")
+            .example("call-transcripts serve S ~/m ~/s ~/c", "what its unit runs")
+            .exit(Exit::Failed, "the model or the socket failed"),
+        )
+        .subcommand(
+            Help::new("ask", "answers prompts a line each, as JSON")
+                .argument("<summarizer-dir>", "the language model's folder")
+                .example("call-transcripts ask ~/s", "what the summarizer runs")
+                .exit(Exit::Failed, "the model failed, or a prompt isn't JSON")
+                .exit(SHORT_OF_MEMORY, "too little memory to load it yet"),
+        )
+        .subcommand(
+            Help::new("transcribe", "a call's two sides, as Markdown")
+                .argument("<model-dir>", "the speech model's folder")
+                .argument("<mine>", "Joel's side, a 16 kHz mono WAV")
+                .argument("<theirs>", "the call's side, alike")
+                .example(
+                    "call-transcripts transcribe ~/m a.wav b.wav",
+                    "who said what",
+                )
+                .exit(Exit::Failed, "the model failed or a file can't be read"),
+        )
+        .subcommand(
+            Help::new("hear", "what each WAV says, heard whole, a line each")
+                .argument("<model-dir>", "the speech model's folder")
+                .argument("<clip>...", "16 kHz mono WAVs")
+                .example("call-transcripts hear ~/m a.wav", "what a.wav says")
+                .exit(Exit::Failed, "the model failed or a file can't be read"),
+        )
+        .subcommand(
+            Help::new("summarize", "the summary a transcript makes")
+                .argument("<summarizer-dir>", "the language model's folder")
+                .argument("<title>", "the call's title")
+                .argument("<transcript>", "its transcript, as Markdown")
+                .argument("[name]", "who the others on it are")
+                .example("call-transcripts summarize ~/s Ada t.md", "its summary")
+                .exit(Exit::Failed, "the model failed or a file can't be read"),
+        )
+        .exit(Exit::Failed, "a model, a file or the socket failed")
+        .exit(
+            SHORT_OF_MEMORY,
+            "too little memory to load the summarizer yet",
+        )
+}
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        act(&context.args)
+    })
+}
+
+fn act(args: &[String]) -> Result<(), Failure> {
     let result = match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         ["serve", socket, model, summarizer, calls] => serve(
             Path::new(socket),
@@ -107,15 +166,18 @@ fn main() -> ExitCode {
             transcribe(Path::new(model), Path::new(mine), Path::new(theirs))
         }
         ["hear", model, ref clips @ ..] if !clips.is_empty() => hear_clips(Path::new(model), clips),
-        _ => Err(format!("{USAGE} (got {args:?})")),
-    };
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("call-transcripts: {error}");
-            ExitCode::FAILURE
+        // The kit has refused a word no subcommand answers to, so only a
+        // subcommand given too few or too many words is left.
+        [first, ..] => {
+            return Err(Failure::new(Exit::Usage, "those aren't the words it takes")
+                .try_this(format!("call-transcripts {first} --help")));
         }
-    }
+        [] => {
+            return Err(Failure::new(Exit::Usage, "it needs a subcommand")
+                .try_this("call-transcripts --help"));
+        }
+    };
+    result.map_err(|error| Failure::new(Exit::Failed, error))
 }
 
 /// Where Parakeet runs, as dictation's Whisper does.

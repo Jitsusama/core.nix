@@ -6,7 +6,10 @@
       "in": "for-you:source:pineapple",
       "name": "Resume",
       "verb": "resume",
-      "glyph": "resume"
+      "glyph": "resume",
+      "said": {
+        "arms": "resumes"
+      }
     },
     {
       "id": "verb:pineapple:widen",
@@ -32,7 +35,10 @@
       "in": "for-you:source:pineapple",
       "name": "Agree",
       "verb": "resume",
-      "glyph": "resume"
+      "glyph": "resume",
+      "said": {
+        "arms": "resumes"
+      }
     },
     {
       "id": "verb:pineapple:dismiss",

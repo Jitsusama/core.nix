@@ -24,8 +24,38 @@
 # compressed one is read through gzip. A root element past that start, or
 # none, leaves its tag empty, and the drawing is listed without its size.
 #
-# usage: inkscape-drawings MOST
+# Its help and failures take the shape every command of ours does
+# (docs/commands.md), by hand.
 set -euo pipefail
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+inkscape-drawings  list the drawings Inkscape opened lately
+
+  For Inkscape's Recent in the launcher: newest first and
+  at most as many as asked, a line each of the drawing,
+  when Inkscape last opened it, its weight and its root
+  element's start tag, a tab between each.
+
+EXAMPLES
+  inkscape-drawings 9
+
+EXIT
+  0   listed, or nothing to list
+  1   the list of files opened lately couldn't be read
+  64  asked wrongly
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
+
+if [ "$#" -ne 1 ] || [[ ! $1 =~ ^[0-9]+$ ]]; then
+  printf '%s\n' "inkscape-drawings takes how many to list at most" \
+    "  try  inkscape-drawings 9" >&2
+  exit 64
+fi
 shopt -s nocasematch
 
 most=$1

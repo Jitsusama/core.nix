@@ -113,7 +113,7 @@ impl Watched {
 
     /// Reads the thread at `now`, keeping in `spans` a burst it ends that a
     /// key would wait out. False when the thread has gone.
-    fn take(&mut self, now: f64, interval: f64, spans: &mut Vec<(f64, f64)>) -> bool {
+    fn take(&mut self, now: f64, interval: f64, spans: &mut Vec<(f64, f64, model::Why)>) -> bool {
         let Some(reading) = self.read() else {
             return false;
         };
@@ -121,7 +121,7 @@ impl Watched {
             && b.solid()
             && b.worth()
         {
-            spans.push((b.at, b.at + b.ms));
+            spans.push((b.at, b.at + b.ms, model::Why::of(b.cpu, b.wait, b.d)));
         }
         true
     }
@@ -192,7 +192,7 @@ struct Sampler {
     niri: Watched,
     at: Option<At>,
     frame: f64,
-    spans: [Vec<(f64, f64)>; 3],
+    spans: [Vec<(f64, f64, model::Why)>; 3],
     at_pi: Vec<split::Held>,
     /// When the stretch at a pi window began, its window and its pi.
     since: Option<(f64, u64, u32)>,
@@ -314,9 +314,9 @@ impl Sampler {
             .and_then(context::load1);
         let [niri, kitty, pi] = self.spans;
         let path = model::Path {
-            niri: model::Spans::new(niri),
-            kitty: model::Spans::new(kitty),
-            pi: model::Spans::new(pi),
+            niri: model::Spans::told(niri),
+            kitty: model::Spans::told(kitty),
+            pi: model::Spans::told(pi),
         };
         let stretches: Vec<(f64, f64)> = self.at_pi.iter().map(|h| (h.from, h.to)).collect();
         let keys = model::keys(
@@ -338,6 +338,7 @@ impl Sampler {
                 "p99_ms": round(summary.p99, 1),
                 "over_33ms": round(summary.late, 4),
                 "pi_over_16ms": round(summary.lost_at[2], 4),
+                "pi_over_16ms_by": held_by(summary),
             })
         };
         // The same keys again, by the install each window's pi loaded, so
@@ -377,6 +378,10 @@ impl Sampler {
                 "kitty": round(sum.lost_at[1], 4),
                 "pi": round(sum.lost_at[2], 4),
             },
+            // Whether pi ran its own work, waited for a CPU or sat in D
+            // through the keys it held, so the fix goes to pi's code or
+            // to its place in the queue.
+            "pi_over_16ms_by": held_by(&sum),
             "frame_ms": round(self.frame, 2),
             "gaps": self.gaps,
             "windows": self.windows.len(),
@@ -649,6 +654,16 @@ fn socket_pid(socket: &FsPath) -> Option<u32> {
 fn round(value: f64, places: i32) -> f64 {
     let scale = 10f64.powi(places);
     (value * scale).round() / scale
+}
+
+/// The share of keys pi held past a frame, by what held it.
+fn held_by(summary: &model::Summary) -> serde_json::Value {
+    let [ran, queued, disk] = summary.pi_lost_by;
+    serde_json::json!({
+        "running": round(ran, 4),
+        "waiting_for_cpu": round(queued, 4),
+        "disk": round(disk, 4),
+    })
 }
 
 fn seconds_now() -> u64 {

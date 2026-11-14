@@ -35,11 +35,6 @@
     "inks"
     "helps"
   ];
-  call-transcripts = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   calls = [
     "kit"
     "exits"
@@ -58,24 +53,7 @@
   ];
   collect = [ "helps" ];
   console-setup = [ "helps" ];
-  declared-last = [ "helps" ];
-  dictation = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  dictation-chord = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  disk-guard-merged-on-github = [ "helps" ];
   eero = [ "inks" ];
-  git-engine = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   gnome-keyring-unlock = [ "helps" ];
   guide = [
     "kit"
@@ -88,12 +66,6 @@
     "exits"
     "helps"
   ];
-  hibernate-unlock = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  inkscape-drawings = [ "helps" ];
   ir-camera-pipeline = [ "helps" ];
   jobs-broker = [
     "kit"
@@ -132,18 +104,11 @@
     "exits"
     "helps"
   ];
-  meaning = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   merge-net = [
     "kit"
     "exits"
     "helps"
   ];
-  mpv-command = [ "helps" ];
-  mpv-stopped = [ "helps" ];
   mypy = [ "helps" ];
   network-revive = [
     "kit"
@@ -155,15 +120,9 @@
     "exits"
     "helps"
   ];
-  niri-off-cpu = [ "helps" ];
   niri-off-cpu-as-root = [ "helps" ];
   niri-off-cpu-begun = [ "helps" ];
   nix-offload = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  noise-cancelled = [
     "kit"
     "exits"
     "helps"
@@ -204,14 +163,12 @@
   ];
   pi-ask = [ "helps" ];
   pi-carry = [ "helps" ];
-  pi-claude = [ "helps" ];
   pi-host-down = [ "helps" ];
   pi-keys = [
     "kit"
     "exits"
     "helps"
   ];
-  pi-settings = [ "helps" ];
   pi-verbs = [ "helps" ];
   processor-telemetry = [
     "kit"
@@ -229,10 +186,6 @@
     "helps"
   ];
   quickshell-starts-warm = [ "helps" ];
-  reader = [
-    "kit"
-    "helps"
-  ];
   record-window = [
     "kit"
     "exits"
@@ -243,12 +196,6 @@
     "helps"
   ];
   saves-while-open = [ "helps" ];
-  screen-kept = [ "helps" ];
-  screen-text = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   secret-asks = [
     "kit"
     "exits"
@@ -275,8 +222,6 @@
     "helps"
   ];
   swap-file-grows = [ "helps" ];
-  swayimg-command = [ "helps" ];
-  switch-system = [ "helps" ];
   switch-system-as-root = [ "helps" ];
   switch-system-known = [ "helps" ];
   systemd-run = [ "helps" ];
@@ -329,7 +274,5 @@
     "exits"
     "helps"
   ];
-  xdg-open = [ "helps" ];
   yubikey-once-in = [ "helps" ];
-  zoom-opens = [ "helps" ];
 }

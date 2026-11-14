@@ -63,9 +63,71 @@ use chosen::Chosen;
 use denoise::{Cleaner, FRAME, Model};
 use offer::Offers;
 use refusals::Refusal;
+use terminal_kit::{Exit, Failure, Help};
+
+fn help() -> Help {
+    Help::new(
+        "noise-cancelled",
+        "each microphone's voice, the sounds around it out",
+    )
+    .example(
+        "noise-cancelled serve ~/m",
+        "a cleaned twin of each microphone",
+    )
+    .subcommand(
+        Help::new("serve", "offers each microphone a cleaned twin")
+            .argument("<models>", "the models' folder")
+            .argument(
+                "[cleaner]",
+                "deepfilternet, deepfilternet-gentle or rnnoise",
+            )
+            .argument("[chosen]", "the file a pick by ear is kept in")
+            .argument("[refusals]", "what refuses a recording while it holds")
+            .example("noise-cancelled serve ~/m", "what its unit runs")
+            .exit(Exit::Failed, "the model or PipeWire failed"),
+    )
+    .subcommand(
+        Help::new("clean", "cleans raw samples from its input to its output")
+            .argument("<models>", "the models' folder")
+            .argument(
+                "[cleaner]",
+                "deepfilternet, deepfilternet-gentle or rnnoise",
+            )
+            .example(
+                "noise-cancelled clean ~/m < a.f32 > b.f32",
+                "a.f32, cleaned",
+            )
+            .exit(Exit::Failed, "the model failed or the samples broke off"),
+    )
+    .subcommand(
+        Help::new("score", "how good raw samples sound, out of 5")
+            .argument("<models>", "the models' folder")
+            .example("noise-cancelled score ~/m < a.f32", "its marks, as JSON")
+            .exit(Exit::Failed, "the model failed or the samples broke off"),
+    )
+    .subcommand(
+        Help::new("trial", "answers the launcher's Choose by Ear")
+            .argument("<socket>", "where the launcher asks")
+            .argument("<models>", "the models' folder")
+            .argument("<running>", "the cleaner the microphones run")
+            .argument("<refusals>", "what refuses a recording while it holds")
+            .argument("[chosen]", "the file a pick is kept in")
+            .example(
+                "noise-cancelled trial S ~/m rnnoise r.json",
+                "what its unit runs",
+            )
+            .exit(Exit::Failed, "the model, the socket or a recording failed"),
+    )
+    .exit(Exit::Failed, "a model, PipeWire or the socket failed")
+}
 
 fn main() -> ExitCode {
-    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        act(&context.args)
+    })
+}
+
+fn act(arguments: &[String]) -> Result<(), Failure> {
     let done = match arguments.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         ["serve", models] => served(models, Cleaner::DeepFilterNet.name(), None, None),
         ["serve", models, cleaner] => served(models, cleaner, None, None),
@@ -88,23 +150,18 @@ fn main() -> ExitCode {
                 )
             })
         }
-        _ => {
-            eprintln!(
-                "usage: noise-cancelled serve MODELS [CLEANER [CHOSEN [REFUSALS]]]\n       \
-                 noise-cancelled clean MODELS [CLEANER] < heard.f32 > cleaned.f32\n       \
-                 noise-cancelled score MODELS < heard.f32\n       \
-                 noise-cancelled trial SOCKET MODELS RUNNING REFUSALS [CHOSEN]"
-            );
-            return ExitCode::from(2);
+        // The kit has refused a word no subcommand answers to, so only a
+        // subcommand given too few or too many words is left.
+        [first, ..] => {
+            return Err(Failure::new(Exit::Usage, "those aren't the words it takes")
+                .try_this(format!("noise-cancelled {first} --help")));
+        }
+        [] => {
+            return Err(Failure::new(Exit::Usage, "it needs a subcommand")
+                .try_this("noise-cancelled --help"));
         }
     };
-    match done {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(why) => {
-            eprintln!("noise-cancelled: {why}");
-            ExitCode::FAILURE
-        }
-    }
+    done.map_err(|why| Failure::new(Exit::Failed, why))
 }
 
 /// Serves each microphone a cleaned twin, as `serve`'s arguments say.

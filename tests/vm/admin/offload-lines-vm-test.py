@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 
 LENDER = "/run/nix-offload"
 ROOTS = "/run/nix-offload-lines"
+# Where every lender keeps its cloud token, by its folder's name.
+TOKENS = "/run/nix-offload-tokens"
 # How long the service may take to copy what the lender wrote: it reads every two seconds,
 # and asks the cloud once for an instance it hasn't seen.
 COPYING = timedelta(minutes=1)
@@ -68,7 +70,7 @@ def lending(
     driver.start_all()
     machine = machines["machine"]
     machine.wait_for_unit("nix-offload-lines.service")
-    token = f"{LENDER}/cloud-token"
+    token = f"{TOKENS}/nix-offload"
     write(machine, token, "ya29.a-token")
     # As the lender leaves it: its own, and read by the service's account through an ACL, since
     # the lender's account is in none of the service's groups.
@@ -102,6 +104,15 @@ def test_the_lenders_account_is_in_none_of_the_services_groups(lending: BaseMach
     """The lender's account hands the token over by an ACL, so needs no group of the service's."""
     groups = lending.succeed("id -nG someone").split()
     assert "nix-offload-lines" not in groups, groups
+
+
+def test_only_the_lender_and_the_service_reach_the_tokens(lending: BaseMachine) -> None:
+    """Every token is in one folder from boot, which another account can't even list."""
+    folder = lending.succeed(f"stat -c '%U %G %a' {TOKENS}").split()
+    assert folder == ["someone", "nix-offload-lines", "2750"], folder
+    lending.succeed(f"runuser -u nix-offload-lines -- cat {TOKENS}/nix-offload")
+    lending.fail(f"runuser -u nobody -- ls {TOKENS}")
+    lending.fail(f"runuser -u nobody -- cat {TOKENS}/nix-offload")
 
 
 def test_the_lenders_account_cannot_write_roots_lines(lending: BaseMachine) -> None:

@@ -9,7 +9,10 @@
 //! lone minute just before the gap gives way to the busy one before it.
 //! That holds only for the minutes rhythm watched: those seeded from the
 //! logs are a command or a message now and then, each typed, so a seeded
-//! night stops at its last.
+//! night stops at its last. For the same reason a lone watched minute,
+//! with fewer than three seen in the half hour either side, ends no gap:
+//! it's the mouse or a key brushed in the night, and Joel's sleep runs on
+//! through it.
 //!
 //! What's usual is the middle of the last four weeks' stops, each week back
 //! counting half as much as the one after it, so a change of habit shows
@@ -65,8 +68,12 @@ pub struct Night {
 /// the machine, sorted, read by `local`; those before `watched` were
 /// seeded from the logs.
 pub fn nights(seen: &[i64], watched: i64, local: impl Fn(i64) -> Option<Local>) -> Vec<Night> {
+    let awake: Vec<i64> = (0..seen.len())
+        .filter(|&index| seen[index] < watched || !lone(seen, index))
+        .map(|index| seen[index])
+        .collect();
     let mut found: Vec<(Night, i64)> = Vec::new();
-    for (index, pair) in seen.windows(2).enumerate() {
+    for pair in awake.windows(2) {
         let gap = pair[1] - pair[0];
         if gap < SLEEP {
             continue;
@@ -74,7 +81,7 @@ pub fn nights(seen: &[i64], watched: i64, local: impl Fn(i64) -> Option<Local>) 
         let stop = if pair[0] < watched {
             Some(pair[0])
         } else {
-            busy_before(seen, index)
+            busy_before(seen, seen.partition_point(|seen| *seen < pair[0]))
         };
         let Some(stop) = stop else {
             continue;
@@ -97,6 +104,15 @@ pub fn nights(seen: &[i64], watched: i64, local: impl Fn(i64) -> Option<Local>) 
         }
     }
     found.into_iter().map(|(night, _)| night).collect()
+}
+
+/// Whether `seen[index]` stands alone: fewer than `BUSY` minutes seen in
+/// the `BUSY_WITHIN` either side of it, itself counted.
+fn lone(seen: &[i64], index: usize) -> bool {
+    let minute = seen[index];
+    let from = seen.partition_point(|seen| *seen < minute - BUSY_WITHIN);
+    let to = seen.partition_point(|seen| *seen <= minute + BUSY_WITHIN);
+    to - from < BUSY
 }
 
 /// The last busy minute at or before `seen[index]`, within `STRAY` of it.
@@ -351,6 +367,54 @@ mod tests {
             clock_of(found[0].after_six),
             "23:10",
             "the busy minute, not the stray"
+        );
+    }
+
+    #[test]
+    fn a_touch_in_the_night_breaks_no_sleep() {
+        // Friday 13 November 2026: asleep from 00:40 to 08:58, the mouse
+        // or a key brushed at 03:10, 04:24 and 06:10.
+        let mut seen = busy(at(WEDNESDAY, 19, 0), at(WEDNESDAY, 24, 40));
+        seen.push(at(WEDNESDAY, 27, 10));
+        seen.extend(busy(at(WEDNESDAY, 28, 24), at(WEDNESDAY, 28, 25)));
+        seen.extend(busy(at(WEDNESDAY, 30, 10), at(WEDNESDAY, 30, 11)));
+        seen.extend(busy(at(WEDNESDAY, 32, 58), at(WEDNESDAY, 33, 30)));
+        let found = nights(&seen, 0, fixed(TORONTO));
+        assert_eq!(found.len(), 1, "one night in {found:?}");
+        assert_eq!(
+            clock_of(found[0].after_six),
+            "00:40",
+            "slept through the touches"
+        );
+    }
+
+    #[test]
+    fn awake_in_the_night_is_seen() {
+        let mut seen = busy(at(WEDNESDAY, 19, 0), at(WEDNESDAY, 23, 0));
+        seen.extend(busy(at(WEDNESDAY, 26, 0), at(WEDNESDAY, 26, 20)));
+        seen.extend(busy(at(WEDNESDAY, 33, 0), at(WEDNESDAY, 33, 30)));
+        let found = nights(&seen, 0, fixed(TORONTO));
+        assert_eq!(found.len(), 1, "one night in {found:?}");
+        assert_eq!(
+            clock_of(found[0].after_six),
+            "02:20",
+            "up from 02:00 to 02:20"
+        );
+    }
+
+    #[test]
+    fn a_seeded_minute_in_the_night_is_joel_there() {
+        // A seeded minute is a command or a message he sent, never a
+        // brush of the mouse, so one at 03:00 is him up then.
+        let mut seen = busy(at(WEDNESDAY, 19, 0), at(WEDNESDAY, 23, 0));
+        seen.push(at(WEDNESDAY, 27, 0));
+        seen.extend(busy(at(WEDNESDAY, 33, 0), at(WEDNESDAY, 33, 30)));
+        let watched = at(WEDNESDAY, 40, 0);
+        let found = nights(&seen, watched, fixed(TORONTO));
+        assert_eq!(
+            clock_of(found[0].after_six),
+            "03:00",
+            "the seeded message at 03:00"
         );
     }
 

@@ -232,7 +232,7 @@ impl Summarizer {
         }
         match (summed, model.end()) {
             (Ok(written), _) => Tried::Summed(written),
-            (Err(_), Some(code)) if code == i32::from(SHORT_OF_MEMORY) => Tried::Short,
+            (Err(_), Some(code)) if code == i32::from(SHORT_OF_MEMORY.code()) => Tried::Short,
             (Err(why), _) => Tried::Failed(why),
         }
     }

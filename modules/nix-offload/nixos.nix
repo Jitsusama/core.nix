@@ -38,6 +38,10 @@ let
   keysFile = "/run/nix-offload/builder-keys";
   lines = config.jitsusama.nix-offload.lines;
   linesFolder = "/run/nix-offload-lines";
+  # Where every lender keeps its cloud token, named by its own folder
+  # (src/cloud.rs): one folder, there from boot, so a fence hides every
+  # lender's token by one name, a lender made later included.
+  tokensFolder = "/run/nix-offload-tokens";
   lineFiles = [
     "machines"
     "machines-with-standing"
@@ -85,7 +89,7 @@ let
     lent = map (builder: {
       inherit (builder) uri;
       instance = "${builder.folder}/instance";
-      token = "${builder.folder}/cloud-token";
+      token = "${tokensFolder}/${baseNameOf builder.folder}";
     }) lines.lent;
     gcloud = lib.getExe' lines.gcloud "gcloud";
   };
@@ -159,8 +163,8 @@ in
                   example = "/run/nix-offload";
                   description = ''
                     Its lender's folder, where the lender names its instance in
-                    `instance`, `<name> <zone>`, and the token gcloud asks with in
-                    `cloud-token`.
+                    `instance`, `<name> <zone>`. The token gcloud asks with is
+                    in /run/nix-offload-tokens, named by this folder's own name.
                   '';
                 };
               }
@@ -290,6 +294,14 @@ in
     ++ [
       # And of a third, for what `there` sends while the first is full.
       "d /run/nix-offload-more 0755 ${config.jitsusama.nix-offload.account} - -"
+      # Every lender's cloud token, which the lines' account alone may
+      # enter besides the lender's, and the files in it take its group.
+      (
+        if lines == null then
+          "d ${tokensFolder} 0700 ${config.jitsusama.nix-offload.account} - -"
+        else
+          "d ${tokensFolder} 2750 ${config.jitsusama.nix-offload.account} nix-offload-lines -"
+      )
     ]
     # The lines root reads, which only their own account writes.
     ++ lib.optionals (lines != null) (

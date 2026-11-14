@@ -277,6 +277,16 @@ ShellRoot {
                 "This Window, Notes, Logbook");
             Expect.same("from Capture too", names(capture.windows), "Logbook");
 
+            // A pi session's window is kitty's to niri, but its row is
+            // pi's, marked and noted as Super+S's line notes it, so one
+            // window reads one way everywhere (VKCF3Z, 2026-11-14).
+            told({ changed: [Object.assign(window(16, "\u03c0 - Letters", 1, 10000, false, 3),
+                { app_id: "kitty", opened: "pi-session.3", session: true, entry: "kitty",
+                    program: "kitty", named: "Letters" })] });
+            Expect.same("a session's window is noted pi's", rowOf(16).side, "pi");
+            Expect.same("and marked pi's", rowOf(16).glyph, windows.programGlyph("pi"));
+            told({ gone: ["window:16"] });
+
             // Print, then Return on This Window, as the launcher opens
             // after a pick moved the keys unheard: until the watch's
             // answer, niri's word on where the keys are is the window

@@ -25,8 +25,37 @@
 # last frame, as mpv quit at a file's end leaves it (keep-open), was
 # watched whole, and is listed as it is.
 #
-# usage: mpv-stopped <mpv's watch_later folder>
+# Its help and failures take the shape every command of ours does
+# (docs/commands.md), by hand.
 set -euo pipefail
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+mpv-stopped  list the files mpv stopped part way through
+
+  For mpv's Recent in the launcher: newest first and nine
+  at most, a line each of the file, where it stopped, its
+  length, when it was left, its size, whether it's video
+  or audio, and each option mpv kept, a tab between each.
+
+EXAMPLES
+  mpv-stopped ~/.local/state/mpv/watch_later
+
+EXIT
+  0   listed, or nothing to list
+  64  asked wrongly
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
+
+if [ "$#" -ne 1 ]; then
+  printf '%s\n' "mpv-stopped takes mpv's watch_later folder" \
+    "  try  mpv-stopped --help" >&2
+  exit 64
+fi
 
 folder=$1
 most=9

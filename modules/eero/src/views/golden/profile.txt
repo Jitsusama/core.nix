@@ -1,4 +1,4 @@
-profile 1 · id 3001 · read 1 min 7 s ago
+profile 1 · id 3001 · read 1 m 7 s ago
 
 state     Active
 paused    no

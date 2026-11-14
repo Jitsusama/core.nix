@@ -1,4 +1,4 @@
-home · 9 radios · read 1 min 7 s ago
+home · 9 radios · read 1 m 7 s ago
 
 band        node   channel   width   power  busy              devices
 2.4 GHz     Hall         6  20 MHz  30 dBm   8 %  ⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀        1

@@ -1,4 +1,4 @@
-home · Study · 9 devices on now · read 1 min 7 s ago
+home · Study · 9 devices on now · read 1 m 7 s ago
 
 node   device              band      signal    SNR         rx         tx       down         up
 Study  laptop computer 1   5 GHz    −75 dBm  33 dB   432 Mb/s   961 Mb/s   130 kb/s  14.5 kb/s
@@ -13,7 +13,7 @@ Study  laptop computer 1   5 GHz    −75 dBm  33 dB   432 Mb/s   961 Mb/s   130
 
 3 devices not on now
 
-node   device              band     last on          profile  made by
-Study  game console 2      5 GHz    1 h 17 min ago   –        AzureWave Technology Inc.
-Study  unknown computer 2  5 GHz    12 h 51 min ago  –        Intel Corporate
-Study  02:00:00:00:00:20   2.4 GHz  4 d ago          –        –
+node   device              band     last on        profile  made by
+Study  game console 2      5 GHz    1 h 17 m ago   –        AzureWave Technology Inc.
+Study  unknown computer 2  5 GHz    12 h 51 m ago  –        Intel Corporate
+Study  02:00:00:00:00:20   2.4 GHz  4 d ago        –        –

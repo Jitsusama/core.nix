@@ -157,28 +157,30 @@ impl Fit {
         self.least <= self.most
     }
 
-    /// What `hibernate-unlock fits` says, in words for whoever asked.
+    /// What `hibernate-unlock fits` says of an image that fits.
     pub fn said(self) -> String {
-        let gb = |bytes: u64| {
-            let tenths = (bytes + 50_000_000) / 100_000_000;
-            format!("{}.{} GB", tenths / 10, tenths % 10)
-        };
-        if self.fits() {
-            format!(
-                "It fits: at least {} of memory has to be saved, and there's room for {}.",
-                gb(self.least),
-                gb(self.most)
-            )
-        } else {
-            format!(
-                "Not enough memory to hibernate: {} of memory can't be freed, and there's room \
-                 for only {} once drivers have theirs. Nothing was changed. Close something you \
-                 don't need, then hibernate again.",
-                gb(self.least),
-                gb(self.most)
-            )
-        }
+        format!(
+            "It fits: at least {} of memory has to be saved, and there's room for {}.",
+            gb(self.least),
+            gb(self.most)
+        )
     }
+
+    /// Why an image that doesn't fit falls short, and what to do about it.
+    pub fn short(self) -> String {
+        format!(
+            "{} of memory can't be freed, and there's room for only {} once drivers have \
+             theirs. Nothing was changed. Close something you don't need, then hibernate again.",
+            gb(self.least),
+            gb(self.most)
+        )
+    }
+}
+
+/// Bytes in gigabytes to a tenth, as a person reads a machine's memory.
+fn gb(bytes: u64) -> String {
+    let tenths = (bytes + 50_000_000) / 100_000_000;
+    format!("{}.{} GB", tenths / 10, tenths % 10)
 }
 
 #[cfg(test)]
@@ -358,10 +360,10 @@ mod tests {
         assert_eq!(fit.most, 0);
         assert!(!fit.fits());
         assert_eq!(
-            fit.said(),
-            "Not enough memory to hibernate: 1.2 GB of memory can't be freed, and there's room \
-             for only 0.0 GB once drivers have theirs. Nothing was changed. Close something you \
-             don't need, then hibernate again."
+            fit.short(),
+            "1.2 GB of memory can't be freed, and there's room for only 0.0 GB once drivers \
+             have theirs. Nothing was changed. Close something you don't need, then hibernate \
+             again."
         );
     }
 

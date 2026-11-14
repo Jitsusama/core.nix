@@ -186,9 +186,9 @@ in
         (`down NAME`), and names those there (`alive PREFIX`). Before the line
         it may print `price DOLLARS`, `store URI`, and where the builder is,
         `instance NAME ZONE` and `cloud-token TOKEN`, a token it prints again
-        while it holds the builder; each lender writes the last two in
-        its folder for the service that checks the line's host key against
-        the cloud's. Without one, none is lent, and only the standing builders
+        while it holds the builder; each lender writes the instance in its
+        folder and the token in /run/nix-offload-tokens, by its folder's name,
+        for the service that checks the line's host key against the cloud's. Without one, none is lent, and only the standing builders
         are named.
       '';
     };

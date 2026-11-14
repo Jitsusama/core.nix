@@ -10,6 +10,11 @@
 //! hibernate-unlock restoring
 //! ```
 //!
+//! It takes the shape every command of ours does (docs/commands.md),
+//! through the terminal kit: `fits` answers in words fitting the terminal,
+//! or as `hibernate-unlock.fits/1` with `--json`, and exits 1 when the
+//! image wouldn't fit.
+//!
 //! systemd-sleep runs it before and after each sleep, naming the action
 //! (`suspend`, `hibernate`, `hybrid-sleep` or `suspend-then-hibernate`), and
 //! the disks are those the initrd opens. Before anything that writes an
@@ -61,13 +66,14 @@ mod floors;
 mod restored;
 mod zswap;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::env;
 use std::fs;
 use std::io::{ErrorKind, Read};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use terminal_kit::{Exit, Failure, Help};
 
 /// Where the counts from before the image was written are kept.
 const KEPT: &str = "/run/hibernate-unlock";
@@ -762,7 +768,9 @@ fn rescue_now(why: &Why) {
 
 /// Says whether an image would fit now, exiting 1 when it wouldn't. What
 /// it can't read it doesn't stand in the way of.
-fn fits_now() -> ExitCode {
+/// Says whether the image would fit, as words or as
+/// `hibernate-unlock.fits/1`, failing when it wouldn't.
+fn fits_now(context: &terminal_kit::Context) -> Result<(), Failure> {
     let read = |path: &str| fs::read_to_string(path).ok();
     let memory = read("/proc/meminfo").and_then(|text| fits::Memory::parse(&text));
     let reserve = read("/sys/power/reserved_size").and_then(|text| text.trim().parse().ok());
@@ -770,8 +778,11 @@ fn fits_now() -> ExitCode {
     let zones = read("/proc/zoneinfo");
     let (Some(memory), Some(reserve), Some(swaps), Some(zones)) = (memory, reserve, swaps, zones)
     else {
-        println!("It couldn't tell whether the image fits, so it doesn't stand in the way.");
-        return ExitCode::SUCCESS;
+        return say(
+            context,
+            &json!({"schema": "hibernate-unlock.fits/1", "fits": null}),
+            "It couldn't tell whether the image fits, so it doesn't stand in the way.",
+        );
     };
     let fit = fits::Fit::of(
         memory,
@@ -779,12 +790,34 @@ fn fits_now() -> ExitCode {
         reserve,
         fits::swap_room(&swaps),
     );
-    println!("{}", fit.said());
+    let facts = json!({
+        "schema": "hibernate-unlock.fits/1",
+        "fits": fit.fits(),
+        "to_save_bytes": fit.least,
+        "room_bytes": fit.most,
+    });
     if fit.fits() {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
+        return say(context, &facts, &fit.said());
     }
+    if context.format().is_json() {
+        context.answer(&facts).map_err(|error| unsaid(&error))?;
+    }
+    Err(Failure::new(Exit::Failed, "there isn't enough memory to hibernate").because(fit.short()))
+}
+
+/// Says `facts` with `--json`, else `words` set to the terminal's measure.
+fn say(context: &terminal_kit::Context, facts: &Value, words: &str) -> Result<(), Failure> {
+    let written = if context.format().is_json() {
+        context.answer(facts)
+    } else {
+        let lines = terminal_kit::layout::paragraph(words, 0, context.room.for_prose());
+        context.say(&(lines.join("\n") + "\n"))
+    };
+    written.map_err(|error| unsaid(&error))
+}
+
+fn unsaid(error: &std::io::Error) -> Failure {
+    Failure::new(Exit::Failed, "the answer couldn't be said").because(error.to_string())
 }
 
 /// The video memory and the system memory it maps (GTT) in use on each card
@@ -819,23 +852,76 @@ fn power_off() {
     let _ = said("systemctl", &["poweroff", "--check-inhibitors=no"]);
 }
 
+fn help() -> Help {
+    Help::new(
+        "hibernate-unlock",
+        "lets the lock go after a resume from hibernation",
+    )
+    .example(
+        "hibernate-unlock fits",
+        "whether memory's image would fit now",
+    )
+    .subcommand(
+        Help::new("fits", "says whether a hibernation's image would fit")
+            .example(
+                "hibernate-unlock fits",
+                "whether memory's image would fit now",
+            )
+            .example("hibernate-unlock fits --json", "the same, as JSON")
+            .exit(Exit::Failed, "the image wouldn't fit"),
+    )
+    .subcommand(sleeps("pre", "what systemd-sleep runs before a sleep"))
+    .subcommand(sleeps("post", "what systemd-sleep runs after a sleep"))
+    .subcommand(
+        Help::new("rescue", "tells of a hibernation that rolled back")
+            .argument("[why...]", "memory, swap-gone, device DRIVER...")
+            .example("hibernate-unlock rescue memory", "memory ran short")
+            .exit(Exit::Done, NEVER_FAILS),
+    )
+    .subcommand(
+        Help::new(
+            "restoring",
+            "what the initrd runs before it reads the image back",
+        )
+        .example("hibernate-unlock restoring", "what the initrd runs")
+        .exit(Exit::Done, NEVER_FAILS),
+    )
+    .exit(Exit::Failed, "the image wouldn't fit")
+}
+
+/// What a step that never fails what it runs within says of its exit.
+const NEVER_FAILS: &str = "always; what it found goes to the journal";
+
+/// One of the steps systemd-sleep runs around a sleep, which logs what it
+/// found and never fails the sleep.
+fn sleeps(when: &str, about: &str) -> Help {
+    Help::new(when, about)
+        .argument("<action>", "the sleep, as hibernate or suspend")
+        .argument("[disk...]", "the encrypted disks the lock asks for")
+        .example(
+            &format!("hibernate-unlock {when} hibernate"),
+            "what systemd-sleep runs",
+        )
+        .exit(Exit::Done, NEVER_FAILS)
+}
+
 fn main() -> ExitCode {
-    let args: Vec<String> = env::args().skip(1).collect();
-    match args.as_slice() {
-        [when, action, ..] if when == "pre" => before(action),
-        [when, action, disks @ ..] if when == "post" => after(action, disks),
-        [what, why @ ..] if what == "rescue" => rescue_now(&Why::from_args(why)),
-        [what] if what == "fits" => return fits_now(),
-        [what] if what == "restoring" => restoring(),
-        _ => {
-            eprintln!(
-                "usage: hibernate-unlock pre|post <action> [<disk>...] | rescue [<why>...] | fits \
-                 | restoring"
-            );
-            return ExitCode::from(2);
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        // Each of the sleep's own steps logs what it found and never fails
+        // the sleep, so only `fits` answers with a failing exit.
+        match context.args.as_slice() {
+            [when, action, ..] if when == "pre" => before(action),
+            [when, action, disks @ ..] if when == "post" => after(action, disks),
+            [what, why @ ..] if what == "rescue" => rescue_now(&Why::from_args(why)),
+            [what] if what == "fits" => return fits_now(context),
+            [what] if what == "restoring" => restoring(),
+            _ => {
+                return Err(Failure::new(Exit::Usage, "that isn't one of its commands")
+                    .try_this("hibernate-unlock --help"));
+            }
         }
-    }
-    ExitCode::SUCCESS
+        Ok(())
+    })
 }
 
 #[cfg(test)]

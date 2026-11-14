@@ -1,4 +1,4 @@
-home · profile 3 · 2 devices on now · read 1 min 7 s ago
+home · profile 3 · 2 devices on now · read 1 m 7 s ago
 
 node  device             kind             band    ch   signal    SNR         rx  MCS  NSS         tx  MCS  NSS      down         up  address
 Den   generic 2          generic          5 GHz   52  −37 dBm  71 dB  1.20 Gb/s   11    2  1.08 Gb/s   10    2    0 b/s      0 b/s   10.0.0.45

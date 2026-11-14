@@ -1,4 +1,4 @@
-home · 15 speed tests · read 1 min 7 s ago
+home · 15 speed tests · read 1 m 7 s ago
 
 speed                 lowest       mean    highest
 down   ⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿   370 Mb/s   370 Mb/s   370 Mb/s

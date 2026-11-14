@@ -17,6 +17,7 @@
 
 mod asks;
 mod counted;
+mod faults;
 mod landings;
 mod launcher;
 mod measure;
@@ -25,6 +26,7 @@ mod network;
 mod open;
 mod plans;
 mod readings;
+mod responds;
 pub mod review;
 
 use std::fmt::Write;

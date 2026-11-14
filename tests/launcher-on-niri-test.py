@@ -937,6 +937,12 @@ def test_the_shut_launcher_rewords_the_windows_a_switch_moved(shell: Shell) -> N
 RESIZES = 20
 
 
+def sits_on(window: Json, said: str) -> bool:
+    """Say whether the margin cat's report has it sitting still over this window."""
+    at = launcher_on_niri.placed(said)
+    return at is not None and at.get("window") == window["id"] and not at.get("walk")
+
+
 def test_the_shut_shell_sleeps_as_a_window_is_resized(shell: Shell) -> None:
     """With the launcher shut, a window beside the keys' resized over and over is heard of not once.
 
@@ -946,6 +952,8 @@ def test_the_shut_shell_sleeps_as_a_window_is_resized(shell: Shell) -> None:
     every tile only while a notice is drawn. The margin's cat sits over the window with the
     keys, so that one tile is told, and a resize of it is heard; it watched every tile, and the
     shell heard each of 20 resizes again (2026-11-12). So the window resized is one beside it.
+    On its way over to that window it wants every tile, the gap it leaps among them, so the
+    shell at rest is measured once the cat sits there.
     What the shell reads of niri's windows is counted line by line, the windows' opening
     proving the count runs; a wake counted from /proc took in whatever else the shell did then,
     such as the work a closing leaves for a moment after.
@@ -959,7 +967,9 @@ def test_the_shut_shell_sleeps_as_a_window_is_resized(shell: Shell) -> None:
     # Opened right of the one with the keys, so resizing it moves nothing left of it.
     beside = shell.opened("Godwit Notes")
     try:
+        since = shell.mark()
         shell.as_account(f"niri msg action focus-window --id {window['id']}")
+        shell.reported("sits cat ", functools.partial(sits_on, window), since)
         # The span measured, for the windows' opening to reach the shell, not a wait for it.
         time.sleep(SETTLING.total_seconds())
         opening = heard()
@@ -3343,6 +3353,52 @@ def drawer_trace(said: list[str]) -> list[str]:
     return trace
 
 
+LETTER_TYPED = re.compile(r"letter typed (\d+) ms after the one before, resting (\d+)")
+
+# How many times a word is typed again when a loaded builder spaced its letters past the rest.
+TYPING_TRIES = 3
+
+
+def letters_over_the_rest(said: list[str]) -> list[int]:
+    """Give each gap the shell heard between letters typed since the mark that passed its rest.
+
+    The first letter's gap is from whatever was typed before the mark, so it's left out.
+    """
+    gaps = [LETTER_TYPED.fullmatch(one) for one in said if one.startswith("letter typed ")]
+    return [int(gap[1]) for gap in gaps[1:] if gap and int(gap[1]) >= int(gap[2])]
+
+
+def typed_under_the_rest(shell: Shell, text: str, until: Callable[[int], None]) -> list[str]:
+    """Type the text from home until its letters all came quicker than the rest, and say what.
+
+    Each try opens the launcher on home, its first row's drawer followed, and types the text,
+    then `until` waits from the mark for what the try should end on. wtype's letters are 50 ms
+    apart, but a loaded builder spaced them past the 160 ms rest, and a drawer rightly made
+    between them failed the cases judging typing quicker than it (Y2YBTS, 2026-11-14,
+    ed99cdc6 and 5dc9f833), so a try whose letters the shell heard over it is typed again.
+    """
+    over: list[int] = []
+    for _ in range(TYPING_TRIES):
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        try:
+            shell.on_find()
+            # Home's first row's drawer follows as it opens, before any letter.
+            shell.launcher_until(lambda shown: shown["drawer"]["out"] and selecting("Now", shown))
+            shell.held_still()
+            since = shell.mark()
+            shell.send_chars(text)
+            until(since)
+            said, _ = shell.said_since(since)
+        finally:
+            shell.close_launcher()
+        over = letters_over_the_rest(said)
+        if not over:
+            return said
+    overrun = f"{text!r}'s letters came over the rest in every try, last {over} ms"
+    raise AssertionError(overrun)
+
+
 def test_letters_typed_quicker_than_the_rest_make_one_drawer(shell: Shell) -> None:
     """Letters typed faster than they rest make the drawer once, for where the typing stops.
 
@@ -3352,24 +3408,17 @@ def test_letters_typed_quicker_than_the_rest_make_one_drawer(shell: Shell) -> No
     A program's drawer, made in 4 to 14 ms here, never joins its key's frame, so typing onto
     one shows it; each letter makes its row again, and its drawer was made again each time.
     """
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
-    try:
-        shell.on_find()
-        # Home's first row's drawer follows as it opens, before any letter.
-        shell.held_still()
-        since = shell.mark()
-        shell.send_chars("foot")
+
+    def footed(since: int) -> None:
         shell.launcher_until(lambda shown: shown["typed"] == "foot")
         shell.reported("drawer follows program:foot", lambda _: True, since)
         shell.held_still()
-        said, _ = shell.said_since(since)
-        followed = [report for report in said if report.startswith("drawer follows ")]
-        assert followed == ["drawer follows program:foot"], (
-            f"a drawer was made between letters: {drawer_trace(said)}"
-        )
-    finally:
-        shell.close_launcher()
+
+    said = typed_under_the_rest(shell, "foot", footed)
+    followed = [report for report in said if report.startswith("drawer follows ")]
+    assert followed == ["drawer follows program:foot"], (
+        f"a drawer was made between letters: {drawer_trace(said)}"
+    )
 
 
 def test_a_drawer_resting_for_the_letters_names_the_row_selected(shell: Shell) -> None:
@@ -3381,25 +3430,18 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(shell: Shell) -
     the selection from Now, whose drawer is out, to the program, whose drawer never joins its
     key's frame, and before that drawer follows the drawer out must say the program's name.
     """
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
-    try:
-        shell.on_find()
-        shell.launcher_until(lambda shown: shown["drawer"]["out"] and selecting("Now", shown))
-        shell.held_still()
-        since = shell.mark()
-        shell.send_chars("foot")
+
+    def footed(since: int) -> None:
         shell.reported("drawer follows program:foot", lambda _: True, since)
-        said, _ = shell.said_since(since)
-        before = said[: said.index("drawer follows program:foot")]
-        shown = [json.loads(one[len("showing ") :]) for one in before if one.startswith("showing ")]
-        on_foot = [one for one in shown if one["drawer"]["out"] and selecting("Foot", one)]
-        assert on_foot, f"the drawer was never out beside Foot: {drawer_trace(said)}"
-        assert on_foot[-1]["drawer"]["title"] == "Foot", (
-            f"the drawer named another row: {drawer_trace(said)}"
-        )
-    finally:
-        shell.close_launcher()
+
+    said = typed_under_the_rest(shell, "foot", footed)
+    before = said[: said.index("drawer follows program:foot")]
+    shown = [json.loads(one[len("showing ") :]) for one in before if one.startswith("showing ")]
+    on_foot = [one for one in shown if one["drawer"]["out"] and selecting("Foot", one)]
+    assert on_foot, f"the drawer was never out beside Foot: {drawer_trace(said)}"
+    assert on_foot[-1]["drawer"]["title"] == "Foot", (
+        f"the drawer named another row: {drawer_trace(said)}"
+    )
 
 
 def test_an_opening_is_timed_from_the_chord_that_asked_for_it(shell: Shell) -> None:

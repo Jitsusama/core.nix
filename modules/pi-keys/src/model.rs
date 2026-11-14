@@ -39,21 +39,71 @@ pub enum Thread {
     Pi,
 }
 
+/// What held a thread through a burst: running its own work, waiting for
+/// a CPU, or in D, for the disk or swap read back in. Which it was says
+/// whether a slow key is the program's to fix or its place in the queue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Why {
+    Ran,
+    Queued,
+    Disk,
+}
+
+impl Why {
+    /// The one of a burst's times, on a CPU, waiting for one and in D, in
+    /// milliseconds, that's largest; a tie goes to running, then to
+    /// waiting, so a burst is never put down to the queue on a guess.
+    pub fn of(cpu: f64, wait: f64, d: f64) -> Why {
+        if cpu >= wait && cpu >= d {
+            Why::Ran
+        } else if wait >= d {
+            Why::Queued
+        } else {
+            Why::Disk
+        }
+    }
+}
+
 /// A thread's solid bursts as spans of the monotonic clock, in
-/// milliseconds, sorted by their starts.
+/// milliseconds, sorted by their starts, with what held each when it's
+/// told.
 #[derive(Debug, Default, Clone)]
 pub struct Spans {
     starts: Vec<f64>,
     ends: Vec<f64>,
+    whys: Vec<Option<Why>>,
 }
 
 impl Spans {
-    pub fn new(mut spans: Vec<(f64, f64)>) -> Self {
+    /// Bursts whose cause isn't told, as tests about the timing alone
+    /// give them; the sampler always tells it.
+    #[cfg(test)]
+    pub fn new(spans: Vec<(f64, f64)>) -> Self {
+        Self::sorted(spans.into_iter().map(|(a, b)| (a, b, None)).collect())
+    }
+
+    /// Bursts, each with what held the thread through it.
+    pub fn told(spans: Vec<(f64, f64, Why)>) -> Self {
+        Self::sorted(spans.into_iter().map(|(a, b, w)| (a, b, Some(w))).collect())
+    }
+
+    fn sorted(mut spans: Vec<(f64, f64, Option<Why>)>) -> Self {
         spans.sort_by(|a, b| a.0.total_cmp(&b.0));
         Spans {
             starts: spans.iter().map(|s| s.0).collect(),
             ends: spans.iter().map(|s| s.1).collect(),
+            whys: spans.iter().map(|s| s.2).collect(),
         }
+    }
+
+    /// What held the thread through the burst a key arriving at `t` lands
+    /// in, when it lands in one whose cause is told.
+    pub fn why(&self, t: f64) -> Option<Why> {
+        let i = self
+            .starts
+            .partition_point(|start| *start <= t)
+            .checked_sub(1)?;
+        (t < self.ends[i]).then_some(self.whys[i]).flatten()
     }
 
     /// How long a key arriving at `t` waits for the burst it lands in.
@@ -84,11 +134,13 @@ impl Path {
     }
 }
 
-/// One modelled key: how long it took, and its wait at each hop.
+/// One modelled key: how long it took, its wait at each hop, and what
+/// held pi when pi held it past [`LOST`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Key {
     pub total: f64,
     pub waits: [f64; 5],
+    pub pi_why: Option<Why>,
 }
 
 /// A small generator, so the same sample always models the same keys.
@@ -131,14 +183,20 @@ pub fn keys(
             let start = instant(at_pi, draw.next() * total);
             let mut t = start;
             let mut waits = [0.0; 5];
+            let mut pi_why = None;
             for (hop, (_, thread)) in HOPS.iter().enumerate() {
-                waits[hop] = path.of(*thread).residual(t);
+                let spans = path.of(*thread);
+                waits[hop] = spans.residual(t);
+                if *thread == Thread::Pi && waits[hop] > LOST {
+                    pi_why = spans.why(t);
+                }
                 t += waits[hop] + COST[hop];
             }
             let vblank = frame - t.rem_euclid(frame);
             Key {
                 total: t + vblank - start,
                 waits,
+                pi_why,
             }
         })
         .collect()
@@ -168,6 +226,10 @@ pub struct Summary {
     /// The share of keys that waited longer than [`LOST`] at niri, at
     /// kitty and at pi, either way through.
     pub lost_at: [f64; 3],
+    /// The share of keys pi held past [`LOST`] while running, waiting for
+    /// a CPU and in D. A key held in a burst whose cause isn't told counts
+    /// in none, so the three can sum to less than pi's share.
+    pub pi_lost_by: [f64; 3],
 }
 
 /// Sums up modelled keys, or nothing when there are none.
@@ -203,6 +265,8 @@ pub fn summary(keys: &[Key]) -> Option<Summary> {
         max: totals[totals.len() - 1],
         late: share(totals.iter().filter(|t| **t > LATE).count()),
         lost_at: [lost(Thread::Niri), lost(Thread::Kitty), lost(Thread::Pi)],
+        pi_lost_by: [Why::Ran, Why::Queued, Why::Disk]
+            .map(|why| share(keys.iter().filter(|key| key.pi_why == Some(why)).count())),
     })
 }
 
@@ -261,6 +325,64 @@ mod tests {
         assert_eq!(sum.lost_at[0], 0.0);
         assert_eq!(sum.lost_at[1], 0.0);
         assert!(sum.p99 > 90.0 && sum.max <= 100.0 + 6.5 + FRAME, "{sum:?}");
+    }
+
+    #[test]
+    fn a_burst_is_put_down_to_the_largest_of_its_times() {
+        assert_eq!(Why::of(30.0, 5.0, 0.0), Why::Ran);
+        assert_eq!(Why::of(5.0, 30.0, 0.0), Why::Queued);
+        assert_eq!(Why::of(5.0, 5.0, 30.0), Why::Disk);
+        assert_eq!(Why::of(10.0, 10.0, 0.0), Why::Ran, "a tie goes to running");
+        assert_eq!(Why::of(0.0, 10.0, 10.0), Why::Queued, "then to waiting");
+    }
+
+    #[test]
+    fn a_key_takes_the_cause_of_the_burst_it_lands_in() {
+        let spans = Spans::told(vec![(100.0, 140.0, Why::Queued), (10.0, 20.0, Why::Disk)]);
+        assert_eq!(spans.why(15.0), Some(Why::Disk));
+        assert_eq!(spans.why(110.0), Some(Why::Queued));
+        assert_eq!(spans.why(30.0), None, "between bursts");
+        assert_eq!(spans.why(5.0), None, "before the first");
+        assert_eq!(Spans::new(vec![(0.0, 10.0)]).why(5.0), None, "not told");
+    }
+
+    #[test]
+    fn pi_s_lost_keys_split_by_what_held_it() {
+        // pi is busy half the time for 100 ms at a go, waiting for a CPU
+        // through every other burst and running through the rest.
+        let busy = (0..300)
+            .map(|i| {
+                let at = f64::from(i) * 200.0;
+                let why = if i % 2 == 0 { Why::Queued } else { Why::Ran };
+                (at, at + 100.0, why)
+            })
+            .collect();
+        let path = Path {
+            pi: Spans::told(busy),
+            ..Path::default()
+        };
+        let keys = keys(&path, &[(0.0, 60_000.0)], FRAME, 4000, &mut Draw::new(3));
+        let sum = summary(&keys).unwrap();
+        let [ran, queued, disk] = sum.pi_lost_by;
+        assert!(
+            (ran + queued + disk - sum.lost_at[2]).abs() < 1e-9,
+            "{sum:?}"
+        );
+        assert!((queued - 0.21).abs() < 0.04, "half of pi's 42%: {sum:?}");
+        assert!((ran - 0.21).abs() < 0.04, "the other half: {sum:?}");
+        assert_eq!(disk, 0.0, "no burst was in D");
+    }
+
+    #[test]
+    fn a_key_held_in_a_burst_not_told_counts_in_no_cause() {
+        let path = Path {
+            pi: Spans::new(vec![(0.0, 100_000.0)]),
+            ..Path::default()
+        };
+        let keys = keys(&path, &[(0.0, 50_000.0)], FRAME, 200, &mut Draw::new(5));
+        let sum = summary(&keys).unwrap();
+        assert_eq!(sum.lost_at[2], 1.0, "pi held every key");
+        assert_eq!(sum.pi_lost_by, [0.0; 3], "yet none by a cause");
     }
 
     #[test]
