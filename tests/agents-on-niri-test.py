@@ -701,13 +701,13 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     shell.launcher_until(lambda shown: shown["rows"] == [TRY_FIRST])
     assert shell.showing()["selected"]["side"] not in {"", "core.nix#2138"}, shell.showing()
     # Its side says when it landed; its drawer is titled by what to try and says the rest
-    # after its facts, one of which is what changed. Its change and where it landed are among
-    # the nerdy bits, never a fact (VKCF3Z, ee3bac47, c2d01d53).
+    # after its facts, one of which is what changed. Its change is among the nerdy bits, never
+    # a fact, with where it landed, which this one doesn't say (VKCF3Z, ee3bac47, c2d01d53).
     shell.launcher_until(
         lambda shown: (
             (shown["drawer"] or {}).get("title") == TRY_FIRST
             and shown["drawer"]["body"] == TRY_REST
-            and {"Change", "Repository"} <= set(shown["drawer"]["nerd"])
+            and "Change" in shown["drawer"]["nerd"]
             and CLOSING in shown["drawer"]["values"]
             and "core.nix#2138" not in shown["drawer"]["values"]
         )
