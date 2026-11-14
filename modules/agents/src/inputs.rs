@@ -1038,7 +1038,7 @@ mod tests {
         assert_eq!(
             moved.changed,
             vec![
-                json!({"key": "talks:P", "kind": "talks", "address": "P", "talks": [
+                json!({"key": "talks:agents:P", "kind": "talks", "address": "P", "talks": [
                 {"id": "talk-9", "at": "2026-11-14T09:00:00.000Z", "words": "too dim",
                  "stage": "sent", "after": "", "reply": "", "why": "", "came": ""}]})
             ],

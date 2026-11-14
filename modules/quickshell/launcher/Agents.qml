@@ -949,7 +949,7 @@ Provider {
     // field (modules/agents/src/inboxes.rs), read again as they move.
     function servedTalks(address) {
         void talksMoves;
-        return (rowsKind?.held ?? {})[`talks:${String(address).toUpperCase()}`]?.talks ?? [];
+        return (rowsKind?.held ?? {})[`talks:agents:${String(address).toUpperCase()}`]?.talks ?? [];
     }
 
     // Says `text` to the session at `address` as Talk does: what Take It Back tells the void.

@@ -21,6 +21,9 @@ use crate::talks::Talk;
 
 /// What the served records are, one per address.
 pub const KIND: &str = "talks";
+/// The place they're served in, which a watch narrowed to Agents' place
+/// reads from each key's second part (`daemon_serve::asks::place_of`).
+const PLACE: &str = "agents";
 /// How many talks done with are shown after the open ones, as Super+S's
 /// line keeps its own (TalkLine.js's `KEPT_TALKS`).
 pub const KEPT: usize = 3;
@@ -159,7 +162,7 @@ pub fn records<S: std::hash::BuildHasher>(
             let kept = told.get(address).map_or(&[][..], Vec::as_slice);
             let sent = waiting.get(address).map_or(&[][..], Vec::as_slice);
             let talks: Vec<Value> = shown(kept, sent).iter().map(|talk| said(talk)).collect();
-            json!({"key": format!("{KIND}:{address}"), "kind": KIND, "address": address,
+            json!({"key": format!("{KIND}:{PLACE}:{address}"), "kind": KIND, "address": address,
                 "talks": talks})
         })
         .collect()
@@ -298,7 +301,7 @@ mod tests {
         assert_eq!(
             (records[1]["key"].as_str(), ids(&records[1])),
             (
-                Some("talks:SKIFF"),
+                Some("talks:agents:SKIFF"),
                 vec![
                     "sent-6",
                     "replied-5",
