@@ -4797,11 +4797,16 @@ Scope {
     readonly property bool talking: typeof asking?.talks === "function"
     readonly property var talks: talking ? asking.talks() : []
     readonly property bool talkless: talking && talks.length === 0
-    // An answer the launcher shows is one Joel has seen, which its place tells whoever keeps
-    // it, so it's open no more after a restart.
-    onTalksChanged: {
-        if (open && talking && typeof asking.heard === "function")
-            asking.heard();
+    // An answer shown under the field two seconds is one Joel has read, as a session's drawer
+    // kept that long is (Agents.qml's staying), which its place tells whoever keeps it, so it's
+    // open no more after a restart. It's told again each two seconds while one is shown
+    // unread, since the daemon may not yet have heard of the answer the shell shows.
+    Timer {
+        interval: 2000
+        repeat: true
+        running: root.open && root.talking && root.talks.length > 0
+            && typeof root.asking.heard === "function"
+        onTriggered: root.asking.heard()
     }
 
     // Asks for words in the field, with nothing to choose from below it.
@@ -4819,8 +4824,11 @@ Scope {
     }
 
     // Hands over what was typed, and empties the field for another try
-    // while the footer says how it went.
-    function give() {
+    // while the footer says how it went. `pressed` is when its Return was
+    // pressed, or heard where no press was stamped, from which the frame
+    // showing what became of the words is timed, held to design.md's 50 ms
+    // as Super+S's line is.
+    function give(pressed) {
         const words = prompt.text;
         if (words === "")
             return;
@@ -4838,7 +4846,10 @@ Scope {
         asking.given(words);
         prompt.text = "";
         searchNow();
+        wordsGiven = { from: pressed, framing: false };
     }
+    // Words handed over, until the frame begun after them is swapped.
+    property var wordsGiven: null
 
     // What a talk's field is still asking for, by whom it goes to.
     readonly property string drafting: asking?.draft ?? ""
@@ -8264,6 +8275,9 @@ Scope {
                     .filter(part => part !== "").join(" \u00b7 ")
             })),
             asking: !!root.asking,
+            // What an ask for words to a session shows under its field, as the line
+            // shows its talks, or null for an ask that shows none.
+            talks: root.talking ? root.talks : null,
             // Where the field's caret stands, so a talk's can be seen kept.
             caret: prompt.caret,
             // What the list says in place of rows, where it has none.
@@ -10720,6 +10734,25 @@ Scope {
             }
         }
 
+        // Words given are shown by the first frame begun after them, so a
+        // swap of one already under way isn't taken for it.
+        Connections {
+            target: card.Window.window
+            enabled: root.wordsGiven !== null
+
+            function onAfterAnimating() {
+                root.wordsGiven.framing = true;
+            }
+
+            function onFrameSwapped() {
+                if (!root.wordsGiven.framing)
+                    return;
+                console.info(`launcher: words given shown ${Math.round(KeyTimes.now()
+                    - root.wordsGiven.from)} ms after their Return`);
+                root.wordsGiven = null;
+            }
+        }
+
         Connections {
             target: card.Window.window
             enabled: root.keysDrawing.waiting.length + root.keysDrawing.framing.length > 0
@@ -11078,7 +11111,7 @@ Scope {
                             if (arming)
                                 root.landedKey = "";
                             else if (act === "gave")
-                                root.give();
+                                root.give(pressed > 0 ? pressed : heard);
                             else if (act === "entered")
                                 root.enter(root.selected);
                             else if (act === "lined")
