@@ -293,8 +293,14 @@ mod tests {
 
     #[test]
     fn a_time_is_no_page() {
-        assert!(asked(&words(&["run", BUS, "goto", "12:30"])).is_err());
-        assert!(asked(&words(&["run", BUS, "goto"])).is_err());
+        assert!(
+            asked(&words(&["run", BUS, "goto", "12:30"])).is_err(),
+            "a time was read as a page"
+        );
+        assert!(
+            asked(&words(&["run", BUS, "goto"])).is_err(),
+            "goto with no page was read as one"
+        );
     }
 
     #[test]
@@ -315,10 +321,22 @@ mod tests {
 
     #[test]
     fn too_little_or_too_much_is_misused() {
-        assert!(asked(&words(&[])).is_err());
-        assert!(asked(&words(&["run", BUS])).is_err());
-        assert!(asked(&words(&["run", BUS, "set", "a", "b"])).is_err());
-        assert!(asked(&words(&["line"])).is_err());
+        assert!(
+            asked(&words(&[])).is_err(),
+            "no words were read as a command"
+        );
+        assert!(
+            asked(&words(&["run", BUS])).is_err(),
+            "run with no command was read as one"
+        );
+        assert!(
+            asked(&words(&["run", BUS, "set", "a", "b"])).is_err(),
+            "a command and two spare words were read as one"
+        );
+        assert!(
+            asked(&words(&["line"])).is_err(),
+            "line with no bus was read as one"
+        );
     }
 
     #[test]

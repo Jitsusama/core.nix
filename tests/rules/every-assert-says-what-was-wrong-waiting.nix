@@ -309,7 +309,6 @@
   "modules/wifid/daemon/src/supplicant.rs" = 8;
   "modules/wifid/sign-in/src/main.rs" = 6;
   "modules/wifid/sign-in/src/socks.rs" = 4;
-  "modules/zathura/command/src/main.rs" = 5;
   "modules/zathura/next-document/src/main.rs" = 4;
   "tests/vm/sound/call-transcripts-vm-test.py" = 9;
   "tests/vm/devices/desk-facts-vm-test.py" = 4;
