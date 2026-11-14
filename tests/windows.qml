@@ -190,7 +190,7 @@ ShellRoot {
                 Object.assign(desktop(logbook),
                     { spaces: { "eDP-1": [1, 2, 3], "HDMI-A-1": [4] } })] }));
             const madeHearing = windows.tally.rows - madeBefore;
-            const offered = windows.workspacesFor(windows.held.windows["window:11"]);
+            const offered = windows.windowTargets.workspacesFor(windows.held.windows["window:11"]);
             Expect.same("Move to Workspace offers the others on its screen, saying what's on each",
                 offered.map(row => `${row.name}: ${row.side}`).join("; "),
                 "Workspace 2: tester \u00d72, foot; A new workspace: ");

@@ -164,6 +164,14 @@ Provider {
         provider: provider
     }
 
+    // Where a window's acts can send it (WindowTargets.qml).
+    WindowTargets {
+        id: whereTo
+
+        provider: provider
+    }
+    property alias windowTargets: whereTo
+
     // Every window's key as its row says it, and This Window's, for a pick
     // (Launcher.qml's knowing), read from niri with no row made: unwanted,
     // the rows are those last made, or none, so a pick would forget a
@@ -684,11 +692,11 @@ Provider {
             side: "\u2026",
             ask: "which workspace?",
             chip: "move to",
-            targets: () => provider.workspacesFor(window)
+            targets: () => whereTo.workspacesFor(window)
         }));
         // Another screen, where there's one to go to, each named as Screens
         // names it (Displays.qml).
-        const screens = provider.screensFor(window);
+        const screens = whereTo.screensFor(window);
         if (screens.length > 0)
             all.push(act("verb:screen", "", {
                 side: "\u2026",
@@ -700,7 +708,7 @@ Provider {
             side: "\u2026",
             ask: "how wide?",
             chip: "size",
-            targets: () => provider.sizesFor(window)
+            targets: () => whereTo.sizesFor(window)
         }));
         if (below)
             all.push(act("verb:below", "", {
@@ -741,75 +749,5 @@ Provider {
 
     function closing(window) {
         return { run: () => Niri.act({ CloseWindow: { id: window.id } }) };
-    }
-
-    // The lit screens a window isn't on, as Screens names them, or none when
-    // there's one screen, or no Screens to ask.
-    function screensFor(window) {
-        const displays = (provider.launcher?.sources ?? [])
-            .find(source => source.settings.name === "displays") ?? null;
-        const here = daemon.held[`workspace:${window.workspace_id}`]?.output ?? "";
-        const others = displays ? displays.lit.filter(output => output.name !== here) : [];
-        return others.map(output => thing({
-            key: `screen:${output.name}`,
-            verb: "move",
-            name: displays.named(output),
-            glyph: Theme.glyph.display,
-            hue: "machine",
-            run: () => Niri.act({ MoveWindowToMonitor: { id: window.id, output: output.name } })
-        }));
-    }
-
-    // The widths a window can be given, as shares of its screen, niri's
-    // own proportions in percent.
-    readonly property var widths: [["third", 100 / 3], ["half", 50], ["two-thirds", 200 / 3]]
-
-    function sizesFor(window) {
-        return widths.map(width => thing({
-            key: `verb:size:${width[0]}`,
-            verb: Words.verb(`verb:size:${width[0]}`),
-            name: Words.name(`verb:size:${width[0]}`),
-            glyph: Words.glyph("verb:size"),
-            hue: "action",
-            run: () => Niri.act({
-                SetWindowWidth: { id: window.id, change: { SetProportion: width[1] } }
-            })
-        }));
-    }
-
-    // The workspaces a window could go to, on its own screen in order, each
-    // saying what's on it, as the windows daemon holds them. niri always
-    // keeps an empty one last, which is how a new workspace is made, so that
-    // one is offered as new.
-    function workspacesFor(window) {
-        const said = daemon.held;
-        const current = said.desktop?.current ?? null;
-        // The chord that moves the focused window there, to learn next time.
-        const chordTo = idx => {
-            const does = `Move the window to workspace ${idx}`;
-            const action = Shortcuts.actions.find(a => a.does === does);
-            return action ? action.chord.map(key => key.text).join("+") : "";
-        };
-        const words = Words.of("windows").said;
-        return HeldWindows.spacesFrom(said, window.workspace_id).map(space => {
-            const chord = window.id === current ? chordTo(space.idx) : "";
-            return thing({
-                key: `workspace:${space.idx}`,
-                verb: "move",
-                name: space.new ? "A new workspace" : space.name ?? `Workspace ${space.idx}`,
-                count: space.focused ? words.here : "",
-                glyph: space.new ? Theme.glyph.newWorkspace : Theme.glyph.workspace,
-                hue: "machine",
-                side: space.new ? "" : HeldWindows.insideSaid(space.inside, words),
-                note: chord === "" ? "" : words.nextTime.replace("{chord}", chord),
-                run: () => Niri.act({
-                    MoveWindowToWorkspace: {
-                        window_id: window.id,
-                        reference: { Id: space.id },
-                        focus: true
-                    }
-                })
-            });
-        });
     }
 }
