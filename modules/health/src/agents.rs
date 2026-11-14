@@ -6,10 +6,13 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use crate::memory;
 
 /// An agent that died, as its presence last said.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,6 +61,57 @@ impl Agents {
 #[must_use]
 pub fn look(presences: &Path, proc: &Path) -> BTreeMap<String, Died> {
     let boot = fs::read_to_string(proc.join("sys/kernel/random/boot_id")).unwrap_or_default();
+    gone_from(presences, |owner| alive(owner, proc, boot.trim()))
+}
+
+/// Look in `presences` for sessions whose owner `ps` no longer shows and
+/// that didn't park, by session, where there's no `/proc`, as on a Mac.
+#[must_use]
+pub fn asked(presences: &Path, now: i64) -> BTreeMap<String, Died> {
+    let said = |program: &str, args: &[&str]| {
+        Command::new(program)
+            .args(args)
+            .output()
+            .ok()
+            .filter(|said| said.status.success())
+            .map(|said| String::from_utf8_lossy(&said.stdout).into_owned())
+    };
+    // Without what ps says, every session would look dead, so none is.
+    let Some(processes) = said("/bin/ps", &["-axo", "pid=,etime="]) else {
+        return BTreeMap::new();
+    };
+    let boot = said("/usr/sbin/sysctl", &["-n", "kern.bootsessionuuid"]).unwrap_or_default();
+    gone_by_ps(presences, &processes, now, boot.trim())
+}
+
+/// The sessions in `presences` gone without parking, by what
+/// `ps -o pid=,etime=` said at `now`, in microseconds since the epoch, in
+/// the boot `boot`.
+fn gone_by_ps(presences: &Path, processes: &str, now: i64, boot: &str) -> BTreeMap<String, Died> {
+    let now = now / 1_000_000;
+    let started: BTreeMap<u64, i64> = processes
+        .lines()
+        .filter_map(|line| {
+            let (pid, ran) = line.trim().split_once(' ')?;
+            let ran = i64::try_from(memory::seconds_of(ran.trim())?).ok()?;
+            Some((pid.parse().ok()?, now - ran))
+        })
+        .collect();
+    gone_from(presences, |owner| {
+        let same_boot = owner["bootId"]
+            .as_str()
+            .is_none_or(|id| boot.is_empty() || id.eq_ignore_ascii_case(boot));
+        // ps says how long a process has run to the second, and a second
+        // may tick between it and now, so its start is known to two.
+        let began = owner["pid"].as_u64().and_then(|pid| started.get(&pid));
+        let said = owner["startedAt"].as_i64().map(|at| at / 1_000);
+        same_boot && matches!((began, said), (Some(began), Some(said)) if (began - said).abs() <= 2)
+    })
+}
+
+/// The sessions in `presences` that didn't park and whose owner isn't
+/// `alive`, by session.
+fn gone_from(presences: &Path, alive: impl Fn(&Value) -> bool) -> BTreeMap<String, Died> {
     fs::read_dir(presences)
         .into_iter()
         .flatten()
@@ -65,7 +119,7 @@ pub fn look(presences: &Path, proc: &Path) -> BTreeMap<String, Died> {
         .filter_map(|presence| {
             let said: Value = serde_json::from_slice(&fs::read(presence.path()).ok()?).ok()?;
             let state = said["state"].as_str()?;
-            if state == "parked" || alive(&said["owner"], proc, boot.trim()) {
+            if state == "parked" || alive(&said["owner"]) {
                 return None;
             }
             let died = Died {
@@ -177,6 +231,47 @@ mod tests {
                 quest: "QEST-1".into(),
                 title: "π - Git upkeep".into()
             }
+        );
+    }
+
+    /// A presence for `session` as a Mac writes it, owned by `pid` started
+    /// at `started`, in milliseconds since the epoch.
+    fn presence_on_a_mac(folder: &Path, session: &str, state: &str, pid: u32, started: u64) {
+        let said = format!(
+            r#"{{"session":"{session}","state":"{state}","at":"2026-11-12T05:16:23.062Z",
+                "owner":{{"pid":{pid},"startedAt":{started},"bootId":"F9D442DF-0001"}}}}"#
+        );
+        fs::write(folder.join(format!("{session}.json")), said).expect("a presence");
+    }
+
+    #[test]
+    fn an_agent_ps_no_longer_shows_since_it_started_died() {
+        let presences = tempfile::tempdir().expect("the presences");
+        // Now is 1,794,600,000 s; pid 10 started 4 days, 20:53:28 before,
+        // and pid 11 started an hour ago.
+        let now = 1_794_600_000_000_000;
+        let started = 1_794_600_000 - (4 * 86_400 + 20 * 3_600 + 53 * 60 + 28);
+        let processes = concat!("   10 04-20:53:28\n", "   11    01:00:00\n", "junk\n");
+        presence_on_a_mac(presences.path(), "running", "busy", 10, started * 1_000);
+        presence_on_a_mac(presences.path(), "parked", "parked", 12, 1_000);
+        presence_on_a_mac(presences.path(), "gone", "busy", 13, started * 1_000);
+        presence_on_a_mac(
+            presences.path(),
+            "pid-again",
+            "listening",
+            11,
+            started * 1_000,
+        );
+        let died = gone_by_ps(presences.path(), processes, now, "F9D442DF-0001");
+        assert_eq!(
+            died.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["gone", "pid-again"],
+            "neither the running nor the parked: {died:?}"
+        );
+        let after_a_restart = gone_by_ps(presences.path(), processes, now, "0A1B2C3D-0002");
+        assert!(
+            after_a_restart.contains_key("running"),
+            "an owner of another boot is gone: {after_a_restart:?}"
         );
     }
 
