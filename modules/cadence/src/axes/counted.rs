@@ -4,10 +4,11 @@
 //! lines where Joel sounded pained, which health counts in its day file;
 //! the security musts past due and holes open, which ISXEG8 files in the
 //! ledger; the asks for a secret, which health counts from secret-asks's
-//! journal; boot, shutdown, disk, memory and launches, from health's day
-//! file; and his apps' stalls, from cadence day's own figures. The daily
-//! measure's readings keep a file of their own, measure.rs, and so do the
-//! launcher's, launcher.rs. Each stays unread until its program has written a day.
+//! journal; the disk and memory the machine held, from health's day file;
+//! and the agents he corrected or lost. How fast the machine answers him
+//! keeps a file of its own, responds.rs, which reads these same sources;
+//! so do the daily measure's readings, measure.rs, and the launcher's,
+//! launcher.rs. Each stays unread until its program has written a day.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -202,206 +203,6 @@ pub fn held(s: &Sources) -> Vec<Reading> {
     ]
 }
 
-/// How fast the machine answers Joel, from health's day file: the slowest
-/// boot to a ready launcher with his password left out, the slowest
-/// shutdown, and the minutes the day's worst moments cost him, each timed
-/// from his key to what he waited for, so each is his side. The bars are
-/// the ones docs/design.md holds the machine to; no minute lost is the
-/// bar for the last, since he asked for end to end perfection. Programs
-/// opening and ending follow, held to design.md's 300 ms and 200 ms at the
-/// 99th percentile, as for keys; the windows daemon times them from the
-/// process starting and its last window gone, since niri never says the
-/// key that asked, so they are our side's. Restarts close the list, our
-/// side's too: a daemon serving again within a second of starting, from
-/// its own ready line, and the slowest unit a switch restarted back within
-/// 5 s, the specs the improvement system set for them (2026-11-11).
-#[must_use]
-pub fn responds(s: &Sources) -> Vec<Reading> {
-    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
-    let from = "health's day file";
-    let spread = |name: &str, timed: &str| {
-        figure(&format!("health.launches.{name}.median-ms"))
-            .zip(figure(&format!("health.launches.{name}.slowest-ms")))
-            .map(|(median, slowest)| {
-                format!(
-                    "a median {}, the slowest {}; timed from {timed}",
-                    shown(median, " ms"),
-                    shown(slowest, " ms")
-                )
-            })
-    };
-    let program = |says: &'static str, name: &str, budget: f64, timed: &str| {
-        Reading::new(
-            says,
-            figure(&format!("health.launches.{name}.p99-ms")),
-            " ms",
-            "80ECO2",
-        )
-        .bar(Bar::AtMost(budget))
-        .detail(spread(name, timed))
-        .from("health's day file, from the windows daemon")
-    };
-    vec![
-        Reading::new(
-            "the slowest boot {} to a ready launcher, the password left out",
-            figure("health.boot.seconds"),
-            " s",
-            "80ECO2",
-        )
-        .bar(Bar::AtMost(30.0))
-        .from(from)
-        .his(),
-        Reading::new(
-            "the slowest shutdown {}",
-            figure("health.shutdown.seconds"),
-            " s",
-            "80ECO2",
-        )
-        .bar(Bar::AtMost(10.0))
-        .from(from)
-        .his(),
-        Reading::new(
-            "time lost in the day's worst moments {}",
-            figure("health.feel.lost-minutes"),
-            " min",
-            "80ECO2",
-        )
-        .bar(Bar::AtMost(0.0))
-        .from("health's day file, from its feel of his tasks")
-        .his(),
-        program(
-            "the slowest program in a hundred to its first window {}",
-            "opened",
-            300.0,
-            "the program starting",
-        ),
-        program(
-            "the slowest program in a hundred to end once closed {}",
-            "ended",
-            200.0,
-            "its last window closing",
-        ),
-        Reading::new(
-            "the slowest daemon in a hundred to serve again {}",
-            figure("health.launches.ready.p99-ms"),
-            " ms",
-            "80ECO2",
-        )
-        .bar(Bar::AtMost(1_000.0))
-        .from("health's day file, from each program's ready line"),
-        // pi's start is kept apart from the daemons' since #3799, as its
-        // resumes run to seconds; the harness owns making it quicker.
-        Reading::new(
-            "the slowest pi in a hundred to show its session {}",
-            figure("health.launches.pi.p99-ms"),
-            " ms",
-            "85PKB2",
-        )
-        .bar(Bar::AtMost(3_000.0))
-        .detail(spread("pi", "pi starting"))
-        .from("health's day file, from pi's ready line"),
-        Reading::new(
-            "the slowest restart in a switch {}",
-            figure("health.switch.restart.slowest-ms"),
-            " ms",
-            "80ECO2",
-        )
-        .bar(Bar::AtMost(5_000.0))
-        .detail(figure("health.switch.restart.median-ms").map(|median| {
-            format!(
-                "a median {}; timed from its stopping to its ready",
-                shown(median, " ms")
-            )
-        }))
-        .from("health's day file"),
-    ]
-}
-
-/// How long his apps and his desktop waited, from the stalls cadence day
-/// keeps for app.slice and session.slice (niri, the shell and what runs
-/// them): each one's CPU wait and memory stalls, as a share of the day.
-/// They are his side's, since the kernel counts them on his own programs
-/// rather than on a builder or a model of him. 80ECO2, who keeps them,
-/// holds all four to 1% (2026-11-12).
-#[must_use]
-pub fn stalls(day: Option<&BTreeMap<String, f64>>) -> Vec<Reading> {
-    let figure = |key: &str| day.and_then(|d| d.get(key).copied());
-    let stall = |says: &'static str, key: &str, from: &'static str| {
-        Reading::new(says, figure(key), "%", "80ECO2")
-            .bar(Bar::AtMost(1.0))
-            .from(from)
-            .his()
-    };
-    let apps = "cadence's day, from app.slice's pressure";
-    let desktop = "cadence's day, from session.slice's pressure";
-    vec![
-        stall(
-            "his apps waiting for the CPU {} of the day",
-            "pressure.cpu.app",
-            apps,
-        ),
-        stall(
-            "his apps stalled for memory {} of the day",
-            "pressure.memory.app",
-            apps,
-        ),
-        stall(
-            "his desktop waiting for the CPU {} of the day",
-            "pressure.cpu.session",
-            desktop,
-        ),
-        stall(
-            "his desktop stalled for memory {} of the day",
-            "pressure.memory.session",
-            desktop,
-        ),
-    ]
-}
-
-/// The day's worst moments in each place he works, as the pain-points
-/// detector placed them and health sums them per place (80ECO2, from 13
-/// November), so the week's review can hold each place's pains to a
-/// reading from his side, each with the owner of that place.
-#[must_use]
-pub fn places(s: &Sources) -> Vec<Reading> {
-    vec![
-        lost(
-            s,
-            "time lost to pi in the day's worst moments {}",
-            "pi",
-            "85PKB2",
-        ),
-        lost(
-            s,
-            "time lost to the launcher in the day's worst moments {}",
-            "launcher",
-            "Y2YBTS",
-        ),
-        lost(
-            s,
-            "time lost to chrome in the day's worst moments {}",
-            "chrome",
-            "80ECO2",
-        ),
-    ]
-}
-
-/// One place's worst moments. A place health wrote no figure for, on a
-/// day it wrote the total, lost nothing.
-fn lost(s: &Sources, says: &'static str, place: &str, owner: &'static str) -> Reading {
-    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
-    let total = figure("health.feel.lost-minutes");
-    Reading::new(
-        says,
-        figure(&format!("health.feel.{place}.lost-minutes")).or(total.map(|_| 0.0)),
-        " min",
-        owner,
-    )
-    .bar(Bar::AtMost(0.0))
-    .from("health's day file, from its feel of his tasks")
-    .his()
-}
-
 /// The agents he stopped or corrected in the day's worst moments, as the
 /// pain-points detector signs them on his sessions and health counts them
 /// (80ECO2, from 13 November); a correction outside one isn't counted. Most of the week's pained lines that named no place were
@@ -433,6 +234,37 @@ pub fn corrected(s: &Sources) -> Reading {
     .his()
 }
 
+/// The agents' sessions health saw end without parking today, each a
+/// session whose work stopped where it stood rather than being put down:
+/// an agent lost mid-task is work that didn't reach him, so the bar is
+/// none. Read from our side, since he may not have been waiting on it.
+#[must_use]
+pub fn died(s: &Sources) -> Reading {
+    Reading::new(
+        "{} agents died today without parking",
+        s.health
+            .as_ref()
+            .and_then(|f| f.get("health.agents.died").copied()),
+        "",
+        "85PKB2",
+    )
+    .bar(Bar::AtMost(0.0))
+    .from("health's day file, from pi's sessions")
+}
+
+/// Health's day file for the day `now` falls in, on this machine's clock.
+#[must_use]
+pub fn health_file(state_home: &Path, now: i64) -> std::path::PathBuf {
+    let date = Timestamp::from_second(now)
+        .map(|t| {
+            t.to_zoned(TimeZone::system())
+                .strftime("%Y-%m-%d")
+                .to_string()
+        })
+        .unwrap_or_default();
+    state_home.join(format!("health/{date}.json"))
+}
+
 fn count(n: usize) -> f64 {
     f64::from(u32::try_from(n).unwrap_or(u32::MAX))
 }
@@ -441,13 +273,6 @@ fn count(n: usize) -> f64 {
 /// health's file for the day `now` falls in: files only.
 #[must_use]
 pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
-    let date = Timestamp::from_second(now)
-        .map(|t| {
-            t.to_zoned(TimeZone::system())
-                .strftime("%Y-%m-%d")
-                .to_string()
-        })
-        .unwrap_or_default();
     Sources {
         findings: folder
             .join("findings.jsonl")
@@ -458,7 +283,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
             .flatten()
             .flatten()
             .any(|e| e.path().extension().is_some_and(|x| x == "json")),
-        health: fs::read_to_string(state_home.join(format!("health/{date}.json")))
+        health: fs::read_to_string(health_file(state_home, now))
             .ok()
             .map(|json| healths(&json)),
     }
@@ -622,85 +447,24 @@ mod tests {
     }
 
     #[test]
-    fn responsiveness_comes_from_healths_figures() {
+    fn agents_gone_without_parking_are_held_to_none_from_our_side() {
         let s = Sources {
-            health: Some(BTreeMap::from([
-                ("health.boot.seconds".to_owned(), 27.0),
-                ("health.shutdown.seconds".to_owned(), 12.0),
-                ("health.launches.opened.p99-ms".to_owned(), 420.0),
-                ("health.launches.opened.median-ms".to_owned(), 90.0),
-                ("health.launches.opened.slowest-ms".to_owned(), 1_300.0),
-                ("health.launches.ended.p99-ms".to_owned(), 150.0),
-                ("health.launches.ready.p99-ms".to_owned(), 1_065.0),
-                ("health.launches.pi.p99-ms".to_owned(), 4_000.0),
-                ("health.launches.pi.median-ms".to_owned(), 1_800.0),
-                ("health.launches.pi.slowest-ms".to_owned(), 28_000.0),
-                ("health.switch.restart.slowest-ms".to_owned(), 4_200.0),
-                ("health.switch.restart.median-ms".to_owned(), 900.0),
-            ])),
+            health: Some(BTreeMap::from([("health.agents.died".to_owned(), 5.0)])),
             ..Sources::default()
         };
-        let read = responds(&s);
-        let words: Vec<String> = read.iter().map(Reading::words).collect();
+        let lost = died(&s);
         assert_eq!(
-            words,
-            [
-                "the slowest boot 27 s to a ready launcher, the password left out, at most 30 s",
-                "the slowest shutdown 12 s, at most 10 s",
-                "time lost in the day's worst moments: no reading yet",
-                "the slowest program in a hundred to its first window 420 ms, at most 300 ms",
-                "the slowest program in a hundred to end once closed 150 ms, at most 200 ms",
-                "the slowest daemon in a hundred to serve again 1,065 ms, at most 1,000 ms",
-                "the slowest pi in a hundred to show its session 4,000 ms, at most 3,000 ms",
-                "the slowest restart in a switch 4,200 ms, at most 5,000 ms",
-            ]
+            lost.words(),
+            "5 agents died today without parking, at most 0"
+        );
+        assert!(
+            lost.out() && !lost.his,
+            "a lost agent was in spec, or read from his side"
         );
         assert_eq!(
-            read.iter().map(Reading::out).collect::<Vec<_>>(),
-            [false, true, false, true, false, true, true, false],
-            "only the shutdown, the openings, the daemons and pi are past their bars"
-        );
-        assert_eq!(
-            read[6].detail.as_deref(),
-            Some("a median 1,800 ms, the slowest 28,000 ms; timed from pi starting"),
-            "pi's start says its spread and that it's timed from our side"
-        );
-        assert_eq!(
-            read[6].owner, "85PKB2",
-            "pi's start is the harness's to make quicker"
-        );
-        assert_eq!(
-            read[7].detail.as_deref(),
-            Some("a median 900 ms; timed from its stopping to its ready"),
-            "a switch's restarts say their median and where they're timed from"
-        );
-        assert_eq!(
-            read[3].detail.as_deref(),
-            Some("a median 90 ms, the slowest 1,300 ms; timed from the program starting"),
-            "an opening says its spread and that it's timed from our side"
-        );
-    }
-
-    #[test]
-    fn each_place_says_its_worst_moments_and_a_quiet_one_lost_none() {
-        let s = Sources {
-            health: Some(BTreeMap::from([
-                ("health.feel.lost-minutes".to_owned(), 16.3),
-                ("health.feel.pi.lost-minutes".to_owned(), 15.5),
-                ("health.feel.launcher.lost-minutes".to_owned(), 0.8),
-            ])),
-            ..Sources::default()
-        };
-        let places: Vec<(Option<f64>, &str, bool)> =
-            places(&s).iter().map(|r| (r.now, r.owner, r.his)).collect();
-        assert_eq!(
-            places,
-            [
-                (Some(15.5), "85PKB2", true),
-                (Some(0.8), "Y2YBTS", true),
-                (Some(0.0), "80ECO2", true),
-            ],
-            "chrome had no worst moment today, so it lost none rather than reading unread"
+            died(&Sources::default()).now,
+            None,
+            "before health counts them, it reads unread, not none"
         );
     }
 
@@ -765,36 +529,5 @@ mod tests {
             "1 line where Joel sounded pained today, at most 0"
         );
         assert_eq!(pained(&Sources::default()).figure(), None);
-    }
-
-    #[test]
-    fn his_apps_stalls_come_from_cadences_day() {
-        let day = BTreeMap::from([
-            ("pressure.cpu.app".to_owned(), 1.4),
-            ("pressure.memory.app".to_owned(), 0.07),
-            ("pressure.cpu.session".to_owned(), 0.48),
-            ("pressure.memory.session".to_owned(), 1.2),
-            ("pressure.cpu.jobs".to_owned(), 13.0),
-        ]);
-        let read = stalls(Some(&day));
-        let words: Vec<String> = read.iter().map(Reading::words).collect();
-        assert_eq!(
-            words,
-            [
-                "his apps waiting for the CPU 1.4% of the day, at most 1%",
-                "his apps stalled for memory 0.1% of the day, at most 1%",
-                "his desktop waiting for the CPU 0.5% of the day, at most 1%",
-                "his desktop stalled for memory 1.2% of the day, at most 1%",
-            ]
-        );
-        assert_eq!(
-            read.iter().map(Reading::out).collect::<Vec<_>>(),
-            [true, false, false, true],
-            "only the apps' CPU wait and the desktop's memory stalls are past their bars"
-        );
-        assert!(
-            stalls(None).iter().all(|r| r.figure().is_none()),
-            "no day kept yet leaves all four unread"
-        );
     }
 }

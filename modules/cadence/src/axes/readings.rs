@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use super::messages::{self, Note};
 use super::{Axis, Bar, Reading, shown};
-use super::{asks, counted, landings, launcher, measure, network, plans};
+use super::{asks, counted, faults, landings, launcher, measure, network, plans, responds};
 use crate::day::Day;
 use crate::mesh::{self, Mesh};
 use crate::{DAY, command};
@@ -53,6 +53,8 @@ pub struct Sources {
     pub plans: plans::Sources,
     /// What code-health and health have already counted.
     pub counted: counted::Sources,
+    /// What health's day file says the logs said went wrong.
+    pub faults: faults::Faults,
     /// The network's two day files, the eero's and the shaper's.
     pub network: network::Sources,
     /// Now, in seconds, and the moment the reading's day began.
@@ -74,6 +76,7 @@ pub fn read(s: &Sources) -> Vec<Axis> {
                 vec![
                     counted::musts(&s.counted, s.now),
                     counted::holes(&s.counted),
+                    faults::security(&s.faults),
                 ],
                 counted::asks(&s.counted),
             ]
@@ -105,9 +108,10 @@ pub fn read(s: &Sources) -> Vec<Axis> {
             "responsiveness",
             [
                 launcher::readings(&s.counted),
-                counted::stalls(s.day.as_ref().map(|d| &d.figures)),
-                counted::responds(&s.counted),
-                counted::places(&s.counted),
+                responds::stalls(s.day.as_ref().map(|d| &d.figures)),
+                responds::responds(&s.counted),
+                responds::places(&s.counted),
+                vec![responds::typing(&s.counted)],
             ]
             .concat(),
         ),
@@ -211,48 +215,48 @@ fn quality(s: &Sources) -> Axis {
             .join(", ")
     });
     let failed: Vec<&str> = s.failed.lines().filter(|l| !l.trim().is_empty()).collect();
-    axis(
-        "quality",
-        vec![
-            counted::crashes(&s.counted),
-            // Every program's, ours with his, over cadence's day: a
-            // stand-in beside his own, since agents' tests crash on purpose.
-            Reading::new(
-                "{} crashes of every program over the day",
-                crashes.map(|c| f64::from(c.values().sum::<u32>())),
-                "",
-                "80ECO2",
-            )
-            .bar(Bar::AtMost(5.0))
-            .detail(most.filter(|m| !m.is_empty()).map(|m| format!("most {m}")))
-            .from("cadence's day, coredumpctl"),
-            Reading::new(
-                "{} units failed now",
-                Some(count(failed.len())),
-                "",
-                "80ECO2",
-            )
-            .bar(Bar::AtMost(0.0))
-            .detail((!failed.is_empty()).then(|| {
-                failed
-                    .iter()
-                    .filter_map(|l| l.split_whitespace().next())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            }))
-            .from("systemctl --failed, the system's and the account's"),
-            Reading::new(
-                "the net {} behind main",
-                card_net(&s.card),
-                " min",
-                "D5QEKR",
-            )
-            .bar(Bar::AtMost(60.0))
-            .from("cadence's card"),
-            landings::readings(&s.landings, &s.harness, s.now, &TimeZone::system()).2,
-            counted::regressions(&s.counted),
-        ],
-    )
+    let mut readings = vec![
+        counted::crashes(&s.counted),
+        // Every program's, ours with his, over cadence's day: a
+        // stand-in beside his own, since agents' tests crash on purpose.
+        Reading::new(
+            "{} crashes of every program over the day",
+            crashes.map(|c| f64::from(c.values().sum::<u32>())),
+            "",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(5.0))
+        .detail(most.filter(|m| !m.is_empty()).map(|m| format!("most {m}")))
+        .from("cadence's day, coredumpctl"),
+        Reading::new(
+            "{} units failed now",
+            Some(count(failed.len())),
+            "",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(0.0))
+        .detail((!failed.is_empty()).then(|| {
+            failed
+                .iter()
+                .filter_map(|l| l.split_whitespace().next())
+                .collect::<Vec<_>>()
+                .join(", ")
+        }))
+        .from("systemctl --failed, the system's and the account's"),
+        Reading::new(
+            "the net {} behind main",
+            card_net(&s.card),
+            " min",
+            "D5QEKR",
+        )
+        .bar(Bar::AtMost(60.0))
+        .from("cadence's card"),
+        landings::readings(&s.landings, &s.harness, s.now, &TimeZone::system()).2,
+        counted::regressions(&s.counted),
+    ];
+    // What the logs said went wrong, as Joel listed it on 11 November.
+    readings.extend(faults::quality(&s.faults));
+    axis("quality", readings)
 }
 
 fn collaboration(s: &Sources) -> Axis {
@@ -297,6 +301,7 @@ fn collaboration(s: &Sources) -> Axis {
                 "over the last day, an answer from any peer counting".into(),
             ))
             .from("the mesh's messages"),
+            counted::died(&s.counted),
         ],
     )
 }
@@ -605,6 +610,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         harness,
         plans,
         counted,
+        faults: faults::gather(state_home, now),
         network: network::gather(
             state_home,
             &Timestamp::from_second(now)
