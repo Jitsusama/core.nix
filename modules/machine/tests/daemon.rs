@@ -1638,6 +1638,37 @@ fn nothing_is_read_once_nothing_is_watched() {
 }
 
 #[test]
+fn health_says_what_each_kind_of_a_read_took() {
+    let running = Running::new("kinds-took");
+    let mut client = running.client();
+    client.ask(&json!({"id": "all", "ask": "watch", "kind": ["processor", "memory"]}));
+    client.changed("processor:0");
+    let health = client.ask(&json!({"id": "h", "ask": "health"}));
+    let took = health["took_us"].as_array().unwrap();
+    let kinds = health["kinds_took_us"]
+        .as_array()
+        .expect("each read's time by kind");
+    assert_eq!(kinds.len(), took.len(), "one for each read timed");
+    // A kind may be read on its own, as one hurried is, so each is looked
+    // for in any read.
+    let read = |kind: &str| kinds.iter().any(|read| read.get(kind).is_some());
+    assert!(read("processor") && read("memory"), "{kinds:?}");
+    assert!(!read("disk"), "a kind not watched: {kinds:?}");
+    for (read, took) in kinds.iter().zip(took) {
+        let spent: u64 = read
+            .as_object()
+            .unwrap()
+            .values()
+            .filter_map(Value::as_u64)
+            .sum();
+        assert!(
+            spent <= took.as_u64().unwrap(),
+            "{read} past its read's {took}"
+        );
+    }
+}
+
+#[test]
 fn an_ask_or_a_kind_it_doesnt_know_is_refused() {
     let running = Running::new("refused");
     let mut client = running.client();
