@@ -22,7 +22,7 @@ use crate::talks::Talk;
 /// What the served records are, one per address.
 pub const KIND: &str = "talks";
 /// How many talks done with are shown after the open ones, as Super+S's
-/// line keeps its own (TalkLine.js's KEPT_TALKS).
+/// line keeps its own (TalkLine.js's `KEPT_TALKS`).
 const KEPT: usize = 3;
 /// The stages after which a talk is done with: heard, ended, or never
 /// delivered.
@@ -119,7 +119,7 @@ pub fn waiting(root: &Path) -> HashMap<String, Vec<Talk>> {
 /// with no talk's id.
 fn talk_of(steer: &Value, stem: &str) -> Option<Talk> {
     let id = steer["id"].as_str().filter(|id| !id.is_empty())?;
-    let words = steer["text"].as_str().map(str::trim).unwrap_or("");
+    let words = steer["text"].as_str().map_or("", str::trim);
     if words.is_empty() || steer.get("act").is_some_and(|act| !act.is_null()) {
         return None;
     }
@@ -143,7 +143,7 @@ fn talk_of(steer: &Value, stem: &str) -> Option<Talk> {
 }
 
 /// A record per address with any talk, its talks as the launcher shows
-/// them: those of `told` (talks::by_address) and those `waiting` not yet
+/// them: those of `told` (`talks::by_address`) and those `waiting` not yet
 /// taken, each once, the newest first, every open one, then the newest
 /// `KEPT` of the rest.
 pub fn records<S: std::hash::BuildHasher>(

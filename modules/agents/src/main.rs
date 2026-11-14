@@ -372,9 +372,12 @@ fn main() -> ExitCode {
         steer: args.steer,
         shells: args.shells,
     };
+    // Without them only talks not yet taken go unshown, so every row is
+    // still served.
     if let Err(why) = sources::follow_inboxes(&paths.steer, to.clone()) {
-        eprintln!("agents: can't hear the sessions' inboxes: {why}");
-        return ExitCode::FAILURE;
+        eprintln!(
+            "agents: can't hear the sessions' inboxes, so talks not yet taken go unshown: {why}"
+        );
     }
     if let Err(why) = sources::follow_files(&paths, to) {
         eprintln!("agents: can't hear the files it reads: {why}");
