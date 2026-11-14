@@ -350,6 +350,33 @@ function feltTicked(felt, now, pace) {
         usable: now - calm >= pace.calmFor ? calm : -1 };
 }
 
+// Each frame's own work while an opening is felt, as spans for
+// stallSpent. Its rows are laid out as ListView polishes it, from the
+// first row begun to the last made. Its sync runs from its animating,
+// inside Qt's polishAndSync, until the shell's thread runs again: the
+// wait for the render thread to take the frame, the sync, the animations
+// advanced and incubation. What the thread runs after that is its own;
+// Joel's openings named all of it drawing, 23 ms of a stall, which
+// couldn't say what to cut (2026-11-14). `what` is "row", from `from` to
+// `to`, or "animating" or "synced" at `from`.
+function feltUnframed() {
+    return { rows: null, syncFrom: -1 };
+}
+
+function feltFramed(frame, what, from, to) {
+    if (what === "row") {
+        const rows = frame.rows === null ? { from, to } : { from: frame.rows.from, to };
+        return { frame: { rows, syncFrom: frame.syncFrom }, spans: [] };
+    }
+    if (what === "animating") {
+        const spans = frame.rows === null ? []
+            : [{ name: "laying out", from: frame.rows.from, to: frame.rows.to }];
+        return { frame: { rows: null, syncFrom: from }, spans };
+    }
+    const spans = frame.syncFrom < 0 ? [] : [{ name: "syncing", from: frame.syncFrom, to: from }];
+    return { frame: { rows: frame.rows, syncFrom: -1 }, spans };
+}
+
 // What of `from` to `to` each named span of work ran into, most first,
 // then what none did: Joel's kept openings drew in a median 48 ms and
 // then stalled a median 73 ms, over a fill, a frame and more the journal

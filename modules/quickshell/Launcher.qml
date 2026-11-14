@@ -10299,17 +10299,39 @@ Scope {
         feltFrom = from;
         feltFromChord = fromChord;
         feltSpans = [];
-        feltFrameAt = -1;
+        feltFrame = Pacing.feltUnframed();
         feltTicking.start();
     }
     // The named work run while an opening is felt, `{ name, from, to }`, so
     // its longest stall says what it ran into (Pacing.stallSpent). Nothing
     // binds to it, so it's added to in place.
     property var feltSpans: []
-    property real feltFrameAt: -1
     function feltSpan(name, from) {
         if (feltTicking.running)
             feltSpans.push({ name, from, to: KeyTimes.now() });
+    }
+    // What the frame being drawn has laid out and when its sync began
+    // (Pacing.feltFramed).
+    property var feltFrame: Pacing.feltUnframed()
+    function feltFramed(what, from, to) {
+        if (!feltTicking.running)
+            return;
+        const noted = Pacing.feltFramed(feltFrame, what, from, to);
+        feltFrame = noted.frame;
+        for (const span of noted.spans)
+            feltSpans.push(span);
+    }
+    // A row made or taken again while an opening is felt, from when it
+    // began.
+    function feltRow(from) {
+        if (from >= 0)
+            feltFramed("row", from, KeyTimes.now());
+    }
+    // Queued at a frame's animating, inside Qt's polishAndSync, it runs
+    // once the sync lets the shell's thread go, ahead of the sync's own
+    // signals.
+    function feltSynced() {
+        feltFramed("synced", KeyTimes.now());
     }
     function feltTicked() {
         const now = KeyTimes.now();
@@ -10707,20 +10729,15 @@ Scope {
         }
 
         // Each frame's own work on the shell's thread while an opening is
-        // felt, from its animating through its sync, when the render
-        // thread lets it go, so a stall is told from the frames in it.
+        // felt, its rows laid out and its sync, so a stall is told from
+        // the frames in it (Pacing.feltFramed).
         Connections {
             target: card.Window.window
             enabled: feltTicking.running
 
             function onAfterAnimating() {
-                root.feltFrameAt = KeyTimes.now();
-            }
-
-            function onAfterSynchronizing() {
-                if (root.feltFrameAt >= 0)
-                    root.feltSpan("drawing", root.feltFrameAt);
-                root.feltFrameAt = -1;
+                root.feltFramed("animating", KeyTimes.now());
+                Qt.callLater(root.feltSynced);
             }
         }
 
@@ -12038,6 +12055,10 @@ Scope {
                             delegate: Item {
                                 id: entry
 
+                                // When it began to be made, first of its
+                                // bindings, so an opening's frame says how
+                                // long its rows took (root.feltRow).
+                                readonly property real feltBegun: KeyTimes.now()
                                 required property int index
                                 // What it says now, read by its place, so a
                                 // row kept across a refresh says the new. A
@@ -12064,12 +12085,15 @@ Scope {
                                     choice.letGo();
                                 }
                                 ListView.onReused: {
+                                    const taken = KeyTimes.now();
                                     entry.aside = false;
                                     root.rowsDrawn += 1;
+                                    root.feltRow(taken);
                                 }
                                 Component.onCompleted: {
                                     root.rowsDrawn += 1;
                                     root.rowsBuilt += 1;
+                                    root.feltRow(entry.feltBegun);
                                 }
                                 // Its own glyph, or the glyph of what it's
                                 // inside (rowsGlyph), for an act.
