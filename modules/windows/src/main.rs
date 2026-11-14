@@ -108,14 +108,14 @@ fn help() -> Help {
     Help::new("windows", "holds niri's windows ready for the shell")
         .example("windows SOCKET", "its windows alone, with no rows")
         .example(
-            "windows SOCKET --words WORDS --machine MACHINE",
+            "windows SOCKET --words FILE --machine SOCKET",
             "as its unit runs it, Screens' rows too",
         )
         .argument("<socket>", "where the shell asks, unless systemd hands one")
-        .option("--words WORDS", "the launcher's words, for Screens' rows")
-        .option("--numbers NUMBERS", "how the account writes its figures")
+        .option("--words FILE", "the launcher's words, for Screens' rows")
+        .option("--numbers FILE", "how the account writes its figures")
         .option(
-            "--machine MACHINE",
+            "--machine SOCKET",
             "the machine daemon, for a screen's light",
         )
         .exit(Exit::Failed, "its socket couldn't be listened on")
