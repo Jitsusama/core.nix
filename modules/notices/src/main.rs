@@ -25,6 +25,7 @@ use daemon_serve::serve::{self, Own, Shared};
 use notices::addressed::Asked;
 use notices::bus::{self, Server, now_ms};
 use notices::daemon::State;
+use notices::front;
 use notices::held::Holding;
 use notices::judged::Judge;
 use notices::posted;
@@ -37,12 +38,13 @@ use serde_json::{Value, json};
 use windows::entries::{self, Entries};
 
 /// The daemon as the shell knows it: a record for each recent notice
-/// (notice.rs's recent), the rows of every one,
-/// and beside the mixed place's page and History's the count each has
-/// rows for, sent only to a watch that names it, as the launcher's does.
+/// (notice.rs's recent), the one in front (front.rs), the rows of every
+/// one, and beside the mixed place's page and History's the count each
+/// has rows for, sent only to a watch that names it, as the launcher's
+/// does.
 const DOMAIN: Domain = Domain {
     name: "notices",
-    kinds: &["notice", "row", "summary"],
+    kinds: &["front", "notice", "row", "summary"],
     sole: &[],
     named_only: &["summary"],
 };
@@ -164,6 +166,7 @@ impl Served {
                 record
             })
             .collect();
+        records.push(front::record(holding.notices()));
         records.extend(self.places.iter().flat_map(Kept::all).cloned());
         records
     }
