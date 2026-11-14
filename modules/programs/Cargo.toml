@@ -21,12 +21,12 @@ daemon-serve = { path = "../daemon-serve" }
 # The Programs collection's rows, kept placed as every place's are.
 ready-rows = { path = "../ready-rows" }
 # What Chrome has open, read from its host's socket or its session file
-# with no process started.
-chrome-session = { path = "../chrome/session" }
+# with no process started: the library alone, not its program.
+chrome-session = { path = "../chrome/session", default-features = false }
 
 [dev-dependencies]
 # The daemon started for a test, and its client, as every daemon's tests
 # share them (tests/daemon/).
 daemon-client = { path = "../daemon-client" }
 # Chrome's session files, written for a profile standing in for Chrome's.
-chrome-session = { path = "../chrome/session", features = ["written"] }
+chrome-session = { path = "../chrome/session", default-features = false, features = ["written"] }
