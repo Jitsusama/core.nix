@@ -179,7 +179,9 @@ function rides(way, cols, at) {
     }
     let to = null;
     // How far it may fall behind a top going from under it: none under
-    // another window, whose bottom comes down as close behind it.
+    // another window, whose bottom comes down as close behind it. Sitting,
+    // it hears only its own window (Niri.wantTile), so niri's row for it
+    // says one is over it as well as the window over it would.
     let room = Number.POSITIVE_INFINITY;
     if (held.kind === "side") {
         to = { x: Routes.sideX(column, held.side, at), y: Math.min(Math.max(way.y,
@@ -190,7 +192,7 @@ function rides(way, cols, at) {
         const middle = way.x + column.left - was.left + at.wide / 2;
         if (row && middle >= column.left && middle <= column.right) {
             to = { x: middle - at.wide / 2, y: Routes.stands(row.top, at) };
-            room = column.rows.indexOf(row) > 0 ? 0 : room;
+            room = column.rows.indexOf(row) > 0 || (row.row ?? 1) > 1 ? 0 : room;
         }
     }
     if (to === null || Math.hypot(to.x - way.x, to.y - way.y) < 0.01

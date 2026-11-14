@@ -645,6 +645,7 @@ PanelWindow {
                 width: one.layout.tile_size[0],
                 height: one.layout.tile_size[1],
                 column: one.layout.pos_in_scrolling_layout?.[0] ?? null,
+                row: one.layout.pos_in_scrolling_layout?.[1] ?? null,
                 id: one.id
             }));
     }

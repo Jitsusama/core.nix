@@ -34,18 +34,20 @@ const PERCHED_BY = 0.25;
 const holds = Ways.holds;
 
 // Each column of a workspace, from its tiles ({ left, top, width, height,
-// column }, niri's tile_pos_in_workspace_view, tile_size and column, and
-// its window's `id`) in its own view, moved `dy` down: across from `left`
-// to `right`, from its `top` to its `bottom`, and its `rows` stacked from
-// the top, each with its window's `id`. A tile with
-// no column, floating, is no ground to stand on.
+// column, row }, niri's tile_pos_in_workspace_view, tile_size and place in
+// its scrolling layout, and its window's `id`) in its own view, moved `dy`
+// down: across from `left` to `right`, from its `top` to its `bottom`, and
+// its `rows` stacked from the top, each with its window's `id` and `row`,
+// 1 at the column's top. A tile with no column, floating, is no ground to
+// stand on.
 function columns(tiles, dy) {
     const by = {};
     for (const tile of tiles ?? []) {
         if (tile.column === undefined || tile.column === null) {
             continue;
         }
-        const row = { top: tile.top + dy, bottom: tile.top + tile.height + dy, id: tile.id };
+        const row = { top: tile.top + dy, bottom: tile.top + tile.height + dy, id: tile.id,
+            row: tile.row };
         const was = by[tile.column];
         by[tile.column] = was ? {
             left: Math.min(was.left, tile.left),
