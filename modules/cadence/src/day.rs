@@ -68,7 +68,7 @@ impl Measure {
     }
 
     /// Whether this measure holds a figure's key.
-    fn holds(&self, key: &str) -> bool {
+    pub fn holds(&self, key: &str) -> bool {
         if self.key.contains('*') {
             self.whose(key).is_some()
         } else {

@@ -50,6 +50,24 @@ const AREAS: &[(&str, &[&str])] = &[
         "builds and merges",
         &["build", "builds", "merge", "merges", "switch"],
     ),
+    // On 13 November 21 of the 23 lines that named no area corrected what
+    // an agent judged: done unchecked, a hedge, a needless ask or park.
+    // "Readable" is how text reads, which is design's, and "hold" alone
+    // would take in every line about a hold.
+    (
+        "the agents' judgement",
+        &[
+            "verify",
+            "verified",
+            "certain",
+            "hedge",
+            "hedging",
+            "permission",
+            "parked",
+            "delete",
+            "deleted",
+        ],
+    ),
     // Most of his words that named no area asked why the work was slow
     // or waited on him. It comes last, so a line naming a part he uses
     // goes there first.
@@ -480,6 +498,7 @@ mod tests {
             r#"{"things":{"folder":{"kind":"words","signatures":{
                 "why is the launcher so slow":{"count":2},
                 "why are you taking so long, why is it waiting on me?":{"count":3},
+                "did you verify that before you said it was done?":{"count":4},
                 "what is this":{"count":1}}},
               "pi bash":{"kind":"tools","signatures":{"launcher":{"count":9}}}}}"#
                 .to_owned(),
@@ -502,6 +521,11 @@ mod tests {
             pains.get("the work's pace").map(|p| p.times),
             Some(3),
             "a line asking why the work is slow or waits on him is the work's pace"
+        );
+        assert_eq!(
+            pains.get("the agents' judgement").map(|p| p.times),
+            Some(4),
+            "a line correcting what an agent judged is the agents' judgement"
         );
         assert_eq!(
             pains.get("").map(|p| p.times),

@@ -204,16 +204,18 @@ in
             address
           ]) reviewed
         );
-        # git and systemctl, for the axes it reads beside the week. niri's
-        # windows go unread, as the service has no socket of his session's,
-        # which costs only scale's stand-in.
+        # git, systemctl and niri, for the axes it reads beside the week:
+        # niri's windows are scale's figure, and the user manager hands
+        # the service his session's niri socket. Without niri the review
+        # of 13 November called scale unmeasured. niri is the machine's,
+        # as its own module builds it, where it has one.
         Environment = [
           "PATH=${
             lib.makeBinPath [
               pkgs.git
               pkgs.systemd
             ]
-          }"
+          }:/run/current-system/sw/bin"
         ];
         Slice = "background.slice";
       };

@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 use crate::day::{Boot, Day};
+use crate::feel::Pain;
 use crate::show::KINDS;
 use crate::typing;
 
@@ -52,9 +53,11 @@ pub fn side(name: &str) -> Side {
 
 /// Each figure of the day, by its name: the slowest boot and shutdown in
 /// seconds, each kind's errors, his crashes and ours, the minutes lost in the day's worst
-/// moments, the most each watched program held, the agents that died, and
-/// the asks for a secret: shown, said yes to unread, asked again, avoidable;
-/// and the most any disk was in use, when a guard said any; each part of
+/// moments, in all and by place, with the turns he stopped and the agents
+/// he corrected in them, the most each watched program held, the agents
+/// that died, and the asks for a secret: shown, said yes to unread, asked
+/// again, avoidable; and the most any disk was in use, and each by its
+/// mount, when a guard said any; each part of
 /// the launcher's median, p99, slowest and share past its bar, the same of
 /// programs' openings and ends with how many outlived the wait, and the
 /// worst p99 of typing into pi, when any were timed. A kind with no errors is
@@ -92,8 +95,7 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
         "crashes.ours".to_owned(),
         crashes.saturating_sub(his) as f64,
     );
-    let lost: f64 = day.feel.iter().map(|pain| pain.lost_seconds).sum();
-    figures.insert("feel.lost-minutes".to_owned(), lost / 60.0);
+    felt(&day.feel, &mut figures);
     for (name, memory) in &day.memory {
         figures.insert(
             format!("memory.{name}.most-mib"),
@@ -109,12 +111,7 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
         "asks.avoidable-percent".to_owned(),
         asks.avoidable_percent(),
     );
-    if !day.disks.filesystems.is_empty() {
-        figures.insert(
-            "disk.most-used-percent".to_owned(),
-            day.disks.most_used_percent(),
-        );
-    }
+    filled(day, &mut figures);
     for part in day.launcher.parts() {
         let timed = part.timed;
         if let (Some(median), Some(p99)) = (timed.median(), timed.p99()) {
@@ -172,6 +169,41 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
     figures
 }
 
+/// The day's worst moments as figures: the minutes they lost, in all and
+/// by place, so each is owned by whoever owns where it went (pi, the
+/// launcher or Chrome), and the agents' turns he stopped and the agents
+/// he corrected in them.
+fn felt(feel: &[Pain], figures: &mut BTreeMap<String, f64>) {
+    let lost: f64 = feel.iter().map(|pain| pain.lost_seconds).sum();
+    figures.insert("feel.lost-minutes".to_owned(), lost / 60.0);
+    for pain in feel {
+        *figures
+            .entry(format!("feel.{}.lost-minutes", pain.place))
+            .or_default() += pain.lost_seconds / 60.0;
+    }
+    let stopped: u32 = feel.iter().map(|pain| pain.signs.stopped).sum();
+    let corrections: u32 = feel.iter().map(|pain| pain.signs.corrections).sum();
+    figures.insert("feel.stopped".to_owned(), f64::from(stopped));
+    figures.insert("feel.corrections".to_owned(), f64::from(corrections));
+}
+
+/// The most any disk was in use, and each by its mount, so a full one is
+/// named where it is, when a guard said any.
+fn filled(day: &Day, figures: &mut BTreeMap<String, f64>) {
+    if !day.disks.filesystems.is_empty() {
+        figures.insert(
+            "disk.most-used-percent".to_owned(),
+            day.disks.most_used_percent(),
+        );
+    }
+    for (mount, disk) in &day.disks.filesystems {
+        figures.insert(
+            format!("disk.{mount}.most-used-percent"),
+            disk.most_used_percent(),
+        );
+    }
+}
+
 /// The day as written: its tally, and its figures beside it under
 /// `figures` and each one's side under `sides`, and the services whose
 /// restarts said no ready line under `unstamped`, for cadence day to name
@@ -194,6 +226,7 @@ mod tests {
     use crate::day::tests::entry;
     use crate::day::{Kind, Thing};
     use crate::disk::Filesystem;
+    use crate::feel::Signs;
     use crate::journal::{Entry, Job};
     use crate::launches;
     use crate::memory::Memory;
@@ -457,6 +490,58 @@ mod tests {
             read["unstamped"],
             serde_json::json!({"google.service": 1}),
             "a restart with no ready line wasn't written by its service: {read}"
+        );
+    }
+
+    #[test]
+    fn each_places_lost_minutes_and_his_stops_and_corrections_are_figured() {
+        let mut day = Day::new("2026-11-13");
+        let pain = |place: &str, lost_seconds: f64, stopped: u32, corrections: u32| Pain {
+            place: place.into(),
+            lost_seconds,
+            signs: Signs {
+                stopped,
+                corrections,
+                ..Signs::default()
+            },
+            ..Pain::default()
+        };
+        day.feel = vec![
+            pain("pi", 600.0, 1, 0),
+            pain("pi", 300.0, 1, 2),
+            pain("launcher", 60.0, 0, 0),
+        ];
+        day.disks.filesystems.insert(
+            "/var/cache/builds".into(),
+            Filesystem {
+                size: 100,
+                least_free: 0,
+                ..Filesystem::default()
+            },
+        );
+        let figures = of(&day);
+        let figure = |name: &str| figures.get(name).copied();
+        assert_eq!(
+            (
+                figure("feel.lost-minutes"),
+                figure("feel.pi.lost-minutes"),
+                figure("feel.launcher.lost-minutes"),
+                figure("feel.chrome.lost-minutes"),
+                figure("feel.stopped"),
+                figure("feel.corrections"),
+                figure("disk./var/cache/builds.most-used-percent"),
+            ),
+            (
+                Some(16.0),
+                Some(15.0),
+                Some(1.0),
+                None,
+                Some(2.0),
+                Some(2.0),
+                Some(100.0),
+            ),
+            "a place's minutes, his stops or corrections, or a disk by its mount \
+             weren't figured: {figures:?}"
         );
     }
 }
