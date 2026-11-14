@@ -9,16 +9,23 @@
 //! it answers the agents behind it (`--upstream`, the TPM's and the
 //! agents' own) only with their keys and with signatures for logins to
 //! the hosts in `--hosts`, each proved by the session's own binding
-//! (src/bind.rs). Anything else a client asks, adding a key, removing
-//! one, locking, or a signature for anything else, is refused. Each
-//! login signed and each refusal is said on stderr in one line of a
-//! fixed shape (src/said.rs), so the journal holds the host and why, as
-//! words a reader can keep without the line's free text.
+//! (src/bind.rs). It also holds the builders' key nix-offload reaches
+//! lent builders with (`--key`), hidden from every fenced command, and
+//! signs with it only a login as `nix-offload` to a builder lent now
+//! (`--lent`, src/lent.rs); an agent's key behind never signs for a lent
+//! builder, nor the builders' key for any other host. Anything else a
+//! client asks, adding a key, removing one, locking, or a signature for
+//! anything else, is refused. Each login signed and each refusal is said
+//! on stderr in one line of a fixed shape (src/said.rs), so the journal
+//! holds the host and why, as words a reader can keep without the
+//! line's free text.
 //!
 //! systemd hands it its listening socket (`LISTEN_FDS`); `--socket`
 //! binds one itself, as the tests do.
 
 mod bind;
+mod lent;
+mod peer;
 mod said;
 mod wire;
 
@@ -30,12 +37,16 @@ use std::os::fd::FromRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bind::{Bindings, Hosts};
-use said::{Refusal, Why, signed_line};
+use lent::{ACCOUNT, Key, Lent};
+use said::{Refusal, Signer, Why, many_signs_line, signed_line};
+use signature::Signer as _;
+use ssh_key::Signature;
 use wire::{Fields, put_string, read_message, write_message};
 
 /// What an agent answers when it won't, or can't, do what it was asked.
@@ -59,13 +70,56 @@ const FIRST_PASSED_FD: i32 = 3;
 /// without a ceiling a fenced command opening connections without end
 /// would run the proxy out of threads, and every fenced ssh with it.
 const MOST_CLIENTS: usize = 64;
+/// How long an agent behind has to answer before the proxy gives up on
+/// it, so one waiting on its person, as on 8 November, never stalls a
+/// login it isn't needed for.
+const UPSTREAM_PATIENCE: Duration = Duration::from_secs(5);
+/// The logins signed for one claimed session in an hour past which the
+/// proxy warns, well above the busiest hour seen: the whole machine's
+/// builder runs peaked at 1,014 in an hour on 14 November, each one to
+/// three logins.
+const MANY_SIGNS: u32 = 6_000;
+/// The claimed sessions counted before last hour's are let go.
+const MOST_COUNTED: usize = 1_000;
+/// The comment the builders' key is listed with.
+const BUILDERS_COMMENT: &[u8] = b"nix-offload builders";
 
 /// What every client is answered by: the hosts and the agents behind,
-/// and how many clients are being answered now.
+/// the builders' key and the builders lent, how many clients are being
+/// answered now, and the logins signed this hour for each claimed
+/// session.
 struct Shared {
     hosts: Hosts,
     upstreams: Vec<PathBuf>,
+    key: Key,
+    lent: Lent,
     clients: AtomicUsize,
+    signs: Mutex<HashMap<String, (u64, u32)>>,
+}
+
+impl Shared {
+    /// Count a login signed for `claimed`, warning once an hour when it
+    /// passes [`MANY_SIGNS`]. Nothing is refused on it: the session is
+    /// only a client's claim (src/peer.rs).
+    fn count(&self, claimed: &str) {
+        let hour = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs() / 3600);
+        let Ok(mut signs) = self.signs.lock() else {
+            return;
+        };
+        if signs.len() > MOST_COUNTED {
+            signs.retain(|_, (at, _)| *at == hour);
+        }
+        let entry = signs.entry(claimed.to_owned()).or_insert((hour, 0));
+        if entry.0 != hour {
+            *entry = (hour, 0);
+        }
+        entry.1 += 1;
+        if entry.1 == MANY_SIGNS {
+            eprintln!("{}", many_signs_line(claimed, entry.1));
+        }
+    }
 }
 
 /// A client's place among the [`MOST_CLIENTS`], given back as it goes.
@@ -100,7 +154,7 @@ fn main() {
         Err(why) => {
             eprintln!("pi-agent-proxy: {why}");
             eprintln!(
-                "usage: pi-agent-proxy --hosts FILE --upstream SOCKET [--upstream SOCKET]... [--socket PATH]"
+                "usage: pi-agent-proxy --hosts FILE [--upstream SOCKET]... [--key FILE --lent FILE...] [--socket PATH]"
             );
             process::exit(2);
         }
@@ -119,7 +173,8 @@ fn main() {
                 // Dropped at once, which closes it, when there's no place.
                 let Some(place) = Place::take(&shared) else {
                     let busy = format!("a client, since {MOST_CLIENTS} are answered already");
-                    eprintln!("{}", Refusal::new(Why::Busy, busy).line());
+                    let claimed = peer::claimed_session(&stream);
+                    eprintln!("{}", Refusal::new(Why::Busy, busy).line(&claimed));
                     continue;
                 };
                 thread::spawn(move || serve(&place.0, stream));
@@ -133,6 +188,8 @@ fn main() {
 fn config(mut args: impl Iterator<Item = String>) -> Result<Config, String> {
     let mut hosts = None;
     let mut upstreams = Vec::new();
+    let mut key = None;
+    let mut lent = Vec::new();
     let mut socket = None;
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or_else(|| format!("{arg} takes a value"));
@@ -144,19 +201,27 @@ fn config(mut args: impl Iterator<Item = String>) -> Result<Config, String> {
                 hosts = Some(Hosts::read(&text).map_err(|why| format!("{file}: {why}"))?);
             }
             "--upstream" => upstreams.push(PathBuf::from(value()?)),
+            "--key" => key = Some(PathBuf::from(value()?)),
+            "--lent" => lent.push(PathBuf::from(value()?)),
             "--socket" => socket = Some(PathBuf::from(value()?)),
             _ => return Err(format!("{arg} isn't an option it takes")),
         }
     }
     let hosts = hosts.ok_or("--hosts is needed")?;
-    if upstreams.is_empty() {
-        return Err("at least one --upstream is needed".to_owned());
+    if upstreams.is_empty() && key.is_none() {
+        return Err("at least one --upstream, or a --key, is needed".to_owned());
+    }
+    if key.is_some() && lent.is_empty() {
+        return Err("--key needs at least one --lent, the builders it signs for".to_owned());
     }
     Ok(Config {
         shared: Shared {
             hosts,
             upstreams,
+            key: Key::new(key),
+            lent: Lent::new(lent),
             clients: AtomicUsize::new(0),
+            signs: Mutex::new(HashMap::new()),
         },
         socket,
     })
@@ -185,7 +250,7 @@ fn listener(socket: Option<&Path>) -> io::Result<UnixListener> {
 
 /// Answer one client until it goes.
 fn serve(shared: &Shared, mut client: UnixStream) {
-    let mut session = Session::new(shared);
+    let mut session = Session::new(shared, peer::claimed_session(&client));
     loop {
         let request = match read_message(&mut client) {
             Ok(Some(request)) => request,
@@ -211,16 +276,25 @@ struct Session<'a> {
     /// Which agent behind holds each key it listed.
     holders: HashMap<Vec<u8>, usize>,
     bindings: Bindings,
+    /// The pi session the client claims, said in each line it's given.
+    claimed: String,
 }
 
 impl<'a> Session<'a> {
-    fn new(shared: &'a Shared) -> Self {
+    fn new(shared: &'a Shared, claimed: String) -> Self {
         Session {
             shared,
             upstreams: shared.upstreams.iter().map(|_| None).collect(),
             holders: HashMap::new(),
             bindings: Bindings::default(),
+            claimed,
         }
+    }
+
+    /// Say on stderr what was refused, and answer that it failed.
+    fn refused(&self, refusal: &Refusal) -> Vec<u8> {
+        eprintln!("{}", refusal.line(&self.claimed));
+        vec![FAILURE]
     }
 
     /// What to answer `request`.
@@ -230,17 +304,20 @@ impl<'a> Session<'a> {
             Ok(REQUEST_IDENTITIES) => self.identities(),
             Ok(SIGN_REQUEST) => self.sign(request, &mut fields),
             Ok(EXTENSION) => self.extension(&mut fields),
-            Ok(kind) => refused(&Refusal::new(
+            Ok(kind) => self.refused(&Refusal::new(
                 Why::Request,
                 format!("a request of kind {kind}, since it only lists keys and signs logins"),
             )),
-            Err(why) => refused(&Refusal::from(why)),
+            Err(why) => self.refused(&Refusal::from(why)),
         }
     }
 
     /// Every key the agents behind hold, noting which holds each.
     fn identities(&mut self) -> Vec<u8> {
         let mut listed = Vec::new();
+        if let Some(blob) = self.builders_blob() {
+            listed.push((blob, BUILDERS_COMMENT.to_vec()));
+        }
         for at in 0..self.upstreams.len() {
             match self.ask(at, &[REQUEST_IDENTITIES]) {
                 Ok(answer) => match keys_in(&answer) {
@@ -282,18 +359,36 @@ impl<'a> Session<'a> {
             let data = fields.string()?;
             let _flags = fields.number()?;
             fields.done()?;
-            let host = self.bindings.permits(key, data)?;
-            Ok::<_, Refusal>((key.to_vec(), host.clone()))
+            let permit = self.bindings.permits(key, data)?;
+            Ok::<_, Refusal>((
+                key.to_vec(),
+                data.to_vec(),
+                permit.host.clone(),
+                permit.lent,
+                permit.user,
+            ))
         })();
-        let (key, host) = match asked {
+        let (key, data, host, lent, user) = match asked {
             Ok(asked) => asked,
-            Err(refusal) => return refused(&refusal),
+            Err(refusal) => return self.refused(&refusal),
         };
+        if self.builders_blob().as_ref() == Some(&key) {
+            return self.sign_for_builder(&data, &host, lent, &user);
+        }
+        if lent {
+            return self.refused(
+                &Refusal::new(
+                    Why::LentHost,
+                    "a login to a lent builder with a key other than the builders'",
+                )
+                .at(&host),
+            );
+        }
         if !self.holders.contains_key(&key) {
             self.identities();
         }
         let Some(&at) = self.holders.get(&key) else {
-            return refused(
+            return self.refused(
                 &Refusal::new(
                     Why::NoHolder,
                     "a signature with a key no agent behind holds",
@@ -305,15 +400,22 @@ impl<'a> Session<'a> {
         let behind = shared.upstreams[at].display();
         match self.ask(at, request) {
             Ok(answer) if answer.first() == Some(&SIGN_RESPONSE) => {
-                eprintln!("{}", signed_line(&host));
+                eprintln!(
+                    "{}",
+                    signed_line(&host, Signer::Agent, &user, &self.claimed)
+                );
+                shared.count(&self.claimed);
                 answer
             }
             Ok(answer) => {
                 let declined = format!("a signature, since {behind} declined it");
-                eprintln!("{}", Refusal::new(Why::Upstream, declined).at(&host).line());
+                let line = Refusal::new(Why::Upstream, declined)
+                    .at(&host)
+                    .line(&self.claimed);
+                eprintln!("{line}");
                 answer
             }
-            Err(error) => refused(
+            Err(error) => self.refused(
                 &Refusal::new(
                     Why::Upstream,
                     format!("a signature, since {behind} couldn't be asked: {error}"),
@@ -323,21 +425,91 @@ impl<'a> Session<'a> {
         }
     }
 
+    /// The builders' key's wire blob, when the proxy holds one.
+    fn builders_blob(&self) -> Option<Vec<u8>> {
+        self.shared.key.read()?.public_key().to_bytes().ok()
+    }
+
+    /// The builders' key's signature over `data`, a login as `user` to a
+    /// session with `host`, when `host` is a lent builder and `user` the
+    /// account lent builders take that key for.
+    fn sign_for_builder(
+        &self,
+        data: &[u8],
+        host: &ssh_key::public::KeyData,
+        lent: bool,
+        user: &[u8],
+    ) -> Vec<u8> {
+        if !lent {
+            return self.refused(
+                &Refusal::new(
+                    Why::NotLent,
+                    "a login with the builders' key to a host that isn't a lent builder",
+                )
+                .at(host),
+            );
+        }
+        if user != ACCOUNT {
+            return self.refused(
+                &Refusal::new(
+                    Why::Account,
+                    "a login with the builders' key as another account than theirs",
+                )
+                .at(host),
+            );
+        }
+        let Some(key) = self.shared.key.read() else {
+            return self.refused(
+                &Refusal::new(
+                    Why::NoHolder,
+                    "a builder's login, since the builders' key can't be read",
+                )
+                .at(host),
+            );
+        };
+        let signed: Result<Signature, _> = key.try_sign(data);
+        let Some(blob) = signed
+            .ok()
+            .and_then(|signature| Vec::try_from(signature).ok())
+        else {
+            return self.refused(
+                &Refusal::new(
+                    Why::NoHolder,
+                    "a builder's login, since the builders' key couldn't sign it",
+                )
+                .at(host),
+            );
+        };
+        eprintln!(
+            "{}",
+            signed_line(host, Signer::Builders, user, &self.claimed)
+        );
+        self.shared.count(&self.claimed);
+        let mut answer = vec![SIGN_RESPONSE];
+        put_string(&mut answer, &blob);
+        answer
+    }
+
     /// Take a session binding; refuse every other extension.
     fn extension(&mut self, fields: &mut Fields) -> Vec<u8> {
         match fields.string() {
-            Ok(SESSION_BIND) => match self.bindings.bind(&self.shared.hosts, fields) {
-                Ok(()) => vec![SUCCESS],
-                Err(refusal) => refused(&refusal),
-            },
-            Ok(name) => refused(&Refusal::new(
+            Ok(SESSION_BIND) => {
+                match self
+                    .bindings
+                    .bind(&self.shared.hosts, &self.shared.lent, fields)
+                {
+                    Ok(()) => vec![SUCCESS],
+                    Err(refusal) => self.refused(&refusal),
+                }
+            }
+            Ok(name) => self.refused(&Refusal::new(
                 Why::Extension,
                 format!(
                     "the extension {}, which it doesn't take",
                     String::from_utf8_lossy(name)
                 ),
             )),
-            Err(why) => refused(&Refusal::from(why)),
+            Err(why) => self.refused(&Refusal::from(why)),
         }
     }
 
@@ -347,7 +519,12 @@ impl<'a> Session<'a> {
         let answer = (|| {
             let stream = match &mut self.upstreams[at] {
                 Some(stream) => stream,
-                slot => slot.insert(UnixStream::connect(&self.shared.upstreams[at])?),
+                slot => {
+                    let stream = UnixStream::connect(&self.shared.upstreams[at])?;
+                    stream.set_read_timeout(Some(UPSTREAM_PATIENCE))?;
+                    stream.set_write_timeout(Some(UPSTREAM_PATIENCE))?;
+                    slot.insert(stream)
+                }
             };
             write_message(stream, request)?;
             read_message(stream)?.ok_or_else(|| io::Error::from(io::ErrorKind::UnexpectedEof))
@@ -357,12 +534,6 @@ impl<'a> Session<'a> {
         }
         answer
     }
-}
-
-/// Say on stderr what was refused, and answer that it failed.
-fn refused(refusal: &Refusal) -> Vec<u8> {
-    eprintln!("{}", refusal.line());
-    vec![FAILURE]
 }
 
 /// A key an agent holds, as its wire blob, and the comment it gives it.

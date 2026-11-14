@@ -9,11 +9,17 @@
 //! whose session a host this agent is told of signed: a command can't
 //! name an allowed host for a session with another, since it can't make
 //! that host's signature over the other's identifier.
+//!
+//! A host is one this agent is told of when `--hosts` names it, or when
+//! root's file names it as a builder lent now (src/lent.rs), read
+//! afresh at each binding; a session with a lent builder is marked so,
+//! since only the builders' key signs for one, and only as their account.
 
 use signature::Verifier;
 use ssh_key::public::KeyData;
 use ssh_key::{PublicKey, Signature};
 
+use crate::lent::Lent;
 use crate::said::{Refusal, Why};
 use crate::wire::Fields;
 
@@ -49,6 +55,17 @@ impl Hosts {
 struct Bound {
     session: Vec<u8>,
     host: KeyData,
+    /// Whether the host is a builder lent to the machine (src/lent.rs)
+    /// rather than one of the hosts in `--hosts`.
+    lent: bool,
+}
+
+/// A login the proxy may sign: the host of the session it's for, whether
+/// that host is a lent builder, and the account it logs in as.
+pub struct Permit<'a> {
+    pub host: &'a KeyData,
+    pub lent: bool,
+    pub user: Vec<u8>,
 }
 
 /// What one client's ssh has said of the sessions it holds.
@@ -63,7 +80,7 @@ pub struct Bindings {
 impl Bindings {
     /// Take a `session-bind@openssh.com` extension's fields, keeping the
     /// session when its host is one in `hosts` and that host signed it.
-    pub fn bind(&mut self, hosts: &Hosts, fields: &mut Fields) -> Result<(), Refusal> {
+    pub fn bind(&mut self, hosts: &Hosts, lent: &Lent, fields: &mut Fields) -> Result<(), Refusal> {
         let host = fields.string()?;
         let session = fields.string()?;
         let signed = fields.string()?;
@@ -78,7 +95,9 @@ impl Bindings {
         }
         let host = PublicKey::from_bytes(host)
             .map_err(|error| format!("a host key it can't read: {error}"))?;
-        if !hosts.allows(host.key_data()) {
+        let told = hosts.allows(host.key_data());
+        let lends = !told && lent.lends(host.key_data());
+        if !told && !lends {
             return Err(
                 Refusal::new(Why::UntoldHost, "a session with a host it isn't told of")
                     .at(host.key_data()),
@@ -93,6 +112,7 @@ impl Bindings {
         self.bound.push(Bound {
             session: session.to_vec(),
             host: host.key_data().clone(),
+            lent: lends,
         });
         Ok(())
     }
@@ -100,7 +120,7 @@ impl Bindings {
     /// Whether `data` is a login, with the key `key`, to a session bound
     /// with a host this agent is told of: that session's host when it is,
     /// and why not when it isn't.
-    pub fn permits(&self, key: &[u8], data: &[u8]) -> Result<&KeyData, Refusal> {
+    pub fn permits(&self, key: &[u8], data: &[u8]) -> Result<Permit<'_>, Refusal> {
         if self.forwarded {
             return Err(Refusal::new(
                 Why::Forwarded,
@@ -121,19 +141,25 @@ impl Bindings {
                     "it isn't a login to a session bound with a host it's told of",
                 )
             })?;
-        login(&mut fields, key, &bound.host).map_err(|refusal| refusal.at(&bound.host))?;
-        Ok(&bound.host)
+        let user =
+            login(&mut fields, key, &bound.host).map_err(|refusal| refusal.at(&bound.host))?;
+        Ok(Permit {
+            host: &bound.host,
+            lent: bound.lent,
+            user,
+        })
     }
 }
 
 /// Whether the rest of `fields`, after a login's session, logs in with
-/// `key` to `host`; why not, when it doesn't.
-fn login(fields: &mut Fields, key: &[u8], host: &KeyData) -> Result<(), Refusal> {
+/// `key` to `host`: the account it logs in as when it does, and why not
+/// when it doesn't.
+fn login(fields: &mut Fields, key: &[u8], host: &KeyData) -> Result<Vec<u8>, Refusal> {
     let not_login = |detail: &str| Refusal::new(Why::NotLogin, detail);
     if fields.byte()? != USERAUTH_REQUEST {
         return Err(not_login("it isn't a login"));
     }
-    let _user = fields.string()?;
+    let user = fields.string()?.to_vec();
     if fields.string()? != b"ssh-connection" {
         return Err(not_login(
             "it logs in for something other than a connection",
@@ -164,5 +190,6 @@ fn login(fields: &mut Fields, key: &[u8], host: &KeyData) -> Result<(), Refusal>
             ));
         }
     }
-    Ok(fields.done()?)
+    fields.done()?;
+    Ok(user)
 }

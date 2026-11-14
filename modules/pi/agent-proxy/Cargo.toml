@@ -19,5 +19,9 @@ ssh-key = { version = "0.6", default-features = false, features = [
   "p521",
   "rsa",
 ] }
-# The trait a host key checks a signature through (src/bind.rs).
+# The trait a host key checks a signature through (src/bind.rs), and
+# the builders' key signs through (src/main.rs).
 signature = "2"
+# The process on a client's end of the socket, for the session it
+# claims (src/peer.rs).
+libc = "0.2"
