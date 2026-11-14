@@ -1620,24 +1620,56 @@ pub fn idle(pressure: &str) -> bool {
         .all(|name| average(name).is_some_and(|value| value < IDLE))
 }
 
+/// The CPU pressure over the last 10 seconds, as /proc/pressure/cpu's
+/// "some" line gives it, from which a build begun here while this machine
+/// was idle gives way to the builders. At 01:20 on 14 November one began
+/// idle, then built 25 Rust programs here for 24 minutes beside a switch,
+/// at a load near 96, since idleness was judged only as it began.
+const GROWN_BUSY: f64 = 25.0;
+
+/// How often a build begun here while idle reads the pressure again.
+const WATCHED: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Whether `pressure`, /proc/pressure/cpu as read, says this machine is
+/// busy now, its last 10 seconds at [`GROWN_BUSY`] or over; one that can't be
+/// read is taken as busy, as [`idle`] takes it.
+pub fn busy(pressure: &str) -> bool {
+    pressure
+        .lines()
+        .find_map(|line| line.strip_prefix("some "))
+        .and_then(|some| {
+            some.split_whitespace()
+                .find_map(|field| field.strip_prefix("avg10=")?.parse::<f64>().ok())
+        })
+        .is_none_or(|now| now >= GROWN_BUSY)
+}
+
 /// `asked` built here, when it asks to be while this machine is idle,
 /// as `pressure` says it is, and it holds no VM test by `patterns`: a VM
 /// test here holds the person's machine for minutes. None otherwise, nor
-/// for derivations, which name no attribute to judge.
+/// for derivations, which name no attribute to judge, nor once `pressure`
+/// says this machine grew busy while it built, when the build here is
+/// ended and the rest goes to the builders.
 pub fn here_when_idle(
     asked: &Asked,
-    pressure: &str,
+    pressure: &dyn Fn() -> String,
     patterns: &[String],
     nix: &str,
 ) -> Option<Ran> {
-    if !asked.here.idle || asked.derivations || !idle(pressure) {
+    if !asked.here.idle || asked.derivations || !idle(&pressure()) {
         return None;
     }
     if vm_tests(asked, patterns, &BTreeSet::new()).0.is_some() {
         return None;
     }
     eprintln!("nix-offload: this machine is idle, so this builds here");
-    Some(here(asked, nix))
+    let ran = here_until(asked, nix, &|| busy(&pressure()));
+    if ran.is_none() {
+        eprintln!(
+            "nix-offload: this machine grew busy, so what's left of this goes to the builders"
+        );
+    }
+    ran
 }
 
 fn here(asked: &Asked, nix: &str) -> Ran {
@@ -1665,6 +1697,74 @@ fn here(asked: &Asked, nix: &str) -> Ran {
         status,
         sent: None,
     }
+}
+
+/// `asked` built here, as [`here`] builds it, unless `busy` says so as it
+/// builds, read every [`WATCHED`]: then the build is told to end, what it
+/// built stays in the store, and there's none.
+fn here_until(asked: &Asked, nix: &str, busy: &dyn Fn() -> bool) -> Option<Ran> {
+    use std::io::Read;
+    let mut command = Command::new(nix);
+    command.args(asked.build());
+    if asked.out.is_some() {
+        command.stdout(Stdio::piped());
+    }
+    let Ok(mut build) = command.spawn() else {
+        return Some(Ran {
+            on: None,
+            status: 1,
+            sent: None,
+        });
+    };
+    let mut read = std::time::Instant::now();
+    let status = loop {
+        match build.try_wait() {
+            Ok(Some(status)) => break status.code().unwrap_or(1),
+            Ok(None) => {}
+            Err(_) => break 1,
+        }
+        if read.elapsed() >= WATCHED {
+            if busy() {
+                ended(&mut build);
+                return None;
+            }
+            read = std::time::Instant::now();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    let status = match &asked.out {
+        Some(out) if status == 0 => {
+            let mut said = String::new();
+            let _ = build
+                .stdout
+                .take()
+                .map(|mut stdout| stdout.read_to_string(&mut said));
+            copied(Path::new(said.trim()), out)
+        }
+        _ => status,
+    };
+    Some(Ran {
+        on: None,
+        status,
+        sent: None,
+    })
+}
+
+/// Ends `build`: told to, then made to after 10 s.
+fn ended(build: &mut std::process::Child) {
+    if let Ok(pid) = libc::pid_t::try_from(build.id()) {
+        // SAFETY: a signal to our own child, which hasn't been waited on.
+        unsafe { libc::kill(pid, libc::SIGTERM) };
+    }
+    let told = std::time::Instant::now();
+    while told.elapsed() < std::time::Duration::from_secs(10) {
+        if build.try_wait().is_ok_and(|status| status.is_some()) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let _ = build.kill();
+    let _ = build.wait();
 }
 
 /// Copies a build's output into `out` as plain files the account owns,
@@ -4526,6 +4626,57 @@ mod tests {
         assert!(!idle(&pressure("43.38", "4.50")), "busy now");
         assert!(!idle(""), "unread, it's taken as busy");
         assert!(!idle("some avg10=1.00\n"), "half a line is taken as busy");
+    }
+
+    #[test]
+    fn a_build_begun_idle_gives_way_once_the_last_ten_seconds_are_busy() {
+        let pressure = |ten: &str| {
+            format!(
+                "some avg10={ten} avg60=60.00 avg300=40.00 total=1\n\
+                 full avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"
+            )
+        };
+        assert!(
+            !busy(&pressure("24.99")),
+            "a busy minute behind it gave a build its way"
+        );
+        assert!(
+            busy(&pressure("25.00")),
+            "a busy machine kept building here"
+        );
+        assert!(busy(""), "an unread pressure kept building here");
+    }
+
+    #[test]
+    fn a_build_here_ends_once_this_machine_grows_busy() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let nix = folder.path().join("nix");
+        let ended = folder.path().join("ended");
+        crate::testing::executable(
+            &nix,
+            &format!(
+                "#!/bin/sh\ntrap 'touch {}; exit 143' TERM\nsleep 30 & wait\n",
+                ended.display()
+            ),
+        );
+        let nix = nix.display().to_string();
+        let asked = asked(&words("--here-when-idle github:o/r/abc checks.x.a")).expect("asked");
+        let began = std::time::Instant::now();
+        assert!(
+            here_until(&asked, &nix, &|| true).is_none(),
+            "a build here outlasted a busy machine"
+        );
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(15),
+            "a busy machine waited {:?} for its build here to end",
+            began.elapsed()
+        );
+        assert!(ended.exists(), "the build here wasn't told to end");
+        let ran = here_until(&asked, "true", &|| true).expect("a quick build's end");
+        assert_eq!(
+            ran.status, 0,
+            "a build that ended before busy was read was lost"
+        );
     }
 
     #[test]
