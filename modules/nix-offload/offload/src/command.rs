@@ -141,9 +141,15 @@ pub fn command(checkout: &str, asked: &Asked, run: &str) -> String {
     let longest = asked.longest;
     // The run's own shell, in a session of its own, so neither the end of
     // the ssh that started it nor `far`'s watch ends it. It ignores the
-    // TERM its clock sends its group, to write the status it ended with.
+    // TERM its clock sends its group, to write the status it ended with,
+    // but only once its watch and clock are started. Forked after that
+    // trap, dash starts a clock with the trap's handler, and a TERM landing
+    // before the clock sets its own trap is caught and then dropped as
+    // dash clears what it inherited. A command as quick as `true` ends in
+    // that window, and the shell then waited on a clock asleep for
+    // `longest` (14 November: 41 of 50 quick runs under dash).
     let apart = format!(
-        "run=$1; trap : TERM; \
+        "run=$1; \
          (trap '' TERM; while sleep 2; do [ -d \"$run\" ] || exit 0; \
          beat=$(stat -c %Y \"$run/beat\" 2>/dev/null) || exit 0; \
          [ $(($(date +%s) - beat)) -gt \"${{NIX_OFFLOAD_UNWATCHED:-120}}\" ] || continue; \
@@ -153,7 +159,7 @@ pub fn command(checkout: &str, asked: &Asked, run: &str) -> String {
          sleep {longest} 2>/dev/null & sleeping=$!; wait $sleeping; \
          trap '' PIPE TERM; kill -TERM 0; \
          echo \"nix-offload: the command ran past {longest} s, so it ends\" >&2) \
-         </dev/null >/dev/null & clock=$!; \
+         </dev/null >/dev/null & clock=$!; trap : TERM; \
          WORK_RUNS_ELSEWHERE=1 {}; \
          ended=$?; kill $clock 2>/dev/null; wait $clock 2>/dev/null; \
          if [ $ended = 255 ]; then \
@@ -477,6 +483,100 @@ mod tests {
         assert!(
             began.elapsed() < Duration::from_secs(10),
             "its clock held the shell open"
+        );
+    }
+
+    /// Most builders' `sh` is dash, which drops a signal landing on a
+    /// subshell before it sets its own trap, where bash, `sh` in the build
+    /// sandbox and so in every other case here, keeps it. A quick command's TERM to its clock lands in just
+    /// that window only as often as the clock is slow to run, as on a busy
+    /// builder. So each run here is a fresh chance at it, kept to one
+    /// processor that three threads keep busy, where a laptop hit it 14 times
+    /// in 20 (5 in 20 with that processor idle), and given a deadline rather
+    /// than left to hang.
+    #[test]
+    fn a_quick_command_ends_at_once_under_dash() {
+        let asked = Asked {
+            copies: Vec::new(),
+            longest: 30,
+            words: vec!["true".to_owned()],
+        };
+        let status = std::fs::read_to_string("/proc/self/status").unwrap();
+        let allowed = status
+            .lines()
+            .find_map(|line| line.strip_prefix("Cpus_allowed_list:"))
+            .unwrap();
+        let first = allowed.trim().split([',', '-']).next().unwrap();
+        let busy = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let cpu: usize = first.parse().unwrap();
+        let spinners: Vec<_> = (0..3)
+            .map(|_| {
+                let busy = busy.clone();
+                std::thread::spawn(move || {
+                    // SAFETY: a zeroed cpu_set_t is an empty set, and this
+                    // thread's own affinity is all the call changes.
+                    unsafe {
+                        let mut set: libc::cpu_set_t = std::mem::zeroed();
+                        libc::CPU_SET(cpu, &mut set);
+                        libc::sched_setaffinity(0, size_of::<libc::cpu_set_t>(), &raw const set);
+                    }
+                    while busy.load(std::sync::atomic::Ordering::Relaxed) {
+                        std::hint::spin_loop();
+                    }
+                })
+            })
+            .collect();
+        // The run starts its own shell as `sh`, so dash goes first on the
+        // path by that name, as it is on a builder.
+        let shells = tempfile::tempdir().unwrap();
+        let searched = std::env::var_os("PATH").unwrap();
+        let dash = std::env::split_paths(&searched)
+            .map(|dir| dir.join("dash"))
+            .find(|dash| dash.exists())
+            .expect("dash is on the path, as the check gives it");
+        std::os::unix::fs::symlink(dash, shells.path().join("sh")).unwrap();
+        let path = std::env::join_paths(
+            std::iter::once(shells.path().to_owned()).chain(std::env::split_paths(&searched)),
+        )
+        .unwrap();
+        let mut waited = None;
+        for attempt in 1..=30 {
+            let folder = tempfile::tempdir().unwrap();
+            let mut shell = Command::new("taskset")
+                .args(["-c", first, "sh", "-c", &command("", &asked, "a-run")])
+                .current_dir(folder.path())
+                .env("TMPDIR", folder.path())
+                .env("PATH", &path)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .process_group(0)
+                .spawn()
+                .unwrap();
+            let began = Instant::now();
+            let ended = loop {
+                if let Some(ended) = shell.try_wait().unwrap() {
+                    break Some(ended);
+                }
+                if began.elapsed() > Duration::from_secs(10) {
+                    let group = libc::pid_t::try_from(shell.id()).unwrap();
+                    unsafe { libc::kill(-group, libc::SIGKILL) };
+                    shell.wait().unwrap();
+                    break None;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            };
+            if ended.map(|ended| ended.code()) != Some(Some(0)) {
+                waited = Some(attempt);
+                break;
+            }
+        }
+        busy.store(false, std::sync::atomic::Ordering::Relaxed);
+        for spinner in spinners {
+            spinner.join().unwrap();
+        }
+        assert_eq!(
+            waited, None,
+            "a run waited on its clock, or ended otherwise"
         );
     }
 
