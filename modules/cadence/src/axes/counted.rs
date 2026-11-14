@@ -402,9 +402,9 @@ fn lost(s: &Sources, says: &'static str, place: &str, owner: &'static str) -> Re
     .his()
 }
 
-/// The agents he stopped or corrected today, as the pain-points detector
-/// signs them on his sessions and health counts them (80ECO2, from 13
-/// November). Most of the week's pained lines that named no place were
+/// The agents he stopped or corrected in the day's worst moments, as the
+/// pain-points detector signs them on his sessions and health counts them
+/// (80ECO2, from 13 November); a correction outside one isn't counted. Most of the week's pained lines that named no place were
 /// him correcting an agent's judgement (the first blind-spot review,
 /// 2026-11-13), so this is collaboration read from his side, and every
 /// one is a pain point: the bar is none. 1JQPPC, who routes his pains,
@@ -416,7 +416,7 @@ pub fn corrected(s: &Sources) -> Reading {
     let corrections = figure("health.feel.corrections");
     let both = stopped.zip(corrections);
     Reading::new(
-        "agents he stopped or corrected today {}",
+        "agents he stopped or corrected in the day's worst moments {}",
         both.map(|(s, c)| s + c),
         "",
         "1JQPPC",
@@ -716,7 +716,7 @@ mod tests {
         let read = corrected(&s);
         assert_eq!(
             read.words(),
-            "agents he stopped or corrected today 5, at most 0"
+            "agents he stopped or corrected in the day's worst moments 5, at most 0"
         );
         assert_eq!(
             read.detail.as_deref(),
