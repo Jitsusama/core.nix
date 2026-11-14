@@ -1683,38 +1683,33 @@ def test_rows_tile_and_the_cursor_row_is_filled_edge_to_edge(shell: Shell) -> No
     shell.close_launcher()
 
 
-# The longest the selection glides after its key, in ms, as Glide.js gives it.
-GLIDE = 30
+def test_an_arrow_lights_its_row_with_the_selection_in_its_first_frame(shell: Shell) -> None:
+    """The selection stands on the row an arrow lit in the arrow's first frame, never gliding.
 
-
-def test_the_selection_glides_to_its_row_and_typing_never_glides(shell: Shell) -> None:
-    """An arrow glides the selection to its row within 50 ms; a letter never glides.
-
-    The glide is the launcher's own, about 30 ms, so the selection lands within 50 ms of the
-    key, rather than the theme's 150 ms that windows and menus keep (VKCF3Z, 2026-11-10).
+    It glided to its row over up to 30 ms while the row's text lit at once, so the bar and the
+    lit text sat on different rows for a frame or two (Joel, 2026-11-13 23:38: "the
+    selection can drag behind what is actually currently active"). A list moved by keys lands
+    on the frame after the key, as Vim's cursorline does (VKCF3Z, 9d5caf24).
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.type_in("o")
-    # A row to glide from and one to glide to.
     shell.launcher_until(lambda shown: len(shown["rows"]) > 1)
-    since = shell.mark()
+    # The letter's frame is presented first, so the arrow is the key after it.
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    typed = 0
+    while typed == 0 and time.monotonic() < deadline:
+        typed = len(json.loads(shell.as_account(shell.ipc("keysPresented"))))
+        time.sleep(launcher_on_niri.POLL)
     shell.send_key("down")
-
-    def down_a_row(rest: str) -> bool:
-        start, _, end, *lasting = rest.split()
-        assert lasting[::2] == ["in", "ms"], f"the glide said no length: {rest}"
-        assert 0 < int(lasting[1]) <= GLIDE, f"the glide lands past 50 ms of the key: {rest}"
-        return int(end) > int(start)
-
-    shell.reported("glides ", down_a_row, since)
-    since = shell.mark()
-    shell.send_chars("u")
-    shell.launcher_until(lambda shown: shown["typed"] == "ou")
-    said, _ = shell.said_since(since)
+    presented: list[Json] = []
+    while len(presented) <= typed and time.monotonic() < deadline:
+        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        time.sleep(launcher_on_niri.POLL)
     shell.close_launcher()
-    glided = [report for report in said if report.startswith("glides ")]
-    assert not glided, f"the selection glided as a letter made the rows: {glided}"
+    assert len(presented) > typed, f"the arrow was never presented: {presented}"
+    arrow = presented[typed]
+    assert arrow["onRow"], f"the selection was off its lit row in the arrow's first frame: {arrow}"
 
 
 def test_the_selection_is_drawn_on_its_row_as_rows_above_it_change(shell: Shell) -> None:
@@ -2205,8 +2200,8 @@ def test_a_refresh_at_home_moves_neither_the_selection_nor_the_list(shell: Shell
     """A collection changing while home is shown leaves the selection and the list still.
 
     Each refresh at home was composed afresh: the selection went to the first row, the list
-    to the top, and both were put back, under any glide already running, so the highlight
-    went its own way and the list stopped short of its first row (Joel, 2026-11-08).
+    to the top, and both were put back, so the highlight went its own way and the list
+    stopped short of its first row (Joel, 2026-11-08).
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -2224,12 +2219,9 @@ def test_a_refresh_at_home_moves_neither_the_selection_nor_the_list(shell: Shell
     window = shell.opened("Refresh Under Home")
     shell.reported("refreshed ", lambda _: True, since)
     after = laid_out(shell)
-    said, _ = shell.said_since(since)
     now = shell.showing()["selected"]["name"]
     shell.close_launcher()
     shell.close(window)
-    glided = [report for report in said if report.startswith("glides ")]
-    assert not glided, f"the selection glided with no key: {glided}"
     assert now == selected, f"the selection moved from {selected!r} to {now!r}"
     assert after["selection"]["y"] == after["selection"]["row"], (
         f"the selection was drawn off its row: {after['selection']}"
@@ -3640,62 +3632,7 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
         f"{drawing} ms drawing, said as {syncing} syncing, {rendering} rendering"
         f" and {heard} before the shell heard it"
     )
-    # A letter sets no glide going, so it landed at its first frame.
-    landed = json.loads(shell.as_account(shell.ipc("keysLanded")))
-    assert key in landed, f"the letter {key} didn't land at its first frame: {landed}"
     shell.close_launcher()
-
-
-def test_a_key_that_glides_lands_once_its_glide_has_ended(shell: Shell) -> None:
-    """An arrow that glides the selection is seen only at the frame after its glide ends.
-
-    A highlight still moving isn't yet on its row, so a key that sets the glide going counts
-    as landed at the first frame niri presented once the glide ran its length (VKCF3Z,
-    2026-11-10): never before its first frame, and no sooner than its press and the glide. On
-    a builder slow enough that the first frame comes after the glide's length, the two are the
-    one frame, as a lent builder showed at 111 ms (RCTRF8, 2026-11-11).
-    """
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
-    shell.type_in("o")
-    shell.launcher_until(lambda shown: len(shown["rows"]) > 1)
-    # The letter's frame is presented first, so the arrow is the key after it.
-    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    typed = 0
-    while typed == 0 and time.monotonic() < deadline:
-        typed = len(json.loads(shell.as_account(shell.ipc("keysPresented"))))
-        time.sleep(launcher_on_niri.POLL)
-    since = shell.mark()
-    shell.send_key("down")
-    lasting: list[int] = []
-
-    def down_a_row(rest: str) -> bool:
-        *_, length, _ = rest.split()
-        lasting.append(int(length))
-        return True
-
-    shell.reported("glides ", down_a_row, since)
-    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    first: list[Json] = []
-    landed: list[Json] = []
-    while not landed and time.monotonic() < deadline:
-        first = json.loads(shell.as_account(shell.ipc("keysPresented")))
-        glided = {key["from"] for key in first[typed:]}
-        landed = [
-            key
-            for key in json.loads(shell.as_account(shell.ipc("keysLanded")))
-            if key["from"] in glided
-        ]
-        time.sleep(launcher_on_niri.POLL)
-    shell.close_launcher()
-    assert landed, f"the arrow never landed: {first}"
-    assert len(landed) == 1, f"the arrow landed more than once: {landed}"
-    key, there = first[typed], landed[0]
-    assert there["at"] >= key["at"], f"the arrow landed before its first frame: {key}, {there}"
-    assert there["at"] - there["from"] >= lasting[-1], (
-        f"the arrow landed {there['at'] - there['from']:.0f} ms from its press,"
-        f" before its {lasting[-1]} ms glide ended"
-    )
 
 
 # How long niri is held just after a daemon's line, well past Joel's 50 ms bar.

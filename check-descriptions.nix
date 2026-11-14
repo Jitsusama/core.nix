@@ -2898,8 +2898,8 @@
     shut as windows open and close yet a pick knows them shut and it finds them as it opens,
     searches text a program
     types at once once for its newest letters, a Return among them acting on the row those
-    letters found, steps into For You's looks by :filter look and back out by -, glides the
-    selection to its row by the arrows only and draws it on its row as
+    letters found, steps into For You's looks by :filter look and back out by -, stands the
+    selection on the row an arrow lit in the arrow's first frame and draws it on its row as
     rows above it change, draws again no row a narrowing letter kept and, for a first letter, only
     the rows in view and one past them, reads on a long name while it's selected, tells the meaning daemon the
     parts its places hold and adds one meant below what the letters found, saying where it lives,
@@ -3046,10 +3046,6 @@
   the-rows-hear-only-a-new-place = ''
     the rows drawn wear the last step's glyph and hue and say whether they're home's, and are told
     only what changed: nothing on a refresh in the place they stay in, each change once on a step
-  '';
-  the-selection-lands-within-50-ms-of-its-key = ''
-    the launcher's selection glides 30 ms after a key just pressed, shorter after one already late,
-    and not at all after one too late for a frame of glide, so however late it lands within 50 ms
   '';
   recent-means-one-thing = ''
     Recent lists at most nine things, newest first across its sources, each once where it's

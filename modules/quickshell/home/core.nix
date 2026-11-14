@@ -10,7 +10,6 @@
   "Search.js"
   "Operators.js"
   "Finding.js"
-  "Glide.js"
   "Confirm.js"
   "Arming.js"
   "StatusLine.js"

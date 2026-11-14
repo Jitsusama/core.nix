@@ -7,7 +7,7 @@
 // theirs through it, the launcher's and the held notices', so none can
 // draw one of its own (every-card-is-the-one-card). Whoever stands it says
 // how wide and tall its band is and where it is down the list, which the
-// launcher's selection glides along; it says only where it starts across
+// launcher's selection stands on; it says only where it starts across
 // and what it marks.
 import QtQuick
 
