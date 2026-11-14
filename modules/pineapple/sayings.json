@@ -2,8 +2,8 @@
   "about": "What counts as the safe word, one case a saying. IDs and names are stand-ins. The first cases are real messages of 13 November and 20 October, reworded only where they named someone. targets is what the words name; reach is what the stop reaches once context is added.",
   "joel": {
     "slack_ids": ["U0JOEL0001"],
-    "logins": ["jitsusama", "joel.gerber"],
-    "emails": ["joel.gerber@example.com"]
+    "logins": ["jitsusama", "joel.example"],
+    "emails": ["joel@example.com"]
   },
   "sayings": [
     {
@@ -69,7 +69,7 @@
       "name": "his handle typed as plain text in Slack is no tag",
       "platform": "slack",
       "author": "U0OTHER001",
-      "text": "@joel.gerber pineapple override",
+      "text": "@joel.example pineapple override",
       "verdict": "waved:no-tag"
     },
     {
@@ -329,7 +329,7 @@
       "name": "on Delta, the tag ending a sentence",
       "platform": "markdown",
       "author": "someone@example.com",
-      "text": "Please stop, @joel.gerber. Pineapple override.",
+      "text": "Please stop, @joel.example. Pineapple override.",
       "verdict": "stop",
       "targets": []
     },
@@ -337,7 +337,7 @@
       "name": "an address holding the login is no tag",
       "platform": "markdown",
       "author": "someone",
-      "text": "mail joel.gerber@example.com, pineapple override",
+      "text": "mail joel.example@example.com, pineapple override",
       "verdict": "waved:no-tag"
     },
     {

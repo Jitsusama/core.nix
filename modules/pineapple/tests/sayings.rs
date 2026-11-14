@@ -100,7 +100,7 @@ fn every_saying_is_judged_as_the_table_says() {
 fn a_stop_with_nothing_named_anywhere_says_it_fell_back() {
     let reached = reach(&[], &Context::default());
     assert_eq!(said(&reached.targets), ["everything"]);
-    assert!(reached.fell_back);
+    assert!(reached.fell_back, "a stop naming nothing anywhere says it fell back");
 }
 
 #[test]
@@ -121,5 +121,5 @@ fn two_stops_reach_what_both_named() {
         said(&reached.targets),
         ["pr:Jitsusama/core.nix#1", "quest:QEST-20261113-OX4WFV"]
     );
-    assert!(!reached.fell_back);
+    assert!(!reached.fell_back, "two named stops are no fallback");
 }
