@@ -11,7 +11,9 @@
 //! wakes for nothing at rest. A stop loses at most that minute.
 //!
 //! It needs only the standard library, which already links the C library
-//! these calls come from.
+//! these calls come from, and the terminal kit, for its help, exits and
+//! failures (docs/commands.md). It answers nothing, since what it counts
+//! goes to its file, and a write that fails is said in the journal.
 
 mod tally;
 
@@ -28,6 +30,7 @@ use std::thread;
 use std::time::Duration;
 
 use tally::{Board, Tally};
+use terminal_kit::{Exit, Failure, Help};
 
 const DEVICES: &str = "/dev/input";
 const ZSA: u16 = 0x3297;
@@ -152,18 +155,48 @@ fn write(path: &Path, text: &str) -> std::io::Result<()> {
     fs::rename(&beside, path)
 }
 
+fn help() -> Help {
+    Help::new(
+        "key-counts",
+        "counts the keys pressed on each keyboard, into FILE",
+    )
+    .command("FILE", "the counts, kept and added to")
+    .example(
+        "key-counts /var/lib/key-counts/counts.tsv",
+        "what its service runs",
+    )
+    .exit(Exit::Failed, "FILE couldn't be read")
+    .exit(Exit::Unavailable, "the keyboards couldn't be watched")
+}
+
 fn main() -> ExitCode {
-    let Some(path) = std::env::args().nth(1).map(PathBuf::from) else {
-        eprintln!("usage: key-counts FILE");
-        return ExitCode::from(2);
-    };
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let [file] = context.args.as_slice() else {
+            return Err(Failure::new(Exit::Usage, "it takes FILE, the counts")
+                .try_this("key-counts --help"));
+        };
+        count(PathBuf::from(file))
+    })
+}
+
+/// The keyboards' devices couldn't be watched or read.
+fn unwatched(error: &std::io::Error) -> Failure {
+    Failure::new(Exit::Unavailable, format!("{DEVICES} couldn't be watched"))
+        .because(error.to_string())
+}
+
+/// Counts every keyboard's keys into the file at `path`, for as long as
+/// the keyboards can be watched.
+fn count(path: PathBuf) -> Result<(), Failure> {
     let mut tally = Tally::default();
     match fs::read_to_string(&path) {
         Ok(text) => tally.load(&text),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => {
-            eprintln!("{}: {error}", path.display());
-            return ExitCode::FAILURE;
+            return Err(
+                Failure::new(Exit::Failed, format!("{} couldn't be read", path.display()))
+                    .because(error.to_string()),
+            );
         }
     }
     let shared = Arc::new(Shared {
@@ -180,8 +213,7 @@ fn main() -> ExitCode {
     if watch < 0
         || unsafe { inotify_add_watch(watch, directory.as_ptr(), IN_CREATE | IN_ATTRIB) } < 0
     {
-        eprintln!("{DEVICES}: {}", std::io::Error::last_os_error());
-        return ExitCode::FAILURE;
+        return Err(unwatched(&std::io::Error::last_os_error()));
     }
     // SAFETY: the descriptor is ours alone, and the file closes it.
     let mut changes = unsafe { File::from_raw_fd(watch) };
@@ -190,10 +222,7 @@ fn main() -> ExitCode {
         Ok(entries) => entries
             .flatten()
             .for_each(|entry| take(&entry.file_name().to_string_lossy(), &shared)),
-        Err(error) => {
-            eprintln!("{DEVICES}: {error}");
-            return ExitCode::FAILURE;
-        }
+        Err(error) => return Err(unwatched(&error)),
     }
 
     thread::spawn({
@@ -229,10 +258,7 @@ fn main() -> ExitCode {
         let length = match changes.read(&mut buffer) {
             Ok(length) => length,
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(error) => {
-                eprintln!("{DEVICES}: {error}");
-                return ExitCode::FAILURE;
-            }
+            Err(error) => return Err(unwatched(&error)),
         };
         let mut at = 0;
         while at + CHANGE <= length {
