@@ -32,7 +32,7 @@ use crate::{folders, now_ms};
 
 /// The daemon as the launcher knows it: Spec's rows and its headline.
 const DOMAIN: Domain = Domain {
-    name: "cadence",
+    name: "cadence-spec",
     kinds: &["row", "head"],
     sole: &[],
     named_only: &[],

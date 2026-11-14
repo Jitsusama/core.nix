@@ -1,4 +1,4 @@
-//! `cadence serve` over a stand-in account: health's day file holding one
+//! `cadence-spec`, which runs `cadence serve`, over a stand-in account: health's day file holding one
 //! of Joel's readings out, and the quest owning it, asked over its own
 //! socket as the launcher's Spec asks it.
 
@@ -33,10 +33,9 @@ fn spec_is_served_from_the_axes_with_its_headline_and_owners_named() {
         "---\nid: QEST-20261111-80ECO2\n---\n\n# The Cadence\n",
     )
     .expect("its README");
-    let socket = folder.join("cadence.sock");
+    let socket = folder.join("cadence-spec.sock");
     let daemon = Daemon::start(
-        Command::new(env!("CARGO_BIN_EXE_cadence"))
-            .arg("serve")
+        Command::new(env!("CARGO_BIN_EXE_cadence-spec"))
             .arg("--vocabulary")
             .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/words.json"))
             .arg("--socket")

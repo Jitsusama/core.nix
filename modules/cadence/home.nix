@@ -43,7 +43,7 @@
 # `owners` names for `review`.
 #
 # `cadence serve` serves the axes to the launcher's Spec place over
-# $XDG_RUNTIME_DIR/daemons/cadence.sock in the shell's daemon interface,
+# $XDG_RUNTIME_DIR/daemons/cadence-spec.sock in the shell's daemon interface,
 # reading them at most every five minutes and only while Spec is watched,
 # so the launcher rereads no file (Joel, 2026-11-10: "the daemons need to
 # be the data layer").
@@ -241,22 +241,24 @@ in
         Slice = "background.slice";
       };
     };
-    systemd.user.services.cadence-serve = {
+    # Named cadence-spec, since every daemon's units and program say its
+    # socket's name (docs/daemons.md) and cadence is the tick's.
+    systemd.user.services.cadence-spec = {
       Unit = {
         Description = "Serves the axes to the launcher's Spec";
         X-SwitchMethod = "restart";
         # Its socket is systemd's, handed to it as it starts.
-        Requires = [ "cadence-serve.socket" ];
-        After = [ "cadence-serve.socket" ];
+        Requires = [ "cadence-spec.socket" ];
+        After = [ "cadence-spec.socket" ];
       };
       Service = {
-        ExecStart = lib.escapeShellArgs [
-          (lib.getExe package)
-          "serve"
+        ExecStart = lib.concatStringsSep " " [
+          "@${package}/bin/cadence-spec"
+          "cadence-spec"
           "--vocabulary"
           "${(import ../quickshell/launcher/words.nix).file}"
           "--socket"
-          "%t/daemons/cadence.sock"
+          "%t/daemons/cadence-spec.sock"
         ];
         # git, systemctl and niri for the axes it reads, as the review has.
         Environment = [
@@ -275,10 +277,10 @@ in
     };
     # Its socket, held by systemd whether or not the daemon runs, so the
     # shell asking while it starts waits on it rather than finding none.
-    systemd.user.sockets.cadence-serve = {
+    systemd.user.sockets.cadence-spec = {
       Unit.Description = "Where the launcher asks for the axes";
       Socket = {
-        ListenStream = "%t/daemons/cadence.sock";
+        ListenStream = "%t/daemons/cadence-spec.sock";
         SocketMode = "0600";
         DirectoryMode = "0700";
       };
