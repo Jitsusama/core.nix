@@ -1544,6 +1544,19 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
         r"talk line: up (\d+) ms", shell.log.read_bytes()[since:].decode(errors="replace")
     )
     logging.getLogger(__name__).info("the line was up after %s ms each time", times)
+    # The void keeps it, so it waits no longer and the cases after begin from no line open.
+    replies = inbox / "replies"
+    replies.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(UTC)
+    lines = [
+        {"stage": "delivered", "at": now.isoformat(), "session": "s-void", "from": "joel",
+         "text": sent[0]},
+        {"stage": "replied", "at": now.isoformat(), "text": "Kept."},
+    ]  # fmt: skip
+    laid = replies / f"talk-{int(now.timestamp() * 1000)}.jsonl.tmp"
+    laid.write_text("".join(json.dumps(one) + "\n" for one in lines))
+    laid.rename(laid.with_suffix(""))
+    shell.launcher_until(lambda shown: shown["line"]["talk"] == "answered")
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
@@ -1711,6 +1724,32 @@ def test_super_s_line_shows_every_answer_to_two_lines_and_whom_each_waits_on(
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
 
+def test_return_on_the_void_in_agents_opens_super_s_line_over_the_window_left(
+    shell: Shell, said_over: str
+) -> None:
+    """Return on The Void in Agents opens Super+S's line, over the window the launcher left.
+
+    The void is said to in one place, the line (QCXZEB, 2026-11-13 [ae5dfdb6], d): Talk to
+    It, The Void's Return, puts the launcher away and brings the line up, its talk kept and
+    the window under it attached, rather than asking in the launcher's own field.
+    """
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: "The Void" in shown["rows"])
+    shell.down_to("The Void")
+    shell.send_key("ret")
+    shell.launcher_until(
+        lambda shown: not shown["open"] and shown["line"]["up"] and shown["line"]["keys"]
+    )
+    # Over the window the launcher went from, which goes with what's said.
+    shell.launcher_until(lambda shown: shown["line"]["about"].endswith(said_over))
+    # Its talks kept: the case before's newest answer.
+    standing = shell.showing()["line"]["standing"]
+    assert standing == "The cat's clips, and the void.", shell.showing()["line"]
+    shell.as_account(shell.ipc("line"))
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
 def test_super_s_line_shows_every_line_still_open_after_a_restart_an_earlier_days_too(
     shell: Shell, shoot: Callable[[str], None]
 ) -> None:
@@ -1767,30 +1806,4 @@ def test_super_s_line_shows_every_line_still_open_after_a_restart_an_earlier_day
     assert talks[2]["answers"] == ["The cat's clips, and the void."], talks
     shoot("restarted")
     shell.as_account(line)
-    shell.launcher_until(lambda shown: not shown["line"]["up"])
-
-
-def test_return_on_the_void_in_agents_opens_super_s_line_over_the_window_left(
-    shell: Shell, said_over: str
-) -> None:
-    """Return on The Void in Agents opens Super+S's line, over the window the launcher left.
-
-    The void is said to in one place, the line (QCXZEB, 2026-11-13 [ae5dfdb6], d): Talk to
-    It, The Void's Return, puts the launcher away and brings the line up, its talk kept and
-    the window under it attached, rather than asking in the launcher's own field.
-    """
-    shell.as_account(shell.ipc("collection", "agents"))
-    shell.launcher_ready()
-    shell.launcher_until(lambda shown: "The Void" in shown["rows"])
-    shell.down_to("The Void")
-    shell.send_key("ret")
-    shell.launcher_until(
-        lambda shown: not shown["open"] and shown["line"]["up"] and shown["line"]["keys"]
-    )
-    # Over the window the launcher went from, which goes with what's said.
-    shell.launcher_until(lambda shown: shown["line"]["about"].endswith(said_over))
-    # Its talks kept: the case before's newest answer.
-    standing = shell.showing()["line"]["standing"]
-    assert standing == "The cat's clips, and the void.", shell.showing()["line"]
-    shell.as_account(shell.ipc("line"))
     shell.launcher_until(lambda shown: not shown["line"]["up"])

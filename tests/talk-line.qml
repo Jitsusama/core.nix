@@ -207,11 +207,12 @@ QtObject {
             Expect.same("a line said here the void hasn't kept yet waits first",
                 shown(Said.gathered([Said.begun("VOID", "new", "new", at(18, 1))], lines,
                     events, seen))[0], "new");
-            Expect.same("a talk that failed without a word back, or :take's asking, is no line",
-                [Said.unanswered({ stage: "failed", reply: "" }),
-                    Said.unanswered({ stage: "over", reply: "Kept." }),
+            Expect.same("a talk not delivered, failed without a word back, or :take's asking, "
+                + "is no line", [Said.unanswered({ words: "", stage: "", reply: "" }),
+                    Said.unanswered({ words: "hi", stage: "failed", reply: "" }),
+                    Said.unanswered({ words: "hi", stage: "over", reply: "Kept." }),
                     Said.unanswered({ words: "undo 7:42", stage: "over", reply: "undone" })],
-                [true, false, true]);
+                [true, true, false, true]);
             Expect.same("seen is kept a month",
                 Object.keys(Said.seenAfter({ "2026-10-01 09:00": 1, "2026-11-12 09:05": 2 }, [],
                     [], at(18, 0))), ["2026-11-12 09:05"]);

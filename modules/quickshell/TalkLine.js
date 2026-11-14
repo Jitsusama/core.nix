@@ -76,11 +76,13 @@ function fromServed(to, served) {
     return followed(talk, [served]) ?? talk;
 }
 
-// A talk the void keeps that's no line of his: one it ended without a word back, failed or
-// ended with the session, or :take's own asking to take a line back (Told.js's undoing).
+// A talk the void keeps that's no line of his: one not delivered yet, which holds no words
+// until it is; one it ended without a word back, failed or ended with the session; or
+// :take's own asking to take a line back (Told.js's undoing).
 const UNDOING = /^undo \d{1,2}:\d{2}$/u;
 function unanswered(served) {
-    return UNDOING.test(String(served?.words ?? "").trim())
+    const words = String(served?.words ?? "").trim();
+    return words === "" || UNDOING.test(words)
         || (String(served?.reply ?? "") === "" && ["failed", "over"].includes(served?.stage));
 }
 
@@ -94,11 +96,11 @@ function same(one, other) {
 const TAKING = ["taking", "taken", "told"];
 
 // Whether a line is still open: the void, or whoever has it, hasn't answered, or it has an
-// answer he hasn't seen, or he's taking it back in this shell, which stays where he did it.
-// `seen` holds how many of each line's answers he has seen, by its key.
+// answer he hasn't seen, or he's taking it back and the void hasn't said; one taken back is
+// done. `seen` holds how many of each line's answers he has seen, by its key.
 function open(talk, events, seen) {
     if (TAKING.includes(talk.said)) {
-        return true;
+        return talk.said === "taking";
     }
     const key = keyOf(talk);
     const heard = past(events, key);
