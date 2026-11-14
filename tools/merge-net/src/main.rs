@@ -41,9 +41,10 @@
 //! names a state folder of its own, so its hold stops no switch.
 //!
 //! `watch --follow PATH` names the installed merge-net: once that is
-//! another build than the one running, the watch ends between rounds, for
-//! its unit to start the new one, rather than a switch stopping it
-//! mid-round and losing every run in flight.
+//! another build than the one running, the watch starts no more runs, and
+//! ends once those under way have, for its unit to start the new one, which
+//! takes up the round's head from what was recorded, rather than a switch
+//! stopping it and losing every run in flight.
 //!
 //! Usage: `merge-net watch [--from COMMIT] [--branch NAME] [--once] [--follow PATH]
 //! | merge-net needs [--base REF] | merge-net ready COMMIT | merge-net status`
@@ -73,7 +74,6 @@ mod world;
 
 use std::env;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -145,6 +145,7 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
         branch,
         moving: std::sync::Mutex::new(()),
         dropped: std::sync::Mutex::default(),
+        follow,
     };
     // With nothing passed yet, the first round starts where it's told, or
     // at main's head as it is now, which it takes as passing. It's written
@@ -177,7 +178,7 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
             let guarded = State::at(state.root.clone());
             std::thread::spawn(move || stall::guard(&guarded));
         }
-        let ended = rounds(&world, &state, &start, &settler, once, follow.as_deref());
+        let ended = rounds(&world, &state, &start, &settler, once);
         done.store(true, Ordering::Relaxed);
         settler.close();
         ended
@@ -189,17 +190,28 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
 }
 
 /// Run round after round, or one with `once`, until another merge-net is
-/// installed at `follow`.
+/// installed where the watch follows.
 fn rounds(
     world: &Real,
     state: &State,
     start: &str,
     settler: &watch::Settler,
     once: bool,
-    follow: Option<&Path>,
 ) -> Result<ExitCode, String> {
     loop {
         let round = watch::round_beside(world, state, start, settler);
+        // A round another build replaced starts no more runs, so it ends
+        // as soon as those under way have, and what's left of its head is
+        // the new build's, taken up from what was recorded.
+        if !once && watch::World::superseded(world) {
+            state.say(
+                "another merge-net is installed, so this one ends once its runs under way \
+                 have, leaving the rest of its round and what it settles to that one",
+            );
+            // An exit, since the scope would wait for the searches under way,
+            // which the new build takes up from disk.
+            return Ok(settler.leave(|| std::process::exit(0)));
+        }
         let rest = match &round {
             Ok(Round::Passed(_) | Round::Failed(_)) => 0,
             Ok(Round::Idle) => 60,
@@ -222,33 +234,8 @@ fn rounds(
                 ExitCode::FAILURE
             });
         }
-        if let Some(installed) = follow
-            && replaced(fs::canonicalize(installed), env::current_exe())
-        {
-            state.say(
-                "another merge-net is installed, so this one ends between rounds, \
-                 leaving what it settles to that one",
-            );
-            // An exit, since the scope would wait for the searches under way,
-            // which the new build takes up from disk.
-            return Ok(settler.leave(|| std::process::exit(0)));
-        }
         std::thread::sleep(std::time::Duration::from_secs(rest));
     }
-}
-
-/// Whether the merge-net installed is another build than the one running.
-/// On 7 November three switches in 25 minutes each restarted the net with
-/// a new build, and a round of about 20 minutes ran from 16:21 past 17:15.
-/// A running build no longer on disk has been replaced; an installed one
-/// that can't be read says nothing.
-fn replaced(installed: io::Result<PathBuf>, running: io::Result<PathBuf>) -> bool {
-    let Ok(installed) = installed else {
-        return false;
-    };
-    !running
-        .and_then(fs::canonicalize)
-        .is_ok_and(|running| running == installed)
 }
 
 /// The recent passed runs that could be `commit`'s change, as
@@ -564,33 +551,6 @@ fn git(arguments: &[&str]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_watch_ends_once_another_build_is_installed() {
-        let dir = env::temp_dir().join(format!("merge-net-follow-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let (old, new) = (dir.join("old"), dir.join("new"));
-        fs::write(&old, "").unwrap();
-        fs::write(&new, "").unwrap();
-        let installed = || fs::canonicalize(&new);
-        assert!(
-            !replaced(installed(), Ok(new.clone())),
-            "the build installed runs"
-        );
-        assert!(
-            replaced(installed(), Ok(old.clone())),
-            "an older build runs"
-        );
-        assert!(
-            replaced(installed(), Ok(dir.join("collected"))),
-            "the running build is gone from disk"
-        );
-        assert!(
-            !replaced(fs::canonicalize(dir.join("unread")), Ok(old)),
-            "nothing can be read of what's installed"
-        );
-        fs::remove_dir_all(&dir).unwrap();
-    }
 
     /// Runs git in `repo` with no user's or system's config, so the test
     /// reads the same wherever it runs, and gives what it printed. The
