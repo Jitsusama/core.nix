@@ -286,6 +286,26 @@ fn a_program_named_through_a_profile_the_account_may_repoint_is_refused() {
 }
 
 #[test]
+fn a_program_whose_path_goes_through_a_link_the_account_owns_is_refused() {
+    let running = Running::releasing("asks-linked", &[LISTED]);
+    let planted = planted_profile(&running).join("bash");
+    let id = "9123456789abcdef0123456789abcdef";
+    put_up(
+        &running,
+        id,
+        LISTED,
+        &[planted.to_str().unwrap(), "-c", "true"],
+    );
+    let answer = answer(&running, id);
+    assert_eq!(answer["state"], "refused", "the answer: {answer}");
+    assert_eq!(
+        answer["why"], "not a root-owned program",
+        "the answer: {answer}"
+    );
+    assert!(!released(&running), "the manager was asked to release");
+}
+
+#[test]
 fn a_released_commands_path_leaves_out_a_profile_the_account_may_repoint() {
     let running = Running::releasing("asks-path", &[LISTED]);
     let planted = planted_profile(&running);
