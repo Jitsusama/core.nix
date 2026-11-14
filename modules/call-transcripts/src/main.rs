@@ -139,7 +139,7 @@ fn answer(calls: PathBuf, words: &Words) {
             // it starts and ends, as its transcribing starts and stops, as
             // its summary comes, and as its opening grows, which stops at
             // four paragraphs or 400 characters, a minute or two in
-            // (book.rs) (XY9H5C, c26ed943).
+            // (book.rs).
             Heard::Calls(answer) => {
                 if held.took(&answer).is_empty() {
                     continue;
