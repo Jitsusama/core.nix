@@ -150,6 +150,12 @@ pub trait Releaser: Send + Sync {
     ///
     /// Where it can't be made, saying why.
     fn command(&self, ask: &Ask, value: &Secret) -> Result<Command, String>;
+    /// What to tell the agent of what the releaser did once the command
+    /// that began at `started` ended, a sentence each; nothing by default.
+    fn after(&self, ask: &Ask, started: SystemTime) -> Vec<String> {
+        let _ = (ask, started);
+        Vec::new()
+    }
 }
 
 /// Where the engine works, and what it says things with.
@@ -166,6 +172,10 @@ pub struct Setting {
     /// a launcher that counts it (the passwords child's, `LEAST_SHOWN_MS`);
     /// none for the experiment's, which says no time.
     pub least_shown_ms: Option<i64>,
+    /// Whether a row says where a release can't commit, for a releaser
+    /// whose command writes a worktree's history alone (the passwords
+    /// child's); off for the experiment's, whose checker writes nothing.
+    pub says_commits: bool,
 }
 
 /// The asks held, by id, and what to tell when they change.
@@ -580,7 +590,14 @@ impl Engine {
         asks.sort_by_key(|one| std::cmp::Reverse(one.ask.asked_ms));
         let rows = asks
             .iter()
-            .map(|one| row::row(one, &self.setting.home, &self.setting.words))
+            .map(|one| {
+                row::row(
+                    one,
+                    &self.setting.home,
+                    &self.setting.words,
+                    self.setting.says_commits,
+                )
+            })
             .collect();
         (rows, row::summary(&asks, &self.setting.words))
     }

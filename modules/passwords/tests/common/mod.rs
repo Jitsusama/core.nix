@@ -172,8 +172,14 @@ impl Running {
     /// `planted_profile`, which a test may plant as the account's own.
     /// The fence's list it hides by is `fence_list`, as `FENCE_LIST` gives
     /// it, and its home holds one of each thing the list names, beside a
-    /// cache folder.
+    /// cache folder. Its bubblewrap lays throwaway layers over folders.
     pub fn releasing(test: &str, releases: &[&str]) -> Running {
+        Running::releasing_as(test, releases, true)
+    }
+
+    /// A daemon releasing as `releasing` does, whose bubblewrap lays
+    /// throwaway layers over folders only where `overlays` says.
+    pub fn releasing_as(test: &str, releases: &[&str], overlays: bool) -> Running {
         let words = std::env::var("LAUNCHER_WORDS")
             .expect("LAUNCHER_WORDS names no vocabulary; passwords-holds-no-secret hands it one");
         let folder = Running::folder_of(test);
@@ -187,6 +193,7 @@ impl Running {
             "references": {"1password": "op://"},
             "profiles": [stored_folder("bash"), folder.join("home/.nix-profile/bin")],
             "hidden": folder.join("fence-hidden.json"),
+            "overlays": overlays,
         });
         let running = Running::started_with(
             test,

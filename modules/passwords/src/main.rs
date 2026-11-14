@@ -115,6 +115,10 @@ struct ManagersFile {
     /// The agent fence's list of what it hides, which an ask's command is
     /// kept from too; none refuses every ask.
     hidden: Option<PathBuf>,
+    /// Whether bubblewrap lays a throwaway layer over a folder, as 0.10
+    /// and later do; without, the caches that take one are read-only.
+    #[serde(default)]
+    overlays: bool,
 }
 
 /// The managers as rows name them, from the same file.
@@ -348,6 +352,7 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) -> boo
             words: said,
             journal: PathBuf::from(secret_asks::reading::JOURNAL),
             least_shown_ms: Some(secret_asks::engine::LEAST_SHOWN_MS),
+            says_commits: true,
         },
         Box::new(asks::Passwords {
             shared: Arc::clone(shared),
@@ -359,6 +364,7 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) -> boo
             home,
             profiles: given.profiles,
             hidden: given.hidden,
+            overlays: given.overlays,
         }),
         changed,
     ));

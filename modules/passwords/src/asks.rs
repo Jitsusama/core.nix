@@ -158,6 +158,8 @@ pub struct Passwords {
     /// The agent fence's list of what it hides; none hides by nothing,
     /// so every ask is refused.
     pub hidden: Option<PathBuf>,
+    /// Whether bubblewrap can lay a throwaway layer over a folder.
+    pub overlays: bool,
 }
 
 impl Passwords {

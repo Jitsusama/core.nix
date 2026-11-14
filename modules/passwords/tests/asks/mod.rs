@@ -427,11 +427,16 @@ fn a_yes_for_what_changed_since_it_was_drawn_releases_nothing() {
     );
 }
 
-/// Bubblewrap's arguments for a listed ask Joel said yes to, once its
-/// command ran.
-fn released_with(running: &Running, id: &str) -> Vec<String> {
-    let bash = stored_bash();
-    let argv = saying(&bash);
+/// What a listed ask running `argv` showed and was answered, once Joel
+/// said yes and its command ran, with bubblewrap's arguments.
+struct Release {
+    row: Value,
+    answer: Value,
+    args: Vec<String>,
+}
+
+/// Releases a listed ask running `argv`, once Joel says yes.
+fn release(running: &Running, id: &str, argv: &[String]) -> Release {
     put_up(
         running,
         id,
@@ -443,7 +448,34 @@ fn released_with(running: &Running, id: &str) -> Vec<String> {
     client.ask(&yes(&row, 812));
     let answer = answer(running, id);
     assert_eq!(answer["state"], "ran", "the answer: {answer}");
-    running.bwrapped().lines().map(str::to_owned).collect()
+    let args = running.bwrapped().lines().map(str::to_owned).collect();
+    Release { row, answer, args }
+}
+
+/// Releases a listed ask whose command says its value.
+fn releasing_saying(running: &Running, id: &str) -> Release {
+    release(running, id, &saying(&stored_bash()))
+}
+
+/// Bubblewrap's arguments for a listed ask Joel said yes to, once its
+/// command ran.
+fn released_with(running: &Running, id: &str) -> Vec<String> {
+    releasing_saying(running, id).args
+}
+
+/// What a row's Commits fact says, if it has one.
+fn commits(row: &Value) -> Option<Value> {
+    row["drawer"]["facts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|fact| fact["name"] == "Commits")
+        .map(|fact| fact["said"].clone())
+}
+
+/// What an answer's note tells the agent, if anything.
+fn note(answer: &Value) -> &str {
+    answer["note"].as_str().unwrap_or_default()
 }
 
 /// Where in `args` these come together, in this order.
@@ -558,16 +590,7 @@ fn a_released_command_writes_its_tree_and_caches_alone() {
     }
     std::fs::write(git.join("config"), "").unwrap();
     let home = running.folder.join("home");
-    for folder in [
-        ".cache/nix",
-        ".npm/_cacache",
-        ".npm/_npx",
-        ".cargo/registry",
-        ".cargo/bin",
-        ".gem",
-    ] {
-        std::fs::create_dir_all(home.join(folder)).unwrap();
-    }
+    caches(&home);
     let args = released_with(&running, "b123456789abcdef0123456789abcdef");
     let bind = Path::new("--bind");
     let ro = Path::new("--ro-bind");
@@ -588,16 +611,91 @@ fn a_released_command_writes_its_tree_and_caches_alone() {
         holds(&args, &[ro, &nix, &nix]) > holds(&args, &[bind, &cache, &cache]),
         "Nix's fetcher cache, which later unfenced runs trust, was left writable: {args:?}"
     );
-    for written in [".npm/_cacache", ".cargo/registry", ".gem"] {
-        let written = home.join(written);
-        holds(&args, &[bind, &written, &written]);
+    let npm = home.join(".npm/_cacache");
+    holds(&args, &[bind, &npm, &npm]);
+    for layered in OVERLAID {
+        let layered = home.join(layered);
+        holds(
+            &args,
+            &[
+                Path::new("--overlay-src"),
+                &layered,
+                Path::new("--tmp-overlay"),
+                &layered,
+            ],
+        );
     }
     let writable = writable(&args);
     assert_eq!(
         writable.len(),
-        7,
-        "the command may write more than its tree, git's objects and refs, and the tools' \
-         caches: {writable:?}"
+        5,
+        "the command may write more than its tree, git's objects and refs, and the caches \
+         that check what they hold: {writable:?}"
+    );
+}
+
+/// The tools' caches that take a throwaway layer, since what they hold
+/// is unpacked and run unchecked by later runs outside the fence.
+const OVERLAID: [&str; 2] = [".cargo/registry", ".gem"];
+
+/// Lays out the tools' caches in `home`, beside some they don't write.
+fn caches(home: &Path) {
+    for folder in [
+        ".cache/nix",
+        ".npm/_cacache",
+        ".npm/_npx",
+        ".cargo/registry",
+        ".cargo/bin",
+        ".gem",
+    ] {
+        std::fs::create_dir_all(home.join(folder)).unwrap();
+    }
+}
+
+#[test]
+fn a_released_command_without_throwaway_layers_reads_the_caches_that_take_them() {
+    let running = Running::releasing_as("asks-unlayered", &[LISTED], false);
+    let home = running.folder.join("home");
+    caches(&home);
+    let args = released_with(&running, "1223456789abcdef0123456789abcdef");
+    for layered in OVERLAID {
+        let layered = home.join(layered);
+        assert!(
+            !args.iter().any(|arg| Path::new(arg) == layered),
+            "{} was bound, where it stays read-only: {args:?}",
+            layered.display()
+        );
+    }
+    assert!(
+        !args.iter().any(|arg| arg.contains("overlay")),
+        "a bubblewrap without layers was asked for one: {args:?}"
+    );
+}
+
+#[test]
+fn a_release_from_a_repositorys_own_checkout_says_it_can_tag_but_not_commit() {
+    let running = Running::releasing("asks-own", &[LISTED]);
+    let git = running.folder.join(".git");
+    for folder in ["objects", "refs", "hooks"] {
+        std::fs::create_dir_all(git.join(folder)).unwrap();
+    }
+    std::fs::write(git.join("config"), "").unwrap();
+    let released = releasing_saying(&running, "0223456789abcdef0123456789abcdef");
+    assert_eq!(
+        commits(&released.row),
+        Some(json!("can't from here, only tags")),
+        "the row didn't say a release here can't commit: {}",
+        released.row
+    );
+    assert!(
+        note(&released.answer).starts_with("Commits: can't from here, only tags."),
+        "the agent wasn't told it can't commit from here: {}",
+        released.answer
+    );
+    assert!(
+        note(&released.answer).contains("worktree"),
+        "the agent wasn't told where it could: {}",
+        released.answer
     );
 }
 
@@ -609,7 +707,18 @@ fn a_released_command_in_a_worktree_writes_its_history_but_not_what_runs() {
     let common = tree.join("home/src/repo/.git");
     let own = worktree_of(&common, "released", &dot_git);
     std::fs::write(&dot_git, format!("gitdir: {}\n", own.display())).unwrap();
-    let args = released_with(&running, "e123456789abcdef0123456789abcdef");
+    let released = releasing_saying(&running, "e123456789abcdef0123456789abcdef");
+    assert_eq!(
+        commits(&released.row),
+        None,
+        "a worktree, where a release commits, said it can't"
+    );
+    assert_eq!(
+        note(&released.answer),
+        "",
+        "the agent was told something of a release that commits"
+    );
+    let args = released.args;
     let bind = Path::new("--bind");
     let ro = Path::new("--ro-bind");
     let kept = holds(&args, &[ro, &dot_git, &dot_git]);
@@ -651,7 +760,19 @@ fn a_released_command_writes_no_history_a_forged_git_file_points_at() {
     let common = tree.join("home/src/repo/.git");
     let own = worktree_of(&common, "elsewhere", &tree.join("elsewhere/.git"));
     std::fs::write(&dot_git, format!("gitdir: {}\n", own.display())).unwrap();
-    let args = released_with(&running, "f123456789abcdef0123456789abcdef");
+    let released = releasing_saying(&running, "f123456789abcdef0123456789abcdef");
+    assert_eq!(
+        commits(&released.row),
+        Some(json!("can't from here, nor tags")),
+        "the row didn't say a release here writes no history: {}",
+        released.row
+    );
+    assert!(
+        note(&released.answer).starts_with("Commits: can't from here, nor tags,"),
+        "the agent wasn't told it writes no history here: {}",
+        released.answer
+    );
+    let args = released.args;
     holds(&args, &[Path::new("--ro-bind"), &dot_git, &dot_git]);
     let writable = writable(&args);
     assert!(
@@ -659,6 +780,68 @@ fn a_released_command_writes_no_history_a_forged_git_file_points_at() {
             .iter()
             .all(|path| !Path::new(path).starts_with(&common)),
         "a worktree that isn't this tree's was opened: {writable:?}"
+    );
+}
+
+/// The names in `folder` that a `.git` was set aside as.
+fn set_aside(folder: &Path) -> Vec<String> {
+    std::fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .filter(|name| name.starts_with(".git.planted-"))
+        .collect()
+}
+
+#[test]
+fn a_git_a_released_command_made_is_set_aside_and_one_long_set_aside_goes() {
+    let running = Running::releasing("asks-planted", &[LISTED]);
+    let tree = &running.folder;
+    std::fs::create_dir_all(tree.join("old/.git")).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let day = 24 * 60 * 60;
+    let stale = tree.join(format!("stale/.git.planted-{}", now - 8 * day));
+    let fresh = tree.join(format!("fresh/.git.planted-{}", now - day));
+    for kept in [&stale, &fresh] {
+        std::fs::create_dir_all(kept.join("hooks")).unwrap();
+    }
+    let planting = format!(
+        "mkdir -p '{tree}/a/.git' && : > '{tree}/a/.git/config' && mkdir -p '{tree}/b' \
+         && echo 'gitdir: /elsewhere' > '{tree}/b/.git'",
+        tree = tree.display()
+    );
+    let argv = vec![
+        stored_bash().to_str().unwrap().to_owned(),
+        "-c".to_owned(),
+        planting,
+    ];
+    let released = release(&running, "2223456789abcdef0123456789abcdef", &argv);
+    for planted in ["a", "b"] {
+        let folder = tree.join(planted);
+        assert!(
+            std::fs::symlink_metadata(folder.join(".git")).is_err(),
+            "the .git the command made in {planted} was left for git to find"
+        );
+        assert_eq!(
+            set_aside(&folder).len(),
+            1,
+            "the .git the command made in {planted} wasn't kept aside"
+        );
+    }
+    assert!(
+        tree.join("old/.git").is_dir(),
+        "a .git there before the command ran was set aside"
+    );
+    assert!(!stale.exists(), "a .git set aside over a week ago was kept");
+    assert!(fresh.exists(), "a .git set aside a day ago went");
+    let note = note(&released.answer);
+    assert!(
+        note.contains("a/.git") && note.contains("b/.git") && note.contains("submodule"),
+        "the agent wasn't told what was set aside, or what to do instead: {}",
+        released.answer
     );
 }
 
