@@ -8,8 +8,8 @@ use daemon_serve::asks::Domain;
 use serde_json::Value;
 
 /// The kinds of record this daemon keeps, Tabs' head among them
-/// (`tab_rows.rs`).
-pub const KINDS: [&str; 13] = [
+/// (`tab_rows.rs`), and the tab in front of a window (front.rs).
+pub const KINDS: [&str; 14] = [
     "program",
     "recent",
     "opened",
@@ -23,6 +23,7 @@ pub const KINDS: [&str; 13] = [
     "reached",
     "row",
     "head",
+    "front",
 ];
 
 /// The programs daemon as its clients know it.
@@ -30,7 +31,9 @@ pub const DOMAIN: Domain = Domain {
     name: "programs",
     kinds: &KINDS,
     sole: &[],
-    named_only: &[],
+    // A window's tab in front is made only as a get names it, so an ask
+    // naming no kind has none to say.
+    named_only: &["front"],
 };
 
 /// The kind a key names: `program` for `program:kitty`.

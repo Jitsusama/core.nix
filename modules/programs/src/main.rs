@@ -39,7 +39,8 @@
 //! kitty's open tabs are rows of their own while watched (tabs.rs), and
 //! Chrome's bookmarks too, but for a page open now (bookmarks.rs). kitty's
 //! open list leaves out the panes the agents daemon names, and Programs counts
-//! their windows apart, as it tells (agents.rs).
+//! their windows apart, as it tells (agents.rs). The tab in front of one
+//! of Chrome's windows is made as a get names niri's window (fronts.rs).
 //! Each command runs on a thread of its own, without a shell, so a slow one never holds an
 //! answer back, and is stopped past ten seconds (command.rs).
 //!
@@ -52,6 +53,7 @@
 mod agents;
 mod bookmarks;
 mod follow;
+mod fronts;
 mod heard;
 mod named;
 mod rows;
@@ -154,6 +156,8 @@ struct Shared {
     taken_words: Option<taken_rows::Words>,
     /// The words a tab's drawer and Tabs' head are said in.
     tab_words: tab_rows::Words,
+    /// The windows daemon's socket, asked a window's title (fronts.rs).
+    windows: PathBuf,
 }
 
 fn main() {
@@ -185,6 +189,7 @@ fn main() {
     let notify = Notify::new()
         .inspect_err(|why| eprintln!("<4>inotify isn't there, so changes aren't heard: {why}"))
         .ok();
+    let windows = rows::socket(&socket);
     let shared = Arc::new_cyclic(|this| Shared {
         daemon: Mutex::new(Daemon {
             held: BTreeMap::new(),
@@ -220,6 +225,7 @@ fn main() {
         home: std::env::var("HOME").unwrap_or_default(),
         taken_words: taken::words(&vocabulary),
         tab_words: tab_rows::Words::read(&vocabulary),
+        windows,
     });
     shared.served().fresh(Box::new({
         let shared = Arc::downgrade(&shared);
@@ -242,8 +248,7 @@ fn main() {
     }
     {
         let shared = Arc::clone(&shared);
-        let windows = rows::socket(&socket);
-        std::thread::spawn(move || rows::hear(&shared, &windows));
+        std::thread::spawn(move || rows::hear(&shared, &shared.windows));
     }
     {
         let shared = Arc::clone(&shared);
@@ -445,8 +450,10 @@ fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String
                 Run::List => (Some(source.list_key()), source.list_kind()),
                 Run::Opened => (source.opened_key(), "opened"),
             };
+            let app = source.app.as_deref().unwrap_or_default();
+            let fronts = |keys: &[String]| run == Run::Opened && fronts::names(app, keys);
             match keys {
-                Some(keys) => key.is_some_and(|key| keys.contains(&key)),
+                Some(keys) => key.is_some_and(|key| keys.contains(&key)) || fronts(keys),
                 None => kinds.iter().any(|k| k == kind),
             }
         })
@@ -655,6 +662,7 @@ fn fresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
         read_source(shared, at, Run::Opened);
     }
     read_named(shared, keys.unwrap_or_default());
+    fronts::read(shared, keys.unwrap_or_default());
     if names_rows(kinds, keys) {
         let mut daemon = lock(&shared.daemon);
         rows::make(shared, &mut daemon);
