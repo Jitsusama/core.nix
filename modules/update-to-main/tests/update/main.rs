@@ -2913,7 +2913,8 @@ fn refuse_during_calls(world: &mut World) {
             shell(),
             "-c".to_owned(),
             format!(
-                "test -e {}/cant-tell && exit 3; test -e {}/call",
+                "test -e {}/cant-tell && {{ echo looking >&2; echo 'the calendar was not read' >&2; \
+                 exit 3; }}; test -e {}/call",
                 world.root.display(),
                 world.root.display()
             ),
@@ -2976,6 +2977,26 @@ fn a_busy_check_that_cant_tell_counts_as_busy() {
     );
     assert!(why.contains("exit status: 3"), "{why}");
     assert_eq!(world.builds(), 0);
+}
+
+#[test]
+fn a_busy_check_that_cant_tell_says_its_last_word() {
+    let mut world = World::new();
+    refuse_during_calls(&mut world);
+    fs::write(world.root.join("cant-tell"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("not refused")
+    };
+    assert!(
+        why.ends_with("exit status: 3, saying the calendar was not read"),
+        "the refusal should end with the check's last line on stderr: {why}"
+    );
+    assert!(
+        !why.contains("saying looking"),
+        "only the check's last line belongs in the refusal: {why}"
+    );
 }
 
 /// A follower waits on `why` the first `times` it's asked, and not after,
