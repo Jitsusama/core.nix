@@ -1702,6 +1702,9 @@ Provider {
             const rows = landings.map(one => provider.keptAlike(landedKeeping, one.key,
                 [one, goes(one), today], () => landing(one)));
             provider.keptOnly(landedKeeping);
+            // Each landing looked at is counted, as Windows counts each window it
+            // hears, for the check that Landed read again looks at none.
+            provider.tally.looked += landings.length;
             return rows;
         });
     }
