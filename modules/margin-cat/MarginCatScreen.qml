@@ -909,10 +909,7 @@ PanelWindow {
             height: window.size
 
             Repeater {
-                model: Pixels.runs(window.yarnAt
-                    ? MarginCat.turned(Theme.pixels[window.yarnAt.pose] ?? [],
-                        window.yarnAt.facing)
-                    : [])
+                model: Pixels.runs(window.yarnDrawn)
 
                 Rectangle {
                     required property var modelData
@@ -926,6 +923,16 @@ PanelWindow {
                 }
             }
         }
+    }
+
+    // The yarn's drawing, built again only as its pose or facing changes,
+    // never each frame it rolls: a new drawing each frame had its cells
+    // made again each frame, and a play cost the shell 4 to 7% of a core
+    // (the GPU rig, 2026-11-14).
+    readonly property string yarnLooks: yarnAt ? `${yarnAt.pose} ${yarnAt.facing}` : ""
+    readonly property var yarnDrawn: {
+        const [pose, facing] = yarnLooks.split(" ");
+        return pose ? MarginCat.turned(Theme.pixels[pose] ?? [], Number(facing)) : [];
     }
 
     // Where `at` logical pixels falls on one of the screen's own.
