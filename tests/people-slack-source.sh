@@ -15,5 +15,8 @@ while read -r line; do
       echo '{"email":"noone@example.com","id":null,"team":"T1","name":"","presence":"",'\
 '"status":"","emoji":"","zone":"","handle":""}'
       ;;
+    *)
+      # Silent, as slack-people is while Slack hasn't yet answered.
+      ;;
   esac
 done
