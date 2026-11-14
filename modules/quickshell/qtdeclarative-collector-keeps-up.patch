@@ -1,0 +1,60 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Finish a collection a long call has outgrown
+
+Qt 6.12.0's incremental collector steps a cycle on only from the event
+loop, in slices of a few milliseconds, and runGC() returns at once while
+one is running. So through one long call, every allocation that misses
+takes a new chunk, and a chunk is freed only once wholly empty: each
+stays held by the few objects the call kept in it. A shell hearing a
+1.4 MB answer in one call of about a second grew its heap from 34 to
+93 MB, and held all of it for the rest of its run. Once the heap has
+grown by half since the running cycle began, the limit Qt already puts
+on the unmanaged heap during a cycle, the cycle is now finished at the
+allocation, as that limit's is.
+
+---
+--- a/src/qml/memory/qv4mm.cpp
++++ b/src/qml/memory/qv4mm.cpp
+@@ -1363,6 +1363,7 @@ void MemoryManager::runGC()
+     }
+ 
+     gcBlocked = MemoryManager::NormalBlocked;
++    slotsAtCycleStart = blockAllocator.totalSlots() + icAllocator.totalSlots();
+ 
+     if (statistics) {
+         statistics->maxAllocatedMem
+--- a/src/qml/memory/qv4mm_p.h
++++ b/src/qml/memory/qv4mm_p.h
+@@ -476,8 +476,16 @@ private:
+         if (HeapItem *m = allocator->allocate(size))
+             return m;
+ 
+-        if (!didGCRun && shouldRunGC())
+-            runGC();
++        if (!didGCRun && shouldRunGC()) {
++            // A cycle steps on only from the event loop, so through one long call every miss
++            // took a new chunk, each left holding a few of what the call kept. Once the heap
++            // has grown by half since the cycle began, as the unmanaged heap's limit allows,
++            // the cycle is finished here instead.
++            if (incrementalGCIsAlreadyRunning && outgrewCycle())
++                (void) tryForceGCCompletion();
++            else
++                runGC();
++        }
+ 
+         return allocator->allocate(size, true);
+     }
+@@ -508,6 +516,13 @@ public:
+     std::size_t unmanagedHeapSize = 0; // the amount of bytes of heap that is not managed by the memory manager, but which is held onto by managed items.
+     std::size_t unmanagedHeapSizeGCLimit;
+     std::size_t usedSlotsAfterLastFullSweep = 0;
++    // The slots the heap held as the cycle now running began.
++    std::size_t slotsAtCycleStart = 0;
++    bool outgrewCycle() const
++    {
++        const std::size_t total = blockAllocator.totalSlots() + icAllocator.totalSlots();
++        return total > 3 * slotsAtCycleStart / 2;
++    }
+ 
+     enum Blockness : quint8 {Unblocked, NormalBlocked, InCriticalSection };
+     Blockness gcBlocked = Unblocked;

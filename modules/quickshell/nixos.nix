@@ -128,6 +128,11 @@ let
   # JSON.parse keeps each string value once per parse, since the shell
   # holds its daemons' answers parsed and they say the same words thousands
   # of times (qtdeclarative-json-strings-kept-once.patch).
+  # A collection one long call has outgrown by half is finished as it
+  # allocates, since a cycle stepped only from the event loop let the
+  # shell's hearing of its Emoji take a new chunk for every miss, each held
+  # by the few rows it kept, 30 MB for the rest of the run
+  # (qtdeclarative-collector-keeps-up.patch).
   # Its Wayland client focuses the window a sync asks for even while an
   # earlier change is still queued, since a leave and an enter close
   # together left the launcher holding the keys yet never active
@@ -156,6 +161,7 @@ let
             ./qtdeclarative-heap-bins-for-each-size.patch
             ./qtdeclarative-dates-without-digits-refused.patch
             ./qtdeclarative-json-strings-kept-once.patch
+            ./qtdeclarative-collector-keeps-up.patch
           ];
         });
       }
