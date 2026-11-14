@@ -1,8 +1,9 @@
 """The desktop test's launcher draws still area.
 
 Here the launcher draws only what changes: a list scrolled, a burst of changes, the foot's facts
-and marks. That it draws nothing left still, glides a selection only by the arrows, draws it on
-its row and reads on a long name is proven on a nested niri, in tests/launcher-on-niri-test.py.
+and marks. That it draws nothing left still, stands a selection on its row in an arrow's first
+frame, draws it on its row and reads on a long name is proven on a nested niri, in
+tests/launcher-on-niri-test.py.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -914,7 +915,7 @@ def test_the_pointer_over_the_rows_never_moves_the_selection(desktop: Desktop) -
     desktop.held_still()
     assert (desktop.showing()["selected"] or {}).get("name") == first[0], desktop.showing()
     # The arrows go where they go, with the pointer resting over the rows
-    # as they glide under it.
+    # as they move under it.
     desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == first[1])
     desktop.next_row()

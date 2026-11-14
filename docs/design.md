@@ -1060,12 +1060,13 @@ Anything a gesture can carry rides a critically damped spring (stiffness
 wobbles. Everything else runs on one ease-out curve (0.23, 1, 0.32, 1), mostly
 there at once, for 100 ms when leaving, 150 ms when arriving and 250 ms for
 something large and rare. `motion.slowdown` stretches all of it at once, to
-look at one movement closely. The launcher's selection, and the list's
-scroll with it, lands within 50 ms of the key, a short glide on the curve,
-since a highlight still moving once Joel has read its row is lag
-(2026-11-10): 30 ms, shorter after a key already late, and none after one
-too late for a frame of it. A held key moves the highlight without a glide,
-so each repeat stands on its row in its own frame (2026-11-11). Nothing
+look at one movement closely. A list moved by keys never glides: the
+launcher's selection, its row's lit words and the list's scroll land
+together in the frame after the key, as Vim's cursorline does, for j and k,
+counts, gg, G and pages alike. A 30 ms glide put the bar a row behind the
+words that lit at once (Joel, 2026-11-13: "the selection can drag behind
+what is actually currently active"; VKCF3Z ruled it out for every move,
+9d5caf24). Nothing
 moves in a way that delays input or focus, every animation holds the panel's
 refresh rate, the first frame of every surface is complete, and nothing jumps
 when its content changes size. Anything that stutters is a bug.

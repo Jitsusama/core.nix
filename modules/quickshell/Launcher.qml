@@ -59,7 +59,6 @@ import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
 import "Finding.js" as Finding
-import "Glide.js" as Glide
 import "Confirm.js" as Confirm
 import "Arming.js" as Arming
 import "Changes.js" as Changes
@@ -576,12 +575,10 @@ Scope {
     }
 
     // After a refresh, the list stays where it was and moves only to show a
-    // selection the refresh itself moved, through reveal, so it glides and
-    // never restarts a glide headed there. Brought to the selection on
-    // every refresh instead, the list snapped mid-glide to where the glide
-    // was going and was pulled back for the rest of it, each second inside
-    // Machine, and a list scrolled by hand went back under the pointer
-    // (Joel, 2026-10-29: "a lot of scrolling focus quirkiness").
+    // selection the refresh itself moved, through reveal. Brought to the
+    // selection on every refresh instead, the list was pulled about each
+    // second inside Machine, and a list scrolled by hand went back under
+    // the pointer (Joel, 2026-10-29: "a lot of scrolling focus quirkiness").
     function showMoved(was) {
         if (current >= 0 && current !== was)
             list.reveal(current);
@@ -5468,7 +5465,7 @@ Scope {
         // The list stays where it stands: Qt keeps the rows in view still as
         // rows above them come or go. Put back to where it had been scrolled,
         // it was put to a place the rows had left, above the first once rows
-        // above it went, and stopped a glide short (Joel, 2026-11-08).
+        // above it went (Joel, 2026-11-08).
         if (current !== now)
             current = now;
         // Rows listed afresh stand from the list's start, so the selection
@@ -5970,7 +5967,7 @@ Scope {
         // Said again in place, as each refresh at home is, the selection
         // stays on its row and the list where it stands. Composed afresh,
         // each refresh put the selection on the first row, sent the list to
-        // the top and put both back after, under a glide already running,
+        // the top and put both back after,
         // a hundred times an opening: the highlight went its own way and
         // the list stopped short of its first row (Joel, 2026-11-08).
         compose(!steadying);
@@ -6031,7 +6028,7 @@ Scope {
         const frame = surface.FramePresentation.framesBegun + 1;
         // Whether the selection is drawn on its row in this frame, so a
         // check sees the bar and the lit row agree on a key's first frame
-        // (Joel, 2026-11-13 23:38: the highlight dragged behind).
+        // (Joel, 2026-11-13 23:38: the selection dragged behind its row).
         const onRow = root.current < 0
             || Math.abs(list.pickY - list.fillAt(root.current)) < 0.5;
         for (const key of keysDrawing.waiting) {
@@ -6235,7 +6232,7 @@ Scope {
         // is the arrow's now.
         lettersAt = 0;
         lettersResting.stop();
-        // What the glide it sets going is timed from, as the key is.
+        // What the drawer it selects is timed from, as the key is.
         movingFrom = pressed > 0 ? pressed : heard;
         current = to;
         movingFrom = 0;
@@ -6786,7 +6783,7 @@ Scope {
     property int searched: 0
 
     onCurrentChanged: {
-        list.pick(list.settled);
+        list.pick();
         if (current >= 0)
             list.reveal(current);
     }
@@ -7233,12 +7230,6 @@ Scope {
             return JSON.stringify(root.drawersPresented);
         }
 
-        // Each key presented where its glide came to rest, as keysPresented
-        // says them, as JSON.
-        function keysLanded(): string {
-            return JSON.stringify(root.keysLanded);
-        }
-
         // Each daemon change shown since it opened, by its place, from its
         // line and when niri presented it, on the monotonic clock, as JSON.
         function updatesPresented(): string {
@@ -7673,8 +7664,8 @@ Scope {
     // its time to appear needs to be kept to the same performance
     // requirements as everything else"). A drawer made again for the same
     // row, as one out is when its row changes, isn't from the key. An
-    // arrow's is from when it was heard where it came with no press time,
-    // as a glide is (arrowed).
+    // arrow's is from when it was heard where it came with no press time
+    // (arrowed).
     property real drawerKeyAt: 0
     // Whether the drawer followed last is served apart and wasn't told yet,
     // so it's timed from its key as it comes, a round trip on, rather than
@@ -10179,41 +10170,6 @@ Scope {
         const one = { from, at, heard: key.heard, begun: key.begun, onRow: key.onRow,
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null };
         keysPresented = keysPresented.concat([one]).slice(-keysKept);
-        // A key that set no glide going stood where it went at its first
-        // frame, so it landed there.
-        if (!keysGlided.includes(from))
-            keysLanded = keysLanded.concat([one]).slice(-keysKept);
-    }
-
-    // Each key presented where the selection, and the list's scroll with
-    // it, came to rest: a key that set a glide going counts as seen only at
-    // the first frame niri presented once the glide ended, since the
-    // highlight still moving isn't yet on its row (VKCF3Z, 2026-11-10).
-    // Keys pressed while one glide runs all land as it ends, since none of
-    // their rows was stood on before.
-    property var keysLanded: []
-    // The presses whose glide runs now, and every press that glided since
-    // the launcher opened, by their press times.
-    property var keysGliding: []
-    property var keysGlided: []
-    function glideBegun() {
-        const pressed = movingFrom > 0 ? movingFrom : KeyTimes.pressed();
-        if (pressed <= 0 || keysGliding.includes(pressed))
-            return;
-        // A held arrow keeps one glide going, so its presses are kept as
-        // many as the rest.
-        keysGliding = keysGliding.concat([pressed]).slice(-keysKept);
-        keysGlided = keysGlided.concat([pressed]).slice(-keysKept);
-    }
-    function glideEnded() {
-        const landing = keysGliding;
-        keysGliding = [];
-        if (landing.length === 0)
-            return;
-        presentedAwait(landing[0], at => {
-            keysLanded = keysLanded.concat(landing.map(from => ({ from, at })))
-                .slice(-keysKept);
-        });
     }
 
     // A daemon's change shown since the launcher opened, by its place, from
@@ -10257,10 +10213,7 @@ Scope {
     }
 
     function keysPresentedSaid() {
-        // Where a key's time went is said of its first frame alone, since a
-        // key that glided landed frames later.
         const first = Presented.keysSaid("presented", keysPresented, true);
-        const landed = Presented.keysSaid("landed", keysLanded, false);
         const updates = Presented.changesSaid(updatesPresented)
             .concat(Presented.drawersSaid(drawersPresented));
         // Each key's own time goes with the opening's trial, where health
@@ -10270,9 +10223,6 @@ Scope {
         keysReached = 0;
         drawersPresented = [];
         keysPresented = [];
-        keysLanded = [];
-        keysGliding = [];
-        keysGlided = [];
         updatesPresented = [];
         updatesWaiting = {};
         for (const place of Object.keys(updatesHeard))
@@ -10281,7 +10231,7 @@ Scope {
             delete updatesBy[place];
         // A frame shut takes nothing a key changed to the screen.
         presentedWaiting = [];
-        for (const said of [first, landed].filter(line => line !== "").concat(updates))
+        for (const said of [first].filter(line => line !== "").concat(updates))
             console.info(said);
     }
 
@@ -11567,7 +11517,7 @@ Scope {
                         }
 
                         // Where the rows are drawn moves the gutter's numbers
-                        // with them, a glide's every frame included.
+                        // with them, wherever it scrolls.
                         Connections {
                             target: list
                             function onContentYChanged() { root.placeNumbers(); }
@@ -11720,24 +11670,17 @@ Scope {
                                 return false;
                             }
 
-                            // The launcher's one motion is the selection
-                            // moving to its row, the list scrolling with it
-                            // on the same timing, on the theme's curve (the
-                            // launcher audit's finding 33, Joel's yes on
-                            // 2026-10-26: it jumped, and the list snapped a
-                            // row at a time). The launcher's selection, and
-                            // the list's scroll with it, lands within 50 ms
-                            // of the key, a short glide on the curve, since a
-                            // highlight still moving once Joel has read its
-                            // row is lag (2026-11-10): Glide.js says how
-                            // long, shorter for a key already late, and none
-                            // for one too late for a frame of it, where the
-                            // theme's medium, 150 ms, ended 100 ms past the
-                            // bar. Only a move among the
-                            // same rows glides: rows made afresh, by a letter,
-                            // a step or a refresh, are a new list, and its
-                            // selection is where it is at once, so typing
-                            // never glides. Everything else stays instant.
+                            // The selection stands on its row, and the list
+                            // scrolls to show it, in the frame after the key
+                            // that moved it, as Vim's cursorline does: the
+                            // bar gliding while the row's words lit at once
+                            // put the two on different rows for a frame or
+                            // two (Joel, 2026-11-13 23:38: "the selection
+                            // can drag behind what is actually currently
+                            // active"; VKCF3Z, 9d5caf24). Whether the
+                            // rows shown have been laid out since they last
+                            // came afresh, so reveal can read where a row
+                            // stands rather than leave it to Qt's estimate.
                             property bool settled: false
                             readonly property var shown: root.matches
                             property string typedWas: ""
@@ -11749,44 +11692,24 @@ Scope {
                                 // Told where they stand once they're the
                                 // rows drawn, so those they replace aren't.
                                 root.rowsPlaced();
-                                // The same rows read again leave a glide under
-                                // way; a letter typed never glides, even onto
-                                // the same rows.
-                                // A glide under way is aimed again where its
-                                // row now is, should a row above it have
-                                // changed height, so it never ends off it.
-                                // So is the list's: aimed at a place rather
-                                // than a row, it ended where the row had been,
-                                // above the first row once rows above it went,
-                                // leaving an empty band at the top (Joel,
-                                // 2026-11-08).
+                                // The selection goes where its row now
+                                // stands, should a row above it have changed
+                                // height.
+                                list.pick();
                                 if (same && root.typed === list.typedWas) {
-                                    if (!picking.running)
-                                        list.pick(false);
-                                    else if (picking.to !== list.fillAt(root.current))
-                                        list.pick(true);
-                                    list.reaim();
                                     Qt.callLater(root.settledNow);
                                     return;
                                 }
                                 list.typedWas = root.typed;
                                 list.settled = false;
-                                // A glide under way gives way at once, its
-                                // row shown where it now stands: ended where
-                                // it was going, it went to a place the new
-                                // rows no longer hold.
-                                const gliding = scrolling.running;
-                                scrolling.stop();
-                                list.pick(false);
-                                if (gliding && root.current >= 0)
-                                    list.positionViewAtIndex(root.current, ListView.Contain);
                                 Qt.callLater(() => list.settled = true);
                                 Qt.callLater(root.settledNow);
                             }
 
-                            // Where the selection is drawn, set by pick
-                            // rather than bound, so a glide under way gives
-                            // way at once to rows made afresh.
+                            // Where the selection is drawn, set by pick as
+                            // the selection or its rows change, since where
+                            // a row stands is read from the rows drawn,
+                            // which no binding hears.
                             property real pickY: 0
 
                             // Where the fill sits on a row, in the list's
@@ -11823,55 +11746,8 @@ Scope {
                                 return Math.max(least, Math.min(to, most));
                             }
 
-                            // How long a glide set going now runs, from
-                            // when the key moving it was pressed and the
-                            // panel's frame (Glide.js): none for a key too
-                            // late for a frame of glide, nor for one held.
-                            function lasting() {
-                                const pressed = KeyTimes.pressed();
-                                const rate = card.Screen.refreshRate;
-                                return Glide.lasting(pressed > 0 ? KeyTimes.now() - pressed : 0,
-                                    1000 / (rate > 0 ? rate : 60), prompt.keyHeld);
-                            }
-
-                            function pick(glide) {
-                                const to = list.fillAt(root.current);
-                                picking.stop();
-                                const lasts = glide && to !== list.pickY ? list.lasting() : 0;
-                                if (lasts > 0) {
-                                    root.glideBegun();
-                                    Report.say(`glides ${Math.round(list.pickY)} to `
-                                        + `${Math.round(to)} in ${lasts} ms`);
-                                    picking.duration = lasts;
-                                    picking.to = to;
-                                    picking.start();
-                                } else
-                                    list.pickY = to;
-                            }
-
-                            // A glide has ended once neither the selection
-                            // nor the scroll moves, so the keys that set it
-                            // going are timed to the next frame (keysLanded).
-                            // Asked again once the handler that stopped it is
-                            // done, since a glide aimed anew stops and starts
-                            // in one go, and hasn't ended.
-                            readonly property bool gliding: picking.running || scrolling.running
-                            onGlidingChanged: {
-                                if (!gliding)
-                                    Qt.callLater(list.glideSettled);
-                            }
-                            function glideSettled() {
-                                if (!list.gliding)
-                                    root.glideEnded();
-                            }
-
-                            // Its duration is set by each glide (pick).
-                            NumberAnimation {
-                                id: picking
-                                target: list
-                                property: "pickY"
-                                easing.type: Easing.BezierSpline
-                                easing.bezierCurve: Theme.motion.curve
+                            function pick() {
+                                list.pickY = list.fillAt(root.current);
                             }
 
                             // Where a row's own place starts and ends in the
@@ -11910,10 +11786,10 @@ Scope {
                             }
 
                             // The first and last rows wholly in view, read
-                            // from the rows the list has drawn, where it's
-                            // going if it's gliding, as H M L take them.
+                            // from the rows the list has drawn, as H M L
+                            // take them.
                             function inView() {
-                                const from = scrolling.running ? scrolling.to : list.contentY;
+                                const from = list.contentY;
                                 const whole = at => {
                                     const entry = list.itemAtIndex(at);
                                     return entry !== null && entry.y >= from - 0.5
@@ -11934,56 +11810,12 @@ Scope {
                             }
 
                             // Scrolls by a number of rows, down or up, as
-                            // far as the rows go, gliding as reveal does, so
-                            // the selection moved as far keeps its place.
+                            // far as the rows go, so the selection moved as
+                            // far keeps its place.
                             function scrollRows(by) {
                                 const top = Math.min(Math.max(0, list.inView().top + by),
                                     Math.max(0, root.matches.length - 1));
-                                list.glide({ top }, list.clamped(list.rowY(top)));
-                            }
-
-                            // What a glide under way is going to: a row to
-                            // show ({ shown }) or to stand at the top
-                            // ({ top }), by its place among rows that stay
-                            // the same, so it's aimed again where that row
-                            // now is (reaim).
-                            property var aim: null
-
-                            function glide(aim, to) {
-                                const from = scrolling.running ? scrolling.to : list.contentY;
-                                if (to === from)
-                                    return;
-                                // On the selection's timing, so the two land
-                                // together; a key too late for a frame of
-                                // glide scrolls at once.
-                                const lasts = list.settled ? list.lasting() : 0;
-                                if (lasts === 0) {
-                                    scrolling.stop();
-                                    list.aim = null;
-                                    list.contentY = to;
-                                    return;
-                                }
-                                root.glideBegun();
-                                list.aim = aim;
-                                scrolling.stop();
-                                scrolling.duration = lasts;
-                                scrolling.to = to;
-                                scrolling.start();
-                            }
-
-                            // Aims a glide under way again where its row
-                            // stands now.
-                            function reaim() {
-                                if (!scrolling.running || list.aim === null)
-                                    return;
-                                const to = list.aim.top !== undefined
-                                    ? list.clamped(list.rowY(list.aim.top))
-                                    : list.showing(list.aim.shown, list.contentY);
-                                if (to === scrolling.to)
-                                    return;
-                                scrolling.stop();
-                                scrolling.to = to;
-                                scrolling.start();
+                                list.contentY = list.clamped(list.rowY(top));
                             }
 
                             // Where the list stands to show a row, from
@@ -11996,35 +11828,17 @@ Scope {
                             }
 
                             // Scrolls just far enough to show the row, as
-                            // positionViewAtIndex's Contain does, gliding
-                            // there when the selection glides.
+                            // positionViewAtIndex's Contain does, by where
+                            // the rows drawn say it stands once they're laid
+                            // out.
                             function reveal(at) {
                                 if (!list.settled) {
                                     list.positionViewAtIndex(at, ListView.Contain);
                                     return;
                                 }
-                                // From where a glide under way is going, so a
-                                // second key while it runs goes on from there.
-                                const from = scrolling.running ? scrolling.to : list.contentY;
-                                list.glide({ shown: at }, list.showing(at, from));
-                            }
-
-                            // Its duration is set by each glide (glide), and
-                            // a glide aimed again keeps it.
-                            NumberAnimation {
-                                id: scrolling
-                                target: list
-                                property: "contentY"
-                                easing.type: Easing.BezierSpline
-                                easing.bezierCurve: Theme.motion.curve
-                                // Ended within the rows, should they have
-                                // changed under it after its last aim.
-                                onFinished: {
-                                    list.aim = null;
-                                    const within = list.clamped(list.contentY);
-                                    if (Math.abs(within - list.contentY) > 0.5)
-                                        list.contentY = within;
-                                }
+                                const to = list.showing(at, list.contentY);
+                                if (to !== list.contentY)
+                                    list.contentY = to;
                             }
 
                             // The selection itself, under the rows, which

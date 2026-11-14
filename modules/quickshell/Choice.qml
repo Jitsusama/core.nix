@@ -45,7 +45,7 @@ Rectangle {
     readonly property color flashInk: Theme.on_accent
     // Taken by visual, or what a pending operator will take: it wears the
     // selection's ground of its own, as his Neovim's Visual does, so the
-    // cursor row, the list's glide under it too, stands deeper than the
+    // cursor row, the list's selection under it too, stands deeper than the
     // rest. Only the fill changes, never weight.
     property bool tinted: false
     // How many steps in it sits under the row it belongs to, as a session
@@ -212,8 +212,8 @@ Rectangle {
     width: parent.width
     height: 4 * Theme.space.beat
     color: "transparent"
-    // Selected, it's filled, unless the list draws the selection itself so
-    // it can glide from row to row (Launcher.qml's list).
+    // Selected, it's filled, unless the list draws the selection itself as
+    // one band among its rows (Launcher.qml's list).
     property bool fills: true
     // How far left of the row its frame's inside edge stands, the gutter's
     // room between, which its ground reaches out to.

@@ -331,24 +331,6 @@ in
       touch $out
     '';
 
-  # The launcher's selection, and the list's scroll with it, lands within
-  # 50 ms of its key: tests/glide.qml holds Glide.js to it in Qt's own
-  # engine.
-  the-selection-lands-within-50-ms-of-its-key =
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    pkgs.runCommandLocal "the-selection-lands-within-50-ms-of-its-key" { } ''
-      cp ${../../../tests/glide.qml} glide.qml
-      ${copied [ "Glide.js" ]}
-      cp ${../../../tests/lib/Expect.js} Expect.js
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml glide.qml
-      touch $out
-    '';
-
   # Each kind of list keeps its one order with nothing typed (docs/design.md,
   # Lists): tests/order.qml holds launcher/Order.js's orders to the rule in
   # Qt's own engine, and tests/every-list-keeps-its-kinds-order.py walks each
