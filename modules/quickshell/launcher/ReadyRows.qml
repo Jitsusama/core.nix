@@ -514,31 +514,18 @@ Scope {
     function thing(row, key, fields) {
         if (!row || !maker)
             return null;
+        // No closure is made here: Qt's engine keeps every argument and
+        // local of a function alive with any closure made in it
+        // (qv4compilerscanfunctions.cpp's argumentsCanEscape), so each
+        // row's would keep all thing() made, 580 bytes of every ready row
+        // (the launcher's lab, 2026-11-13). Each is made in a function
+        // holding only what it reads.
         const acts = actsOf(row);
-        const first = acts[0] ?? null;
-        const steps = acts.some(one => one.step === "rows");
-        const own = one => typeof actMade === "function" ? actMade(key, one, row) : null;
-        const firstOwn = first ? own(first) : null;
-        // Its acts as rows, made once it's first asked for them and kept
-        // with the row, so an opening asking the cursor's row for its keys
-        // again makes none; a row made again makes its acts again.
-        let acted = null;
-        const verbs = () => {
-            if (steps && !insideAfterActs)
-                return Beneath.led(inside(key), first?.into ? rowAt(first.into) : null);
-            if (acted === null) {
-                repeats[key] = repeats[key] ?? {};
-                const kept = Ready.actKeys(acts, repeats[key]);
-                acted = acts.map((one, at) => (at === 0 ? firstOwn : own(one))
-                    ?? actRow(key, one, kept[at]));
-            }
-            if (!insideAfterActs)
-                return acted;
-            const parts = inside(key);
-            if (parts.length > 0)
-                parts[0].gap = true;
-            return acted.concat(parts);
-        };
+        const ofActs = rowActs(row, key, acts);
+        const first = ofActs.first;
+        const steps = ofActs.steps;
+        const firstOwn = ofActs.firstOwn;
+        const verbs = ofActs.verbs;
         // How a Return leaves the launcher is ReadyRows.js's leaving's. A row whose Return asks
         // is that act's for the key language, so its command is read from the act's words
         // (CommandBinding.wordsFor), as Firmware's Install Now ends something and writes
@@ -550,7 +537,7 @@ Scope {
         // Return does the first, and its acts are still y's and d's.
         const acting = acts.length === 0 ? {} : Object.assign({
             verb: verbOf(first),
-            run: () => act(key, first),
+            run: ofActs.run,
             actsOnly: !insideAfterActs && Beneath.actsOnly(acts, row.actsOnly)
         }, Ready.leaving(first), firstOwn ? { returns: firstOwn } : {},
             // Return's act asking for words asks the first in the field, the row its chip.
@@ -573,7 +560,7 @@ Scope {
             figure: true,
             plain: true,
             now: true,
-            copies: () => first.copy
+            copies: ofActs.copies
         };
         const items = itemsOf(row);
         return maker.member(Object.assign({
@@ -601,11 +588,11 @@ Scope {
             // Only a row serving a drawer holds one, so a row without, as
             // Power's Charger is, isn't taken for a thing missing its say
             // (goes-places' undrawn, KP0L6A's 439b18d9).
-            drawer: row.drawer ? () => actsNamed(drawerOf(row, key),
-                acting.verbs && !steps ? acts : [], firstOwn) : undefined,
+            drawer: row.drawer ? drawing(row, key, acting.verbs && !steps ? acts : [], firstOwn)
+                : undefined,
             // One served apart is asked as it's drawn and in a round trip on,
             // so a terminal's show asks again (Launcher.qml's drawerOf).
-            drawerUnread: typeof row.drawer === "string" ? () => !(row.drawer in held) : undefined
+            drawerUnread: typeof row.drawer === "string" ? unread(row) : undefined
         }, acting, asking, copying, fields ?? {}, {
             // A place giving the row its own rows to step into, as a screen its light, holds
             // more than the daemon's acts, which alone say whether it holds them only.
@@ -616,6 +603,52 @@ Scope {
             // (Launcher.qml's hiddenWords), once for each text.
             keywords: keywordsMade(Ready.keywordsOf(row.keywords, fields?.keywords))
         }));
+    }
+
+    // What thing() reads of a row's acts, and the closures it holds them
+    // by: its acts as rows, made once it's first asked for them and kept
+    // with the row, so an opening asking the cursor's row for its keys
+    // again makes none, a row made again making its acts again; its
+    // Return; and what a Return that copies copies.
+    function rowActs(row, key, acts) {
+        const first = acts[0] ?? null;
+        const steps = acts.some(one => one.step === "rows");
+        const own = one => typeof actMade === "function" ? actMade(key, one, row) : null;
+        const firstOwn = first ? own(first) : null;
+        let acted = null;
+        return {
+            first: first,
+            steps: steps,
+            firstOwn: firstOwn,
+            verbs: () => {
+                if (steps && !insideAfterActs)
+                    return Beneath.led(inside(key), first?.into ? rowAt(first.into) : null);
+                if (acted === null) {
+                    repeats[key] = repeats[key] ?? {};
+                    const kept = Ready.actKeys(acts, repeats[key]);
+                    acted = acts.map((one, at) => (at === 0 ? firstOwn : own(one))
+                        ?? actRow(key, one, kept[at]));
+                }
+                if (!insideAfterActs)
+                    return acted;
+                const parts = inside(key);
+                if (parts.length > 0)
+                    parts[0].gap = true;
+                return acted.concat(parts);
+            },
+            run: () => act(key, first),
+            copies: () => first.copy
+        };
+    }
+
+    // A row's drawer, made as it's asked for, its acts listed beside it.
+    function drawing(row, key, listed, firstOwn) {
+        return () => actsNamed(drawerOf(row, key), listed, firstOwn);
+    }
+
+    // Whether a drawer served apart is yet to come.
+    function unread(row) {
+        return () => !(row.drawer in held);
     }
 
     // How a row stands in the foot: as the daemon serves it, or, where one of its acts says how

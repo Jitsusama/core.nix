@@ -178,6 +178,24 @@ in
       touch $out
     '';
 
+  # A ready row's name, made ready to match only once it's read, keeps
+  # nothing alive but the row and what makes it ready, as
+  # tests/member-light.qml holds launcher/Member.js to in a fresh process of
+  # Qt's own JavaScript engine reading its own memory.
+  the-launcher-makes-rows-lightly =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-makes-rows-lightly" { } ''
+      cp ${../../../tests/member-light.qml} member-light.qml
+      cp ${../launcher/Member.js} Member.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 120 ${qt}/bin/qml member-light.qml
+      touch $out
+    '';
+
   # The launcher lands where it did: a thing is one row, the same letters
   # keep their row, and one slip teaches nothing, as tests/ranking.qml holds
   # launcher/Rank.js to it in Qt's own engine, with launcher/Member.js
