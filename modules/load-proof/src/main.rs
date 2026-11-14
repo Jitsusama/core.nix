@@ -74,21 +74,85 @@ fn help() -> Help {
         "load-proof run --json",
         "the run's verdict, as load-proof.run/1",
     )
-    .command("call", "a call's round trips to a STUN server")
-    .command("frames", "whether niri shows a frame at every refresh")
-    .command("keys", "how quickly a key typed in a terminal echoes")
-    .command("save", "how quickly an app's careful save reaches disk")
-    .command("sound", "whether any sound in PipeWire misses its turn")
-    .command("typed", "how fast the launcher's keys reach the screen")
-    .command("all", "all six at once, a line each: a reading")
-    .command("judge", "whether a loaded reading felt as an idle one did")
-    .command("run", "the whole proof, in under four minutes")
+    .subcommand(signal("call", "a call's round trips to a STUN server"))
+    .subcommand(signal(
+        "frames",
+        "whether niri shows a frame at every refresh",
+    ))
+    .subcommand(signal(
+        "keys",
+        "how quickly a key typed in a terminal echoes",
+    ))
+    .subcommand(signal(
+        "save",
+        "how quickly an app's careful save reaches disk",
+    ))
+    .subcommand(signal(
+        "sound",
+        "whether any sound in PipeWire misses its turn",
+    ))
+    .subcommand(signal(
+        "typed",
+        "how fast the launcher's keys reach the screen",
+    ))
+    .subcommand(
+        signal("all", "all six at once, a line each: a reading")
+            .example("load-proof all > idle", "a reading kept to judge by"),
+    )
+    .subcommand(
+        Help::new("judge", "whether a loaded reading felt as an idle one did")
+            .example("load-proof judge idle busy", "busy against idle")
+            .argument("<idle>", "a reading all took at rest")
+            .argument("<loaded>", "one it took under load")
+            .exit(Exit::Failed, "the loaded reading didn't feel as idle did")
+            .exit(Exit::NotFound, "a reading to judge isn't there"),
+    )
+    .subcommand(
+        Help::new("run", "the whole proof, in under four minutes")
+            .example(
+                "load-proof run",
+                "load up to twenty builds, judging each step",
+            )
+            .example("load-proof run --json", "its verdict, as load-proof.run/1")
+            .exit(Exit::Failed, "a step didn't feel as idle did")
+            .exit(
+                Exit::Unavailable,
+                "a signal couldn't be read, or the load run",
+            ),
+    )
+    // Words it runs itself with, a keys reading's stand-in shell and a
+    // run's parts of its load, none for typing.
+    .subcommand(
+        Help::new(keys::ECHO, "a keys reading's shell")
+            .argument("<pty>", "")
+            .unlisted(),
+    )
+    .subcommand(
+        Help::new(run::BUILD, "a build of a run's load")
+            .argument("<folder>", "")
+            .argument("<seconds>", "")
+            .unlisted(),
+    )
+    .subcommand(
+        Help::new(run::LINE, "a line of a run's load")
+            .argument("<seconds>", "")
+            .unlisted(),
+    )
     .exit(Exit::Failed, "a loaded reading didn't feel as idle did")
     .exit(Exit::NotFound, "a reading to judge isn't there")
     .exit(
         Exit::Unavailable,
         "a signal couldn't be read, or the load couldn't run",
     )
+}
+
+/// A signal read alone, for ten seconds unless given more.
+fn signal(name: &str, about: &str) -> Help {
+    Help::new(name, about)
+        .example(&format!("load-proof {name}"), "a reading over ten seconds")
+        .example(&format!("load-proof {name} 30"), "over thirty")
+        .argument("[seconds]", "how long to read, ten unless given")
+        .exit(Exit::Unavailable, "the signal couldn't be read")
 }
 
 fn main() -> ExitCode {
