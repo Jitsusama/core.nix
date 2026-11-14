@@ -2231,7 +2231,7 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
         laid.write_text("".join(json.dumps(line) + "\n" for line in lines))
         laid.rename(laid.with_suffix(""))
 
-    def steered(words: str) -> dict:
+    def steered(words: str) -> dict[str, Any]:
         """Give the steer these words went to the void in, once it's in the inbox."""
         deadline = time.monotonic() + 10
         while not (
@@ -2243,7 +2243,7 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
         ):
             assert time.monotonic() < deadline, "the void's inbox never had the reply"
             time.sleep(0.1)
-        return sent[0]
+        return cast("dict[str, Any]", sent[0])
 
     lay(f"talk-{int(at.timestamp() * 1000)}", asked)
     events = [
@@ -2318,7 +2318,7 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
         laid.write_text("".join(json.dumps(line) + "\n" for line in lines))
         laid.rename(laid.with_suffix(""))
 
-    def mine(shown: dict) -> list[list]:
+    def mine(shown: dict[str, Any]) -> list[list[Any]]:
         """Give the open thread's steps in these words, whether his, and their fold."""
         steps = (shown["line"]["thread"] or {}).get("steps", [])
         return [[step["text"], step["mine"], step["nerd"]] for step in steps

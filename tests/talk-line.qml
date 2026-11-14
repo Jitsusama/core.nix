@@ -424,7 +424,7 @@ QtObject {
                     threadWords).steps, Thread.threadOf(Said.begun("VOID", "hi", "hi",
                     when(21, 0)), threadEvents, threadWords).nerd], [[], ""]);
             Expect.same("an earlier day's thread says which beside its time",
-                Thread.threadOf(threaded, [], threadWords, () => "yesterday").side,
+                Thread.threadOf(threaded, [], threadWords, { dayOf: () => "yesterday" }).side,
                 "yesterday 20:30");
             // A reply typed in an open thread goes to the void as a line whose first line
             // names the thread by its key; the void writes it as `replied` on that key, which
@@ -452,15 +452,15 @@ QtObject {
                 Thread.replying(replyKey, "and then?"), when(21, 5));
             const elsewhere = Said.begun("VOID", "hm",
                 Thread.replying("2026-11-13 20:29", "hm"), when(21, 6));
-            const pending = Thread.threadOf(threaded, threadEvents, threadWords, undefined,
-                [replyHere, replyServed, elsewhere]).steps.slice(5);
+            const pending = Thread.threadOf(threaded, threadEvents, threadWords,
+                { replies: [replyHere, replyServed, elsewhere] }).steps.slice(5);
             Expect.same("replies to it not yet written show at once as his, without their key",
                 pending.map(step => [step.text, step.mine, step.side]),
                 [["and now?", true, "21:00"], ["and then?", true, "21:05"]]);
             Expect.same("a reply said here shows once when the void has written it",
                 Thread.threadOf(threaded, threadEvents.concat([replyWritten]), threadWords,
-                    undefined,
-                    [replyHere]).steps.filter(step => step.text === "and now?").length, 1);
+                    { replies: [replyHere] }).steps.filter(step => step.text === "and now?")
+                    .length, 1);
             // j and k pick a line in the list: the first j the newest, then on, never past
             // either end; k with none picked picks the newest too.
             Expect.same("j and k pick lines, never past either end",

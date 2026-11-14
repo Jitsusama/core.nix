@@ -370,7 +370,7 @@ Scope {
     readonly property var opened: openedSince === 0 ? null
         : talks.find(one => one.since === openedSince) ?? null
     readonly property var thread: opened === null ? null
-        : Thread.threadOf(opened, events, said, since => root.dayOf(since), replies)
+        : Thread.threadOf(opened, events, said, { dayOf: since => root.dayOf(since), replies })
 
     // Return: in normal with a line picked, it opens as its thread; else what's typed goes.
     function returned() {

@@ -76,10 +76,11 @@ function pendingOf(key, replies, written) {
 // The thread of `talk`, a line as the list holds it: his words and when he
 // said them, a day said beside the time where it was an earlier one
 // (`dayOf`); each event of its key, every one, superseded too, since the
-// thread is where nothing is left out; and its key in the void's day file,
-// which the fold names first. A line the void hasn't written of yet holds
-// only his words.
-function threadOf(talk, events, words, dayOf, replies) {
+// thread is where nothing is left out, then his replies to it not yet
+// written (`replies`, talks); and its key in the void's day file, which the
+// fold names first. A line the void hasn't written of yet holds only his
+// words.
+function threadOf(talk, events, words, { dayOf, replies } = {}) {
     const key = Said.keyOf(talk);
     const day = typeof dayOf === "function" ? dayOf(talk.since) : "";
     const clock = Said.clockOf(talk.since);
