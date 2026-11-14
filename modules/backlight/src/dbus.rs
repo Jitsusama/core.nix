@@ -52,17 +52,18 @@ pub(crate) trait Relay {
     fn temperature(&self) -> zbus::Result<u16>;
 }
 
-/// Why the panel's warmth wasn't set.
+/// Why a screen's warmth wasn't set.
 #[derive(Debug, PartialEq)]
 pub(crate) enum Refused {
-    /// The relay holds no object for the panel, since niri isn't showing
-    /// it, as while its lid is shut beside another screen.
-    NoPanel,
+    /// The relay holds no object for the screen, since niri isn't showing
+    /// it, as while the panel's lid is shut beside another screen, or a
+    /// moment after a monitor is plugged in.
+    NotShown,
     /// Anything else, in the words it came in.
     Else(String),
 }
 
-/// Sets the panel's warmth, or says why it wasn't.
+/// Sets a screen's warmth, or says why it wasn't.
 pub(crate) async fn set_warmth(relay: &RelayProxy<'_>, kelvin: u16) -> Result<(), Refused> {
     let relay = relay.inner();
     let reply = relay
@@ -97,10 +98,10 @@ fn answered(reply: &Message) -> Result<(), Refused> {
 }
 
 /// Why a set was refused, from the relay's words, which name the object it
-/// has none of when niri isn't showing the panel.
+/// has none of when niri isn't showing the screen.
 fn refusal(reason: &str) -> Refused {
     if reason.contains("are accepted for object") {
-        Refused::NoPanel
+        Refused::NotShown
     } else {
         Refused::Else(reason.to_owned())
     }
@@ -166,17 +167,16 @@ pub(crate) async fn lid_moved(lid: &mut Pin<Box<PropertyStream<'_, bool>>>) -> z
 pub(crate) type Started = Option<Pin<Box<OwnerChangedStream<'static>>>>;
 
 /// What sets the built-in panel's warmth, on the session's bus, with the
-/// warmth it has and its starts heard. Only that panel is warmed, as True
-/// Tone does: the sensor sits beside it, and another screen's white is its
-/// own. None when the panel can't be named or the bus can't be reached.
+/// warmth it has and its starts heard. Only that panel follows the room,
+/// as True Tone does: the sensor sits beside it, and another screen's
+/// white is its own; the screens beside it take the night alone
+/// (beside.rs), on the same bus. None when the panel can't be named or the
+/// bus can't be reached.
 pub(crate) async fn relay(screen: &Screen) -> (Option<(Warmth, RelayProxy<'static>)>, Started) {
     let Some(connector) = screen.connector() else {
         eprintln!("<5>{} names no panel, so no screen is warmed", screen.name);
         return (None, None);
     };
-    // wl-gammarelay-rs names each screen's object for its connector, with
-    // a dash turned into an underscore.
-    let path = format!("/outputs/{}", connector.replace('-', "_"));
     let bus = match Connection::session().await {
         Ok(bus) => bus,
         Err(error) => {
@@ -184,12 +184,7 @@ pub(crate) async fn relay(screen: &Screen) -> (Option<(Warmth, RelayProxy<'stati
             return (None, None);
         }
     };
-    // Uncached, since the program may start after the daemon, or again.
-    let built = match RelayProxy::builder(&bus).path(path) {
-        Ok(builder) => builder.cache_properties(CacheProperties::No).build().await,
-        Err(error) => Err(error),
-    };
-    let relay = match built {
+    let relay = match relay_for(&bus, &connector).await {
         Ok(relay) => relay,
         Err(error) => {
             eprintln!("<4>can't ask for the screens' warmth: {error}");
@@ -222,6 +217,21 @@ pub(crate) async fn relay(screen: &Screen) -> (Option<(Warmth, RelayProxy<'stati
         WHITE
     };
     (Some((Warmth::new(shown), relay)), started)
+}
+
+/// What sets a screen's warmth, by its connector's name, such as DP-5:
+/// wl-gammarelay-rs names each screen's object for its connector, with a
+/// dash turned into an underscore. Uncached, since the program may start
+/// after the daemon, or again.
+pub(crate) async fn relay_for(
+    bus: &Connection,
+    connector: &str,
+) -> zbus::Result<RelayProxy<'static>> {
+    RelayProxy::builder(bus)
+        .path(format!("/outputs/{}", connector.replace('-', "_")))?
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await
 }
 
 #[cfg(test)]
@@ -263,7 +273,7 @@ mod tests {
                     /outputs/eDP_1";
         assert_eq!(
             answered(&reply(&(said,))),
-            Err(Refused::NoPanel),
+            Err(Refused::NotShown),
             "a panel niri doesn't show has no object to set"
         );
     }
@@ -274,7 +284,7 @@ mod tests {
                     org.freedesktop.DBus.Properties.Set are accepted for object /outputs/eDP_1";
         assert_eq!(
             refusal(said),
-            Refused::NoPanel,
+            Refused::NotShown,
             "a relay on a newer rustbus refuses with an error, read the same"
         );
     }

@@ -41,8 +41,9 @@
 //! Joel says whether it follows the room through the session's bus
 //! (switch.rs), and his say is kept in `$XDG_STATE_HOME/backlight/warmth`.
 //! From sunset to sunrise where the laptop is, the night light warms the
-//! built-in panel too, whatever its sensor sees (night.rs), through the
-//! same program; where it is comes from whereabouts'
+//! built-in panel too, whatever its sensor sees (night.rs), and every
+//! screen beside it, such as a monitor on the dock, which takes the night
+//! alone (beside.rs), through the same program; where it is comes from whereabouts'
 //! `$XDG_RUNTIME_DIR/whereabouts/here.json`, what it keeps of where here
 //! is, looked at again within the hour,
 //! or every ten seconds until it says a place,
@@ -78,6 +79,7 @@
 
 mod answering;
 mod ask;
+mod beside;
 mod curve;
 mod dbus;
 mod evening;
@@ -109,6 +111,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::unix::AsyncFd;
 use zbus::Connection;
 
+use beside::Beside;
 use curve::Curve;
 use dbus::{
     ManagerProxy, RelayProxy, SessionProxy, lid_moved, relay, relay_started, switched, woke,
@@ -575,8 +578,8 @@ const PANEL_RESTS: Duration = Duration::from_mins(1);
 const NIGHT_WHITE: u16 = 4000;
 
 /// The night light: its white, whether Joel has it on and where that's
-/// kept, where whereabouts says the laptop is, what it wants now, and when
-/// to look again.
+/// kept, where whereabouts says the laptop is, what it wants now, when to
+/// look again, and the screens beside the panel, which take it alone.
 struct Nightly {
     white: u16,
     on: bool,
@@ -585,6 +588,7 @@ struct Nightly {
     plan: Option<Plan>,
     wants: u16,
     due: Option<Instant>,
+    beside: Beside,
 }
 
 impl Nightly {
@@ -599,6 +603,7 @@ impl Nightly {
             plan: None,
             wants: WHITE,
             due: Some(Instant::now()),
+            beside: Beside::new(Instant::now()),
         }
     }
 }
