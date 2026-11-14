@@ -853,8 +853,10 @@ Provider {
     function talking(address, name) {
         const to = String(address).toUpperCase();
         const served = () => Said.sessionTalks(saidTo[to] ?? [], talksOf(to));
+        const stages = Words.of("orchestrators:talk").said ?? {};
         const words = Object.assign({}, Words.of("agents:line").said ?? {}, {
-            unsent: (Words.of("orchestrators:talk").said ?? {}).failed ?? ""
+            unsent: stages.failed ?? "",
+            stages
         });
         const days = { yesterday: String(words.yesterday ?? ""),
             date: (date, format) => Qt.formatDate(date, format) };

@@ -45,8 +45,11 @@ function sessionTalks(here, served) {
 }
 
 // How a session's talk reads under the field, in exchange()'s shape: his words, when he said
-// them at their right; sent until it's delivered, then waiting on whom, breathing, with what
-// it has written so far; its reply, and who answered at its right; or why it never went.
+// them at their right; sent until it's delivered, then, breathing, the word the session's row
+// says of it (delivered, reading, replying: `words.stages`, Talks' own), so one talk is told
+// one way wherever Joel looks (VKCF3Z [2dbb1c2f]), or waiting on whom for a stage it has no
+// word for, with what it has written so far; its reply, and who answered at its right; or why
+// it never went.
 function spoken(talk, name, words, dayOf) {
     const since = Date.parse(talk.at);
     const day = typeof dayOf === "function" ? dayOf(since) : "";
@@ -63,7 +66,8 @@ function spoken(talk, name, words, dayOf) {
     }
     const whole = WHOLE.includes(talk.stage);
     return Object.assign(shown, { answers: reply === "" ? [] : [reply],
-        waiting: whole ? "" : Said.worded(words, "waiting", name),
+        waiting: whole ? "" : String(words?.stages?.[talk.stage] ?? "")
+            || Said.worded(words, "waiting", name),
         by: whole && reply !== "" ? String(name ?? "") : "" });
 }
 
