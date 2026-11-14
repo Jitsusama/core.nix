@@ -17,7 +17,7 @@
             "ask": {
               "ask": "release",
               "digest": "f43483967d8d8191479ec745a436cadecb8bfe84e44fa40c5c6676f201b08da9",
-              "key": "row:asks:3f0c9e2a7b5d41e8a6c2f9d01b7e4a35"
+              "key": "ask:3f0c9e2a7b5d41e8a6c2f9d01b7e4a35"
             },
             "key": "verb:release"
           },
@@ -25,7 +25,7 @@
             "ask": {
               "ask": "refuse",
               "digest": "f43483967d8d8191479ec745a436cadecb8bfe84e44fa40c5c6676f201b08da9",
-              "key": "row:asks:3f0c9e2a7b5d41e8a6c2f9d01b7e4a35"
+              "key": "ask:3f0c9e2a7b5d41e8a6c2f9d01b7e4a35"
             },
             "key": "verb:refuse"
           }
