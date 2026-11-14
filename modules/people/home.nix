@@ -13,7 +13,10 @@
 # daemon command, and the people daemon (src/main.rs) runs each such
 # program, holding everyone they know ready over
 # $XDG_RUNTIME_DIR/daemons/people.sock in the shell's daemon interface,
-# for the shell and anything else that asks.
+# for the shell and anything else that asks. A source the daemon serves
+# whole, its acts, what's between them and how they stand ready in its
+# lines, needs no QML file: People draws what's served (Y2YBTS,
+# 67770006).
 { quickshell }:
 {
   config,
@@ -59,8 +62,13 @@ in
             '';
           };
           source = lib.mkOption {
-            type = lib.types.path;
-            description = "What knows them: a QML file starting from PersonSource.qml.";
+            type = lib.types.nullOr lib.types.path;
+            default = null;
+            description = ''
+              What knows them: a QML file starting from PersonSource.qml, for
+              a source with something of its own to say. None for a source
+              the daemon serves whole, which People draws as served.
+            '';
           };
           daemon = lib.mkOption {
             type = lib.types.nullOr (lib.types.listOf lib.types.str);
@@ -110,7 +118,7 @@ in
         lib.nameValuePair "quickshell/launcher/people/${source.name}.qml" {
           inherit (source) source;
         }
-      ) sources
+      ) (lib.filter (source: source.source != null) sources)
     );
 
     # Just before Calls, since calling someone is the first thing done with
@@ -119,6 +127,8 @@ in
       order = 44;
       source = ./People.qml;
       weight = 0.9;
+      # Each says whether it has a file, so People makes one with none
+      # from PersonSource.qml as it is.
       sources = map (
         source:
         removeAttrs source [
@@ -126,6 +136,9 @@ in
           "daemon"
           "stands"
         ]
+        // {
+          file = source.source != null;
+        }
       ) sources;
       # The time where someone is, for a source that knows their time zone,
       # told from the same tzdata list the launcher's clocks read.

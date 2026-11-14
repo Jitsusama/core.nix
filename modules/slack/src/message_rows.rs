@@ -90,7 +90,7 @@ pub(crate) fn word(vocabulary: &Value, id: &str, at: &[&str]) -> Result<String, 
 }
 
 /// A word as it opens a row's name or a fact, as SlackMessage.qml's `you`
-/// and Slack.js's presence say it.
+/// and a person's presence say it.
 pub(crate) fn capitalised(word: &str) -> String {
     let mut letters = word.chars();
     letters.next().map_or_else(String::new, |first| {

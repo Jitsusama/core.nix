@@ -167,6 +167,34 @@ pub fn stood(entry: &Value, stands: &Stands) -> Option<Stood> {
     })
 }
 
+/// What each source said of someone, each entry with how it has them
+/// stand where its source says how anyone stands, as `stood`, `{ said,
+/// order }` in People's words and its `mark` where it gives one, so the
+/// shell words nobody's stand itself, a source of its or not (Y2YBTS,
+/// 67770006).
+#[must_use]
+pub fn sourced(record: &Record, sources: &[(String, Option<Stands>)]) -> Value {
+    let mut said = serde_json::Map::new();
+    for (name, entry) in &record.sources {
+        let mut entry = entry.clone();
+        let stands = sources
+            .iter()
+            .find(|(source, _)| source == name)
+            .and_then(|(_, stands)| stands.as_ref());
+        if let Some(one) = stands.and_then(|stands| stood(&entry, stands))
+            && let Some(fields) = entry.as_object_mut()
+        {
+            let mut told = json!({"said": one.said, "order": one.order});
+            if let Some(mark) = one.mark {
+                told["mark"] = json!(mark);
+            }
+            fields.insert("stood".to_owned(), told);
+        }
+        said.insert(name.clone(), entry);
+    }
+    Value::Object(said)
+}
+
 /// How someone stands by every source that says, in the order they're
 /// consulted: what most limits reaching them, a tie to the source asked
 /// first, the first mark after it, and a favourite or recent if any says
@@ -426,6 +454,9 @@ pub struct Told {
     kept: Kept,
     /// When the clock alone next changes who's listed or their order.
     pub until: Option<f64>,
+    /// The keys of those listed, in their order, so each source is asked
+    /// ahead of them while a watch holds them.
+    pub listed: Vec<String>,
 }
 
 impl Told {
@@ -447,6 +478,7 @@ impl Told {
             .collect();
         let listed = ordered(&persons, now);
         self.until = changes_at(&persons, now);
+        self.listed = listed.iter().map(|person| person.key.clone()).collect();
         let rows = listed.iter().map(|person| person.row()).collect();
         let beside = listed
             .iter()
@@ -455,7 +487,7 @@ impl Told {
                 [
                     json!({
                         "key": person.key, "kind": LISTING, "person": person.json(),
-                        "sources": record.sources,
+                        "sources": sourced(record, sources),
                     }),
                     drawer::drawer(person, record, sources, named, book.standings()),
                 ]

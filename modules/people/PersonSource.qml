@@ -1,6 +1,7 @@
 // What a program that knows people gives the launcher's People place
 // (People.qml), each such source a file starting from this one, named in
-// jitsusama.people.sources by the module that brings the program:
+// jitsusama.people.sources by the module that brings the program, or this
+// one as it is for a source the people daemon serves whole:
 //
 //     PersonSource {
 //         people: [{ emails: ["ada@example.com"], name: "Ada Lovelace", recent: true }]
@@ -51,20 +52,28 @@
 // whose stands are keyed "<its name>:<id>", their key. `woken` is asked
 // each time the launcher opens, for a source that only follows what it
 // knows while someone might look. A source whose program the people
-// daemon runs and says everyone to, as Tuple's and Google's do, or each it's
-// asked about, as Slack's does, `daemonHolds`: it gives
-// no `people` or `stands` of its own, and People reads from the daemon
-// only those it lists and those a search finds, never everyone, asking
-// `stood` how each stands from what the source told the daemon of them.
-// A source
-// that learns its acts for someone only once asked, as Slack's looks
-// them up, tells its `place` (People.qml's provider) it changed, so a
-// person Joel is inside is made again.
+// daemon runs and says everyone to, as Tuple's and Google's do, or each
+// it's asked about, as Slack's does, `daemonHolds`: it gives no `people`
+// or `stands` of its own, and People reads from the daemon only those it
+// lists, those a search finds and whoever Joel steps into, never
+// everyone, asking `knows` whether the source knows each, from its
+// entry's `known`, and `stood` how each stands, from the `stood` the
+// daemon words for its entry.
+//
+// By default such a source's part of someone is drawn as the daemon
+// serves it (Y2YBTS, 67770006), so a source serving it whole needs no file
+// (Slack's): its entry's `acts`, on ready-rows.md's forms, `main` on the
+// one leading the ways to reach them, one with no form held in place
+// dimmed with its `side` saying why; and its `between`, each { at, key,
+// kind, mine, one, what, row }, its row a ready row with its drawer, one
+// `waits` while it waits, until `until` where it says one. People makes
+// each row (People.qml's servedActs and servedBetween), and a source
+// learning something of someone once asked is heard by its watch.
 import QtQuick
 
 QtObject {
-    // What a source holds of its own, as Slack's holds the reader it asks:
-    // a QtObject has no default property for one to go in.
+    // What a source holds of its own, as Tuple's holds what it follows: a
+    // QtObject has no default property for one to go in.
     default property list<QtObject> held
 
     // Its settings from Nix, as the option gives them.
@@ -90,8 +99,11 @@ QtObject {
         return false;
     }
 
+    // Whether its part of someone is drawn as the daemon serves it.
+    readonly property bool served: daemonHolds && place !== null
+
     function acts(person, provider) {
-        return [];
+        return served ? place.servedActs(person, settings.name) : [];
     }
 
     function next(person, provider) {
@@ -99,15 +111,15 @@ QtObject {
     }
 
     function unread(person, provider) {
-        return [];
+        return served ? place.servedBetween(person, settings.name, true) : [];
     }
 
     function recent(person, provider) {
-        return [];
+        return served ? place.servedBetween(person, settings.name, false) : [];
     }
 
     function firsts(person, provider) {
-        return { met: null, wait: null };
+        return served ? place.servedFirsts(person, settings.name) : { met: null, wait: null };
     }
 
     function favourite(person, provider) {
@@ -118,16 +130,18 @@ QtObject {
     }
 
     // Whether what this source told the daemon of someone says it knows
-    // them, for a source that says so of one it knows nobody by, as
-    // Slack's does with no id: such a one is nobody of this source's.
+    // them: one it says `known` false of, as Slack does of an address it
+    // knows nobody by or is still asked about, is nobody of this source's.
     function knows(entry) {
-        return true;
+        return entry.known !== false;
     }
 
-    // How one the daemon holds stands, from what this source told it of
-    // them: { said, order, favourite, recent }, as `stands` holds them.
+    // How one the daemon holds stands, from the `stood` it words for this
+    // source's entry, in People's words: { said, order, mark, favourite,
+    // recent }, as `stands` holds them.
     function stood(entry) {
-        return { said: "", order: 4, favourite: entry.favourite === true,
+        return { said: String(entry.stood?.said ?? ""), order: entry.stood?.order ?? 4,
+            mark: String(entry.stood?.mark ?? ""), favourite: entry.favourite === true,
             recent: entry.recent === true };
     }
 }
