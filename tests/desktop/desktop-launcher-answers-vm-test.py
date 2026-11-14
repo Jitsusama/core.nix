@@ -796,9 +796,9 @@ def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gi
                 and shown["selected"]["verb"] == "release"
             )
         )
-        # Letting it go ends the keeping, so Return writes its line, which asks first, in
-        # the act's words and the folder's name, never the line's :snooze.
-        desktop.line_answered("snooze", "Release ~/scratch? (y/n)")
+        # Letting it go ends the keeping, so Return writes its line, which runs at once,
+        # since the folder can be kept again.
+        desktop.line_run("snooze")
         desktop.launcher_until(lambda shown: shown["footer"] == f"No longer kept: {folder}.")
         desktop.close_launcher()
     finally:

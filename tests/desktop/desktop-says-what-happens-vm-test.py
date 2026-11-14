@@ -1507,25 +1507,12 @@ def every_row_reaches_its_sender(desktop: Desktop, command: str, answer: str) ->
     desktop.launcher_ready()
     # Escape gives normal from the find, where : begins a command, and never closes.
     machine.send_key("esc")
+    # Not every row can, Mark Them Read and History never, and it acts on those that can at
+    # once, asking nothing: u brings a notice back, so neither command costs (Joel, 2026-11-13).
     machine.send_chars(f":%{command}\n", delay=KEY_PACE)
-
-    # Not every row can, Mark Them Read and History never, so it asks first, as Vim's :confirm
-    # does. How many can depends on what the subtests before left: a notice already closed
-    # can't be forgotten, and a whole run left 9 of 26 that could, so only the two here are
-    # counted on.
-    def asked(shown: Json) -> bool:
-        count = cast("int", shown["count"])
-        said = re.fullmatch(
-            rf"(\d+) of {count} can {command}; {command} them\? \(y/n\)",
-            cast("str", shown["question"]),
-        )
-        return (
-            said is not None and len(titles) <= int(said[1]) < count and bool(shown["takesAnswer"])
-        )
-
-    desktop.launcher_until(asked)
-    machine.send_chars("y")
-    desktop.launcher_until(lambda shown: shown["question"] == "")
+    desktop.launcher_until(
+        lambda shown: shown["open"] and shown["command"] is None and shown["question"] == ""
+    )
     # What d is done with is let go as the launcher closes, so u can bring it back till then.
     desktop.close_launcher()
     machine.wait_until_fails(

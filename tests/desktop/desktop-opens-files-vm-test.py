@@ -594,11 +594,11 @@ def open_own(desktop: Desktop, chose: str) -> None:
 
 
 def replace_once(desktop: Desktop, chose: str, name: str) -> None:
-    """Save as a name already there: Return asks once, n saves nothing, and y saves over it."""
+    """Save as a name already there: Return asks once, n saves nothing, and Return saves over."""
     machine = desktop.machine
     before = name.rsplit(".", 1)[0]
     desktop.launcher_until(lambda shown: shown["typed"] == name and shown["caret"] == len(before))
-    asked = f"Replace {name}? (y/n)"
+    asked = f"Replace {name}?"
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["question"] == asked and shown["takesAnswer"])
     machine.send_chars("n")
@@ -607,7 +607,7 @@ def replace_once(desktop: Desktop, chose: str, name: str) -> None:
     machine.fail(f"test -e {chose}")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["question"] == asked and shown["takesAnswer"])
-    machine.send_chars("y")
+    machine.send_key("ret")
 
 
 def name_line(desktop: Desktop, held: int) -> None:

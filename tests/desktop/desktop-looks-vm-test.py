@@ -959,8 +959,8 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
     """Shoot a session's Close on the cursor, then its ask, which says what stays.
 
     Close ends the session, so Return puts it on the command line and a fresh Return asks,
-    naming the session by its address and what of it stays (VKCF3Z, 2026-11-06); n leaves
-    it running.
+    naming the session by its address and what of it stays (VKCF3Z, 2026-11-06). A Return
+    more would close it, as a row armed does, and the foot says so; Escape leaves it running.
     """
     desktop.down_to(title)
     desktop.follow()
@@ -970,18 +970,22 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
     # The second Return waits out the first's, which the launcher takes for the same press
     # doubled while it's fresh, and so runs nothing.
     desktop.line("close")
-    asked = f"Close {address}? Its folder stays. (y/n)"
+    asked = f"Close {address}? Its folder stays."
     with desktop.told("ask ready"), desktop.told(f"asked {asked}"):
         desktop.machine.send_key("ret")
     # The ask takes the whole head, so what it closes is read, its path given way.
     shown = desktop.showing()
     drawn = shown["questionShown"]
     assert drawn.startswith(f"Close {address}?"), f"at {shot} the ask lost its subject: {drawn}"
-    assert drawn.endswith("(y/n)"), f"at {shot} the ask lost its keys: {drawn}"
     assert shown["questionWhole"], f"at {shot} the ask was cut: {drawn}"
+    assert shown["hints"] == ["\u21b5 confirm"], f"at {shot} the foot said {shown['hints']}"
+    # The line leads with the ask, no glyph before it, since it isn't a find while it asks.
+    laid = desktop_session.laid_out(desktop)
+    leading = min(laid["field"], key=lambda word: word["x"])
+    assert leading["text"].startswith("Close"), f"at {shot} the line leads {leading}"
     desktop.shoot(f"launcher-agents-close-asks-at-{shot}")
     with desktop.told("answered no"):
-        desktop.machine.send_chars("n")
+        desktop.machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["question"] == "")
     desktop.step_out()
 

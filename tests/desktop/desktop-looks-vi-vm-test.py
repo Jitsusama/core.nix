@@ -65,13 +65,13 @@ RECORDED = "/run/user/1000/flash.log"
 FRAMES = "/run/user/1000/flash"
 
 
-def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
+def test_y_flashes_its_rows_and_a_waiting_d_says_what_it_takes(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Y flashes the row it copies, and d's ask stands on the line, tinting what it covers."""
+    """Y flashes the row it copies, and d waiting names the row it would close, tinting it."""
     machine = desktop.machine
-    # A second window, so dj has two to close and asks once for both,
-    # where one closes at once.
+    # A second window, beginning "Notes" as Tuesday's does, so d waiting
+    # has to name its row whole to say which it takes.
     wednesday = desktop.opened("Notes for Wednesday")
     desktop.notes_window()
     for scale in at_each_scale:
@@ -105,8 +105,8 @@ def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
         before = desktop.showing()
         # d waiting says at once what it will take, the row's name whole,
         # since two windows here begin "Notes": the row's keys, which no
-        # key does while d waits, give way to it. It moves nothing; j then
-        # takes both rows, and asks once for both.
+        # key does while d waits, give way to it. It moves nothing, and
+        # Escape lets it go, closing nothing.
         machine.send_chars("d")
         desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 close"))
         shown = desktop.showing()
@@ -115,33 +115,15 @@ def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
         assert shown["tinted"] == [shown["current"]], shown
         assert len(shown["glance"]) == len(before["glance"]), f"at {scale} d cut {shown}"
         desktop.shoot(f"launcher-pending-at-{named}")
-        with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
-            machine.send_chars("j")
-        # The ask stands on the line, in the find's place, as every ask
-        # does, said whole, and tints the rows it covers as visual does.
-        # The foot keeps how things stand, whole (a minute turning keeps
-        # its length), and its keys stay put.
-        shown = desktop.showing()
-        assert shown["question"] == "Close 2 windows? (y/n)", shown
-        assert shown["questionWhole"], f"at {scale} the ask was cut: {shown}"
-        assert shown["tinted"] == [0, 1], shown
-        # The rows it covers wear the tint alone, the find's wash giving
-        # way on each, and the line leads with no glyph, since it isn't a
-        # find while it asks.
-        laid = desktop_session.laid_out(desktop)
-        covered = [row for row in laid["rows"] if row["at"] in shown["tinted"]]
-        assert covered, f"at {scale} no covered row was drawn: {laid['rows']}"
-        assert not any(row["washed"] for row in covered), f"at {scale} washed {covered}"
-        leading = min(laid["field"], key=lambda word: word["x"])
-        assert leading["text"].startswith("Close"), f"at {scale} the line leads {leading}"
-        assert len(shown["glance"]) == len(before["glance"]), f"at {scale} the foot gave way"
-        desktop.shoot(f"launcher-asks-at-{named}")
-        with desktop.told("answered no"):
-            machine.send_key("esc")
-        desktop.launcher_until(lambda shown: shown["open"] and shown["question"] == "")
-        after_ask = desktop.showing()
-        assert after_ask["keysAt"] == before["keysAt"], f"at {scale} the keys moved"
-        assert after_ask["tinted"] == [], f"at {scale} {after_ask}"
+        machine.send_key("esc")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["open"] and not shown["modeWord"].startswith("d ") and shown["tinted"] == []
+            )
+        )
+        after = desktop.showing()
+        assert after["keysAt"] == before["keysAt"], f"at {scale} the keys moved"
+        assert len(after["rows"]) == len(before["rows"]), f"at {scale} d closed one {after}"
         desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {wednesday['id']}")
 

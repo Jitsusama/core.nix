@@ -1145,9 +1145,9 @@ def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, line: str, beca
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == act)
     told = desktop.showing()["selected"]["told"]
     assert told[:1] == [f"\u21b5 :{line}"], told
-    # It ends what wants Joel, so Return writes its line, and a fresh Return asks first,
-    # in the act's own words, as "Archive Quarterly Numbers?", never the line's :delete.
-    desktop.line_answered(line, f"{act} {subject}? (y/n)")
+    # It ends what wants Joel, so Return writes its line, and a fresh Return runs it at
+    # once, since reading or archiving mail costs little.
+    desktop.line_run(line)
     # The launcher stays where it was, its foot saying what became of it
     # once the program no longer holds it as wanting Joel.
     desktop.launcher_until(
@@ -1180,7 +1180,7 @@ def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
     was_asked({"read": {"id": "lunch"}})
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "yes")
     # Return again, by its line, marks it unread, and it wants Joel once more.
-    desktop.line_answered("delete")
+    desktop.line_run("delete")
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Read"

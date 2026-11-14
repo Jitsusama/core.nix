@@ -644,23 +644,43 @@ def test_a_sessions_stop_is_an_ending_return_writes_and_a_second_steers(shell: S
         path.unlink()
 
 
-def test_a_sessions_close_asks_saying_what_stays_and_y_steers_it_closed(shell: Shell) -> None:
-    """Close, last among a session's acts, asks what it leaves, and y steers it a close."""
+def test_a_sessions_close_asks_saying_what_stays_and_return_steers_it_closed(
+    shell: Shell,
+) -> None:
+    """Close, last among a session's acts, asks what it leaves, and Return steers it a close.
+
+    The ask is answered as an armed row is (Joel, 2026-11-13): a Return more does it, its foot
+    saying so, and any other key, y among them, lets it go without reaching the line.
+    """
     into_orchestration(shell)
     rows = shell.showing()["rows"]
     assert rows[: rows.index(FOLD)][-1:] == ["Close"], rows
     shell.down_to("Close")
-    # Return writes the line Close is, and a second runs it, which asks.
-    shell.send_key("ret")
-    shell.launcher_until(
-        lambda shown: (shown["command"] or {}).get("line") == "close" and not shown["linedFresh"]
-    )
-    shell.send_key("ret")
-    shell.launcher_until(lambda shown: shown["takesAnswer"])
-    asked = "Close BOSSES? Its folder stays. (y/n)"
-    assert shell.showing()["question"] == asked, shell.showing()
-    shell.send_chars("y")
     inbox = STEER / "BOSSES"
+
+    def asked_to_close() -> None:
+        """Return writes the line Close is, and a second runs it, which asks."""
+        shell.send_key("ret")
+        shell.launcher_until(
+            lambda shown: (
+                (shown["command"] or {}).get("line") == "close" and not shown["linedFresh"]
+            )
+        )
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: shown["takesAnswer"])
+
+    asked_to_close()
+    asking = shell.showing()
+    assert asking["question"] == "Close BOSSES? Its folder stays.", asking
+    assert asking["hints"] == ["\u21b5 confirm"], asking
+    # y once asked closed it; now it lets the ask go, typing nothing, and nothing is steered.
+    shell.send_chars("y")
+    shell.launcher_until(
+        lambda shown: shown["open"] and shown["question"] == "" and shown["typed"] == ""
+    )
+    assert not any(inbox.glob("*.json")), "y closed the session"
+    asked_to_close()
+    shell.send_key("ret")
     deadline = time.monotonic() + 10
     while not any(inbox.glob("*.json")):
         assert time.monotonic() < deadline, "nothing reached the orchestrator's inbox"
@@ -859,14 +879,13 @@ def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(
     assert row["told"][:1] == ["\u21b5 open"], row
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"] == ["Forget It"])
-    # Forgetting ends what's offered, so Return writes :forget, which asks.
+    # Forgetting ends what's offered, so Return writes :forget, which runs at once on a
+    # session whose folder has gone, since it couldn't be reopened anyway.
     shell.send_key("ret")
     shell.launcher_until(
         lambda shown: (shown["command"] or {}).get("line") == "forget" and not shown["linedFresh"]
     )
     shell.send_key("ret")
-    shell.launcher_until(lambda shown: shown["takesAnswer"])
-    shell.send_chars("y")
     shell.launcher_until(lambda shown: not shown["open"])
     # Forgotten, it's no longer offered, and the harness's record is as it wrote it.
     opened(shell)
