@@ -14,16 +14,23 @@
 //! repository it can't read is said and left out, as cadence leaves out
 //! any source it can't read; it fails only when it reads none. It answers
 //! with each repository's figures and the files it wrote, wrapped to the
-//! terminal, or as `code-health.day/1` under `--json`.
+//! terminal, or as `code-health.day/1` under `--json`. It writes
+//! `hour.json` too, each figure held against the target `--target` gives
+//! it, beside the hour before's and its owner (hour.rs), for cadence's
+//! hourly read; as it runs each hour, the day's files say the last hour.
 //!
 //!     code-health --repo NAME=CHECKOUT... [--ref NAME=REF]...
-//!         [--under NAME=FOLDER]... [--into FOLDER]
+//!         [--under NAME=FOLDER]... [--target NAME/MEASURE=FIGURE]...
+//!         [--owner NAME[/MEASURE]=OWNER]... [--into FOLDER]
 //!
 //! A repository is read at `origin/main` unless `--ref` names another, and
 //! whole unless `--under` names the folder that's it in a larger one,
-//! whose merges are the larger one's, so it isn't timed.
+//! whose merges are the larger one's, so it isn't timed. A target or an
+//! owner names one of MEASURES, so a misspelt one is refused rather than
+//! left unjudged.
 
 mod git;
+mod hour;
 mod measure;
 mod merges;
 
@@ -37,11 +44,27 @@ use jiff::{Timestamp, Zoned};
 use serde_json::json;
 use terminal_kit::{Context, Exit, Failure, Help, Pen, Room, layout};
 
-/// The merges timed: those of the last day, as the read runs each day.
+/// The merges timed: those of the last day, so an hour's few merges don't
+/// swing their medians.
 const DAY: i64 = 24 * 60 * 60;
 
 /// The flags it takes, each with a value.
-const FLAGS: [&str; 4] = ["--repo", "--ref", "--under", "--into"];
+const FLAGS: [&str; 6] = [
+    "--repo", "--ref", "--under", "--target", "--owner", "--into",
+];
+
+/// Every measure it reads (measure.rs and merges.rs).
+const MEASURES: [&str; 9] = [
+    "crowded-folders",
+    "daemons-waiting",
+    "duplicated-lines",
+    "edit-to-merge",
+    "files-per-change",
+    "long-files",
+    "quarantined-tests",
+    "shared-files",
+    "suppressions",
+];
 
 /// How a figure is said to a person, by its measure: those of the day's
 /// merges are medians, and one of them is minutes.
@@ -53,13 +76,14 @@ fn figure_said(measure: &str, figure: f64) -> String {
     }
 }
 
-/// A repository to read: where its checkout is, which ref, and which
-/// folder of it.
-#[derive(Debug, PartialEq)]
+/// A repository to read: where its checkout is, which ref, which folder
+/// of it, and what it's judged by.
+#[derive(Debug, Default, PartialEq)]
 struct Repo {
     checkout: String,
     reference: String,
     under: String,
+    judged: hour::Judged,
 }
 
 fn help() -> Help {
@@ -83,6 +107,14 @@ fn help() -> Help {
     .option(
         "--under NAME=FOLDER",
         "the folder that's it in a larger one",
+    )
+    .option(
+        "--target NAME/MEASURE=FIGURE",
+        "the most a measure should be, for the hour's file",
+    )
+    .option(
+        "--owner NAME[/MEASURE]=OWNER",
+        "who owns a repository, or one measure of it",
     )
     .option(
         "--into FOLDER",
@@ -146,8 +178,19 @@ fn run(context: &Context) -> Result<(), Failure> {
         return Err(Failure::new(Exit::NotFound, "no repository could be read")
             .because("each was left out, as its line above says"));
     }
-    let date = Zoned::now().strftime("%Y-%m-%d").to_string();
+    let now = Zoned::now();
+    let date = now.strftime("%Y-%m-%d").to_string();
     write(&into, &date, &figures, &named).map_err(|what| Failure::new(Exit::Failed, what))?;
+    let judged = repos
+        .into_iter()
+        .map(|(name, repo)| (name, repo.judged))
+        .collect();
+    let before = fs::read_to_string(into.join("hour.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok());
+    let at = now.timestamp().to_string();
+    let hour = hour::hour(&at, &figures, &named, &judged, before.as_ref());
+    write_whole(&into, "hour.json", &hour).map_err(|what| Failure::new(Exit::Failed, what))?;
     let day = Day {
         date: &date,
         into: &into,
@@ -173,10 +216,11 @@ struct Day<'a> {
 }
 
 impl Day<'_> {
-    fn files(&self) -> [PathBuf; 2] {
+    fn files(&self) -> [PathBuf; 3] {
         [
             self.into.join(format!("{}.json", self.date)),
             self.into.join(format!("{}-named.json", self.date)),
+            self.into.join("hour.json"),
         ]
     }
 
@@ -235,6 +279,8 @@ fn parse(arguments: &[String]) -> Result<(BTreeMap<String, Repo>, Option<PathBuf
     let mut repos: BTreeMap<String, Repo> = BTreeMap::new();
     let mut refs = BTreeMap::new();
     let mut unders = BTreeMap::new();
+    let mut targets = Vec::new();
+    let mut owners = Vec::new();
     let mut into = None;
     let mut given = arguments.iter();
     while let Some(flag) = given.next() {
@@ -260,7 +306,7 @@ fn parse(arguments: &[String]) -> Result<(BTreeMap<String, Repo>, Option<PathBuf
                 let repo = Repo {
                     checkout: said,
                     reference: "origin/main".to_owned(),
-                    under: String::new(),
+                    ..Repo::default()
                 };
                 if repos.insert(name.clone(), repo).is_some() {
                     return Err(format!("{name} is named twice"));
@@ -271,6 +317,15 @@ fn parse(arguments: &[String]) -> Result<(BTreeMap<String, Repo>, Option<PathBuf
             }
             "--under" => {
                 unders.insert(name, said);
+            }
+            "--target" => {
+                let figure = said
+                    .parse::<f64>()
+                    .map_err(|_| format!("--target {name} wants a figure, not {said}"))?;
+                targets.push((name, figure));
+            }
+            "--owner" => {
+                owners.push((name, said));
             }
             _ => unreachable!("FLAGS names every flag but --into, taken above"),
         }
@@ -287,10 +342,51 @@ fn parse(arguments: &[String]) -> Result<(BTreeMap<String, Repo>, Option<PathBuf
             .ok_or_else(|| format!("--under names {name}, which no --repo does"))?;
         repo.under = under;
     }
+    for (named, figure) in targets {
+        let (name, measure) = measured(&named, "--target")?;
+        let measure = measure.ok_or_else(|| format!("--target wants NAME/MEASURE, not {named}"))?;
+        judged(&mut repos, name, "--target")?
+            .targets
+            .insert(measure.to_owned(), figure);
+    }
+    for (named, owner) in owners {
+        let (name, measure) = measured(&named, "--owner")?;
+        let judged = judged(&mut repos, name, "--owner")?;
+        match measure {
+            Some(measure) => {
+                judged.owners.insert(measure.to_owned(), owner);
+            }
+            None => judged.owner = Some(owner),
+        }
+    }
     if repos.is_empty() {
         return Err("no --repo given".to_owned());
     }
     Ok((repos, into))
+}
+
+/// A `NAME/MEASURE` split, or a bare `NAME`, its measure one it reads.
+fn measured<'a>(named: &'a str, flag: &str) -> Result<(&'a str, Option<&'a str>), String> {
+    match named.split_once('/') {
+        Some((name, measure)) if MEASURES.contains(&measure) => Ok((name, Some(measure))),
+        Some((_, measure)) => Err(format!(
+            "{flag} names {measure}, which isn't a measure; the measures are {}",
+            MEASURES.join(", ")
+        )),
+        None => Ok((named, None)),
+    }
+}
+
+/// What the repository a flag names is judged by.
+fn judged<'a>(
+    repos: &'a mut BTreeMap<String, Repo>,
+    name: &str,
+    flag: &str,
+) -> Result<&'a mut hour::Judged, String> {
+    repos
+        .get_mut(name)
+        .map(|repo| &mut repo.judged)
+        .ok_or_else(|| format!("{flag} names {name}, which no --repo does"))
 }
 
 /// code-health's folder in the account's state.
@@ -318,12 +414,25 @@ fn write(
         (format!("{date}.json"), figures),
         (format!("{date}-named.json"), named),
     ] {
-        let path = into.join(&file);
-        let writing = into.join(format!(".{file}.new"));
-        fs::write(&writing, text + "\n").map_err(|error| failed(&error))?;
-        fs::rename(&writing, &path).map_err(|error| failed(&error))?;
+        written(into, &file, &text)?;
     }
     Ok(())
+}
+
+/// Write one file whole, through a file beside it.
+fn write_whole(into: &Path, file: &str, value: &impl serde::Serialize) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(value)
+        .map_err(|error| format!("{}: {error}", into.display()))?;
+    written(into, file, &text)
+}
+
+/// Put `text` in `file` of `into` at once, so no reader sees half of it.
+fn written(into: &Path, file: &str, text: &str) -> Result<(), String> {
+    let failed = |error: &dyn std::fmt::Display| format!("{}: {error}", into.display());
+    let path = into.join(file);
+    let writing = into.join(format!(".{file}.new"));
+    fs::write(&writing, format!("{text}\n")).map_err(|error| failed(&error))?;
+    fs::rename(&writing, &path).map_err(|error| failed(&error))
 }
 
 #[cfg(test)]
@@ -347,6 +456,7 @@ mod tests {
                 checkout: "/world".to_owned(),
                 reference: "main".to_owned(),
                 under: "home/me".to_owned(),
+                judged: hour::Judged::default(),
             },
             "a repository's ref or folder was lost"
         );
@@ -367,6 +477,54 @@ mod tests {
             parse(&said("--into /out")).is_err(),
             "no repository was taken"
         );
+    }
+
+    #[test]
+    fn a_target_and_owner_go_to_the_measure_they_name() {
+        let (repos, _) = parse(&said(
+            "--repo core=/src/core --target core/long-files=96 --owner core=someone \
+             --owner core/suppressions=another",
+        ))
+        .expect("good targets were refused");
+        let judged = &repos["core"].judged;
+        assert_eq!(
+            judged.targets,
+            BTreeMap::from([("long-files".to_owned(), 96.0)]),
+            "a target was lost"
+        );
+        assert_eq!(
+            (
+                judged.owner.as_deref(),
+                judged.owners.get("suppressions").map(String::as_str)
+            ),
+            (Some("someone"), Some("another")),
+            "a repository's or a measure's owner was lost"
+        );
+    }
+
+    #[test]
+    fn every_measure_read_can_be_given_a_target() {
+        let quarantine = measure::File {
+            path: "quarantine.json".to_owned(),
+            text: "{}".to_owned(),
+        };
+        let health = measure::measure(&[], &[quarantine]);
+        for measure in health.figures.keys() {
+            assert!(MEASURES.contains(measure), "{measure} isn't in MEASURES");
+        }
+    }
+
+    #[test]
+    fn a_target_for_no_measure_or_repo_is_refused() {
+        for given in [
+            "--repo core=/src/core --target core/long-file=96",
+            "--repo core=/src/core --target other/long-files=96",
+            "--repo core=/src/core --target core=96",
+            "--repo core=/src/core --target core/long-files=many",
+            "--repo core=/src/core --owner other=someone",
+        ] {
+            assert!(parse(&said(given)).is_err(), "{given} was taken");
+        }
     }
 
     #[test]
