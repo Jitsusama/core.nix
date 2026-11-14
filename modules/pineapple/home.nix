@@ -43,4 +43,51 @@ in
     # keeps its sign-in in the keyring now and the file may never come.
     Install.WantedBy = [ "default.target" ];
   };
+
+  # The safe word's daemon for the launcher (src/serve.rs): it serves the
+  # stops, alerts and resume requests as Needs You's rows over
+  # %t/daemons/pineapple.sock, takes Joel's presses only from his shell,
+  # and knocks as each first appears. In shadow it serves nothing and only
+  # writes down what it would have told. It only reads what pineapple-slack
+  # writes, and writes only under ~/.local/state/pineapple.
+  systemd.user.services.pineapple = {
+    Unit = {
+      Description = "Shows Joel the safe word's stops in the launcher";
+      X-SwitchMethod = "restart";
+      # Its socket is systemd's, handed to it as it starts.
+      Requires = [ "pineapple.socket" ];
+      After = [ "pineapple.socket" ];
+    };
+    Service = {
+      Slice = "background.slice";
+      # Started as @<program> pineapple, so ps reads its name rather than a
+      # store path (docs/daemons.md).
+      ExecStart = lib.escapeShellArgs [
+        "@${pineapple}/bin/pineapple"
+        "pineapple"
+        "serve"
+        "--socket"
+        "%t/daemons/pineapple.sock"
+        "--vocabulary"
+        "${(import ../quickshell/launcher/words.nix).file}"
+        "--notify-send"
+        (lib.getExe' pkgs.libnotify "notify-send")
+      ];
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
+    # Started at login rather than when the launcher first asks, so a stop
+    # knocks even before Joel opens it.
+    Install.WantedBy = [ "default.target" ];
+  };
+
+  systemd.user.sockets.pineapple = {
+    Unit.Description = "Where the launcher asks for the safe word's rows";
+    Socket = {
+      ListenStream = "%t/daemons/pineapple.sock";
+      SocketMode = "0600";
+      DirectoryMode = "0700";
+    };
+    Install.WantedBy = [ "sockets.target" ];
+  };
 }

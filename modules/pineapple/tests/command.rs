@@ -58,8 +58,8 @@ fn it_lists_the_stops_standing() {
     let out = String::from_utf8_lossy(&said.stdout);
     assert!(said.status.success(), "stops answers: {said:?}");
     assert!(
-        out.contains("slack:C1:1.0  (shadow)"),
-        "names it, in shadow: {out}"
+        out.contains("slack:C1:1.0  (noted only: nothing was stopped)"),
+        "names it, saying a shadow stop stopped nothing: {out}"
     );
     assert!(
         out.contains("stops pr:example/shop#12"),

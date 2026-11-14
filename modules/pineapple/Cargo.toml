@@ -2,7 +2,8 @@
 # Joel's agents, and what it stops. The library judges (src/lib.rs says
 # how the pieces fit); pineapple-slack reads Slack for it, in shadow
 # (src/bin/pineapple-slack.rs), and pineapple is Joel's own command to
-# list stops and resume them (src/bin/pineapple.rs), refused under pi.
+# list stops and resume them (src/bin/pineapple.rs), refused under pi,
+# and the daemon serving them to the launcher (pineapple serve).
 [package]
 name = "pineapple"
 version = "0.1.0"
@@ -23,3 +24,13 @@ serde_json = "1.0"
 slack-people = { path = "../slack" }
 # The shape every command of ours takes: its flags, help, errors and ink.
 terminal-kit = { path = "../terminal-kit" }
+# The shell's daemon interface, which pineapple serve speaks to the
+# launcher (docs/daemons.md).
+daemon-serve = { path = "../daemon-serve" }
+# The kernel's name for who pressed (SO_PEERPIDFD), so only Joel's shell
+# acts on a stop.
+libc = "0.2"
+
+[dev-dependencies]
+# A test's client of pineapple serve, asking over its socket.
+daemon-client = { path = "../daemon-client" }

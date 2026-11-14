@@ -600,6 +600,28 @@
       "name": "Passwords"
     },
     {
+      "id": "for-you:source:pineapple",
+      "in": "on:waiting",
+      "name": "Safe Word",
+      "said": {
+        "you": "You",
+        "someone": "Someone",
+        "stopped": "{who} stopped your agents on {reach}",
+        "stoppedAll": "{who} stopped all your agents, naming nothing narrower",
+        "asked": "{who} asked you to stop your agents, without the safe word",
+        "joke": "{who} said the safe word as a joke, so nothing stopped",
+        "noTag": "{who} said the safe word without tagging you, so nothing stopped",
+        "resumeAsked": "{who} asked you to resume {reach}",
+        "reach:everything": "everything",
+        "reach:pr": "pull request {repo}#{number}",
+        "reach:branch": "branch {branch} of {repo}",
+        "reach:repo": "the {repo} repository",
+        "reach:quest": "quest {quest}",
+        "reach:realm": "the {realm} realm",
+        "reach:named": "{name}"
+      }
+    },
+    {
       "id": "on:waiting:history",
       "in": "on",
       "name": "History",
