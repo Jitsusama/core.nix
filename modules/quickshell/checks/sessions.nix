@@ -68,6 +68,22 @@ in
       "The sessions' kitty writes no pid beside its socket, so the shell can't tell which windows it draws."
       (lib.hasInfix "$$MAINPID" written && lib.hasInfix "%t/pi-sessions/kitty.pid" written);
 
+  # A session's window is asked of the sessions kitty over its socket, or of
+  # the unit's own kitty from before it listened, waiting for one starting
+  # again and opening nothing with neither, as the script the shell links
+  # and runs does, through each door (modules/quickshell/tests/
+  # opens-in-sessions-doors.sh), in about a second.
+  the-sessions-kitty-is-asked-only-its-own-way =
+    let
+      linked = (account graphical).xdg.configFile."quickshell/opens-in-sessions.sh".source;
+    in
+    pkgs.runCommandLocal "the-sessions-kitty-is-asked-only-its-own-way" { } ''
+      ${lib.getExe' pkgs.coreutils "timeout"} 60 ${lib.getExe pkgs.bash} \
+        ${../tests/opens-in-sessions-doors.sh} ${pkgs.bash}/bin/sh ${linked} \
+        ${lib.getExe pkgs.python3}
+      touch $out
+    '';
+
   # The sessions' kitty keeps what it swaps out compressed in memory, so a
   # session's window Joel comes back to never draws from disk.
   the-sessions-kitty-stays-off-the-disk =

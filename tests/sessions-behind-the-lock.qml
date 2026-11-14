@@ -114,12 +114,13 @@ ShellRoot {
         const spawn = Niri.spawns.find(command => command.includes("pi --session s-handed"));
         if (!spawn)
             return;
-        // The shell's opening tells the window and its process the class
-        // it's handed after the sessions kitty's socket.
-        const classed = (/\/pi-sessions\/kitty\.sock (\S+) /.exec(spawn) ?? [])[1];
+        // The shell hands its opening script the class after the sessions
+        // kitty's socket, and the script tells the window and its process
+        // it (the-sessions-kitty-is-asked-only-its-own-way).
+        const classed = (/\/opens-in-sessions\.sh \S+\/pi-sessions\/kitty\.sock (\S+) /
+            .exec(spawn) ?? [])[1];
         expect("its window opens with an app id of its own, which its process is told",
-            /^pi-(session|spawned)\.\d+$/.test(classed ?? "")
-            && spawn.includes('--env "MYCELIUM_APP_ID=$class"'), spawn);
+            /^pi-(session|spawned)\.\d+$/.test(classed ?? ""), spawn);
         expect("started again fenced, as it was handed over",
             spawn.includes(" /tmp env PI_SANDBOX=fence PI_SPAWNER=on zsh -lic "), spawn);
         const window = { id: 22, pid: 600, workspace_id: 1, session: true, opened: classed };

@@ -442,7 +442,7 @@ ShellRoot {
     // Every window of the sessions' kitty is asked through the shell's one
     // opening script, which tells its kitty and its process the same class,
     // so a spawn reads as that script, the socket, the class and the words.
-    readonly property string scope: `sh -c ${Sessions.opening} sessions `
+    readonly property string scope: `sh ${Sessions.opening} `
     function asked(command) {
         const at = command.indexOf(scope);
         if (at < 0)
@@ -473,11 +473,11 @@ ShellRoot {
                 && /^pi-((session|spawned)\.\d+|hosted\.s-hosted)$/.test(one.classed))
             && new Set(named.map(([told]) => told)).size === named.length,
             JSON.stringify(asks.map(one => [one.socket, one.classed])));
-        expect("the opening tells the window and its process the same class",
-            Sessions.opening.includes('--os-window-class "$class"')
-            && Sessions.opening.includes('--env "MYCELIUM_APP_ID=$class"')
-            && Sessions.opening.includes('"MYCELIUM_APP_ID=$class" kitty -1')
-            && Sessions.opening.includes('--class "$class"'), Sessions.opening);
+        // What the script does with them is its own case's
+        // (the-sessions-kitty-is-asked-only-its-own-way).
+        expect("each is opened by the script beside the shell's files",
+            Sessions.opening.endsWith("/opens-in-sessions.sh")
+            && !Sessions.opening.startsWith("file:"), Sessions.opening);
         // Numbered on from when this shell started, so a shell started again,
         // as every switch does, names none as a window still open from before.
         const numbers = named.map(([told]) => /\.(\d+)$/.exec(told ?? ""))
