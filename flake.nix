@@ -315,6 +315,7 @@
         linux-builder = ./modules/linux-builder/darwin.nix;
         mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
         macos-defaults = ./modules/macos-defaults/darwin.nix;
+        nix-daemon = ./modules/nix-daemon/darwin.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         openssh = ./modules/openssh/darwin.nix;
         sudo = ./modules/sudo/darwin.nix;
