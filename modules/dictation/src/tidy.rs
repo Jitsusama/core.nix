@@ -103,12 +103,14 @@ pub fn tidied(take: &str, answer: &str) -> Option<String> {
 /// The marks a tidy may add.
 const PUNCTUATION: &str = ".,;:?!-";
 
-/// The words that turn what's said round, case and apostrophes aside.
-/// Any word ending in n't is one too.
+/// The words that turn what's said round, case and apostrophes aside,
+/// with those that narrow it as much ("merge only the docs"). Any word
+/// ending in n't is one too.
 const NEGATIONS: &[&str] = &[
     "no", "not", "never", "nor", "neither", "none", "nothing", "nobody", "nowhere", "without",
     "cannot", "dont", "doesnt", "didnt", "cant", "couldnt", "wont", "wouldnt", "shouldnt", "isnt",
-    "arent", "wasnt", "werent", "hasnt", "havent", "hadnt", "mustnt", "neednt", "aint",
+    "arent", "wasnt", "werent", "hasnt", "havent", "hadnt", "mustnt", "neednt", "aint", "unless",
+    "except", "only", "instead",
 ];
 
 /// The words for numbers, case aside. Any word with a digit is one too.
@@ -530,6 +532,10 @@ mod tests {
             ("it isn’t done", "It done."),
             ("you cannot merge", "You merge."),
             ("dont merge", "Merge."),
+            ("merge only the docs", "Merge the docs."),
+            ("ship it unless the tests fail", "Ship it the tests fail."),
+            ("everything except the lock", "Everything the lock."),
+            ("use the cache instead", "Use the cache."),
         ] {
             assert_eq!(tidied(take, tidy), None, "{take} became {tidy}");
         }

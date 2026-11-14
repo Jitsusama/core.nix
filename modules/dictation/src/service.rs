@@ -300,6 +300,9 @@ fn tidy_by_its_time(tidy: &Sender<tidying::Job>, events: &Sender<Event>, text: S
 
 /// Types a take as the window it lands in takes it, and keeps when, in
 /// `file` and `last`, and tells the watchers, for the launcher's row.
+/// The window is asked again here, so a tidied take that settles after
+/// focus moved to a terminal is typed as a command there; whether to tidy
+/// was decided by the window it was heard in.
 fn write(text: &str, file: Option<&Path>, last: &mut Option<u64>, watchers: &mut Vec<UnixStream>) {
     match type_out(&mode::shaped(text, mode::focused())) {
         Ok(()) => {
