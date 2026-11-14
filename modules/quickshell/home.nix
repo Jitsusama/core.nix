@@ -853,10 +853,15 @@ let
 
   # Every file the shell reads, by its store path, and the list of them its
   # start links, so a switch that changes any is told from one that doesn't.
+  # The list names the command the shell runs and its environment too: a
+  # switch bringing a new Quickshell with the same files left the shell on
+  # the old build, since only its files were compared (2026-11-14, 04:23).
   shellFiles = lib.mapAttrsToList (_: file: "${file.source}") (
     lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name) config.xdg.configFile
   );
-  shellFilesList = pkgs.writeText "quickshell-files" (lib.concatLines shellFiles);
+  shellFilesList = pkgs.writeText "quickshell-files" (
+    lib.concatLines (shellFiles ++ [ shellCommand ] ++ shellEnvironment)
+  );
 
   # Compiles the shell's files before the shell restarts onto them (./starts-warm.sh).
   startsWarm = pkgs.writeShellApplication {
@@ -872,6 +877,14 @@ let
 
   handsOver = import ./hands-over.nix { inherit pkgs; };
   shellCommand = "${lib.getExe' pkgs.quickshell "quickshell"} --no-detailed-logs";
+  # The shell's environment, each setting's reason given where the unit
+  # takes it (Environment, below).
+  shellEnvironment = [
+    "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0"
+    "MALLOC_CONF=narenas:1"
+    "QS_DISABLE_FILE_WATCHER=1"
+    "QV4_PROFILE_WRITE_PERF_MAP=1"
+  ];
 in
 {
   imports = [
@@ -2773,12 +2786,7 @@ in
         # any local process could drive. In the lab a shell wrote 3,032
         # functions, 111 KB, and its openings took as long as without it;
         # /tmp ages a map out after ten days.
-        Environment = [
-          "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0"
-          "MALLOC_CONF=narenas:1"
-          "QS_DISABLE_FILE_WATCHER=1"
-          "QV4_PROFILE_WRITE_PERF_MAP=1"
-        ];
+        Environment = shellEnvironment;
         # The bar, the launcher, notices and the lock screen are the
         # desktop's own, so they sit with the compositor in session.slice, at
         # its tenfold CPU weight and behind its memory floor (modules/slices),

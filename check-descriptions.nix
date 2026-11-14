@@ -3675,6 +3675,10 @@
     third round keeps no more than a tenth more of the shell's JavaScript heap live than the
     second, as Qt's collector says after each closing's collection
   '';
+  the-shells-list-names-what-it-runs = ''
+    the list of the shell's files its companion compares after a switch also names the command
+    the shell runs and each setting in its environment, so a new Quickshell is taken too
+  '';
   the-desktop-reads-the-documents = ''
     the shell reads the documents from the google program's state, none from one saying none,
     knows which Google program opens each kind, and says only when Joel last opened a document
