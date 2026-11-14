@@ -259,10 +259,13 @@ def test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest(shell: Shell) -
     assert shown["drawn"] <= DRAWS, f"a frame took the shell {shown['drawn']} ms: {shown}"
     # Each stride stepped by its ground is MarginCat.js's, proven frame by frame in Qt's engine
     # (margin-cat.qml); here a frame can come late enough to skip a stride, so this asks only
-    # that both reach the screen as it goes, the way it faces.
+    # that it goes only in its strides, more than one of them reaching the screen, the way it
+    # faces.
     going = [step for step in walked if step["walk"]["beat"] == "goes"]
     poses = {step["walk"]["pose"] for step in going}
-    assert poses == {"walkingA", "walkingB"}, f"the cat went in the poses {poses}"
+    walks = {"walkingA", "walkingB", "walkingC", "walkingD"}
+    assert poses <= walks, f"the cat went in the poses {poses}"
+    assert len(poses) > 1, f"the cat went in one stride only: {poses}"
     ahead = [
         (after["x"] - before["x"]) * after["walk"]["facing"]
         for before, after in itertools.pairwise(going)
