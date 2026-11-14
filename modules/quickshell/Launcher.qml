@@ -6939,10 +6939,10 @@ Scope {
 
     // A step into a place from what's typed learns it once the step's frame
     // is drawn, with what was typed as it was then. Learning reads every
-    // row's key and forgets the picks of rows gone, which took 25 to 66 ms
-    // over 2,111 keys in a lab's steps into Capture and Windows, all of it
-    // before their rows showed (ZINAWZ, 2026-11-14); nothing reads it
-    // before the next opening's search.
+    // row's key and forgets the picks of rows gone, which took 18 to 62 ms
+    // over 2,111 keys in a lab's steps into Capture, Windows and Emoji, all
+    // of it before their rows showed (ZINAWZ, 2026-11-14); nothing reads it
+    // before the next opening's search, and a close runs it at once.
     function learnAfterFrame(said, key) {
         afterFrame(() => picks.picked(said, key, knowing()));
     }
