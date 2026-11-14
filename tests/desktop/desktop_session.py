@@ -247,13 +247,13 @@ def for_you_read(desktop: Desktop, *rest: str) -> None:
     """Read every notice, which puts For You's tray out, and wait for the margin to hold the rest.
 
     Read as Joel reads them, by Mark Them Read in For You's Desktop, where Super+N goes with
-    no cards up; its line asks first, since reading them all can't be taken back.
+    no cards up; its line runs at once, since reading them costs little.
     """
     desktop.machine.send_key("meta_l-n")
     desktop.launcher_until(lambda shown: shown["held"][-1:] == ["Desktop"])
     desktop.down_to("Mark Them Read")
     since = desktop.mark()
-    desktop.line_answered("delete")
+    desktop.line_run("delete")
     desktop.close_launcher()
     # The prefix holds no space, since a margin holding nothing says none after it.
     desktop.reported("holds margin", lambda held: sorted(held.split()) == sorted(rest), since)
@@ -715,19 +715,15 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         fresh = "qs ipc call launcher showing | grep -qF '\"linedFresh\":false'"
         self.machine.wait_until_succeeds(self.in_session(fresh), timeout=timedelta(seconds=5))
 
-    def line_answered(self, written: str, asked: str | None = None) -> None:
-        """Press Return on a row that ends something, run its line, and answer its ask yes.
+    def line_run(self, written: str) -> None:
+        """Press Return on a row that ends something, then Return again to run its line.
 
-        What can't be taken back asks once the line runs, as d's does, and y does it. Given
-        `asked`, the ask says that: the row's own verb and name, never the line's command.
+        What costs little runs at once, as d's does (Operators.asks), so the second Return
+        does it; the line leaves the launcher's foot once it has.
         """
         self.line(written)
-        with self.told("ask ready"):
-            self.machine.send_key("ret")
-        if asked is not None:
-            self.launcher_until(lambda shown: shown["question"] == asked)
-        with self.told("answered yes"):
-            self.machine.send_chars("y")
+        self.machine.send_key("ret")
+        self.launcher_until(lambda shown: (shown["command"] or {}).get("line") != written)
 
     def on_find(self) -> None:
         """Put the launcher's line back to typing, by A from normal, and wait for it.

@@ -19,7 +19,7 @@
 // program gave, a prompt's words, its caret before the extension, kept
 // from folder to folder; the line is each folder's row Return saves by,
 // the name not listed again below, nothing narrowed by it, and a
-// name already there asks once, "Replace a.md? (y/n)", no saving nothing;
+// name already there asks once, "Replace a.md?", no saving nothing;
 // a name typed is saved by :w in the folder it's typed in, asking nothing,
 // and :w with a name already there asks once. Its commands are :sort,
 // name, changed or size, :sort! turning it round, the folder made afresh,
@@ -615,7 +615,7 @@ ShellRoot {
         const asked = theLauncher.asked[0];
         expect("a name already there asks once before Return saves over it",
             there.verb === "save" && theLauncher.asked.length === 1
-                && asked.question === "Replace a.md? (y/n)" && answers.length === 1,
+                && asked.question === "Replace a.md?" && answers.length === 1,
             `${there.verb} ${JSON.stringify(theLauncher.asked)} ${answers.length} answers`);
         asked.no();
         expect("and no saves nothing", answers.length === 1 && theChooser.asking !== null,
@@ -656,7 +656,7 @@ ShellRoot {
         command(notes, "write").run(called("b.png"));
         const asked = theLauncher.asked[theLauncher.asked.length - 1];
         expect(":w with a name already there asks once, naming it", theLauncher.asked.length === 2
-            && asked.question === "Replace b.png? (y/n)" && answers.length === 1,
+            && asked.question === "Replace b.png?" && answers.length === 1,
             `${JSON.stringify(theLauncher.asked)} ${answers.length} answers`);
         asked.no();
         theLauncher.asked = theLauncher.asked.slice(0, 1);
@@ -901,7 +901,7 @@ ShellRoot {
         given.run();
         expect("a name already there asks once", given.verb === "save"
             && theLauncher.asked.length === asked + 1
-            && theLauncher.asked[asked].question === "Replace report.pdf? (y/n)",
+            && theLauncher.asked[asked].question === "Replace report.pdf?",
             `${given.verb} ${JSON.stringify(theLauncher.asked)}`);
         theLauncher.asked[asked].no();
         const plans = named(rows, "Plans");

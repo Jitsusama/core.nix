@@ -266,9 +266,14 @@ fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str, words: &Words
         "key": "verb:notice:read", "name": words.name("verb:notice:read", state),
         "glyph": words.glyph("verb:notice:read", state), "ask": ask,
     }));
+    // Forgetting a notice costs too little to ask first, though it can't
+    // be put back: the launcher asks only before what costs a lot (Joel,
+    // 2026-11-13), and the language's costly on Forget is a network's or
+    // a device's.
     if notice.live {
         acts.push(json!({
             "key": "verb:notice:forget", "ask": { "ask": "dismiss", "notices": [notice.id] },
+            "costly": false,
         }));
     }
     acts.push(json!({ "key": "verb:notice:copy", "copy": said, "also": reads(notice) }));
@@ -938,6 +943,10 @@ mod tests {
             (Some("Reply"), Some("reply"))
         );
         assert_eq!(acts[2]["side"], "x.example");
+        assert_eq!(
+            acts[4]["costly"], false,
+            "forgetting a notice costs too little to ask first"
+        );
         assert_eq!(
             acts[2]["also"],
             json!({ "ask": "mark", "notices": [7], "read": true })

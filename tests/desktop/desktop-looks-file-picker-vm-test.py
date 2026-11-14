@@ -339,7 +339,7 @@ def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
             machine.send_key("ret")
             desktop.launcher_until(
                 lambda shown: (
-                    shown["question"] == "Replace a.md? (y/n)"
+                    shown["question"] == "Replace a.md?"
                     and shown["takesAnswer"]
                     # Read whole, the path giving way, never cut.
                     and shown["questionWhole"]

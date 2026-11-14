@@ -110,6 +110,13 @@ impl Words {
         self.word("unsure", &[("question", question)])
     }
 
+    /// The launcher's question put on the terminal, with the keys that
+    /// answer it there: the launcher's own is answered by a second Return,
+    /// which a terminal's line can't tell from the first.
+    pub fn asks(&self, question: &str) -> String {
+        self.word("asks", &[("question", question)])
+    }
+
     /// An act that takes words, given none, and what it asks for; one
     /// that asks nothing in words of its own is refused without it, never
     /// with an empty item between two dots (VKCF3Z, 2026-11-08).
@@ -172,6 +179,7 @@ mod tests {
                     "silent":"the shell isn't answering","usage":"launcher show",
                     "takes":"{name} takes words \u00b7 {ask} \u00b7 give them after --",
                     "takesWords":"{name} not done \u00b7 give its words after --",
+                    "asks":"{question} (y/n)",
                     "failed":"{name} not done \u00b7 the shell failed \u00b7 its log says why"}}"#,
             )
             .expect("the words parse"),
@@ -192,6 +200,11 @@ mod tests {
             words().takes("Talk", ""),
             "Talk not done \u{b7} give its words after --"
         );
+    }
+
+    #[test]
+    fn the_launchers_question_is_asked_with_the_terminals_keys() {
+        assert_eq!(words().asks("Close Notes?"), "Close Notes? (y/n)");
     }
 
     #[test]

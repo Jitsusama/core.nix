@@ -213,7 +213,8 @@ Item {
     // (Joel, 2026-11-05: "space ? does not work"). Escape lets it go.
     property var standing: QueryKeys.rest()
     // Whether an ask stands (Launcher.qml's askOnce), which takes every
-    // key as its answer, as Vim's ask_yesno does, until one answers it.
+    // key as its answer, Return doing it and any other letting it go
+    // (Confirm.answer), so none reaches the line while it stands.
     property bool confirming: false
     signal answered(string key)
     // How soon after visual's operator the same key again is taken with
@@ -383,9 +384,9 @@ Item {
     // answers with "not here", so no key is silent (the vi-paradigm spec).
     signal idled(string key)
 
-    // A question asked once, said in the field's place, "Replace notes.md?
-    // (y/n)", or "" while none is; the launcher's ask (Launcher.qml's
-    // askOnce) answers it, by the keys `confirming` hands over.
+    // A question asked once, said in the field's place, "Replace notes.md?",
+    // or "" while none is; the launcher's ask (Launcher.qml's askOnce)
+    // answers it, by the keys `confirming` hands over.
     property string asking: ""
     // The same ask in its parts (Confirm.questionParts), where it says what
     // stays, so that clause alone gives way when the line can't hold it.

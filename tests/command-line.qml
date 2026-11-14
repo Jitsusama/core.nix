@@ -54,7 +54,7 @@ QtObject {
         open: { act: "open-it", short: "ope" },
         disconnect: { act: "disconnect", short: "disc", changes: true, undoable: true,
             range: true },
-        forget: { act: "forget", short: "forg", changes: true, range: true },
+        forget: { act: "forget", short: "forg", changes: true, range: true, costly: true },
         suspend: { act: "suspend", short: "sus", changes: true },
         close: { act: "close-window", short: "clo", changes: true, guarded: true, range: true }
     })
@@ -232,12 +232,12 @@ QtObject {
         // close-window.
         const closing = Commands.listed({ acts: [{ name: "Close It", verb: "close" }],
             table: commands, said: said, called: () => ({ command: "close" }) });
-        holds("a guarded act asks nothing on one thing, once on more, so takes !",
+        holds("a guarded act asks nothing, though it takes a !, which does no harm",
             ["undoable", "guarded", "bang"].map(flag => closing[0][flag]), [false, true, true]);
-        // As d asks (Operators.asks): what changes asks unless the launcher
-        // can put it back, the language's undoable or not.
+        // What takes a ! is what changes unless the launcher can put it
+        // back, the language's undoable or not.
         const back = { name: "Disconnect It", verb: "disconnect", undo: () => {} };
-        holds("what asks is what changes and nothing puts back",
+        holds("what takes a ! is what changes and nothing puts back",
             menuOf([{ name: "Open It", verb: "open" }, { name: "Forget It", verb: "forget" },
                 { name: "Disconnect It", verb: "disconnect" }, { name: "See It", verb: "see" }])
                 .slice(0, 4).map(entry => entry.undoable), [true, false, false, true]);
@@ -811,11 +811,11 @@ QtObject {
 
     // What a line asks before it runs, once, by the rule d asks by
     // (Operators.asks), so d, the line and the menu are one: an act that
-    // changes asks unless the launcher can put it back (its undo) or it's
-    // guarded and alone; once, on one thing or many, unless a ! says don't;
-    // and where only some of what it's bound to have the act, once, naming
-    // how many can, ! or not. None that can says so; what changes nothing
-    // asks nothing.
+    // changes asks only where it costs a lot and the launcher can't put
+    // it back (its undo); once, on one thing or many, unless a ! says
+    // don't; and where only some of what it's bound to have a costly act,
+    // once, naming how many can, ! or not. None that can says so; what
+    // changes nothing or costs little asks nothing.
     function holdAsking() {
         const menu = menuOf(network());
         const entry = typed => Commands.ran(typed, menu).entry;
@@ -823,25 +823,28 @@ QtObject {
         const asking = (typed, count, all, bang, act) =>
             CommandBinding.asking(entry(typed), acts(count, act), { all, bang }, commands);
         const back = { undo: () => {} };
-        holds("an act that changes asks, the language's undoable or not, on one or many",
+        holds("an act that changes but costs little acts at once, on one or many",
             [asking("disc", 1, 1, false), asking("disc", 3, 3, false)],
-            [{ ask: "one" }, { ask: "many" }]);
-        holds("unless the launcher can put it back",
+            [{ ask: "" }, { ask: "" }]);
+        holds("and one the launcher can put back too",
             [asking("disc", 1, 1, false, back), asking("disc", 3, 3, false, back)],
             [{ ask: "" }, { ask: "" }]);
-        holds("one that can't asks once, on one or many, unless its ! says don't",
+        holds("one that costs a lot asks once, on one or many, unless its ! says don't",
             [asking("forg", 1, 1, false), asking("forg", 3, 3, false),
                 asking("forg", 3, 3, true)],
             [{ ask: "one" }, { ask: "many" }, { ask: "" }]);
         const guarded = { command: "close", undoable: false, guarded: true };
-        holds("a guarded one asks only over more than one",
+        holds("a guarded one acts at once, on one or more",
             [CommandBinding.asking(guarded, acts(1), { all: 1, bang: false }, commands),
                 CommandBinding.asking(guarded, acts(2), { all: 2, bang: false }, commands)],
-            [{ ask: "" }, { ask: "many" }]);
+            [{ ask: "" }, { ask: "" }]);
         holds("what changes nothing asks nothing", asking("see", 3, 3, false), { ask: "" });
-        holds("where only some have it, it asks once, naming how many, ! or not",
-            [asking("disc", 2, 3, false, back), asking("forg", 2, 3, true)],
+        holds("where only some have a costly act, it asks once, naming how many, ! or not",
+            [asking("forg", 2, 3, false), asking("forg", 2, 3, true)],
             [{ ask: "some" }, { ask: "some" }]);
+        holds("and where only some have one costing little, it acts on those",
+            [asking("disc", 2, 3, false), asking("disc", 2, 3, false, back)],
+            [{ ask: "" }, { ask: "" }]);
         holds("where none has it, it says so and asks nothing",
             asking("disc", 0, 3, false), { ask: "", none: true });
         // A row's :set runs its own act, as Return on it does, and asks
@@ -855,9 +858,9 @@ QtObject {
                 CommandBinding.asking(warmth[0], acts(2), { all: 2, bang: false }, commands),
                 warmth[0].bang],
             [{ ask: "" }, { ask: "" }, false]);
-        holds("though where only some have it, it asks once all the same",
+        holds("nor where only some have it, acting on those",
             CommandBinding.asking(warmth[0], acts(1), { all: 2, bang: false }, commands),
-            { ask: "some" });
+            { ask: "" });
         // :setl never asks either, as Vim's :setlocal doesn't: a program's
         // Muted, by :setl mute.
         const hushing = Commands.listed({ acts: [{ key: "verb:program:mute", name: "Muted" }],

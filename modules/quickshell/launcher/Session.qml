@@ -735,7 +735,8 @@ Provider {
             // Those that end the session arm on a first Return, in place,
             // and a second does it (Launcher.qml's pressArming; VKCF3Z,
             // 2026-11-12), since everyday words now find them; the : line
-            // and a terminal's `launcher do` ask once (y/n).
+            // asks once, answered by Return, and a terminal's `launcher do`
+            // once, answered by y.
             confirm: asked !== "",
             arms,
             // Asked, it says what it does to what, then what it closes, as

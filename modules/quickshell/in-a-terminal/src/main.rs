@@ -254,7 +254,11 @@ fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Exi
                 fail(&errors(), &words.unsure(&question));
                 return ExitCode::from(NOT_SURE);
             }
-            if !answered_yes(&question, &mut io::stdin().lock(), &mut io::stderr()) {
+            if !answered_yes(
+                &words.asks(&question),
+                &mut io::stdin().lock(),
+                &mut io::stderr(),
+            ) {
                 return ExitCode::from(NOTHING_CALLED);
             }
             path = asking::strings(answer.get("path"));
@@ -299,8 +303,8 @@ fn answered_yes(question: &str, input: &mut impl BufRead, out: &mut impl Write) 
     }
 }
 
-/// Whether a line typed back says yes: y alone, as the launcher takes it
-/// (Confirm.js's answer), so neither " Y " nor "yes" does it.
+/// Whether a line typed back says yes: y alone, so neither " Y " nor
+/// "yes" does it.
 fn is_yes(line: &str) -> bool {
     let typed = line.strip_suffix('\n').unwrap_or(line);
     typed.strip_suffix('\r').unwrap_or(typed) == "y"

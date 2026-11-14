@@ -255,7 +255,7 @@
     "owner_pr": 3794,
     "reason": "failed, then passed, at b0e3be7a0f1b",
     "subtests": [
-      "test_y_flashes_its_rows_and_ds_ask_stands_on_the_line"
+      "test_y_flashes_its_rows_and_a_waiting_d_says_what_it_takes"
     ],
     "test": "vm-desktop-looks-vi"
   },

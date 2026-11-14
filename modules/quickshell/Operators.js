@@ -1,12 +1,11 @@
 // What the launcher's operators do to its rows, as Vim's d and y do to a
 // buffer's lines (QueryKeys.js reads their keys): which of a row's actions
-// d does and which y does, what a copy copies, and when d asks before it
-// does what can't be put back. Read apart from the launcher so
-// tests/query-keys.qml can hold it in Qt's own engine.
+// d does and which y does, what a copy copies, and when d asks before what
+// costs a lot. Read apart from the launcher so tests/query-keys.qml can
+// hold it in Qt's own engine.
 .pragma library
 
-// The operators, by their key, and the act each does over the rows it
-// takes.
+// The operators, by their key, and the act each does over the rows it takes.
 const operators = { d: "ending", y: "copy" };
 
 // The moves an operator takes as its motion, each linewise on the rows,
@@ -349,25 +348,25 @@ function copiesIn(rows, actionsOf, copies) {
         .filter(copy => copy.action !== null);
 }
 
-// Whether d asks once before it does these, as the key language says by
-// each action's command (`commands`, Options.commands): where any can't be
-// undone, unless it's guarded, as a window's Close is, whose program keeps
-// its own work, and it's the only one; never for an action that says how
-// it's put back (`undo`), for u to take back. What the language calls
-// undoable asks too until its row says how, since nothing could bring it
-// back; one the language doesn't name asks, as nothing says it can be.
-// One saying what it leaves, as a session's Close, asks: the ask says so.
+// Whether d asks once before these: only where one can't be put back and
+// costs a lot (Joel, 2026-11-13: "only require confirmation if it is
+// really a dangerous action or an action of significant consequence").
+// Never for one saying how it's put back (`undo`). Else its source's
+// `costly`; else a Close saying what it leaves asks, the ask saying so;
+// else the language's `costly` on its command (Options.commands), until
+// each daemon serves its own. Anything else acts at once, one or many.
 function asks(actions, commands) {
-    const alone = actions.length === 1;
     return actions.some(action => {
         if (typeof action.undo === "function") {
             return false;
         }
+        if (typeof action.costly === "boolean") {
+            return action.costly;
+        }
         if ((action.leaves ?? "") !== "") {
             return true;
         }
-        const flags = commands[action.command ?? ""] ?? {};
-        return !(flags.guarded === true && alone);
+        return commands[action.command ?? ""]?.costly === true;
     });
 }
 

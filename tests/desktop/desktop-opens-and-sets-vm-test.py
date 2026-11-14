@@ -1248,11 +1248,10 @@ def commands_a_network(desktop: Desktop) -> None:
 
 
 def binds_a_range(desktop: Desktop) -> None:
-    """Over every network, say E481 for :%q, ask how many can for :%disc, then :g/Lant/disc.
+    """Over every network, say E481 for :%q, then :g/Lant/disc, then u and Ctrl+R.
 
-    Lantern alone can disconnect, so :%disc asks once, naming how many can, and n leaves every
-    network as it was; :g finds Lantern by name and disconnects it at once, as d would, since u
-    joins it again, as it does here before Ctrl+R leaves it again.
+    :g finds Lantern by name and disconnects it at once, as d would, since u joins it again,
+    as it does here before Ctrl+R leaves it again.
     """
     machine = desktop.machine
 
@@ -1270,15 +1269,6 @@ def binds_a_range(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: len(shown["rows"]) > 1 and "Lantern" in shown["rows"])
     desktop.normal()
     says(":%q\n", "E481: No range allowed")
-    machine.send_chars(":%disc\n", delay=KEY_PACE)
-    desktop.launcher_until(
-        lambda shown: (
-            shown["question"].endswith("can disconnect; disconnect them? (y/n)")
-            and shown["takesAnswer"]
-        )
-    )
-    machine.send_chars("n")
-    desktop.launcher_until(lambda shown: shown["question"] == "")
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     before = left_lantern(desktop)
     machine.send_chars(":g/Lant/disc\n", delay=KEY_PACE)
@@ -2148,13 +2138,11 @@ def shoot_now_through_the_timers(desktop: Desktop) -> None:
     """Shoot Now with one timer rung, then with that one ended, then with only paused ones."""
     machine = desktop.machine
     shoot_now_holding_timers(desktop, "rung", "Eggs \u00b7 Bread \u00b7 Tea \u00b7 Stopwatch")
-    # Eggs ended, by the keys that carry End, leaves them running. End can't be undone, so it
-    # asks once, and takes y only once the ask is ready.
+    # Eggs ended, by the keys that carry End, leaves them running. Ending a timer costs
+    # little, so it ends at once, asking nothing (Joel, 2026-11-13).
     pick_a_timer(desktop, "Eggs")
-    with desktop.told("ask ready"), desktop.told("asked End Eggs? (y/n)"):
+    with desktop.told("ended 1"):
         machine.send_chars("dd")
-    with desktop.told("answered yes"):
-        machine.send_chars("y")
     # An ended row stays, drawn as gone, until the launcher closes.
     desktop.launcher_until(lambda shown: all(thing.get("gone") for thing in shown["things"]))
     desktop.close_launcher()

@@ -231,58 +231,72 @@ QtObject {
         const leftBehind = [bare, { name: "Gone", gone: true }, bare];
         holds("a row whose thing has gone is never taken",
             Operators.taken(leftBehind, { from: 0, to: 2 }, null).map(one => one.at), [0, 2]);
-        // What asks is the key language's to say, by each action's command
-        // (Options.commands): what can't be undone asks once; what's
-        // undoable acts at once; and a guarded one, as a window's Close,
-        // whose program keeps its own work, asks only over more than one.
+        // Only what can't be put back and costs a lot asks (Joel,
+        // 2026-11-13): the act's own word where its daemon serves one,
+        // else the key language's `costly` by its command
+        // (Options.commands); what says how it's put back, what's guarded
+        // and what the language doesn't name act at once, one or many.
         const commands = { halt: { undoable: false, guarded: false },
+            forget: { undoable: false, guarded: false, costly: true },
             close: { undoable: false, guarded: true },
             disconnect: { undoable: true, guarded: false } };
         const as = command => Object.assign({ command }, close);
-        holds("what can't be undone asks once", Operators.asks([as("halt")], commands), true);
-        holds("what's undoable doesn't, once the row says how it's put back",
-            Operators.asks([Object.assign({ undo: run }, as("disconnect"))], commands), false);
-        holds("though it asks until the launcher can put it back",
-            Operators.asks([as("disconnect")], commands), true);
+        holds("what costs a lot asks once", Operators.asks([as("forget")], commands), true);
+        holds("what can't be undone but costs little doesn't",
+            Operators.asks([as("halt")], commands), false);
+        holds("nor what's undoable, put back or not",
+            [Operators.asks([Object.assign({ undo: run }, as("disconnect"))], commands),
+                Operators.asks([as("disconnect")], commands)], [false, false]);
         holds("nor one guarded thing", Operators.asks([as("close")], commands), false);
-        holds("though more than one guarded thing asks once",
-            Operators.asks([as("close"), as("close")], commands), true);
-        holds("as does any that can't be undone among undoable ones",
-            Operators.asks([Object.assign({ undo: run }, as("disconnect")), as("halt")],
+        holds("nor more than one", Operators.asks([as("close"), as("close")], commands),
+            false);
+        holds("though any that costs a lot among them asks once",
+            Operators.asks([Object.assign({ undo: run }, as("disconnect")), as("forget")],
                 commands), true);
-        holds("an action the language doesn't name asks", Operators.asks([close], commands),
-            true);
-        holds("unless it says how it's put back",
-            Operators.asks([Object.assign({ undo: run }, close)], commands), false);
-        // One that says what it leaves asks even where it's guarded and
-        // alone, as a session's Close does, since the ask says it.
+        holds("an action the language doesn't name acts at once",
+            Operators.asks([close], commands), false);
+        holds("and a costly one that says how it's put back too",
+            Operators.asks([Object.assign({ undo: run }, as("forget"))], commands), false);
+        // A daemon's own word on what an act costs wins over the
+        // language's, as agentsd says of a session's Close whether work is
+        // in flight.
+        holds("an act served as costly asks, guarded or not",
+            Operators.asks([Object.assign({ costly: true }, as("close"))], commands), true);
+        holds("and one served as costing little doesn't, whatever its command says",
+            Operators.asks([Object.assign({ costly: false }, as("forget"))], commands), false);
+        // One that says what it leaves asks while its daemon serves no
+        // word on its cost, as a session's Close does, the ask saying what
+        // stays; once it serves one, that decides.
         holds("one guarded thing saying what it leaves asks",
             Operators.asks([Object.assign({ leaves: "Its folder stays." }, as("close"))],
                 commands), true);
+        holds("unless it's served as costing little",
+            Operators.asks([Object.assign({ leaves: "Its folder stays.", costly: false },
+                as("close"))], commands), false);
         // The ask, as Vim's ask_yesno asks: what it would end, by name for
         // one row and by count for more, its verb the one they share.
         // It names the one row it ends, and more by their count and kind,
         // each verb with its own, so Joel needn't look to see what they are
         // (VKCF3Z, 2026-11-05).
-        const asking = { ask: "{ends} {name}? (y/n)", asks: "{what}? (y/n)",
-            askLeaves: "{ends} {name}? {leaves} (y/n)",
+        const asking = { ask: "{ends} {name}?", asks: "{what}?",
+            askLeaves: "{ends} {name}? {leaves}",
             part: "{ends} {count} {kind}", ends: "end", thing: "thing", and: "and",
             many: { copy: "copies" } };
         const closing = name => ({ ends: "close", name, kind: "window" });
         const copied = { ends: "forget", name: "84", kind: "copy" };
         holds("the ask names the one row it ends",
-            Confirm.question([closing("Notes")], asking), "Close Notes? (y/n)");
+            Confirm.question([closing("Notes")], asking), "Close Notes?");
         // A row whose name already says its act, as a line run from Forget
         // the Clipboard, is asked by its name alone, not "Forget Forget".
         holds("and one whose name begins with its verb by its name alone",
             Confirm.question([{ ends: "forget", name: "Forget the Clipboard" }], asking),
-            "Forget the Clipboard? (y/n)");
+            "Forget the Clipboard?");
         // An act with words of its own is asked in them, its thing and
         // what it ends, never the place it's in (VKCF3Z, 2026-11-08).
         holds("and one with its own words in them whole",
             Confirm.question([{ ends: "reboot", name: "Power", kind: "place",
                 asked: "Reboot the Machine, Closing 12 Windows" }], asking),
-            "Reboot the Machine, Closing 12 Windows? (y/n)");
+            "Reboot the Machine, Closing 12 Windows?");
         // An act asked from its own row is an act of the thing holding it,
         // never of a place, on the : line and from a terminal alike.
         const keychron = { name: "Keychron" };
@@ -302,57 +316,64 @@ QtObject {
             { askedAs: "O", leaves: "its folder stays." });
         holds("and one saying neither is asked as any other",
             Confirm.asking({ key: "verb:agent:stop", ask: { ask: "stop" } }), {});
+        holds("and one serving what it costs passes it on",
+            Confirm.asking(Object.assign({ costly: false }, served)),
+            { askedAs: "O", leaves: "its folder stays.", costly: false });
+        holds("though not a word that isn't yes or no",
+            Confirm.asking({ key: "verb:agent:stop", costly: "very" }), {});
         holds("and a window's Close names the window",
             Confirm.question([{ ends: "close", name: Confirm.actOf({ name: "Plover Notes" },
-                { name: "Close" }, "window").name }], asking), "Close Plover Notes? (y/n)");
-        holds("and one that says what it leaves says so before y/n, as a sentence",
+                { name: "Close" }, "window").name }], asking), "Close Plover Notes?");
+        holds("and one that says what it leaves says so after, as a sentence",
             Confirm.question([Object.assign({ leaves: "its worktree stays." },
-                closing("Lamplight"))], asking), "Close Lamplight? Its worktree stays. (y/n)");
+                closing("Lamplight"))], asking), "Close Lamplight? Its worktree stays.");
         // Where the line can't hold it, what stays gives way from its end
-        // at a whole word, never what it does, to what, or its keys, so
+        // at a whole word, never what it does or to what, so
         // it's still a true question (VKCF3Z, 2026-11-07).
         const staying = Confirm.questionParts([Object.assign(
             { leaves: "its worktree and 1 to-do stay." }, closing("TESTQC"))], asking);
         holds("one saying what stays is asked in its parts", staying, { head: "Close TESTQC?",
-            clause: "Its worktree and 1 to-do stay.", tail: "(y/n)" });
+            clause: "Its worktree and 1 to-do stay.", tail: "" });
         const within = most => words => words.length <= most;
         holds("said whole where it fits", Confirm.fitted(staying, within(60)),
-            "Close TESTQC? Its worktree and 1 to-do stay. (y/n)");
+            "Close TESTQC? Its worktree and 1 to-do stay.");
         holds("what stays gives way from its end at a whole word",
-            Confirm.fitted(staying, within(32)), "Close TESTQC? Its worktree\u2026(y/n)");
-        holds("and all of it before what it closes does", Confirm.fitted(staying, within(20)),
-            "Close TESTQC? \u2026(y/n)");
+            Confirm.fitted(staying, within(27)), "Close TESTQC? Its worktree\u2026");
+        holds("and all of it before what it closes does", Confirm.fitted(staying, within(16)),
+            "Close TESTQC? \u2026");
         holds("one saying nothing stays is said whole, its line cutting it",
             Confirm.fitted(Confirm.questionParts([closing("Notes")], asking), within(5)),
-            "Close Notes? (y/n)");
+            "Close Notes?");
         holds("and counts more by their kind", Confirm.question([closing("Notes"),
-            closing("Mail")], asking), "Close 2 windows? (y/n)");
+            closing("Mail")], asking), "Close 2 windows?");
         holds("and each verb with its own, the first first", Confirm.question([closing("Notes"),
-            copied, closing("Mail")], asking), "Close 2 windows and forget 1 copy? (y/n)");
+            copied, closing("Mail")], asking), "Close 2 windows and forget 1 copy?");
         holds("three by commas, the last by and", Confirm.question([closing("Notes"), copied,
             { ends: "quit", name: "Firefox", kind: "program" }, copied], asking),
-        "Close 1 window, forget 2 copies and quit 1 program? (y/n)");
+        "Close 1 window, forget 2 copies and quit 1 program?");
         holds("a row with no kind is a thing", Confirm.question([{ ends: "close", name: "a" },
-            { ends: "close", name: "b" }], asking), "Close 2 things? (y/n)");
+            { ends: "close", name: "b" }], asking), "Close 2 things?");
         holds("and one with no verb takes the word for ending", Confirm.question([
             { name: "a", kind: "window" }, closing("b")], asking),
-        "End 1 window and close 1 window? (y/n)");
-        // Only y answers yes, and only after the ask has stood 300 ms, so
-        // a key typed on from what asked can't answer it; any other no.
-        const ask = Confirm.asked("Close Notes? (y/n)", run, run, 1000);
-        holds("the ask holds its question", ask.question, "Close Notes? (y/n)");
+        "End 1 window and close 1 window?");
+        // Return answers yes, as it does an armed row, and only after the
+        // ask has stood 300 ms, so the Return that asked, doubled or
+        // bounced, and a key typed on from it can't answer it (RCTRF8,
+        // 2026-11-13); any other key lets it go.
+        const ask = Confirm.asked("Close Notes?", run, run, 1000);
+        holds("the ask holds its question", ask.question, "Close Notes?");
         holds("and one asked in its parts holds it whole",
             Confirm.asked(staying, run, run, 1000).question,
-            "Close TESTQC? Its worktree and 1 to-do stay. (y/n)");
-        holds("a key in the ask's first 300 ms is let by", Confirm.answer(ask, "y", 1299, 300),
-            "early");
-        holds("y after it answers yes", Confirm.answer(ask, "y", 1300, 300), "yes");
-        holds("n, Escape and Ctrl+C answer no, as Vim's ask_yesno",
-            ["n", "Escape", "Ctrl+c"].map(key => Confirm.answer(ask, key, 1400, 300)),
-            ["no", "no", "no"]);
-        holds("and any other key, Y among them, does nothing",
-            ["Y", "d", "Return", "j"].map(key => Confirm.answer(ask, key, 1400, 300)),
-            ["nothing", "nothing", "nothing", "nothing"]);
+            "Close TESTQC? Its worktree and 1 to-do stay.");
+        holds("a key in the ask's first 300 ms is let by, Return and y among them",
+            ["Return", "y", "n", "Escape"].map(key => Confirm.answer(ask, key, 1299, 300)),
+            ["early", "early", "early", "early"]);
+        holds("Return after it answers yes, the keypad's too",
+            ["Return", "Enter"].map(key => Confirm.answer(ask, key, 1300, 300)),
+            ["yes", "yes"]);
+        holds("and any other key lets it go, y, n and Escape among them",
+            ["y", "n", "Escape", "Ctrl+c", "-", "j", "d"].map(key => Confirm.answer(ask, key,
+                1400, 300)), ["no", "no", "no", "no", "no", "no", "no"]);
         holds("and no key at all, as a modifier alone, is let by",
             Confirm.answer(ask, "", 1400, 300), "early");
         pending(holds);

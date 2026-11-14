@@ -739,9 +739,9 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     )
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Mark It Done", "Put It Off"])
-    # Mark It Done ends what waits, so Return writes :delete, and its line asks first; done, it
-    # keeps the launcher, and is kept where Joel's word is.
-    desktop.line_answered("delete")
+    # Mark It Done ends what waits, so Return writes :delete, and its line runs at once; done,
+    # it keeps the launcher, and is kept where Joel's word is.
+    desktop.line_run("delete")
     retry(
         lambda _: "OLDQA:old" in desktop.as_account(f"cat {state}/mission/settled.json || true"),
         timeout=dt.timedelta(seconds=10),
@@ -762,7 +762,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     picked(desktop, "Restart Once")
     desktop.follow()
     desktop.down_to("Put It Off")
-    desktop.line_answered("snooze")
+    desktop.line_run("snooze")
     desktop.close_launcher()
     retry(
         lambda _: waiting_inside(desktop) == ("1 to do", ["Prove the Keys", "Later", "History"]),

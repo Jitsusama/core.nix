@@ -491,9 +491,9 @@ def reads_them_all(desktop: Desktop) -> None:
     desktop.machine.send_key("meta_l-n")
     desktop.launcher_until(lambda shown: shown["held"][-1:] == ["Desktop"])
     desktop.down_to("Mark Them Read")
-    # Reading them all can't be taken back, so Return writes :delete and its line asks first.
-    # Desktop holds still while it's open, so they leave it once it closes.
-    desktop.line_answered("delete")
+    # Reading them all ends them, so Return writes :delete, and its line runs at once, since
+    # it costs little. Desktop holds still while it's open, so they leave it once it closes.
+    desktop.line_run("delete")
     desktop.close_launcher()
     desktop.machine.send_key("meta_l-n")
     desktop.launcher_until(

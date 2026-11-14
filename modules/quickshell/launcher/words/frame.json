@@ -353,6 +353,7 @@
       "quit": "does nothing",
       "quits": "closes",
       "again": "again {arms}",
+      "confirm": "confirm",
       "complete": "complete",
       "nextTime": "next time",
       "enough": "is enough",
@@ -447,9 +448,9 @@
       }
     },
     "operators": {
-      "ask": "{ends} {name}? (y/n)",
-      "askLeaves": "{ends} {name}? {leaves} (y/n)",
-      "asks": "{what}? (y/n)",
+      "ask": "{ends} {name}?",
+      "askLeaves": "{ends} {name}? {leaves}",
+      "asks": "{what}?",
       "part": "{ends} {count} {kind}",
       "and": "and",
       "thing": "thing",
@@ -520,14 +521,14 @@
       "on": "on {things}",
       "onSome": "on {some} of {all}",
       "none": "none of {all} can {command}",
-      "some": "{some} of {all} can {command}; {command} them? (y/n)",
+      "some": "{some} of {all} can {command}; {command} them?",
       "asksPassword": "{network} asks its password: find it to join",
       "unread": "{option} can't be read here",
       "run": "run",
       "choose": "choose"
     },
     "asked": {
-      "replace": "Replace {name}? (y/n)"
+      "replace": "Replace {name}?"
     },
     "footKeys": {
       "normal": "normal",
@@ -748,6 +749,7 @@
     "unknown": "launcher doesn't take {what}",
     "waiting": "\u2026",
     "unsure": "{question} \u00b7 nothing to answer on, so --yes does it",
+    "asks": "{question} (y/n)",
     "takes": "{name} takes words \u00b7 {ask} \u00b7 give them after --",
     "takesWords": "{name} not done \u00b7 give its words after --",
     "nothingToDo": "launcher do needs a row to do",

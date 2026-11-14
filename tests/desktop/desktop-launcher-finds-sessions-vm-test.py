@@ -417,13 +417,12 @@ def test_an_orchestrator_is_paused_with_no_words(desktop: Desktop) -> None:
     closed = desktop.in_session(LAUNCHER_OPEN)
     an_orchestrator(desktop)
     into_lighthouse(desktop)
-    # Pause is done by its command, its row's own act, which asks first.
+    # Pause is done by its command, its row's own act, at once: resuming it
+    # costs a key, so it asks nothing.
     desktop.normal()
     machine.send_chars(":")
     desktop.launcher_until(lambda shown: shown["modeMark"] == "CMD")
     machine.send_chars("pause\n")
-    desktop.launcher_until(lambda shown: shown["takesAnswer"])
-    machine.send_chars("y")
     machine.wait_until_succeeds(
         desktop.in_session(f'cat {INBOX}/*.json | grep -q \'"act":"pause"\''),
         timeout=dt.timedelta(seconds=10),
@@ -748,8 +747,8 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
     desktop.launcher_until(lambda shown: "Not Now" in shown["rows"])
     desktop.down_to("Not Now")
     # Putting off ends what's offered this boot, so Return writes :snooze, and its line
-    # asks first.
-    desktop.line_answered("snooze")
+    # runs at once, since it costs little.
+    desktop.line_run("snooze")
     # Nothing is left to reopen, so the launcher closes.
     desktop.launcher_until(lambda shown: not shown["open"])
     desktop.as_account("qs ipc call launcher toggle")

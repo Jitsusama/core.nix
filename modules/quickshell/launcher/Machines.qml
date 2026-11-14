@@ -210,9 +210,10 @@ Provider {
     property string updating: ""
 
     // Updates it to its configuration's main, which can't be taken back,
-    // so it asks once on the command line as every such act does, the act
-    // on its thing then y/n: "Update skiff? (y/n)" (docs/design.md's Undo;
-    // VKCF3Z, 2026-11-09). While it goes, its foot says so.
+    // so it asks once on the command line as every costly act does (its
+    // :install), the act on its thing: "Update skiff?", a second Return
+    // doing it (docs/design.md's Undo; VKCF3Z, 2026-11-09). While it goes,
+    // its foot says so.
     function updateIt(record) {
         const id = "verb:machines:update";
         const said = Words.of("machines").said ?? {};

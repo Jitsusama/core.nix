@@ -1315,9 +1315,9 @@ def test_a_look_cleared_in_for_you_is_written_cleared(shell: Shell) -> None:
         shell.launcher_until(lambda shown: shown["path"][-1:] == ["To Look At"])
         shell.normal()
         shell.down_to("Cleared Look")
-        with shell.told("ask ready"):
-            shell.send_chars("dd")
-        shell.send_chars("y")
+        # Clearing a look costs little, so dd does it at once, asking nothing (Joel,
+        # 2026-11-13).
+        shell.send_chars("dd")
         shell.launcher_until(lambda _shown: json.loads(look.read_text())["state"] == "cleared")
         written = json.loads(look.read_text())
         assert (written["id"], written["title"]) == ("cleared", "Cleared Look"), written
@@ -1328,7 +1328,7 @@ def test_a_look_cleared_in_for_you_is_written_cleared(shell: Shell) -> None:
 
 # How many looks wait in To Look At, enough that weighing them all again shows.
 LOOKS_WAITING = 12
-# How many rows an act may weigh again: the one it changed and the ask it answered.
+# How many rows an act may weigh again: the one it changed, and one more for the foot's.
 WEIGHED_BY_AN_ACT = 2
 
 
@@ -1386,14 +1386,13 @@ def test_an_act_on_one_look_weighs_the_keys_of_no_other(shell: Shell) -> None:
             )
         )
         shell.normal()
-        with shell.told("ask ready"):
-            shell.send_chars("dd")
         # Counted only once the weighing holds still, since on a loaded builder what came
         # before the act, as the rows shown again or the keys' face measured, can land
-        # after it and count as its (one act weighed 9, 85PKB2, 2026-11-12).
+        # after it and count as its (one act weighed 9, 85PKB2, 2026-11-12). Clearing a
+        # look asks nothing, so dd is the act.
         before = weighed_held_still(shell)
         since = shell.mark()
-        shell.send_chars("y")
+        shell.send_chars("dd")
         shell.reported("act shown in ", lambda _rest: True, since)
         weighed = shell.showing()["weighed"] - before
         assert weighed <= WEIGHED_BY_AN_ACT, f"one act weighed {weighed} rows' keys again"
@@ -2557,7 +2556,7 @@ def test_a_terminal_is_asked_before_an_ending_act_and_a_place_opens(shell: Shell
     reboot = done("machine", "power", "reboot")
     assert reboot["in"] == ["Machine", "Power", "Reboot"], reboot
     closing = r"(, Closing (the Window|\d+ Windows))?"
-    assert re.fullmatch(rf"Reboot the Machine{closing}\? \(y/n\)", reboot["asks"]), reboot
+    assert re.fullmatch(rf"Reboot the Machine{closing}\?", reboot["asks"]), reboot
     assert not shell.showing()["open"]
     assert done("mahcine") == {"missing": "mahcine", "near": ["Machine"], "in": []}
     machine = done("machine")
@@ -2610,10 +2609,10 @@ def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell
         until(lambda: (listed("Kestrel Notes") or {}).get("is_focused") is True, "The focus")
         until(lambda: "Plover Notes" in windows_listed(), "Plover Notes in Windows")
         floating = done("desktop", "windows", "plover notes", "float")
-        assert floating["asks"] == "Float Plover Notes? (y/n)", floating
+        assert floating["asks"] == "Float Plover Notes?", floating
         assert (listed("Plover Notes") or {}).get("is_floating") is False, "Float was done"
         closing = done("desktop", "windows", "plover notes", "close")
-        assert closing["asks"] == "Close Plover Notes? (y/n)", closing
+        assert closing["asks"] == "Close Plover Notes?", closing
         assert listed("Plover Notes") is not None, "Close was done before it was sure"
         closed = done(path=closing["path"], sure=True)
         assert closed["done"] is True, closed
@@ -3058,7 +3057,7 @@ def test_a_terminal_disconnects_warp_once_sure_and_connects_it_unasked(shell: Sh
         asking = done("network", "work network", "disconnect warp")
         # The question names the place, in Joel's word for what he'd lose.
         assert asking["asks"].startswith("Disconnect Work Network"), asking
-        assert asking["asks"].endswith("? (y/n)"), asking
+        assert asking["asks"].endswith("?"), asking
         assert "disconnect" not in asked(said), "warp-cli was told before the terminal was sure"
         disconnected = done(path=asking["path"], sure=True)
         assert disconnected["done"] is True, disconnected

@@ -122,18 +122,14 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     # Leaving asks tuple-call, which runs tuple call leave, and Tuple's
     # stream says the call's over. :e Notices opens the history on its
     # first row, the newest notice, whose offers are commands from normal
-    # mode, as its card's are. Leaving can't be put back, so the line asks
-    # first, and y says yes.
+    # mode, as its card's are. Leaving costs little, since one can join
+    # again, so the line leaves at once, asking nothing.
     desktop.notices_history()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Someone left the call")
     )
     desktop.normal()
     machine.send_chars(":leave\n", delay=KEY_PACE)
-    desktop.launcher_until(
-        lambda shown: shown["question"].startswith("Leave ") and shown["takesAnswer"]
-    )
-    machine.send_chars("y")
     # The margin is laid out again as the launcher closes, and goes from
     # niri's layers for a moment while the call's still on, so Tuple asked
     # to leave is what's waited on, and the call's mark going after it.

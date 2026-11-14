@@ -350,13 +350,13 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
     desktop.type_in("forget the clip", selecting="Forget the Clipboard")
     desktop.shoot("launcher-forget-copies")
     # Return writes :forget on the command line, since forgetting ends what's kept; a
-    # fresh Return there asks, by the row's own name, as it can't be taken back, and y
-    # does it.
+    # fresh Return there asks, by the row's own name, as it can't be taken back and costs
+    # every copy, and a Return more does it.
     desktop.line("forget")
-    with desktop.told("asked Forget the Clipboard? (y/n)"), desktop.told("ask ready"):
+    with desktop.told("asked Forget the Clipboard?"), desktop.told("ask ready"):
         machine.send_key("ret")
     with desktop.told("forgot the copies"):
-        machine.send_chars("y")
+        machine.send_key("ret")
     assert desktop.as_account("wl-paste --no-newline 2>&1 || true") == ""
     # The pictures' files go with them.
     assert desktop.as_account("ls -A $XDG_RUNTIME_DIR/clipboard-history") == ""

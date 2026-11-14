@@ -29,7 +29,7 @@ from desktop_session import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Iterator
 
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
@@ -606,8 +606,8 @@ def test_niri_tells_the_shell_it_gives_the_keys_on_demand(desktop: Desktop) -> N
 # any other key does nothing, and nothing answers it in its first 300 ms.
 
 
-def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Desktop) -> None:
-    """Dd closes a window, 3dd, dG and d2j close two once asked, and yG and yy copy titles."""
+def test_dd_and_3dd_close_windows_at_once_and_yy_copies_a_title(desktop: Desktop) -> None:
+    """Dd closes a window, 3dd closes the other two, asking nothing, and yG and yy copy titles."""
     machine = desktop.machine
     first = desktop.opened("Ending first")
     second = desktop.opened("Ending second")
@@ -623,7 +623,7 @@ def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Deskt
     copies_the_titles(desktop, len(endings))
     # dd closes the one window at once: its program keeps its own work,
     # as Vim's :close refuses a modified buffer, so the language marks
-    # Close guarded and one asks nothing.
+    # Close guarded, and it asks nothing, one window or more.
     with desktop.told("ended 1"):
         machine.send_chars("dd")
 
@@ -632,7 +632,7 @@ def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Deskt
         return endings & {window["id"] for window in desktop.windows()}
 
     retry(lambda _: len(left()) == len(endings) - 1, timeout=dt.timedelta(seconds=10))
-    asks_once_for_the_rest(desktop, left)
+    closes_the_rest_at_once(desktop)
     retry(lambda _: not left(), timeout=dt.timedelta(seconds=10))
     assert desktop.showing()["open"], "d closed the launcher"
 
@@ -656,53 +656,17 @@ def copies_the_titles(desktop: Desktop, windows: int) -> None:
     desktop.launcher_until(lambda now: now["open"] and now["flashing"] == [])
 
 
-def unasked(shown: Json) -> bool:
-    """Say whether the ask has gone, its rows untinted, the launcher still open."""
-    return bool(shown["open"] and shown["question"] == "" and shown["tinted"] == [])
-
-
-def asks_once_for_the_rest(desktop: Desktop, left: Callable[[], set[int]]) -> None:
-    """Ask over the two windows left by 3dd, dG and d2j, answering no, nothing, then yes."""
-    machine = desktop.machine
-    open_before = len(left())
+def closes_the_rest_at_once(desktop: Desktop) -> None:
+    """Close the two windows left by 3dd, asking nothing, the launcher staying."""
     # Its row stays in its place, gone, until a key changes what's found,
-    # and d never counts it. So 3dd from it takes the other two and asks
-    # once, on the line, by their count and kind, the two rows it covers
-    # tinted; n says no, and the launcher stays.
+    # and d never counts it. So 3dd from it takes the other two, and
+    # closes them at once, since closing a window costs little (Joel,
+    # 2026-11-13): the ask is kept for what can't be put back and costs a
+    # lot.
     desktop.launcher_until(lambda shown: shown["things"][0]["gone"])
-    with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
-        machine.send_chars("3dd")
-    # A copy yG or yy made can arrive after dd and find again, taking the
-    # gone row out, so the two it covers are the windows still open,
-    # wherever they sit.
-    asking = desktop.showing()
-    assert asking["question"] == "Close 2 windows? (y/n)", asking
-    tinted = [asking["things"][at] for at in asking["tinted"]]
-    assert len(tinted) == open_before, asking
-    assert not any(row["gone"] for row in tinted), asking
-    with desktop.told("answered no"):
-        machine.send_chars("n")
-    desktop.launcher_until(unasked)
-    # dG takes every row from the cursor down, the copies yG and yy left
-    # among them; Ctrl+C says no.
-    since = desktop.mark()
-    with desktop.told("ask ready"):
-        machine.send_chars("dG")
-    desktop.reported("asked Close 2 windows", lambda rest: rest.endswith("(y/n)"), since)
-    with desktop.told("answered no"):
-        machine.send_key("ctrl-c")
-    desktop.launcher_until(unasked)
-    assert len(left()) == open_before, desktop.windows()
-    # A y typed on from d2j, inside the ask's first 300 ms, does nothing,
-    # and nor does any key but y, n, Escape and Ctrl+C once it's ready; y
-    # then closes both.
-    with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
-        machine.send_chars("d2jy")
-    machine.send_chars("x")
-    desktop.launcher_until(lambda shown: shown["question"] == "Close 2 windows? (y/n)")
-    assert len(left()) == open_before, desktop.windows()
     with desktop.told("ended 2"):
-        machine.send_chars("y")
+        desktop.machine.send_chars("3dd")
+    assert desktop.showing()["question"] == "", desktop.showing()
 
 
 def names_each_mode(desktop: Desktop) -> None:
@@ -743,7 +707,7 @@ def visual_keeps_its_keys(desktop: Desktop) -> None:
 
 
 def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
-    """V and j choose windows, y copies their titles, d closes them once asked, Return opens."""
+    """V and j choose windows, y copies their titles, d closes them at once, Return opens."""
     machine = desktop.machine
     opened = {
         title: desktop.opened(title)["id"]
@@ -806,11 +770,9 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
             shown["command"] is None and shown["mode"] == "visual" and shown["tinted"] == [0, 1]
         )
     )
-    # d asks once for both and y closes both, the third left.
-    with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
-        machine.send_chars("d")
+    # d closes both at once, the third left.
     with desktop.told("ended 2"):
-        machine.send_chars("y")
+        machine.send_chars("d")
 
     def closed(_: bool) -> bool:
         """Say whether the two chosen windows have gone and the third stays."""

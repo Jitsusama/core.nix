@@ -36,25 +36,25 @@ function bound(read, at) {
 // (Operators.asks), so d, the line and the menu are one, given the acts
 // found among the things it's bound to, how the line stands, { all, bang },
 // `all` how many things and `bang` whether a ! was typed, and the
-// language's commands (Options.commands): "some" where only some have
-// it, ! or not, so a range never acts on fewer than it named unasked; else,
-// where the language says it changes, never :set (Commands.neverAsks), and
-// d would ask, as it does unless each act says how it's put back (its
-// undo) or it's guarded and alone, "one" or "many", unless the ! says
-// don't; else nothing. None having it says so.
+// language's commands (Options.commands). Where the language says it
+// changes, never :set (Commands.neverAsks), and d would ask, as it does
+// only for what can't be put back and costs a lot: "some" where only some
+// have it, ! or not, so a costly range never acts on fewer than it named
+// unasked; else "one" or "many", unless the ! says don't. Else nothing,
+// on all of them or the some that have it. None having it says so.
 function asking(entry, acts, line, commands) {
     const { all, bang } = line;
     const found = acts.length;
     if (found === 0) {
         return { ask: "", none: true };
     }
-    if (found < all) {
-        return { ask: "some" };
-    }
     const changes = commands[entry.command]?.changes === true
         && !Commands.neverAsks(entry.command);
     const asks = changes && Operators.asks(acts.map(act => ({ command: entry.command,
-        undo: act.undo, leaves: act.leaves })), commands);
+        undo: act.undo, leaves: act.leaves, costly: act.costly })), commands);
+    if (asks && found < all) {
+        return { ask: "some" };
+    }
     if (!asks || bang) {
         return { ask: "" };
     }
