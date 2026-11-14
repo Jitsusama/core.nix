@@ -2404,54 +2404,21 @@ def test_the_held_notices_are_vims_quickfix_list(shell: Shell) -> None:
     shell.notices_gone()
 
 
-def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts(
-    shell: Shell,
-) -> None:
-    """Super+N lists the notices on screen, on the one in front; j moves and Return acts on one.
+def test_super_n_opens_the_notices_on_the_card_in_front_and_again_closes(shell: Shell) -> None:
+    """Super+N, with cards up, opens the launcher's notices on the one in front; again, it closes.
 
     Notices are the launcher's rows, so its keys, acts and drawer take the held stack's place.
-    The one in front is the oldest, never the row first in Desktop, so the cursor landing on it
-    shows the landing chose it. One rested off the screen is Desktop's alone, never among those
-    on screen, which come in the order the line takes them. Again, Super+N closes.
+    The card in front is the oldest, never the row first in Desktop, so the cursor landing on
+    it shows the landing chose it. The cards step aside while it's open, and come back after.
     """
-    with shell.told("rests Plover"):
-        shell.as_account("notify-send --expire-time=1000 'Plover' 'rested off the screen'")
     for summary in ["Kestrel", "Lapwing"]:
         with shell.told(f"shows card {summary}"):
-            shell.as_account(f"notify-send --expire-time=60000 '{summary}' 'one of three'")
-    # Merlin offers to open, and says so once it's asked, as a program would open its window.
-    with shell.told("shows card Merlin"):
-        merlin = subprocess.Popen(
-            ["notify-send", "--expire-time=60000", "--action=default=Open", "Merlin", "one of 3"],
-            stdout=subprocess.PIPE,
-            stdin=subprocess.DEVNULL,
-            text=True,
-        )
-    shell.take_notices()
-    shell.launcher_ready()
-    on_screen = ["Kestrel", "Lapwing", "Merlin"]
-    shell.launcher_until(
-        lambda shown: (
-            (shown["selected"] or {}).get("name") == "Kestrel"
-            and shown["rows"] == on_screen
-            and shown["mode"] == "normal"
-        )
-    )
-    shell.take_notices()
-    shell.launcher_closed()
+            shell.as_account(f"notify-send --expire-time=60000 '{summary}' 'one of two'")
     shell.take_notices()
     shell.launcher_ready()
     shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Kestrel")
-    for key in ["j", "j"]:
-        shell.send_key(key)
-    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Merlin")
-    shell.send_key("ret")
-    try:
-        asked, _ = merlin.communicate(timeout=launcher_on_niri.WAITING.total_seconds())
-    except subprocess.TimeoutExpired:
-        merlin.kill()
-        raise
-    assert asked.strip() == "default", f"Return on Merlin asked it {asked!r}, not to open"
+    shell.take_notices()
+    shell.launcher_closed()
     shell.as_account("qs ipc call notices putAway")
     shell.notices_gone()
 

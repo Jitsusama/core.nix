@@ -371,16 +371,16 @@ fn the_front_is_served_as_one_comes_and_leaves_once_its_read() {
     let watch = json!({"id": 1, "ask": "watch", "kind": "front"});
     let watched = watching.ask(&watch);
     let none = watched["records"][0]["front"].clone();
-    let wanted = json!({"id": null, "critical": null, "waiting": 0, "order": []});
+    let wanted = json!({"id": null, "critical": null, "waiting": 0});
     assert_eq!(none, wanted, "a front with nothing come: {watched}");
     let id = notify(&connection, "Ana", &[], HashMap::new());
     let front = watching.changed("front:notices")["front"].clone();
-    let wanted = json!({"id": id, "critical": null, "waiting": 1, "order": [id]});
+    let wanted = json!({"id": id, "critical": null, "waiting": 1});
     assert_eq!(front, wanted, "the one come isn't in front");
     let mark = json!({"id": 2, "ask": "mark", "notices": [id], "read": true});
     asking.ask(&mark);
     let read = watching.changed("front:notices")["front"].clone();
-    let wanted = json!({"id": null, "critical": null, "waiting": 0, "order": []});
+    let wanted = json!({"id": null, "critical": null, "waiting": 0});
     assert_eq!(read, wanted, "one read stayed in front");
 }
 

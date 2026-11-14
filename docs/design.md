@@ -1955,9 +1955,8 @@ works the same way everywhere.
   of thing it is at its right edge (Shape and Kinds).
   The windows, the copies and the notices are whole at home, and most have
   a chord that opens them: Super+V the
-  copies, Super+E the emoji, Super+N the notices (those on screen, on the
-  one in front, while any are up; For You's Desktop when none are),
-  Super+Shift+/ the shortcuts.
+  copies, Super+E the emoji, Super+N the notices (For You's Desktop, on
+  the card in front while one is up), Super+Shift+/ the shortcuts.
 - **A key's action is its row.** A key's action that a row already does
   is that row, drawing the key's chord: Super+L is the session's Lock,
   Super+Return is kitty, and Shift+Print and Alt+Print are Capture's rows.
@@ -2389,13 +2388,8 @@ Neovim is listed.
 
 Nothing the desktop shows is reached only by pointing. Super+O opens Now,
 the margin's glyphs in words, and Super+N opens the notices in the
-launcher, and closes it pressed again. While any wait on screen, it
-lists those alone, On Screen, in the order the arrival line takes them,
-the cursor on the one it shows, so j and k go through them and Return
-acts on one there; a notice read or come while it's open keeps its
-place, the new at the end. With none on screen, or while notices are
-held, it opens For You's Desktop. A notice is a launcher row like any
-other: Return goes to who
+launcher, on the card in front while one is up, and closes it pressed
+again. A notice is a launcher row like any other: Return goes to who
 sent it, as the quickfix list's Return goes to where a line came from,
 its acts and drawer are beside it, and d and y take it as they take any
 row. The stack on screen is still held by the keys as lines until the

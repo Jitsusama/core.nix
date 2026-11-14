@@ -94,10 +94,9 @@ Singleton {
     // first critical one for while notices are held, and how many wait, as
     // the daemon orders them (modules/notices' front.rs): those brought to
     // the front first, the last first, then the rest as they came. Each id
-    // is null where none is. Its order is the ids of every one waiting, in
-    // that order, the notices on screen Super+N lists (launcher/Now.qml).
+    // is null where none is.
     readonly property string frontKey: "front:notices"
-    readonly property var noFront: ({ id: null, critical: null, waiting: 0, order: [] })
+    readonly property var noFront: ({ id: null, critical: null, waiting: 0 })
     property var front: noFront
 
     // What the daemon made of a notice for its card, on its record: who

@@ -1428,13 +1428,10 @@ Provider {
     // margin's Show Them ask, is For You's Desktop, one key to one place
     // whatever it holds (VKCF3Z, 2026-11-09), never the Notices place it
     // once was; the notices stay found by `/` (PastNotices.qml). "forYou",
-    // as the margin's tray is pressed, is For You itself. "onScreen", as
-    // Super+N with notices on screen, is those notices alone (onScreenRow).
+    // as the margin's tray is pressed, is For You itself.
     function leadsTo(name) {
         if (name === "forYou")
             return [waiting];
-        if (name === "onScreen")
-            return [waiting, onScreenRow()];
         if (name !== "notices")
             return null;
         const { holding } = latelyBands(Date.now());
@@ -2063,46 +2060,6 @@ Provider {
             // place; Slack's, standing in while its daemon doesn't answer,
             // lists Slack's alone, so the rest stay on screen.
             gathers: from === "desktop",
-            run: () => provider.launcher?.enter(row)
-        });
-        return row;
-    }
-
-    // The notices on screen, as Super+N lists them, so Joel goes through
-    // those the arrival line holds and acts on each where it is (Joel,
-    // 2026-11-14: "navigate through the onscreen ones and directly
-    // engage, while keeping them a part of the launcher"): those waiting,
-    // in the order the line takes them, the one it shows first, as the
-    // daemon orders them (front.rs's order). Each is Desktop's row, so its
-    // keys, acts and drawer are. One read or come while it's open stays,
-    // the new at the end, so no row moves under the cursor: a stopgap
-    // merging ids until the notices daemon serves this place's rows whole.
-    // For You never lists it; it's Super+N's alone, and - climbs to For
-    // You. The line steps aside while it's open, each in one place.
-    function onScreenRow() {
-        let ids = (Notices.front.order ?? []).slice();
-        const listed = () => {
-            const now = Notices.front.order ?? [];
-            ids = ids.concat(now.filter(id => !ids.includes(id)));
-            return source("notices")?.desktopRows(ids) ?? [];
-        };
-        const words = Words.of("for-you:source:screen");
-        const row = member({
-            key: "on:waiting:screen",
-            forYou: { kind: "notice", source: "desktop" },
-            verb: "more",
-            stays: true,
-            name: Words.name("for-you:source:screen"),
-            glyph: Words.glyph("for-you:source:screen"),
-            hue: "muted",
-            side: ForYou.filled(words.said?.count ?? "{count}", { count: ids.length }),
-            empty: words.empty ?? "",
-            nested: true,
-            thing: true,
-            verbs: listed,
-            targets: listed,
-            stepped: () => Qt.callLater(() => Notices.seen()),
-            gathers: true,
             run: () => provider.launcher?.enter(row)
         });
         return row;
