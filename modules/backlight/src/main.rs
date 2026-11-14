@@ -78,6 +78,7 @@
 
 mod answering;
 mod ask;
+mod beside;
 mod curve;
 mod dbus;
 mod evening;
