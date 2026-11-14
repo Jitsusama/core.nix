@@ -384,5 +384,15 @@
       "test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest"
     ],
     "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
+    "at": 1794624729,
+    "commit": "467ec1a20da37f9e7ef094c4b9b7c72d9058c1fe",
+    "owner_pr": 4155,
+    "reason": "failed, then passed, at 467ec1a20da3",
+    "subtests": [
+      "test_with_its_store_pressed_the_machine_expires_generations_and_collects_a_dead_build"
+    ],
+    "test": "vm-disk-guard-keeps-the-disk"
   }
 ]
