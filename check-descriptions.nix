@@ -3938,8 +3938,8 @@
     behind a router sharing 90 Mbit/s down and 15 up flow by flow under fq_codel, with the jobs
     downloading and uploading and an app downloading, two calls both ways at 2.5 Mbit/s, one in
     the video tin and one to 443 as best effort, lose at most a hundredth of their datagrams
-    coming down, where without the shaper they lose none; and while a call is on, an app's call
-    to 443 goes in the video tin and is seen as real-time traffic
+    coming down, as they do without the shaper; and while a call is on, an app's call to 443
+    goes in the video tin and is seen as real-time traffic
   '';
   vm-a-hidden-queue-is-taken-back = ''
     behind a router sharing 8 Mbit/s flow by flow under fq_codel, which delays no probe, the

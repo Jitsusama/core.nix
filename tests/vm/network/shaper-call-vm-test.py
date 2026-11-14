@@ -46,11 +46,12 @@ CALL_SECONDS = 20
 # The least of a direction's datagrams that must have been sent for a call to count: most of
 # what the rate sends in its seconds.
 CALL_LEAST = 2_500_000 * CALL_SECONDS // (CALL_LENGTH * 8) * 9 // 10
-# The most a shaped call may lose coming down, of that least: the router alone loses none,
-# and a CAKE that limits the download drops a few as it takes the queue home. Going up is
-# only printed: the router VM dropped from 94 to 1,296 of an unshaped call's datagrams from
-# run to run, and dropped a shaped one's while the client sent 10 Mbit/s into its 15, which
-# is the builder's CPU and no queue of the shaper's.
+# The most a call may lose coming down, of that least, shaped or not: a CAKE that limits the
+# download drops a few as it takes the queue home, and on 13 November the router alone lost
+# 4, then 6, on a busy builder, and none on a rerun. Going up is only printed: the router VM
+# dropped from 94 to 1,296 of an unshaped call's datagrams from run to run, and dropped a
+# shaped one's while the client sent 10 Mbit/s into its 15, which is the builder's CPU and
+# no queue of the shaper's.
 DOWN_MOST = CALL_LEAST // 100
 # What the client takes in before the calls start: a few seconds of the line, so every
 # flow is past its slow start.
@@ -284,12 +285,14 @@ def test_a_call_loses_little(rig: Rig) -> None:
 
 
 def test_unshaped(rig: Rig) -> None:
-    """Without the shaper, the same calls under the same loads lose nothing coming down.
+    """Without the shaper, the same calls under the same loads meet the same bar coming down.
 
-    So the router alone keeps a call's download whole, and what a shaped call loses coming
-    down is the shaper's.
+    So the bar is one the router alone meets, and what a shaped call loses past it is the
+    shaper's.
     """
     rig.client.succeed("systemctl stop shaper.service")
     lost = under_load(rig, shaped=False)
     for name, ways in lost.items():
-        assert ways["down"] == 0, f"the {name} call lost {ways['down']} datagrams down unshaped"
+        assert ways["down"] <= DOWN_MOST, (
+            f"the {name} call lost {ways['down']} datagrams down unshaped, over {DOWN_MOST}"
+        )

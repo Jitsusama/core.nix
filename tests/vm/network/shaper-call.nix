@@ -6,7 +6,7 @@
 # shaper puts in the video tin, and one to 443, which it takes for a page's
 # QUIC and sends best effort. While a call is on, the call to 443 goes in
 # the video tin too. Each call loses at most a hundredth of its datagrams
-# coming down, where with the shaper stopped the router loses none. The
+# coming down, a bar the router meets alone with the shaper stopped. The
 # tests are shaper-call-vm-test.py, run through pytest.
 { self, pkgs }:
 let
