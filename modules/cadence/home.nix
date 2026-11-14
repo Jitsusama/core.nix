@@ -41,6 +41,12 @@
 # nobody acted on or came again, by sender) and blind spots (where the
 # axes and Joel's pains disagree) to the orchestrator and to the owner
 # `owners` names for `review`.
+#
+# `cadence serve` serves the axes to the launcher's Spec place over
+# $XDG_RUNTIME_DIR/daemons/cadence.sock in the shell's daemon interface,
+# reading them at most every five minutes and only while Spec is watched,
+# so the launcher rereads no file (Joel, 2026-11-10: "the daemons need to
+# be the data layer").
 {
   config,
   lib,
@@ -234,6 +240,49 @@ in
         ];
         Slice = "background.slice";
       };
+    };
+    systemd.user.services.cadence-serve = {
+      Unit = {
+        Description = "Serves the axes to the launcher's Spec";
+        X-SwitchMethod = "restart";
+        # Its socket is systemd's, handed to it as it starts.
+        Requires = [ "cadence-serve.socket" ];
+        After = [ "cadence-serve.socket" ];
+      };
+      Service = {
+        ExecStart = lib.escapeShellArgs [
+          (lib.getExe package)
+          "serve"
+          "--vocabulary"
+          "${(import ../quickshell/launcher/words.nix).file}"
+          "--socket"
+          "%t/daemons/cadence.sock"
+        ];
+        # git, systemctl and niri for the axes it reads, as the review has.
+        Environment = [
+          "PATH=${
+            lib.makeBinPath [
+              pkgs.git
+              pkgs.systemd
+            ]
+          }:/run/current-system/sw/bin"
+        ];
+        Restart = "always";
+        RestartSec = 5;
+        Slice = "background.slice";
+      };
+      Install.WantedBy = [ "default.target" ];
+    };
+    # Its socket, held by systemd whether or not the daemon runs, so the
+    # shell asking while it starts waits on it rather than finding none.
+    systemd.user.sockets.cadence-serve = {
+      Unit.Description = "Where the launcher asks for the axes";
+      Socket = {
+        ListenStream = "%t/daemons/cadence.sock";
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+      };
+      Install.WantedBy = [ "sockets.target" ];
     };
     systemd.user.timers.cadence-review = {
       Unit.Description = "Reviews the week each Friday evening";

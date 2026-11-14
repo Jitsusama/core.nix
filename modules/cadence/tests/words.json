@@ -1,0 +1,63 @@
+{
+  "things": [
+    {
+      "id": "spec:head",
+      "in": "spec",
+      "said": {
+        "head": "{count} out of spec",
+        "none": "all in spec"
+      }
+    },
+    {
+      "id": "spec:axis",
+      "in": "spec",
+      "said": {
+        "in": "in spec",
+        "out": "{count} out",
+        "stand-ins": "read on stand-ins",
+        "unread": "not read yet"
+      }
+    },
+    {
+      "id": "spec:axis:drawer",
+      "in": "spec:axis",
+      "said": {
+        "eyebrow": "from cadence \u00b7 {axis}",
+        "of": "{out} of {of}"
+      }
+    },
+    {
+      "id": "spec:yours-out",
+      "in": "spec:axis:drawer",
+      "name": "Yours Out"
+    },
+    {
+      "id": "spec:ours-out",
+      "in": "spec:axis:drawer",
+      "name": "Stand-ins Out"
+    },
+    {
+      "id": "spec:reading",
+      "in": "spec"
+    },
+    {
+      "id": "spec:reading:owner",
+      "in": "spec:reading",
+      "name": "Owner"
+    },
+    {
+      "id": "spec:reading:from",
+      "in": "spec:reading",
+      "name": "Read From"
+    },
+    {
+      "id": "spec:reading:side",
+      "in": "spec:reading",
+      "name": "Side",
+      "said": {
+        "yours": "yours",
+        "ours": "ours, a stand-in"
+      }
+    }
+  ]
+}

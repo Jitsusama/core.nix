@@ -28,6 +28,9 @@ mod plans;
 mod readings;
 mod responds;
 pub mod review;
+pub mod serve;
+mod served;
+mod words;
 
 use std::fmt::Write;
 use std::fs;
