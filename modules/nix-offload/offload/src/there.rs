@@ -2657,19 +2657,20 @@ pub fn reach(
     let said = mine(scratch, "ssh.log");
     let alias = lent.host.rsplit('@').next().unwrap_or(&lent.host);
     let mut command = reaching(ssh, &said);
-    // A builder with a key of its own is never reached through the agent:
-    // ssh asks the agent first even then, and on 8 November an agent
-    // waiting on its person stalled every lender's ssh at login for 18
-    // minutes, so each builder failed its proofs and was given back.
+    // A builder with a key of its own is never reached through the agent
+    // while that key can be read: ssh asks the agent first even then, and
+    // on 8 November an agent waiting on its person stalled every lender's
+    // ssh at login for 18 minutes, so each builder failed its proofs and
+    // was given back. Inside pi's agent fence the key is hidden, reading
+    // empty or not at all, and the fence's own agent holds it instead and
+    // signs only these logins; ssh then finds the key's public half beside
+    // it and asks that agent, which answers within 5 s or is given up on.
     if let Some(key) = &lent.key {
-        command.args([
-            "-o",
-            "IdentitiesOnly=yes",
-            "-o",
-            "IdentityAgent=none",
-            "-i",
-            key,
-        ]);
+        command.args(["-o", "IdentitiesOnly=yes"]);
+        if holds_key(Path::new(key)) {
+            command.args(["-o", "IdentityAgent=none"]);
+        }
+        command.args(["-i", key]);
     }
     if let Some(host_key) = &lent.host_key {
         fs::write(&known, format!("{alias} {host_key}\n"))
@@ -2680,6 +2681,14 @@ pub fn reach(
             .args(["-o", &format!("HostKeyAlias={alias}")]);
     }
     Ok((command, known, said))
+}
+
+/// Whether `file` holds a key this process can read: not a hidden one,
+/// which reads empty or can't be opened.
+fn holds_key(file: &Path) -> bool {
+    fs::File::open(file)
+        .and_then(|opened| opened.metadata())
+        .is_ok_and(|metadata| metadata.len() > 0)
 }
 
 /// Runs `command`, unpacking the tarball it writes into `out`, and gives
@@ -5059,20 +5068,63 @@ mod tests {
         assert_eq!(builder("ssh-ng://?ssh-key=/k"), None);
     }
 
+    /// The arguments `reach` gives ssh for a builder whose key is `key`.
+    fn reached_with(key: &Path) -> Vec<String> {
+        let scratch = tempfile::tempdir().unwrap();
+        let store = format!("ssh-ng://nix-offload?ssh-key={}", key.display());
+        let lent = builder(&store).unwrap();
+        let (command, _, _) = reach(&lent, scratch.path(), "ssh").unwrap();
+        command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect()
+    }
+
     #[test]
     fn a_builder_with_a_key_of_its_own_is_reached_without_the_agent() {
-        let scratch = tempfile::tempdir().unwrap();
-        let lent = builder("ssh-ng://nix-offload?ssh-key=/k").unwrap();
-        let (command, _, _) = reach(&lent, scratch.path(), "ssh").unwrap();
-        let args: Vec<_> = command
-            .get_args()
-            .map(|arg| arg.to_string_lossy())
-            .collect();
+        let keys = tempfile::tempdir().unwrap();
+        let key = keys.path().join("store_ed25519");
+        fs::write(&key, "a private key").unwrap();
+
+        let args = reached_with(&key);
+
         assert!(
             args.windows(2)
                 .any(|pair| pair == ["-o", "IdentityAgent=none"]),
             "{args:?}"
         );
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["-o", "IdentitiesOnly=yes"]),
+            "{args:?}"
+        );
+    }
+
+    #[test]
+    fn a_builder_whose_key_is_hidden_is_reached_through_the_agent() {
+        let keys = tempfile::tempdir().unwrap();
+        let empty = keys.path().join("hidden_ed25519");
+        fs::write(&empty, "").unwrap();
+        let missing = keys.path().join("missing_ed25519");
+
+        for key in [empty, missing] {
+            let args = reached_with(&key);
+
+            assert!(
+                !args.iter().any(|arg| arg == "IdentityAgent=none"),
+                "a hidden key leaves the agent to sign: {args:?}"
+            );
+            assert!(
+                args.windows(2)
+                    .any(|pair| pair == ["-o", "IdentitiesOnly=yes"]),
+                "only the builders' key is offered still: {args:?}"
+            );
+            assert!(
+                args.windows(2)
+                    .any(|pair| pair[0] == "-i" && pair[1] == key.to_string_lossy()),
+                "ssh finds the key's public half beside it: {args:?}"
+            );
+        }
     }
 
     #[test]
