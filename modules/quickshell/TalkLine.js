@@ -57,14 +57,100 @@ function begun(to, line, sent, since) {
         taking: "", takenSince: 0, told: "" };
 }
 
-// The lines a talk line keeps under it, newest first: the talk just begun
-// and the two before it, so two questions in a row both show what became
-// of them (WCJQSG [cf8639ab], Joel at 07:46 on 2026-11-13: "it only shows
-// the first response").
+// How many lines he has seen through a talk line keeps under the rest, newest first, so two
+// questions in a row both show what became of them (WCJQSG [cf8639ab], Joel at 07:46 on
+// 2026-11-13: "it only shows the first response").
 const KEPT_TALKS = 3;
 
-function kept(talks, talk) {
-    return [talk].concat(talks ?? []).slice(0, KEPT_TALKS);
+// A talk the void keeps, as Agents serves it (Orchestrators.qml's talks), as the line's own:
+// his words without what went with them, when he said them by the talk's id, and what the
+// void said back. The void keeps every talk on disk, so a line said before a restart, or
+// on an earlier day, is the same line after (WCJQSG [a2eb9575]).
+const TALK_ID = /^talk-(\d+)$/u;
+function fromServed(to, served) {
+    const id = String(served?.id ?? "").match(TALK_ID);
+    const since = id === null ? Date.parse(served?.at ?? "") : Number(id[1]);
+    const sent = String(served?.words ?? "");
+    const heading = sent.indexOf(`\n\n${ATTACHED}`);
+    const talk = begun(to, heading < 0 ? sent : sent.slice(0, heading), sent, since);
+    return followed(talk, [served]) ?? talk;
+}
+
+// A talk the void keeps that's no line of his: one it ended without a word back, failed or
+// ended with the session, or :take's own asking to take a line back (Told.js's undoing).
+const UNDOING = /^undo \d{1,2}:\d{2}$/u;
+function unanswered(served) {
+    return UNDOING.test(String(served?.words ?? "").trim())
+        || (String(served?.reply ?? "") === "" && ["failed", "over"].includes(served?.stage));
+}
+
+// Whether a line said here is one the void serves, said a moment apart.
+const SAID_APART_MS = 30000;
+function same(one, other) {
+    return one.sent === other.sent && Math.abs(one.since - other.since) < SAID_APART_MS;
+}
+
+// What only this shell knows of a line: that it's being taken back, or was.
+const TAKING = ["taking", "taken", "told"];
+
+// Whether a line is still open: the void, or whoever has it, hasn't answered, or it has an
+// answer he hasn't seen, or he's taking it back in this shell, which stays where he did it.
+// `seen` holds how many of each line's answers he has seen, by its key.
+function open(talk, events, seen) {
+    if (TAKING.includes(talk.said)) {
+        return true;
+    }
+    const key = keyOf(talk);
+    const heard = past(events, key);
+    if (heard.last === "") {
+        return talk.said === "sent";
+    }
+    return heard.waiting !== "" || heard.answers.length > (seen?.[key] ?? 0);
+}
+
+// The lines a talk line shows, each once: those the void keeps, and those said in this
+// shell it hasn't yet, or that are being taken back here. Lines still waiting, and lines
+// with answers he hasn't seen, come first and all of them, newest first; then the newest
+// KEPT_TALKS of the rest (WCJQSG [a2eb9575]).
+function gathered(here, served, events, seen) {
+    const lines = (served ?? []).filter(one => Number.isFinite(one.since));
+    for (const one of here ?? []) {
+        const kept = lines.findIndex(line => same(line, one));
+        if (kept < 0) {
+            lines.push(one);
+        } else if (TAKING.includes(one.said)) {
+            lines[kept] = one;
+        }
+    }
+    lines.sort((one, other) => other.since - one.since);
+    const opened = lines.filter(line => open(line, events, seen));
+    return opened.concat(lines.filter(line => !opened.includes(line)).slice(0, KEPT_TALKS));
+}
+
+// What he has seen once the line is put away: every answer of each line it showed, added to
+// what he saw before, a month's lines kept.
+const SEEN_DAYS = 30;
+const DAY_MS = 86400000;
+function seenAfter(seen, shown, events, now) {
+    const after = {};
+    for (const key of Object.keys(seen ?? {})) {
+        if (now - Date.parse(key.replace(" ", "T")) < SEEN_DAYS * DAY_MS) {
+            after[key] = seen[key];
+        }
+    }
+    for (const talk of shown ?? []) {
+        const key = keyOf(talk);
+        if (key !== "") {
+            after[key] = Math.max(past(events, key).answers.length, after[key] ?? 0);
+        }
+    }
+    return after;
+}
+
+// What a file of what he has seen holds, or nothing where it's missing or not one.
+function seenIn(text) {
+    const read = eventOf(text);
+    return read !== null && typeof read === "object" && !Array.isArray(read) ? read : {};
 }
 
 // The line's key in the void's day file, "YYYY-MM-DD HH:MM": the day it
@@ -81,11 +167,13 @@ function keyOf(talk) {
         + `${two(time[0])}:${time[1]}`;
 }
 
-// What the void wrote as it happened, a JSON object a line, in the order
-// written; a line that isn't one is left out, as a line half written is.
-function eventsIn(text) {
-    return String(text ?? "").split("\n").filter(line => line.trim() !== "").map(eventOf)
-        .filter(event => event !== null);
+// What the void wrote as it happened, in the order written, as the node serves its file:
+// each line an object, or its text where it wasn't read; a line that isn't JSON is left
+// out, as a line half written is.
+function eventsOf(lines) {
+    return (Array.isArray(lines) ? lines : [])
+        .map(line => (typeof line === "string" ? eventOf(line) : line))
+        .filter(event => event !== null && typeof event === "object");
 }
 
 // One line's event, or null where it's half written.
@@ -179,9 +267,10 @@ function ended(heard, words) {
 // it otherwise `stands`; at its right, `side`, when he said it, which is the
 // time its undo names, whatever came after; and at its answer's right, `by`,
 // who answered (WCJQSG [e05f6231], QCXZEB [5aab8439]).
-function exchange(talk, events, words) {
+function exchange(talk, events, words, dayOf) {
+    const day = typeof dayOf === "function" ? dayOf(talk.since) : "";
     const shown = { line: talk.line, answers: [], waiting: "", stands: "", by: "",
-        side: clockOf(talk.since) };
+        side: day === "" ? clockOf(talk.since) : `${day} ${clockOf(talk.since)}` };
     if (["taking", "taken", "told"].includes(talk.said)) {
         return Object.assign(shown, { stands: standing(talk, words) });
     }
