@@ -155,7 +155,7 @@ fn a_tidy_in_time_is_typed() {
         settle(&mut waiting, 2, Some("Hello.".to_owned())).as_deref(),
         Some("Hello.")
     );
-    assert!(waiting.is_none());
+    assert!(waiting.is_none(), "a take typed still waits on its tidy");
 }
 
 #[test]

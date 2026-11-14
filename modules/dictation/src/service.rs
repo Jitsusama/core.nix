@@ -34,7 +34,7 @@
 //!
 //! Where a tidying model is given, a take that lands as prose, pi's prompt
 //! included, is tidied before it's typed (tidy.rs), on a thread of its own
-//! that holds the model as Whisper's holds Whisper: compiled as the service
+//! (tidying.rs) that holds the model as Whisper's holds Whisper: compiled as the service
 //! starts, loaded as listening starts, let go after ten minutes unused. A
 //! take waits on its tidy 2 s at most, and then is typed as heard, the
 //! tidy dropped when it comes, since Joel asked for no delayed voice. A
@@ -50,14 +50,13 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::kept;
+use crate::mode::{self, Mode};
+use crate::tidying::{self, Tidying};
 use dictation::mel::{RATE, SAMPLES};
 use dictation::microphone;
 use dictation::openvino::Priority;
 use dictation::speech::Speech;
-use dictation::tidy::Tidier;
-
-use crate::kept;
-use crate::mode::{self, Mode};
 
 const UNUSED: Duration = Duration::from_mins(10);
 // How long a take waits on its tidy before it's typed as heard.
@@ -139,20 +138,6 @@ enum Job {
     Transcribe(Vec<f32>),
 }
 
-enum TidyJob {
-    Prime,
-    Warm,
-    /// A take, by its number, to be tidied by when it's typed as heard.
-    Tidy(String, u64, Instant),
-}
-
-/// The model that tidies prose before it's typed, and where it runs.
-pub struct Tidying {
-    pub model: PathBuf,
-    pub device: String,
-    pub cache: Option<PathBuf>,
-}
-
 struct Recording {
     child: Child,
     reader: thread::JoinHandle<()>,
@@ -190,9 +175,14 @@ pub fn serve(
     }
     // Compiling the tidier for the GPU takes seconds too, so it's done
     // ahead wherever there's one.
-    let tidy = tidying.map(|tidying| tidier(tidying, events.clone()));
+    let tidy = tidying.map(|given| {
+        let events = events.clone();
+        tidying::start(given, move |take, tidy| {
+            events.send(Event::Tidied(take, tidy)).is_ok()
+        })
+    });
     if let Some(tidy) = &tidy {
-        let _ = tidy.send(TidyJob::Prime);
+        let _ = tidy.send(tidying::Job::Prime);
     }
     thread::spawn(open_the_microphone);
     let coordinator = thread::spawn({
@@ -297,8 +287,10 @@ fn settle(waiting: &mut Option<(u64, String)>, take: u64, tidy: Option<String>) 
     Some(tidy.unwrap_or(heard))
 }
 
-/// Says a take's time to be tidied is up once it is.
-fn time_up(events: &Sender<Event>, take: u64) {
+/// Asks for a take's tidy, by its number, and says its time to be tidied
+/// is up once it is.
+fn tidy_by_its_time(tidy: &Sender<tidying::Job>, events: &Sender<Event>, text: String, take: u64) {
+    let _ = tidy.send(tidying::Job::Tidy(text, take, Instant::now() + TIDY_CAP));
     let events = events.clone();
     thread::spawn(move || {
         thread::sleep(TIDY_CAP);
@@ -326,7 +318,7 @@ fn coordinate(
     heard: &Receiver<Event>,
     events: &Sender<Event>,
     jobs: &Sender<Job>,
-    tidy: Option<&Sender<TidyJob>>,
+    tidy: Option<&Sender<tidying::Job>>,
 ) {
     let mut state = State::Idle;
     // The take waiting on its tidy, by its number, as heard.
@@ -366,7 +358,7 @@ fn coordinate(
                         held = Some(generation);
                     }
                     if let Some(tidy) = tidy {
-                        let _ = tidy.send(TidyJob::Warm);
+                        let _ = tidy.send(tidying::Job::Warm);
                     }
                 }
                 if let Some(said) = said {
@@ -402,9 +394,7 @@ fn coordinate(
                             state = State::Transcribing;
                             takes += 1;
                             waiting = Some((takes, text.clone()));
-                            let _ =
-                                tidy.send(TidyJob::Tidy(text, takes, Instant::now() + TIDY_CAP));
-                            time_up(events, takes);
+                            tidy_by_its_time(tidy, events, text, takes);
                         }
                         _ => write(&text, file.as_deref(), &mut last, &mut watchers),
                     },
@@ -727,7 +717,7 @@ fn worker(
 
 /// The next job a worker is given, letting what it holds go once it's
 /// waited ten minutes for one, or none once nothing can give it one.
-fn next<J, M>(work: &Receiver<J>, held: &mut Option<M>) -> Option<J> {
+pub fn next<J, M>(work: &Receiver<J>, held: &mut Option<M>) -> Option<J> {
     match work.recv_timeout(UNUSED) {
         Ok(job) => Some(job),
         Err(RecvTimeoutError::Timeout) => {
@@ -736,82 +726,6 @@ fn next<J, M>(work: &Receiver<J>, held: &mut Option<M>) -> Option<J> {
         }
         Err(RecvTimeoutError::Disconnected) => None,
     }
-}
-
-/// The thread that holds the tidying model as Whisper's holds Whisper,
-/// and tidies each take it's given by its time, or says it can't. It
-/// says how long each took, never what was said.
-fn tidier(tidying: Tidying, events: Sender<Event>) -> Sender<TidyJob> {
-    let (jobs, work) = mpsc::channel::<TidyJob>();
-    thread::spawn(move || {
-        let mut tidier: Option<Tidier> = None;
-        let fresh = || {
-            Tidier::load(
-                &tidying.model,
-                &tidying.device,
-                tidying.cache.as_deref(),
-                Priority::Waited,
-            )
-        };
-        let load = |tidier: &mut Option<Tidier>| -> Result<(), String> {
-            if tidier.is_none() {
-                let started = Instant::now();
-                let mut loaded = fresh()?;
-                loaded.warm()?;
-                eprintln!(
-                    "dictation: the tidier loaded and warmed in {} ms",
-                    started.elapsed().as_millis()
-                );
-                *tidier = Some(loaded);
-            }
-            Ok(())
-        };
-        while let Some(job) = next(&work, &mut tidier) {
-            match job {
-                TidyJob::Prime => {
-                    if tidier.is_none() {
-                        let started = Instant::now();
-                        match fresh() {
-                            Ok(_) => eprintln!(
-                                "dictation: the tidier is ready in {} ms",
-                                started.elapsed().as_millis()
-                            ),
-                            Err(error) => eprintln!("dictation: {error}"),
-                        }
-                    }
-                }
-                TidyJob::Warm => {
-                    if let Err(error) = load(&mut tidier) {
-                        eprintln!("dictation: {error}");
-                    }
-                }
-                TidyJob::Tidy(take, number, by) => {
-                    let started = Instant::now();
-                    // A take whose time ran out while another was tidied
-                    // is typed already.
-                    let written = if started < by {
-                        load(&mut tidier).and_then(|()| {
-                            tidier
-                                .as_mut()
-                                .ok_or("the tidier isn't loaded")?
-                                .tidy(&take, by)
-                        })
-                    } else {
-                        Err("its time ran out before it was begun".to_owned())
-                    };
-                    let took = started.elapsed().as_millis();
-                    match &written {
-                        Ok(_) => eprintln!("dictation: tidied in {took} ms"),
-                        Err(why) => eprintln!("dictation: typed as heard after {took} ms: {why}"),
-                    }
-                    if events.send(Event::Tidied(number, written.ok())).is_err() {
-                        return;
-                    }
-                }
-            }
-        }
-    });
-    jobs
 }
 
 /// Types `text` into the focused window through the compositor's virtual

@@ -10,7 +10,9 @@
 # writes the whole prompt in the model's chat format, so the template only
 # passes it through, and nothing from the model's repository is rendered.
 {
+  bash,
   fetchurl,
+  lib,
   linkFarm,
   runCommandLocal,
 }:
@@ -28,17 +30,11 @@ let
   };
   template = "{% for message in messages %}{{ message['content'] }}{% endfor %}";
   # A tokenizer's IR with our template in place of the export's, which the
-  # build fails on finding anywhere but where it was.
+  # build fails on finding anywhere but where it was (tidy-template.sh).
   templated = name: hash: {
     inherit name;
     path = runCommandLocal name { inherit template; } ''
-      sed -E "s#<chat_template value=\"[^\"]*\"#<chat_template value=\"$template\"#" \
-        ${fetch name hash} > $out
-      if [ "$(grep -c '<chat_template value=' $out)" != 1 ] \
-        || ! grep -qF "<chat_template value=\"$template\"" $out; then
-        echo "$name's chat template isn't ours alone"
-        exit 1
-      fi
+      ${lib.getExe bash} ${./tidy-template.sh} ${fetch name hash} "$template" $out
     '';
   };
   files = [

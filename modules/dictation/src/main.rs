@@ -38,6 +38,7 @@
 mod kept;
 mod mode;
 mod service;
+mod tidying;
 
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
@@ -59,7 +60,7 @@ fn main() -> ExitCode {
         ["hold"] => service::ask("hold"),
         ["watch"] => service::ask("watch"),
         ["transcribe", model, file] => transcribe(Path::new(model), Path::new(file)),
-        ["tidy", model] => tidy(&service::Tidying {
+        ["tidy", model] => tidy(&tidying::Tidying {
             model: PathBuf::from(model),
             ..tidying_on()
         }),
@@ -86,17 +87,17 @@ fn cache() -> Option<PathBuf> {
 }
 
 /// The tidying model the environment names, if it names one.
-fn tidying() -> Option<service::Tidying> {
+fn tidying() -> Option<tidying::Tidying> {
     let model = PathBuf::from(std::env::var_os("DICTATION_TIDY")?);
-    Some(service::Tidying {
+    Some(tidying::Tidying {
         model,
         ..tidying_on()
     })
 }
 
 /// Where the environment says to tidy, with no model named yet.
-fn tidying_on() -> service::Tidying {
-    service::Tidying {
+fn tidying_on() -> tidying::Tidying {
+    tidying::Tidying {
         model: PathBuf::new(),
         device: std::env::var("DICTATION_TIDY_DEVICE").unwrap_or_else(|_| "GPU".to_owned()),
         cache: std::env::var_os("DICTATION_TIDY_CACHE").map(PathBuf::from),
@@ -107,7 +108,7 @@ fn tidying_on() -> service::Tidying {
 /// tidy, or the take where the tidy may not be typed, and how long each
 /// took. Nobody waits here, so the model has a minute, not the service's
 /// 2 s, and a slow device can still be measured.
-fn tidy(tidying: &service::Tidying) -> Result<(), String> {
+fn tidy(tidying: &tidying::Tidying) -> Result<(), String> {
     let started = Instant::now();
     let mut tidier = Tidier::load(
         &tidying.model,
