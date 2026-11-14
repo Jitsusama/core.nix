@@ -7353,9 +7353,11 @@ Scope {
         // composed and how many rows were drawn afresh, for the check that a
         // source nobody sees makes none, the list refreshes no sooner than
         // its pace lets, and an arrow takes no change as its own, composes
-        // nothing and draws no row afresh.
+        // nothing and draws no row afresh. The last rows each source made
+        // (lately) say which a count past its bar was.
         function made(): string {
             return JSON.stringify({ rows: root.tallies(), looked: root.tallies("looked"),
+                lately: root.tallies("lately"),
                 refreshes: root.refreshesDone, paced: root.refreshesPaced,
                 keyed: root.refreshesKeyed, walked: root.livesMade, composed: root.rowsMade,
                 drawn: root.rowsDrawn, built: root.rowsBuilt });
