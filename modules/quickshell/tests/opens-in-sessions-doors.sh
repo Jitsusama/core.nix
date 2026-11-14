@@ -51,12 +51,24 @@ opens() {
     2> "$work/said" || status=$?
 }
 
+# What a case wanted, against what the file it names holds.
 expect() {
-  local what=$1 want=$2 got=$3
+  local what=$1 want=$2 got
+  got=$(< "$work/$3")
   if [ "$got" != "$want" ]; then
     echo "FAIL $what"
     echo "  wanted: $want"
     echo "  got:    $got"
+    failed=1
+  fi
+}
+
+# How many times a case's script waited, against what it wanted.
+waited() {
+  local what=$1 want=$2 got
+  got=$(wc -l < "$work/waits")
+  if [ "$got" -ne "$want" ]; then
+    echo "FAIL $what: waited $got times, not $want"
     failed=1
   fi
 }
@@ -66,25 +78,22 @@ fresh
 opens pi-session.7 --directory /src/reef zsh -lic 'mycelium attach'
 expect "a kitty listening is asked over its socket, in the folder named" \
   "kitten @ --to unix:$work/kitty.sock launch --type=os-window --os-window-class pi-session.7 \
---cwd /src/reef --env MYCELIUM_APP_ID=pi-session.7 zsh -lic mycelium attach" \
-  "$(cat "$work/asked")"
+--cwd /src/reef --env MYCELIUM_APP_ID=pi-session.7 zsh -lic mycelium attach" asked
 
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
 opens pi-spawned.8 pi
 expect "one naming no folder opens at home" \
   "kitten @ --to unix:$work/kitty.sock launch --type=os-window --os-window-class pi-spawned.8 \
---cwd /home/joel --env MYCELIUM_APP_ID=pi-spawned.8 pi" \
-  "$(cat "$work/asked")"
+--cwd /home/joel --env MYCELIUM_APP_ID=pi-spawned.8 pi" asked
 
 fresh
 echo 3 > "$work/came-at"
 opens pi-session.9 pi
 expect "a kitty starting again is waited on until its socket comes" \
   "kitten @ --to unix:$work/kitty.sock launch --type=os-window --os-window-class pi-session.9 \
---cwd /home/joel --env MYCELIUM_APP_ID=pi-session.9 pi" \
-  "$(cat "$work/asked")"
-expect "it waits only until then" 3 "$(wc -l < "$work/waits")"
+--cwd /home/joel --env MYCELIUM_APP_ID=pi-session.9 pi" asked
+waited "it waits only until then" 3
 
 fresh
 # A kitty from before the unit listened, as it was started: one process with
@@ -100,9 +109,8 @@ opens pi-session.10 --directory /src/kelp pi
 expect "the unit's own old kitty is reached as its single instance" \
   "systemd-run --user --scope --collect --quiet --slice=agents.slice -- env \
 MYCELIUM_APP_ID=pi-session.10 kitty -1 --instance-group pi-sessions --class pi-session.10 \
---directory /src/kelp pi" \
-  "$(cat "$work/asked")"
-expect "it isn't waited on" 0 "$(wc -l < "$work/waits")"
+--directory /src/kelp pi" asked
+waited "it isn't waited on" 0
 kill "$old"
 old=""
 
@@ -112,10 +120,12 @@ fresh
 old=$!
 echo "$old" > "$work/main-pid"
 opens pi-session.11 pi
-expect "with neither, it fails" 1 "$status"
-expect "with neither, nothing is asked" "" "$(cat "$work/asked")"
-expect "it gave up after 20 s of waits" 99 "$(wc -l < "$work/waits")"
-expect "the journal says why" "sessions: no sessions kitty to open pi-session.11 in" \
-  "$(cat "$work/said")"
+if [ "$status" -ne 1 ]; then
+  echo "FAIL with neither, it ended $status, not 1"
+  failed=1
+fi
+expect "with neither, nothing is asked" "" asked
+waited "it gave up after 20 s of waits" 99
+expect "the journal says why" "sessions: no sessions kitty to open pi-session.11 in" said
 
 exit "$failed"
