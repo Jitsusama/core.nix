@@ -2240,6 +2240,7 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
 
+@pytest.mark.usefixtures("said_over")
 def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: Shell) -> None:
     """What's typed in an open thread goes to the void as its reply, shown in it at once.
 
@@ -2326,6 +2327,7 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
 
+@pytest.mark.usefixtures("said_over")
 def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as_a_line(
     shell: Shell, shoot: Callable[[str], None]
 ) -> None:
