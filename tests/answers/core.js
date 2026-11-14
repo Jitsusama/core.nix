@@ -195,6 +195,17 @@ function run(failures) {
         Seen.seen(opened({ held: [{ row: { from: {} } }] }), watcher, []), false);
     machine("seen in a place holding its row",
         Seen.seen(opened({ placed: ["heat"] }), watcher, ["heat"]), true);
+    // A place the selection rests on is about to be stepped into, so what it
+    // holds is watched ahead, and the step's own frame says how it stands;
+    // one only passed over, as an arrow goes by, starts no watch.
+    const machinePlace = { category: { id: "machine", holds: ["heat", "power"] } };
+    machine("seen in a place the selection rests on",
+        Seen.seen(opened({ selected: machinePlace, restsOn: machinePlace }), watcher, ["heat"]),
+        true);
+    machine("unseen in a place the selection only passes",
+        Seen.seen(opened({ selected: machinePlace, restsOn: null }), watcher, ["heat"]), false);
+    machine("unseen in a rested place holding others",
+        Seen.seen(opened({ restsOn: machinePlace }), watcher, ["displays"]), false);
     machine("seen as the place it says how things stand in",
         Seen.seen(opened({ matches: [{ category: { id: "energy" } }] }), watcher,
             ["energy", "power"]), true);

@@ -185,6 +185,14 @@ function lettersRest() {
     return typingRests;
 }
 
+// How long the selection rests on a row, in ms, before what a place there
+// holds watches its daemon ahead of a step in (Seen.js): as long as letters
+// rest, so an arrow tapped past a place, 100 to 150 ms apart, or held,
+// starts and stops no watch.
+function selectionRest() {
+    return typingRests;
+}
+
 // Whether the letters are still coming, the last typed at `typedAt` on
 // KeyTimes's clock (0 when an arrow has moved since), as `now` reads it.
 function lettersComing(typedAt, now) {
