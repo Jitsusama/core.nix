@@ -19,10 +19,10 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 
 ## What It Is
 
-- **The series:** 7.3, at 7.3.3, the release `package.nix` names in
-  `stable`, while the pinned nixpkgs has only 7.2. nixpkgs's 7.2 package
-  builds it, since the two build the same way, and `stable` stops applying
-  once nixpkgs's release is as new. 7.3 holds every fix the XPS 14 took
+- **The series:** 7.3, at 7.3.4, the release `package.nix` names in
+  `stable`. nixpkgs's 7.3 package builds it, and `stable` applies only
+  while nixpkgs's release is older, so a newer point release reaches the
+  machines before nixpkgs takes it. 7.3 holds every fix the XPS 14 took
   onto 7.2 ahead of it, which [the hardware guide][hw] lists, so the laptop
   carries 23 fewer patches than it did on 7.2.
 - **The compiler:** Clang 22, linked with LLD, which link-time optimization
@@ -357,10 +357,12 @@ if less; record a new one after moving to a new series.
   name from `clang --print-supported-cpus`.
 - **A patch one model needs:** add it to that model's `boot.kernelPatches`,
   under the same bar; [the hardware guide][hw] has one.
-- **A new series:** change `linux_7_2` in `package.nix` to the new series,
+- **A new series:** change `linux_7_3` in `package.nix` to the new series,
   or set `stable` to it as for a point release while nixpkgs has no package
-  for it, as 7.3 is. Point BORE at its patch for that series, and update the
-  hash and this document. The configuration check fails until the patch applies and every
+  for it, as 7.3 was built from 7.2's until November 2026. nixpkgs
+  removes a series once it reaches its end of life, and the input update
+  that takes that removal moves `package.nix` on. Point BORE at its patch
+  for that series, and update the hash and this document. The configuration check fails until the patch applies and every
   setting holds.
 
 ## What's Left Out, and Why
