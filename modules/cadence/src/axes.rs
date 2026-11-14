@@ -37,33 +37,26 @@ use std::fmt::Write;
 use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use serde_json::Value;
+use terminal_kit::{Exit, Failure};
 
-use crate::{folders, now_ms};
+use crate::{failed, folders, now_ms, wrongly};
 use readings::{gather, read};
 
 /// `cadence axes [AXIS | --served WORDS]`: prints the ten axes, or the one
 /// named, or Spec's rows (spec.rs).
-pub fn run(mut args: impl Iterator<Item = String>) -> ExitCode {
+pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let asked = args.next();
     if asked.as_deref() == Some("--served") {
         return spec::run(args);
     }
     if args.next().is_some() {
-        eprintln!("usage: cadence axes [AXIS | --served WORDS]");
-        return ExitCode::from(2);
+        return Err(wrongly("axes", "cadence axes takes one axis at most"));
     }
-    let (home, state_home, folder) = match folders() {
-        Ok(folders) => folders,
-        Err(err) => {
-            eprintln!("cadence: {err}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let (home, state_home, folder) = folders().map_err(failed)?;
     let now = now_ms() / 1000;
     let mut axes = read(&gather(&folder, &state_home, now));
     let ink = ink(&home);
@@ -91,16 +84,14 @@ pub fn run(mut args: impl Iterator<Item = String>) -> ExitCode {
         Some(asked) => {
             let Some(one) = find(&axes, &asked) else {
                 let names: Vec<&str> = axes.iter().map(|a| a.name).collect();
-                eprintln!(
-                    "cadence: no axis is {asked}; the axes are {}",
-                    names.join(", ")
-                );
-                return ExitCode::from(2);
+                return Err(Failure::new(Exit::NotFound, format!("no axis is {asked}"))
+                    .because(format!("the axes are {}", names.join(", ")))
+                    .try_this("cadence axes"));
             };
             print!("{}", axis_page(one, &read_at, &ink));
         }
     }
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 /// Where a reading's bar is: a figure past it is out of spec.

@@ -16,18 +16,18 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use serde_json::Value;
+use terminal_kit::Failure;
 
 use super::messages::{self, Note};
 use super::readings::{gather as gather_axes, read};
 use super::{Axis, Reading};
 use crate::day::Day;
 use crate::mesh::Mesh;
-use crate::{DAY, folders, message, now_ms};
+use crate::{DAY, failed, folders, message, now_ms, wrongly};
 use noise::{Tallies, unacted_words};
 
 /// The places Joel meets, each with the words that name it in his lines,
@@ -136,12 +136,14 @@ pub struct Blind {
 
 /// `cadence review [--to ADDRESS]...`: prints the week's review, and sends
 /// it to each address given.
-pub fn run(mut args: impl Iterator<Item = String>) -> ExitCode {
+pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let mut to = Vec::new();
     while let Some(flag) = args.next() {
         let ("--to", Some(address)) = (flag.as_str(), args.next()) else {
-            eprintln!("usage: cadence review [--to ADDRESS]...");
-            return ExitCode::from(2);
+            return Err(wrongly(
+                "review",
+                format!("{flag} isn't a flag it takes, or has no value"),
+            ));
         };
         to.push(address);
     }
@@ -155,13 +157,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> ExitCode {
         to.iter()
             .try_for_each(|address| mesh.send(&message(address, "fyi", page.clone())))
     });
-    match sent {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(err) => {
-            eprintln!("cadence: {err}");
-            ExitCode::FAILURE
-        }
-    }
+    sent.map_err(failed)
 }
 
 /// Reads the week ending at `now` from the machine. The mesh's week is

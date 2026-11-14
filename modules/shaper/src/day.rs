@@ -28,8 +28,9 @@ use std::ffi::OsString;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use terminal_kit::{Exit, Failure};
 
 /// A direction carrying at least this share of its full rate is under load.
 const LOADED: f64 = 0.5;
@@ -478,11 +479,9 @@ fn write(record: &Path, out: &Path, date: &str, now: u64) -> Result<(), String> 
     fs::rename(&part, &path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-const USAGE: &str = "shaper day [--record DIR] [--out DIR] [YYYY-MM-DD]";
-
 /// Writes the date asked for, or today's and, until it has been written
 /// after it ended, yesterday's.
-pub fn command(args: &[String]) -> ExitCode {
+pub fn command(args: &[String]) -> Result<(), Failure> {
     let mut record = PathBuf::from("/var/lib/shaper-record");
     let state = std::env::var_os("XDG_STATE_HOME").map_or_else(
         || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"),
@@ -500,8 +499,10 @@ pub fn command(args: &[String]) -> ExitCode {
                 continue;
             }
             _ => {
-                eprintln!("usage: {USAGE}");
-                return ExitCode::from(2);
+                return Err(crate::wrongly(
+                    "day",
+                    format!("{arg} isn't a flag it takes, or has no value"),
+                ));
             }
         }
         args.next();
@@ -518,14 +519,16 @@ pub fn command(args: &[String]) -> ExitCode {
         }
         dates.push(local_date(now));
     }
-    let mut code = ExitCode::SUCCESS;
-    for date in &dates {
-        if let Err(e) = write(&record, &out, date, now) {
-            eprintln!("{e}");
-            code = ExitCode::FAILURE;
-        }
+    // Each date is written though another fails, and every failure said.
+    let failed: Vec<String> = dates
+        .iter()
+        .filter_map(|date| write(&record, &out, date, now).err())
+        .collect();
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(Failure::new(Exit::Failed, "a day couldn't be written").because(failed.join("; ")))
     }
-    code
 }
 
 #[cfg(test)]

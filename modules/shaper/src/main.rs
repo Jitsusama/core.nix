@@ -15,17 +15,12 @@
 //! (the table in nixos.nix): the shaper keeps that table's sets of cgroups
 //! current (src/classes.rs), and its queues on each uplink (src/qdisc.rs).
 //!
-//! Usage: shaper run [--hosts 1.1.1.1,...] [--vpns wg0,...] [--state DIR]
-//!                   [--runtime DIR] [--controller round-trip|one-way]
-//!                   [--record DIR] (`SHAPER_HOSTS` stands for --hosts)
-//!        shaper status
-//!        shaper stop
-//!        shaper record [--state DIR]
-//!        shaper replay [--base UP,DOWN] [--controller one-way|none] [--json] FILES...
-//!        shaper day [--record DIR] [--out DIR] [YYYY-MM-DD]
+//! `shaper --help`, and each command's, say what each takes
+//! (src/commands.rs); `SHAPER_HOSTS` stands for `--hosts`.
 
 mod call;
 mod classes;
+mod commands;
 mod cost;
 mod cpu;
 mod day;
@@ -59,6 +54,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::sync::mpsc::{Receiver, channel};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
+use terminal_kit::{Context, Exit, Failure};
 
 const TABLE: &str = "shaper";
 const STEP: Duration = Duration::from_millis(200);
@@ -92,7 +88,11 @@ struct Options {
     record: PathBuf,
 }
 
-fn options(args: &[String]) -> Options {
+/// Reads the flags `run`, `status` and `record` take, refusing any other
+/// as `shaper {command}` asked wrongly.
+fn options(command: &str, args: &[String]) -> Result<Options, Failure> {
+    let wrongly =
+        |what: String| Failure::new(Exit::Usage, what).try_this(format!("shaper {command} --help"));
     let mut o = Options {
         // Four operators' anycast resolvers, near anywhere, answering ping,
         // and outside the ranges WARP takes.
@@ -114,53 +114,77 @@ fn options(args: &[String]) -> Options {
     }
     let mut it = args.iter();
     while let Some(arg) = it.next() {
-        let mut value = || it.next().cloned().unwrap_or_default();
+        let mut value = || {
+            it.next()
+                .cloned()
+                .ok_or_else(|| wrongly(format!("{arg} needs a value")))
+        };
         match arg.as_str() {
-            "--hosts" => o.hosts = value().split(',').map(str::to_string).collect(),
-            "--state" => o.state = value().into(),
-            "--runtime" => o.runtime = value().into(),
-            "--cgroups" => o.cgroups = value().into(),
-            "--proc" => o.proc = value().into(),
-            "--users" => o.users = value().into(),
-            "--record" => o.record = value().into(),
-            "--controller" => match value().as_str() {
+            "--hosts" => o.hosts = value()?.split(',').map(str::to_string).collect(),
+            "--state" => o.state = value()?.into(),
+            "--runtime" => o.runtime = value()?.into(),
+            "--cgroups" => o.cgroups = value()?.into(),
+            "--proc" => o.proc = value()?.into(),
+            "--users" => o.users = value()?.into(),
+            "--record" => o.record = value()?.into(),
+            "--controller" => match value()?.as_str() {
                 "one-way" => o.one_way = true,
                 "round-trip" => o.one_way = false,
-                other => eprintln!("ignoring --controller {other}"),
+                other => {
+                    return Err(wrongly(format!(
+                        "--controller is round-trip or one-way, not {other}"
+                    )));
+                }
             },
             "--vpns" => {
-                o.vpns = value()
+                o.vpns = value()?
                     .split(',')
                     .filter(|t| !t.is_empty())
                     .map(str::to_string)
                     .collect();
             }
-            other => eprintln!("ignoring {other}"),
+            other => return Err(wrongly(format!("{other} isn't a flag it takes"))),
         }
     }
-    o
+    Ok(o)
 }
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let rest = args.get(1..).unwrap_or_default();
-    match args.first().map(String::as_str) {
-        Some("run") => run(&options(rest)),
-        Some("status") => status(&options(rest).runtime),
-        Some("stop") => {
+    terminal_kit::main(&commands::help(), env!("CARGO_PKG_VERSION"), asked)
+}
+
+/// Runs the command its first word names; the kit has refused any other.
+fn asked(context: &Context) -> Result<(), Failure> {
+    let Some((command, rest)) = context.args.split_first() else {
+        return Err(Failure::new(Exit::Usage, "shaper takes a command")
+            .because("it does only what one asks")
+            .try_this("shaper --help"));
+    };
+    match command.as_str() {
+        "run" => run(&options("run", rest)?),
+        "status" => status(&options("status", rest)?.runtime),
+        "stop" => {
+            // The kit refuses a stray word; a stray flag is refused here.
+            if let Some(flag) = rest.first() {
+                return Err(wrongly("stop", format!("{flag} isn't a flag it takes")));
+            }
             stop();
-            ExitCode::SUCCESS
+            Ok(())
         }
-        Some("record") => recording(&options(rest).state),
-        Some("replay") => replay::command(rest),
-        Some("day") => day::command(rest),
-        Some("proof") => proof::command(rest),
-        Some("proof-call") => call::command(rest),
-        _ => {
-            eprintln!("usage: shaper run | status | stop | record | replay | day | proof");
-            ExitCode::from(2)
-        }
+        "record" => recording(&options("record", rest)?.state),
+        "replay" => replay::command(rest, context.shared.format.is_json()),
+        "day" => day::command(rest),
+        "proof" => proof::command(rest),
+        "proof-call" => call::command(rest),
+        _ => Err(Failure::new(Exit::Usage, "shaper takes its command first")
+            .because(format!("{command} came before it"))
+            .try_this("shaper --help")),
     }
+}
+
+/// A command asked wrongly, pointing at its own help.
+fn wrongly(command: &str, what: impl Into<String>) -> Failure {
+    Failure::new(Exit::Usage, what).try_this(format!("shaper {command} --help"))
 }
 
 /// Runs a command, saying what it said when it fails.
@@ -297,7 +321,7 @@ impl Shaped {
 
 /// Record the signal of the first uplink with an IPv4 gateway, and of the
 /// next when it changes, until stopped.
-fn recording(folder: &Path) -> ExitCode {
+fn recording(folder: &Path) -> Result<(), Failure> {
     loop {
         let first = uplinks().into_iter().find(|u| {
             u.gateway
@@ -581,7 +605,7 @@ fn refill(text: &str) {
     }
 }
 
-fn run(options: &Options) -> ExitCode {
+fn run(options: &Options) -> Result<(), Failure> {
     let _ = fs::create_dir_all(&options.state);
     let _ = fs::create_dir_all(&options.runtime);
     let mut memory = Memory::open(&options.state);
@@ -1334,11 +1358,11 @@ fn mbit(kbit: u64) -> String {
 const TINS: [&str; 4] = ["bulk", "best effort", "video", "voice"];
 
 /// What the shaper holds each uplink to, and what each tin carried.
-fn status(runtime: &Path) -> ExitCode {
+fn status(runtime: &Path) -> Result<(), Failure> {
     use std::fmt::Write as _;
     let Ok(text) = fs::read_to_string(runtime.join("status.json")) else {
-        eprintln!("the shaper isn't running");
-        return ExitCode::FAILURE;
+        return Err(Failure::new(Exit::Unavailable, "the shaper isn't running")
+            .because(format!("{} holds no status", runtime.display())));
     };
     // Written whole at the end, so a reader that stops early, as
     // `grep -q` or `head` does, ends the report rather than panicking it.
@@ -1408,7 +1432,7 @@ fn status(runtime: &Path) -> ExitCode {
     }
     first.say(&Spent::now(), &mut out);
     let _ = std::io::stdout().write_all(out.as_bytes());
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 /// The services whose CPU status shows, by their cgroups.

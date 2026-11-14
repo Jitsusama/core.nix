@@ -14,26 +14,25 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
 use std::time::Instant;
 
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure};
 
 use super::Axis;
 use super::readings::{gather, read};
 use super::served;
 use super::words::Words;
-use crate::{folders, now_ms};
+use crate::{failed, folders, now_ms, wrongly};
 
 /// The clock ticks a second /proc counts processor time in, which Linux
 /// fixes at 100 whatever the kernel's own tick.
 const TICKS: f64 = 100.0;
 
 /// `cadence axes --served WORDS`, given what follows `--served`.
-pub fn run(mut args: impl Iterator<Item = String>) -> ExitCode {
+pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let (Some(vocabulary), None) = (args.next().map(PathBuf::from), args.next()) else {
-        eprintln!("usage: cadence axes --served WORDS");
-        return ExitCode::from(2);
+        return Err(wrongly("axes", "--served takes the launcher's words alone"));
     };
     let started = Instant::now();
     // Without the launcher's words it would serve ids rather than words.
@@ -43,31 +42,25 @@ pub fn run(mut args: impl Iterator<Item = String>) -> ExitCode {
     {
         Ok(vocabulary) => Words::new(&vocabulary),
         Err(why) => {
-            eprintln!(
-                "cadence: can't read the words {}: {why}",
-                vocabulary.display()
-            );
-            return ExitCode::FAILURE;
+            return Err(Failure::new(
+                Exit::Failed,
+                format!("can't read the words {}", vocabulary.display()),
+            )
+            .because(why));
         }
     };
-    let (home, state_home, folder) = match folders() {
-        Ok(folders) => folders,
-        Err(err) => {
-            eprintln!("cadence: {err}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let (home, state_home, folder) = folders().map_err(failed)?;
     let data_home =
         std::env::var_os("XDG_DATA_HOME").map_or_else(|| home.join(".local/share"), PathBuf::from);
     let quests = data_home.join("pi/agentic-harness.pi/quest-workflow/quests");
     let axes = read(&gather(&folder, &state_home, now_ms() / 1000));
     let ended = if read_nothing(&axes) {
-        eprintln!("cadence: the axes read nothing; Spec keeps its last rows");
-        ExitCode::FAILURE
+        Err(Failure::new(Exit::Failed, "the axes read nothing")
+            .because("no reading found a figure, so Spec keeps its last rows"))
     } else {
         let made = served::made(&axes, &titles(&quests, &axes), &words);
         println!("{}", json!({"rows": made.rows, "head": made.head}));
-        ExitCode::SUCCESS
+        Ok(())
     };
     if let Some(used) = processor() {
         let took = started.elapsed().as_secs_f64();
