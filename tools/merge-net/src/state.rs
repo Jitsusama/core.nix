@@ -7,7 +7,8 @@
 //! - `quick.json`: the last head the quick look ran every changed check
 //!   but the VM tests at, which its next look compares main's head with.
 //! - `results.jsonl`: a line for each run of a check at a commit, with its
-//!   exit and its log, so no check that passed at a commit runs there again.
+//!   exit, its log and the seconds it took, so no check that passed at a
+//!   commit runs there again, and a round starts its longest checks first.
 //! - `hold.json`: while a merge broke a test and its revert isn't on main,
 //!   the bad commit and the revert, which a switch reads to stay put.
 //! - `unsettled.json`: a held test whose search couldn't tell which merge
@@ -211,6 +212,7 @@ impl State {
         ran: Ran,
         code: Option<i32>,
         log: &Path,
+        seconds: u64,
     ) -> Result<(), String> {
         let line = json!({
             "at": now(),
@@ -220,8 +222,28 @@ impl State {
             "stalled": ran == Ran::Stalled,
             "code": code,
             "log": log.display().to_string(),
+            "seconds": seconds,
         });
         append(&self.root.join("results.jsonl"), &line)
+    }
+
+    /// How many seconds each check's newest pass took, by check.
+    pub fn lasted(&self) -> HashMap<String, u64> {
+        let Ok(text) = fs::read_to_string(self.root.join("results.jsonl")) else {
+            return HashMap::new();
+        };
+        // A failure may end early, and a stall at its limit, so only a pass
+        // says how long a check takes.
+        text.lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|line| line["passed"] == true)
+            .filter_map(|line| {
+                Some((
+                    line["check"].as_str()?.to_owned(),
+                    line["seconds"].as_u64()?,
+                ))
+            })
+            .collect()
     }
 
     /// The hold a broken merge put on switching, if one stands.
@@ -500,21 +522,49 @@ mod tests {
     }
 
     #[test]
+    fn a_check_lasts_as_long_as_its_newest_pass() {
+        let state = state("lasted");
+        let log = state.log("aaaa", "vm-a", 1);
+        let runs = [
+            ("aaaa", "vm-a", Ran::Passed, Some(0), 600),
+            ("aaaa", "vm-a", Ran::Failed, Some(1), 30),
+            ("bbbb", "vm-a", Ran::Passed, Some(0), 500),
+            ("bbbb", "vm-b", Ran::Stalled, None, 3000),
+        ];
+        for (commit, check, ran, code, seconds) in runs {
+            state
+                .record(commit, check, ran, code, &log, seconds)
+                .unwrap();
+        }
+        let lasted = state.lasted();
+        assert_eq!(
+            lasted.get("vm-a"),
+            Some(&500),
+            "vm-a's newest pass took 500 seconds: {lasted:?}"
+        );
+        assert_eq!(
+            lasted.get("vm-b"),
+            None,
+            "a stalled run says nothing of how long vm-b takes"
+        );
+    }
+
+    #[test]
     fn a_run_is_kept_by_its_commit_and_check() {
         let state = state("runs");
         let log = state.log("aaaa", "vm-a", 1);
         state
-            .record("aaaa", "vm-a", Ran::Failed, Some(1), &log)
+            .record("aaaa", "vm-a", Ran::Failed, Some(1), &log, 0)
             .unwrap();
         state
-            .record("aaaa", "vm-a", Ran::Passed, Some(0), &log)
+            .record("aaaa", "vm-a", Ran::Passed, Some(0), &log, 0)
             .unwrap();
         state
-            .record("bbbb", "vm-a", Ran::Passed, Some(0), &log)
+            .record("bbbb", "vm-a", Ran::Passed, Some(0), &log, 0)
             .unwrap();
         assert_eq!(state.runs("aaaa", "vm-a"), vec![Ran::Failed, Ran::Passed]);
         state
-            .record("cccc", "vm-a", Ran::Stalled, None, &log)
+            .record("cccc", "vm-a", Ran::Stalled, None, &log, 0)
             .unwrap();
         assert_eq!(state.runs("cccc", "vm-a"), vec![Ran::Stalled]);
         assert_eq!(state.runs("aaaa", "vm-b"), vec![]);
@@ -532,7 +582,7 @@ mod tests {
                     let log = state.log("aaaa", check, 1);
                     for _ in 0..200 {
                         state
-                            .record("aaaa", check, Ran::Passed, Some(0), &log)
+                            .record("aaaa", check, Ran::Passed, Some(0), &log, 0)
                             .unwrap();
                     }
                 });

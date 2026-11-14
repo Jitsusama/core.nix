@@ -346,7 +346,8 @@ fn run_once(
 ) -> Option<Ran> {
     let log = state.log(commit, check, u32::try_from(run).unwrap_or(0));
     let mut sends = 0;
-    let code = loop {
+    let (code, took) = loop {
+        let began = std::time::Instant::now();
         let code = world.build(commit, check, &log);
         // A run stopped because nothing needs it now is no outcome, and no
         // stall: the test ran fine as far as it went.
@@ -354,7 +355,7 @@ fn run_once(
             return None;
         }
         if code != Some(UNSENT) {
-            break code;
+            break (code, began.elapsed().as_secs());
         }
         sends += 1;
         if sends >= SENDS {
@@ -369,7 +370,7 @@ fn run_once(
         Some(_) => Ran::Failed,
         None => Ran::Stalled,
     };
-    if let Err(why) = state.record(commit, check, ran, code, &log) {
+    if let Err(why) = state.record(commit, check, ran, code, &log, took) {
         state.say(&why);
     }
     Some(ran)
@@ -448,8 +449,8 @@ fn attempt_together(world: &dyn World, state: &State, commit: &str, check: &str)
     attempt_in_turn(world, state, commit, check)
 }
 
-/// Run each check at `commit`, `AT_ONCE` at a time, and give each outcome
-/// in the order asked. `then` hears each outcome the moment its check
+/// Run each check at `commit`, `AT_ONCE` at a time and longest first, and
+/// give each outcome in the order asked. `then` hears each outcome the moment its check
 /// ends, on the thread that ran it, while the others still run.
 pub fn attempt_all(
     world: &dyn World,
@@ -459,22 +460,24 @@ pub fn attempt_all(
     then: &(dyn Fn(&str, Outcome) + Sync),
 ) -> Vec<Outcome> {
     let next = Mutex::new(0_usize);
+    let order = longest_first(checks, &state.lasted());
     let outcomes = Mutex::new(vec![Outcome::Unsent; checks.len()]);
     std::thread::scope(|scope| {
         for _ in 0..AT_ONCE.min(checks.len()) {
             scope.spawn(|| {
                 loop {
-                    let index = {
+                    let nth = {
                         let mut next = next
                             .lock()
                             .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        let index = *next;
+                        let nth = *next;
                         *next += 1;
-                        index
+                        nth
                     };
-                    let Some(check) = checks.get(index) else {
+                    let Some(&index) = order.get(nth) else {
                         break;
                     };
+                    let check = &checks[index];
                     if world.held().is_some() {
                         continue;
                     }
@@ -1153,6 +1156,19 @@ pub fn round_beside(
     state.set_heads(&head, &head)?;
     state.say(&format!("{} passed every check it changed", short(&head)));
     Ok(Round::Passed(head))
+}
+
+/// The indices of `checks` in the order they start: those that took
+/// longest at their newest pass first, and before them those never seen
+/// to pass, which may be as long. A round takes as long as its last test to end,
+/// and started by name, on 14 November the round from 05:18 began
+/// vm-guide-installs, 26 minutes long, 46 minutes in, and ended with it.
+fn longest_first(checks: &[String], lasted: &std::collections::HashMap<String, u64>) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..checks.len()).collect();
+    order.sort_by_key(|&index| {
+        std::cmp::Reverse(lasted.get(&checks[index]).copied().unwrap_or(u64::MAX))
+    });
+    order
 }
 
 /// How long the quick look rests between looks at main's head.
@@ -2455,6 +2471,44 @@ mod tests {
     }
 
     #[test]
+    fn a_round_starts_its_longest_tests_first() {
+        // On 14 November the round from 05:18 started vm-guide-installs,
+        // 26 minutes long, 46 minutes in, by its name, and ended with it.
+        let state = state("longest-first");
+        let log = state.log("s", "vm-a", 1);
+        let quick = names("vm-a vm-b vm-c vm-d vm-e vm-f vm-g vm-h vm-i vm-j vm-k vm-l");
+        for test in &quick {
+            state
+                .record("s", test, Ran::Passed, Some(0), &log, 60)
+                .unwrap();
+        }
+        state
+            .record("s", "vm-m", Ran::Passed, Some(0), &log, 1500)
+            .unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed(&format!("{} vm-m vm-n", quick.join(" "))),
+            runs_for: Duration::from_millis(200),
+            ..Stand::default()
+        };
+        round(&world, &state, "s").unwrap();
+        let built = world.built();
+        let first: Vec<&str> = built[..AT_ONCE]
+            .iter()
+            .map(|(_, test)| test.as_str())
+            .collect();
+        assert!(
+            first.contains(&"vm-m"),
+            "vm-m, the longest, waited for a quick test to end: {first:?}"
+        );
+        assert!(
+            first.contains(&"vm-n"),
+            "vm-n, never seen to pass, waited for a quick test to end: {first:?}"
+        );
+    }
+
+    #[test]
     fn a_head_whose_checks_pass_is_the_next_base_and_runs_every_check_it_moved() {
         let state = state("passes");
         let world = Stand {
@@ -3388,7 +3442,7 @@ mod tests {
         let state = state("known");
         let log = state.log("m4", "vm-a", 1);
         state
-            .record("m4", "vm-a", Ran::Passed, Some(0), &log)
+            .record("m4", "vm-a", Ran::Passed, Some(0), &log, 0)
             .unwrap();
         let world = Stand {
             head: "m6".into(),
@@ -4107,7 +4161,7 @@ mod tests {
         let log = state.log("s", "vm-a", 1);
         for _ in 0..FAILURES {
             state
-                .record("s", "vm-a", Ran::Failed, Some(1), &log)
+                .record("s", "vm-a", Ran::Failed, Some(1), &log, 0)
                 .unwrap();
         }
         let world = Stand {
@@ -4140,7 +4194,7 @@ mod tests {
         let log = state.log("s", "vm-a", 1);
         for _ in 0..FAILURES {
             state
-                .record("s", "vm-a", Ran::Failed, Some(1), &log)
+                .record("s", "vm-a", Ran::Failed, Some(1), &log, 0)
                 .unwrap();
         }
         let world = Stand {
@@ -4179,7 +4233,7 @@ mod tests {
         let log = state.log("s", "vm-a", 1);
         for _ in 0..FAILURES {
             state
-                .record("s", "vm-a", Ran::Failed, Some(1), &log)
+                .record("s", "vm-a", Ran::Failed, Some(1), &log, 0)
                 .unwrap();
         }
         let world = Stand {
@@ -4324,7 +4378,7 @@ mod tests {
         let log = state.log("s", "vm-a", 1);
         for _ in 0..FAILURES {
             state
-                .record("s", "vm-a", Ran::Failed, Some(1), &log)
+                .record("s", "vm-a", Ran::Failed, Some(1), &log, 0)
                 .unwrap();
         }
         let world = Stand {
