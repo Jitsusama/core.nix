@@ -22,6 +22,7 @@ pub mod bookmark_rows;
 pub mod command;
 pub mod entry;
 pub mod folder;
+pub mod front;
 pub mod interface;
 pub mod kitty_tabs;
 pub mod machines;
