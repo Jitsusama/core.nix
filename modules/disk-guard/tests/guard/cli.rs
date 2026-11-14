@@ -727,7 +727,6 @@ fn plan_shows_what_a_pass_would_take() {
 
 #[test]
 fn plan_reads_the_survey_the_daemon_kept() {
-    use std::os::unix::fs::MetadataExt;
     let machine = Machine::new();
     let trash = machine.root.join("Trash");
     fs::create_dir_all(trash.join("files")).unwrap();
@@ -739,7 +738,9 @@ fn plan_reads_the_survey_the_daemon_kept() {
             trash.display()
         ),
     );
-    let device = fs::metadata(&trash).unwrap().dev();
+    // The guard keys a disk by its pool, which on Btrfs isn't a
+    // subvolume's own device number, so the survey names it the same way.
+    let device = disk_guard::pool::pool(&trash).unwrap();
     let at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()

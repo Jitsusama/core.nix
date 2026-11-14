@@ -72,10 +72,25 @@ fn help() -> Help {
         "the last four hours, by generation and load",
     )
     .example("lag-watch report --json", "the last day, for a script")
-    .command("now", "the last ten seconds, the same as a bare lag-watch")
-    .command("report", "the history summed up by generation and load")
-    .command("run", "the watch itself, as its service runs it")
-    .option("--hours N", "how far back report reads, 24 unless given")
+    .subcommand(
+        Help::new("now", "the last ten seconds, the same as a bare lag-watch")
+            .example("lag-watch now", "what the last ten seconds were like")
+            .example("lag-watch now --json", "the same, for a script")
+            .exit(Exit::BadInput, "its status can't be read")
+            .exit(Exit::Unavailable, "the watch isn't running"),
+    )
+    .subcommand(
+        Help::new("report", "the history summed up by generation and load")
+            .example("lag-watch report", "the last day")
+            .example("lag-watch report --hours 4", "the last four hours")
+            .option("--hours N", "how far back it reads, 24 unless given")
+            .exit(Exit::BadInput, "the history can't be read"),
+    )
+    .subcommand(
+        Help::new("run", "the watch itself, as its service runs it")
+            .example("lag-watch run", "watches until stopped")
+            .exit(Exit::Unavailable, "it has nothing to watch"),
+    )
     .exit(Exit::BadInput, "its status can't be read")
     .exit(
         Exit::Unavailable,

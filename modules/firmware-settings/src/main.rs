@@ -582,9 +582,37 @@ fn help() -> Help {
         "run0 firmware-settings set PrimaryBattChargeCfg Adaptive",
         "writes one for now, which check then names",
     )
-    .command("check", "names what differs, as a bare run does")
-    .command("apply", "writes every declared setting, then checks")
-    .command("set", "writes one, given its name and value, for now")
+    .subcommand(
+        Help::new("check", "names what differs, as a bare run does")
+            .example("firmware-settings check", "every setting that differs")
+            .exit(Exit::Failed, "a setting differs")
+            .exit(Exit::Refused, "only root may read the setting")
+            .exit(Exit::Config, "the declared settings couldn't be read"),
+    )
+    .subcommand(
+        Help::new("apply", "writes every declared setting, then checks")
+            .example(
+                "run0 firmware-settings apply",
+                "writes them, asking for the admin password",
+            )
+            .exit(Exit::Failed, "a setting wouldn't take")
+            .exit(Exit::Refused, "only root may write the setting")
+            .exit(Exit::Config, "the declared settings couldn't be read")
+            .exit(Exit::Interrupted, "stopped, the password wiped first"),
+    )
+    .subcommand(
+        Help::new("set", "writes one setting, for now")
+            .example(
+                "run0 firmware-settings set PrimaryBattChargeCfg Adaptive",
+                "until apply puts it back",
+            )
+            .argument("<name>", "the setting, as check names it")
+            .argument("<value>", "what it's set to")
+            .exit(Exit::Failed, "it wouldn't take")
+            .exit(Exit::NotFound, "the firmware has no such setting")
+            .exit(Exit::Refused, "only root may write the setting")
+            .exit(Exit::Interrupted, "stopped, the password wiped first"),
+    )
     .exit(Exit::Failed, "a setting differs, or wouldn't take")
     .exit(Exit::NotFound, "the firmware has no such setting")
     .exit(Exit::Refused, "only root may read or write the setting")
