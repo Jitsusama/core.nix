@@ -434,16 +434,6 @@
     "test": "vm-desktop-launcher-finds-sessions"
   },
   {
-    "at": 1794680044,
-    "commit": "75a49d9587e925771f0f92e2f1a86b655861926b",
-    "owner_pr": null,
-    "reason": "failed, then passed, at 75a49d9587e9",
-    "subtests": [
-      "test_letters_typed_quicker_than_the_rest_make_one_drawer"
-    ],
-    "test": "the-launcher-answers-whats-typed-on-niri"
-  },
-  {
     "at": 1794681104,
     "commit": "1501fe1f285b10c05bad4246ffc29beae45dc2d4",
     "owner_pr": null,
