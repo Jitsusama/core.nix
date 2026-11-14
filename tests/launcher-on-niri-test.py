@@ -2030,9 +2030,11 @@ def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.normal()
-    # Down to the third place and back, twice, so each of the first three has made its
-    # drawer before the key that's measured, which brings the third's again.
-    for key in "jjjkkjjk":
+    # Down to the third place and back, three times, so each of the first three has made its
+    # drawer thrice before the key that's measured, which brings the third's again. Twice
+    # wasn't enough: the median of two makings is their mean, so one dear making on a loaded
+    # builder could hold it at 3 and send a 1 ms drawer the frame after (KP0L6A, 2026-11-13).
+    for key in "jjjkkjjkkjjk":
         title = (shell.showing()["drawer"] or {}).get("title", "")
         shell.send_chars(key)
         shell.launcher_until(functools.partial(drawer_moved, title))
