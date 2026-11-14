@@ -83,20 +83,17 @@ QtObject {
         check("the reader's file, read", Devices.halted(file([intel])), [intel]);
         check("no reader, or a file not its own, says nothing stopped",
             [Devices.halted(""), Devices.halted("{}")], [[], []]);
-        check("the line to type unbinds its driver and binds it back", Devices.restart(intel),
-            "echo 0000:00:14.7 | sudo tee /sys/bus/pci/drivers/btintel_pcie/unbind; "
-            + "echo 0000:00:14.7 | sudo tee /sys/bus/pci/drivers/btintel_pcie/bind");
-        check("a USB adapter's by its interface", Devices.restart({ name: "hci1",
-            device: "1-10:1.0", driver: "/sys/bus/usb/drivers/btusb" }),
-            "echo 1-10:1.0 | sudo tee /sys/bus/usb/drivers/btusb/unbind; "
-            + "echo 1-10:1.0 | sudo tee /sys/bus/usb/drivers/btusb/bind");
+        check("a controller on PCI is started again by one short command",
+            Devices.restart(intel), "bluetooth-again");
+        check("none for a USB adapter's, which that command doesn't start",
+            Devices.restart({ name: "hci1", device: "1-10:1.0",
+                driver: "/sys/bus/usb/drivers/btusb" }), "");
         check("none where the reader couldn't say what it sits on",
             Devices.restart({ name: "hci0", device: null, driver: null }), "");
-        check("none for a device or driver that isn't sysfs's, since it's typed as root", [
-            Devices.restart(Object.assign({}, intel, { device: "x; rm -rf /" })),
-            Devices.restart(Object.assign({}, intel, { driver: "/tmp/drivers/x" })),
-            Devices.restart(Object.assign({}, intel, { driver: "/sys/bus/pci/drivers/../x" }))
-        ], ["", "", ""]);
+        check("none for a driver that isn't PCI's own folder", [
+            Devices.restart(Object.assign({}, intel, { driver: "/tmp/bus/pci/drivers/x" })),
+            Devices.restart(Object.assign({}, intel, { driver: "/sys/bus/pci/drivers/x/y" }))
+        ], ["", ""]);
 
         const [dead] = Devices.stopped([intel], "hci0");
         check("the adapter stopped is the Adapter's own row in Bluetooth",
@@ -106,15 +103,14 @@ QtObject {
         check("its notice says it stopped answering, plainly",
             [dead.app, dead.hint, dead.value], ["Bluetooth", "Bluetooth stopped answering",
                 "not answering"]);
-        check("and gives the line to type, and that the mouse may need pairing again",
-            dead.message, "Type this in a terminal to start it again:\n"
-                + `${Devices.restart(intel)}\n`
-                + "Afterwards, your mouse may need pairing again.");
-        check("which it holds for its row to copy", dead.line, Devices.restart(intel));
+        check("and gives the command to type, and that a device may need pairing again",
+            dead.message, "Type bluetooth-again in a terminal to start it again. "
+                + "Afterwards, a device may need pairing again.");
+        check("which it holds for its row to copy", dead.line, "bluetooth-again");
         check("where there's no line, restarting the machine is what's left",
             Devices.stopped([{ name: "hci0" }], "hci0")[0].message,
             "Restarting the machine starts it again. "
-                + "Afterwards, your mouse may need pairing again.");
+                + "Afterwards, a device may need pairing again.");
         check("another adapter is a fact of its own, with no row",
             Devices.stopped([Object.assign({}, intel, { name: "hci1" })], "hci0")
                 .map(thing => [thing.key, thing.place]), [["adapter:hci1", ""]]);

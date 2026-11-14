@@ -67,8 +67,8 @@
     each connected Bluetooth device reporting a battery stands by its own charge, and each running
     low is a thing of its own, keyed by its address, signed by its name and drawn by its kind's
     glyph, wanting Joel now only at the critical mark; an adapter bluetooth-links says stopped
-    answering is a thing too, the Adapter's row in Bluetooth, its notice giving the line that
-    unbinds its driver and binds it back, made only from a device and driver sysfs could name
+    answering is a thing too, the Adapter's row in Bluetooth, its notice naming bluetooth-again
+    for one on PCI and a restart for any other, and saying a device may need pairing again
   '';
   a-mac-sshd-lets-a-gone-caller-go = ''
     every Mac's sshd asks a quiet caller every 15 s and lets it go after four unanswered
@@ -340,7 +340,8 @@
     settings whose choices set them, and its address to copy; lists the adapter's radio,
     visibility and pairing as settings, its traffic as a spark and what it is; answers how the
     links are doing; says a device running low at its row's side, and an adapter stopped
-    answering at its own, holding first the line to copy that starts it again; lists only devices
+    answering at its own, holding first the command to copy that starts it again, and on again
+    as that fact goes; lists only devices
     paired, then Nearby, which has the radio look only while it's open and lists the named devices heard,
     strongest first, each with its signal in dBm and as a bar, then counts those without a name,
     which it lists by address when stepped into; and says what BlueZ answered a pairing or

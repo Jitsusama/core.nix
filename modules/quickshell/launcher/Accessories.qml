@@ -33,7 +33,7 @@
 // whether it's Visible to others and Pairable, as settings, then its
 // Traffic as a spark, its Name, Hardware Address, Version and Chip. Once
 // its controller stops answering, as the link reader hears it, the
-// Adapter says not answering, and holds first the line that starts it
+// Adapter says not answering, and holds first the command that starts it
 // again, which Return copies.
 //
 // BlueZ says nothing of a link's signal, quality, channels or how it's
@@ -718,15 +718,15 @@ Provider {
         const told = Links.adapter(Links.adapters(linksText(false)), radio.adapterId);
         const mark = Theme.glyph.bluetooth;
         const enabled = radio.enabled;
-        // Stopped, the line that starts it again comes first, for Return
-        // to copy.
+        // Stopped, the command that starts it again comes first, for
+        // Return to copy.
         const line = stopped?.line ?? "";
         const again = line === "" ? [] : [saying({
             key: "bluetooth:adapter:restart",
             name: Words.name("bluetooth:restart"),
             side: "",
             copy: line,
-            note: "the line to type in a terminal"
+            note: "the command to type in a terminal"
         })];
         const rows = again.concat([setting("adapter", "powered", enabled ? "on" : "off", mark,
             () => [

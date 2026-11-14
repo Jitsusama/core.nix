@@ -9,7 +9,7 @@
 # /run/bluetooth-links.json points at, so the file goes when the reader
 # does rather than saying how things stood. Beside it, stopped.json says
 # which controllers are up but have stopped answering, and what each sits
-# on, for the shell to say so with the line that starts it again; it's
+# on, for the shell to say so with the command that starts it again; it's
 # pointed at from /run/bluetooth-stopped.json the same way.
 { lib, pkgs, ... }:
 let

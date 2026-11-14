@@ -11,7 +11,7 @@
 // Beside them, an adapter whose controller stopped answering, as the link
 // reader says in its stopped.json (modules/bluetooth-links): BlueZ still
 // says it's on while nothing it carries works, so it's a thing too, said
-// as a notice with the line that starts it again and in Now as the
+// as a notice with the command that starts it again and in Now as the
 // Adapter's own row, until it answers. The file changes only as one stops
 // or answers again, so it's watched always.
 import qs
@@ -80,7 +80,7 @@ Piece {
         each = low.concat(stopped);
     }
 
-    // What a stopped adapter's notice offers: to copy the line that starts
+    // What a stopped adapter's notice offers: to copy the command that starts
     // it again, where there is one, and to show its row in Bluetooth.
     function restarting(own) {
         const copy = own.line === "" ? [] : [{

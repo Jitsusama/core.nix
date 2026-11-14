@@ -38,7 +38,7 @@
 //! works. One that's up and answers nothing it's asked for three looks in
 //! a row is said to have stopped, in `stopped.json` beside the file,
 //! written only when what it says changes, with what it sits on so the
-//! shell can give the line that starts it again:
+//! shell can give the command that starts it again:
 //!
 //! ```json
 //! {"adapters": [{"name": "hci0", "device": "0000:00:14.7",

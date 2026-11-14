@@ -91,7 +91,7 @@ fn found(sysfs: &Path) -> Result<Vec<Controller>, Failure> {
 }
 
 /// Where its address is written, in order, to start a controller again:
-/// its driver's unbind then bind, or the bus's drivers_probe for one no
+/// its driver's `unbind` then `bind`, or the bus's `drivers_probe` for one no
 /// driver holds.
 fn steps(sysfs: &Path, controller: &Controller) -> Vec<PathBuf> {
     let bus = sysfs.join("bus/pci");

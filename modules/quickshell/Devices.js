@@ -102,30 +102,23 @@ function halted(text) {
     }
 }
 
-// A device as the kernel names it on its bus, as 0000:00:14.7 or 1-10:1.0,
-// and a driver's folder in sysfs, nothing else, since the line they make is
-// typed into a root shell.
-const DEVICE = /^[0-9A-Za-z][0-9A-Za-z:._-]*$/u;
-const DRIVER = /^\/sys\/bus\/[a-z0-9_-]+\/drivers\/[A-Za-z0-9_][A-Za-z0-9_.-]*$/u;
+// A driver of PCI's, in sysfs.
+const ON_PCI = /^\/sys\/bus\/pci\/drivers\/[^/]+$/u;
 
-// The line that starts a stopped controller again: its driver let go of
-// its device and given it back, which starts the controller afresh as it
-// does at boot. "" where what it sits on isn't known, or isn't a name the
-// line could carry safely.
+// The command that starts a stopped controller again: bluetooth-again
+// (modules/bluetooth-again) has its driver let go of it and take it back,
+// which starts it afresh as it does at boot. It finds each controller on
+// PCI itself, so it's the command for an adapter whose driver is PCI's;
+// "" for one on USB, or whose driver isn't known.
 function restart(adapter) {
-    const device = adapter.device ?? "";
-    const driver = adapter.driver ?? "";
-    if (!(DEVICE.test(device) && DRIVER.test(driver))) {
-        return "";
-    }
-    return `echo ${device} | sudo tee ${driver}/unbind; echo ${device} | sudo tee ${driver}/bind`;
+    return ON_PCI.test(adapter.driver ?? "") ? "bluetooth-again" : "";
 }
 
-const AFTERWARDS = "Afterwards, your mouse may need pairing again.";
+const AFTERWARDS = "Afterwards, a device may need pairing again.";
 
 // The adapters stopped, as things of a piece (pieces/Piece.qml's `each`):
 // BlueZ still says such a one is on while nothing it carries works, so it
-// wants Joel, said once as a notice with the line that starts it again and
+// wants Joel, said once as a notice with the command that starts it again and
 // taken back once it answers. The one Quickshell names as `own`, the
 // default, is the Adapter's row in Bluetooth, its key the thing's mark, so
 // Now draws it as that row; another is a fact of its own.
@@ -147,9 +140,9 @@ function stopped(adapters, own) {
             value: "not answering",
             hint: "Bluetooth stopped answering",
             context: line === "" ? "restart the machine to start it again"
-                : "type the line in a terminal to start it again",
+                : `type ${line} in a terminal to start it again`,
             message: line === "" ? `Restarting the machine starts it again. ${AFTERWARDS}`
-                : `Type this in a terminal to start it again:\n${line}\n${AFTERWARDS}`,
+                : `Type ${line} in a terminal to start it again. ${AFTERWARDS}`,
             line,
             // Said as it stops, and taken back once it answers again.
             arrives: true,

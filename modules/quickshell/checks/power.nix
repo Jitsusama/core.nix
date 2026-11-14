@@ -64,8 +64,8 @@
   # charge, name and kind, as tests/devices.qml holds Devices.js to with
   # plain objects standing in for BlueZ's devices, since the desktop VM has
   # no Bluetooth. So is an adapter whose controller stopped answering, with
-  # the line that starts it again, made only from names sysfs could give,
-  # since Joel types it as root.
+  # bluetooth-again to type for one on PCI, which that command starts, and a
+  # restart for any other.
   a-low-device-is-its-own-notice =
     let
       qt = pkgs.qt6.qtdeclarative;

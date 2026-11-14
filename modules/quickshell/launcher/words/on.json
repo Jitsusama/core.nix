@@ -763,7 +763,7 @@
       "id": "verb:on:bluetooth:copy",
       "command": "yank",
       "in": "on",
-      "name": "Copy What to Type",
+      "name": "Copy the Command",
       "verb": "copy",
       "glyph": "copy"
     },
