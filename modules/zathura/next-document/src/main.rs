@@ -10,6 +10,10 @@
 //! A number before the key runs this that many times at once. zathura answers a request to
 //! open before it opens, so each run waits its turn on a lock and holds it until zathura
 //! shows what it asked for, and the next goes on from there.
+//!
+//! It takes its help, exits and failures from the terminal kit
+//! (docs/commands.md); it answers nothing, since what it does shows in
+//! zathura's window.
 
 use std::cmp::Ordering;
 use std::ffi::OsStr;
@@ -20,11 +24,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::{env, io};
 
-/// What this answers when it isn't given its two words.
-const MISUSED: u8 = 2;
-
-/// What this answers when there's nothing to open, or zathura couldn't be asked.
-const FAILED: u8 = 1;
+use terminal_kit::{Exit, Failure, Help};
 
 /// How long zathura may take to show a document, the one it has or the one asked for.
 const PATIENCE: Duration = Duration::from_secs(10);
@@ -45,23 +45,37 @@ enum Way {
     Previous,
 }
 
+fn help() -> Help {
+    Help::new(
+        "zathura-next-document",
+        "opens the document beside the one a zathura shows",
+    )
+    .command("next BUS", "the next in its folder, by name")
+    .command("previous BUS", "the one before")
+    .example("zathura-next-document next :1.42", "what zathura's ]b runs")
+    .exit(
+        Exit::Failed,
+        "nothing else to open, or zathura couldn't be asked",
+    )
+}
+
 fn main() -> ExitCode {
-    let arguments: Vec<String> = env::args().skip(1).collect();
-    let way = match arguments.as_slice() {
-        [way, _] if way == "next" => Way::Next,
-        [way, _] if way == "previous" => Way::Previous,
-        _ => {
-            eprintln!("Usage: zathura-next-document next|previous BUS");
-            return ExitCode::from(MISUSED);
-        }
-    };
-    match went(way, &arguments[1]) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("zathura-next-document: {error}");
-            ExitCode::from(FAILED)
-        }
-    }
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let (way, bus) = match context.args.as_slice() {
+            [way, bus] if way == "next" => (Way::Next, bus),
+            [way, bus] if way == "previous" => (Way::Previous, bus),
+            _ => {
+                return Err(
+                    Failure::new(Exit::Usage, "it takes next or previous, then BUS")
+                        .try_this("zathura-next-document --help"),
+                );
+            }
+        };
+        went(way, bus).map_err(|error| {
+            Failure::new(Exit::Failed, "the next document couldn't be opened")
+                .because(error.to_string())
+        })
+    })
 }
 
 /// Opens the document `way` of the one the zathura on `bus` shows, in turn with any other
