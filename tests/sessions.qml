@@ -193,6 +193,14 @@ ShellRoot {
         const live = find("LIVE01");
         expect("a kitty with one window has it", live.window && live.window.id === 10,
             JSON.stringify(live.window));
+        // The bell rings for what the daemon says rings, known as it says,
+        // whatever each one's presence holds.
+        expect("only a want the daemon says rings stops its session",
+            Sessions.stopped.map(session => session.address).join(" ") === "LIVE01",
+            Sessions.stopped.map(session => session.address).join(" "));
+        expect("known as the daemon knows it, and rung for, being new",
+            Sessions.key(live) === "LIVE01 question-1" && Sessions.ringing === live,
+            `${Sessions.key(live)} ${Sessions.ringing?.address}`);
         expect("its label shown, cut at its folder",
             live.title === "Live One" && live.folder === "core.nix", `${live.title} ${live.folder}`);
         expect("its quest's title and its folder as its record says them, not its label",
@@ -847,7 +855,14 @@ ShellRoot {
                     column: 1, tile: 1 } } },
                 others: { "an-earlier-boot": [{ app: "slack", title: "Slack" }] } } },
             { key: "kept-places:agents", kind: "kept-places", places: {
-                "s-moving": { workspace: 6, column: 1, at: Date.now() } } }]);
+                "s-moving": { workspace: 6, column: 1, at: Date.now() } } },
+            // What two running sessions ask Joel, as the daemon judges it:
+            // one stopped on his keys since now, which rings, and one whose
+            // run is stuck, which For You lists but never rings for.
+            { key: "want:agents:LIVE01", kind: "want", address: "LIVE01",
+                since: new Date().toISOString(), rings: true, known: "LIVE01 question-1" },
+            { key: "want:agents:OTHER2", kind: "want", address: "OTHER2",
+                since: new Date().toISOString(), rings: false, known: "OTHER2 blocked" }]);
     }
 
     // A stand-in for the agents daemon (modules/agents), speaking the
@@ -875,7 +890,8 @@ ShellRoot {
                     if (ask.ask === "watch") {
                         const watched = JSON.stringify([ask.kind, ask.place]);
                         if (watched
-                            !== '[["reopen","restoring","to-reopen","arrangement","kept-places"],'
+                            !== '[["reopen","restoring","to-reopen","arrangement","kept-places",'
+                                + '"want"],'
                                 + '"agents"]')
                             root.fail(`a watch the shell has no need of: ${line}`);
                         said([{ id: ask.id, records: root.reopenRecords() }]);

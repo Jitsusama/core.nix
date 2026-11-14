@@ -7,7 +7,10 @@
 //! recommends first, so the shell reads them rather than parsing every
 //! session's presence (KRINS0 item 2). Answering is asked of the daemon
 //! too (`answer_of`), which finds the want by the session's address, so
-//! the shell never names a want's id.
+//! the shell never names a want's id. Each says too whether it rings the
+//! shell's bell (`rings`) and who it is (`known`), by which the shell
+//! rings once for each (Sessions.qml's stopped), so the shell judges no
+//! want itself (KRINS0 item 4, ending #3853's stopgap).
 
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -80,12 +83,39 @@ pub fn records(sessions: &[Session], joel_can: &JoelCan) -> Vec<Value> {
                 "since": since,
                 "parked": one.lives() == Lives::Parked,
                 "answers": answers(wants),
+                "rings": rings(wants),
+                "known": known(one.address(), wants),
             });
             Some((since, record))
         })
         .collect();
     wanting.sort_by(|a, b| a.0.cmp(&b.0));
     wanting.into_iter().map(|(_, record)| record).collect()
+}
+
+/// Whether a want stops its session on Joel's keys now, a question or a
+/// yes, which the shell's bell rings for: never a run that ended blocked
+/// while he was away, which waits for him to look (WCJQSG's pivot,
+/// 2026-11-12, on Joel's "my computer constantly dinging instead of being
+/// brought to what i need to interact with").
+fn rings(wants: &Value) -> bool {
+    matches!(wants["kind"].as_str(), Some("question" | "approval"))
+}
+
+/// Who a want is, whatever its words say as they count up, so one
+/// rewording itself doesn't ring again: its session's address and the
+/// harness's own id for it, else its kind and when it began, and its
+/// words only when it says no start.
+fn known(address: &str, wants: &Value) -> String {
+    if let Some(id) = wants["id"].as_str().filter(|id| !id.is_empty()) {
+        return format!("{address} {id}");
+    }
+    let kind = wants["kind"].as_str().unwrap_or("");
+    let begun = wants["since"]
+        .as_str()
+        .or_else(|| wants["said"].as_str())
+        .unwrap_or("");
+    format!("{address} {kind} {begun}")
 }
 
 /// What a want offers, as the shell once read it for itself: null when
@@ -214,7 +244,8 @@ mod tests {
             wants[0],
             json!({"key": "want:agents:BUOY", "kind": "want", "address": "BUOY",
                 "title": "BUOY Quest", "asked": "BUOY Quest", "since": "2026-11-13T04:00:00Z",
-                "parked": true, "answers": null}),
+                "parked": true, "answers": null, "rings": true,
+                "known": "BUOY approval 2026-11-13T04:00:00Z"}),
             "one asking nothing in words is named by its session, and offers no answers"
         );
         assert_eq!(
@@ -228,6 +259,74 @@ mod tests {
         assert_eq!(
             wants[1]["asked"], "which tide?",
             "what it asked, in its words"
+        );
+    }
+
+    #[test]
+    fn a_question_and_a_yes_ring_and_a_run_stuck_does_not() {
+        let kinds = ["question", "approval", "blocked", "action"];
+        let rang: Vec<bool> = kinds
+            .iter()
+            .map(|kind| rings(&json!({ "kind": kind })))
+            .collect();
+        assert_eq!(
+            rang,
+            [true, true, false, false],
+            "only a question and a yes"
+        );
+        assert!(!rings(&Value::Null), "nor does no want");
+        let wants = served(&[
+            asking("SKIFF", "running", &json!({"kind": "question"})),
+            asking("KELP", "running", &json!({"kind": "blocked"})),
+        ]);
+        let served: Vec<(&Value, &Value)> = wants
+            .iter()
+            .map(|one| (&one["address"], &one["rings"]))
+            .collect();
+        assert_eq!(
+            served,
+            [
+                (&json!("SKIFF"), &json!(true)),
+                (&json!("KELP"), &json!(false))
+            ],
+            "each want served says whether it rings, a run stuck listed but silent"
+        );
+    }
+
+    #[test]
+    fn a_want_is_known_by_who_it_is_never_by_its_words() {
+        let since = "2026-11-06T21:00:00.000Z";
+        let approval = |fields: Value| {
+            let mut wants = json!({"kind": "approval", "since": since});
+            if let (Some(wants), Some(fields)) = (wants.as_object_mut(), fields.as_object()) {
+                wants.extend(fields.clone());
+            }
+            known("8IDU4E", &wants)
+        };
+        assert_eq!(
+            approval(json!({"said": "Holds 2 calls"})),
+            approval(json!({"said": "Holds 3 calls"})),
+            "a want reworded is the same want"
+        );
+        assert_ne!(
+            approval(json!({})),
+            approval(json!({"since": "2026-11-06T21:05:00.000Z"})),
+            "one raised again later is another"
+        );
+        assert_ne!(
+            approval(json!({})),
+            approval(json!({"kind": "question"})),
+            "as is another kind begun at once"
+        );
+        assert_eq!(
+            approval(json!({"id": "approval-1"})),
+            "8IDU4E approval-1",
+            "the harness's own id comes first"
+        );
+        assert_eq!(
+            known("8IDU4E", &json!({"kind": "question", "said": "Push it?"})),
+            "8IDU4E question Push it?",
+            "its words only when it gives no start"
         );
     }
 

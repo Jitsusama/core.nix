@@ -434,12 +434,14 @@ Singleton {
     // `to-reopen:agents` words the place, its folders looked for as the
     // daemon makes the list, so the launcher looks for none as it opens
     // and still says a folder is gone before Return (VKCF3Z, 2026-11-07
-    // [4a00987e]). With the daemon not answering, none is offered.
+    // [4a00987e]). With the daemon not answering, none is offered. The
+    // same watch takes each session's `want`, by which the bell rings
+    // (`stopped`), unpaced, since the bell means something needs Joel now.
     Daemon {
         id: reopenKind
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
-        kind: ["reopen", "restoring", "to-reopen", "arrangement", "kept-places"]
+        kind: ["reopen", "restoring", "to-reopen", "arrangement", "kept-places", "want"]
         watching: ({ place: "agents" })
         answersWhole: true
     }
@@ -2262,8 +2264,9 @@ Singleton {
             .filter(part => part !== "").join(" ");
     }
 
-    // A session stopped on Joel's keys, a question or a yes (Waiting.js's
-    // rings), is new to this shell once: it sounds, softly, and its notice
+    // A session stopped on Joel's keys, a question or a yes, as the agents
+    // daemon serves its want (modules/agents's wants.rs, `rings`), is new
+    // to this shell once: it sounds, softly, and its notice
     // says it with Go To its window first (pieces/Pi.qml, said by
     // Arrivals.qml), so Super+N and Return take him to it. The bell means
     // something needs him now, so a run that ended blocked and an item of
@@ -2273,8 +2276,8 @@ Singleton {
     // goes once he's in that window or the want ends, so it never takes
     // him to a session that has moved on. Neither comes while he's in that
     // window already, nor for one that stood before the shell began. Each
-    // is known by its session and its want's own id or start
-    // (Waiting.wantKey), never by its words, so one rewording itself
+    // is known by its session and its want's own id or start, as the
+    // daemon says it (`known`), never by its words, so one rewording itself
     // doesn't sound again. It's kept known: a presence file replaced by
     // rename leaves its folder for a moment, which would otherwise make a
     // want that never ended look new. Each ring is said in the journal,
@@ -2284,10 +2287,27 @@ Singleton {
     // The newest want the bell rang for, by its key, while it stands and
     // Joel hasn't gone to its window.
     property string rung: ""
-    readonly property var stopped: wanting.filter(session => Waiting.rings(session.presence.wants))
+    // The wants that ring, as the daemon serves them, by their session's
+    // address: none while it doesn't answer, so the shell judges none.
+    readonly property var rings: {
+        void reopenKind.revision;
+        const by = {};
+        for (const one of Object.values(reopenKind.held)) {
+            if (one.kind === "want" && one.rings === true)
+                by[String(one.address).toUpperCase()] = one;
+        }
+        return by;
+    }
+    function rang(session) {
+        return rings[String(session?.address ?? "").toUpperCase()] ?? null;
+    }
+    // Those that ring, the oldest want first, as `wanting` lists them.
+    readonly property var stopped: running.concat(parked)
+        .filter(session => rang(session) !== null)
+        .sort((a, b) => String(rang(a).since).localeCompare(String(rang(b).since)))
     readonly property var ringing: stopped.find(session => key(session) === rung) ?? null
     function key(session) {
-        return Waiting.wantKey(session.address, session.presence.wants);
+        return String(rang(session)?.known ?? "");
     }
     onStoppedChanged: {
         for (const session of stopped) {
@@ -2295,7 +2315,7 @@ Singleton {
             if (told[known])
                 continue;
             told[known] = true;
-            const since = Date.parse(session.presence.wants.since ?? "");
+            const since = Date.parse(rang(session).since ?? "");
             const window = session.window ? String(session.window.id) : "";
             if (window === String(Niri.current) || (since < began))
                 continue;
@@ -2304,7 +2324,7 @@ Singleton {
             if (Options.sounds.wants !== "" && !Quiet.on) {
                 Niri.spawn([Options.sounds.player, "--volume=0.5", Options.sounds.wants]);
                 console.info(`sessions: rang the want bell for ${session.address} `
-                    + `(${session.presence.wants.kind})`);
+                    + `(${session.presence?.wants?.kind ?? "a want"})`);
             }
         }
     }
