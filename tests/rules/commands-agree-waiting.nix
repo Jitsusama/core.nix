@@ -135,11 +135,6 @@
     "kit"
     "helps"
   ];
-  lid-docked = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   lid-held = [ "helps" ];
   loader-first-in-boot-order = [ "helps" ];
   location = [
@@ -214,10 +209,6 @@
     "helps"
   ];
   passwords-1password = [
-    "kit"
-    "helps"
-  ];
-  pause-for-calls = [
     "kit"
     "helps"
   ];

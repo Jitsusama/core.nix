@@ -181,10 +181,12 @@
         google-rows = google;
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
+        lid-docked = pkgs.callPackage ../../modules/lid/docked/package.nix { };
         load-proof = pkgs.callPackage ../../modules/load-proof/package.nix { };
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
         open-now = recentFiles;
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
+        pause-for-calls = pkgs.callPackage ../../modules/spotify/pause-for-calls/package.nix { };
         pi-packages = pkgs.callPackage ../../modules/pi-packages/package.nix { };
         recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
