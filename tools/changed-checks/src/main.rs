@@ -566,23 +566,26 @@ fn compare(
         // Once the ordinary checks are compared, the build they began, if
         // they moved any; none for a tree kept already.
         let mut building = None;
+        // Every run judges the tree by what each check read, a run only
+        // naming them too: on 14 November the merge net's, which name what
+        // moved, evaluated all 930 checks in 275 to 390 s before a round's
+        // first VM test, while gates beside them evaluated 100 to 600.
         let mut evaluate = || -> Result<Derivations, String> {
-            if !beside {
-                return derivations(flake, system, "tree", noted);
-            }
             let mut evaluation = Run::evaluating("tree");
             let (mut after, vm) =
                 ordinarily(flake, root, system, recorded.as_ref(), &mut evaluation)?;
-            let moved = checks::compare(&before, &after);
-            let targets = if moved.broken.is_empty() {
-                unbuilt(&moved)
-            } else {
-                Vec::new()
-            };
-            building = Some((!targets.is_empty()).then(|| {
-                let derivations = after.clone();
-                scope.spawn(move || built(flake, system, held, &targets, &derivations))
-            }));
+            if beside {
+                let moved = checks::compare(&before, &after);
+                let targets = if moved.broken.is_empty() {
+                    unbuilt(&moved)
+                } else {
+                    Vec::new()
+                };
+                building = Some((!targets.is_empty()).then(|| {
+                    let derivations = after.clone();
+                    scope.spawn(move || built(flake, system, held, &targets, &derivations))
+                }));
+            }
             let (judged, at) = ((&before, recorded.as_ref()), (base, system));
             after.extend(vm_tests(flake, root, at, judged, vm, &mut evaluation)?);
             noted.evaluated(evaluation);
