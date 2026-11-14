@@ -4,5 +4,7 @@ node  device             band    signal    SNR         rx         tx      down  
 Den   generic 2          5 GHz  −37 dBm  71 dB  1.20 Gb/s  1.08 Gb/s    0 b/s      0 b/s   10.0.0.45
       laptop computer 2  5 GHz  −38 dBm  70 dB  1.20 Gb/s  1.20 Gb/s  145 kb/s  97.6 kb/s  10.0.0.24
 
-1 more eero hasn't seen lately
-eero profiles "profile 3" names them
+1 device not seen lately
+
+device               hardware
+network equipment 1  02:00:00:00:00:38

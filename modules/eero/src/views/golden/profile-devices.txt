@@ -4,5 +4,7 @@ node  device             kind             band    ch   signal    SNR         rx 
 Den   generic 2          generic          5 GHz   52  −37 dBm  71 dB  1.20 Gb/s   11    2  1.08 Gb/s   10    2    0 b/s      0 b/s   10.0.0.45
       laptop computer 2  laptop computer  5 GHz  149  −38 dBm  70 dB  1.20 Gb/s   11    2  1.20 Gb/s   11    2  145 kb/s  97.6 kb/s  10.0.0.24
 
-1 more eero hasn't seen lately
-eero profiles "profile 3" names them
+1 device not seen lately
+
+device               hardware
+network equipment 1  02:00:00:00:00:38

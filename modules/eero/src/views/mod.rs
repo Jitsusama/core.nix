@@ -179,7 +179,7 @@ pub fn text(
             let profile = find_profile(model, name)?;
             let within = in_one_profile(model, profile);
             let mut page = devices::all(&within, clock, Some(profile_name(profile)));
-            unseen(&mut page, &within, profile);
+            devices::unseen(&mut page, &unseen(&within, profile));
             page
         }
         View::Sqm => internet::sqm(model, clock),
@@ -208,7 +208,9 @@ pub fn json(view: &View, model: &HomeNetwork) -> Result<String, String> {
         View::Profiles => profiles::all_json(model),
         View::Profile(name) => profiles::one_json(model, find_profile(model, name)?),
         View::ProfileDevices(name) => {
-            devices::all_json(&in_one_profile(model, find_profile(model, name)?))
+            let profile = find_profile(model, name)?;
+            let within = in_one_profile(model, profile);
+            devices::in_profile_json(&within, &unseen(&within, profile))
         }
         View::Sqm => internet::sqm_json(model),
         View::Events => events::json(model),
@@ -264,11 +266,10 @@ fn in_one_profile(model: &HomeNetwork, profile: &Profile) -> HomeNetwork {
     }
 }
 
-/// A profile holds devices eero hasn't seen lately, which the record
-/// keeps neither as on now nor as off, so its devices page counts them
-/// and says where the profile names them, rather than reading as if it
-/// held none.
-fn unseen(page: &mut Page, within: &HomeNetwork, profile: &Profile) {
+/// The devices a profile holds that the record keeps neither as on now
+/// nor as off, since eero hasn't seen them lately, each by the name the
+/// profile gives it, so its devices page lists every one it holds.
+fn unseen<'a>(within: &HomeNetwork, profile: &'a Profile) -> Vec<devices::Unseen<'a>> {
     let kept = |mac: &String| {
         within
             .devices
@@ -277,22 +278,19 @@ fn unseen(page: &mut Page, within: &HomeNetwork, profile: &Profile) {
             .chain(within.devices_off.iter().map(|device| &device.mac))
             .any(|known| known.eq_ignore_ascii_case(mac))
     };
-    let unseen = profile.devices.iter().filter(|mac| !kept(mac)).count();
-    if unseen == 0 {
-        return;
-    }
-    let name = profile_name(profile);
-    let typed = if name.contains(char::is_whitespace) {
-        format!("\"{name}\"")
-    } else {
-        name.to_owned()
-    };
-    // The command on a line of its own, so no width breaks it.
-    page.blank();
-    page.line(vec![muted(format!(
-        "{unseen} more eero hasn't seen lately"
-    ))]);
-    page.line(vec![muted(format!("eero profiles {typed} names them"))]);
+    profile
+        .devices
+        .iter()
+        .filter(|mac| !kept(mac))
+        .map(|mac| devices::Unseen {
+            mac,
+            name: profile
+                .members
+                .iter()
+                .find(|member| member.mac.eq_ignore_ascii_case(mac))
+                .and_then(|member| member.name.as_deref()),
+        })
+        .collect()
 }
 
 /// A page's title naming what it's within, as `Home · Study · 3 devices

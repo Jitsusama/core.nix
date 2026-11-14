@@ -190,7 +190,9 @@ collection, the singular an alias, `eero nodes Study devices` and
 `eero profiles Kids devices` what one holds, and `eero internet sqm on`
 and `eero speeds run` act on their resource, `eero internet sqm` bare
 saying the setting. What one node or profile holds is the whole's view
-of a record cut to it, so its JSON keeps the whole's schema. zsh's
+of a record cut to it, so its JSON keeps the whole's schema; a
+profile's adds `unseen`, the members eero hasn't seen lately, which
+the record keeps neither on nor off. zsh's
 completion asks eero what may follow the words typed
 (`eero names next`, `src/completing.rs`), so it follows the tree too. The old `eero sqm`,
 `eero speedtest` and `eero watch <view>` still answer, listed nowhere,

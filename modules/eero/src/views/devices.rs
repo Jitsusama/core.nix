@@ -21,6 +21,24 @@ struct Every<'a> {
     devices_off: &'a [DeviceOff],
 }
 
+/// A profile's device eero hasn't seen lately, which the record keeps
+/// neither as on now nor as off: known only by its hardware address and
+/// the name the profile gives it.
+#[derive(serde::Serialize)]
+pub struct Unseen<'a> {
+    pub mac: &'a str,
+    pub name: Option<&'a str>,
+}
+
+/// A profile's devices, with those it holds that eero hasn't seen lately
+/// beside them, so a program reads every one the profile holds.
+#[derive(serde::Serialize)]
+struct InProfile<'a> {
+    devices: &'a [Device],
+    devices_off: &'a [DeviceOff],
+    unseen: &'a [Unseen<'a>],
+}
+
 #[derive(serde::Serialize)]
 struct One<'a> {
     device: &'a Device,
@@ -35,6 +53,40 @@ pub fn all_json(model: &HomeNetwork) -> Result<String, String> {
             devices_off: &model.devices_off,
         },
     )
+}
+
+/// A profile's devices as eero.devices/1, with `unseen` added.
+pub fn in_profile_json(model: &HomeNetwork, unseen: &[Unseen]) -> Result<String, String> {
+    super::json::slice(
+        model,
+        "eero.devices/1",
+        InProfile {
+            devices: &model.devices,
+            devices_off: &model.devices_off,
+            unseen,
+        },
+    )
+}
+
+/// The devices a profile holds that eero hasn't seen lately, by the name
+/// the profile gives each and its hardware address.
+pub fn unseen(page: &mut Page, unseen: &[Unseen]) {
+    if unseen.is_empty() {
+        return;
+    }
+    page.blank();
+    page.line(vec![strong(format!(
+        "{} not seen lately",
+        counted(unseen.len(), "device")
+    ))]);
+    page.blank();
+    let mut table = Table::new(&[Align::Left; 2]);
+    table.header(&["device", "hardware"]);
+    table.shortens(0, NAMES);
+    for device in unseen {
+        table.row(vec![said(device.name), vec![plain(device.mac)]]);
+    }
+    page.table(0, table);
 }
 
 pub fn one_json(model: &HomeNetwork, device: &Device) -> Result<String, String> {

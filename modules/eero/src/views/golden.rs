@@ -204,6 +204,16 @@ fn what_a_node_or_profile_holds_keeps_the_wholes_schema() {
     assert_eq!(radios["nodes"].as_array().unwrap().len(), 1, "{radios}");
     let profile = slice(&View::ProfileDevices("profile 1".into()));
     assert_eq!(profile["schema"], "eero.devices/1", "{profile}");
+    // Its ten members are none on now nor off, so a program finds them
+    // under unseen, by address and the profile's name for each.
+    let unseen = profile["unseen"].as_array().unwrap();
+    assert_eq!(unseen.len(), 10, "the profile's unseen members: {profile}");
+    assert_eq!(unseen[0]["mac"], "02:00:00:00:00:2b", "{profile}");
+    assert_eq!(unseen[0]["name"], "phone 3", "{profile}");
+    assert!(
+        slice(&View::Devices).get("unseen").is_none(),
+        "every device's eero.devices/1 gained unseen"
+    );
 }
 
 /// The record with two devices on now in profile 3, since none of the
