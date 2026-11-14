@@ -12,7 +12,7 @@ use crate::discover;
 use crate::finished::{self, Answers, Predicate};
 use crate::garbage::{self, BATCH_BYTES, Batch, GC_TIMEOUT, Listed, Listing};
 use crate::generations::{self, Boot};
-use crate::host::{FRESH, Filesystem, Reclaim, Scan};
+use crate::host::{Elsewhere, FRESH, Filesystem, Reclaim, Scan};
 use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
 use crate::opens::Seen;
@@ -28,6 +28,7 @@ use crate::units::{Size, float, whole};
 use crate::writers::{self, Frozen, Writers};
 use serde::Serialize;
 use std::cell::{Cell, RefCell};
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
@@ -1095,6 +1096,11 @@ impl Guard {
                 due.push((device, decision, thresholds));
             }
         }
+        // The disk shortest of room passes first, so a long pass on another
+        // never keeps it waiting.
+        due.sort_by_key(|&(device, ..)| {
+            Reverse(self.watched.get(&device).map(|watched| watched.band))
+        });
         // Once the bands are read, and before a pass: on a restart every
         // band reads healthy until this step reads it, so the first measure
         // waited out a whole pass, and passes took 20 and 29 minutes on 26
@@ -2034,7 +2040,9 @@ impl Guard {
             let unheard = scan.went_unheard();
             if let Some(watched) = self.watched.get_mut(&device) {
                 let unvouched = unheard && !watched.rest.is_some_and(|rest| rest.unvouched);
-                watched.rest = (end != End::Reached).then(|| {
+                // A pass that gave way to a disk shorter of room, or to a
+                // stop, fell short of nothing; its disk is due again.
+                watched.rest = (!matches!(end, End::Reached | End::Stopped)).then(|| {
                     let seconds = watched.rest.map_or(FIRST_REST, |rest| {
                         (rest.seconds * 2.0).min(longest_rest(band))
                     });
@@ -2206,9 +2214,23 @@ impl Guard {
         let gentle = band < Band::NearlyFull;
         let pacer = Rc::new(RefCell::new(self.pacer(&path, band, thresholds)));
         let images = self.images(device, here);
+        let elsewhere = self
+            .watched
+            .iter()
+            .filter(|&(&other, _)| other != device)
+            .filter_map(|(_, watched)| {
+                let space = watched.space?;
+                Some(Elsewhere {
+                    path: watched.path.clone(),
+                    thresholds: Thresholds::new(&self.config.bands, space.total),
+                    band: watched.band,
+                })
+            })
+            .collect();
         let reclaimer = Reclaim::new(here, scan)
             .during(band)
-            .paced(Rc::clone(&pacer));
+            .paced(Rc::clone(&pacer))
+            .giving_way(elsewhere);
         let mut reclaim = Journaled {
             inner: if gentle {
                 reclaimer.gently()

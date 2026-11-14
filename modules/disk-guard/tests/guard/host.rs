@@ -1,6 +1,7 @@
 use crate::procs::{LOCKS, link, stat, text};
 use disk_guard::activity::Use;
-use disk_guard::host::{Filesystem, Reclaim, Scan};
+use disk_guard::band::{Band, Thresholds};
+use disk_guard::host::{Elsewhere, Filesystem, Reclaim, Scan};
 use disk_guard::pace::Pacer;
 use disk_guard::pass::{Disk, Outcome, Reclaimer};
 use disk_guard::plan::{Candidate, Class};
@@ -693,6 +694,58 @@ fn a_candidate_no_offer_names_fails_untouched() {
         Outcome::Failed(_)
     ));
     assert!(stray.exists());
+}
+
+/// Bands on another filesystem that read `band` whatever it holds.
+fn reading(band: Band) -> Thresholds {
+    let start = |from: Band| if band >= from { u64::MAX } else { 0 };
+    Thresholds {
+        filling: start(Band::Filling),
+        nearly_full: start(Band::NearlyFull),
+        critically_full: start(Band::CriticallyFull),
+        target: 0,
+        margin: 0,
+    }
+}
+
+/// Whether a pass in `during` on one filesystem stops for another that
+/// began it in `began` and reads `now`.
+fn gives_way(during: Band, began: Band, now: Band) -> bool {
+    let proc = tempfile::tempdir().unwrap();
+    let other = tempfile::tempdir().unwrap();
+    let mut scan = empty_scan(proc.path());
+    Reclaim::new(&[], &mut scan)
+        .during(during)
+        .giving_way(vec![Elsewhere {
+            path: other.path().to_owned(),
+            thresholds: reading(now),
+            band: began,
+        }])
+        .stopping()
+}
+
+#[test]
+fn a_pass_gives_way_to_a_disk_grown_shorter_of_room_than_its_own() {
+    assert!(
+        gives_way(Band::Filling, Band::Healthy, Band::CriticallyFull),
+        "a pass on a filling disk went on while another fell critically full"
+    );
+}
+
+#[test]
+fn a_pass_keeps_on_while_no_other_disk_is_worse_than_it_was_or_than_its_own() {
+    assert!(
+        !gives_way(Band::Filling, Band::Healthy, Band::Healthy),
+        "a pass gave way to a disk with room"
+    );
+    assert!(
+        !gives_way(Band::Filling, Band::Filling, Band::Filling),
+        "a pass gave way to a disk no worse than when it began"
+    );
+    assert!(
+        !gives_way(Band::CriticallyFull, Band::Healthy, Band::NearlyFull),
+        "a pass on a critically full disk gave way to one less short of room"
+    );
 }
 
 #[test]
