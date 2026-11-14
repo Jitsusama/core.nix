@@ -109,7 +109,11 @@ def orchestrators_listed() -> None:
 # Landed leaves out, and a change saying what to try.
 STOPPED = "An Agent's Stop Waits for a Second Return"
 CLOSING = "A Session Closes From the Launcher"
-TRY = "press d on a session"
+# Its line for Joel, which names it by what to try, its first sentence, in Landed and To Try
+# alike, and says the rest in its drawer (VKCF3Z, c2d01d53).
+TRY_FIRST = "Press d on a session"
+TRY_REST = "It asks what stays before it closes."
+TRY = f"{TRY_FIRST}. {TRY_REST}"
 ORCHESTRATING = "Orchestrating Quest"
 # How many times the drawer case goes down and back up between two sessions.
 ARROWS_PAST = 3
@@ -682,7 +686,7 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     # read is For You's alone to count.
     assert shell.showing()["selected"]["side"] == landed_today(), shell.showing()
     shell.step_in()
-    shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
+    shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, TRY_FIRST])
     assert shell.showing()["selected"]["side"] not in {"", "core.nix#2140"}, shell.showing()
     # No link to it is known and its session has no window, so normal's Return only reads it,
     # keeping the launcher; the find's lands on it, as on any row that changes something.
@@ -694,19 +698,23 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     shell.launcher_until(lambda shown: "To Try" in shown["rows"])
     shell.down_to("To Try")
     shell.step_in()
-    shell.launcher_until(lambda shown: shown["rows"] == [CLOSING])
+    shell.launcher_until(lambda shown: shown["rows"] == [TRY_FIRST])
     assert shell.showing()["selected"]["side"] not in {"", "core.nix#2138"}, shell.showing()
-    # Its side says when it landed; its drawer says what to try, a sentence, after its facts,
-    # and its change is among the nerdy bits, never a fact (VKCF3Z, ee3bac47).
+    # Its side says when it landed; its drawer is titled by what to try and says the rest
+    # after its facts, one of which is what changed. Its change and where it landed are among
+    # the nerdy bits, never a fact (VKCF3Z, ee3bac47, c2d01d53).
     shell.launcher_until(
         lambda shown: (
-            (shown["drawer"] or {}).get("body") == TRY and "Change" in shown["drawer"]["nerd"]
+            (shown["drawer"] or {}).get("title") == TRY_FIRST
+            and shown["drawer"]["body"] == TRY_REST
+            and {"Change", "Repository"} <= set(shown["drawer"]["nerd"])
+            and CLOSING in shown["drawer"]["values"]
+            and "core.nix#2138" not in shown["drawer"]["values"]
         )
     )
-    assert "core.nix#2138" not in shell.showing()["drawer"]["values"], shell.showing()
     # Return steps into it where it lives, never a copy of it.
     shell.send_key("ret")
-    shell.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", CLOSING])
+    shell.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", TRY_FIRST])
     assert "Copy What to Try" in shell.showing()["rows"], shell.showing()
     # What Joel makes of it goes to whoever landed it, its session here, as his finding, and
     # is kept a line each for the loop that reads how landings were taken. The foot names
@@ -733,8 +741,8 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     shell.launcher_until(lambda shown: "To Try" not in shown["rows"])
     shell.down_to("History")
     shell.step_in()
-    shell.launcher_until(lambda shown: CLOSING in shown["rows"])
-    shell.down_to(CLOSING)
+    shell.launcher_until(lambda shown: TRY_FIRST in shown["rows"])
+    shell.down_to(TRY_FIRST)
     assert re.fullmatch(r"read .+", shell.showing()["selected"]["side"]), shell.showing()
     shell.close_launcher()
     opened(shell)
@@ -742,7 +750,7 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     at_top = made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, {**boss, "usage": FULL}))
     shell.down_to("Landed")
     shell.step_in()
-    shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
+    shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, TRY_FIRST])
     # The same row changing back costs no more held in Landed than it did at Agents' top.
     inside = made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, boss))
     # Agents' top is laid out once for each source that hears a change, Sessions and the agents
