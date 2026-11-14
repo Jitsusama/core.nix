@@ -28,8 +28,8 @@ mod plans;
 mod readings;
 mod responds;
 pub mod review;
-pub mod serve;
 mod served;
+mod spec;
 mod words;
 
 use std::fmt::Write;
@@ -45,11 +45,15 @@ use serde_json::Value;
 use crate::{folders, now_ms};
 use readings::{gather, read};
 
-/// `cadence axes [AXIS]`: prints the ten axes, or the one named.
+/// `cadence axes [AXIS | --served WORDS]`: prints the ten axes, or the one
+/// named, or Spec's rows (spec.rs).
 pub fn run(mut args: impl Iterator<Item = String>) -> ExitCode {
     let asked = args.next();
+    if asked.as_deref() == Some("--served") {
+        return spec::run(args);
+    }
     if args.next().is_some() {
-        eprintln!("usage: cadence axes [AXIS]");
+        eprintln!("usage: cadence axes [AXIS | --served WORDS]");
         return ExitCode::from(2);
     }
     let (home, state_home, folder) = match folders() {

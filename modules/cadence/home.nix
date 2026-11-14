@@ -42,11 +42,11 @@
 # axes and Joel's pains disagree) to the orchestrator and to the owner
 # `owners` names for `review`.
 #
-# `cadence serve` serves the axes to the launcher's Spec place over
+# cadence-spec (./spec) serves the axes to the launcher's Spec place over
 # $XDG_RUNTIME_DIR/daemons/cadence-spec.sock in the shell's daemon interface,
-# reading them at most every five minutes and only while Spec is watched,
-# so the launcher rereads no file (Joel, 2026-11-10: "the daemons need to
-# be the data layer").
+# asking `cadence axes --served` for the rows at most every five minutes
+# and only while Spec is watched, so the launcher rereads no file (Joel,
+# 2026-11-10: "the daemons need to be the data layer").
 {
   config,
   lib,
@@ -56,6 +56,7 @@
 let
   cfg = config.jitsusama.cadence;
   package = pkgs.callPackage ./package.nix { };
+  spec = pkgs.callPackage ./spec/package.nix { };
   # Who Friday's review goes to: the orchestrator, and the owner of `review`.
   reviewed = lib.filter (address: address != null) [
     cfg.orchestrator
@@ -241,8 +242,9 @@ in
         Slice = "background.slice";
       };
     };
-    # Named cadence-spec, since every daemon's units and program say its
-    # socket's name (docs/daemons.md) and cadence is the tick's.
+    # A daemon of its own, named cadence-spec, since every daemon's units
+    # and program say its socket's name (docs/daemons.md) and cadence is
+    # the tick's.
     systemd.user.services.cadence-spec = {
       Unit = {
         Description = "Serves the axes to the launcher's Spec";
@@ -253,14 +255,14 @@ in
       };
       Service = {
         ExecStart = lib.concatStringsSep " " [
-          "@${package}/bin/cadence-spec"
+          "@${lib.getExe spec}"
           "cadence-spec"
-          "--vocabulary"
-          "${(import ../quickshell/launcher/words.nix).file}"
-          "--socket"
           "%t/daemons/cadence-spec.sock"
+          (lib.getExe package)
+          "${(import ../quickshell/launcher/words.nix).file}"
         ];
-        # git, systemctl and niri for the axes it reads, as the review has.
+        # git, systemctl and niri for the axes cadence reads, as the review
+        # has.
         Environment = [
           "PATH=${
             lib.makeBinPath [

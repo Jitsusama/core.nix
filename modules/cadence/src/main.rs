@@ -31,8 +31,8 @@
 //!
 //! `cadence axes`, typed by Joel, shows the ten axes he holds the machine
 //! to, each against its bar with its owner, and `cadence axes <axis>`
-//! steps into one (axes.rs). `cadence serve` serves them to the launcher's
-//! Spec place over a socket (axes/serve.rs).
+//! steps into one (axes.rs). `cadence axes --served WORDS` prints them as
+//! the launcher's Spec rows, for cadence-spec to serve (axes/spec.rs).
 //!
 //! `cadence review`, run each Friday evening by a timer, sends the week's
 //! noise and blind spots to the addresses it's given (axes/review.rs).
@@ -41,8 +41,7 @@
 //!         [--restart WORDS [--revive ADDRESS]... [--skip ADDRESS]...]
 //!     cadence units [--at SECONDS]
 //!     cadence day [--orchestrator ADDRESS [--watcher ADDRESS] [--owner PREFIX=ADDRESS]...]
-//!     cadence axes [AXIS]
-//!     cadence serve --vocabulary WORDS --socket SOCKET
+//!     cadence axes [AXIS | --served WORDS]
 //!     cadence review [--to ADDRESS]...
 
 mod asking;
@@ -111,7 +110,6 @@ fn main() -> ExitCode {
         Some("day") => return day(args),
         Some("units") => return units_now(args),
         Some("axes") => return axes::run(args),
-        Some("serve") => return axes::serve::run(args),
         Some("review") => return axes::review::run(args),
         Some("owe") => {
             return match folders() {
@@ -129,10 +127,8 @@ fn main() -> ExitCode {
                  [--revive ADDRESS]... [--skip ADDRESS]...]\n       \
                  {UNITS_USAGE}\n       \
                  {DAY_USAGE}\n       \
-                 cadence axes [AXIS]\n       \
-                 {}\n       \
+                 cadence axes [AXIS | --served WORDS]\n       \
                  cadence review [--to ADDRESS]...\n       {}",
-                axes::serve::USAGE,
                 owe::USAGE
             );
             return ExitCode::from(2);
