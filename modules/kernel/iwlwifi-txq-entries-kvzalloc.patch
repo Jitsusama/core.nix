@@ -1,0 +1,69 @@
+wifi: iwlwifi: pcie: allocate a queue's entries with kvzalloc
+
+iwl_pcie_txq_alloc() allocates a TX queue's entries array with
+kzalloc, one struct iwl_pcie_txq_entry for each of its slots. With the
+queue sizes newer devices use for a TID, that is 64 KiB to 128 KiB,
+an order-4 or order-5 allocation, and the driver makes it each time it
+adds a queue, as it does on joining an access point. On a machine whose
+memory is fragmented, such an allocation is the first to fail, since
+the page allocator doesn't retry past PAGE_ALLOC_COSTLY_ORDER:
+
+  kworker/u67:5: page allocation failure: order:4,
+    mode:0x40dc0(GFP_KERNEL|__GFP_ZERO|__GFP_COMP)
+  Workqueue: events_unbound cfg80211_wiphy_work [cfg80211]
+  ...
+   __kmalloc_noprof+0x2a3/0x510
+   iwl_pcie_txq_alloc+0xb0/0x2e0 [iwlwifi]
+   iwl_txq_dyn_alloc_dma+0xb8/0x170 [iwlwifi]
+   iwl_txq_dyn_alloc+0xfe/0x3d0 [iwlwifi]
+  iwlwifi 0000:00:14.3: Tx queue alloc failed
+
+The association then fails, here roaming between two access points of
+a mesh on a BE211 with 64 GB of memory, a third of it free.
+
+Only the CPU reads the entries array; the device reads the TFDs and the
+first TB buffers, which dma_alloc_coherent() allocates apart. So the
+array needn't be physically contiguous. Allocate it with kvzalloc, which
+falls back to vmalloc when no contiguous block is free, and free it with
+kvfree everywhere it is freed.
+
+--- a/drivers/net/wireless/intel/iwlwifi/pcie/gen1_2/tx.c
++++ b/drivers/net/wireless/intel/iwlwifi/pcie/gen1_2/tx.c
+@@ -468,7 +468,7 @@ static void iwl_pcie_txq_free(struct iwl
+ 				  txq->first_tb_bufs, txq->first_tb_dma);
+ 	}
+ 
+-	kfree(txq->entries);
++	kvfree(txq->entries);
+ 	txq->entries = NULL;
+ 
+ 	timer_delete_sync(&txq->stuck_timer);
+@@ -741,7 +741,7 @@ int iwl_pcie_txq_alloc(struct iwl_trans
+ 
+ 	txq->n_window = slots_num;
+ 
+-	txq->entries = kzalloc_objs(struct iwl_pcie_txq_entry, slots_num);
++	txq->entries = kvzalloc_objs(struct iwl_pcie_txq_entry, slots_num);
+ 
+ 	if (!txq->entries)
+ 		goto error;
+@@ -789,7 +789,7 @@ error:
+ 	if (txq->entries && cmd_queue)
+ 		for (i = 0; i < slots_num; i++)
+ 			kfree(txq->entries[i].cmd);
+-	kfree(txq->entries);
++	kvfree(txq->entries);
+ 	txq->entries = NULL;
+ 
+ 	return -ENOMEM;
+--- a/drivers/net/wireless/intel/iwlwifi/pcie/gen1_2/tx-gen2.c
++++ b/drivers/net/wireless/intel/iwlwifi/pcie/gen1_2/tx-gen2.c
+@@ -867,7 +867,7 @@ static void iwl_txq_gen2_free_memory(str
+ 				  txq->first_tb_bufs, txq->first_tb_dma);
+ 	}
+ 
+-	kfree(txq->entries);
++	kvfree(txq->entries);
+ 	if (txq->bc_tbl.addr)
+ 		dma_pool_free(trans_pcie->txqs.bc_pool,
+ 			      txq->bc_tbl.addr, txq->bc_tbl.dma);
