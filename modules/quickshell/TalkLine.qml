@@ -20,6 +20,7 @@ import QtQuick
 import KeyTimes
 import "Columns.js" as Columns
 import "TalkLine.js" as Said
+import "TalkThread.js" as Thread
 import "When.js" as When
 
 Scope {
@@ -148,6 +149,9 @@ Scope {
         hears = from?.voidOf() ?? null;
         window = null;
         commanding = false;
+        picked = -1;
+        openedSince = 0;
+        nerdy = false;
         const kept = launcher.drafts.kept(key);
         prompt.text = kept.text;
         up = true;
@@ -333,12 +337,48 @@ Scope {
         void answersKind?.revision;
         return Said.eventsOf(Object.values(answersKind?.held ?? {})[0]?.lines);
     }
-    // Each line as it shows, one said on an earlier day saying which beside its time.
-    readonly property var exchanges: {
-        const days = { yesterday: String(said.yesterday ?? ""),
-            date: (date, format) => Qt.formatDate(date, format) };
-        return talks.map(one => Said.exchange(one, events, said,
-            since => When.day(since, Date.now(), days)));
+    // The day a line was said, where it was an earlier one, said beside its time.
+    function dayOf(since) {
+        return When.day(since, Date.now(), { yesterday: String(said.yesterday ?? ""),
+            date: (date, format) => Qt.formatDate(date, format) });
+    }
+    // Each line as it shows.
+    readonly property var exchanges: talks.map(one => Said.exchange(one, events, said,
+        since => root.dayOf(since)))
+
+    // The line j and k picked in normal, -1 for none; the one Return opened as its thread,
+    // by when he said it, so a line moving up the list as an answer comes keeps its thread
+    // open, 0 for none; and whether za opened the thread's fold (8GYNJ6 [851e94b2]).
+    property int picked: -1
+    property real openedSince: 0
+    property bool nerdy: false
+    readonly property var opened: openedSince === 0 ? null
+        : talks.find(one => one.since === openedSince) ?? null
+    readonly property var thread: opened === null ? null
+        : Thread.threadOf(opened, events, said, since => root.dayOf(since))
+
+    // Return: in normal with a line picked, it opens as its thread; else what's typed goes.
+    function returned() {
+        if (prompt.mode === "normal" && opened === null && talks[picked] !== undefined) {
+            openedSince = talks[picked].since;
+            nerdy = false;
+        } else {
+            send();
+        }
+    }
+
+    // j and k in normal pick a line, or scroll the open thread, as many as counted; za opens
+    // and folds the thread's nerdy bits.
+    function stepped(act, count) {
+        const by = (act === "next" ? 1 : -1) * Math.max(1, count);
+        if (act === "fold" && opened !== null)
+            nerdy = !nerdy;
+        else if (act !== "next" && act !== "previous")
+            return;
+        else if (opened !== null)
+            threadView.scroll(by);
+        else
+            picked = Thread.picking(picked, by, talks.length);
     }
 
     // :take, while the void can undo what it did with the line.
@@ -463,8 +503,14 @@ Scope {
                 readonly property real lineAt: talksFrom + 2 * pitch + beat
                 readonly property real ruleAt: Math.round((talksFrom + lineAt - caps) / 2)
                 // The last talk's last baseline.
-                readonly property real talksEnd: lineAt - pitch + spoken.height
+                readonly property real talksEnd: lineAt - pitch
+                    + (root.thread === null ? spoken.height : threadView.height)
                 readonly property real textAt: prompt.fieldX - card.inset
+                // The talks' room: the screen's a screen rung from each edge, less the frame,
+                // the card's inset over and under, everything above them and the foot below.
+                readonly property real talksRoom: (surface.screen?.height ?? Infinity)
+                    - 2 * Theme.space.rung.screen - 2 * (card.inset + Theme.border)
+                    - (lineAt - pitch) - pitch - beat
 
                 width: card.contentWidth
                 height: foot.y + foot.baselineOffset
@@ -505,18 +551,16 @@ Scope {
                         aside: ""
                         registers: true
                         onRegistered: name => root.attach(name)
-                        onAccepted: root.send()
+                        onAccepted: root.returned()
+                        // - back to the list from a thread, its line still picked.
+                        onBackward: root.openedSince = 0
                         onTextChanged: root.typed()
                         onCaretChanged: root.typed()
                         onCommanded: range => {
                             root.commanding = true;
                             commandLine.take(range, "");
                         }
-                        // j and k in normal go down and up the lines, as many as counted.
-                        onStepped: (act, count) => {
-                            if (act === "next" || act === "previous")
-                                spoken.scroll((act === "next" ? 1 : -1) * Math.max(1, count));
-                        }
+                        onStepped: (act, count) => root.stepped(act, count)
                     }
 
                     // The command line, the launcher's own, in the field's place while : is
@@ -569,17 +613,29 @@ Scope {
                 // field and over the foot, the rest a scroll away (TalkSpoken.qml).
                 TalkSpoken {
                     id: spoken
-                    visible: body.talking
+                    visible: body.talking && root.thread === null
                     y: body.lineAt - body.pitch
                     width: parent.width
                     exchanges: root.exchanges
                     textAt: body.textAt
                     gap: body.pitch
                     up: root.up
-                    // The screen's room a screen rung from each edge, less the frame, the
-                    // card's inset over and under, everything above them and the foot below.
-                    room: (surface.screen?.height ?? Infinity) - 2 * Theme.space.rung.screen
-                        - 2 * (card.inset + Theme.border) - y - body.pitch - body.beat
+                    picked: root.picked
+                    reach: card.inset
+                    room: body.talksRoom
+                }
+
+                // A line opened as its thread, in the list's place (TalkThread.qml).
+                TalkThread {
+                    id: threadView
+                    visible: body.talking && root.thread !== null
+                    y: body.lineAt - body.pitch
+                    width: parent.width
+                    shown: root.thread
+                    textAt: body.textAt
+                    gap: body.pitch
+                    nerdy: root.nerdy
+                    room: body.talksRoom
                 }
 
                 // The foot, a group under the last line: who hears it and the window it's
@@ -654,7 +710,11 @@ Scope {
             takes: offer.visible, commanding,
             top: up ? surface.margins.top + card.reach : -1,
             bottom: up ? surface.margins.top + card.reach + card.height : -1,
-            screen: surface.screen?.height ?? 0, scrolled: spoken.scrolled,
+            screen: surface.screen?.height ?? 0, scrolled: spoken.scrolled, picked,
+            thread: root.thread, nerdy, threadScrolled: threadView.scrolled,
+            // Whether niri has given the surface the size it asks for, so a picture of it
+            // isn't taken while it still stands at the last.
+            sized: surface.height === surface.implicitHeight,
             over: { focused: Niri.focused, known: Object.keys(Niri.windows).length,
                 title: root.window?.title ?? "" } };
     }

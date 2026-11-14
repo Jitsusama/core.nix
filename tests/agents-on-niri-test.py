@@ -2095,7 +2095,11 @@ def test_super_s_line_says_whether_it_is_up_for_a_switch_to_wait_on(shell: Shell
 def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
     shell: Shell, shoot: Callable[[str], None]
 ) -> None:
-    """Super+S's line stands inside the screen however many lines show, and j and k scroll.
+    """Super+S's line stands inside the screen however many lines show, and j and k pick.
+
+    In normal, j and k pick a line, scrolled into view, and Return opens it as its thread
+    (2026-11-13 17:48, [851e94b2]).
+
 
     Joel's line showed so many lines with answers he hadn't seen that it ran off the bottom
     of the screen, with no way to reach the rest (2026-11-13 23:39, [ff6c6197]). They stand
@@ -2140,10 +2144,31 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
     assert 0 < stands["bottom"] <= stands["screen"] - stands["top"], stands
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
+    # j picks the newest, and a line picked far down is scrolled into view.
     shell.send_key("j")
-    shell.launcher_until(lambda shown: shown["line"]["scrolled"] == 1)
-    shell.send_key("k")
-    shell.launcher_until(lambda shown: shown["line"]["scrolled"] == 0)
+    shell.launcher_until(lambda shown: shown["line"]["picked"] == 0)
+    # Past the lines the screen has room for at either scale: at 1.5x the ninth still fits.
+    far = 15
+    shell.send_chars(f"{far}j")
+    shell.launcher_until(
+        lambda shown: shown["line"]["picked"] == far and shown["line"]["scrolled"] > 0
+    )
+    # Return opens it as its thread, za its nerdy bits, and - comes back to it picked.
+    picked = shell.showing()["line"]["talks"][far]["line"]
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: (shown["line"]["thread"] or {}).get("line") == picked)
+    shell.send_chars("za")
+    # Pictured once niri has given it the fold's size, so a surface still at the last is not.
+    shell.launcher_until(lambda shown: shown["line"]["nerdy"] and shown["line"]["sized"])
+    shoot("thread")
+    shell.send_chars("-")
+    shell.launcher_until(
+        lambda shown: shown["line"]["thread"] is None and shown["line"]["picked"] == far
+    )
+    shell.send_chars(f"{far + 1}k")
+    shell.launcher_until(
+        lambda shown: shown["line"]["picked"] == 0 and shown["line"]["scrolled"] == 0
+    )
     # Pictured once the keys have come back round, so a surface still taking its size is not.
     shoot("many")
     shell.as_account(line)

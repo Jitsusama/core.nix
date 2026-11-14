@@ -15,6 +15,8 @@
   "TalkLine.js"
   "TalkLineMark.qml"
   "TalkSpoken.qml"
+  "TalkThread.qml"
+  "TalkThread.js"
   "Told.js"
   "Viewers.js"
   "WaitingOnYou.qml"

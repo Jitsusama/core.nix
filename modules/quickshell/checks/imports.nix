@@ -82,6 +82,7 @@
   "SpendWatch.qml" = [ "SpendWatch.js" ];
   "StatusLine.qml" = [ "Bands.js" ];
   "TalkLine.js" = [ "Told.js" ];
+  "TalkThread.js" = [ "TalkLine.js" ];
   "Taken.qml" = [ "Fuzzy.js" ];
   "Trials.qml" = [ "launcher/Trials.js" ];
   "Waiting.js" = [ "PiSource.js" ];
