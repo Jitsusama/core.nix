@@ -2,9 +2,10 @@
 # They run checks in sh, as the daemon does, with coreutils' sleep, rm and
 # touch standing for checks that take a while, pass only once or leave a
 # mark, and git for a switch's commit. It serves with the serving side
-# every daemon shares (../daemon-serve), and its socket's tests ask it
+# every daemon shares (../daemon-serve), History's looks in the one form
+# every daemon's rows take (../ready-rows), and its socket's tests ask it
 # with the client every daemon's tests share (../daemon-client), so the
-# source is cut from the modules folder holding all three, and built
+# source is cut from the modules folder holding all four, and built
 # from this one.
 {
   bash,
@@ -27,6 +28,8 @@ rustPlatform.buildRustPackage rec {
       ../daemon-client/src
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
+      ../ready-rows/Cargo.toml
+      ../ready-rows/src
     ];
   };
   sourceRoot = "${src.name}/to-do";
