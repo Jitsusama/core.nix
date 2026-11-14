@@ -17,7 +17,8 @@
 }:
 {
   # The notices draw a notice a program sends as a card on a layer niri
-  # lists, and Super+Shift+N puts away one that stays
+  # lists and on the arrival line, which takes no keys and is mapped only
+  # while a notice shows, and Super+Shift+N puts away one that stays
   # (tests/notices-on-niri.sh). Away only after an hour, since nobody types
   # here but the check.
   the-notices-land-on-niri = noticesOnNiri {
@@ -231,6 +232,23 @@
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml stack.qml
+      touch $out
+    '';
+
+  # The arrival line shows the front of the stack still waiting on Joel,
+  # only a critical one while notices are held or he's talking, none while
+  # the launcher shows them, and counts the rest (tests/notice-line.qml).
+  the-notice-line-shows-what-still-waits =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-notice-line-shows-what-still-waits" { } ''
+      cp ${../../../tests/notice-line.qml} notice-line.qml
+      ${copied [ "NoticeLine.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-line.qml
       touch $out
     '';
 

@@ -50,8 +50,8 @@ Singleton {
         // The watch is every recent notice the daemon holds: those
         // unread, open or missed, and for a day those done with, since
         // History lists the rest from the daemon's own rows
-        // (PastNotices.qml), so the shell holds about fifty rather than
-        // a thousand (modules/notices' notice.rs, recent). Answered
+        // (PastNotices.qml), so the shell holds about two hundred rather
+        // than a thousand (modules/notices' notice.rs, recent). Answered
         // whole, one held here that it no longer says has passed or went
         // while the shell wasn't hearing.
         answersWhole: true

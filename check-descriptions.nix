@@ -3361,6 +3361,11 @@
     the music is the player that started last, never playerctld's echo,
     and it shows itself as one row, on a key always, on a track unless held
   '';
+  the-notice-line-shows-what-still-waits = ''
+    the arrival line shows the front of the notices' stack that's neither read nor withdrawn, only
+    a critical one while notices are held or over the talk line, none while the launcher shows
+    the notices, and counts those behind it still waiting
+  '';
   the-notices-are-a-quickfix-list = ''
     the held notices are Vim's quickfix list: the newest first, each motion's landing, what an
     operator takes, the view kept around the cursor, the gutter's numbers, and u and Ctrl+R
@@ -3385,9 +3390,10 @@
   '';
   the-notices-land-on-niri = ''
     the account's notices, on its real niri nested in a headless sway in the sandbox, draw a notice
-    sent as a card on niri's notices layer, and what Super+Shift+N runs puts a critical one away
-    unread in the history; and Google Drive's notice that answers a save is kept unmissed, by its
-    x-answers hint, while its failure is missed
+    sent as a card on niri's notices layer and on the arrival line, an overlay layer that takes no
+    keys and is mapped only while a notice shows, and what Super+Shift+N runs puts a critical one
+    away unread in the history; and Google Drive's notice that answers a save is kept unmissed, by
+    its x-answers hint, while its failure is missed
   '';
   the-notices-take-vi-keys = ''
     the held notices read Vim's keys in each mode from one table: motions, operators and objects

@@ -5642,7 +5642,9 @@ Scope {
         id: talkDrafts
     }
 
-    // Super+S's line, said to whoever the focused window's session is, from over it.
+    // Super+S's line, said to whoever the focused window's session is, from over it. Whether
+    // it's up, for the arrival line, which stands in the same place (NoticeLine.qml).
+    readonly property bool talking: talkLine.up
     TalkLine {
         id: talkLine
         launcher: root
