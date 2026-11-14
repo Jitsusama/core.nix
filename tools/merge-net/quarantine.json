@@ -466,5 +466,15 @@
       "test_for_yous_tray_lit_costs_no_more_than_the_shell_at_rest"
     ],
     "test": "vm-desktop-shows-then-rests"
+  },
+  {
+    "at": 1794644284,
+    "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
+    "owner_pr": 4266,
+    "reason": "failed, then passed, at fb51cf3f90b0",
+    "subtests": [
+      "test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_once"
+    ],
+    "test": "vm-screens-keep-the-launcher"
   }
 ]
