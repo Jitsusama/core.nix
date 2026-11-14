@@ -68,10 +68,6 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
           # talks, where the daemon says Joel read an answer.
           "--steer"
           "${config.xdg.stateHome}/pi/agentic-harness.pi/steer"
-          # Where Quickshell keeps each shell's own state, in which the
-          # launcher kept the landings Joel read before the daemon did.
-          "--shells"
-          "${config.xdg.stateHome}/quickshell/by-shell"
           # What of core runs, as update-to-main last followed it, and the
           # bare clone cadence fetches each tick, whose history says what
           # that core merged: a landing of core's waits for the switch that
@@ -81,6 +77,10 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
           "/run/update-to-main/last.json"
           "--clone"
           "${config.xdg.stateHome}/cadence/core.git"
+          # Where Quickshell keeps each shell's own state, in which the
+          # launcher kept the landings Joel read before the daemon did.
+          "--shells"
+          "${config.xdg.stateHome}/quickshell/by-shell"
           "--socket"
           "%t/daemons/agents.sock"
         ]
