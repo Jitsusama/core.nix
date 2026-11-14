@@ -178,14 +178,15 @@ ShellRoot {
         }
     }
 
-    // Shortcuts as a program's row asks it: Quiet has keys of its own.
+    // Shortcuts as a program's row asks it: Quiet and Keyed have keys of
+    // their own.
     QtObject {
         id: keys
 
         function layerOf(app) {
-            return app !== "quiet" ? null : {
-                key: "shortcut-level:shortcuts:quiet",
-                name: "Quiet",
+            return app !== "quiet" && app !== "keyed" ? null : {
+                key: `shortcut-level:shortcuts:${app}`,
+                name: app === "quiet" ? "Quiet" : "Keyed",
                 count: "Volume",
                 side: "4",
                 verbs: () => []
@@ -294,7 +295,8 @@ ShellRoot {
 
     function ready() {
         if (root.waiting === "the programs"
-                && ["tester", "quiet", "radio", "browser", "pair", "org.example.viewer"]
+                && ["tester", "quiet", "radio", "browser", "pair", "org.example.viewer",
+                    "sketch", "keyed", "bare"]
                     .every(id => root.program(id) !== undefined)
                 && applications.recents.of("quiet").length === 2
                 && applications.recents.of("tester").length === 3
@@ -890,6 +892,17 @@ ShellRoot {
             same("Ctrl+] follows each to the program that sent it",
                 sent.map(row => row.follows).join(" "), "program:tester program:tester");
             same("which is that program's own row", program("tester").key, "program:tester");
+
+            // Whether a closed program with no Recent starts only is asked
+            // of every row Programs lists as its keys are weighed, and
+            // making each one's step to learn it took 44 of an 84 ms
+            // showing under load (vm-desktop-keeps-pace, 2026-11-14).
+            const made = applications.stepsMade;
+            same("a closed program with an action of its own holds more than starting",
+                program("sketch").actsOnly, false);
+            same("as does one with keys of its own", program("keyed").actsOnly, false);
+            same("and neither makes its step to say so", applications.stepsMade - made, 0);
+            same("one with neither starts only", program("bare").actsOnly, true);
 
             const quiet = program("quiet").verbs();
             same("a program with keys of its own holds them, and only its new windows besides",

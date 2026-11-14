@@ -202,6 +202,25 @@
         Exec=ghost
         NoDisplay=true
       '';
+      # Closed, with nothing it had open lately: one with an action of its
+      # own, one with keys (the Shortcuts stand-in's), and one with neither.
+      sketch = entry "sketch" ''
+        Name=Sketch
+        Exec=sketch
+        Actions=canvas;
+
+        [Desktop Action canvas]
+        Name=New Canvas
+        Exec=sketch --canvas
+      '';
+      keyed = entry "keyed" ''
+        Name=Keyed
+        Exec=keyed
+      '';
+      bare = entry "bare" ''
+        Name=Bare
+        Exec=bare
+      '';
       # A program whose entry's id isn't its command, as zathura's isn't.
       viewer = entry "viewer" ''
         Name=Viewer
@@ -219,6 +238,9 @@
       cp ${pair} share/applications/pair.desktop
       cp ${ghost} share/applications/ghost.desktop
       cp ${viewer} share/applications/org.example.viewer.desktop
+      cp ${sketch} share/applications/sketch.desktop
+      cp ${keyed} share/applications/keyed.desktop
+      cp ${bare} share/applications/bare.desktop
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       ${copied [
         "Daemon.qml"
