@@ -18,6 +18,7 @@ use serde_json::Value;
 
 use crate::answered::{self, Answer};
 use crate::arrangement::{self, Arrangement, Desk};
+use crate::carried::Carried;
 use crate::clock;
 use crate::closed;
 use crate::drawer;
@@ -83,6 +84,9 @@ pub struct Inputs {
     /// Where the windows of sessions moving onto pi's host sat, as the
     /// shell said last.
     pub kept_places: KeptPlaces,
+    /// What of core's merges the running system carries, which a
+    /// landing of core's waits on before To Try holds it.
+    pub carried: Carried,
 }
 
 impl Inputs {
@@ -328,6 +332,7 @@ impl Inputs {
             &self.read,
             i64::try_from(now).unwrap_or(0),
         );
+        landed::waiting_for_switch(&mut records, &self.carried);
         let titles: HashMap<&str, &str> = self
             .quests
             .records()

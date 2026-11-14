@@ -32,7 +32,9 @@ onLinux {
   # that realm's node and the to-do daemon and reading the launcher's own
   # words, its socket systemd's, and a switch restarts it; a machine in no
   # realm, with no sessions to show, follows no node, but still serves the
-  # sessions there are to reopen.
+  # sessions there are to reopen. It reads what of core runs from
+  # update-to-main's answer and cadence's clone, so a try waits for its
+  # switch.
   agents-runs-in-each-account =
     let
       home = account (bareNixos [
@@ -57,6 +59,9 @@ onLinux {
         && lib.hasInfix "-words.json" started
         && lib.hasInfix "--socket %t/daemons/agents.sock" started
         && lib.hasInfix "/quickshell/by-shell --socket" started
+        && lib.hasInfix "--switched /run/update-to-main/last.json --clone " started
+        && lib.hasInfix "/cadence/core.git" started
+        && lib.elem "PATH=${lib.makeBinPath [ pkgs.git ]}" (lib.toList service.Service.Environment)
         && socket.Socket.ListenStream == "%t/daemons/agents.sock"
         && service.Unit.Requires == [ "agents.socket" ]
         && service.Unit.X-SwitchMethod == "restart"

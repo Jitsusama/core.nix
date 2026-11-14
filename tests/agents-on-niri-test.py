@@ -111,9 +111,9 @@ STOPPED = "An Agent's Stop Waits for a Second Return"
 CLOSING = "A Session Closes From the Launcher"
 # Its line for Joel, which names it by what to try, its first sentence, in Landed and To Try
 # alike, and says the rest in its drawer (VKCF3Z, c2d01d53).
-TRY_FIRST = "Press d on a session"
+TRY_FIRST = "Press d on a session."
 TRY_REST = "It asks what stays before it closes."
-TRY = f"{TRY_FIRST}. {TRY_REST}"
+TRY = f"{TRY_FIRST} {TRY_REST}"
 ORCHESTRATING = "Orchestrating Quest"
 # How many times the drawer case goes down and back up between two sessions.
 ARROWS_PAST = 3

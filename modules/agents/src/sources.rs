@@ -14,6 +14,7 @@ use serde_json::Value;
 
 use crate::answered;
 use crate::arrangement::Arrangement;
+use crate::carried::Carried;
 use crate::file::{self, Files};
 use crate::inputs::Inputs;
 use crate::kept_places::KeptPlaces;
@@ -88,6 +89,16 @@ pub struct Paths {
     /// Where the windows of sessions moving onto pi's host sat, which the
     /// daemon writes and follows too.
     pub kept_places: PathBuf,
+    /// update-to-main's answer to its last ask, which says the core it
+    /// followed, read again at each switch; none where it isn't given,
+    /// when no landing waits on one.
+    pub switched: Option<PathBuf>,
+    /// The last done ask's core, which the daemon keeps, since a boot
+    /// takes the answer away.
+    pub carried: PathBuf,
+    /// A clone of core's whose history says what that core merged, read
+    /// again at each of its fetches.
+    pub clone: Option<PathBuf>,
 }
 
 impl Heard {
@@ -112,6 +123,19 @@ impl Paths {
             self.arrangement.clone(),
             self.kept_places.clone(),
         ]
+        .into_iter()
+        .chain(self.switched.clone())
+        .chain(self.clone.as_ref().map(|clone| clone.join("FETCH_HEAD")))
+        .collect()
+    }
+
+    /// Whether `path` says what of core runs, or what that holds.
+    fn says_carried(&self, path: &Path) -> bool {
+        self.switched.as_deref() == Some(path)
+            || self
+                .clone
+                .as_ref()
+                .is_some_and(|clone| clone.join("FETCH_HEAD") == path)
     }
 }
 
@@ -228,10 +252,14 @@ impl Inputs {
             if let Some(kept) = Arrangement::read(path) {
                 self.arrangement = kept;
             }
-        } else if path == paths.kept_places
-            && let Some(kept) = KeptPlaces::read(path)
+        } else if path == paths.kept_places {
+            if let Some(kept) = KeptPlaces::read(path) {
+                self.kept_places = kept;
+            }
+        } else if paths.says_carried(path)
+            && let (Some(switched), Some(clone)) = (&paths.switched, &paths.clone)
         {
-            self.kept_places = kept;
+            self.carried = Carried::read(switched, &paths.carried, clone);
         }
     }
 }
@@ -258,6 +286,9 @@ mod tests {
             shells: folder.join("by-shell"),
             arrangement: folder.join("agents").join("arrangement.json"),
             kept_places: folder.join("agents").join("kept-places.json"),
+            switched: Some(folder.join("last.json")),
+            carried: folder.join("agents").join("carried.json"),
+            clone: Some(folder.join("core.git")),
         }
     }
 

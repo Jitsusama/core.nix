@@ -644,7 +644,7 @@ CLOSING = "A Session Closes From the Launcher"
 # title runs past two lines, whole, with the rest after its facts (VKCF3Z, c2d01d53).
 TRYING = (
     "Press dd on a session in Agents to close it, and answer when it asks whether its folder"
-    " and its branch should stay"
+    " and its branch should stay."
 )
 TRYING_REST = "It asks first, so a slip of the keys loses nothing."
 LANDINGS = [
@@ -652,7 +652,7 @@ LANDINGS = [
      "url": "https://example.org/core.nix/pull/2140"},
     {"at": "2026-11-07T11:25:00Z", "ref": "PLAN-20261022-TESTQC#2", "what": "Ticked alone"},
     {"at": "2026-11-07T11:19:00Z", "ref": "core.nix#2138", "what": CLOSING,
-     "person": f"{TRYING}. {TRYING_REST}"},
+     "person": f"{TRYING} {TRYING_REST}"},
 ]  # fmt: skip
 # How full the builder's context is and what its turns took, as the harness's usage keeps them
 # by gen_ai's names; today's counts show only on the day they're of.

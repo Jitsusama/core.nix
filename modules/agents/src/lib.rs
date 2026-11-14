@@ -32,10 +32,12 @@
 //! - `tell`: whom a line Joel says from anywhere goes to, and sending it.
 //! - `feedback`: what Joel says of a landing, sent where it came from.
 //! - `wants`: what each session asks Joel, and his answer sent to it.
+//! - `carried`: what of core's merges the running system carries.
 
 pub mod acts;
 pub mod answered;
 pub mod arrangement;
+pub mod carried;
 pub mod clock;
 pub mod closed;
 pub mod drawer;
