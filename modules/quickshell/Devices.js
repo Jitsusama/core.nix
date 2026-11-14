@@ -89,7 +89,7 @@ function low(devices, standing) {
 // or one not its own, says none have.
 function halted(text) {
     try {
-        const adapters = JSON.parse(text).adapters;
+        const { adapters } = JSON.parse(text);
         return Array.isArray(adapters) ? adapters
             .filter(adapter => typeof adapter?.name === "string")
             .map(adapter => ({
@@ -105,8 +105,8 @@ function halted(text) {
 // A device as the kernel names it on its bus, as 0000:00:14.7 or 1-10:1.0,
 // and a driver's folder in sysfs, nothing else, since the line they make is
 // typed into a root shell.
-const DEVICE = /^[0-9A-Za-z][0-9A-Za-z:._-]*$/;
-const DRIVER = /^\/sys\/bus\/[a-z0-9_-]+\/drivers\/[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
+const DEVICE = /^[0-9A-Za-z][0-9A-Za-z:._-]*$/u;
+const DRIVER = /^\/sys\/bus\/[a-z0-9_-]+\/drivers\/[A-Za-z0-9_][A-Za-z0-9_.-]*$/u;
 
 // The line that starts a stopped controller again: its driver let go of
 // its device and given it back, which starts the controller afresh as it
@@ -115,8 +115,9 @@ const DRIVER = /^\/sys\/bus\/[a-z0-9_-]+\/drivers\/[A-Za-z0-9_][A-Za-z0-9_.-]*$/
 function restart(adapter) {
     const device = adapter.device ?? "";
     const driver = adapter.driver ?? "";
-    if (!DEVICE.test(device) || !DRIVER.test(driver))
+    if (!(DEVICE.test(device) && DRIVER.test(driver))) {
         return "";
+    }
     return `echo ${device} | sudo tee ${driver}/unbind; echo ${device} | sudo tee ${driver}/bind`;
 }
 
@@ -149,7 +150,7 @@ function stopped(adapters, own) {
                 : "type the line in a terminal to start it again",
             message: line === "" ? `Restarting the machine starts it again. ${AFTERWARDS}`
                 : `Type this in a terminal to start it again:\n${line}\n${AFTERWARDS}`,
-            line: line,
+            line,
             // Said as it stops, and taken back once it answers again.
             arrives: true,
             withdraws: true
