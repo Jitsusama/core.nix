@@ -4736,6 +4736,12 @@
     sent after the last; a step out partway sends nothing and says so; a join's steps and a
     refusal are said in the foot, never a card; and no password is shown
   '';
+  wifi-holds-the-network-joined-ahead = ''
+    the launcher's Wi-Fi holds the network joined ahead while the launcher's open and Wi-Fi's on,
+    so its drawer is served before Joel steps onto it; a change to that drawer alone tells the
+    launcher nothing while nobody looks at it, the row it holds drawing the drawer as served
+    now, and one looked at, a drawer coming or going, or a change past it, is told
+  '';
   wifi-looks-only-while-its-rows-are-shown = ''
     the launcher's Wi-Fi asks wifid to look for networks only while its rows are shown: Wi-Fi or
     something in it held, or a find from the root showing a row of its, the launcher open, or a

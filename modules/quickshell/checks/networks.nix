@@ -23,7 +23,8 @@ let
     name: case:
     let
       # Kept in Nix because each only stands in for what Wireless.qml reads
-      # of the card and the sign-in, a card on and nothing saved.
+      # of the card and the sign-in, a card on and nothing saved, joined to
+      # the network a case gives its card, as Wifi.qml says it.
       wifi = singleton "Wifi.qml" ''
         property var cards: [{ name: "wlan0" }]
         property var saved: []
@@ -31,9 +32,9 @@ let
         property bool radio: true
         property bool described: true
         property int looks: 0
-        readonly property var joined: null
+        readonly property var joined: cards.find(card => card.network) ?? null
         function isSaved(name) { return null; }
-        function isJoined(name) { return false; }
+        function isJoined(name) { return cards.some(card => card.network === name); }
       '';
       signIn = singleton "SignIn.qml" ''
         readonly property string network: ""
@@ -140,4 +141,10 @@ in
   # never with the launcher open on another place (tests/wifi-looks.qml),
   # since each look takes the card off its channel for seconds.
   wifi-looks-only-while-its-rows-are-shown = wifiCase "wifi-looks-only-while-its-rows-are-shown" ../../../tests/wifi-looks.qml;
+
+  # Wi-Fi holds the network joined ahead while the launcher's open, so a
+  # step onto Wi-Fi or into it finds its drawer held, and a change to that
+  # drawer alone, nobody looking at it, tells the launcher nothing
+  # (tests/wifi-ahead.qml).
+  wifi-holds-the-network-joined-ahead = wifiCase "wifi-holds-the-network-joined-ahead" ../../../tests/wifi-ahead.qml;
 }
