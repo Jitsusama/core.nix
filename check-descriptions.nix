@@ -723,8 +723,10 @@
     frame holds none, so two changes to different places' words never touch the same file
   '';
   eero-completes-in-zsh = ''
-    eero completes in zsh with its views and commands, each node, each device by its name or, where
-    another shares it, its address, each profile, and --json after a view
+    eero completes in zsh down its tree as help lists it, with no old spelling offered: each node,
+    each device by its name or, where another shares it, its address, each profile, what a node or
+    profile holds after its name, an act's own words, the old spellings as they were, and --json
+    after a view
   '';
   eero-passes-clippy = ''
     clippy finds nothing in eero or its tests

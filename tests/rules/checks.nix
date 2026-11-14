@@ -291,6 +291,16 @@
               "node"
               "Study"
             ]
+            [
+              "nodes"
+              "Study"
+              "devices"
+            ]
+            [
+              "nodes"
+              "Study"
+              "radios"
+            ]
             [ "mesh" ]
             [ "devices" ]
             [
@@ -298,6 +308,10 @@
               "unknown computer 1"
             ]
             [ "internet" ]
+            [
+              "internet"
+              "sqm"
+            ]
             [ "speeds" ]
             [ "firmware" ]
             [ "radios" ]
@@ -307,6 +321,11 @@
             [
               "profiles"
               "profile 1"
+            ]
+            [
+              "profiles"
+              "profile 1"
+              "devices"
             ]
             [ "events" ]
           ];

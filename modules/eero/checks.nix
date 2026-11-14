@@ -36,10 +36,12 @@ onLinux {
   # clippy finds nothing in eero, its tests included.
   eero-passes-clippy = passesClippy "eero-passes-clippy" (pkgs.callPackage ./package.nix { });
   # eero completes in zsh, typed in a real line editor with the real eero
-  # over home-network.json and the completion home.nix installs: its views
-  # and commands, each node by its location, each device by its name or,
-  # where another shares it, its address, each profile, and --json after a
-  # view (tests/eero-completion.zsh).
+  # over home-network.json and the completion home.nix installs, down its
+  # tree as help lists it: each collection once and no old spelling, each
+  # node by its location, each device by its name or, where another shares
+  # it, its address, each profile, what a node or profile holds after its
+  # name, an act's own words, the old spellings as they were, and --json
+  # after a view (tests/eero-completion.zsh).
   eero-completes-in-zsh =
     pkgs.runCommandLocal "eero-completes-in-zsh"
       {
