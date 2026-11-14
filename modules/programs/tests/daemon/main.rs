@@ -87,17 +87,20 @@ fn fixture(folder: &Path) -> PathBuf {
     std::fs::create_dir_all(folder.join("chrome/Sessions")).unwrap();
     let at = |path: &str| folder.join(path).to_string_lossy().into_owned();
     // Each list says it was read, so a test counts its reads. Kitty's
-    // holds while a gate is there, saying so, so a test can ask while
-    // a read runs.
+    // takes its folders as it begins and, where a gate is there, the
+    // first read to take the gate holds until its held file goes, saying
+    // so, so a test can ask, or change the list, while a read runs.
     let folders = format!(
         concat!(
-            "echo read >> {} && if [ -e {gate} ]; then : > {}; ",
-            "while [ -e {gate} ]; do sleep 0.02; done; fi && cat {}"
+            "echo read >> {} && said=$(cat {}) && if mv {} {held} 2>/dev/null; ",
+            "then : > {}; while [ -e {held} ]; do sleep 0.02; done; fi && ",
+            "printf '%s\\n' \"$said\""
         ),
         at("lists/reads"),
-        at("lists/holding"),
         at("lists/folders"),
-        gate = at("lists/gate"),
+        at("lists/gate"),
+        at("lists/holding"),
+        held = at("lists/held"),
     );
     let sites = format!(
         "echo read >> {} && printf 'https://a.example\\tA\\t1793000000\\n'",
@@ -402,8 +405,8 @@ fn a_get_while_its_list_is_read_answers_what_that_read_finds() {
     client.changed("recent:kitty");
     // The read the change starts holds once it has begun, so the get
     // comes while it runs and the list it holds is the old one.
-    let gate = running.path("lists/gate");
-    std::fs::write(&gate, "").unwrap();
+    std::fs::write(running.path("lists/gate"), "").unwrap();
+    let held = running.path("lists/held");
     std::fs::write(running.path("lists/folders"), "/b\n").unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
     while !running.path("lists/holding").exists() {
@@ -413,7 +416,7 @@ fn a_get_while_its_list_is_read_answers_what_that_read_finds() {
     let opening = std::thread::spawn(move || {
         // The get is sent and reaches the daemon while the read holds.
         std::thread::sleep(Duration::from_millis(300));
-        std::fs::remove_file(gate).unwrap();
+        std::fs::remove_file(held).unwrap();
     });
     let said = running
         .client()
@@ -422,6 +425,39 @@ fn a_get_while_its_list_is_read_answers_what_that_read_finds() {
     assert_eq!(
         said["records"][0]["paths"],
         json!([{"path": "/b", "used_at_s": null}])
+    );
+}
+
+#[test]
+fn a_gets_read_that_a_later_change_outruns_is_read_again() {
+    let running = Running::new("outrun");
+    // The get's read takes /b as it begins and holds, nothing watching.
+    std::fs::write(running.path("lists/gate"), "").unwrap();
+    std::fs::write(running.path("lists/folders"), "/b\n").unwrap();
+    let mut asking = running.client();
+    let getting = std::thread::spawn(move || {
+        asking.ask(&json!({"id": 2, "ask": "get", "keys": ["recent:kitty"]}));
+    });
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !running.path("lists/holding").exists() {
+        assert!(Instant::now() < deadline, "the get's read never began");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    // A watch, then a change while the get's read holds: the change's
+    // read, if it runs beside it, takes /c and ends first.
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "watch", "keys": ["recent:kitty"]}));
+    std::fs::write(running.path("lists/folders"), "/c\n").unwrap();
+    // Long enough for a read the change starts beside the get's to end,
+    // where one does; there's nothing to wait on where none does.
+    std::thread::sleep(Duration::from_millis(300));
+    std::fs::remove_file(running.path("lists/held")).unwrap();
+    getting.join().unwrap();
+    let said = client.ask(&json!({"id": 3, "ask": "get", "keys": ["recent:kitty"]}));
+    assert_eq!(
+        said["records"][0]["paths"],
+        json!([{"path": "/c", "used_at_s": null}]),
+        "the get's older read kept last"
     );
 }
 
