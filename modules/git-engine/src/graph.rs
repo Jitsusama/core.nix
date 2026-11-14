@@ -389,12 +389,29 @@ fn walk(
         fresh += 1;
     }
     let mut queued: std::collections::HashSet<Key> = queue.iter().map(|&(_, key)| key).collect();
-    while fresh > 0 {
-        let Some((_, key)) = queue.pop() else { break };
+    // Dates stand in for generations where there's no commit-graph, and
+    // commits made in the same second tie, so a shared commit can be
+    // reached from one side before the other has marked it. A parent is
+    // never newer than its child, so a commit still queued reaches only
+    // those no newer than itself: the walk goes on while one queued is as
+    // new as the oldest it has counted as one side's alone. Generations
+    // from a graph are exact, and stop the walk where they always have.
+    let dated = graph.layers.is_empty();
+    let mut oldest_alone = u64::MAX;
+    while fresh > 0
+        || (dated
+            && queue
+                .peek()
+                .is_some_and(|&(generation, _)| generation >= oldest_alone))
+    {
+        let Some((generation, key)) = queue.pop() else {
+            break;
+        };
         queued.remove(&key);
         let flag = flags[&key];
         if flag != 3 {
             fresh -= 1;
+            oldest_alone = oldest_alone.min(generation);
         }
         let node = walker.node(key)?;
         let parents = walker.known.parents(node).to_vec();
@@ -445,6 +462,34 @@ mod tests {
         assert_eq!(parents(&known, Key::Graph(2)), []);
         assert_eq!(parents(&known, Key::Object(Oid([7; 20]))), [Key::Graph(1)]);
         assert_eq!(known.nodes[&Key::Object(Oid([7; 20]))].generation, 4);
+    }
+
+    // A clone behind an upstream that moved on through a merge, every commit
+    // made in the same second and each ancestor's id sorting above its
+    // child's, as a script's commits can be: with no commit-graph their
+    // dates tie, so the walk can reach `w` and `on 1` from the upstream
+    // before `on 2`, the clone's own tip, has told it those are shared.
+    #[test]
+    fn commits_dated_alike_are_counted_once_shared() {
+        let objects = std::env::temp_dir().join("git-engine-no-objects");
+        let graph = Graph::open(&objects);
+        let mut odb = Odb::open(&objects);
+        let mut known = Known::default();
+        let id = |byte: u8| Oid([byte; 20]);
+        let [w, on_1, topic, merge, more, on_2] = [9, 8, 7, 3, 2, 1].map(id);
+        let key = Key::Object;
+        known.insert(key(w), [], 10);
+        known.insert(key(on_1), [key(w)], 10);
+        known.insert(key(on_2), [key(on_1)], 10);
+        known.insert(key(topic), [key(on_1)], 10);
+        known.insert(key(more), [key(on_2)], 10);
+        known.insert(key(merge), [key(more), key(topic)], 10);
+        let counts = ahead_behind(&graph, &mut known, &mut odb, &on_2, &merge).unwrap();
+        assert_eq!(
+            counts,
+            (0, 3),
+            "on 2 is behind by more, topic and the merge alone"
+        );
     }
 
     #[test]
