@@ -50,6 +50,18 @@ pub struct Alert<'a> {
 /// doesn't flood Joel's phone; the link has the rest.
 const WORDS_SHOWN: usize = 300;
 
+/// How every alert begins, so the reader knows its own when a search
+/// finds one in Joel's IM.
+const OPENING: &str = "pineapple: ";
+
+/// Whether `text`, written as Joel, is one of these alerts: it quotes what
+/// others said, so the reader must never judge it as his own saying, or
+/// words made to slip out of its quotation marks would resume as him.
+#[must_use]
+pub fn is_alert(text: &str) -> bool {
+    text.starts_with(OPENING)
+}
+
 /// The alert's one form, the same the launcher's daemon writes down as
 /// what it would send. What others wrote is escaped as Slack's formatting
 /// asks (&, < and >), so none of it is drawn as a masked link, a mention
@@ -61,7 +73,7 @@ pub fn text(alert: Alert) -> String {
         words.push_str("...");
     }
     format!(
-        "pineapple: {}\nSaid: \"{}\"\nWhere: {}",
+        "{OPENING}{}\nSaid: \"{}\"\nWhere: {}",
         escaped(alert.title),
         escaped(&words),
         escaped(alert.link)

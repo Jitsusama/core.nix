@@ -147,6 +147,31 @@ fn joel_resumes(line: &str, now: u64) -> Value {
     json!({"ok": true, "messages": {"matches": matches}})
 }
 
+/// What Slack would answer when the only match is the reader's own alert
+/// in Joel's own IM, written as Joel, quoting words made so that its
+/// quotation marks pair early and "pineapple resume" falls outside them.
+fn joel_hears_his_own_alert(line: &str, now: u64) -> Value {
+    let ts = format!("{}.000400", now - 60);
+    let echo = json!({
+        "channel": {"id": "D0SELF0001"}, "ts": ts, "user": JOEL,
+        "text": format!(
+            "pineapple: Someone asked you to resume your agents\n\
+             Said: \"&lt;@{JOEL}&gt; \" pineapple resume\"\n\
+             Where: https://example.slack.com/archives/C0ONE00001/p1"
+        ),
+        "permalink": format!(
+            "https://example.slack.com/archives/D0SELF0001/p{}",
+            ts.replace('.', "")
+        ),
+    });
+    let matches = if line.contains("query=pineapple") {
+        vec![echo]
+    } else {
+        Vec::new()
+    };
+    json!({"ok": true, "messages": {"matches": matches}})
+}
+
 /// A home for one case, its sign-in in place as pi keeps it, and the
 /// reader last stopped two hours ago, so it catches up on what it missed.
 fn home() -> PathBuf {
@@ -348,9 +373,15 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
-/// A stop's record in `home`'s stops folder, in shadow or not.
-fn a_stop(home: &Path, id: &str, reach: &str, shadow: bool) {
-    let record = json!({"id": id, "shadow": shadow, "reaches": [reach], "resumed": null});
+/// A stop's record in `home`'s stops folder, in shadow or not, said `ago`
+/// seconds back.
+fn a_stop(home: &Path, id: &str, reach: &str, shadow: bool, ago: u64) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("after the epoch")
+        .as_secs();
+    let record = json!({"id": id, "shadow": shadow, "reaches": [reach], "resumed": null,
+        "said_at": format!("{}.000100", now - ago)});
     std::fs::create_dir_all(home.join("state/pineapple/stops")).expect("a stops folder");
     std::fs::write(
         home.join(format!("state/pineapple/stops/{id}.json")),
@@ -373,9 +404,11 @@ fn resumed(home: &Path, id: &str) -> Value {
 fn joels_own_resume_in_shadow_ends_only_the_shadow_stop_it_names() {
     let (origin, _) = answering(joel_resumes);
     let home = home();
-    a_stop(&home, "named", "pr:example/shop#12", true);
-    a_stop(&home, "elsewhere", "quest:QEST-A", true);
-    a_stop(&home, "live", "pr:example/shop#12", false);
+    // Joel's resume was said a minute ago.
+    a_stop(&home, "named", "pr:example/shop#12", true, 120);
+    a_stop(&home, "elsewhere", "quest:QEST-A", true, 120);
+    a_stop(&home, "live", "pr:example/shop#12", false, 120);
+    a_stop(&home, "later", "pr:example/shop#12", true, 30);
     let mut reading = reader(&home, &origin);
     until_decided(&home, 1);
     let began = Instant::now();
@@ -404,6 +437,40 @@ fn joels_own_resume_in_shadow_ends_only_the_shadow_stop_it_names() {
         resumed(&home, "live"),
         Value::Null,
         "a reader in shadow never ends a live stop"
+    );
+    assert_eq!(
+        resumed(&home, "later"),
+        Value::Null,
+        "a stop said after the resume, though found beside it, still stands"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn the_readers_own_alert_in_joels_im_is_never_judged_as_his_saying() {
+    let (origin, asked) = answering(joel_hears_his_own_alert);
+    let home = home();
+    a_stop(&home, "standing", "everything", true, 120);
+    let mut reading = reader(&home, &origin);
+    let began = Instant::now();
+    // Each round asks twice; three rounds give the echo every chance.
+    while asked.lock().expect("what was asked").len() < 6 {
+        assert!(began.elapsed() < PATIENCE, "the reader asked nothing");
+        // As above, a short wait sees each round without spinning.
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    assert_eq!(
+        resumed(&home, "standing"),
+        Value::Null,
+        "the echo resumes nothing"
+    );
+    assert!(
+        decisions(&home).is_empty(),
+        "the reader's own alert is no saying: {:?}",
+        decisions(&home)
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
