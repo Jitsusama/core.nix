@@ -133,9 +133,21 @@ impl Settings {
         set
     }
 
-    /// The temperature of the battery in `folder`, in tenths of a degree.
-    fn temperature(&mut self, root: &Root, folder: &str, _now: Instant) -> Option<u64> {
-        root.number(&format!("{folder}/temp"))
+    /// The temperature of the battery in `folder`, in tenths of a degree:
+    /// as last read while that's within `SLOW_KEPT` of `now` where a read
+    /// of it was slow, as a slow zone's is, and read again otherwise.
+    fn temperature(&mut self, root: &Root, folder: &str, now: Instant) -> Option<u64> {
+        if let Some((at, said)) = self.temperatures.get(folder)
+            && now.saturating_duration_since(*at) < heat::SLOW_KEPT
+        {
+            return *said;
+        }
+        let began = Instant::now();
+        let said = root.number(&format!("{folder}/temp"));
+        if began.elapsed() >= self.temperature_slow_from || self.temperatures.contains_key(folder) {
+            self.temperatures.insert(folder.to_owned(), (now, said));
+        }
+        said
     }
 
     /// Read the battery `name` again at its next read, as once its limit
