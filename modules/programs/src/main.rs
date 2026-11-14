@@ -64,7 +64,7 @@ mod told;
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{Instant, SystemTime};
 
 use daemon_serve::asks::place_of;
@@ -145,6 +145,9 @@ struct Daemon {
 
 struct Shared {
     daemon: Mutex<Daemon>,
+    /// Told each time a source's command running on a thread of its own
+    /// ends, so a get waits for a read already under way.
+    read: Condvar,
     /// Where changes are heard, unless inotify isn't there.
     notify: Option<Notify>,
     previewer: Mutex<Previewer>,
@@ -217,6 +220,7 @@ fn main() {
             agents: agents::Agents::default(),
             bookmarks: Kept::default(),
         }),
+        read: Condvar::new(),
         notify,
         previewer: Mutex::new(Previewer::new(std::env::var("PROGRAMS_PREVIEW").ok())),
         sources,
@@ -281,9 +285,7 @@ fn serving(shared: &Weak<Shared>) -> Arc<Served> {
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// Whether some watch wants this key, as what was taken is while
@@ -599,6 +601,7 @@ fn start(shared: &Arc<Shared>, at: usize, what: Run) {
                             || tabs::wanted(&daemon))));
             if !again {
                 daemon.running.remove(&(at, what));
+                shared.read.notify_all();
                 return;
             }
         }
@@ -643,15 +646,23 @@ fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
 }
 
 /// What a get or a list reads first, on this thread: the entries not yet
-/// held, each list not read since it changed or that's asked, and what
-/// each program has open now.
+/// held, each list not read since it changed or that's asked, once any
+/// read of it under way has ended, and what each program has open now.
 fn fresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
     if names_programs(kinds, keys) {
         read_programs(shared, keys);
     }
     for at in sources_of(shared, Run::List, kinds, keys) {
         let due = {
-            let daemon = lock(&shared.daemon);
+            let mut daemon = lock(&shared.daemon);
+            // A read under way counts its list fresh as it begins, so
+            // what's held until it ends is from before; a get waits for it.
+            while daemon.running.contains(&(at, Run::List)) {
+                daemon = shared
+                    .read
+                    .wait(daemon)
+                    .unwrap_or_else(PoisonError::into_inner);
+            }
             due(shared, &daemon, at) || !daemon.held.contains_key(&shared.sources[at].list_key())
         };
         if due {
