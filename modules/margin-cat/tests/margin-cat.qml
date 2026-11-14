@@ -617,6 +617,22 @@ QtObject {
         expect("with nothing on the new workspace it only holds",
             Paths.moves(seat(100), seat(100), world({ way: 1, now: [] })).beats
                 .map(beat => beat.name), ["rides"]);
+        // An empty workspace: it falls to the screen's floor, across only
+        // the backdrop, and sits there; windows come, it climbs to its seat
+        // by an edge, never up a face (VKCF3Z, 2026-11-14, e5a3ee44).
+        const bare = Paths.walk(seat(100), { x: 100, y: 792 }, world({ pause: 0, hurried: true,
+            now: [], cols: [], before: cols }));
+        expect("its workspace emptied, it falls straight down to the floor and sits",
+            [bare.beats.some(beat => beat.kind === "falls"), seen(bare).every(one => one.x === 100),
+                Paths.frame(bare, bare.ends)],
+            [true, true, { x: 100, y: 792, pose: null, turn: 0, facing: 1, beat: "sits",
+                done: true }]);
+        const risen = Paths.walk({ x: 300, y: 792 }, seat(300), world({ pause: 0 }));
+        const onFace = at => at.x < 615.5 && at.x + 8 > 16.5 && at.y < 783.5 && at.y + 8 > 16.5;
+        expect("windows come, it climbs to its seat by an edge, never up a face",
+            [risen.beats.some(beat => beat.name === "climbs"), seen(risen).some(onFace),
+                Paths.frame(risen, risen.ends).x, Paths.frame(risen, risen.ends).y],
+            [true, false, 300, 7]);
         expect("the theme's slowdown stretches all of a move",
             Math.round(Paths.moves(seat(100), seat(900), world({ way: 1, slowdown: 2 })).ends),
             Math.round(down.ends * 2));
