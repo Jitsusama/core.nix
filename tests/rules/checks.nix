@@ -126,6 +126,7 @@
     commands =
       let
         deviceCheck = pkgs.callPackage ../../modules/device-check/package.nix { };
+        dictation = pkgs.callPackage ../../modules/dictation/package.nix { };
         google = pkgs.callPackage ../../modules/google/package.nix { };
         slack = pkgs.callPackage ../../modules/slack/package.nix { };
         pineapple = pkgs.callPackage ../../modules/pineapple/package.nix { };
@@ -168,6 +169,7 @@
         xdg-open = script "xdg-open" ../../modules/open-with/xdg-open.sh { };
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
+        call-transcripts = dictation;
         chrome-pack-extension = pkgs.callPackage ../../modules/chrome/pack-extension/package.nix { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };
         chrome-recent-sites = pkgs.callPackage ../../modules/chrome/recent-sites/package.nix { };
@@ -180,6 +182,8 @@
         console-font = pkgs.callPackage ../../modules/console/font/package.nix { };
         device-check = deviceCheck;
         device-check-disk = deviceCheck;
+        inherit dictation;
+        dictation-chord = dictation;
         disk-guard = pkgs.callPackage ../../modules/disk-guard/package.nix { };
         eero = pkgs.callPackage ../../modules/eero/package.nix { };
         file-preview = pkgs.callPackage ../../modules/open-with/file-preview.nix { };
@@ -197,7 +201,9 @@
         lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
         lid-docked = pkgs.callPackage ../../modules/lid/docked/package.nix { };
         load-proof = pkgs.callPackage ../../modules/load-proof/package.nix { };
+        meaning = dictation;
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
+        noise-cancelled = dictation;
         open-now = recentFiles;
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
         pause-for-calls = pkgs.callPackage ../../modules/spotify/pause-for-calls/package.nix { };
@@ -213,6 +219,7 @@
         quickshell-hands-over = import ../../modules/quickshell/hands-over.nix { inherit pkgs; };
         reader = pkgs.callPackage ../../modules/reader/package.nix { };
         recent-files = recentFiles;
+        screen-text = dictation;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
         shell-weighs = pkgs.callPackage ../../modules/quickshell/shell-weighs/package.nix { };
         shutdown-status = pkgs.callPackage ../../modules/systemd/shutdown-status/package.nix { };

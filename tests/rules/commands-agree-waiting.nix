@@ -35,11 +35,6 @@
     "inks"
     "helps"
   ];
-  call-transcripts = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   calls = [
     "kit"
     "exits"
@@ -59,16 +54,6 @@
   collect = [ "helps" ];
   console-setup = [ "helps" ];
   declared-last = [ "helps" ];
-  dictation = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  dictation-chord = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   disk-guard-merged-on-github = [ "helps" ];
   eero = [ "inks" ];
   gnome-keyring-unlock = [ "helps" ];
@@ -122,11 +107,6 @@
     "exits"
     "helps"
   ];
-  meaning = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   merge-net = [
     "kit"
     "exits"
@@ -147,11 +127,6 @@
   niri-off-cpu-as-root = [ "helps" ];
   niri-off-cpu-begun = [ "helps" ];
   nix-offload = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  noise-cancelled = [
     "kit"
     "exits"
     "helps"
@@ -227,11 +202,6 @@
   ];
   saves-while-open = [ "helps" ];
   screen-kept = [ "helps" ];
-  screen-text = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   secret-asks = [
     "kit"
     "exits"
