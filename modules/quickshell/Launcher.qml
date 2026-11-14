@@ -3149,12 +3149,16 @@ Scope {
     }
 
     function noteKeys() {
-        actsWeighing.rows = new Map();
+        // A weighing can set off another within it, after a change, so
+        // each asks afresh and gives the outer one its answers back.
+        const outer = actsWeighing.rows;
+        const rows = new Map();
+        actsWeighing.rows = rows;
         try {
             weighKeys();
         } finally {
-            actsRowsAsked += actsWeighing.rows.size;
-            actsWeighing.rows = null;
+            actsRowsAsked += rows.size;
+            actsWeighing.rows = outer;
         }
     }
     function weighKeys() {
