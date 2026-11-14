@@ -1610,6 +1610,14 @@ Provider {
     // (LR3WMN, 2026-11-12). Kept by identity, since the daemon's record of
     // an unchanged landing stays the same object.
     readonly property var landedKeeping: keeper()
+    // Landed's rows kept whole while what they're made from are the same
+    // objects: the landings, the day, and the sessions running and parked,
+    // which Sessions makes anew, each session with them, at any change.
+    // Landed's rows are read again at each step through it, and each read
+    // looked at all 2,600 landings, 27 to 39 ms, four times in To Try's
+    // Return (2026-11-14). A plain object, written in place, so keeping
+    // them notifies nothing.
+    readonly property var landedWhole: ({ rows: null, of: [] })
     readonly property var landed: {
         if (!readNow)
             return madeBefore("landed", null);
@@ -1698,6 +1706,10 @@ Provider {
             hue: "action"
         }, () => {
             const today = String(Calendars.today ?? "");
+            const of = [landings, today, Sessions.running, Sessions.parked];
+            if (landedWhole.rows !== null
+                && of.every((part, at) => part === landedWhole.of[at]))
+                return landedWhole.rows;
             provider.keepingBegun(landedKeeping);
             const rows = landings.map(one => provider.keptAlike(landedKeeping, one.key,
                 [one, goes(one), today], () => landing(one)));
@@ -1705,6 +1717,8 @@ Provider {
             // Each landing looked at is counted, as Windows counts each window it
             // hears, for the check that Landed read again looks at none.
             provider.tally.looked += landings.length;
+            landedWhole.rows = rows;
+            landedWhole.of = of;
             return rows;
         });
     }
