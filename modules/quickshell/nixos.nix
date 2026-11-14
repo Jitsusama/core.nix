@@ -110,7 +110,10 @@ let
   # compiling (qtdeclarative-caches-without-syncing.patch). Its heap keeps
   # a free list for each size up to 2 KB, since with eight the last held
   # tens of thousands of runs as the shell started, walked again by each
-  # row it made (qtdeclarative-heap-bins-for-each-size.patch).
+  # row it made (qtdeclarative-heap-bins-for-each-size.patch). A date
+  # string without a digit is refused at once, since trying every form Qt
+  # reads took about 2 ms for each empty one, and the shell sorts by times
+  # some items never have (qtdeclarative-dates-without-digits-refused.patch).
   # Only the shell and the
   # modules it loads are built with it, so nothing else on the machine is
   # rebuilt for it.
@@ -130,6 +133,7 @@ let
             ./qtdeclarative-caches-what-is-served.patch
             ./qtdeclarative-caches-without-syncing.patch
             ./qtdeclarative-heap-bins-for-each-size.patch
+            ./qtdeclarative-dates-without-digits-refused.patch
           ];
         });
       }

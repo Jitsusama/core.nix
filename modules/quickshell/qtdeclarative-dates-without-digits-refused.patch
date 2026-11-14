@@ -1,0 +1,37 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Refuse a date without a digit before trying every form
+
+Date.parse and new Date(string) read ECMA's own format first, then try
+Qt's text, ISO and RFC 2822 forms and forty more, in turn. Each form
+with a time builds a local QDateTime for its default day before reading
+anything, through mktime, so a string none of them reads took about
+2 ms, against under a microsecond for one ECMA's format reads. The
+shell parses an absent time as an empty string in a sort's comparison,
+twice for each. Every form says a year, so a string with no digit now
+gives NaN at once, as it did after trying them all.
+
+---
+--- a/src/qml/jsruntime/qv4dateobject.cpp
++++ b/src/qml/jsruntime/qv4dateobject.cpp
+@@ -471,6 +471,21 @@
+         return TimeClip(t);
+     }
+ 
++    // Every form read below says a year, so a string without a digit is
++    // none of them. Each form with a time builds a local QDateTime for
++    // its default day before it reads anything, so trying them all took
++    // about 2 ms for an empty string, against under a microsecond for one
++    // the format above reads.
++    bool hasDigit = false;
++    for (const QChar c : s) {
++        if (c.isDigit()) {
++            hasDigit = true;
++            break;
++        }
++    }
++    if (!hasDigit)
++        return qt_qnan();
++
+     QDateTime dt = QDateTime::fromString(s, Qt::TextDate);
+     if (!dt.isValid())
+         dt = QDateTime::fromString(s, Qt::ISODate);
