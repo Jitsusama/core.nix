@@ -16,7 +16,9 @@
 // only one whose file or what it says changed once one does; and what's
 // on, made again as any one piece moves, makes only that piece's rows
 // again. Its Lately rows are kept too, so one notice arriving makes only
-// Desktop's row again, and a session's move that changes nothing For You
+// Desktop's row again, History stepped into again hands back the rows it
+// held, one read making only its row again, and a session's move that
+// changes nothing For You
 // reads of it, its want the same, makes none; For You held still hears a
 // change its own row doesn't count, once the change is done. For You is
 // banded once for each change, asked again it bands nothing, and the
@@ -361,9 +363,21 @@ ShellRoot {
                     && desktop.history.length === 27,
                 JSON.stringify([desktop.held.map(row => row.name), desktop.history.length]));
             const before = madeNow();
-            stepIn();
+            const again = stepIn();
             expect("stepped into again, it makes none of the notices' rows again",
                 since(before)[0] === 0, JSON.stringify(since(before)));
+            // History hands back the rows it held, so the launcher shows
+            // none anew: all 594 to 679 of Joel's were new at each step,
+            // 81 to 152 ms to the frame (2026-11-13).
+            const fresh = again.history.filter(row => !desktop.history.includes(row));
+            expect("stepped into again, History hands back the rows it held",
+                again.history.length === desktop.history.length && fresh.length === 0,
+                `${fresh.length} of ${again.history.length} new`);
+            const whole = now.historyRow.verbs();
+            const wholeFresh = now.historyRow.verbs().filter(row => !whole.includes(row));
+            expect("For You's History asked again hands back the rows it held",
+                whole.length > 0 && wholeFresh.length === 0,
+                `${wholeFresh.length} of ${whole.length} new`);
             const unanswered = pastNotices.search("notice").rows;
             expect("a search lists no notice until the daemon answers it",
                 unanswered.length === 0, `${unanswered.length} listed`);
@@ -403,7 +417,7 @@ ShellRoot {
         // Stepped into once as things stand, since Desktop's own rows may
         // have come while the searches were answered, so what's counted is
         // what the one read makes again, not rows Desktop made first.
-        stepIn();
+        historyBefore = stepIn().history;
         steppedBefore = heldMade();
         madeBefore = madeNow();
         Notices.history = read;
@@ -415,6 +429,8 @@ ShellRoot {
     // again where it fails: the case failed 3 of 18 gates under load
     // saying only how many (Y2YBTS, 2026-11-12).
     property var steppedBefore: null
+    // History's rows as stepped into before the read.
+    property var historyBefore: []
     // Every notice's made row, by notice, as search holds them (Desktop's
     // are copied as they're listed, so can't be told apart this way).
     // Taken before a count and after its read, so making none adds to it.
@@ -445,7 +461,7 @@ ShellRoot {
     function oneRead() {
         waiting = "";
         if (tried(() => {
-            stepIn();
+            const stepped = stepIn();
             const made = since(madeBefore);
             const after = heldMade();
             // Its row in the mixed place reads otherwise, and History,
@@ -454,6 +470,10 @@ ShellRoot {
                 made[0] === 2,
                 `${JSON.stringify(made)}, made again: `
                     + JSON.stringify(remadeSince(steppedBefore, after)));
+            const fresh = stepped.history.filter(row => !historyBefore.includes(row));
+            expect("one notice read, History makes only its row again",
+                fresh.length === 1 && fresh[0].notice === 2,
+                JSON.stringify(fresh.map(row => row.key)));
             expect("a search answered before the notices changed waits for its answer again",
                 pastNotices.awaits("notice") === true, JSON.stringify(pastNotices.answers.kept));
             expect("a search answered before the notices changed lists none of them meanwhile",
