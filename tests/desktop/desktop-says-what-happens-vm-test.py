@@ -1029,7 +1029,9 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
             "systemd-run --user --collect --unit=player mpv --ao=null --no-video"
             f" --loop {desktop.values['track']}"
         )
-    desktop.shoot(f"notices-playing-at-{named}")
+    # The line shows it only for its moment, its place in the track turning each second, so
+    # the shot waits on the rest of the picture alone rather than for the moment to pass.
+    desktop.shoot(f"notices-playing-at-{named}", ticking="the track's place")
     # And alone, its player's mark in the mark column where a notice's
     # stands (VKCF3Z, 2026-11-06).
     desktop.as_account("qs ipc call notices putAway")
