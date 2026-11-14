@@ -55,16 +55,18 @@ function run(failures, fromRoot) {
     // a call holding idle off, a download holding sleep, Keep Awake's
     // own two locks left out, two delays, one of them twice, and a
     // sleep of six hours. Its words are Keep Awake's own, so a word
-    // the drawer needs and the vocabulary lacks fails here.
+    // the drawer needs and the vocabulary lacks fails here. logind lists
+    // them in no lasting order, so each list is by name, as Joel would
+    // look for one (VKCF3Z, 2026-11-13).
     const awakeWords = vocabulary.find(thing => thing.id === "session:awake").said;
     const awakeAt = 1_790_000_000_000;
     const clock = at => `${(at - awakeAt) / 60_000} min`;
     const logind = { idle: false, idle_since_ms: awakeAt - 600_000, preparing: false,
         idle_action: "suspend", idle_action_ms: 300_000, blocked: ["idle", "sleep"],
         delayed: ["sleep"], inhibitors: [
-            { what: ["idle"], who: "Google Chrome", why: "Playing video", mode: "block" },
             { what: ["sleep", "idle"], who: "mycelium", why: "holding work",
                 mode: "block" },
+            { what: ["idle"], who: "Google Chrome", why: "Playing video", mode: "block" },
             { what: ["idle"], who: "Keep Awake", why: "Kept awake from the launcher",
                 mode: "block" },
             { what: ["handle-lid-switch"], who: "Keep Awake", why: "", mode: "block" },
@@ -77,13 +79,13 @@ function run(failures, fromRoot) {
             ended_at_ms: awakeAt - 7_200_000 } };
     const awakeTold = plugged => ({ plugged, when: clock,
         lasted: Interfaces.lasted, named: who => ({ "1password": "1Password" })[who] ?? who });
-    machine("keep awake's drawer, others' locks first, its own left out",
+    machine("keep awake's drawer, others' locks first by name, its own left out",
         Awake.facts(logind, awakeWords, awakeTold(false)), [
         { id: "awake:idle-held",
             value: "Google Chrome: Playing video \u00b7 mycelium: holding work" },
         { id: "awake:sleep-held", value: "mycelium: holding work" },
         { id: "awake:idle-sleep", value: "suspends 5 min after the screens go off" },
-        { id: "awake:put-off", value: "NetworkManager \u00b7 swayidle \u00b7 1Password" },
+        { id: "awake:put-off", value: "1Password \u00b7 NetworkManager \u00b7 swayidle" },
         { id: "awake:slept", value: "-483 min \u00b7 6 h 3 min" }
     ]);
     const idleNow = Object.assign({}, logind, { idle: true, idle_since_ms: awakeAt - 60_000,

@@ -28,6 +28,14 @@ function filled(template, fields) {
     return String(template ?? "").replace(FIELD, (_whole, name) => String(fields[name] ?? ""));
 }
 
+// Two names in the order Joel would look for them, whatever their case.
+// logind lists its locks in no lasting order, so the drawer says each
+// list by name, and an opening reads as the last did (VKCF3Z,
+// 2026-11-13).
+function byName(one, other) {
+    return one.toLowerCase().localeCompare(other.toLowerCase());
+}
+
 // Each lock logind lists that's held in `mode` against `what`.
 function holding(logind, mode, what) {
     return (logind.inhibitors ?? []).filter((lock) => lock.mode === mode
@@ -36,9 +44,9 @@ function holding(logind, mode, what) {
 
 // Keep Awake's drawer's facts, each by its words' id and giving way when
 // empty, in the order they move most (VKCF3Z, 2026-11-08): everyone else
-// blocking idling, sleep or the lid, each who then why as written, a run
+// blocking idling, sleep or the lid, each who then why, by name, a run
 // of whole items; when an idle machine sleeps, as logind is set to
-// whether or not it's kept awake; who puts sleep off a moment, who alone,
+// whether or not it's kept awake; who puts sleep off a moment, by name, who alone,
 // since every delay's why says it's before sleep alike; and when the last
 // sleep the daemon saw began and how long it lasted. `said` gives the
 // words (words.json's Keep Awake), and `told` whether it's on the charger
@@ -54,15 +62,15 @@ function facts(logind, said, told) {
     const held = HELD.map(([what, id]) => ({
         id,
         value: holding(logind, "block", what).filter((lock) => lock.who !== KEEPS_AWAKE)
-            .map((lock) => (lock.why
-                ? filled(said.held, { who: told.named(lock.who), why: lock.why })
-                : told.named(lock.who)))
+            .map((lock) => ({ who: told.named(lock.who), why: lock.why }))
+            .sort((one, other) => byName(one.who, other.who))
+            .map((lock) => (lock.why ? filled(said.held, lock) : lock.who))
             .join(BETWEEN)
     }));
     const delaying = holding(logind, "delay", "sleep").map((lock) => told.named(lock.who));
     return held.concat([
         { id: "awake:idle-sleep", value: idleSleep(logind, said, told) },
-        { id: "awake:put-off", value: [...new Set(delaying)].join(BETWEEN) },
+        { id: "awake:put-off", value: [...new Set(delaying)].sort(byName).join(BETWEEN) },
         { id: "awake:slept", value: lastSlept(logind.last_sleep ?? {}, told) }
     ]).filter((fact) => fact.value !== "");
 }
