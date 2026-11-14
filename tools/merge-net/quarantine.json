@@ -456,5 +456,16 @@
       "test_an_accounts_units_that_wont_stop_cant_hold_a_reboot"
     ],
     "test": "vm-reboot-cannot-hang"
+  },
+  {
+    "at": 1794652172,
+    "commit": "ec4bf1f43e1390a0fb0844c61747ed977d800fbd",
+    "owner_pr": 4303,
+    "reason": "failed, then passed, at ec4bf1f43e13",
+    "subtests": [
+      "test_a_session_another_restores_goes_to_its_workspace_and_leaves_joel_his_focus",
+      "test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal"
+    ],
+    "test": "vm-desktop-launcher-finds-sessions"
   }
 ]
