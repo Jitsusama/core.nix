@@ -265,6 +265,7 @@
         pi-packages = pkgs.callPackage ../../modules/pi-packages/package.nix { };
         pi-spawner = pkgs.callPackage ../../modules/pi/spawner/package.nix { };
         inherit pineapple;
+        pineapple-github = pineapple;
         pineapple-slack = pineapple;
         plymouth-waits = pkgs.callPackage ../../modules/plymouth/waits/package.nix { };
         processor-telemetry = pkgs.callPackage ../../modules/processor-telemetry/package.nix { };

@@ -52,6 +52,26 @@ onLinux {
           lib.toList unit.Service.ExecStart
         )
       );
+  # pineapple-github starts at login, reads Joel's GitHub sign-in through
+  # gh, comes back as the new one after a switch and after it fails, runs
+  # in the background slice, and reads as its own name in ps.
+  pineapple-github-starts-with-the-sign-in =
+    let
+      home = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.pineapple ]; } ]);
+      unit = home.systemd.user.services.pineapple-github;
+    in
+    holds "pineapple-github-starts-with-the-sign-in"
+      "pineapple-github lacks its login start, sign-in, switch restart, restart, slice or name."
+      (
+        lib.elem "default.target" unit.Install.WantedBy
+        && lib.any (lib.hasPrefix "SIGN_IN_KEYRING=/nix/store/") (lib.toList unit.Service.Environment)
+        && unit.Unit.X-SwitchMethod == "restart"
+        && unit.Service.Restart == "on-failure"
+        && unit.Service.Slice == "background.slice"
+        && lib.any (lib.hasSuffix "/bin/pineapple-github pineapple-github run") (
+          lib.toList unit.Service.ExecStart
+        )
+      );
   # pineapple, the daemon showing stops in the launcher, is started at
   # login for its socket, which systemd holds where the launcher looks,
   # knocks with notify-send, and reads its words from the launcher's
