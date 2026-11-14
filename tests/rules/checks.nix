@@ -216,6 +216,7 @@
         zoom-opens = script "zoom-opens" ../../modules/zoom/opens.sh { words = "a-window"; };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
         bluetooth-links = pkgs.callPackage ../../modules/bluetooth-links/package.nix { };
+        cadence-spec = pkgs.callPackage ../../modules/cadence/spec/package.nix { };
         call-transcripts = dictation;
         chrome-pack-extension = pkgs.callPackage ../../modules/chrome/pack-extension/package.nix { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };

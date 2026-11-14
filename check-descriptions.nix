@@ -390,6 +390,13 @@
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
   '';
+  cadence-spec-passes-clippy = ''
+    clippy finds nothing in cadence-spec or its tests
+  '';
+  cadence-spec-serves-the-axes = ''
+    cadence-spec serves a watch of the launcher's Spec the rows cadence prints, and keeps
+    answering with none when cadence fails
+  '';
   call-audio-runs-in-real-time = ''
     an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time
   '';
