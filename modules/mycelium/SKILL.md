@@ -59,7 +59,8 @@ Answer in words, short, worst first, the way the person would scan it:
 Asked what's costing most, name the few sessions with the highest
 `usage.cost_today`, in dollars, with the networks they work in. A session
 can join several networks, so a sum by network counts it more than once:
-say so if you give one.
+say so if you give one. For spend over days or weeks, or by model or
+budget, the spend-watch skill is the better source.
 
 A few lines answer "what's it doing?"; one network or one cell gets a few
 more. Name networks by title or short name and cells by title, never by a
