@@ -19,11 +19,22 @@
 // save. Only resident ones count, as mincore says, since a page never
 // written costs nothing.
 //
+// Room is left because Qt starts a collection whenever its free lists miss
+// while what's held is over twice what the last full sweep left in use, and
+// after the closing's collection it always is: three times, in Joel's shell
+// and the launcher's lab. So Emoji's openings ran one to six passes each,
+// 47 to 204 ms of the collector, none of them started by memory held
+// outside the heap (the lab, 2026-11-14). Qt reads only the count of what
+// the last sweep left in use to decide it, and the next sweep sets it again,
+// so raising it to half of what's held and the room asked for lets the heap
+// grow by that room first, and lasts until a collection.
+//
 // heap_test.cpp holds it to what it says.
 
 #include "heap.h"
 
 #include <QJSEngine>
+#include <algorithm>
 #include <private/qv4engine_p.h>
 #include <private/qv4mm_p.h>
 #include <sys/mman.h>
@@ -33,6 +44,11 @@
 namespace {
 
 constexpr double BYTES_PER_MB = 1024.0 * 1024.0;
+
+// What's held may be this many times what the last sweep left in use before
+// a miss starts the collector: Qt's GCOverallocation, 200%, private to
+// qv4mm.cpp.
+constexpr std::size_t OVERALLOCATION = 2;
 
 double megabytes(std::size_t bytes) { return static_cast<double>(bytes) / BYTES_PER_MB; }
 
@@ -87,6 +103,16 @@ QVariantMap Heap::weigh() const {
         {QStringLiteral("free"),
          megabytes(freePages(manager->blockAllocator) + freePages(manager->icAllocator))},
     };
+}
+
+void Heap::leaveRoom(double megabytes) {
+    QV4::MemoryManager *manager = engine->handle()->memoryManager;
+    const std::size_t held =
+        manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
+    const auto room =
+        static_cast<std::size_t>(std::max(megabytes, 0.0) * BYTES_PER_MB) / QV4::Chunk::SlotSize;
+    manager->usedSlotsAfterLastFullSweep =
+        std::max(manager->usedSlotsAfterLastFullSweep, (held + room) / OVERALLOCATION);
 }
 
 double Heap::collected() const {

@@ -10011,11 +10011,22 @@ Scope {
     // could save. Weighing walks the heap's chunks, and how long it took
     // is said too.
     property bool collectDue: false
+    // How many megabytes the heap may grow by after the closing's
+    // collection before a miss in its free lists starts the collector
+    // again. Qt starts one at any miss while what's held is over twice
+    // what's live, which it always is once the launcher has closed, so
+    // Emoji's openings ran one to six passes, 47 to 204 ms of them, and
+    // this leaves what the opening makes to the next closing's collection
+    // (modules/quickshell/heap/heap.cpp). An opening grows what's held by
+    // about 1 MB, so 32 is ample, and bounds what a launcher left open
+    // long may grow by before it collects.
+    readonly property real openingRoom: 32
     function collectClosed() {
         if (open || opening || parting !== "")
             return;
         const began = KeyTimes.now();
         gc();
+        Heap.leaveRoom(openingRoom);
         const collected = KeyTimes.now();
         const weight = Heap.weigh();
         const took = Math.round(collected - began);

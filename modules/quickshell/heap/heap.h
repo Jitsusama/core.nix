@@ -36,6 +36,13 @@ public:
     // collector's (Joel's slowest keys waited on it, 2026-11-12).
     Q_INVOKABLE double collected() const;
 
+    // Lets the heap take this many megabytes of new chunks before a miss
+    // in its free lists starts the collector, until the next collection
+    // ends. Asked after the closing's collection, so the next opening's
+    // allocations don't start one and the closing's collects what they
+    // left (heap.cpp).
+    Q_INVOKABLE void leaveRoom(double megabytes);
+
 private:
     QJSEngine *engine;
 };
