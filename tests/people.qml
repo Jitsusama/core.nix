@@ -24,6 +24,10 @@
 // first letter and is found as Slack says they stand, and one it knows
 // nobody by is no one. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
+//
+// Long because its cases are steps over the one shell, daemon and
+// stand-ins, each starting from what the steps before it left, so a
+// split would start them all again for each part.
 import qs
 import Quickshell
 import Quickshell.Io
