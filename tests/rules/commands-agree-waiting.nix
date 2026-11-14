@@ -4,11 +4,6 @@
 # and on one waiting on a point it keeps, so the list only shrinks.
 {
   "1password-in-its-unit" = [ "helps" ];
-  agents = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   backlight = [
     "kit"
     "helps"
@@ -17,12 +12,7 @@
     "inks"
     "helps"
   ];
-  cadence = [
-    "kit"
-    "exits"
-    "inks"
-    "helps"
-  ];
+  cadence = [ "inks" ];
   changed-checks = [
     "kit"
     "helps"
@@ -34,10 +24,8 @@
   ];
   eero = [ "inks" ];
   guide = [
-    "kit"
     "exits"
     "inks"
-    "helps"
   ];
   health = [
     "kit"
@@ -159,11 +147,6 @@
     "exits"
     "helps"
   ];
-  shaper = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   shell-preview = [
     "kit"
     "exits"
@@ -180,15 +163,6 @@
   tuple-call = [
     "kit"
     "exits"
-    "helps"
-  ];
-  update-to-main = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  warp = [
-    "kit"
     "helps"
   ];
   wifid = [

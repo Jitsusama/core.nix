@@ -1061,11 +1061,6 @@ def test_a_retitled_window_is_heard_of_alone_with_the_launcher_open(shell: Shell
     assert heard <= 2 * RETITLES, f"{RETITLES} retitles of one window looked at {heard} records"
 
 
-def searched(shell: Shell) -> int:
-    """Give how many searches of what's typed the launcher has run."""
-    return int(shell.as_account(shell.ipc("searched")).strip())
-
-
 def typed_at_once(shell: Shell, typing: str) -> None:
     """Type with wtype while the shell is frozen, so every key reaches it in one turn of its loop.
 
@@ -1083,7 +1078,7 @@ def test_text_typed_at_once_is_searched_once(shell: Shell) -> None:
     word = "workspace"
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    before = searched(shell)
+    before = launcher_on_niri.searched(shell)
     since = shell.mark()
     typed_at_once(shell, word)
     seen: list[str] = []
@@ -1096,7 +1091,7 @@ def test_text_typed_at_once_is_searched_once(shell: Shell) -> None:
         return True
 
     shell.reported("showing ", whole, since)
-    searches = searched(shell) - before
+    searches = launcher_on_niri.searched(shell) - before
     assert searches < len(word), f"{len(word)} letters typed at once took {searches} searches"
     # Said as a frame can draw it, the text comes with what it found, never partway through
     # the search, the letters there and the rows still those before them.
@@ -1848,6 +1843,34 @@ def test_a_launcher_closed_inside_a_place_is_home_before_it_opens(shell: Shell) 
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["held"] == [] and "Programs" in shown["rows"])
+
+
+def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Shell) -> None:
+    """A letter that keeps some rows and lists others builds no row, once warm.
+
+    The rows a letter let go were given on only when it let every row go, so a letter keeping
+    a few, as Joel's "m" from home or "ca" after "c", built six to eight rows from nothing
+    each time, up to 43 ms of laying them out (2026-11-13 and 14). Now the rows it lets go
+    are given to those it lists.
+    """
+    built, kept, new = [], [], []
+    for _ in range(3):
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        was = set(shell.showing()["rows"])
+        before = int(laid_out(shell)["built"])
+        shell.type_in("m")
+        laid = laid_out(shell)
+        built.append(int(laid["built"]) - before)
+        now = set(shell.showing()["rows"])
+        kept.append(len(now & was))
+        new.append(len(now - was))
+        shell.type_in("eet")
+        shell.close_launcher()
+    # "m" both kept rows of home and listed rows it didn't, or this proves nothing.
+    assert min(kept) > 0, f"rows of home kept by each 'm': {kept}"
+    assert min(new) > 0, f"rows new to each 'm': {new}"
+    assert built[1:] == [0, 0], f"rows built by each 'm' from home: {built}"
 
 
 def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) -> None:

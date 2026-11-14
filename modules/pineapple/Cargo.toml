@@ -1,7 +1,8 @@
 # pineapple: whether a message someone wrote is the safe word that stops
 # Joel's agents, and what it stops. The library judges (src/lib.rs says
 # how the pieces fit); pineapple-slack reads Slack for it, in shadow
-# (src/bin/pineapple-slack.rs), and pineapple is Joel's own command to
+# (src/bin/pineapple-slack.rs), pineapple-github reads GitHub
+# (src/bin/pineapple-github.rs), and pineapple is Joel's own command to
 # list stops and resume them (src/bin/pineapple.rs), refused under pi,
 # and the daemon serving them to the launcher (pineapple serve).
 [package]
@@ -31,7 +32,8 @@ daemon-serve = { path = "../daemon-serve" }
 # Joel's own account (src/reply.rs), and the phone alert's, listing his
 # IMs to find his own and posting there alone (src/phone.rs): the same
 # client Slack's module reads with, so the read-only door stays
-# read-only.
+# read-only. GitHub's reader asks with it too, only GETs
+# (src/bin/pineapple-github.rs).
 ureq = { version = "3", features = ["json"] }
 # The kernel's name for who pressed (SO_PEERPIDFD), so only Joel's shell
 # acts on a stop.

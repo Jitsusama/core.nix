@@ -44,6 +44,7 @@ mod start;
 mod text;
 mod theme;
 mod tiles;
+mod title;
 mod visual;
 mod walk;
 mod watch;
@@ -504,6 +505,7 @@ fn show(
         ms: set_ms,
         rest,
         parts: set_parts,
+        title,
     } = first;
 
     let conn = Connection::connect_to_env()?;
@@ -530,7 +532,7 @@ fn show(
         })?,
         prompt_to: heard(&handle, App::prompt_arrived)?,
     };
-    let surface = surface(&globals, &qh)?;
+    let surface = surface(&globals, &qh, &title)?;
     let opening = Opening {
         file: std::path::PathBuf::from(file),
         page,
@@ -641,6 +643,7 @@ struct Surface {
 fn surface(
     globals: &wayland_client::globals::GlobalList,
     qh: &QueueHandle<App>,
+    title: &str,
 ) -> Result<Surface, Box<dyn std::error::Error>> {
     let compositor = CompositorState::bind(globals, qh)?;
     let shell = XdgShell::bind(globals, qh)?;
@@ -660,7 +663,7 @@ fn surface(
             .map(|manager| manager.get_fractional_scale(&surface, qh, Scaling))
     });
     let window = shell.create_window(surface, WindowDecorations::ServerDefault, qh);
-    window.set_title("Reader");
+    window.set_title(title);
     window.set_app_id("reader");
     window.commit();
     Ok(Surface {
@@ -758,7 +761,7 @@ fn reload_on_save(
                 }
                 let set = setter.set().map(|(page, ms)| {
                     let lines = text::lines(text::runs(&page.frame));
-                    (page, ms, lines)
+                    (page, ms, lines, setter.title().to_string())
                 });
                 if reset_to.send((setter.file().to_string(), set)).is_err() {
                     return;

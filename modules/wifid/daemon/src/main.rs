@@ -28,6 +28,7 @@ mod card;
 mod check;
 mod detail;
 mod face;
+mod frequencies;
 mod link;
 mod lookup;
 mod network;
@@ -75,6 +76,7 @@ use card::Card;
 use check::{Checker, Settings, Verdict};
 use detail::Polled;
 use face::Face;
+use frequencies::Avoided;
 use link::Link;
 use network::{Account, Address, Inner, Method, Network, Security};
 use secret::{Credentials, Secrets};
@@ -101,6 +103,9 @@ const JOINING: Duration = Duration::from_secs(45);
 
 /// Which pages the check asks.
 const SETTINGS: &str = "/etc/wifid/wifid.conf";
+
+/// The frequencies each network's cards are kept off (frequencies.rs).
+const AVOIDED: &str = "/etc/wifid/avoid.json";
 
 /// The certificate authorities the machine trusts.
 const CERTIFICATES: &str = "/etc/ssl/certs/ca-certificates.crt";
@@ -197,12 +202,14 @@ async fn serve(
     let changes = drained(owners.receive_name_owner_changed().await?);
     let supplicant = SupplicantProxy::new(&bus).await?;
     let state = watch::Sender::new(State::default());
+    let avoided = avoided();
     let wifid = Wifid {
         bus: &bus,
         supplicant: &supplicant,
         store,
         key,
         secrets,
+        avoided: &avoided,
         seen,
         state: &state,
         picked: RefCell::default(),
@@ -429,6 +436,23 @@ fn settings() -> Settings {
                 eprintln!("<4>{SETTINGS}: {reason}; asking Google's pages instead");
             }
             Settings::default()
+        }
+    }
+}
+
+/// The frequencies avoid.json keeps each network's cards off; none, said
+/// in the journal when it's there but can't be read, so every network
+/// keeps every channel rather than one being lost.
+fn avoided() -> Avoided {
+    match fs::read_to_string(AVOIDED) {
+        Ok(text) => Avoided::read(&text).unwrap_or_else(|reason| {
+            eprintln!("<4>{AVOIDED}: {reason}; keeping every network on every channel");
+            Avoided::default()
+        }),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Avoided::default(),
+        Err(error) => {
+            eprintln!("<4>{AVOIDED}: {error}; keeping every network on every channel");
+            Avoided::default()
         }
     }
 }
@@ -1183,6 +1207,7 @@ struct Wifid<'a> {
     store: &'a Store,
     key: &'a AddressKey,
     secrets: &'a Secrets,
+    avoided: &'a Avoided,
     seen: &'a RefCell<Seen>,
     state: &'a watch::Sender<State>,
     /// The cards on a network Joel picked in the launcher, which keep
@@ -1336,13 +1361,18 @@ impl Wifid<'_> {
             };
             let address = self.key.address(card.address, name);
             let password = password.as_deref().map(String::as_str);
-            let fields = match supplicant::properties(&saved.network, password, address) {
+            let mut fields = match supplicant::properties(&saved.network, password, address) {
                 Ok(fields) => fields,
                 Err(unjoinable) => {
                     eprintln!("<4>{name}: {}", unjoinable.0);
                     continue;
                 }
             };
+            // Part of the fields, so a network given another list is taken
+            // away and given again as wifid next starts.
+            if let Some(kept) = self.avoided.list(name) {
+                fields.push(("freq_list", supplicant::Value::Text(kept)));
+            }
             wanted.push(supplicant::marked(fields, self.key));
             added.push(name);
         }

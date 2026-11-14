@@ -43,11 +43,12 @@ mod verdict;
 use crate::qdisc;
 use std::fs;
 use std::path::PathBuf;
-use std::process::{Child, Command, ExitCode, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
+use terminal_kit::{Exit, Failure};
 use verdict::{Block, answers, judge, percentile};
 
 /// Where the server is named when `--server` doesn't: the machine's
@@ -78,9 +79,6 @@ fn arms(pair: u32) -> [Arm; 2] {
         [Arm::Off, Arm::On]
     }
 }
-
-const USAGE: &str = "shaper proof [--server URL] [--pairs N] [--seconds S] [--uploads N] \
-                     [--wait S] [--out FILE]";
 
 /// What the proof is asked.
 struct Asked {
@@ -436,28 +434,22 @@ fn say(block: &Block, arm: Arm) {
 }
 
 /// `shaper proof`: the run itself.
-pub fn command(args: &[String]) -> ExitCode {
-    let asked = match asked(args, std::env::var(SERVER_ENV).ok()) {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("{e}\nusage: {USAGE}");
-            return ExitCode::from(2);
-        }
-    };
+pub fn command(args: &[String]) -> Result<(), Failure> {
+    let asked =
+        asked(args, std::env::var(SERVER_ENV).ok()).map_err(|e| crate::wrongly("proof", e))?;
     let Some(link) = uplink() else {
-        eprintln!("no default route to measure");
-        return ExitCode::FAILURE;
+        return Err(Failure::new(
+            Exit::Unavailable,
+            "no default route to measure",
+        ));
     };
-    let waits = match waits_while(std::env::var(WAITS_ENV).ok().as_deref()) {
-        Ok(w) => w,
-        Err(e) => {
-            eprintln!("{e}");
-            return ExitCode::from(2);
-        }
-    };
+    let waits = waits_while(std::env::var(WAITS_ENV).ok().as_deref())
+        .map_err(|e| Failure::new(Exit::Config, e))?;
     let Some(gate) = Gate::new(waits) else {
-        eprintln!("couldn't start swayidle to hear whether Joel is away");
-        return ExitCode::FAILURE;
+        return Err(Failure::new(
+            Exit::Unavailable,
+            "couldn't start swayidle to hear whether Joel is away",
+        ));
     };
     let gate = Arc::new(gate);
     let deadline = Instant::now() + Duration::from_secs(asked.wait);
@@ -469,11 +461,8 @@ pub fn command(args: &[String]) -> ExitCode {
         |from| window(&asked, &link, &gate, was_on, from, &mut idle),
     );
     if pairs.is_empty() {
-        eprintln!(
-            "Joel hasn't been idle two minutes, or a call, audio or a meeting is on: \
-             not loading the link"
-        );
-        return ExitCode::from(75);
+        return Err(Failure::new(Exit::TryAgain, "not loading the link")
+            .because("Joel hasn't been idle two minutes, or a call, audio or a meeting is on"));
     }
     let verdict = judge(&idle, &pairs);
     verdict.say();
@@ -486,17 +475,22 @@ pub fn command(args: &[String]) -> ExitCode {
         }
     }
     if !complete {
-        eprintln!(
-            "the wait ran out after {} of {} pairs: not enough to judge",
-            pairs.len(),
-            asked.pairs
+        return Err(
+            Failure::new(Exit::TryAgain, "not enough to judge").because(format!(
+                "the wait ran out after {} of {} pairs",
+                pairs.len(),
+                asked.pairs
+            )),
         );
-        return ExitCode::from(75);
     }
     if verdict.passed() {
-        ExitCode::SUCCESS
+        Ok(())
     } else {
-        ExitCode::FAILURE
+        // The verdict has said why on its own lines.
+        Err(Failure::new(
+            Exit::Failed,
+            "the shaper didn't beat the router",
+        ))
     }
 }
 

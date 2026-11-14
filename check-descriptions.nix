@@ -547,7 +547,8 @@
   code-health-counts-what-got-messier = ''
     code-health counts a repository's long files and crowded folders without their reasons, its
     suppressions in each language's own way, its lines repeated from elsewhere and its tests in
-    quarantine, from a ref's files, and writes the day's figures as cadence reads them
+    quarantine, from a ref's files, and writes the day's figures as cadence reads them, and the
+    hour's against each target, the hour before and the owner
   '';
   code-health-finds-a-machines-programs-first = ''
     code-health finds a machine's own programs first on its PATH, such as a git that reads a
@@ -555,6 +556,10 @@
   '';
   code-health-passes-clippy = ''
     clippy finds nothing in code-health or its tests
+  '';
+  code-health-reads-hourly-against-targets = ''
+    code-health reads each hour, handed each repository's targets, its owner and each measure's
+    own owner
   '';
   collector-keeps-what-it-is-sent = ''
     the collector reads a span it was sent back at its moment and in its trace, and keeps what a
@@ -2095,6 +2100,11 @@
     with Do Not Disturb's file holding it while it's on, and a Mac is told nothing, ringing with
     its own
   '';
+  pineapple-github-starts-with-the-sign-in = ''
+    the reader of GitHub for the safe word starts at login, reads Joel's GitHub sign-in through gh,
+    comes back after a switch and a failure, runs in the background slice and reads as its own name
+    in ps
+  '';
   pineapple-judges-each-saying = ''
     every saying in sayings.json is judged the safe word, a resume, an ask to stop or a near miss as
     the table says, and reaches what its words and its place name, or everything, said so; and
@@ -2284,7 +2294,8 @@
     without MiTeX, links to markdown set in place, labels on their links' baselines, Neovim's
     counts and keys, visual mode's motions, text objects and copies of the file's markdown, where
     vi's paragraph, heading, view, bracket and file moves land, whole-word search, the command line
-    read as Neovim reads it, and gO's outline
+    read as Neovim reads it, gO's outline, and the window's title from the document's title or else
+    its file's name
   '';
   reader-takes-its-keys = ''
     the reader draws a long page in the theme and takes Neovim's keys, G, gg, a count, Ctrl+F, Ctrl+O,
@@ -4698,8 +4709,9 @@
     routing rules stand, and a network forgotten goes from everywhere
   '';
   vm-wifi-joins = ''
-    wifid joins the networks it's given, finds sign-ins and sessions ending, tells the shell what
-    it hears in detail, chooses a network the launcher saved first, and trusts one when asked
+    wifid joins the networks it's given, off the frequencies Nix avoids on each, finds sign-ins
+    and sessions ending, tells the shell what it hears in detail, chooses a network the launcher
+    saved first, and trusts one when asked
   '';
   vm-wifi-joins-when-asked = ''
     the shell has wifid sign in, join with a password or an account, leave, save and switch the

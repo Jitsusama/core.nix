@@ -13,7 +13,9 @@
 //! back, the same UDP a call sends.
 
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
-use std::process::ExitCode;
+use terminal_kit::{Exit, Failure};
+
+use crate::wrongly;
 use std::time::{Duration, Instant};
 
 /// Where the questions go: Google's public resolver, near where a Meet
@@ -50,22 +52,24 @@ pub fn dns_answer(packet: &[u8]) -> Option<u16> {
 }
 
 /// The call's round trips for `SECONDS`, printed as they're answered.
-pub fn command(args: &[String]) -> ExitCode {
+pub fn command(args: &[String]) -> Result<(), Failure> {
     let Some(seconds) = args.first().and_then(|s| s.parse::<u64>().ok()) else {
-        eprintln!("usage: shaper proof-call SECONDS");
-        return ExitCode::from(2);
+        return Err(wrongly("proof-call", "it takes a number of seconds"));
     };
     let Some(server) = RESOLVER
         .to_socket_addrs()
         .ok()
         .and_then(|mut all| all.find(SocketAddr::is_ipv4))
     else {
-        eprintln!("couldn't find {RESOLVER}");
-        return ExitCode::FAILURE;
+        return Err(Failure::new(
+            Exit::Unavailable,
+            format!("couldn't find {RESOLVER}"),
+        ));
     };
-    let Ok(socket) = UdpSocket::bind(("0.0.0.0", 0)) else {
-        return ExitCode::FAILURE;
-    };
+    let socket = UdpSocket::bind(("0.0.0.0", 0)).map_err(|e| {
+        Failure::new(Exit::Unavailable, "couldn't open a socket to call from")
+            .because(e.to_string())
+    })?;
     let end = Instant::now() + Duration::from_secs(seconds);
     let mut sent: Vec<(u16, Instant)> = Vec::new();
     let mut next = Instant::now();
@@ -101,7 +105,7 @@ pub fn command(args: &[String]) -> ExitCode {
             println!("{:.1}", when.elapsed().as_secs_f64() * 1_000.0);
         }
     }
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 #[cfg(test)]

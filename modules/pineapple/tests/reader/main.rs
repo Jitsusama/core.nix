@@ -5,8 +5,10 @@
 //! fresh stop in a thread's goes through, and the switch holds even that
 //! back; only Slack's reading methods are asked; a restart judges
 //! nothing twice; and an alert for Joel's phone finds his own IM and, in
-//! shadow, is only written down. The reader let go live is in live.rs.
+//! shadow, is only written down. The reader let go live is in live.rs,
+//! and GitHub's reader, against its own stand-in, in github.rs.
 
+mod github;
 mod live;
 
 use std::io::{BufRead, BufReader, Read, Write};
@@ -37,6 +39,32 @@ fn stand_in() -> (String, Arc<Mutex<Vec<String>>>) {
 
 /// The stand-in, answering each request as `answer` says.
 fn answering(answer: fn(&str, u64) -> Value) -> (String, Arc<Mutex<Vec<String>>>) {
+    answering_whole(move |line, now| Answered::ok(answer(line, now)))
+}
+
+/// What the stand-in answers one request with.
+struct Answered {
+    status: u16,
+    headers: Vec<(&'static str, String)>,
+    body: Value,
+}
+
+impl Answered {
+    /// An answer as a service gives one that went well.
+    fn ok(body: Value) -> Self {
+        Self {
+            status: 200,
+            headers: Vec::new(),
+            body,
+        }
+    }
+}
+
+/// The stand-in, answering each request whole, its status and headers
+/// too, as `answer` says.
+fn answering_whole(
+    answer: impl Fn(&str, u64) -> Answered + Send + 'static,
+) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port on this machine");
     let origin = format!("http://{}", listener.local_addr().expect("its address"));
     let asked = Arc::new(Mutex::new(Vec::new()));
@@ -71,15 +99,23 @@ fn answering(answer: fn(&str, u64) -> Value) -> (String, Arc<Mutex<Vec<String>>>
             if reader.read_exact(&mut form).is_err() {
                 continue;
             }
-            let said = answer(&line, now).to_string();
+            let answered = answer(&line, now);
+            let said = answered.body.to_string();
             let mut one = line.trim_end().to_owned();
             if length > 0 {
                 one = format!("{one} {}", String::from_utf8_lossy(&form));
             }
             kept.lock().expect("the stand-in's list").push(one);
+            let headers = answered
+                .headers
+                .iter()
+                .map(|(name, value)| format!("{name}: {value}\r\n"))
+                .collect::<Vec<_>>()
+                .concat();
             let reply = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                "HTTP/1.1 {} Answered\r\nContent-Type: application/json\r\n{headers}\
                  Content-Length: {}\r\nConnection: close\r\n\r\n{said}",
+                answered.status,
                 said.len()
             );
             // A reader killed mid-answer leaves nobody to write to.

@@ -168,11 +168,24 @@ and passed every run with a mouse.
 - **The switch, as omni-ref's.** Light, Match System and Dark sit in the
   head; a choice holds across a reload with no flash of the other look, and
   Match System follows the system when it changes.
+- **A cold walk by keyboard alone** (2026-11-14), never touching the pointer,
+  by a reader told nothing: reach every part and every thing a picture holds,
+  open one, find one with /, step back out with -, pan and zoom where the
+  page has them, and open ? from anywhere. Say where the walk stalled; a
+  stall is a fault, not a note.
+- **A manual audit beside axe-core**: axe sees only what it can parse, so
+  walk WCAG 2.2's AA and AAA criteria by hand on the page's own parts, with
+  the result per criterion: pass, fail with the place, or not present.
 - **A screen reader pass** on the landmarks, headings and one fold, a figure
-  and a table: each says what it is.
+  and a table: each says what it is. A picture that holds things is read as
+  its structure, each thing with its name, state and links.
+- **Contrast at AAA**: text and muted text reach 7:1 on the page's ground in
+  both looks, measured, and nothing else drops below 4.5:1.
+- **Reduced motion**: with it set, nothing moves that the reader didn't move.
 - **Forced colours and more contrast**: every control keeps an edge, focus
   shows, figures stay legible.
-- **Targets** of 24 px at least, 44 on touch, but for links in running text.
+- **Targets** of 44 px, measured on the hit area, but for links in running
+  text.
 - **Nothing by colour alone**: a greyscale screenshot still tells every state.
 
 ## Speed

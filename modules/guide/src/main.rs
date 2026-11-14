@@ -24,7 +24,8 @@
 //! standard input, and prints each one's SHA-256 as sha256sum does.
 //!
 //! Each command that runs in one place lives in commands/, in the file for
-//! that place; those that run anywhere are here.
+//! that place; those that run anywhere are here. Each takes the terminal
+//! kit's shape, its help its own (`help()`), and a fault ends 1.
 
 mod commands;
 
@@ -39,12 +40,118 @@ use guide::vault::store::{Directory, Store};
 use guide::{Fault, Journal, Tool};
 
 use commands::{passphrase, reported};
+use terminal_kit::{Exit, Failure, Help};
 
-const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover | guide finish
-       guide revive | guide vault-list DIRECTORY
-       guide host IMAGE [--sign-with DIRECTORY]... [--every-machine] [--install PAYLOAD [--rescue-bundle BUNDLE | --no-rescue-bundle]]
-       guide write-stick IMAGE FILE [--sign-with DIRECTORY]... [--install PAYLOAD [--rescue-bundle BUNDLE]]
-       guide seal-keys TARGET BUNDLE";
+/// A command that needs only itself, as `guide --help` lists it.
+fn plain(name: &str, about: &str, example: &str, failed: &str) -> Help {
+    Help::new(name, about)
+        .example(&format!("guide {name}"), example)
+        .exit(Exit::Failed, failed)
+}
+
+/// The options a stick is written with, as host and write-stick take them.
+fn written(help: Help) -> Help {
+    help.option("--sign-with DIRECTORY", "sbctl's db keys, one per machine")
+        .option("--install PAYLOAD", "a machine's payload, for its vault")
+        .option("--rescue-bundle BUNDLE", "its keys, from its rescue bundle")
+}
+
+/// What `guide --help` says, and each command's own.
+fn help() -> Help {
+    Help::new("guide", "walks a machine from blank to sealed")
+        .example("guide observe", "what the guide sees here")
+        .example("guide host nixos.img", "writes a stick it finds")
+        .subcommand(plain(
+            "observe",
+            "says what the guide sees, changing nothing",
+            "Secure Boot, keys, the TPM and disks",
+            "something couldn't be seen",
+        ))
+        .subcommand(plain(
+            "tools",
+            "says where this build finds each program",
+            "each program's path",
+            "a program isn't there",
+        ))
+        .subcommand(plain(
+            "install",
+            "installs this machine, from the stick",
+            "as root, on the stick's console",
+            "a step couldn't finish",
+        ))
+        .subcommand(plain(
+            "installed",
+            "finishes the machine on its own disk",
+            "as root, at every boot",
+            "a step couldn't finish",
+        ))
+        .subcommand(plain(
+            "recover",
+            "repairs this machine, from the stick",
+            "as root, on the stick's console",
+            "a step couldn't finish",
+        ))
+        .subcommand(plain(
+            "revive",
+            "puts macOS back on a Mac with Apple silicon",
+            "from a stick with Apple's restore image",
+            "macOS couldn't be put back",
+        ))
+        .subcommand(plain(
+            "finish",
+            "adds the account's keys, and the last steps",
+            "once the machine is installed",
+            "a step couldn't finish",
+        ))
+        .subcommand(
+            Help::new("vault-list", "proves a copied vault, file by file")
+                .example("guide vault-list /mnt/vault", "each file's SHA-256")
+                .argument("<directory>", "the vault, its passphrase on stdin")
+                .exit(Exit::Failed, "the vault couldn't be read back"),
+        )
+        .subcommand(
+            Help::new("seal-keys", "makes this machine's rescue bundle")
+                .example(
+                    "guide seal-keys target.json rescue.json",
+                    "its passphrase on stdin",
+                )
+                .argument("<target>", "the payload's target.json")
+                .argument("<bundle>", "where the bundle is written")
+                .exit(Exit::Failed, "the bundle couldn't be made"),
+        )
+        .subcommand(written(
+            Help::new("host", "writes a stick, as the person")
+                .example("guide host nixos.img", "onto a stick it finds")
+                .example(
+                    "guide host nixos.img --install payload",
+                    "with a vault to install from",
+                )
+                .argument("<image>", "the stick's system image")
+                .option("--every-machine", "signs for every machine kept")
+                .option("--no-rescue-bundle", "leaves the machine's keys out")
+                .exit(Exit::Failed, "the stick couldn't be written"),
+        ))
+        .subcommand(written(
+            Help::new("write-stick", "writes a stick into a file")
+                .example(
+                    "guide write-stick nixos.img stick.raw",
+                    "passphrases on stdin",
+                )
+                .argument("<image>", "the stick's system image")
+                .argument("<file>", "the file, a stick's size")
+                .exit(Exit::Failed, "the file couldn't be written"),
+        ))
+}
+
+/// The words a command was given that it doesn't take.
+fn unasked(command: &str) -> Failure {
+    Failure::new(
+        Exit::Usage,
+        format!("guide {command} doesn't take those words"),
+    )
+    .try_this(format!("guide {command} --help"))
+}
+
 fn main() -> ExitCode {
     // Run by ssh-tpm-keygen as its SSH_ASKPASS, for the PIN of a key the
     // guide is making (src/installed/keys.rs), it answers that and only
@@ -67,7 +174,13 @@ fn main() -> ExitCode {
         // there to read the environment.
         unsafe { std::env::set_var("PATH", plugins) };
     }
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        run(&context.args)
+    })
+}
+
+/// The command these words name, run.
+fn run(args: &[String]) -> Result<(), Failure> {
     match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         ["observe"] => observe(),
         ["tools"] => tools(),
@@ -90,20 +203,13 @@ fn main() -> ExitCode {
         ["vault-list", directory] => reported(vault_list(directory)),
         ["seal-keys", target, bundle] => reported(commands::installed::seal_keys(target, bundle)),
         ["finish"] => reported(commands::installed::finish()),
-        ["host", image, ref options @ ..] => {
-            commands::host::host(image, options).unwrap_or_else(usage)
-        }
+        ["host", image, ref options @ ..] => commands::host::host(image, options),
         ["write-stick", image, target, ref options @ ..] => {
-            commands::host::write_stick(image, target, options).unwrap_or_else(usage)
+            commands::host::write_stick(image, target, options)
         }
-        _ => usage(),
+        [command, ..] => Err(unasked(command)),
+        [] => Err(Failure::new(Exit::Usage, "guide needs a command").try_this("guide --help")),
     }
-}
-
-/// The usage, said when a command or its options aren't ones the guide takes.
-fn usage() -> ExitCode {
-    eprintln!("{USAGE}");
-    ExitCode::from(2)
 }
 
 /// Every file of a vault copied into a directory, read back whole and
@@ -125,7 +231,7 @@ fn vault_list(directory: &str) -> Result<(), Fault> {
     Ok(())
 }
 
-fn tools() -> ExitCode {
+fn tools() -> Result<(), Failure> {
     let mut missing = 0;
     for tool in Tool::built() {
         match tool.program() {
@@ -164,15 +270,18 @@ fn tools() -> ExitCode {
         }
     }
     if missing == 0 {
-        ExitCode::SUCCESS
+        Ok(())
     } else {
-        ExitCode::FAILURE
+        Err(Failure::new(
+            Exit::Failed,
+            format!("{missing} of what this build needs isn't there"),
+        ))
     }
 }
 
 /// Each observation on its own, so one a person can't make (sbctl's keys
 /// need root) still leaves the rest to read.
-fn observe() -> ExitCode {
+fn observe() -> Result<(), Failure> {
     let mut machine = System::new(Journal::in_memory(), None);
     let mut faults = 0;
     let mut show = |what: &str, said: Result<String, Fault>| match said {
@@ -235,9 +344,12 @@ fn observe() -> ExitCode {
     }
 
     if faults == 0 {
-        ExitCode::SUCCESS
+        Ok(())
     } else {
-        ExitCode::FAILURE
+        Err(Failure::new(
+            Exit::Failed,
+            format!("{faults} of the observations couldn't be made"),
+        ))
     }
 }
 

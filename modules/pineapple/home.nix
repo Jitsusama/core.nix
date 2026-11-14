@@ -1,5 +1,5 @@
-# The safe word that stops Joel's agents, read where it's said: Slack for
-# now, through the harness's Slack sign-in, only read, and in shadow, so
+# The safe word that stops Joel's agents, read where it's said: Slack and
+# GitHub, through Joel's own sign-ins, only read, and in shadow, so
 # its stops are written down and nothing acts on them yet (src/lib.rs says
 # how the pieces fit). A machine signed in to Slack as Joel imports it.
 {
@@ -16,6 +16,12 @@ let
   keyring = pkgs.writeShellScript "pineapple-sign-in" ''
     exec ${lib.getExe' pkgs.libsecret "secret-tool"} lookup \
       service agentic-harness username slack-credentials
+  '';
+  # Prints Joel's GitHub sign-in as gh keeps it, through gh itself, so
+  # wherever gh keeps it stays gh's business; it fails while he has none.
+  # Its output goes to the program alone.
+  githubSignIn = pkgs.writeShellScript "pineapple-github-sign-in" ''
+    exec ${lib.getExe pkgs.gh} auth token --hostname github.com
   '';
 in
 {
@@ -51,6 +57,28 @@ in
     };
     # Started at login rather than once a sign-in file appears, since pi
     # keeps its sign-in in the keyring now and the file may never come.
+    Install.WantedBy = [ "default.target" ];
+  };
+
+  # The same reader for GitHub (src/bin/pineapple-github.rs): every minute,
+  # the pull requests and issues Joel takes part in that changed, and
+  # what was said on them, only asked, in shadow. Its stops go where the
+  # Slack reader's do, so the launcher, the harness and his phone take
+  # them alike; it answers nobody on GitHub.
+  systemd.user.services.pineapple-github = {
+    Unit = {
+      Description = "Reads GitHub for the safe word that stops Joel's agents, in shadow";
+      X-SwitchMethod = "restart";
+    };
+    Service = {
+      Slice = "background.slice";
+      ExecStart = "@${pineapple}/bin/pineapple-github pineapple-github run";
+      # Run each round, so a sign-in renewed while it runs is read without
+      # a restart; with none, it says so and reads nothing.
+      Environment = [ "SIGN_IN_KEYRING=${githubSignIn}" ];
+      Restart = "on-failure";
+      RestartSec = 30;
+    };
     Install.WantedBy = [ "default.target" ];
   };
 

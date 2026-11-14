@@ -24,6 +24,10 @@ LOCK = "/run/test-locked"
 IDS = {"litra": "0003:0000046D:0000C900", "pebble": "0003:0000041E:0000329A"}
 LITRA_ON = "11ff041c01"
 LITRA_OFF = "11ff041c00"
+# The stand-in's own 138 lumens and 4000 K, as an evening call sets them: 70% of its lumens, 96,
+# and 2700 K, each command then its big-endian value.
+LITRA_EVENING_UNITS = "11ff044c0060"
+LITRA_EVENING_WARMTH = "11ff049c0a8c"
 PEBBLE_ON = "036a3a02002501"
 PEBBLE_OFF = "036a3a02002500"
 # How long hidraw may take to name a stand-in, or let it go.
@@ -109,6 +113,38 @@ def test_the_camera_stopping_puts_the_litra_out(streaming: Lights) -> None:
     """The camera stopping puts the Litra out."""
     streaming.machine.succeed(f"rm '{HOLDERS}/MX Brio'")
     streaming.told("litra", LITRA_OFF)
+
+
+def test_an_evening_call_lights_the_litra_warm_and_lower_once_lit(lights: Lights) -> None:
+    """After the wind-down, a call lights the Litra, then sets it warm and lower.
+
+    Its own setting is kept, to give back by day. The follower the other tests share has no
+    wind-down, so this one follows the cameras alone.
+    """
+    machine = lights.machine
+    machine.succeed("systemctl stop litra-follows.service", f"rm -f '{HOLDERS}/MX Brio'")
+    now = machine.succeed("date +%H:%M").strip()
+    machine.succeed(f"""echo '{{"windDown": "{now}"}}' > /run/test-profile.json""")
+    machine.succeed(f": > {lights.sent('litra')}")
+    machine.succeed(
+        "systemd-run --unit=litra-evening litra follow"
+        f" {HOLDERS} /run/test-litra-locked /run/test-profile.json /run/test-own"
+    )
+    lights.told("litra", LITRA_OFF)
+    machine.succeed(f": > {lights.sent('litra')}", f"echo firefox > '{HOLDERS}/MX Brio'")
+    lights.told("litra", LITRA_EVENING_WARMTH)
+    lights.told("litra", LITRA_EVENING_UNITS)
+    sent = machine.succeed(f"cat {lights.sent('litra')}").split()
+
+    def first(report: str) -> int:
+        return next(at for at, line in enumerate(sent) if line.startswith(report))
+
+    lit = first(LITRA_ON)
+    assert lit < first(LITRA_EVENING_WARMTH), f"set while out: {sent}"
+    assert lit < first(LITRA_EVENING_UNITS), f"set while out: {sent}"
+    own = machine.succeed("cat /run/test-own")
+    assert own.endswith(" 138 4000\n"), f"its own setting wasn't kept: {own!r}"
+    machine.succeed("systemctl stop litra-evening.service", f"rm '{HOLDERS}/MX Brio'")
 
 
 def test_the_pebble_s_lighting_comes_on_when_someone_s_there(lights: Lights) -> None:

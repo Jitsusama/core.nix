@@ -215,8 +215,10 @@
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         zoom-opens = script "zoom-opens" ../../modules/zoom/opens.sh { words = "a-window"; };
         a-call-is-on = pkgs.callPackage ../../modules/calls/package.nix { };
+        agents = pkgs.callPackage ../../modules/agents/package.nix { };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
         bluetooth-links = pkgs.callPackage ../../modules/bluetooth-links/package.nix { };
+        cadence = pkgs.callPackage ../../modules/cadence/package.nix { };
         cadence-spec = pkgs.callPackage ../../modules/cadence/spec/package.nix { };
         call-transcripts = dictation;
         chrome-pack-extension = pkgs.callPackage ../../modules/chrome/pack-extension/package.nix { };
@@ -244,6 +246,7 @@
         inherit google;
         google-people = google;
         google-rows = google;
+        guide = pkgs.callPackage ../../modules/guide/package.nix { };
         hibernate-unlock = pkgs.callPackage ../../modules/hibernate/unlock/package.nix { };
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         key-counts = pkgs.callPackage ../../modules/key-counts/package.nix { };
@@ -263,6 +266,7 @@
         pi-packages = pkgs.callPackage ../../modules/pi-packages/package.nix { };
         pi-spawner = pkgs.callPackage ../../modules/pi/spawner/package.nix { };
         inherit pineapple;
+        pineapple-github = pineapple;
         pineapple-slack = pineapple;
         plymouth-waits = pkgs.callPackage ../../modules/plymouth/waits/package.nix { };
         processor-telemetry = pkgs.callPackage ../../modules/processor-telemetry/package.nix { };
@@ -272,6 +276,7 @@
         rhythm = pkgs.callPackage ../../modules/rhythm/package.nix { };
         screen-text = dictation;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
+        shaper = pkgs.callPackage ../../modules/shaper/package.nix { };
         shell-weighs = pkgs.callPackage ../../modules/quickshell/shell-weighs/package.nix { };
         shutdown-status = pkgs.callPackage ../../modules/systemd/shutdown-status/package.nix { };
         slack-people = slack;
@@ -284,7 +289,9 @@
             { };
         timekeeping = pkgs.callPackage ../../modules/quickshell/timekeeping/package.nix { };
         timers = pkgs.callPackage ../../modules/quickshell/timers/package.nix { };
+        update-to-main = pkgs.callPackage ../../modules/update-to-main/package.nix { };
         vm-first = pkgs.callPackage ../../modules/nix-daemon/vm-first/package.nix { };
+        warp = pkgs.callPackage ../../modules/warp/package.nix { };
         windows = pkgs.callPackage ../../modules/windows/package.nix { };
         without-syncfs = pkgs.callPackage ../../modules/nix-daemon/without-syncfs/package.nix { };
         xwayland-satellite = pkgs.callPackage ../../modules/niri/xwayland-satellite.nix { };

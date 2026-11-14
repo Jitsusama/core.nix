@@ -1,12 +1,16 @@
-# How messy each repository is getting, read each evening: code-health, a
+# How messy each repository is getting, read each hour: code-health, a
 # program of core's own (src/main.rs), reads every repository named in
 # `jitsusama.code-health.repos` as its ref holds it in a checkout already on
 # the machine, fetching nothing, and writes the day's figures to
 # ~/.local/state/code-health/<date>.json: long files and crowded folders
 # that don't say why, suppressions, lines repeated from elsewhere, tests
 # in quarantine and the points of docs/daemons.md daemons still break.
-# It runs before `cadence day`, which holds each figure against the days
-# before it, so a repository getting messier is named the day it does.
+# It writes hour.json beside them, each figure against the target and
+# owner a repository's `targets`, `owner` and `owners` give it, and the
+# figure the hour before, which `cadence hour` reads at ten past. A read
+# takes about half a minute, so hourly costs little. It runs before
+# `cadence day`, which holds each figure against the days before it, so a
+# repository getting messier is named the day it does.
 # jitsusama.code-health.path puts a machine's own programs ahead of core's
 # git, for a repository kept by a git of its own that stock git refuses;
 # core's coreutils come after, for such a git that is a script.
@@ -19,6 +23,26 @@
 let
   cfg = config.jitsusama.code-health;
   package = pkgs.callPackage ./package.nix { };
+  # A target or owner as its flag takes it, NAME/MEASURE=VALUE.
+  byMeasure =
+    flag: name: values:
+    lib.concatLists (
+      lib.mapAttrsToList (measure: value: [
+        flag
+        "${name}/${measure}=${toString value}"
+      ]) values
+    );
+  judged = lib.concatLists (
+    lib.mapAttrsToList (
+      name: repo:
+      byMeasure "--target" name repo.targets
+      ++ lib.optionals (repo.owner != null) [
+        "--owner"
+        "${name}=${repo.owner}"
+      ]
+      ++ byMeasure "--owner" name repo.owners
+    ) cfg.repos
+  );
   each =
     flag: value:
     lib.concatLists (
@@ -47,11 +71,29 @@ in
             default = "";
             description = "The repository's folder in a larger one; the whole one when empty.";
           };
+          targets = lib.mkOption {
+            type = lib.types.attrsOf lib.types.number;
+            default = { };
+            example = {
+              long-files = 0;
+            };
+            description = "The most each measure should be, by its name; a measure left out is unjudged.";
+          };
+          owner = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Who is told when one of the repository's measures is past its target.";
+          };
+          owners = lib.mkOption {
+            type = lib.types.attrsOf lib.types.str;
+            default = { };
+            description = "Who owns a measure, by its name, ahead of the repository's owner.";
+          };
         };
       }
     );
     default = { };
-    description = "The repositories read each evening, by the name cadence says them by.";
+    description = "The repositories read each hour, by the name cadence says them by.";
   };
 
   options.jitsusama.code-health.path = lib.mkOption {
@@ -82,6 +124,7 @@ in
           ++ each "--repo" (repo: repo.checkout)
           ++ each "--ref" (repo: repo.ref)
           ++ each "--under" (repo: repo.under)
+          ++ judged
         );
         Environment = [
           "PATH=${
@@ -98,9 +141,11 @@ in
       };
     };
     systemd.user.timers.code-health = {
-      Unit.Description = "Reads how messy each repository is getting, each evening";
+      Unit.Description = "Reads how messy each repository is getting, each hour";
       Timer = {
-        OnCalendar = "*-*-* 17:40:00";
+        # On the hour, so the hour's file is fresh when `cadence hour` reads
+        # it at ten past, and the 17:00 read is in before cadence's day.
+        OnCalendar = "hourly";
         Persistent = true;
       };
       Install.WantedBy = [ "timers.target" ];

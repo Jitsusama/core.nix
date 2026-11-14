@@ -239,8 +239,14 @@ QtObject {
         expect("so a making's rest is what no part spent",
             Program.makingSaid("kitty's acts", 60, nested),
             "kitty's acts made in 60 ms: neovim 40, the rest 15, its recent 5");
+        // Slack's drawer spent 10 to 22 ms working out its row's drawer on
+        // Joel's walk down Programs, within drawers 72 and 76 ms from his
+        // key, and said nothing of which part (2026-11-14 17:34).
+        expect("a making of a fifth of the bar says its parts",
+            Program.makingSaid("slack's drawer", 12, [{ name: "its processes", ms: 9 }]),
+            "slack's drawer made in 12 ms: its processes 9, the rest 3");
         expect("a making quick enough to feel nothing says nothing",
-            Program.makingSaid("slack's drawer", 24, [{ name: "kitty", ms: 20 }]), "");
+            Program.makingSaid("slack's drawer", 9, [{ name: "kitty", ms: 7 }]), "");
 
         // The pages a browser has open, counted from its source's lines (id,
         // window, in front, last looked at, address, title) as its Tabs row

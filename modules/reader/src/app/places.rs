@@ -25,7 +25,7 @@ impl App {
             None if file == self.file => false,
             _ => return,
         };
-        let (page, ms, lines) = match set {
+        let (page, ms, lines, title) = match set {
             Ok(set) => set,
             Err(error) => {
                 eprintln!("reader: can't set {}: {error}", file.display());
@@ -71,6 +71,7 @@ impl App {
             since: Instant::now(),
             set_ms: ms,
             opens: opens.then_some(file),
+            title,
         });
         self.ask_incoming();
     }
@@ -160,6 +161,9 @@ impl App {
         let Some(incoming) = self.incoming.take() else {
             return;
         };
+        // Its title, which a save may have changed and a file opened in
+        // this one's place always does; niri tells nobody of one unchanged.
+        self.window.set_title(incoming.title.clone());
         // A key that moved the view while this page was set, as G pressed
         // while a first open sets it again at the window's width, still
         // takes the view where it sent it once this page shows.

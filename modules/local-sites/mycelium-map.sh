@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # Writes the mycelium site's now.json from what the realm's node says now,
-# whole or not at all: each of the four answers is read to a file of its own,
-# and only when all four came back is the map shaped, written beside the
+# whole or not at all: each of the three answers is read to a file of its own,
+# and only when all three came back is the map shaped, written beside the
 # page under a temporary name and moved into place, so the page never reads
 # half a file. When the node doesn't answer, as while it restarts, the last
 # good map stays, one plain line says why, and the run still ends well: the
@@ -22,7 +22,7 @@ if [[ -n ${MYCELIUM_MAP_SOCKET:-} ]]; then
   ask+=(--socket "$MYCELIUM_MAP_SOCKET")
 fi
 
-for view in sessions "swarm --json" machines messages; do
+for view in "networks -o json" machines messages; do
   name=${view%% *}
   # shellcheck disable=SC2086 # a view's words are meant to split
   if ! "${ask[@]}" $view > "$work/$name" 2> "$work/$name.said"; then
@@ -34,8 +34,7 @@ for view in sessions "swarm --json" machines messages; do
 done
 
 jq -n \
-  --slurpfile s "$work/sessions" \
-  --slurpfile w "$work/swarm" \
+  --slurpfile n "$work/networks" \
   --slurpfile m "$work/machines" \
   --slurpfile g "$work/messages" \
   -f "$filter" > "$work/now.json"

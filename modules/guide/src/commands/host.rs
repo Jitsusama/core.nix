@@ -5,7 +5,6 @@
 use std::cell::RefCell;
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
 use std::rc::Rc;
 
 use guide::rescue::{Bundle, Keys, OpenRescueBundle};
@@ -18,16 +17,26 @@ use guide::vault::store::Directory;
 use guide::writer::carried;
 use guide::writer::{self, GatherBundles, Payload, WriteStick};
 use guide::{Fault, Journal, Journey, Machine, Place, Step};
+use terminal_kit::{Exit, Failure};
 
 use super::{own_state, passphrase, reported, writer_log};
 
-/// `guide host IMAGE`, or nothing when its options aren't ones it takes.
-pub fn host(image: &str, options: &[&str]) -> Option<ExitCode> {
-    let written = Written::parse(options)?;
+/// Options a command doesn't take, refused before anything is written.
+fn unwritten(command: &str) -> Failure {
+    Failure::new(
+        Exit::Usage,
+        format!("guide {command} doesn't take those options together"),
+    )
+    .try_this(format!("guide {command} --help"))
+}
+
+/// `guide host IMAGE`, refused when its options aren't ones it takes.
+pub fn host(image: &str, options: &[&str]) -> Result<(), Failure> {
+    let written = Written::parse(options).ok_or_else(|| unwritten("host"))?;
     let _awake = guide::awake::hold("writing a stick");
     // Rooted before anything is read from them, and held until the writer
     // is done, whichever way it ends.
-    Some(reported(
+    reported(
         hold_what_is_written(image, written.install).and_then(|held| {
             let wrote = written.open().and_then(|(signers, payload, bundle)| {
                 writer(
@@ -42,18 +51,22 @@ pub fn host(image: &str, options: &[&str]) -> Option<ExitCode> {
             drop(held);
             wrote
         }),
-    ))
+    )
 }
 
-/// `guide write-stick IMAGE FILE`, or nothing when its options aren't
-/// ones it takes.
-pub fn write_stick(image: &str, target: &str, options: &[&str]) -> Option<ExitCode> {
+/// `guide write-stick IMAGE FILE`, refused when its options aren't ones
+/// it takes.
+pub fn write_stick(image: &str, target: &str, options: &[&str]) -> Result<(), Failure> {
     // It gathers no bundles, so it has none to sign for.
-    let written = Written::parse(options).filter(|written| !written.every_machine)?;
+    let written = Written::parse(options)
+        .filter(|written| !written.every_machine)
+        .ok_or_else(|| unwritten("write-stick"))?;
     let _awake = guide::awake::hold("writing a stick");
-    Some(reported(written.open().and_then(
-        |(signers, payload, bundle)| into_file(image, target, signers, payload, bundle),
-    )))
+    reported(
+        written.open().and_then(|(signers, payload, bundle)| {
+            into_file(image, target, signers, payload, bundle)
+        }),
+    )
 }
 
 /// What a stick is written with: the db key directories its boot program

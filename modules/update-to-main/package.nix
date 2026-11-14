@@ -1,5 +1,7 @@
 # update-to-main, built from this directory, its tests run as it builds
-# against real git, gpg, ssh-keygen, tar and curl.
+# against real git, gpg, ssh-keygen, tar and curl. It takes its shape from
+# the terminal kit (../terminal-kit), so the source is cut from the folder
+# holding both.
 {
   curl,
   git,
@@ -10,18 +12,21 @@
   runtimeShell,
   rustPlatform,
 }:
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "update-to-main";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
       ./tests
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
+  sourceRoot = "${src.name}/update-to-main";
   cargoLock.lockFile = ./Cargo.lock;
   nativeCheckInputs = [
     curl

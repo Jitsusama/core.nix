@@ -20,7 +20,9 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Write as _};
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
-use std::process::ExitCode;
+use terminal_kit::{Exit, Failure};
+
+use crate::wrongly;
 
 /// Counters further apart than this, in ms, are of a machine asleep or a
 /// recorder stopped, and the seconds between them aren't the
@@ -776,8 +778,6 @@ pub fn summary(report: &Report) -> String {
     out
 }
 
-const USAGE: &str = "shaper replay [--base UP,DOWN] [--controller one-way|none] [--json] FILES...";
-
 /// Which controller a replay runs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Choice {
@@ -794,7 +794,6 @@ pub enum Choice {
 pub struct Asked {
     pub base: Option<Base>,
     pub controller: Choice,
-    pub json: bool,
     pub files: Vec<PathBuf>,
 }
 
@@ -802,7 +801,6 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
     let mut asked = Asked {
         base: None,
         controller: Choice::OneWay,
-        json: false,
         files: Vec::new(),
     };
     let mut it = args.iter();
@@ -823,7 +821,6 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
                     other => return Err(format!("--controller is one-way or none, not {other:?}")),
                 };
             }
-            "--json" => asked.json = true,
             file => asked.files.push(file.into()),
         }
     }
@@ -833,37 +830,24 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
     Ok(asked)
 }
 
-/// `shaper replay [--base UP,DOWN] [--controller one-way|none] [--json]
-/// FILES...`: replays the files through the controller chosen, the rebuilt
-/// one unless told otherwise, and prints the summary, or the report as
-/// JSON.
-pub fn command(args: &[String]) -> ExitCode {
-    let asked = match asked(args) {
-        Ok(asked) => asked,
-        Err(e) => {
-            eprintln!("{e}\nusage: {USAGE}");
-            return ExitCode::from(2);
-        }
-    };
-    let stays = match read(&asked.files) {
-        Ok(stays) => stays,
-        Err(e) => {
-            eprintln!("{e}");
-            return ExitCode::FAILURE;
-        }
-    };
+/// `shaper replay`: replays the files through the controller chosen, the
+/// rebuilt one unless told otherwise, and prints the summary, or the
+/// report as JSON when the kit is asked for it.
+pub fn command(args: &[String], json: bool) -> Result<(), Failure> {
+    let asked = asked(args).map_err(|e| wrongly("replay", e))?;
+    let stays = read(&asked.files).map_err(|e| Failure::new(Exit::Failed, e))?;
     let report = match asked.controller {
         Choice::OneWay => replay(&stays, asked.base, || oneway::Controller::new(None, None)),
         Choice::Unlimited => replay(&stays, asked.base, || Unlimited),
     };
-    let text = if asked.json {
+    let text = if json {
         serde_json::to_string(&report).expect("a report serialises") + "\n"
     } else {
         summary(&report)
     };
     // Written whole, so a reader that stops early ends it without a panic.
     let _ = std::io::stdout().write_all(text.as_bytes());
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1462,17 +1446,16 @@ mod tests {
     fn the_command_takes_a_base_and_files() {
         let args = |words: &str| words.split(' ').map(String::from).collect::<Vec<_>>();
         assert_eq!(
-            asked(&args("--base 10000,50000 --json a.jsonl b.jsonl")),
+            asked(&args("--base 10000,50000 a.jsonl b.jsonl")),
             Ok(Asked {
                 base: Some(BASE),
                 controller: Choice::OneWay,
-                json: true,
                 files: vec!["a.jsonl".into(), "b.jsonl".into()],
             })
         );
         assert_eq!(
-            asked(&args("a.jsonl")).map(|a| (a.base, a.controller, a.json)),
-            Ok((None, Choice::OneWay, false))
+            asked(&args("a.jsonl")).map(|a| (a.base, a.controller)),
+            Ok((None, Choice::OneWay))
         );
         assert_eq!(
             asked(&args("--controller none a.jsonl")).map(|a| a.controller),
@@ -1480,6 +1463,6 @@ mod tests {
         );
         assert!(asked(&args("--controller cake a.jsonl")).is_err());
         assert!(asked(&args("--base 10000 a.jsonl")).is_err());
-        assert!(asked(&args("--json")).is_err(), "no files");
+        assert!(asked(&[]).is_err(), "no files");
     }
 }

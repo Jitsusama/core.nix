@@ -2,6 +2,8 @@
 # program it runs is fixed by its store path (tools.nix), so nothing on a
 # PATH can take one's place, and `guide tools` proves each is there once
 # it's built. A Mac's build only writes sticks, so it carries nix alone.
+# It takes its shape from the terminal kit (../terminal-kit), so the
+# source is cut from the folder holding both.
 {
   dosfstools,
   lib,
@@ -17,19 +19,22 @@
   bootSplash ? null,
   util-linux,
 }:
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "guide";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./fixtures
       ./src
       ./tests
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
+  sourceRoot = "${src.name}/guide";
   cargoLock.lockFile = ./Cargo.lock;
   # The stick's tests are judged by what a person would check it with, and
   # its signatures by sbsign's for the programs systemd builds for EFI,
