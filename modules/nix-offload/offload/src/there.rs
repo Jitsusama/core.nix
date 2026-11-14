@@ -2855,7 +2855,20 @@ pub fn to_second(first: Option<f64>, second: &Second) -> bool {
 /// Whether a pid runs, as signal 0 says.
 fn runs(pid: i32) -> bool {
     // SAFETY: signal 0 only asks whether the process exists.
-    pid > 0 && unsafe { libc::kill(pid, 0) } == 0
+    pid > 0
+        && stands(
+            unsafe { libc::kill(pid, 0) },
+            &std::io::Error::last_os_error(),
+        )
+}
+
+/// Whether a process stands, as signal 0's answer `said` and the error
+/// it left say. One this caller may not signal still stands: a fenced
+/// session's Landlock refuses every signal outside it, so from 22:30 on
+/// 13 November its runs took the lender for stopped, gave up on a
+/// builder after one lost connection, and built about 45 of them here.
+fn stands(said: i32, error: &std::io::Error) -> bool {
+    said == 0 || error.raw_os_error() == Some(libc::EPERM)
 }
 
 /// The pid a file holds, when it holds one.
@@ -4642,6 +4655,22 @@ mod tests {
         });
         assert_eq!(waited(dir.path(), QUICK).as_deref(), Some("ssh-ng://far\n"));
         restarting.join().unwrap();
+    }
+
+    #[test]
+    fn a_lender_a_fence_may_not_signal_still_runs() {
+        assert!(
+            stands(-1, &std::io::Error::from_raw_os_error(libc::EPERM)),
+            "a lender the fence refused signal 0 to was taken for stopped"
+        );
+        assert!(
+            !stands(-1, &std::io::Error::from_raw_os_error(libc::ESRCH)),
+            "a pid no process holds was taken for a running lender"
+        );
+        assert!(
+            runs(i32::try_from(std::process::id()).unwrap()),
+            "this test's own process was taken for stopped"
+        );
     }
 
     #[test]
