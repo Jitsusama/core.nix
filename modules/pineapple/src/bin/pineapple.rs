@@ -35,15 +35,24 @@ fn help() -> Help {
         "lists the safe word's stops, and resumes them, for Joel alone",
     )
     .example("pineapple", "the stops standing, the same as stops")
-    .example(
-        "pineapple resume pr:example/shop#12",
-        "resumes the stop on that pull request",
-    )
     .example("pineapple resume all", "resumes every stop")
-    .command("stops", "the stops standing, with what each reaches")
-    .command(
-        "resume",
-        "resumes the stops a scope names; refused under pi",
+    .subcommand(
+        Help::new("stops", "the stops standing, with what each reaches")
+            .example("pineapple stops --json", "the same as pineapple.stops/1"),
+    )
+    .subcommand(
+        Help::new(
+            "resume",
+            "resumes the stops a scope names; refused under pi",
+        )
+        .argument(
+            "<scope>",
+            "all, a stop's id, or a reach such as repo:owner/name",
+        )
+        .example(
+            "pineapple resume pr:example/shop#12",
+            "resumes the stop on that pull request",
+        ),
     )
     .exit(Exit::Refused, "run under pi, where only Joel may resume")
     .exit(Exit::NotFound, "no stop standing is named by the scope")
