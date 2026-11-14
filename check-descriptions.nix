@@ -4723,6 +4723,12 @@
     sent after the last; a step out partway sends nothing and says so; a join's steps and a
     refusal are said in the foot, never a card; and no password is shown
   '';
+  wifi-looks-only-while-its-rows-are-shown = ''
+    the launcher's Wi-Fi asks wifid to look for networks only while its rows are shown: Wi-Fi or
+    something in it held, or a find from the root showing a row of its, the launcher open, or a
+    terminal's show walked into it; never open on another place, at home or on another's find,
+    and at once on stepping in
+  '';
   wifid-passes-clippy = ''
     clippy finds nothing in wifid, its sign-in window or their tests
   '';
