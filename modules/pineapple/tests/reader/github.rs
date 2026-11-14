@@ -5,7 +5,8 @@
 //! marks anything read, and a restart judges nothing twice. Joel's own
 //! resume said there ends only shadow stops, even let go live. A round
 //! GitHub's rate limit refuses is read again rather than skipped, and a
-//! list's later pages are read too.
+//! list's later pages are read too. A site with no notifications is read
+//! by searching for what Joel opened, its keys its own.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -262,6 +263,95 @@ fn github_a_second_page_of_notifications_is_read_too() {
         "the first page's issue is read too: {asked:?}"
     );
     drop(asked);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+/// What a site with no notifications would answer, where logins are
+/// addresses: Joel's one pull request, example/shop#12, and on it a
+/// colleague's stop, a check's, and Joel's own resume.
+fn by_address(line: &str, now: u64) -> Value {
+    if line.contains(" /search/issues?") {
+        return json!({"items": [{"number": 12, "pull_request": {},
+            "repository_url": "https://code.example.com/api/v3/repos/example/shop"}]});
+    }
+    if line.contains(" /user ") || line.contains(" /notifications?") {
+        return json!({"message": "not here"});
+    }
+    answer_with(
+        line,
+        now,
+        &[
+            comment(
+                1,
+                "colleague@example.com",
+                &format!("@{LOGIN} pineapple override"),
+                now,
+                90,
+            ),
+            comment(
+                2,
+                "checks@example.iam.gserviceaccount.com",
+                "pineapple override",
+                now,
+                80,
+            ),
+            comment(3, "joel@example.com", "pineapple resume", now, 70),
+        ],
+    )
+}
+
+#[test]
+fn github_a_site_with_no_notifications_is_read_by_what_joel_opened() {
+    let (origin, asked) = answering(by_address);
+    let home = home();
+    let site = [
+        "--site",
+        "code",
+        "--authored-by",
+        "joel@example.com",
+        "--login",
+        LOGIN,
+    ];
+    let mut reading = github_reader(&home, &origin, &site);
+    until_decided(&home, 4);
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let said = decisions(&home);
+    assert_eq!(
+        each(&said, "verdict"),
+        ["stop", "waved:bot", "resume", "stop-asked"],
+        "a check's account is a bot's, and Joel is known by his address"
+    );
+    assert_eq!(
+        said[0]["thread"], "code:example/shop#12",
+        "its site names it"
+    );
+    assert_eq!(said[2]["by_joel"], true, "his own resume");
+    let asked = asked.lock().expect("what was asked");
+    assert!(
+        asked
+            .iter()
+            .all(|line| !line.contains(" /user ") && !line.contains("/notifications")),
+        "it asks neither who Joel is nor what notified him: {asked:?}"
+    );
+    assert!(
+        asked
+            .iter()
+            .any(|line| line.contains("author%3Ajoel%40example.com")),
+        "it searches by his address: {asked:?}"
+    );
+    drop(asked);
+    let read = Command::new(env!("CARGO_BIN_EXE_pineapple-github"))
+        .arg("--json")
+        .env("XDG_STATE_HOME", home.join("state"))
+        .output()
+        .expect("it answers");
+    let read: Value = serde_json::from_slice(&read.stdout).expect("its answer is JSON");
+    assert!(
+        read["sites"]["code"].as_u64().is_some(),
+        "it says when the site was read: {read}"
+    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
