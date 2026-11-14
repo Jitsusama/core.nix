@@ -25,9 +25,13 @@
 //! (src/token.rs). It's run only as the launcher steps into Spotify,
 //! never on a timer, and only ever reads, but for `play`.
 //!
-//! It exits 0 once it's said what it was asked, 2 while Spotify isn't
-//! signed in, 3 when `play` has nowhere to play, 4 while Spotify can't be
-//! reached, and 1 otherwise, saying why on standard error.
+//! It takes the shape every command of ours does (docs/commands.md),
+//! through the terminal kit. It exits 0 once it's said what it was asked,
+//! 78 while Spotify isn't signed in, 66 when `play` has nowhere to play,
+//! 69 while Spotify can't be reached, 75 while Spotify is busy, and 1
+//! otherwise, saying why on standard error. The launcher reads those
+//! (modules/spotify/Spotify.js). Its lines are the same into a terminal
+//! as into a pipe, the launcher's; `--json` says them as fields instead.
 //! `SPOTIFY_RECENT_API`, `SPOTIFY_RECENT_ACCOUNTS` and
 //! `SPOTIFY_RECENT_TOKEN` stand in for Spotify's addresses and the
 //! sign-in's file, for the tests.
@@ -39,43 +43,110 @@ mod token;
 
 use library::Library;
 use recent::Row;
+use serde_json::json;
 use spotify::Spotify;
 use std::io::Write;
 use std::process::ExitCode;
+use terminal_kit::{Context, Exit, Failure, Help};
 
-/// What it says when asked something it doesn't know: how to ask it.
-const USAGE: &str =
-    "usage: spotify-recent [playlists | albums | artists | shows | liked | play URI]";
+fn help() -> Help {
+    Help::new(
+        "spotify-recent",
+        "what Spotify played lately, and plays one",
+    )
+    .command("playlists", "every playlist of Joel's")
+    .command("albums", "every album he saved")
+    .command("artists", "every artist he follows")
+    .command("shows", "every show he saved")
+    .command("liked", "how many songs he likes")
+    .command("play URI", "plays a playlist, album, show or track")
+    .example("spotify-recent", "what played lately, a line a context")
+    .example("spotify-recent play spotify:album:ID", "plays that album")
+    .exit(Exit::Failed, "Spotify refused, or said what it doesn't")
+    .exit(Exit::NotFound, "nothing is open to play on")
+    .exit(Exit::Unavailable, "Spotify can't be reached")
+    .exit(Exit::TryAgain, "Spotify is busy")
+    .exit(Exit::Config, "Spotify isn't signed in")
+}
 
 fn main() -> ExitCode {
-    let asked: Vec<String> = std::env::args().skip(1).collect();
-    let mut spotify = Spotify::from_environment();
-    let said = match asked.iter().map(String::as_str).collect::<Vec<_>>()[..] {
-        [] => spotify.recent().map(|rows| lines(&rows)),
-        ["liked"] => spotify.liked().map(|count| format!("{count}\n")),
-        ["play", uri] => spotify.play(uri).map(|()| String::new()),
-        [list] if let Some(library) = Library::named(list) => {
-            spotify.library(library).map(|rows| lines(&rows))
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let asked: Vec<&str> = context.args.iter().map(String::as_str).collect();
+        let mut spotify = Spotify::from_environment();
+        let refused = |refused: spotify::Refused| Failure::new(refused.exit(), refused.said());
+        match asked[..] {
+            [] => {
+                let rows = spotify.recent().map_err(refused)?;
+                rows_said(context, &rows);
+            }
+            ["liked"] => {
+                let count = spotify.liked().map_err(refused)?;
+                if context.format().is_json() {
+                    answered(
+                        context,
+                        &json!({ "schema": "spotify-recent.liked/1", "count": count }),
+                    );
+                } else {
+                    written(&format!("{count}\n"));
+                }
+            }
+            ["play", uri] => {
+                spotify.play(uri).map_err(refused)?;
+                if context.format().is_json() {
+                    answered(
+                        context,
+                        &json!({ "schema": "spotify-recent.played/1", "uri": uri }),
+                    );
+                }
+            }
+            [list] if let Some(library) = Library::named(list) => {
+                let rows = spotify.library(library).map_err(refused)?;
+                rows_said(context, &rows);
+            }
+            _ => {
+                return Err(Failure::new(
+                    Exit::Usage,
+                    format!("spotify-recent doesn't know \"{}\"", asked.join(" ")),
+                )
+                .try_this("spotify-recent --help"));
+            }
         }
-        _ => {
-            eprintln!("{USAGE}");
-            return ExitCode::from(64);
-        }
-    };
-    match said {
-        Ok(text) => {
-            // The launcher reads it all once it ends, so a reader gone
-            // early only means nobody wanted it.
-            let _ = std::io::stdout().lock().write_all(text.as_bytes());
-            ExitCode::SUCCESS
-        }
-        Err(refused) => {
-            eprintln!("{}", refused.said());
-            ExitCode::from(refused.status())
-        }
+        Ok(())
+    })
+}
+
+/// Rows as lines, apart by tabs as the launcher reads them, or as fields.
+fn rows_said(context: &Context, rows: &[Row]) {
+    if context.format().is_json() {
+        let rows: Vec<_> = rows
+            .iter()
+            .map(|row| {
+                json!({
+                    "uri": row.uri,
+                    "kind": row.kind,
+                    "name": row.name,
+                    "detail": row.detail,
+                    "at": row.at,
+                    "size": row.size,
+                })
+            })
+            .collect();
+        answered(
+            context,
+            &json!({ "schema": "spotify-recent.rows/1", "rows": rows }),
+        );
+    } else {
+        written(&rows.iter().map(|row| row.line() + "\n").collect::<String>());
     }
 }
 
-fn lines(rows: &[Row]) -> String {
-    rows.iter().map(|row| row.line() + "\n").collect()
+/// Text written whole. The launcher reads it all once it ends, so a reader
+/// gone early only means nobody wanted it.
+fn written(text: &str) {
+    let _ = std::io::stdout().lock().write_all(text.as_bytes());
+}
+
+/// The answer as JSON, its reader gone early let go as `written` lets it.
+fn answered(context: &Context, answer: &serde_json::Value) {
+    let _ = context.answer(answer);
 }

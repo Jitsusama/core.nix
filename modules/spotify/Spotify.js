@@ -6,9 +6,11 @@
 .pragma library
 .import "Ago.js" as Ago
 
-// spotify-recent's exit statuses (src/spotify.rs's Refused), by how
-// Spotify stands for each.
-const STANDS = { 0: "ok", 2: "signedOut", 3: "nowhere", 4: "unreachable" };
+// spotify-recent's exit statuses (src/spotify.rs's Refused), from the
+// table every command of ours keeps (docs/commands.md), by how Spotify
+// stands for each: 78 a sign-in to make, 66 nothing to play on, and 69
+// out of reach or 75 too busy, both mended by waiting.
+const STANDS = { 0: "ok", 78: "signedOut", 66: "nowhere", 69: "unreachable", 75: "unreachable" };
 
 // The fields of a line: its URI, kind, name, who made it, when, and how
 // many it holds.

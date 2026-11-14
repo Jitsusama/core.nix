@@ -8,6 +8,7 @@ use jiff::Timestamp;
 use serde_json::Value;
 use std::path::PathBuf;
 use std::time::Duration;
+use terminal_kit::Exit;
 use ureq::Agent;
 
 /// ncspot's Spotify app, which spotify-player signs in through: a PKCE
@@ -22,9 +23,11 @@ pub enum Refused {
     /// There's no sign-in, or Spotify no longer takes it: spotify-player
     /// has to sign in again.
     SignedOut,
-    /// Spotify couldn't be reached, or was too busy to answer; asking
+    /// Spotify couldn't be reached, or failed as it answered; asking
     /// again later may work.
     Unreachable(String),
+    /// Spotify asked to be asked less often.
+    Busy,
     /// Nothing is signed in to Spotify Connect to play on.
     NoDevice,
     /// Anything else, said as it is.
@@ -32,14 +35,17 @@ pub enum Refused {
 }
 
 impl Refused {
-    /// The exit status it's said by: 2 signed out, 3 nowhere to play, 4
-    /// out of reach, 1 anything else.
-    pub fn status(&self) -> u8 {
+    /// The exit it's said by, from the table every command of ours keeps
+    /// (docs/commands.md): a sign-in to make again is configuration (78),
+    /// no device to play on is the thing named not there (66), Spotify
+    /// out of reach is unavailable (69) and busy is to try again (75).
+    pub fn exit(&self) -> Exit {
         match self {
-            Refused::SignedOut => 2,
-            Refused::NoDevice => 3,
-            Refused::Unreachable(_) => 4,
-            Refused::Failed(_) => 1,
+            Refused::SignedOut => Exit::Config,
+            Refused::NoDevice => Exit::NotFound,
+            Refused::Unreachable(_) => Exit::Unavailable,
+            Refused::Busy => Exit::TryAgain,
+            Refused::Failed(_) => Exit::Failed,
         }
     }
 
@@ -51,6 +57,7 @@ impl Refused {
                 "Spotify isn't signed in; run `spotify_player authenticate`.".to_owned()
             }
             Refused::NoDevice => "Nothing is open to play Spotify on.".to_owned(),
+            Refused::Busy => "Spotify is busy.".to_owned(),
             Refused::Unreachable(why) | Refused::Failed(why) => why.clone(),
         }
     }
@@ -310,7 +317,7 @@ fn answered(
     let status = answer.status().as_u16();
     match status {
         401 => return Err(Refused::SignedOut),
-        429 => return Err(Refused::Unreachable("Spotify is busy.".to_owned())),
+        429 => return Err(Refused::Busy),
         500.. => return Err(Refused::Unreachable(format!("Spotify answered {status}."))),
         _ => {}
     }

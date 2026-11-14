@@ -4,7 +4,7 @@
 //! with the new one, says what played lately a line a context, walks a
 //! list page after page, plays where Spotify plays or on the first device
 //! open, and says by its exit status when it's signed out, has nowhere to
-//! play or can't reach Spotify.
+//! play, can't reach Spotify or finds it busy.
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -330,7 +330,11 @@ fn with_no_device_open_it_says_so() {
         &signed_in("nowhere"),
         &["play", "spotify:album:a1"],
     );
-    assert_eq!(out.status.code(), Some(3));
+    assert_eq!(
+        out.status.code(),
+        Some(66),
+        "nowhere to play isn't 66: {out:?}"
+    );
 }
 
 #[test]
@@ -338,7 +342,11 @@ fn a_refresh_spotify_refuses_is_signed_out_and_keeps_the_file() {
     let stand_in = StandIn::new(|_| (400, r#"{"error":"invalid_grant"}"#.to_owned()));
     let token = signed_in("refused");
     let out = run(&stand_in, &token, &[]);
-    assert_eq!(out.status.code(), Some(2));
+    assert_eq!(
+        out.status.code(),
+        Some(78),
+        "a refused refresh isn't 78: {out:?}"
+    );
     assert_eq!(
         std::fs::read_to_string(&token).unwrap(),
         include_str!("../fixtures/token.json")
@@ -350,7 +358,8 @@ fn a_refresh_spotify_refuses_is_signed_out_and_keeps_the_file() {
 fn no_sign_in_is_signed_out_without_asking() {
     let stand_in = StandIn::new(spotify);
     let missing = std::env::temp_dir().join("spotify-recent-nobody/token.json");
-    assert_eq!(run(&stand_in, &missing, &[]).status.code(), Some(2));
+    let out = run(&stand_in, &missing, &[]);
+    assert_eq!(out.status.code(), Some(78), "no sign-in isn't 78: {out:?}");
     assert!(stand_in.heard().is_empty());
 }
 
@@ -367,5 +376,21 @@ fn spotify_out_of_reach_says_so() {
         .env("SPOTIFY_RECENT_TOKEN", signed_in("unreachable"))
         .output()
         .unwrap();
-    assert_eq!(out.status.code(), Some(4));
+    assert_eq!(
+        out.status.code(),
+        Some(69),
+        "out of reach isn't 69: {out:?}"
+    );
+}
+
+#[test]
+fn spotify_busy_says_to_try_again() {
+    let stand_in = StandIn::new(|line| match line.split(' ').nth(1) {
+        Some(path) if path.starts_with("/v1/") => (429, String::new()),
+        _ => spotify(line),
+    });
+    let out = run(&stand_in, &signed_in("busy"), &[]);
+    assert_eq!(out.status.code(), Some(75), "busy isn't 75: {out:?}");
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(said.contains("Spotify is busy."), "busy isn't said: {said}");
 }
