@@ -27,3 +27,13 @@ says "${manager}/app.slice/kitty-1-0.scope" "--user -u run-u1 true" --user -u ru
 says "${manager}/session.slice/shell.service" "--user true" --user true
 says "${manager}/jobs.slice/jobs.service" "--user --slice=a.slice true" --user --slice=a.slice true
 says "${manager}/jobs.slice/jobs.service" "-q true" -q true
+# A slice named as a property is named too: systemd keeps the last Slice=,
+# so an added --slice-inherit would put the unit back in its caller's.
+for named in "-p Slice=jobs.slice" "-pSlice=jobs.slice" "--property=Slice=jobs.slice" \
+  "--property Slice=jobs.slice"; do
+  # shellcheck disable=SC2086 # split on purpose, into the call's own words.
+  says "${manager}/agents.slice/kitty-1-3.scope" "--user ${named} true" --user ${named} true
+done
+# Another property is no slice.
+says "${manager}/agents.slice/kitty-1-3.scope" "--slice-inherit --user -p Nice=5 true" \
+  --user -p Nice=5 true
