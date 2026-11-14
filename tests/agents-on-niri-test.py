@@ -1308,6 +1308,10 @@ def test_a_shut_launcher_makes_no_agents_rows_as_a_session_comes_and_lands(shell
     what his openings wait behind (2026-11-10).
     """
     shell.launcher_closed()
+    # The test before closed For You by :q, which makes six of Agents' rows of its own as it
+    # goes (To Reopen's row and its two verbs, twice). Under load that work can trail the
+    # moment the launcher says it's shut, so the count starts once the shell is at rest.
+    made_settled(shell)
     before = made_by_agents(shell)
     landing = {"at": datetime.now(UTC).isoformat(), "ref": "core.nix#2141", "what": "Arrived"}
     arrived_shut(
