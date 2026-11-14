@@ -78,6 +78,7 @@ const DOMAIN: Domain = Domain {
         "arrangement",
         "kept-places",
         "want",
+        "talks",
     ],
     sole: &[],
     named_only: &["landed-drawer"],
