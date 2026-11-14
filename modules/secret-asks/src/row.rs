@@ -3,6 +3,7 @@
 //! the digest of all of it, so a yes is for exactly what was read.
 
 use std::fmt::Write;
+use std::path::Path;
 
 use ready_rows::time::{self, Form};
 use serde_json::{Value, json};
@@ -115,6 +116,15 @@ fn homed(path: &str, home: &str) -> String {
     }
 }
 
+/// The tree's name as Joel calls it, its folder's last part, `core.nix`
+/// for `~/src/core.nix`.
+fn tree_name(path: &str) -> String {
+    Path::new(path).file_name().map_or_else(
+        || path.to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    )
+}
+
 /// The fact saying what came of an answered ask, or none while it waits.
 fn outcome(held: &Held, words: &Words) -> Option<Value> {
     let name = words.fill("fact:outcome", &[]);
@@ -167,6 +177,12 @@ pub fn row(held: &Held, home: &str, words: &Words) -> Value {
             "identifies": true,
         }),
         json!({"name": words.fill("fact:in", &[]), "said": place, "identifies": true}),
+        // A yes is for the command in its tree, so the tree's own code
+        // runs with the secret too (ISXEG8, 14 November), and he's told.
+        json!({
+            "name": words.fill("fact:trusts", &[]),
+            "said": words.fill("trusts", &[("tree", &tree_name(&ask.tree))]),
+        }),
     ];
     let changes = match held.tree.uncommitted {
         Some(0) => None,
@@ -269,7 +285,31 @@ mod tests {
             ("given", "{name}, for {minutes} min"),
             ("fact:outcome", "Outcome"),
             ("ran", "ran, exit {exit}"),
+            ("fact:trusts", "Also Runs"),
+            (
+                "trusts",
+                "{tree}'s own code, so its hooks and scripts get the secret too",
+            ),
         ])
+    }
+
+    #[test]
+    fn an_ask_says_its_trees_own_code_gets_the_secret_too() {
+        let row = row(&held(State::Waiting, Some(0)), "/home/joel", &words());
+        let facts = row["drawer"]["facts"].as_array().expect("facts");
+        let trusts = facts
+            .iter()
+            .position(|fact| fact["name"] == "Also Runs")
+            .expect("no fact says the tree's code runs too");
+        assert_eq!(
+            facts[trusts]["said"], "tree's own code, so its hooks and scripts get the secret too",
+            "the fact didn't name the tree"
+        );
+        assert_eq!(
+            facts[trusts - 1]["name"],
+            "In",
+            "it doesn't follow the tree's fact"
+        );
     }
 
     #[test]

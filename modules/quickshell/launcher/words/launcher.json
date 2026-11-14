@@ -65,6 +65,7 @@
         "from": "{session} · {quest}",
         "at": "{path} at {commit}",
         "notGit": "{path}, not a git folder",
+        "trusts": "{tree}'s own code, so its hooks and scripts get the secret too",
         "uncommitted": "{count} not committed",
         "unknown": "couldn't tell",
         "given": "{name}, for {minutes} min",

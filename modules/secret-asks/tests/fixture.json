@@ -47,6 +47,10 @@
               "said": "~/src/package-index at 4f2a91c03b1d"
             },
             {
+              "name": "Also Runs",
+              "said": "package-index's own code, so its hooks and scripts get the secret too"
+            },
+            {
               "hue": "warning",
               "name": "Changes",
               "said": "2 not committed"
@@ -101,6 +105,10 @@
               "identifies": true,
               "name": "In",
               "said": "~/src/package-index at 4f2a91c03b1d"
+            },
+            {
+              "name": "Also Runs",
+              "said": "package-index's own code, so its hooks and scripts get the secret too"
             },
             {
               "name": "Given As",
