@@ -51,19 +51,40 @@ fn help() -> Help {
     .example("collector at 09:01:57 --around 5s", "every span open then")
     .example("collector trace 4bf92f35", "one trace's spans, as a tree")
     .example("collector at now --json", "the spans open now, as JSON")
-    .command("at TIME", "the spans open at a moment, by when each began")
-    .command("trace ID", "one trace's spans, each below its parent")
-    .command("serve", "keeps what's sent, as its unit runs it")
-    .option(
-        "--around LENGTH",
-        "at: that much either side, as 500ms or 5s",
+    .subcommand(
+        reads("at", "the spans open at a moment, by when each began")
+            .example("collector at 09:01:57", "every span open then")
+            .example("collector at now --around 5s", "five seconds either side")
+            .argument("<time>", "a moment, as 09:01:57 or now")
+            .option("--around LENGTH", "that much either side, as 500ms or 5s"),
+    )
+    .subcommand(
+        reads("trace", "one trace's spans, each below its parent")
+            .example("collector trace 4bf92f35", "that trace, as a tree")
+            .argument("<id>", "the trace's id, or its start")
+            .exit(Exit::NotFound, "no such trace is kept"),
+    )
+    .subcommand(
+        Help::new("serve", "keeps what's sent, as its unit runs it")
+            .example("collector serve --socket S", "keeps what S is sent")
+            .option("--store FOLDER", "where the spans are kept")
+            .option("--socket PATH", "where spans are sent")
+            .option("--pressure ROOT", "where /proc and /sys are")
+            .exit(Exit::Failed, "the store couldn't be kept")
+            .exit(Exit::Config, "neither XDG_STATE_HOME nor HOME is set"),
     )
     .option("--store FOLDER", "where the spans are kept")
-    .option("--socket PATH", "serve: where spans are sent")
-    .option("--pressure ROOT", "serve: where /proc and /sys are")
     .exit(Exit::Failed, "the store couldn't be read or kept")
     .exit(Exit::NotFound, "no such trace is kept")
     .exit(Exit::Config, "neither XDG_STATE_HOME nor HOME is set")
+}
+
+/// A subcommand that reads the store.
+fn reads(name: &str, about: &str) -> Help {
+    Help::new(name, about)
+        .option("--store FOLDER", "where the spans are kept")
+        .exit(Exit::Failed, "the store couldn't be read")
+        .exit(Exit::Config, "neither XDG_STATE_HOME nor HOME is set")
 }
 
 fn main() -> ExitCode {
