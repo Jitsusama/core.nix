@@ -9,7 +9,10 @@
 //! lone minute just before the gap gives way to the busy one before it.
 //! That holds only for the minutes rhythm watched: those seeded from the
 //! logs are a command or a message now and then, each typed, so a seeded
-//! night stops at its last.
+//! night stops at its last. For the same reason a lone watched minute,
+//! with fewer than three seen in the half hour either side, ends no gap:
+//! it's the mouse or a key brushed in the night, and Joel's sleep runs on
+//! through it.
 //!
 //! What's usual is the middle of the last four weeks' stops, each week back
 //! counting half as much as the one after it, so a change of habit shows
@@ -65,8 +68,12 @@ pub struct Night {
 /// the machine, sorted, read by `local`; those before `watched` were
 /// seeded from the logs.
 pub fn nights(seen: &[i64], watched: i64, local: impl Fn(i64) -> Option<Local>) -> Vec<Night> {
+    let awake: Vec<i64> = (0..seen.len())
+        .filter(|&index| seen[index] < watched || !lone(seen, index))
+        .map(|index| seen[index])
+        .collect();
     let mut found: Vec<(Night, i64)> = Vec::new();
-    for (index, pair) in seen.windows(2).enumerate() {
+    for pair in awake.windows(2) {
         let gap = pair[1] - pair[0];
         if gap < SLEEP {
             continue;
@@ -74,7 +81,7 @@ pub fn nights(seen: &[i64], watched: i64, local: impl Fn(i64) -> Option<Local>) 
         let stop = if pair[0] < watched {
             Some(pair[0])
         } else {
-            busy_before(seen, index)
+            busy_before(seen, seen.partition_point(|seen| *seen < pair[0]))
         };
         let Some(stop) = stop else {
             continue;
@@ -97,6 +104,15 @@ pub fn nights(seen: &[i64], watched: i64, local: impl Fn(i64) -> Option<Local>) 
         }
     }
     found.into_iter().map(|(night, _)| night).collect()
+}
+
+/// Whether `seen[index]` stands alone: fewer than `BUSY` minutes seen in
+/// the `BUSY_WITHIN` either side of it, itself counted.
+fn lone(seen: &[i64], index: usize) -> bool {
+    let minute = seen[index];
+    let from = seen.partition_point(|seen| *seen < minute - BUSY_WITHIN);
+    let to = seen.partition_point(|seen| *seen <= minute + BUSY_WITHIN);
+    to - from < BUSY
 }
 
 /// The last busy minute at or before `seen[index]`, within `STRAY` of it.
