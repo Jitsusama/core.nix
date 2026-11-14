@@ -155,22 +155,60 @@ pub fn moved(said: &str) -> Vec<String> {
 }
 
 /// A test as `needs` names it: alone, or, when `list` (main's quarantine
-/// list) holds it, saying it still runs but its failure blocks nothing.
+/// list) holds it, saying it still runs but its failure blocks nothing,
+/// with each owner's subtests where its entries name them.
 pub fn named(test: &str, list: &serde_json::Value) -> String {
-    let held = list.as_array().and_then(|entries| {
-        entries
-            .iter()
-            .find(|entry| entry["test"].as_str() == Some(test))
-    });
-    let Some(held) = held else {
-        return test.to_owned();
+    let held: Vec<&serde_json::Value> = list
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|entry| entry["test"].as_str() == Some(test))
+        .collect();
+    let why = |entry: &serde_json::Value| {
+        let reason = entry["reason"].as_str().unwrap_or("no reason given");
+        let owner = entry["owner_pr"]
+            .as_u64()
+            .map_or_else(String::new, |pr| format!("{pr} owns it"));
+        (reason.to_owned(), owner)
     };
-    let reason = held["reason"].as_str().unwrap_or("no reason given");
-    let owner = held["owner_pr"]
-        .as_u64()
-        .map_or_else(String::new, |pr| format!("; #{pr} owns it"));
+    let subtests = |entry: &serde_json::Value| -> Vec<String> {
+        entry["subtests"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|subtest| subtest.as_str().map(str::to_owned))
+            .collect()
+    };
+    if held.is_empty() {
+        return test.to_owned();
+    }
+    if let Some(whole) = held.iter().find(|entry| subtests(entry).is_empty()) {
+        let (reason, owner) = why(whole);
+        let owner = if owner.is_empty() {
+            owner
+        } else {
+            format!("; #{owner}")
+        };
+        return format!(
+            "{test}  (quarantined on main: {reason}{owner}; it runs, but its failure blocks \
+             nothing)"
+        );
+    }
+    let each: Vec<String> = held
+        .iter()
+        .map(|entry| {
+            let (reason, owner) = why(entry);
+            let owner = if owner.is_empty() {
+                owner
+            } else {
+                format!(", #{owner}")
+            };
+            format!("{}, {reason}{owner}", subtests(entry).join(", "))
+        })
+        .collect();
     format!(
-        "{test}  (quarantined on main: {reason}{owner}; it runs, but its failure blocks nothing)"
+        "{test}  (quarantined on main: {}; it runs, but a failure in those alone blocks nothing)",
+        each.join("; ")
     )
 }
 
@@ -316,6 +354,20 @@ mod tests {
         );
         assert_eq!(named("vm-boot-b", &list), "vm-boot-b");
         assert_eq!(named("vm-boot-a", &serde_json::json!(null)), "vm-boot-a");
+    }
+
+    #[test]
+    fn a_test_two_owners_hold_names_each_with_its_subtests() {
+        let list = serde_json::json!([
+            { "test": "vm-boot-a", "reason": "r1", "owner_pr": 7, "subtests": ["test_p"] },
+            { "test": "vm-boot-a", "reason": "r2", "owner_pr": 8, "subtests": ["test_q"] },
+        ]);
+        assert_eq!(
+            named("vm-boot-a", &list),
+            "vm-boot-a  (quarantined on main: test_p, r1, #7 owns it; test_q, r2, #8 owns it; \
+             it runs, but a failure in those alone blocks nothing)",
+            "the second owner's entry wasn't named"
+        );
     }
 
     #[test]

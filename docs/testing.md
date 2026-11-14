@@ -217,7 +217,8 @@ each shared file is one, the run at the head is that list's own check
 (`every-check-says-what-it-proves` for `check-descriptions.nix`, the check
 a `tests/rules/<check>-waiting.nix` is named for) with
 `nix-offload there . checks.x86_64-linux.<check>`, and the quarantine list
-needs only to read as a list of tests, each once. Nor is there ever a third
+needs only to read as a list of tests, each held whole once or each of its
+subtests once. Nor is there ever a third
 run: once the same change passed whole at two commits, a clean rebase onto
 any newer main merges with none, whatever main moved, and the net tests it
 after, unless a file either side moved names a path the other renamed or
@@ -291,11 +292,16 @@ test listed while a round runs is searched for and reverted no more.
 The net lists a test by the subtests that failed, under `subtests`, and an
 entry naming them excuses only a run whose failed subtests are all among
 them: a failure in another of its subtests is searched for and reverted
-like any other, and a new flaky one is added to the entry. An entry naming
-none excuses the whole test. `run-subtests --there`,
-`nix-offload there --changed` and `changed-checks` judge an entry the same
+like any other. An entry naming none excuses the whole test. A test has an
+entry for each listing, each with its own owner, reason and commit: a new
+break in a listed test goes in an entry of its own, owned by the merge
+that broke it, so each owner is told of and takes off only its own
+subtests, leaving the others'. A test's entries are read together, a whole
+one excusing everything. `run-subtests --there`,
+`nix-offload there --changed` and `changed-checks` judge them the same
 way, from the failed tests their build's log names, so a failure whose log
-names none still blocks under an entry naming subtests.
+names none still blocks under entries naming subtests, and each says the
+owner of every subtest a failure it excuses was in.
 A run the net stops, past two hours on a builder or silent there for
 thirty minutes, is a stall, not a failure (the wait for a builder counts
 for neither): one stalling twice at a commit is a finding, and no

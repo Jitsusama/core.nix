@@ -427,6 +427,34 @@ fn a_list_says_why_each_test_it_holds_blocks_nothing() {
 }
 
 #[test]
+fn a_tests_entries_are_held_as_one_naming_each_owner() {
+    let listed = r#"[{"test": "vm-a", "reason": "r1", "owner_pr": 1, "subtests": ["test_p"]},
+        {"test": "vm-b", "reason": "r"},
+        {"test": "vm-a", "reason": "r2", "owner_pr": 2, "subtests": ["test_q", "test_r"]}]"#;
+    let read = held(listed).expect("it reads");
+    assert_eq!(
+        read[0],
+        Held {
+            test: "vm-a".to_owned(),
+            why: "main quarantines test_p (r1; #1 owns it) and test_q, test_r (r2; #2 owns it)"
+                .to_owned(),
+            subtests: named(&["test_p", "test_q", "test_r"]),
+        },
+        "vm-a's second owner's entry wasn't held with its first"
+    );
+    assert_eq!(read.len(), 2, "vm-a was held twice");
+    let whole =
+        held(r#"[{"test": "vm-a", "subtests": ["test_p"]}, {"test": "vm-a", "reason": "r"}]"#)
+            .expect("it reads");
+    assert_eq!(
+        whole[0].subtests,
+        BTreeSet::new(),
+        "an entry holding the whole test didn't hold it whole"
+    );
+    assert_eq!(whole[0].why, "main quarantines it (r)");
+}
+
+#[test]
 fn a_tree_without_main_holds_nothing() {
     let tree = tempfile::tempdir().expect("a folder for the tree");
     assert_eq!(held_on_main(tree.path()), []);

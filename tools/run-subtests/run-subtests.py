@@ -26,6 +26,8 @@ A check the net holds in quarantine on origin's main
 (tools/merge-net/quarantine.json) still runs, but its failure is said and
 blocks nothing: the run exits 0. An entry naming subtests excuses only a run
 built elsewhere whose every failed subtest it names, as the net judges one.
+A test may have several entries, each owned by the PR that broke what it
+lists, and they are read together, each failure said with its own owner.
 """
 
 import argparse
@@ -402,8 +404,8 @@ def say_pictures(out: Path, check: str) -> None:
     print(f"no pictures: the subtests run took none{gallery}", file=sys.stderr)
 
 
-def quarantined(flake: str, check: str) -> dict[str, object] | None:
-    """Give origin main's quarantine entry for the check, or None.
+def quarantined(flake: str, check: str) -> list[dict[str, object]]:
+    """Give origin main's quarantine entries for the check, none when it holds none.
 
     A gallery, `vm-a.gallery`, is held with its test. A repository without
     the list, or without git, quarantines nothing, and a list that doesn't
@@ -419,30 +421,41 @@ def quarantined(flake: str, check: str) -> dict[str, object] | None:
             text=True,
         )
     except FileNotFoundError:
-        return None
+        return []
     if shown.returncode != 0:
-        return None
+        return []
     try:
         entries: object = json.loads(shown.stdout)
     except json.JSONDecodeError as error:
         print(f"run-subtests: {QUARANTINE} on main doesn't read: {error}", file=sys.stderr)
-        return None
+        return []
     test = check.split(".", maxsplit=1)[0]
-    for entry in entries if isinstance(entries, list) else []:
-        if isinstance(entry, dict) and entry.get("test") == test:
-            return cast("dict[str, object]", entry)
-    return None
+    return [
+        cast("dict[str, object]", entry)
+        for entry in (entries if isinstance(entries, list) else [])
+        if isinstance(entry, dict) and entry.get("test") == test
+    ]
 
 
-def excused(held: dict[str, object], failed: frozenset[str]) -> bool:
-    """Say whether a quarantine entry excuses a run in which those tests failed.
+def excused(held: list[dict[str, object]], failed: frozenset[str]) -> bool:
+    """Say whether a test's quarantine entries excuse a run in which those tests failed.
 
-    A whole entry excuses any failure. One naming subtests excuses a run
-    only when it names every test that failed, and never a run that names
-    none, such as one that timed out or ran here, as merge-net judges it.
+    A whole entry excuses any failure. Entries naming subtests excuse a run
+    only when they name every test that failed between them, and never a
+    run that names none, such as one that timed out or ran here, as
+    merge-net judges it.
     """
-    listed = listed_subtests(held)
-    return listed is None or (bool(failed) and failed <= listed)
+    if any(listed_subtests(entry) is None for entry in held):
+        return True
+    return bool(failed) and not unlisted(held, failed)
+
+
+def unlisted(held: list[dict[str, object]], failed: frozenset[str]) -> frozenset[str]:
+    """Give the tests that failed which no entry names."""
+    left = failed
+    for entry in held:
+        left -= listed_subtests(entry) or frozenset()
+    return left
 
 
 def listed_subtests(held: dict[str, object]) -> frozenset[str] | None:
@@ -451,6 +464,29 @@ def listed_subtests(held: dict[str, object]) -> frozenset[str] | None:
     if not isinstance(listed, list):
         return None
     return frozenset(name for name in cast("list[object]", listed) if isinstance(name, str))
+
+
+def said(held: list[dict[str, object]], failed: frozenset[str]) -> str:
+    """Say why a failure in those tests blocks nothing, with each one's owner.
+
+    A whole entry is said alone; otherwise each entry holding a test that
+    failed is said with those tests, so each owner reads what is theirs.
+    """
+
+    def why(entry: dict[str, object]) -> str:
+        reason = entry.get("reason") or "no reason given"
+        owner = f"; #{entry['owner_pr']} owns it" if entry.get("owner_pr") else ""
+        return f"({reason}{owner})"
+
+    for entry in held:
+        if listed_subtests(entry) is None:
+            return f"main quarantines it {why(entry)}"
+    each = [
+        f"{', '.join(sorted(met))} {why(entry)}"
+        for entry in held
+        if (met := failed & (listed_subtests(entry) or frozenset()))
+    ]
+    return f"main quarantines {' and '.join(each)}"
 
 
 def blocking(options: Options, status: int, failed: frozenset[str]) -> int:
@@ -462,21 +498,18 @@ def blocking(options: Options, status: int, failed: frozenset[str]) -> int:
     if status not in FAILED or options.driver is not None:
         return status
     held = quarantined(options.flake, options.check)
-    if held is None:
+    if not held:
         return status
     if not excused(held, failed):
-        unlisted = ", ".join(sorted(failed - (listed_subtests(held) or frozenset())))
+        named = ", ".join(sorted(unlisted(held, failed)))
         print(
-            f"run-subtests: {options.check} failed in {unlisted or 'no test its log names'}, "
+            f"run-subtests: {options.check} failed in {named or 'no test its log names'}, "
             "which main's quarantine doesn't excuse, so it blocks",
             file=sys.stderr,
         )
         return status
-    reason = held.get("reason") or "no reason given"
-    owner = f"; #{held['owner_pr']} owns it" if held.get("owner_pr") else ""
     print(
-        f"run-subtests: {options.check} failed, but main quarantines it "
-        f"({reason}{owner}), so it blocks nothing",
+        f"run-subtests: {options.check} failed, but {said(held, failed)}, so it blocks nothing",
         file=sys.stderr,
     )
     return 0

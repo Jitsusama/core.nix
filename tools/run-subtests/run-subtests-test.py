@@ -420,6 +420,42 @@ def test_a_check_main_quarantines_by_its_subtests_is_excused_only_for_those(
 
 
 @pytest.mark.usefixtures("stand_in")
+def test_a_checks_entries_are_read_together_each_failure_said_with_its_owner(
+    tool: Tool,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # As the net lists a test since 13 November: each owner's subtests in
+    # an entry of their own, so a run failing in both is excused by both.
+    listed = tmp_path / "quarantine.json"
+    listed.write_text(
+        json.dumps(
+            [
+                {"test": "vm-desktop-x", "reason": "r1", "owner_pr": 1, "subtests": ["test_a"]},
+                {"test": "vm-desktop-x", "reason": "r2", "owner_pr": 2, "subtests": ["test_b"]},
+            ]
+        )
+    )
+    monkeypatch.setenv("STAND_IN_QUARANTINE", str(listed))
+    monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", "1")
+    monkeypatch.setenv(
+        "STAND_IN_OFFLOAD_SAYS",
+        "x> FAILED vm-pytest-x/x-vm-test.py::test_a - assert\n"
+        "x> FAILED vm-pytest-x/x-vm-test.py::test_b - assert",
+    )
+
+    assert tool.main(["--there", "vm-desktop-x", "launcher"]) == 0, (
+        "a failure in subtests two owners hold blocked"
+    )
+    said = capsys.readouterr().err
+    assert (
+        "vm-desktop-x failed, but main quarantines test_a (r1; #1 owns it) and "
+        "test_b (r2; #2 owns it), so it blocks nothing"
+    ) in said, said
+
+
+@pytest.mark.usefixtures("stand_in")
 def test_a_check_that_isnt_a_vm_test_is_refused_and_never_excused(
     tool: Tool,
     monkeypatch: pytest.MonkeyPatch,

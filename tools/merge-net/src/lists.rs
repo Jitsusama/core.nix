@@ -17,7 +17,8 @@ pub enum List {
     Judged(String),
     /// The net's quarantine list, which no check builds from: the net,
     /// changed-checks and run-subtests read it from main, so it holds
-    /// when it reads as a list of tests, each once.
+    /// when it reads as a list of tests, each held whole once or each of
+    /// its subtests once, however many owners' entries hold them.
     Quarantine,
 }
 
@@ -123,19 +124,43 @@ pub fn say(
     Some(ExitCode::FAILURE)
 }
 
-/// Whether the quarantine list reads as a list of tests, each once.
+/// Whether the quarantine list reads as a list of tests, each held whole
+/// in one entry alone, or each of its subtests in one entry: a test has
+/// an entry for each owner (quarantine.rs), but two holding the same
+/// subtest, or a whole test beside another, leave who owns it unsaid.
 fn holds_tests(quarantine: &str) -> Result<(), String> {
     let entries: Vec<serde_json::Value> =
         serde_json::from_str(quarantine).map_err(|error| format!("it isn't a list: {error}"))?;
-    let mut tests = Vec::new();
+    let mut held: Vec<(&str, Option<&str>)> = Vec::new();
     for entry in &entries {
         let test = entry["test"]
             .as_str()
             .ok_or_else(|| format!("an entry names no test: {entry}"))?;
-        if tests.contains(&test) {
-            return Err(format!("{test} is on it twice"));
+        // An entry naming no subtest holds the whole test, as quarantine.rs reads it.
+        let mut subtests: Vec<Option<&str>> = entry["subtests"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .map(Some)
+            .collect();
+        let whole = subtests.is_empty();
+        if whole {
+            subtests.push(None);
         }
-        tests.push(test);
+        if held
+            .iter()
+            .any(|(kept, part)| *kept == test && (whole || part.is_none()))
+        {
+            return Err(format!("{test} is on it whole and again"));
+        }
+        for subtest in subtests {
+            if held.contains(&(test, subtest)) {
+                let subtest = subtest.unwrap_or_default();
+                return Err(format!("{test}'s {subtest} is on it twice"));
+            }
+            held.push((test, subtest));
+        }
     }
     Ok(())
 }
@@ -208,14 +233,26 @@ mod tests {
             lists(&shared, "", "[{\"test\":\"vm-a\"}]"),
             Lists::Need(Vec::new())
         );
+        let owners = r#"[{"test":"vm-a","owner_pr":1,"subtests":["test_p"]},
+                         {"test":"vm-a","owner_pr":2,"subtests":["test_q"]}]"#;
+        assert_eq!(
+            lists(&shared, "", owners),
+            Lists::Need(Vec::new()),
+            "a test listed by two owners, each for its own subtests, read as broken"
+        );
         for (merged, why) in [
             (
                 "[{\"test\":\"vm-a\"}\n{\"test\":\"vm-b\"}]",
                 "it isn't a list",
             ),
             (
-                "[{\"test\":\"vm-a\"},{\"test\":\"vm-a\"}]",
-                "vm-a is on it twice",
+                "[{\"test\":\"vm-a\"},{\"test\":\"vm-a\",\"subtests\":[\"test_p\"]}]",
+                "vm-a is on it whole and again",
+            ),
+            (
+                r#"[{"test":"vm-a","subtests":["test_p"]},
+                    {"test":"vm-a","subtests":["test_q","test_p"]}]"#,
+                "vm-a's test_p is on it twice",
             ),
             ("[{\"reason\":\"x\"}]", "an entry names no test"),
         ] {

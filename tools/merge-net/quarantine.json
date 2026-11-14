@@ -38,8 +38,17 @@
     "owner_pr": 3884,
     "reason": "reopening five sessions while the focus moves timed out once at 50e4d55f9 with all five opened, Y2YBTS's by Sun 15",
     "subtests": [
-      "test_a_session_another_starts_leaves_every_key_where_joel_types",
       "test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile"
+    ],
+    "test": "vm-desktop-launcher-finds-sessions"
+  },
+  {
+    "at": 1794613888,
+    "commit": "5782337e6e457780754e6e5684e6c69bd92827dd",
+    "owner_pr": 4145,
+    "reason": "failed, then passed, at 5782337e6e45",
+    "subtests": [
+      "test_a_session_another_starts_leaves_every_key_where_joel_types"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
   },
@@ -49,9 +58,18 @@
     "owner_pr": null,
     "reason": "failed, then passed, at 405fff7e09e7",
     "subtests": [
-      "test_a_programs_media_and_sound_work_its_real_player_and_its_stream",
       "test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_password",
       "test_quickshell_warned_of_nothing_it_drew_all_along"
+    ],
+    "test": "vm-desktop-opens-and-sets"
+  },
+  {
+    "at": 1794560189,
+    "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
+    "owner_pr": 3946,
+    "reason": "failed, then passed, at aefa56b98e80",
+    "subtests": [
+      "test_a_programs_media_and_sound_work_its_real_player_and_its_stream"
     ],
     "test": "vm-desktop-opens-and-sets"
   },
@@ -61,15 +79,24 @@
     "owner_pr": 3176,
     "reason": "failed, then passed, at 6e396fae765b",
     "subtests": [
+      "test_every_name_a_thing_had_still_finds_it",
+      "test_no_answer_raised_an_error",
+      "test_quickshell_warned_of_nothing_it_drew_all_along"
+    ],
+    "test": "vm-desktop-launcher-finds-by-name"
+  },
+  {
+    "at": 1794580353,
+    "commit": "77b2c01c96435484735cb5eda87677902bda6396",
+    "owner_pr": 3972,
+    "reason": "failed, then passed, at 77b2c01c9643",
+    "subtests": [
       "test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctrl_y",
       "test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it",
       "test_a_question_is_asked_on_return_and_answered_where_it_was_typed",
       "test_a_search_lists_each_thing_once_and_normal_moves_through_it",
       "test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place",
       "test_a_terminal_is_shown_a_place_as_the_running_shell_answers",
-      "test_every_name_a_thing_had_still_finds_it",
-      "test_no_answer_raised_an_error",
-      "test_quickshell_warned_of_nothing_it_drew_all_along",
       "test_spotify_signed_out_offers_sign_in_and_says_so",
       "test_the_launcher_finds_emoji_in_their_own_place_and_only_there",
       "test_the_launcher_lists_each_thing_once_for_everything_joel_types",
@@ -85,10 +112,19 @@
     "subtests": [
       "test_firmware_installs_an_update_once_asked_and_waits_for_the_restart",
       "test_no_answer_raised_an_error",
-      "test_power_says_what_kept_the_processor_from_resting_on_battery",
       "test_quickshell_warned_of_nothing_it_drew_all_along",
-      "test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back",
       "test_the_time_here_says_how_the_clock_is_kept"
+    ],
+    "test": "vm-desktop-launcher-answers"
+  },
+  {
+    "at": 1794558951,
+    "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
+    "owner_pr": 3946,
+    "reason": "failed, then passed, at aefa56b98e80",
+    "subtests": [
+      "test_power_says_what_kept_the_processor_from_resting_on_battery",
+      "test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back"
     ],
     "test": "vm-desktop-launcher-answers"
   },
@@ -146,7 +182,16 @@
     "subtests": [
       "test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears",
       "test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent",
-      "test_quickshell_warned_of_nothing_it_drew_all_along",
+      "test_quickshell_warned_of_nothing_it_drew_all_along"
+    ],
+    "test": "vm-desktop-launcher-reads-mail"
+  },
+  {
+    "at": 1794553008,
+    "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
+    "owner_pr": 3596,
+    "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
+    "subtests": [
       "test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count"
     ],
     "test": "vm-desktop-launcher-reads-mail"
@@ -178,10 +223,19 @@
     "owner_pr": 3758,
     "reason": "failed, then passed, at 1e94ca1cd67d",
     "subtests": [
-      "test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_sure",
-      "test_a_meetings_attachments_open_from_inside_it",
       "test_calendar_typed_lists_its_next_meetings_under_it",
       "test_quickshell_warned_of_nothing_it_drew_all_along"
+    ],
+    "test": "vm-desktop-launcher-holds-meetings"
+  },
+  {
+    "at": 1794555457,
+    "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
+    "owner_pr": 2078,
+    "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
+    "subtests": [
+      "test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_sure",
+      "test_a_meetings_attachments_open_from_inside_it"
     ],
     "test": "vm-desktop-launcher-holds-meetings"
   },
@@ -238,8 +292,26 @@
     "owner_pr": 3956,
     "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
     "subtests": [
-      "test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent",
-      "test_an_unplugged_ergodox_is_shown_nowhere_until_its_back",
+      "test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent"
+    ],
+    "test": "vm-desktop-looks"
+  },
+  {
+    "at": 1794568169,
+    "commit": "fe9f6ae1bd4ddc562eab03e03021937e076d7e19",
+    "owner_pr": 3956,
+    "reason": "failed twice at aefa56b98e80, and at fe9f6ae1bd4d after it",
+    "subtests": [
+      "test_an_unplugged_ergodox_is_shown_nowhere_until_its_back"
+    ],
+    "test": "vm-desktop-looks"
+  },
+  {
+    "at": 1794582283,
+    "commit": "b7a81d60bf2144b8873172e83bd4aa19fb38414d",
+    "owner_pr": 3956,
+    "reason": "failed twice at fe9f6ae1bd4d, and at b7a81d60bf21 after it",
+    "subtests": [
       "test_the_budgets_stand_behind_one_row_at_each_scale",
       "test_the_home_network_and_nearby_list_whats_around_at_each_scale"
     ],

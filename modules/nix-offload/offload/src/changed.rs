@@ -336,35 +336,73 @@ pub fn held_on_main(folder: &Path) -> Vec<Held> {
     })
 }
 
-/// Read a quarantine list, each entry's test with why it blocks nothing,
-/// said as changed-checks says it.
+/// One entry of a test: why it is held, said with its owner, and the
+/// subtests it holds, none meaning the whole test.
+type Listing = (String, BTreeSet<String>);
+
+/// Read a quarantine list, each test with why it blocks nothing, said as
+/// changed-checks says it. A test may have an entry for each owner, each
+/// holding its own subtests (merge-net's quarantine.rs), so a test's
+/// entries are held as one, naming each owner with its subtests, and an
+/// entry holding the whole test holds it whole.
 pub fn held(listed: &str) -> Result<Vec<Held>, String> {
     let list: serde_json::Value =
         serde_json::from_str(listed).map_err(|error| error.to_string())?;
     let entries = list.as_array().ok_or("it isn't a list")?;
-    entries
-        .iter()
-        .map(|entry| {
-            let test = entry["test"]
-                .as_str()
-                .ok_or_else(|| format!("an entry names no test: {entry}"))?;
-            let reason = entry["reason"].as_str().unwrap_or("no reason given");
-            let owner = entry["owner_pr"]
-                .as_u64()
-                .map_or_else(String::new, |pr| format!("; #{pr} owns it"));
-            let subtests = entry["subtests"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(|subtest| subtest.as_str().map(str::to_owned))
-                .collect();
-            Ok(Held {
+    // Each test's entries, in the order the list first names it.
+    let mut tests: Vec<(&str, Vec<Listing>)> = Vec::new();
+    for entry in entries {
+        let test = entry["test"]
+            .as_str()
+            .ok_or_else(|| format!("an entry names no test: {entry}"))?;
+        let reason = entry["reason"].as_str().unwrap_or("no reason given");
+        let owner = entry["owner_pr"]
+            .as_u64()
+            .map_or_else(String::new, |pr| format!("; #{pr} owns it"));
+        let subtests = entry["subtests"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|subtest| subtest.as_str().map(str::to_owned))
+            .collect();
+        let listing = (format!("({reason}{owner})"), subtests);
+        match tests.iter_mut().find(|(kept, _)| *kept == test) {
+            Some((_, listings)) => listings.push(listing),
+            None => tests.push((test, vec![listing])),
+        }
+    }
+    Ok(tests
+        .into_iter()
+        .map(|(test, listings)| {
+            let whole = listings.iter().find(|(_, subtests)| subtests.is_empty());
+            let (why, subtests) = match whole {
+                Some((why, _)) => (format!("main quarantines it {why}"), BTreeSet::new()),
+                None if listings.len() == 1 => (
+                    format!("main quarantines it {}", listings[0].0),
+                    listings[0].1.clone(),
+                ),
+                None => {
+                    let each: Vec<String> = listings
+                        .iter()
+                        .map(|(why, subtests)| {
+                            let named: Vec<&str> = subtests.iter().map(String::as_str).collect();
+                            format!("{} {why}", named.join(", "))
+                        })
+                        .collect();
+                    let subtests = listings.iter().flat_map(|(_, named)| named.clone());
+                    (
+                        format!("main quarantines {}", each.join(" and ")),
+                        subtests.collect(),
+                    )
+                }
+            };
+            Held {
                 test: test.to_owned(),
-                why: format!("main quarantines it ({reason}{owner})"),
+                why,
                 subtests,
-            })
+            }
         })
-        .collect()
+        .collect())
 }
 
 /// `targets` parted into those whose failure blocks and those main holds,
