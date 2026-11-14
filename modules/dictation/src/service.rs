@@ -57,6 +57,7 @@ use dictation::mel::{RATE, SAMPLES};
 use dictation::microphone;
 use dictation::openvino::Priority;
 use dictation::speech::Speech;
+use terminal_kit::{Exit, Failure};
 
 const UNUSED: Duration = Duration::from_mins(10);
 // How long a take waits on its tidy before it's typed as heard.
@@ -764,24 +765,32 @@ fn notice(summary: &str, body: &str) {
 }
 
 /// Sends `line` to the service and copies what it answers to standard
-/// output: one line for a toggle, every line for a watch.
+/// output: one line for a toggle, every line for a watch. Each answer is
+/// written as it comes, so a watch streams.
 ///
 /// # Errors
 ///
-/// When the service can't be reached.
-pub fn ask(line: &str) -> Result<(), String> {
+/// `Unavailable` when the service can't be reached, said apart from one
+/// whose answer broke off, which is `Failed`.
+pub fn ask(line: &str) -> Result<(), Failure> {
     let path = socket();
-    let mut stream =
-        UnixStream::connect(&path).map_err(|e| format!("reaching {}: {e}", path.display()))?;
+    let broke = |what: &str, error: std::io::Error| {
+        Failure::new(Exit::Failed, what.to_owned()).because(error.to_string())
+    };
+    let mut stream = UnixStream::connect(&path).map_err(|error| {
+        Failure::new(Exit::Unavailable, "dictation's service isn't answering")
+            .because(format!("{}: {error}", path.display()))
+            .try_this("systemctl --user status dictation")
+    })?;
     stream
         .write_all(format!("{line}\n").as_bytes())
-        .map_err(|e| format!("asking the service: {e}"))?;
+        .map_err(|error| broke("the service couldn't be asked", error))?;
     let mut out = std::io::stdout().lock();
     for answer in BufReader::new(stream).lines() {
-        let answer = answer.map_err(|e| format!("reading the answer: {e}"))?;
-        writeln!(out, "{answer}").map_err(|e| format!("writing the answer: {e}"))?;
-        out.flush()
-            .map_err(|e| format!("writing the answer: {e}"))?;
+        let answer = answer.map_err(|error| broke("the service's answer broke off", error))?;
+        writeln!(out, "{answer}")
+            .and_then(|()| out.flush())
+            .map_err(|error| broke("the answer couldn't be written", error))?;
     }
     Ok(())
 }

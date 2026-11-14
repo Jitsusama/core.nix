@@ -1,8 +1,9 @@
 # dictation, call-transcripts, screen-text, noise-cancelled and meaning, built
 # from this directory's crate with its tests run as it builds, linked to
 # OpenVINO's C API and GenAI's, and PipeWire's. It takes what counts as
-# a call from modules/calls' crate, so the source holds both, from
-# modules, and the build runs in this one. OpenVINO and its tokenizers are
+# a call from modules/calls' crate, and its shape from the terminal kit
+# (../terminal-kit), so the source holds all three, from modules, and the
+# build runs in this one. OpenVINO and its tokenizers are
 # nixpkgs', from the cache, and GenAI is patched here (openvino-genai.nix
 # says why); the services name the same tokenizers, from passthru.
 {
@@ -24,6 +25,8 @@ let
       ./src
       ../calls/Cargo.toml
       ../calls/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
 in

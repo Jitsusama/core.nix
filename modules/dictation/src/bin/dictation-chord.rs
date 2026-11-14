@@ -14,9 +14,9 @@
 //! nothing else, so what it tells is only when the chord was used.
 //!
 //! Each keyboard has a thread blocked reading it and one more is blocked on
-//! the device directory, as keyboard-lights does. It needs only the
-//! standard library, which already links the C library these calls come
-//! from.
+//! the device directory, as keyboard-lights does. Beside the terminal kit,
+//! which gives it its help and exits, it needs only the standard library,
+//! which already links the C library these calls come from.
 
 use std::collections::HashSet;
 use std::ffi::{CString, c_char, c_int, c_ulong, c_void};
@@ -29,6 +29,8 @@ use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::Instant;
+
+use terminal_kit::{Exit, Failure, Help};
 
 const DEVICES: &str = "/dev/input";
 
@@ -267,68 +269,44 @@ fn listen(mut device: File, number: u64, shared: &Shared) {
     }
 }
 
-const HELP: &str = "\
-dictation-chord  says at a socket when dictation's chord is let go
-
-EXAMPLES
-  dictation-chord /run/dictation-chord/socket   what its unit runs
-
-EXIT
-  1   the socket or the keyboards couldn't be reached
-  64  asked wrongly
-";
-
-/// What the command line asks: its help, or to serve at a socket.
-#[derive(Debug, PartialEq)]
-enum Asked {
-    Help,
-    Serve(String),
+fn help() -> Help {
+    Help::new("dictation-chord", "says at a socket when dictation's chord is let go")
+        .example("dictation-chord /run/dictation-chord/socket", "what its unit runs")
+        .exit(Exit::Failed, "the socket or the keyboards couldn't be reached")
 }
 
-/// Reads the command line, refusing anything but one absolute path or a
-/// request for help. The path is removed before the socket is bound, so a
+/// Reads the command line, whose help the kit has already answered,
+/// refusing anything but one absolute path. The path is removed before the socket is bound, so a
 /// word taken for it, `--help` or a typo, would delete a file of that name
 /// in the folder it was typed in and put a socket any account can write
 /// to there: only a path that can't be mistaken for a word is taken.
-fn asked(words: &[String]) -> Result<Asked, String> {
+fn asked(words: &[String]) -> Result<&str, Failure> {
+    let wrong = |what: String| Failure::new(Exit::Usage, what).try_this("dictation-chord --help");
     match words {
-        [word] if word == "-h" || word == "--help" => Ok(Asked::Help),
-        [path] if path.starts_with('/') => Ok(Asked::Serve(path.clone())),
-        [word] => Err(format!(
-            "dictation-chord needs the socket's whole path, not {word}"
-        )),
-        [] => Err("dictation-chord needs the socket's whole path".to_owned()),
-        _ => Err("dictation-chord takes one path".to_owned()),
+        [path] if path.starts_with('/') => Ok(path),
+        [word] => Err(wrong(format!("it needs the socket's whole path, not {word}"))),
+        [] => Err(wrong("it needs the socket's whole path".to_owned())),
+        _ => Err(wrong("it takes one path".to_owned())),
     }
 }
 
+/// A failure to reach `what`, the socket, the device folder or a keyboard.
+fn unreached(what: &str, error: &std::io::Error) -> Failure {
+    Failure::new(Exit::Failed, format!("can't reach {what}")).because(error.to_string())
+}
+
 fn main() -> ExitCode {
-    let words: Vec<String> = std::env::args().skip(1).collect();
-    let path = match asked(&words) {
-        Ok(Asked::Help) => {
-            print!("{HELP}");
-            return ExitCode::SUCCESS;
-        }
-        Ok(Asked::Serve(path)) => path,
-        Err(wrong) => {
-            eprintln!("{wrong}\n  try  dictation-chord --help");
-            return ExitCode::from(64);
-        }
-    };
-    let _ = fs::remove_file(&path);
-    let listener = match UnixListener::bind(&path) {
-        Ok(listener) => listener,
-        Err(error) => {
-            eprintln!("{path}: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| serve(asked(&context.args)?))
+}
+
+/// Serves at `path` for as long as the device folder can be watched.
+fn serve(path: &str) -> Result<(), Failure> {
+    let _ = fs::remove_file(path);
+    let listener = UnixListener::bind(path).map_err(|error| unreached(path, &error))?;
     // Any account may hear when the chord is let go, as any may read caps
     // lock's state; it's the keys themselves that are kept back.
-    if let Err(error) = fs::set_permissions(&path, fs::Permissions::from_mode(0o666)) {
-        eprintln!("{path}: {error}");
-        return ExitCode::FAILURE;
-    }
+    fs::set_permissions(path, fs::Permissions::from_mode(0o666))
+        .map_err(|error| unreached(path, &error))?;
     let shared = Arc::new(Shared {
         held: Mutex::new(HashSet::new()),
         chord: Mutex::new(Chord::default()),
@@ -343,21 +321,15 @@ fn main() -> ExitCode {
     if watch < 0
         || unsafe { inotify_add_watch(watch, directory.as_ptr(), IN_CREATE | IN_ATTRIB) } < 0
     {
-        eprintln!("{DEVICES}: {}", std::io::Error::last_os_error());
-        return ExitCode::FAILURE;
+        return Err(unreached(DEVICES, &std::io::Error::last_os_error()));
     }
     // SAFETY: the descriptor is ours alone, and the file closes it.
     let mut changes = unsafe { File::from_raw_fd(watch) };
 
-    match fs::read_dir(DEVICES) {
-        Ok(entries) => entries
-            .flatten()
-            .for_each(|entry| take(&entry.file_name().to_string_lossy(), &shared)),
-        Err(error) => {
-            eprintln!("{DEVICES}: {error}");
-            return ExitCode::FAILURE;
-        }
-    }
+    fs::read_dir(DEVICES)
+        .map_err(|error| unreached(DEVICES, &error))?
+        .flatten()
+        .for_each(|entry| take(&entry.file_name().to_string_lossy(), &shared));
 
     thread::spawn({
         let shared = Arc::clone(&shared);
@@ -377,10 +349,7 @@ fn main() -> ExitCode {
         let length = match changes.read(&mut buffer) {
             Ok(length) => length,
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(error) => {
-                eprintln!("{DEVICES}: {error}");
-                return ExitCode::FAILURE;
-            }
+            Err(error) => return Err(unreached(DEVICES, &error)),
         };
         let mut at = 0;
         while at + CHANGE <= length {
@@ -408,20 +377,18 @@ mod tests {
     }
 
     #[test]
-    fn help_is_answered_rather_than_taken_for_the_socket() {
-        assert_eq!(asked(&words(&["--help"])), Ok(Asked::Help));
-        assert_eq!(asked(&words(&["-h"])), Ok(Asked::Help));
-    }
-
-    #[test]
     fn only_a_whole_path_is_taken_for_the_socket() {
         assert_eq!(
-            asked(&words(&["/run/dictation-chord/socket"])),
-            Ok(Asked::Serve("/run/dictation-chord/socket".to_owned()))
+            asked(&words(&["/run/dictation-chord/socket"])).ok(),
+            Some("/run/dictation-chord/socket"),
+            "a whole path wasn't taken for the socket"
         );
+        // The kit answers --help before this reads the words, so any flag
+        // reaching it is a mistake, never a socket.
         for wrong in [
             &[][..],
             &["flsh"],
+            &["--help"],
             &["--halp"],
             &["./socket"],
             &["/a", "/b"],
