@@ -706,13 +706,14 @@ pub fn rows(
         })
         .collect();
     // What a step into each screen offers, inside its row: the Warmth,
-    // where the screen holds the light and the room's sensor, then a lit
+    // where a lit screen holds the light and the room's sensor, then a lit
     // one's settings, then the ways it turns off or on, then what its
     // EDID says.
     for (name, output) in &shown {
         let stands = standing(output);
         let screen = key(&format!("display:{name}"));
-        if holds == Some(name.as_str()) && in_the_room(name, shown.len()) {
+        let warmed = holds == Some(name.as_str()) && in_the_room(name, shown.len());
+        if stands == "lit" && warmed {
             rows.extend(warmth(name, &screen, seen, words));
         }
         if stands == "lit" && output["logical"].is_object() {

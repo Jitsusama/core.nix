@@ -397,10 +397,10 @@ QtObject {
             ["verb:notice:link"]);
         const asking = { key: "verb:notice:open", ask: { ask: "invoke", id: 4 }, token: true };
         Expect.same("an ask that takes a token is sent with it",
-            Ready.tokened(asking, "abc"), { ask: "invoke", id: 4, token: "abc" });
-        Expect.same("and never without one", [Ready.tokened(asking, ""),
-            Ready.tokened(asking, undefined)], [null, null]);
-        Expect.same("an ask that takes none is sent as served", Ready.tokened(acts[0], "abc"),
+            Forms.tokened(asking, "abc"), { ask: "invoke", id: 4, token: "abc" });
+        Expect.same("and never without one", [Forms.tokened(asking, ""),
+            Forms.tokened(asking, undefined)], [null, null]);
+        Expect.same("an ask that takes none is sent as served", Forms.tokened(acts[0], "abc"),
             acts[0].ask);
         Expect.same("a row serving no acts offers none", Ready.actsOf({}), []);
         // A document opens in Google's window, not the browser, so its

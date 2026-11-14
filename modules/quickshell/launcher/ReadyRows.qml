@@ -637,7 +637,7 @@ Scope {
                 return acted.concat(parts);
             },
             run: () => act(key, first),
-            copies: () => first.copy
+            copies: () => Ready.copyOf(first, Date.now(), timeWords)
         };
     }
 
@@ -815,7 +815,8 @@ Scope {
             stays: Ready.leaving(one).stays,
             now: Ready.leaving(one).now,
             later: Ready.leaving(one).later,
-            copies: typeof one.copy === "string" ? () => one.copy : undefined,
+            copies: Ready.actForm(one) === "copy"
+                ? () => Ready.copyOf(one, Date.now(), timeWords) : undefined,
             undo: Ready.actForm(one.undo) === "ask" ? () => act(key, one.undo) : undefined,
             run: () => act(key, one)
         }, Confirm.asking(one), Words.ending(one.key), worded, asks));
@@ -826,9 +827,10 @@ Scope {
     function act(key, one) {
         const launcher = maker?.launcher;
         switch (Ready.actForm(one)) {
-        case "copy":
-            if (one.copy !== "")
-                Quickshell.clipboardText = one.copy;
+        case "copy": {
+            const words = Ready.copyOf(one, Date.now(), timeWords);
+            if (words !== "")
+                Quickshell.clipboardText = words;
             alsoAsked(one);
             return;
         case "open": {
@@ -955,7 +957,7 @@ Scope {
         // only for the input just made; without one it isn't sent, as its
         // sender couldn't come forward, and says so.
         Quickshell.activationToken(token => {
-            const tokened = Ready.tokened(Object.assign({}, one, { ask: ask }), token);
+            const tokened = Forms.tokened(Object.assign({}, one, { ask: ask }), token);
             if (tokened === null)
                 maker?.refused(shown, words.couldNot ?? "");
             else
