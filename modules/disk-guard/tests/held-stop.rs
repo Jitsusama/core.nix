@@ -24,11 +24,18 @@ fn main() {
         .unwrap();
     let mut said = std::io::BufReader::new(child.stdout.take().unwrap());
     let mut line = String::new();
-    assert!(said.read_line(&mut line).unwrap() > 0, "the guard never stepped");
+    assert!(
+        said.read_line(&mut line).unwrap() > 0,
+        "the guard never stepped"
+    );
     let told = Instant::now();
     let pid = libc::pid_t::try_from(child.id()).unwrap();
     // SAFETY: kill takes a pid and a signal and touches no memory.
-    assert_eq!(unsafe { libc::kill(pid, libc::SIGTERM) }, 0, "it couldn't be told");
+    assert_eq!(
+        unsafe { libc::kill(pid, libc::SIGTERM) },
+        0,
+        "it couldn't be told"
+    );
     let ended = loop {
         if let Some(ended) = child.try_wait().unwrap() {
             break ended;
@@ -40,7 +47,11 @@ fn main() {
         std::thread::sleep(Duration::from_millis(20));
     };
     let took = told.elapsed();
-    assert_eq!(ended.signal(), Some(libc::SIGTERM), "it ended otherwise: {ended:?}");
+    assert_eq!(
+        ended.signal(),
+        Some(libc::SIGTERM),
+        "it ended otherwise: {ended:?}"
+    );
     assert!(took < Duration::from_secs(2), "it took {took:?} to stop");
 }
 
@@ -50,5 +61,7 @@ fn held_step() {
     let _wait = disk_guard::serve::stopping(&[libc::SIGTERM]).unwrap();
     disk_guard::serve::leave_when_held_up(&[libc::SIGTERM], std::io::sink()).unwrap();
     println!("stepping");
+    // The step that never asks: longer than the parent waits, so only the
+    // watch letting the stop through ends it in time.
     std::thread::sleep(Duration::from_secs(30));
 }
