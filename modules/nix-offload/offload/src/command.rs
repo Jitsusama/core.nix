@@ -18,6 +18,9 @@
 //! since the builder trusts no account. Once it has run for `--longest`,
 //! everything it started there ends with it.
 //!
+//! Long because its tests, over half of it, stay beside the private link
+//! they drive, running the scripts it writes through real shells.
+//!
 //! The command runs apart from the ssh that started it, into files there,
 //! which that ssh follows. A link lost mid-run, as every tunnel's was at
 //! 02:18 on 14 November, is reached again through the same host key and
@@ -721,7 +724,8 @@ mod tests {
             .output()
             .unwrap();
         assert_eq!(followed.status.code(), Some(there::UNREACHED));
-        assert!(String::from_utf8_lossy(&followed.stderr).contains(GONE));
+        let said = String::from_utf8_lossy(&followed.stderr);
+        assert!(said.contains(GONE), "it never said the run was gone: {said}");
     }
 
     /// What's written to it, kept where a test reads it.
