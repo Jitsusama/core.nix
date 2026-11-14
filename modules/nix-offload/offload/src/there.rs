@@ -2855,7 +2855,11 @@ pub fn to_second(first: Option<f64>, second: &Second) -> bool {
 /// Whether a pid runs, as signal 0 says.
 fn runs(pid: i32) -> bool {
     // SAFETY: signal 0 only asks whether the process exists.
-    pid > 0 && stands(unsafe { libc::kill(pid, 0) }, &std::io::Error::last_os_error())
+    pid > 0
+        && stands(
+            unsafe { libc::kill(pid, 0) },
+            &std::io::Error::last_os_error(),
+        )
 }
 
 /// Whether a process stands, as signal 0's answer `said` and the error
