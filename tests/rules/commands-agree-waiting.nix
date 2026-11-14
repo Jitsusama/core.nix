@@ -53,8 +53,6 @@
   ];
   collect = [ "helps" ];
   console-setup = [ "helps" ];
-  declared-last = [ "helps" ];
-  disk-guard-merged-on-github = [ "helps" ];
   eero = [ "inks" ];
   gnome-keyring-unlock = [ "helps" ];
   guide = [
@@ -68,7 +66,6 @@
     "exits"
     "helps"
   ];
-  inkscape-drawings = [ "helps" ];
   ir-camera-pipeline = [ "helps" ];
   jobs-broker = [
     "kit"
@@ -112,7 +109,6 @@
     "exits"
     "helps"
   ];
-  mpv-stopped = [ "helps" ];
   mypy = [ "helps" ];
   network-revive = [
     "kit"
@@ -173,7 +169,6 @@
     "exits"
     "helps"
   ];
-  pi-settings = [ "helps" ];
   pi-verbs = [ "helps" ];
   processor-telemetry = [
     "kit"
@@ -201,7 +196,6 @@
     "helps"
   ];
   saves-while-open = [ "helps" ];
-  screen-kept = [ "helps" ];
   secret-asks = [
     "kit"
     "exits"
@@ -281,5 +275,4 @@
     "helps"
   ];
   yubikey-once-in = [ "helps" ];
-  zoom-opens = [ "helps" ];
 }

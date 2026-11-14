@@ -7,8 +7,38 @@
 # A program that includes its own file from the global one adds the include
 # when it doesn't find it there, below the declared settings, so the files
 # named after these two are included first, ahead of them.
-#
-# Usage: declared-last <declared file> <global file> [program file...]
+# Its help and failures take the shape every command of ours does
+# (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+declared-last  have git read the declared settings last
+
+  Keeps git's global file a plain file programs can
+  write to, includes each program's own file in it, and
+  ends it with an include of the declared settings.
+  Every switch runs it.
+
+EXAMPLES
+  declared-last ~/.config/git/declared.config ~/.gitconfig
+
+EXIT
+  0   done, or the global file is a link, left alone
+  64  asked wrongly
+  else git config's own
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
+
+if [ "$#" -lt 2 ]; then
+  printf '%s\n' "declared-last takes the declared file and git's global one" \
+    "  try  declared-last --help" >&2
+  exit 64
+fi
+
 declared=$1
 global=$2
 shift 2

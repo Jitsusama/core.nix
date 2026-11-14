@@ -6,7 +6,30 @@
 # `screen-kept || lock-screen` locks unless one does. Any other hold of that
 # lock, such as mycelium's while it holds work, only keeps the machine from
 # sleeping, and keeps no lock off. A logind that can't be asked keeps
-# nothing off either, so the screen still locks.
+# nothing off either, so the screen still locks. Its help takes the shape
+# every command of ours does (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+screen-kept  say whether the screen is asked to stay on
+
+  Keep Awake or a call's transcripts keep it on and
+  unlocked, each holding logind's idle lock by its own
+  name; it says which on stderr. Nothing else keeps it,
+  and a logind that can't be asked keeps nothing.
+
+EXAMPLES
+  screen-kept || lock-screen
+
+EXIT
+  0   something keeps the screen on
+  1   nothing does
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 inhibitors=$(busctl --json=short call org.freedesktop.login1 /org/freedesktop/login1 \
   org.freedesktop.login1.Manager ListInhibitors) || exit 1
