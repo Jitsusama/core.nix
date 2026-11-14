@@ -125,6 +125,34 @@ QtObject {
             climbsOn.beats.filter(beat => beat.name === "leaps")
                 .every(beat => beat.from.y - beat.to.y <= 32), true);
 
+        // In front of the gap between two windows, from the floor: up
+        // some way round it and onto it, never up the gap behind it,
+        // through its face (the GPU rig, 2026-11-14).
+        const bridging = float(560, 420, 200, 100);
+        const fromFloor = Paths.walk({ x: 100, y: 792 }, { x: 646, y: 411 },
+            world({ floats: [bridging] }));
+        // A beat's whole span, from end to end, since a climb can start
+        // under its face and end over it.
+        const through = beat => Math.max(beat.from.x, beat.to.x) + 8 > bridging.left
+            && Math.min(beat.from.x, beat.to.x) < bridging.right
+            && Math.max(beat.from.y, beat.to.y) + 8 > bridging.top + 1
+            && Math.min(beat.from.y, beat.to.y) < bridging.bottom;
+        expect("from the floor, it gets onto its top",
+            [fromFloor.beats[fromFloor.beats.length - 1].to.x,
+                fromFloor.beats[fromFloor.beats.length - 1].to.y], [646, 411]);
+        expect("never passing through its face",
+            fromFloor.beats.filter(through).map(beat => beat.name), []);
+
+        // Over open floor, with no window over it nor under its sides:
+        // up its own side from the floor and over.
+        const narrow = [{ left: 16, top: 16, width: 384, height: 768, column: 0 }];
+        const sideOn = Paths.walk({ x: 100, y: 792 }, { x: 646, y: 411 },
+            world({ cols: Paths.columns(narrow, 0), floats: [bridging] }));
+        expect("with no ledge over it, it climbs its own side from the floor",
+            ends(named(sideOn, "climbs")), [552, 792, 552, 412]);
+        expect("never through its face", sideOn.beats.filter(through).map(beat => beat.name),
+            []);
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length > 0 ? 1 : 0);

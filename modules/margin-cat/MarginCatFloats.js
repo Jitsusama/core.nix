@@ -57,7 +57,10 @@ function over(cols, x, y, reach) {
 }
 
 // The ledge of `cols` straight under `x`, all of its box on it, the
-// nearest below `y`: { x, y }, or null.
+// nearest below `y`, or else the floor, where the screen has one: { x, y },
+// or null. Without the floor, a floating window in front of windows
+// taller than it had no side to climb, and the cat climbed the gap behind
+// it, through its face (the GPU rig, 2026-11-14).
 function below(cols, x, y, at) {
     let near = null;
     for (const column of cols) {
@@ -70,7 +73,7 @@ function below(cols, x, y, at) {
             }
         }
     }
-    return near;
+    return near ?? (at.height === undefined ? null : { x, y: Routes.floor(at) });
 }
 
 // Where the cat stands at either end of each column's top. Qt's engine

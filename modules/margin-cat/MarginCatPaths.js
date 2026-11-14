@@ -250,6 +250,9 @@ function follows(way, stops, now, lit) {
         } else if (stop.how === "over") {
             Ways.clings(way, stop.side, 1);
             Ways.leap(way, onto, RISES / 2, "over");
+        } else if (stop.kind === "floor") {
+            Ways.falls(way, onto);
+            holds(way, "lands", MarginCat.LANDS);
         } else if (stop.kind === "side") {
             // Along the screen's bottom to under it, from there.
             if (stop.how === "springs") {
@@ -280,7 +283,8 @@ function follows(way, stops, now, lit) {
 function seats(way, to, now, lit) {
     const plan = to.via ? to : null;
     const goes = plan?.via ?? to;
-    const tops = (Routes.standing(now, goes, way.at)?.row ?? 0) === 0;
+    const tops = !Routes.floored(now, goes, way.at)
+        && (Routes.standing(now, goes, way.at)?.row ?? 0) === 0;
     along(way, goes.x, tops ? now : [], tops ? lit : null);
     if (plan) {
         Floats.lands(way, plan);
