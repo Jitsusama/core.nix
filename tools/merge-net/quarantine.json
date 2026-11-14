@@ -442,5 +442,16 @@
       "test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
+  },
+  {
+    "at": 1794663909,
+    "commit": "2ad1f75f4c577942084786e39511ab722481a710",
+    "owner_pr": 4329,
+    "reason": "failed, then passed, at 2ad1f75f4c57",
+    "subtests": [
+      "test_a_drawer_resting_for_the_letters_names_the_row_selected",
+      "test_letters_typed_quicker_than_the_rest_make_one_drawer"
+    ],
+    "test": "the-launcher-answers-whats-typed-on-niri"
   }
 ]
