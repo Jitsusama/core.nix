@@ -13,6 +13,7 @@ import QtQuick
 import "MarginCat.js" as MarginCat
 import "MarginCatPaths.js" as Paths
 import "MarginCatPlays.js" as Plays
+import "MarginCatTiles.js" as Tiles
 import "../Pixels.js" as Pixels
 
 PanelWindow {
@@ -612,42 +613,18 @@ PanelWindow {
         }
     }
 
-    // A window's tile, as niri says it will come to rest, where it's on
-    // this screen's shown workspace; null where it isn't, and while
-    // the screen itself is null, as Variants leaves it a moment as
-    // screens come and go (Joel's shell, 2026-11-12 20:11, "Cannot
-    // read property 'name' of null").
+    // A window's tile where it's on this screen's shown workspace
+    // (MarginCatTiles.js); null while the screen itself is null, as
+    // Variants leaves it a moment as screens come and go (Joel's shell,
+    // 2026-11-12 20:11, "Cannot read property 'name' of null").
     function tile(id: var): var {
-        if (modelData === null)
-            return null;
-        const shown = id === null ? undefined : Niri.windows[id];
-        const at = shown?.layout?.tile_pos_in_workspace_view;
-        const workspace = shown ? Niri.workspaces[shown.workspace_id] : null;
-        if (!at || workspace?.output !== modelData.name || !workspace.is_active)
-            return null;
-        return { left: at[0], top: at[1], width: shown.layout.tile_size[0] };
+        return modelData === null ? null
+            : Tiles.tile(Niri.windows, Niri.workspaces, modelData.name, id);
     }
 
-    // The tiles of a workspace's windows, as Paths.columns takes them:
-    // each where it's in that workspace's own view, the screen's for the
-    // one shown (modules/niri/tiled-positions.patch), and its column in
-    // niri's scrolling layout, none for a floating one. Only the tile
-    // under the cat is held while it's at rest (travels).
+    // The tiles of a workspace's windows, as Paths.columns takes them.
     function tilesOf(workspaceId: var): var {
-        if (workspaceId === null || workspaceId === undefined)
-            return [];
-        return Object.values(Niri.windows)
-            .filter(one => one.workspace_id === workspaceId
-                && one.layout?.tile_pos_in_workspace_view && one.layout?.tile_size)
-            .map(one => ({
-                left: one.layout.tile_pos_in_workspace_view[0],
-                top: one.layout.tile_pos_in_workspace_view[1],
-                width: one.layout.tile_size[0],
-                height: one.layout.tile_size[1],
-                column: one.layout.pos_in_scrolling_layout?.[0] ?? null,
-                row: one.layout.pos_in_scrolling_layout?.[1] ?? null,
-                id: one.id
-            }));
+        return Tiles.of(Niri.windows, workspaceId);
     }
 
     // Nowhere over no column, or on a screen going away, whose width
