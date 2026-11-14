@@ -381,7 +381,7 @@ pub fn idle_trees(
         })
         .filter_map(|session| session.quest)
         .collect();
-    live.extend(rosters.map(hosted).unwrap_or_default());
+    live.extend(rosters.map_or_default(hosted));
     let going: Vec<(bool, Vec<PathBuf>)> = quest_frontmatters(quests)
         .into_iter()
         .filter(|(_, _, over)| !over)

@@ -12,7 +12,6 @@ pkgs.pi-coding-agent.overrideAttrs (old: {
     ./pi-host-committed-turn.patch
     ./pi-host-interactive-lifecycle.patch
     ./pi-host-model-auth-context.patch
-    ./pi-host-extension-realpath.patch
     ./pi-host-extension-cache-per-folder.patch
     ./pi-host-extension-cache-keyed-shared.patch
   ];

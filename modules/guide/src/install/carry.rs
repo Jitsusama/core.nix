@@ -100,8 +100,7 @@ fn accounts_there(machine: &mut dyn Machine) -> Result<Vec<Account>, Fault> {
     };
     Ok(machine
         .read(&format!("{ROOT}{at}"))?
-        .map(|bytes| accounts(&String::from_utf8_lossy(&bytes)))
-        .unwrap_or_default())
+        .map_or_default(|bytes| accounts(&String::from_utf8_lossy(&bytes))))
 }
 
 /// The folder on the drive, named for the machine, so two machines'

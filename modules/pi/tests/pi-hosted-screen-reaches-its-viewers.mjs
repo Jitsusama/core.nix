@@ -305,8 +305,12 @@ function panelScreen(hosted) {
   if (!hosted) {
     mode.options = {};
   }
+  // The screen is made without pi's constructor, so the fields it would
+  // start, the overlays it keeps and their count among them, start here.
   Object.assign(mode, {
     extensionDialogs: [],
+    extensionOverlays: new Map(),
+    nextBlockingOverlayId: 0,
     editorContainer: { clear: mock.fn(), addChild: mock.fn() },
     programStatus: { setBlocked: mock.fn() },
     keybindings: {},
@@ -378,7 +382,11 @@ it("ordinary pi reports an extension's component only as the extension says", as
   const { mode, calls } = panelScreen(false);
   await shown(mode, { overlay: true, blocked: { kind: "question", message: "Pick" } });
   await shown(mode);
-  assert.deepEqual(calls(), [["extension-dialog", undefined]]);
+  // Since 1.5.2 pi reports an overlay itself when its extension says it blocks.
+  assert.deepEqual(calls(), [
+    ["extension-overlay:0", { kind: "question", message: "Pick" }],
+    ["extension-dialog", undefined],
+  ]);
 });
 
 // A hosted screen whose host answers each quit it is asked about with `asked`.

@@ -46,8 +46,7 @@ fn seals(info: &str) -> bool {
     let listed = |label: &str| {
         info.lines()
             .find_map(|line| line.strip_prefix(label))
-            .map(|rest| rest.split(',').map(str::trim).collect::<Vec<_>>())
-            .unwrap_or_default()
+            .map_or_default(|rest| rest.split(',').map(str::trim).collect::<Vec<_>>())
     };
     let options = listed("options:");
     listed("extension strings:").contains(&"hmac-secret")

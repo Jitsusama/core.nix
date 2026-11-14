@@ -181,10 +181,8 @@ cs35l56 sdw:0:2:01fa:3557:01:2: error -EBUSY: Failed to get spk-id-gpios
 ```
 
 [Junjie Cao's fix][3], from Intel, takes the interrupt without claiming the
-pin. The media maintainer accepted it in September 2026 and it's marked for
-the stable series; Omarchy carries the same fix for this laptop. Drop the
-patch once nixpkgs's kernel includes it: the build fails when a patch no
-longer applies, which says when.
+pin. The media maintainer accepted it in September 2026, and it reached the
+stable series in 7.3.4, so the kernel has it and no patch here carries it.
 
 With the CVS bridge out of the way, the amplifiers still race each other for
 the pin. They probe at once, and each requests it exclusively, reads it and
@@ -1474,11 +1472,10 @@ This CPU has no CPPC CPUID bit, so amd-pstate reaches CPPC through each
 CPU's ACPI `_CPC` package, and it sets the package's Autonomous Selection
 Enable for the chosen mode. On this laptop (firmware 4.355.140) that entry is
 the integer 1 rather than a register, so the write fails with -95 on every
-CPU, the driver doesn't register, and acpi-cpufreq runs instead. The
-module's kernel patch
-([`kernel/amd-pstate-skip-matching-auto-sel.patch`][24], mainline's
-b400642c5e93 until a 7.3 stable release has it) skips the write when the
-fixed value is already what the mode wants.
+CPU, the driver doesn't register, and acpi-cpufreq runs instead. Mainline's
+b400642c5e93, which skips the write when the fixed value is already what the
+mode wants, reached the stable series in 7.3.4, so the kernel has it and no
+patch here carries it.
 Passive mode is still refused, since this firmware always selects
 autonomously. Active mode, the kernel's default, would fail next: it writes
 the Energy Performance Preference, which the kernel does only when the
@@ -1703,7 +1700,6 @@ sealed to.
 [21]: https://wiki.archlinux.org/title/Lenovo_ThinkPad_T14_(AMD)_Gen_1#Time_stamp_counter
 [22]: ../hardware/microsoft-surface-laptop-4-1958/sound/paths/analog-input-internal-mic.conf
 [23]: ../hardware/microsoft-surface-laptop-4-1958/kernel/surface-laptop-amd-sensors-and-fan.patch
-[24]: ../hardware/microsoft-surface-laptop-4-1958/kernel/amd-pstate-skip-matching-auto-sel.patch
 [25]: ../hardware/microsoft-surface-laptop-4-1958/kernel/iwlmvm-country-while-associated.patch
 [26]: ../hardware/microsoft-surface-laptop-4-1958/clock/clock.nix
 [27]: https://github.com/avgbob/SL4A_TouchScreen/tree/eccedfb606e579242950052de2022d445dee028c

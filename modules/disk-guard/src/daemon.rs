@@ -252,9 +252,7 @@ struct Holding {
 impl Holding {
     fn read(temp_roots: &Path, roots: &Path) -> Holding {
         let names = |dir: &Path| -> Vec<fs::DirEntry> {
-            fs::read_dir(dir)
-                .map(|entries| entries.filter_map(Result::ok).collect())
-                .unwrap_or_default()
+            fs::read_dir(dir).map_or_default(|entries| entries.filter_map(Result::ok).collect())
         };
         let processes = names(temp_roots)
             .into_iter()

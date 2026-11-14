@@ -863,8 +863,7 @@ fn say(path: &Path, depth: usize, hasher: &mut impl std::hash::Hasher) {
         fs::read_link(path).ok().hash(hasher);
     } else if meta.is_dir() {
         let mut names: Vec<_> = fs::read_dir(path)
-            .map(|entries| entries.flatten().map(|entry| entry.file_name()).collect())
-            .unwrap_or_default();
+            .map_or_default(|entries| entries.flatten().map(|entry| entry.file_name()).collect());
         names.sort();
         for name in names {
             name.hash(hasher);
