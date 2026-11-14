@@ -1712,7 +1712,7 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
 
     Talking to the void took over Joel's screen and lost his words to a switch (2026-11-12
     16:00), and its first line read as a badge with no room to type (2026-11-13 04:33). The
-    line is one frame a step inside the top of the screen, over his window: what's typed
+    line is the launcher's frame, centred on the screen, over his window: what's typed
     wraps as it grows, the void hears it, named quietly beside the window it's said over,
     which goes with the words, and Return keeps it up, saying they went (VKCF3Z, 2026-11-13
     [092d52ca]). What goes with them shows under a hairline before they're sent, a row each,
@@ -1748,6 +1748,7 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     # 2026-11-14 09:44: "i want them to feel like more of part of the same").
     framed = [shown["line"]["top"], shown["line"]["bottom"]]
     assert framed == [shown["card"]["top"], shown["card"]["foot"]], (shown["line"], shown["card"])
+    assert_centred(shown["line"])
     shoot("empty")
     shell.send_chars(words)
     # A sentence or two wraps at a whole word, never scrolling off its start.
@@ -1793,6 +1794,18 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     logging.getLogger(__name__).info("the line was up after %s ms each time", times)
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def assert_centred(line: dict[str, Any]) -> None:
+    """Fail unless the line stands as far from the screen's foot as from its top, to a pixel.
+
+    Joel, 2026-11-14 09:44: "does not have co-equal top and bottom margins"; VKCF3Z ruled it
+    centred to the device pixel, an odd one going below (4643352a).
+    """
+    scale = float(os.environ.get("SHOTS_SCALE", "1"))
+    above = round(line["top"] * scale)
+    below = round((line["screen"] - line["bottom"]) * scale)
+    assert below - above in {0, 1}, (above, below, line)
 
 
 def line_was_up(shell: Shell, since: int) -> str:
@@ -2204,6 +2217,7 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
         stands,
         shown["card"],
     )
+    assert_centred(stands)
     # A key of another keymap first, since the line's first key was read by the last keymap
     # and lost, its Escape at 1.5x leaving the line in insert. F24 does nothing here.
     shell.send_key("F24")
