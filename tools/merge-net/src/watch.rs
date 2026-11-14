@@ -1338,6 +1338,52 @@ fn newest_known(world: &dyn World) -> Option<String> {
     world.head().ok().or_else(|| world.fetched())
 }
 
+/// List `test`, flaky at `head`, where main's newest head runs it as
+/// `head` did, or where it is flaky there too. On 14 November a round
+/// fifty minutes behind main listed vm-reboot-cannot-hang for a broken
+/// pipe at a merge from 05:18, though #4319 had mended that very failure
+/// on main at 05:54, and the list cost a merge, a switch and the subtest's
+/// coverage. So where main has moved what the test runs, it is asked
+/// there first: passing both runs, it was mended and isn't listed;
+/// failing both, it is a break the next round searches for, since that
+/// round runs the test it moved. Only where no builder answers is it
+/// listed on what `head` said.
+fn list_flaky_unless_mended(
+    world: &dyn World,
+    state: &State,
+    head: &str,
+    test: &str,
+    owner: Option<u64>,
+) -> Result<(), String> {
+    let Some(newest) =
+        newest_known(world).filter(|newest| newest != head && !same_drv(world, newest, head, test))
+    else {
+        return list_flaky(world, state, head, test, owner);
+    };
+    let left = match attempt_together(world, state, &newest, test) {
+        Outcome::Flaky => {
+            if state.found("flaky", test, &newest)
+                || world.quarantined(&newest).contains(&test.to_owned())
+            {
+                return Ok(());
+            }
+            return list_flaky(world, state, &newest, test, owner);
+        }
+        Outcome::Unsent => return list_flaky(world, state, head, test, owner),
+        Outcome::Passed => "passes both runs there, so it was mended",
+        Outcome::Failed | Outcome::Stalled => {
+            "doesn't pass there, so the next round searches for what broke it"
+        }
+    };
+    state.say(&format!(
+        "{test} failed, then passed, at {}, but main's newest head {} runs it otherwise and \
+         {left}: it isn't listed",
+        short(head),
+        short(&newest)
+    ));
+    Ok(())
+}
+
 /// List `test`, which failed and then passed at `head`, as quarantined
 /// with its owner, and tell the owner.
 fn list_flaky(
@@ -2924,6 +2970,44 @@ mod tests {
         .exits("n", "vm-a", &[1, 1]);
         round(&world, &state, "s").unwrap();
         assert_eq!(*world.reverted.lock().unwrap(), names("h"));
+    }
+
+    #[test]
+    fn a_flaky_test_main_has_moved_is_listed_only_if_it_flakes_at_main_too() {
+        // A round at h, behind main's newest head n, finds vm-a flaky.
+        fn flaky_at_h(name: &str, at_n: &[i32]) -> (Stand, State) {
+            let state = state(name);
+            state.set_heads("s", "s").unwrap();
+            state.begin("h").unwrap();
+            let world = Stand {
+                head: "n".into(),
+                merges: names("h"),
+                changed: changed("vm-a"),
+                ..Stand::default()
+            }
+            .exits("h", "vm-a", &[1, 0])
+            .exits("n", "vm-a", at_n);
+            round(&world, &state, "s").unwrap();
+            (world, state)
+        }
+
+        let (world, _) = flaky_at_h("flaky-mended", &[0, 0]);
+        assert!(
+            world.put_in_quarantine.lock().unwrap().is_empty(),
+            "vm-a, flaky at h but passing at main's newest head n, was listed on h's word"
+        );
+
+        let (world, state) = flaky_at_h("flaky-still", &[1, 0]);
+        assert_eq!(
+            *world.put_in_quarantine.lock().unwrap(),
+            names("vm-a"),
+            "vm-a, flaky at h and at main's newest head n, wasn't listed"
+        );
+        assert_eq!(
+            findings(&state)[0]["commit"],
+            "n",
+            "vm-a was listed on h's word, not n's"
+        );
     }
 
     #[test]
