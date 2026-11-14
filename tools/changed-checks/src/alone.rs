@@ -71,8 +71,43 @@ use crate::reads::{self, Reads};
 use crate::runs::{Evaluation, Run};
 
 /// How many checks are traced at once, each in a process of its own, far
-/// lighter than a chunk's.
+/// lighter than a chunk's, off a builder made for the run and fewest on
+/// one.
 pub const AT_ONCE: usize = 16;
+
+/// The most checks traced at once on a builder made for the run: on
+/// 14 November, beside tracing on a lent builder's 64 cores, a gate's 8
+/// chunks of 40 checks took a median 114 s at 16 at once, 112 s at 20 and
+/// 124 s at 24, and 76 to 82 s with nothing beside in an earlier run.
+/// Gates are what sessions wait on, so tracing may slow one by no more
+/// than a tenth.
+const AT_ONCE_MOST: usize = 20;
+
+/// The memory one trace is given room for: an evaluation holds about
+/// 2 GiB of its own, and one check little more (`checks::WEIGHT`).
+const MEMORY_EACH: u64 = 2 << 30;
+
+/// How many checks to trace at once on a builder made for the run with
+/// these cores and this much memory available: as many as a third of its
+/// cores and half its memory have room for, between `AT_ONCE` and
+/// `AT_ONCE_MOST`, leaving the rest to the gates beside a keep during 98%
+/// of its tracing. On 14 November keeps spent 150 to 1090 s tracing, and
+/// beside a gate a lent builder finished 3 to 26% more traces a second at
+/// 20 at once than at 16.
+pub fn at_once(cores: usize, available: u64) -> usize {
+    let by_memory = usize::try_from(available / 2 / MEMORY_EACH).unwrap_or(usize::MAX);
+    (cores / 3).min(by_memory).clamp(AT_ONCE, AT_ONCE_MOST)
+}
+
+/// How many checks this machine traces at once, by `at_once` on a builder
+/// made for the run, and `AT_ONCE` elsewhere.
+fn at_once_here() -> usize {
+    if std::env::var_os(crate::HERE).is_none() {
+        return AT_ONCE;
+    }
+    let (cores, available) = checks::room_here();
+    at_once(cores, available)
+}
 
 /// How long after every check was last traced alone a record may still be
 /// copied forward: tracing every one costs a keep about 400 s.
@@ -304,7 +339,7 @@ fn traced<'a>(
     let strace = reads::strace();
     let numbered: Vec<(usize, &String)> = names.iter().copied().enumerate().collect();
     let began = Instant::now();
-    let traced = checks::each_at_once(&numbered, AT_ONCE, may_begin, |&(number, name)| {
+    let traced = checks::each_at_once(&numbered, at_once_here(), may_begin, |&(number, name)| {
         if stop() {
             return Ok(None);
         }
@@ -723,4 +758,31 @@ pub fn past(
 /// A commit by its first 12 characters, as changed-checks names one.
 fn short(commit: &str) -> &str {
     commit.get(..12).unwrap_or(commit)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_lent_builder_traces_twenty_at_once() {
+        assert_eq!(at_once(64, 500 << 30), 20);
+    }
+
+    #[test]
+    fn a_builder_traces_no_more_than_half_its_memory_has_room_for() {
+        assert_eq!(at_once(64, 72 << 30), 18);
+    }
+
+    #[test]
+    fn a_builder_traces_on_a_third_of_its_cores() {
+        assert_eq!(at_once(54, 500 << 30), 18);
+    }
+
+    #[test]
+    fn a_builder_traces_between_sixteen_and_twenty_at_once() {
+        assert_eq!(at_once(8, 16 << 30), AT_ONCE);
+        assert_eq!(at_once(0, 0), AT_ONCE);
+        assert_eq!(at_once(256, 2 << 40), AT_ONCE_MOST);
+    }
 }
