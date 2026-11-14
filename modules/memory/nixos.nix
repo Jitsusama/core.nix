@@ -90,6 +90,18 @@ in
     # and reclaim that couldn't free 3.9 GB in time had the OOM killer end
     # Slack with 34.7 GB of file cache and 123 GB of swap free.
     "vm.watermark_boost_factor" = 0;
+
+    # Compact memory ahead of need at 40, twice the kernel's 20. On 14
+    # November eight allocations of 64 KB or 128 KB failed for want of a
+    # free block that size, Wi-Fi's transmit queues among them, which can
+    # drop the connection. Over 24 interleaved rounds of 5 minutes under
+    # agents' load that day, 40 against 20 cut the stalls where a program
+    # compacted memory itself by 39%, from 6,263 to 3,815 a round, and the
+    # failed compactions alike. kcompactd took no more processor (743
+    # ticks a round against 781), and the apps and the session waited on
+    # memory no longer. Blocks of 64 KB never ran out at either, so the
+    # free memory floor stays the kernel's.
+    "vm.compaction_proactiveness" = 40;
   };
 
   # Evict what reclaim reaches however recently it was used, as the kernel
