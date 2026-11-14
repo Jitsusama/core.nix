@@ -356,8 +356,9 @@ if less; record a new one after moving to a new series.
   for it, as 7.3 was built from 7.2's until November 2026. nixpkgs
   removes a series once it reaches its end of life, and the input update
   that takes that removal moves `package.nix` on. Point BORE at its patch
-  for that series, and update the hash and this document. The configuration check fails until the patch applies and every
-  setting holds.
+  for that series, and update the hash and this document. The
+  configuration check fails until the patch applies and every setting
+  holds.
 
 ## What's Left Out, and Why
 
