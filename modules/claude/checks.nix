@@ -53,16 +53,21 @@ in
   # workstation gives Claude Code draws a session's folder in the theme's
   # strong colour, read from the account's theme as kitty's environment has it.
   claude-status-line-says-how-it-stands =
-    pkgs.runCommandLocal "claude-status-line-says-how-it-stands" { }
-      ''
-        mkdir -p config/jitsusama
-        cp ${linuxAccount.xdg.configFile."jitsusama/theme.json".source} config/jitsusama/theme.json
-        echo '{"workspace": {"current_dir": "/src/core.nix"}}' \
-          | XDG_CONFIG_HOME=$PWD/config COLORTERM=truecolor TERM=xterm-kitty \
-            ${linux.settings.statusLine.command} > line
-        grep -qF "$(printf '\033[1;38;2;${strongDrawn}m')core.nix" line
-        touch $out
-      '';
+    let
+      config = pkgs.linkFarm "claude-status-line-config" [
+        {
+          name = "jitsusama/theme.json";
+          path = linuxAccount.xdg.configFile."jitsusama/theme.json".source;
+        }
+      ];
+    in
+    pkgs.runCommandLocal "claude-status-line-says-how-it-stands" { } ''
+      echo '{"workspace": {"current_dir": "/src/core.nix"}}' \
+        | XDG_CONFIG_HOME=${config} COLORTERM=truecolor TERM=xterm-kitty \
+          ${linux.settings.statusLine.command} > line
+      grep -qF "$(printf '\033[1;38;2;${strongDrawn}m')core.nix" line
+      touch $out
+    '';
 
   # clippy finds nothing in the status line, its tests included.
   claude-statusline-passes-clippy = passesClippy "claude-statusline-passes-clippy" (
