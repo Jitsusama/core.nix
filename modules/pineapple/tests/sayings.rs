@@ -100,7 +100,10 @@ fn every_saying_is_judged_as_the_table_says() {
 fn a_stop_with_nothing_named_anywhere_says_it_fell_back() {
     let reached = reach(&[], &Context::default());
     assert_eq!(said(&reached.targets), ["everything"]);
-    assert!(reached.fell_back, "a stop naming nothing anywhere says it fell back");
+    assert!(
+        reached.fell_back,
+        "a stop naming nothing anywhere says it fell back"
+    );
 }
 
 #[test]
