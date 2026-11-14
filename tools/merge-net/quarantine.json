@@ -414,5 +414,16 @@
       "test_a_session_its_host_wont_take_carries_on_as_plain_pi_in_its_window"
     ],
     "test": "vm-desktop-moves-keep-their-window"
+  },
+  {
+    "at": 1794631096,
+    "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
+    "owner_pr": 4228,
+    "reason": "failed, then passed, at 580dc8dbd580",
+    "subtests": [
+      "test_a_call_loses_little",
+      "test_unshaped"
+    ],
+    "test": "vm-a-call-keeps-its-packets"
   }
 ]
