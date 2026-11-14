@@ -213,9 +213,17 @@ impl<'a> Settler<'a> {
     /// takes it up. On 10 November a watcher told at 21:32 that another build
     /// was installed tested nothing for 79 minutes, its search waiting on two
     /// 35-minute runs. `end` runs while nothing writes the hold, so none is
-    /// left half written.
+    /// left half written, and no job settled but still kept.
     pub fn leave<R>(&self, end: impl FnOnce() -> R) -> R {
         self.write(end)
+    }
+
+    /// Run `during` while the workers wait for the queue, as a worker
+    /// ending a job waits for it before letting the job go.
+    #[cfg(test)]
+    pub fn holding_the_queue<R>(&self, during: impl FnOnce() -> R) -> R {
+        let _queue = lock(&self.queue);
+        during()
     }
 
     /// The first error a job ended in, since the settler was made.
@@ -308,7 +316,9 @@ impl<'a> Settler<'a> {
             if let Some((job, lane)) = queue.next() {
                 drop(queue);
                 let fixed = lane == Lane::Ask && self.ask(&job);
-                let done = if lane == Lane::Ask {
+                let done = if lane == Lane::Ask && fixed {
+                    self.end(job.test(), || Ok(()))
+                } else if lane == Lane::Ask {
                     Ok(())
                 } else {
                     self.run(&job)
@@ -325,13 +335,8 @@ impl<'a> Settler<'a> {
                 }
                 queue.held.retain(|held| held != job.test());
                 queue.asked.retain(|asked| asked != job.test());
-                match done {
-                    Ok(()) => {
-                        if let Err(why) = self.state.settled(job.test()) {
-                            self.failed(why);
-                        }
-                    }
-                    Err(why) => self.failed(why),
+                if let Err(why) = done {
+                    self.failed(why);
                 }
                 self.moved.notify_all();
                 continue;
@@ -356,26 +361,40 @@ impl<'a> Settler<'a> {
             return self.forward(head, newest, test);
         }
         if listed_on_main(world, job.head(), job.test()) || self.held_for(job.test()) {
-            return Ok(());
+            return self.end(job.test(), || Ok(()));
         }
         match job {
             Job::Search { base, head, test } => {
                 let found = search(world, state, base, head, test, &|| self.splits())?;
-                self.write(|| match found {
+                self.end(test, || match found {
                     Some(found) => settle(world, state, base, head, found),
                     None => Ok(()),
                 })
             }
             Job::Forward { .. } => Ok(()),
             Job::Flaky { head, test, owner } => {
-                if state.found("flaky", test, head)
+                let listed = if state.found("flaky", test, head)
                     || world.quarantined(head).iter().any(|kept| kept == test)
                 {
-                    return Ok(());
-                }
-                list_flaky(world, state, head, test, *owner)
+                    Ok(())
+                } else {
+                    list_flaky(world, state, head, test, *owner)
+                };
+                self.end(test, || listed)
             }
         }
+    }
+
+    /// Write what `test`'s job settled, then let the job go in the same
+    /// write, since a net leaving waits only for the write. On 14 November
+    /// a net left the moment its settle listed shows-then-rests, before
+    /// letting the search go, and the next build searched the test again,
+    /// ten VM runs. A job whose write fails is kept, to be taken up again.
+    fn end(&self, test: &str, write: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
+        self.write(|| {
+            write()?;
+            self.state.settled(test)
+        })
     }
 
     /// Run `test` at `newest` and clear the hold if it passes there, unless
@@ -390,10 +409,10 @@ impl<'a> Settler<'a> {
             || same_drv(world, newest, head, test)
             || attempt(world, state, newest, test) != Outcome::Passed
         {
-            return Ok(());
+            return self.end(test, || Ok(()));
         }
         let passes = format!("passes at main's newest head {}", short(newest));
-        self.write(|| clear_hold_of(state, test, &passes))
+        self.end(test, || clear_hold_of(state, test, &passes))
     }
 
     /// Whether main's newest head fixed `job`'s test. An error here is
