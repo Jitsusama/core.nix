@@ -11886,17 +11886,23 @@ Scope {
                                     rowsKept.remove(step.remove, step.count);
                                 root.washedBy = root.words;
                                 list.rows = rows;
-                                // Listed afresh, the rows let go are laid
-                                // aside before the new ones are put in, so
-                                // those are given them: a view lets go of
-                                // the rows a change removed only after it
-                                // has made the rows it put in, so with none
-                                // aside yet, as on a shell's first key, it
-                                // built every row anew, Joel's "m" 8 of
-                                // them in 15 ms (2026-11-11).
+                                // Whenever rows go and others come, those
+                                // let go are laid aside before the new ones
+                                // are put in, so those are given them: a
+                                // view lets go of the rows a change removed
+                                // only after it has made the rows it put
+                                // in, so with none aside yet it built every
+                                // row anew, as on a shell's first key,
+                                // Joel's "m" 8 of them in 15 ms
+                                // (2026-11-11), and on a letter keeping a
+                                // few rows, which isn't listed afresh, his
+                                // "m" from home 8 in 43 ms (2026-11-14).
                                 // Its laying is said with the rest.
                                 const asideFrom = Date.now();
-                                if (list.afresh)
+                                const built = root.rowsBuilt;
+                                const drawn = root.rowsDrawn;
+                                if (steps.some(one => one.remove !== undefined)
+                                    && steps.some(one => one.insert !== undefined))
                                     list.forceLayout();
                                 const aside = Date.now() - asideFrom;
                                 for (const step of steps.filter(one => one.remove === undefined)) {
@@ -11917,8 +11923,6 @@ Scope {
                                 // drawn too, and a laying long for the rows
                                 // it drew is spent elsewhere.
                                 const laying = Date.now();
-                                const built = root.rowsBuilt;
-                                const drawn = root.rowsDrawn;
                                 list.forceLayout();
                                 list.keptLast = {
                                     fresh: steps.reduce((all, step) => all

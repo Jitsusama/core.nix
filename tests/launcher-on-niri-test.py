@@ -1850,6 +1850,34 @@ def test_a_launcher_closed_inside_a_place_is_home_before_it_opens(shell: Shell) 
     shell.launcher_until(lambda shown: shown["held"] == [] and "Programs" in shown["rows"])
 
 
+def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Shell) -> None:
+    """A letter that keeps some rows and lists others builds no row, once warm.
+
+    The rows a letter let go were given on only when it let every row go, so a letter keeping
+    a few, as Joel's "m" from home or "ca" after "c", built six to eight rows from nothing
+    each time, up to 43 ms of laying them out (2026-11-13 and 14). Now the rows it lets go
+    are given to those it lists.
+    """
+    built, kept, new = [], [], []
+    for _ in range(3):
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        was = set(shell.showing()["rows"])
+        before = int(laid_out(shell)["built"])
+        shell.type_in("m")
+        laid = laid_out(shell)
+        built.append(int(laid["built"]) - before)
+        now = set(shell.showing()["rows"])
+        kept.append(len(now & was))
+        new.append(len(now - was))
+        shell.type_in("eet")
+        shell.close_launcher()
+    # "m" both kept rows of home and listed rows it didn't, or this proves nothing.
+    assert min(kept) > 0, f"rows of home kept by each 'm': {kept}"
+    assert min(new) > 0, f"rows new to each 'm': {new}"
+    assert built[1:] == [0, 0], f"rows built by each 'm' from home: {built}"
+
+
 def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) -> None:
     """A step into Desktop or Machine and back builds no row, once one round has built them.
 
