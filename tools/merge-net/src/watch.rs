@@ -278,8 +278,10 @@ pub enum Round {
 /// Run `check` at `commit` until it has passed or failed twice there,
 /// counting the runs it had before. A run stopped before it ended counts
 /// towards neither, and two of them at a commit leave the test there.
-/// Runs of it there already going, for a round or a search, are waited
-/// for and counted rather than run again beside them.
+/// A second failure is first looked for on the subtests the first failed
+/// in alone (`confirmed_apart`). Runs of it there already going, for a
+/// round or a search, are waited for and counted rather than run again
+/// beside them.
 pub fn attempt(world: &dyn World, state: &State, commit: &str, check: &str) -> Outcome {
     let turn = state.turn(commit, check);
     let _turn = turn
@@ -300,9 +302,21 @@ fn attempt_in_turn(world: &dyn World, state: &State, commit: &str, check: &str) 
             Outcome::Passed
         };
     }
+    let mut apart_tried = false;
     while failures < FAILURES {
         if stalls >= STALLS {
             return Outcome::Stalled;
+        }
+        if failures + 1 == FAILURES && !apart_tried {
+            apart_tried = true;
+            match confirmed_apart(world, state, commit, check) {
+                None => return Outcome::Unsent,
+                Some(true) => {
+                    failures += 1;
+                    continue;
+                }
+                Some(false) => {}
+            }
         }
         // Every run before was a failure, so the next is one past them; a
         // stall's log is the next run's to write over.
@@ -374,6 +388,60 @@ fn run_once(
         state.say(&why);
     }
     Some(ran)
+}
+
+/// Whether `check`'s last failure at `commit` is confirmed by running the
+/// subtests it failed in alone, as a search's steps do, and failing again:
+/// none when nothing needs it now. On 14 November the second whole run of
+/// vm-desktop-launcher-waits-on-joel took 630 s before its search began,
+/// where its failed subtest alone takes about 45. What this can't confirm,
+/// a narrowed check, a run naming no subtest, one that passes alone or
+/// can't be built or selected, is left to a whole run, so a flake is still
+/// told from a break only by the whole test passing.
+fn confirmed_apart(world: &dyn World, state: &State, commit: &str, check: &str) -> Option<bool> {
+    if !subtests::subtests_of(check).is_empty() {
+        return Some(false);
+    }
+    let listed = world
+        .fetched()
+        .map(|newest| world.listed_subtests(&newest, check))
+        .unwrap_or_default();
+    let first = state.log(commit, check, 1);
+    let failed = &subtests::failed_in(crate::world::lines_of(&first)) - &listed;
+    let narrowed = subtests::narrowed(check, &[failed]);
+    if narrowed == check {
+        return Some(false);
+    }
+    // The run is logged as the whole test's second, where a search reads
+    // which subtests failed in both, and a whole run writes over it.
+    let log = state.log(commit, check, 2);
+    let began = std::time::Instant::now();
+    let code = world.build(commit, &narrowed, &log);
+    if world.dropped(commit, check) {
+        return None;
+    }
+    let lines: Vec<String> = crate::world::lines_of(&log).collect();
+    let failed = matches!(code, Some(code) if code != 0 && code != UNSENT)
+        && !subtests::none_selected(&lines)
+        && !subtests::unbuildable(&lines);
+    if !failed {
+        state.say(&format!(
+            "{check} didn't fail again at {} on {} alone, so it runs whole",
+            short(commit),
+            subtests::subtests_of(&narrowed).join(", ")
+        ));
+        return Some(false);
+    }
+    let took = began.elapsed().as_secs();
+    if let Err(why) = state.record(commit, check, Ran::Failed, code, &log, took) {
+        state.say(&why);
+    }
+    state.say(&format!(
+        "{check} failed at {} (2 of 2), on {} alone",
+        short(commit),
+        subtests::subtests_of(&narrowed).join(", ")
+    ));
+    Some(true)
 }
 
 /// Whether a failed run of `check` at `commit`, its log at `log`, failed
@@ -2820,6 +2888,75 @@ mod tests {
         assert!(world.reverted.lock().unwrap().is_empty());
         assert_eq!(findings(&state)[0]["kind"], "flaky");
         assert!(state.hold().is_none());
+    }
+
+    #[test]
+    fn a_failure_is_confirmed_on_the_subtests_that_failed_alone() {
+        let state = state("confirmed-apart");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 0])
+        .exits("h", "vm-a::test_b", &[1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into()),
+            "test_b failing again alone confirms the failure"
+        );
+        let at_head: Vec<String> = world
+            .built()
+            .into_iter()
+            .filter(|(commit, _)| commit == "h")
+            .map(|(_, check)| check)
+            .collect();
+        assert_eq!(
+            at_head,
+            names("vm-a vm-a::test_b"),
+            "the second run is test_b alone, not the whole test again"
+        );
+        assert_eq!(
+            state.runs("h", "vm-a"),
+            vec![Ran::Failed, Ran::Failed],
+            "both runs count towards the whole test"
+        );
+    }
+
+    #[test]
+    fn a_subtest_that_passes_alone_leaves_the_whole_test_to_say() {
+        let state = state("unconfirmed-apart");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 0])
+        .exits("h", "vm-a::test_b", &[0]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h".into()),
+            "the whole test passing again makes it flaky"
+        );
+        let at_head: Vec<String> = world
+            .built()
+            .into_iter()
+            .filter(|(commit, _)| commit == "h")
+            .map(|(_, check)| check)
+            .collect();
+        assert_eq!(
+            at_head,
+            names("vm-a vm-a::test_b vm-a"),
+            "test_b alone passed, so the whole test ran again to say"
+        );
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a subtest that passes alone reverts nothing"
+        );
     }
 
     #[test]
