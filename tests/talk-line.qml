@@ -426,6 +426,41 @@ QtObject {
             Expect.same("an earlier day's thread says which beside its time",
                 Thread.threadOf(threaded, [], threadWords, () => "yesterday").side,
                 "yesterday 20:30");
+            // A reply typed in an open thread goes to the void as a line whose first line
+            // names the thread by its key; the void writes it as `replied` on that key, which
+            // the thread shows as his own words, as it does one said here until then (QCXZEB
+            // [5eaea432], 8GYNJ6 [0543317b]).
+            const replyKey = "2026-11-13 20:30";
+            Expect.same("a reply goes as a line naming its thread first, and is known by it",
+                [Thread.replying(replyKey, "and now?"),
+                    Thread.threadKeyOf("reply 2026-11-13 20:30\nand now?"),
+                    Thread.threadKeyOf("is the fix in?"),
+                    Thread.threadKeyOf("reply to Delta\nplease")],
+                ["reply 2026-11-13 20:30\nand now?", replyKey, "", ""]);
+            const replyWritten = { line: replyKey, msg: "r1", re: "m4", owner: "WCJQSG",
+                who: "Delta", event: "replied", at: "21:00", text: "and now?" };
+            const repliedStep = Thread.threadOf(threaded, threadEvents.concat([replyWritten]),
+                threadWords).steps[5];
+            Expect.same("a reply the void wrote shows as his own words, its fold its messages",
+                [repliedStep.text, repliedStep.mine, repliedStep.answer, repliedStep.by,
+                    repliedStep.side, repliedStep.nerd],
+                ["and now?", true, false, "", "21:00",
+                    "replied \u00b7 msg r1 \u00b7 re m4 \u00b7 to WCJQSG"]);
+            const replyHere = Said.begun("VOID", "and now?",
+                Thread.replying(replyKey, "and now?"), when(21, 0));
+            const replyServed = Said.begun("VOID", Thread.replying(replyKey, "and then?"),
+                Thread.replying(replyKey, "and then?"), when(21, 5));
+            const elsewhere = Said.begun("VOID", "hm",
+                Thread.replying("2026-11-13 20:29", "hm"), when(21, 6));
+            const pending = Thread.threadOf(threaded, threadEvents, threadWords, undefined,
+                [replyHere, replyServed, elsewhere]).steps.slice(5);
+            Expect.same("replies to it not yet written show at once as his, without their key",
+                pending.map(step => [step.text, step.mine, step.side]),
+                [["and now?", true, "21:00"], ["and then?", true, "21:05"]]);
+            Expect.same("a reply said here shows once when the void has written it",
+                Thread.threadOf(threaded, threadEvents.concat([replyWritten]), threadWords,
+                    undefined,
+                    [replyHere]).steps.filter(step => step.text === "and now?").length, 1);
             // j and k pick a line in the list: the first j the newest, then on, never past
             // either end; k with none picked picks the newest too.
             Expect.same("j and k pick lines, never past either end",

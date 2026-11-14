@@ -37,10 +37,12 @@ Scope {
     // it comes up; the session in it comes a moment later, from the agents daemon.
     property var window: null
     property var session: null
+    // A reply in an open thread is about its thread, so it takes only what's attached by
+    // hand, never the window it's said over.
     readonly property var rows: Said.attached({
-        window: root.window,
-        session: root.session,
-        tab: root.tab,
+        window: root.thread === null ? root.window : null,
+        session: root.thread === null ? root.session : null,
+        tab: root.thread === null ? root.tab : null,
         registers: root.registers
     })
     // The rows shown of them under a hairline before it's sent, the window
@@ -57,9 +59,16 @@ Scope {
     // Every line the line shows: those said here and those the void keeps, which outlive the
     // shell, lines still open first (TalkLine.js's gathered); and the first, or null before
     // any, which :take acts on.
-    readonly property var talks: Said.gathered(saidHere,
-        heard.filter(one => !Said.unanswered(one)).map(one => Said.fromServed(hears.to, one)),
-        events, seen)
+    // A reply is its thread's, never a line of its own, so it's kept out of them before any
+    // is keyed, which would give it a line's routing (TalkThread.js's threadKeyOf).
+    readonly property var talks: Said.gathered(
+        saidHere.filter(one => Thread.threadKeyOf(one.sent) === ""),
+        servedLines.filter(one => Thread.threadKeyOf(one.sent) === ""), events, seen)
+    readonly property var servedLines: heard.filter(one => !Said.unanswered(one))
+        .map(one => Said.fromServed(hears.to, one))
+    // The replies said here and those the void keeps, which their threads show.
+    readonly property var replies: saidHere.concat(servedLines)
+        .filter(one => Thread.threadKeyOf(one.sent) !== "")
     readonly property var talk: talks.length > 0 ? talks[0] : null
 
     // How many of each line's answers he has seen, by its key in the void's day file, kept
@@ -281,17 +290,23 @@ Scope {
     }
 
     // Return: the words go to the void with what's attached, and the line stays up, saying
-    // under them how the talk stands. Nobody to hear it keeps the words on the line.
+    // under them how the talk stands; in an open thread they go as its reply, which the
+    // thread shows as they go. Nobody to hear it keeps the words on the line, as does a
+    // thread the void hasn't written yet, which has no key to reply to.
     function send() {
         const text = prompt.text.trim();
-        if (text === "" || hears === null)
+        const replyTo = thread?.key ?? "";
+        if (text === "" || hears === null || (thread !== null && replyTo === ""))
             return;
-        const sent = Said.said(text, rows);
+        const sent = thread === null ? Said.said(text, rows)
+            : Thread.replying(replyTo, Said.said(text, rows));
         launcher.drafts.handed(key, hears.to, sent);
         agents()?.say(hears, sent);
         saidHere = [Said.begun(hears.to, text, sent, Date.now())].concat(saidHere);
         registers = [];
         prompt.clear();
+        if (thread !== null)
+            Qt.callLater(() => threadView.scroll(Infinity));
     }
 
     // Said again whenever a talk's line comes, its answer among them, up or not, so an
@@ -355,7 +370,7 @@ Scope {
     readonly property var opened: openedSince === 0 ? null
         : talks.find(one => one.since === openedSince) ?? null
     readonly property var thread: opened === null ? null
-        : Thread.threadOf(opened, events, said, since => root.dayOf(since))
+        : Thread.threadOf(opened, events, said, since => root.dayOf(since), replies)
 
     // Return: in normal with a line picked, it opens as its thread; else what's typed goes.
     function returned() {
@@ -547,7 +562,8 @@ Scope {
                         // mark rung clear of the rows' marks under the lead.
                         leadColumn: Columns.across(0, 0, Columns.ofMark(Theme.level.name.pitch),
                             Theme.space.rung).text
-                        hint: root.hears === null ? root.said.nobody ?? "" : root.words.ask ?? ""
+                        hint: root.hears === null ? root.said.nobody ?? ""
+                            : root.thread !== null ? root.said.replying ?? "" : root.words.ask ?? ""
                         aside: ""
                         registers: true
                         onRegistered: name => root.attach(name)
