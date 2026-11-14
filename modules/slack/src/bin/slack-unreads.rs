@@ -149,10 +149,12 @@ fn serve(
     let mut misses = 0;
     loop {
         // The file is read each time, so signing in again from pi is
-        // taken without a restart.
+        // taken without a restart. Waiting on one is no hang, so the
+        // watchdog is told then too.
         let Some(account) = Account::read(&credentials) else {
             daemon.say(None, millis());
             ask_joel(waiting, false);
+            alive();
             std::thread::sleep(every);
             continue;
         };
