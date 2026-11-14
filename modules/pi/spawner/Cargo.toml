@@ -10,3 +10,5 @@ publish = false
 [dependencies]
 # Signalling a command's process group when pi goes (src/main.rs).
 libc = "0.2"
+# Its help and refusals, as every command here says them.
+terminal-kit = { path = "../../terminal-kit" }

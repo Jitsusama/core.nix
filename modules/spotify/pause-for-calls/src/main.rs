@@ -18,6 +18,10 @@
 //! it paused that are still paused, so music Joel started or stopped
 //! himself in the meantime is left as he left it. It ends when PipeWire
 //! goes, for systemd to start it again.
+//!
+//! It takes its help, exits and failures from the terminal kit
+//! (docs/commands.md); it answers nothing, since what it does is Spotify's
+//! state.
 
 use calls::{Call, Change, Recording};
 use serde_json::Value;
@@ -26,6 +30,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
+use terminal_kit::{Exit, Failure, Help};
 
 /// The start of each Spotify's name on the session bus: its own client's,
 /// and spotify-player's.
@@ -87,19 +92,44 @@ fn play(paused: &[String]) {
     }
 }
 
+fn help() -> Help {
+    Help::new(
+        "pause-for-calls",
+        "pauses Spotify while a call records, then plays it",
+    )
+    .example("pause-for-calls", "what its user service runs")
+    .exit(
+        Exit::Unavailable,
+        "PipeWire went, or pw-dump wouldn't start",
+    )
+}
+
 fn main() -> ExitCode {
-    let Ok(mut dump) = Command::new("pw-dump")
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        if let Some(word) = context.args.first() {
+            return Err(
+                Failure::new(Exit::Usage, format!("it takes no words, not {word}"))
+                    .try_this("pause-for-calls --help"),
+            );
+        }
+        listen()
+    })
+}
+
+/// Follows PipeWire's graph until it goes, pausing and playing Spotify as
+/// calls start and end; it never ends well, since it's meant to run on.
+fn listen() -> Result<(), Failure> {
+    let gone = |what: &str| Failure::new(Exit::Unavailable, what.to_owned());
+    let mut dump = Command::new("pw-dump")
         .arg("--monitor")
         .arg("--no-colors")
         .stdout(Stdio::piped())
         .spawn()
-    else {
-        eprintln!("pause-for-calls: pw-dump wouldn't start");
-        return ExitCode::FAILURE;
-    };
-    let Some(out) = dump.stdout.take() else {
-        return ExitCode::FAILURE;
-    };
+        .map_err(|error| gone("pw-dump wouldn't start").because(error.to_string()))?;
+    let out = dump
+        .stdout
+        .take()
+        .ok_or_else(|| gone("pw-dump gave nothing to read"))?;
 
     // pw-dump's arrays are read on a thread of their own, so the wait for
     // a call to start or end can run out between them.
@@ -136,8 +166,7 @@ fn main() -> ExitCode {
         }
     }
     let _ = dump.wait();
-    eprintln!("pause-for-calls: pw-dump ended");
-    ExitCode::FAILURE
+    Err(gone("PipeWire went, so pw-dump ended"))
 }
 
 #[cfg(test)]

@@ -9,3 +9,4 @@ publish = false
 
 [dependencies]
 serde_json = "1"
+terminal-kit = { path = "../../terminal-kit" }

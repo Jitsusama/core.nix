@@ -10,16 +10,15 @@
 //! in zathura's window as its own line does.
 //!
 //! Usage: `zathura-command line BUS` | `zathura-command BUS COMMAND [REST]`
+//!
+//! It takes its help, exits and failures from the terminal kit
+//! (docs/commands.md); it answers nothing, since what it does shows in
+//! zathura's window or the launcher.
 
-use std::env;
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 
-/// What this answers when it isn't given its words, or a page it can't go to.
-const MISUSED: u8 = 2;
-
-/// What this answers when zathura couldn't be asked, or said no.
-const FAILED: u8 = 1;
+use terminal_kit::{Exit, Failure, Help};
 
 /// zathura's object on its bus.
 const OBJECT: &str = "/org/pwmt/zathura";
@@ -44,27 +43,32 @@ enum Asked {
     Run(String, String),
 }
 
+fn help() -> Help {
+    Help::new(
+        "zathura-command",
+        "carries the launcher's command line to a zathura",
+    )
+    .command("line BUS", "opens the launcher's line over that zathura")
+    .command("BUS COMMAND [REST]", "runs a command there; goto N, a page")
+    .example("zathura-command line :1.42", "what zathura's colon runs")
+    .example("zathura-command :1.42 goto 41", "goes to page 41")
+    .exit(
+        Exit::Failed,
+        "zathura or the launcher couldn't be asked, or said no",
+    )
+}
+
 fn main() -> ExitCode {
-    let arguments: Vec<String> = env::args().skip(1).collect();
-    let asked = match asked(&arguments) {
-        Ok(asked) => asked,
-        Err(said) => {
-            eprintln!("zathura-command: {said}");
-            return ExitCode::from(MISUSED);
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let asked = asked(&context.args)
+            .map_err(|said| Failure::new(Exit::Usage, said).try_this("zathura-command --help"))?;
+        match &asked {
+            Asked::Line(bus) => line(bus),
+            Asked::Goto(bus, to) => went(bus, to),
+            Asked::Run(bus, typed) => ran(bus, typed),
         }
-    };
-    let done = match &asked {
-        Asked::Line(bus) => line(bus),
-        Asked::Goto(bus, to) => went(bus, to),
-        Asked::Run(bus, typed) => ran(bus, typed),
-    };
-    match done {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(said) => {
-            eprintln!("zathura-command: {said}");
-            ExitCode::from(FAILED)
-        }
-    }
+        .map_err(|said| Failure::new(Exit::Failed, said))
+    })
 }
 
 /// What the words given ask for.
@@ -79,7 +83,7 @@ fn asked(arguments: &[String]) -> Result<Asked, String> {
             let rest = rest.first().map_or("", |rest| rest.trim());
             Ok(Asked::Run(bus.clone(), typed(command, rest)))
         }
-        _ => Err("usage: zathura-command line BUS | zathura-command BUS COMMAND [REST]".into()),
+        _ => Err("it takes line BUS, or BUS COMMAND [REST]".into()),
     }
 }
 

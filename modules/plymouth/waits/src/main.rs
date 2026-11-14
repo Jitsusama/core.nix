@@ -17,6 +17,11 @@
 //! once. Nothing here is asked of systemd but at a job's few moments:
 //! it sleeps on the socket until a signal comes, or a deadline it armed on
 //! one.
+//!
+//! It takes its help and exits from the terminal kit (docs/commands.md).
+//! What it logs carries the journal's priority itself (`<6>`, `<7>`);
+//! the unit marks every other line an error, the kit's failure among
+//! them.
 
 mod jobs;
 
@@ -33,6 +38,7 @@ use dbus::message::MessageType;
 use dbus::{Message, Path};
 
 use jobs::{Jobs, Next};
+use terminal_kit::{Exit, Failure, Help};
 
 const OWN: &str = "plymouth-waits.service";
 const SYSTEMD: &str = "org.freedesktop.systemd1";
@@ -53,14 +59,29 @@ const NO_REPLY: &str = "org.freedesktop.DBus.Error.NoReply";
 /// and the job's and unit's paths.
 type Listed = (u32, String, String, String, Path<'static>, Path<'static>);
 
+fn help() -> Help {
+    Help::new(
+        "plymouth-waits",
+        "tells Plymouth what the boot or shutdown waits on",
+    )
+    .example(
+        "plymouth-waits",
+        "follows systemd's jobs until Plymouth quits",
+    )
+    .exit(Exit::Unavailable, "systemd's jobs couldn't be followed")
+}
+
 fn main() -> ExitCode {
-    match watch() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("<3>{error}");
-            ExitCode::FAILURE
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        if let Some(word) = context.args.first() {
+            return Err(Failure::new(Exit::Usage, format!("it takes no {word}"))
+                .try_this("plymouth-waits --help"));
         }
-    }
+        watch().map_err(|error| {
+            Failure::new(Exit::Unavailable, "systemd's jobs couldn't be followed")
+                .because(error.to_string())
+        })
+    })
 }
 
 fn watch() -> Result<(), Box<dyn Error>> {

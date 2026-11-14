@@ -50,28 +50,13 @@
     "kit"
     "helps"
   ];
-  chrome-pack-extension = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   chrony-network-servers = [ "helps" ];
-  claude-statusline = [
-    "kit"
-    "exits"
-    "inks"
-    "helps"
-  ];
   clipboard-history = [
     "kit"
     "exits"
     "helps"
   ];
   collect = [ "helps" ];
-  console-font = [
-    "kit"
-    "helps"
-  ];
   console-setup = [ "helps" ];
   declared-last = [ "helps" ];
   dictation = [
@@ -119,11 +104,6 @@
     "kit"
     "helps"
   ];
-  key-counts = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   launched = [ "helps" ];
   launcher = [
     "kit"
@@ -133,11 +113,6 @@
   ];
   launcher-say = [
     "kit"
-    "helps"
-  ];
-  lid-docked = [
-    "kit"
-    "exits"
     "helps"
   ];
   lid-held = [ "helps" ];
@@ -217,10 +192,6 @@
     "kit"
     "helps"
   ];
-  pause-for-calls = [
-    "kit"
-    "helps"
-  ];
   people = [
     "kit"
     "exits"
@@ -241,15 +212,7 @@
     "helps"
   ];
   pi-settings = [ "helps" ];
-  pi-spawner = [
-    "kit"
-    "helps"
-  ];
   pi-verbs = [ "helps" ];
-  plymouth-waits = [
-    "kit"
-    "helps"
-  ];
   processor-telemetry = [
     "kit"
     "helps"
@@ -298,11 +261,6 @@
     "helps"
   ];
   shell-preview = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  shutdown-status = [
     "kit"
     "exits"
     "helps"
@@ -371,22 +329,7 @@
     "exits"
     "helps"
   ];
-  without-syncfs = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   xdg-open = [ "helps" ];
   yubikey-once-in = [ "helps" ];
-  zathura-command = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  zathura-next-document = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   zoom-opens = [ "helps" ];
 }

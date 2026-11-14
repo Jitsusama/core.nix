@@ -97,14 +97,31 @@ fn run(arguments: &[&str]) -> Output {
 fn says_how_it_is_used_when_told_nothing_to_run() {
     let said = run(&[]);
 
-    assert_eq!(said.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&said.stderr).starts_with("Usage:"));
+    assert_eq!(said.status.code(), Some(64), "{said:?}");
+    assert!(
+        String::from_utf8_lossy(&said.stderr).contains("it takes PROGRAM"),
+        "{said:?}"
+    );
 }
 
 #[test]
-fn answers_as_a_shell_does_for_a_program_it_cannot_run() {
+fn says_a_program_it_cannot_find_isnt_there() {
     let said = run(&["/nonexistent/program"]);
 
-    assert_eq!(said.status.code(), Some(127));
-    assert!(String::from_utf8_lossy(&said.stderr).contains("/nonexistent/program"));
+    assert_eq!(said.status.code(), Some(66), "{said:?}");
+    assert!(
+        String::from_utf8_lossy(&said.stderr).contains("/nonexistent/program"),
+        "{said:?}"
+    );
+}
+
+#[test]
+fn leaves_the_programs_own_help_to_it() {
+    let said = run(&["/nonexistent/program", "--help"]);
+
+    assert_eq!(
+        said.status.code(),
+        Some(66),
+        "its own help was answered for the program: {said:?}"
+    );
 }

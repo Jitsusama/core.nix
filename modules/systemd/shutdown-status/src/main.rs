@@ -10,16 +10,22 @@
 //!
 //! Usage: shutdown-status REACHED, where REACHED is the mark those services
 //! leave. PLYMOUTH names Plymouth's client, `plymouth` by default.
+//!
+//! It takes its help, exits and failures from the terminal kit
+//! (docs/commands.md); it answers nothing, since what it says goes to
+//! Plymouth.
 
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::{ErrorKind, Read, Seek, SeekFrom};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
+
+use terminal_kit::{Exit, Failure, Help};
 
 /// How long the last stage may go quiet after asking what's left to stop.
 const HELD_AFTER: Duration = Duration::from_secs(3);
@@ -160,19 +166,36 @@ fn say(plymouth: &OsStr, word: Word) {
     let _ = client.wait();
 }
 
+fn help() -> Help {
+    Help::new(
+        "shutdown-status",
+        "tells Plymouth when a shutdown is forced or held up",
+    )
+    .command("REACHED", "the mark a healthy stop's services leave")
+    .example(
+        "shutdown-status /run/shutdown-reached-its-end",
+        "what its unit runs as the shutdown starts",
+    )
+    .exit(Exit::Failed, "the kernel's log couldn't be read")
+}
+
 fn main() -> ExitCode {
-    let Some(reached) = env::args_os().nth(1).map(PathBuf::from) else {
-        eprintln!("usage: shutdown-status REACHED");
-        return ExitCode::from(2);
-    };
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let [reached] = context.args.as_slice() else {
+            return Err(Failure::new(Exit::Usage, "it takes REACHED, a path")
+                .try_this("shutdown-status --help"));
+        };
+        watch(&PathBuf::from(reached))
+    })
+}
+
+/// Follows the last stage's steps in the kernel's log, telling Plymouth
+/// what they mean, until the log can't be read.
+fn watch(reached: &Path) -> Result<(), Failure> {
     let plymouth = env::var_os("PLYMOUTH").unwrap_or_else(|| OsString::from("plymouth"));
-    let records = match follow_kernel_log() {
-        Ok(records) => records,
-        Err(error) => {
-            eprintln!("shutdown-status: can't open the kernel's log: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let records = follow_kernel_log().map_err(|error| {
+        Failure::new(Exit::Failed, "the kernel's log couldn't be opened").because(error.to_string())
+    })?;
     let mut watch = Watch::default();
     loop {
         let heard = match watch.deadline() {
@@ -188,7 +211,12 @@ fn main() -> ExitCode {
                 }
             }
             Err(RecvTimeoutError::Timeout) => say(&plymouth, watch.silence()),
-            Err(RecvTimeoutError::Disconnected) => return ExitCode::FAILURE,
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err(Failure::new(
+                    Exit::Failed,
+                    "the kernel's log stopped being read",
+                ));
+            }
         }
     }
 }

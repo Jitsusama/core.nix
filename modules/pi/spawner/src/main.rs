@@ -14,6 +14,10 @@
 //! command and all it started by signalling the group itself. When stdin
 //! ends pi has gone, and every group still running is killed, as pi kills
 //! its detached commands when it exits.
+//!
+//! Its help and its refusal of words it doesn't take are the terminal
+//! kit's (docs/commands.md); stdout is the protocol's alone, written
+//! straight, never through the kit.
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -24,6 +28,8 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
+
+use terminal_kit::{Exit, Failure, Help};
 
 /// A command's process id, sent once it has started: four bytes.
 const STARTED: u8 = b'p';
@@ -67,7 +73,24 @@ enum Request {
     },
 }
 
-fn main() {
+fn help() -> Help {
+    Help::new("pi-spawner", "starts pi's shell commands for it")
+        .example("pi-spawner", "takes framed requests on stdin until pi goes")
+}
+
+fn main() -> std::process::ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        if let Some(word) = context.args.first() {
+            return Err(Failure::new(Exit::Usage, format!("it takes no {word}"))
+                .try_this("pi-spawner --help"));
+        }
+        serve();
+        Ok(())
+    })
+}
+
+/// Starts what pi asks until stdin ends, then ends what still runs.
+fn serve() {
     // Whoever writes to stdin starts commands outside pi's own checks, so
     // only pi may reach it. A process that can't be dumped keeps its
     // /proc entries from other processes of the same user: without this,

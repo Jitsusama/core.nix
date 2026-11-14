@@ -25,8 +25,6 @@
   "modules/calls/src/lib.rs" = 5;
   "modules/chrome/open-tabs/host/src/main.rs" = 1;
   "modules/chrome/pack-extension/src/main.rs" = 1;
-  "modules/claude/statusline/src/line.rs" = 1;
-  "modules/claude/statusline/tests/statusline.rs" = 2;
   "modules/collector/src/otlp.rs" = 2;
   "modules/collector/src/pressure.rs" = 4;
   "modules/collector/src/when.rs" = 3;
@@ -186,7 +184,6 @@
   "modules/mic-mute-light/mic-mute-light.rs" = 13;
   "modules/network-revive/src/config.rs" = 1;
   "modules/nix-daemon/vm-first/src/main.rs" = 14;
-  "modules/nix-daemon/without-syncfs/tests/refuses.rs" = 2;
   "modules/nix-offload/offload/src/decide.rs" = 13;
   "modules/nix-offload/offload/src/held.rs" = 3;
   "modules/nix-offload/offload/src/machines.rs" = 5;

@@ -8,3 +8,4 @@ license = "MIT"
 publish = false
 
 [dependencies]
+terminal-kit = { path = "../../terminal-kit" }

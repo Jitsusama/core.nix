@@ -19,6 +19,10 @@
 //! `LID_DOCKED_DRM` names the connectors' directory in place of the kernel's,
 //! for tests, whose status is written as it changes, so nothing there is asked
 //! to look again.
+//!
+//! It takes its help, exits and failures from the terminal kit
+//! (docs/commands.md); it answers nothing, since what it does is the unit's
+//! state, and a connector it can't ask is said in the journal as it goes.
 
 use std::env;
 use std::ffi::OsString;
@@ -26,6 +30,8 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, ExitCode};
+
+use terminal_kit::{Exit, Failure, Help};
 
 /// The connector types logind counts as a monitor's, by the part of a
 /// connector's name after its card, as logind-core.c lists them, and USB,
@@ -101,12 +107,34 @@ fn verb(plugged: &[String]) -> &'static str {
     if plugged.is_empty() { "stop" } else { "start" }
 }
 
+fn help() -> Help {
+    Help::new(
+        "lid-docked",
+        "holds the lid's lock while a monitor is plugged in",
+    )
+    .command(
+        "SYSTEMCTL UNIT",
+        "starts UNIT with a monitor in, else stops it",
+    )
+    .example(
+        "lid-docked systemctl lid-docked.service",
+        "what udev runs as a monitor comes or goes",
+    )
+    .exit(Exit::Failed, "systemctl couldn't run, or failed")
+}
+
 fn main() -> ExitCode {
-    let mut args = env::args_os().skip(1);
-    let (Some(systemctl), Some(unit), None) = (args.next(), args.next(), args.next()) else {
-        eprintln!("usage: lid-docked SYSTEMCTL UNIT");
-        return ExitCode::from(2);
-    };
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let [systemctl, unit] = context.args.as_slice() else {
+            return Err(Failure::new(Exit::Usage, "it takes SYSTEMCTL, then UNIT")
+                .try_this("lid-docked --help"));
+        };
+        docked(Path::new(systemctl), unit)
+    })
+}
+
+/// Starts or stops the unit as a monitor is plugged in or not.
+fn docked(systemctl: &Path, unit: &str) -> Result<(), Failure> {
     let drm = if let Some(stand_in) = env::var_os("LID_DOCKED_DRM") {
         stand_in
     } else {
@@ -116,23 +144,21 @@ fn main() -> ExitCode {
     };
     let plugged = plugged_in(Path::new(&drm));
     let verb = verb(&plugged);
-    match Command::new(&systemctl)
+    match Command::new(systemctl)
         .args(["--no-block", verb])
-        .arg(&unit)
+        .arg(unit)
         .status()
     {
-        Ok(status) if status.success() => ExitCode::SUCCESS,
-        Ok(status) => {
-            eprintln!("lid-docked: systemctl {verb} failed: {status}");
-            ExitCode::FAILURE
-        }
-        Err(error) => {
-            eprintln!(
-                "lid-docked: can't run {}: {error}",
-                Path::new(&systemctl).display()
-            );
-            ExitCode::FAILURE
-        }
+        Ok(status) if status.success() => Ok(()),
+        Ok(status) => Err(
+            Failure::new(Exit::Failed, format!("systemctl couldn't {verb} {unit}"))
+                .because(status.to_string()),
+        ),
+        Err(error) => Err(Failure::new(
+            Exit::Failed,
+            format!("{} couldn't run", systemctl.display()),
+        )
+        .because(error.to_string())),
     }
 }
 

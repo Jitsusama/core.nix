@@ -11,3 +11,4 @@ publish = false
 # What counts as a call, kept in one place for everything that asks.
 calls = { path = "../../calls" }
 serde_json = "1.0"
+terminal-kit = { path = "../../terminal-kit" }

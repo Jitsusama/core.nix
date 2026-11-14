@@ -12,6 +12,9 @@
 //! public key's SHA-256, each half-byte a letter from a to p.
 //!
 //! usage: chrome-pack-extension FOLDER KEY.pem OUT.crx, printing the id.
+//! The id alone is its answer, since a build reads it; --json gives it
+//! with the file. Its help, exits and failures are the terminal kit's
+//! (docs/commands.md).
 
 use std::fs;
 use std::io::{Cursor, Write};
@@ -22,43 +25,68 @@ use rsa::RsaPrivateKey;
 use rsa::pkcs1v15::SigningKey;
 use rsa::pkcs8::{DecodePrivateKey, EncodePublicKey};
 use rsa::signature::{SignatureEncoding, Signer};
+use serde_json::json;
 use sha2::{Digest, Sha256};
+use terminal_kit::{Exit, Failure, Help};
 use zip::write::SimpleFileOptions;
 
 /// What leads what's signed, as Chrome reads it.
 const SIGNED_DATA: &[u8] = b"CRX3 SignedData\0";
 
+fn help() -> Help {
+    Help::new(
+        "chrome-pack-extension",
+        "packs a folder as a signed Chrome extension",
+    )
+    .command("FOLDER KEY OUT", "packs FOLDER, signed with KEY, into OUT")
+    .example(
+        "chrome-pack-extension extension key.pem out.crx",
+        "says the extension's id",
+    )
+    .exit(
+        Exit::Failed,
+        "FOLDER or KEY couldn't be read, or OUT written",
+    )
+    .exit(Exit::BadInput, "KEY isn't an RSA key in PKCS #8")
+}
+
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let [folder, key, out] = args.as_slice() else {
-        eprintln!("usage: chrome-pack-extension FOLDER KEY.pem OUT.crx");
-        return ExitCode::from(2);
-    };
-    match pack(
-        Path::new(folder),
-        &fs::read_to_string(key).unwrap_or_default(),
-    ) {
-        Ok((id, crx)) => match fs::write(out, crx) {
-            Ok(()) => {
-                println!("{id}");
-                ExitCode::SUCCESS
-            }
-            Err(error) => {
-                eprintln!("chrome-pack-extension: can't write {out}: {error}");
-                ExitCode::FAILURE
-            }
-        },
-        Err(error) => {
-            eprintln!("chrome-pack-extension: {error}");
-            ExitCode::FAILURE
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let [folder, key, out] = context.args.as_slice() else {
+            return Err(Failure::new(Exit::Usage, "it takes FOLDER, KEY and OUT")
+                .try_this("chrome-pack-extension --help"));
+        };
+        let failed = |what: String, why: String| Failure::new(Exit::Failed, what).because(why);
+        let pem = fs::read_to_string(key)
+            .map_err(|error| failed(format!("{key} couldn't be read"), error.to_string()))?;
+        let signer = signing_key(&pem).map_err(|why| {
+            Failure::new(Exit::BadInput, format!("{key} isn't a key to sign with")).because(why)
+        })?;
+        let (id, crx) = pack(Path::new(folder), signer)
+            .map_err(|why| failed(format!("{folder} couldn't be packed"), why))?;
+        fs::write(out, crx)
+            .map_err(|error| failed(format!("{out} couldn't be written"), error.to_string()))?;
+        if context.format().is_json() {
+            context.answer(&json!({
+                "schema": "chrome-pack-extension.packed/1",
+                "id": id,
+                "file": out,
+            }))
+        } else {
+            context.say(&format!("{id}\n"))
         }
-    }
+        .map_err(|error| failed("the id couldn't be said".into(), error.to_string()))
+    })
+}
+
+/// The key a PEM file holds, to sign with.
+fn signing_key(pem: &str) -> Result<RsaPrivateKey, String> {
+    RsaPrivateKey::from_pkcs8_pem(pem)
+        .map_err(|error| format!("the key isn't an RSA key in PKCS #8: {error}"))
 }
 
 /// The folder packed and signed with the key, and the extension's id.
-fn pack(folder: &Path, key: &str) -> Result<(String, Vec<u8>), String> {
-    let key = RsaPrivateKey::from_pkcs8_pem(key)
-        .map_err(|error| format!("the key isn't an RSA key in PKCS #8: {error}"))?;
+fn pack(folder: &Path, key: RsaPrivateKey) -> Result<(String, Vec<u8>), String> {
     let public = key
         .to_public_key()
         .to_public_key_der()
@@ -174,6 +202,11 @@ mod tests {
     // `openssl pkey -pubout -outform DER | sha256sum`, each half-byte a to p.
     const KEY: &str = include_str!("test-key.pem");
 
+    /// The test's key, read as the command reads one.
+    fn key() -> RsaPrivateKey {
+        signing_key(KEY).expect("the test's key is an RSA key in PKCS #8")
+    }
+
     fn folder() -> tempfolder::Folder {
         let folder = tempfolder::Folder::new();
         fs::write(folder.path().join("manifest.json"), "{}").unwrap();
@@ -214,7 +247,7 @@ mod tests {
             ]),
             "abcdefghijklmnopaaaaaaaaaaaaaapp"
         );
-        let (said, _) = pack(folder().path(), KEY).unwrap();
+        let (said, _) = pack(folder().path(), key()).unwrap();
         assert_eq!(said, "oaencadengkhpbigmiekloeedfpgadam");
     }
 
@@ -222,14 +255,14 @@ mod tests {
     fn the_same_folder_packs_to_the_same_bytes() {
         let folder = folder();
         assert_eq!(
-            pack(folder.path(), KEY).unwrap().1,
-            pack(folder.path(), KEY).unwrap().1
+            pack(folder.path(), key()).unwrap().1,
+            pack(folder.path(), key()).unwrap().1
         );
     }
 
     #[test]
     fn a_crx3_holds_the_key_signing_its_id_and_zip_as_chrome_checks() {
-        let (said, crx) = pack(folder().path(), KEY).unwrap();
+        let (said, crx) = pack(folder().path(), key()).unwrap();
         assert_eq!(&crx[..4], b"Cr24");
         assert_eq!(u32::from_le_bytes(crx[4..8].try_into().unwrap()), 3);
         let length = usize::try_from(u32::from_le_bytes(crx[8..12].try_into().unwrap())).unwrap();
@@ -270,7 +303,7 @@ mod tests {
 
     #[test]
     fn a_key_that_isnt_one_is_said() {
-        let error = pack(folder().path(), "not a key").unwrap_err();
+        let error = signing_key("not a key").unwrap_err();
         assert!(error.starts_with("the key isn't an RSA key"), "{error}");
     }
 
