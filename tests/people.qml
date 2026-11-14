@@ -740,6 +740,24 @@ ShellRoot {
                         .join(", "));
             }
         },
+        {
+            // Whoever Joel's inside is watched, lent or not, and let go as
+            // he leaves them or the launcher shuts, so the shell at rest
+            // hears nothing of those he looked at (XY9H5C, be3bdeac).
+            what: "only whoever Joel's inside is watched",
+            check: () => {
+                const zoe = people.personOf("Zoe@example.com");
+                launcher.held = [{ row: { key: "calendar:meeting:standup" } },
+                    { row: zoe }];
+                expect("inside her, she's watched",
+                    people.within.join() === "person:zoe@example.com", people.within.join());
+                launcher.open = false;
+                expect("shut, nobody is", people.within.length === 0, people.within.join());
+                launcher.open = true;
+                launcher.held = [];
+                expect("left, nobody is", people.within.length === 0, people.within.join());
+            }
+        },
         // Such a one is no one of Slack's, so the daemon's record of them
         // makes no person a search finds.
         seeking("noone@example.com", "one Slack knows nobody by is found by no one", () => {

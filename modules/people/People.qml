@@ -27,9 +27,9 @@
 // finds, asked of the daemon as each text is typed, and whoever Joel
 // steps into, asked of every source then. One the daemon serves whole, as
 // Slack's, has no file: its acts, what's between them and how they stand
-// are drawn as served, no row of its made here (Y2YBTS, 67770006). Holding Tuple's 7,731 contacts here made
-// 23,276 rows at each opening and held Joel's first key a second
-// (2026-10-31, 09:31).
+// are drawn as served, no row of its made here (Y2YBTS, 67770006).
+// Holding Tuple's 7,731 contacts here made 23,276 rows at each opening
+// and held Joel's first key a second (2026-10-31, 09:31).
 //
 // Long because it still merges and ranks the people of a source the
 // daemon doesn't hold, as one a machine's own repository brings may be;
@@ -99,19 +99,45 @@ Provider {
     }
 
     // Whoever Joel steps into, asked of every source through the daemon as
-    // he does, and watched from then, so what a source learns of them only
-    // once asked, as Slack's act, comes as it changes (XY9H5C, 87688ce0).
-    // Each address is asked at most once a minute.
+    // he does, and watched while he's inside them, so what a source learns
+    // of them only once asked, as Slack's act, comes as it changes (XY9H5C,
+    // 87688ce0). Each address is asked at most once a minute.
     Daemon {
         id: stepper
 
         socket: book.socket
         kind: "person"
         watching: ({ keys: [] })
-        ahead: provider.stepped
-        onHeard: provider.changed()
+        ahead: provider.within
+        // Nothing heard with the launcher shut wakes the shell, as one told
+        // just after it shut would (XY9H5C, be3bdeac). It's its being open
+        // rather than People's being wanted, since a person lent to mail or
+        // a meeting is stepped into where People's own rows aren't.
+        onHeard: {
+            if (provider.launcher?.open)
+                provider.changed();
+        }
     }
-    property var stepped: []
+    // The keys of whoever Joel's inside now, wherever they were lent: as he
+    // leaves them, or the launcher shuts, their watch goes, so the shell at
+    // rest hears nothing of those he looked at (XY9H5C, be3bdeac).
+    readonly property var within: {
+        const launcher = provider.launcher;
+        const steps = launcher?.open ? launcher.held ?? [] : [];
+        // Walked by hand, since what the launcher holds is a list QML
+        // lends, which has no flatMap.
+        const keys = [];
+        for (const step of steps) {
+            if (step.row?.component !== "person")
+                continue;
+            for (const email of step.row.person?.emails ?? []) {
+                const key = `person:${Person.address(email)}`;
+                if (!keys.includes(key))
+                    keys.push(key);
+            }
+        }
+        return keys;
+    }
     // When each key was last asked as Joel stepped in, and those whose
     // step-in the daemon hasn't answered yet. Plain, so keeping them
     // notifies nothing.
@@ -129,13 +155,6 @@ Provider {
             asked[key] = now;
             steps.awaited[key] = true;
         }
-        // Watched once this binding's done, since stepping in is read in
-        // one.
-        Qt.callLater(() => {
-            const fresh = keys.filter(key => !provider.stepped.includes(key));
-            if (fresh.length > 0)
-                provider.stepped = provider.stepped.concat(fresh);
-        });
         // Answered, or given up on, a source's held place says what it
         // said, or goes.
         stepper.get(keys, 5000, () => {
@@ -385,10 +404,15 @@ Provider {
 
     // The record read for a key, found without making anyone, for a
     // source keeping something of its own until the daemon says it
-    // (Tuple's favourites changed here).
+    // (Tuple's favourites changed here). What a step-in got is read first
+    // only while it's watched, as Joel's inside them; once he's left, what
+    // the lister watches is newer, and what the step-in got is kept for
+    // anyone nobody lists, till the next step-in asks again.
     function recordFor(key) {
-        return stepper.held[key] ?? lister.held[key] ?? sought.records.find(record =>
-            record.key === key && !record.gone) ?? null;
+        const stepped = stepper.held[key];
+        const watched = stepped !== undefined && within.includes(key);
+        return (watched ? stepped : null) ?? lister.held[key] ?? stepped
+            ?? sought.records.find(record => record.key === key && !record.gone) ?? null;
     }
 
     // A held source's people and stands, from the records read, as a
