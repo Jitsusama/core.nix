@@ -411,8 +411,28 @@ impl State {
     /// the one that hears it and is on its network, since a card roams only
     /// within the network it's on.
     pub fn roamer(&self, bssid: &str) -> Result<String, Refused> {
-        let _ = bssid;
-        Err(Refused::NotNearby)
+        // An access point's path in wpa_supplicant begins with its card's.
+        fn card_of(path: &str) -> Option<&str> {
+            path.split_once("/BSSs/").map(|(card, _)| card)
+        }
+        let mut heard = self
+            .heard
+            .iter()
+            .filter(|(_, heard)| heard.bssid.eq_ignore_ascii_case(bssid))
+            .peekable();
+        if heard.peek().is_none() {
+            return Err(Refused::NotNearby);
+        }
+        heard
+            .find_map(|(path, point)| {
+                let by = card_of(path)?;
+                let on = |card: &&Card| card.network.as_deref() == Some(point.name.as_str());
+                let at = |card: &&Card| self.at.get(&card.name).map(String::as_str);
+                let hears = |card: &&Card| at(card).and_then(card_of) == Some(by);
+                let card = self.cards.values().find(|card| on(card) && hears(card))?;
+                Some(card.name.clone())
+            })
+            .ok_or(Refused::NotJoined)
     }
 
     /// The cards on a network, by name, which are those worth polling.
