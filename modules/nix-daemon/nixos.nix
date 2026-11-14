@@ -138,6 +138,13 @@
 # its own credentials to its own downloads. Each connection has a daemon
 # process of its own, so one client's values never reach another's builds.
 # A machine that names none gets stock Nix's answer.
+#
+# The names reach the daemon and the door through NIX_CONFIG in their units,
+# never nix.conf, which every client reads too. A Nix other than this one,
+# such as the one tec puts first on the path, doesn't know the setting and
+# warned "unknown setting 'untrusted-impure-env-names'" on every command.
+# Both need them: the door filters what a sandbox hands it, and the daemon
+# filters again what the door, as an account it doesn't trust, passes on.
 {
   config,
   lib,
@@ -161,138 +168,159 @@ let
     "--extra-experimental-features mounted-ssh-store"
     "daemon --stdio --force-untrusted --process-ops"
   ];
+  cfg = config.jitsusama.nix-daemon;
+  # Set in the daemon's and the door's environment alone, after nix.conf.
+  namedEnv = lib.optionalAttrs (cfg.untrustedImpureEnvNames != [ ]) {
+    NIX_CONFIG = "untrusted-impure-env-names = ${lib.concatStringsSep " " cfg.untrustedImpureEnvNames}";
+  };
 in
 {
-  nix.package = lib.mkDefault nix;
-  nix.daemonCPUSchedPolicy = "idle";
-  nix.daemonIOSchedClass = "idle";
+  options.jitsusama.nix-daemon.untrustedImpureEnvNames = lib.mkOption {
+    type = lib.types.listOf (lib.types.strMatching "[A-Za-z_][A-Za-z0-9_]*");
+    default = [ ];
+    example = [ "NIX_NPM_REGISTRY_PASSWORD" ];
+    description = ''
+      The impure-env variables the daemon takes from an account it doesn't
+      trust, for fixed-output builds alone: the credentials the machine's
+      tools hand Nix for private downloads. None, as stock Nix takes.
+    '';
+  };
 
-  nix.settings.auto-allocate-uids = true;
-  nix.settings.use-cgroups = true;
-  # Every machine here is built from a flake and rebuilds from one, and core's
-  # own programs, `nix-offload there` and changed-checks among them, build
-  # flakes by their attributes. Stock Nix still calls both commands and
-  # flakes experimental, so a machine whose own config didn't add them
-  # refused every `nix build github:...` sent to it.
-  nix.settings.experimental-features = [
-    "auto-allocate-uids"
-    "cgroups"
-    "flakes"
-    "nix-command"
-  ];
-  nix.settings.extra-system-features = [ "uid-range" ];
+  config = {
+    nix.package = lib.mkDefault nix;
+    nix.daemonCPUSchedPolicy = "idle";
+    nix.daemonIOSchedClass = "idle";
 
-  nix.settings.secret-key-files = [ "/etc/nix/signing-key" ];
-
-  # After /etc, which /etc/nix belongs to.
-  system.activationScripts.nix-signing-key = {
-    deps = [ "etc" ];
-    text = builtins.concatStringsSep " " [
-      "${pkgs.bash}/bin/bash ${./signing-key.sh}"
-      "${config.nix.package}/bin/nix"
-      "${config.networking.hostName}-1"
-      "/etc/nix/signing-key /etc/nix/signing-key.pub"
+    nix.settings.auto-allocate-uids = true;
+    nix.settings.use-cgroups = true;
+    # Every machine here is built from a flake and rebuilds from one, and core's
+    # own programs, `nix-offload there` and changed-checks among them, build
+    # flakes by their attributes. Stock Nix still calls both commands and
+    # flakes experimental, so a machine whose own config didn't add them
+    # refused every `nix build github:...` sent to it.
+    nix.settings.experimental-features = [
+      "auto-allocate-uids"
+      "cgroups"
+      "flakes"
+      "nix-command"
     ];
-  };
+    nix.settings.extra-system-features = [ "uid-range" ];
 
-  nix.settings.min-free = 10 * gib;
-  nix.settings.max-free = 24 * gib;
-  # A collection keeps what is in use, not everything that built it. With
-  # keep-outputs every live derivation kept the outputs of all that built it,
-  # and with keep-derivations every live path kept the derivation that built
-  # it, and with it every source that went in. So each system generation and
-  # dev shell held its whole build closure, and Nix called none of it garbage:
-  # on 10 November about 200 GB of a 344 GiB store, with the disk at 90% and
-  # the disk guard able to free nothing. A 5 GB copy of a work tree was held
-  # only because a derivation named it as a source. What a rebuild would
-  # fetch again, like the reader's crate tarballs, is kept as young garbage
-  # by the disk guard instead, within its budget and only while the disk is
-  # healthy, and an evaluation writes again any derivation it needs.
-  nix.settings.keep-outputs = false;
-  nix.settings.keep-derivations = false;
+    nix.settings.secret-key-files = [ "/etc/nix/signing-key" ];
 
-  systemd.slices.build.sliceConfig.CPUWeight = 10;
-
-  systemd.services.nix-daemon.serviceConfig = {
-    Slice = "build.slice";
-    # Nix's own unit says `Delegate=`, which delegates but asks for no
-    # controllers, so the daemon got only those systemd already ran for its
-    # slice, and no unit there asks for the CPU's. Named here, after it, they
-    # are asked for. (DelegateControllers is the property systemd reports,
-    # not a key it reads.)
-    Delegate = "cpu io memory pids";
-    # A restart stops only the daemon that listens, so each client's own
-    # daemon and its build finish under the new one, and a switch that
-    # restarts it cuts nothing (vm-checks-go-first). Nix's unit says so too;
-    # said here, it stays so.
-    KillMode = "process";
-    ManagedOOMMemoryPressure = "kill";
-    ManagedOOMMemoryPressureLimit = "80%";
-    # When memory runs out, a build dies before anything Joel uses: its
-    # builders inherit this, and a Chromium app sets its own processes to
-    # 300, so at the daemon's 0 the kernel chose Slack over a build. Among
-    # builds alike, the largest goes.
-    OOMScoreAdjust = 1000;
-    # A VM check's guest syncs the folders it shares with the host, and
-    # virtiofsd forwards each as syncfs() of the host's whole filesystem,
-    # read-only shares too. On btrfs each one commits a transaction, which
-    # every program's saves then wait behind: 133 of 160 commits in ten
-    # minutes of VM checks came from there. It's answered as done without
-    # being run, and a check's files are thrown away anyway. Answered
-    # ENOSYS, as until 4 November, a build's `sync -f` failed with "Function
-    # not implemented", and with it 2 tests of a Rust crate whose shims
-    # sync. sync, fsync and fdatasync still run, and Nix itself calls no
-    # syncfs(). A test run straight from its driver runs outside the daemon,
-    # so core's VM tests also start virtiofsd through without-syncfs
-    # (checks.nix).
-    SystemCallFilter = [ "~syncfs:0" ];
-  };
-
-  systemd.services.vm-first = {
-    description = "Puts the VMs of Nix's checks ahead of its other builds";
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      ExecStart = "${vmFirst}/bin/vm-first";
-      Restart = "on-failure";
-      RestartSec = 5;
-      # As root, which owns the daemon's cgroup and its builds' weights. It
-      # holds no capability but the one below, and ProtectSystem leaves it
-      # nothing to write outside /sys, /proc and /dev.
-      # The capability, only to change another user's threads' policy and
-      # nice.
-      AmbientCapabilities = [ "CAP_SYS_NICE" ];
-      CapabilityBoundingSet = [ "CAP_SYS_NICE" ];
-      NoNewPrivileges = true;
-      PrivateNetwork = true;
-      ProtectHome = true;
-      ProtectSystem = "strict";
-      MemoryDenyWriteExecute = true;
-      SystemCallArchitectures = "native";
+    # After /etc, which /etc/nix belongs to.
+    system.activationScripts.nix-signing-key = {
+      deps = [ "etc" ];
+      text = builtins.concatStringsSep " " [
+        "${pkgs.bash}/bin/bash ${./signing-key.sh}"
+        "${config.nix.package}/bin/nix"
+        "${config.networking.hostName}-1"
+        "/etc/nix/signing-key /etc/nix/signing-key.pub"
+      ];
     };
-  };
 
-  systemd.user.sockets.nix-untrusted = {
-    description = "The Nix daemon's door for sandboxes, which trusts no one";
-    wantedBy = [ "sockets.target" ];
-    listenStreams = [ "%t/nix-untrusted.sock" ];
-    socketConfig = {
-      Accept = true;
-      SocketMode = "0600";
+    nix.settings.min-free = 10 * gib;
+    nix.settings.max-free = 24 * gib;
+    # A collection keeps what is in use, not everything that built it. With
+    # keep-outputs every live derivation kept the outputs of all that built it,
+    # and with keep-derivations every live path kept the derivation that built
+    # it, and with it every source that went in. So each system generation and
+    # dev shell held its whole build closure, and Nix called none of it garbage:
+    # on 10 November about 200 GB of a 344 GiB store, with the disk at 90% and
+    # the disk guard able to free nothing. A 5 GB copy of a work tree was held
+    # only because a derivation named it as a source. What a rebuild would
+    # fetch again, like the reader's crate tarballs, is kept as young garbage
+    # by the disk guard instead, within its budget and only while the disk is
+    # healthy, and an evaluation writes again any derivation it needs.
+    nix.settings.keep-outputs = false;
+    nix.settings.keep-derivations = false;
+
+    systemd.slices.build.sliceConfig.CPUWeight = 10;
+
+    systemd.services.nix-daemon.environment = namedEnv;
+
+    systemd.services.nix-daemon.serviceConfig = {
+      Slice = "build.slice";
+      # Nix's own unit says `Delegate=`, which delegates but asks for no
+      # controllers, so the daemon got only those systemd already ran for its
+      # slice, and no unit there asks for the CPU's. Named here, after it, they
+      # are asked for. (DelegateControllers is the property systemd reports,
+      # not a key it reads.)
+      Delegate = "cpu io memory pids";
+      # A restart stops only the daemon that listens, so each client's own
+      # daemon and its build finish under the new one, and a switch that
+      # restarts it cuts nothing (vm-checks-go-first). Nix's unit says so too;
+      # said here, it stays so.
+      KillMode = "process";
+      ManagedOOMMemoryPressure = "kill";
+      ManagedOOMMemoryPressureLimit = "80%";
+      # When memory runs out, a build dies before anything Joel uses: its
+      # builders inherit this, and a Chromium app sets its own processes to
+      # 300, so at the daemon's 0 the kernel chose Slack over a build. Among
+      # builds alike, the largest goes.
+      OOMScoreAdjust = 1000;
+      # A VM check's guest syncs the folders it shares with the host, and
+      # virtiofsd forwards each as syncfs() of the host's whole filesystem,
+      # read-only shares too. On btrfs each one commits a transaction, which
+      # every program's saves then wait behind: 133 of 160 commits in ten
+      # minutes of VM checks came from there. It's answered as done without
+      # being run, and a check's files are thrown away anyway. Answered
+      # ENOSYS, as until 4 November, a build's `sync -f` failed with "Function
+      # not implemented", and with it 2 tests of a Rust crate whose shims
+      # sync. sync, fsync and fdatasync still run, and Nix itself calls no
+      # syncfs(). A test run straight from its driver runs outside the daemon,
+      # so core's VM tests also start virtiofsd through without-syncfs
+      # (checks.nix).
+      SystemCallFilter = [ "~syncfs:0" ];
     };
-  };
 
-  systemd.user.services."nix-untrusted@" = {
-    description = "The Nix daemon, for one untrusted connection";
-    # One unit a connection, gone once it ends, even failed: a client that
-    # hangs up before speaking ends its daemon with "unexpected end-of-file",
-    # and on 13 November one such was left a failed unit for every sweep
-    # to find. What it said stays in the journal.
-    unitConfig.CollectMode = "inactive-or-failed";
-    serviceConfig = {
-      ExecStart = untrusted;
-      StandardInput = "socket";
-      StandardOutput = "socket";
-      StandardError = "journal";
+    systemd.services.vm-first = {
+      description = "Puts the VMs of Nix's checks ahead of its other builds";
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        ExecStart = "${vmFirst}/bin/vm-first";
+        Restart = "on-failure";
+        RestartSec = 5;
+        # As root, which owns the daemon's cgroup and its builds' weights. It
+        # holds no capability but the one below, and ProtectSystem leaves it
+        # nothing to write outside /sys, /proc and /dev.
+        # The capability, only to change another user's threads' policy and
+        # nice.
+        AmbientCapabilities = [ "CAP_SYS_NICE" ];
+        CapabilityBoundingSet = [ "CAP_SYS_NICE" ];
+        NoNewPrivileges = true;
+        PrivateNetwork = true;
+        ProtectHome = true;
+        ProtectSystem = "strict";
+        MemoryDenyWriteExecute = true;
+        SystemCallArchitectures = "native";
+      };
+    };
+
+    systemd.user.sockets.nix-untrusted = {
+      description = "The Nix daemon's door for sandboxes, which trusts no one";
+      wantedBy = [ "sockets.target" ];
+      listenStreams = [ "%t/nix-untrusted.sock" ];
+      socketConfig = {
+        Accept = true;
+        SocketMode = "0600";
+      };
+    };
+
+    systemd.user.services."nix-untrusted@" = {
+      description = "The Nix daemon, for one untrusted connection";
+      # One unit a connection, gone once it ends, even failed: a client that
+      # hangs up before speaking ends its daemon with "unexpected end-of-file",
+      # and on 13 November one such was left a failed unit for every sweep
+      # to find. What it said stays in the journal.
+      unitConfig.CollectMode = "inactive-or-failed";
+      environment = namedEnv;
+      serviceConfig = {
+        ExecStart = untrusted;
+        StandardInput = "socket";
+        StandardOutput = "socket";
+        StandardError = "journal";
+      };
     };
   };
 }
