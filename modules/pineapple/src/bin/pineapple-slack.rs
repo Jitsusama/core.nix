@@ -68,8 +68,8 @@ const NEWEST: usize = 20;
 /// of its log and said so, they are (the plan's item 10).
 const SHADOW: bool = true;
 
-/// The replies' words, as Joel said yes to them; every one empty until
-/// he has, so no reply has words to say.
+/// The replies' words, as Joel said yes to them (2026-11-14); a reply
+/// missing any of them has nothing to say.
 const REPLIES: &str = include_str!("../../replies.json");
 
 /// Milliseconds in a second.
