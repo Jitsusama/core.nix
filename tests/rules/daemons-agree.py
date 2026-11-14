@@ -54,6 +54,7 @@ SHOWN = 15
 # protocol's ways: each with what speaks it.
 OTHERS_PROTOCOL = {
     "pi-agent-proxy": "ssh-agent's protocol, which ssh and git speak to it",
+    "pi-github-door": "HTTP's CONNECT, which gh and git speak to it through the fence's relay",
 }
 
 # Daemons that speak the interface from a program no crate here builds, each

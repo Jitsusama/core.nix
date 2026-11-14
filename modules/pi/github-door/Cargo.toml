@@ -1,0 +1,42 @@
+# The door a fenced pi command reaches GitHub through, adding the
+# person's token only to the calls it allows (src/lib.rs says why and
+# how).
+[package]
+name = "pi-github-door"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Each session's own CA, and the certificates it signs for GitHub's four
+# hosts (src/authority.rs).
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "ring"] }
+# When those certificates hold from and to, as rcgen takes a time.
+time = "0.3"
+# TLS both ways: answering a fenced client as GitHub, and reaching GitHub.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# The placeholder and the token, as basic credentials git sends them
+# (src/token.rs).
+base64 = "0.22"
+# A request's head, read as HTTP/1.1 (src/http.rs).
+httparse = "1"
+# A GraphQL document, read to judge every mutation it holds
+# (src/graphql.rs).
+graphql-parser = "0.4"
+# GraphQL's bodies, the mutation list, and the control socket's lines.
+serde_json = "1"
+# A review's body read key by key, so a second "event" can't hide behind
+# the first (src/judge.rs).
+serde = "1"
+# The process on a client's end of a socket, for the session it claims
+# (src/peer.rs).
+libc = "0.2"
+# The shape every command of ours takes: its flags, help, errors and ink.
+terminal-kit = { path = "../../terminal-kit" }
+
+[dev-dependencies]
+tempfile = "3"

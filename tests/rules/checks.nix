@@ -192,6 +192,7 @@
         open-now = recentFiles;
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
         pause-for-calls = pkgs.callPackage ../../modules/spotify/pause-for-calls/package.nix { };
+        pi-github-door = pkgs.callPackage ../../modules/pi/github-door/package.nix { };
         pi-packages = pkgs.callPackage ../../modules/pi-packages/package.nix { };
         pi-spawner = pkgs.callPackage ../../modules/pi/spawner/package.nix { };
         inherit pineapple;
