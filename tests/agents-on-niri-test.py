@@ -1744,9 +1744,10 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     shown = shell.showing()
     assert not shown["open"], shown
     assert shown["line"]["mode"] == "insert", shown["line"]
-    # A quarter down, where the launcher opens, so the two sit as one (Joel, 2026-11-14 09:44:
-    # "i want them to feel like more of part of the same").
-    assert abs(shown["line"]["top"] - shown["line"]["screen"] / 4) < 1, shown["line"]
+    # The launcher's frame, its top and its foot, so the two are one box in one place (Joel,
+    # 2026-11-14 09:44: "i want them to feel like more of part of the same").
+    framed = [shown["line"]["top"], shown["line"]["bottom"]]
+    assert framed == [shown["card"]["top"], shown["card"]["foot"]], (shown["line"], shown["card"])
     shoot("empty")
     shell.send_chars(words)
     # A sentence or two wraps at a whole word, never scrolling off its start.
@@ -2196,9 +2197,13 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
             shown["line"]["keys"] and {talk["line"] for talk in shown["line"]["talks"]} >= set(said)
         )
     )
-    # As far from the screen's foot as its top stands from the screen's top.
-    stands = shell.showing()["line"]
-    assert 0 < stands["bottom"] <= stands["screen"] - stands["top"], stands
+    # However many lines it holds, it stands in the launcher's frame, its foot the launcher's.
+    shown = shell.showing()
+    stands = shown["line"]
+    assert [stands["top"], stands["bottom"]] == [shown["card"]["top"], shown["card"]["foot"]], (
+        stands,
+        shown["card"],
+    )
     # A key of another keymap first, since the line's first key was read by the last keymap
     # and lost, its Escape at 1.5x leaving the line in insert. F24 does nothing here.
     shell.send_key("F24")
