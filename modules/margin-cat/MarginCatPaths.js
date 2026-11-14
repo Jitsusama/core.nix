@@ -448,21 +448,20 @@ function walk(from, to, at) {
 // columns() takes them) from the old one's (`was`): down its old column's
 // side and a drop, or up through the new one's windows (up()); then along
 // the tops to its seat, as a walk goes. With nowhere to go, `to` null or
-// no way up, it only rides. Told of the slide `ahead` ms after niri set
-// it off, its frames are that far in, so it rides its column, never
-// behind it across the windows coming in (MarginCat.behind).
+// no way up, it only rides: its frames `ahead` ms in, as late as it hears
+// (MarginCat.behind), a frame more carried up, and caught up (Ways.rides).
 function moves(from, to, at) {
     const slow = at.slowdown ?? 1;
     const spring = Object.assign({}, at.spring, { slowdown: slow });
     const dy = -at.way * at.step;
+    const ahead = (at.ahead ?? 0) + (at.way > 0 ? at.frame ?? 0 : 0);
     const way = Ways.begun(at, from);
-    Ways.leg(way, "rides", { x: from.x, y: from.y + dy }, {
-        ms: MarginCat.slides(spring),
-        slide: t => MarginCat.slid(t, spring)
-    });
+    Ways.rides(way, { x: from.x, y: from.y + dy }, { ms: MarginCat.slides(spring), late: ahead,
+        edge: t => MarginCat.slid(t, spring), away: at.way < 0, frame: at.frame,
+        room: at.height === undefined ? Number.POSITIVE_INFINITY : from.y + at.step - at.height });
     const was = columns(at.was, dy);
     const now = columns(at.now, 0);
-    const rides = () => Object.assign(Ways.timed(way), { way: at.way, ahead: at.ahead ?? 0 });
+    const rides = () => Object.assign(Ways.timed(way), { way: at.way, ahead });
     if (to === null || now.length === 0) {
         return rides();
     }
