@@ -146,6 +146,19 @@ LANDINGS = [
         "person": TRY,
     },
 ]
+# Landed holds hundreds on Joel's shell, so a run of older ones, past To Try's day and today's
+# count, each going nowhere but read, as the first two do: rows saying the same keys.
+EARLIER = 40
+LANDINGS += [
+    {
+        "at": (LANDED - timedelta(days=2, minutes=at)).isoformat(),
+        "ref": f"core.nix#{1000 + at}",
+        "what": f"Earlier change {at}.",
+    }
+    for at in range(EARLIER)
+]
+# How many rows' keys a step into Landed may weigh: one of each run alike, not each of them.
+WEIGHED_INTO_LANDED = 3
 
 
 def landed_today() -> str:
@@ -809,7 +822,7 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     # read is For You's alone to count.
     assert shell.showing()["selected"]["side"] == landed_today(), shell.showing()
     shell.step_in()
-    shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, TRY_FIRST])
+    shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
     assert shell.showing()["selected"]["side"] not in {"", "core.nix#2140"}, shell.showing()
     # No link to it is known and its session has no window, so normal's Return only reads it,
     # keeping the launcher; the find's lands on it, as on any row that changes something.
@@ -873,13 +886,50 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     at_top = made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, {**boss, "usage": FULL}))
     shell.down_to("Landed")
     shell.step_in()
-    shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, TRY_FIRST])
+    shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
     # The same row changing back costs no more held in Landed than it did at Agents' top.
     inside = made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, boss))
     # Agents' top is laid out once for each source that hears a change, Sessions and the agents
     # daemon, and the two land in one pass or two as they fall, so a change costs up to twice
     # what one pass did; remaking Landed's landings cost 26 to the top's 9.
     assert inside <= 2 * at_top, f"a change made {inside} rows in Landed, {at_top} at Agents' top"
+
+
+# How long the rows weighed must hold still before a count of them is read.
+WEIGHED_STILL = 1.0
+
+
+def weighed_held_still(shell: Shell, timeout: float = 10.0) -> int:
+    """Give how many rows the launcher has weighed, once that holds still for WEIGHED_STILL."""
+    deadline = time.monotonic() + timeout
+    last: int = shell.showing()["weighed"]
+    since = time.monotonic()
+    while time.monotonic() - since < WEIGHED_STILL:
+        assert time.monotonic() < deadline, f"the rows weighed never held still: {last}"
+        time.sleep(0.1)
+        now = shell.showing()["weighed"]
+        if now != last:
+            last, since = now, time.monotonic()
+    return last
+
+
+def test_a_step_into_landed_weighs_the_keys_of_one_of_each_run_alike(shell: Shell) -> None:
+    """Stepping into Landed weighs the keys of one row of each run saying the same, not each.
+
+    Weighing each of Joel's 2,600 landings for the foot took 270 to 355 ms of every step into
+    Landed, most of For You's To Try Return, which steps through it (2026-11-14).
+    """
+    opened(shell)
+    shell.launcher_until(lambda shown: "Landed" in shown["rows"])
+    shell.down_to("Landed")
+    before = weighed_held_still(shell)
+    shell.step_in()
+    shell.launcher_until(
+        lambda shown: shown["held"][-1:] == ["Landed"] and len(shown["rows"]) >= EARLIER + 2
+    )
+    weighed = weighed_held_still(shell) - before
+    assert weighed <= WEIGHED_INTO_LANDED, f"a step into Landed weighed {weighed} rows' keys"
+    shell.close_launcher()
 
 
 def made_through(shell: Shell, change: Callable[[], None]) -> int:
