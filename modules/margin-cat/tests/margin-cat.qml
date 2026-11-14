@@ -636,6 +636,15 @@ QtObject {
         expect("told of the resize late, it rides as far into niri's spring as the edge has gone",
             [Paths.frame(heard, 0).y, Math.round(heard.beats[0].ends)],
             [507 - 200 * MarginCat.slid(30, spring), MarginCat.slides(spring) - 30]);
+        // Sitting, it hears only its own window's tile (24a136dde), so the
+        // window over it is known by niri's row for its own, the second.
+        const own = top => [Object.assign({ row: 2 }, split(top).find(tile => tile.id === 5))];
+        const alone = Paths.walk({ x: 948, y: 507 }, { x: 948, y: 607 }, among({
+            hurried: true, cols: Paths.columns(own(616), 0), before: Paths.columns(own(516), 0),
+            ahead: 63, frame: 8.2 }));
+        expect("the window over its own grown, heard alone and late, it rides flush, never in it",
+            [0, 16, 64].map(t => [Paths.frame(alone, t).y, Paths.frame(alone, t).pose]),
+            [0, 16, 64].map(t => [507 + 100 * MarginCat.slid(t + 63, spring), null]));
         const narrowed = ided.map(tile => tile.column !== 2 ? tile
             : Object.assign({}, tile, { width: 60 }));
         const left = resized(narrowed, { x: 874, y: 507 });
