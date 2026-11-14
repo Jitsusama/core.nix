@@ -409,22 +409,9 @@ Provider {
             title: Words.name(kinds.disks),
             about: kinds.disks,
             // The guard's own words are each disk's, in its drawer (disked).
-            note: guardSays(guard, worst)
+            note: guard.standing
         }, () => ordered(kinds.disks, guardParts(guard).concat(parts()
             .filter(row => !watched || row.key !== "machine:disk:space"))));
-    }
-
-    // How the guard stands, in a phrase: the band the worst file system is
-    // in and what its last pass did, such as "filling; nothing more is safe
-    // to take", so Joel sees why the disk is still short.
-    function guardSays(guard, worst) {
-        if (guard.silent)
-            return [guard.accountStopped ? "the disk guard stopped"
-                : "the machine's disk guard stopped", guard.context]
-                .filter(part => part !== "").join("; ");
-        const said = [worst && worst.band !== "healthy" ? guard.banded(worst.band) : "",
-            guard.context].filter(part => part !== "");
-        return said.length > 0 ? said.join("; ") : "from the disk guard";
     }
 
     // What's filling the disks, as the guards measured it (Joel, 12:27:
