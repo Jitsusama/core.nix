@@ -2762,9 +2762,11 @@ in
         # (switch848, 2026-11-12, 21:41:35). Qt waits by poll, never select,
         # so a file past 1024 is safe in it.
         LimitNOFILE = "16384:524288";
-        # The launcher's open mark says nothing once the shell is gone, so a
-        # switch waiting on it never waits on a shell that died.
-        ExecStopPost = "${lib.getExe' pkgs.coreutils "rm"} -f %t/quickshell-launcher";
+        # The launcher's open mark, and Super+S's line's, say nothing once the
+        # shell is gone, so a switch waiting on them never waits on a shell
+        # that died.
+        ExecStopPost =
+          "${lib.getExe' pkgs.coreutils "rm"} -f %t/quickshell-launcher" + " %t/quickshell-talk-line";
         # Which files this shell started from, for quickshell-takes-new-files
         # to tell whether a switch changed them.
         ExecStartPost = "${lib.getExe' pkgs.coreutils "ln"} -sfn ${shellFilesList} %t/quickshell-files";

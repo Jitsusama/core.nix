@@ -159,6 +159,23 @@ def test_both_screens_go_with_the_launcher_open_and_come_back(second_back: Scree
     second_back.launcher_works_on_both()
 
 
+def test_super_s_line_comes_up_again_after_both_screens_go_and_come_back(
+    second_back: Screens,
+) -> None:
+    """Super+S's line, brought up before both screens go, comes up again once they're back.
+
+    Its surface went with the laptop's only screen under the lock, and Super+S only flipped
+    whether it was up, drawing nothing (Joel, 2026-11-13 23:01: "Is super-s not supposed to
+    work anymore?").
+    """
+    second_back.line_works_on("Virtual-1")
+    second_back.plug("off", *sorted(second_back.both))
+    for screen in sorted(second_back.both):
+        second_back.outputs_say(screen, there=False)
+    second_back.come_back(*sorted(second_back.both))
+    second_back.line_works_on("Virtual-1")
+
+
 def test_a_sleep_with_the_launcher_open_and_it_works_after(slept_open: Screens) -> None:
     """A sleep with the launcher open, and after the wake it works on both screens."""
     slept_open.launcher_works_on_both()

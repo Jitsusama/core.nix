@@ -362,6 +362,22 @@ class Screens:
         for screen in sorted(self.both):
             self.launcher_works_on(screen)
 
+    def line_works_on(self, screen: str) -> None:
+        """Bring Super+S's line up on a screen by its chord, holding the keys, and put it away."""
+        self.machine.succeed(self.in_niri(f"niri msg action focus-monitor {screen}"))
+        self.machine.wait_until_succeeds(
+            self.in_niri(f"niri msg --json focused-output | grep -qF '\"{screen}\"'"),
+            timeout=dt.timedelta(seconds=10),
+        )
+        self.machine.send_key("meta_l-s")
+        self.launcher_until(
+            lambda shown: shown["line"]["up"] and shown["line"]["keys"],
+            f"brought the line up with the keys on {screen}",
+        )
+        self.wait_for_held_on("talk-line", {screen}, timeout=dt.timedelta(seconds=10))
+        self.machine.send_key("meta_l-s")
+        self.launcher_until(lambda shown: not shown["line"]["up"], f"put the line away on {screen}")
+
     def gone_while_open(self, *screens: str) -> None:
         """Open the launcher on the first screen, and take these screens while it's open.
 

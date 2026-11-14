@@ -1929,3 +1929,28 @@ def test_super_s_line_shows_every_line_still_open_after_a_restart_an_earlier_day
     shoot("restarted")
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def test_super_s_line_says_whether_it_is_up_for_a_switch_to_wait_on(shell: Shell) -> None:
+    """Super+S's line says in a file whether it's up, as the launcher does, open then closed.
+
+    A switch restarts the shell only while Joel isn't in it (quickshell-takes-new-files), and
+    a restart under the line would take his words from under him mid-sentence (2026-11-12
+    16:00), so the line's mark is read as the launcher's is.
+    """
+    mark = Path(os.environ["XDG_RUNTIME_DIR"]) / "quickshell-talk-line"
+
+    def marked(word: str) -> None:
+        """Wait until the mark says `word`, as a switch reading it would."""
+        deadline = time.monotonic() + 10
+        while (mark.read_text() if mark.exists() else "") != f"{word}\n":
+            assert time.monotonic() < deadline, f"the line's mark never said {word}"
+            time.sleep(0.1)
+
+    line = shell.ipc("line")
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: shown["line"]["up"])
+    marked("open")
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
+    marked("closed")
