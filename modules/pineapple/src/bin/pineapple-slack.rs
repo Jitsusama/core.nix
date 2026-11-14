@@ -53,7 +53,7 @@ use pineapple::reply::{self, Post};
 use pineapple::resume;
 use pineapple::slack::{Message, found, micros, root};
 use pineapple::vocabulary::Words;
-use pineapple::{Context, Heard, Joel, Platform, decide};
+use pineapple::{Context, Heard, Joel, Platform, Target, Verdict, decide};
 use serde_json::{Value, json};
 use slack_people::{Account, Slack};
 use terminal_kit::{Exit, Failure, Format, Help, flags};
@@ -593,6 +593,31 @@ fn judge(
             Ok(true) => eprintln!("<5>a stop, in shadow: {}", message.link),
             Ok(false) => {}
             Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
+        }
+    }
+    if decision.verdict == Verdict::Resume && decision.by_joel {
+        resume_as_joel(&state.join("stops"), &decision.reaches, now, &message.link);
+    }
+}
+
+/// Ends the stops Joel's own "pineapple resume" names, as his press in the
+/// launcher does: what it reaches, or every stop when it reaches
+/// everything. In shadow it ends only the stops written in shadow, so a
+/// reader not yet trusted never ends one that stands for real.
+fn resume_as_joel(stops: &Path, reaches: &[Target], now: u64, link: &str) {
+    for reach in reaches {
+        let scope = match reach {
+            Target::Everything => "all".to_owned(),
+            named => named.to_string(),
+        };
+        let ended = resume::resume_only(stops, &scope, now, "joel", |record| {
+            !SHADOW || record["shadow"] != false
+        });
+        match ended {
+            Ok(ids) if ids.is_empty() => {}
+            Ok(ids) if SHADOW => eprintln!("<5>a resume, in shadow, of {}: {link}", ids.join(", ")),
+            Ok(ids) => eprintln!("<5>Joel resumed {}: {link}", ids.join(", ")),
+            Err(error) => eprintln!("<3>couldn't resume what Joel named: {error}"),
         }
     }
 }

@@ -29,6 +29,11 @@ const JOEL: &str = "U0JOEL0001";
 /// A stand-in for Slack's API that keeps the first line of each request
 /// and answers as Slack would to a search and to a thread's first message.
 fn stand_in() -> (String, Arc<Mutex<Vec<String>>>) {
+    answering(answer)
+}
+
+/// The stand-in, answering each request as `answer` says.
+fn answering(answer: fn(&str, u64) -> Value) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port on this machine");
     let origin = format!("http://{}", listener.local_addr().expect("its address"));
     let asked = Arc::new(Mutex::new(Vec::new()));
@@ -116,6 +121,30 @@ fn answer(line: &str, now: u64) -> Value {
     } else {
         json!({"ok": true, "messages": {"matches": [again, ask, stop, old]}})
     }
+}
+
+/// What Slack would answer when Joel himself says "pineapple resume" in
+/// the thread about example/shop#12, a minute ago.
+fn joel_resumes(line: &str, now: u64) -> Value {
+    let ts = format!("{}.000300", now - 60);
+    let resume = json!({
+        "channel": {"id": "C0ONE00001"}, "ts": ts, "user": JOEL,
+        "text": "pineapple resume",
+        "permalink": format!(
+            "https://example.slack.com/archives/C0ONE00001/p{}\
+             ?thread_ts=1700000000.000001&cid=C0ONE00001",
+            ts.replace('.', "")
+        ),
+    });
+    if line.contains("/api/conversations.replies") {
+        return answer(line, now);
+    }
+    let matches = if line.contains("query=pineapple") {
+        vec![resume]
+    } else {
+        Vec::new()
+    };
+    json!({"ok": true, "messages": {"matches": matches}})
 }
 
 /// A home for one case, its sign-in in place as pi keeps it, and the
@@ -315,6 +344,66 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
     assert!(
         String::from_utf8_lossy(&heard.stdout).contains("stop"),
         "heard still lists what was heard: {heard:?}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+/// A stop's record in `home`'s stops folder, in shadow or not.
+fn a_stop(home: &Path, id: &str, reach: &str, shadow: bool) {
+    let record = json!({"id": id, "shadow": shadow, "reaches": [reach], "resumed": null});
+    std::fs::create_dir_all(home.join("state/pineapple/stops")).expect("a stops folder");
+    std::fs::write(
+        home.join(format!("state/pineapple/stops/{id}.json")),
+        record.to_string(),
+    )
+    .expect("a stop written");
+}
+
+/// Who resumed the stop `id`, once the reader has had its time.
+fn resumed(home: &Path, id: &str) -> Value {
+    let record: Value = serde_json::from_str(
+        &std::fs::read_to_string(home.join(format!("state/pineapple/stops/{id}.json")))
+            .expect("the stop's record"),
+    )
+    .expect("the record is JSON");
+    record["resumed"].clone()
+}
+
+#[test]
+fn joels_own_resume_in_shadow_ends_only_the_shadow_stop_it_names() {
+    let (origin, _) = answering(joel_resumes);
+    let home = home();
+    a_stop(&home, "named", "pr:example/shop#12", true);
+    a_stop(&home, "elsewhere", "quest:QEST-A", true);
+    a_stop(&home, "live", "pr:example/shop#12", false);
+    let mut reading = reader(&home, &origin);
+    until_decided(&home, 1);
+    let began = Instant::now();
+    while resumed(&home, "named").is_null() {
+        assert!(began.elapsed() < PATIENCE, "Joel's resume ended nothing");
+        // The decision is written just before the resume; a short wait
+        // sees it land without spinning.
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let said = decisions(&home);
+    assert_eq!(each(&said, "verdict"), ["resume"], "Joel's own resume");
+    assert_eq!(
+        resumed(&home, "named")["by"],
+        "joel",
+        "the stop it names is resumed by Joel"
+    );
+    assert_eq!(
+        resumed(&home, "elsewhere"),
+        Value::Null,
+        "a stop it doesn't name still stands"
+    );
+    assert_eq!(
+        resumed(&home, "live"),
+        Value::Null,
+        "a reader in shadow never ends a live stop"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
