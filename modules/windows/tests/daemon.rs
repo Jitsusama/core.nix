@@ -238,6 +238,7 @@ impl Running {
             .env("NIRI_SOCKET", folder.join("niri.sock"))
             .env("XDG_DATA_HOME", folder.join("near"))
             .env("XDG_DATA_DIRS", folder.join("far"))
+            .env("XDG_STATE_HOME", folder.join("state"))
             .stderr(Stdio::null());
         let running = Running {
             daemon: Daemon::start(&mut command, socket, folder),
@@ -513,6 +514,25 @@ fn an_entry_added_names_its_windows_program() {
     let foot = client.changed("window:13");
     assert_eq!(foot["entry"], "foot");
     assert_eq!(foot["program"], "Foot");
+}
+
+#[test]
+fn a_reader_window_says_the_file_it_shows() {
+    let running = Running::new("shows");
+    let (mut client, records) = running.watching();
+    assert!(records.iter().all(|record| record.get("file").is_none()));
+    let showing = running.path("state/reader/showing");
+    std::fs::create_dir_all(&showing).unwrap();
+    std::fs::write(showing.join("120"), "120\t/notes/sanderling.md\n").unwrap();
+    running.niri.says(&window(
+        20,
+        "Sanderling Notes · Reader",
+        "reader",
+        1,
+        3,
+        950,
+    ));
+    assert_eq!(client.changed("window:20")["file"], "/notes/sanderling.md");
 }
 
 #[test]
