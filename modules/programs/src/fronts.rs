@@ -14,7 +14,7 @@ use std::time::Duration;
 use programs::front;
 use serde_json::{Value, json};
 
-use super::{Shared, keep, lock};
+use super::{Shared, keep, lock, watched};
 
 /// How long the windows daemon is waited on, past which no window has
 /// its tab in front said, rather than the get waiting on it.
@@ -29,7 +29,9 @@ pub fn names(app: &str, keys: &[String]) -> bool {
 }
 
 /// Keeps the record of the tab in front of each window these keys name,
-/// and says gone each one whose tab can't be told.
+/// and says gone each one whose tab can't be told, and each an earlier
+/// get made that these don't name and nothing watches, so a day of lines
+/// said over windows holds one get's, not one for every window asked of.
 pub fn read(shared: &Shared, keys: &[String]) {
     let named: Vec<(&String, &str, u64)> = keys
         .iter()
@@ -54,6 +56,14 @@ pub fn read(shared: &Shared, keys: &[String]) {
             None => gone.push(key.clone()),
         }
     }
+    let earlier: Vec<String> = daemon
+        .held
+        .keys()
+        .filter(|key| front::named(key).is_some() && !keys.contains(key))
+        .filter(|key| !watched(&daemon, key))
+        .cloned()
+        .collect();
+    gone.extend(earlier);
     keep(&mut daemon, records, &gone);
 }
 
