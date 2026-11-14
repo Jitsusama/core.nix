@@ -331,8 +331,9 @@ def run(joel: Connection, filtered: Path) -> list[str]:
         failures.append(f"{case}: the focus went to another workspace")
     activated = opened("pi.fence.window", joel, sandbox)
     behind(activated, focused, failures, case)
-    # Urgency is all an activation may leave, where niri says what's urgent.
-    if not activated.get("is_urgent", True):
+    # Urgency is all an activation may leave. niri always says whether a window is urgent, so a
+    # missing field fails here rather than passing.
+    if not activated["is_urgent"]:
         failures.append(f"{case}: the sandbox's window wasn't marked urgent")
 
     # A token the sandbox makes, used by Joel's own program on his own window, moves nothing
@@ -345,7 +346,7 @@ def run(joel: Connection, filtered: Path) -> list[str]:
     joel.activate(sandbox.token(sandboxes_surface), joels_other_surface)
     settle(joel, sandbox)
     kept(joels, failures, case)
-    if not opened("joel.other", joel, sandbox).get("is_urgent", True):
+    if not opened("joel.other", joel, sandbox)["is_urgent"]:
         failures.append(f"{case}: Joel's window {joels_other} wasn't marked urgent")
 
     ask({"Action": {"FocusWorkspace": {"reference": {"Id": empty_workspace()}}}})
