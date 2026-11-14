@@ -138,7 +138,7 @@ mod tests {
             &help(),
             "0.1.0",
             &Environment::of([false; 3], &[("HOME", "/nonexistent")]),
-            words.iter().map(|word| (*word).to_owned()).collect(),
+            owned(words),
             body,
         )
     }
@@ -175,7 +175,7 @@ mod tests {
             assert_eq!(ending.exit, Exit::Done, "{words:?}: {}", ending.stderr);
             assert_eq!(
                 reached.into_inner(),
-                words.to_vec(),
+                owned(words),
                 "the kit changed a unit's words, so its command reads others"
             );
         }
