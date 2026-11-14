@@ -102,6 +102,27 @@
       touch $out
     '';
 
+  # The door's daemon, run as its socket unit runs it, hands a client that
+  # isn't trusted only the impure-env variables its nix.conf names, and only to
+  # a fixed-output build, however the client asks, and puts no value in a
+  # warning or a log. Stock Nix 2.34 hands it none, so a tool that fetches
+  # private sources fails from an untrusted account or a sandbox; a patch
+  # that let any name through would let a client set what the daemon set
+  # for everyone's downloads. The door runs the machine's own Nix, so this
+  # proves the daemon's too.
+  an-untrusted-client-passes-only-named-env =
+    let
+      inherit (workstation.config.systemd.user) services;
+    in
+    pkgs.runCommandLocal "an-untrusted-client-passes-only-named-env" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/an-untrusted-client-passes-only-named-env.sh} \
+        ${lib.getExe' pkgs.systemd "systemd-socket-activate"} \
+        ${lib.getExe' workstation.config.nix.package "nix"} \
+        ${./tests/impure-env-build.nix} \
+        ${services."nix-untrusted@".serviceConfig.ExecStart}
+      touch $out
+    '';
+
   # clippy finds nothing in without-syncfs, its tests included.
   without-syncfs-passes-clippy = passesClippy "without-syncfs-passes-clippy" (
     pkgs.callPackage ./without-syncfs/package.nix { }
