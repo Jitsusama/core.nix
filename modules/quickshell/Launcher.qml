@@ -4794,9 +4794,9 @@ Scope {
     // serves, rather than over an empty box (Joel at 19:30 on 2026-11-13: "they need to feel
     // more like the void"). The card is as tall as its talks, the field and the foot alone
     // before there are any, its top where it was.
-    readonly property bool talking: typeof asking?.talks === "function"
-    readonly property var talks: talking ? asking.talks() : []
-    readonly property bool talkless: talking && talks.length === 0
+    readonly property bool talkAsked: typeof asking?.talks === "function"
+    readonly property var talks: talkAsked ? asking.talks() : []
+    readonly property bool talkless: talkAsked && talks.length === 0
     // An answer shown under the field two seconds is one Joel has read, as a session's drawer
     // kept that long is (Agents.qml's staying), which its place tells whoever keeps it, so it's
     // open no more after a restart. It's told again each two seconds while one is shown
@@ -4804,7 +4804,7 @@ Scope {
     Timer {
         interval: 2000
         repeat: true
-        running: root.open && root.talking && root.talks.length > 0
+        running: root.open && root.talkAsked && root.talks.length > 0
             && typeof root.asking.heard === "function"
         onTriggered: root.asking.heard()
     }
@@ -8277,7 +8277,7 @@ Scope {
             asking: !!root.asking,
             // What an ask for words to a session shows under its field, as the line
             // shows its talks, or null for an ask that shows none.
-            talks: root.talking ? root.talks : null,
+            talks: root.talkAsked ? root.talks : null,
             // Where the field's caret stands, so a talk's can be seen kept.
             caret: prompt.caret,
             // What the list says in place of rows, where it has none.
@@ -11481,7 +11481,7 @@ Scope {
                         // tall as its talks, as many as the rows' room holds.
                         height: root.over !== null
                             ? Math.min(commandRows.count, 10) * root.rowTall
-                            : root.talking ? Math.min(root.tall, talksShown.tall)
+                            : root.talkAsked ? Math.min(root.tall, talksShown.tall)
                             : root.tall
                         opacity: root.wordsShown
                         // It cuts the rows at its edges rather than the list
@@ -11562,7 +11562,7 @@ Scope {
                             readonly property real tall: root.talkless ? 0
                                 : implicitHeight + Theme.level.words.pitch
                                     - talkCaps.tightBoundingRect.height
-                            visible: root.talking && !root.talkless
+                            visible: root.talkAsked && !root.talkless
                             width: parent.width - card.inset
                             textAt: card.inset + root.columns.text
                             breathing: root.open
