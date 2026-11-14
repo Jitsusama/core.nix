@@ -270,9 +270,18 @@ fn listen(mut device: File, number: u64, shared: &Shared) {
 }
 
 fn help() -> Help {
-    Help::new("dictation-chord", "says at a socket when dictation's chord is let go")
-        .example("dictation-chord /run/dictation-chord/socket", "what its unit runs")
-        .exit(Exit::Failed, "the socket or the keyboards couldn't be reached")
+    Help::new(
+        "dictation-chord",
+        "says at a socket when dictation's chord is let go",
+    )
+    .example(
+        "dictation-chord /run/dictation-chord/socket",
+        "what its unit runs",
+    )
+    .exit(
+        Exit::Failed,
+        "the socket or the keyboards couldn't be reached",
+    )
 }
 
 /// Reads the command line, whose help the kit has already answered,
@@ -284,7 +293,9 @@ fn asked(words: &[String]) -> Result<&str, Failure> {
     let wrong = |what: String| Failure::new(Exit::Usage, what).try_this("dictation-chord --help");
     match words {
         [path] if path.starts_with('/') => Ok(path),
-        [word] => Err(wrong(format!("it needs the socket's whole path, not {word}"))),
+        [word] => Err(wrong(format!(
+            "it needs the socket's whole path, not {word}"
+        ))),
         [] => Err(wrong("it needs the socket's whole path".to_owned())),
         _ => Err(wrong("it takes one path".to_owned())),
     }
@@ -296,7 +307,9 @@ fn unreached(what: &str, error: &std::io::Error) -> Failure {
 }
 
 fn main() -> ExitCode {
-    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| serve(asked(&context.args)?))
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        serve(asked(&context.args)?)
+    })
 }
 
 /// Serves at `path` for as long as the device folder can be watched.

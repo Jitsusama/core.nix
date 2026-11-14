@@ -131,11 +131,12 @@ fn main() -> ExitCode {
             .map_err(failed),
             // The kit has refused a word no subcommand answers to, so only
             // a subcommand given too few or too many words is left.
-            _ => Err(Failure::new(Exit::Usage, "those aren't the words it takes")
-                .try_this(format!(
+            _ => Err(
+                Failure::new(Exit::Usage, "those aren't the words it takes").try_this(format!(
                     "dictation {} --help",
                     context.args.first().map_or("", String::as_str)
-                ))),
+                )),
+            ),
         }
     })
 }
@@ -226,8 +227,11 @@ fn transcribe(context: &terminal_kit::Context, model: &Path, file: &Path) -> Res
         Failure::new(exit, format!("can't read {}", file.display())).because(error.to_string())
     })?;
     let audio = wav::samples(&bytes).map_err(|why| {
-        Failure::new(Exit::BadInput, format!("{} isn't a WAV it can read", file.display()))
-            .because(why)
+        Failure::new(
+            Exit::BadInput,
+            format!("{} isn't a WAV it can read", file.display()),
+        )
+        .because(why)
     })?;
     let failed = |error: String| Failure::new(Exit::Failed, error);
     let mut speech = Speech::load(
