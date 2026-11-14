@@ -50,13 +50,27 @@ fn help() -> Help {
         "zathura-next-document",
         "opens the document beside the one a zathura shows",
     )
-    .command("next BUS", "the next in its folder, by name")
-    .command("previous BUS", "the one before")
+    .subcommand(stepping("next", "the next in its folder, by name", "]b"))
+    .subcommand(stepping("previous", "the one before", "[b"))
     .example("zathura-next-document next :1.42", "what zathura's ]b runs")
     .exit(
         Exit::Failed,
         "nothing else to open, or zathura couldn't be asked",
     )
+}
+
+/// A subcommand stepping to a document beside zathura's, run by its key.
+fn stepping(name: &str, about: &str, key: &str) -> Help {
+    Help::new(name, about)
+        .example(
+            &format!("zathura-next-document {name} :1.42"),
+            &format!("what zathura's {key} runs"),
+        )
+        .argument("<bus>", "the zathura's D-Bus name, as $DBUS gives it")
+        .exit(
+            Exit::Failed,
+            "nothing else to open, or zathura couldn't be asked",
+        )
 }
 
 fn main() -> ExitCode {
