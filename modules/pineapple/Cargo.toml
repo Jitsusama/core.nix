@@ -28,8 +28,10 @@ terminal-kit = { path = "../terminal-kit" }
 # launcher (docs/daemons.md).
 daemon-serve = { path = "../daemon-serve" }
 # The replier's one request, a reply in the thread that asked from
-# Joel's own account (src/reply.rs), the same client Slack's module reads
-# with, so the read-only door stays read-only.
+# Joel's own account (src/reply.rs), and the phone alert's, listing his
+# IMs to find his own and posting there alone (src/phone.rs): the same
+# client Slack's module reads with, so the read-only door stays
+# read-only.
 ureq = { version = "3", features = ["json"] }
 # The kernel's name for who pressed (SO_PEERPIDFD), so only Joel's shell
 # acts on a stop.
