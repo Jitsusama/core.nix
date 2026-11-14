@@ -54,12 +54,20 @@ fn help() -> Help {
         "spotify-recent",
         "what Spotify played lately, and plays one",
     )
-    .command("playlists", "every playlist of Joel's")
-    .command("albums", "every album he saved")
-    .command("artists", "every artist he follows")
-    .command("shows", "every show he saved")
-    .command("liked", "how many songs he likes")
-    .command("play URI", "plays a playlist, album, show or track")
+    .subcommand(library("playlists", "every playlist of Joel's"))
+    .subcommand(library("albums", "every album he saved"))
+    .subcommand(library("artists", "every artist he follows"))
+    .subcommand(library("shows", "every show he saved"))
+    .subcommand(library("liked", "how many songs he likes"))
+    .subcommand(
+        Help::new("play", "plays a playlist, album, show or track")
+            .example("spotify-recent play spotify:album:ID", "plays that album")
+            .argument("<uri>", "what to play, as Spotify names it")
+            .exit(Exit::Failed, "Spotify refused")
+            .exit(Exit::NotFound, "nothing is open to play on")
+            .exit(Exit::Unavailable, "Spotify can't be reached")
+            .exit(Exit::Config, "Spotify isn't signed in"),
+    )
     .example("spotify-recent", "what played lately, a line a context")
     .example("spotify-recent play spotify:album:ID", "plays that album")
     .exit(Exit::Failed, "Spotify refused, or said what it doesn't")
@@ -67,6 +75,20 @@ fn help() -> Help {
     .exit(Exit::Unavailable, "Spotify can't be reached")
     .exit(Exit::TryAgain, "Spotify is busy")
     .exit(Exit::Config, "Spotify isn't signed in")
+}
+
+/// A subcommand listing part of Joel's library.
+fn library(name: &str, about: &str) -> Help {
+    Help::new(name, about)
+        .example(&format!("spotify-recent {name}"), "a line each")
+        .example(
+            &format!("spotify-recent {name} --json"),
+            "the same, as JSON",
+        )
+        .exit(Exit::Failed, "Spotify refused, or said what it doesn't")
+        .exit(Exit::Unavailable, "Spotify can't be reached")
+        .exit(Exit::TryAgain, "Spotify is busy")
+        .exit(Exit::Config, "Spotify isn't signed in")
 }
 
 fn main() -> ExitCode {
