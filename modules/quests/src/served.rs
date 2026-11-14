@@ -7,6 +7,10 @@
 //! Each making is held against the last by ready-rows' `Kept`, so a
 //! change sends only the records that read differently and the keys gone:
 //! a list the harness writes again, every quest told anew, sends nothing.
+//! Only the open quests' rows are served: an ended one's is made beside
+//! them, kept for a search to find and answer with (search.rs), so the
+//! shell holds 230 of Joel's 1,237 quests rather than all of them, whose
+//! rows were 1.6 MB that every collection of its heap walked (2026-11-13).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -109,19 +113,32 @@ fn summary(quests: &[Quest], words: &Words) -> String {
     }
 }
 
-/// Every row in Quests' order, and the summary's words.
-pub fn made(inputs: &Inputs) -> (Vec<Value>, String) {
+/// One making: the rows served, the open quests', and those of the ended
+/// ones, each in Quests' order, and the summary's words.
+#[derive(Debug, Default)]
+pub struct Made {
+    pub open: Vec<Value>,
+    pub ended: Vec<Value>,
+    pub said: String,
+}
+
+/// Every row in Quests' order, open before ended, and the summary's words.
+pub fn made(inputs: &Inputs) -> Made {
     let quests = every(inputs);
     let holders = holder::holders(inputs.sessions.records().map(|(_, record)| record));
     let named: BTreeMap<&str, &str> = quests
         .iter()
         .map(|quest| (quest.id(), quest.name()))
         .collect();
-    let rows = order::sorted(&quests)
+    let (open, ended) = order::sorted(&quests)
         .into_iter()
         .map(|quest| row(quest, holders.get(quest.id()), &named, inputs))
-        .collect();
-    (rows, summary(&quests, inputs.words))
+        .partition(|row| row["unfinished"] == true);
+    Made {
+        open,
+        ended,
+        said: summary(&quests, inputs.words),
+    }
 }
 
 /// The record saying how many quests are open, served beside the rows.
@@ -150,7 +167,14 @@ mod tests {
         record
     }
 
+    /// Every row made, open before ended, and the summary's words.
     fn making(open: &[Value], ended: &[Value], sessions: &[Value]) -> (Vec<Value>, String) {
+        let made = made_of(open, ended, sessions);
+        let rows = made.open.into_iter().chain(made.ended).collect();
+        (rows, made.said)
+    }
+
+    fn made_of(open: &[Value], ended: &[Value], sessions: &[Value]) -> Made {
         let (open, ended, sessions) = (listed(open), listed(ended), listed(sessions));
         // The launcher's own words, so a case reads as Quests says it.
         let words = Words::from_vocabulary(include_str!("../../quickshell/launcher/words.json"))
@@ -235,6 +259,29 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["unfinished"], true);
         assert_eq!(making(&[], &[], &[]).1, "empty");
+    }
+
+    #[test]
+    fn only_the_open_quests_are_served_and_the_ended_made_beside_them() {
+        let open = [
+            quest("A", &json!({"status": "active"})),
+            quest("C", &json!({"status": "concluded"})),
+        ];
+        let ended = [quest("E", &json!({"status": "retired"}))];
+        let made = made_of(&open, &ended, &[]);
+        let keys =
+            |rows: &[Value]| -> Vec<Value> { rows.iter().map(|row| row["key"].clone()).collect() };
+        assert_eq!(
+            keys(&made.open),
+            [json!("row:quests:A")],
+            "the open alone served"
+        );
+        assert_eq!(
+            keys(&made.ended),
+            [json!("row:quests:C"), json!("row:quests:E")],
+            "one ended while the open list still holds it is made beside them too"
+        );
+        assert_eq!(made.said, "1 open");
     }
 
     #[test]

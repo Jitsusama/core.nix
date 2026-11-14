@@ -1,7 +1,8 @@
 //! The quests daemon: follows the node's two lists of quests, the open
 //! and the ended, and its sessions, makes Quests' rows from all of it in
-//! one loop, and serves them to the launcher over the socket systemd
-//! holds for it, each watch told only the rows that moved.
+//! one loop, and serves the open ones' to the launcher over the socket
+//! systemd holds for it, each watch told only the rows that moved. A
+//! search finds among every quest, ended ones too (search.rs).
 //!
 //! Usage: `quests --vocabulary WORDS --node NODE --socket SOCKET`, where
 //! WORDS is the launcher's `words.json` and NODE the mycelium node's
@@ -9,11 +10,12 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 
 use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
 use daemon_serve::watch::{Held, follow};
+use quests::search::Searched;
 use quests::served::{self, Inputs};
 use quests::words::Words;
 use ready_rows::kept::Kept;
@@ -75,7 +77,20 @@ fn main() -> ExitCode {
             }
         };
     let home = std::env::var("HOME").unwrap_or_default();
-    let own: Own = Box::new(|_| None);
+    // What a search finds among, every quest as last made, shared with
+    // the asks each connection answers.
+    let searched = Arc::new(Mutex::new(Searched::default()));
+    let asked = Arc::clone(&searched);
+    let own: Own = Box::new(move |said| {
+        let searched = || asked.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut answer = match said["ask"].as_str() {
+            Some("search") => searched().answer(said),
+            Some("titles") => searched().titles(said),
+            _ => return None,
+        };
+        answer["id"] = said["id"].clone();
+        Some(answer)
+    });
     let shared = Shared::new(DOMAIN, own);
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
@@ -105,17 +120,16 @@ fn main() -> ExitCode {
         if !moved {
             continue;
         }
-        let (rows, said) = served::made(&Inputs {
+        let made = served::made(&Inputs {
             open: &open,
             ended: &ended,
             sessions: &sessions,
             home: &home,
             words: &words,
         });
-        if !kept
-            .take(rows, vec![served::summary_record(&said)])
-            .is_empty()
-        {
+        *searched.lock().unwrap_or_else(PoisonError::into_inner) = Searched::of(&made);
+        let summary = served::summary_record(&made.said);
+        if !kept.take(made.open, vec![summary]).is_empty() {
             shared.change(kept.all().cloned().collect(), json!({}));
         }
     }

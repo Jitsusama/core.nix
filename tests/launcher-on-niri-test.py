@@ -3712,13 +3712,17 @@ class StandIn:
 
     It answers the shell's daemon interface on the socket the account's systemd holds for the
     daemon, which nothing else serves while it stands in: hello, a watch with every record held
-    of what it watches, and any other ask with none.
+    of what it watches, and any other ask with none. One that `searches`, as the quests daemon
+    does, answers a search too, finding by name what it holds and the rows it doesn't serve
+    (`unserved`), which come with the answer, as an ended quest's do.
     """
 
-    def __init__(self, path: Path, *, later: tuple[str, ...] = ()) -> None:
+    def __init__(self, path: Path, *, later: tuple[str, ...] = (), searches: bool = False) -> None:
         """Listen on `path`, holding nothing yet, answering a watch of each `later` once let."""
         self.path = path
         self.held: dict[str, Json] = {}
+        self.searches = searches
+        self.unserved: dict[str, Json] = {}
         # The watches answered only once let (StandIn.let), as a connection of the shell's that
         # comes back seconds after the others when its daemon's socket is made again (H6EDLC's
         # traces, 2026-11-13, e02a43bf).
@@ -3817,12 +3821,39 @@ class StandIn:
                     self.write(client, {"id": "hello", "version": 1, "state": "answering"})
                 elif asked.get("ask") == "watch" and asked.get("id") in ("all", "ahead"):
                     self.write(client, {"id": asked["id"]}, watching=self.watched(asked))
+                elif asked.get("ask") == "search" and self.searches:
+                    self.write(client, {"id": asked.get("id"), **self.found(asked)})
                 elif asked.get("ask") == "unwatch":
                     with self.lock:
                         self.clients.get(client, {}).pop(str(asked.get("id")), None)
                     self.write(client, {"id": asked.get("id")})
                 else:
                     self.write(client, {"id": asked.get("id"), "records": []})
+
+    def found(self, asked: Json) -> Json:
+        """Give a search's answer: each row whose name has a word each word typed begins.
+
+        Those held first, then those it doesn't serve, each of which comes with its row.
+        """
+        typed = str(asked.get("words", "")).lower().split()
+        with self.lock:
+            served = [
+                (key, rec["row"]) for key, rec in self.held.items() if rec.get("kind") == "row"
+            ]
+            rows = served + list(self.unserved.items())
+
+        def finds(row: Json) -> bool:
+            said = str(row.get("name", "")).lower().split()
+            return all(any(one.startswith(word) for one in said) for word in typed)
+
+        keys = [key for key, row in rows if finds(row)]
+        return {
+            "keys": keys,
+            "rows": {key: self.unserved[key] for key in keys if key in self.unserved},
+            "found": len(keys),
+            "grade": 0 if keys else 3,
+            "words": asked.get("words", ""),
+        }
 
     def write(self, client: socket.socket, said: Json, *, watching: str | None = None) -> None:
         """Send one line to a client, a watch with every record held, which it's told of after.
@@ -3907,7 +3938,7 @@ class StandIn:
 @pytest.fixture(scope="module")
 def quests() -> Iterator[StandIn]:
     """Give Quests' daemon, stood in for, holding one quest, served until the run ends."""
-    served = StandIn(Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "quests.sock")
+    served = StandIn(Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "quests.sock", searches=True)
     served.told([StandIn.row(0, "Kestrel 0")], [])
     yield served
     served.close()
@@ -4023,6 +4054,58 @@ def test_a_daemons_change_is_presented_as_niri_first_shows_it(
         f"said {change}, without when the launcher took it and its frame began, in order"
     )
     presented_after_unchanged(change["at"], unchanged, "the change")
+
+
+def ended_quest(name: str) -> Json:
+    """Give an ended quest's row as the quests daemon sends it with a search, never served."""
+    row = StandIn.row(900, name)["row"]
+    held = {**row["held"], "status": "concluded", "priority": "", "open": False}
+    return {
+        **row,
+        "glyph": "done",
+        "reads": f"What {name} is about.",
+        "unfinished": False,
+        "held": held,
+    }
+
+
+def test_an_ended_quest_is_found_read_and_followed(shell: Shell, quests: StandIn) -> None:
+    """An ended quest the daemon doesn't serve is found by its name, read and followed.
+
+    Quests' daemon serves only the open quests, since the ended ones held whole were most of
+    what the shell's collector walked (BXNMUC, 2026-11-13), so typing asks it for the ended
+    ones, whose rows come with its answer (Y2YBTS, 2026-11-13). Found from home, one reads its
+    summary in the drawer as an open one does, and Ctrl+] follows it into Quests, where it lives,
+    and on into its acts; found inside Quests, it's listed there too.
+    """
+    ended = ended_quest("Osprey ended")
+    key = f"row:quests:{ended['held']['id']}"
+    quests.unserved[key] = ended
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.type_in("osprey")
+        shell.launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "Osprey ended"
+                and shown["drawer"]["body"] == "What Osprey ended is about."
+            )
+        )
+        shell.step_in("ctrl-bracketright")
+        shell.launcher_until(
+            lambda shown: (
+                shown["held"] == ["quests", "Osprey ended"]
+                and shown["rows"][:1] == ["Start Here"]
+                and "ID" in shown["rows"]
+            )
+        )
+        shell.close_launcher()
+        quests_shown(shell)
+        shell.type_in("osprey")
+        shell.launcher_until(lambda shown: shown["rows"] == ["Osprey ended"])
+        shell.close_launcher()
+    finally:
+        del quests.unserved[key]
 
 
 def test_a_daemons_change_niri_holds_back_is_presented_late(shell: Shell, quests: StandIn) -> None:

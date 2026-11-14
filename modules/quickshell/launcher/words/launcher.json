@@ -96,7 +96,8 @@
       "said": {
         "empty": "empty",
         "open": "{open} open",
-        "driving": "{open} open, {driving} driving"
+        "driving": "{open} open, {driving} driving",
+        "unsearched": "open quests only: Quests isn't answering"
       }
     },
     {

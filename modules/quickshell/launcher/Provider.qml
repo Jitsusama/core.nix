@@ -423,7 +423,7 @@ Scope {
 
     // The rows its search looks through, whose texts the launcher makes
     // ready while it's closed: everything, unless it searches more than it
-    // lists, as Quests searches its finished quests too. Each is as it stands, not as first
+    // lists, as Sound does. Each is as it stands, not as first
     // made: Sound's, first made before the sound server said any device, were none, so the
     // first search after a restart made every device's text (2026-11-11).
     function looksThrough() {
