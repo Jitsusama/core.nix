@@ -114,6 +114,10 @@ let
   # string without a digit is refused at once, since trying every form Qt
   # reads took about 2 ms for each empty one, and the shell sorts by times
   # some items never have (qtdeclarative-dates-without-digits-refused.patch).
+  # Its Wayland client focuses the window a sync asks for even while an
+  # earlier change is still queued, since a leave and an enter close
+  # together left the launcher holding the keys yet never active
+  # (qtbase-focus-follows-what-was-asked.patch).
   # Only the shell and the
   # modules it loads are built with it, so nothing else on the machine is
   # rebuilt for it.
@@ -121,6 +125,9 @@ let
     prev:
     prev.qt6.overrideScope (
       _: qt: {
+        qtbase = qt.qtbase.overrideAttrs (old: {
+          patches = (old.patches or [ ]) ++ [ ./qtbase-focus-follows-what-was-asked.patch ];
+        });
         qtdeclarative = qt.qtdeclarative.overrideAttrs (old: {
           # In the order Qt's branch took them, as each collector fix is
           # written over the one before it.

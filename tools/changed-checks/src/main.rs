@@ -81,6 +81,7 @@ mod checks;
 mod evaluating;
 mod first;
 mod gathered;
+mod gating;
 mod keep;
 mod pressure;
 mod quarantine;
@@ -527,7 +528,7 @@ fn compare(
     if options.keep_base {
         return kept_base(root, base, system, noted);
     }
-    let _gating = alone::gating(&alone::gating_lock());
+    let _gating = gating::held(&gating::lock());
     eprintln!("comparing {system}'s checks at {short} with the working tree");
     // What each check read at the newest head of main recorded, the base or
     // one it came after, spares evaluating at the base and in the tree each

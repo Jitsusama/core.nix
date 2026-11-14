@@ -1139,11 +1139,19 @@ Provider {
     // Programs is stepped into (Provider.qml).
     function openRows(entry) {
         const source = provider.sourceOf(entry);
-        if (!provider.recents.tellsOpen(source) || !provider.isRunning(entry))
+        if (!opensNow(entry, source))
             return [];
-        provider.recents.ask(entry.id);
         return source.kind === "site" ? provider.openSites(entry, source)
             : provider.openFiles(entry, source);
+    }
+
+    // Whether its source says what it has open now, asked of it once it
+    // does, which a browser's does only while it runs.
+    function opensNow(entry, source) {
+        if (!provider.recents.tellsOpen(source) || !provider.isRunning(entry))
+            return false;
+        provider.recents.ask(entry.id);
+        return true;
     }
 
     // What a browser has open, as one row of its own, Tabs, holding its
@@ -1151,20 +1159,31 @@ Provider {
     // (Joel, 2026-11-11: "it also needs to be more obvious what part of
     // the program menu is tabs versus other stuff"). Typing in its step
     // still finds a page, as Recent's are found. What another program has
-    // open, as mpv's files, stays as it was, among its acts.
+    // open, as mpv's files, stays as it was, among its acts. Its pages are
+    // counted without making them, and made only once Tabs is stepped into
+    // or searched, once for each making of its acts.
     function openGroup(entry) {
-        const open = provider.openRows(entry);
-        if (open.length === 0 || provider.sourceOf(entry)?.kind !== "site")
-            return open;
+        const source = provider.sourceOf(entry);
+        if (source?.kind !== "site")
+            return provider.openRows(entry);
+        const count = opensNow(entry, source)
+            ? Program.pagesOpen(provider.recents.openIn(entry.id)) : 0;
+        if (count === 0)
+            return [];
+        let made = null;
+        const open = () => {
+            made = made ?? provider.openSites(entry, source);
+            return made;
+        };
         const words = Words.of("program:open-tabs").said ?? {};
         return [said("program:open-tabs", "", {
             hue: "program",
-            side: ((open.length === 1 ? words.one : words.many) ?? "")
-                .replace("{count}", String(open.length)),
+            side: ((count === 1 ? words.one : words.many) ?? "")
+                .replace("{count}", String(count)),
             ask: "which?",
             nested: true,
-            verbs: () => open,
-            targets: () => open
+            verbs: open,
+            targets: open
         })];
     }
 

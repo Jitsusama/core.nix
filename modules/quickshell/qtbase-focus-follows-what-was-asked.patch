@@ -1,0 +1,56 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Focus the window a sync asks for, whatever is queued
+
+A Wayland window's activation is settled once a wl_display.sync after
+the keyboard's enter or leave comes back, and Qt 6.12.0 then asks for
+a focus change only when the window it wants differs from
+QGuiApplication::focusWindow(). That function changes only once the
+window-system queue is processed. When a surface's leave and enter
+come close together, the leave's sync can queue "no window focused",
+and the enter's sync come back before that is processed: it finds the
+window still focused and asks nothing, so the queued change lands
+last and the window stays inactive while it holds the keyboard. The
+shell's launcher, given the keys again 39 ms after giving them up,
+then never took a key until it was closed.
+
+Comparing with the window the last sync asked for as well sends the
+enter's change behind the leave's. A change asked twice is harmless:
+processing a focus change to the window already focused returns at
+once.
+
+--- a/src/plugins/platforms/wayland/qwaylanddisplay.cpp
++++ b/src/plugins/platforms/wayland/qwaylanddisplay.cpp
+@@ -1076,8 +1076,13 @@
+     QWindow *activeWindow = mActiveWindows.empty() ? nullptr : mActiveWindows.last()->window();
+     if (mActiveSubSurface)
+         activeWindow = mActiveSubSurface->window();
+-    if (activeWindow != QGuiApplication::focusWindow())
++    // focusWindow() changes only once the queue is processed, so a leave's sync and an enter's
++    // answered before then would find the window still focused and send nothing, leaving the
++    // leave's queued change last. Comparing with what was last asked too sends the enter's.
++    if (activeWindow != QGuiApplication::focusWindow() || activeWindow != mFocusAsked) {
++        mFocusAsked = activeWindow;
+         QWindowSystemInterface::handleFocusWindowChanged(activeWindow);
++    }
+ }
+ 
+ const wl_callback_listener QWaylandDisplay::syncCallbackListener = {
+--- a/src/plugins/platforms/wayland/qwaylanddisplay_p.h
++++ b/src/plugins/platforms/wayland/qwaylanddisplay_p.h
+@@ -50,6 +50,7 @@
+ class QSocketNotifier;
+ class QPlatformScreen;
+ class QPlatformPlaceholderScreen;
++class QWindow;
+ 
+ namespace QtWayland {
+     class zwp_text_input_manager_v1;
+@@ -393,6 +394,8 @@
+     QList<QWaylandWindow *> mActiveWindows;
+     QPointer<QWaylandWindow> mActiveSubSurface;
+     struct wl_callback *mSyncCallback = nullptr;
++    // The window the last sync asked to be focused, which focusWindow() may not show yet.
++    QPointer<QWindow> mFocusAsked;
+     static const wl_callback_listener syncCallbackListener;
+     bool mWaylandTryReconnect = false;
+     bool mPreferWlrDataControl = false;

@@ -242,6 +242,16 @@ QtObject {
         expect("a making quick enough to feel nothing says nothing",
             Program.makingSaid("slack's drawer", 24, [{ name: "kitty", ms: 20 }]), "");
 
+        // The pages a browser has open, counted from its source's lines (id,
+        // window, in front, last looked at, address, title) as its Tabs row
+        // lists them, without making a row: two tabs on one page are one,
+        // and a tab with no address is none.
+        const tab = (id, address) => [id, "w1", "false", "0", address, "t"].join("\t");
+        expect("a browser's open pages counted, one a page",
+            Program.pagesOpen([tab(1, "https://a.test/"), tab(2, "https://b.test/"),
+                tab(3, "https://a.test/"), tab(4, ""), "5\tw1"]), 2);
+        expect("none open, none counted", Program.pagesOpen([]), 0);
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
             console.warn(failure);
