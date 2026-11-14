@@ -142,6 +142,8 @@ fn with_nothing_listed_an_ask_draws_no_row_and_a_yes_releases_nothing() {
         &argv.iter().map(String::as_str).collect::<Vec<_>>(),
     );
     let mut client = running.client();
+    // Nothing is meant to happen, so there is no event to wait on: this
+    // gives a folder watch, were one running, time to draw the ask.
     std::thread::sleep(Duration::from_millis(1500));
     let keys = row_keys(&mut client);
     assert!(
