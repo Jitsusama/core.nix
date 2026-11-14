@@ -141,7 +141,10 @@ mod tests {
     fn each_session_has_an_authority_of_its_own() {
         let one = Authority::new("one").expect("made");
         let two = Authority::new("two").expect("made");
-        assert!(one.pem().starts_with("-----BEGIN CERTIFICATE-----"));
+        assert!(
+            one.pem().starts_with("-----BEGIN CERTIFICATE-----"),
+            "the authority's certificate is said as PEM"
+        );
         assert_ne!(one.pem(), two.pem());
     }
 
@@ -150,7 +153,10 @@ mod tests {
         let authority = Authority::new("one").expect("made");
         let first = authority.answer_as(Host::Api).expect("answer");
         let again = authority.answer_as(Host::Api).expect("answer");
-        assert!(Arc::ptr_eq(&first, &again));
+        assert!(
+            Arc::ptr_eq(&first, &again),
+            "an answer for a host is made once and kept"
+        );
         assert_eq!(first.alpn_protocols, vec![b"http/1.1".to_vec()]);
     }
 }

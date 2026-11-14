@@ -137,8 +137,9 @@ struct Running {
 
 impl Drop for Running {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        // A door that already ended is only reaped; failing to stop one
+        // that hasn't leaves nothing to reap.
+        let _ = self.child.kill().and_then(|()| self.child.wait());
     }
 }
 
@@ -424,7 +425,10 @@ fn a_mutation_named_for_another_is_refused_by_its_field() {
         &post("/graphql", "api.github.com", &body),
     );
     assert_eq!(answer.status, 403, "{answer:?}");
-    assert!(running.seen().is_empty());
+    assert!(
+        running.seen().is_empty(),
+        "a refused mutation never reaches GitHub"
+    );
     assert!(
         running.journal().contains("refused why=mutation "),
         "{}",
@@ -490,7 +494,10 @@ fn any_credential_but_the_placeholder_is_refused() {
         &get("/user", Some("token ghp_someone_elses")),
     );
     assert_eq!(answer.status, 403);
-    assert!(running.seen().is_empty());
+    assert!(
+        running.seen().is_empty(),
+        "another credential never reaches GitHub"
+    );
     assert!(
         running.journal().contains("refused why=authorization "),
         "{}",
@@ -550,7 +557,10 @@ fn another_host_is_tunnelled_untouched_and_unsaid() {
         stream.write_all(&said).expect("echoed");
     });
     let mut stream = UnixStream::connect(&socket).expect("the session's socket");
-    assert!(connect(&mut stream, &address.to_string()).starts_with("HTTP/1.1 200"));
+    assert!(
+        connect(&mut stream, &address.to_string()).starts_with("HTTP/1.1 200"),
+        "another host's tunnel opens"
+    );
     stream.write_all(b"hello").expect("sent");
     let mut back = [0u8; 5];
     stream.read_exact(&mut back).expect("echoed");
@@ -569,7 +579,10 @@ fn one_sessions_bundle_doesnt_trust_anothers_door() {
     let (socket, _) = running.open("s1");
     let (_, other_bundle) = running.open("s2");
     let mut stream = UnixStream::connect(&socket).expect("the session's socket");
-    assert!(connect(&mut stream, "api.github.com:443").starts_with("HTTP/1.1 200"));
+    assert!(
+        connect(&mut stream, "api.github.com:443").starts_with("HTTP/1.1 200"),
+        "GitHub's tunnel opens"
+    );
     assert!(
         through(
             stream,
@@ -577,9 +590,13 @@ fn one_sessions_bundle_doesnt_trust_anothers_door() {
             &other_bundle,
             get("/user", None).as_bytes()
         )
-        .is_err()
+        .is_err(),
+        "another session's door isn't trusted"
     );
-    assert!(running.seen().is_empty());
+    assert!(
+        running.seen().is_empty(),
+        "a call to an untrusted door never reaches GitHub"
+    );
 }
 
 #[test]
@@ -587,9 +604,67 @@ fn github_on_another_port_is_refused() {
     let running = door("good");
     let (socket, _) = running.open("s1");
     let mut stream = UnixStream::connect(&socket).expect("the session's socket");
-    assert!(connect(&mut stream, "api.github.com:8443").starts_with("HTTP/1.1 403"));
+    assert!(
+        connect(&mut stream, "api.github.com:8443").starts_with("HTTP/1.1 403"),
+        "GitHub on another port is refused"
+    );
     assert!(
         running.journal().contains("refused why=port "),
+        "{}",
+        running.journal()
+    );
+}
+
+#[test]
+fn open_prints_the_sessions_folder_for_the_harness() {
+    let running = door("good");
+    let opened = |session: &str| {
+        Command::new(env!("CARGO_BIN_EXE_pi-github-door"))
+            .args(["open", session, "--control"])
+            .arg(running.control())
+            .output()
+            .expect("open ran")
+    };
+    let output = opened("s1");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let folder = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    assert_eq!(folder, running.folder.path().join("sessions/s1"));
+    assert!(
+        folder.join("door.sock").exists() && folder.join("bundle.pem").exists(),
+        "the folder holds the socket and the bundle"
+    );
+    let refused = opened("../x");
+    assert!(
+        !refused.status.success(),
+        "a session's id that could leave its folder is refused"
+    );
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("open"),
+        "the refusal says it was an open"
+    );
+}
+
+#[test]
+fn a_door_holding_its_most_gives_back_the_session_asked_for_least_lately() {
+    let running = door("good");
+    let (kept, _) = running.open("kept");
+    let (stalest, _) = running.open("s0");
+    for each in 1..255 {
+        running.open(&format!("s{each}"));
+    }
+    running.open("kept");
+    let (newest, _) = running.open("newest");
+    assert!(
+        newest.exists() && kept.exists(),
+        "the newest and the one asked for again stay"
+    );
+    assert!(!stalest.exists(), "s0 was given back");
+    assert!(
+        running.journal().contains("gave-back session=s0 "),
         "{}",
         running.journal()
     );
@@ -626,7 +701,7 @@ fn a_session_opens_once_closes_and_is_lifted_by_name() {
         running.ask(&json!({"ask": "close", "session": "s1"}))["ok"],
         json!(true)
     );
-    assert!(!socket.exists());
+    assert!(!socket.exists(), "a closed session's socket is gone");
     assert_eq!(
         running.ask(&json!({"ask": "lift", "session": "s1"}))["ok"],
         json!(false)
@@ -661,7 +736,10 @@ fn the_relay_sends_githubs_hosts_to_the_door_and_the_rest_straight_out() {
         .parse()
         .expect("a port");
     let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("the relay");
-    assert!(connect(&mut stream, "api.github.com:443").starts_with("HTTP/1.1 200"));
+    assert!(
+        connect(&mut stream, "api.github.com:443").starts_with("HTTP/1.1 200"),
+        "GitHub's tunnel opens through the relay"
+    );
     let answer = through(
         stream,
         "api.github.com",
@@ -677,7 +755,10 @@ fn the_relay_sends_githubs_hosts_to_the_door_and_the_rest_straight_out() {
         stream.write_all(b"straight").expect("said");
     });
     let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("the relay");
-    assert!(connect(&mut stream, &address.to_string()).starts_with("HTTP/1.1 200"));
+    assert!(
+        connect(&mut stream, &address.to_string()).starts_with("HTTP/1.1 200"),
+        "another host's tunnel opens through the relay"
+    );
     let mut said = [0u8; 8];
     stream.read_exact(&mut said).expect("read");
     assert_eq!(&said, b"straight");

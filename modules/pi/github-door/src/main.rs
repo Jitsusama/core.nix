@@ -1,7 +1,9 @@
 //! `pi-github-door serve` is the door, answering its control socket and
 //! every session's own (src/lib.rs says why and how); `pi-github-door
-//! relay` starts the relay a fenced command reaches it through, printing
-//! its port; `pi-github-door lift` lifts a session's hourly cap, for Joel.
+//! open` opens a session for the harness, before a fenced command, printing
+//! its folder; `pi-github-door relay` starts the relay a fenced command
+//! reaches it through, printing its port; `pi-github-door lift` lifts a
+//! session's hourly cap, for Joel.
 //!
 //! It takes the shape every command of ours does (docs/commands.md): its
 //! help, usage that says what to try, and failures with named exits.
@@ -26,7 +28,7 @@ use serde_json::{Value, json};
 use terminal_kit::{Context, Exit, Failure, Help, flags};
 
 /// What it does, by the first word.
-const COMMANDS: [&str; 4] = ["serve", "relay", "lift", "relaying"];
+const COMMANDS: [&str; 5] = ["serve", "open", "relay", "lift", "relaying"];
 /// Where the system's roots are, unless told otherwise.
 const SYSTEM_BUNDLE: &str = "/etc/ssl/certs/ca-certificates.crt";
 /// The first socket systemd hands a service it starts.
@@ -77,6 +79,20 @@ fn help() -> Help {
         )
         .exit(Exit::Failed, "the door couldn't listen, or read its roots")
         .exit(Exit::Usage, "a flag is missing or unknown"),
+    )
+    .subcommand(
+        Help::new(
+            "open",
+            "opens a session, if it isn't, and prints its folder",
+        )
+        .argument("<session>", "the session's id")
+        .option("--control PATH", "the control socket, if not the usual one")
+        .example(
+            "pi-github-door open 01a1d112",
+            "its folder, holding its socket and its bundle",
+        )
+        .exit(Exit::Refused, "the door refused the session's id")
+        .exit(Exit::Unavailable, "the door isn't answering"),
     )
     .subcommand(
         Help::new(
@@ -290,12 +306,16 @@ fn usual_control() -> Result<PathBuf, Failure> {
         })
 }
 
-fn lift(context: &Context, args: &[String]) -> Result<(), Failure> {
+/// The session `command` names and the control socket's answer to
+/// asking `command` of it: an answer refused stays the caller's to say.
+fn ask(command: &str, args: &[String]) -> Result<(String, Value), Failure> {
     let Some((session, rest)) = args.split_first() else {
-        return Err(Failure::new(Exit::Usage, "lift takes a session's id")
-            .try_this("pi-github-door lift --help"));
+        return Err(
+            Failure::new(Exit::Usage, format!("{command} takes a session's id"))
+                .try_this(format!("pi-github-door {command} --help")),
+        );
     };
-    let given = named("lift", rest, &["--control"])?;
+    let given = named(command, rest, &["--control"])?;
     let control =
         value(&given, "--control").map_or_else(usual_control, |path| Ok(PathBuf::from(path)))?;
     let unavailable = |why: String| {
@@ -305,7 +325,7 @@ fn lift(context: &Context, args: &[String]) -> Result<(), Failure> {
     };
     let mut stream =
         UnixStream::connect(&control).map_err(|error| unavailable(error.to_string()))?;
-    writeln!(stream, "{}", json!({ "ask": "lift", "session": session }))
+    writeln!(stream, "{}", json!({ "ask": command, "session": session }))
         .map_err(|error| unavailable(error.to_string()))?;
     let mut line = String::new();
     BufReader::new(&stream)
@@ -313,12 +333,55 @@ fn lift(context: &Context, args: &[String]) -> Result<(), Failure> {
         .map_err(|error| unavailable(error.to_string()))?;
     let answer: Value = serde_json::from_str(&line)
         .map_err(|_| unavailable("it answered unreadably".to_owned()))?;
-    if answer.get("ok") != Some(&Value::Bool(true)) {
-        let why = answer
+    Ok((session.clone(), answer))
+}
+
+/// Why the door refused an ask, as it said.
+fn refusal(answer: &Value) -> Option<String> {
+    if answer.get("ok") == Some(&Value::Bool(true)) {
+        return None;
+    }
+    Some(
+        answer
             .get("error")
             .and_then(Value::as_str)
             .unwrap_or("it refused")
-            .to_owned();
+            .to_owned(),
+    )
+}
+
+fn open(context: &Context, args: &[String]) -> Result<(), Failure> {
+    let (session, answer) = ask("open", args)?;
+    if let Some(why) = refusal(&answer) {
+        return Err(
+            Failure::new(Exit::Refused, format!("the door wouldn't open {session}"))
+                .because(why)
+                .try_this("journalctl --user -u pi-github-door"),
+        );
+    }
+    let folder = answer
+        .get("folder")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let said = if context.format().is_json() {
+        context.answer(&json!({
+            "schema": "pi-github-door.opened/1",
+            "session": session,
+            "folder": folder,
+            "socket": answer.get("socket"),
+            "bundle": answer.get("bundle"),
+        }))
+    } else {
+        context.say(&format!("{folder}\n"))
+    };
+    said.map_err(|error| {
+        Failure::new(Exit::Failed, "it couldn't print the folder").because(error.to_string())
+    })
+}
+
+fn lift(context: &Context, args: &[String]) -> Result<(), Failure> {
+    let (session, answer) = ask("lift", args)?;
+    if let Some(why) = refusal(&answer) {
         return Err(
             Failure::new(Exit::NotFound, format!("no session {session} to lift"))
                 .because(why)
@@ -345,9 +408,12 @@ fn main() -> ExitCode {
         Some((command, rest)) if command == "serve" => serve(rest),
         Some((command, rest)) if command == "relay" => start_relay(context, rest),
         Some((command, rest)) if command == "relaying" => relaying(rest),
+        Some((command, rest)) if command == "open" => open(context, rest),
         Some((command, rest)) if command == "lift" => lift(context, rest),
         Some((command, _)) => Err(flags::unknown("command", command, &COMMANDS)),
-        None => Err(Failure::new(Exit::Usage, "it takes serve, relay or lift")
-            .try_this("pi-github-door --help")),
+        None => Err(
+            Failure::new(Exit::Usage, "it takes serve, open, relay or lift")
+                .try_this("pi-github-door --help"),
+        ),
     })
 }

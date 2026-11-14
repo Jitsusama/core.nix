@@ -74,9 +74,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_plain_session_is_read() {
-        let environ = b"HOME=/home/someone\0PI_SESSION_ID=01a1d112-2f75\0PATH=/bin\0";
-        assert_eq!(session_in(environ).as_deref(), Some("01a1d112-2f75"));
+    fn a_plain_session_is_read_wherever_it_stands() {
+        for environ in [
+            &b"PI_SESSION_ID=01a1d112-2f75_x\0HOME=/home/someone\0"[..],
+            b"HOME=/home/someone\0PI_SESSION_ID=01a1d112-2f75_x",
+        ] {
+            assert_eq!(session_in(environ).as_deref(), Some("01a1d112-2f75_x"));
+        }
     }
 
     #[test]
@@ -93,8 +97,12 @@ mod tests {
     }
 
     #[test]
-    fn its_own_end_of_a_pair_is_this_process() {
+    fn a_peer_in_this_process_claims_this_processs_session() {
         let (ours, _theirs) = UnixStream::pair().expect("a pair");
-        assert_eq!(pid(&ours), i32::try_from(std::process::id()).ok());
+        let own = std::env::var("PI_SESSION_ID")
+            .ok()
+            .filter(|id| plain_session(id))
+            .unwrap_or_else(|| UNKNOWN.to_owned());
+        assert_eq!(claimed_session(&ours), own);
     }
 }

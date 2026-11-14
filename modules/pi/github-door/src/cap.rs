@@ -111,7 +111,10 @@ mod tests {
         for _ in 0..MOST {
             count.call(start);
         }
-        assert!(matches!(count.call(start), Counted::Refused(_)));
+        assert!(
+            matches!(count.call(start), Counted::Refused(_)),
+            "a call past the most is refused"
+        );
         assert_eq!(count.call(start + HOUR), Counted::Fine);
     }
 

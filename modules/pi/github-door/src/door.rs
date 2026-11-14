@@ -553,13 +553,17 @@ mod tests {
 
     #[test]
     fn only_the_placeholder_passes_as_a_credential() {
-        assert!(headers_allowed(&head("GET / HTTP/1.1\r\n\r\n")).is_ok());
+        assert!(
+            headers_allowed(&head("GET / HTTP/1.1\r\n\r\n")).is_ok(),
+            "a request with no credential passes"
+        );
         assert!(
             headers_allowed(&head(&format!(
                 "GET / HTTP/1.1\r\nAuthorization: token {}\r\n\r\n",
                 token::PLACEHOLDER
             )))
-            .is_ok()
+            .is_ok(),
+            "the placeholder passes"
         );
         let other = headers_allowed(&head(
             "GET / HTTP/1.1\r\nAuthorization: token ghp_x\r\n\r\n",

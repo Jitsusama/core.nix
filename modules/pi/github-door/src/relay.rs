@@ -280,6 +280,6 @@ mod tests {
         let listener = TcpListener::bind(("127.0.0.1", 0)).expect("a port");
         let _client = TcpStream::connect(listener.local_addr().expect("bound")).expect("connected");
         let (accepted, _) = listener.accept().expect("accepted");
-        assert!(own(&accepted));
+        assert!(own(&accepted), "a connection this process holds is its own");
     }
 }

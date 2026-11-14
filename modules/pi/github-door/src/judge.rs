@@ -535,10 +535,16 @@ mod tests {
     fn opening_or_merging_a_pull_request_is_refused_with_its_route() {
         let open = judged("POST", Host::Api, "/repos/o/r/pulls").expect_err("refused");
         assert_eq!(open.why, Why::PullCreate);
-        assert!(open.detail.contains("review_offer propose"));
+        assert!(
+            open.detail.contains("review_offer propose"),
+            "opening a pull request names review_offer propose"
+        );
         let merge = judged("PUT", Host::Api, "/repos/o/r/pulls/4/merge").expect_err("refused");
         assert_eq!(merge.why, Why::Merge);
-        assert!(merge.detail.contains("review_offer merge"));
+        assert!(
+            merge.detail.contains("review_offer merge"),
+            "a merge names review_offer merge"
+        );
         assert_eq!(
             why("POST", Host::Api, "/repos/o/r/merges"),
             Some(Why::Merge)
@@ -745,7 +751,10 @@ mod tests {
         passes("POST", Host::Web, "/o/r/git-upload-pack");
         let push = judged("POST", Host::Web, "/o/r.git/git-receive-pack").expect_err("refused");
         assert_eq!(push.why, Why::ReceivePack);
-        assert!(push.detail.contains("work tool"));
+        assert!(
+            push.detail.contains("work tool"),
+            "a push names the work tool"
+        );
         assert_eq!(
             why(
                 "GET",
@@ -774,7 +783,10 @@ mod tests {
                 &[],
             )
         };
-        assert!(batch(br#"{"operation": "download", "objects": []}"#).is_ok());
+        assert!(
+            batch(br#"{"operation": "download", "objects": []}"#).is_ok(),
+            "an LFS download passes"
+        );
         assert_eq!(
             batch(br#"{"operation": "upload", "objects": []}"#)
                 .expect_err("refused")

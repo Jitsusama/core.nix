@@ -49,8 +49,10 @@
   # than the placeholder refused; the token read again on a 401 and tried
   # once; git's fetch passed with the token; another host tunnelled
   # untouched and unsaid; one session's bundle not trusting another's
-  # door; and the relay sending GitHub's hosts to the door and the rest
-  # straight out, leaving once the process it watches does.
+  # door; a session opened for the harness, the one asked for least lately
+  # given back once 256 are open; and the relay sending GitHub's hosts to
+  # the door and the rest straight out, leaving once the process it
+  # watches does.
   pi-github-door-lets-only-allowed-calls-through = pkgs.callPackage ./package.nix { };
 
   # clippy finds nothing in pi-github-door, its tests included.

@@ -322,30 +322,42 @@ mod tests {
 
     #[test]
     fn a_request_read_two_ways_is_refused() {
-        assert!(matches!(
+        assert!(
+            matches!(
             read(b"POST / HTTP/1.1\r\nContent-Length: 3\r\nTransfer-Encoding: chunked\r\n\r\nabc"),
             Err(Unread::Malformed(_))
-        ));
-        assert!(matches!(
-            read(b"POST / HTTP/1.1\r\nContent-Length: 3\r\nContent-Length: 4\r\n\r\nabcd"),
-            Err(Unread::Malformed(_))
-        ));
-        assert!(matches!(
-            read(b"POST / HTTP/1.1\r\nTransfer-Encoding: gzip, chunked\r\n\r\n"),
-            Err(Unread::Malformed(_))
-        ));
-        assert!(matches!(
-            read(b"GET / HTTP/1.0\r\n\r\n"),
-            Err(Unread::Malformed(_))
-        ));
+        ),
+            "a length and chunks both are refused"
+        );
+        assert!(
+            matches!(
+                read(b"POST / HTTP/1.1\r\nContent-Length: 3\r\nContent-Length: 4\r\n\r\nabcd"),
+                Err(Unread::Malformed(_))
+            ),
+            "two lengths are refused"
+        );
+        assert!(
+            matches!(
+                read(b"POST / HTTP/1.1\r\nTransfer-Encoding: gzip, chunked\r\n\r\n"),
+                Err(Unread::Malformed(_))
+            ),
+            "an encoding but chunks is refused"
+        );
+        assert!(
+            matches!(read(b"GET / HTTP/1.0\r\n\r\n"), Err(Unread::Malformed(_))),
+            "HTTP/1.0 is refused"
+        );
     }
 
     #[test]
     fn a_body_past_the_most_is_refused() {
-        assert!(matches!(
-            read(b"POST / HTTP/1.1\r\nContent-Length: 4096\r\n\r\n"),
-            Err(Unread::TooLarge)
-        ));
+        assert!(
+            matches!(
+                read(b"POST / HTTP/1.1\r\nContent-Length: 4096\r\n\r\n"),
+                Err(Unread::TooLarge)
+            ),
+            "a body past the most is refused"
+        );
     }
 
     #[test]
@@ -353,7 +365,10 @@ mod tests {
         let mut stream = &b"rest"[..];
         let mut buffer = b"HTTP/1.1 401 Unauthorized\r\nX: y\r\n\r\nbody".to_vec();
         assert_eq!(read_status(&mut stream, &mut buffer).expect("read"), 401);
-        assert!(buffer.starts_with(b"HTTP/1.1 401"));
+        assert!(
+            buffer.starts_with(b"HTTP/1.1 401"),
+            "the status's head is kept in the buffer"
+        );
     }
 
     #[test]

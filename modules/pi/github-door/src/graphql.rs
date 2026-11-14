@@ -413,7 +413,7 @@ mod tests {
                 names: vec!["viewer".to_owned(), "rateLimit".to_owned()]
             })
         );
-        assert!(posted("{ viewer { login } }").is_ok());
+        assert!(posted("{ viewer { login } }").is_ok(), "a query passes");
     }
 
     #[test]
@@ -476,7 +476,10 @@ mod tests {
         assert_eq!(why(posted(inline)), Why::Mutation);
         let fine = "mutation { ...Fine } \
             fragment Fine on Mutation { addSubIssue(input: {}) { clientMutationId } }";
-        assert!(posted(fine).is_ok());
+        assert!(
+            posted(fine).is_ok(),
+            "a listed mutation reached through a fragment passes"
+        );
     }
 
     #[test]
@@ -505,7 +508,10 @@ mod tests {
             )),
             Why::GetMutation
         );
-        assert!(judge(b"{ viewer { login } }", Carried::Get, &ALLOWED).is_ok());
+        assert!(
+            judge(b"{ viewer { login } }", Carried::Get, &ALLOWED).is_ok(),
+            "a query over GET passes"
+        );
     }
 
     #[test]
@@ -608,13 +614,21 @@ mod tests {
     #[test]
     fn a_list_with_a_wildcard_or_no_trace_is_refused() {
         assert!(
-            read_list(r#"{"mutations": [{"name": "add*", "skill": "s", "call": "c"}]}"#).is_err()
+            read_list(r#"{"mutations": [{"name": "add*", "skill": "s", "call": "c"}]}"#).is_err(),
+            "a wildcard is refused"
         );
         assert!(
-            read_list(r#"{"mutations": [{"name": "addX", "skill": "", "call": "c"}]}"#).is_err()
+            read_list(r#"{"mutations": [{"name": "addX", "skill": "", "call": "c"}]}"#).is_err(),
+            "an entry with no skill is refused"
         );
-        assert!(read_list(r#"{"mutations": [{"name": "addX", "call": "c"}]}"#).is_err());
+        assert!(
+            read_list(r#"{"mutations": [{"name": "addX", "call": "c"}]}"#).is_err(),
+            "an entry naming no skill is refused"
+        );
         let twice = r#"{"name": "a", "skill": "s", "call": "c"}"#;
-        assert!(read_list(&format!(r#"{{"mutations": [{twice}, {twice}]}}"#)).is_err());
+        assert!(
+            read_list(&format!(r#"{{"mutations": [{twice}, {twice}]}}"#)).is_err(),
+            "a name listed twice is refused"
+        );
     }
 }

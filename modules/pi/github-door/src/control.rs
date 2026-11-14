@@ -12,7 +12,10 @@
 //!
 //! An open is idempotent, so the harness asks before each fenced command,
 //! and a door that restarted makes the session anew, with a new authority,
-//! the moment it's next asked.
+//! the moment it's next asked. Since nothing closes a session whose pi
+//! simply went away, a door holding its most gives back the session asked
+//! for least lately to open another: one still running asks again before
+//! its next command and is made anew.
 
 use std::collections::HashMap;
 use std::fs::{self, DirBuilder, Permissions};
@@ -23,13 +26,15 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Instant;
 
 use serde_json::{Value, json};
 
 use crate::door::{self, Door, Session};
 use crate::peer::plain_session;
 
-/// The most sessions held at once, far past the sessions a machine runs.
+/// The most sessions held at once, far past the sessions a machine runs
+/// at once.
 const MOST_SESSIONS: usize = 256;
 /// The most a control line may be.
 const MOST_LINE: u64 = 4096;
@@ -50,6 +55,8 @@ pub struct Opened {
 struct Held {
     session: Arc<Session>,
     opened: Opened,
+    /// When it was last asked for.
+    asked: Instant,
 }
 
 /// Every session the door holds.
@@ -91,8 +98,9 @@ impl Sessions {
             return Err("a session id is letters, digits, - and _, at most 64".to_owned());
         }
         let mut held = self.held();
-        if let Some(existing) = held.get(id) {
+        if let Some(existing) = held.get_mut(id) {
             if existing.opened.socket.exists() {
+                existing.asked = Instant::now();
                 return Ok(existing.opened.clone());
             }
             let gone = held.remove(id);
@@ -101,7 +109,18 @@ impl Sessions {
             }
         }
         if held.len() >= MOST_SESSIONS {
-            return Err(format!("{MOST_SESSIONS} sessions are open already"));
+            let stalest = held
+                .iter()
+                .min_by_key(|(_, each)| each.asked)
+                .map(|(stale, _)| stale.clone());
+            if let Some(gone) = stalest.and_then(|stale| held.remove(&stale)) {
+                eprintln!(
+                    "pi-github-door: gave-back session={} -- {MOST_SESSIONS} were open, and it \
+                     was asked for least lately",
+                    crate::said::plain(&gone.session.id)
+                );
+                end(&gone);
+            }
         }
         let session = Arc::new(Session::new(id)?);
         let folder = self.root.join(id);
@@ -120,6 +139,7 @@ impl Sessions {
             Held {
                 session,
                 opened: opened.clone(),
+                asked: Instant::now(),
             },
         );
         Ok(opened)

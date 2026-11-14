@@ -148,22 +148,43 @@ mod tests {
 
     #[test]
     fn the_placeholder_is_known_in_each_form_gh_and_git_send_it() {
-        assert!(is_placeholder(&format!("token {PLACEHOLDER}")));
-        assert!(is_placeholder(&format!("Bearer {PLACEHOLDER}")));
+        assert!(
+            is_placeholder(&format!("token {PLACEHOLDER}")),
+            "gh's form is the placeholder"
+        );
+        assert!(
+            is_placeholder(&format!("Bearer {PLACEHOLDER}")),
+            "a bearer's form is the placeholder"
+        );
         let basic = STANDARD.encode(format!("x-access-token:{PLACEHOLDER}"));
-        assert!(is_placeholder(&format!("Basic {basic}")));
+        assert!(
+            is_placeholder(&format!("Basic {basic}")),
+            "git's form is the placeholder"
+        );
     }
 
     #[test]
     fn any_other_credential_is_not() {
-        assert!(!is_placeholder("token ghp_realtoken"));
-        assert!(!is_placeholder(&format!("token {PLACEHOLDER}x")));
-        assert!(!is_placeholder(PLACEHOLDER));
-        assert!(!is_placeholder(&format!(
-            "Basic {}",
-            STANDARD.encode("me:hunter2")
-        )));
-        assert!(!is_placeholder(&format!("Digest {PLACEHOLDER}")));
+        assert!(
+            !is_placeholder("token ghp_realtoken"),
+            "a real token isn't the placeholder"
+        );
+        assert!(
+            !is_placeholder(&format!("token {PLACEHOLDER}x")),
+            "a longer token isn't the placeholder"
+        );
+        assert!(
+            !is_placeholder(PLACEHOLDER),
+            "the placeholder with no scheme isn't"
+        );
+        assert!(
+            !is_placeholder(&format!("Basic {}", STANDARD.encode("me:hunter2"))),
+            "a user and password neither the placeholder isn't"
+        );
+        assert!(
+            !is_placeholder(&format!("Digest {PLACEHOLDER}")),
+            "another scheme isn't the placeholder"
+        );
     }
 
     #[test]
@@ -196,6 +217,9 @@ mod tests {
     #[test]
     fn a_command_that_fails_gives_no_token() {
         let token = Token::new(vec!["false".to_owned()]);
-        assert!(token.current().is_err());
+        assert!(
+            token.current().is_err(),
+            "a command that fails gives no token"
+        );
     }
 }
