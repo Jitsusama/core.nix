@@ -250,10 +250,11 @@ function timed(way) {
 
 // A leap's pose `ms` into it, `whole` ms long, `peak` its share of the way
 // at the top: the stretched drawing rising, tucked about the top for a
-// fifth of it and never less than SHOWN, then reaching down, each pose seen
-// at least SHOWN or folded into the tuck (RSCH-20261113-24R2QV, finding 3).
+// fifth of it, then reaching down, each pose seen at least SHOWN or folded
+// into the tuck (RSCH-20261113-24R2QV, finding 3). A hop whose fifth is
+// under SHOWN skips the tuck rather than flash it (VKCF3Z c234c1d4).
 function aloft(ms, whole, peak) {
-    const tuck = Math.min(whole, Math.max(SHOWN, whole / 5));
+    const tuck = whole / 5 < SHOWN ? 0 : whole / 5;
     let tucks = Math.min(Math.max(0, peak * whole - tuck / 2), whole - tuck);
     let untucks = tucks + tuck;
     if (tucks < SHOWN) {
@@ -261,6 +262,7 @@ function aloft(ms, whole, peak) {
     }
     if (whole - untucks < SHOWN) {
         untucks = whole;
+        tucks = tuck === 0 ? whole : tucks;
     }
     return ms < tucks ? "leaping" : ms < untucks ? "tucked" : "falling";
 }
