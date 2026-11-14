@@ -125,14 +125,5 @@ linux_7_3.override {
       name = "virtio-gpu-panic-outside-panic";
       patch = ./virtio-gpu-panic-outside-panic.patch;
     }
-    {
-      # Since 7.3.2 the kernel warns, on a processor that needs the ITS
-      # mitigation, that its trampolines are writable and executable while
-      # it patches its own text at boot, when all of that text still is.
-      # The warning is false; upstream's patch makes it one quiet line. Drop
-      # it once a release has it; docs/kernel.md has the cause.
-      name = "early-wx-warning-gentle";
-      patch = ./early-wx-warning-gentle.patch;
-    }
   ];
 }

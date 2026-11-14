@@ -52,7 +52,6 @@ are fixes written here, kept until the kernel has its own:
 | `cfg80211-ssid-without-country.patch` | the joined network's name | written here; [linux-next][3] since |
 | `hibernate-progress.patch` | a hibernation's image read, on screen | written here |
 | `virtio-gpu-panic-outside-panic.patch` | that bar drawn safely in a VM | written here |
-| `early-wx-warning-gentle.patch` | no false W^X warning at boot | [upstream's][4] |
 
 BORE is a small change to the kernel's own EEVDF scheduler: it favours tasks
 that run in short bursts, such as the compositor, terminal and editor, over
@@ -116,15 +115,10 @@ room and takes the lock when no panic is in progress. The laptops' own
 drivers write the pixels straight into the screen's memory, with nothing
 allocated or queued.
 
-The W^X fix is for a warning 7.3.2 began giving at boot, on a processor
-that needs the mitigation for Indirect Target Selection. 7.3.2 took a fix
-that lets the kernel see that a page is writable through its page tables,
-and so it now notices the ITS trampolines it writes while it patches its own
-text and makes executable before it makes them read-only. All of the
-kernel's text is writable and executable then, so the warning is false, but
-it came with a stack trace that a test reading the console counts as the
-kernel finding something amiss. Upstream's patch, carried until a release
-has it, says it in one quiet line while the text is still writable.
+7.3.2 to 7.3.3 gave a false W^X warning at boot, with a stack trace, on a
+processor that needs the mitigation for Indirect Target Selection, while the
+kernel wrote its ITS trampolines into text that was still writable. Upstream's
+fix, carried here until then, reached 7.3.4, which says it in one quiet line.
 
 ### The Settings
 
@@ -430,4 +424,3 @@ if less; record a new one after moving to a new series.
 [1]: https://github.com/firelzrd/bore-scheduler
 [2]: https://git.kernel.org/torvalds/c/a6036a41bffb
 [3]: https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git/commit/?id=577f690ce5dc
-[4]: https://lore.kernel.org/all/20260905044253.GA3816371@ax162
