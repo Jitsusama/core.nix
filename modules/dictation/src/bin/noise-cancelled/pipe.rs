@@ -7,8 +7,8 @@
 //! so they only move samples through lock-free rings to and from the
 //! denoiser's thread (worker.rs). They're one node group, so the
 //! microphone's clock drives both and the rings never drift. The source
-//! gives silence until two frames are cleaned, a cushion against a frame
-//! that cleans late, and gives silence again for any it's still short of.
+//! gives silence until a cycle and a frame are cleaned, a cushion against a
+//! frame that cleans late, and gives silence again for any it's short of.
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
@@ -42,9 +42,6 @@ pub const OURS: &str = dictation::microphone::OURS;
 
 /// How many samples each ring holds: 16 frames, 160 ms.
 const RING: usize = 16 * FRAME;
-
-/// How much is cleaned before the source gives any of it: two frames.
-const CUSHION: usize = 2 * FRAME;
 
 /// A microphone as the registry names it.
 struct Microphone {
@@ -492,9 +489,6 @@ fn give(stream: &pw::stream::Stream, giving: &mut Giving) {
             chunk.commit_all();
         }
     }
-    if !giving.primed && giving.cleaned.slots() >= CUSHION {
-        giving.primed = true;
-    }
     let mut written = 0;
     if let Some(bytes) = data.data() {
         let room = bytes.len() / 4;
@@ -503,17 +497,10 @@ fn give(stream: &pw::stream::Stream, giving: &mut Giving) {
         } else {
             requested.min(room)
         };
-        for out in bytes.as_chunks_mut::<4>().0.iter_mut().take(wanted) {
-            let sample = if giving.primed {
-                giving.cleaned.pop().unwrap_or_else(|_| {
-                    giving.primed = false;
-                    giving.shared.late.fetch_add(1, Ordering::Relaxed);
-                    0.0
-                })
-            } else {
-                0.0
-            };
-            *out = sample.to_le_bytes();
+        let out = bytes.as_chunks_mut::<4>().0;
+        let short = gives(&mut giving.cleaned, &mut giving.primed, &mut out[..wanted]);
+        if short > 0 {
+            giving.shared.late.fetch_add(short, Ordering::Relaxed);
         }
         written = wanted;
     }
@@ -521,6 +508,32 @@ fn give(stream: &pw::stream::Stream, giving: &mut Giving) {
     *chunk.offset_mut() = 0;
     *chunk.stride_mut() = 4;
     *chunk.size_mut() = u32::try_from(written * 4).unwrap_or(u32::MAX);
+}
+
+/// Fills one cycle's `out` with what's been cleaned, once there's a cushion
+/// of it, and silence for whatever it's short of, giving how often it ran
+/// short. The cushion is the cycle and a frame more: the worker cleans
+/// whole frames, so what's cleaned lags what's heard by up to a frame, and a
+/// cycle needn't be one. At PipeWire's usual 1024 samples, a cushion of two
+/// frames (960) ran short about every second and a half.
+fn gives(cleaned: &mut Consumer<f32>, primed: &mut bool, out: &mut [[u8; 4]]) -> u64 {
+    if !*primed && cleaned.slots() >= (out.len() + FRAME).min(RING) {
+        *primed = true;
+    }
+    let mut short = 0;
+    for slot in out {
+        let sample = if *primed {
+            cleaned.pop().unwrap_or_else(|_| {
+                *primed = false;
+                short += 1;
+                0.0
+            })
+        } else {
+            0.0
+        };
+        *slot = sample.to_le_bytes();
+    }
+    short
 }
 
 /// One channel of 32-bit floats at the denoiser's rate, the only format
