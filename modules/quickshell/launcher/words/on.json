@@ -760,6 +760,14 @@
       "glyph": "bluetooth"
     },
     {
+      "id": "verb:on:bluetooth:copy",
+      "command": "yank",
+      "in": "on",
+      "name": "Copy the Command",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
       "id": "verb:on:timers:show",
       "command": "edit",
       "argument": "Timers",

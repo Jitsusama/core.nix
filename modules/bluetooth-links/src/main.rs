@@ -31,15 +31,22 @@
 //! While a link is up the file is written every look; while none is, only
 //! when it would say something new, so once the adapters' traffic has
 //! settled it's written no more, and the controller is asked nothing but
-//! its version, once. Nothing is spawned.
+//! its version, every thirty seconds. Nothing is spawned.
+//!
+//! A controller can stop answering while the kernel still says its adapter
+//! is up, so what each is asked is heard for whether it answers
+//! (src/hearing.rs), and one that's stopped is named in `stopped.json`
+//! beside the file.
 //!
 //! Usage: bluetooth-links [FILE]   (/run/bluetooth-links/links.json unless
 //! given)
 
 mod hci;
+mod hearing;
 mod reply;
 
-use hci::{Radio, Seen};
+use hci::{Radio, Seen, Unanswered};
+use hearing::{Hearings, Heeding, Stopped};
 use reply::{Adapter, Connection, Version};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -168,7 +175,7 @@ fn kept<T>(history: &mut Vec<T>, read: T) {
 /// What the controller is asked, by `Watch`: a stand-in in the tests.
 trait Controller {
     fn look(&mut self) -> Seen;
-    fn ask(&mut self, adapter: u16, opcode: u16, handle: u16) -> Option<Vec<u8>>;
+    fn ask(&mut self, adapter: u16, opcode: u16, handle: u16) -> Result<Vec<u8>, Unanswered>;
 }
 
 /// The radio, saying each kind of trouble once rather than every tick.
@@ -194,13 +201,12 @@ impl Controller for Asked {
         })
     }
 
-    fn ask(&mut self, adapter: u16, opcode: u16, handle: u16) -> Option<Vec<u8>> {
+    fn ask(&mut self, adapter: u16, opcode: u16, handle: u16) -> Result<Vec<u8>, Unanswered> {
         self.radio
             .ask(adapter, opcode, handle)
-            .map_err(|error| {
+            .inspect_err(|error| {
                 self.complain(format!("Couldn't ask hci{adapter} {opcode:#06x}: {error}"));
             })
-            .ok()
     }
 }
 
@@ -215,13 +221,16 @@ struct Counted {
 
 /// What's kept between looks: the adapters as last written with nothing
 /// connected, so they're written once, each link's history, each adapter's
-/// counters, and each adapter's version, which never changes.
+/// counters, each adapter's version, which never changes, and whether each
+/// adapter that's up answers, with how many looks there have been.
 #[derive(Default)]
 struct Watch {
     quiet: Option<Vec<Told>>,
     histories: HashMap<String, History>,
     counted: HashMap<u16, Counted>,
     versions: HashMap<u16, Version>,
+    hearings: Hearings,
+    looks: u64,
 }
 
 /// Bytes a second between two reads of a counter. A counter that went
@@ -234,6 +243,11 @@ fn per_second(now: u32, before: u32, over: Duration) -> u64 {
 }
 
 impl Watch {
+    /// Whether an adapter is left unasked this look.
+    fn hushed(&self, adapter: u16) -> bool {
+        self.hearings.hushed(adapter, self.looks)
+    }
+
     /// One look, at `at` seconds since 1970 and `clock` on a clock that
     /// only goes forward: what to write, or nothing when it would say what
     /// the file already does.
@@ -244,18 +258,28 @@ impl Watch {
         clock: Duration,
     ) -> Option<Report> {
         let seen = controller.look();
+        self.looks += 1;
+        let mut heeding = Heeding {
+            controller,
+            heard: HashMap::new(),
+        };
         let adapters: Vec<Told> = seen
             .adapters
             .iter()
-            .map(|adapter| self.adapter(controller, adapter, clock))
+            .map(|adapter| self.adapter(&mut heeding, adapter, clock))
             .collect();
         let listed: Vec<u16> = seen.adapters.iter().map(|adapter| adapter.id).collect();
         self.counted.retain(|id, _| listed.contains(id));
         let links: Vec<Link> = seen
             .connections
             .iter()
-            .map(|(adapter, connection)| link(controller, *adapter, connection))
+            .map(|(adapter, connection)| {
+                let hushed = self.hushed(*adapter);
+                link(&mut heeding, *adapter, connection, hushed)
+            })
             .collect();
+        self.hearings
+            .hear(&mut heeding, &seen.adapters, self.looks, &mut self.versions);
         let linked: Vec<&str> = links.iter().map(|link| link.address.as_str()).collect();
         self.histories
             .retain(|address, _| linked.contains(&address.as_str()));
@@ -290,15 +314,16 @@ impl Watch {
     }
 
     /// What's said of an adapter, asking its version the first time it's
-    /// up, and working out its traffic since the look before.
+    /// up, unless it's hushed, and working out its traffic since the look
+    /// before.
     fn adapter(
         &mut self,
-        controller: &mut impl Controller,
+        heeding: &mut Heeding<'_, impl Controller>,
         adapter: &Adapter,
         clock: Duration,
     ) -> Told {
-        if adapter.up && !self.versions.contains_key(&adapter.id) {
-            let said = controller.ask(adapter.id, reply::READ_LOCAL_VERSION, 0);
+        if adapter.up && !self.versions.contains_key(&adapter.id) && !self.hushed(adapter.id) {
+            let said = heeding.ask(adapter.id, reply::READ_LOCAL_VERSION, 0);
             if let Some(version) = said.as_deref().and_then(reply::version) {
                 self.versions.insert(adapter.id, version);
             }
@@ -343,12 +368,24 @@ impl Watch {
     }
 }
 
-/// Asks a link all it's asked. Link quality and the channel map are the
-/// classic radio's, so a Low Energy link isn't asked them. Its history is
-/// filled in by `Watch`.
-fn link(controller: &mut impl Controller, adapter: u16, connection: &Connection) -> Link {
+/// Asks a link all it's asked, unless its adapter is `hushed`, when it's
+/// asked nothing. Link quality and the channel map are the classic
+/// radio's, so a Low Energy link isn't asked them. Its history is filled
+/// in by `Watch`.
+fn link(
+    heeding: &mut Heeding<'_, impl Controller>,
+    adapter: u16,
+    connection: &Connection,
+    hushed: bool,
+) -> Link {
     let handle = connection.handle;
-    let mut asked = |opcode| controller.ask(adapter, opcode, handle);
+    let mut asked = |opcode| {
+        if hushed {
+            None
+        } else {
+            heeding.ask(adapter, opcode, handle)
+        }
+    };
     let rssi = asked(reply::READ_RSSI).and_then(|said| reply::rssi(&said, handle));
     let power = asked(reply::READ_TRANSMIT_POWER).and_then(|said| reply::power(&said, handle));
     let (quality, map) = if connection.le {
@@ -376,9 +413,9 @@ fn link(controller: &mut impl Controller, adapter: u16, connection: &Connection)
     }
 }
 
-/// Writes the report beside the file and renames it into place, so a
+/// Writes what's said beside the file and renames it into place, so a
 /// reader never sees it half written, readable by everyone.
-fn write(file: &Path, report: &Report) -> io::Result<()> {
+fn write(file: &Path, report: &impl Serialize) -> io::Result<()> {
     let name = file
         .file_name()
         .and_then(|name| name.to_str())
@@ -411,7 +448,9 @@ fn main() {
         radio: Radio::default(),
         said: HashSet::new(),
     };
+    let stopped = file.with_file_name("stopped.json");
     let mut watch = Watch::default();
+    let mut said: Option<Vec<String>> = None;
     let started = Instant::now();
     loop {
         if let Some(report) = watch.tick(&mut asked, now(), started.elapsed())
@@ -420,6 +459,20 @@ fn main() {
             asked.complain(format!("Couldn't write {}: {error}", file.display()));
             // Written again next time, though it says nothing new.
             watch.quiet = None;
+        }
+        let names = watch.hearings.stopped();
+        if said.as_ref() != Some(&names) {
+            let adapters = names
+                .iter()
+                .map(|name| hearing::sits_on(Path::new("/sys"), name))
+                .collect();
+            match write(&stopped, &Stopped { adapters }) {
+                Ok(()) => said = Some(names),
+                // Left unsaid, so it's written again next time.
+                Err(error) => {
+                    asked.complain(format!("Couldn't write {}: {error}", stopped.display()));
+                }
+            }
         }
         thread::sleep(TICK);
     }
@@ -430,13 +483,15 @@ mod tests {
     use super::*;
 
     /// A controller that lists what it's given and answers what it has a
-    /// reply for, by opcode and handle.
+    /// reply for, by opcode and handle, refusing the rest; or, `silent`,
+    /// answers nothing, as one wedged in its firmware.
     #[derive(Default)]
-    struct StandIn {
-        adapters: Vec<Adapter>,
-        listed: Vec<(u16, Connection)>,
-        replies: HashMap<(u16, u16), Vec<u8>>,
-        asked: Vec<u16>,
+    pub struct StandIn {
+        pub adapters: Vec<Adapter>,
+        pub listed: Vec<(u16, Connection)>,
+        pub replies: HashMap<(u16, u16), Vec<u8>>,
+        pub asked: Vec<u16>,
+        pub silent: bool,
     }
 
     impl Controller for StandIn {
@@ -447,9 +502,15 @@ mod tests {
             }
         }
 
-        fn ask(&mut self, _: u16, opcode: u16, handle: u16) -> Option<Vec<u8>> {
+        fn ask(&mut self, _: u16, opcode: u16, handle: u16) -> Result<Vec<u8>, Unanswered> {
             self.asked.push(opcode);
-            self.replies.get(&(opcode, handle)).cloned()
+            if self.silent {
+                return Err(Unanswered::Silent);
+            }
+            self.replies
+                .get(&(opcode, handle))
+                .cloned()
+                .ok_or(Unanswered::Refused(0x01))
         }
     }
 
@@ -463,7 +524,7 @@ mod tests {
         }
     }
 
-    fn mouse() -> Connection {
+    pub fn mouse() -> Connection {
         Connection {
             handle: 0x0040,
             address: "C3:9C:E3:2A:F3:6E".into(),
@@ -473,7 +534,7 @@ mod tests {
         }
     }
 
-    fn radio(received: u32, sent: u32) -> Adapter {
+    pub fn radio(received: u32, sent: u32) -> Adapter {
         Adapter {
             id: 0,
             name: "hci0".into(),
@@ -484,7 +545,7 @@ mod tests {
         }
     }
 
-    fn seconds(count: u64) -> Duration {
+    pub fn seconds(count: u64) -> Duration {
         Duration::from_secs(count)
     }
 

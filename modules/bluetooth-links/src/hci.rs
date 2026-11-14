@@ -8,6 +8,7 @@
 
 use crate::reply::{self, Adapter, Connection, Heard};
 use std::collections::HashMap;
+use std::fmt;
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::time::{Duration, Instant};
@@ -90,6 +91,30 @@ fn bound(adapter: u16) -> io::Result<OwnedFd> {
     Ok(fd)
 }
 
+/// Why a command gave back nothing to read.
+#[derive(Debug)]
+pub enum Unanswered {
+    /// The controller said it wouldn't, by this status: it's there to say
+    /// so.
+    Refused(u8),
+    /// Nothing came back within `PATIENCE`: the controller is busy or has
+    /// stopped answering, as one wedged in its firmware does while the
+    /// kernel still says it's up.
+    Silent,
+    /// The socket itself failed.
+    Broken(io::Error),
+}
+
+impl fmt::Display for Unanswered {
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Refused(status) => write!(out, "the controller refused it ({status:#04x})"),
+            Self::Silent => write!(out, "the controller didn't answer"),
+            Self::Broken(error) => write!(out, "{error}"),
+        }
+    }
+}
+
 /// What one look at the adapters found: each adapter, and every adapter's
 /// connections that carry data, each with its adapter's id.
 #[derive(Debug, Default, Clone)]
@@ -143,27 +168,25 @@ impl Radio {
     }
 
     /// Asks one of a connection's commands, giving its return parameters.
-    pub fn ask(&mut self, adapter: u16, opcode: u16, handle: u16) -> io::Result<Vec<u8>> {
+    pub fn ask(&mut self, adapter: u16, opcode: u16, handle: u16) -> Result<Vec<u8>, Unanswered> {
         let fd = match self.bound.get(&adapter) {
             Some(fd) => fd.as_raw_fd(),
             None => self
                 .bound
                 .entry(adapter)
-                .or_insert(bound(adapter)?)
+                .or_insert(bound(adapter).map_err(Unanswered::Broken)?)
                 .as_raw_fd(),
         };
         let asked = asked(fd, opcode, handle);
-        if asked
-            .as_ref()
-            .is_err_and(|error| error.kind() != io::ErrorKind::TimedOut)
-        {
+        // Opened afresh next time, in case the socket's gone bad.
+        if matches!(asked, Err(Unanswered::Broken(_))) {
             self.bound.remove(&adapter);
         }
         asked
     }
 }
 
-fn asked(fd: RawFd, opcode: u16, handle: u16) -> io::Result<Vec<u8>> {
+fn asked(fd: RawFd, opcode: u16, handle: u16) -> Result<Vec<u8>, Unanswered> {
     let mut packet = [0u8; LONGEST_EVENT];
     // What's waiting answered someone else, or a command given up on.
     // SAFETY: the kernel writes at most the buffer's length into it.
@@ -180,13 +203,13 @@ fn asked(fd: RawFd, opcode: u16, handle: u16) -> io::Result<Vec<u8>> {
     // SAFETY: the kernel reads the command's own length from it.
     let sent = unsafe { libc::write(fd, command.as_ptr().cast(), command.len()) };
     if sent < 0 {
-        return Err(io::Error::last_os_error());
+        return Err(Unanswered::Broken(io::Error::last_os_error()));
     }
     let deadline = Instant::now() + PATIENCE;
     loop {
         let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {
-            return Err(io::ErrorKind::TimedOut.into());
+            return Err(Unanswered::Silent);
         }
         let mut waiting = libc::pollfd {
             fd,
@@ -197,21 +220,19 @@ fn asked(fd: RawFd, opcode: u16, handle: u16) -> io::Result<Vec<u8>> {
             .unwrap_or(libc::c_int::MAX)
             .max(1);
         // SAFETY: one pollfd, as the count says.
-        if checked(unsafe { libc::poll(&raw mut waiting, 1, wait) })? == 0 {
+        if checked(unsafe { libc::poll(&raw mut waiting, 1, wait) }).map_err(Unanswered::Broken)?
+            == 0
+        {
             continue;
         }
         // SAFETY: the kernel writes at most the buffer's length into it.
         let read = unsafe { libc::read(fd, packet.as_mut_ptr().cast(), packet.len()) };
         let Ok(read) = usize::try_from(read) else {
-            return Err(io::Error::last_os_error());
+            return Err(Unanswered::Broken(io::Error::last_os_error()));
         };
         match reply::answer(&packet[..read], opcode) {
             Heard::Done(parameters) => return Ok(parameters.to_vec()),
-            Heard::Refused(status) => {
-                return Err(io::Error::other(format!(
-                    "the controller refused it ({status:#04x})"
-                )));
-            }
+            Heard::Refused(status) => return Err(Unanswered::Refused(status)),
             Heard::Other => {}
         }
     }

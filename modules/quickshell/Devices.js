@@ -1,6 +1,7 @@
-// The Bluetooth devices whose batteries run low, worked out apart from
-// the piece that says them (pieces/Devices.qml) so tests/devices.qml can
-// hold it in Qt's own engine with plain objects standing in for BlueZ's.
+// The Bluetooth devices whose batteries run low, and the adapters whose
+// controllers stopped answering, worked out apart from the piece that says
+// them (pieces/Devices.qml) so tests/devices.qml can hold it in Qt's own
+// engine with plain objects standing in for BlueZ's.
 // A device is read as Quickshell.Bluetooth gives it: its `address`, `name`,
 // `icon`, whether it's `connected`, and `battery`, 0 to 1, where it
 // reports one (`batteryAvailable`).
@@ -80,4 +81,72 @@ function low(devices, standing) {
                 withdraws: true
             };
         });
+}
+
+// The adapters whose controllers are up but have stopped answering, from
+// bluetooth-links's stopped.json: each one's `name`, and the `device` and
+// `driver` it sits on as sysfs names them, null where it doesn't. No file,
+// or one not its own, says none have.
+function halted(text) {
+    try {
+        const { adapters } = JSON.parse(text);
+        return Array.isArray(adapters) ? adapters
+            .filter(adapter => typeof adapter?.name === "string")
+            .map(adapter => ({
+                name: adapter.name,
+                device: adapter.device ?? null,
+                driver: adapter.driver ?? null
+            })) : [];
+    } catch (_malformed) {
+        return [];
+    }
+}
+
+// A driver of PCI's, in sysfs.
+const ON_PCI = /^\/sys\/bus\/pci\/drivers\/[^/]+$/u;
+
+// The command that starts a stopped controller again: bluetooth-again
+// (modules/bluetooth-again) has its driver let go of it and take it back,
+// which starts it afresh as it does at boot. It finds each controller on
+// PCI itself, so it's the command for an adapter whose driver is PCI's;
+// "" for one on USB, or whose driver isn't known.
+function restart(adapter) {
+    return ON_PCI.test(adapter.driver ?? "") ? "bluetooth-again" : "";
+}
+
+const AFTERWARDS = "Afterwards, a device may need pairing again.";
+
+// The adapters stopped, as things of a piece (pieces/Piece.qml's `each`):
+// BlueZ still says such a one is on while nothing it carries works, so it
+// wants Joel, said once as a notice with the command that starts it again and
+// taken back once it answers. The one Quickshell names as `own`, the
+// default, is the Adapter's row in Bluetooth, its key the thing's mark, so
+// Now draws it as that row; another is a fact of its own.
+function stopped(adapters, own) {
+    return adapters.map(adapter => {
+        const line = restart(adapter);
+        const mine = adapter.name === own;
+        return {
+            key: mine ? "adapter" : `adapter:${adapter.name}`,
+            adapter: adapter.name,
+            active: true,
+            wants: true,
+            now: false,
+            role: "warning",
+            title: "Bluetooth",
+            app: "Bluetooth",
+            markGlyph: "bluetooth",
+            place: mine ? "bluetooth" : "",
+            value: "not answering",
+            hint: "Bluetooth stopped answering",
+            context: line === "" ? "restart the machine to start it again"
+                : `type ${line} in a terminal to start it again`,
+            message: line === "" ? `Restarting the machine starts it again. ${AFTERWARDS}`
+                : `Type ${line} in a terminal to start it again. ${AFTERWARDS}`,
+            line,
+            // Said as it stops, and taken back once it answers again.
+            arrives: true,
+            withdraws: true
+        };
+    });
 }

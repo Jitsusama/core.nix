@@ -1,0 +1,14 @@
+# bluetooth-again starts a Bluetooth controller that stopped answering
+# again (src/main.rs says how).
+[package]
+name = "bluetooth-again"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# Its help, answer and failures take the shape every command of ours does.
+terminal-kit = { path = "../terminal-kit" }
