@@ -1566,15 +1566,14 @@ fn a_build_whose_builder_was_lost_is_sent_again_once_one_stands() {
     stand_ins(folder.path(), 255);
     // Lost the first time, as a takeback's restart loses its tunnel.
     let ssh = folder.path().join("ssh");
-    fs::write(
+    executable(
         &ssh,
-        SSH.replace(
+        &SSH.replace(
             "exit \"$(cat \"$here/status\")\"",
             "echo x >> \"$here/tries\"; status=$(cat \"$here/status\"); \
              echo 0 > \"$here/status\"; exit \"$status\"",
         ),
-    )
-    .unwrap();
+    );
     let ran = there(folder.path(), &offload);
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     let tries = fs::read_to_string(folder.path().join("tries")).unwrap();
