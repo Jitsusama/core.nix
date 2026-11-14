@@ -141,34 +141,49 @@ Provider {
             return served;
         if (id in titled)
             return titled[id] || undefined;
-        if (ready.link && !(id in titling)) {
+        if (!(id in titling)) {
             titling[id] = true;
             Qt.callLater(askTitles);
         }
         return undefined;
     }
+    // Named before the daemon answered, as the guard's holders are as the
+    // shell starts, a title is asked once it does.
+    Connections {
+        target: ready
+
+        function onLinkChanged() {
+            if (ready.link)
+                Qt.callLater(provider.askTitles);
+        }
+    }
     // Ended quests' titles by id, as the daemon answered them; "" for one
     // it has none of, forgotten as the launcher closes, since its ended
     // list may not have landed when it was asked.
     property var titled: ({})
-    // The ids named since titles were last asked for.
+    // The ids named whose titles aren't answered yet, and those asked now.
     property var titling: ({})
+    property var asking: ({})
     signal titlesHeard
 
     function askTitles() {
-        const ids = Object.keys(titling).filter(id => !(id in titled));
+        const ids = Object.keys(titling).filter(id => !(id in titled) && !(id in asking));
         if (ids.length === 0 || !ready.link)
             return;
+        for (const id of ids)
+            asking[id] = true;
         ready.link.ask({ ask: "titles", ids: ids }, answer => {
             for (const id of ids)
-                delete titling[id];
-            // The daemon gone, or too old to answer, leaves them to be
-            // asked again when they're named.
+                delete asking[id];
+            // The daemon gone leaves them to be asked again as it comes
+            // back (onLinkChanged).
             const titles = answer?.titles;
             if (!titles)
                 return;
-            for (const id of ids)
+            for (const id of ids) {
+                delete titling[id];
                 titled[id] = String(titles[id] ?? "");
+            }
             if (ids.some(id => titled[id] !== ""))
                 titlesHeard();
         });

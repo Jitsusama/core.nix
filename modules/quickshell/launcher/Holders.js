@@ -5,6 +5,8 @@
 
 // A slash or several closing a path, which a cwd may or may not end with.
 const TRAILING_SLASHES = /\/+$/;
+// What the broker's worktrees' names open with, which says nothing to Joel.
+const WORKTREE_PREFIX = /^worktree-/;
 
 // The sessions a holder belongs to, from sessions as Sessions lists them,
 // each with `changed`, when its record last changed, and the guard's
@@ -22,6 +24,27 @@ function owners(sessions, holder) {
     const owns = owner.kind === "quest" ? one => questOf(one) === owner.name
         : one => inside(String(one.presence?.cwd ?? "").replace(TRAILING_SLASHES, ""));
     return sessions.filter(owns).sort((one, other) => (other.changed ?? 0) - (one.changed ?? 0));
+}
+
+// The quests among the guard's holders, by id, which Machine names to
+// Quests as they arrive, so each title is known before Joel looks.
+function quests(holders) {
+    return (holders ?? []).filter(holder => holder.owner?.kind === "quest")
+        .map(holder => holder.owner.name);
+}
+
+// What Disk's What's Filling It calls a holder, in `worded`, the words'
+// phrase for its kind, such as "{name}'s workspace": a quest by its title
+// from `titled`, else its id; a worktree without its prefix; any other
+// folder by its path from `home`.
+function called(holder, worded, titled, home) {
+    const owner = holder.owner ?? {};
+    const name = owner.kind === "quest" ? titled(owner.name) || owner.name
+        : owner.kind === "worktree" ? String(owner.name).replace(WORKTREE_PREFIX, "")
+        : owner.kind === "other" ? holder.path.replace(home, "~")
+        : owner.name;
+    const made = (worded ?? "{name}").replace("{name}", name);
+    return made.charAt(0).toUpperCase() + made.slice(1);
 }
 
 // A talk row's side: the session's title, then how it stands, each an
