@@ -28,8 +28,6 @@ Scope {
     // The launcher, whose width and focused screen it stands on, or null in a shell without
     // one, where it stands on the first screen at the launcher's own width.
     property var launcher: null
-    // The notices on screen, the front first, as Stack.js keeps them (Notifications.qml).
-    property var shown: []
     // Whether the talk line is up in the same place.
     property bool talking: false
     // Whether the held list has the notices and the keys, until it goes with the stack.
@@ -40,12 +38,12 @@ Scope {
     property var whenOf: notification => ""
 
     // The notice it shows, by id, or -1, and whether it's up.
-    readonly property int chosen: Line.chosen(shown, Notices.made, Quiet.on)
+    readonly property int chosen: Line.chosen(Notices.front, Quiet.on)
     readonly property var notice: chosen < 0 ? null : Notices.live[chosen] ?? null
     readonly property bool critical: Notices.made[chosen]?.urgency === "critical"
     readonly property bool up: notice !== null
         && Line.up(chosen, Notices.gathered || holding, talking, critical)
-    readonly property int more: Line.more(shown, Notices.made, chosen)
+    readonly property int more: Line.more(Notices.front, chosen)
 
     // A click on it, which Notifications.qml answers as a click on the front card did.
     signal clicked(var notification)

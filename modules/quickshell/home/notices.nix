@@ -17,6 +17,7 @@
   "NoticeLine.js"
   "Signature.qml"
   "Notices.qml"
+  "Knock.js"
   "Forward.js"
   "launcher/Notice.js"
 ]

@@ -36,6 +36,7 @@ pragma Singleton
 import Quickshell
 import QtQuick
 import "Forward.js" as Forward
+import "Knock.js" as Knock
 import "LiveNotice.js" as LiveNotice
 import "launcher/ReadyRows.js" as Ready
 
@@ -46,7 +47,9 @@ Singleton {
         id: daemon
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/notices.sock`
-        kind: "notice"
+        // The notices, and which of them is in front, as the arrival line
+        // shows it (NoticeLine.qml).
+        kind: ["notice", "front"]
         // The watch is every recent notice the daemon holds: those
         // unread, open or missed, and for a day those done with, since
         // History lists the rest from the daemon's own rows
@@ -86,6 +89,15 @@ Singleton {
     signal came(var notification, var notice)
     // Whether the launcher's collection of them is open.
     property bool gathered: false
+
+    // Which notice is in front of those still waiting on Joel, by id, the
+    // first critical one for while notices are held, and how many wait, as
+    // the daemon orders them (modules/notices' front.rs): those brought to
+    // the front first, the last first, then the rest as they came. Each id
+    // is null where none is.
+    readonly property string frontKey: "front:notices"
+    readonly property var noFront: ({ id: null, critical: null, waiting: 0 })
+    property var front: noFront
 
     // What the daemon made of a notice for its card, on its record: who
     // sent it, the name Joel knows the sender by, never its program's, in
@@ -152,7 +164,12 @@ Singleton {
         const nowResting = Object.assign({}, resting);
         const arrivals = [];
         let chimes = false;
+        let nowFront = front;
         for (const key of gone) {
+            if (key === frontKey) {
+                nowFront = noFront;
+                continue;
+            }
             const id = Number(key.slice("notice:".length));
             delete made[id];
             delete nowLive[id];
@@ -160,6 +177,10 @@ Singleton {
             delete heardOpen[id];
         }
         for (const key of changed) {
+            if (key === frontKey) {
+                nowFront = daemon.held[key]?.front ?? noFront;
+                continue;
+            }
             const notice = daemon.held[key]?.notice;
             if (!notice)
                 continue;
@@ -201,6 +222,8 @@ Singleton {
         // the margin.
         live = nowLive;
         resting = nowResting;
+        // After them, so the one it names is open by the time the line looks.
+        front = nowFront;
         // One its sender marks transient asks not to be kept, as niri's
         // screenshot notice does, so it's on screen but never in the
         // history.
@@ -208,8 +231,7 @@ Singleton {
             .sort((a, b) => b.at - a.at || b.id - a.id);
         for (const id of arrivals)
             came(live[id], made[id]);
-        if (chimes)
-            chime();
+        chime(chimes);
     }
 
     // A message to Joel himself, which the daemon says chimes as its card
@@ -219,9 +241,9 @@ Singleton {
     // way i notice"). Never while notices are held or a call is on, and
     // once for a burst, so three lines sent together knock once.
     property real chimed: 0
-    function chime() {
+    function chime(chimes) {
         const sound = Options.sounds.addressed ?? "";
-        if (sound === "" || Quiet.on || Date.now() - chimed < 2000)
+        if (!Knock.knocks({ chimes: chimes, sound: sound, held: Quiet.on }, Date.now(), chimed))
             return;
         chimed = Date.now();
         Niri.spawn(["sh", "-c", '"$1" || exec "$2" --volume=0.4 "$3"', "chime",
