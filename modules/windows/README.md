@@ -38,6 +38,7 @@ first frame lists them in that order, and a retitle wakes nothing.
 |                     | workspace, its number, whether it's elsewhere   | the row's side and context    |
 |                     | column, and how far down it                     | the row's side, when alike    |
 |                     | floating, urgent, its process                   | its verbs, its program's rows |
+|                     | `file`: a Reader's, the whole path it shows     | the void's line about it      |
 |                     | `focused`: whether the keys were in it          | This Window, Super+Tab        |
 |                     | `order`: when it was last looked at, in ms      | where its row is placed       |
 | `workspace:<id>`    | number, name, output, active, focused, urgent, its active window | the verbs that move a window |
