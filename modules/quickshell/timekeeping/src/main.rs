@@ -13,6 +13,9 @@
 //! Islamic calendars, for the launcher's Date, reckoned with ICU4X when
 //! asked (calendar.rs), and, asked from a place, when the sun sets there
 //! to begin the Hebrew and Islamic days (the sun crate, modules/sun).
+//!
+//! Its unit alone starts it, in the terminal kit's shape, as
+//! `timekeeping --help` says (`help()`).
 
 mod calendar;
 mod candm;
@@ -22,29 +25,59 @@ mod service;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::process::ExitCode;
 
+use terminal_kit::{Exit, Failure, Help};
 use zlink::Server;
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> ExitCode {
-    let listener = match service::listener() {
-        Ok(Some(listener)) => listener,
-        Ok(None) => {
-            println!("<3>systemd passed no socket, so nobody can ask anything");
-            return ExitCode::FAILURE;
+/// What `timekeeping --help` says: how its unit runs it, and how it ends.
+fn help() -> Help {
+    Help::new(
+        "timekeeping",
+        "answers the launcher's Time and Date from chrony",
+    )
+    .example(
+        "timekeeping",
+        "as its unit runs it, on the socket systemd hands it",
+    )
+    .exit(Exit::Failed, "its socket couldn't be taken or answered on")
+    .exit(Exit::Config, "systemd handed it no socket")
+}
+
+/// It runs as long as its socket's unit does, so it only ends by failing.
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        if !context.args.is_empty() {
+            return Err(Failure::new(Exit::Usage, "timekeeping takes no words")
+                .because("systemd hands it its socket")
+                .try_this("timekeeping --help"));
         }
-        Err(error) => {
-            println!("<3>can't take the socket: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| {
+                Failure::new(Exit::Failed, "it couldn't start").because(error.to_string())
+            })?;
+        runtime.block_on(serve())
+    })
+}
+
+async fn serve() -> Result<(), Failure> {
+    let listener = service::listener()
+        .map_err(|error| {
+            Failure::new(Exit::Failed, "it can't take the socket").because(error.to_string())
+        })?
+        .ok_or_else(|| {
+            Failure::new(Exit::Config, "systemd handed it no socket")
+                .because("so nobody can ask anything")
+                .try_this("systemctl --user start timekeeping.socket")
+        })?;
     let timekeeping = service::Timekeeping {
         chrony: SocketAddr::from((Ipv4Addr::LOCALHOST, candm::PORT)),
     };
-    match Server::new(listener, timekeeping).run().await {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            println!("<3>stopped answering on the socket: {error}");
-            ExitCode::FAILURE
-        }
-    }
+    Server::new(listener, timekeeping)
+        .run()
+        .await
+        .map_err(|error| {
+            Failure::new(Exit::Failed, "it stopped answering on the socket")
+                .because(error.to_string())
+        })
 }

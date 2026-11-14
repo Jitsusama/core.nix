@@ -38,9 +38,10 @@
 //! (src/hearing.rs), and one that's stopped is named in `stopped.json`
 //! beside the file.
 //!
-//! Usage: bluetooth-links [FILE]   (/run/bluetooth-links/links.json unless
-//! given)
+//! Its unit alone starts it, in the terminal kit's shape, as
+//! `bluetooth-links --help` says (src/command.rs).
 
+mod command;
 mod hci;
 mod hearing;
 mod reply;
@@ -53,12 +54,11 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{self, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const TICK: Duration = Duration::from_secs(5);
-const FILE: &str = "/run/bluetooth-links/links.json";
 /// How many looks a history keeps: as many as the launcher's graphs draw.
 const KEPT: usize = 20;
 
@@ -440,10 +440,14 @@ fn now() -> u64 {
         .map_or(0, |since| since.as_secs())
 }
 
-fn main() {
-    let file = std::env::args()
-        .nth(1)
-        .map_or_else(|| PathBuf::from(FILE), PathBuf::from);
+fn main() -> std::process::ExitCode {
+    terminal_kit::main(&command::help(), env!("CARGO_PKG_VERSION"), |context| {
+        watch(&command::file(&context.args)?)
+    })
+}
+
+/// Looks every five seconds and writes what it sees to `file`, for good.
+fn watch(file: &Path) -> ! {
     let mut asked = Asked {
         radio: Radio::default(),
         said: HashSet::new(),
@@ -454,7 +458,7 @@ fn main() {
     let started = Instant::now();
     loop {
         if let Some(report) = watch.tick(&mut asked, now(), started.elapsed())
-            && let Err(error) = write(&file, &report)
+            && let Err(error) = write(file, &report)
         {
             asked.complain(format!("Couldn't write {}: {error}", file.display()));
             // Written again next time, though it says nothing new.
