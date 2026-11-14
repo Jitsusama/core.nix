@@ -133,6 +133,13 @@ fn answer(calls: PathBuf, words: &Words) {
                 said.remove(&address);
                 BTreeSet::from([address])
             }
+            // Everyone asked is said again at each change, each by looking
+            // through every call, rather than indexing calls by who they
+            // were with, since a call changes only a few dozen times: as
+            // it starts and ends, as its transcribing starts and stops, as
+            // its summary comes, and as its opening grows, which stops at
+            // four paragraphs or 400 characters, a minute or two in
+            // (book.rs) (XY9H5C, c26ed943).
             Heard::Calls(answer) => {
                 if held.took(&answer).is_empty() {
                     continue;
