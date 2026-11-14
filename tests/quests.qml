@@ -282,7 +282,9 @@ ShellRoot {
                 && !("row:quests:QEST-20250105-BANNER" in theQuests.served.held),
                 names(theQuests.looksThrough()));
             expect("a search waits on the daemon", theQuests.awaits("banner"), "it doesn't");
-            whenFound("banner", banner => {
+            // The daemon hears the ended quests on a follow of their own, so
+            // on a loaded builder the first search may come before them.
+            onceFound("banner", banner => {
                 expect("a finished one, found by typing",
                     names(banner) === "Tune the banner" && banner[0].glyph === Theme.glyph.done
                         && banner[0].side === "5 Jan 2025", `${names(banner)} ${banner[0]?.side}`);
