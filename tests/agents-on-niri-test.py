@@ -924,9 +924,7 @@ def test_a_step_into_landed_weighs_the_keys_of_one_of_each_run_alike(shell: Shel
     shell.down_to("Landed")
     before = weighed_held_still(shell)
     shell.step_in()
-    shell.launcher_until(
-        lambda shown: shown["held"][-1:] == ["Landed"] and len(shown["rows"]) >= EARLIER + 2
-    )
+    shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
     weighed = weighed_held_still(shell) - before
     assert weighed <= WEIGHED_INTO_LANDED, f"a step into Landed weighed {weighed} rows' keys"
     shell.close_launcher()
