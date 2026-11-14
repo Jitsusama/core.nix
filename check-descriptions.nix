@@ -922,8 +922,8 @@
     clippy finds nothing in github-broker or its tests
   '';
   google-answers-on-systemds-socket = ''
-    google serves the daemon interface on %t/daemons/google.sock, a socket systemd holds, made only
-    once pi has signed in to Google, as google itself starts only then
+    google serves the daemon interface on %t/daemons/google.sock, a socket systemd holds, both
+    starting at login without waiting on a file, and reads pi's sign-in from the keyring
   '';
   google-opens-its-links = ''
     a meeting's Tuple link joins through Tuple, or the browser without it, Google's own pages,
@@ -2455,7 +2455,7 @@
     clippy finds nothing in slack-people or its tests
   '';
   slack-unreads-go-with-the-service = ''
-    slack-unreads starts once pi has signed in to Slack, restarts as the new one after a switch,
+    slack-unreads starts at login, reads pi's sign-in from the keyring, restarts as the new one after a switch,
     is restarted when its watchdog hears nothing, is handed the launcher's vocabulary for its
     rows, and takes its ask in For You with it however it stops,
     while its socket, systemd's and held only once pi has signed in, stays

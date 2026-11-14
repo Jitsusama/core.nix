@@ -40,32 +40,34 @@ onLinux {
   # new one after a switch, is restarted once its watchdog hears nothing,
   # and takes its ask in For You with it however it stops, so For You
   # never shows what nothing is keeping current.
-  # Its socket is systemd's, held only once pi has signed in, so it stays
-  # when the daemon stops and a machine with no sign-in starts nothing.
+  # Its socket is systemd's, so it stays when the daemon stops, and both
+  # start at login without the file pi kept its sign-in in before the
+  # keyring, which the daemon reads through a reader of pi's own item.
   slack-unreads-go-with-the-service =
     let
       home = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.slack ]; } ]);
       unit = home.systemd.user.services.slack-unreads;
       socket = home.systemd.user.sockets.slack-unreads;
-      credentials = "${home.xdg.configHome}/agentic-harness/slack/credentials.json";
       waiting = "${home.xdg.stateHome}/mission/waiting/slack.json";
     in
     holds "slack-unreads-go-with-the-service"
-      "slack-unreads lacks its sign-in start, switch restart, watchdog, ask cleanup, socket or words."
+      "slack-unreads lacks its start, keyring, switch restart, watchdog, ask cleanup, socket or words."
       (
         # Each start is listed, as home-manager takes ExecStart.
         lib.any (lib.hasInfix waiting) (lib.toList unit.Service.ExecStart)
         && lib.hasInfix waiting unit.Service.ExecStopPost
-        && home.systemd.user.paths.slack-unreads.Path.PathExists == credentials
+        && !(home.systemd.user.paths ? slack-unreads)
+        && lib.elem "default.target" unit.Install.WantedBy
         && unit.Unit.X-SwitchMethod == "restart"
         && unit.Service.WatchdogSec > 0
         && unit.Service.NotifyAccess == "main"
         && !(lib.hasInfix "%t/daemons/slack-unreads.sock" unit.Service.ExecStopPost)
         && socket.Socket.ListenStream == "%t/daemons/slack-unreads.sock"
-        && socket.Unit.ConditionPathExists == credentials
+        && !(socket.Unit ? ConditionPathExists)
         && lib.elem "slack-unreads.socket" unit.Unit.Requires
         # Handed the launcher's vocabulary, its rows are said in it.
         && lib.any (lib.hasPrefix "LAUNCHER_WORDS=/nix/store/") (lib.toList unit.Service.Environment)
+        && lib.any (lib.hasSuffix "-slack-sign-in") (lib.toList unit.Service.Environment)
       );
   # Who the source asks about and when, what stands in Write in Slack's
   # place before Slack answers, how answers that come together are taken,

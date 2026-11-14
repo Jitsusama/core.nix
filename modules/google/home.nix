@@ -5,11 +5,12 @@
 # (src/daemon.rs), where call transcripts ask it for the meeting on too
 # (src/main.rs says how).
 #
-# It asks as the account the harness signed in, from the harness's own
-# file, which pi writes when Joel signs in with /google-auth and rewrites
-# each time it refreshes a token. google only reads it. Until the file
-# exists nothing runs, so a machine nobody signed in to Google on asks
-# Google nothing; once it appears, google starts.
+# It asks as the account the harness signed in, which pi writes when Joel
+# signs in with /google-auth and rewrites each time it refreshes a token:
+# into the desktop's keyring, read through `keyring`, else into the file
+# pi kept before it moved sign-ins there. google only reads it, afresh at
+# each look, so it starts at login whether or not anyone has signed in;
+# with nobody signed in, it asks Google nothing and the shell shows none.
 #
 # It's background work, a small request a minute over the line, so it runs
 # in background.slice, behind everything Joel uses.
@@ -41,6 +42,13 @@
 let
   google = pkgs.callPackage ./package.nix { };
   credentials = "${config.xdg.configHome}/agentic-harness/google/credentials.json";
+  # Prints pi's Google sign-in from the keyring, or fails while it holds
+  # none, so google reads the file instead. Nothing of it is said anywhere
+  # else: secret-tool's output goes to google alone.
+  keyring = pkgs.writeShellScript "google-sign-in" ''
+    exec ${lib.getExe' pkgs.libsecret "secret-tool"} lookup \
+      service agentic-harness username google-credentials
+  '';
   xdgOpen = lib.getExe' pkgs.xdg-utils "xdg-open";
 
   # The window command, each %u in it the link, as a desktop entry writes it.
@@ -255,21 +263,10 @@ in
       google-mail = "f02ab";
     };
 
-    systemd.user.paths.google = {
-      Unit.Description = "Starts the Google account's watch once pi has signed in";
-      Path.PathExists = credentials;
-      Install.WantedBy = [ "default.target" ];
-    };
-
     # The daemon interface's socket is systemd's, so whatever asks finds it
-    # there while google starts or starts again, and asking starts it. Like
-    # google itself, it's only made once pi has signed in, so a machine
-    # nobody signed in to Google on starts nothing.
+    # there while google starts or starts again, and asking starts it.
     systemd.user.sockets.google = {
-      Unit = {
-        Description = "Where the shell asks the Google account's daemon";
-        ConditionPathExists = credentials;
-      };
+      Unit.Description = "Where the shell asks the Google account's daemon";
       Socket = {
         ListenStream = "%t/daemons/google.sock";
         SocketMode = "0600";
@@ -284,10 +281,10 @@ in
         # Its daemon socket is systemd's, handed to it as it starts.
         Requires = [ "google.socket" ];
         After = [ "google.socket" ];
-        # Stopped before a switch reloads the units, google.path starts it
-        # again at once, from the old unit, since the credentials are still
-        # there, and the switch's start then finds it running; restarted
-        # after the reload, it comes back as the new one.
+        # Stopped before a switch reloads the units, the shell asking on
+        # its socket starts it again at once, from the old unit, and the
+        # switch's start then finds it running; restarted after the
+        # reload, it comes back as the new one.
         X-SwitchMethod = "restart";
       };
       Service = {
@@ -299,12 +296,14 @@ in
           # The launcher's vocabulary, which its ready rows are said in.
           (pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words))
         ];
+        Environment = "SIGN_IN_KEYRING=${keyring}";
         Restart = "on-failure";
         RestartSec = 10;
         # The files fetched to open go with the program, as what it held
         # does once its daemon stops answering.
         ExecStopPost = "${pkgs.coreutils}/bin/rm -rf %t/google-files";
       };
+      Install.WantedBy = [ "default.target" ];
     };
   };
 }

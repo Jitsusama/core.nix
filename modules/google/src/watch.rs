@@ -30,6 +30,9 @@ use crate::token::Keeper;
 pub struct Watch {
     pub google: Google,
     pub credentials: PathBuf,
+    /// The program that prints the keyring's sign-in, read over the file
+    /// at `credentials` while it holds one (account.rs).
+    pub keyring: Option<PathBuf>,
     /// The account to ask as, or the file's default.
     pub account: Option<String>,
     keeper: Keeper,
@@ -92,6 +95,7 @@ impl Watch {
         Watch {
             google,
             credentials,
+            keyring: None,
             account,
             keeper: Keeper::default(),
             state: State::default(),
@@ -142,7 +146,8 @@ impl Watch {
     /// the scope to read calls isn't asked of Meet at all, and says so; a
     /// call Meet couldn't be asked about keeps what it said last.
     pub fn calls(&mut self, now: &Zoned) -> &State {
-        let granted = account::read(&self.credentials, self.account.as_deref())
+        let granted = self
+            .signed_in()
             .is_ok_and(|account| account.grants(READS_MEETINGS));
         let held = std::mem::take(&mut self.state.calls);
         let mut calls = Vec::new();
@@ -577,8 +582,18 @@ impl Watch {
     /// Whether Joel's sign-in lets this program make a Meet meeting, read
     /// afresh, since signing in again from pi widens it.
     fn makes_meetings(&self) -> bool {
-        account::read(&self.credentials, self.account.as_deref())
+        self.signed_in()
             .is_ok_and(|account| account.grants(MAKES_MEETINGS))
+    }
+
+    /// The account to ask as, read afresh, since pi rewrites its sign-in
+    /// with each token it refreshes and with each sign-in.
+    fn signed_in(&self) -> Result<account::Account, Missing> {
+        account::read(
+            self.keyring.as_deref(),
+            &self.credentials,
+            self.account.as_deref(),
+        )
     }
 
     /// Says a new Meet meeting is being made, which `make` then does, so
@@ -1008,8 +1023,7 @@ impl Watch {
         now: &Zoned,
         ask: impl Fn(&Google, &str) -> Result<T, Refused>,
     ) -> Result<T, Looked> {
-        let account = account::read(&self.credentials, self.account.as_deref())
-            .map_err(|_: Missing| Looked::Missing)?;
+        let account = self.signed_in().map_err(|_: Missing| Looked::Missing)?;
         let at = now.timestamp().as_millisecond();
         let google = &self.google;
         let token = self

@@ -18,6 +18,14 @@ let
   # what in Slack wants Joel (slack-unreads).
   lookUp = pkgs.callPackage ./package.nix { };
   credentials = "${config.xdg.configHome}/agentic-harness/slack/credentials.json";
+  # Prints pi's Slack sign-in from the desktop's keyring, where pi has kept
+  # it since moving sign-ins there, or fails while it holds none, so the
+  # file is read instead (lib's `Account`). secret-tool's output goes to
+  # the program alone.
+  keyring = pkgs.writeShellScript "slack-sign-in" ''
+    exec ${lib.getExe' pkgs.libsecret "secret-tool"} lookup \
+      service agentic-harness username slack-credentials
+  '';
   # Where Slack's ask of Joel waits, beside each quest's in For You
   # (WaitingOnYou.qml), named so no quest's address is it.
   waiting = "${config.xdg.stateHome}/mission/waiting/slack.json";
@@ -86,6 +94,7 @@ in
     daemon = [
       "${pkgs.coreutils}/bin/env"
       "LAUNCHER_WORDS=${words}"
+      "SIGN_IN_KEYRING=${keyring}"
       (lib.getExe lookUp)
       credentials
     ];
@@ -124,26 +133,18 @@ in
   # What in Slack is unread, held by Slack's daemon for Now's Slack piece
   # and Slack's Unread: direct messages with unreads, mentions of him, his
   # mentions in threads and channels merely unread; and the conversations
-  # he read last, for Slack's Recent. Read only, and started once pi has
-  # signed in to Slack. While Slack refuses that sign-in, signing in again
-  # waits in For You, in the file of what waits on Joel that's Slack's
-  # own beside each quest's.
-  systemd.user.paths.slack-unreads = {
-    Unit.Description = "Starts keeping Slack's unreads once pi has signed in";
-    Path.PathExists = credentials;
-    Install.WantedBy = [ "default.target" ];
-  };
+  # he read last, for Slack's Recent. Read only, and started at login,
+  # reading the sign-in afresh at each ask, so it's taken once pi signs in
+  # to Slack. While Slack refuses that sign-in, signing in again waits in
+  # For You, in the file of what waits on Joel that's Slack's own beside
+  # each quest's.
 
   # Slack's daemon's socket, held by systemd whether or not it runs, so the
   # shell asking while it starts, or starts again, waits on it rather than
   # finding no socket and trying again blind (Quickshell warns of each,
-  # every 2 s). Only once pi has signed in, as the daemon itself: with no
-  # sign-in nothing listens, so asking starts nothing.
+  # every 2 s).
   systemd.user.sockets.slack-unreads = {
-    Unit = {
-      Description = "Where the shell asks Slack's daemon";
-      ConditionPathExists = credentials;
-    };
+    Unit.Description = "Where the shell asks Slack's daemon";
     Socket = {
       ListenStream = "%t/daemons/slack-unreads.sock";
       SocketMode = "0600";
@@ -173,8 +174,12 @@ in
         "%t/daemons/slack-unreads.sock"
         (lib.escapeShellArg waiting)
       ];
-      # The vocabulary by its store path, read once as it starts.
-      Environment = "LAUNCHER_WORDS=${words}";
+      # The vocabulary by its store path, read once as it starts, and the
+      # keyring's reader, run at each ask.
+      Environment = [
+        "LAUNCHER_WORDS=${words}"
+        "SIGN_IN_KEYRING=${keyring}"
+      ];
       Restart = "on-failure";
       RestartSec = 30;
       # It tells the watchdog after each ask, half a minute apart, so one
@@ -190,6 +195,7 @@ in
         (lib.escapeShellArg "${dirOf waiting}/.writing/${baseNameOf waiting}")
       ];
     };
+    Install.WantedBy = [ "default.target" ];
   };
 
   jitsusama.keys.slack =

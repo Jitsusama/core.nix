@@ -56,14 +56,39 @@ struct File {
 }
 
 impl Account {
-    /// The sign-in in the harness's file, or none when the file is
-    /// missing or isn't one: then the program says nothing of anyone.
+    /// The harness's sign-in, as `kept` reads it, the keyring's printed by
+    /// the program `SIGN_IN_KEYRING` names, as each program's unit says.
     pub fn read(path: &Path) -> Option<Account> {
-        let text = std::fs::read_to_string(path).ok()?;
+        let keyring = std::env::var_os("SIGN_IN_KEYRING").map(PathBuf::from);
+        Account::kept(keyring.as_deref(), path)
+    }
+
+    /// The harness's sign-in: the keyring's, printed by the program
+    /// `keyring`, where pi has kept it since moving sign-ins there, while
+    /// it holds one; else the file at `path`, as pi kept it before. None
+    /// when neither holds one: then the program says nothing of anyone.
+    pub fn kept(keyring: Option<&Path>, path: &Path) -> Option<Account> {
+        let text = keyring
+            .and_then(printed)
+            .or_else(|| std::fs::read_to_string(path).ok())?;
         serde_json::from_str::<File>(&text)
             .ok()
             .map(|file| file.token)
     }
+}
+
+/// What the program `keyring` prints, or none when it can't be run, fails,
+/// as it does for an item the keyring lacks, or prints nothing. What it
+/// says otherwise is let go, so no part of a sign-in reaches the journal.
+fn printed(keyring: &Path) -> Option<String> {
+    use std::process::{Command, Stdio};
+    let out = Command::new(keyring)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let text = String::from_utf8(out.stdout).ok()?;
+    (out.status.success() && !text.trim().is_empty()).then_some(text)
 }
 
 /// What Slack said of an address, as the shell is told it: who it is in
@@ -929,5 +954,59 @@ mod tests {
         ] {
             assert!(!asked(bad), "{bad}");
         }
+    }
+
+    /// A sign-in for `token`, as the harness keeps one.
+    fn signed_in(token: &str) -> String {
+        format!(r#"{{"token": {{"accessToken": "{token}", "cookie": "d", "teamId": "T1"}}}}"#)
+    }
+
+    /// A folder of the test's own, holding the file with `file` and a
+    /// keyring reader that runs `reader`.
+    fn kept_in(test: &str, file: &str, reader: &str) -> (PathBuf, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = std::env::temp_dir().join(format!("slack-account-{test}"));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("the test's folder is made");
+        let path = folder.join("credentials.json");
+        std::fs::write(&path, file).expect("the file is written");
+        let keyring = folder.join("keyring");
+        std::fs::write(&keyring, format!("#!/bin/sh\n{reader}\n")).expect("the reader is written");
+        std::fs::set_permissions(&keyring, std::fs::Permissions::from_mode(0o755))
+            .expect("the reader runs");
+        (keyring, path)
+    }
+
+    #[test]
+    fn the_keyrings_sign_in_is_read_over_the_file() {
+        let reader = format!("cat <<'END'\n{}\nEND", signed_in("xoxc-keyring"));
+        let (keyring, path) = kept_in("keyring", &signed_in("xoxc-file"), &reader);
+        let account = Account::kept(Some(&keyring), &path).expect("the keyring's is read");
+        assert_eq!(
+            account.token, "xoxc-keyring",
+            "the file was read over the keyring"
+        );
+    }
+
+    #[test]
+    fn the_file_is_read_while_the_keyring_holds_no_sign_in() {
+        for (test, reader) in [("refused", "exit 1"), ("empty", "exit 0")] {
+            let (keyring, path) = kept_in(test, &signed_in("xoxc-file"), reader);
+            let account = Account::kept(Some(&keyring), &path).expect("the file's is read");
+            assert_eq!(account.token, "xoxc-file", "{test}: the file wasn't read");
+        }
+        let (_, path) = kept_in("unreadable", &signed_in("xoxc-file"), "");
+        let nowhere = Path::new("/nonexistent/keyring");
+        assert_eq!(
+            Account::kept(Some(nowhere), &path).map(|account| account.token),
+            Some("xoxc-file".to_owned()),
+            "a keyring that can't be read hid the file"
+        );
+        let (keyring, _) = kept_in("neither", "", "exit 1");
+        let missing = Path::new("/nonexistent/credentials.json");
+        assert!(
+            Account::kept(Some(&keyring), missing).is_none(),
+            "a sign-in from nowhere"
+        );
     }
 }
