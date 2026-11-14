@@ -1,8 +1,10 @@
 //! pineapple-slack against a stand-in for Slack on this machine: a stop
 //! said in a thread about a pull request reaches that pull request and is
 //! kept as a shadow record; a tag asking to stop without the phrase is
-//! written down and stops nothing; only Slack's reading methods are asked;
-//! and a restart judges nothing twice.
+//! written down and stops nothing; of the would-be replies, only the first
+//! fresh stop in a thread's goes through, and the switch holds even that
+//! back; only Slack's reading methods are asked; and a restart judges
+//! nothing twice.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -65,18 +67,27 @@ fn stand_in() -> (String, Arc<Mutex<Vec<String>>>) {
     (origin, asked)
 }
 
-/// What Slack would answer to one request, a minute after `now` less.
-fn answer(line: &str, now: u64) -> Value {
-    let stop_ts = format!("{}.000100", now - 60);
-    let ask_ts = format!("{}.000200", now - 30);
-    let stop = json!({
-        "channel": {"id": "C0ONE00001"}, "ts": stop_ts, "user": "U0OTHER001",
+/// A stop said `ago` seconds before `now` in the thread `thread` starts.
+fn stop_in(now: u64, ago: u64, thread: &str) -> Value {
+    let ts = format!("{}.000100", now - ago);
+    json!({
+        "channel": {"id": "C0ONE00001"}, "ts": ts, "user": "U0OTHER001",
         "text": format!("<@{JOEL}> pineapple override"),
         "permalink": format!(
-            "https://example.slack.com/archives/C0ONE00001/p{}?thread_ts=1700000000.000001&cid=C0ONE00001",
-            stop_ts.replace('.', "")
+            "https://example.slack.com/archives/C0ONE00001/p{}?thread_ts={thread}&cid=C0ONE00001",
+            ts.replace('.', "")
         ),
-    });
+    })
+}
+
+/// What Slack would answer to one request: an hour-old stop in one
+/// thread; a stop, an ask without the phrase and the stop again in
+/// another, in the last minute.
+fn answer(line: &str, now: u64) -> Value {
+    let old = stop_in(now, 3600, "1700000000.000002");
+    let stop = stop_in(now, 60, "1700000000.000001");
+    let again = stop_in(now, 20, "1700000000.000001");
+    let ask_ts = format!("{}.000200", now - 30);
     let ask = json!({
         "channel": {"id": "C0ONE00001"}, "ts": ask_ts, "user": "U0OTHER002",
         "text": format!("<@{JOEL}> can you please STOP your robots?"),
@@ -91,13 +102,14 @@ fn answer(line: &str, now: u64) -> Value {
         ]});
     }
     if line.contains("query=pineapple") {
-        json!({"ok": true, "messages": {"matches": [stop]}})
+        json!({"ok": true, "messages": {"matches": [again, stop, old]}})
     } else {
-        json!({"ok": true, "messages": {"matches": [ask, stop]}})
+        json!({"ok": true, "messages": {"matches": [again, ask, stop, old]}})
     }
 }
 
-/// A home for one case, its sign-in in place as pi keeps it.
+/// A home for one case, its sign-in in place as pi keeps it, and the
+/// reader last stopped two hours ago, so it catches up on what it missed.
 fn home() -> PathBuf {
     let home = std::env::temp_dir().join(format!(
         "pineapple-reader-{}-{}",
@@ -115,7 +127,20 @@ fn home() -> PathBuf {
     }});
     std::fs::write(signed_in.join("credentials.json"), account.to_string())
         .expect("the sign-in written");
+    let state = home.join("state/pineapple");
+    std::fs::create_dir_all(&state).expect("a state folder");
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("after the epoch")
+        .as_secs();
+    let judged = json!({"since": format!("{}.000000", now - 2 * 3600), "keys": []});
+    std::fs::write(state.join("judged.json"), judged.to_string()).expect("the mark written");
     home
+}
+
+/// One field of each decision, in the order they were written.
+fn each<'a>(said: &'a [Value], field: &str) -> Vec<&'a str> {
+    said.iter().filter_map(|one| one[field].as_str()).collect()
 }
 
 fn reader(home: &Path, origin: &str) -> Child {
@@ -159,34 +184,48 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
     let (origin, asked) = stand_in();
     let home = home();
     let mut first = reader(&home, &origin);
-    until_decided(&home, 2);
+    until_decided(&home, 4);
     first.kill().expect("the reader stops");
     first.wait().expect("the reader is gone");
 
     let said = decisions(&home);
-    let verdicts: Vec<&str> = said
-        .iter()
-        .filter_map(|one| one["verdict"].as_str())
-        .collect();
     assert_eq!(
-        verdicts,
-        ["stop", "stop-asked"],
+        each(&said, "verdict"),
+        ["stop", "stop", "stop-asked", "stop"],
         "oldest first, each judged"
     );
     assert_eq!(
-        said[0]["reaches"],
+        each(&said, "gate"),
+        [
+            "held:too-old",
+            "through:first-in-thread",
+            "unasked",
+            "held:repeat-in-thread"
+        ],
+        "only the first fresh stop in its thread would be answered"
+    );
+    assert_eq!(
+        each(&said, "tell"),
+        ["loud", "loud", "loud", "loud"],
+        "Joel hears of each, the ask without the phrase too"
+    );
+    assert_eq!(
+        said[1]["reaches"],
         json!(["pr:example/shop#12"]),
         "the thread's pull request is what stops"
     );
-    assert_eq!(said[0]["shadow"], true, "it is in shadow");
+    assert_eq!(said[1]["shadow"], true, "it is in shadow");
+    let replies = std::fs::read_to_string(home.join("state/pineapple/replies.jsonl"))
+        .expect("the replies let through are kept");
+    assert_eq!(replies.lines().count(), 1, "one reply would have gone out");
 
     let stops: Vec<PathBuf> = std::fs::read_dir(home.join("state/pineapple/stops"))
         .expect("the stops folder")
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
         .collect();
-    assert_eq!(stops.len(), 1, "only the stop is kept as one");
+    assert_eq!(stops.len(), 3, "each stop is kept, answered or not");
     let record: Value =
-        serde_json::from_str(&std::fs::read_to_string(&stops[0]).expect("the stop's record"))
+        serde_json::from_str(&std::fs::read_to_string(&stops[0]).expect("a stop's record"))
             .expect("the record is JSON");
     assert_eq!(record["shadow"], true, "the record says it is in shadow");
     assert_eq!(record["said_by"], "U0OTHER001", "it names who said it");
@@ -220,6 +259,30 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
     }
     again.kill().expect("the reader stops");
     again.wait().expect("the reader is gone");
-    assert_eq!(decisions(&home).len(), 2, "a restart judges nothing twice");
+    assert_eq!(decisions(&home).len(), 4, "a restart judges nothing twice");
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn the_switch_holds_replies_back_and_stops_carry_on() {
+    let (origin, _) = stand_in();
+    let home = home();
+    std::fs::write(home.join("state/pineapple/replies-switch"), "off\n")
+        .expect("the switch written");
+    let mut reading = reader(&home, &origin);
+    until_decided(&home, 4);
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let said = decisions(&home);
+    assert_eq!(
+        said[1]["gate"], "held:switched-off",
+        "the reply it would have sent is held back"
+    );
+    assert_eq!(said[1]["verdict"], "stop", "and it still stops");
+    assert!(
+        !home.join("state/pineapple/replies.jsonl").exists(),
+        "no reply is kept as sent"
+    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

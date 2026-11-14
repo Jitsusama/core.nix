@@ -13,7 +13,13 @@
 //!
 //! It is in shadow: every stop's record says so, it tells nobody and
 //! answers nobody, and nothing acting on records takes a shadow one for a
-//! stop. It only ever reads Slack: Slack's own, unless a test names a
+//! stop. Each reply it would have sent is put through Joel's rules against
+//! spam (src/gate.rs) all the same: the log names the rule that let it
+//! through or held it, and replies.jsonl keeps those let through, which
+//! the rules count. A line `off` in replies-switch beside them turns
+//! replies off alone, read each time, so stops and alerts carry on.
+//!
+//! It never sends anything. It only ever reads Slack: Slack's own, unless a test names a
 //! stand-in with `--origin` and a quicker pace with `--every`.
 //!
 //! Which messages it has judged is kept in judged.json beside the log, so a restart
@@ -28,6 +34,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use pineapple::gate::{Asked, gate};
 use pineapple::record::{self, Source};
 use pineapple::slack::{Message, found, micros, root};
 use pineapple::{Context, Heard, Joel, Platform, decide};
@@ -51,6 +58,12 @@ const NEWEST: usize = 20;
 /// Whether its stops are only written down: until Joel has read two days
 /// of its log and said so, they are (the plan's item 10).
 const SHADOW: bool = true;
+
+/// Milliseconds in a second.
+const MILLIS: u64 = 1000;
+
+/// Microseconds in a second.
+const MICROS: u128 = 1_000_000;
 
 /// Slack's own origin.
 const SLACK: &str = "https://slack.com";
@@ -224,6 +237,11 @@ fn said(decisions: &[Value]) -> String {
             out.push_str("  ");
             out.push_str(&reaches.join(", "));
         }
+        let gate = field(decision, "gate");
+        if !gate.is_empty() && gate != "unasked" {
+            out.push_str("  reply ");
+            out.push_str(&gate);
+        }
         out.push_str("\n  ");
         out.push_str(&field(decision, "link"));
         out.push('\n');
@@ -326,17 +344,40 @@ fn judge(slack: &Slack, account: &Account, state: &Path, joel: &Joel, message: &
         joel,
     );
     let key = message.key();
+    let thread = message.thread_key();
     let source = Source {
         key: &key,
+        thread: &thread,
         link: &message.link,
         author: &message.author,
         text: &message.text,
         said_at: &message.ts,
     };
     let now = millis();
-    let line = record::line(&source, &decision, now, SHADOW);
+    let read_at = now / MILLIS;
+    let said_at =
+        micros(&message.ts).map_or(0, |at| u64::try_from(at / MICROS).unwrap_or(u64::MAX));
+    let replies = state.join("replies.jsonl");
+    let sent = record::ledger(&std::fs::read_to_string(&replies).unwrap_or_default());
+    let asked = Asked {
+        reply: decision.reply,
+        thread: &thread,
+        by_joel: decision.by_joel,
+        by_bot: message.by_bot,
+        edited: message.edited,
+        age: read_at.saturating_sub(said_at),
+    };
+    let gated = gate(&asked, &sent, read_at, replies_off(state));
+    let line = record::line(&source, &decision, gated, now, SHADOW);
     if let Err(error) = record::append(&state.join("decisions.jsonl"), &line) {
         eprintln!("<3>couldn't write a decision down: {error}");
+    }
+    if gated.goes() {
+        let one = record::sent(&source, decision.reply, read_at, SHADOW);
+        match record::append(&replies, &one) {
+            Ok(()) => eprintln!("<5>a reply, in shadow: {}", message.link),
+            Err(error) => eprintln!("<3>couldn't keep a reply's line: {error}"),
+        }
     }
     if decision.stops() {
         let stop = record::stop(&source, &decision, now, SHADOW);
@@ -358,6 +399,13 @@ fn thread_root(slack: &Slack, account: &Account, channel: &str, thread: &str) ->
             None
         }
     }
+}
+
+/// Whether replies-switch says `off`, read afresh each time so a switch
+/// acts on the next message.
+fn replies_off(state: &Path) -> bool {
+    std::fs::read_to_string(state.join("replies-switch"))
+        .is_ok_and(|said| said.lines().any(|line| line.trim() == "off"))
 }
 
 fn read_judged(state: &Path) -> Option<Judged> {

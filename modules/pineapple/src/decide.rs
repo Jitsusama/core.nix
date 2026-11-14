@@ -35,15 +35,14 @@ pub enum Tell {
 }
 
 /// What the person who said it is answered, in the thread or on the pull
-/// request where they said it.
+/// request where they said it, if [`crate::gate`] lets it go. Only these
+/// two are ever said in public (Joel, 13 November): someone asking for a
+/// stop without the phrase, or saying it without his tag, is told to Joel
+/// loudly, and he decides whether to answer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reply {
     /// What stopped, how to narrow it, and that only Joel resumes.
     WhatStopped,
-    /// How to stop his agents: tag him with the phrase.
-    HowToStop,
-    /// The phrase needs his tag to stop anything.
-    TagJoel,
     /// A resume is Joel's, and he has been asked.
     JoelAsked,
     /// Nothing is said.
@@ -99,12 +98,13 @@ pub fn decide(heard: &Heard, joel: &Joel) -> Decision {
         // Joel's own stop needs no answer: he knows what he said.
         Verdict::Stop if judged.by_joel => (Tell::Loud, Reply::Nothing),
         Verdict::Stop => (Tell::Loud, Reply::WhatStopped),
-        Verdict::StopAsked => (Tell::Loud, Reply::HowToStop),
         Verdict::ResumeAsked => (Tell::Loud, Reply::JoelAsked),
         // A waved-off joke is told loudly, so a miss is one press from a
-        // stop (Joel, 13 November).
-        Verdict::Waved(Waved::Joke) => (Tell::Loud, Reply::Nothing),
-        Verdict::Waved(Waved::NoTag) => (Tell::Row, Reply::TagJoel),
+        // stop; so are an ask without the phrase and the phrase without
+        // his tag, which only he answers (Joel, 13 November).
+        Verdict::StopAsked | Verdict::Waved(Waved::Joke | Waved::NoTag) => {
+            (Tell::Loud, Reply::Nothing)
+        }
         Verdict::Resume | Verdict::Waved(Waved::TalkedAbout) => (Tell::Row, Reply::Nothing),
         Verdict::Waved(Waved::Quoted | Waved::Bot) | Verdict::Nothing => {
             (Tell::Log, Reply::Nothing)
@@ -134,8 +134,6 @@ impl fmt::Display for Reply {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
         out.write_str(match self {
             Self::WhatStopped => "what-stopped",
-            Self::HowToStop => "how-to-stop",
-            Self::TagJoel => "tag-joel",
             Self::JoelAsked => "joel-asked",
             Self::Nothing => "nothing",
         })
@@ -190,7 +188,7 @@ mod tests {
                 false,
                 "<@U0JOEL0001> STOP your robots",
                 Tell::Loud,
-                Reply::HowToStop,
+                Reply::Nothing,
             ),
             (
                 "U0OTHER001",
@@ -210,8 +208,8 @@ mod tests {
                 "U0OTHER001",
                 false,
                 "pineapple override",
-                Tell::Row,
-                Reply::TagJoel,
+                Tell::Loud,
+                Reply::Nothing,
             ),
             (
                 "U0JOEL0001",

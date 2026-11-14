@@ -22,6 +22,8 @@ pub struct Message {
     pub author: String,
     /// Whether a bot or an app wrote it.
     pub by_bot: bool,
+    /// Whether it was edited after it was said, as Slack marks one.
+    pub edited: bool,
     /// What it says, as Slack keeps it.
     pub text: String,
 }
@@ -31,6 +33,14 @@ impl Message {
     #[must_use]
     pub fn key(&self) -> String {
         format!("slack:{}:{}", self.channel, self.ts)
+    }
+
+    /// The key naming the thread it's in, `slack:<channel>:<thread>`, or
+    /// the thread it starts when it is in none.
+    #[must_use]
+    pub fn thread_key(&self) -> String {
+        let thread = self.thread.as_deref().unwrap_or(&self.ts);
+        format!("slack:{}:{thread}", self.channel)
     }
 }
 
@@ -92,6 +102,7 @@ pub fn found(said: &Value) -> Result<Vec<Message>, String> {
                 }
                 .to_owned(),
                 by_bot,
+                edited: one.get("edited").is_some_and(Value::is_object),
                 text: text("text").to_owned(),
             })
         })
@@ -142,6 +153,12 @@ mod tests {
             "slack:C1:1794574195.000200",
             "the key names it"
         );
+        assert_eq!(
+            found[1].thread_key(),
+            found[0].thread_key(),
+            "a reply and the message starting its thread share a thread"
+        );
+        assert!(!found[1].edited, "a message never edited says so");
     }
 
     #[test]

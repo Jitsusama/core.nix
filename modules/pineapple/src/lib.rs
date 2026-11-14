@@ -14,6 +14,8 @@
 //! - [`decide`] says what follows from a saying heard in a place: what it
 //!   stops or resumes, how loudly Joel is told, and what its writer is
 //!   answered.
+//! - [`gate`](mod@gate) says whether that answer goes out in public, by
+//!   Joel's rules against spam, and names the rule either way.
 //! - [`slack`] turns Slack's answers into messages to judge, and
 //!   [`record`] writes down what was decided, a stop's record included.
 //!
@@ -23,6 +25,7 @@
 //! so anything else judging a saying can be held to the same answers.
 
 mod decide;
+pub mod gate;
 mod judge;
 pub mod record;
 mod scope;
