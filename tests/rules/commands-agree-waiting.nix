@@ -85,10 +85,6 @@
     "helps"
   ];
   collect = [ "helps" ];
-  collector = [
-    "kit"
-    "helps"
-  ];
   console-font = [
     "kit"
     "helps"
@@ -272,11 +268,6 @@
   pi-claude = [ "helps" ];
   pi-host-down = [ "helps" ];
   pi-keys = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  pi-packages = [
     "kit"
     "exits"
     "helps"

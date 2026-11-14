@@ -1,45 +1,53 @@
 //! What the command line asks for: help is never taken as a hold's reason,
-//! and a reason that reads as a flag is refused rather than held.
+//! a reason that reads as a flag is refused rather than held, and the
+//! settings may be named anywhere, as the account's command names them
+//! first. The kit answers `--help` and `-h` before these words are read.
 
 use std::path::Path;
 use std::time::Duration;
 
 use pi_packages::ask::{Asked, asked};
 use pi_packages::run::Pace;
+use terminal_kit::Exit;
 
 const FILE: &str = "/home/someone/pi-packages.json";
 
+/// The words as the account's command passes them, settings first.
+fn told(words: &[&'static str]) -> Vec<&'static str> {
+    let mut line = vec!["--config", FILE];
+    line.extend_from_slice(words);
+    line
+}
+
 #[test]
-fn help_is_asked_for_first_or_after_hold() {
-    for words in [
-        &["--help"][..],
-        &["-h"],
-        &["help"],
-        &["hold", "--help"],
-        &["hold", "--config", FILE, "--help"],
-        &["hold", "--config", FILE, "-h"],
-        &["hold", "--config", FILE, "--for", "90m", "--help"],
-    ] {
-        assert_eq!(asked(words), Ok(Asked::Help), "{words:?}");
+fn help_is_asked_for_by_name_or_after_hold() {
+    for words in [&["help"][..], &["hold", "help"], &["hold", "help", "me"]] {
+        assert_eq!(asked(&told(words)), Ok(Asked::Help), "{words:?}");
+        assert_eq!(asked(words), Ok(Asked::Help), "{words:?} with no settings");
     }
 }
 
 #[test]
 fn a_hold_whose_reason_reads_as_a_flag_is_refused() {
     for words in [
-        &["hold", "--config", FILE, "--forever", "night"][..],
-        &["hold", "--config", FILE, "-x"],
-        &["hold", "--config", FILE, "--for", "90m", "--now"],
+        &["hold", "--forever", "night"][..],
+        &["hold", "-x"],
+        &["hold", "--for", "90m", "--now"],
     ] {
-        let said = asked(words).expect_err(&format!("{words:?} was taken"));
-        assert!(said.contains("flag"), "{words:?} said: {said}");
+        let failure = asked(&told(words)).expect_err(&format!("{words:?} was taken"));
+        assert_eq!(
+            failure.exit,
+            Exit::Usage,
+            "{words:?} said: {}",
+            failure.what
+        );
     }
 }
 
 #[test]
 fn a_hold_says_why_and_may_say_for_how_long() {
     assert_eq!(
-        asked(&["hold", "--config", FILE, "a", "switch", "-", "now"]),
+        asked(&told(&["hold", "a", "switch", "-", "now"])),
         Ok(Asked::Hold {
             file: Path::new(FILE),
             why: "a switch - now".to_owned(),
@@ -48,7 +56,7 @@ fn a_hold_says_why_and_may_say_for_how_long() {
         "a hold until released"
     );
     assert_eq!(
-        asked(&["hold", "--config", FILE, "--for", "2h", "night"]),
+        asked(&told(&["hold", "--for", "2h", "night"])),
         Ok(Asked::Hold {
             file: Path::new(FILE),
             why: "night".to_owned(),
@@ -56,25 +64,31 @@ fn a_hold_says_why_and_may_say_for_how_long() {
         }),
         "a hold for a time"
     );
-    assert!(
-        asked(&["hold", "--config", FILE, "--for", "soon", "night"]).is_err(),
-        "a length that is no length"
+    assert_eq!(
+        asked(&told(&["hold", "--for=90m", "--", "-x", "marks", "it"])),
+        Ok(Asked::Hold {
+            file: Path::new(FILE),
+            why: "-x marks it".to_owned(),
+            length: Some(Duration::from_mins(90)),
+        }),
+        "a reason past -- may open with a dash"
     );
-    assert!(
-        asked(&["hold", "--config", FILE]).is_err(),
-        "a hold with no reason"
-    );
-    assert!(
-        asked(&["hold", "--config", FILE, "--for", "2h"]).is_err(),
-        "a hold for a time with no reason"
-    );
+    for words in [
+        &["hold", "--for", "soon", "night"][..],
+        &["hold"],
+        &["hold", "--for", "2h"],
+    ] {
+        assert!(asked(&told(words)).is_err(), "{words:?} was taken");
+    }
 }
 
 #[test]
 fn the_other_commands_are_read_as_before() {
     let file = Path::new(FILE);
+    assert_eq!(asked(&told(&[])), Ok(Asked::Status(file)), "a bare line");
+    assert_eq!(asked(&told(&["status"])), Ok(Asked::Status(file)), "status");
     assert_eq!(
-        asked(&["update", "--config", FILE]),
+        asked(&told(&["update"])),
         Ok(Asked::Update {
             file,
             pace: Pace::Spaced
@@ -82,7 +96,7 @@ fn the_other_commands_are_read_as_before() {
         "update"
     );
     assert_eq!(
-        asked(&["update", "--config", FILE, "--now"]),
+        asked(&told(&["update", "--now"])),
         Ok(Asked::Update {
             file,
             pace: Pace::Now
@@ -90,19 +104,37 @@ fn the_other_commands_are_read_as_before() {
         "update --now"
     );
     assert_eq!(
-        asked(&["sweep", "--config", FILE]),
-        Ok(Asked::Sweep(file)),
-        "sweep"
+        asked(&["update", "--config", FILE]),
+        Ok(Asked::Update {
+            file,
+            pace: Pace::Spaced
+        }),
+        "the settings after the command, as the unit names them"
     );
+    assert_eq!(asked(&told(&["sweep"])), Ok(Asked::Sweep(file)), "sweep");
     assert_eq!(
-        asked(&["status", "--config", FILE]),
-        Ok(Asked::Status(file)),
-        "status"
-    );
-    assert_eq!(
-        asked(&["release", "--config", FILE]),
+        asked(&told(&["release"])),
         Ok(Asked::Release(file)),
         "release"
     );
-    assert!(asked(&["reboot"]).is_err(), "an unknown command");
+}
+
+#[test]
+fn a_line_asked_wrongly_is_a_usage_failure() {
+    for words in [
+        &["reboot"][..],
+        &["sweep", "--now"],
+        &["status", "--for", "2h"],
+        &["release", "everything"],
+    ] {
+        let failure = asked(&told(words)).expect_err(&format!("{words:?} was taken"));
+        assert_eq!(
+            failure.exit,
+            Exit::Usage,
+            "{words:?} said: {}",
+            failure.what
+        );
+    }
+    let failure = asked(&["status"]).expect_err("no settings were named");
+    assert_eq!(failure.exit, Exit::Usage, "{}", failure.what);
 }

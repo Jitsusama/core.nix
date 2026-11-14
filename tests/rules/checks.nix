@@ -159,6 +159,7 @@
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };
         clock-follows = pkgs.callPackage ../../modules/quickshell/clock-follows/package.nix { };
+        collector = pkgs.callPackage ../../modules/collector/package.nix { };
         device-check = deviceCheck;
         device-check-disk = deviceCheck;
         disk-guard = pkgs.callPackage ../../modules/disk-guard/package.nix { };
@@ -174,6 +175,7 @@
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
         open-now = recentFiles;
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
+        pi-packages = pkgs.callPackage ../../modules/pi-packages/package.nix { };
         recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
         spend-watch = pkgs.callPackage ../../modules/spend-watch/package.nix { };
@@ -243,6 +245,34 @@
             ];
             state = ../../modules/load-proof/tests/a-loaded-reading;
             exits = 1;
+          }
+        ];
+        # One package swapped in and one not yet, under a hold whose reason
+        # wraps, put in place first as a person would.
+        pi-packages = [
+          {
+            args = [
+              "--config"
+              "@HERE@/settings.json"
+            ];
+            state = ../../modules/pi-packages/tests/a-held-swap;
+            first = [
+              [
+                "--config"
+                "@HERE@/settings.json"
+                "hold"
+                "the"
+                "launcher's"
+                "demo"
+                "at"
+                "three,"
+                "so"
+                "nothing"
+                "moves"
+                "under"
+                "it"
+              ]
+            ];
           }
         ];
         # A machine with logs still to send, and logs sent with no row.
