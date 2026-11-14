@@ -4,11 +4,6 @@
 # and on one waiting on a point it keeps, so the list only shrinks.
 {
   "1password-in-its-unit" = [ "helps" ];
-  a-call-is-on = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   agents = [
     "kit"
     "exits"
@@ -202,11 +197,6 @@
   ];
   wifid-sign-in = [
     "kit"
-    "helps"
-  ];
-  windows = [
-    "kit"
-    "exits"
     "helps"
   ];
   yubikey-once-in = [ "helps" ];

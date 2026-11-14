@@ -214,6 +214,7 @@
         xdg-open = script "xdg-open" ../../modules/open-with/xdg-open.sh { };
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         zoom-opens = script "zoom-opens" ../../modules/zoom/opens.sh { words = "a-window"; };
+        a-call-is-on = pkgs.callPackage ../../modules/calls/package.nix { };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
         bluetooth-links = pkgs.callPackage ../../modules/bluetooth-links/package.nix { };
         cadence-spec = pkgs.callPackage ../../modules/cadence/spec/package.nix { };
@@ -284,6 +285,7 @@
         timekeeping = pkgs.callPackage ../../modules/quickshell/timekeeping/package.nix { };
         timers = pkgs.callPackage ../../modules/quickshell/timers/package.nix { };
         vm-first = pkgs.callPackage ../../modules/nix-daemon/vm-first/package.nix { };
+        windows = pkgs.callPackage ../../modules/windows/package.nix { };
         without-syncfs = pkgs.callPackage ../../modules/nix-daemon/without-syncfs/package.nix { };
         xwayland-satellite = pkgs.callPackage ../../modules/niri/xwayland-satellite.nix { };
         zathura-command = pkgs.callPackage ../../modules/zathura/command/package.nix { };

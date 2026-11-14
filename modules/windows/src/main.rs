@@ -30,11 +30,15 @@
 //! shell's watch ahead does once a screen is selected, and the drawer of
 //! the screen holding it says it (light.rs); the machine daemon reads the
 //! light each second while it's watched, so it isn't watched otherwise.
+//!
+//! Its unit alone starts it, in the terminal kit's shape, as
+//! `windows --help` says (`help()`).
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
@@ -45,6 +49,7 @@ use programs::notify::Notify;
 use programs::{now_ms, xdg};
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure, Help};
 use windows::desktop::{Desktop, Heard, Names};
 use windows::entries::{self, Entries};
 use windows::interface::DOMAIN;
@@ -98,8 +103,36 @@ struct Shared {
     looked: Condvar,
 }
 
-fn main() {
-    let mut args = std::env::args().skip(1);
+/// What `windows --help` says: how its unit runs it, and how it ends.
+fn help() -> Help {
+    Help::new("windows", "holds niri's windows ready for the shell")
+        .example("windows SOCKET", "its windows alone, with no rows")
+        .example(
+            "windows SOCKET --words WORDS --machine MACHINE",
+            "as its unit runs it, Screens' rows too",
+        )
+        .argument("<socket>", "where the shell asks, unless systemd hands one")
+        .option("--words WORDS", "the launcher's words, for Screens' rows")
+        .option("--numbers NUMBERS", "how the account writes its figures")
+        .option(
+            "--machine MACHINE",
+            "the machine daemon, for a screen's light",
+        )
+        .exit(Exit::Failed, "its socket couldn't be listened on")
+        .exit(Exit::Config, "NIRI_SOCKET isn't set")
+}
+
+/// What its unit hands it.
+struct Asked {
+    socket: PathBuf,
+    words: Option<String>,
+    numbers: Option<String>,
+    machine: Option<PathBuf>,
+}
+
+/// Its socket and its files, from what its unit hands it.
+fn asked(args: &[String]) -> Result<Asked, Failure> {
+    let mut args = args.iter().cloned();
     let (mut named, mut words, mut numbers, mut machine) = (Vec::new(), None, None, None);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -109,24 +142,49 @@ fn main() {
             _ => named.push(arg),
         }
     }
-    let Some(socket) = named.into_iter().next() else {
-        eprintln!("usage: windows SOCKET [--words FILE] [--numbers FILE] [--machine SOCKET]");
-        std::process::exit(64);
-    };
+    let socket = named.into_iter().next().map(PathBuf::from).ok_or_else(|| {
+        Failure::new(Exit::Usage, "windows takes a socket to answer on").try_this("windows --help")
+    })?;
+    Ok(Asked {
+        socket,
+        words,
+        numbers,
+        machine,
+    })
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        hold(asked(&context.args)?)
+    })
+}
+
+/// Holds the windows and answers the socket for as long as niri runs, and
+/// after, waiting for the next.
+fn hold(asked: Asked) -> Result<(), Failure> {
+    let Asked {
+        socket,
+        words,
+        numbers,
+        machine,
+    } = asked;
     let numbers = numbered(numbers.as_deref().map(Path::new));
     let words = words.map(|path| worded(Path::new(&path)).numbered(numbers));
-    let Some(niri) = std::env::var_os("NIRI_SOCKET").map(PathBuf::from) else {
-        eprintln!("<3>NIRI_SOCKET isn't set, so there's no niri to hear");
-        std::process::exit(78);
-    };
-    let socket = PathBuf::from(socket);
-    let listener = match serve::listen(&socket) {
-        Ok(listener) => listener,
-        Err(why) => {
-            eprintln!("<3>couldn't listen on {}: {why}", socket.display());
-            std::process::exit(71);
-        }
-    };
+    let niri = std::env::var_os("NIRI_SOCKET")
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            Failure::new(
+                Exit::Config,
+                "NIRI_SOCKET isn't set, so there's no niri to hear",
+            )
+        })?;
+    let listener = serve::listen(&socket).map_err(|why| {
+        Failure::new(
+            Exit::Failed,
+            format!("it couldn't listen on {}", socket.display()),
+        )
+        .because(why.to_string())
+    })?;
     let folders = xdg::folders_here();
     let (entries, looked) = Entries::read(&folders);
     // Screens' drawers say what desk-facts reads of each EDID, so only a
@@ -187,6 +245,7 @@ fn main() {
     }
     serve::accept(served, listener);
     follow(&shared, &niri);
+    Ok(())
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {

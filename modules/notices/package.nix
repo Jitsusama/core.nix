@@ -2,7 +2,8 @@
 # builds. It serves with the serving side every daemon shares
 # (../daemon-serve) in the one form every daemon's rows take
 # (../ready-rows), names senders by the desktop entries the windows
-# daemon reads (../windows, ../programs), and its test asks it with the
+# daemon reads (../windows, ../programs, and ../terminal-kit, which
+# windows takes its shape from), and its test asks it with the
 # client every daemon's tests share (../daemon-client), so the source is
 # cut from the modules folder holding them all, and built from this one.
 # Its tests read the launcher's words.json, which its rows are said in,
@@ -33,6 +34,8 @@ rustPlatform.buildRustPackage rec {
       ../programs/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
       ../windows/Cargo.toml
       ../windows/src
     ];

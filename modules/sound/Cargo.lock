@@ -586,6 +586,7 @@ dependencies = [
  "programs",
  "ready-rows",
  "serde_json",
+ "terminal-kit",
 ]
 
 [[package]]

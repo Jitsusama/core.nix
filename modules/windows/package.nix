@@ -4,7 +4,8 @@
 # serves its rows in the form every daemon's take (../ready-rows), through
 # the serving side every daemon shares (../daemon-serve), and its
 # socket's tests ask it with a crate every daemon's tests share
-# (../daemon-client), so the source is cut from the modules folder holding
+# (../daemon-client), and it takes its shape from the terminal kit
+# (../terminal-kit), so the source is cut from the modules folder holding
 # them all, and built from this one.
 {
   lib,
@@ -33,6 +34,8 @@ rustPlatform.buildRustPackage rec {
       ../daemon-client/src
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/windows";
