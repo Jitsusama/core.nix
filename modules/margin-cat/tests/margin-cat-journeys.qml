@@ -85,9 +85,30 @@ QtObject {
         const lit = at.marks;
         const ink = { left: lit.from + 4, top: 4, width: lit.to - lit.from - 8, height: 8 };
         const wrong = [];
+        // No drawing alone (RSCH-20261113-24R2QV, finding 4): outside a
+        // ride, each pose it's seen in holds two frames at 60 Hz or more,
+        // but its first and its last, which go on from and into what's
+        // before and after the journey.
+        const flashes = (journey, said) => {
+            let run = null;
+            for (let t = 0; t <= journey.ends; t += 1) {
+                const one = Paths.frame(journey, t);
+                const shown = one.y + at.tall > 0 && one.y < at.height;
+                const pose = shown && one.beat !== "rides" ? one.pose : undefined;
+                if (run !== null && pose === run.pose) {
+                    run.ends = t;
+                    continue;
+                }
+                const ms = run === null ? 0 : run.ends - run.begins + 1;
+                if (run !== null && run.begins > 0 && run.pose && ms < 33)
+                    wrong.push(`${said} shows ${run.pose} ${ms} ms at ${run.begins} ms`);
+                run = { pose, begins: t, ends: t };
+            }
+        };
         // Every frame of `journey` a cat's, in none of `solid`'s windows
         // but where a window shoved it, and ending on `to`.
         const check = (journey, solid, said, to) => {
+            flashes(journey, said);
             const last = Paths.frame(journey, journey.ends);
             if (Math.abs(last.x - to.x) > 0.01 || Math.abs(last.y - to.y) > 0.01)
                 wrong.push(`${said} ends at ${last.x},${last.y}`);

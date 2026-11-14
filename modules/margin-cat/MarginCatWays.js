@@ -245,8 +245,15 @@ function timed(way) {
         }
     }
     const from = way.legs[0]?.from ?? { x: way.x, y: way.y };
-    return { from, to: { x: way.x, y: way.y }, facing: way.facing, stride, beats, ends,
+    const route = { from, to: { x: way.x, y: way.y }, facing: way.facing, stride, beats, ends,
         cell: at.cell };
+    // A striding beat too short to be seen goes on in the pose before it.
+    for (const [i, beat] of beats.entries()) {
+        if (i > 0 && STRIDING[beat.kind] && beat.ends - beat.begins < SHOWN) {
+            beat.held = frame(route, beat.begins - 1e-6).pose;
+        }
+    }
+    return route;
 }
 
 // A leap's pose `ms` into it, `whole` ms long, `peak` its share of the way
@@ -302,6 +309,30 @@ function frame(route, t) {
         return { x: route.to.x, y: route.to.y, pose: null, turn: 0, facing: route.facing,
             beat: "sits", done: true };
     }
+    const spot = placed(route, beat, t);
+    // No stride is seen alone (RSCH-20261113-24R2QV, finding 4): one its
+    // beat's last SHOWN would start isn't, and a beat too short for one
+    // goes on in the pose it came in.
+    const strides = STRIDING[beat.kind];
+    const last = Math.max(beat.begins, beat.ends - SHOWN);
+    const pose = strides
+        ? beat.held ?? strides[strode(beat, t < last ? spot : placed(route, beat, last)) % 2]
+        : spot.leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
+    return { x: spot.x, y: spot.y, pose, turn: beat.turn, facing: beat.facing,
+        beat: beat.name, done: false };
+}
+
+// How many strides of `beat` it's taken at `spot`, by the ground drawn or
+// the bounds of a climb.
+function strode(beat, spot) {
+    const ground = Math.abs(spot.x - beat.from.x) + Math.abs(spot.y - beat.from.y);
+    return beat.bounds > 0 ? Math.floor(2 * beat.bounds * spot.p)
+        : Math.floor(ground / beat.stride);
+}
+
+// Where `beat` of `route` has it `t` ms in, drawn, its share `p` of the beat
+// and, in a leap, the pose its arc gives.
+function placed(route, beat, t) {
     const p = (t - beat.begins) / (beat.ends - beat.begins);
     const { from, to } = beat;
     let s = p;
@@ -332,17 +363,10 @@ function frame(route, t) {
         y = beat.apex + (rise + fall) ** 2 * (p - peak) ** 2;
         leaps = aloft(t - beat.begins, beat.ends - beat.begins, peak);
     }
-    // A window carrying or pushing it keeps the window's pixels; its strides
-    // step by the ground it's drawn covering.
-    const own = beat.kind !== "rides" && !beat.pushed;
-    const drawn = own ? { x: onCells(x, from.x, to.x, route.cell),
-        y: onCells(y, from.y, to.y, route.cell) } : { x, y };
-    const strides = STRIDING[beat.kind];
-    const ground = Math.abs(drawn.x - from.x) + Math.abs(drawn.y - from.y);
-    const stepped = beat.bounds > 0 ? Math.floor(2 * beat.bounds * p)
-        : Math.floor(ground / beat.stride);
-    const pose = strides ? strides[stepped % 2]
-        : leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
-    return { x: drawn.x, y: drawn.y, pose, turn: beat.turn, facing: beat.facing,
-        beat: beat.name, done: false };
+    // A window carrying or pushing it keeps the window's pixels.
+    if (beat.kind === "rides" || beat.pushed) {
+        return { x, y, p, leaps };
+    }
+    return { x: onCells(x, from.x, to.x, route.cell), y: onCells(y, from.y, to.y, route.cell),
+        p, leaps };
 }
