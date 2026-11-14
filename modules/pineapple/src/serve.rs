@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 
 use crate::acts::{self, Refused};
 use crate::peer::{Peer, may_act};
+use crate::phone::{self, Alert};
 use crate::record;
 use crate::tell::{self, KIND};
 use crate::vocabulary::Words;
@@ -307,6 +308,7 @@ fn tell_new(
             "shadow": !live,
             "knocked": knocked,
             "title": row["title"],
+            "words": row["words"],
             "link": row["link"],
             "dm": dm(row),
         });
@@ -433,13 +435,12 @@ fn close(busctl: &Path, shown: &Shown) {
     }
 }
 
-/// The one form the message to Joel's own Slack takes: what happened,
-/// who said it and where, and their words.
+/// The message Joel's own Slack is sent for a row, in the alert's one
+/// form (src/phone.rs), which the safe word's reader sends.
 fn dm(row: &Value) -> String {
-    format!(
-        "pineapple: {}\nSaid: \"{}\"\nWhere: {}",
-        row["title"].as_str().unwrap_or_default(),
-        row["words"].as_str().unwrap_or_default(),
-        row["link"].as_str().unwrap_or_default()
-    )
+    phone::text(Alert {
+        title: row["title"].as_str().unwrap_or_default(),
+        words: row["words"].as_str().unwrap_or_default(),
+        link: row["link"].as_str().unwrap_or_default(),
+    })
 }
