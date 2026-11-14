@@ -29,6 +29,7 @@
 # today, gh among them.
 { passwords }:
 {
+  config,
   lib,
   pkgs,
   osConfig ? { },
@@ -174,7 +175,14 @@ in
             "onepassword.service"
             "--systemctl"
             systemctl
-          ];
+          ]
+          # Each reference a secret ask may have released, which the manager
+          # alone checks again before it reads one, matched whole.
+          ++ lib.concatMap (reference: [
+            "--release"
+            reference
+          ]) (lib.filter (lib.hasPrefix "op://") config.jitsusama.passwords.releases);
+          references = "op://";
           program = "com.onepassword.OnePassword";
           called = "1Password";
           # Its windows, by the app id niri's own rule for it names and the
