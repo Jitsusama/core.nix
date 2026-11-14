@@ -3146,6 +3146,23 @@
     builders' key only nix-offload's login to a builder lent now, and no agent's key for one; and it
     says each login signed and each refusal in one line of a fixed shape, its host and why as a word
   '';
+  pi-github-door-lets-only-allowed-calls-through = ''
+    pi-github-door sends a fenced call on to GitHub with the person's token in the placeholder's
+    place only when it's allowed; a merge, a push, a pull request opened, a credential, a
+    repository's settings, protection written or a mutation off its list, judged by its fields,
+    never reaches GitHub and names its route; another credential is refused, the token is read
+    again on a 401, git's fetch passes, other hosts are tunnelled unseen, and the relay leaves
+    with the process it watches
+  '';
+  pi-github-door-passes-clippy = ''
+    clippy finds nothing in pi-github-door or its tests, the door a fenced pi command reaches
+    GitHub through
+  '';
+  pi-github-door-runs-beside-the-fence = ''
+    pi's GitHub door runs on every Linux machine and no Mac, started by the first fenced command
+    that asks, on a control socket at %t/pi-github/control.sock only the account reaches, its
+    sessions beside it, reading the token with gh, and on the account's PATH for the fence's relay
+  '';
   pi-spawner-passes-clippy = ''
     clippy finds nothing in pi-spawner or its tests, which starts pi's shell commands for it from
     a process small enough to start them cheaply

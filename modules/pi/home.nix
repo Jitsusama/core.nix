@@ -162,6 +162,10 @@ let
   # It depends on the hosts alone, since the upstreams' default looks at
   # which sockets are declared, these among them.
   agentProxy = pkgs.callPackage ./agent-proxy/package.nix { };
+
+  # The door the fence's gh and git reach GitHub through, on every Linux
+  # machine, since the fence runs on each.
+  githubDoor = pkgs.callPackage ./github-door/package.nix { };
   proxied =
     pkgs.stdenv.hostPlatform.isLinux
     && (
@@ -435,6 +439,9 @@ in
         pkgs.landrun
         pkgs.bubblewrap
         piVerbs
+        # On PATH because a fenced command starts the door's relay itself,
+        # and the fence keeps the account's PATH.
+        githubDoor
       ];
 
     # The one SSH agent the agent fence lets in, at %t/pi-agent/agent.sock:
@@ -490,6 +497,42 @@ in
           ]) config.jitsusama.pi.agentProxy.lentFiles
         )
       );
+    };
+
+    # The door a fenced gh or git reaches GitHub through, since the token
+    # lives in the keyring the fence hides. The harness asks it over the
+    # control socket, which the fence never lets in, for a session's own
+    # folder; the fence lets in only that folder, holding the session's
+    # socket and a bundle trusting the session's own CA. The door answers
+    # api.github.com, github.com, uploads.github.com and
+    # codeload.github.com as GitHub would, adds the person's token, read
+    # with gh and held in memory only, to the calls it allows, and says
+    # each call and each refusal in the journal (github-door/src/lib.rs).
+    # Started by the first fenced command that asks.
+    systemd.user.sockets.pi-github-door = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit.Description = "The door pi's fenced commands reach GitHub through";
+      Socket = {
+        ListenStream = "%t/pi-github/control.sock";
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+        Service = "pi-github-door.service";
+      };
+      Install.WantedBy = [ "sockets.target" ];
+    };
+    systemd.user.services.pi-github-door = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "The door pi's fenced commands reach GitHub through";
+        Requires = [ "pi-github-door.socket" ];
+        After = [ "pi-github-door.socket" ];
+      };
+      Service.ExecStart = lib.escapeShellArgs [
+        (lib.getExe githubDoor)
+        "serve"
+        "--sessions"
+        "%t/pi-github/sessions"
+        "--gh"
+        (lib.getExe pkgs.gh)
+      ];
     };
 
     # On the Claude plan every pi starts on it: the provider is one of the
