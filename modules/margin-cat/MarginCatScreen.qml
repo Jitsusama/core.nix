@@ -375,20 +375,23 @@ PanelWindow {
     }
 
     // Where a move goes as niri says the new workspace's columns: as it
-    // holds, its way found again each time niri says any, since none of
-    // the hold depends on them; once it's on its way, a seat
-    // moved or the keys gone to another window cut it short, and it
-    // walks on from where it's got to (cut()).
+    // holds, or past its hold with no seat yet, its way found again each
+    // time niri says any, since none of the hold depends on them, and
+    // a seat said late sets off from the hold then (Paths.resumed);
+    // once it's on its way, a seat moved or the keys gone to another
+    // window cut it short, and it walks on from where it's got to
+    // (cut()).
     function steer(): void {
         if (there === null)
             return;
-        const holding = Paths.replans(moving, mover.elapsedTime * 1000, steps > 0);
+        const t = mover.elapsedTime * 1000;
+        const holding = Paths.replans(moving, t, steps > 0);
         const same = Math.round(there.x * ratio) === Math.round(moving.to.x * ratio)
             && Math.round(there.y * ratio) === Math.round(moving.to.y * ratio);
-        if (holding) {
+        if (holding || movingTo === null) {
             movingTo = wanted;
-            moving = plan(moving.way, moving.from, { x: there.x, y: there.y });
-        } else if (movingTo === null || wanted !== movingTo || !same) {
+            moving = Paths.resumed(plan(moving.way, moving.from, { x: there.x, y: there.y }), t);
+        } else if (wanted !== movingTo || !same) {
             cut();
         }
     }
@@ -717,15 +720,21 @@ PanelWindow {
     FrameAnimation {
         id: mover
         onTriggered: {
-            const now = Paths.frame(window.moving, mover.elapsedTime * 1000);
-            // A hold with no column at its end arrives at once: on an
-            // empty workspace it falls to the floor (arrive).
-            if (now.done
-                || (now.beat !== window.moving.beats[0].name && window.movingTo === null)) {
+            const t = mover.elapsedTime * 1000;
+            const now = Paths.frame(window.moving, t);
+            // A hold with no seat yet holds on a moment for one niri
+            // says late (Paths.holdsOn), where it is, rather than going
+            // and coming back with no walk; with none by then, or on an
+            // empty workspace, it arrives, where it falls to the floor.
+            const waits = window.movingTo === null && !window.emptied
+                && Paths.holdsOn(window.moving, t);
+            if (!waits && (now.done
+                || (now.beat !== window.moving.beats[0].name && window.movingTo === null))) {
                 window.arrive();
                 return;
             }
-            window.took(now);
+            if (!now.done)
+                window.took(now);
         }
     }
 

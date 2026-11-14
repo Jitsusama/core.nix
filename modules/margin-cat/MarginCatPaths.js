@@ -417,6 +417,21 @@ function replans(route, t, stepped) {
     return !stepped || t + (route.ahead ?? 0) < route.beats[0].ends;
 }
 
+// A move `route` planned again `t` ms into its hold, its seat just said:
+// past the hold, as niri says a seat late on a loaded machine, its way
+// there begins at `t` from where the hold left it, never part way along.
+function resumed(route, t) {
+    const ends = route.beats[0].ends;
+    return Object.assign({}, route, { ahead: Math.min(route.ahead ?? 0, ends - t) });
+}
+
+// Whether a move with no seat yet still holds `t` ms in: a little past
+// the slide, for a seat niri says late, rather than gone and back
+// with no walk.
+function holdsOn(route, t) {
+    return t + (route.ahead ?? 0) < route.beats[0].ends + MarginCat.LEAVES;
+}
+
 // Where a way has it `t` ms in (MarginCatWays.js's frame), and a move as
 // far ahead as it was told of late.
 function frame(route, t) {
