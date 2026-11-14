@@ -288,8 +288,9 @@ onLinux {
   # a workspace no screen shows and never takes the focus, whether it opens,
   # uses a token from Joel's window, or opens while he's on the empty
   # workspace at the end (sandboxed-windows-stay-behind.patch), while Joel
-  # still goes to it by its id, as his launcher does. The account's niri, nested in the sandbox, gets a stand-in window of Joel's
-  # and the sandbox's (tests/opens-sandboxed-windows-behind.py).
+  # still goes to it by its id, as his launcher does. The account's niri,
+  # nested in the sandbox, gets a stand-in window of Joel's and the
+  # sandbox's (tests/opens-sandboxed-windows-behind.py).
   niri-opens-sandboxed-windows-behind =
     let
       files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;
