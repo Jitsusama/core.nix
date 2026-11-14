@@ -94,6 +94,12 @@ impl Words {
         self.word("failed", &[("name", name)])
     }
 
+    /// A place asked open that the launcher didn't get into, as Passwords
+    /// refuses a walk from outside, said as a refusal (Y2YBTS, 2026-11-13).
+    pub fn unopened(&self, name: &str) -> String {
+        self.word("unopened", &[("name", name)])
+    }
+
     /// An argument it doesn't take.
     pub fn unknown(&self, what: &str) -> String {
         self.word("unknown", &[("what", what)])

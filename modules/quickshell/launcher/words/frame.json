@@ -744,6 +744,7 @@
     "apart": "\u00b7",
     "silent": "the shell isn't answering",
     "failed": "{name} not done \u00b7 the shell failed \u00b7 journalctl --user -u quickshell says why",
+    "unopened": "{name} won't open from a terminal",
     "unknown": "launcher doesn't take {what}",
     "waiting": "\u2026",
     "unsure": "{question} \u00b7 nothing to answer on, so --yes does it",

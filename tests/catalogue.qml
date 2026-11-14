@@ -540,5 +540,16 @@ QtObject {
         expect("a place at home, from home, goes nowhere",
             Catalogue.followed(["category:desktop"], []), null);
         expect("nor does what lives nowhere", Catalogue.followed(null, []), null);
+        // A place asked open from outside is said opened only where the
+        // walk got: one that refused its step, as Passwords does while
+        // it's walked from outside, leaves the launcher short of it.
+        const passwords = ["category:secrets", "collection:passwords"];
+        expect("walked all the way, it's reached",
+            Catalogue.reached(["category:secrets", "collection:passwords"], passwords), true);
+        expect("stopped short, it isn't", Catalogue.reached(["category:secrets"], passwords),
+            false);
+        expect("left at home, it isn't", Catalogue.reached([], passwords), false);
+        expect("somewhere else as deep, it isn't",
+            Catalogue.reached(["category:secrets", "collection:keys"], passwords), false);
     }
 }
