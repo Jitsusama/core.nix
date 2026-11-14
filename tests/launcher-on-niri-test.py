@@ -2150,14 +2150,17 @@ def test_a_step_into_programs_asks_no_rows_acts_twice_as_it_weighs_their_keys(
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    before = cast("int", shell.showing()["actsAskedAgain"])
+    shown = shell.showing()
+    read, rows = cast("int", shown["actsRead"]), cast("int", shown["actsRowsAsked"])
     shell.type_in("programs", selecting="Programs")
     shell.step_in()
     shell.launcher_until(functools.partial(stands_in, "Programs"))
     launcher_on_niri.weighed_held_still(shell)
-    again = cast("int", shell.showing()["actsAskedAgain"]) - before
+    shown = shell.showing()
+    read, rows = cast("int", shown["actsRead"]) - read, cast("int", shown["actsRowsAsked"]) - rows
     shell.close_launcher()
-    assert again == 0, f"weighing the rows' keys asked {again} rows' acts again"
+    assert rows > 0, "weighing the rows' keys asked no row whether it holds acts alone"
+    assert read == rows, f"weighing the rows' keys read {read} rows' acts for {rows} rows"
 
 
 def drawer_moved(was: str, shown: Json) -> bool:

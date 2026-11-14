@@ -1731,17 +1731,25 @@ Scope {
     function actsAlone(row) {
         const weighing = actsWeighing.rows;
         if (weighing !== null && weighing.has(row))
-            actsAskedAgain += 1;
+            return weighing.get(row);
         const alone = row.actsOnly === true && (partsOfRows[row.key] ?? []).length === 0;
-        weighing?.set(row, alone);
+        if (weighing !== null) {
+            weighing.set(row, alone);
+            actsRead += 1;
+        }
         return alone;
     }
     // While the foot weighs the rows listed (noteKeys), what each row's
-    // acts alone were found to be. Plain, so setting it wakes no binding.
+    // acts alone were found to be, so a row's keys ask it once: keysFor
+    // asks three or four times a row, and a program's actsOnly asks its
+    // whole step (Applications.qml's startsOnly), 83 ms of a 116 ms step
+    // into Programs under load (vm-desktop-keeps-pace, 2026-11-14). Plain,
+    // so setting it wakes no binding.
     readonly property var actsWeighing: ({ rows: null })
-    // How many times a weighing asked a row's acts alone again, for the
-    // check that a step asks each row's once.
-    property int actsAskedAgain: 0
+    // How many times weighings read a row's acts alone, and how many rows
+    // they asked of, for the check that each row's is read once a weighing.
+    property int actsRead: 0
+    property int actsRowsAsked: 0
 
     // A row's parts as they're named inside it: "Theme" in Slack.
     function partsIn(row) {
@@ -3145,6 +3153,7 @@ Scope {
         try {
             weighKeys();
         } finally {
+            actsRowsAsked += actsWeighing.rows.size;
             actsWeighing.rows = null;
         }
     }
@@ -8173,8 +8182,10 @@ Scope {
             line: talkLine.shown(),
             // How many rows' keys the foot has weighed afresh (noteKeys).
             weighed: root.rowsWeighed,
-            // How many times weighing them asked a row's acts alone again.
-            actsAskedAgain: root.actsAskedAgain,
+            // How many times weighing them read a row's acts alone, and
+            // how many rows they asked of.
+            actsRead: root.actsRead,
+            actsRowsAsked: root.actsRowsAsked,
             // How many times a key listed a list shown lately again.
             listedAgain: root.listedAgain,
             typed: root.typed,
