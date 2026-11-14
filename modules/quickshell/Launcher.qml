@@ -374,6 +374,7 @@ Scope {
         // found, so an answer given only when nothing is still shows.
         const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
         list.keptLast = null;
+        keysWeighing = 0;
         const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
             : rows.concat(below)).concat(ending));
         matches = listedAs(composed);
@@ -390,7 +391,7 @@ Scope {
         else if (current >= 0)
             current = Rank.pinned(matches, was, current + rows.length - before);
         composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
-            showing: Date.now() - placedAll, kept: list.keptLast };
+            showing: Date.now() - placedAll, kept: list.keptLast, weighing: keysWeighing };
     }
 
     // The rows with what the first thing found by its name holds listed
@@ -1728,8 +1729,27 @@ Scope {
     // since a daemon's row knows its acts but not the parts laid in beside
     // them, as a screen's Brightness and Warmth.
     function actsAlone(row) {
-        return row.actsOnly === true && (partsOfRows[row.key] ?? []).length === 0;
+        const weighing = actsWeighing.rows;
+        if (weighing !== null && weighing.has(row))
+            return weighing.get(row);
+        const alone = row.actsOnly === true && (partsOfRows[row.key] ?? []).length === 0;
+        if (weighing !== null) {
+            weighing.set(row, alone);
+            actsRead += 1;
+        }
+        return alone;
     }
+    // While the foot weighs the rows listed (noteKeys), what each row's
+    // acts alone were found to be, so a row's keys ask it once: keysFor
+    // asks three or four times a row, and a program's actsOnly asks its
+    // whole step (Applications.qml's startsOnly), 83 ms of a 116 ms step
+    // into Programs under load (vm-desktop-keeps-pace, 2026-11-14). Plain,
+    // so setting it wakes no binding.
+    readonly property var actsWeighing: ({ rows: null })
+    // How many times weighings read a row's acts alone, and how many rows
+    // they asked of, for the check that each row's is read once a weighing.
+    property int actsRead: 0
+    property int actsRowsAsked: 0
 
     // A row's parts as they're named inside it: "Theme" in Slack.
     function partsIn(row) {
@@ -3129,6 +3149,19 @@ Scope {
     }
 
     function noteKeys() {
+        // A weighing can set off another within it, after a change, so
+        // each asks afresh and gives the outer one its answers back.
+        const outer = actsWeighing.rows;
+        const rows = new Map();
+        actsWeighing.rows = rows;
+        try {
+            weighKeys();
+        } finally {
+            actsRowsAsked += rows.size;
+            actsWeighing.rows = outer;
+        }
+    }
+    function weighKeys() {
         // A keystroke that changes what's typed changes every row, and a row
         // no longer listed can't be named, so it holds no room: the room is
         // weighed afresh for the rows the text now lists, and grows only as
@@ -3295,6 +3328,10 @@ Scope {
         RowsPlace.tell(root, held);
     }
     property int rowsToldEarly: 0
+    // How long weighing the keys of the rows just listed took, in ms, which
+    // a key's showing says beside its laying: every row's foot is weighed
+    // as it's listed, not only those drawn (Trials.qml's composed).
+    property int keysWeighing: 0
 
     onMatchesChanged: {
         // The selection's start keeps to the row it began on, as the
@@ -3308,7 +3345,9 @@ Scope {
             Object.values(placesKept).map(kept => kept.matches).concat([homeKept]));
         rowsMade += 1;
         landed();
+        const weighing = Date.now();
         noteKeys();
+        keysWeighing = Date.now() - weighing;
         noteFigures();
         noteDigits();
     }
@@ -5857,6 +5896,7 @@ Scope {
             const lived = live(found);
             const livedAt = Date.now();
             list.keptLast = null;
+            keysWeighing = 0;
             matches = listedAs(lived);
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
@@ -5874,7 +5914,8 @@ Scope {
             searchParts = { before: 0, lists: foundAt - searchBegan, rows: 0,
                 answers: Date.now() - foundAt, each: {}, within: null,
                 composing: { asking: 0, placing: livedAt - foundAt,
-                    showing: Date.now() - livedAt, kept: list.keptLast } };
+                    showing: Date.now() - livedAt, kept: list.keptLast,
+                    weighing: keysWeighing } };
             return;
         }
         // What the search spends its time on, said with a key that's slow
@@ -8145,6 +8186,10 @@ Scope {
             line: talkLine.shown(),
             // How many rows' keys the foot has weighed afresh (noteKeys).
             weighed: root.rowsWeighed,
+            // How many times weighing them read a row's acts alone, and
+            // how many rows they asked of.
+            actsRead: root.actsRead,
+            actsRowsAsked: root.actsRowsAsked,
             // How many times a key listed a list shown lately again.
             listedAgain: root.listedAgain,
             typed: root.typed,

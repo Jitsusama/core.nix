@@ -135,13 +135,19 @@ Scope {
     // The answers' time, as the answers asked, the rows placed and the list
     // shown, when the key said them, its showing with how many rows were new
     // to the list and how long laying them out took, with how many rows that
-    // drew, built and taken back from those let go.
+    // drew, built and taken back from those let go, then how long weighing
+    // every listed row's keys took, which a drawn row's cost doesn't say.
     function composed(parts) {
         return parts ? `: asking ${parts.asking}, placing ${parts.placing}, showing ${parts.showing}`
             + (parts.kept && parts.kept.fresh + parts.kept.laying > 0
                 ? ` (${parts.kept.fresh} rows new, ${parts.kept.laying}`
-                + ` laying them out${laid(parts.kept)})` : "")
+                + ` laying them out${laid(parts.kept)}${weighed(parts.weighing)})` : "")
             : "";
+    }
+
+    // The keys' weighing, where it took any.
+    function weighed(ms) {
+        return (ms ?? 0) > 0 ? `, ${ms} weighing their keys` : "";
     }
 
     // The rows' time, where they took any: matching every choice looked at,
