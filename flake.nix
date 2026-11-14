@@ -254,6 +254,7 @@
         people = moduleFrom ./modules/people/home.nix { inherit (self.homeModules) quickshell; };
         pi-keys = ./modules/pi-keys/home.nix;
         pi-packages = ./modules/pi-packages/home.nix;
+        pineapple = ./modules/pineapple/home.nix;
         pnpm = ./modules/pnpm/home.nix;
         podman = ./modules/podman/home.nix;
         programs = ./modules/programs/home.nix;

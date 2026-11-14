@@ -73,6 +73,20 @@
       "verdict": "waved:no-tag"
     },
     {
+      "name": "a group he is in is no tag of him, so it never stops (Joel, 13 Nov)",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<!subteam^S0GROUP001|@infra> pineapple override",
+      "verdict": "waved:no-tag"
+    },
+    {
+      "name": "a channel-wide mention is no tag of him either",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<!here> pineapple override",
+      "verdict": "waved:no-tag"
+    },
+    {
       "name": "a mention carrying a display name still names his ID",
       "platform": "slack",
       "author": "U0OTHER001",

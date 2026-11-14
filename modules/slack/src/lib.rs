@@ -166,6 +166,14 @@ impl Found {
     }
 }
 
+/// The methods [`Slack::read`] asks for another module: each only reads.
+pub const READS: [&str; 4] = [
+    "search.messages",
+    "conversations.replies",
+    "conversations.info",
+    "users.info",
+];
+
 /// How long knowing nobody by an address holds before Slack is asked
 /// again, in seconds: someone new to Slack, or saying something there for
 /// the first time, is found within a week.
@@ -361,6 +369,29 @@ impl Slack {
             Some(word @ ("active" | "away")) => word.to_owned(),
             _ => String::new(),
         })
+    }
+
+    /// What Slack answers to one of the methods that only read, for a
+    /// program of another module that wants Slack's own answer, as the
+    /// safe word's reader does (../pineapple): a message's text as Slack
+    /// keeps it, tags by id and all, which [`plain`] turns into names.
+    ///
+    /// # Errors
+    ///
+    /// Why Slack said nothing, and [`Refused::Unreachable`] for any method
+    /// not in [`READS`], since nothing here writes to Slack.
+    pub fn read(
+        &self,
+        account: &Account,
+        method: &str,
+        query: &[(&str, &str)],
+    ) -> Result<Value, Refused> {
+        if !READS.contains(&method) {
+            return Err(Refused::Unreachable(format!(
+                "{method} isn't one of the methods that only read"
+            )));
+        }
+        self.ask(account, method, query)
     }
 
     /// What Slack answers to one method, asked with the sign-in.

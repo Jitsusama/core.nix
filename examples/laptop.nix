@@ -57,6 +57,7 @@ nixpkgs.lib.nixosSystem {
           core.homeModules.network-revive
           core.homeModules.passwords
           core.homeModules.people
+          core.homeModules.pineapple
           core.homeModules.secret-asks
           core.homeModules.session-backup
           core.homeModules.slack

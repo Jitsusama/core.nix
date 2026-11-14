@@ -4,7 +4,7 @@
 
 use std::fmt;
 
-use crate::words::has_run;
+use crate::words::{has_run, own_words, tokens};
 
 /// Something a saying's words name, or the place it was said in.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -290,6 +290,36 @@ impl Reach {
             targets: vec![Target::Everything],
             fell_back,
         }
+    }
+}
+
+impl Context {
+    /// What a thread is about, from the message it starts with: the first
+    /// pull request, branch, repository and quest its own words name. A
+    /// thread opened to ask for a review links the pull request, which is
+    /// how a stop said in it reaches only that one (13 November). Its
+    /// channel's lanes are the reader's to add.
+    #[must_use]
+    pub fn of_thread(root: &str) -> Self {
+        let own = own_words(root);
+        let words = tokens(&own);
+        let mut context = Self::default();
+        for target in targets(&own, &words, words.len()) {
+            match target {
+                Target::Pr { repo, number } if context.pr.is_none() => {
+                    context.pr = Some(number);
+                    context.repo = context.repo.or(repo);
+                }
+                Target::Branch { repo, name } if context.branch.is_none() => {
+                    context.branch = Some(name);
+                    context.repo = context.repo.or(repo);
+                }
+                Target::Repo(repo) if context.repo.is_none() => context.repo = Some(repo),
+                Target::Quest(quest) if context.quest.is_none() => context.quest = Some(quest),
+                _ => {}
+            }
+        }
+        context
     }
 }
 
