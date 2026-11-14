@@ -403,8 +403,16 @@ fn each_measurement_goes_in_the_ledger_and_a_holder_says_what_it_grew_since_one_
     );
     fs::write(root.join(disk_guard::ledger::FILE), before).unwrap();
     let mut guard = guard_over(&root, "1");
-    let status = measured(&mut guard, &root, Duration::from_secs(20));
+    // Started, it says the ledger's measure until its own ends, so wait
+    // for one taken since: on a busy builder the first status comes first.
+    let status = status_once(&mut guard, &root, Duration::from_secs(20), |status| {
+        status["holders_at"].as_f64().is_some_and(|at| at >= now)
+    });
     let grew = &status["holders"][0]["grew"];
+    assert!(
+        grew.is_object(),
+        "no measure of its own came in time: {status}"
+    );
     assert!(grew["bytes"].as_u64().unwrap() >= 64 * 1024, "{status}");
     assert!(grew["over"].as_f64().unwrap() >= 7200.0, "{status}");
     let at: Vec<f64> = disk_guard::ledger::load(&root)
