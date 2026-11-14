@@ -3,6 +3,7 @@
 {
   callPackage,
   coreutils,
+  dash,
   git,
   lib,
   rustPlatform,
@@ -41,8 +42,10 @@ rustPlatform.buildRustPackage {
     NIX_OFFLOAD_SYSTEMD_RUN = lib.getExe' systemd "systemd-run";
   };
   # Its tests bundle a real git tree's commits, and start a run apart with
-  # setsid as a builder does (src/command.rs).
+  # setsid as a builder does, in dash as well, since most builders' sh is
+  # dash (src/command.rs).
   nativeCheckInputs = [
+    dash
     git
     util-linux
   ];
