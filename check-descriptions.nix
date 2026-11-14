@@ -273,7 +273,8 @@
   an-untrusted-client-passes-only-named-env = ''
     the Nix daemon hands a client that isn't trusted only the impure-env variables the machine
     names, and only to fixed-output builds, however the client asks, and logs no value, so a
-    private fetch works without trusting the account that asks
+    private fetch works without trusting the account that asks; the daemon's and the door's
+    units carry the names, and nix.conf, which other Nixes read, none
   '';
   an-unasked-switch-never-brings-back-a-touch-alone = ''
     polkit lets a switch to a system the profile holds go unasked, but not to one whose PAM took a

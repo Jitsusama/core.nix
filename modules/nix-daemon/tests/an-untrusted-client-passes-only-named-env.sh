@@ -3,17 +3,20 @@
 # over a store of its own in the build's folder, and has a client that isn't
 # trusted hand it impure-env entries, as dev and tec do with the credentials
 # for private downloads. A fixed-output build must get the variable the
-# daemon's nix.conf names in untrusted-impure-env-names, and no other, however
-# the client asks; and no value may reach a warning or the daemon's log.
+# daemon's unit names in untrusted-impure-env-names, through NIX_CONFIG as
+# the module sets it, and no other, however the client asks; and no value may
+# reach a warning or the daemon's log.
 #
 # Arguments: systemd-socket-activate, the nix a client runs, the build's
-# expression (impure-env-build.nix), and the door's command, word by word.
+# expression (impure-env-build.nix), the unit's NIX_CONFIG, and the door's
+# command, word by word.
 set -euo pipefail
 
 activate=$1
 nix=$2
 build=$3
-shift 3
+named=$4
+shift 4
 
 here=$(pwd -P)
 socket=$here/door.sock
@@ -24,15 +27,16 @@ experimental-features = nix-command configurable-impure-env
 sandbox = false
 build-users-group =
 substituters =
-untrusted-impure-env-names = NIX_LISTED
 EOF
 
 # The door's daemon gets only the environment named, as under systemd, so it
-# keeps its store in the build's folder, reads only the nix.conf above, and
-# has no NIX_UNLISTED of its own to hand a build.
-HOME=$here NIX_CONF_DIR=$here/conf \
+# keeps its store in the build's folder, reads only the nix.conf above and
+# its unit's NIX_CONFIG, and has no NIX_UNLISTED of its own to hand a build.
+# The clients never see that NIX_CONFIG.
+HOME=$here NIX_CONF_DIR=$here/conf NIX_CONFIG=$named \
   NIX_REMOTE="local?store=$store&state=$here/state&log=$here/log" \
-  "$activate" --accept --inetd -l "$socket" -E HOME -E NIX_CONF_DIR -E NIX_REMOTE "$@" \
+  "$activate" --accept --inetd -l "$socket" \
+  -E HOME -E NIX_CONF_DIR -E NIX_CONFIG -E NIX_REMOTE "$@" \
   2>"$here/door.log" &
 door=$!
 trap 'kill "$door" 2>/dev/null || true' EXIT

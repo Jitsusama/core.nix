@@ -2,6 +2,7 @@
 # its opening comment says what each kind of check proves.
 {
   bareDarwin,
+  bareNixos,
   holds,
   lib,
   macWorkstation,
@@ -102,23 +103,38 @@
       touch $out
     '';
 
-  # The door's daemon, run as its socket unit runs it, hands a client that
-  # isn't trusted only the impure-env variables its nix.conf names, and only to
-  # a fixed-output build, however the client asks, and puts no value in a
-  # warning or a log. Stock Nix 2.34 hands it none, so a tool that fetches
-  # private sources fails from an untrusted account or a sandbox; a patch
-  # that let any name through would let a client set what the daemon set
-  # for everyone's downloads. The door runs the machine's own Nix, so this
-  # proves the daemon's too.
+  # The door's daemon, run as its socket unit runs it with the names a
+  # machine gives in its unit's environment, hands a client that isn't
+  # trusted only those impure-env variables, and only to a fixed-output
+  # build, however the client asks, and puts no value in a warning or a log.
+  # Stock Nix 2.34 hands it none, so a tool that fetches private sources
+  # fails from an untrusted account or a sandbox; a patch that let any name
+  # through would let a client set what the daemon set for everyone's
+  # downloads. The door runs the machine's own Nix, so this proves the
+  # daemon's too, and the daemon's unit must carry the same names, with
+  # nix.conf, which other Nixes read and warn about, carrying none.
   an-untrusted-client-passes-only-named-env =
     let
       inherit (workstation.config.systemd.user) services;
+      named =
+        (bareNixos [
+          self.nixosModules.nix-daemon
+          { jitsusama.nix-daemon.untrustedImpureEnvNames = [ "NIX_LISTED" ]; }
+        ]).config;
+      door = named.systemd.user.services."nix-untrusted@".environment.NIX_CONFIG or "";
+      daemon = named.systemd.services.nix-daemon.environment.NIX_CONFIG or "";
+      apart = door == daemon && !(named.nix.settings ? untrusted-impure-env-names);
     in
     pkgs.runCommandLocal "an-untrusted-client-passes-only-named-env" { } ''
+      ${lib.optionalString (!apart) ''
+        echo 'The daemon and the door get different names, or nix.conf names them.'
+        exit 1
+      ''}
       ${lib.getExe pkgs.bash} ${./tests/an-untrusted-client-passes-only-named-env.sh} \
         ${lib.getExe' pkgs.systemd "systemd-socket-activate"} \
         ${lib.getExe' workstation.config.nix.package "nix"} \
         ${./tests/impure-env-build.nix} \
+        ${lib.escapeShellArg door} \
         ${services."nix-untrusted@".serviceConfig.ExecStart}
       touch $out
     '';
