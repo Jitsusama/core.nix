@@ -243,7 +243,7 @@ Singleton {
     property real chimed: 0
     function chime(chimes) {
         const sound = Options.sounds.addressed ?? "";
-        if (!Knock.knocks(chimes, sound, Quiet.on, Date.now(), chimed))
+        if (!Knock.knocks({ chimes: chimes, sound: sound, held: Quiet.on }, Date.now(), chimed))
             return;
         chimed = Date.now();
         Niri.spawn(["sh", "-c", '"$1" || exec "$2" --volume=0.4 "$3"', "chime",

@@ -73,7 +73,7 @@ QtObject {
             ["two seconds on, it knocks again", true, "knock.oga", false, 11000, 9000, true]
         ];
         for (const [what, chimes, sound, held, now, last, want] of knocking)
-            Expect.same(what, Knock.knocks(chimes, sound, held, now, last), want);
+            Expect.same(what, Knock.knocks({ chimes, sound, held }, now, last), want);
 
         Qt.exit(0);
     }

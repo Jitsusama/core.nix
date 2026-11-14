@@ -8,10 +8,10 @@
 // The least time between two knocks, so a burst knocks once.
 const APART = 2000;
 
-// Whether to knock now: only for one the notices daemon says chimes, a
-// message to Joel himself; only with a sound set; never while notices are
-// held (Quiet.qml: Do Not Disturb, or the screen shared); and not again
-// within `APART` of the last, `last` being when that was, 0 for never.
-function knocks(chimes, sound, held, now, last) {
+// Whether to knock at `now`, `last` being when it last did, 0 for never:
+// only for one the notices daemon says chimes, a message to Joel himself;
+// only with a sound set; never while notices are held (Quiet.qml: Do Not
+// Disturb, or the screen shared); and not again within `APART` of the last.
+function knocks({ chimes, sound, held }, now, last) {
     return chimes && sound !== "" && !held && now - last >= APART;
 }
