@@ -1294,6 +1294,40 @@ in
       "..###..."
     ];
   };
+  # The yarn rolling, drawn rolling left as the cat's profiles face: its
+  # seam turned one way and then the other, a drawing for each two cells it
+  # covers, so it turns as it goes rather than sliding, and its loose
+  # strand flicking up behind it.
+  yarnRollingA = {
+    glyph = nerd "f0507";
+    console = "o";
+    means = "the margin cat's ball of yarn";
+    pixels = [
+      "......#."
+      ".....#.#"
+      ".....#.."
+      "....#..."
+      "..###..."
+      ".#..##.."
+      ".##..#.."
+      "..###..."
+    ];
+  };
+  yarnRollingB = {
+    glyph = nerd "f0507";
+    console = "o";
+    means = "the margin cat's ball of yarn";
+    pixels = [
+      ".....##."
+      "......#."
+      ".....#.."
+      "....#..."
+      "..###..."
+      ".##..#.."
+      ".#..##.."
+      "..###..."
+    ];
+  };
   # The padlock, as locked's is, beside anything typed that stays hidden.
   secret = {
     glyph = nerd "f023";
