@@ -123,6 +123,8 @@ pub struct Real {
     /// being cut. Its commit went on the detached head, the tree was left
     /// changed, and its checks refused to run.
     pub moving: Mutex<()>,
+    /// The runs nothing needs now, by commit and check, which are stopped.
+    pub dropped: Mutex<BTreeSet<(String, String)>>,
 }
 
 impl Real {
@@ -579,7 +581,14 @@ impl Real {
     /// Build `check` at `commit` into `log`, or only the subtests `picked`
     /// names, as `run-subtests --there` builds them; none when it couldn't
     /// be started or ran past its time.
-    fn built(&self, commit: &str, check: &str, picked: &[&str], log: &Path) -> Option<i32> {
+    fn built(
+        &self,
+        commit: &str,
+        check: &str,
+        picked: &[&str],
+        log: &Path,
+        dropped: &dyn Fn() -> bool,
+    ) -> Option<i32> {
         let output = file(log).ok()?;
         let mut clock = Clock::new(log, Instant::now());
         let takes = run(Command::new("nix-offload").args(["there", "--takes"])).unwrap_or_default();
@@ -599,7 +608,7 @@ impl Real {
                     return Some(UNSENT);
                 }
                 Ok(Some(status)) => return status.code(),
-                Ok(None) if clock.overdue(log, Instant::now()) => {
+                Ok(None) if dropped() || clock.overdue(log, Instant::now()) => {
                     let _ = child.kill();
                     let _ = child.wait();
                     return None;
@@ -745,7 +754,8 @@ impl World for Real {
 
     fn build(&self, commit: &str, check: &str, log: &Path) -> Option<i32> {
         let picked = subtests::subtests_of(check);
-        let code = self.built(commit, check, &picked, log)?;
+        let dropped = || self.dropped(commit, check);
+        let code = self.built(commit, check, &picked, log, &dropped)?;
         if picked.is_empty() || code == 0 {
             return Some(code);
         }
@@ -753,7 +763,7 @@ impl World for Real {
             return Some(0);
         }
         if subtests::unbuildable(lines_of(log)) {
-            return self.built(commit, subtests::whole(check), &[], log);
+            return self.built(commit, subtests::whole(check), &[], log, &dropped);
         }
         Some(code)
     }
@@ -897,6 +907,30 @@ impl World for Real {
 
     fn wait(&self, seconds: u64) {
         std::thread::sleep(Duration::from_secs(seconds));
+    }
+
+    fn drop_runs(&self, commit: &str, check: &str) {
+        let run = (commit.to_owned(), check.to_owned());
+        self.dropped
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(run);
+    }
+
+    fn keep_runs(&self, commit: &str, check: &str) {
+        let run = (commit.to_owned(), check.to_owned());
+        self.dropped
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&run);
+    }
+
+    fn dropped(&self, commit: &str, check: &str) -> bool {
+        let run = (commit.to_owned(), check.to_owned());
+        self.dropped
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains(&run)
     }
 }
 
@@ -1548,6 +1582,7 @@ mod tests {
             booted: 0,
             branch: "main".to_owned(),
             moving: Mutex::new(()),
+            dropped: Mutex::default(),
         };
         fs::create_dir_all(&net.state).unwrap();
         net.cloned().unwrap();
