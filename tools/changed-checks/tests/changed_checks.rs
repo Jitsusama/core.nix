@@ -2562,3 +2562,29 @@ fn an_option_it_doesnt_take_is_refused_saying_how_it_is_used() {
         text(&ran.stderr)
     );
 }
+
+#[test]
+fn keeping_main_ends_before_its_next_look_once_another_build_is_installed() {
+    // On 14 November each of the 5 switches that restarted the keeper did
+    // so mid-keep, and at 14:47 one threw away 9 minutes of a keep.
+    let stand_in = StandIn::new("followed");
+    let installed = stand_in.path("installed");
+    fs::write(&installed, "").expect("written");
+    let ran = Command::new(env!("CARGO_BIN_EXE_changed-checks"))
+        .args(["keep-main", "--follow"])
+        .arg(&installed)
+        .env(
+            "CHANGED_CHECKS_REPOSITORY",
+            stand_in.path("no-such-repository"),
+        )
+        .env("XDG_STATE_HOME", stand_in.path("state"))
+        .env("NIX_OFFLOAD_DIR", stand_in.path("offload"))
+        .output()
+        .expect("changed-checks runs");
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("another changed-checks is installed, so this one ends"),
+        "it didn't say why it ended: {}",
+        text(&ran.stderr)
+    );
+}

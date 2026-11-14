@@ -23,7 +23,7 @@
 //! read alone, for the same (`alone.rs`).
 //!
 //! Usage: `changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] [--name-only]
-//! [--keep-base] [--here]`, or `changed-checks keep-main`
+//! [--keep-base] [--here]`, or `changed-checks keep-main [--follow PATH]`
 //!
 //! The working tree is read as Nix reads a git checkout, so a new file
 //! counts only once git knows it (`git add -N`). A change that only some
@@ -114,7 +114,7 @@ const UNSENT: u8 = 75;
 
 const USED: &str = "Usage: changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] \
                     [--name-only] [--keep-base] [--here] [--first]\n       \
-                    changed-checks keep-main";
+                    changed-checks keep-main [--follow PATH]";
 
 /// Where `keep-main` follows main unless `CHANGED_CHECKS_REPOSITORY` names
 /// another.
@@ -320,10 +320,14 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
 
 /// Follow origin's main, keeping each head once it has stood, until stopped.
 fn keep_main(rest: &[String]) -> ExitCode {
-    if !rest.is_empty() {
-        eprintln!("changed-checks: keep-main takes nothing more\n{USED}");
-        return ExitCode::from(USAGE);
-    }
+    let follow = match rest {
+        [] => None,
+        [flag, path] if flag == "--follow" => Some(PathBuf::from(path)),
+        _ => {
+            eprintln!("changed-checks: keep-main takes only --follow PATH\n{USED}");
+            return ExitCode::from(USAGE);
+        }
+    };
     let url = env::var("CHANGED_CHECKS_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned());
     let clone = state().join("changed-checks/main");
     let mut keeper = keep::Keeper::default();
@@ -332,6 +336,15 @@ fn keep_main(rest: &[String]) -> ExitCode {
         keep::STOOD.as_secs()
     );
     loop {
+        if let Some(installed) = &follow
+            && keep::replaced(std::fs::canonicalize(installed), env::current_exe())
+        {
+            eprintln!(
+                "changed-checks: another changed-checks is installed, so this one ends \
+                 between keeps, for the service to start that one"
+            );
+            return ExitCode::SUCCESS;
+        }
         // The store line names the lent builder by its host key, which is
         // new for each one lent, so it says when what's kept is gone.
         let builder = std::fs::read_to_string(offload_dir().join("store")).ok();

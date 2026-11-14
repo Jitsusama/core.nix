@@ -688,6 +688,7 @@ gather {
     ./modules/margin-cat/checks.nix
     ./modules/meaning/checks.nix
     ./modules/memory-modules/checks.nix
+    ./modules/merge-net/checks.nix
     ./modules/mic-mute-light/checks.nix
     ./modules/mpv/checks.nix
     ./modules/mycelium/checks.nix

@@ -26,6 +26,7 @@
 let
   net = pkgs.callPackage ../../tools/merge-net/package.nix { };
   changed-checks = pkgs.callPackage ../../tools/changed-checks/package.nix { };
+  installed = "changed-checks/installed";
   # The account's own tools come first, the machine's next, and these last,
   # for a machine without them.
   path = lib.concatStringsSep ":" [
@@ -65,10 +66,23 @@ in
     Install.WantedBy = [ "default.target" ];
   };
 
+  # The keeper follows the build linked here, as the net follows its own:
+  # a switch leaves it be, and it ends between keeps once this names
+  # another, rather than losing the keep under way. Not in the profile,
+  # where it would stand on every PATH beside a checkout's own.
+  xdg.stateFile.${installed}.source = changed-checks;
+
   systemd.user.services.changed-checks-keeps-main = {
-    Unit.Description = "Keeps each head of core's main's checks where changed-checks runs are sent";
+    Unit = {
+      Description = "Keeps each head of core's main's checks where changed-checks runs are sent";
+      X-SwitchMethod = "keep-old";
+    };
     Service = {
-      ExecStart = "${lib.getExe changed-checks} keep-main";
+      ExecStart = lib.concatStringsSep " " [
+        (lib.getExe changed-checks)
+        "keep-main --follow"
+        "${config.xdg.stateHome}/${installed}/bin/changed-checks"
+      ];
       Environment = [ "PATH=${path}" ];
       Restart = "always";
       RestartSec = 60;

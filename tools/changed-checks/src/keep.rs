@@ -24,8 +24,15 @@
 //! starts with nothing kept, as one lent that evening did; never on a
 //! timer, since a builder is given back after 15 idle minutes and sending
 //! on one would keep it lent all day.
+//!
+//! A switch leaves the keeper be, and it ends between keeps once another
+//! build is installed where `--follow` names, for the service to start
+//! that one: on 14 November each of the 5 switches that restarted it did
+//! so mid-keep, and the one at 14:47 threw away 9 minutes of a keep and
+//! the record it would have left, so the next keep evaluated whole.
 
-use std::path::Path;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
@@ -141,11 +148,50 @@ fn git(folder: Option<&Path>, arguments: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&ran.stdout).trim().to_owned())
 }
 
+/// Whether the build installed is another than the one running, both as
+/// their paths resolve. A running build no longer on disk has been
+/// replaced; an installed one that can't be read says nothing.
+pub fn replaced(installed: io::Result<PathBuf>, running: io::Result<PathBuf>) -> bool {
+    let Ok(installed) = installed else {
+        return false;
+    };
+    !running
+        .and_then(std::fs::canonicalize)
+        .is_ok_and(|running| running == installed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const ONE: Option<&str> = Some("one");
+
+    #[test]
+    fn the_keeper_ends_once_another_build_is_installed() {
+        let dir = std::env::temp_dir().join(format!("keep-follow-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (old, new) = (dir.join("old"), dir.join("new"));
+        std::fs::write(&old, "").unwrap();
+        std::fs::write(&new, "").unwrap();
+        let installed = || std::fs::canonicalize(&new);
+        assert!(
+            !replaced(installed(), Ok(new.clone())),
+            "the build installed runs"
+        );
+        assert!(
+            replaced(installed(), Ok(old.clone())),
+            "an older build runs"
+        );
+        assert!(
+            replaced(installed(), Ok(dir.join("collected"))),
+            "the running build is gone from disk"
+        );
+        assert!(
+            !replaced(std::fs::canonicalize(dir.join("unread")), Ok(old)),
+            "nothing can be read of what's installed"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn a_new_head_waits_until_it_has_stood() {
