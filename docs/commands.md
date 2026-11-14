@@ -377,7 +377,9 @@ The kit walks the words down the tree the command declares
 - **The singular is an alias**, answered silently and listed once, beside
   its collection: `devices (or device)`. An old spelling a caller still
   types is a subcommand left out of help, so it keeps working and the help
-  reads one way.
+  reads one way. One is matched even where its collection takes a name,
+  so `spend-watch findings expect KEY` still answers beside
+  `spend-watch findings KEY expect`; no listed word is.
 - **Actions sit on their resource**, as `eero internet sqm on` and
   `eero speeds run`, rather than as verbs at the top, because a verb at
   the top has to name its resource again.
