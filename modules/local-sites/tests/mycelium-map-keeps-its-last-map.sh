@@ -40,23 +40,27 @@ if ! said=$("$BASH" "$writer" "$filter" "$work/site"); then
   echo "With no node answering, the writer failed, so its unit would fail every 20 seconds." >&2
   exit 1
 fi
-if [ "$(cat "$work/site/now.json")" != '{"kept":true}' ]; then
+map=$(< "$work/site/now.json")
+if [ "$map" != '{"kept":true}' ]; then
   echo "With no node answering, the writer changed the last map." >&2
   exit 1
 fi
-if [ -z "$said" ] || [ "$(printf '%s\n' "$said" | wc -l)" -ne 1 ]; then
+if [ -z "$said" ] || [[ $said == *$'\n'* ]]; then
   echo "With no node answering, the writer said '$said' rather than one line." >&2
   exit 1
 fi
-if [ "$(ls -A "$work/site")" != now.json ]; then
-  echo "The writer left $(ls -A "$work/site") in the site's folder." >&2
+shopt -s nullglob dotglob
+left=("$work/site"/*)
+if [ "${left[*]}" != "$work/site/now.json" ]; then
+  echo "The writer left ${left[*]} in the site's folder." >&2
   exit 1
 fi
 
 rm "$work/down"
 "$BASH" "$writer" "$filter" "$work/site"
-if [ "$("$jq" -c '[.sessions[].id, .teams[].key, .machines[].name]' "$work/site/now.json")" != '["a","Y","m"]' ]; then
-  echo "Once the node answered, the map read $(cat "$work/site/now.json")." >&2
+drawn=$("$jq" -c '[.sessions[].id, .teams[].key, .machines[].name]' "$work/site/now.json")
+if [ "$drawn" != '["a","Y","m"]' ]; then
+  echo "Once the node answered, the map drew $drawn." >&2
   exit 1
 fi
 if ! "$jq" -e '[.. | strings] | index("words") == null' "$work/site/now.json" > /dev/null; then

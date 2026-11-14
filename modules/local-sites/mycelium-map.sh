@@ -26,7 +26,9 @@ for view in sessions "swarm --json" machines messages; do
   name=${view%% *}
   # shellcheck disable=SC2086 # a view's words are meant to split
   if ! "${ask[@]}" $view > "$work/$name" 2> "$work/$name.said"; then
-    echo "mycelium didn't answer '$view' ($(head -c 200 "$work/$name.said" | tr '\n' ' ')); the last map stays"
+    said=$(< "$work/$name.said")
+    said=${said//$'\n'/ }
+    echo "mycelium didn't answer '$view' (${said:0:200}); the last map stays"
     exit 0
   fi
 done
