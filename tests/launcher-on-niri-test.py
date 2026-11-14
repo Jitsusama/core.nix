@@ -3485,6 +3485,9 @@ def test_letters_typed_quicker_than_the_rest_make_one_drawer(shell: Shell) -> No
     Chrome's drawer, "calend" 272 ms behind Google Calendar's first (2026-11-13, 06:14).
     A program's drawer, made in 4 to 14 ms here, never joins its key's frame, so typing onto
     one shows it; each letter makes its row again, and its drawer was made again each time.
+    Only the drawers followed before the last letter are judged: once the letters rest, a
+    loaded builder can list Foot's row again, and its drawer rightly follows the new row
+    (75a49d9587e9, the net).
     """
 
     def footed(since: int) -> None:
@@ -3493,9 +3496,12 @@ def test_letters_typed_quicker_than_the_rest_make_one_drawer(shell: Shell) -> No
         shell.held_still()
 
     said = typed_under_the_rest(shell, "foot", footed)
-    followed = [report for report in said if report.startswith("drawer follows ")]
-    assert followed == ["drawer follows program:foot"], (
-        f"a drawer was made between letters: {drawer_trace(said)}"
+    last = max(at for at, report in enumerate(said) if report.startswith("letter typed "))
+    between = [report for report in said[:last] if report.startswith("drawer follows ")]
+    after = [report for report in said[last:] if report.startswith("drawer follows ")]
+    assert between == [], f"a drawer was made between letters: {drawer_trace(said)}"
+    assert after[:1] == ["drawer follows program:foot"], (
+        f"Foot's drawer never followed the letters: {drawer_trace(said)}"
     )
 
 
