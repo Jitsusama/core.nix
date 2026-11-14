@@ -59,7 +59,9 @@ Scope {
         const screen = surface.screen;
         if (!up || !screen)
             return null;
+        // Quickshell's type files can't place margins, so qmllint can't.
         const left = surface.margins.left + card.x; // qmllint disable unqualified
+        // The same holds for the top margin.
         const top = surface.margins.top + card.y; // qmllint disable unqualified
         // Each a frame in the surface's points, on the whole points it covers.
         const framed = one => {
