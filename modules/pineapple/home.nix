@@ -19,7 +19,17 @@ let
   '';
 in
 {
+  imports = [ ../quickshell/providers.nix ];
+
   home.packages = [ pineapple ];
+
+  # Its rows in For You (SafeWord.qml), read from `pineapple serve` below;
+  # on a machine without the shell nothing reads it. Beside Sound's, since
+  # both only give For You what to do.
+  jitsusama.quickshell.launcher.providers.pineapple = {
+    order = 46;
+    source = ./SafeWord.qml;
+  };
 
   systemd.user.services.pineapple-slack = {
     Unit = {

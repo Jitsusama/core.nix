@@ -603,7 +603,17 @@
       "id": "for-you:source:pineapple",
       "in": "on:waiting",
       "name": "Safe Word",
+      "verb": "open",
+      "glyph": "stopped",
+      "tells": {
+        "stop": "Your agents stopped here until you resume them. Return opens where it was said.",
+        "asked": "Nothing stopped. Stop it yourself if they meant it.",
+        "joke": "Nothing stopped. Stop it yourself if it wasn't a joke.",
+        "no-tag": "Nothing stopped, since only a tag of you counts. Stop it yourself if they meant it.",
+        "resume": "Only you resume. Resume it if you agree."
+      },
       "said": {
+        "count": "{count} times",
         "you": "You",
         "someone": "Someone",
         "stopped": "{who} stopped your agents on {reach}",
