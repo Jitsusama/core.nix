@@ -433,8 +433,12 @@ fn confirmed_apart(world: &dyn World, state: &State, commit: &str, check: &str) 
         return Some(false);
     }
     let took = began.elapsed().as_secs();
-    if let Err(why) = state.record(commit, check, Ran::Failed, code, &log, took) {
-        state.say(&why);
+    // Kept for the subtests too, so a search on them that blames this
+    // commit needn't run them here again (`alone_at_head`).
+    for kept in [check, narrowed.as_str()] {
+        if let Err(why) = state.record(commit, kept, Ran::Failed, code, &log, took) {
+            state.say(&why);
+        }
     }
     state.say(&format!(
         "{check} failed at {} (2 of 2), on {} alone",
@@ -1700,26 +1704,7 @@ fn search(
         }));
     }
     let merges = to_search(world, state, base, head, test)?;
-    // Each step runs only the subtests that failed in both runs at the head
-    // (subtests.rs), and what it finds is checked at its parent the same way.
-    // Those main lists as quarantined are left out, since they excuse a run.
-    let listed = world
-        .fetched()
-        .map(|newest| world.listed_subtests(&newest, test))
-        .unwrap_or_default();
-    let at_head: Vec<_> = (1..=2)
-        .map(|run| {
-            &subtests::failed_in(crate::world::lines_of(&state.log(head, test, run))) - &listed
-        })
-        .collect();
-    let narrowed = subtests::narrowed(test, &at_head);
-    if narrowed != test {
-        state.say(&format!(
-            "searching {test} on the subtests that failed in both its runs at {}: {}",
-            short(head),
-            subtests::subtests_of(&narrowed).join(", ")
-        ));
-    }
+    let narrowed = narrowed_at(world, state, head, test);
     // Whether main's newest head fixed it is asked beside the search's first
     // step, and the search waits for the answer before its second. On
     // 7 November asking first took 16 minutes, two VM runs one after the
@@ -1756,6 +1741,19 @@ fn search(
     if fixed()? {
         return Ok(None);
     }
+    let (bad, narrowed) = if narrowed != test && bad.as_deref() == Some(head) {
+        alone_at_head(
+            world,
+            state,
+            &merges,
+            test,
+            narrowed,
+            &|| fixed() == Ok(false),
+            splits,
+        )
+    } else {
+        (bad, narrowed)
+    };
     let bad = bad.filter(|commit| !never_built(state, commit, &narrowed));
     let failing = bad.clone().unwrap_or_else(|| head.to_owned());
     let log = state.log(&failing, &narrowed, 2);
@@ -1803,6 +1801,78 @@ fn search(
         test: test.to_owned(),
         log,
     })))
+}
+
+/// The check a search for `test` failing at `head` runs: only the subtests
+/// that failed in both runs there (subtests.rs), less those main lists as
+/// quarantined, since they excuse a run; the whole test where none can be
+/// named. What it finds is checked at its parent the same way.
+fn narrowed_at(world: &dyn World, state: &State, head: &str, test: &str) -> String {
+    let listed = world
+        .fetched()
+        .map(|newest| world.listed_subtests(&newest, test))
+        .unwrap_or_default();
+    let at_head: Vec<_> = (1..=2)
+        .map(|run| {
+            &subtests::failed_in(crate::world::lines_of(&state.log(head, test, run))) - &listed
+        })
+        .collect();
+    let narrowed = subtests::narrowed(test, &at_head);
+    if narrowed != test {
+        state.say(&format!(
+            "searching {test} on the subtests that failed in both its runs at {}: {}",
+            short(head),
+            subtests::subtests_of(&narrowed).join(", ")
+        ));
+    }
+    narrowed
+}
+
+/// The merge to blame and the check that found it, once a search narrowed
+/// to `narrowed` blamed the last of `merges`, the head. A bisect counts
+/// its last merge as failing without a run there, so subtests that pass
+/// alone even at the head, failing only after the others run, put the
+/// blame on it. On 14 November vm-desktop-launcher-waits-on-joel's two
+/// passed alone at the four merges before #4364, which was blamed, and
+/// its revert mended nothing. So the subtests are run at the head too: if
+/// they fail there the head stands, and if they pass alone the whole test
+/// is searched instead. None to blame when no run there was taken.
+fn alone_at_head(
+    world: &dyn World,
+    state: &State,
+    merges: &[String],
+    test: &str,
+    narrowed: String,
+    go_on: &dyn Fn() -> bool,
+    splits: &dyn Fn() -> usize,
+) -> (Option<String>, String) {
+    let Some(head) = merges.last() else {
+        return (None, narrowed);
+    };
+    // Failing alone there already, as a failure confirmed on them does
+    // (`confirmed_apart`), says so without another run.
+    let failed = if state.runs(head, &narrowed).contains(&Ran::Failed) {
+        Some(false)
+    } else {
+        passes(world, state, head, &narrowed)
+    };
+    match failed {
+        Some(false) => (Some(head.clone()), narrowed),
+        None => (None, narrowed),
+        Some(true) => {
+            state.say(&format!(
+                "{} passes alone at {}, so the search runs {test} whole",
+                subtests::subtests_of(&narrowed).join(", "),
+                short(head)
+            ));
+            let bad = if merges.len() == 1 {
+                Some(head.clone())
+            } else {
+                bisect(world, state, merges, test, go_on, splits)
+            };
+            (bad, test.to_owned())
+        }
+    }
 }
 
 /// Whether every failed run of `subtests` at `commit` stopped at a build
@@ -3626,6 +3696,31 @@ mod tests {
         assert!(
             world.built().contains(&("m1".into(), "vm-a".into())),
             "m1, before m2, passes"
+        );
+    }
+
+    #[test]
+    fn a_search_whose_subtests_pass_alone_at_its_head_runs_the_whole_test() {
+        let state = state("subtests-pass-alone");
+        state.set_heads("s", "s").unwrap();
+        state.make().unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 m2 h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("m2", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("m2"),
+            "test_b passes alone even at the head, so only the whole test can say m2 broke it"
         );
     }
 
