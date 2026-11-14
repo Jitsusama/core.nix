@@ -666,6 +666,7 @@ mod tests {
         };
         let mut quick = Kept {
             slow_from: Duration::MAX,
+            file_slow_from: Duration::MAX,
             ..Kept::default()
         };
         let read = (degrees(&mut slow, first), degrees(&mut quick, first));
@@ -681,6 +682,44 @@ mod tests {
             "the slow one kept, the quick read"
         );
         assert_eq!(kept, json!(52.0), "the slow one read once kept a while");
+    }
+
+    /// A chip whose read is quick whole but slow for each sensor it
+    /// reads is kept as a slow one is: the battery's chip on Joel's
+    /// laptop reads three sensors in 5 to 11 ms, each a call to the
+    /// firmware, under the whole chip's `SLOW`, and was read each second
+    /// (2026-11-13). Which counts as slow is set here, since a file in a
+    /// test folder reads quickly.
+    #[test]
+    fn a_chip_slow_for_each_sensor_is_kept_though_quick_whole() {
+        let folder = std::env::temp_dir().join(format!("machine-each-{}", std::process::id()));
+        let chip = folder.join("sys/class/hwmon/hwmon0");
+        std::fs::create_dir_all(&chip).expect("the chip's folder is made");
+        let temperature = |says: &str| {
+            std::fs::write(chip.join("temp1_input"), says).expect("the file is written");
+        };
+        std::fs::write(chip.join("name"), "BAT0").expect("the name is written");
+        temperature("31000");
+        let root = Root::new(&folder);
+        let degrees = |kept: &mut Kept, at: Instant| {
+            sensors(&root, kept, at)[0]["temperatures"][0]["temperature_c"].clone()
+        };
+        let first = Instant::now();
+        let mut kept = Kept {
+            slow_from: Duration::MAX,
+            file_slow_from: Duration::ZERO,
+            ..Kept::default()
+        };
+        degrees(&mut kept, first);
+        temperature("32000");
+        let soon = degrees(&mut kept, first + Duration::from_secs(1));
+        let later = degrees(&mut kept, first + SLOW_KEPT);
+        std::fs::remove_dir_all(&folder).ok();
+        assert_eq!(
+            (soon, later),
+            (json!(31.0), json!(32.0)),
+            "kept a second on, then read once kept a while"
+        );
     }
 
     /// A chip found slow stays slow though a later pass is quick, as
