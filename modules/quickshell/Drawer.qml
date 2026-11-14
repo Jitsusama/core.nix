@@ -2497,7 +2497,9 @@ Floating {
                                 plain: String(oneAct.modelData.name)
                                 leading: drawer.pitch
                                 wraps: false
-                                ink: Theme.action
+                                // What he reads and acts on, in text, its key muted; colour
+                                // is a glyph's, never a word's (VKCF3Z, df110a81, step 4).
+                                ink: Theme.text
                                 font: keyText.font
                             }
                         }
@@ -2505,7 +2507,9 @@ Floating {
                 }
 
                 // Its nerdy bits: one line naming them, muted at Label as a
-                // heading is, with za beside it in the accent, and while
+                // heading is, with za beside it in text, as every key in a
+                // foot is (VKCF3Z, df110a81: the accent only where the keys
+                // go), and while
                 // they're open each bit under it, its name muted and its
                 // value at Figure, an identifier breaking at its own marks
                 // rather than running past the edge.
@@ -2555,7 +2559,7 @@ Floating {
                             plain: "za"
                             leading: drawer.pitch
                             wraps: false
-                            ink: Theme.accent
+                            ink: Theme.text
                             font.family: Theme.level.note.family
                             font.pointSize: Theme.level.note.pointSize
                         }
