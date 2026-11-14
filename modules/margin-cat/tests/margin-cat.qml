@@ -549,6 +549,21 @@ QtObject {
         expect("stepped past its hold, it's cut short; still holding, it isn't",
             [Paths.replans(slow, 0, true), Paths.replans(down, 100, true),
                 Paths.replans(down, 240, true)], [false, true, false]);
+        // Its seat said only once the hold is over, as niri can on a
+        // loaded machine, the way there begins where the hold left it,
+        // then, never part way along it: cut into a walk, the move was
+        // never its own (the-margin-cat-follows-the-keys-on-niri, a
+        // builder drawing 87 ms apart, 2026-11-14).
+        const resumed = Paths.resumed(down, 300);
+        expect("its seat said late, its way there begins as it's said",
+            [Paths.frame(resumed, 299).x, Paths.frame(resumed, 299).beat,
+                Paths.frame(resumed, 300 + down.ends - 231).done], [100, "rides", true]);
+        expect("its seat said as it holds, nothing of the move is moved",
+            Paths.resumed(down, 100).ahead, down.ahead);
+        const seatless = Paths.moves(seat(100), null, world({ way: 1 }));
+        expect("with no seat yet, it holds on a little past the slide, then no more",
+            [Paths.holdsOn(seatless, 231 + 200), Paths.holdsOn(seatless, 231 + 300)],
+            [true, false]);
         const still = frames => frames.every((at, i) => i === 0
             || Math.hypot(at.x - frames[i - 1].x, at.y - frames[i - 1].y) <= 4);
         for (const [way, name] of [[1, "down"], [-1, "up"]]) {
