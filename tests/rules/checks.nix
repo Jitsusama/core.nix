@@ -195,6 +195,7 @@
         pi-spawner = pkgs.callPackage ../../modules/pi/spawner/package.nix { };
         pineapple-slack = pkgs.callPackage ../../modules/pineapple/package.nix { };
         plymouth-waits = pkgs.callPackage ../../modules/plymouth/waits/package.nix { };
+        quickshell-hands-over = import ../../modules/quickshell/hands-over.nix { inherit pkgs; };
         recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
         shell-weighs = pkgs.callPackage ../../modules/quickshell/shell-weighs/package.nix { };

@@ -869,6 +869,9 @@ let
     ];
     text = builtins.readFile ./starts-warm.sh;
   };
+
+  handsOver = import ./hands-over.nix { inherit pkgs; };
+  shellCommand = "${lib.getExe' pkgs.quickshell "quickshell"} --no-detailed-logs";
 in
 {
   imports = [
@@ -2696,15 +2699,16 @@ in
         # below).
         X-Restart-Triggers = shellFiles;
         # A switch leaves the shell running, and quickshell-takes-new-files
-        # restarts it once the launcher is idle. Restarted inside the switch,
-        # it went whenever the switch's turn came: at 18:08 on 13 November,
-        # 60 s after the launcher closed, as Joel opened it again. Stopped
-        # with the switch's batch, it stayed down 91 s on 10 November while
-        # disk-guard's stop ran to its timeout. Until its restart the old
-        # shell runs with the new files linked under it, which is safe: it
-        # made every surface and provider from its files as it started
-        # (shell.qml, Launcher.qml, Facts.qml) and loads none later, so it
-        # draws as it did until its restart brings the new ones.
+        # hands it over to a new one once the launcher is idle (ExecReload).
+        # Restarted inside the switch, it went whenever the switch's turn
+        # came: at 18:08 on 13 November, 60 s after the launcher closed, as
+        # Joel opened it again. Stopped with the switch's batch, it stayed
+        # down 91 s on 10 November while disk-guard's stop ran to its
+        # timeout. Until its handover the old shell runs with the new files
+        # linked under it, which is safe: it made every surface and provider
+        # from its files as it started (shell.qml, Launcher.qml, Facts.qml)
+        # and loads none later, so it draws as it did until the new shell
+        # brings the new ones.
         X-SwitchMethod = "keep-old";
       };
       Service = {
@@ -2714,7 +2718,21 @@ in
         # logging thread: two wakes a second of the locked shell's, for lines
         # nobody reads (2026-10-31). Without them its file keeps what's shown,
         # as the journal does.
-        ExecStart = "${lib.getExe' pkgs.quickshell "quickshell"} --no-detailed-logs";
+        ExecStart = shellCommand;
+        # A restart left the desktop with no launcher, bar or lock client for
+        # about a second as the new shell loaded, and a chord said then
+        # waited on it: 5.5 s once, behind a slow stop (2026-11-13). A reload
+        # starts the new shell held beside the old one, which answers until
+        # the new one is ready, then hands it the unit, the windows and the
+        # launcher's socket. The new shell tells systemd it's the main
+        # process through the script, so any of the unit's processes may.
+        # Handed over, it runs the files ExecStartPost below links, so the
+        # link follows it.
+        ExecReload = [
+          "${lib.getExe handsOver} ${shellCommand}"
+          "${lib.getExe' pkgs.coreutils "ln"} -sfn ${shellFilesList} %t/quickshell-files"
+        ];
+        NotifyAccess = "all";
         # GTK's platform theme, which other Qt programs take, changes the
         # shell's default font and slows its start, and it draws from the
         # theme itself.
@@ -2741,7 +2759,8 @@ in
         # Quickshell watches every file it loaded, and each one's folder, to
         # reload when one changes: one inotify holding 194 watches on Joel's
         # shell (2026-11-12). Here they are store files, which never change,
-        # and the unit is restarted onto new ones instead (its companion below),
+        # and the shell is handed over onto new ones instead (its companion
+        # below),
         # so the watch is turned off. shell-preview and the nested niri
         # checks run the working copy outside this unit, and keep it.
         Environment = [

@@ -104,26 +104,53 @@
       triggers = services.quickshell.Unit.X-Restart-Triggers or [ ];
       takesNewFiles = services.quickshell-takes-new-files.Service.ExecStart or [ ];
       companion = lib.concatStringsSep " " takesNewFiles;
+      reload = lib.concatStringsSep " " (lib.toList (services.quickshell.Service.ExecReload or [ ]));
+      # The list the companion compares with, which a handover links as a start does, or every
+      # switch after would hand over again with nothing changed.
+      # Compared as text, since a search can't carry what the paths depend on.
+      list = builtins.unsafeDiscardStringContext (lib.last (lib.splitString " " companion));
+      reloadSaid = builtins.unsafeDiscardStringContext reload;
     in
     holds "quickshell-restarts-with-its-files"
-      "A Quickshell file isn't among its unit's triggers, the switch restarts the shell itself, or nothing brings it onto its new files after."
+      "A Quickshell file isn't among its unit's triggers, the switch restarts the shell itself, nothing brings it onto its new files after, or its reload doesn't hand it over and link its files."
       (
         files != { }
         && lib.all (file: lib.elem "${file.source}" triggers) (lib.attrValues files)
         && (services.quickshell.Unit.X-SwitchMethod or null) == "keep-old"
         && lib.hasInfix "takes-new-files.sh" companion
+        && lib.hasInfix "quickshell-hands-over" reload
+        && lib.hasInfix "ln -sfn ${list} %t/quickshell-files" reloadSaid
         && home.home.activation ? quickshellTakesNewFiles
       );
 
-  # A switch leaves the shell running and its companion restarts it onto the
+  # A switch leaves the shell running and its companion hands it over onto the
   # new files once the launcher has been shut 30 s, or at its bound however
-  # busy the launcher is, and leaves a shell already on its files, or one
-  # stopped, be (modules/quickshell/tests/takes-new-files.sh).
+  # busy the launcher is, restarting it only if the handover refuses, and
+  # leaves a shell already on its files, or one stopped, be
+  # (modules/quickshell/tests/takes-new-files.sh).
   the-shell-takes-a-switchs-files-at-idle =
     pkgs.runCommandLocal "the-shell-takes-a-switchs-files-at-idle" { }
       ''
         ${lib.getExe' pkgs.coreutils "timeout"} 60 ${lib.getExe pkgs.bash} \
           ${../tests/takes-new-files.sh} ${../takes-new-files.sh}
+        touch $out
+      '';
+
+  # The handover waits for the old shell's launcher and Super+S's line to be shut before
+  # ending it, restarts instead on a locked screen, and leaves the old shell the unit's when
+  # the new one fails as it loads (modules/quickshell/tests/hands-over.sh).
+  the-shell-hands-over-only-once-its-surfaces-are-shut =
+    pkgs.runCommandLocal "the-shell-hands-over-only-once-its-surfaces-are-shut"
+      {
+        nativeBuildInputs = [
+          pkgs.jq
+          pkgs.procps
+          pkgs.util-linux
+        ];
+      }
+      ''
+        ${lib.getExe' pkgs.coreutils "timeout"} 120 ${lib.getExe pkgs.bash} \
+          ${../tests/hands-over.sh} ${../shell-hands-over.sh}
         touch $out
       '';
 
