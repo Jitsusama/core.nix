@@ -1,0 +1,6 @@
+home · Study · 3 radios · read 1 min 7 s ago
+
+band        node   channel  busy              devices
+2.4 GHz     Study        6  18 %  ⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀        2
+5 GHz low   Study       52   5 %  ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀        3
+5 GHz high  Study      149  39 %  ⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀        4

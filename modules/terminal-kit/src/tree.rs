@@ -23,12 +23,13 @@ pub struct Walked<'a> {
 }
 
 impl Walked<'_> {
-    /// The deepest help, titled with its whole path, as `eero devices`,
-    /// and taking its parent's exits where it names none of its own.
+    /// The deepest help, titled with its whole path and the names the way
+    /// down needs, as `eero nodes <name> devices`, and taking its parent's
+    /// exits where it names none of its own.
     pub fn shown(&self) -> Help {
         let deepest = self.chain.last().copied().cloned();
         let mut shown = deepest.unwrap_or_else(|| Help::new("", ""));
-        shown.name = self.path();
+        shown.name = self.titled();
         if shown.exits.is_empty()
             && let Some(parent) = self.chain.iter().rev().find(|help| !help.exits.is_empty())
         {
@@ -37,7 +38,25 @@ impl Walked<'_> {
         shown
     }
 
-    /// The path the words name, as `eero nodes devices`.
+    /// The path as a help's title says it: each level above the deepest
+    /// with the arguments it takes before the next, since a subcommand
+    /// under a name needs one. The deepest's own are its help's to list.
+    fn titled(&self) -> String {
+        let above = self.chain.len().saturating_sub(1);
+        self.chain
+            .iter()
+            .enumerate()
+            .flat_map(|(at, help)| {
+                let needs = if at < above { &help.arguments[..] } else { &[] };
+                std::iter::once(help.name.as_str())
+                    .chain(needs.iter().map(|argument| argument.name.as_str()))
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// The path the words name, as `eero nodes devices`: a command, as a
+    /// try-line says it.
     pub fn path(&self) -> String {
         self.chain
             .iter()
@@ -85,6 +104,9 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
     };
     let mut filled = 0;
     let mut value_next = false;
+    // The words that led here, as a try-line types them again: each
+    // subcommand by its name, and each name as given.
+    let mut typed = vec![root.name.clone()];
     for (at, word) in args.iter().enumerate() {
         if value_next {
             value_next = false;
@@ -100,6 +122,7 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
         let here = walked.chain.last().copied().unwrap_or(root);
         if takes_name(here, filled) {
             filled += 1;
+            typed.push(quoted(word));
             continue;
         }
         if let Some(sub) = here
@@ -108,6 +131,7 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
             .find(|sub| sub.name == *word || sub.aliases.contains(word))
         {
             walked.words[at].clone_from(&sub.name);
+            typed.push(sub.name.clone());
             walked.chain.push(sub);
             filled = 0;
             continue;
@@ -124,9 +148,20 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
         } else {
             flags::unknown("command", word, &here.command_names())
         };
-        return Err(failure.try_this(format!("{path} --help")));
+        typed.push("--help".to_owned());
+        return Err(failure.try_this(typed.join(" ")));
     }
     Ok(walked)
+}
+
+/// A word as a shell reads it back whole: in double quotes where it holds
+/// a space or is empty, as `"Main Floor"`.
+fn quoted(word: &str) -> String {
+    if word.is_empty() || word.contains(char::is_whitespace) {
+        format!("\"{}\"", word.replace('"', "\\\""))
+    } else {
+        word.to_owned()
+    }
 }
 
 #[cfg(test)]
@@ -195,6 +230,24 @@ mod tests {
     }
 
     #[test]
+    fn a_subcommands_help_is_titled_with_the_names_it_needs() {
+        let help = eero();
+        let walked = walk(&help, &words("nodes Study devices")).expect("a node's devices");
+        assert_eq!(
+            walked.shown().name,
+            "eero nodes <name> devices",
+            "the title left out the name a node's devices need"
+        );
+        assert_eq!(walked.path(), "eero nodes devices");
+        let walked = walk(&help, &words("nodes Study")).expect("a node");
+        assert_eq!(
+            walked.shown().name,
+            "eero nodes",
+            "a level's own arguments are its help's, not its title's"
+        );
+    }
+
+    #[test]
     fn an_alias_is_put_as_the_name_it_stands_for() {
         let help = eero();
         let walked = walk(&help, &words("device Pixel --json")).expect("device is devices");
@@ -225,6 +278,22 @@ mod tests {
         assert_eq!(failure.then.as_deref(), Some("eero --help"));
         let failure = walk(&help, &words("internet sqn")).expect_err("sqn is no command");
         assert_eq!(failure.then.as_deref(), Some("eero internet --help"));
+    }
+
+    #[test]
+    fn the_try_line_keeps_the_names_typed_on_the_way() {
+        // Without the name, eero nodes devices --help would ask for a node
+        // called devices.
+        let help = eero();
+        let typed: Vec<String> = ["node", "Main Floor", "devices", "extra"]
+            .map(str::to_owned)
+            .to_vec();
+        let failure = walk(&help, &typed).expect_err("extra is one too many");
+        assert_eq!(
+            failure.then.as_deref(),
+            Some("eero nodes \"Main Floor\" devices --help"),
+            "the try-line lost the node's name, or didn't quote it"
+        );
     }
 
     #[test]

@@ -7,7 +7,7 @@ use super::figures::{count, figure, maybe, rate, said, signed, unknown, words, y
 use super::marks::marks;
 use super::text::{Align, Line, Page, Table, muted, plain, strong};
 use super::{
-    counted, device_name, facts, head, labelled, location, off_name, on_node, titled, when,
+    counted, device_name, facts, head, labelled, location, off_name, on_node, titled_within, when,
 };
 use crate::model::{Device, DeviceOff, HomeNetwork, Rate};
 
@@ -19,6 +19,24 @@ pub const NAMES: usize = 12;
 struct Every<'a> {
     devices: &'a [Device],
     devices_off: &'a [DeviceOff],
+}
+
+/// A profile's device eero hasn't seen lately, which the record keeps
+/// neither as on now nor as off: known only by its hardware address and
+/// the name the profile gives it.
+#[derive(serde::Serialize)]
+pub struct Unseen<'a> {
+    pub mac: &'a str,
+    pub name: Option<&'a str>,
+}
+
+/// A profile's devices, with those it holds that eero hasn't seen lately
+/// beside them, so a program reads every one the profile holds.
+#[derive(serde::Serialize)]
+struct InProfile<'a> {
+    devices: &'a [Device],
+    devices_off: &'a [DeviceOff],
+    unseen: &'a [Unseen<'a>],
 }
 
 #[derive(serde::Serialize)]
@@ -37,15 +55,52 @@ pub fn all_json(model: &HomeNetwork) -> Result<String, String> {
     )
 }
 
+/// A profile's devices as eero.devices/1, with `unseen` added.
+pub fn in_profile_json(model: &HomeNetwork, unseen: &[Unseen]) -> Result<String, String> {
+    super::json::slice(
+        model,
+        "eero.devices/1",
+        InProfile {
+            devices: &model.devices,
+            devices_off: &model.devices_off,
+            unseen,
+        },
+    )
+}
+
+/// The devices a profile holds that eero hasn't seen lately, by the name
+/// the profile gives each and its hardware address.
+pub fn unseen(page: &mut Page, unseen: &[Unseen]) {
+    if unseen.is_empty() {
+        return;
+    }
+    page.blank();
+    page.line(vec![strong(format!(
+        "{} not seen lately",
+        counted(unseen.len(), "device")
+    ))]);
+    page.blank();
+    let mut table = Table::new(&[Align::Left; 2]);
+    table.header(&["device", "hardware"]);
+    table.shortens(0, NAMES);
+    for device in unseen {
+        table.row(vec![said(device.name), vec![plain(device.mac)]]);
+    }
+    page.table(0, table);
+}
+
 pub fn one_json(model: &HomeNetwork, device: &Device) -> Result<String, String> {
     super::json::slice(model, "eero.device/1", One { device })
 }
 
-pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
+/// Every device the record holds, titled with the node or profile it's
+/// within when it's one's alone (`on_one_node`, `in_one_profile`).
+pub fn all(model: &HomeNetwork, clock: &Clock, within: Option<&str>) -> Page {
     let mut page = Page::default();
-    let title = titled(
+    let title = titled_within(
         model,
-        Some(format!("{} on now", counted(model.devices.len(), "device"))),
+        within,
+        format!("{} on now", counted(model.devices.len(), "device")),
     );
     head(&mut page, model, clock, title);
     let mut table = table(true);
@@ -83,8 +138,11 @@ pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
         }
     }
     // The devices on now and those that aren't lead with the same
-    // columns, which line up from one table into the next.
-    page.shared_table(0, table);
+    // columns, which line up from one table into the next. A node or a
+    // profile with nothing on now has no table, rather than a bare header.
+    if !model.devices.is_empty() {
+        page.shared_table(0, table);
+    }
     off(&mut page, model, clock);
     page
 }

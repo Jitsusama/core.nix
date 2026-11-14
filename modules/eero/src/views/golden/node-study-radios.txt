@@ -1,0 +1,6 @@
+home · Study · 3 radios · read 1 min 7 s ago
+
+band        node   channel   width   power  busy              devices  BSSID
+2.4 GHz     Study        6  20 MHz  30 dBm  18 %  ⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀        2  02:00:00:00:00:10
+5 GHz low   Study       52  80 MHz  22 dBm   5 %  ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀        3  02:00:00:00:00:04
+5 GHz high  Study      149  80 MHz  28 dBm  39 %  ⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀        4  02:00:00:00:00:09

@@ -81,26 +81,39 @@ refuse() {
   done
 }
 
-expect 'eero ' status nodes node mesh devices device internet speeds firmware radio \
-  traffic profiles profile events watch speedtest sqm sign-in
-expect 'eero de' devices device
-expect 'eero node ' Hall Study Den
-expect 'eero node S' Study
+# Completion follows the tree as help lists it: each collection once, and
+# no old spelling.
+expect 'eero ' status nodes mesh devices profiles internet speeds firmware radios \
+  traffic events sign-in
+refuse 'eero ' node device profile radio watch speedtest sqm
+expect 'eero de' devices
+refuse 'eero de' device
+# The word after a collection is a name.
+expect 'eero nodes ' Hall Study Den
+expect 'eero nodes S' Study
 # A name is offered as it's typed, its spaces escaped.
-expect 'eero device ' 'tablet\ 1' 02:00:00:00:00:03 02:00:00:00:00:05
+expect 'eero devices ' 'tablet\ 1' 02:00:00:00:00:03 02:00:00:00:00:05
 # Two devices share a name, so it's offered only as each one's address.
-refuse 'eero device ' 'phone\ 1'
+refuse 'eero devices ' 'phone\ 1'
 # Nor is a name one device has and another's hostname shares.
-expect 'eero device ' 02:00:00:00:00:0d
-refuse 'eero device ' 'thermostat\ 1'
+expect 'eero devices ' 02:00:00:00:00:0d
+refuse 'eero devices ' 'thermostat\ 1'
 # A device not on now is offered too, since its page says where it last was,
 # and by its address where one on now shares its name.
-expect 'eero device ' 'phone\ 2' 02:00:00:00:00:19
-expect 'eero profile ' 'profile\ 1' 'profile\ 2' 'profile\ 3'
-expect 'eero watch ' status devices node
-refuse 'eero watch ' speedtest sqm watch
+expect 'eero devices ' 'phone\ 2' 02:00:00:00:00:19
+expect 'eero profiles ' 'profile\ 1' 'profile\ 2' 'profile\ 3'
+# After a name, what it holds.
+expect 'eero nodes Study ' devices radios
+expect 'eero profiles profile\ 1 ' devices
+expect 'eero internet ' sqm
+expect 'eero internet sqm ' on off
+expect 'eero speeds ' run
+# The old spellings still complete as they did.
+expect 'eero node ' Hall Study Den
+expect 'eero device ' 'tablet\ 1'
+expect 'eero watch ' status devices nodes
 expect 'eero watch node ' Hall Study Den
 expect 'eero sqm ' on off
-expect 'eero devices -' --json
-expect 'eero node Hall -' --json
+expect 'eero devices -' --json --watch
+expect 'eero nodes Hall -' --json
 exit $failed
