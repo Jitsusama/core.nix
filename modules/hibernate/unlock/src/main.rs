@@ -861,17 +861,48 @@ fn help() -> Help {
         "hibernate-unlock fits",
         "whether memory's image would fit now",
     )
-    .command("fits", "says whether a hibernation's image would fit")
-    .command(
-        "pre|post ACTION [DISK...]",
-        "what systemd-sleep runs around each sleep",
+    .subcommand(
+        Help::new("fits", "says whether a hibernation's image would fit")
+            .example(
+                "hibernate-unlock fits",
+                "whether memory's image would fit now",
+            )
+            .example("hibernate-unlock fits --json", "the same, as JSON")
+            .exit(Exit::Failed, "the image wouldn't fit"),
     )
-    .command("rescue [WHY...]", "tells of a hibernation that rolled back")
-    .command(
-        "restoring",
-        "what the initrd runs before it reads the image back",
+    .subcommand(sleeps("pre", "what systemd-sleep runs before a sleep"))
+    .subcommand(sleeps("post", "what systemd-sleep runs after a sleep"))
+    .subcommand(
+        Help::new("rescue", "tells of a hibernation that rolled back")
+            .argument("[why...]", "memory, swap-gone, device DRIVER...")
+            .example("hibernate-unlock rescue memory", "memory ran short")
+            .exit(Exit::Done, NEVER_FAILS),
+    )
+    .subcommand(
+        Help::new(
+            "restoring",
+            "what the initrd runs before it reads the image back",
+        )
+        .example("hibernate-unlock restoring", "what the initrd runs")
+        .exit(Exit::Done, NEVER_FAILS),
     )
     .exit(Exit::Failed, "the image wouldn't fit")
+}
+
+/// What a step that never fails what it runs within says of its exit.
+const NEVER_FAILS: &str = "always; what it found goes to the journal";
+
+/// One of the steps systemd-sleep runs around a sleep, which logs what it
+/// found and never fails the sleep.
+fn sleeps(when: &str, about: &str) -> Help {
+    Help::new(when, about)
+        .argument("<action>", "the sleep, as hibernate or suspend")
+        .argument("[disk...]", "the encrypted disks the lock asks for")
+        .example(
+            &format!("hibernate-unlock {when} hibernate"),
+            "what systemd-sleep runs",
+        )
+        .exit(Exit::Done, NEVER_FAILS)
 }
 
 fn main() -> ExitCode {
