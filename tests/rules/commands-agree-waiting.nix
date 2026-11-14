@@ -55,19 +55,7 @@
     "exits"
     "helps"
   ];
-  chrome-recent-sites = [
-    "kit"
-    "helps"
-  ];
-  chrome-session = [
-    "kit"
-    "helps"
-  ];
   chrony-network-servers = [ "helps" ];
-  claude-plan-feed = [
-    "kit"
-    "helps"
-  ];
   claude-statusline = [
     "kit"
     "exits"
@@ -320,11 +308,6 @@
     "helps"
   ];
   sound = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  spotify-recent = [
     "kit"
     "exits"
     "helps"

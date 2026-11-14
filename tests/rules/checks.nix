@@ -161,6 +161,9 @@
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };
+        chrome-recent-sites = pkgs.callPackage ../../modules/chrome/recent-sites/package.nix { };
+        chrome-session = pkgs.callPackage ../../modules/chrome/session/package.nix { };
+        claude-plan-feed = pkgs.callPackage ../../modules/spend-watch/feeds/claude/package.nix { };
         clock-follows = pkgs.callPackage ../../modules/quickshell/clock-follows/package.nix { };
         code-health = pkgs.callPackage ../../modules/code-health/package.nix { };
         collector = pkgs.callPackage ../../modules/collector/package.nix { };
@@ -189,6 +192,7 @@
         slack-people = slack;
         slack-unreads = slack;
         spend-watch = pkgs.callPackage ../../modules/spend-watch/package.nix { };
+        spotify-recent = pkgs.callPackage ../../modules/spotify/spotify-recent/package.nix { };
         vm-first = pkgs.callPackage ../../modules/nix-daemon/vm-first/package.nix { };
         xwayland-satellite = pkgs.callPackage ../../modules/niri/xwayland-satellite.nix { };
       };
@@ -197,13 +201,41 @@
       let
         # A stand-in a script builds, where kept files would be folders a
         # dozen deep with no note each.
-        built =
-          name: script:
-          pkgs.runCommand name { } ''
+        built = name: script: builtWith name [ ] script;
+        # The same, with the programs it needs on PATH.
+        builtWith =
+          name: inputs: script:
+          pkgs.runCommand name { nativeBuildInputs = inputs; } ''
             ${pkgs.runtimeShell} ${script} $out
           '';
+        history = builtWith "a-profile-with-history" [
+          pkgs.sqlite
+        ] ../../modules/chrome/recent-sites/tests/a-profile-with-history.sh;
       in
       {
+        # Six sites and three downloads, one site and one file long-named,
+        # and what's left out of each.
+        chrome-recent-sites = [
+          {
+            state = history;
+            args = [ "@HERE@" ];
+          }
+          {
+            state = history;
+            args = [
+              "downloads"
+              "@HERE@"
+            ];
+          }
+        ];
+        # Five tabs in two windows, one titled past any width and one of
+        # Chrome's own pages.
+        chrome-session = [
+          {
+            state = built "a-profile-with-tabs" ../../modules/chrome/session/tests/a-profile-with-tabs.sh;
+            args = [ "@HERE@" ];
+          }
+        ];
         # A clock moved hours ago, with a zone put back from and held.
         clock-follows = [ { state = ../../modules/quickshell/clock-follows/tests/a-moved-clock; } ];
         # A laptop with a failed device, a missing one and a disk's fault.
