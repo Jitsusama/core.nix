@@ -233,18 +233,16 @@ function same(here, served) {
 // What only this shell knows of a line: that it's being taken back, or was.
 const TAKING = ["taking", "taken", "told"];
 
-// The events that carry an answer's words: answered, landed once it's done, and
-// taken where whoever took it up said something, as what it will do and then what
-// it did (QCXZEB [203d9e2c]); a taking with no words is dropped with the empty.
+// The events that carry an answer's words: answered, landed once it's done, and taken where
+// whoever took it up said something (QCXZEB [203d9e2c]); one with no words is dropped.
 const ANSWERING = ["answered", "landed", "taken"];
 // The events after which someone has the line and it waits on them.
 const HOLDING = ["routed", "taken"];
 
-// Whether a line is still open: it has an answer he hasn't seen, or nobody has answered it
-// yet, or he's taking it back and the void hasn't said; one taken back is done, and so is
-// one whose every answer he has seen, whoever still has it (Joel at 23:39 on 2026-11-13,
-// [ff6c6197]: "shows tons of things still waiting even though they were done hours ago").
-// `seen` holds how many of each line's answers he has seen, by its key.
+// Whether a line is still open: it has an answer he hasn't seen, nobody has answered it yet,
+// or he's taking it back and the void hasn't said; `seen` holds how many of each line's
+// answers he has, by its key. One whose every answer he has seen is done, whoever has it
+// (Joel, 2026-11-13 23:39: "tons of things still waiting even though they were done hours ago").
 function open(talk, events, seen) {
     if (TAKING.includes(talk.said)) {
         return talk.said === "taking";
@@ -329,9 +327,9 @@ function seenIn(text) {
     return read !== null && typeof read === "object" && !Array.isArray(read) ? read : {};
 }
 
-// The line's key in the void's day file, "YYYY-MM-DD HH:MM": the day it
-// was said, on the local clock, and the time the void keeps it at, which
-// its first answer's undo says, or its routing (keyed); "" before the void has said.
+// The line's key in the void's day file, "YYYY-MM-DD HH:MM": the day it was said, on the local
+// clock, and the time the void keeps it at, its routing (keyed) or else its first answer's
+// undo; "" before the void has said.
 function keyOf(talk) {
     if (typeof talk?.key === "string") {
         return talk.key;
@@ -376,9 +374,8 @@ function answersIn(own) {
     return answers.filter(answer => answer.text !== "");
 }
 
-// What became of a line past the void, from its events in the order
-// written: every answer; who has it while the last is its routing or its
-// taking up, else ""; and the last event, with who it names.
+// What became of a line past the void, from its events in the order written: every answer;
+// who has it while the last is its routing or its taking up, else ""; and the last event.
 function past(events, key) {
     const own = key === "" ? [] : (events ?? []).filter(event => event.line === key);
     const last = own.length > 0 ? own[own.length - 1] : { event: "", who: "" };
@@ -391,14 +388,12 @@ function past(events, key) {
 const HOLDER = /^(?<who>.+) has it$/u;
 const YOUR = /^Your /u;
 
-// Who the void's events name, as they'd stand mid-sentence: it writes "Your
-// orchestrator", which read "waiting on Your orchestrator".
+// Who the void's events name, mid-sentence: it writes "Your orchestrator", lower-cased here.
 function midSentence(who) {
     return String(who ?? "").replace(YOUR, "your ");
 }
 
-// Who the void says has a line, from its first answer's words, as they'd
-// stand mid-sentence; "" where it says something else.
+// Who the void's first answer says has a line, mid-sentence; "" where it names nobody.
 function holderIn(reply) {
     const named = String(reply ?? "").split("\n")[0].trim().match(HOLDER);
     // By its number, since Qt's engine fills no `groups`.
@@ -414,9 +409,8 @@ function clockOf(at) {
     return `${String(day.getHours()).padStart(2, "0")}:${String(day.getMinutes()).padStart(2, "0")}`;
 }
 
-// Whom a talk waits on before the void has written anything of it: the void
-// while it's only sent, then whoever the void's own answer says has it; or,
-// where its answer says no one has it, that answer is all there is.
+// Whom a talk waits on before the void has written anything of it: the void while it's only
+// sent, then whoever its answer says has it; or, where it says no one has, that answer alone.
 function before(talk, words) {
     if (talk.said === "sent") {
         return { answers: [], waiting: worded(words, "waiting", String(words?.void ?? "")) };
@@ -434,16 +428,15 @@ function ended(heard, words) {
     return heard.last === "let-go" ? worded(words, "letGo", heard.lastWho) : "";
 }
 
-// How a kept talk reads under his words: `answers`, each in the words, or
-// else `waiting`, in the voice while someone has it, saying on whom, or how
-// it otherwise `stands`; at its right, `side`, when he said it, which is the
-// time its undo names, whatever came after; and at its answer's right, `by`,
-// who answered (WCJQSG [e05f6231], QCXZEB [5aab8439]).
+// How a kept talk reads under his words: `answers`, each in the words, or else `waiting`, in
+// the voice while someone has it, saying on whom, or how it otherwise `stands`; at its right,
+// `side`, when he said it, whatever came after; and at its answer's right, `by`, who answered
+// (WCJQSG [e05f6231], QCXZEB [5aab8439]).
 function exchange(talk, events, words, dayOf) {
     const day = typeof dayOf === "function" ? dayOf(talk.since) : "";
     const shown = { line: talk.line, answers: [], waiting: "", stands: "", by: "",
         side: day === "" ? clockOf(talk.since) : `${day} ${clockOf(talk.since)}` };
-    if (["taking", "taken", "told"].includes(talk.said)) {
+    if (TAKING.includes(talk.said)) {
         return Object.assign(shown, { stands: standing(talk, words) });
     }
     const heard = past(events, keyOf(talk));
@@ -457,10 +450,9 @@ function exchange(talk, events, words, dayOf) {
         by: newest === null ? "" : String(newest.who) });
 }
 
-// How a talk stands once its session's talks have moved, or null where
-// nothing it shows changed: answered once the reply is whole, where it
-// went kept and its undo made an act; and once Take It Back is asked, the
-// void's answer to that.
+// How a talk stands once its session's talks have moved, or null where nothing it shows
+// changed: answered once the reply is whole, its undo made an act; and once Take It Back is
+// asked, the void's answer to that.
 function followed(talk, talks) {
     if (talk === null) {
         return null;
@@ -481,8 +473,8 @@ function followed(talk, talks) {
         undo: went.undo, kept: talk.kept || went.undo });
 }
 
-// Take It Back asked of a talk the void can undo: what the void is told,
-// and the talk waiting on its answer, never offering it twice.
+// Take It Back asked of a talk the void can undo: what the void is told, and the talk
+// waiting on its answer, never offering it twice.
 function taking(talk, now) {
     if (talk === null || talk.undo === "") {
         return null;
@@ -492,8 +484,8 @@ function taking(talk, now) {
         takenSince: now, undo: "" }) };
 }
 
-// What the line says under his words as the talk stands: the reply once
-// answered, else how it stands in the line's own words.
+// What the line says under his words as the talk stands: the reply once answered, else how
+// it stands in the line's own words.
 function standing(talk, words) {
     if (talk === null) {
         return "";
