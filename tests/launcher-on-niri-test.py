@@ -1061,11 +1061,6 @@ def test_a_retitled_window_is_heard_of_alone_with_the_launcher_open(shell: Shell
     assert heard <= 2 * RETITLES, f"{RETITLES} retitles of one window looked at {heard} records"
 
 
-def searched(shell: Shell) -> int:
-    """Give how many searches of what's typed the launcher has run."""
-    return int(shell.as_account(shell.ipc("searched")).strip())
-
-
 def typed_at_once(shell: Shell, typing: str) -> None:
     """Type with wtype while the shell is frozen, so every key reaches it in one turn of its loop.
 
@@ -1083,7 +1078,7 @@ def test_text_typed_at_once_is_searched_once(shell: Shell) -> None:
     word = "workspace"
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    before = searched(shell)
+    before = launcher_on_niri.searched(shell)
     since = shell.mark()
     typed_at_once(shell, word)
     seen: list[str] = []
@@ -1096,7 +1091,7 @@ def test_text_typed_at_once_is_searched_once(shell: Shell) -> None:
         return True
 
     shell.reported("showing ", whole, since)
-    searches = searched(shell) - before
+    searches = launcher_on_niri.searched(shell) - before
     assert searches < len(word), f"{len(word)} letters typed at once took {searches} searches"
     # Said as a frame can draw it, the text comes with what it found, never partway through
     # the search, the letters there and the rows still those before them.

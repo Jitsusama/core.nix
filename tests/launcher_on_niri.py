@@ -598,6 +598,11 @@ def weighed_held_still(shell: Shell, timeout: float = 10.0) -> int:
     return last
 
 
+def searched(shell: Shell) -> int:
+    """Give how many searches of what's typed the launcher has run."""
+    return int(shell.as_account(shell.ipc("searched")).strip())
+
+
 def placed(said: str) -> Json | None:
     """Give where a margin cat's report says it sits, or None where it says nowhere.
 

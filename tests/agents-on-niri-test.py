@@ -847,8 +847,7 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
         )
     )
     # Return steps into it where it lives, never a copy of it.
-    shell.send_key("ret")
-    shell.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", TRY_FIRST])
+    picks = walked_into_landed(shell)
     assert "Copy What to Try" in shell.showing()["rows"], shell.showing()
     # What Joel makes of it goes to whoever landed it, its session here, as his finding, and
     # is kept a line each for the loop that reads how landings were taken. The foot names
@@ -869,6 +868,7 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     assert kept["sent"], kept
     # Kept in whole seconds, as the loop keeps its days.
     assert isinstance(kept["at"], int), kept
+    climbed_out_of_landed(shell, picks)
     shell.close_launcher()
     # Read, it's gone from To Try and in For You's History, saying when; Landed keeps both.
     in_for_you(shell)
@@ -931,6 +931,54 @@ def test_landed_read_again_with_nothing_changed_looks_at_no_landing(shell: Shell
     looked = landings_looked(shell) - before
     assert looked <= len(LANDINGS), f"two steps through Landed looked at {looked} landings"
     shell.close_launcher()
+
+
+def walked_into_landed(shell: Shell) -> dict[str, Json]:
+    """Return on To Try's row, which walks into it in Landed, and give the picks kept before.
+
+    The walk passes through Agents and Landed unlisted: listing Joel's 2,600 landings on the
+    way took about 40 of its 84 ms (2026-11-14), so it searches once, for its last step.
+    """
+    searches, picks = launcher_on_niri.searched(shell), picks_kept()
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", TRY_FIRST])
+    searched = launcher_on_niri.searched(shell) - searches
+    assert searched == 1, f"To Try's Return searched {searched} times"
+    return picks
+
+
+def climbed_out_of_landed(shell: Shell, picks: dict[str, Json]) -> None:
+    """Climb back by - through each step the walk passed, each listed then, onto its row.
+
+    Nothing typed led there, so no step on the way learned a pick (`picks` were kept before).
+    """
+    shell.normal()
+    shell.send_chars("-")
+    shell.launcher_until(
+        lambda shown: (
+            shown["held"] == ["agents", "Landed"]
+            and shown["rows"][:2] == [STOPPED, TRY_FIRST]
+            and (shown["selected"] or {}).get("name") == TRY_FIRST
+        )
+    )
+    shell.send_chars("-")
+    shell.launcher_until(
+        lambda shown: (
+            shown["held"] == ["agents"]
+            and "Landed" in shown["rows"]
+            and (shown["selected"] or {}).get("name") == "Landed"
+        )
+    )
+    assert picks_kept() == picks, f"walking to it learned {picks_kept()}, from {picks}"
+
+
+def picks_kept() -> dict[str, Json]:
+    """Give what the launcher has learned was meant by what was typed, as it keeps it."""
+    said: dict[str, Json] = {}
+    for path in STATE.glob("quickshell/by-shell/*/launcher-picks.json"):
+        if path.read_text().strip():
+            said.update(cast("dict[str, Json]", json.loads(path.read_text())))
+    return said
 
 
 def made_through(shell: Shell, change: Callable[[], None]) -> int:
