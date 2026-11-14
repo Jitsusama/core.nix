@@ -40,6 +40,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Places.js" as Places
+import "../TalkLine.js" as Said
 import "../When.js" as When
 import "Landed.js" as Landed
 import "Moment.js" as Moment
@@ -129,6 +130,7 @@ Provider {
             return null;
         if (provider.isVoid(one.ask.address))
             return provider.lineOpened(one.key);
+        const talk = provider.talking(one.ask.address, row.name ?? "");
         return thing({
             key: one.key,
             verb: Words.verb(one.key),
@@ -138,6 +140,8 @@ Provider {
             ask: Words.of(one.key).ask ?? "",
             chip: row.name ?? "",
             state: () => provider.told,
+            talks: talk.talks,
+            heard: talk.heard,
             given: words => {
                 const text = words.trim();
                 if (text === "")
@@ -145,6 +149,7 @@ Provider {
                 top.asked(key, Object.assign({}, one, {
                     ask: Object.assign({}, one.ask, { text })
                 }));
+                talk.said(text);
                 provider.told = (Words.of("orchestrators").said ?? {}).sent
                     ?.replace("{name}", row.name ?? "") ?? "";
             }
@@ -836,6 +841,37 @@ Provider {
     // What the foot says once words have gone to a session.
     property string told: ""
 
+    // The talks said to each session from the launcher, by its address in capitals, newest
+    // first, until its talks say each was delivered (TalkLine.js's toSession), so Return shows
+    // the words sent at once.
+    property var saidTo: ({})
+
+    // What a talk to the session at `address` asks with its words, for the launcher to show
+    // the talk under the field as Super+S's line does: the talks shown, newest first
+    // (TalkLine.js's spoken), named by `name`; the words sent once he's said them; and, once
+    // it shows an answer he hasn't heard, that he has, so the daemon keeps it no longer open.
+    function talking(address, name) {
+        const to = String(address).toUpperCase();
+        const served = () => Said.sessionTalks(saidTo[to] ?? [], talksOf(to));
+        const words = Object.assign({}, Words.of("agents:line").said ?? {}, {
+            unsent: (Words.of("orchestrators:talk").said ?? {}).failed ?? ""
+        });
+        const days = { yesterday: String(words.yesterday ?? ""),
+            date: (date, format) => Qt.formatDate(date, format) };
+        return {
+            talks: () => served().map(one => Said.spoken(one, name, words,
+                since => When.day(since, Date.now(), days))),
+            said: text => {
+                saidTo = Object.assign({}, saidTo, { [to]: [Said.toSession(text, Date.now())]
+                    .concat((saidTo[to] ?? []).slice(0, 2)) });
+            },
+            heard: () => {
+                if (served().some(Said.unheard))
+                    provider.heard(to);
+            }
+        };
+    }
+
     // Who hears a line said from anywhere (TalkLine.qml), `{ to, name }`: the one standing at
     // Agents' top, the void, which passes it to whoever owns it (QCXZEB, 2026-11-13
     // [ae5dfdb6]); null while none stands there.
@@ -1039,21 +1075,27 @@ Provider {
             hue: "action"
         }, fields));
         const steered = what => () => provider.actOn(current(), what);
-        const talked = () => act("talk", {
-            ask: Words.of("verb:agent:talk").ask ?? "",
-            chip: session.title,
-            // Kept by whom it goes to until its talk is delivered.
-            draft: String(session.address).toUpperCase(),
-            state: () => provider.told,
-            given: words => {
-                const text = words.trim();
-                if (text === "")
-                    return;
-                provider.actOn(session, "talk", { text });
-                provider.told = (Words.of("orchestrators").said ?? {}).sent
-                    ?.replace("{name}", session.title) ?? "";
-            }
-        });
+        const talked = () => {
+            const talk = provider.talking(session.address, session.title);
+            return act("talk", {
+                ask: Words.of("verb:agent:talk").ask ?? "",
+                chip: session.title,
+                // Kept by whom it goes to until its talk is delivered.
+                draft: String(session.address).toUpperCase(),
+                state: () => provider.told,
+                talks: talk.talks,
+                heard: talk.heard,
+                given: words => {
+                    const text = words.trim();
+                    if (text === "")
+                        return;
+                    provider.actOn(session, "talk", { text });
+                    talk.said(text);
+                    provider.told = (Words.of("orchestrators").said ?? {}).sent
+                        ?.replace("{name}", session.title) ?? "";
+                }
+            });
+        };
         const made = {
             // Going to the session is reading its answer there.
             switch: () => act("switch", { later: true, run: () => {

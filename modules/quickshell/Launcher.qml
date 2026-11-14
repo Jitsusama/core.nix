@@ -4789,6 +4789,21 @@ Scope {
     readonly property var asking: held.length > 0 && held[held.length - 1].row.given
         ? held[held.length - 1].row : null
 
+    // An ask whose words go to an agent, Talk to It and its kin, shows the talk under the
+    // field where the rows go, as Super+S's line does (TalkExchanges.qml), from what its place
+    // serves, rather than over an empty box (Joel at 19:30 on 2026-11-13: "they need to feel
+    // more like the void"). The card is as tall as its talks, the field and the foot alone
+    // before there are any, its top where it was.
+    readonly property bool talking: typeof asking?.talks === "function"
+    readonly property var talks: talking ? asking.talks() : []
+    readonly property bool talkless: talking && talks.length === 0
+    // An answer the launcher shows is one Joel has seen, which its place tells whoever keeps
+    // it, so it's open no more after a restart.
+    onTalksChanged: {
+        if (open && talking && typeof asking.heard === "function")
+            asking.heard();
+    }
+
     // Asks for words in the field, with nothing to choose from below it.
     function ask(row) {
         held = held.concat([Object.assign(here(), { row: row, rows: [] })]);
@@ -11415,9 +11430,11 @@ Scope {
                 Column {
                     width: parent.width
 
+                    // A talk not yet begun has no rows' band, the head's
+                    // hairline the one between the field and the foot.
                     Item {
                         width: parent.width
-                        height: Theme.space.rung.tie
+                        height: root.talkless ? 0 : Theme.space.rung.tie
                     }
 
                     // As tall as it opened, whatever's found, so the foot
@@ -11427,9 +11444,12 @@ Scope {
                         id: listBox
                         width: parent.width
                         // Over a viewer only the line's menu, as tall as its
-                        // lines, ten at most, as his pumheight.
+                        // lines, ten at most, as his pumheight; a talk as
+                        // tall as its talks, as many as the rows' room holds.
                         height: root.over !== null
-                            ? Math.min(commandRows.count, 10) * root.rowTall : root.tall
+                            ? Math.min(commandRows.count, 10) * root.rowTall
+                            : root.talking ? Math.min(root.tall, talksShown.tall)
+                            : root.tall
                         opacity: root.wordsShown
                         // It cuts the rows at its edges rather than the list
                         // at its own, so a row's ground reaches out over the
@@ -11497,6 +11517,29 @@ Scope {
                                     count: commandRow.modelData.title ?? ""
                                     side: commandRow.modelData.key ?? ""
                                 }
+                            }
+                        }
+
+                        // A talk's talks, newest first, on the rows' names'
+                        // column out to the inset, the room under the last
+                        // baseline the room over the first capital, as the
+                        // line keeps its own.
+                        TalkExchanges {
+                            id: talksShown
+                            readonly property real tall: root.talkless ? 0
+                                : implicitHeight + Theme.level.words.pitch
+                                    - talkCaps.tightBoundingRect.height
+                            visible: root.talking && !root.talkless
+                            width: parent.width - card.inset
+                            textAt: card.inset + root.columns.text
+                            breathing: root.open
+                            exchanges: root.talks
+
+                            TextMetrics {
+                                id: talkCaps
+                                text: "H"
+                                font.family: Theme.level.words.family
+                                font.pointSize: Theme.level.words.pointSize
                             }
                         }
 
@@ -12096,7 +12139,7 @@ Scope {
 
                     Item {
                         width: parent.width
-                        height: Theme.space.rung.tie
+                        height: root.talkless ? 0 : Theme.space.rung.tie
                     }
 
                     // The foot, one line, the one place that teaches, so the
@@ -12115,7 +12158,7 @@ Scope {
                         id: footLine
                         x: card.inset
                         width: parent.width - 2 * x
-                        height: Theme.border
+                        height: root.talkless ? 0 : Theme.border
                         color: Theme.edge
                     }
 
