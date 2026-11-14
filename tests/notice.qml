@@ -121,6 +121,19 @@ QtObject {
         copy.count = "said";
         expect("a note set holds for its words", copy.count, "said");
 
+        // How many each sender sent, and how many of those are unread,
+        // counted once over every notice, so a program's row sums its own
+        // senders' without copying a notice; one with no sender counts
+        // under "".
+        const tally = Notice.bySender([{ sender: "Slack", unread: true },
+            { sender: "slack", unread: false }, { sender: "Slack", unread: false },
+            { sender: "Mail", unread: true }, {}]);
+        expect("each sender's notices counted, the unread apart",
+            [tally.Slack, tally.slack, tally.Mail, tally[""]],
+            [{ count: 2, unread: 1 }, { count: 1, unread: 0 }, { count: 1, unread: 1 },
+                { count: 1, unread: 0 }]);
+        expect("a sender that sent nothing isn't there", "Chrome" in tally, false);
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
