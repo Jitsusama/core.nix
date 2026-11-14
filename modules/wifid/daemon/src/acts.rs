@@ -267,6 +267,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn roaming_asks_for_the_access_point_by_its_address() {
+        let heard = acted(
+            json!({"act": "roam", "bssid": "6C:AE:F6:C1:84:26"}),
+            |ask| {
+                let Ask::Roam { bssid, done } = ask else {
+                    panic!("asked {ask:?}, not to roam");
+                };
+                assert_eq!(bssid, "6c:ae:f6:c1:84:26", "written as wpa_supplicant writes it");
+                done.send(Ok(())).expect("answered");
+            },
+        )
+        .await;
+        assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
+    }
+
+    #[tokio::test]
     async fn a_refused_act_says_why_as_varlink_names_it() {
         let heard = acted(json!({"act": "forget", "network": "Lantern"}), |ask| {
             let Ask::Forget { done, .. } = ask else {
@@ -420,5 +436,9 @@ mod tests {
         assert_eq!(heard[0]["error"]["code"], "bad-ask");
         let heard = acted(json!({"act": "radio"}), drop).await;
         assert_eq!(heard[0]["error"]["code"], "bad-ask");
+        for bssid in [json!(null), json!("next door"), json!("6c:ae:f6:c1:84")] {
+            let heard = acted(json!({"act": "roam", "bssid": bssid}), drop).await;
+            assert_eq!(heard[0]["error"]["code"], "bad-ask", "roaming to {bssid}");
+        }
     }
 }
