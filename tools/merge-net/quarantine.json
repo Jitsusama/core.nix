@@ -452,5 +452,18 @@
       "test_super_v_pastes_into_the_window_it_opened_over_a_terminal_or_not"
     ],
     "test": "vm-desktop-keeps-copies"
+  },
+  {
+    "at": 1794688918,
+    "commit": "0d36a13a4b655a56eec46425da9e1dcfef0b9137",
+    "owner_pr": null,
+    "reason": "failed, then passed, at 0d36a13a4b65",
+    "subtests": [
+      "test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window",
+      "test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they_sat",
+      "test_workspaces_go_back_in_the_order_joel_set_as_screens_come_and_go",
+      "test_workspaces_moved_from_a_screen_turned_off_stay_where_joel_puts_them"
+    ],
+    "test": "vm-screens-keep-places"
   }
 ]
