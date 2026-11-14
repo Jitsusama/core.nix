@@ -1366,8 +1366,9 @@ def every_row_reaches_its_sender(desktop: Desktop, command: str, answer: str) ->
 def test_a_notice_takes_a_reply_typed_in_the_launcher(desktop: Desktop) -> None:
     """A notice whose sender takes a reply typed here is answered from the launcher's field.
 
-    Its Reply, which the daemon serves among its acts, asks for the words in the launcher's
-    field, and Return sends what's written, which the sender hears.
+    Its Reply, which the daemon serves among its acts, a command as every notice act is, asks
+    for the words in the launcher's field, and Return sends what's written, which the sender
+    hears.
     """
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
@@ -1380,16 +1381,16 @@ def test_a_notice_takes_a_reply_typed_in_the_launcher(desktop: Desktop) -> None:
             " org.freedesktop.Notifications Notify susssasa{sv}i"
             " Chat 0 '' 'Thread with Bo' 'lunch?' 2 inline-reply Reply 0 60000"
         )
-    # Super+N opens the notices in the launcher on the one the line shows. It opens nothing,
-    # so Return steps in among its acts, Reply leading, and Return on that asks for the words.
+    # Super+N opens the notices in the launcher on the one the line shows. Its acts are
+    # commands (VKCF3Z, 2026-11-05), so :reply asks for the words in the field.
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Bo")
     )
-    machine.send_key("ret")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Reply")
-    desktop.step_in("ret")
+    desktop.normal()
+    machine.send_chars(":reply\n")
+    desktop.launcher_until(lambda shown: bool(shown["asking"]))
     machine.send_chars("on my road", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: shown["caret"] == len("on my road"))
     for scale in JOELS_SCALES:
