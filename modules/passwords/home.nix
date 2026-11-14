@@ -68,6 +68,14 @@ let
       git = lib.getExe pkgs.git;
       bwrap = lib.getExe pkgs.bubblewrap;
       loginctl = "${pkgs.systemd}/bin/loginctl";
+      # The programs an ask may run, and its PATH: the system's and the
+      # account's own, as home-manager puts them in /etc/profiles. Never
+      # `~/.nix-profile`, a link the account owns, which an agent could
+      # repoint (src/asks.rs's chosen_by_root).
+      profiles = [
+        "/run/current-system/sw/bin"
+        "/etc/profiles/per-user/${config.home.username}/bin"
+      ];
     }
   );
   # The launcher's vocabulary, which the daemon says its rows in.

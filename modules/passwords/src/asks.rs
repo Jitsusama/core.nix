@@ -71,22 +71,26 @@ impl Passwords {
             .map(|(manager, _)| manager.as_str())
     }
 
-    /// The program an ask's command names, resolved: a bare name in the
-    /// profiles, an absolute path as it is, either taken only where root
-    /// alone chose every step to the file it comes to.
+    /// The program an ask's command names, resolved: a bare name the
+    /// first profile holding it, where root alone chose every step to
+    /// the file it comes to. An absolute path counts only where it comes
+    /// to what some profile's entry of its name comes to, since a store
+    /// path alone is no choice of root's: an agent can build a program,
+    /// or add one to the store, itself.
     fn program(&self, named: &str) -> Option<PathBuf> {
-        let candidates: Vec<PathBuf> = if named.contains('/') {
-            vec![PathBuf::from(named)]
-        } else {
+        let held = |name: &std::ffi::OsStr| {
             self.profiles
                 .iter()
-                .map(|folder| folder.join(named))
-                .collect()
+                .filter_map(|folder| chosen_by_root(&folder.join(name)))
+                .filter(|program| program.is_file())
+                .collect::<Vec<_>>()
         };
-        candidates
-            .iter()
-            .filter_map(|candidate| chosen_by_root(candidate))
-            .find(|program| program.is_file())
+        if !named.contains('/') {
+            return held(named.as_ref()).into_iter().next();
+        }
+        let program = chosen_by_root(Path::new(named))?;
+        let name = Path::new(named).file_name()?;
+        held(name).contains(&program).then_some(program)
     }
 
     /// The command's PATH: the profiles root alone chose, each where it

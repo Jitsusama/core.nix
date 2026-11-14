@@ -108,6 +108,10 @@ struct ManagersFile {
     git: Option<PathBuf>,
     bwrap: Option<PathBuf>,
     loginctl: Option<PathBuf>,
+    /// The folders of programs root chose, in order, which an ask's
+    /// program must be found in and its PATH holds; none runs nothing.
+    #[serde(default)]
+    profiles: Vec<PathBuf>,
 }
 
 /// The managers as rows name them, from the same file.
@@ -302,14 +306,6 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) {
         );
         return;
     };
-    let user = std::env::var("USER").unwrap_or_default();
-    // The system's programs and the account's own, as home-manager puts
-    // them in /etc/profiles; never `~/.nix-profile`, a link the account
-    // owns, which an agent could repoint (asks.rs's chosen_by_root).
-    let profiles = vec![
-        PathBuf::from("/run/current-system/sw/bin"),
-        PathBuf::from(format!("/etc/profiles/per-user/{user}/bin")),
-    ];
     let references = given
         .managers
         .iter()
@@ -334,7 +330,7 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) {
             loginctl: given.loginctl,
             runtime,
             home,
-            profiles,
+            profiles: given.profiles,
         }),
         changed,
     ));
