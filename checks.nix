@@ -711,6 +711,7 @@ gather {
     ./modules/pi/agent-proxy/checks.nix
     ./modules/pi-keys/checks.nix
     ./modules/pi-packages/checks.nix
+    ./modules/pineapple/checks.nix
     ./modules/pipewire/checks.nix
     ./modules/plymouth/checks.nix
     ./modules/pnpm/checks.nix
