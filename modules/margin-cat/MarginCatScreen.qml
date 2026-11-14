@@ -1,7 +1,8 @@
 // One screen's margin cat (MarginCat.qml makes one for each): where on this
 // screen it sits, over the column Joel's keys are in, how it walks, hops
-// and wanders there, and how it's drawn, a frame each time the screen
-// draws while it moves and none at rest. What it plays, and when, is the
+// and wanders there and gets about the windows between workspaces, by the
+// ways MarginCatPaths.js finds, and how it's drawn, a frame each time the
+// screen draws while it moves and none at rest. What it plays, and when, is the
 // scene's (MarginCat.qml), which every screen's cat shares, so a stroll is
 // taken by one screen alone.
 pragma ComponentBehavior: Bound
@@ -10,7 +11,9 @@ import Quickshell
 import Quickshell.Wayland
 import QtQuick
 import "MarginCat.js" as MarginCat
+import "MarginCatPaths.js" as Paths
 import "MarginCatPlays.js" as Plays
+import "MarginCatTiles.js" as Tiles
 import "../Pixels.js" as Pixels
 
 PanelWindow {
@@ -78,6 +81,11 @@ PanelWindow {
     property bool handsBack: false
     property var roams: null
     property var place: null
+    // The column it last sat over or set off for, so its window grown,
+    // shrunk or moved up or down under it walks it rather than carries
+    // it (follow), and the windows as follow() last saw them.
+    property var under: null
+    property var seen: []
     // The walk under way, the window it walks to, and the step it's
     // on: its pose, by the theme's name, and the way it faces.
     property var going: null
@@ -99,11 +107,15 @@ PanelWindow {
     property var costs: []
     property int unseen: 0
     // How many frames had begun as it set off, so it can say how
-    // many it drew.
+    // many it drew, and how many steps it has taken since, so it can
+    // say whether it moved on each.
     property int begunAt: 0
+    property int steps: 0
+    // How often this screen draws, in ms, as its last walk showed.
+    property real frameMs: 1000 / 60
     // The workspace this screen shows, its id and index, so a move
-    // between two has it ride its column off with the world and climb
-    // to its new seat (VKCF3Z, 074321bd), and the one it showed.
+    // between two has it hold its ground through the slide and walk to
+    // its new seat (VKCF3Z, 074321bd, 4d18ade4), and the one it showed.
     readonly property var space: {
         void Niri.revision;
         const name = modelData?.name ?? "";
@@ -112,12 +124,15 @@ PanelWindow {
         return shows ? { id: shows.id, idx: shows.idx } : null;
     }
     property var spaceWas: null
-    // The move between workspaces under way (MarginCat.moves), the
-    // window it climbs to once niri says it, and its quarter turn as it
-    // climbs, head first.
+    // The move between workspaces under way (Paths.moves), the window
+    // it goes to once niri says it, and its quarter turn as it climbs.
     property var moving: null
     property var movingTo: null
     property int turn: 0
+    // The margin's marks, where they're drawn (Paths.marks), which it
+    // hops across one at a time, perched on each.
+    readonly property var marksLit: modelData === null ? null
+        : Paths.marks(MarginMarks.drawn, modelData.width, Theme.gap)
     // What it's drawn as: a pose of its walk, turned the way it
     // goes and the way it climbs, or the scope's, sitting, asleep or
     // stretching.
@@ -125,17 +140,48 @@ PanelWindow {
         ? MarginCat.quartered(
             MarginCat.turned(Theme.pixels[pose] ?? window.scene.drawing, facing), turn)
         : window.scene.drawing
+    // Whether it's on its way to another column or workspace, waiting
+    // to set off or going, while which every tile of the workspaces it
+    // crosses is wanted, its ways being over them, and as which it wants
+    // them; at rest, and on a scene's wander, which stays over its own
+    // window, only the tile under it is, so the shut shell hears no
+    // other (2026-11-12: watching every tile made it hear each of 20
+    // resizes).
+    readonly property bool travels: (going !== null && !handsBack) || moving !== null
+        || resting.running
+    property string wantsAs: ""
+    // Wanted once the change is done: niri's windows notify as they're
+    // wanted, and set it going or moving again inside the change, a
+    // binding loop (the GPU rig, 2026-11-13).
+    onTravelsChanged: Qt.callLater(wantsTiles)
+    // Set as it's destroyed, so a want called later wants nothing.
+    property bool gone: false
+    function wantsTiles(): void {
+        if (gone)
+            return;
+        if (travels && wantsAs === "") {
+            wantsAs = `cat ${modelData?.name ?? ""}`;
+            Niri.wantTiles(wantsAs, true);
+        } else if (!travels && wantsAs !== "") {
+            Niri.wantTiles(wantsAs, false);
+            wantsAs = "";
+        }
+    }
 
     // Where the keys' column now has it: nowhere, once it's held
     // nowhere a moment (leaving); from
     // nowhere, there at once, since nothing walks in from nowhere;
-    // over the same window, carried as its column moves, or, on
-    // the way there, on from where it is where its seat moved a
-    // pixel; and over another, still where it is until the keys rest
-    // there two seconds. niri says the layout again for any window's
-    // change, a title's too, so the same seat neither sets a walk off
-    // again nor restarts its rest.
+    // over the same window, carried as its column scrolls, or, its
+    // window grown, shrunk or moved up or down under it, on its way
+    // there from where it is, as it is where its seat moved a pixel on
+    // the way there; and over another, where it is or on to where its
+    // walk was going, until the keys rest there two seconds, never
+    // put anywhere it didn't get to (WCJQSG 2bd7c7c6). niri says the
+    // layout again for any window's change, a title's too, so the same
+    // seat neither sets a walk off again nor restarts its rest.
     function follow(): void {
+        const saw = seen;
+        seen = tilesOf(space?.id);
         if (moving !== null) {
             steer();
             return;
@@ -150,20 +196,26 @@ PanelWindow {
             const hurried = roams;
             roams = null;
             resting.stop();
-            walkFrom(hurried);
+            walkFrom(hurried, saw);
         } else if (place === null || (going === null && wanted === sat)) {
             resting.stop();
+            const reshaped = place !== null && wanted === sat && under !== null
+                && column !== null && (Math.abs(column.width - under.width) > 0.5
+                    || Math.abs(column.top - under.top) > 0.5);
             sat = wanted;
-            place = there;
+            under = column;
+            if (reshaped)
+                walkFrom(true, saw);
+            else
+                place = there;
         } else if (going !== null && wanted === goingTo) {
-            if (Math.round(there.x * ratio) !== Math.round(going.to * ratio))
-                walkFrom(true);
+            if (Math.round(there.x * ratio) !== Math.round(going.to.x * ratio)
+                || Math.round(there.y * ratio) !== Math.round(going.to.y * ratio))
+                walkFrom(true, saw);
         } else if (going !== null || !resting.running || wanted !== waitingOn) {
-            halt();
             // Its wander forgotten a moment later, outside this
             // change of `there`, which forgetting it changes again.
             Qt.callLater(endStroll);
-            place = { x: place.x, y: there.y };
             waitingOn = wanted;
             resting.restart();
         }
@@ -172,20 +224,33 @@ PanelWindow {
     // Sets off from where it's drawn to where it'd sit: `hurried`,
     // its seat moved on the way, without turning, thinking or
     // crouching again, or, setting off, after a thought of 150 to
-    // 450 ms, so no two walks begin alike.
-    function walkFrom(hurried: bool): void {
+    // 450 ms, so no two walks begin alike; riding what niri moved of
+    // the windows it `saw` (MarginCatFalls.js's rides).
+    function walkFrom(hurried: bool, saw: var): void {
         roams = null;
         if (place === null || there === null)
             return;
-        const plan = MarginCat.walk(place.x, there.x, {
+        const plan = Paths.walk({ x: place.x, y: place.y }, { x: there.x, y: there.y }, {
             cell,
             ratio,
+            wide: size,
+            tall: size,
+            air: cell,
+            across: modelData.width,
             pause: 150 + Math.random() * 300,
             slowdown: Theme.motion.slowdown,
             hurried,
-            facing: stepped?.facing ?? 0
+            facing: stepped?.facing ?? 0,
+            height: modelData.height,
+            cols: Paths.columns(tilesOf(space?.id), 0),
+            before: saw ? Paths.columns(saw, 0) : null,
+            spring: Theme.motion.spring,
+            ahead: MarginCat.behind(frameMs, "resize"),
+            frame: frameMs,
+            marks: marksLit
         });
         goingTo = wanted;
+        under = column;
         if (plan === null) {
             halt();
             sat = wanted;
@@ -197,6 +262,7 @@ PanelWindow {
             shown = [];
             costs = [];
             unseen = 0;
+            steps = 0;
             begunAt = window.FramePresentation.framesBegun;
         }
         going = plan;
@@ -205,82 +271,88 @@ PanelWindow {
             window.FramePresentation.ask();
     }
 
-    // A move to the workspace `way` below (1) or above (-1): it rides
-    // its column up the whole slide, or stays as it falls away, from
-    // where it sits, and its new seat comes once niri says the new
-    // workspace's column (steer).
-    function moveFrom(way: int): void {
+    // A move to the workspace `way` below (1) or above (-1): it holds where it sits the whole
+    // slide, and its way to its new seat comes once niri says the new workspace's column
+    // (steer).
+    function moveTo(way: int): void {
         halt();
         resting.stop();
         leaving.stop();
         movingTo = null;
-        moving = plan(way, place, place);
+        moving = plan(way, { x: place.x, y: place.y }, null);
         shown = [];
         costs = [];
         unseen = 0;
+        steps = 0;
         begunAt = window.FramePresentation.framesBegun;
         mover.restart();
         if (window.FramePresentation.available)
             window.FramePresentation.ask();
     }
 
-    // A move's plan from `from` to its seat `to`, over a workspace's
-    // height and niri's gap between two, a tenth of the screen's
-    // height in whole device pixels, as niri's monitor.rs lays them.
+    // A move's plan from `from` to its seat `to` over the new workspace's
+    // windows, or only its hold through the slide where `to` is null.
     function plan(way: int, from: var, to: var): var {
-        const gap = Math.max(1, Math.round(modelData.height * 0.1 * ratio)) / ratio;
-        return MarginCat.moves(from, to, {
+        return Paths.moves(from, to, {
             way,
-            step: modelData.height + gap,
+            wide: size,
             tall: size,
+            air: cell,
             cell,
             ratio,
             facing,
+            across: modelData.width,
+            height: modelData.height,
             slowdown: Theme.motion.slowdown,
-            spring: Theme.motion.spring
+            spring: Theme.motion.spring,
+            ahead: MarginCat.behind(frameMs, "slide"),
+            frame: frameMs,
+            now: tilesOf(space?.id),
+            marks: marksLit
         });
     }
 
-    // Where a move goes as niri says the new workspace's column: on
-    // the ride, to its seat, again each time that moves, since none of
-    // the ride depends on it; once it climbs, a seat moved or the
-    // keys gone to another window seat it there at once, as a second
-    // move does (VKCF3Z, 074321bd).
+    // Where a move goes as niri says the new workspace's columns: as it
+    // holds, its way found again each time niri says any, since none of
+    // the hold depends on them; once it's on its way, a seat
+    // moved or the keys gone to another window cut it short, and it
+    // walks on from where it's got to (cut()).
     function steer(): void {
         if (there === null)
             return;
-        const riding = mover.elapsedTime * 1000 < moving.beats[0].ends;
-        const seat = moving.seat ?? moving.to;
-        const same = Math.round(there.x * ratio) === Math.round(seat.x * ratio)
-            && Math.round(there.y * ratio) === Math.round(seat.y * ratio);
-        if (movingTo !== null && wanted !== movingTo) {
-            arrive();
-        } else if (riding) {
-            if (movingTo === null || !same) {
-                movingTo = wanted;
-                moving = plan(moving.way, moving.from, there);
-            }
-        } else if (movingTo === null || !same) {
-            arrive();
+        const holding = mover.elapsedTime * 1000 + moving.ahead < moving.beats[0].ends;
+        const same = Math.round(there.x * ratio) === Math.round(moving.to.x * ratio)
+            && Math.round(there.y * ratio) === Math.round(moving.to.y * ratio);
+        if (holding) {
+            movingTo = wanted;
+            moving = plan(moving.way, moving.from, { x: there.x, y: there.y });
+        } else if (movingTo === null || wanted !== movingTo || !same) {
+            cut();
         }
     }
 
+    // A move cut short past its hold, the keys gone to another window
+    // or its seat moved: on from wherever it's got to, as a walk, so
+    // it's never put anywhere it didn't get to (WCJQSG 2bd7c7c6).
+    function cut(): void {
+        tell("move");
+        mover.stop();
+        moving = null;
+        movingTo = null;
+        // No halt(): its pose and facing carry into the walk, never a
+        // frame of it sitting between.
+        walkFrom(true, null);
+    }
+
     // Done moving, or cut short: it sits where the keys' column has
-    // it, at once, or nowhere, as it would have with no move; or, a
-    // move up whose seat was too far to walk to at once, where it
-    // stayed, until the keys rest and it walks there as ever.
+    // it, at once, or nowhere, as it would have with no move.
     function arrive(): void {
-        tell("walk");
-        const rests = moving?.rests ?? false;
+        tell("move");
         mover.stop();
         moving = null;
         movingTo = null;
         turn = 0;
         halt();
-        if (rests && place !== null && there !== null) {
-            follow();
-            return;
-        }
         sat = wanted;
         place = there;
     }
@@ -291,11 +363,13 @@ PanelWindow {
         if (was === null || space === null || was.id === space.id)
             return;
         const way = Math.sign(space.idx - was.idx);
-        if (moving !== null)
-            arrive();
-        else if (place !== null && way !== 0 && !window.scene.asleep && !Niri.overview
+        // A move begun on a move under way holds where it's got to,
+        // rather than being put on its seat first.
+        if (place !== null && way !== 0 && !window.scene.asleep && !Niri.overview
             && !window.scene.shared)
-            moveFrom(way);
+            moveTo(way);
+        else if (moving !== null)
+            arrive();
     }
 
     // How its walk or hop (`what`) reached the screen, in the
@@ -305,8 +379,10 @@ PanelWindow {
         if (!window.FramePresentation.available)
             return;
         const told = MarginCat.walked(shown, costs, unseen,
-            { begun: window.FramePresentation.framesBegun - begunAt, what });
+            { begun: window.FramePresentation.framesBegun - begunAt, stepped: steps, what });
         console.info(told.line);
+        if (told.said.frames > 10)
+            frameMs = told.said.median;
         if (Options.reports)
             Report.say(`${what === "hop" ? "hopped" : "walked"} cat `
                 + `${modelData?.name ?? ""} ${JSON.stringify(told.said)}`);
@@ -323,6 +399,7 @@ PanelWindow {
             shown = [];
             costs = [];
             unseen = 0;
+            steps = 0;
             begunAt = window.FramePresentation.framesBegun;
             if (window.FramePresentation.available)
                 window.FramePresentation.ask();
@@ -335,17 +412,18 @@ PanelWindow {
     readonly property bool placed: !!place
     onPlacedChanged: window.scene.placedOn += placed ? 1 : -1
     Component.onDestruction: {
+        gone = true;
         if (placed)
             window.scene.placedOn -= 1;
+        if (wantsAs !== "")
+            Niri.wantTiles(wantsAs, false);
     }
 
-    // Each frame of a walk or a hop, as niri showed it or didn't,
-    // asking after the next until it sits. Asked only here, once niri
-    // says the last was shown, the ask lands after the next frame has
-    // begun where frames come close together, so only every other
-    // frame was heard of: on a GPU at 60 Hz, and on Joel's screen at
-    // 120. Each step asks too (walker, and a hop's lift), before its
-    // frame is drawn. Asked only there, a GPU at 120 Hz drew every
+    // Each frame of a walk or a hop, as niri showed it or didn't, asking after the next until
+    // it sits. Asked only here, once niri says the last was shown, the ask lands after the next
+    // frame has begun where frames come close together, so only every other frame was heard
+    // of: on a GPU at 60 Hz, and on Joel's screen at 120. Each step asks too (walker, and a
+    // hop's lift), before its frame is drawn. Asked only there, a GPU at 120 Hz drew every
     // other frame, so both stay.
     FramePresentation.onPresented: (frame, at) => {
         if (going === null && moving === null && !hopping)
@@ -368,6 +446,25 @@ PanelWindow {
         going = null;
         stepped = null;
         pose = "";
+    }
+
+    // A step of a walk or a move, `now` (Paths.frame), taken: its pose,
+    // the way it faces and turns, and its place, each set only as it
+    // changes.
+    function took(now: var): void {
+        if (now.facing !== facing)
+            facing = now.facing;
+        if ((now.pose ?? "") !== pose)
+            pose = now.pose ?? "";
+        if ((now.turn ?? 0) !== turn)
+            turn = now.turn ?? 0;
+        stepped = now;
+        steps += 1;
+        place = { x: now.x, y: now.y };
+        // Asked as the step is taken, before its frame is drawn, so the
+        // frame it moves is the one niri is asked about.
+        if (window.FramePresentation.available)
+            window.FramePresentation.ask();
     }
 
     // A scene's walk done, handing the scene its next beat.
@@ -415,6 +512,7 @@ PanelWindow {
         }
         const spot = Plays.wander({
             seat: seat(column),
+            column,
             across: modelData.width,
             marks: MarginMarks.drawn,
             cell: Theme.gap,
@@ -465,7 +563,7 @@ PanelWindow {
     Timer {
         id: resting
         interval: MarginCat.RESTS
-        onTriggered: window.walkFrom(false)
+        onTriggered: window.walkFrom(false, null)
     }
 
     // A step each time the screen draws, at whatever rate it draws,
@@ -473,25 +571,19 @@ PanelWindow {
     FrameAnimation {
         id: walker
         onTriggered: {
-            const now = MarginCat.step(window.going, walker.elapsedTime * 1000);
+            const now = Paths.frame(window.going, walker.elapsedTime * 1000);
             if (now.done) {
                 window.tell("walk");
                 window.halt();
                 window.sat = window.goingTo;
-                window.place = window.there ?? window.place;
+                // Where its walk took it, which is its seat unless the keys
+                // went elsewhere on the way, whose seat it walks to once
+                // they rest there.
+                window.place = { x: now.x, y: now.y };
                 window.sits();
                 return;
             }
-            if (now.facing !== window.facing)
-                window.facing = now.facing;
-            if (now.pose !== window.pose)
-                window.pose = now.pose;
-            window.stepped = now;
-            window.place = { x: now.x, y: window.there?.y ?? window.place.y };
-            // Asked as the step is taken, before its frame is drawn,
-            // so the frame it moves is the one niri is asked about.
-            if (window.FramePresentation.available)
-                window.FramePresentation.ask();
+            window.took(now);
         }
     }
 
@@ -499,41 +591,30 @@ PanelWindow {
     FrameAnimation {
         id: mover
         onTriggered: {
-            const now = MarginCat.moved(window.moving, mover.elapsedTime * 1000);
-            // A ride with no column at its end leaves it nowhere, as
-            // moving to an empty workspace did before it rode.
+            const now = Paths.frame(window.moving, mover.elapsedTime * 1000);
+            // A hold with no column at its end leaves it nowhere, as
+            // an empty workspace has no seat for it.
             if (now.done
                 || (now.beat !== window.moving.beats[0].name && window.movingTo === null)) {
                 window.arrive();
                 return;
             }
-            if (now.facing !== window.facing)
-                window.facing = now.facing;
-            if ((now.pose ?? "") !== window.pose)
-                window.pose = now.pose ?? "";
-            if (now.turn !== window.turn)
-                window.turn = now.turn;
-            window.stepped = now;
-            window.place = { x: now.x, y: now.y };
-            if (window.FramePresentation.available)
-                window.FramePresentation.ask();
+            window.took(now);
         }
     }
 
-    // A window's tile, as niri says it will come to rest, where it's on
-    // this screen's shown workspace; null where it isn't, and while
-    // the screen itself is null, as Variants leaves it a moment as
-    // screens come and go (Joel's shell, 2026-11-12 20:11, "Cannot
-    // read property 'name' of null").
+    // A window's tile where it's on this screen's shown workspace
+    // (MarginCatTiles.js); null while the screen itself is null, as
+    // Variants leaves it a moment as screens come and go (Joel's shell,
+    // 2026-11-12 20:11, "Cannot read property 'name' of null").
     function tile(id: var): var {
-        if (modelData === null)
-            return null;
-        const shown = id === null ? undefined : Niri.windows[id];
-        const at = shown?.layout?.tile_pos_in_workspace_view;
-        const workspace = shown ? Niri.workspaces[shown.workspace_id] : null;
-        if (!at || workspace?.output !== modelData.name || !workspace.is_active)
-            return null;
-        return { left: at[0], top: at[1], width: shown.layout.tile_size[0] };
+        return modelData === null ? null
+            : Tiles.tile(Niri.windows, Niri.workspaces, modelData.name, id);
+    }
+
+    // The tiles of a workspace's windows, as Paths.columns takes them.
+    function tilesOf(workspaceId: var): var {
+        return Tiles.of(Niri.windows, workspaceId);
     }
 
     // Nowhere over no column, or on a screen going away, whose width
@@ -564,10 +645,18 @@ PanelWindow {
     anchors.top: true
     anchors.left: true
     anchors.right: true
-    implicitHeight: Theme.gap
+    // The screen's height, as it gets about the windows below, even at
+    // rest: grown only as a move set off, its first frames waited on
+    // niri's new size, so its ride began out of sight and showed only as
+    // it ended (the GPU rig, 2026-11-13: 141, 331, then 801 px down).
+    // Nothing of it takes the pointer, and Qt draws it only as it moves.
+    implicitHeight: modelData.height
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
-    WlrLayershell.layer: WlrLayer.Overlay
+    // Under the margin's marks, the launcher and notices, on Overlay, so
+    // a mark's ink lies over its paws as it perches there and it never
+    // hides a mark or a notice (VKCF3Z, 3d799798).
+    WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "cat"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     // Nothing of it takes the pointer, so the gap stays the windows'.
@@ -603,15 +692,21 @@ PanelWindow {
                 pose: stepped.pose,
                 facing: stepped.facing,
                 stride: going.stride,
-                to: going.to
+                to: going.to.x,
+                beats: going.beats.map(beat => beat.name)
             },
             move: moving === null || stepped === null ? null : {
                 t: Math.round(mover.elapsedTime * 10000) / 10,
                 beat: stepped.beat,
                 pose: stepped.pose,
                 turn: stepped.turn,
-                way: moving.way
-            }
+                facing: stepped.facing,
+                way: moving.way,
+                beats: moving.beats.map(beat => beat.name)
+            },
+            // The layer's height, the screen's on a move, so it's drawn
+            // wherever its way takes it.
+            reach: window.implicitHeight
         });
         Report.say(`sits cat ${modelData?.name ?? ""} ${at} over ${JSON.stringify(column)}`);
     }
@@ -631,6 +726,8 @@ PanelWindow {
     // niri of the frame it moves, as a walk's step does.
     onLiftedChanged: {
         say();
+        if (hopping)
+            steps += 1;
         if (hopping && window.FramePresentation.available)
             window.FramePresentation.ask();
     }

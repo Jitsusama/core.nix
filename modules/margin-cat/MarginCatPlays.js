@@ -131,16 +131,20 @@ function next(lively, draw, last, asked) {
 
 // Where a short wander goes, from `at` as sits takes it with the `seat` it
 // sits at: its `cells`, each `step` across, along the margin the `way` it
-// was drawn, or the other where that one's off the screen or on the
-// margin's marks, since there it would cover what's true or be nowhere;
-// null where neither fits.
+// was drawn, or the other where that one's off its window's `column`,
+// off the screen or on the margin's marks, since there it would cover
+// what's true or be nowhere; null where neither fits. Kept over its own
+// window, a wander needs no tile but the one under it, so the shut shell
+// hears no other window's resizing while it plays.
 function wander(at) {
     const { seat } = at;
     if (!seat) {
         return null;
     }
     const reach = (at.marks * at.cell) / 2 + at.cell / 2;
-    const fits = left => left >= 0 && left + at.wide <= at.across
+    const over = left => !at.column
+        || (left >= at.column.left && left + at.wide <= at.column.left + at.column.width);
+    const fits = left => over(left) && left >= 0 && left + at.wide <= at.across
         && (at.marks === 0 || left + at.wide <= at.across / 2 - reach
             || left >= at.across / 2 + reach);
     const x = [at.way, -at.way].map(way => seat.x + way * at.cells * at.step).find(fits);

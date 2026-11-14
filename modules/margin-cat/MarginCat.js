@@ -1,8 +1,9 @@
 // Where the margin's cat sits and how big it's drawn (MarginCatScreen.qml): on
 // the top edge of the column Joel is in, in the gap the windows leave above
 // them, so it covers nothing of his and moves only where he already looks;
-// and how it walks from one column to another, where it is at each moment
-// of the way.
+// the beats and paces of its walk, which MarginCatPaths.js lays its ways
+// with; how niri's motion moves the windows it holds through or rides; and
+// how it's drawn turned and told.
 .pragma library
 
 // The share of the gap the cat stands in, so a little of it is left above.
@@ -123,67 +124,13 @@ function easeInOut(p) {
     return (1 - Math.cos(Math.PI * p)) / 2;
 }
 
-// A walk from `from` to `to`, in logical pixels, at `at`'s `cell`, its own
-// cell in logical pixels, and `ratio`. `pause` is how long it stops to
-// think, `slowdown` the theme's (motion.slowdown), and `hurried` a walk
-// begun on the way, its seat moved under it, which neither thinks nor
-// crouches and turns only if it now goes back the way it came from
-// `facing`. It's null where it's already there, to the screen's pixel.
-function walk(from, to, at) {
-    if (Math.round(from * at.ratio) === Math.round(to * at.ratio)) {
-        return null;
-    }
-    const slow = at.slowdown ?? 1;
-    const facing = Math.sign(to - from);
-    const cells = Math.abs(to - from) / at.cell;
-    const pace = Math.min(Math.max(cells / (CRUISES / MS), AMBLES), HURRIES);
-    const stride =
-        Math.min(Math.max(pace * STRIDE_SECONDS, SHORTEST_STRIDE), LONGEST_STRIDE) * at.cell;
-    const back = at.hurried ? from : from - facing * DRAWS_BACK * at.cell;
-    const past = to + facing * OVERSHOOTS * at.cell;
-    const beats = [];
-    let ends = 0;
-    const beat = (name, lasts, more) => {
-        const begins = ends;
-        ends += lasts * slow;
-        beats.push(Object.assign({ name, begins, ends, from, to: from }, more));
-    };
-    if (!at.hurried || at.facing !== facing) {
-        beat("turns", TURNS, { pose: "walkingB" });
-    }
-    if (!at.hurried) {
-        beat("thinks", at.pause ?? 0, { pose: "walkingB" });
-        beat("crouches", CROUCHES, { pose: "pouncing", to: back, ease: easeOut });
-    }
-    const goes = (Math.abs(past - back) / at.cell / pace) * MS;
-    beat("goes", goes, { from: back, to: past, ease: easeInOut, stride });
-    beat("settles", SETTLES, { pose: "walkingB", from: past, to, ease: easeOut });
-    beat("lands", LANDS, { pose: "pouncing", from: to, to });
-    return { from, to, facing, stride, beats: beats.filter(b => b.ends > b.begins), ends };
-}
-
-// Where a walk has it `t` ms after it set off: its `x`, its `pose` by the
-// theme's name, the way it's `facing`, and the `beat` it's on; at its end,
-// sitting at `to`, `done`, with no pose of the walk's own.
-function step(going, t) {
-    const beat = going.beats.find(b => t < b.ends);
-    if (!beat) {
-        return { x: going.to, pose: null, facing: going.facing, beat: "sits", done: true };
-    }
-    const p = (t - beat.begins) / (beat.ends - beat.begins);
-    const x = beat.from + (beat.to - beat.from) * (beat.ease ? beat.ease(p) : p);
-    // Legs apart, then gathered, a stride each, by the ground covered.
-    const pose = beat.stride
-        ? ["walkingA", "walkingB"][Math.floor(Math.abs(x - beat.from) / beat.stride) % 2]
-        : beat.pose;
-    return { x, pose, facing: going.facing, beat: beat.name, done: false };
-}
-
 // How far niri's workspace slide has gone `t` ms after it set off, from 0
 // to 1, on the spring niri's `workspace-switch` rides (the theme's
 // motion.spring, with niri's mass of 1), slowed as niri slows its clock,
-// so the cat rides its column exactly as the world moves. The spring
-// sets off still: the cat never moves before the world does.
+// as a resize's edge goes on the same spring, so the cat rides a window's
+// top exactly as it moves, and holds through a slide for as long as it
+// lasts. The spring sets off still: the cat never moves before the world
+// does.
 function slid(t, spring) {
     const w = Math.sqrt(spring.stiffness);
     const beta = spring.damping * w;
@@ -213,130 +160,17 @@ function slides(spring) {
     return t * slow;
 }
 
-// The longest a walk along the margin may take, in ms before the theme's
-// slowdown, for a move up to walk it at once; a seat farther off is left
-// to the usual rest and walk, so the walk is never hurried (VKCF3Z,
-// 01f6c940: "please don't raise the pace").
-const ARRIVES_WITHIN = 1500;
-
-// A move between workspaces, a workspace's `step` (its height and niri's
-// gap) the world slides by, the cat always moving with what goes up and
-// staying where things fall away (VKCF3Z, 074321bd and 294b73a0). Going
-// `way` 1, to the workspace below, it rides its old column up off the
-// screen the whole slide, then climbs down from above the screen's top
-// onto its new seat at the walk's pace, in the walk's strides, and lands
-// as a walk does, crouched a moment, before it sits. Going -1, up, its old
-// column falls away below it, so it stays in the margin the whole slide,
-// then walks the margin to a seat no more than ARRIVES_WITHIN away; one
-// farther off it stays for, the move `rests`, its `seat` still the one
-// asked, and its usual walk takes it there once the keys rest. `from` and `to` are its seats, { x, y }, `tall`
-// its height, `spring` niri's.
-function moves(from, to, at) {
-    const slow = at.slowdown ?? 1;
-    const beats = [];
-    let ends = 0;
-    const beat = (name, lasts, more) => {
-        const begins = ends;
-        ends += lasts;
-        beats.push(Object.assign({ name, begins, ends }, more));
-    };
-    const rides = slides(Object.assign({}, at.spring, { slowdown: slow }));
-    if (at.way < 0) {
-        return staysAbove(from, to, at, rides);
-    }
-    beat("rides", rides, {
-        from,
-        to: { x: from.x, y: from.y - at.way * at.step },
-        facing: at.facing,
-        slide: t => slid(t, Object.assign({}, at.spring, { slowdown: slow }))
-    });
-    const cells = Math.abs(to.y + at.tall) / at.cell;
-    const pace = Math.min(Math.max(cells / (CRUISES / MS), AMBLES), HURRIES);
-    const stride =
-        Math.min(Math.max(pace * STRIDE_SECONDS, SHORTEST_STRIDE), LONGEST_STRIDE) * at.cell;
-    // Head first the way it climbs: the theme's profile faces left, so a
-    // quarter turn back has it face down.
-    beat("climbs", (cells / pace) * MS * slow, {
-        from: { x: to.x, y: -at.tall },
-        to,
-        ease: easeInOut,
-        stride,
-        turn: -1,
-        facing: -1
-    });
-    beat("lands", LANDS * slow, { from: to, to, pose: "pouncing" });
-    return { from, to, way: at.way, facing: at.facing, beats, ends };
-}
-
-// A move up (moves): it stays where it sits for the slide, `rides` ms
-// long, then walks the margin to its seat if that's near enough, unhurried
-// by the theme's slowdown in judging it, or else stays there and `rests`.
-function staysAbove(from, to, at, rides) {
-    const stays = { name: "stays", begins: 0, ends: rides, from, to: from, facing: at.facing };
-    const along = walk(from.x, to.x, {
-        cell: at.cell,
-        ratio: at.ratio,
-        slowdown: at.slowdown,
-        hurried: true,
-        facing: at.facing
-    });
-    const still = { from, way: at.way, facing: at.facing, beats: [stays], ends: rides };
-    if (along === null) {
-        return Object.assign(still, { to, rests: false });
-    }
-    if (along.ends > ARRIVES_WITHIN * (at.slowdown ?? 1)) {
-        return Object.assign(still, { to: from, seat: to, rests: true });
-    }
-    const beats = along.beats.map(b => ({
-        name: b.name,
-        begins: rides + b.begins,
-        ends: rides + b.ends,
-        from: { x: b.from, y: to.y },
-        to: { x: b.to, y: to.y },
-        ease: b.ease,
-        stride: b.stride,
-        pose: b.pose,
-        facing: along.facing
-    }));
-    return {
-        from,
-        to,
-        way: at.way,
-        facing: along.facing,
-        beats: [stays].concat(beats),
-        ends: rides + along.ends,
-        rests: false
-    };
-}
-
-// Where a move has it `t` ms after the slide set off: its `x` and `y`, its
-// `pose` by the theme's name, or null for its own, as it rides; `turn`, a
-// quarter turn clockwise (1) or back (-1) as it climbs, and 0 otherwise;
-// the way it's `facing`, the `beat` it's on, and at the end, `done`.
-function moved(moving, t) {
-    const beat = moving.beats.find(b => t < b.ends);
-    if (!beat) {
-        return Object.assign({}, moving.to, {
-            pose: null, turn: 0, facing: moving.facing, beat: "sits", done: true
-        });
-    }
-    const p = (t - beat.begins) / (beat.ends - beat.begins);
-    const eased = beat.slide ? beat.slide(t - beat.begins) : beat.ease ? beat.ease(p) : p;
-    const x = beat.from.x + (beat.to.x - beat.from.x) * eased;
-    const y = beat.from.y + (beat.to.y - beat.from.y) * eased;
-    const ground = Math.abs(x - beat.from.x) + Math.abs(y - beat.from.y);
-    const pose = beat.stride
-        ? ["walkingA", "walkingB"][Math.floor(ground / beat.stride) % 2]
-        : beat.pose ?? null;
-    return {
-        x,
-        y,
-        pose,
-        turn: beat.turn ?? 0,
-        facing: beat.facing ?? moving.facing,
-        beat: beat.name,
-        done: false
-    };
+// How far into niri's motion the cat's first frame of it shows, in ms, on
+// a screen drawn every `frame` ms: niri sets a workspace's slide off
+// before the shell hears of it, and the cat's frames reach the screen a
+// frame after niri's own; a resize's layout waits on the window's commit
+// and niri's next refresh as well. On a GPU's nested niri a slide's
+// window was 42 ms ahead of a cat told nothing of it at 60 Hz and about
+// 33 at 120, and a resize's 22 to 39 ms more (PLAN-20261112-V2U3HE, 24).
+const HEARS = 25;
+const RESIZES = 30;
+function behind(frame, kind) {
+    return Math.round(HEARS + frame + (kind === "resize" ? RESIZES : 0));
 }
 
 // A drawing given a quarter turn, clockwise for `turn` 1 and back for -1,
@@ -370,12 +204,13 @@ function walked(shown, drawing, unseen, counted) {
         slowest: tenths(gaps[gaps.length - 1]),
         drawn: tenths(drawing.reduce((most, ms) => Math.max(most, ms), 0)),
         unseen,
-        begun
+        begun,
+        stepped: counted?.stepped ?? 0
     };
     const line = `cat: a ${counted?.what ?? "walk"} presented ${said.frames} of its ${begun} frames `
         + "a median "        + `${said.median} ms `
         + `apart, the p99 ${said.p99} ms, the slowest ${said.slowest} ms, each drawn within `
-        + `${said.drawn} ms, ${unseen} never shown`;
+        + `${said.drawn} ms, ${unseen} never shown, stepped ${said.stepped} times`;
     return { said, line };
 }
 
