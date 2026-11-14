@@ -5,8 +5,10 @@
 //! fresh stop in a thread's goes through, and the switch holds even that
 //! back; only Slack's reading methods are asked; a restart judges
 //! nothing twice; and an alert for Joel's phone finds his own IM and, in
-//! shadow, is only written down. The reader let go live is in live.rs.
+//! shadow, is only written down. The reader let go live is in live.rs,
+//! and GitHub's reader, against its own stand-in, in github.rs.
 
+mod github;
 mod live;
 
 use std::io::{BufRead, BufReader, Read, Write};

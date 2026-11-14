@@ -161,7 +161,9 @@ fn opening(answer: &Value, thread: &Thread) -> Option<Said> {
 
 /// One comment, review comment or review.
 fn one_said(one: &Value, thread: &Thread, kind: Kind) -> Option<Said> {
-    let text = one["body"].as_str().filter(|text| !text.trim().is_empty())?;
+    let text = one["body"]
+        .as_str()
+        .filter(|text| !text.trim().is_empty())?;
     let when = if kind == Kind::Review {
         "submitted_at"
     } else {
@@ -237,7 +239,11 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let shifted = (5 * of_year + 2) / 153;
     let day = of_year - (153 * shifted + 2) / 5 + 1;
-    let month = if shifted < 10 { shifted + 3 } else { shifted - 9 };
+    let month = if shifted < 10 {
+        shifted + 3
+    } else {
+        shifted - 9
+    };
     let year = year_of_era + era * 400 + i64::from(month <= 2);
     (year, month, day)
 }
@@ -260,7 +266,11 @@ mod tests {
     fn a_time_reads_as_github_writes_it_and_back() {
         assert_eq!(seconds("1970-01-01T00:00:00Z"), Some(0));
         assert_eq!(seconds("2023-11-14T22:13:20Z"), Some(1_700_000_000));
-        assert_eq!(seconds("2024-02-29T00:00:00Z"), Some(1_709_164_800), "a leap day");
+        assert_eq!(
+            seconds("2024-02-29T00:00:00Z"),
+            Some(1_709_164_800),
+            "a leap day"
+        );
         assert_eq!(stamp(1_700_000_000), "2023-11-14T22:13:20Z");
         assert_eq!(stamp(1_709_164_800), "2024-02-29T00:00:00Z");
         assert_eq!(seconds("2023-11-14 22:13:20"), None, "written otherwise");
@@ -274,10 +284,22 @@ mod tests {
                 "repository": {"full_name": "example/shop"}})
         };
         let answer = json!([
-            one("PullRequest", "https://api.example.com/repos/example/shop/pulls/12"),
-            one("Issue", "https://api.example.com/repos/example/shop/issues/7"),
-            one("PullRequest", "https://api.example.com/repos/example/shop/pulls/12"),
-            one("Release", "https://api.example.com/repos/example/shop/releases/1"),
+            one(
+                "PullRequest",
+                "https://api.example.com/repos/example/shop/pulls/12"
+            ),
+            one(
+                "Issue",
+                "https://api.example.com/repos/example/shop/issues/7"
+            ),
+            one(
+                "PullRequest",
+                "https://api.example.com/repos/example/shop/pulls/12"
+            ),
+            one(
+                "Release",
+                "https://api.example.com/repos/example/shop/releases/1"
+            ),
         ]);
         let issue = Thread {
             repo: "example/shop".to_owned(),
@@ -324,15 +346,24 @@ mod tests {
     #[test]
     fn a_pull_request_is_its_own_place_and_an_issue_what_it_names() {
         let on_pull = pull().context("anything");
-        assert_eq!((on_pull.pr, on_pull.repo.as_deref()), (Some(12), Some("example/shop")));
+        assert_eq!(
+            (on_pull.pr, on_pull.repo.as_deref()),
+            (Some(12), Some("example/shop"))
+        );
         let issue = Thread {
             pull: false,
             ..pull()
         };
         let named = issue.context("broken by example/other#3");
-        assert_eq!((named.pr, named.repo.as_deref()), (Some(3), Some("example/other")));
+        assert_eq!(
+            (named.pr, named.repo.as_deref()),
+            (Some(3), Some("example/other"))
+        );
         let plain = issue.context("it's broken");
-        assert_eq!((plain.pr, plain.repo.as_deref()), (None, Some("example/shop")));
+        assert_eq!(
+            (plain.pr, plain.repo.as_deref()),
+            (None, Some("example/shop"))
+        );
     }
 
     #[test]

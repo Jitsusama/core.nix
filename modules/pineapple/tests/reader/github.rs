@@ -14,9 +14,7 @@ use std::time::{Duration, Instant};
 use pineapple::github::stamp;
 use serde_json::{Value, json};
 
-use super::{
-    PACE, PATIENCE, a_stop, answering, decisions, each, home, resumed, until_decided,
-};
+use super::{PACE, PATIENCE, a_stop, answering, decisions, each, home, resumed, until_decided};
 
 /// The stand-in's Joel on GitHub.
 const LOGIN: &str = "joel.example";
@@ -33,11 +31,27 @@ fn comment(id: u64, by: &str, body: &str, now: u64, ago: u64) -> Value {
 /// stop, a comment naming neither, and a review asking him to stop
 /// without the phrase.
 fn answer(line: &str, now: u64) -> Value {
-    answer_with(line, now, &[
-        comment(1, "colleague", &format!("@{LOGIN} pineapple override"), now, 90),
-        comment(2, "colleague", &format!("> @{LOGIN} pineapple override\n\nsaw this"), now, 80),
-        comment(3, "colleague", "looks good to me", now, 70),
-    ])
+    answer_with(
+        line,
+        now,
+        &[
+            comment(
+                1,
+                "colleague",
+                &format!("@{LOGIN} pineapple override"),
+                now,
+                90,
+            ),
+            comment(
+                2,
+                "colleague",
+                &format!("> @{LOGIN} pineapple override\n\nsaw this"),
+                now,
+                80,
+            ),
+            comment(3, "colleague", "looks good to me", now, 70),
+        ],
+    )
 }
 
 /// GitHub's answer to one request, with `comments` on example/shop#12.
@@ -163,7 +177,10 @@ fn github_a_stop_on_a_pull_request_reaches_it_in_shadow_and_is_judged_once() {
         .output()
         .expect("it answers");
     let read: Value = serde_json::from_slice(&read.stdout).expect("its answer is JSON");
-    assert!(read["read_at"].as_u64().is_some(), "it says when GitHub was read: {read}");
+    assert!(
+        read["read_at"].as_u64().is_some(),
+        "it says when GitHub was read: {read}"
+    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
@@ -193,14 +210,22 @@ fn github_joels_resume_ends_only_shadow_stops_even_let_go_live() {
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
 
-    assert_eq!(decisions(&home)[0]["verdict"], "resume", "Joel's own resume");
+    assert_eq!(
+        decisions(&home)[0]["verdict"],
+        "resume",
+        "Joel's own resume"
+    );
     assert_eq!(
         resumed(&home, "live"),
         Value::Null,
         "his agents post as him on GitHub, so a live stop waits for his press"
     );
     assert!(
-        asked.lock().expect("what was asked").iter().all(|line| line.starts_with("GET ")),
+        asked
+            .lock()
+            .expect("what was asked")
+            .iter()
+            .all(|line| line.starts_with("GET ")),
         "nobody is answered for a resume"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");

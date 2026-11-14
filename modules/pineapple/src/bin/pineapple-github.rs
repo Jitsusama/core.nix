@@ -104,7 +104,10 @@ fn help() -> Help {
                 "pineapple-github run",
                 "reads GitHub until stopped, in shadow",
             )
-            .example("pineapple-github run --live", "the same, its stops standing")
+            .example(
+                "pineapple-github run --live",
+                "the same, its stops standing",
+            )
             .option(
                 "--live",
                 "acts on what it hears; only writes it down unless given",
@@ -382,7 +385,10 @@ fn said_on(
     if thread.pull {
         let on_lines = github.get(&format!("{base}/pulls/{number}/comments"), &recent)?;
         found.extend(github::said(&on_lines, thread, Kind::ReviewComment));
-        let reviews = github.get(&format!("{base}/pulls/{number}/reviews"), &[("per_page", PAGE)])?;
+        let reviews = github.get(
+            &format!("{base}/pulls/{number}/reviews"),
+            &[("per_page", PAGE)],
+        )?;
         found.extend(github::said(&reviews, thread, Kind::Review));
     }
     Ok(found
