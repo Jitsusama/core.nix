@@ -14,6 +14,7 @@ import Quickshell
 import Quickshell.Wayland
 import QtQuick
 import "MarginCat.js" as MarginCat
+import "MarginCatFloats.js" as Floats
 import "MarginCatPaths.js" as Paths
 import "MarginCatPlays.js" as Plays
 import "MarginCatTiles.js" as Tiles
@@ -218,11 +219,20 @@ PanelWindow {
             roams = null;
             resting.stop();
             walkFrom(hurried, saw);
+        } else if (place !== null && going === null && under?.floats && sat !== wanted
+            && Niri.windows[sat] === undefined) {
+            // The floating window it sat on closed under it, which niri
+            // shrinks away at once: it gets off now, never waiting for
+            // the keys to rest (VKCF3Z 26038726).
+            resting.stop();
+            walkFrom(true, saw);
         } else if (place === null || (going === null && wanted === sat)) {
             resting.stop();
+            // A floating window moved up or down carries it, as it's
+            // dragged; only one grown or shrunk across walks it.
             const reshaped = place !== null && wanted === sat && under !== null
                 && column !== null && (Math.abs(column.width - under.width) > 0.5
-                    || Math.abs(column.top - under.top) > 0.5);
+                    || (!column.floats && Math.abs(column.top - under.top) > 0.5));
             sat = wanted;
             under = column;
             if (reshaped)
@@ -275,6 +285,7 @@ PanelWindow {
         roams = null;
         if (place === null || to === null)
             return;
+        const tiles = tilesOf(space?.id);
         const plan = Paths.walk({ x: place.x, y: place.y }, { x: to.x, y: to.y }, {
             cell,
             ratio,
@@ -287,8 +298,10 @@ PanelWindow {
             hurried,
             facing: stepped?.facing ?? 0,
             height: modelData.height,
-            cols: Paths.columns(tilesOf(space?.id), 0),
+            cols: Paths.columns(tiles, 0),
             before: saw ? Paths.columns(saw, 0) : null,
+            floats: Floats.of(tiles, 0),
+            floated: saw ? Floats.of(saw, 0) : [],
             spring: Theme.motion.spring,
             ahead: MarginCat.behind(frameMs, "resize"),
             frame: frameMs,
@@ -336,8 +349,10 @@ PanelWindow {
     }
 
     // A move's plan from `from` to its seat `to` over the new workspace's
-    // windows, or only its hold through the slide where `to` is null.
+    // windows, its floating ones too, or only its hold through the slide
+    // where `to` is null.
     function plan(way: int, from: var, to: var): var {
+        const tiles = tilesOf(space?.id);
         return Paths.moves(from, to, {
             way,
             wide: size,
@@ -352,7 +367,8 @@ PanelWindow {
             spring: Theme.motion.spring,
             ahead: MarginCat.behind(frameMs, "slide"),
             frame: frameMs,
-            now: tilesOf(space?.id),
+            now: tiles,
+            floats: Floats.of(tiles, 0),
             marks: marksLit
         });
     }

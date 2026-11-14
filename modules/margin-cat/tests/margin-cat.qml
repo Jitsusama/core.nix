@@ -2,8 +2,8 @@
 // JavaScript engine, the one the shell runs it in. The
 // `the-margin-cat-sits-above-its-column` check copies
 // modules/margin-cat/MarginCat.js, MarginCatRoutes.js, MarginCatWays.js,
-// MarginCatFalls.js, MarginCatPaths.js and MarginCatPlays.js beside this
-// file and runs
+// MarginCatFalls.js, MarginCatFloats.js, MarginCatPaths.js and
+// MarginCatPlays.js beside this file and runs
 // `qml -platform offscreen margin-cat.qml`.
 import QtQuick
 import "MarginCat.js" as MarginCat

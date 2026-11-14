@@ -17,6 +17,7 @@
 .import "MarginCatRoutes.js" as Routes
 .import "MarginCatWays.js" as Ways
 .import "MarginCatFalls.js" as Falls
+.import "MarginCatFloats.js" as Floats
 
 // How high it hops over a gap between columns, in its cells, where the
 // margin above has room; and how far above the higher end any other leap
@@ -76,26 +77,6 @@ function marks(count, across, each) {
 // alone, with no screen, is held only at the left.
 function onScreen(x, at) {
     return Math.min(Math.max(x, 0), (at.across ?? Infinity) - at.wide);
-}
-
-// The column under the cat's middle at `x`, or the nearest one to it.
-function under(cols, x, wide) {
-    const middle = x + wide / 2;
-    let nearest = null;
-    let far = Infinity;
-    for (const column of cols) {
-        const off = Math.max(column.left - middle, middle - column.right, 0);
-        if (off < far) {
-            far = off;
-            nearest = column;
-        }
-    }
-    return nearest;
-}
-
-// Where it stands on a column's top, `air` above it as it sits.
-function standsOn(column, at) {
-    return column.top - at.tall - at.air;
 }
 
 // Across the margin's marks (marks()) the way `dir` goes, from half a
@@ -158,8 +139,8 @@ function along(way, x, cols, lit) {
     }
     way.facing = dir;
     const ground = to => {
-        const column = under(cols, to, at.wide);
-        return column ? standsOn(column, at) : way.y;
+        const column = Routes.columnAt(cols, to, at.wide);
+        return column ? Routes.stands(column.top, at) : way.y;
     };
     const stops = [];
     const ordered = dir > 0 ? cols : cols.slice().reverse();
@@ -170,7 +151,7 @@ function along(way, x, cols, lit) {
         const next = dir > 0 ? ordered[i].left : ordered[i].right;
         if ((next - edge) * dir > 0 && passes(edge, next)) {
             stops.push({ at: dir > 0 ? edge - at.wide : edge, kind: "leaps",
-                to: { x: dir > 0 ? next : next - at.wide, y: standsOn(ordered[i], at) } });
+                to: { x: dir > 0 ? next : next - at.wide, y: Routes.stands(ordered[i].top, at) } });
         }
     }
     if (lit) {
@@ -269,6 +250,9 @@ function follows(way, stops, now, lit) {
         } else if (stop.how === "over") {
             Ways.clings(way, stop.side, 1);
             Ways.leap(way, onto, RISES / 2, "over");
+        } else if (stop.kind === "floor") {
+            Ways.falls(way, onto);
+            holds(way, "lands", MarginCat.LANDS);
         } else if (stop.kind === "side") {
             // Along the screen's bottom to under it, from there.
             if (stop.how === "springs") {
@@ -293,15 +277,20 @@ function follows(way, stops, now, lit) {
 }
 
 // Its last steps to its seat `to` from the ledge a route left it on: along
-// the tops past the `lit` marks, its seat on one, or along its ledge.
+// the tops past the `lit` marks, its seat on one, or along its ledge; or,
+// `to` the way onto a floating window (Floats.onto), to where it gets on
+// (`via`) and on.
 function seats(way, to, now, lit) {
-    const goal = Routes.standing(now, to, way.at);
-    if ((goal?.row ?? 0) === 0) {
-        along(way, to.x, now, lit);
+    const plan = to.via ? to : null;
+    const goes = plan?.via ?? to;
+    const tops = !Routes.floored(now, goes, way.at)
+        && (Routes.standing(now, goes, way.at)?.row ?? 0) === 0;
+    along(way, goes.x, tops ? now : [], tops ? lit : null);
+    if (plan) {
+        Floats.lands(way, plan);
     } else {
-        along(way, to.x, [], null);
+        arrives(way, to);
     }
-    arrives(way, to);
 }
 
 // From under the screen up onto the side a route up begins on (`first`):
@@ -343,11 +332,21 @@ function there(from, to, at) {
 // `cols`, as walk() says.
 function onward(way, to, at) {
     const cols = at.cols ?? [];
+    // On a floating window, it gets off first, or walks its top to a
+    // seat on it; a seat on another, it makes for where it gets on.
+    const from = { x: way.x, y: way.y };
+    const aboard = Floats.on(at.floats, from, at);
+    const stays = aboard !== null && aboard === Floats.on(at.floats, to, at);
+    const plan = stays ? null : Floats.onto(from, to, cols, at);
+    const goal = plan?.via ?? to;
     const level = place => (Routes.standing(cols, place, at)?.row ?? 0) === 0;
     const legs = way.legs.length;
     // Off the tops, to or from a window stacked under another, it finds
     // its way there, setting off the way its route first goes.
-    let start = Falls.settle(way, cols, at);
+    if (!stays) {
+        Floats.off(way, cols, goal, at);
+    }
+    let start = stays ? { kind: "floats" } : Falls.settle(way, cols, at);
     if (start.kind === "perched") {
         way.turn = 0;
         way.facing = Math.sign(to.x - way.x) || way.facing || 1;
@@ -355,16 +354,16 @@ function onward(way, to, at) {
             start.mark);
         start = Falls.settle(way, cols, at);
     }
-    const tops = start.kind === "ledge" && start.row === 0 && level(to);
-    let stops = tops || start.kind === "below" ? null : Routes.route(start, to, cols, at);
+    const tops = stays || (start.kind === "ledge" && start.row === 0 && level(goal));
+    let stops = tops || start.kind === "below" ? null : Routes.route(start, goal, cols, at);
     if (start.kind === "below") {
-        stops = Routes.up({ x: way.x, y: at.height }, to, cols, at);
+        stops = Routes.up({ x: way.x, y: at.height }, goal, cols, at);
         if (stops !== null) {
             comesUp(way, stops[0]);
         }
     }
     const fell = way.legs.length > legs;
-    const dir = Math.sign((stops?.[1] ?? to).x - way.x) || at.facing || 1;
+    const dir = Math.sign((stops?.[1] ?? goal).x - way.x) || at.facing || 1;
     if (!at.hurried || at.facing !== dir) {
         way.facing = dir;
         holds(way, "turns", MarginCat.TURNS);
@@ -377,7 +376,7 @@ function onward(way, to, at) {
     if (stops !== null) {
         follows(way, stops, cols, at.marks);
     }
-    seats(way, to, cols, at.marks);
+    seats(way, plan ?? to, stays ? [] : cols, at.marks);
     return way;
 }
 
