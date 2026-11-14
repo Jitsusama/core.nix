@@ -3,7 +3,8 @@
 # run with bash and that script as its argument. A stand-in systemctl says
 # whether the shell is running and writes down every restart it's asked
 # for, so no real shell is restarted; the launcher's mark is written as the
-# shell writes it, its time dating the close.
+# shell writes it, its time dating the close, and Super+S's talk line's
+# beside it.
 set -u
 script=$1
 here=$PWD
@@ -22,7 +23,7 @@ failed=0
 
 # Runs one case from nothing asked, the shell running on files "old".
 case_of() {
-  rm -f run/asked run/quickshell-launcher
+  rm -f run/asked run/quickshell-launcher run/quickshell-talk-line run/said
   ln -sfn old run/quickshell-files
   unset SHELL_STOPPED
 }
@@ -57,11 +58,38 @@ restarted || wrong "a launcher shut a moment ago held the shell past its bound: 
 ended=$(date +%s)
 ((ended - started >= 1)) || wrong "it didn't wait for its bound"
 
+# Past its bound it still waits for the launcher to close, so it never
+# shuts the launcher under Joel's hands, and restarts the shell as it does.
 case_of
 echo open > run/quickshell-launcher
-said=$(bash "${script}" new 1)
-restarted || wrong "an open launcher held the shell past its bound: ${said}"
+bash "${script}" new 1 > run/said &
+taking=$!
+sleep 2
+! restarted || wrong "an open launcher was shut past the bound: $(< run/said)"
+echo closed > run/quickshell-launcher
+wait "${taking}"
+restarted || wrong "the launcher's close past the bound didn't bring the new files"
+said=$(< run/said)
 [[ ${said} == *"stayed in use"* ]] || wrong "the bound's restart didn't say why: ${said}"
+
+# Super+S's line holds it as the launcher does, open or shut a moment ago.
+case_of
+echo closed > run/quickshell-launcher
+touch -d '-60 seconds' run/quickshell-launcher
+echo open > run/quickshell-talk-line
+bash "${script}" new 1 > run/said &
+taking=$!
+sleep 2
+! restarted || wrong "an open talk line was shut past the bound: $(< run/said)"
+echo closed > run/quickshell-talk-line
+wait "${taking}"
+restarted || wrong "the talk line's close didn't bring the new files"
+
+case_of
+echo closed > run/quickshell-talk-line
+said=$(bash "${script}" new 1)
+[[ ${said} == *"stayed in use"* ]] ||
+  wrong "a talk line shut a moment ago wasn't waited on as in use: ${said}"
 
 case_of
 rm run/quickshell-files

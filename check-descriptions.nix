@@ -3607,9 +3607,9 @@
     given one rather than nothing
   '';
   the-shell-takes-a-switchs-files-at-idle = ''
-    after a switch the shell is restarted onto its new files once the launcher has been shut 30 s,
-    or at its bound while the launcher stays in use, and a shell already on its files, or one
-    stopped, is left be
+    after a switch the shell is restarted onto its new files once the launcher and Super+S's talk
+    line have been shut 30 s, or past its bound only as the open one shuts, and a shell already on
+    its files, or one stopped, is left be
   '';
   the-shell-starts-nothing = ''
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv

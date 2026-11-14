@@ -2787,8 +2787,9 @@ in
       Install.WantedBy = [ "graphical-session.target" ];
     };
 
-    # Brings the shell onto a switch's files once the launcher has been shut
-    # 30 s, or after an hour whatever comes (./takes-new-files.sh). Each
+    # Brings the shell onto a switch's files once the launcher and the talk
+    # line have been shut 30 s, or past an hour at their next close, never
+    # under Joel's hands (./takes-new-files.sh). Each
     # switch starts it once the units reload; a switch while it waits leaves
     # it waiting, since the restart it ends in takes the newest files.
     systemd.user.services.quickshell-takes-new-files = {
