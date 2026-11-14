@@ -226,6 +226,7 @@
   pi-packages = [ "subcommands" ];
   pi-settings = [ "helps" ];
   pi-verbs = [ "helps" ];
+  pineapple-slack = [ "subcommands" ];
   processor-telemetry = [
     "kit"
     "helps"
