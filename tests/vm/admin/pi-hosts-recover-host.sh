@@ -8,10 +8,14 @@
 # and one named refuse makes it exit 78 before it's ready, as a host does
 # when it refuses what it was given. One named hog makes one start run a
 # command that takes a gigabyte, as a conversation's build might, which
-# writes how it ended to hog.status if it gets to.
+# writes how it ended to hog.status if it gets to. One named fail-stop makes
+# one start exit 1 when it's stopped, as a host's stop did when a write
+# threw on its way out.
 kind="${*: -1}"
 dir="$HOME/stand-in"
 mkdir -p "$dir"
+# Only one start fails its stop, so the one it restarts into stops cleanly.
+trap 'if mv "$dir/fail-stop" "$dir/failed-stop" 2>/dev/null; then exit 1; fi; exit 0' TERM
 echo "$$" >>"$dir/$kind.starts"
 if [ -e "$dir/refuse" ]; then
   exit 78
