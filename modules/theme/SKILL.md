@@ -162,6 +162,15 @@ constrain".
 - **Found by typing.** The launcher as the way into everything: a few
   letters, the handful of things they could mean, each with its key beside
   it.
+- **The talk line's colour and space.** Of the talk line on Super+S: "it
+  is more the colour and spacing and stuff like that" (2026-11-13). It
+  draws five inks: text for what he reads for, muted for the rest, one
+  hairline, one glyph's hue, and the accent only on its frame and caret.
+  Every gap is a rung, the inset to the ink on every side. It invents
+  nothing: it keeps every rule of colour and space at once because it has
+  so little on it. What carries to other surfaces is that restraint, an
+  accent left where the keys go and colour left on glyphs, never its
+  layout, its marks or its single column.
 
 ## What He's Turned Down
 
