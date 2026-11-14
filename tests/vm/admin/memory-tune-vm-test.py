@@ -101,9 +101,14 @@ def test_an_administrator_sets_swaps_read_ahead_without_a_password(reverted: Bas
 def test_an_administrator_sets_proactive_compaction_without_a_password(
     reverted: BaseMachine,
 ) -> None:
-    status, said = start(reverted, "someone", "memory-compaction@40")
+    status, said = start(reverted, "someone", "memory-compaction@60")
     assert status == 0, said
-    assert read(reverted, COMPACTION) == "40", "compaction_proactiveness wasn't set"
+    assert read(reverted, COMPACTION) == "60", "compaction_proactiveness wasn't set"
+
+
+def test_the_machine_boots_compacting_ahead_at_40(reverted: BaseMachine) -> None:
+    compaction = read(reverted, COMPACTION)
+    assert compaction == "40", f"booted with compaction_proactiveness at {compaction}"
 
 
 def test_an_administrator_sets_the_free_memory_floor_without_a_password(
