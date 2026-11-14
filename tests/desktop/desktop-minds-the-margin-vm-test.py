@@ -362,10 +362,10 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("do not disturb")
-    # Ctrl+] then Return holds them for an hour and closes.
-    desktop.follow()
+    # Its acts are on its row, so Ctrl+] goes where it lives: Return lands, a second holds.
+    desktop.land()
     machine.send_key("ret")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     desktop.wait_for_surface("margin")
     # The shell decides as the notice arrives, so once it says it held
     # one, there's no card to come.
