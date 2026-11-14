@@ -359,8 +359,9 @@ import ./host-checks.nix args
     touch $out
   '';
 
-  # A hosted pi's seams are there to detect, and a turn its durable generation
-  # commits is the host's to end or continue.
+  # A hosted pi's seams are there to detect, a turn its durable generation
+  # commits is the host's to end or continue, and words the host's agent
+  # queued show as pending until a dequeue clears them.
   pi-hosted-keeps-turns-its-own = pkgs.runCommandLocal "pi-hosted-keeps-turns-its-own" { } ''
     HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
       ${./tests/pi-hosted-keeps-turns-its-own.mjs} ${hostedPi}/lib/node_modules/pi-monorepo

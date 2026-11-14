@@ -163,6 +163,52 @@ it("the host builds the session's agent from the options pi gives its own", asyn
   session.dispose();
 });
 
+it("words a host's agent queued show as pending, and a dequeue clears them", async () => {
+  const extension = codeDirectory === "src" ? "ts" : "js";
+  const core = dirname(sessionModule);
+  const { AgentSession } = await import(pathToFileURL(sessionModule).href);
+  const { createAgentSession } = await import(pathToFileURL(`${core}/sdk.${extension}`).href);
+  const { SessionManager } = await import(
+    pathToFileURL(`${core}/session-manager.${extension}`).href
+  );
+  const { SettingsManager } = await import(
+    pathToFileURL(`${core}/settings-manager.${extension}`).href
+  );
+  assert.equal(AgentSession.hostQueueDisplay, true, "the host can tell its words will show");
+  const cwd = mkdtempSync(join(tmpdir(), "pi-host-queue-"));
+  const { session } = await createAgentSession({
+    cwd,
+    agentDir: join(cwd, "agent"),
+    sessionManager: SessionManager.inMemory(cwd),
+    settingsManager: SettingsManager.inMemory(),
+    noTools: "all",
+  });
+  const updates = [];
+  session.subscribe((event) => {
+    if (event.type === "queue_update") {
+      updates.push(event);
+    }
+  });
+  session.showQueued("sent as it reopened", "followUp");
+  session.showQueued("and a steer", "steer");
+  assert.deepEqual(session.getFollowUpMessages(), ["sent as it reopened"]);
+  assert.deepEqual(session.getSteeringMessages(), ["and a steer"]);
+  assert.equal(session.pendingMessageCount, 2, "both count as pending");
+  assert.deepEqual(
+    updates.at(-1),
+    { type: "queue_update", steering: ["and a steer"], followUp: ["sent as it reopened"] },
+    "the screen hears of them as it hears of pi's own",
+  );
+  assert.equal(session.agent.hasQueuedMessages(), false, "the agent isn't given them again");
+  assert.deepEqual(session.clearQueue(), {
+    steering: ["and a steer"],
+    followUp: ["sent as it reopened"],
+  });
+  assert.equal(session.pendingMessageCount, 0, "a dequeue clears them");
+  assert.deepEqual(updates.at(-1), { type: "queue_update", steering: [], followUp: [] });
+  session.dispose();
+});
+
 it("legacy answer and idle continue remain unchanged without the hook", async () => {
   const { harness, conversation, faux } = await open({});
   try {
