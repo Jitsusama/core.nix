@@ -7,6 +7,10 @@
 //! listed change, since some chips answer every read through the firmware,
 //! which is slow. A chip, or a zone's temperature or a cooling device's
 //! state, that's slow to read is read again only every few seconds.
+//!
+//! Long because chips, zones and cooling devices share what's kept of
+//! them and the rules for which are slow, and each rule's cases stay
+//! beside the private pieces they prove.
 
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
@@ -37,7 +41,10 @@ pub const SLOW_KEPT: Duration = Duration::from_secs(5);
 /// zone's temperature or a cooling device's state asked of the firmware
 /// takes 1.8 to 4.6 ms on Joel's laptop, where one the kernel holds
 /// answers in under 0.2 ms (2026-11-13). A quick file once caught slow
-/// is only read every `SLOW_KEPT`, which its temperature allows.
+/// is only read every `SLOW_KEPT`, which its temperature allows. A chip
+/// counts as slow at this for each sensor it reads too: the battery's
+/// reads three in 5 to 11 ms, each a firmware call, under `SLOW`, where
+/// the processor's reads 17 in 0.5 ms and a disk's 3 in 1.4 ms.
 pub const SLOW_FILE: Duration = Duration::from_millis(1);
 
 /// A chip's files that never change, kept by path, and the chips they
@@ -406,12 +413,25 @@ pub fn sensors(root: &Root, kept: &mut Kept, now: Instant) -> Vec<Value> {
         }
         let began = Instant::now();
         let record = chip(root, kept, &folder, &key, &name);
-        if began.elapsed() >= kept.slow_from || kept.slow.contains_key(&folder) {
+        let took = began.elapsed();
+        let each = took / read_in(&record).max(1);
+        if took >= kept.slow_from || each >= kept.file_slow_from || kept.slow.contains_key(&folder)
+        {
             kept.slow.insert(folder, (now, record.clone()));
         }
         records.push(record);
     }
     records
+}
+
+/// How many sensors a chip's record says it read.
+fn read_in(record: &Value) -> u32 {
+    let count: usize = ["temperatures", "fans", "voltages", "currents", "power"]
+        .iter()
+        .filter_map(|kind| record[kind].as_array())
+        .map(Vec::len)
+        .sum();
+    u32::try_from(count).unwrap_or(u32::MAX)
 }
 
 /// Every thermal zone's record: its temperature, how it's governed, and
