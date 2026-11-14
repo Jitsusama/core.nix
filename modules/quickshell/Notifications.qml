@@ -101,9 +101,10 @@ Scope {
         font.weight: Theme.level.note.weight
     }
 
-    // Whether what's playing is called for. The card's own visibility can't
-    // say, since an item in a hidden window counts as hidden.
-    readonly property bool playing: Music.shown && Music.card !== null
+    // Whether what's playing is called for, as the arrival line's row is.
+    // The card's own visibility can't say, since an item in a hidden window
+    // counts as hidden.
+    readonly property bool playing: Music.arrival !== null
     // What the card says, or nothing while there's no player to say it of.
     readonly property var song: Music.card ?? {
         title: "", artist: "", art: "", from: "", mark: "", where: ""
@@ -751,7 +752,7 @@ Scope {
 
                 whole: MouseArea {
                     anchors.fill: parent
-                    onClicked: Music.shown = false
+                    onClicked: Music.dismiss()
                 }
             }
 

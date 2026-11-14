@@ -1,8 +1,9 @@
 // Music playing, from whichever player matters (Music.qml): true while it
-// plays, so paused is nothing to show. Now says the track, the artist
-// and the player, and offers what the media keys do, with their chords, and
-// a way to the player. Mpris says when anything changes, so nothing is asked
-// but where in the track it is, which its drawer reads each second while the
+// plays, so paused is nothing to show. Now says it as Music's row, the one
+// the arrival line draws too (Music.js's row): the track, who plays it and
+// on what, and what the media keys do, with their chords, and a way to the
+// player. Mpris says when anything changes, so nothing is asked but where
+// in the track it is, which its drawer reads each second while the
 // launcher shows it (Now.qml's drawn clock), MPRIS saying a position only
 // when asked.
 import qs
@@ -12,11 +13,7 @@ import "../launcher/Media.js" as Media
 Piece {
     id: piece
 
-    // The chord bound to a music command, beside the action that does it.
-    function chord(command) {
-        return (Shortcuts.actions.find(action => action.run.join(" ")
-            === `qs ipc call music ${command}`) ?? { chord: [] }).chord;
-    }
+    readonly property var row: Music.row
 
     // Everything the player says, under Now's row, as a program's Media
     // row draws it (launcher/Media.js).
@@ -26,49 +23,13 @@ Piece {
 
     active: Music.playing
     value: Music.title
-    title: "Playing"
+    title: Music.heading
     hint: Music.artist === "" ? Music.title : `${Music.title}, ${Music.artist}`
-    // The player once: here, unless the action to show it names it.
-    context: [Music.artist, Music.album, Music.revealable ? "" : Music.from]
-        .filter(said => said !== "").join(" · ")
+    // The player once: here, unless the act to show it names it.
+    context: piece.row?.note ?? ""
     hue: "program"
     // A song isn't a mode Joel left on, so Now lists it in a group of its
     // own, between what reaches other people and the modes.
     group: "playing"
-    actions: Music.player === null ? [] : [{
-        glyph: Words.glyph("verb:on:playing:pause"),
-        name: Words.name("verb:on:playing:pause"),
-        verb: Words.verb("verb:on:playing:pause"),
-        chord: chord("toggle"),
-        stays: true,
-        run: () => Music.toggle()
-    }].concat(Music.player.canGoNext ? [{
-        glyph: Words.glyph("verb:on:playing:next"),
-        name: Words.name("verb:on:playing:next"),
-        verb: Words.verb("verb:on:playing:next"),
-        chord: chord("next"),
-        stays: true,
-        run: () => Music.next()
-    }] : [], Music.player.canGoPrevious ? [{
-        glyph: Words.glyph("verb:on:playing:previous"),
-        name: Words.name("verb:on:playing:previous"),
-        verb: Words.verb("verb:on:playing:previous"),
-        chord: chord("previous"),
-        stays: true,
-        run: () => Music.previous()
-    }] : [], Music.revealable ? [{
-        glyph: Music.mark,
-        name: Words.name("verb:on:playing:show", "", { player: Music.from }),
-        verb: Words.verb("verb:on:playing:show"),
-        run: () => Music.reveal(Music.player)
-    }] : [], Music.others.map(other => ({
-        glyph: Words.glyph("verb:on:playing:pauseOther"),
-        name: Words.name("verb:on:playing:pauseOther", "", { player: Music.name(other) }),
-        // The player isn't the row's, so the : line fills its :pause {player}
-        // from here, as the name is.
-        fill: { player: Music.name(other) },
-        verb: Words.verb("verb:on:playing:pauseOther"),
-        stays: true,
-        run: () => other.pause()
-    })))
+    actions: piece.row?.acts ?? []
 }

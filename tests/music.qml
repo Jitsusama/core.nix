@@ -103,6 +103,98 @@ QtObject {
                 failures.push(`${position}s of ${length}s said "${got}", not "${expected}"`);
         }
 
+        // When what's playing shows itself: [what, by a key, held, a key's
+        // moment up, shows].
+        const moments = [
+            ["a key's press", true, false, false, true],
+            ["a key's press while notices are held", true, true, false, true],
+            ["a key's press over another key's", true, false, true, true],
+            ["a track changing", false, false, false, true],
+            ["a track changing while notices are held, as on a call", false, true, false, false],
+            ["a track changing over what a key did", false, false, true, false]
+        ];
+        for (const [what, byKey, held, keyed, expected] of moments) {
+            asked++;
+            if (Music.calls(byKey, held, keyed) !== expected)
+                failures.push(`${what} ${expected ? "didn't show" : "showed"}`);
+        }
+
+        // What a player's own change announces, once a track.
+        const song = player("spotify", true, "Spotify", "Ocean Soul");
+        const announcements = [
+            ["a track playing", song, "", "org.mpris.MediaPlayer2.spotify Ocean Soul"],
+            ["the track it said", song, "org.mpris.MediaPlayer2.spotify Ocean Soul", ""],
+            ["the next track", song, "org.mpris.MediaPlayer2.spotify Ever Dream",
+                "org.mpris.MediaPlayer2.spotify Ocean Soul"],
+            ["a player paused", player("spotify", false, "Spotify", "Ocean Soul"), "", ""],
+            ["no player", null, "", ""]
+        ];
+        for (const [what, one, announced, expected] of announcements) {
+            asked++;
+            const got = Music.announcement(one, announced);
+            if (got !== expected)
+                failures.push(`${what} announced "${got}", not "${expected}"`);
+        }
+
+        // The acts a player's row offers, Return's first.
+        const able = (playing, can) => Object.assign(player("spotify", playing), {
+            canPlay: can, canGoNext: can, canGoPrevious: can
+        });
+        const actsSaid = acts => acts.map(one => one.act + (one.state ? `:${one.state}` : "")
+            + (one.other ? `:${said(one.other)}` : "")).join(" ");
+        const offers = [
+            ["playing", able(true, true), false, [], "toggle next previous"],
+            ["paused, it plays", able(false, true), false, [], "toggle:paused next previous"],
+            ["paused, and it can't play", able(false, false), false, [], ""],
+            ["playing, it pauses though it can't go on", able(true, false), false, [], "toggle"],
+            ["with somewhere to go and another playing", able(true, true), true, [youtube],
+                "toggle next previous show pauseOther:instance412"],
+            ["no player", null, true, [youtube], ""]
+        ];
+        for (const [what, one, revealable, rest, expected] of offers) {
+            asked++;
+            const got = actsSaid(Music.offered(one, revealable, rest));
+            if (got !== expected)
+                failures.push(`${what} offered "${got}", not "${expected}"`);
+        }
+
+        // What's playing as one row: its side the track, then where in it
+        // where that's read; its note who plays it and the album, and the
+        // player only where no act names it.
+        const playing = (where, revealable) => ({
+            title: "Ocean Soul", artist: "Nightwish", album: "Century Child", from: "Spotify",
+            revealable, art: "file:///cover.jpg", where
+        });
+        const acts = [{ name: "Pause" }];
+        const rows = [
+            ["in Now", playing("", true),
+                { side: [{ said: "Ocean Soul", keep: 2 }], note: "Nightwish \u00b7 Century Child" }],
+            ["arriving", playing("1:38 of 6:43", true), {
+                side: [{ said: "Ocean Soul", keep: 2 }, { said: "1:38 of 6:43", keep: 1 }],
+                note: "Nightwish \u00b7 Century Child"
+            }],
+            ["with nowhere to go", playing("", false), {
+                side: [{ said: "Ocean Soul", keep: 2 }],
+                note: "Nightwish \u00b7 Century Child \u00b7 Spotify"
+            }],
+            ["with no artist or album", Object.assign(playing("", true), { artist: "", album: "" }),
+                { side: [{ said: "Ocean Soul", keep: 2 }], note: "" }]
+        ];
+        for (const [what, one, expected] of rows) {
+            asked++;
+            const got = Music.row(one, "Playing", acts);
+            const whole = Object.assign({
+                key: "on:playing", kind: "playing", name: "Playing", glyph: "playing",
+                hue: "program", picture: "file:///cover.jpg", acts
+            }, expected);
+            if (JSON.stringify(got) !== JSON.stringify(Object.assign({}, got, whole))
+                    || Object.keys(got).length !== Object.keys(whole).length)
+                failures.push(`the row ${what} read ${JSON.stringify(got)}`);
+        }
+        asked++;
+        if (Music.row(null, "Playing", acts) !== null)
+            failures.push("a row stands with nothing playing");
+
         // How the Media place's row stands: state first, as a timer's.
         const standings = [
             [98.6, 403, true, "1:38 of 6:43"],

@@ -97,7 +97,9 @@
   # The music is the player that matters: of those playing, the last to
   # start, else the last that played, which a play key resumes, and never
   # playerctld's echo of another, as tests/music.qml lists them, with where
-  # in the track said as the card says it.
+  # in the track said as the card says it; and what's playing shows itself
+  # on a key always and on a track only while notices aren't held, as one
+  # row with play or pause first.
   the-music-follows-the-player =
     let
       qt = pkgs.qt6.qtdeclarative;
