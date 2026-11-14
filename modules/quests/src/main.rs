@@ -82,14 +82,14 @@ fn main() -> ExitCode {
     let searched = Arc::new(Mutex::new(Searched::default()));
     let asked = Arc::clone(&searched);
     let own: Own = Box::new(move |said| {
-        (said["ask"] == "search").then(|| {
-            let mut answer = asked
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .answer(said);
-            answer["id"] = said["id"].clone();
-            answer
-        })
+        let searched = || asked.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut answer = match said["ask"].as_str() {
+            Some("search") => searched().answer(said),
+            Some("titles") => searched().titles(said),
+            _ => return None,
+        };
+        answer["id"] = said["id"].clone();
+        Some(answer)
     });
     let shared = Shared::new(DOMAIN, own);
     match serve::listen(&args.socket) {

@@ -23,6 +23,7 @@ pub const FOUND_LISTED: usize = 60;
 /// open, its name and its id and kind, and an ended one's row.
 struct Ready {
     key: String,
+    title: String,
     open: bool,
     name: Item,
     also: Item,
@@ -41,6 +42,7 @@ impl Searched {
     pub fn of(made: &Made) -> Searched {
         let ready = |row: &Value, open: bool| Ready {
             key: text(&row["key"]).to_owned(),
+            title: text(&row["name"]).to_owned(),
             open,
             name: Item::of(text(&row["name"])),
             also: Item::of(text(&row["held"]["also"])),
@@ -95,6 +97,29 @@ impl Searched {
             "keys": keys, "rows": rows, "found": found.len(),
             "grade": if keys.is_empty() { 3 } else { 0 }, "words": words,
         })
+    }
+
+    /// The answer to a titles ask, without its id: the title of each quest
+    /// of its `ids` there is, by id, open or ended. A place naming a quest
+    /// by its id, as Machine's disk does what's filling, asks it of one
+    /// the watch doesn't serve (VKCF3Z, 2026-11-13).
+    #[must_use]
+    pub fn titles(&self, said: &Value) -> Value {
+        let asked: Vec<&str> = said["ids"]
+            .as_array()
+            .map(|ids| ids.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        let titles: Map<String, Value> = self
+            .ready
+            .iter()
+            .filter_map(|one| {
+                let id = one.key.strip_prefix("row:quests:")?;
+                asked
+                    .contains(&id)
+                    .then(|| (id.to_owned(), Value::from(one.title.as_str())))
+            })
+            .collect();
+        json!({ "titles": titles })
     }
 }
 
@@ -210,6 +235,18 @@ mod tests {
             answer["rows"],
             json!({}),
             "the ended ones past it bring nothing"
+        );
+    }
+
+    #[test]
+    fn the_titles_asked_are_answered_by_id_ended_or_open() {
+        let answer = searched().titles(&json!({"ask": "titles",
+            "ids": ["QEST-20250105-BANNER", "QEST-20261001-LAPTOP", "QEST-20990101-NOSUCH"]}));
+        assert_eq!(
+            answer,
+            json!({"titles": {"QEST-20250105-BANNER": "Tune the banner",
+                "QEST-20261001-LAPTOP": "Bootstrap the laptop"}}),
+            "each there is, and none for one there isn't"
         );
     }
 

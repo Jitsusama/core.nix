@@ -33,6 +33,13 @@ Provider {
 
     collection: Words.collection("quests")
 
+    // While the daemon can't search, or isn't there to ask, only the open
+    // quests it served are matched (`matched`), so the head says so in
+    // Quests rather than a finished one going unfound in silence (VKCF3Z,
+    // 2026-11-13).
+    heading: ready.searchless || !ready.link
+        ? String((Words.of("quests").said ?? {}).unsearched ?? "") : ""
+
     // Every open quest's row, in Quests' order, as the quests daemon makes them
     // ready: the order, open before ended by priority and rank, then the
     // newest, then A to Z, and every word a row says are the daemon's, so
@@ -122,10 +129,49 @@ Provider {
     }
     onAllChanged: changedTo(all)
 
-    // An open quest's title by its id, as its row says it, for a place
-    // naming the quest a session has loaded; an ended one's isn't served.
+    // A quest's title by its id, for a place naming the quest a session
+    // has loaded, or what's filling the disk, as Machine does: an open
+    // one's as its row says it, an ended one's, which the watch doesn't
+    // serve, as the daemon answers it, asked once for the ids named
+    // together (`titling`) and kept; `titlesHeard` tells a place to name
+    // them again. Until then, or when it's no quest, undefined.
     function titleOf(id) {
-        return ready.served(`row:quests:${id}`)?.name;
+        const served = ready.served(`row:quests:${id}`)?.name;
+        if (served !== undefined || !id)
+            return served;
+        if (id in titled)
+            return titled[id] || undefined;
+        if (ready.link && !(id in titling)) {
+            titling[id] = true;
+            Qt.callLater(askTitles);
+        }
+        return undefined;
+    }
+    // Ended quests' titles by id, as the daemon answered them; "" for one
+    // it has none of, forgotten as the launcher closes, since its ended
+    // list may not have landed when it was asked.
+    property var titled: ({})
+    // The ids named since titles were last asked for.
+    property var titling: ({})
+    signal titlesHeard
+
+    function askTitles() {
+        const ids = Object.keys(titling).filter(id => !(id in titled));
+        if (ids.length === 0 || !ready.link)
+            return;
+        ready.link.ask({ ask: "titles", ids: ids }, answer => {
+            for (const id of ids)
+                delete titling[id];
+            // The daemon gone, or too old to answer, leaves them to be
+            // asked again when they're named.
+            const titles = answer?.titles;
+            if (!titles)
+                return;
+            for (const id of ids)
+                titled[id] = String(titles[id] ?? "");
+            if (ids.some(id => titled[id] !== ""))
+                titlesHeard();
+        });
     }
 
     // What a row's acts need of its quest, from what the daemon holds
@@ -424,10 +470,15 @@ Provider {
         // Closing lets go of what was found, so the ended quests' rows are
         // held only while a search shows them.
         function onOpenChanged() {
-            if (provider.launcher.open)
+            if (provider.launcher.open) {
                 Sessions.lookAround();
-            else
-                ready.ended();
+                return;
+            }
+            ready.ended();
+            for (const id of Object.keys(titled)) {
+                if (titled[id] === "")
+                    delete titled[id];
+            }
         }
     }
 

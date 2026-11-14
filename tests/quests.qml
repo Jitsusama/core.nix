@@ -303,16 +303,58 @@ ShellRoot {
                 theLauncher.open = false;
                 expect("let go as the launcher closes", theQuests.everything().length === 3,
                     names(theQuests.everything()));
-                // Each matches "the" as well, and the finished one is the
-                // shortest, yet the open ones come first.
-                whenFound("the", the => {
-                    expect("the open ones before the finished one",
-                        the.length === 4 && names(the).endsWith(", Tune the banner"), names(the));
-                    whenFound("20261003", byId => {
-                        expect("found by its id", names(byId) === "Retune the prompt",
-                            names(byId));
-                        root.acts(laptop, prompt);
-                    });
+                expect("an open one titled as its row says",
+                    theQuests.titleOf("QEST-20261001-LAPTOP") === "Bootstrap the laptop",
+                    theQuests.titleOf("QEST-20261001-LAPTOP"));
+                // Named by its id, as Machine's disk names what fills it,
+                // a finished one's title is asked of the daemon.
+                expect("a finished one's title asked, not known yet",
+                    theQuests.titleOf("QEST-20250105-BANNER") === undefined,
+                    theQuests.titleOf("QEST-20250105-BANNER"));
+                root.waiting = "a finished one's title";
+                root.whenTitled = () => {
+                    expect("a finished one titled as the daemon answers",
+                        theQuests.titleOf("QEST-20250105-BANNER") === "Tune the banner",
+                        theQuests.titleOf("QEST-20250105-BANNER"));
+                    root.waiting = "the first cases";
+                    root.searchedThe(laptop, prompt);
+                };
+            });
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // A case waiting on the titles the daemon answers.
+    property var whenTitled: null
+    Connections {
+        target: theQuests
+
+        function onTitlesHeard() {
+            const then = root.whenTitled;
+            root.whenTitled = null;
+            if (then)
+                Qt.callLater(() => {
+                    try {
+                        then();
+                    } catch (error) {
+                        root.fail(error.message);
+                    }
+                });
+        }
+    }
+
+    // What "the" and an id find.
+    function searchedThe(laptop, prompt) {
+        try {
+            // Each matches "the" as well, and the finished one is the
+            // shortest, yet the open ones come first.
+            whenFound("the", the => {
+                expect("the open ones before the finished one",
+                    the.length === 4 && names(the).endsWith(", Tune the banner"), names(the));
+                whenFound("20261003", byId => {
+                    expect("found by its id", names(byId) === "Retune the prompt", names(byId));
+                    root.acts(laptop, prompt);
                 });
             });
         } catch (error) {

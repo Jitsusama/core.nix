@@ -369,6 +369,19 @@ Provider {
         }
     }
 
+    // Quests, which names a quest filling the disk by its id (filling); an
+    // ended one's title comes a moment after it's first named.
+    readonly property var quests: (launcher?.sources ?? [])
+        .find(one => one.settings.name === "quests") ?? null
+    Connections {
+        target: provider.quests
+
+        function onTitlesHeard() {
+            if (provider.shown)
+                provider.answered();
+        }
+    }
+
     // The Disk, as the daemon serves it ready, its room on / beside it;
     // where a guard watches the disks, the room it says beside it and its
     // Space and What's Filling It among the served parts, in their words'
@@ -413,8 +426,7 @@ Provider {
     // biggest, so what matters most is seen without a step in.
     function filling(guard, chip) {
         const said = Words.of("machine:disk:filling").said ?? {};
-        const quests = (launcher?.sources ?? []).find(one => one.settings.name === "quests");
-        const titled = id => quests?.titleOf(id);
+        const titled = id => provider.quests?.titleOf(id);
         const called = holder => {
             const owner = holder.owner ?? {};
             const name = owner.kind === "quest" ? titled(owner.name) || owner.name

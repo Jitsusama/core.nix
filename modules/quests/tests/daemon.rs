@@ -13,6 +13,35 @@ use std::thread;
 use daemon_client::Daemon;
 use serde_json::{Value, json};
 
+/// The ended quest found by its name, its row in the answer, since the
+/// watch serves only the open ones, asked until the node's ended list has
+/// landed; and named by its id, as Machine's disk names what fills it,
+/// its title, asked of the daemon, which knows every quest.
+fn the_ended_one_is_found_and_titled(daemon: &Daemon) {
+    let mut searcher = daemon.client();
+    let search = json!({"id": 9, "ask": "search", "place": "quests", "words": "banner"});
+    let mut found = searcher.ask(&search);
+    for _ in 0..200 {
+        if found["keys"] != json!([]) {
+            break;
+        }
+        thread::sleep(std::time::Duration::from_millis(25));
+        found = searcher.ask(&search);
+    }
+    assert_eq!(found["keys"], json!(["row:quests:QEST-E"]), "{found}");
+    assert_eq!(
+        found["rows"]["row:quests:QEST-E"]["name"],
+        "Tune the banner"
+    );
+    assert_eq!(found["rows"]["row:quests:QEST-E"]["held"]["id"], "QEST-E");
+    let titles = searcher.ask(&json!({"id": 10, "ask": "titles", "ids": ["QEST-E"]}));
+    assert_eq!(
+        titles["titles"],
+        json!({"QEST-E": "Tune the banner"}),
+        "{titles}"
+    );
+}
+
 /// A stand-in node at `socket`: each watch answered with its kind's
 /// records whole, and the open quests' watch then told each change sent
 /// down `later`.
@@ -122,25 +151,7 @@ fn quests_rows_are_served_in_their_order_and_only_what_moved_is_told() {
         order("row:quests:QEST-A", &held) < order("row:quests:QEST-B", &held),
         "driving, then queued: {held:?}"
     );
-    // The ended quest is found by its name, its row in the answer, since
-    // the watch serves only the open ones; asked until the node's ended
-    // list has landed.
-    let mut searcher = daemon.client();
-    let search = json!({"id": 9, "ask": "search", "place": "quests", "words": "banner"});
-    let mut found = searcher.ask(&search);
-    for _ in 0..200 {
-        if found["keys"] != json!([]) {
-            break;
-        }
-        thread::sleep(std::time::Duration::from_millis(25));
-        found = searcher.ask(&search);
-    }
-    assert_eq!(found["keys"], json!(["row:quests:QEST-E"]), "{found}");
-    assert_eq!(
-        found["rows"]["row:quests:QEST-E"]["name"],
-        "Tune the banner"
-    );
-    assert_eq!(found["rows"]["row:quests:QEST-E"]["held"]["id"], "QEST-E");
+    the_ended_one_is_found_and_titled(&daemon);
     let b = &held["row:quests:QEST-B"]["row"];
     assert_eq!(
         b["side"],
