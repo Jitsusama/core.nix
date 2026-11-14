@@ -67,9 +67,17 @@ impl Walked<'_> {
 }
 
 /// Whether a flag the words hold takes the word after it as its value:
-/// any help on the way declares it with a value, as `--since WHEN`.
-fn takes_value(chain: &[&Help], word: &str) -> bool {
-    chain.iter().flat_map(|help| &help.options).any(|option| {
+/// any help in the tree declares it with a value, as `--since WHEN`. The
+/// whole tree, not just the way down so far, since a caller may type a
+/// subcommand's flag before the subcommand.
+fn takes_value(root: &Help, word: &str) -> bool {
+    let mut helps = vec![root];
+    let mut at = 0;
+    while let Some(help) = helps.get(at) {
+        helps.extend(&help.subs);
+        at += 1;
+    }
+    helps.iter().flat_map(|help| &help.options).any(|option| {
         let variants: Vec<&str> = option.name.split(", ").collect();
         let valued = variants.last().is_some_and(|last| last.contains(' '));
         valued
@@ -116,7 +124,7 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
             break;
         }
         if word.starts_with('-') && word.len() > 1 {
-            value_next = !word.contains('=') && takes_value(&walked.chain, word);
+            value_next = !word.contains('=') && takes_value(root, word);
             continue;
         }
         let here = walked.chain.last().copied().unwrap_or(root);
@@ -256,6 +264,17 @@ mod tests {
             walked.words,
             words("devices Pixel --json"),
             "the alias wasn't put as its name"
+        );
+    }
+
+    #[test]
+    fn a_subcommands_flag_typed_before_it_still_takes_its_value() {
+        // A caller may put a subcommand's flag first, as it could before
+        // the flag was its subcommand's alone.
+        assert_eq!(
+            path("--since nodes devices Pixel"),
+            "eero devices",
+            "--since's value was walked, typed before devices"
         );
     }
 
