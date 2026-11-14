@@ -5,6 +5,11 @@
 // `{ id, at, words, stage, reply, why }`, and the daemon writes `read` once he has heard it,
 // so what's open outlives the shell. tests/talk-line.qml holds it to its cases in Qt's own
 // engine.
+//
+// A stopgap: merging what's said here with what's served, and choosing which talks show and in
+// what order, is the agents daemon's work, as the daemons are the data layer. It stays here
+// until KP0L6A's agents daemon serves each session's talks so, due Sat 2026-11-21 (Y2YBTS's
+// review of #4272), and then this file goes.
 .pragma library
 
 .import "TalkLine.js" as Said
