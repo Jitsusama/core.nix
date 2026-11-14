@@ -10,15 +10,22 @@
 //!
 //! Only Joel resumes, so `resume` refuses to run under pi: in an agent's
 //! shell, under the host, or from a window's own `!`. Joel runs it at a
-//! terminal of his own, or presses Resume in the launcher. The harness
+//! terminal of his own; the launcher's Resume asks `pineapple serve`,
+//! which takes it only from his shell (src/serve.rs).
+//!
+//! `pineapple serve` is that daemon, as its service runs it: it serves
+//! the stops, alerts and resume requests as Needs You's rows on its
+//! socket, and knocks as each first appears. The harness
 //! also refuses an agent's call to it before it starts, saying why; this
 //! is the refusal a model can't argue with, since it is the program's.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::resume::{self, Standing};
+use pineapple::serve::{self as serving, Serving};
+use pineapple::vocabulary::Words;
 use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure, Format, Help, flags};
 
@@ -32,7 +39,7 @@ const PI_SAYS: [&str; 3] = ["PI_SESSION_ID", "PI_BASH_CALL", "PI_HOST_CONVERSATI
 fn help() -> Help {
     Help::new(
         "pineapple",
-        "lists the safe word's stops, and resumes them, for Joel alone",
+        "lists the safe word's stops, and resumes them, for you alone, never an agent",
     )
     .example("pineapple", "the stops standing, the same as stops")
     .example("pineapple resume all", "resumes every stop")
@@ -54,8 +61,35 @@ fn help() -> Help {
             "resumes the stop on that pull request",
         ),
     )
+    .subcommand(
+        Help::new(
+            "serve",
+            "the daemon showing stops in the launcher, as its service runs it",
+        )
+        .option(
+            "--socket PATH",
+            "where it listens, unless systemd hands it one",
+        )
+        .option(
+            "--vocabulary PATH",
+            "the launcher's words.json, for its rows' words",
+        )
+        .option(
+            "--notify-send PATH",
+            "the program it knocks with; none, no notice",
+        )
+        .option(
+            "--every MS",
+            "how often it looks for a change; 2 s unless given",
+        )
+        .example(
+            "pineapple serve --socket /run/user/1000/daemons/pineapple.sock",
+            "serves until stopped",
+        ),
+    )
     .exit(Exit::Refused, "run under pi, where only Joel may resume")
     .exit(Exit::NotFound, "no stop standing is named by the scope")
+    .exit(Exit::BadInput, "serve's vocabulary can't be read")
 }
 
 fn main() -> ExitCode {
@@ -71,6 +105,7 @@ fn main() -> ExitCode {
         match args.as_slice() {
             [] | ["stops"] => stops(context),
             ["resume", scope] => resume(context, scope),
+            ["serve", rest @ ..] => serve(rest),
             ["resume"] => Err(Failure::new(Exit::Usage, "resume takes a scope")
                 .because("it resumes only the stops the scope names")
                 .try_this("pineapple stops")),
@@ -84,13 +119,75 @@ fn main() -> ExitCode {
     })
 }
 
-fn folder() -> PathBuf {
+fn state() -> PathBuf {
     std::env::var_os("XDG_STATE_HOME")
         .map_or_else(
             || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"),
             PathBuf::from,
         )
-        .join("pineapple/stops")
+        .join("pineapple")
+}
+
+fn folder() -> PathBuf {
+    state().join("stops")
+}
+
+/// The daemon, from its flags, which serves until it's stopped.
+fn serve(rest: &[&str]) -> Result<(), Failure> {
+    const FLAGS: [&str; 4] = ["--socket", "--vocabulary", "--notify-send", "--every"];
+    let mut socket = None;
+    let mut vocabulary = None;
+    let mut notify = None;
+    let mut every = serving::EVERY;
+    let mut args = rest.iter();
+    while let Some(flag) = args.next() {
+        let needs = || {
+            Failure::new(Exit::Usage, format!("{flag} takes a value"))
+                .try_this("pineapple serve --help")
+        };
+        match *flag {
+            "--socket" => socket = Some(PathBuf::from(args.next().ok_or_else(needs)?)),
+            "--vocabulary" => vocabulary = Some(PathBuf::from(args.next().ok_or_else(needs)?)),
+            "--notify-send" => notify = Some(PathBuf::from(args.next().ok_or_else(needs)?)),
+            "--every" => {
+                every = args
+                    .next()
+                    .and_then(|given| given.parse().ok())
+                    .map(Duration::from_millis)
+                    .ok_or_else(needs)?;
+            }
+            other => return Err(flags::unknown("option", other, &FLAGS)),
+        }
+    }
+    let socket = socket
+        .or_else(|| {
+            std::env::var_os("XDG_RUNTIME_DIR")
+                .map(|runtime| PathBuf::from(runtime).join("daemons/pineapple.sock"))
+        })
+        .ok_or_else(|| {
+            Failure::new(
+                Exit::Usage,
+                "no --socket and no XDG_RUNTIME_DIR to listen in",
+            )
+        })?;
+    let words = match vocabulary {
+        None => Words::default(),
+        Some(path) => std::fs::read_to_string(&path)
+            .map_err(|error| error.to_string())
+            .and_then(|text| Words::from_vocabulary(&text).map_err(|error| error.to_string()))
+            .map_err(|why| {
+                Failure::new(Exit::BadInput, "couldn't read the vocabulary")
+                    .because(format!("{}: {why}", path.display()))
+            })?,
+    };
+    serving::serve(Serving {
+        socket,
+        state: state(),
+        words,
+        notify,
+        every,
+    })
+    .map_err(|error| Failure::new(Exit::Failed, "couldn't serve").because(error.to_string()))
 }
 
 fn stops(context: &terminal_kit::Context) -> Result<(), Failure> {
@@ -119,7 +216,7 @@ fn listed(standing: &[Standing]) -> String {
         let shadow = stop.record.get("shadow").and_then(Value::as_bool) != Some(false);
         out.push_str(&stop.id);
         if shadow {
-            out.push_str("  (shadow)");
+            out.push_str("  (noted only: nothing was stopped)");
         }
         out.push_str("\n  stops ");
         out.push_str(&resume::reaches(&stop.record).join(", "));
@@ -136,7 +233,7 @@ fn resume(context: &terminal_kit::Context, scope: &str) -> Result<(), Failure> {
     if let Some(why) = under_pi() {
         return Err(Failure::new(Exit::Refused, "only Joel resumes a stop")
             .because(why)
-            .try_this("run it at a terminal of your own, or press Resume in the launcher"));
+            .try_this("run it at a terminal of your own"));
     }
     let at = SystemTime::now()
         .duration_since(UNIX_EPOCH)

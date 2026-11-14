@@ -61,6 +61,13 @@ pub struct Decision {
     /// Whether it reaches everything only because nothing narrower was
     /// found, which Joel is told loudly.
     pub fell_back: bool,
+    /// What a stop would reach, for a saying Joel is asked to judge (an
+    /// ask without the phrase, a joke, the phrase without his tag), so
+    /// his one press to stop it knows what; empty for any other.
+    pub would_reach: Vec<Target>,
+    /// Whether that would be everything only because nothing narrower was
+    /// found.
+    pub would_fall_back: bool,
     /// How Joel is told.
     pub tell: Tell,
     /// What its writer is answered.
@@ -94,6 +101,13 @@ pub fn decide(heard: &Heard, joel: &Joel) -> Decision {
         }
         _ => (Vec::new(), false),
     };
+    let (would_reach, would_fall_back) = match judged.verdict {
+        Verdict::StopAsked | Verdict::Waved(Waved::Joke | Waved::NoTag) => {
+            let would = reach(&judged.targets, &heard.context);
+            (would.targets, would.fell_back)
+        }
+        _ => (Vec::new(), false),
+    };
     let (tell, reply) = match judged.verdict {
         // Joel's own stop needs no answer: he knows what he said.
         Verdict::Stop if judged.by_joel => (Tell::Loud, Reply::Nothing),
@@ -115,6 +129,8 @@ pub fn decide(heard: &Heard, joel: &Joel) -> Decision {
         by_joel: judged.by_joel,
         reaches,
         fell_back,
+        would_reach,
+        would_fall_back,
         tell,
         reply,
     }
@@ -279,5 +295,15 @@ mod tests {
             "asking to stop without the phrase stops nothing"
         );
         assert!(asked.reaches.is_empty(), "and reaches nothing");
+        assert_eq!(
+            asked.would_reach, stop.reaches,
+            "but would reach what a stop said there would, for Joel's press"
+        );
+        let joke = decided("U0OTHER001", false, "<@U0JOEL0001> pineapple override jk");
+        assert_eq!(joke.would_reach, stop.reaches, "so would a joke waved off");
+        assert!(
+            stop.would_reach.is_empty(),
+            "a stop itself has its reaches, not a would-reach"
+        );
     }
 }

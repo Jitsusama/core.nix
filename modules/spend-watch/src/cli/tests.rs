@@ -134,8 +134,64 @@ fn a_feed_breaking_the_contract_is_bad_input() {
 #[test]
 fn going_to_a_session_not_open_is_missing() {
     let dir = tempfile::tempdir().expect("a folder");
-    let gone = ran(dir.path(), &["go", "01a1"]);
+    let gone = ran(dir.path(), &["sessions", "01a1", "go"]);
     assert_eq!(gone.exit, Exit::NotFound, "{}", gone.stderr);
+}
+
+// The words notices wrote before each resource took its own command
+// still answer, exactly as the new ones do, since a notice outlives a
+// switch.
+#[test]
+fn the_old_words_answer_as_the_new_ones() {
+    let dir = tempfile::tempdir().expect("a folder");
+    for (old, new) in [
+        (vec!["go", "01a1"], vec!["sessions", "01a1", "go"]),
+        (
+            vec!["findings", "expect", "burn:s1"],
+            vec!["findings", "burn:s1", "expect"],
+        ),
+    ] {
+        let (was, is) = (ran(dir.path(), &old), ran(dir.path(), &new));
+        assert_eq!(
+            (was.exit, &was.stdout, &was.stderr),
+            (is.exit, &is.stdout, &is.stderr),
+            "{old:?} should answer as {new:?} does"
+        );
+    }
+}
+
+// A session or a finding that isn't there is missing, and says where to
+// look, rather than an empty answer.
+#[test]
+fn one_session_or_finding_not_there_is_missing() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let session = ran(dir.path(), &["sessions", "01a1"]);
+    assert_eq!(session.exit, Exit::NotFound, "{}", session.stderr);
+    assert!(
+        session.stderr.contains("spend-watch sessions"),
+        "a missing session should say where to look: {}",
+        session.stderr
+    );
+    let finding = ran(dir.path(), &["findings", "burn:s1"]);
+    assert_eq!(finding.exit, Exit::NotFound, "{}", finding.stderr);
+    assert!(
+        finding.stderr.contains("spend-watch findings"),
+        "a missing finding should say where to look: {}",
+        finding.stderr
+    );
+}
+
+// Bare `sessions` is the week cut by session, the report's own.
+#[test]
+fn the_sessions_are_the_week_by_session() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let sessions = ran(dir.path(), &["sessions", "--json"]);
+    let report = ran(dir.path(), &["report", "by", "session", "--json"]);
+    assert_eq!(sessions.exit, Exit::Done, "{}", sessions.stderr);
+    assert_eq!(
+        sessions.stdout, report.stdout,
+        "sessions should be the report by session"
+    );
 }
 
 // Asking a daemon that isn't running is its being unavailable, so a
@@ -157,4 +213,52 @@ fn an_import_beside_a_running_daemon_is_to_try_again() {
     let _held = crate::daemon::lock(&dir.path().join("state")).expect("the lock is free");
     let imported = ran(dir.path(), &["import"]);
     assert_eq!(imported.exit, Exit::TryAgain, "{}", imported.stderr);
+}
+
+fn long_finding() -> crate::findings::Finding {
+    serde_json::from_value(json!({
+        "key": "burn:2026-11-14", "detector": "burn", "severity": "note",
+        "title": "a burn in a quest whose title runs well past a narrow terminal",
+        "detail": "$138 in the last hour against $47 in a working hour; past what eight weeks crossed",
+        "dollars": 138.0, "surprise": 2.0, "badge": "$138/h",
+        "session": null, "quest": null, "action": null, "cap": false,
+    }))
+    .expect("a finding this test writes reads")
+}
+
+// A long title hangs under its own first word and a long detail keeps its
+// inset, so neither runs past a narrow terminal, as a burn's did at 80.
+#[test]
+fn a_long_finding_wraps_under_its_words() {
+    let said = said_finding(&long_finding(), terminal_kit::layout::Room::Cells(40));
+    let lines: Vec<&str> = said.lines().collect();
+    let past: Vec<&&str> = lines
+        .iter()
+        .filter(|line| line.chars().count() > 40)
+        .collect();
+    assert!(past.is_empty(), "lines past 40 cells: {past:?}\n{said}");
+    assert!(
+        lines[0].starts_with("note: a burn"),
+        "the title follows its severity:\n{said}"
+    );
+    assert!(
+        lines[1].starts_with("      "),
+        "the title's next line hangs under it:\n{said}"
+    );
+    assert_eq!(
+        lines.last(),
+        Some(&"  key burn:2026-11-14"),
+        "the key is last:\n{said}"
+    );
+}
+
+// Into a pipe a finding is three lines, so grep finds a title whole.
+#[test]
+fn a_finding_into_a_pipe_keeps_each_part_on_one_line() {
+    let said = said_finding(&long_finding(), terminal_kit::layout::Room::Unbounded);
+    assert_eq!(
+        said.lines().count(),
+        3,
+        "title, detail and key, one line each:\n{said}"
+    );
 }

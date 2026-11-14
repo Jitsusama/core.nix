@@ -6280,16 +6280,15 @@ Scope {
     // picker's "Replace notes.md?" is, one place on every surface (VKCF3Z,
     // 2026-11-05), the foot saying "↵ confirm". While it stands every key
     // is its answer (Prompt.qml's confirming), as an armed row's is: after
-    // its first 300 ms, Return does it, y leaves it standing (Confirm.answer)
-    // and any other key lets it go (Joel, 2026-11-13: "having to say y/n for
-    // launcher items when others allow a double enter is stupid").
+    // its first 300 ms, Return does it and any other key lets it go (Joel,
+    // 2026-11-13: "having to say y/n for launcher items when others allow a
+    // double enter is stupid").
     property var asked: null
     // The rows it covers, by their places, which wear visual's tint while
     // it stands, so every one it would end shows as included.
     property var askedOver: []
 
-    // Asks once, `yes` done on Return and `no` on any other key but y, which
-    // leaves it standing (Confirm.answer), or as the
+    // Asks once, `yes` done on Return and `no` on any other key, or as the
     // launcher closes, `covering` the places of the rows it covers, or none.
     function askOnce(question, yes, no, covering) {
         asked = Confirm.asked(question, yes, no ?? (() => {}), Date.now());
@@ -6305,7 +6304,7 @@ Scope {
         if (ask === null)
             return;
         const said = Confirm.answer(ask, key, Date.now(), askReady.interval);
-        if (said === "early" || said === "stands")
+        if (said === "early")
             return;
         asked = null;
         Report.say(`answered ${said}`);
@@ -7709,7 +7708,34 @@ Scope {
     function drawerUnread(row) {
         return typeof row?.drawerUnread === "function" && row.drawerUnread();
     }
+    // The row the selection has rested on (Pacing.selectionRest), or null
+    // while it moves, so what a place there holds watches its daemon ahead
+    // of a step in (Seen.js) and the step's own frame says how it stands.
+    // The same row told again by its daemon, selected anew, keeps resting,
+    // so its watch never stops and starts on each telling.
+    property var restsOn: null
+    function selectionMoved() {
+        if (open && selected !== null && restsOn !== null
+            && (selected.key ?? "") !== "" && selected.key === restsOn.key) {
+            restsOn = selected;
+            return;
+        }
+        // Set only as it changes, so an arrow while nothing rests asks
+        // nothing of every provider's Seen.seen again.
+        if (restsOn !== null)
+            restsOn = null;
+        if (open && selected !== null)
+            selectionResting.restart();
+        else
+            selectionResting.stop();
+    }
+    Timer {
+        id: selectionResting
+        interval: Pacing.selectionRest()
+        onTriggered: root.restsOn = root.open ? root.selected : null
+    }
     onSelectedChanged: {
+        selectionMoved();
         // A row its daemon tells again while its drawer is still to follow,
         // or still to come, is selected anew with no key being handled, and
         // keeps the key that reached it: Every Count, told each second, lost
@@ -8991,6 +9017,9 @@ Scope {
 
     onOpenChanged: {
         tallyMarked();
+        // An opening's selection rests anew, never on the last opening's.
+        restsOn = null;
+        selectionMoved();
         // Each part of an opening's own work, timed as it's done, so the
         // line its frame says names what an opening slow to draw spent its
         // time on (Joel, 2026-11-10: the launcher takes forever to load).

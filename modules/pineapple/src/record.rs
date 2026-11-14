@@ -52,6 +52,8 @@ pub fn line(
         "by_joel": decision.by_joel,
         "reaches": decision.reaches.iter().map(ToString::to_string).collect::<Vec<_>>(),
         "fell_back": decision.fell_back,
+        "would_reach": decision.would_reach.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "would_fall_back": decision.would_fall_back,
         "tell": decision.tell.to_string(),
         "reply": decision.reply.to_string(),
         "gate": gate.to_string(),
@@ -60,15 +62,18 @@ pub fn line(
     })
 }
 
-/// A reply's line in the ledger of those that went out.
+/// A reply's line in the ledger of those that went out, with where it
+/// went and what it said; in shadow, where it would have and what it
+/// would have said, and `post` none where its words aren't written yet.
 #[must_use]
-pub fn sent(source: &Source<'_>, reply: Reply, at: u64, shadow: bool) -> Value {
+pub fn sent(source: &Source<'_>, reply: Reply, at: u64, shadow: bool, post: &Value) -> Value {
     json!({
         "at": at,
         "thread": source.thread,
         "reply": reply.to_string(),
         "key": source.key,
         "shadow": shadow,
+        "post": post,
     })
 }
 
@@ -179,7 +184,7 @@ mod tests {
         };
         let text = format!(
             "{}\n{{\"at\": 9, \"thr\n",
-            sent(&source, Reply::WhatStopped, 7, true)
+            sent(&source, Reply::WhatStopped, 7, true, &Value::Null)
         );
         assert_eq!(
             ledger(&text),

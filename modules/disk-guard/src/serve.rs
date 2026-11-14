@@ -222,10 +222,89 @@ pub fn steps(
     }
 }
 
+/// How long a stop may wait on a step before the guard leaves mid-step:
+/// under the 1 s systemd gives the account's guard before it kills it.
+pub const STOP_PATIENCE: Duration = Duration::from_millis(500);
+
+/// How often the watch looks for a stop held up.
+const STOP_LOOK: Duration = Duration::from_millis(50);
+
+/// Lets one of `signals` end the guard once it has waited `STOP_PATIENCE`
+/// on a step. Most steps ask after a stop as they go, but a walk that
+/// doesn't (a footprint, a listing of caches or holders) held one until
+/// systemd killed the guard on 14 November, failing the unit at each
+/// switch that caught it. The watch unblocks them in its own thread, so
+/// the one waiting is taken there and ends the guard as it ends any
+/// program, which systemd counts a clean stop. That's as safe as its kill:
+/// state is written beside and renamed into place, and systemd kills the
+/// commands the guard leaves behind.
+pub fn leave_when_held_up(
+    signals: &'static [i32],
+    err: impl Write + Send + 'static,
+) -> io::Result<()> {
+    let mut err = err;
+    std::thread::Builder::new()
+        .name("stop-watch".to_owned())
+        .spawn(move || {
+            held_up(
+                &crate::commands::stop_waiting,
+                STOP_PATIENCE,
+                STOP_LOOK,
+                &mut std::thread::sleep,
+            );
+            let _ = writeln!(err, "disk-guard: stopping in the middle of a step");
+            if let Err(error) = unblock(signals) {
+                let _ = writeln!(err, "disk-guard: the stop can't be let through: {error}");
+            }
+        })?;
+    Ok(())
+}
+
+/// Unblocks `signals` in this thread alone.
+fn unblock(signals: &[i32]) -> io::Result<()> {
+    // SAFETY: set is a sigset_t filled before it's read, and only this
+    // thread's mask changes.
+    let failed = unsafe {
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&raw mut set);
+        for &signal in signals {
+            libc::sigaddset(&raw mut set, signal);
+        }
+        libc::pthread_sigmask(libc::SIG_UNBLOCK, &raw const set, std::ptr::null_mut())
+    };
+    if failed == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::from_raw_os_error(failed))
+    }
+}
+
+/// Returns once `waiting` has said a stop waits for `patience` without a
+/// break, looking every `look`. A stop the loop takes between steps ends
+/// its wait, so only one a step holds up is ever left for.
+pub fn held_up(
+    waiting: &dyn Fn() -> bool,
+    patience: Duration,
+    look: Duration,
+    sleep: &mut dyn FnMut(Duration),
+) {
+    let mut held = Duration::ZERO;
+    loop {
+        if !waiting() {
+            held = Duration::ZERO;
+        } else if held >= patience {
+            return;
+        } else {
+            held += look;
+        }
+        sleep(look);
+    }
+}
+
 /// Blocks `signals` in this thread, and in every thread it starts after,
 /// and gives a wait that ends early, saying so, once one of them comes.
-/// A signal during a step waits for the step to finish, so a pass is
-/// never cut off halfway by a stop; a survey, which only reads, asks
+/// A signal during a step waits for the step to finish, or for
+/// `leave_when_held_up`'s patience; a survey, which only reads, asks
 /// whether one waits and ends early. Call it before starting any thread,
 /// or a thread that doesn't block them takes them and dies.
 #[cfg(target_os = "linux")]

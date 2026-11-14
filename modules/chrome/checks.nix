@@ -140,7 +140,7 @@ onLinux {
         mkdir -p profile runtime
         python3 ${./mid-write.py} profile
         sha256sum profile/History profile/History-journal > before
-        listed=$(XDG_RUNTIME_DIR=$PWD/runtime ${pkgs.lib.getExe recent-sites} profile)
+        listed=$(XDG_RUNTIME_DIR=$PWD/runtime ${pkgs.lib.getExe recent-sites} sites --profile profile)
         expected=$(for n in 1999 1998 1997 1996 1995 1994 1993 1992 1991; do
           printf 'https://site%s.example.org/\tKept\t%s\n' $n $((1800000000 + n))
         done)

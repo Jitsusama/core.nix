@@ -91,10 +91,7 @@ fn a_wait_the_kernel_counts_is_kept_as_its_span() {
 
     // Its three quiet seconds come after the waiting one.
     let line = within(30, "the wait kept", || {
-        let out = ask(
-            &store,
-            &["at", "now", "--around", "10m", "--format", "jsonl"],
-        );
+        let out = ask(&store, &["spans", "--around", "10m", "--format", "jsonl"]);
         let text = String::from_utf8(out.stdout).ok()?;
         text.lines()
             .find(|line| line.contains("memory waits in the machine"))
@@ -138,10 +135,7 @@ fn what_a_floored_slice_holds_is_kept_as_its_span() {
     );
 
     let line = within(30, "what app.slice holds", || {
-        let out = ask(
-            &store,
-            &["at", "now", "--around", "10m", "--format", "jsonl"],
-        );
+        let out = ask(&store, &["spans", "--around", "10m", "--format", "jsonl"]);
         let text = String::from_utf8(out.stdout).ok()?;
         text.lines()
             .find(|line| line.contains("memory held by app.slice"))
@@ -197,10 +191,7 @@ fn a_span_sent_is_read_back_at_its_moment_and_in_its_trace() {
     drop(sender);
 
     let lines = until("both spans kept", || {
-        let out = ask(
-            &store,
-            &["at", "now", "--around", "10m", "--format", "jsonl"],
-        );
+        let out = ask(&store, &["spans", "--around", "10m", "--format", "jsonl"]);
         let text = String::from_utf8(out.stdout).ok()?;
         // The kernel's own spans are kept beside them, and on a machine
         // with slices to read there are some, so only the sender's count.
@@ -218,7 +209,10 @@ fn a_span_sent_is_read_back_at_its_moment_and_in_its_trace() {
     );
 
     // As JSON the spans are one object, each one's times in RFC 3339.
-    let whole = ask(&store, &["at", "now", "--around", "10m", "--json"]);
+    let whole = ask(
+        &store,
+        &["spans", "--at", "now", "--around", "10m", "--json"],
+    );
     let whole: serde_json::Value = serde_json::from_slice(&whole.stdout).expect("one object");
     assert_eq!(whole["schema"], "collector.spans/1");
     let first = &whole["spans"][0];
@@ -230,7 +224,7 @@ fn a_span_sent_is_read_back_at_its_moment_and_in_its_trace() {
     );
     assert!(first["took_ms"].is_number(), "{first}");
 
-    let tree = ask(&store, &["trace", TRACE]);
+    let tree = ask(&store, &["traces", TRACE]);
     assert!(tree.status.success());
     let tree = String::from_utf8(tree.stdout).unwrap();
     let rows: Vec<&str> = tree.lines().collect();
@@ -242,12 +236,12 @@ fn a_span_sent_is_read_back_at_its_moment_and_in_its_trace() {
     );
     assert!(rows[1].contains("first_y=0"), "{tree}");
 
-    let empty = ask(&store, &["at", "2001-01-01 00:00"]);
+    let empty = ask(&store, &["spans", "--at", "2001-01-01 00:00"]);
     assert_eq!(
         String::from_utf8(empty.stdout).unwrap(),
         "No span was open then.\n"
     );
-    let missing = ask(&store, &["trace", "0123456789abcdef0123456789abcdef"]);
+    let missing = ask(&store, &["traces", "0123456789abcdef0123456789abcdef"]);
     assert_eq!(
         missing.status.code(),
         Some(66),
@@ -259,4 +253,21 @@ fn a_span_sent_is_read_back_at_its_moment_and_in_its_trace() {
         Some(64),
         "a mistyped command is asked wrongly"
     );
+
+    // The words asked before each resource took its own still answer,
+    // exactly as the new ones do.
+    for (old, new) in [
+        (
+            vec!["at", "2001-01-01 00:00"],
+            vec!["spans", "--at", "2001-01-01 00:00"],
+        ),
+        (vec!["trace", TRACE], vec!["traces", TRACE]),
+    ] {
+        let (was, is) = (ask(&store, &old), ask(&store, &new));
+        assert_eq!(
+            (was.status.code(), was.stdout, was.stderr),
+            (is.status.code(), is.stdout, is.stderr),
+            "{old:?} should answer as {new:?} does"
+        );
+    }
 }

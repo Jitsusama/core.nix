@@ -1335,24 +1335,6 @@ LOOKS_WAITING = 12
 WEIGHED_BY_AN_ACT = 2
 
 
-# How long the rows weighed must hold still before a count of them is read.
-WEIGHED_STILL = 1.0
-
-
-def weighed_held_still(shell: Shell, timeout: float = 10.0) -> int:
-    """Give how many rows the launcher has weighed, once that holds still for WEIGHED_STILL."""
-    deadline = time.monotonic() + timeout
-    last: int = shell.showing()["weighed"]
-    since = time.monotonic()
-    while time.monotonic() - since < WEIGHED_STILL:
-        assert time.monotonic() < deadline, f"the rows weighed never held still: {last}"
-        time.sleep(0.1)
-        now = shell.showing()["weighed"]
-        if now != last:
-            last, since = now, time.monotonic()
-    return last
-
-
 def test_an_act_on_one_look_weighs_the_keys_of_no_other(shell: Shell) -> None:
     """Clearing one look in To Look At weighs its own row's keys again, and no other's.
 
@@ -1393,7 +1375,7 @@ def test_an_act_on_one_look_weighs_the_keys_of_no_other(shell: Shell) -> None:
         # before the act, as the rows shown again or the keys' face measured, can land
         # after it and count as its (one act weighed 9, 85PKB2, 2026-11-12). Clearing a
         # look asks nothing, so dd is the act.
-        before = weighed_held_still(shell)
+        before = launcher_on_niri.weighed_held_still(shell)
         since = shell.mark()
         shell.send_chars("dd")
         shell.reported("act shown in ", lambda _rest: True, since)
@@ -2030,9 +2012,11 @@ def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.normal()
-    # Down to the third place and back, twice, so each of the first three has made its
-    # drawer before the key that's measured, which brings the third's again.
-    for key in "jjjkkjjk":
+    # Down to the third place and back, three times, so each of the first three has made its
+    # drawer thrice before the key that's measured, which brings the third's again. Twice
+    # wasn't enough: the median of two makings is their mean, so one dear making on a loaded
+    # builder could hold it at 3 and send a 1 ms drawer the frame after (KP0L6A, 2026-11-13).
+    for key in "jjjkkjjkkjjk":
         title = (shell.showing()["drawer"] or {}).get("title", "")
         shell.send_chars(key)
         shell.launcher_until(functools.partial(drawer_moved, title))

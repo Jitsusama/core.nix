@@ -354,15 +354,20 @@ function copiesIn(rows, actionsOf, copies) {
 // Never for one saying how it's put back (`undo`). Else its source's
 // `costly`; else a Close saying what it leaves asks, the ask saying so;
 // else the language's `costly` on its command (Options.commands), until
-// each daemon serves its own. More than five that can't be put back ask
-// too, whatever each costs alone, as twenty windows gone at a stroke is
-// of significant consequence (VKCF3Z, 2026-11-14), but never one served
-// as costing little. Anything else acts at once, one or many.
+// each daemon serves its own. Anything else acts at once, one or many.
 function asks(actions, commands) {
-    const lasting = actions.filter(action => typeof action.undo !== "function"
-        && action.costly !== false);
-    return lasting.length > 5 || lasting.some(action => action.costly === true
-        || (action.leaves ?? "") !== "" || commands[action.command ?? ""]?.costly === true);
+    return actions.some(action => {
+        if (typeof action.undo === "function") {
+            return false;
+        }
+        if (typeof action.costly === "boolean") {
+            return action.costly;
+        }
+        if ((action.leaves ?? "") !== "") {
+            return true;
+        }
+        return commands[action.command ?? ""]?.costly === true;
+    });
 }
 
 // What u takes back of what d did: each action that says how it's put

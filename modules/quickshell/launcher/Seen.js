@@ -58,7 +58,12 @@ function foundIn(rows) {
 
 // Whether `provider`'s rows show in the open launcher: its answer, a row
 // of it stepped into or found, or a place shown holding one of `ids`, as
-// Machine holds Heat, or about to: what's typed asks it, by `asking`, a
+// Machine holds Heat, or about to: a place holding one that the selection
+// rests on (the launcher's `restsOn`), so a step in already says how it
+// stands rather than drawing it again a daemon's answer later, which in
+// Desktop drew the screen's light 51 to 71 ms from the key and held the
+// step's swap 11 to 16 ms (XY9H5C's GPU rig, 2026-11-14); or what's typed
+// asks it, by `asking`, a
 // function of the words typed, since its answer is made only from what
 // its daemon says. A place's holdings count before their conditions
 // hold them back, since a row whose condition is what the daemon says,
@@ -85,5 +90,6 @@ function seen(launcher, provider, ids, asking) {
         || ids.some(id => found.ids.has(id))
         || launcher.placed.some(id => ids.includes(id))
         || (launcher.category?.holds ?? []).some(id => ids.includes(id))
+        || (launcher.restsOn?.category?.holds ?? []).some(id => ids.includes(id))
         || (typeof asking === "function" && asking(launcher.typed ?? ""));
 }

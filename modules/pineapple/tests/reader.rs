@@ -218,6 +218,13 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
     let replies = std::fs::read_to_string(home.join("state/pineapple/replies.jsonl"))
         .expect("the replies let through are kept");
     assert_eq!(replies.lines().count(), 1, "one reply would have gone out");
+    let reply: Value = serde_json::from_str(replies.lines().next().unwrap_or_default())
+        .expect("a reply's line is JSON");
+    assert_eq!(
+        reply["post"],
+        Value::Null,
+        "no reply has words until Joel's yes is written in replies.json"
+    );
 
     let stops: Vec<PathBuf> = std::fs::read_dir(home.join("state/pineapple/stops"))
         .expect("the stops folder")
@@ -260,6 +267,54 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
     again.kill().expect("the reader stops");
     again.wait().expect("the reader is gone");
     assert_eq!(decisions(&home).len(), 4, "a restart judges nothing twice");
+    let kept: Value = serde_json::from_str(
+        &std::fs::read_to_string(home.join("state/pineapple/judged.json")).expect("the mark"),
+    )
+    .expect("the mark is JSON");
+    assert!(
+        kept["read_at"].as_u64().is_some(),
+        "a round with nothing new still says when Slack was read: {kept}"
+    );
+    let heard = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
+        .arg("heard")
+        .env("XDG_STATE_HOME", home.join("state"))
+        .output()
+        .expect("heard answers");
+    assert!(
+        String::from_utf8_lossy(&heard.stdout).contains("stop"),
+        "heard still lists what was heard: {heard:?}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn heard_says_when_slack_was_last_read_while_nothing_is_heard() {
+    let home = home();
+    let heard = || {
+        let said = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
+            .arg("heard")
+            .env("XDG_STATE_HOME", home.join("state"))
+            .output()
+            .expect("heard answers");
+        String::from_utf8_lossy(&said.stdout).into_owned()
+    };
+    assert_eq!(
+        heard(),
+        "nothing heard yet, and Slack hasn't been read yet\n",
+        "a mark with no read_at, as before a first round"
+    );
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("after the epoch")
+        .as_millis();
+    let judged = json!({"since": "1.000000", "keys": [], "read_at": now - 5000});
+    std::fs::write(home.join("state/pineapple/judged.json"), judged.to_string())
+        .expect("the mark written");
+    let said = heard();
+    assert!(
+        said.starts_with("nothing heard yet; Slack was last read ") && said.ends_with(" s ago\n"),
+        "says how long ago it read: {said}"
+    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 

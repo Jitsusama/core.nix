@@ -10,6 +10,7 @@ import QtQuick
 import "Expect.js" as Expect
 import "TalkLine.js" as Said
 import "SessionTalks.js" as Session
+import "TalkThread.js" as Thread
 
 QtObject {
     Component.onCompleted: {
@@ -379,6 +380,93 @@ QtObject {
                     [talkAt(20, 0, "six", "delivered")]).map(one => one.stage), ["delivered"]);
             Expect.same("a reply not yet heard is to be told heard",
                 [Session.unheard(heardTalks[4]), Session.unheard(heardTalks[0])], [true, false]);
+
+            // A line opened as its thread: his words whole, then every event of its key in
+            // the order written, superseded ones too, each with who and when, and the nerdy
+            // bits for the fold (8GYNJ6 [851e94b2]).
+            const threadWords = { has: "{who} has it", tookUp: "{who} took it up",
+                letGo: "{who} let it go", taken: "taken back" };
+            const threaded = Object.assign(Said.begun("VOID", "is the fix in?", "is the fix in?",
+                when(20, 30)), { key: "2026-11-13 20:30" });
+            const threadEvents = [
+                { line: "2026-11-13 20:30", msg: "m1", owner: "WCJQSG",
+                    who: "Your orchestrator", event: "routed", at: "20:30" },
+                { line: "2026-11-13 20:29", msg: "x", who: "Elsewhere", event: "routed" },
+                { line: "2026-11-13 20:30", msg: "m2", re: "m1", who: "Your orchestrator",
+                    event: "taken", at: "20:31", text: "On it." },
+                { line: "2026-11-13 20:30", msg: "m3", re: "m1", who: "Delta", event: "answered",
+                    at: "20:40", text: "Not yet." },
+                { line: "2026-11-13 20:30", msg: "m4", re: "m1", supersedes: "m3", who: "Delta",
+                    event: "landed", at: "20:52", text: "Merged." },
+                { line: "2026-11-13 20:30", msg: "m5", who: "Delta", event: "let-go",
+                    at: "20:53" }
+            ];
+            const thread = Thread.threadOf(threaded, threadEvents, threadWords);
+            Expect.same("a thread holds his words, when he said them, and every event of its key",
+                [thread.line, thread.side, thread.steps.map(step => [step.text, step.by,
+                    step.side, step.answer])],
+                ["is the fix in?", "20:30", [
+                    ["Your orchestrator has it", "", "20:30", false],
+                    ["On it.", "Your orchestrator", "20:31", true],
+                    ["Not yet.", "Delta", "20:40", true],
+                    ["Merged.", "Delta", "20:52", true],
+                    ["Delta let it go", "", "20:53", false]]]);
+            Expect.same("its fold names the line's key, and each event's kind and messages",
+                [thread.nerd, thread.steps[0].nerd, thread.steps[3].nerd],
+                ["line 2026-11-13 20:30", "routed \u00b7 msg m1 \u00b7 to WCJQSG",
+                    "landed \u00b7 msg m4 \u00b7 re m1 \u00b7 replaces m3"]);
+            Expect.same("taken up with no words, it says who took it up",
+                Thread.threadOf(threaded, [{ line: "2026-11-13 20:30", event: "taken",
+                    who: "Delta", at: "20:31" }], threadWords).steps[0].text,
+                "Delta took it up");
+            Expect.same("a line the void hasn't written of holds only his words",
+                [Thread.threadOf(Said.begun("VOID", "hi", "hi", when(21, 0)), threadEvents,
+                    threadWords).steps, Thread.threadOf(Said.begun("VOID", "hi", "hi",
+                    when(21, 0)), threadEvents, threadWords).nerd], [[], ""]);
+            Expect.same("an earlier day's thread says which beside its time",
+                Thread.threadOf(threaded, [], threadWords, { dayOf: () => "yesterday" }).side,
+                "yesterday 20:30");
+            // A reply typed in an open thread goes to the void as a line whose first line
+            // names the thread by its key; the void writes it as `replied` on that key, which
+            // the thread shows as his own words, as it does one said here until then (QCXZEB
+            // [5eaea432], 8GYNJ6 [0543317b]).
+            const replyKey = "2026-11-13 20:30";
+            Expect.same("a reply goes as a line naming its thread first, and is known by it",
+                [Thread.replying(replyKey, "and now?"),
+                    Thread.threadKeyOf("reply 2026-11-13 20:30\nand now?"),
+                    Thread.threadKeyOf("is the fix in?"),
+                    Thread.threadKeyOf("reply to Delta\nplease")],
+                ["reply 2026-11-13 20:30\nand now?", replyKey, "", ""]);
+            const replyWritten = { line: replyKey, msg: "r1", re: "m4", owner: "WCJQSG",
+                who: "Delta", event: "replied", at: "21:00", text: "and now?" };
+            const repliedStep = Thread.threadOf(threaded, threadEvents.concat([replyWritten]),
+                threadWords).steps[5];
+            Expect.same("a reply the void wrote shows as his own words, its fold its messages",
+                [repliedStep.text, repliedStep.mine, repliedStep.answer, repliedStep.by,
+                    repliedStep.side, repliedStep.nerd],
+                ["and now?", true, false, "", "21:00",
+                    "replied \u00b7 msg r1 \u00b7 re m4 \u00b7 to WCJQSG"]);
+            const replyHere = Said.begun("VOID", "and now?",
+                Thread.replying(replyKey, "and now?"), when(21, 0));
+            const replyServed = Said.begun("VOID", Thread.replying(replyKey, "and then?"),
+                Thread.replying(replyKey, "and then?"), when(21, 5));
+            const elsewhere = Said.begun("VOID", "hm",
+                Thread.replying("2026-11-13 20:29", "hm"), when(21, 6));
+            const pending = Thread.threadOf(threaded, threadEvents, threadWords,
+                { replies: [replyHere, replyServed, elsewhere] }).steps.slice(5);
+            Expect.same("replies to it not yet written show at once as his, without their key",
+                pending.map(step => [step.text, step.mine, step.side]),
+                [["and now?", true, "21:00"], ["and then?", true, "21:05"]]);
+            Expect.same("a reply said here shows once when the void has written it",
+                Thread.threadOf(threaded, threadEvents.concat([replyWritten]), threadWords,
+                    { replies: [replyHere] }).steps.filter(step => step.text === "and now?")
+                    .length, 1);
+            // j and k pick a line in the list: the first j the newest, then on, never past
+            // either end; k with none picked picks the newest too.
+            Expect.same("j and k pick lines, never past either end",
+                [Thread.picking(-1, 1, 4), Thread.picking(0, 1, 4), Thread.picking(2, 5, 4),
+                    Thread.picking(1, -3, 4), Thread.picking(-1, -1, 4), Thread.picking(-1, 1, 0)],
+                [0, 1, 3, 0, 0, -1]);
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);

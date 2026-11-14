@@ -3,7 +3,7 @@ use disk_guard::config::Config;
 use disk_guard::daemon::{Guard, Places, Senses};
 use disk_guard::moments::{Power, Pressure};
 use disk_guard::notices::Change;
-use disk_guard::serve::{Desk, Unheard, answering, hold, senses, steps, stopping};
+use disk_guard::serve::{Desk, Unheard, answering, held_up, hold, senses, steps, stopping};
 use disk_guard::socket::{Reply, Request, ask};
 use std::fs;
 use std::path::Path;
@@ -507,6 +507,39 @@ fn waiting_ends_early_for_a_signal_to_stop() {
     let started = std::time::Instant::now();
     assert!(wait(Duration::from_secs(5)), "told to stop");
     assert!(started.elapsed() < Duration::from_secs(1));
+}
+
+/// How long `held_up` watched before it left, given when a stop waits:
+/// `waiting(look)` says whether one does at the look'th look.
+fn watched(waiting: impl Fn(u32) -> bool) -> u32 {
+    let looks = std::cell::Cell::new(0);
+    held_up(
+        &|| waiting(looks.get()),
+        Duration::from_millis(500),
+        Duration::from_millis(50),
+        &mut |_| looks.set(looks.get() + 1),
+    );
+    looks.get()
+}
+
+#[test]
+fn a_stop_a_step_holds_up_is_left_for_within_its_patience() {
+    let looks = watched(|look| look >= 3);
+    // Ten looks of 50 ms is the 500 ms it may wait, after the three before it.
+    assert_eq!(
+        looks, 13,
+        "left {looks} looks in, not as soon as 500 ms had passed"
+    );
+}
+
+#[test]
+fn a_stop_the_loop_takes_between_steps_is_never_left_for() {
+    // Waiting for 9 looks, under its patience, then taken; a second stop at 20.
+    let looks = watched(|look| (3..12).contains(&look) || look >= 20);
+    assert_eq!(
+        looks, 30,
+        "left {looks} looks in, for a stop the loop had taken"
+    );
 }
 
 #[test]

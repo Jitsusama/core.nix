@@ -232,7 +232,7 @@ until_true ": to ask the launcher for its command line" commanded
 # made on one page and gone back to from another, and a command zathura
 # doesn't have refused.
 carried() {
-  zathura-command "$bus" "$1" "$2"
+  zathura-command run "$bus" "$1" "$2"
   until_true ":$1 $2 to page $3" on "$3"
 }
 carried goto 3 2
@@ -241,7 +241,7 @@ carried goto '$' 5
 carried goto 1 0
 carried bjump kept 2
 carried goto 99 5
-if zathura-command "$bus" nonsense "" 2>/dev/null; then never "a command zathura lacks refused"; fi
+if zathura-command run "$bus" nonsense "" 2>/dev/null; then never "a command zathura lacks refused"; fi
 
 # ]b opens the next document in its folder, by name, and [b the one before,
 # with a count that many, coming round at either end, and passing over

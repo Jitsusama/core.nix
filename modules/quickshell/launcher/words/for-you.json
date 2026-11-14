@@ -1,6 +1,63 @@
 {
   "things": [
     {
+      "id": "verb:pineapple:resume",
+      "command": "resume",
+      "in": "for-you:source:pineapple",
+      "name": "Resume",
+      "verb": "resume",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:pineapple:widen",
+      "command": "pause",
+      "argument": "all",
+      "in": "for-you:source:pineapple",
+      "name": "Stop Everything",
+      "verb": "widen",
+      "glyph": "pause"
+    },
+    {
+      "id": "verb:pineapple:stop",
+      "command": "pause",
+      "in": "for-you:source:pineapple",
+      "name": "Stop Them",
+      "verb": "stop",
+      "glyph": "pause"
+    },
+    {
+      "id": "verb:pineapple:approve",
+      "command": "resume",
+      "argument": "asked",
+      "in": "for-you:source:pineapple",
+      "name": "Agree",
+      "verb": "resume",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:pineapple:dismiss",
+      "command": "archive",
+      "in": "for-you:source:pineapple",
+      "name": "Leave It",
+      "verb": "leave",
+      "glyph": "dismiss"
+    },
+    {
+      "id": "pineapple:fact:said",
+      "in": "for-you:source:pineapple",
+      "name": "Said"
+    },
+    {
+      "id": "pineapple:fact:where",
+      "in": "for-you:source:pineapple",
+      "name": "Where"
+    },
+    {
+      "id": "pineapple:fact:count",
+      "in": "for-you:source:pineapple",
+      "name": "Heard"
+    },
+    {
       "id": "verb:on:waiting:desktop:read",
       "command": "delete",
       "in": "for-you:source:desktop",

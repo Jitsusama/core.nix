@@ -15,12 +15,15 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.toml
       ./Cargo.lock
       ./sayings.json
+      ./replies.json
       ./src
       ./tests
       ../slack/Cargo.toml
       ../slack/src
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
+      ../daemon-client/Cargo.toml
+      ../daemon-client/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
       ../terminal-kit/Cargo.toml

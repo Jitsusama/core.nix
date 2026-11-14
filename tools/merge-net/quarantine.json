@@ -433,20 +433,6 @@
     "test": "vm-screens-keep-the-launcher"
   },
   {
-    "at": 1794646800,
-    "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
-    "owner_pr": 4252,
-    "reason": "has been broken since #4252, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "subtests": [
-      "test_a_sessions_action_is_in_needs_you_once_as_its_item",
-      "test_now_leads_with_what_waits_on_joel",
-      "test_waiting_on_you_holds_only_what_is_true",
-      "test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so",
-      "test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps"
-    ],
-    "test": "vm-desktop-launcher-waits-on-joel"
-  },
-  {
     "at": 1794652172,
     "commit": "ec4bf1f43e1390a0fb0844c61747ed977d800fbd",
     "owner_pr": 4303,
@@ -456,5 +442,16 @@
       "test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
+  },
+  {
+    "at": 1794663909,
+    "commit": "2ad1f75f4c577942084786e39511ab722481a710",
+    "owner_pr": 4329,
+    "reason": "failed, then passed, at 2ad1f75f4c57",
+    "subtests": [
+      "test_a_drawer_resting_for_the_letters_names_the_row_selected",
+      "test_letters_typed_quicker_than_the_rest_make_one_drawer"
+    ],
+    "test": "the-launcher-answers-whats-typed-on-niri"
   }
 ]

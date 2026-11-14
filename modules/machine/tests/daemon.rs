@@ -1487,7 +1487,8 @@ fn a_silent_guard_says_how_its_unit_stands() {
     );
 }
 
-// Keep, Release and Clear are the guard's own keep, unkeep and clear,
+// Keep, Release and Clear are the guard's own keeps add, keeps remove
+// and clear,
 // run by the daemon, which words what Joel reads from the guard's JSON,
 // done or not.
 #[test]
@@ -1502,8 +1503,8 @@ fn the_guards_acts_run_it_and_say_what_it_answered() {
         &guard,
         format!(
             "#!{}\necho \"$*\" >> {}\n\
-             [ \"$2\" = keep ] && \
-             echo '{{\"schema\":\"disk-guard.keep/1\",\"path\":\"'\"$4\"'\",\"reason\":\"'\"$5\"'\"}}' \
+             [ \"$2\" = keeps ] && [ \"$5\" = add ] && \
+             echo '{{\"schema\":\"disk-guard.keep/1\",\"path\":\"'\"$4\"'\",\"reason\":\"'\"$6\"'\"}}' \
              && exit 0\n\
              echo '{{\"schema\":\"error/1\",\"what\":\"'\"$4\"' wasn'\\''t kept\",\"why\":null}}' >&2\n\
              exit 1\n",
@@ -1541,7 +1542,7 @@ fn the_guards_acts_run_it_and_say_what_it_answered() {
     );
     assert_eq!(
         std::fs::read_to_string(&asked).unwrap(),
-        "--json keep -- /home/joel/src the build's\n--json unkeep -- /srv\n",
+        "--json keeps -- /home/joel/src add the build's\n--json keeps -- /srv remove\n",
         "a refused act never reaches the guard"
     );
 }

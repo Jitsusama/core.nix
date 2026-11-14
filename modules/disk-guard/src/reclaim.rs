@@ -406,7 +406,7 @@ pub fn entry(
             .try_for_each(|trash| trash.empty_paced(unlinked))
     });
     if let Err(error) = left {
-        return failed("emptying what an earlier pass left in it", error);
+        return left_unemptied(&error);
     }
     drop(dir);
     match parent.remove_if_empty(name) {
@@ -414,6 +414,21 @@ pub fn entry(
         Ok(false) => Outcome::Failed("something was left in it".to_owned()),
         Err(error) => failed("removing it", error),
     }
+}
+
+/// What comes of an entry whose earlier trash couldn't be emptied for
+/// `error`. One holding what this account may not remove, as root's files
+/// a session run as root left in a quest's scratch on 14 November, is
+/// kept: it failed the same way every pass, and only root could take it.
+/// The guard makes what it owns writable before emptying it, so only what
+/// another account owns is refused this way.
+pub fn left_unemptied(error: &io::Error) -> Outcome {
+    if error.kind() == io::ErrorKind::PermissionDenied {
+        return Outcome::Kept(format!(
+            "an earlier pass's trash in it holds what this account may not remove: {error}"
+        ));
+    }
+    Outcome::Failed(format!("emptying what an earlier pass left in it: {error}"))
 }
 
 /// Deletes a target's contents where they lie, all but `keep`, for a disk

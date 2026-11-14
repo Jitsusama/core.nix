@@ -86,7 +86,7 @@ def command(asked: list[str], tab: str = "") -> str:
 
 def tabs(machine: QemuMachine) -> list[list[str]]:
     """Give each tab the host says is open, as its fields, as the programs daemon asks it."""
-    listed = as_account(machine, "chrome-open-tabs list")
+    listed = as_account(machine, "chrome-open-tabs tabs")
     return [line.split("\t") for line in listed.splitlines()]
 
 
@@ -118,7 +118,7 @@ def test_the_launcher_hears_the_open_tabs_and_goes_to_or_closes_one(
         f"--password-store=basic --user-data-dir={PROFILE} {pages} > {LOG} 2>&1 &",
         account="joel",
     )
-    listing = "XDG_RUNTIME_DIR=/run/user/1000 chrome-open-tabs list"
+    listing = "XDG_RUNTIME_DIR=/run/user/1000 chrome-open-tabs tabs"
     try:
         machine.wait_until_succeeds(
             f"[ $(su - joel -c '{listing}' | grep -c .) = 2 ]", timeout=2 * minute
@@ -148,7 +148,7 @@ def written(machine: QemuMachine) -> str:
     _, read = machine.execute(f"su - joel -c 'chrome-session {SESSIONED}/Default' 2>&1")
     _, served = machine.execute("curl -sS http://pages.example.org/one.html 2>&1")
     _, live = machine.execute(
-        "su - joel -c 'XDG_RUNTIME_DIR=/run/user/1000 chrome-open-tabs list' 2>&1"
+        "su - joel -c 'XDG_RUNTIME_DIR=/run/user/1000 chrome-open-tabs tabs' 2>&1"
     )
     _, encoded = machine.execute(f"cat {sessions}/Session_* | base64 -w0")
     raw = base64.b64decode(encoded)

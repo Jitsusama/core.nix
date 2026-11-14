@@ -5,7 +5,7 @@ let
   package = pkgs.callPackage ./package.nix { };
 in
 {
-  # `collector at` and `collector trace`, which find the store and socket
+  # `collector spans` and `collector traces`, which find the store and socket
   # the service uses by themselves.
   home.packages = [ package ];
 

@@ -17,6 +17,7 @@ rustPlatform.buildRustPackage rec {
       ./src
       # The scenarios alone: the check scripts beside them aren't the crate's.
       ./tests/guard
+      ./tests/held-stop.rs
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

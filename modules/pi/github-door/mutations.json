@@ -1,0 +1,65 @@
+{
+  "about": "The GraphQL mutations the door lets a fenced command make, each by its exact field name, with the skill that teaches the call and the call itself. No wildcards and no kin: a name not here is refused. A name is added only with the skill that uses it.",
+  "mutations": [
+    {
+      "name": "updateProjectV2ItemPosition",
+      "skill": "github-project-guide",
+      "call": "gh api graphql, Reordering Project Items, and scripts/reorder-project-item.sh"
+    },
+    {
+      "name": "reprioritizeSubIssue",
+      "skill": "github-sub-issue-guide",
+      "call": "gh api graphql, Reordering Sub-Issues, and scripts/reorder-sub-issues.sh"
+    },
+    {
+      "name": "addSubIssue",
+      "skill": "github-sub-issue-guide",
+      "call": "gh api graphql, creating a sub-issue under its parent, as the skill's description says it does"
+    },
+    {
+      "name": "removeSubIssue",
+      "skill": "github-sub-issue-guide",
+      "call": "gh api graphql, taking a sub-issue from its parent"
+    },
+    {
+      "name": "createIssue",
+      "skill": "github-cli-convention",
+      "call": "gh issue create, as the skill and github-issue-format teach it"
+    },
+    {
+      "name": "updateIssue",
+      "skill": "github-cli-convention",
+      "call": "gh issue edit, its title and body"
+    },
+    {
+      "name": "addLabelsToLabelable",
+      "skill": "github-cli-convention",
+      "call": "gh issue edit and gh pr edit with --add-label, Metadata in Separate Commands"
+    },
+    {
+      "name": "removeLabelsFromLabelable",
+      "skill": "github-cli-convention",
+      "call": "gh issue edit and gh pr edit with --remove-label"
+    },
+    {
+      "name": "replaceActorsForAssignable",
+      "skill": "github-issue-format",
+      "call": "gh issue edit and gh pr edit with --add-assignee @me, as github-issue-format and github-pr-format ask after a create"
+    },
+    {
+      "name": "updatePullRequest",
+      "skill": "github-cli-convention",
+      "call": "gh pr edit, its title and body"
+    },
+    {
+      "name": "requestReviews",
+      "skill": "github-cli-convention",
+      "call": "gh pr edit with --add-reviewer"
+    },
+    {
+      "name": "requestReviewsByLogin",
+      "skill": "github-cli-convention",
+      "call": "gh pr edit with --add-reviewer, as gh 2.103 sends it"
+    }
+  ]
+}

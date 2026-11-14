@@ -54,6 +54,15 @@ SHOWN = 15
 # protocol's ways: each with what speaks it.
 OTHERS_PROTOCOL = {
     "pi-agent-proxy": "ssh-agent's protocol, which ssh and git speak to it",
+    "pi-github-door": "HTTP's CONNECT, which gh and git speak to it through the fence's relay",
+}
+
+# Doors for pi's fence: services that answer only the fence's own commands,
+# from a folder of their own the fence binds in alone, since binding
+# %t/daemons would hand a fenced command every daemon there. Each with the
+# commands that speak to it.
+FENCE_DOORS = {
+    "pi-clipboard-door": "the fence's wl-copy and wl-paste, in a line protocol of their own",
 }
 
 # Daemons that speak the interface from a program no crate here builds, each
@@ -145,7 +154,11 @@ def daemons(units: dict[str, dict[str, dict[str, Any]]], built: dict[str, Path])
                 continue
             found.append(Daemon(Path(socket).stem, path, None, service, command))
             break
-    return [daemon for daemon in found if daemon.service not in OTHERS_PROTOCOL]
+    return [
+        daemon
+        for daemon in found
+        if daemon.service not in OTHERS_PROTOCOL and daemon.service not in FENCE_DOORS
+    ]
 
 
 def broken(daemon: Daemon, built: dict[str, Path]) -> list[str]:

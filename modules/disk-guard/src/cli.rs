@@ -11,6 +11,7 @@
 
 mod acts;
 mod daemons;
+mod keeps;
 mod reads;
 
 use crate::band::Band;
@@ -51,6 +52,10 @@ pub enum Command {
         path: PathBuf,
         config: Option<PathBuf>,
     },
+    /// Every folder kept, or the keep covering one.
+    Keeps {
+        path: Option<PathBuf>,
+    },
     /// Never offer what's in a folder, for a reason of Joel's.
     Keep {
         path: PathBuf,
@@ -90,13 +95,12 @@ pub struct Env {
 }
 
 /// The commands, as they're typed.
-const COMMANDS: [&str; 12] = [
+const COMMANDS: [&str; 11] = [
     "status",
     "plan",
     "journal",
     "explain",
-    "keep",
-    "unkeep",
+    "keeps",
     "clear",
     "footprint",
     "thaw",
@@ -123,7 +127,7 @@ pub fn help() -> Help {
         "what a pass would clear now, clearing nothing",
     )
     .example(
-        "disk-guard keep ~/vms mine",
+        "disk-guard keeps ~/vms add mine",
         "never offer ~/vms, because it's yours",
     )
     .example(
@@ -154,17 +158,22 @@ pub fn help() -> Help {
             .exit(Exit::NotFound, "the path isn't there")
             .exit(Exit::Config, "the config can't be read"),
     )
+    .subcommand(keeps())
+    // The words a keep was made and let go with before `keeps`, which
+    // still answer for whatever typed them, offered nowhere.
     .subcommand(
         Help::new("keep", "never offer what's in a folder, for your reason")
             .example("disk-guard keep ~/vms mine", "never offer ~/vms")
             .argument("<folder>", "what to keep")
             .argument("<why>...", "your reason, said where it's kept")
-            .exit(Exit::NotFound, "the folder isn't there"),
+            .exit(Exit::NotFound, "the folder isn't there")
+            .unlisted(),
     )
     .subcommand(
         Help::new("unkeep", "let a kept folder go again")
             .example("disk-guard unkeep ~/vms", "offer ~/vms again")
-            .argument("<folder>", "a folder kept"),
+            .argument("<folder>", "a folder kept")
+            .unlisted(),
     )
     .subcommand(clear())
     .subcommand(
@@ -219,6 +228,27 @@ fn plan() -> Help {
         .option("--pretend-free SIZE", "as if this much were free")
         .option("--fresh", "survey every source again")
         .exit(Exit::Config, "the config can't be read")
+}
+
+/// `keeps`' help: the folders kept, and what's done to one.
+fn keeps() -> Help {
+    Help::new("keeps", "the folders never offered, each with your reason")
+        .example("disk-guard keeps", "every folder kept, by whom and why")
+        .example("disk-guard keeps ~/vms/a", "the keep that covers it")
+        .example("disk-guard keeps ~/vms add mine", "never offer ~/vms")
+        .argument("<folder>", "a folder kept, or one within it")
+        .subcommand(
+            Help::new("add", "never offer what's in it, for your reason")
+                .example("disk-guard keeps ~/vms add mine", "never offer ~/vms")
+                .argument("<why>...", "your reason, said where it's kept")
+                .exit(Exit::NotFound, "the folder isn't there"),
+        )
+        .subcommand(
+            Help::new("remove", "offer what's in it again")
+                .example("disk-guard keeps ~/vms remove", "offer ~/vms again")
+                .exit(Exit::Failed, "the keep couldn't be let go"),
+        )
+        .exit(Exit::NotFound, "nothing kept covers that folder")
 }
 
 /// `clear`'s help, which asks the running guard.
@@ -345,6 +375,7 @@ pub fn parse(args: &[String]) -> Result<Command, Failure> {
             file: options.one("check-config takes one file")?,
         },
         "thaw" => Command::Thaw,
+        "keeps" => kept_how(std::mem::take(&mut options.positional))?,
         "keep" => {
             let (path, reason) = kept(std::mem::take(&mut options.positional))?;
             Command::Keep { path, reason }
@@ -376,6 +407,37 @@ pub fn parse(args: &[String]) -> Result<Command, Failure> {
     };
     options.finished()?;
     Ok(command)
+}
+
+/// What `keeps` is asked: nothing for every keep, a folder for the one
+/// covering it, and after the folder what's done to its keep.
+fn kept_how(words: Vec<String>) -> Result<Command, Failure> {
+    let mut words = words.into_iter();
+    let Some(folder) = words.next().map(PathBuf::from) else {
+        return Ok(Command::Keeps { path: None });
+    };
+    let rest: Vec<String> = words.collect();
+    match rest.split_first() {
+        None => Ok(Command::Keeps { path: Some(folder) }),
+        Some((add, why)) if add == "add" => {
+            let reason = why.join(" ");
+            if reason.trim().is_empty() {
+                return Err(asked("keeps FOLDER add needs a reason, after add"));
+            }
+            Ok(Command::Keep {
+                path: folder,
+                reason: reason.trim().to_owned(),
+            })
+        }
+        Some((remove, [])) if remove == "remove" => Ok(Command::Unkeep { path: folder }),
+        Some((remove, _)) if remove == "remove" => {
+            Err(asked("keeps FOLDER remove takes nothing after it"))
+        }
+        Some((word, _)) => {
+            Err(flags::unknown("command", word, &["add", "remove"])
+                .try_this("disk-guard keeps --help"))
+        }
+    }
 }
 
 /// A keep's folder and its reason, the words after the folder.
@@ -513,6 +575,8 @@ pub fn run(
             daemons::daemon(env, Scope::System, config, state, err)
         }
         Command::Thaw => acts::thaw(context, out),
+        Command::Keeps { path: None } => keeps::every(env, context, out),
+        Command::Keeps { path: Some(path) } => keeps::covering(env, &path, context, out),
         Command::Keep { path, reason } => acts::keep(env, &path, &reason, context, out),
         Command::Unkeep { path } => acts::unkeep(env, &path, context, out),
         Command::Clear { path } => acts::clear(env, &path, context, out),

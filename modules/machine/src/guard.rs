@@ -2,7 +2,8 @@
 //! its clearing for Joel's reason (`disk-keep`), letting it go again
 //! (`disk-unkeep`), clearing what it would take of one now
 //! (`disk-clear`), and letting a writer it froze carry on (`disk-thaw`).
-//! Each is the guard's own `keep`, `unkeep`, `clear` or `thaw`,
+//! Each is the guard's own `keeps FOLDER add`, `keeps FOLDER remove`,
+//! `clear` or `thaw`,
 //! run here on the act rather than spawned by the shell, so the shell
 //! spawns nothing (Y2YBTS, 2026-11-12). The guard writes its keeps and
 //! asks in its own state folder and marks its status before it ends, so
@@ -66,9 +67,9 @@ pub fn words(act: &str, said: &Value) -> Result<Vec<String>, Untold> {
             if reason.trim().is_empty() {
                 return Err(untold("bad-act", "keeping a folder needs its reason"));
             }
-            Ok(asked(&["keep", "--", &path, &reason]))
+            Ok(asked(&["keeps", "--", &path, "add", &reason]))
         }
-        "disk-unkeep" => Ok(asked(&["unkeep", "--", &path])),
+        "disk-unkeep" => Ok(asked(&["keeps", "--", &path, "remove"])),
         "disk-clear" => Ok(asked(&["clear", "--", &path])),
         _ => Err(untold("unknown-act", format!("no act {act:?} here"))),
     }
@@ -169,15 +170,22 @@ mod tests {
             words("disk-keep", &keep),
             Ok(owned(&[
                 "--json",
-                "keep",
+                "keeps",
                 "--",
                 "/home/joel/src",
+                "add",
                 "the build's"
             ]))
         );
         assert_eq!(
             words("disk-unkeep", &keep),
-            Ok(owned(&["--json", "unkeep", "--", "/home/joel/src"]))
+            Ok(owned(&[
+                "--json",
+                "keeps",
+                "--",
+                "/home/joel/src",
+                "remove"
+            ]))
         );
         assert_eq!(
             words("disk-clear", &keep),
@@ -243,7 +251,7 @@ mod tests {
     #[test]
     fn a_refusal_says_the_guards_what_and_why() {
         let error = json!({"schema": "error/1", "what": "/srv stays",
-            "why": "you keep it: the build's", "try": "disk-guard unkeep /srv"});
+            "why": "you keep it: the build's", "try": "disk-guard keeps /srv remove"});
         assert_eq!(
             refusal(&error).as_deref(),
             Some("/srv stays: you keep it: the build's")

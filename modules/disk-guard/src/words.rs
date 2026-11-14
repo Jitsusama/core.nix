@@ -166,18 +166,15 @@ pub fn tilde(path: &Path, home: Option<&Path>) -> String {
     }
 }
 
-/// A length of time as people read one.
+/// A length of time as people read one, in its largest two units as
+/// every command says one (docs/commands.md, Figures and Words): `15 h
+/// 2 m` rather than `15.0 h`, to the nearest second.
 pub fn span(seconds: f64) -> String {
-    let seconds = seconds.max(0.0);
-    if seconds < 90.0 {
-        format!("{seconds:.0} s")
-    } else if seconds < 90.0 * 60.0 {
-        format!("{:.0} min", seconds / 60.0)
-    } else if seconds < 48.0 * 3600.0 {
-        format!("{:.1} h", seconds / 3600.0)
-    } else if seconds < 730.0 * 86400.0 {
-        format!("{:.1} d", seconds / 86400.0)
-    } else {
-        format!("{:.0} y", seconds / (365.25 * 86400.0))
-    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a span is never negative, and the guard's are far short of a u64 of seconds"
+    )]
+    let whole = seconds.max(0.0).round() as u64;
+    terminal_kit::time::span(whole)
 }

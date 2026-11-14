@@ -2,14 +2,17 @@
 //!
 //! zathura's `:` runs `zathura-command line BUS`, given the window's bus name (`$DBUS`),
 //! which asks that zathura what it shows and opens the launcher's command line over it,
-//! named for the document. What's chosen there comes back as `zathura-command BUS COMMAND
-//! [REST]`: a page, `:41`, as `goto` and its number, which goes there through zathura's
+//! named for the document. What's chosen there comes back as `zathura-command run BUS
+//! COMMAND [REST]`: a page, `:41`, as `goto` and its number, which goes there through zathura's
 //! `GotoPage`, `$` the last, a number past the last going to it as Vim's does to a line;
 //! anything else is run as zathura's own command line would run it, through its
 //! `ExecuteCommand`, so every command zathura has still runs, saying what went wrong
 //! in zathura's window as its own line does.
 //!
-//! Usage: `zathura-command line BUS` | `zathura-command BUS COMMAND [REST]`
+//! Usage: `zathura-command line BUS` | `zathura-command run BUS COMMAND [REST]`
+//!
+//! The older `zathura-command BUS COMMAND [REST]`, from before `run` had its word,
+//! still runs, unlisted, for a caller not yet moved.
 //!
 //! It takes its help, exits and failures from the terminal kit
 //! (docs/commands.md); it answers nothing, since what it does shows in
@@ -43,23 +46,50 @@ enum Asked {
     Run(String, String),
 }
 
-fn help() -> Help {
+/// The help the older form, a bus name first, is read under: no subcommands, so
+/// the kit leaves the bus name to `asked`.
+fn older_help() -> Help {
     Help::new(
         "zathura-command",
         "carries the launcher's command line to a zathura",
     )
-    .command("line BUS", "opens the launcher's line over that zathura")
-    .command("BUS COMMAND [REST]", "runs a command there; goto N, a page")
     .example("zathura-command line :1.42", "what zathura's colon runs")
-    .example("zathura-command :1.42 goto 41", "goes to page 41")
+    .example("zathura-command run :1.42 goto 41", "goes to page 41")
     .exit(
         Exit::Failed,
         "zathura or the launcher couldn't be asked, or said no",
     )
 }
 
+fn help() -> Help {
+    older_help()
+        .subcommand(
+            Help::new("line", "opens the launcher's line over that zathura")
+                .argument("<bus>", "the zathura's bus name, its $DBUS")
+                .example("zathura-command line :1.42", "what zathura's colon runs")
+                .exit(Exit::Failed, "the launcher couldn't be asked, or said no"),
+        )
+        .subcommand(
+            Help::new("run", "runs one of zathura's commands there")
+                .argument("<bus>", "the zathura's bus name, its $DBUS")
+                .argument("<command>", "zathura's command; goto, a page")
+                .argument("[rest]", "what follows it, as one word")
+                .example("zathura-command run :1.42 goto 41", "goes to page 41")
+                .example("zathura-command run :1.42 goto '$'", "to the last")
+                .exit(Exit::Failed, "zathura couldn't be asked, or said no"),
+        )
+}
+
+/// Whether a word is a bus name, a unique one as `:1.42` or a well-known one as
+/// `org.pwmt.zathura.PID-7`, as the older form gives first.
+fn is_bus(word: &str) -> bool {
+    word.starts_with(':') || word.contains('.')
+}
+
 fn main() -> ExitCode {
-    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+    let older = std::env::args().nth(1).is_some_and(|first| is_bus(&first));
+    let help = if older { older_help() } else { help() };
+    terminal_kit::main(&help, env!("CARGO_PKG_VERSION"), |context| {
         let asked = asked(&context.args)
             .map_err(|said| Failure::new(Exit::Usage, said).try_this("zathura-command --help"))?;
         match &asked {
@@ -75,6 +105,14 @@ fn main() -> ExitCode {
 fn asked(arguments: &[String]) -> Result<Asked, String> {
     match arguments {
         [first, bus] if first == "line" => Ok(Asked::Line(bus.clone())),
+        [first, rest @ ..] if first == "run" => ran_of(rest),
+        older => ran_of(older),
+    }
+}
+
+/// What `run`'s words ask for: a page, or a line of zathura's own.
+fn ran_of(arguments: &[String]) -> Result<Asked, String> {
+    match arguments {
         [bus, command, rest @ ..] if command == "goto" => {
             let to = rest.first().map_or("", |to| to.trim());
             goto_of(to).map(|to| Asked::Goto(bus.clone(), to))
@@ -83,7 +121,7 @@ fn asked(arguments: &[String]) -> Result<Asked, String> {
             let rest = rest.first().map_or("", |rest| rest.trim());
             Ok(Asked::Run(bus.clone(), typed(command, rest)))
         }
-        _ => Err("it takes line BUS, or BUS COMMAND [REST]".into()),
+        _ => Err("it takes line BUS, or run BUS COMMAND [REST]".into()),
     }
 }
 
@@ -244,42 +282,89 @@ mod tests {
     #[test]
     fn a_page_and_the_last_are_gone_to() {
         assert_eq!(
-            asked(&words(&[BUS, "goto", "41"])),
+            asked(&words(&["run", BUS, "goto", "41"])),
             Ok(Asked::Goto(BUS.into(), Goto::Page(41)))
         );
         assert_eq!(
-            asked(&words(&[BUS, "goto", "$"])),
+            asked(&words(&["run", BUS, "goto", "$"])),
             Ok(Asked::Goto(BUS.into(), Goto::Last))
         );
     }
 
     #[test]
     fn a_time_is_no_page() {
-        assert!(asked(&words(&[BUS, "goto", "12:30"])).is_err());
-        assert!(asked(&words(&[BUS, "goto"])).is_err());
+        assert!(
+            asked(&words(&["run", BUS, "goto", "12:30"])).is_err(),
+            "a time was read as a page"
+        );
+        assert!(
+            asked(&words(&["run", BUS, "goto"])).is_err(),
+            "goto with no page was read as one"
+        );
     }
 
     #[test]
     fn any_other_command_runs_as_zathuras_own_line_would() {
         assert_eq!(
-            asked(&words(&[BUS, "set", "recolor false"])),
+            asked(&words(&["run", BUS, "set", "recolor false"])),
             Ok(Asked::Run(BUS.into(), "set recolor false".into()))
         );
         assert_eq!(
-            asked(&words(&[BUS, "blist", ""])),
+            asked(&words(&["run", BUS, "blist", ""])),
             Ok(Asked::Run(BUS.into(), "blist".into()))
         );
         assert_eq!(
-            asked(&words(&[BUS, "write!", " ~/kept.pdf "])),
+            asked(&words(&["run", BUS, "write!", " ~/kept.pdf "])),
             Ok(Asked::Run(BUS.into(), "write! ~/kept.pdf".into()))
         );
     }
 
     #[test]
     fn too_little_or_too_much_is_misused() {
-        assert!(asked(&words(&[])).is_err());
-        assert!(asked(&words(&[BUS])).is_err());
-        assert!(asked(&words(&[BUS, "set", "a", "b"])).is_err());
+        assert!(
+            asked(&words(&[])).is_err(),
+            "no words were read as a command"
+        );
+        assert!(
+            asked(&words(&["run", BUS])).is_err(),
+            "run with no command was read as one"
+        );
+        assert!(
+            asked(&words(&["run", BUS, "set", "a", "b"])).is_err(),
+            "a command and two spare words were read as one"
+        );
+        assert!(
+            asked(&words(&["line"])).is_err(),
+            "line with no bus was read as one"
+        );
+    }
+
+    #[test]
+    fn the_older_form_asks_as_run_does() {
+        for said in [
+            &["goto", "41"][..],
+            &["goto", "$"],
+            &["set", "recolor false"],
+            &["blist", ""],
+            &["goto", "12:30"],
+        ] {
+            let older = [&[BUS][..], said].concat();
+            let run = [&["run", BUS][..], said].concat();
+            assert_eq!(
+                asked(&words(&older)),
+                asked(&words(&run)),
+                "{older:?} should ask what {run:?} does"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bus_name_is_told_from_a_command() {
+        assert!(is_bus(BUS), "a well-known name is a bus");
+        assert!(is_bus(":1.42"), "a unique name is a bus");
+        for word in ["line", "run", "lien"] {
+            assert!(!is_bus(word), "{word} should be read as a command");
+        }
     }
 
     #[test]

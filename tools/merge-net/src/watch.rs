@@ -237,6 +237,14 @@ pub trait World: Sync {
     fn runs(&self, commit: &str) -> bool;
     /// Wait this many seconds.
     fn wait(&self, seconds: u64);
+    /// Stop the runs of `check` at `commit` under way, and any begun until
+    /// `keep_runs`, since nothing needs what they'd find: each ends as
+    /// stopped.
+    fn drop_runs(&self, commit: &str, check: &str);
+    /// Let runs of `check` at `commit` go on again after `drop_runs`.
+    fn keep_runs(&self, commit: &str, check: &str);
+    /// Whether runs of `check` at `commit` are dropped now.
+    fn dropped(&self, commit: &str, check: &str) -> bool;
 }
 
 /// How a test ended at a commit, over every run of it there.
@@ -340,6 +348,11 @@ fn run_once(
     let mut sends = 0;
     let code = loop {
         let code = world.build(commit, check, &log);
+        // A run stopped because nothing needs it now is no outcome, and no
+        // stall: the test ran fine as far as it went.
+        if world.dropped(commit, check) {
+            return None;
+        }
         if code != Some(UNSENT) {
             break code;
         }
@@ -502,32 +515,82 @@ pub fn bisect(
             return None;
         }
         let tried = spread(good, bad, splits());
-        let passed = std::thread::scope(|scope| {
-            let runs: Vec<_> = tried
-                .iter()
-                .map(|&index| scope.spawn(move || passes(world, state, &merges[index], check)))
-                .collect();
-            runs.into_iter()
-                .map(|run| run.join().ok().flatten())
-                .collect::<Option<Vec<bool>>>()
-        })?;
+        let passed = step(world, state, merges, check, &tried)?;
         // The first merge tried that fails is where it may have broken, and
         // the last before it to pass is past where it can have. A pass after
-        // a failure tells nothing, since the failure already bounds it.
-        if let Some(first) = tried.iter().zip(&passed).position(|(_, &ok)| !ok) {
+        // a failure tells nothing, since the failure already bounds it, and
+        // a run there may have been stopped for that.
+        if let Some(first) = passed.iter().position(|ok| *ok == Some(false)) {
             bad = tried[first];
         }
         if let Some(&last) = tried
             .iter()
             .zip(&passed)
             .rev()
-            .find(|&(&index, &ok)| ok && index < bad)
+            .find(|&(&index, &ok)| ok == Some(true) && index < bad)
             .map(|(index, _)| index)
         {
             good = last + 1;
         }
     }
     merges.get(bad).cloned()
+}
+
+/// Whether `check` passes at each of the `tried` merges, run side by side,
+/// none where a run past the first failure was stopped. Once a merge fails,
+/// those after it can't move where the step finds it broke, so their runs
+/// are stopped rather than waited for: on 14 November a step's runs at
+/// four merges past the failure ran 12 minutes longer on crowded builders
+/// before vm-desktop-says-what-happens' search could go on. None when a
+/// run before the first failure wasn't taken or couldn't be told.
+fn step(
+    world: &dyn World,
+    state: &State,
+    merges: &[String],
+    check: &str,
+    tried: &[usize],
+) -> Option<Vec<Option<bool>>> {
+    let (told, heard) = std::sync::mpsc::channel();
+    let (passed, dropped) = std::thread::scope(|scope| {
+        for (nth, &index) in tried.iter().enumerate() {
+            let told = told.clone();
+            scope.spawn(move || {
+                let _ = told.send((nth, passes(world, state, &merges[index], check)));
+            });
+        }
+        drop(told);
+        let mut passed = vec![None; tried.len()];
+        let mut dropped = vec![false; tried.len()];
+        for (nth, ok) in heard {
+            passed[nth] = ok;
+            if ok != Some(false) {
+                continue;
+            }
+            let later = tried
+                .iter()
+                .zip(&passed)
+                .zip(dropped.iter_mut())
+                .skip(nth + 1);
+            for ((&index, ran), stopped) in later {
+                if ran.is_none() && !*stopped {
+                    world.drop_runs(&merges[index], check);
+                    *stopped = true;
+                }
+            }
+        }
+        (passed, dropped)
+    });
+    for (&index, _) in tried.iter().zip(&dropped).filter(|(_, stopped)| **stopped) {
+        world.keep_runs(&merges[index], check);
+    }
+    let first_failure = passed
+        .iter()
+        .position(|ok| *ok == Some(false))
+        .unwrap_or(tried.len());
+    passed[..first_failure]
+        .iter()
+        .all(Option::is_some)
+        .then_some(passed)
 }
 
 /// Up to `splits` indices between `good` and `bad`, spread evenly and each
@@ -1633,10 +1696,12 @@ fn search(
     // head can't say now. On 14 November a net moving builds left such a
     // search kept, and the next took it up, found no builder for the newest
     // head, and quarantined vm-reboot-cannot-hang in #4312, seven minutes
-    // after it had passed there.
+    // after it had passed there. Whether main's newest head has fixed it
+    // since is asked once, by `settle`, just before its revert: asked here
+    // too, on 14 November each answer came at a head merged while the one
+    // before was run, and #4311's revert waited 29 minutes on two in a row.
     if let Some(commit) = &bad
-        && (state.found("fixed-forward", test, commit)
-            || fixed_forward(world, state, head, test, Some(commit))?)
+        && state.found("fixed-forward", test, commit)
     {
         return Ok(None);
     }
@@ -2007,6 +2072,10 @@ mod tests {
         fetched_since_revert: Mutex<bool>,
         /// A commit main's newest head builds every check as.
         newest_builds_as: Option<String>,
+        /// Commits whose each run goes on until it's dropped, or after a
+        /// while without, when the commit is put in `waited_out`.
+        slow: Vec<String>,
+        dropped: Mutex<BTreeSet<(String, String)>>,
         put_in_quarantine: Mutex<Vec<String>>,
         /// The subtests each test put in quarantine was listed by.
         quarantine_subtests: Mutex<Vec<BTreeSet<String>>>,
@@ -2031,6 +2100,9 @@ mod tests {
         /// The head main moves to while a revert's checks run.
         moves_while_reverting: Option<String>,
         moved: Mutex<Option<String>>,
+        /// The heads main's newest answers in turn, the last kept, as main
+        /// moves on while each answer is run.
+        newest: Mutex<Vec<String>>,
         /// The merges the machine runs already.
         running: Vec<String>,
         /// The subtest pytest names in each failed run's log.
@@ -2077,6 +2149,14 @@ mod tests {
                 return Err(error.clone());
             }
             *self.fetched_since_revert.lock().unwrap() = true;
+            let mut newest = self.newest.lock().unwrap();
+            if newest.len() > 1 {
+                return Ok(newest.remove(0));
+            }
+            if let Some(last) = newest.first() {
+                return Ok(last.clone());
+            }
+            drop(newest);
             Ok(self
                 .moved
                 .lock()
@@ -2131,6 +2211,19 @@ mod tests {
             self.build_seen.notify_all();
             // Long enough for a second asker to come while a run goes.
             std::thread::sleep(self.runs_for);
+            if self.slow.iter().any(|slow| slow == commit) {
+                let began = std::time::Instant::now();
+                while !self.dropped(commit, check) {
+                    if began.elapsed() > Duration::from_secs(10) {
+                        self.waited_out.lock().unwrap().push(commit.to_owned());
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                if self.dropped(commit, check) {
+                    return None;
+                }
+            }
             if self.newest_waits_for_search && commit == self.head {
                 let searched = |built: &mut Vec<(String, String)>| {
                     !built
@@ -2291,6 +2384,18 @@ mod tests {
             self.running.iter().any(|it| it == commit)
         }
         fn wait(&self, _: u64) {}
+        fn drop_runs(&self, commit: &str, check: &str) {
+            let run = (commit.to_owned(), check.to_owned());
+            self.dropped.lock().unwrap().insert(run);
+        }
+        fn keep_runs(&self, commit: &str, check: &str) {
+            let run = (commit.to_owned(), check.to_owned());
+            self.dropped.lock().unwrap().remove(&run);
+        }
+        fn dropped(&self, commit: &str, check: &str) -> bool {
+            let run = (commit.to_owned(), check.to_owned());
+            self.dropped.lock().unwrap().contains(&run)
+        }
     }
 
     /// A state of the test's own. The tests run side by side, so a number
@@ -3786,6 +3891,33 @@ mod tests {
     }
 
     #[test]
+    fn a_bisect_step_stops_the_runs_after_a_merge_that_fails() {
+        // m3's and m4's runs would go on long after m2 failed, as on
+        // 14 November, when four runs past the failure took 12 minutes more.
+        let state = state("stops-the-rest");
+        let world = Stand {
+            head: "m5".into(),
+            merges: names("m1 m2 m3 m4 m5"),
+            changed: changed("vm-a"),
+            slow: names("m3 m4"),
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1, 1]);
+        let found = bisect(&world, &state, &world.merges, "vm-a", &|| true, &|| SPLITS);
+        assert_eq!(found.as_deref(), Some("m2"), "the bisect didn't find m2");
+        assert!(
+            world.waited_out.lock().unwrap().is_empty(),
+            "runs after m2's failure went on to their end: {:?}",
+            world.waited_out.lock().unwrap()
+        );
+        assert!(
+            state.runs("m3", "vm-a").is_empty(),
+            "a stopped run at m3 was kept as an outcome"
+        );
+        assert!(!world.dropped("m3", "vm-a"), "m3's runs stay dropped");
+    }
+
+    #[test]
     fn a_stopped_run_is_no_failure() {
         let state = state("stopped");
         let world = Stand::default().exits("h", "vm-a", &[STALL, 1, 0]);
@@ -4104,6 +4236,41 @@ mod tests {
         let found = findings(&state);
         assert_eq!(found[0]["kind"], "fixed-forward");
         assert_eq!(found[0]["fixed_at"], "m4");
+    }
+
+    #[test]
+    fn main_s_newest_head_is_asked_once_between_a_search_finding_a_merge_and_its_revert() {
+        // Main moves on each time its newest head is asked, as it did on
+        // 14 November while each answer took a VM run.
+        let state = state("asked-once");
+        let world = Stand {
+            head: "m3".into(),
+            merges: names("m1 m2 m3"),
+            changed: changed("vm-a"),
+            newest: Mutex::new(names("m3 m4 m5")),
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1, 1])
+        .exits("m3", "vm-a", &[1, 1])
+        .exits("m4", "vm-a", &[1, 1])
+        .exits("m5", "vm-a", &[1, 1]);
+        let found = search(&world, &state, "s", "m3", "vm-a", &|| SPLITS).unwrap();
+        settle(&world, &state, "s", "m3", found.unwrap()).unwrap();
+        let newest: Vec<_> = world
+            .built()
+            .into_iter()
+            .filter(|(commit, _)| commit == "m4" || commit == "m5")
+            .map(|(commit, _)| commit)
+            .collect();
+        assert!(
+            newest.len() == 2 && newest[0] == newest[1],
+            "main's newest head was asked again as soon as it had answered: {newest:?}"
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("m2"),
+            "m2 wasn't reverted"
+        );
     }
 
     #[test]

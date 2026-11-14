@@ -144,7 +144,8 @@ and is answered once systemd has queued it. Only the units in
 Start the Watch and the account's disk guard for Disk's Start the Guard;
 any other is refused `not-allowed`.
 
-The disk guard's four are its own `keep`, `unkeep`, `clear` and `thaw`,
+The disk guard's four are its own `keeps FOLDER add`, `keeps FOLDER remove`,
+`clear` and `thaw`,
 run here on the act (`src/guard.rs`) so the shell spawns nothing, from
 `disk-guard` on the service's path or the program `MACHINE_DISK_GUARD`
 names. The guard is asked with `--json`, and each answers `said`, a

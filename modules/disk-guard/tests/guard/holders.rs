@@ -356,7 +356,7 @@ fn a_holder_says_how_much_it_grew_in_a_day_from_a_gibibyte() {
     assert_eq!(
         said[0].says,
         "~/src/app holds 10.0 GiB; nothing in it is a build or cache the guard clears. It \
-         grew 6.0 GiB in 20.0 h."
+         grew 6.0 GiB in 20 h."
     );
     assert_eq!(
         said[0].grew,

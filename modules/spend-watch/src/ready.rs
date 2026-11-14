@@ -459,8 +459,8 @@ mod tests {
         json!({
             "key": "finding:burn", "name": "Burning Fast", "side": "3× usual",
             "note": "since 14:00", "copy": "Burning fast", "role": "warning",
-            "run": ["spend-watch", "go", "s-1"], "verb": "go",
-            "expect": ["spend-watch", "findings", "expect", "burn"],
+            "run": ["spend-watch", "sessions", "s-1", "go"], "verb": "go",
+            "expect": ["spend-watch", "findings", "burn", "expect"],
             "rows": [{"key": "finding:burn/why", "name": "Why", "side": "",
                 "copy": "why", "role": ""}],
         })

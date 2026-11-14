@@ -213,9 +213,8 @@ Item {
     // (Joel, 2026-11-05: "space ? does not work"). Escape lets it go.
     property var standing: QueryKeys.rest()
     // Whether an ask stands (Launcher.qml's askOnce), which takes every
-    // key as its answer, Return doing it, y leaving it standing and any
-    // other letting it go (Confirm.answer), so none reaches the line while
-    // it stands.
+    // key as its answer, Return doing it and any other letting it go
+    // (Confirm.answer), so none reaches the line while it stands.
     property bool confirming: false
     signal answered(string key)
     // How soon after visual's operator the same key again is taken with

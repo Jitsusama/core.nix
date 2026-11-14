@@ -1148,6 +1148,101 @@ fn a_drive_file_is_downloaded_to_open_pick_or_save_and_googles_own_exported() {
     fs::remove_dir_all(&folder).unwrap();
 }
 
+/// A keyring reader for `path`'s sign-in, in its folder, as secret-tool
+/// is one: it prints the sign-in, fails saying why once a file `failing`
+/// is beside it, and fails saying nothing, as for an item gone, once a
+/// file `gone` is. The file itself is moved for the reader to print, so
+/// only the keyring holds the sign-in.
+fn keyring(path: &std::path::Path) -> PathBuf {
+    let folder = path.parent().expect("the sign-in is in a folder");
+    let kept = folder.join("kept.json");
+    fs::rename(path, &kept).expect("the sign-in is moved into the keyring");
+    let reader = folder.join("keyring");
+    let script = format!(
+        "#!/bin/sh\ncd '{}'\n[ -e gone ] && exit 1\n[ -e failing ] && {{ \
+         echo 'secret-tool: Could not connect: No such file or directory' >&2; exit 1; }}\n\
+         cat kept.json",
+        folder.display()
+    );
+    // Written by a shell of its own, never by this process, so no test
+    // forking meanwhile holds it open for writing (account.rs).
+    let written = std::process::Command::new("/bin/sh")
+        .args(["-c", r#"printf '%s\n' "$2" > "$1" && chmod 755 "$1""#, "sh"])
+        .arg(&reader)
+        .arg(script)
+        .status()
+        .expect("the reader's shell runs");
+    assert!(written.success(), "the keyring reader wasn't written");
+    reader
+}
+
+#[test]
+fn a_keyring_that_cant_be_read_keeps_the_sign_in_it_last_gave() {
+    let stand_in = StandIn::new(google);
+    let path = credentials("unreadable", 0);
+    let folder = path
+        .parent()
+        .expect("the sign-in is in a folder")
+        .to_path_buf();
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path.clone(), None);
+    watch.keyring = Some(keyring(&path));
+    assert_eq!(
+        watch.look(&now()).account,
+        Standing::Ready,
+        "the keyring's sign-in wasn't read"
+    );
+    fs::write(folder.join("failing"), "").expect("the keyring is made to fail");
+    let state = watch.look(&now()).clone();
+    assert_eq!(
+        state.account,
+        Standing::Ready,
+        "a keyring that couldn't be read signed Joel out"
+    );
+    assert_eq!(
+        state.meetings.len(),
+        1,
+        "the meetings went with the keyring"
+    );
+    fs::write(folder.join("gone"), "").expect("the keyring's item is taken away");
+    assert_eq!(
+        watch.look(&now()).account,
+        Standing::None,
+        "a sign-in taken from the keyring was kept"
+    );
+}
+
+#[test]
+fn a_keyring_that_cant_be_read_from_the_start_is_unreachable_not_signed_out() {
+    let stand_in = StandIn::new(google);
+    let path = credentials("unreadable-at-start", 0);
+    let folder = path
+        .parent()
+        .expect("the sign-in is in a folder")
+        .to_path_buf();
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path.clone(), None);
+    watch.keyring = Some(keyring(&path));
+    fs::write(folder.join("failing"), "").expect("the keyring is made to fail");
+    assert_eq!(watch.look(&now()).account, Standing::Unreachable);
+    assert!(
+        watch.waits_on_keyring(),
+        "the keyring would be looked at less often"
+    );
+    assert!(
+        stand_in.heard().is_empty(),
+        "Google was asked with no sign-in"
+    );
+    fs::remove_file(folder.join("failing")).expect("the keyring is mended");
+    assert_eq!(
+        watch.look(&now()).account,
+        Standing::Ready,
+        "a mended keyring wasn't read"
+    );
+    assert!(
+        !watch.waits_on_keyring(),
+        "a mended keyring was still waited on"
+    );
+}
+
 #[test]
 fn a_refused_sign_in_is_signed_out_and_not_asked_again() {
     let stand_in = StandIn::new(|path, _| {
