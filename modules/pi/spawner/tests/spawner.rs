@@ -231,6 +231,70 @@ fn kills_every_group_still_running_when_pi_goes() {
 }
 
 #[test]
+fn leaves_a_kept_command_running_when_pi_goes() {
+    let mut spawner = Spawner::start();
+    spawner.run(
+        "7",
+        "/",
+        &["-c", "sleep 30 & wait"],
+        &["PI_BASH_KEEP=/nowhere/kept"],
+    );
+    let kept = pid_of(&spawner.next());
+    spawner.run("8", "/", &["-c", "sleep 30 & wait"], &[]);
+    let unkept = pid_of(&spawner.next());
+
+    drop(spawner.input.take());
+    // Once the spawner has exited, every kill it would send is sent.
+    spawner
+        .child
+        .wait()
+        .expect("the spawner exits once stdin ends");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while alive(unkept) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let spared = alive(kept);
+    // SAFETY: kill only sends a signal, to the group this test started.
+    unsafe {
+        libc::kill(-kept, libc::SIGKILL);
+    }
+    assert!(!alive(unkept), "a command not kept is gone once stdin ends");
+    assert!(
+        spared,
+        "a kept command outlives stdin's end, for the next pi"
+    );
+}
+
+#[test]
+fn says_it_keeps() {
+    let answer = Command::new(env!("CARGO_BIN_EXE_pi-spawner"))
+        .arg("keeps")
+        .stdin(Stdio::null())
+        .output()
+        .expect("the spawner runs");
+
+    assert!(answer.status.success(), "it exits 0");
+    assert_eq!(String::from_utf8_lossy(&answer.stdout), "keeps\n");
+}
+
+#[test]
+fn refuses_a_word_it_takes_none_of() {
+    let answer = Command::new(env!("CARGO_BIN_EXE_pi-spawner"))
+        .arg("keepsx")
+        .stdin(Stdio::null())
+        .output()
+        .expect("the spawner runs");
+
+    assert_eq!(
+        answer.status.code(),
+        Some(64),
+        "it refuses with a usage exit"
+    );
+    assert!(answer.stdout.is_empty(), "it serves nothing");
+}
+
+#[test]
 #[cfg(target_os = "linux")]
 fn keeps_its_requests_from_other_processes_of_the_same_user() {
     let mut spawner = Spawner::start();

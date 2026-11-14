@@ -3,7 +3,8 @@
 //! systemd hands it, and that PipeWire isn't answering; a list or a
 //! watch answers no devices rather than waiting on one; an ask or a kind
 //! it doesn't know is refused, and so is an act on a device it hasn't
-//! heard, or one missing what it needs. What it hears of a server is
+//! heard, or one missing what it needs; and a run its unit wouldn't make
+//! ends at once in the terminal kit's words. What it hears of a server is
 //! proven in devices.rs and levels.rs, over the changes PipeWire says,
 //! and how each act is done in acts.rs.
 
@@ -121,4 +122,41 @@ fn an_act_it_cant_do_is_refused_at_once() {
     assert_eq!(refusal(volume), "bad-act");
     let louder = json!({"id": 3, "ask": "act", "act": "louder", "key": "device:a"});
     assert_eq!(refusal(louder), "unknown-act");
+}
+
+/// Handed no socket, a flag with no file or a flag it doesn't take, it
+/// ends at once as asked wrongly, nothing on stdout, which no one reads,
+/// and no socket left for the shell to find.
+#[test]
+fn a_run_its_unit_wouldnt_make_ends_at_once_in_the_kits_words() {
+    let folder: PathBuf = std::env::temp_dir().join(format!("sound-asked-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    let socket = folder.join("sound.sock");
+    let at = socket.to_str().unwrap();
+    for args in [&[][..], &[at, "--marks"], &[at, "--loudly", "yes"]] {
+        let ran = Command::new(env!("CARGO_BIN_EXE_sound"))
+            .args(args)
+            .env_remove("JOURNAL_STREAM")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        let said = String::from_utf8_lossy(&ran.stderr);
+        assert_eq!(
+            ran.status.code(),
+            Some(64),
+            "{args:?} ended {:?}, saying {said}",
+            ran.status.code()
+        );
+        assert!(
+            ran.stdout.is_empty(),
+            "{args:?} said {:?} on stdout",
+            String::from_utf8_lossy(&ran.stdout)
+        );
+        assert!(
+            said.contains("sound --help"),
+            "{args:?} said {said:?}, pointing nowhere"
+        );
+        assert!(!socket.exists(), "{args:?} left a socket at {at}");
+    }
 }

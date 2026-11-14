@@ -8,8 +8,32 @@
 #
 # The environment names where things go: ESP (the ESP's mount point) and
 # STATE_DIRECTORY (systemd's, for the last seal's checksum). Its check names
-# BLUEZ_STATE too, BlueZ's own being /var/lib/bluetooth.
+# BLUEZ_STATE too, BlueZ's own being /var/lib/bluetooth. Its help takes the
+# shape every command of ours does (docs/commands.md), by hand.
 set -euo pipefail
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+bluetooth-pairing-seal  seal pairings for the disk prompt
+
+  Seals each paired keyboard's keys to this machine's
+  TPM and puts them on the ESP, so it types at the disk
+  prompt. It seals again only when the pairings change.
+  ESP and STATE_DIRECTORY say where things go.
+
+EXAMPLES
+  ESP=/boot STATE_DIRECTORY=/var/lib/seal \
+    bluetooth-pairing-seal
+
+EXIT
+  0   sealed, or nothing changed to seal
+  else what failed, systemd-creds or tar
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 store=${BLUEZ_STATE:-/var/lib/bluetooth}
 credential="$ESP/loader/credentials/bluetooth-pairing.cred"

@@ -27,26 +27,34 @@ mod walk;
 
 use std::process::ExitCode;
 
+use terminal_kit::{Exit, Failure, Help};
+
+const NO_SESSION: &str = "there's no session's HOME or XDG_RUNTIME_DIR";
+
+/// What `rhythm --help` says: its view, and `keep`, which its unit runs.
+fn help() -> Help {
+    Help::new("rhythm", "says when you usually stop for the night")
+        .example("rhythm", "when you stop, by weekday, and the sun")
+        .subcommand(
+            Help::new("keep", "keeps the minutes you're at the machine")
+                .example("rhythm keep", "as its unit runs it, each minute")
+                .exit(Exit::Failed, "what it saw couldn't be kept")
+                .exit(Exit::Config, NO_SESSION),
+        )
+        .exit(Exit::Config, NO_SESSION)
+}
+
 fn main() -> ExitCode {
-    let Some(paths) = keep::Paths::from_env() else {
-        eprintln!("rhythm needs HOME and XDG_RUNTIME_DIR, as a session gives them");
-        return ExitCode::FAILURE;
-    };
-    match std::env::args().nth(1).as_deref() {
-        None => {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let paths = keep::Paths::from_env().ok_or_else(|| {
+            Failure::new(Exit::Config, NO_SESSION).because("rhythm reads a session's own folders")
+        })?;
+        if context.args.is_empty() {
             println!("{}", keep::read(&paths));
-            ExitCode::SUCCESS
+            return Ok(());
         }
-        Some("keep") => match keep::keep(&paths) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("<3>rhythm can't keep what it sees: {error}");
-                ExitCode::FAILURE
-            }
-        },
-        Some(other) => {
-            eprintln!("rhythm says when you usually stop; `rhythm keep` keeps it, not {other}");
-            ExitCode::FAILURE
-        }
-    }
+        keep::keep(&paths).map_err(|error| {
+            Failure::new(Exit::Failed, "rhythm can't keep what it sees").because(error.to_string())
+        })
+    })
 }

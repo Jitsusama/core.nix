@@ -126,6 +126,23 @@ pub struct Real {
     pub moving: Mutex<()>,
     /// The runs nothing needs now, by commit and check, which are stopped.
     pub dropped: Mutex<BTreeSet<(String, String)>>,
+    /// Where the merge-net installed is, which the watch follows: once
+    /// that's another build, this one is superseded.
+    pub follow: Option<PathBuf>,
+}
+
+/// Whether the merge-net installed is another build than the one running.
+/// On 7 November three switches in 25 minutes each restarted the net with
+/// a new build, and a round of about 20 minutes ran from 16:21 past 17:15.
+/// A running build no longer on disk has been replaced; an installed one
+/// that can't be read says nothing.
+pub fn replaced(installed: std::io::Result<PathBuf>, running: std::io::Result<PathBuf>) -> bool {
+    let Ok(installed) = installed else {
+        return false;
+    };
+    !running
+        .and_then(fs::canonicalize)
+        .is_ok_and(|running| running == installed)
 }
 
 impl Real {
@@ -932,6 +949,12 @@ impl World for Real {
             .unwrap_or_else(PoisonError::into_inner)
             .contains(&run)
     }
+
+    fn superseded(&self) -> bool {
+        self.follow
+            .as_ref()
+            .is_some_and(|installed| replaced(fs::canonicalize(installed), std::env::current_exe()))
+    }
 }
 
 /// A revert's description, in the four sections every PR has.
@@ -1210,6 +1233,33 @@ fn run(command: &mut Command) -> Result<String, String> {
 mod tests {
     use super::*;
     use crate::tests::git_in;
+
+    #[test]
+    fn the_watch_ends_once_another_build_is_installed() {
+        let dir = std::env::temp_dir().join(format!("merge-net-follow-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let (old, new) = (dir.join("old"), dir.join("new"));
+        fs::write(&old, "").unwrap();
+        fs::write(&new, "").unwrap();
+        let installed = || fs::canonicalize(&new);
+        assert!(
+            !replaced(installed(), Ok(new.clone())),
+            "the build installed runs"
+        );
+        assert!(
+            replaced(installed(), Ok(old.clone())),
+            "an older build runs"
+        );
+        assert!(
+            replaced(installed(), Ok(dir.join("collected"))),
+            "the running build is gone from disk"
+        );
+        assert!(
+            !replaced(fs::canonicalize(dir.join("unread")), Ok(old)),
+            "nothing can be read of what's installed"
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn a_pr_left_open_for_the_branch_is_taken_up_rather_than_failing() {
@@ -1648,6 +1698,7 @@ mod tests {
             branch: "main".to_owned(),
             moving: Mutex::new(()),
             dropped: Mutex::default(),
+            follow: None,
         };
         fs::create_dir_all(&net.state).unwrap();
         net.cloned().unwrap();

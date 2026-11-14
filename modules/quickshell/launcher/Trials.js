@@ -93,8 +93,36 @@ function stepped(inner, at) {
         answers,
         each: Object.assign({}, inner?.each, { making: at.made - at.began, finding,
             holding: at.pushed - at.made, opening: at.opened - at.pushed }),
+        makingSplit: at.making ?? null,
         composing: inner?.composing ?? null
     };
+}
+
+// What a step's making spent on, in parentheses, most first: making its
+// acts' rows, its parts, putting them in order, and the rest, so a slow
+// step into a program's page says which to cut (Chrome's made 87 ms of a
+// 253 ms step under load, with nothing saying where, 2026-11-14). `split`
+// holds the acts', the parts' and the ordering's ms; the rest is what's
+// left of the making. Nothing for a step that made nothing, or untold.
+function steppedMaking(making, split) {
+    if (!split || !(making > 0)) {
+        return "";
+    }
+    const each = [["its parts", Math.round(split.parts ?? 0)],
+        ["its acts", Math.round(split.acts ?? 0)],
+        ["ordering", Math.round(split.ordering ?? 0)]];
+    const told = each.reduce((sum, [, ms]) => sum + ms, 0);
+    each.push(["the rest", Math.max(0, Math.round(making) - told)]);
+    each.sort((one, other) => other[1] - one[1]);
+    return ` (${each.map(([name, ms]) => `${name} ${ms}`).join(", ")})`;
+}
+
+// How long a showing's rows spent reading what each program holds, as
+// their counts and notes are drawn, beside its weighing: Programs showed
+// 20 new rows in 132 ms under load, 54 of them weighing and 20 laying out,
+// with the rest untold (2026-11-14). Nothing under a millisecond.
+function readingSaid(ms) {
+    return ms >= 0.5 ? `, ${Math.round(ms)} reading what they hold` : "";
 }
 
 // The rows a key made as it set what's typed, by the source that made

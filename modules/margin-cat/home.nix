@@ -69,6 +69,7 @@
     xdg.configFile."quickshell/surfaces/MarginCatTiles.js".source = ./MarginCatTiles.js;
     xdg.configFile."quickshell/surfaces/MarginCatWays.js".source = ./MarginCatWays.js;
     xdg.configFile."quickshell/surfaces/MarginCatFalls.js".source = ./MarginCatFalls.js;
+    xdg.configFile."quickshell/surfaces/MarginCatFloats.js".source = ./MarginCatFloats.js;
     # Its settings in its own file beside it, read as it starts.
     xdg.configFile."quickshell/surfaces/MarginCat.json".text = builtins.toJSON {
       inherit (config.jitsusama.quickshell.cat)

@@ -13,7 +13,7 @@
 # the screen's saved level current while the lid is open through the same
 # saver, so a shutdown with the lid shut loses nothing set since. The
 # session's bus starts
-# the program that warms the built-in panel when the daemon first asks it.
+# the program that warms the screens when the daemon first asks it.
 {
   config,
   lib,
@@ -73,7 +73,7 @@ let
     '';
   };
 
-  # wl-gammarelay-rs, which warms the built-in panel for the daemon, is
+  # wl-gammarelay-rs, which warms the screens for the daemon, is
   # started by the session's bus as the account's unit (home.nix) when the
   # daemon first sets a warmth, so it runs only once the room or the night
   # first warms the screen.

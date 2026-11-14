@@ -26,6 +26,7 @@
 let
   net = pkgs.callPackage ../../tools/merge-net/package.nix { };
   changed-checks = pkgs.callPackage ../../tools/changed-checks/package.nix { };
+  installed = "changed-checks/installed";
   # The account's own tools come first, the machine's next, and these last,
   # for a machine without them.
   path = lib.concatStringsSep ":" [
@@ -44,8 +45,9 @@ in
   home.packages = [ net ];
 
   # A switch leaves the running net be, since stopping it mid-round loses
-  # every run in flight; it follows the build installed and ends between
-  # rounds once that is another, for Restart to start the new one.
+  # every run in flight; it follows the build installed and, once that is
+  # another, starts no more runs and ends when those under way have, for
+  # Restart to start the new one.
   systemd.user.services.merge-net = {
     Unit = {
       Description = "Runs the VM tests each merge to core's main changed, and reverts a merge that breaks one";
@@ -64,10 +66,23 @@ in
     Install.WantedBy = [ "default.target" ];
   };
 
+  # The keeper follows the build linked here, as the net follows its own:
+  # a switch leaves it be, and it ends between keeps once this names
+  # another, rather than losing the keep under way. Not in the profile,
+  # where it would stand on every PATH beside a checkout's own.
+  xdg.stateFile.${installed}.source = changed-checks;
+
   systemd.user.services.changed-checks-keeps-main = {
-    Unit.Description = "Keeps each head of core's main's checks where changed-checks runs are sent";
+    Unit = {
+      Description = "Keeps each head of core's main's checks where changed-checks runs are sent";
+      X-SwitchMethod = "keep-old";
+    };
     Service = {
-      ExecStart = "${lib.getExe changed-checks} keep-main";
+      ExecStart = lib.concatStringsSep " " [
+        (lib.getExe changed-checks)
+        "keep-main --follow"
+        "${config.xdg.stateHome}/${installed}/bin/changed-checks"
+      ];
       Environment = [ "PATH=${path}" ];
       Restart = "always";
       RestartSec = 60;

@@ -87,7 +87,7 @@ pub fn at_once_each_of_two_here() -> usize {
 
 /// This machine's cores, and the bytes of memory `/proc/meminfo` says are
 /// available, or none.
-fn room_here() -> (usize, u64) {
+pub fn room_here() -> (usize, u64) {
     let cores = thread::available_parallelism().map_or(0, std::num::NonZero::get);
     let available = fs::read_to_string("/proc/meminfo")
         .ok()

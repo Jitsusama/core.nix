@@ -1,0 +1,91 @@
+Hide the idle notifier from a sandbox
+
+niri hides privileged globals from a client connected through a
+wp-security-context-v1 socket, but ext_idle_notifier_v1 was still
+offered to it, so a program in a sandbox could learn the moment the
+person stopped touching the machine and act while nobody watched.
+smithay's IdleNotifierState takes no client filter, unlike the other
+states niri restricts.
+
+So niri dispatches the idle notifier's global itself, as
+delegate_idle_notify! would, binding through smithay's state and
+adding a can_view that hides it from restricted clients. Everything
+else about idle notification is smithay's, unchanged. It adds no
+setting, since a sandbox's connection is what decides it.
+
+diff --git a/src/handlers/mod.rs b/src/handlers/mod.rs
+index 31e8632..ddd6bf7 100644
+--- a/src/handlers/mod.rs
++++ b/src/handlers/mod.rs
+@@ -27,9 +27,11 @@ use smithay::reexports::wayland_protocols_misc::zwp_virtual_keyboard_v1::server:
+     self, ZwpVirtualKeyboardV1,
+ };
+ use smithay::reexports::wayland_server::backend::ClientId;
++use smithay::reexports::wayland_protocols::ext::idle_notify::v1::server::ext_idle_notification_v1::ExtIdleNotificationV1;
++use smithay::reexports::wayland_protocols::ext::idle_notify::v1::server::ext_idle_notifier_v1::ExtIdleNotifierV1;
+ use smithay::reexports::wayland_server::{
+     delegate_dispatch, delegate_global_dispatch, Client, DataInit, Dispatch, DisplayHandle,
+-    Resource,
++    GlobalDispatch, New, Resource,
+ };
+ use smithay::utils::{Logical, Point, Rectangle, Serial};
+ use smithay::wayland::compositor::{get_parent, with_states};
+@@ -39,7 +41,9 @@ use smithay::wayland::drm_lease::{
+ };
+ use smithay::wayland::fractional_scale::FractionalScaleHandler;
+ use smithay::wayland::idle_inhibit::IdleInhibitHandler;
+-use smithay::wayland::idle_notify::{IdleNotifierHandler, IdleNotifierState};
++use smithay::wayland::idle_notify::{
++    IdleNotificationUserData, IdleNotifierHandler, IdleNotifierState,
++};
+ use smithay::wayland::input_method::{InputMethodHandler, PopupSurface};
+ use smithay::wayland::keyboard_shortcuts_inhibit::{
+     KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor,
+@@ -75,7 +79,7 @@ use smithay::wayland::xdg_activation::{
+ use smithay::{
+     delegate_cursor_shape, delegate_data_control, delegate_data_device, delegate_dmabuf,
+     delegate_drm_lease, delegate_ext_data_control, delegate_fractional_scale,
+-    delegate_idle_inhibit, delegate_idle_notify, delegate_input_method_manager,
++    delegate_idle_inhibit, delegate_input_method_manager,
+     delegate_keyboard_shortcuts_inhibit, delegate_output, delegate_pointer_constraints,
+     delegate_pointer_gestures, delegate_presentation, delegate_primary_selection,
+     delegate_relative_pointer, delegate_seat, delegate_security_context, delegate_session_lock,
+@@ -576,7 +580,37 @@ impl IdleNotifierHandler for State {
+         &mut self.niri.idle_notifier_state
+     }
+ }
+-delegate_idle_notify!(State);
++
++// A sandbox is never told when the person goes idle or comes back: that would let a program in it
++// wait for nobody watching before it acts. smithay's idle notifier takes no client filter, so its
++// global is dispatched here, as delegate_idle_notify! would, with one that hides it.
++impl GlobalDispatch<ExtIdleNotifierV1, ()> for State {
++    fn bind(
++        state: &mut Self,
++        handle: &DisplayHandle,
++        client: &Client,
++        resource: New<ExtIdleNotifierV1>,
++        global_data: &(),
++        data_init: &mut DataInit<'_, Self>,
++    ) {
++        <IdleNotifierState<Self> as GlobalDispatch<ExtIdleNotifierV1, (), Self>>::bind(
++            state,
++            handle,
++            client,
++            resource,
++            global_data,
++            data_init,
++        );
++    }
++
++    fn can_view(client: Client, _global_data: &()) -> bool {
++        !client_is_restricted(&client)
++    }
++}
++delegate_dispatch!(State: [ExtIdleNotifierV1: ()] => IdleNotifierState<State>);
++delegate_dispatch!(
++    State: [ExtIdleNotificationV1: IdleNotificationUserData] => IdleNotifierState<State>
++);
+ 
+ impl IdleInhibitHandler for State {
+     fn inhibit(&mut self, surface: WlSurface) {

@@ -303,25 +303,3 @@ function asksJoel(presence, by) {
     return true;
 }
 
-// Whether a want rings, as the bell says only that something needs
-// Joel's keys now (WCJQSG's pivot, 2026-11-12, on his "my computer
-// constantly dinging instead of being brought to what i need to interact
-// with"): a session stopped on a question or a yes until he answers. Not
-// a run that ended blocked, said only while he's away, nor an item of a
-// session's own, which For You lists for him to do when he likes.
-function rings(wants) {
-    return wants?.kind === "question" || wants?.kind === "approval";
-}
-
-// Who a want is, for it to sound once: its session and the id the
-// harness gives it, else its kind and when it began, which the harness
-// keeps as a standing want is raised again. Never its words, which count
-// up as a session holds more ("Holds 3 calls", "and 2 more"), and each
-// count was once said as a new want, with its sound. Its words only when
-// it gives no start.
-function wantKey(address, wants) {
-    if (typeof wants?.id === "string" && wants.id !== "") {
-        return `${address} ${wants.id}`;
-    }
-    return `${address} ${wants?.kind ?? ""} ${wants?.since ?? wants?.said ?? ""}`;
-}

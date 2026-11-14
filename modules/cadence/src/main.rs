@@ -29,9 +29,10 @@
 //! (daily.rs). Each finding goes in its ledger and to the owner its key's
 //! prefix names, or to the watcher (findings.rs).
 //!
-//! `cadence axes`, typed by Joel, shows the nine axes he holds the machine
+//! `cadence axes`, typed by Joel, shows the ten axes he holds the machine
 //! to, each against its bar with its owner, and `cadence axes <axis>`
-//! steps into one (axes.rs).
+//! steps into one (axes.rs). `cadence axes --served WORDS` prints them as
+//! the launcher's Spec rows, for cadence-spec to serve (axes/spec.rs).
 //!
 //! `cadence review`, run each Friday evening by a timer, sends the week's
 //! noise and blind spots to the addresses it's given (axes/review.rs).
@@ -40,7 +41,7 @@
 //!         [--restart WORDS [--revive ADDRESS]... [--skip ADDRESS]...]
 //!     cadence units [--at SECONDS]
 //!     cadence day [--orchestrator ADDRESS [--watcher ADDRESS] [--owner PREFIX=ADDRESS]...]
-//!     cadence axes [AXIS]
+//!     cadence axes [AXIS | --served WORDS]
 //!     cadence review [--to ADDRESS]...
 
 mod asking;
@@ -126,7 +127,7 @@ fn main() -> ExitCode {
                  [--revive ADDRESS]... [--skip ADDRESS]...]\n       \
                  {UNITS_USAGE}\n       \
                  {DAY_USAGE}\n       \
-                 cadence axes [AXIS]\n       \
+                 cadence axes [AXIS | --served WORDS]\n       \
                  cadence review [--to ADDRESS]...\n       {}",
                 owe::USAGE
             );

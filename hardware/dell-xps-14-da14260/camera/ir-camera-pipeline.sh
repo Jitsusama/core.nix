@@ -1,7 +1,30 @@
 # shellcheck shell=bash
 # Wires the IR sensor's link through the IPU7 to a capture node, sets the
 # format at each end, and names the capture node /run/ir-camera/source, as
-# camera.nix says why.
+# camera.nix says why. Its help takes the shape every command of ours does
+# (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+ir-camera-pipeline  wire the IR camera to a capture node
+
+  Links the IR sensor through the IPU7 to a capture node,
+  sets the format at each end, and names the node
+  /run/ir-camera/source.
+
+EXAMPLES
+  ir-camera-pipeline
+
+EXIT
+  0   wired
+  1   the sensor hasn't bound, or no capture node follows
+  else media-ctl's own
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 format=Y10_1X10/648x368
 

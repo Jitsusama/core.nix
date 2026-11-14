@@ -765,7 +765,7 @@ that does. The kinds that follow from it:
 | Kind    | For example            | Border                    | Where                 | Type              | What sets it apart |
 | ------- | ---------------------- | ------------------------- | --------------------- | ----------------- | ------------------ |
 | window  | a program              | the accent when focused, the edge otherwise | tiled | its own | opaque |
-| palette | the launcher           | the accent                | a quarter down; its command line over a picture or a video low, a twelfth of the screen up, so what it acts on stays in view | large, monospace  | a command line over a list |
+| palette | the launcher           | the accent                | centred on its screen, as far from the foot as from the top, Super+S's line in the same frame; its command line over a picture or a video low, a twelfth of the screen up, so what it acts on stays in view | large, monospace  | a command line over a list |
 | prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre over windows; the lock screen and the greeter low, a twelfth of the screen up, so the picture's sky stays clear | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
 | notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical; the arrival line never takes them | the one that waits on the arrival line, a step inside the top of the focused screen, centred on the launcher's line as Super+S's line is; what's playing, and the stack while Super+N holds it, the frames rung inside the window at the top right | large, both | three groups, the room from frame to ink the same on every side: who first, then the message, then a signature of what sent it and when; Super+N holds the stack as lines, Vim's quickfix list |
 | meter   | the volume, the microphone, the brightness, the charge when power comes or goes, dictation while it's on | the edge | bottom centre | body, monospace | reads a level back while it changes; dictation's says what it's doing in a word, with a wave rather than a bar, so it's never the microphone's volume |
@@ -1020,11 +1020,11 @@ while a call shares the screen; a screenshot shows it, as it shows the
 marks. At rest it draws no frame. Once the keys rest two seconds on
 another column it walks there, never for keys passing through, so h and l
 tapped along the columns leave it sitting. A walk is animated, moved a
-whole device pixel's step each frame the screen draws, with character
+whole cell of its own art each frame the screen draws, with character
 (Joel, 2026-11-12: "we need proper smooth animations with character to
 them"): it stands and turns its head the way it's going, stops a moment
 to think, draws back a cell crouched, then walks, easing in and out, its
-two strides stepped by the ground it covers so its feet never slide. It
+four strides stepped by the ground it covers so its feet never slide. It
 walks on a cell and a half past its seat, steps back onto it and crouches
 a moment as it stops. The walk's own curve eases in as well as out, the
 one exception to the theme's ease-out, since a cat gathers speed from a
@@ -1955,8 +1955,9 @@ works the same way everywhere.
   of thing it is at its right edge (Shape and Kinds).
   The windows, the copies and the notices are whole at home, and most have
   a chord that opens them: Super+V the
-  copies, Super+E the emoji, Super+N the notices (For You's Desktop, on
-  the card in front while one is up), Super+Shift+/ the shortcuts.
+  copies, Super+E the emoji, Super+N the notices (those on screen, on the
+  one in front, while any are up; For You's Desktop when none are),
+  Super+Shift+/ the shortcuts.
 - **A key's action is its row.** A key's action that a row already does
   is that row, drawing the key's chord: Super+L is the session's Lock,
   Super+Return is kitty, and Shift+Print and Alt+Print are Capture's rows.
@@ -2388,8 +2389,13 @@ Neovim is listed.
 
 Nothing the desktop shows is reached only by pointing. Super+O opens Now,
 the margin's glyphs in words, and Super+N opens the notices in the
-launcher, on the card in front while one is up, and closes it pressed
-again. A notice is a launcher row like any other: Return goes to who
+launcher, and closes it pressed again. While any wait on screen, it
+lists those alone, On Screen, in the order the arrival line takes them,
+the cursor on the one it shows, so j and k go through them and Return
+acts on one there; a notice read or come while it's open keeps its
+place, the new at the end. With none on screen, or while notices are
+held, it opens For You's Desktop. A notice is a launcher row like any
+other: Return goes to who
 sent it, as the quickfix list's Return goes to where a line came from,
 its acts and drawer are beside it, and d and y take it as they take any
 row. The stack on screen is still held by the keys as lines until the
@@ -3178,7 +3184,7 @@ by them isn't done.
 | The wallpaper                             | Quickshell, niri         | none           |        |        |           |         |          |
 | Dictation                                 | dictation, Quickshell    | monospace      | nothing | while it listens, at the bottom centre in a meter's frame: a person speaking in the voice colour, listening, a wave of what the microphone hears, and the time, counting down the last five of Whisper's thirty seconds with the glyph in the warning colour; typing, once it lasts long enough to see; then for a moment heard nothing, still writing, or, with the muted microphone, the microphone is muted | nothing | Super+D starts and stops it | nothing; it's never in the margin, and never a notice while the shell watches |
 | The launcher's glance and the margin mark | Quickshell               | both           | the status line after its mark: the time, the date, the battery with its time and watts, the network, the volume, the day's AI spend, pi, each after its glyph | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
-| The launcher and palette                  | Quickshell               | monospace      | what's typed; the selected row: its glyph, its name, its kind or its chord; Return's verb at the foot's right | the foot's note: "sl is enough", the chord that opens a thing next time, where an answer came from | a thing's verbs, a collection's members and an answer's parts, a step in by Return | the accent frame, a command line over a list split by a hairline, a quarter down | past eight rows the list scrolls, keeping the height it opened at; a note takes the glance's place in the foot |
+| The launcher and palette                  | Quickshell               | monospace      | what's typed; the selected row: its glyph, its name, its kind or its chord; Return's verb at the foot's right | the foot's note: "sl is enough", the chord that opens a thing next time, where an answer came from | a thing's verbs, a collection's members and an answer's parts, a step in by Return | the accent frame, a command line over a list split by a hairline, centred on the screen | past eight rows the list scrolls, keeping the height it opened at; a note takes the glance's place in the foot |
 | Notifications                             | Quickshell               | both           |        |        |           |         |          |
 | Menus and overlays                        | Quickshell               | both           |        |        |           |         |          |
 | The lock screen, polkit and PIN prompts   | Quickshell               | both           |        |        |           |         |          |

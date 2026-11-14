@@ -8,7 +8,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# niri's event stream, which says which program is in front (src/front.rs).
+serde_json = "1.0"
 # The sun's reckoning, which the launcher's calendars share.
 sun = { path = "../sun" }
-tokio = { version = "1.53", features = ["macros", "net", "rt", "sync", "time"] }
+tokio = { version = "1.53", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
 zbus = { version = "5.19", default-features = false, features = ["tokio"] }

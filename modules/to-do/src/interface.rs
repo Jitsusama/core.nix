@@ -7,10 +7,11 @@ use daemon_serve::asks::Domain;
 use serde_json::Value;
 
 /// The kinds of record this daemon keeps: each to-do, each look the
-/// agents left, and what waits on Joel counted whole.
+/// agents left, what waits on Joel counted whole, and For You's History
+/// of looks as ready rows, with their count (history.rs).
 pub const DOMAIN: Domain = Domain {
     name: "to-do",
-    kinds: &["to-do", "look", "waiting"],
+    kinds: &["to-do", "look", "waiting", "row", "summary"],
     sole: &[],
     named_only: &[],
 };
@@ -76,6 +77,11 @@ mod tests {
             "a look's key"
         );
         assert_eq!(DOMAIN.kind_of(SUMMARY), Some("waiting"), "the count's key");
+        assert_eq!(
+            DOMAIN.kind_of("row:looks-history:01b53bb1"),
+            Some("row"),
+            "History's row of a look"
+        );
         assert_eq!(
             DOMAIN.kind_of("to-do:"),
             None,

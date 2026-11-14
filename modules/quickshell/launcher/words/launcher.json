@@ -792,7 +792,8 @@
           "google-docs": "in Docs",
           "google-sheets": "in Sheets",
           "google-slides": "in Slides",
-          "google-drive": "in Drive"
+          "google-drive": "in Drive",
+          "github": "in GitHub"
         }
       }
     },

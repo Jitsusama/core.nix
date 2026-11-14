@@ -2,7 +2,29 @@
 # Fails unless every program the firmware starts from the ESP ($ESP_PATH)
 # is signed by the machine's keys, and then takes the keys' files
 # ($AUTO_KEYS) away, so systemd-boot doesn't enrol them at the next start
-# (nixos.nix says which programs, and why).
+# (nixos.nix says which programs, and why). Its help takes the shape every
+# command of ours does (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+secure-boot-signed-check  check the ESP is signed
+
+  Checks that every program the firmware starts from the
+  ESP is signed by the machine's keys. If one isn't, it
+  takes the keys' files away, so they aren't enrolled.
+
+EXAMPLES
+  secure-boot-signed-check
+
+EXIT
+  0   every program is signed
+  1   one isn't, or sbctl couldn't check
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 started='[.[] | select(.file_name | test("/EFI/BOOT/BOOTX64\\.EFI$|/EFI/systemd/systemd-bootx64\\.efi$|/EFI/Linux/[^/]+\\.efi$"; "i"))]'
 # sbctl says why it failed on its standard output.
 if ! verified=$(sbctl verify --json); then

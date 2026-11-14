@@ -296,6 +296,7 @@ let
       "google-sheets"
       "google-slides"
       "google-drive"
+      "github"
       "slack"
       "onepassword"
       "gimp"
@@ -428,8 +429,9 @@ let
         inherit (b) does run also;
         glyph = actionGlyph b.run;
         chord = map face' (lib.splitString "+" b.chord);
-        # Super+N opens For You's Desktop (launcher/Now.qml's leadsTo), on
-        # the card in front while one is up, so the launcher steps into it.
+        # Super+N opens the notices (launcher/Now.qml's leadsTo): those on
+        # screen while any are up, else For You's Desktop, which its row
+        # steps into here, since none are on screen while the launcher is.
         opens =
           if opensCollection b.run then
             lib.last b.run
@@ -492,6 +494,8 @@ let
     google-sheets = nerd "f09f7";
     google-slides = nerd "f0428";
     google-drive = nerd "f02b6";
+    # GitHub's own mark, the octocat, as the page is its.
+    github = nerd "f02a4";
     # The theme's chat, as Slack is where people talk.
     slack = nerd "f0b79";
     # The theme's password, as 1Password keeps them.

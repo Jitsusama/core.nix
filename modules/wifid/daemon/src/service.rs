@@ -52,6 +52,12 @@ pub enum Ask {
     Scan {
         done: oneshot::Sender<Result<(), Refused>>,
     },
+    /// Moving the card on an access point's network to it, by the access
+    /// point's address, as 6c:ae:f6:c1:84:26.
+    Roam {
+        bssid: String,
+        done: oneshot::Sender<Result<(), Refused>>,
+    },
     Leave {
         name: String,
         done: oneshot::Sender<Result<(), Refused>>,

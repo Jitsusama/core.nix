@@ -13,14 +13,32 @@
 #
 # The timeout systemd runs with is kept in a file, so only a watchdog this
 # stopped is started again, at the timeout it had, and nothing here ever
-# fails the sleep. BUSCTL and KEPT move both for the check.
+# fails the sleep. BUSCTL and KEPT move both for the check. Its help takes
+# the shape every command of ours does (docs/commands.md), by hand.
 set -u
 
 busctl=${BUSCTL:-busctl}
 kept=${KEPT:-/run/watchdog-wakes-again}
 manager=(org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager)
 
-case "$1" in
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+watchdog-wakes-again  stop the watchdog for a sleep
+
+  systemd-sleep runs it with pre before a sleep, which
+  stops systemd's runtime watchdog, and post after,
+  which starts it again at the timeout it had. It never
+  fails a sleep.
+
+EXAMPLES
+  watchdog-wakes-again pre suspend
+  watchdog-wakes-again post suspend
+
+EXIT
+  0   always
+EOF
+  ;;
 pre)
   timeout=$("$busctl" get-property "${manager[@]}" RuntimeWatchdogUSec) || exit 0
   timeout=${timeout#t }

@@ -35,12 +35,15 @@ pub struct Switched {
 /// Builds `flake`, its inputs overridden by `overrides`, keeping it from
 /// being collected until the next build, and gives the system's path once
 /// it's one this machine's kind can run. Building elsewhere, everything but
-/// the light pieces is built on the builders first.
+/// the light pieces is built on the builders first. In batches, what's left
+/// to build here is then built a batch at a time: building elsewhere, the
+/// light pieces, of which a whole system can need hundreds.
 pub fn build(config: &Config, flake: &str, overrides: &[String]) -> Result<PathBuf, Failure> {
     if config.elsewhere {
         build_elsewhere(config, flake, overrides, Pass::First)?;
         build_elsewhere(config, flake, overrides, Pass::Last)?;
-    } else if let Some(batches) = &config.batches {
+    }
+    if let Some(batches) = &config.batches {
         batches::build(config, batches, flake, overrides)?;
     }
     let mut nix = nix(config);
@@ -134,7 +137,7 @@ fn build_elsewhere(
         ),
     }
     if !kept.is_empty() {
-        build_kept(config, &kept)?;
+        build_kept(config, &pieces, &kept)?;
     }
     if !rest.is_empty() {
         let builders = config.builders.as_deref();
@@ -156,12 +159,20 @@ fn build_elsewhere(
         }
         if let Err(apart) = away(
             config,
+            &pieces,
             &rest,
             builders,
             "building the system on the machine's builders",
         ) {
             // The builders stay, so a piece only they take still goes to them.
-            here(config, &rest, apart, builders, "building the rest here")?;
+            here(
+                config,
+                &pieces,
+                &rest,
+                apart,
+                builders,
+                "building the rest here",
+            )?;
         }
     }
     Ok(())
@@ -319,6 +330,7 @@ fn beside_the_big(
                 run::helps(update);
                 away(
                     config,
+                    pieces,
                     &beside,
                     builders,
                     "building the small pieces beside the big on the machine's builders",
@@ -327,6 +339,7 @@ fn beside_the_big(
         });
         let big_built = away(
             config,
+            pieces,
             big,
             builders,
             "building the big pieces on the machine's builders",
@@ -400,28 +413,63 @@ fn built_from_big(
 /// builder. On 11 November two switches fell to building here, one of
 /// them compiling for minutes, each after a single corrupted stream on the
 /// tunnel to the one builder root's list names: Nix then drops that
-/// builder and, with none left, says local builds are disabled.
+/// builder and, with none left, says local builds are disabled. In
+/// batches, each batch is a build of its own, `shown` saying what each
+/// piece is built from.
 fn away(
     config: &Config,
+    shown: &BTreeMap<String, Piece>,
     pieces: &[String],
     builders: Option<&str>,
     what: &str,
 ) -> Result<(), Failure> {
-    let once = || {
-        let mut away = nix(config);
-        away.args(["build", "--no-link", "--max-jobs", "0"]);
-        if let Some(builders) = builders {
-            away.args(["--builders", builders]);
+    in_turn(config, shown, pieces, what, |batch, what| {
+        let once = || {
+            let mut away = nix(config);
+            away.args(["build", "--no-link", "--max-jobs", "0"]);
+            if let Some(builders) = builders {
+                away.args(["--builders", builders]);
+            }
+            told(config, away, what, batch)
+        };
+        match once() {
+            Err(failed) if lost_its_builder(&failed) && !run::stopping() => {
+                eprintln!("{}", tried_again(what, &failed));
+                once()
+            }
+            ran => ran,
         }
-        told(config, away, what, pieces)
+    })
+}
+
+/// Builds `pieces` with `build`, given each batch and what it's called, a
+/// batch at a time when the config sets batches and they need more than
+/// one, or all at once. The Nix daemon's worker serving a build grows with
+/// the pieces it's given wherever they build, so one build sending a whole
+/// system away can run a small machine out of memory as one building it
+/// here can. A batch that fails ends it, saying why.
+fn in_turn(
+    config: &Config,
+    shown: &BTreeMap<String, Piece>,
+    pieces: &[String],
+    what: &str,
+    build: impl Fn(&[String], &str) -> Result<(), Failure>,
+) -> Result<(), Failure> {
+    let planned = match &config.batches {
+        Some(batches) if pieces.len() > batches.pieces => {
+            let inputs: BTreeMap<String, Vec<String>> = shown
+                .iter()
+                .map(|(drv, piece)| (drv.clone(), piece.inputs.clone()))
+                .collect();
+            batches::in_batches(pieces, &inputs, batches.pieces)
+        }
+        _ => return build(pieces, what),
     };
-    match once() {
-        Err(failed) if lost_its_builder(&failed) && !run::stopping() => {
-            eprintln!("{}", tried_again(what, &failed));
-            once()
-        }
-        ran => ran,
+    let count = planned.len();
+    for (at, batch) in planned.iter().enumerate() {
+        build(batch, &format!("{what}, batch {} of {count}", at + 1))?;
     }
+    Ok(())
 }
 
 /// What's said of a try that lost its builder, with the last lines Nix
@@ -526,10 +574,15 @@ fn outputs(pieces: &[String]) -> impl Iterator<Item = String> + '_ {
 
 /// Builds the kept pieces on their own builders, or, when those don't and
 /// the machine may, here, small and only while it's quiet.
-fn build_kept(config: &Config, kept: &[String]) -> Result<(), Failure> {
+fn build_kept(
+    config: &Config,
+    shown: &BTreeMap<String, Piece>,
+    kept: &[String],
+) -> Result<(), Failure> {
     let apart = match &config.kept.builders {
         Some(builders) => match away(
             config,
+            shown,
             kept,
             Some(builders),
             "building the kept pieces on their own builders",
@@ -548,6 +601,7 @@ fn build_kept(config: &Config, kept: &[String]) -> Result<(), Failure> {
     // With no builders at all, so a kept piece goes to none of the daemon's.
     here(
         config,
+        shown,
         kept,
         apart,
         Some(""),
@@ -571,6 +625,7 @@ fn fell_back(apart: &Failure) -> String {
 /// `OVERDUE`; otherwise gives why they weren't.
 fn here(
     config: &Config,
+    shown: &BTreeMap<String, Piece>,
     pieces: &[String],
     apart: Failure,
     builders: Option<&str>,
@@ -606,14 +661,16 @@ fn here(
     // the builders didn't: on 9 November a kept build lost 391s to a cause
     // no line kept.
     eprintln!("{}", fell_back(&apart));
-    let mut local = nix(config);
-    local.args(["build", "--no-link"]);
-    if let Some(builders) = builders {
-        local.args(["--builders", builders]);
-    }
-    local.args(["--max-jobs", &here.max_jobs.to_string()]);
-    local.args(["--cores", &here.cores.to_string()]);
-    told(config, local, what, pieces)
+    in_turn(config, shown, pieces, what, |batch, what| {
+        let mut local = nix(config);
+        local.args(["build", "--no-link"]);
+        if let Some(builders) = builders {
+            local.args(["--builders", builders]);
+        }
+        local.args(["--max-jobs", &here.max_jobs.to_string()]);
+        local.args(["--cores", &here.cores.to_string()]);
+        told(config, local, what, batch)
+    })
 }
 
 /// How long the machine has been behind main, from when an update first

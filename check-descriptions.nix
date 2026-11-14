@@ -390,6 +390,13 @@
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
   '';
+  cadence-spec-passes-clippy = ''
+    clippy finds nothing in cadence-spec or its tests
+  '';
+  cadence-spec-serves-the-axes = ''
+    cadence-spec serves a watch of the launcher's Spec the rows cadence prints, and keeps
+    answering with none when cadence fails
+  '';
   call-audio-runs-in-real-time = ''
     an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time
   '';
@@ -819,6 +826,10 @@
     every mark the theme draws in pixels, the empty places' cat in each pose, is square, its ink
     touching its top and bottom rows and centred across to within a cell, and the three empty
     places' marks are drawn
+  '';
+  every-cat-pose-reads-as-one-cat = ''
+    every pose of the margin's cat has no lit pixel standing alone, a diagonal touching, and lit
+    pixels within 15% of sitting's, and a leap's rise, tuck and fall are all drawn
   '';
   every-script-meets-shellcheck-at-its-strictest = ''
     every shell script meets shellcheck's optional checks for a hidden failure, a set -e turned
@@ -1370,6 +1381,10 @@
     or are read by, and takes a net quiet 20 minutes, running nothing, every thread on a lock,
     as hung, and asks whether a landing is still wanted with the checkout given back
   '';
+  merge-net-outlives-a-switch = ''
+    a switch leaves the net and main's keeper running, each to end between its rounds or keeps,
+    and the keeper runs the very build it follows, from a link of its own outside the profile
+  '';
   merge-net-passes-clippy = ''
     clippy finds nothing in merge-net or its tests
   '';
@@ -1437,6 +1452,10 @@
     each link key a machine's system names, on NixOS or nix-darwin, is authorized only to run
     mycelium's end of a link or an attach, as the realm and machine it names, with a terminal for
     the attach; a machine naming none authorizes nothing of mycelium's
+  '';
+  mycelium-map-keeps-its-last-map = ''
+    the mycelium site's writer, while no node answers, ends well in one line and leaves the last
+    map as it was, and once one answers writes the live sessions alone and no message's words
   '';
   mycelium-runs-among-the-sessions = ''
     on Linux, every realm's node runs in the agents' slice, beside Joel's programs rather than among
@@ -1572,6 +1591,11 @@
   niri-never-shows-its-own-screens = ''
     no niri key opens its screenshot screen, its key list or a quit that asks, and the launcher's
     Log Out quits without asking
+  '';
+  niri-opens-sandboxed-windows-behind = ''
+    the session's niri, nested in the sandbox, opens a sandbox's windows on a workspace no screen
+    shows without moving the focus, even with an activation token from the focused window or while
+    the focused workspace is the empty one at the end, and Joel still goes to one by its id
   '';
   niri-patches-add-no-settings = ''
     no patch of niri's adds a setting a niri started before it would refuse at a switch, all of its
@@ -2025,6 +2049,12 @@
     and OAuth headers its own context holds, never falls back to the process for one its context
     lacks, refuses header variables where it can't read the context, and reads the process for a
     runtime given none, as ordinary pi does
+  '';
+  pi-hosted-starts-conversations-lightly = ''
+    pi built with the host's patches, applied exactly, runs an MCP server's header command without
+    blocking and once for the connections opened within 30 seconds, runs one that resolved nothing
+    again and once its cache is cleared, finds a tool on the path once and looks again for one
+    missing, and hands a provider the store's own copy of its catalogue without a second clone
   '';
   pi-hosted-screen-reaches-its-viewers = ''
     pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
@@ -3165,7 +3195,8 @@
   pi-clipboard-door-reaches-only-the-fence = ''
     pi's clipboard door starts from a socket in a folder only the account reaches, tagged in the
     journal, its shims linked from a folder of their own, and the sandboxed display runs with the
-    graphical session at %t/pi-fence/wayland, in a folder that outlives a restart; a Mac gets none
+    graphical session at %t/pi-fence-display/wayland, in a folder of its own that outlives a
+    restart; a Mac gets none
   '';
   pi-fence-clipboard-holds-on-niri = ''
     on a real niri, the sandboxed display offers windows' protocols and none of the privileged
@@ -3868,6 +3899,10 @@
   the-surface-reserves-memory-to-hibernate = ''
     the Surface Laptop 4 writes a reserve of 1 GiB to /sys/power/reserved_size at every start, so
     a hibernation leaves room for what amdgpu copies out as it stops
+  '';
+  the-surface-touchscreen-keeps-off-a-removed-workqueue = ''
+    the Surface Laptop 4's touchscreen driver, as its source stands once patched, names system_wq
+    nowhere, the queue Linux 7.3 says it will remove and warns of once a boot
   '';
   the-surface-watchdog-wakes-again = ''
     the Surface Laptop 4 arms systemd's runtime watchdog at 30 s, and its sleep hook, run with an
@@ -4717,6 +4752,18 @@
     secret, an account's name, its server's domain and password in turn, each set in the ask and
     sent after the last; a step out partway sends nothing and says so; a join's steps and a
     refusal are said in the foot, never a card; and no password is shown
+  '';
+  wifi-holds-the-network-joined-ahead = ''
+    the launcher's Wi-Fi holds the network joined ahead while the launcher's open and Wi-Fi's on,
+    so its drawer is served before Joel steps onto it; a change to that drawer alone tells the
+    launcher nothing while nobody looks at it, the row it holds drawing the drawer as served
+    now, and one looked at, a drawer coming or going, or a change past it, is told
+  '';
+  wifi-looks-only-while-its-rows-are-shown = ''
+    the launcher's Wi-Fi asks wifid to look for networks only while its rows are shown: Wi-Fi or
+    something in it held, or a find from the root showing a row of its, the launcher open, or a
+    terminal's show walked into it; never open on another place, at home or on another's find,
+    and at once on stepping in
   '';
   wifid-passes-clippy = ''
     clippy finds nothing in wifid, its sign-in window or their tests

@@ -5,7 +5,9 @@
 //! most of it in swap, on a laptop with 7.4 GB of memory, and systemd-oomd
 //! stopped the build. Builds of about 70 pieces on the same laptop left
 //! over 3 GB of memory free throughout. A batch's build ends before the
-//! next starts, so each worker starts small.
+//! next starts, so each worker starts small. A machine building elsewhere
+//! sends its batches of what isn't light away first, and builds what's
+//! left here in batches after.
 
 use crate::config::{Batches, Config};
 use crate::run::{self, Failure};
@@ -48,6 +50,11 @@ pub fn build(
             room(config, batches)?;
             let mut build = system::nix(config);
             build.args(["build", "--no-link"]);
+            // Building elsewhere, what's left is built here with no
+            // builders, as the system's own build after it is.
+            if config.elsewhere {
+                build.args(["--builders", ""]);
+            }
             let what = format!("building batch {} of {count} here", at + 1);
             system::told(config, build, &what, batch)?;
         }

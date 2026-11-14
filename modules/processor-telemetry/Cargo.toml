@@ -10,6 +10,8 @@ publish = false
 [dependencies]
 futures-util = { version = "0.3", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
+# The shape every command of ours takes: its flags, help, errors and exits.
+terminal-kit = { path = "../terminal-kit" }
 tokio = { version = "1.53", features = ["macros", "rt", "time"] }
 # zlink logs through tracing, which says nothing with no subscriber, so the
 # reader keeps to its own journal lines.

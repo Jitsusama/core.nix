@@ -1,7 +1,7 @@
 # rhythm, built from this directory's crate. Its tests run as it builds.
-# The sun's reckoning is a crate it shares with the backlight (../sun), so
-# the source is cut from the modules folder holding both, and built from
-# this one.
+# The sun's reckoning is a crate it shares with the backlight (../sun), and
+# its shape comes from the terminal kit (../terminal-kit), so the source is
+# cut from the modules folder holding them, and built from this one.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage rec {
   pname = "rhythm";
@@ -14,6 +14,8 @@ rustPlatform.buildRustPackage rec {
       ./src
       ../sun/Cargo.toml
       ../sun/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/rhythm";

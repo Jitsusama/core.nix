@@ -41,6 +41,12 @@
 # nobody acted on or came again, by sender) and blind spots (where the
 # axes and Joel's pains disagree) to the orchestrator and to the owner
 # `owners` names for `review`.
+#
+# cadence-spec (./spec) serves the axes to the launcher's Spec place over
+# $XDG_RUNTIME_DIR/daemons/cadence-spec.sock in the shell's daemon interface,
+# asking `cadence axes --served` for the rows at most every five minutes
+# and only while Spec is watched, so the launcher rereads no file (Joel,
+# 2026-11-10: "the daemons need to be the data layer").
 {
   config,
   lib,
@@ -50,6 +56,7 @@
 let
   cfg = config.jitsusama.cadence;
   package = pkgs.callPackage ./package.nix { };
+  spec = pkgs.callPackage ./spec/package.nix { };
   # Who Friday's review goes to: the orchestrator, and the owner of `review`.
   reviewed = lib.filter (address: address != null) [
     cfg.orchestrator
@@ -234,6 +241,52 @@ in
         ];
         Slice = "background.slice";
       };
+    };
+    # A daemon of its own, named cadence-spec, since every daemon's units
+    # and program say its socket's name (docs/daemons.md) and cadence is
+    # the tick's.
+    systemd.user.services.cadence-spec = {
+      Unit = {
+        Description = "Serves the axes to the launcher's Spec";
+        X-SwitchMethod = "restart";
+        # Its socket is systemd's, handed to it as it starts.
+        Requires = [ "cadence-spec.socket" ];
+        After = [ "cadence-spec.socket" ];
+      };
+      Service = {
+        ExecStart = lib.concatStringsSep " " [
+          "@${lib.getExe spec}"
+          "cadence-spec"
+          "%t/daemons/cadence-spec.sock"
+          (lib.getExe package)
+          "${(import ../quickshell/launcher/words.nix).file}"
+        ];
+        # git, systemctl and niri for the axes cadence reads, as the review
+        # has.
+        Environment = [
+          "PATH=${
+            lib.makeBinPath [
+              pkgs.git
+              pkgs.systemd
+            ]
+          }:/run/current-system/sw/bin"
+        ];
+        Restart = "always";
+        RestartSec = 5;
+        Slice = "background.slice";
+      };
+      Install.WantedBy = [ "default.target" ];
+    };
+    # Its socket, held by systemd whether or not the daemon runs, so the
+    # shell asking while it starts waits on it rather than finding none.
+    systemd.user.sockets.cadence-spec = {
+      Unit.Description = "Where the launcher asks for the axes";
+      Socket = {
+        ListenStream = "%t/daemons/cadence-spec.sock";
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+      };
+      Install.WantedBy = [ "sockets.target" ];
     };
     systemd.user.timers.cadence-review = {
       Unit.Description = "Reviews the week each Friday evening";

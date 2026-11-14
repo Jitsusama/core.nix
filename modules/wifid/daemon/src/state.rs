@@ -14,6 +14,7 @@ use crate::check::Verdict;
 use crate::detail::{self, Detail, Polled};
 use crate::link::Link;
 use crate::network::Security as Kind;
+use crate::service::Refused;
 use crate::store;
 
 /// How many of a card's signal reads are kept, as many as a spark draws.
@@ -337,6 +338,12 @@ impl State {
         self.heard.retain(|heard, _| !heard.starts_with(path));
     }
 
+    /// How many looks have ended since wifid started, heard or failed, so
+    /// whoever asked for one knows when it's done.
+    pub fn looks(&self) -> u32 {
+        self.looks
+    }
+
     /// Takes in that the card of that name has looked for networks.
     pub fn looked(&mut self, card: &str) {
         self.looked.insert(card.to_string());
@@ -404,6 +411,37 @@ impl State {
     pub fn unpolled(&mut self) {
         self.polled.clear();
         self.seen.clear();
+    }
+
+    /// The card to move to an access point, by the access point's address:
+    /// the one that hears it and is on its network, since a card roams only
+    /// within the network it's on.
+    pub fn roamer(&self, bssid: &str) -> Result<String, Refused> {
+        // An access point's path in wpa_supplicant begins with its card's.
+        fn card_of(path: &str) -> Option<&str> {
+            path.split_once("/BSSs/").map(|(card, _)| card)
+        }
+        let mut heard = self
+            .heard
+            .iter()
+            .filter(|(_, heard)| heard.bssid.eq_ignore_ascii_case(bssid))
+            .peekable();
+        if heard.peek().is_none() {
+            return Err(Refused::NotNearby);
+        }
+        heard
+            .find_map(|(path, point)| {
+                let by = card_of(path)?;
+                let on = |card: &&Card| card.network.as_deref() == Some(point.name.as_str());
+                let at = |card: &&Card| self.at.get(&card.name).map(String::as_str);
+                let listening = |card: &&Card| at(card).and_then(card_of) == Some(by);
+                let card = self
+                    .cards
+                    .values()
+                    .find(|card| on(card) && listening(card))?;
+                Some(card.name.clone())
+            })
+            .ok_or(Refused::NotJoined)
     }
 
     /// The cards on a network, by name, which are those worth polling.
@@ -1118,6 +1156,53 @@ mod tests {
         state.heard("/Interfaces/0/BSSs/1", Some(heard("Roadside Inn", -52)));
 
         assert!(state.detail("Roadside Inn").points[0].joined);
+    }
+
+    /// A card on Roadside Inn at one access point, hearing another of its
+    /// at 02:00:00:00:02:00.
+    fn at_the_inn() -> State {
+        let mut state = State::default();
+        state.follow(&inn(2));
+        let mut other = heard("Roadside Inn", -60);
+        other.bssid = "02:00:00:00:02:00".into();
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Roadside Inn", -52)));
+        state.heard("/Interfaces/0/BSSs/2", Some(other));
+        state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+        state
+    }
+
+    #[test]
+    fn a_card_roams_to_an_access_point_of_its_network_it_hears() {
+        let state = at_the_inn();
+
+        assert_eq!(state.roamer("02:00:00:00:02:00"), Ok("wlan2".to_owned()));
+    }
+
+    #[test]
+    fn no_card_roams_to_an_access_point_unheard_or_off_its_network() {
+        let mut state = at_the_inn();
+        let mut lantern = heard("Lantern", -50);
+        lantern.bssid = "02:00:00:00:03:00".into();
+        state.heard("/Interfaces/0/BSSs/3", Some(lantern));
+        let mut elsewhere = heard("Roadside Inn", -50);
+        elsewhere.bssid = "02:00:00:00:04:00".into();
+        state.heard("/Interfaces/1/BSSs/4", Some(elsewhere));
+
+        assert_eq!(
+            state.roamer("02:00:00:00:09:00"),
+            Err(Refused::NotNearby),
+            "an access point nobody hears"
+        );
+        assert_eq!(
+            state.roamer("02:00:00:00:03:00"),
+            Err(Refused::NotJoined),
+            "another network's access point"
+        );
+        assert_eq!(
+            state.roamer("02:00:00:00:04:00"),
+            Err(Refused::NotJoined),
+            "one only another card hears"
+        );
     }
 
     #[test]

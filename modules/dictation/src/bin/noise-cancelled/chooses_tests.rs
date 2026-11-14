@@ -90,6 +90,38 @@ fn a_cleaner_better_in_two_calls_in_a_row_is_better() {
     );
 }
 
+/// A call that skipped noise cancelling, where `RNNoise` scored 0.8 over
+/// the microphone as it is.
+fn plain_rnnoise_better(node: &str, key: &str) -> String {
+    judged(
+        node,
+        key,
+        "raw",
+        &[
+            ("raw", 2.5),
+            ("deepfilternet", 3.0),
+            ("deepfilternet-gentle", 2.9),
+            ("rnnoise", 3.3),
+        ],
+    )
+}
+
+#[test]
+fn calls_that_skip_noise_cancelling_choose_nothing_and_break_no_row() {
+    let plain = plain_rnnoise_better(MV7, DESK);
+    assert_eq!(
+        better(&plain.repeat(2), MV7, DESK),
+        None,
+        "calls on the microphone itself chose for its twin, which they never heard"
+    );
+    let lines = rnnoise_better(MV7, DESK) + &plain + &rnnoise_better(MV7, DESK);
+    assert_eq!(
+        better(&lines, MV7, DESK),
+        Some(Cleaner::RNNoise),
+        "a call on the microphone itself broke the twin's two in a row"
+    );
+}
+
 #[test]
 fn one_call_is_not_enough() {
     assert_eq!(

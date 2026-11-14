@@ -2060,7 +2060,8 @@ fn a_keep_beside_a_gate_keeps_the_record_after_each_vm_test_it_traces() {
         .expect("mkfifo runs");
     assert!(made.success(), "no pipe to hold vm-y's trace on");
 
-    let keep = stand_in.started(&KEEPING, &[]);
+    // One at a time, so vm-x's trace is done before vm-y's begins.
+    let keep = stand_in.started(&KEEPING, &[("CHANGED_CHECKS_AT_ONCE_BESIDE_A_GATE", "1")]);
     // Open once vm-y's trace waits on it, so vm-x's is done.
     let holding = fs::File::options()
         .write(true)
@@ -2219,6 +2220,42 @@ fn a_gate_reaching_the_vm_tests_but_nothing_one_read_alone_keeps_its_derivation(
         ),
         "{}",
         text(&ran.stderr)
+    );
+}
+
+#[test]
+fn asked_only_to_name_them_it_judges_each_check_by_what_it_read_as_a_gate_does() {
+    // On 14 November each of the merge net's rounds, which only names what
+    // moved, evaluated all 930 of the tree's checks in 275 to 390 s before
+    // its first VM test, while gates beside them evaluated 100 to 600.
+    let naming = ["--system", "x86_64-linux", "--name-only"];
+    let ordinary = kept_alone("named-alone-untouched", MOVED, "M\tdocs/notes.md\n");
+    let vm = vm_alone("named-vm-alone-unreached", "M\ttests/x.nix\n");
+
+    let (ran_ordinary, ran_vm) = (ordinary.run(&naming), vm.run(&naming));
+
+    assert!(
+        ran_ordinary.status.success(),
+        "{}",
+        text(&ran_ordinary.stderr)
+    );
+    assert!(
+        text(&ran_ordinary.stderr).contains(
+            "evaluates 0 of x86_64-linux's 3 other checks, since the change reaches nothing \
+             the other 3 read at 0123456789ab"
+        ),
+        "naming them evaluated the other checks the change reaches nothing of: {}",
+        text(&ran_ordinary.stderr)
+    );
+    assert_eq!(
+        text(&ran_vm.stdout),
+        "changed  vm-y\n",
+        "only vm-y read what the change touched, yet naming them named more"
+    );
+    assert!(
+        text(&ran_vm.stderr).contains("evaluates 1 of x86_64-linux's 2 VM tests"),
+        "naming them evaluated the VM tests the change reaches nothing of: {}",
+        text(&ran_vm.stderr)
     );
 }
 
@@ -2522,6 +2559,32 @@ fn an_option_it_doesnt_take_is_refused_saying_how_it_is_used() {
     assert!(
         text(&ran.stderr).contains("--build and --name-only"),
         "{}",
+        text(&ran.stderr)
+    );
+}
+
+#[test]
+fn keeping_main_ends_before_its_next_look_once_another_build_is_installed() {
+    // On 14 November each of the 5 switches that restarted the keeper did
+    // so mid-keep, and at 14:47 one threw away 9 minutes of a keep.
+    let stand_in = StandIn::new("followed");
+    let installed = stand_in.path("installed");
+    fs::write(&installed, "").expect("written");
+    let ran = Command::new(env!("CARGO_BIN_EXE_changed-checks"))
+        .args(["keep-main", "--follow"])
+        .arg(&installed)
+        .env(
+            "CHANGED_CHECKS_REPOSITORY",
+            stand_in.path("no-such-repository"),
+        )
+        .env("XDG_STATE_HOME", stand_in.path("state"))
+        .env("NIX_OFFLOAD_DIR", stand_in.path("offload"))
+        .output()
+        .expect("changed-checks runs");
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("another changed-checks is installed, so this one ends"),
+        "it didn't say why it ended: {}",
         text(&ran.stderr)
     );
 }

@@ -26,10 +26,10 @@
 # options page restores a backup from, once, by hand: its own keys with the
 # key language's beside them (../keys/language.toml), as j scrolls, gg goes
 # to the top, Ctrl+o goes back and ZZ closes the tab. Its own H, L and x
-# stay, and f and F show the links' hints. GitHub (vimium.json) and each
-# of Google's pages with a layer of its own (../google/keys.nix), whose
-# keys are their own, are left to them: Vimium is off there, and its keys
-# leave theirs, so Mail's j is Mail's.
+# stay, and f and F show the links' hints. GitHub (./github-keys.nix) and
+# each of Google's pages (../google/keys.nix), each with a layer of its own
+# whose keys are its own, are left to them: Vimium is off there, and its
+# keys leave theirs, so Mail's j is Mail's.
 {
   config,
   lib,
@@ -51,10 +51,15 @@ let
     google-slides = "https?://docs.google.com/presentation/*";
     google-drive = "https?://drive.google.com/*";
   };
+  # The pages with keys of their own Vimium is off at: Google's, and
+  # GitHub's, whose single keys are much of how it's worked.
+  ownPages = googlePages // {
+    github = "https?://github.com/*";
+  };
   exclusionRules = lib.mapAttrsToList (_: pattern: {
     inherit pattern;
     passKeys = "";
-  }) googlePages;
+  }) ownPages;
 
   # Vimium's command for each of the language's acts it has, with what it
   # does in the launcher's words and the group it's listed in there.
@@ -295,7 +300,7 @@ let
           key
           // {
             when = withVimium;
-            leaves = lib.attrNames googlePages;
+            leaves = lib.attrNames ownPages;
           }
         )
         (
@@ -368,6 +373,7 @@ in
 
   config = {
     jitsusama.keys.chrome = keys;
+    jitsusama.keys.github = import ./github-keys.nix;
 
     # Its sites, and its tabs open now, which the programs daemon reads
     # itself, with no process started, as Chrome is stepped into and as
@@ -428,13 +434,9 @@ in
     # at the top says; Chrome syncs them from there.
     xdg.configFile."jitsusama/vimium.json" = lib.mkIf config.jitsusama.chrome.vimium {
       text = builtins.toJSON (
-        let
-          own = lib.importJSON ./vimium.json;
-        in
-        own
+        lib.importJSON ./vimium.json
         // {
-          inherit keyMappings;
-          exclusionRules = exclusionRules ++ own.exclusionRules;
+          inherit keyMappings exclusionRules;
         }
       );
     };

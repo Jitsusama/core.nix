@@ -658,3 +658,118 @@ fn a_look_joel_clears_is_kept_in_its_file_and_told_as_it_now_stands() {
         "told whole, with how Joel cleared it"
     );
 }
+
+/// Now, in milliseconds, as a look's times are read.
+fn now_ms() -> i64 {
+    i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis(),
+    )
+    .unwrap()
+}
+
+/// A time as the harness writes one in a look's file.
+fn iso(ms: i64) -> String {
+    jiff::Timestamp::from_millisecond(ms).unwrap().to_string()
+}
+
+/// History's rows as a watch holds them, by their order, each `(key, row)`.
+fn history(held: &BTreeMap<String, Value>) -> Vec<(&str, &Value)> {
+    let mut rows: Vec<(&str, &Value)> = held
+        .iter()
+        .filter(|(_, record)| record["kind"] == "row")
+        .map(|(key, record)| (key.as_str(), &record["row"]))
+        .collect();
+    rows.sort_by_key(|(_, row)| row["order"].as_i64());
+    rows
+}
+
+#[test]
+fn each_look_done_with_is_served_as_historys_row_newest_first() {
+    let dir = tempfile::tempdir().unwrap().keep();
+    fs::create_dir_all(dir.join("looks")).unwrap();
+    let now = now_ms();
+    let hour = 60 * 60 * 1000;
+    let looks = [
+        json!({"v": 1, "id": "b1", "kind": "pr", "title": "Fix", "state": "opened",
+            "target": "https://github.com/Jitsusama/core.nix/pull/4368", "why": "Why",
+            "ask": "Ask", "at": iso(now - 3 * hour), "resolvedAt": iso(now - 2 * hour)}),
+        json!({"v": 1, "id": "c1", "kind": "terminal", "title": "Answer", "state": "cleared",
+            "target": "pi:A1", "how": "cleared from For You", "at": iso(now - 3 * hour),
+            "resolvedAt": iso(now - hour)}),
+        json!({"v": 1, "id": "q1", "kind": "file", "title": "Old", "state": "waiting",
+            "target": "/tmp/old.md", "at": iso(now - 96 * hour)}),
+        json!({"v": 1, "id": "w1", "kind": "page", "title": "New", "state": "waiting",
+            "target": "https://example.com/a", "at": iso(now)}),
+        json!({"v": 1, "id": "e1", "kind": "page", "title": "Soon", "state": "waiting",
+            "target": "https://example.com/b", "at": iso(now),
+            "expiresAt": iso(now + 3000)}),
+        json!({"v": 2, "id": "v2", "kind": "page", "title": "Later", "state": "opened",
+            "target": "https://example.com/c", "at": iso(now)}),
+    ];
+    for look in &looks {
+        let id = look["id"].as_str().unwrap();
+        written(&dir.join(format!("looks/{id}.json")), &look.to_string());
+    }
+    let daemon = served(dir);
+    let mut client = daemon.client();
+    let mut held = BTreeMap::new();
+    take(
+        &mut held,
+        &client.ask(&json!({"id": 1, "ask": "watch", "kind": ["row", "summary"],
+            "place": "looks-history"})),
+    );
+    told(&mut client, &mut held, |held| {
+        held.contains_key("summary:looks-history")
+    });
+    let keys: Vec<&str> = history(&held).iter().map(|(key, _)| *key).collect();
+    assert_eq!(
+        keys,
+        [
+            "row:looks-history:c1",
+            "row:looks-history:b1",
+            "row:looks-history:q1"
+        ],
+        "those done with, newest done first; neither waiting nor one of another version"
+    );
+    assert_eq!(held["summary:looks-history"]["count"], 3, "History's count");
+    let opened = &held["row:looks-history:b1"]["row"];
+    assert_eq!(
+        (&opened["side"], &opened["acts"], &opened["held"]["doneAt"]),
+        (
+            &json!([{"said": "opened {time}", "at": now - 2 * hour, "as": "moment"}]),
+            &json!([{"key": "verb:on:look:open",
+                "open": "https://github.com/Jitsusama/core.nix/pull/4368"}]),
+            &json!(now - 2 * hour)
+        ),
+        "an opened look says when, opens its target and holds when it was done with"
+    );
+    let cleared = &held["row:looks-history:c1"]["row"];
+    assert_eq!(
+        (&cleared["side"][0]["said"], &cleared["acts"]),
+        (&json!("cleared from For You {time}"), &json!([])),
+        "a terminal look says its own how, and its Go is the shell's"
+    );
+    let quiet = &held["row:looks-history:q1"]["row"];
+    assert_eq!(
+        (&quiet["side"][0], &quiet["held"]["state"]),
+        (
+            &json!({"said": "went quiet {time}", "at": now - 24 * hour, "as": "moment"}),
+            &json!("quiet")
+        ),
+        "a look waiting three days went quiet then, its file unchanged"
+    );
+    told(&mut client, &mut held, |held| {
+        held["summary:looks-history"]["count"] == 4
+    });
+    assert_eq!(
+        (history(&held)[0].0, &history(&held)[0].1["side"][0]),
+        (
+            "row:looks-history:e1",
+            &json!({"said": "expired {time}", "at": now + 3000, "as": "moment"})
+        ),
+        "a look past its expiry is History's by the clock alone, first"
+    );
+}

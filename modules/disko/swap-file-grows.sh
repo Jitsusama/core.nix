@@ -8,8 +8,39 @@
 #   swap-file-grows FILE SIZE   SIZE as disko takes it, such as 128G
 #
 # SWAPS and EFIVARS name where the kernel lists what it swaps to and where
-# the firmware's variables are, for its check to stand in for.
+# the firmware's variables are, for its check to stand in for. Its help and
+# failures take the shape every command of ours does (docs/commands.md), by
+# hand.
 set -euo pipefail
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+swap-file-grows  grow the swap file to the size asked
+
+  Run as the machine starts, before anything swaps. It
+  never shrinks one, nor touches one in use or holding a
+  hibernation, and keeps the old one when the disk is
+  short. SIZE is as disko takes it.
+
+EXAMPLES
+  swap-file-grows /swap/swapfile 128G
+
+EXIT
+  0   grown, or left as it is
+  64  asked wrongly
+  else what failed: numfmt, df or btrfs
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
+
+if [ "$#" -ne 2 ]; then
+  printf '%s\n' "swap-file-grows takes the file and its size" \
+    "  try  swap-file-grows /swap/swapfile 128G" >&2
+  exit 64
+fi
 
 swaps=${SWAPS:-/proc/swaps}
 efivars=${EFIVARS:-/sys/firmware/efi/efivars}

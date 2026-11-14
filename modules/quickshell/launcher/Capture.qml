@@ -310,9 +310,20 @@ Provider {
         return true;
     }
 
-    readonly property var fixed: (Recorder.recording ? [stop] : []).concat([
-        wholeScreen
-    ], hereTitle === "" ? [] : [
+    // Its rows, in order, each act made by a binding of its own, so what
+    // changes one makes only that one again: an opening on another window
+    // remakes the two that name it, never those that don't, each with the
+    // chord it looked up among every bind. Joel's step into Capture took
+    // 123 ms making its seven (2026-11-13 16:10).
+    readonly property var fixed: (Recorder.recording ? [stop] : []).concat([wholeScreen],
+        thisWindow, [region],
+        Recorder.recording ? [] : [recordScreen],
+        Recorder.recording ? [] : recordThisWindow,
+        Recorder.recording ? [] : [recordRegion],
+        !provider.settings.camera ? [] : [cameraPicture, cameraVideo])
+
+    // Takes a picture of the window the keys were in, named by its title.
+    readonly property var thisWindow: hereTitle === "" ? [] : [
         acting({
             key: "capture:window",
             verb: "take",
@@ -325,30 +336,33 @@ Provider {
             later: true,
             run: () => provider.shoot(provider.here)
         }, shots, { command: "niri msg action screenshot-window", format: provider.shot })
-    ], [
-        acting({
-            key: "capture:region",
-            verb: "pick",
-            name: Words.name("capture:region"),
-            keywords: "screenshot picture area part selection",
-            glyph: picture,
-            hue: "action",
-            later: true,
-            run: () => Recorder.screenshot(provider.back)
-        }, shots, { command: "qs ipc call screenshot region", format: provider.shot })
-    ], Recorder.recording ? [] : [
-        acting({
-            key: "capture:record-screen",
-            verb: "record",
-            name: Words.name("capture:record-screen"),
-            keywords: "video recording screencast",
-            glyph: Theme.glyph.recording,
-            hue: "action",
-            chord: chord("qs ipc call recording screen"),
-            later: true,
-            run: () => Recorder.screen()
-        }, Recorder.folder, { command: "qs ipc call recording screen", format: provider.recorded })
-    ], Recorder.recording || hereTitle === "" ? [] : [
+    ]
+
+    readonly property var region: acting({
+        key: "capture:region",
+        verb: "pick",
+        name: Words.name("capture:region"),
+        keywords: "screenshot picture area part selection",
+        glyph: picture,
+        hue: "action",
+        later: true,
+        run: () => Recorder.screenshot(provider.back)
+    }, shots, { command: "qs ipc call screenshot region", format: provider.shot })
+
+    readonly property var recordScreen: acting({
+        key: "capture:record-screen",
+        verb: "record",
+        name: Words.name("capture:record-screen"),
+        keywords: "video recording screencast",
+        glyph: Theme.glyph.recording,
+        hue: "action",
+        chord: chord("qs ipc call recording screen"),
+        later: true,
+        run: () => Recorder.screen()
+    }, Recorder.folder, { command: "qs ipc call recording screen", format: provider.recorded })
+
+    // Records the window the keys were in, named by its title.
+    readonly property var recordThisWindow: hereTitle === "" ? [] : [
         acting({
             key: "capture:record-window",
             verb: "record",
@@ -362,39 +376,41 @@ Provider {
             // recorder reads its size.
             run: () => Recorder.window(Niri.windows[provider.here.id] ?? null)
         }, Recorder.folder, { command: "qs ipc call recording window", format: provider.recorded })
-    ], Recorder.recording ? [] : [
-        acting({
-            key: "capture:record-region",
-            verb: "pick",
-            name: Words.name("capture:record-region"),
-            keywords: "video recording screencast area part selection",
-            glyph: Theme.glyph.recording,
-            hue: "action",
-            later: true,
-            run: () => Recorder.region(provider.back)
-        }, Recorder.folder, { command: "qs ipc call recording region", format: provider.recorded })
-    ], !provider.settings.camera ? [] : [
-        acting({
-            key: "capture:camera-picture",
-            verb: "open",
-            name: Words.name("capture:camera-picture"),
-            keywords: "picture selfie webcam photograph",
-            glyph: picture,
-            hue: "action",
-            later: true,
-            run: () => Niri.spawn(["camera", "picture"])
-        }, `${home}/Pictures/Camera`, { command: "camera picture", format: "JPEG" }),
-        acting({
-            key: "capture:camera-video",
-            verb: "open",
-            name: Words.name("capture:camera-video"),
-            keywords: "record recording webcam film movie",
-            glyph: Theme.glyph.recording,
-            hue: "action",
-            later: true,
-            run: () => Niri.spawn(["camera", "video"])
-        }, `${home}/Videos/Camera`, { command: "camera video", format: provider.recorded })
-    ])
+    ]
+
+    readonly property var recordRegion: acting({
+        key: "capture:record-region",
+        verb: "pick",
+        name: Words.name("capture:record-region"),
+        keywords: "video recording screencast area part selection",
+        glyph: Theme.glyph.recording,
+        hue: "action",
+        later: true,
+        run: () => Recorder.region(provider.back)
+    }, Recorder.folder, { command: "qs ipc call recording region", format: provider.recorded })
+
+    // The camera's two, where the machine has one.
+    readonly property var cameraPicture: acting({
+        key: "capture:camera-picture",
+        verb: "open",
+        name: Words.name("capture:camera-picture"),
+        keywords: "picture selfie webcam photograph",
+        glyph: picture,
+        hue: "action",
+        later: true,
+        run: () => Niri.spawn(["camera", "picture"])
+    }, `${home}/Pictures/Camera`, { command: "camera picture", format: "JPEG" })
+
+    readonly property var cameraVideo: acting({
+        key: "capture:camera-video",
+        verb: "open",
+        name: Words.name("capture:camera-video"),
+        keywords: "record recording webcam film movie",
+        glyph: Theme.glyph.recording,
+        hue: "action",
+        later: true,
+        run: () => Niri.spawn(["camera", "video"])
+    }, `${home}/Videos/Camera`, { command: "camera video", format: provider.recorded })
 
     // Every other window, found only by typing its title or program, since
     // listing them all would bury the rest, by id as niri numbers them. A

@@ -3042,10 +3042,77 @@ fn pid_in(path: &Path) -> Option<i32> {
     fs::read_to_string(path).ok()?.trim().parse().ok()
 }
 
+/// Whether `dir`'s lender runs: it holds its `lender` file locked while it
+/// does, which a fenced run sees though the fence gives it a pid namespace
+/// of its own, where the pid the file holds names nothing; or that pid
+/// runs, as a run beside the lender sees.
+fn lender_stands(dir: &Path) -> bool {
+    let lender = dir.join("lender");
+    held(&lender) || pid_in(&lender).is_some_and(runs)
+}
+
+/// Whether another process holds `path` locked, as a lender does its
+/// `lender` file and a waiting run its want: an exclusive lock is refused.
+fn held(path: &Path) -> bool {
+    fs::File::open(path)
+        .is_ok_and(|file| matches!(file.try_lock(), Err(fs::TryLockError::WouldBlock)))
+}
+
+/// Where runs say they want `dir`'s lender to lend: beside its folder, in
+/// `offload-wants`, by the folder's name, rather than in it, since a fence
+/// gives its commands the lender folders only to read.
+pub fn wants_of(dir: &Path) -> PathBuf {
+    let name = dir.file_name().unwrap_or(dir.as_os_str());
+    dir.with_file_name("offload-wants").join(name)
+}
+
+/// A run's want of a lender: a file in [`wants_of`] its folder, locked
+/// while the run holds it, and taken away once it's let go. The kernel lets
+/// the lock go the moment the run ends, however it ends, and the lender
+/// takes away a want nobody holds.
+pub struct Want {
+    path: PathBuf,
+    _held: fs::File,
+}
+
+impl Drop for Want {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+/// Say this run wants `dir`'s lender to lend, while what's given back is
+/// held. A want the lender took away as nobody's, between its making and
+/// its lock, is made again.
+fn wanting(dir: &Path) -> Option<Want> {
+    use std::os::unix::fs::MetadataExt;
+    let wants = wants_of(dir);
+    fs::create_dir_all(&wants).ok()?;
+    // The pid alone may name another run's want, since each fence counts
+    // pids from one of its own.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_nanos());
+    for again in 0..3 {
+        let path = wants.join(format!("{}-{stamp}-{again}", std::process::id()));
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .ok()?;
+        file.lock().ok()?;
+        let named = fs::metadata(&path).ok().map(|named| named.ino());
+        if named.is_some() && named == file.metadata().ok().map(|held| held.ino()) {
+            return Some(Want { path, _held: file });
+        }
+    }
+    None
+}
+
 /// Waits for a builder when none stands, rather than building here: it
-/// says it wants one by a file in `dir`'s `wanted` named for its pid,
-/// which the lender counts as queued work, for as long as it waits. It
-/// waits only while the lender whose pid `dir`'s `lender` holds runs, and
+/// says it wants one by a [`Want`] it holds, which the lender counts as
+/// queued work, for as long as it waits. It
+/// waits only while `dir`'s lender runs, as [`lender_stands`] sees, and
 /// gives up once that lender hasn't begun making one (`lending` is empty)
 /// within `answered`, or none stands within `longest`. A lender that
 /// stopped, its pid left there, is waited for up to `restarting` first,
@@ -3060,10 +3127,7 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
     if !lender_runs(dir, waiting) {
         return None;
     }
-    let wanted = dir.join("wanted");
-    let want = wanted.join(std::process::id().to_string());
-    fs::create_dir_all(&wanted).ok()?;
-    fs::write(&want, "").ok()?;
+    let want = wanting(dir)?;
     eprintln!(
         "nix-offload: no builder stands, so this asks for one and waits for it, for up to {} \
          minutes",
@@ -3085,7 +3149,7 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
         }
         std::thread::sleep(std::time::Duration::from_millis(250).min(waiting.answered));
     };
-    let _ = fs::remove_file(&want);
+    drop(want);
     stood
 }
 
@@ -3094,7 +3158,7 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
 /// started here, it says so at once.
 fn lender_runs(dir: &Path, waiting: Waiting) -> bool {
     let lender = dir.join("lender");
-    if pid_in(&lender).is_some_and(runs) {
+    if lender_stands(dir) {
         return true;
     }
     if !lender.exists() {
@@ -3107,7 +3171,7 @@ fn lender_runs(dir: &Path, waiting: Waiting) -> bool {
     let began = std::time::Instant::now();
     while began.elapsed() < waiting.restarting {
         std::thread::sleep(std::time::Duration::from_millis(250).min(waiting.answered));
-        if pid_in(&lender).is_some_and(runs) {
+        if lender_stands(dir) {
             return true;
         }
     }
@@ -3128,7 +3192,7 @@ pub fn stood_again(dir: &Path, waiting: Waiting, since: std::time::Instant) -> O
             return None;
         }
         std::thread::sleep(AGAIN.min(waiting.answered));
-        if pid_in(&dir.join("lender")).is_some_and(runs) {
+        if lender_stands(dir) {
             return fs::read_to_string(dir.join("store"))
                 .ok()
                 .filter(|store| !store.trim().is_empty())
@@ -3148,23 +3212,24 @@ pub fn stood_again(dir: &Path, waiting: Waiting, since: std::time::Instant) -> O
 /// How long a build lost mid-way waits before it's sent again.
 const AGAIN: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// Whether a build in `dir`'s `wanted` is waiting for a builder: a file
-/// there is named for a pid that still runs. One whose build ended
-/// without taking it away is taken away here.
+/// Whether a run is waiting for `dir`'s lender to lend: a want in
+/// [`wants_of`] it is held. One nobody holds is taken away here, while
+/// this holds its lock, so a run locking it meanwhile finds it gone and
+/// makes another.
 pub fn wanted(dir: &Path) -> bool {
-    let Ok(entries) = fs::read_dir(dir.join("wanted")) else {
+    let Ok(entries) = fs::read_dir(wants_of(dir)) else {
         return false;
     };
     let mut waiting = false;
     for entry in entries.filter_map(Result::ok) {
-        let pid = entry
-            .file_name()
-            .to_str()
-            .and_then(|name| name.parse().ok());
-        if pid.is_some_and(runs) {
+        let path = entry.path();
+        let Ok(file) = fs::File::open(&path) else {
+            continue;
+        };
+        if matches!(file.try_lock(), Err(fs::TryLockError::WouldBlock)) {
             waiting = true;
         } else {
-            let _ = fs::remove_file(entry.path());
+            let _ = fs::remove_file(&path);
         }
     }
     waiting
@@ -3749,7 +3814,7 @@ pub fn featured(asked: &Asked, nix: &str) -> BTreeSet<String> {
 
 /// Whether a lender runs for `dir`, as its `lender` file says.
 pub fn lends(dir: &Path) -> bool {
-    pid_in(&dir.join("lender")).is_some_and(runs)
+    lender_stands(dir)
 }
 
 /// The file a VM lender keeps in its folder while the builder it has just
@@ -3785,11 +3850,16 @@ pub fn coming(dir: &Path) -> bool {
 /// waiting for one does, without sending it anything: the VM tests go to
 /// the warm builders, and this one warms for those after.
 pub fn want(dir: &Path) {
-    let wanted = dir.join("wanted");
-    if fs::create_dir_all(&wanted).is_ok() {
-        let _ = fs::write(wanted.join(std::process::id().to_string()), "");
+    if let Some(want) = wanting(dir) {
+        HELD_WANTS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(want);
     }
 }
+
+/// The wants [`want`] makes, held until the run ends.
+static HELD_WANTS: std::sync::Mutex<Vec<Want>> = std::sync::Mutex::new(Vec::new());
 
 /// How many cold VM builders to ask for, besides those `coming`, so that
 /// `count` VM tests past the room of the warm builders, which have `busy`
@@ -4906,7 +4976,7 @@ mod tests {
         assert_eq!(waited(dir.path(), never), None);
         assert!(began.elapsed() < QUICK.answered, "it waits for nothing");
         assert!(
-            !dir.path().join("wanted").exists(),
+            !wants_of(dir.path()).exists(),
             "the lender is never told one is wanted"
         );
     }
@@ -4932,7 +5002,7 @@ mod tests {
             None
         );
         assert!(
-            !dir.path().join("wanted").exists(),
+            !wants_of(dir.path()).exists(),
             "the lender is never told one is wanted"
         );
     }
@@ -4941,7 +5011,7 @@ mod tests {
     fn with_no_lender_running_nothing_is_waited_for() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(waited(dir.path(), QUICK), None);
-        assert!(!dir.path().join("wanted").exists());
+        assert!(!wants_of(dir.path()).exists());
         fs::write(dir.path().join("lender"), "999999999\n").unwrap();
         let began = std::time::Instant::now();
         assert_eq!(
@@ -5057,14 +5127,53 @@ mod tests {
 
     #[test]
     fn a_want_whose_build_ended_is_taken_away() {
+        let folder = tempfile::tempdir().unwrap();
+        let dir = folder.path().join("nix-offload-vm-5");
+        fs::create_dir(&dir).unwrap();
+        let wants = wants_of(&dir);
+        assert_eq!(
+            wants,
+            folder.path().join("offload-wants/nix-offload-vm-5"),
+            "wants are beside the lender's folder, by its name"
+        );
+        fs::create_dir_all(&wants).unwrap();
+        // Named for this run's pid, but nobody holds it: a fenced run's
+        // pid means nothing here.
+        let left = wants.join(std::process::id().to_string());
+        fs::write(&left, "").unwrap();
+        assert!(!wanted(&dir), "a want nobody holds was counted");
+        assert!(!left.exists(), "a want nobody holds was left");
+        let held = wanting(&dir).expect("a want");
+        assert!(wanted(&dir), "a held want wasn't counted");
+        assert!(wanted(&dir), "a held want was taken away");
+        drop(held);
+        assert!(!wanted(&dir), "a want let go was still counted");
+        assert_eq!(
+            fs::read_dir(&wants).unwrap().count(),
+            0,
+            "one let go is gone"
+        );
+    }
+
+    #[test]
+    fn a_lender_whose_pid_names_nothing_here_runs_while_it_holds_its_file() {
         let dir = tempfile::tempdir().unwrap();
-        let wanting = dir.path().join("wanted");
-        fs::create_dir(&wanting).unwrap();
-        fs::write(wanting.join("999999999"), "").unwrap();
-        assert!(!wanted(dir.path()));
-        assert!(!wanting.join("999999999").exists());
-        fs::write(wanting.join(std::process::id().to_string()), "").unwrap();
-        assert!(wanted(dir.path()));
+        let lender = dir.path().join("lender");
+        // As a fenced run reads it: the lender's pid is in another pid
+        // namespace, so here it names no process.
+        fs::write(&lender, "999999999\n").unwrap();
+        assert!(
+            !lends(dir.path()),
+            "a lender holding nothing was taken to run"
+        );
+        let holding = fs::File::open(&lender).unwrap();
+        holding.lock_shared().unwrap();
+        assert!(
+            lends(dir.path()),
+            "a lender holding its file was taken for stopped"
+        );
+        drop(holding);
+        assert!(!lends(dir.path()), "a lender that let go was taken to run");
     }
 
     #[test]

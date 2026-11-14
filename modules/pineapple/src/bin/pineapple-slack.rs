@@ -22,11 +22,17 @@
 //! yes to. A line `off` in replies-switch beside them turns replies off
 //! alone, read each time, so stops and alerts carry on.
 //!
-//! In shadow it sends nothing and only reads Slack. Out of it, its one
-//! write is such a reply, from Joel's own account, in the thread that
-//! asked, and only with words he said yes to. Slack is Slack's own, unless
-//! a test names a stand-in with `--origin` and a quicker pace with
-//! `--every`.
+//! It also tells Joel's phone: each alert the launcher's daemon writes to
+//! would-tell.jsonl goes, in its one form, to his own note-to-self IM and
+//! nowhere else (src/phone.rs), once, kept in phoned.jsonl. In shadow it
+//! finds that IM, so the finding is tried against Slack as it will be,
+//! and sends nothing.
+//!
+//! In shadow it sends nothing and only reads Slack. Out of it, its two
+//! writes are such a reply, from Joel's own account, in the thread that
+//! asked, and only with words he said yes to; and an alert in his own IM.
+//! Slack is Slack's own, unless a test names a stand-in with `--origin`
+//! and a quicker pace with `--every`.
 //!
 //! Which messages it has judged is kept in judged.json beside the log, so a restart
 //! neither judges a message twice nor misses one said while it was down,
@@ -35,18 +41,19 @@
 //! message a while after a newer one. Starting with nothing kept, it
 //! begins ten minutes back rather than judging Slack's whole history.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::gate::{Asked, gate};
+use pineapple::phone::{self, Alert, Missed, OwnIm};
 use pineapple::record::{self, Source};
 use pineapple::reply::{self, Post};
 use pineapple::resume;
 use pineapple::slack::{Message, found, micros, root};
 use pineapple::vocabulary::Words;
-use pineapple::{Context, Heard, Joel, Platform, decide};
+use pineapple::{Context, Heard, Joel, Platform, Target, Verdict, decide};
 use serde_json::{Value, json};
 use slack_people::{Account, Slack};
 use terminal_kit::{Exit, Failure, Format, Help, flags};
@@ -67,6 +74,14 @@ const NEWEST: usize = 20;
 /// Whether its stops are only written down: until Joel has read two days
 /// of its log and said so, they are (the plan's item 10).
 const SHADOW: bool = true;
+
+/// Whether Joel's resume said in Slack may end a live stop. Not yet, even
+/// once the reader leaves shadow: anything posting with his sign-in reads
+/// as him, so a resume an agent forged would defeat the safe word. It
+/// waits until the harness's Slack-send guard is proven to stop every
+/// agent posting as him (WCJQSG, 2026-11-14); his press in the launcher
+/// resumes all the while.
+const SLACK_RESUMES_LIVE: bool = false;
 
 /// The replies' words, as Joel said yes to them (2026-11-14); a reply
 /// missing any of them has nothing to say.
@@ -297,16 +312,149 @@ fn run(origin: &str, every: Duration) -> Result<(), Failure> {
         since: format!("{}.000000", seconds().saturating_sub(LOOK_BACK)),
         keys: Vec::new(),
     });
+    let mut phone = Phone {
+        origin: origin.to_owned(),
+        own: None,
+        looked: false,
+    };
     loop {
         match Account::read(&credentials) {
             Some(account) if !account.user.is_empty() => {
                 round(&slack, &replier, &account, &state, &mut judged);
+                tell_phone(&slack, &mut phone, &account, &state);
             }
             Some(_) => eprintln!("<4>the Slack sign-in doesn't say who Joel is"),
             None => eprintln!("<4>no Slack sign-in yet, so nothing is read"),
         }
         std::thread::sleep(every);
     }
+}
+
+/// Where Joel's phone is told: his own IM, once it's found.
+struct Phone {
+    origin: String,
+    own: Option<OwnIm>,
+    /// Whether it has looked for the IM yet: once as it starts, so the
+    /// finding is tried against Slack whether or not an alert comes, and
+    /// then again only when an alert finds none.
+    looked: bool,
+}
+
+/// Tells Joel's phone each alert the launcher's daemon wrote down in the
+/// last ten minutes and his phone wasn't told yet. One Slack didn't take
+/// is tried again next round, until it's ten minutes old.
+fn tell_phone(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path) {
+    let phoned = state.join("phoned.jsonl");
+    let told = done(&lines(&phoned));
+    let since = millis().saturating_sub(LOOK_BACK * MILLIS);
+    let new: Vec<Value> = lines(&state.join("would-tell.jsonl"))
+        .into_iter()
+        .filter(|line| line["at"].as_u64().unwrap_or(0) >= since && !told.contains(&told_as(line)))
+        .collect();
+    if phone.own.is_none() && (!phone.looked || !new.is_empty()) {
+        phone.looked = true;
+        match phone::own_im(&phone.origin, slack, account) {
+            Ok(own) => {
+                eprintln!("<6>Joel's own IM is {}", own.id());
+                phone.own = Some(own);
+            }
+            Err(why) => eprintln!("<4>Joel's own IM wasn't found, so his phone isn't told: {why}"),
+        }
+    }
+    if new.is_empty() {
+        return;
+    }
+    for line in new {
+        let field = |name: &str| line[name].as_str().unwrap_or_default().to_owned();
+        let (title, words, link) = (field("title"), field("words"), field("link"));
+        let alert = Alert {
+            title: &title,
+            words: &words,
+            link: &link,
+        };
+        let shadow = SHADOW || line["shadow"] != false;
+        let sent = match (&phone.own, shadow) {
+            (_, true) => {
+                eprintln!("<5>Joel's phone, in shadow: {link}");
+                json!(false)
+            }
+            (Some(own), false) => match phone::tell(&phone.origin, account, own, alert) {
+                Ok(()) => {
+                    eprintln!("<5>Joel's phone was told: {link}");
+                    json!(true)
+                }
+                Err(Missed::NotSent(why)) => {
+                    eprintln!("<3>Slack didn't take Joel's phone alert: {why}");
+                    continue;
+                }
+                Err(Missed::Unsure(why)) => {
+                    eprintln!("<4>Joel's phone alert may have gone: {why}");
+                    json!(UNSURE)
+                }
+            },
+            (None, false) => continue,
+        };
+        let one = json!({
+            "at": millis(),
+            "key": line["key"],
+            "saying": line["saying"],
+            "shadow": shadow,
+            "sent": sent,
+            "im": phone.own.as_ref().map(OwnIm::id),
+            "text": phone::text(alert),
+        });
+        if let Err(error) = record::append(&phoned, &one) {
+            eprintln!("<3>couldn't keep a phone alert's line: {error}");
+        }
+    }
+}
+
+/// What phoned.jsonl keeps for an alert that may have gone, whose answer
+/// was lost.
+const UNSURE: &str = "unsure";
+
+/// How many sends an alert gets whose answers were lost, so one that
+/// landed unheard reaches Joel's phone twice at most (KP0L6A).
+const UNSURE_TRIES: usize = 2;
+
+/// The alerts done with: told, written down in shadow, or sent as often as
+/// an unsure one may be.
+fn done(phoned: &[Value]) -> HashSet<String> {
+    let mut unsure: HashMap<String, usize> = HashMap::new();
+    let mut done = HashSet::new();
+    for line in phoned {
+        if line["sent"] == UNSURE {
+            *unsure.entry(told_as(line)).or_default() += 1;
+        } else {
+            done.insert(told_as(line));
+        }
+    }
+    done.extend(
+        unsure
+            .into_iter()
+            .filter(|(_, tries)| *tries >= UNSURE_TRIES)
+            .map(|(told, _)| told),
+    );
+    done
+}
+
+/// The lines of a log kept as JSON lines, those that read.
+fn lines(path: &Path) -> Vec<Value> {
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
+}
+
+/// What an alert is told as, its row and the saying it shows, as the
+/// launcher's daemon tells it.
+fn told_as(line: &Value) -> String {
+    format!(
+        "{}@{}",
+        line["key"].as_str().unwrap_or_default(),
+        line["saying"].as_str().unwrap_or_default()
+    )
 }
 
 /// Where replies go and the words they say.
@@ -339,6 +487,11 @@ fn round(slack: &Slack, replier: &Replier, account: &Account, state: &Path, judg
         .collect();
     heard.sort_by_key(|message| micros(&message.ts));
     for message in heard {
+        // The reader's own alert quotes others as Joel, so it's no saying.
+        if message.author == account.user && phone::is_alert(&message.text) {
+            judged.keys.push(message.key());
+            continue;
+        }
         judge(slack, replier, account, state, &joel, message);
         judged.keys.push(message.key());
     }
@@ -455,6 +608,53 @@ fn judge(
             Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
         }
     }
+    if decision.verdict == Verdict::Resume && decision.by_joel {
+        let said = micros(&message.ts).unwrap_or(0);
+        resume_as_joel(
+            &state.join("stops"),
+            &decision.reaches,
+            (now, said),
+            &message.link,
+        );
+    }
+}
+
+/// Ends the stops Joel's own "pineapple resume" names, as his press in the
+/// launcher does: what it reaches, or every stop when it reaches
+/// everything. Only stops said before it, since Slack's search indexes late
+/// and a round can judge a resume beside a stop said after it (KP0L6A). In
+/// shadow, and until Slack resumes are let go live, it ends only the stops
+/// written in shadow, so it never ends one that stands for real. `at` is
+/// when it's heard, in milliseconds, and when it was said, in microseconds.
+fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str) {
+    let (now, said) = at;
+    let shadow = SHADOW || !SLACK_RESUMES_LIVE;
+    for reach in reaches {
+        let scope = match reach {
+            Target::Everything => "all".to_owned(),
+            named => named.to_string(),
+        };
+        let ended = resume::resume_only(stops, &scope, now, "joel", |record| {
+            (!shadow || record["shadow"] != false) && said_by(record).is_some_and(|at| at <= said)
+        });
+        match ended {
+            Ok(ids) if ids.is_empty() => {}
+            Ok(ids) if shadow => eprintln!("<5>a resume, in shadow, of {}: {link}", ids.join(", ")),
+            Ok(ids) => eprintln!("<5>Joel resumed {}: {link}", ids.join(", ")),
+            Err(error) => eprintln!("<3>couldn't resume what Joel named: {error}"),
+        }
+    }
+}
+
+/// When a stop was said, in microseconds: as its record writes Slack's
+/// timestamp, else when it was heard; none when it says neither, and such
+/// a stop is left for the launcher's press rather than ended unseen.
+fn said_by(record: &Value) -> Option<u128> {
+    record["said_at"].as_str().and_then(micros).or_else(|| {
+        record["heard_at"]
+            .as_u64()
+            .map(|at| u128::from(at) * u128::from(MILLIS))
+    })
 }
 
 /// Say a reply the rules let through, and whether it counts as said: in
@@ -544,4 +744,30 @@ fn seconds() -> u64 {
 
 fn millis() -> u64 {
     u64::try_from(since_epoch().as_millis()).unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn phoned(key: &str, sent: &Value) -> Value {
+        json!({"key": key, "saying": "stopped", "sent": sent})
+    }
+
+    #[test]
+    fn an_alert_whose_answer_was_lost_is_sent_once_more_and_no_more() {
+        let once = [phoned("a", &json!(UNSURE))];
+        assert!(done(&once).is_empty(), "one unsure send is tried again");
+        let twice = [phoned("a", &json!(UNSURE)), phoned("a", &json!(UNSURE))];
+        assert!(
+            done(&twice).contains("a@stopped"),
+            "a second unsure send is the last"
+        );
+        let told = [phoned("b", &json!(true)), phoned("c", &json!(false))];
+        assert_eq!(
+            done(&told).len(),
+            2,
+            "one told, and one written down in shadow, are done"
+        );
+    }
 }

@@ -2,7 +2,9 @@
 //! for it: Chrome's tabs read from its extension's host as the get comes,
 //! and the window's title asked of a stand-in windows daemon then, the
 //! window matched to the one tab in front its title begins with, and none
-//! where two of Chrome's windows have tabs of that title in front.
+//! where two of Chrome's windows have tabs of that title in front; and a
+//! later get letting go of those an earlier one made, which nothing
+//! watches, so they don't pile up a window at a time.
 
 use std::io::{BufRead, BufReader, Read as _, Write as _};
 use std::os::unix::net::UnixListener;
@@ -108,5 +110,27 @@ fn a_chrome_windows_front_tab_is_got_by_niris_window() {
             ),
         ],
         "each window's tab in front, and none where two windows' are alike: {said}"
+    );
+}
+
+#[test]
+fn a_later_get_lets_go_of_the_fronts_an_earlier_one_made() {
+    let running = Running::new("fronts-let-go");
+    hosted(&running);
+    windowed(&running);
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "get", "keys": ["front:chrome:70"]}));
+    client.ask(&json!({"id": 2, "ask": "get", "keys": ["front:chrome:80"]}));
+    let listed = client.ask(&json!({"id": 3, "ask": "list", "kind": "front"}));
+    let held: Vec<&Value> = listed["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|record| &record["key"])
+        .collect();
+    assert_eq!(
+        held,
+        [&json!("front:chrome:80")],
+        "only the last get's, since nothing watches the first: {listed}"
     );
 }

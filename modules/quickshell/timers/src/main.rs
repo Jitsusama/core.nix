@@ -29,6 +29,9 @@
 //! (PipeWire's pw-play) plays
 //! SOUND, at a third of its volume while CALL (a-call-is-on) says a call
 //! is on, so a ring never drowns one out.
+//!
+//! Its unit alone starts it, in the terminal kit's shape, as
+//! `timers --help` says (`help()`).
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -37,7 +40,7 @@ use std::os::fd::{FromRawFd, OwnedFd};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitCode, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -48,6 +51,7 @@ use rustix::time::{
     timerfd_settime,
 };
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure, Help};
 use timers::{
     Ask, Held, KIND, Notice, Refusal, STOPWATCH, Standing, Stopwatch, Timer, VERSION, Words, ask,
     error, now, unsaid, watched,
@@ -121,57 +125,108 @@ enum Tell {
     Withdraw(Notice),
 }
 
-fn main() {
-    let mut args = std::env::args().skip(1);
-    let usage = || -> ! {
-        eprintln!("usage: timers SOCKET KEPT WORDS [PLAYER SOUND CALL]");
-        std::process::exit(64);
-    };
-    let (Some(socket), Some(kept), Some(words)) = (args.next(), args.next(), args.next()) else {
-        usage();
-    };
-    let sound = match (args.next(), args.next(), args.next(), args.next()) {
-        (None, None, None, None) => None,
-        (Some(player), Some(sound), Some(call), None) => Some(Arc::new(Aloud {
-            player: PathBuf::from(player),
-            sound: PathBuf::from(sound),
-            call: PathBuf::from(call),
+/// What `timers --help` says: how its unit runs it, and how it ends.
+fn help() -> Help {
+    Help::new("timers", "keeps Joel's timers and rings each as a notice")
+        .example(
+            "timers SOCKET KEPT WORDS",
+            "as its unit runs it, rung silently",
+        )
+        .example(
+            "timers SOCKET KEPT WORDS PLAYER SOUND CALL",
+            "each rung aloud too, quieter in a call",
+        )
+        .argument("<socket>", "where the shell asks, unless systemd hands one")
+        .argument("<kept>", "the file its timers are kept in")
+        .argument("<words>", "the launcher's words, which its notices say")
+        .argument("[player]", "what plays a ring, pw-play")
+        .argument("[sound]", "the ring it plays")
+        .argument("[call]", "a-call-is-on, which quietens it")
+        .exit(Exit::Failed, "its socket or its clock couldn't be made")
+        .exit(Exit::Config, "its words couldn't be read")
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        // The kit catches a panic for as long as its body runs, which is
+        // the daemon's whole life, so its threads say theirs as Rust does,
+        // to the journal, rather than into the kit's keeping.
+        drop(std::panic::take_hook());
+        let asked = asked(&context.args)?;
+        keep(&asked.socket, asked.kept, &asked.words, asked.aloud)
+    })
+}
+
+/// What its unit hands it.
+struct Asked {
+    socket: PathBuf,
+    kept: PathBuf,
+    words: PathBuf,
+    aloud: Option<Arc<Aloud>>,
+}
+
+/// Its socket, its file, its words, and how a ring is heard, from what
+/// its unit hands it.
+fn asked(args: &[String]) -> Result<Asked, Failure> {
+    let path = |at: usize| PathBuf::from(&args[at]);
+    let aloud = match args.len() {
+        3 => None,
+        6 => Some(Arc::new(Aloud {
+            player: path(3),
+            sound: path(4),
+            call: path(5),
         })),
-        _ => usage(),
+        _ => {
+            return Err(Failure::new(
+                Exit::Usage,
+                "timers takes a socket, its file and its words, then a player, a ring and \
+                 a-call-is-on, or nothing more",
+            )
+            .try_this("timers --help"));
+        }
     };
-    let words: Words = match std::fs::read_to_string(&words)
+    Ok(Asked {
+        socket: path(0),
+        kept: path(1),
+        words: path(2),
+        aloud,
+    })
+}
+
+/// Keeps the timers and answers the socket for as long as it runs.
+fn keep(
+    socket: &std::path::Path,
+    kept: PathBuf,
+    words: &std::path::Path,
+    sound: Option<Arc<Aloud>>,
+) -> Result<(), Failure> {
+    let words: Words = std::fs::read_to_string(words)
         .map_err(|why| why.to_string())
         .and_then(|text| serde_json::from_str(&text).map_err(|why| why.to_string()))
-    {
-        Ok(words) => words,
-        Err(why) => {
-            eprintln!("<3>couldn't read the words: {why}");
-            std::process::exit(78);
+        .map_err(|why| {
+            Failure::new(Exit::Config, "its words couldn't be read")
+                .because(format!("{}: {why}", words.display()))
+        })?;
+    let listener = listen(socket).map_err(|why| {
+        Failure::new(
+            Exit::Failed,
+            format!("it couldn't listen on {}", socket.display()),
+        )
+        .because(why.to_string())
+    })?;
+    let made = |what: &str| {
+        let what = what.to_owned();
+        move |why: rustix::io::Errno| {
+            Failure::new(Exit::Failed, format!("it couldn't make {what}")).because(why.to_string())
         }
     };
-    let socket = PathBuf::from(socket);
-    let listener = match listen(&socket) {
-        Ok(listener) => listener,
-        Err(why) => {
-            eprintln!("<3>couldn't listen on {}: {why}", socket.display());
-            std::process::exit(71);
-        }
-    };
-    let clock = match timerfd_create(
+    let clock = timerfd_create(
         TimerfdClockId::Realtime,
         TimerfdFlags::CLOEXEC | TimerfdFlags::NONBLOCK,
-    ) {
-        Ok(clock) => clock,
-        Err(why) => {
-            eprintln!("<3>couldn't make a clock: {why}");
-            std::process::exit(71);
-        }
-    };
-    let Ok(wake) = eventfd(0, EventfdFlags::CLOEXEC | EventfdFlags::NONBLOCK) else {
-        eprintln!("<3>couldn't make the clock's wake");
-        std::process::exit(71);
-    };
-    let kept = PathBuf::from(kept);
+    )
+    .map_err(made("a clock"))?;
+    let wake = eventfd(0, EventfdFlags::CLOEXEC | EventfdFlags::NONBLOCK)
+        .map_err(made("the clock's wake"))?;
     let (tell, told) = mpsc::channel();
     let shared = Arc::new(Shared {
         daemon: Mutex::new(Daemon {
@@ -218,6 +273,7 @@ fn main() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
     }
+    Ok(())
 }
 
 /// The socket systemd holds for it (timers.socket), so the shell never

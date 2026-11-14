@@ -886,12 +886,35 @@ impl Way {
     }
 }
 
+/// The Wi-Fi hop's own queue, read from the gateway's round trip: its rise
+/// past a baseline that falls at once and rises slowly, less its jitter.
+/// A cut of ours doesn't drain it, so it comes off what each direction's
+/// probes met, here and in a day's account of them (src/day.rs).
+#[derive(Clone, Debug, Default)]
+pub struct Air {
+    base: Option<f64>,
+}
+
+impl Air {
+    /// Take in the gateway's round trip, if it answered, `dt` seconds on
+    /// from the last, and give the air's delay in ms.
+    pub fn delay(&mut self, gateway_ms: Option<f64>, dt: f64) -> f64 {
+        gateway_ms.map_or(0.0, |gateway| {
+            let base = self
+                .base
+                .map_or(gateway, |b| gateway.min(b + AIR_RISE_MS * dt));
+            self.base = Some(base);
+            (gateway - base - AIR_MARGIN_MS).max(0.0)
+        })
+    }
+}
+
 /// Both directions on one network, and what stands over them.
 #[derive(Clone, Debug)]
 pub struct Controller {
     pub up: Way,
     pub down: Way,
-    air_base: Option<f64>,
+    air: Air,
     vpn_base: Option<f64>,
     /// Each round trip through the VPN heard over the last `VPN_LEAST_S`,
     /// and when.
@@ -913,7 +936,7 @@ impl Controller {
                 download: true,
                 ..Way::new(down)
             },
-            air_base: None,
+            air: Air::default(),
             vpn_base: None,
             vpn_heard: VecDeque::new(),
             last_at: None,
@@ -999,13 +1022,7 @@ impl Controller {
             self.up.start_over();
             self.down.start_over();
         }
-        let air = seen.gateway_ms.map_or(0.0, |gateway| {
-            let base = self
-                .air_base
-                .map_or(gateway, |b| gateway.min(b + AIR_RISE_MS * dt));
-            self.air_base = Some(base);
-            (gateway - base - AIR_MARGIN_MS).max(0.0)
-        });
+        let air = self.air.delay(seen.gateway_ms, dt);
         if seen.up_delay_ms.is_some() || seen.down_delay_ms.is_some() {
             self.answered_at = Some(at);
         }

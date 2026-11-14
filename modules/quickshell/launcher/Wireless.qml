@@ -26,7 +26,7 @@
 // they need to serve the launcher"; Y2YBTS's 17a4dc7e, 2026-11-13). What's
 // left is what only the shell can do: open the sign-in page, turn the
 // radio at :set and trust a network at :setl. The cards look for networks
-// only while the launcher is open, and read a link only while its network
+// only while Wi-Fi's rows are shown, and read a link only while its network
 // is ahead. What needs no row is in WirelessPlate.js.
 import qs
 import QtQuick
@@ -94,16 +94,33 @@ Provider {
         empty: on ? "Looking for networks\u2026" : "Wi-Fi is off."
     })
 
-    // Looking for networks costs the radio's power, so the cards look only
-    // while the launcher is there to show what they hear, or while a
-    // terminal's `launcher show` walked into Wi-Fi (Launcher.qml's
-    // terminalSees), so a network asked for cold is in the list.
+    // Looking for networks takes the card off its own channel for 5 to 6 s,
+    // over each of its 100, so its link waits: a look every 10 s took the
+    // gateway's ping from a p95 of 39 ms to 132 (2026-11-14). So the cards
+    // look only while Wi-Fi's rows are there to show what they hear: Wi-Fi
+    // or something in it held, or a find from the root showing a row of
+    // its, the launcher open; or while a terminal's `launcher show` walked
+    // into Wi-Fi (Launcher.qml's terminalSees), so a network asked for cold
+    // is in the list. Until then the launcher open anywhere had them look.
+    readonly property bool looksForNetworks: {
+        const launcher = provider.launcher;
+        if (!on || launcher === null)
+            return false;
+        if (terminalLooks)
+            return true;
+        if (!launcher.open)
+            return false;
+        const held = launcher.held ?? [];
+        if (held.length > 0)
+            return held.some(step => step.row?.from === provider);
+        return (launcher.typed ?? "") !== ""
+            && (launcher.matches ?? []).some(row => row?.from === provider);
+    }
     Timer {
         interval: 10000
         repeat: true
         triggeredOnStart: true
-        running: provider.on && provider.launcher !== null
-            && (provider.launcher.open || provider.terminalLooks)
+        running: provider.looksForNetworks
         onTriggered: {
             if (provider.terminalLooks && !provider.launcher.open)
                 provider.lookedFrom = Wifi.looks;
@@ -203,7 +220,9 @@ Provider {
     // it: that it's a network, for the network ahead; its trust, which
     // :setl sets as Vim's :setlocal sets a buffer's, where its row offers
     // Trust It; the drawer wifid serves on it while ahead, the one connected
-    // only; and, connected, that its Return disconnects, which Return typed
+    // only, read from its record as served when drawn, since a change to
+    // it alone leaves the launcher holding this row (allSteady); and,
+    // connected, that its Return disconnects, which Return typed
     // in insert never does.
     function made(row, key) {
         const network = row.held ?? {};
@@ -221,7 +240,8 @@ Provider {
                     }
                 }
             } : undefined,
-            drawer: connected && row.drawer ? () => ready.drawerOf(row) : undefined,
+            drawer: connected && row.drawer
+                ? () => ready.drawerOf(ready.served(key) ?? row) : undefined,
             ends: connected && network.signing !== true ? Words.ending("verb:wifi-leave").ends : ""
         });
     }
@@ -346,6 +366,17 @@ Provider {
         .filter(key => ready.served(key)?.kind === "network").map(key => ready.rowAt(key))
     property var allTold: []
 
+    // Each told row's record as served, with whether it has a drawer in
+    // place of the drawer, so a change to a drawer alone is seen: the
+    // network joined is ahead while the launcher's open, and its drawer's
+    // figures move at every read of its link, every 2 s, each telling the
+    // launcher to make its choices again (Launcher.qml's refreshed).
+    property var allSteady: []
+    function steadyOf(row) {
+        const served = ready.served(ready.madeOf[row.key]);
+        return JSON.stringify(Object.assign({}, served, { drawer: !!served?.drawer }));
+    }
+
     // What a network's spots are made of, so a closing makes again only
     // the parts of a network that changed (Launcher.qml's heldSpots): its
     // served row with its strength left out, and each part inside it by
@@ -367,10 +398,16 @@ Provider {
         });
         return JSON.stringify([steady, parts]);
     }
+    // A row made again for a change to its drawer alone, nobody looking at
+    // it, is quiet: the row told draws that drawer as served now (made).
     onAllChanged: {
-        if (all.length === allTold.length && all.every((row, at) => row === allTold[at]))
+        const steady = all.map(row => steadyOf(row));
+        const quiet = (row, at) => row === allTold[at] || steady[at] === allSteady[at]
+            && row.network !== looking && row.network !== selected;
+        if (all.length === allTold.length && all.every(quiet))
             return;
         allTold = all;
+        allSteady = steady;
         changed();
     }
 
@@ -408,10 +445,18 @@ Provider {
         return at?.key === `wifi:${at?.network}` ? at.network : "";
     }
 
+    // The network joined while the launcher's open, so its drawer and
+    // insides are served before Joel steps onto Wi-Fi or into it, and that
+    // key draws them in its own frame rather than a round trip on ("→
+    // Network" took 112 ms on 2026-11-13, wifid telling it 46 ms after the
+    // key's work).
+    readonly property string joinedAhead: on && (provider.launcher?.open ?? false)
+        ? Wifi.joined?.network ?? "" : ""
+
     // The networks wifid is told are ahead, so it reads their links and
-    // serves their insides (ready-rows.md's Notes): the one looked at and
-    // the one selected, once each.
-    readonly property var ahead: [looking, selected]
+    // serves their insides (ready-rows.md's Notes): the one looked at, the
+    // one selected and the one joined, once each.
+    readonly property var ahead: [looking, selected, joinedAhead]
         .filter((name, at, names) => name !== "" && names.indexOf(name) === at)
         .map(name => keyOf(name))
 

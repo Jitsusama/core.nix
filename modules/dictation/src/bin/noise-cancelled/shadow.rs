@@ -4,15 +4,16 @@
 //! what a call hears; once its line is kept, chooses.rs may change what
 //! the next call there is cleaned with.
 //!
-//! While a microphone is recorded from, the first ten seconds of its
+//! While a microphone is recorded from, through its twin or by a call that
+//! skips noise cancelling (plain.rs), the first ten seconds of its
 //! speech are held in memory: frames 15 dB or more over its room's floor
 //! (room.rs), after a second's warm-up. Once a call of at least a minute
 //! ends with three seconds or more of it, a thread of its own cleans that
 //! speech every way and scores each (score.rs), then drops the sound. A
 //! line of numbers and names alone goes in `judged`, beside the picks:
 //! when, which microphone, where (by name and by key, so a spot renamed
-//! keeps its calls), what it ran, which way scored best, and every way's
-//! marks.
+//! keeps its calls), what it ran (raw for a call that skipped noise
+//! cancelling), which way scored best, and every way's marks.
 
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
@@ -24,11 +25,11 @@ use serde_json::{Value, json};
 
 use crate::chooses;
 use crate::chosen::Chosen;
-use crate::denoise::{Cleaner, FRAME};
+use crate::denoise::FRAME;
 use crate::room;
 use crate::score::{self, Marks};
 use crate::spot::Spot;
-use crate::ways;
+use crate::ways::{self, Way};
 
 /// The frames heard before speech counts: a second, while the room's floor
 /// is first found.
@@ -90,8 +91,9 @@ pub struct Call {
     pub microphone: String,
     /// Where it was.
     pub spot: Spot,
-    /// What it was cleaned with.
-    pub running: Cleaner,
+    /// What it was cleaned with, or raw for a call that skipped noise
+    /// cancelling.
+    pub running: Way,
     pub speech: Vec<f32>,
 }
 
@@ -105,7 +107,10 @@ pub fn judge(models: PathBuf, chosen: Chosen, call: Call) {
         };
         eprintln!(
             "noise-cancelled: {}'s call at {} would have cleaned with {}, not {}",
-            call.node, call.spot.name, line["best"], call.running
+            call.node,
+            call.spot.name,
+            line["best"],
+            call.running.name()
         );
         if let Some(file) = chosen.beside("judged") {
             kept(&file, &line);
@@ -156,7 +161,7 @@ pub fn said(call: &Call, marks: &BTreeMap<&'static str, Marks>, at: u64) -> Valu
         "node": call.node,
         "spot": call.spot.name,
         "key": call.spot.key,
-        "running": call.running.to_string(),
+        "running": call.running.name(),
         "best": best(marks),
         "marks": each,
     })

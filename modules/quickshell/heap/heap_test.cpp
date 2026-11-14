@@ -4,7 +4,9 @@
 // go, and the heap never holds less than is live in it; keeping a scattered
 // few leaves most of what's held beyond them in free pages, and free pages
 // are never more than what's held beyond live; and the time the collector
-// has spent grows with each collection. It exits 0 once
+// has spent grows with each collection; and a heap holding far more than is
+// live, as one does after the launcher's closing, starts the collector as
+// it makes more unless it's left room, and doesn't once it is. It exits 0 once
 // all of it holds, and otherwise 1, saying what didn't.
 #include "heap.h"
 
@@ -36,6 +38,31 @@ Weight weighed(QJSEngine &engine, const Heap &heap) {
     return {said.value(QStringLiteral("live")).toDouble(),
             said.value(QStringLiteral("held")).toDouble(),
             said.value(QStringLiteral("free")).toDouble()};
+}
+
+// How much room a heap is left, in megabytes, well beyond what's made in it.
+constexpr double ROOM_MB = 64;
+
+// Whether making twice as many objects as are let go starts the collector
+// on a heap left holding a scattered few, given that much room first. The
+// objects hold only numbers, so no memory outside the heap, which starts the
+// collector on its own, comes into it.
+bool collectsWhileMaking(double room) {
+    QJSEngine engine;
+    Heap heap(&engine);
+    QJSValue few = engine.evaluate(
+        QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push({ n: i, "
+                       "m: i }); return made.filter((_, i) => i % %2 === 0); })()")
+            .arg(KEPT)
+            .arg(SCATTERED));
+    engine.collectGarbage();
+    heap.leaveRoom(room);
+    const double before = heap.collected();
+    QJSValue made = engine.evaluate(
+        QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push({ n: i, "
+                       "m: i }); return made; })()")
+            .arg(2 * KEPT));
+    return heap.collected() > before;
 }
 
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
@@ -101,5 +128,13 @@ int main(int argc, char **argv) {
     if (!timed)
         std::fprintf(stderr, "FAIL the collector's time grows with each collection: %.3f, "
                      "then %.3f, then %.3f ms\n", collectedFirst, collectedBefore, collectedAfter);
-    return grows && falls && holds && scattered && bounded && timed ? 0 : 1;
+    const bool collects = collectsWhileMaking(0);
+    if (!collects)
+        std::fprintf(stderr, "FAIL a heap holding far more than is live starts the collector "
+                     "as it makes more\n");
+    const bool roomy = !collectsWhileMaking(ROOM_MB);
+    if (!roomy)
+        std::fprintf(stderr, "FAIL a heap left %.0f MB of room doesn't start the collector as "
+                     "it makes more\n", ROOM_MB);
+    return grows && falls && holds && scattered && bounded && timed && collects && roomy ? 0 : 1;
 }

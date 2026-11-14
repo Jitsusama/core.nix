@@ -68,7 +68,7 @@ ShellRoot {
         try {
             const top = map.everything();
             expect("the layers", names(top).join(", ")
-                === "Desktop, Terminal, Neovim, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Mail, Calendar, Meet, Docs, Sheets, Slides, Drive, Slack, Passwords, Picture Editor, Drawing Editor, Music",
+                === "Desktop, Terminal, Neovim, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Mail, Calendar, Meet, Docs, Sheets, Slides, Drive, GitHub, Slack, Passwords, Picture Editor, Drawing Editor, Music",
                 names(top).join(", "));
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
@@ -230,7 +230,7 @@ ShellRoot {
             // Shortcuts opens (KeyMap.qml's opened).
             over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
-                === "Neovim, Terminal, Desktop, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Mail, Calendar, Meet, Docs, Sheets, Slides, Drive, Slack, Passwords, Picture Editor, Drawing Editor, Music",
+                === "Neovim, Terminal, Desktop, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Mail, Calendar, Meet, Docs, Sheets, Slides, Drive, GitHub, Slack, Passwords, Picture Editor, Drawing Editor, Music",
                 names(map.everything()).join(", "));
             const lead = map.leading();
             expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"

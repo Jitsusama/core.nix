@@ -1824,8 +1824,8 @@ impl Sent<'_> {
     /// Copy what the run's base keeps evaluated on `ran`, the lent builder
     /// it ran on, to the other lent builder of the first two `stores`, so
     /// a run sent there next evaluates its own tree alone
-    /// ([`changed::sharing_kept`]): its checks, then what its VM tests
-    /// read, which is no use without them. A copy that fails costs the
+    /// ([`changed::sharing_kept`]): its checks, then each other record
+    /// kept, which is no use without them. A copy that fails costs the
     /// other an evaluation and nothing more, so it's said and the run goes
     /// on.
     fn share_kept(&self, arguments: &[String], ran: Option<&str>, stores: &[Option<String>]) {
@@ -1848,10 +1848,12 @@ impl Sent<'_> {
         ) else {
             return;
         };
-        for record in changed::KEPT_AS {
-            if !self.copy_kept(&from, &to, &base, &system, record) {
-                return;
-            }
+        let [checks, rest @ ..] = changed::KEPT_AS;
+        if !self.copy_kept(&from, &to, &base, &system, checks) {
+            return;
+        }
+        for record in rest {
+            self.copy_kept(&from, &to, &base, &system, record);
         }
     }
 
@@ -2660,6 +2662,14 @@ fn serve(settings: &Settings) -> bool {
             lender.display()
         );
     }
+    // And held locked while it runs, since a fenced run has a pid
+    // namespace of its own, where the pid names nothing. Shared, as the
+    // lender it supersedes holds it too until it ends.
+    let _lends = fs::File::open(&lender).and_then(|file| file.lock_shared().map(|()| file));
+    // Runs once said they wanted a builder in the lender's folder, which
+    // a fence gives its commands only to read; they say it beside it now
+    // (there::wants_of).
+    let _ = fs::remove_dir_all(dir.join("wanted"));
     let mut lent = start(settings, &mut machines, into_day());
     let mut leaving: Vec<Leaving> = Vec::new();
     let mut hold = decide::Hold::default();

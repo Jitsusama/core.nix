@@ -412,6 +412,17 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # What each conversation's start repeats in a host's one process is done
+  # once, or without holding it: an MCP server's header command, a tool
+  # looked up on the path, and a second clone of each stored catalogue.
+  pi-hosted-starts-conversations-lightly =
+    pkgs.runCommandLocal "pi-hosted-starts-conversations-lightly" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-starts-conversations-lightly.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   # A hosted pi's screen stays in its own conversation: quitting or a crash
   # ends only that screen and what it was doing, a stopped screen builds
   # nothing for an extension and disposes the footer, header and editor one
@@ -676,8 +687,8 @@ import ./host-checks.nix args
 
   # pi-spawner builds with its tests run (spawner/tests/spawner.rs): what a
   # command says and how it ends passed on, its folder and variables kept,
-  # a group of its own, a failure to start said, a drop honoured, and every
-  # group killed once pi goes.
+  # a group of its own, a failure to start said, a drop honoured, every
+  # group killed once pi goes but a kept one, and `keeps` answered.
   pi-spawner-starts-commands-for-pi = pkgs.callPackage ./spawner/package.nix { };
 
   # clippy finds nothing in pi-spawner, its tests included.

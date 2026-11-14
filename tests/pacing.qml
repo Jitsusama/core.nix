@@ -207,8 +207,29 @@ QtObject {
         check(failures, "a tick a frame late isn't a stall", jittered.usable, 0);
         check(failures, "once usable, a later stall changes nothing",
             tick(freed, [5000]).usable, 1500);
+        collector(failures, pace);
         stalled(failures);
         framed(failures);
+    }
+
+    // What the collector took of an opening's longest stall and of all of
+    // it, from its own count at each tick: profiles of Joel's openings
+    // found 24 to 64 ms of collecting in each, unnamed (2026-11-14).
+    function collector(failures, pace) {
+        const ticks = [[16, 2], [32, 2], [90, 32], [106, 33], [122, 40], [138, 40]];
+        const felt = ticks.reduce((was, [at, collected]) => Pacing.feltTicked(was, at, pace,
+            collected), Pacing.feltBegun(0, 2));
+        check(failures, "the collector's part of the longest stall is its count across it",
+            felt.stallCollected, 30);
+        check(failures, "a shorter gap's collecting isn't the stall's",
+            Pacing.feltTicked(felt, 160, pace, 60).stallCollected, 30);
+        check(failures, "it's said after the stall's parts, with the opening's",
+            Pacing.collectorSaid(felt.stallCollected, 38.4),
+            "; the collector 30 ms of the stall, 38 of the opening");
+        check(failures, "an opening the collector didn't reach says nothing of it",
+            Pacing.collectorSaid(0, 0.4), "");
+        check(failures, "a tick without a count keeps the last",
+            Pacing.feltTicked(Pacing.feltBegun(0, 5), 16, pace).collected, 5);
     }
 
     // What held an opening's longest stall, by the work it ran into: Joel's

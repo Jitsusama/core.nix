@@ -436,10 +436,12 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
 
 
 def test_a_place_stepped_into_from_whats_typed_is_kept_as_what_it_meant(shell: Shell) -> None:
-    """Return into For You from "for you" keeps For You as a pick of those words, at once.
+    """Return into For You from "for you" keeps For You as a pick of those words, once each.
 
     Only doing something learned what was meant, so a place stepped into and left never came
     first for its words, however often (VKCF3Z, 2026-11-12); tests/ranking.qml holds the rest.
+    The pick is learned once the step's frame is drawn, so the letters typed inside before it
+    are never what it's learned for, and a launcher closed before it is drawn still learns it.
     """
     state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
 
@@ -450,12 +452,31 @@ def test_a_place_stepped_into_from_whats_typed_is_kept_as_what_it_meant(shell: S
                 said.update(cast("dict[str, Json]", json.loads(path.read_text())))
         return said
 
+    def times() -> int:
+        answers = cast("dict[str, dict[str, int]]", picked().get("for you", {}))
+        return sum(one["c"] for one in answers.values())
+
+    def kept(at_least: int) -> int:
+        deadline = time.monotonic() + 5
+        while times() < at_least and time.monotonic() < deadline:
+            time.sleep(launcher_on_niri.POLL)
+        return times()
+
+    before = times()
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    typed_at_once(shell, "'for you' -k Return")
+    # Letters typed inside in the step's own turn, before its frame.
+    typed_at_once(shell, "'for you' -k Return 'zq'")
     shell.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
-    assert picked().get("for you"), f"stepping into For You kept nothing for it: {picked()}"
+    assert kept(before + 1) == before + 1, f"stepping in kept {times() - before}: {picked()}"
+    assert "zq" not in picked(), f"the letters typed inside were learned: {picked()}"
     shell.close_launcher()
+    # Closed by :q in the step's own turn, before its frame.
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    typed_at_once(shell, "'for you' -k Return -k Escape ':q' -k Return")
+    shell.launcher_until(lambda shown: not shown["open"])
+    assert kept(before + 2) == before + 2, f"closed at once, kept {times() - before}: {picked()}"
 
 
 def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell) -> None:
@@ -2139,6 +2160,30 @@ def test_a_closed_program_holding_only_new_windows_holds_nothing_to_go_into(
         shell.as_account("pkill -f 'foot --server' || true")
 
 
+def test_a_step_into_programs_asks_no_rows_acts_twice_as_it_weighs_their_keys(
+    shell: Shell,
+) -> None:
+    """Weighing the keys of Programs' rows asks each row whether it holds acts alone once.
+
+    The foot weighs every listed row's keys, and asked each program three times whether it
+    holds acts alone, each time asking its whole step (Applications.qml's startsOnly): 83 ms
+    of a 116 ms step into Programs under load (vm-desktop-keeps-pace, 2026-11-14).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shown = shell.showing()
+    read, rows = cast("int", shown["actsRead"]), cast("int", shown["actsRowsAsked"])
+    shell.type_in("programs", selecting="Programs")
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, "Programs"))
+    launcher_on_niri.weighed_held_still(shell)
+    shown = shell.showing()
+    read, rows = cast("int", shown["actsRead"]) - read, cast("int", shown["actsRowsAsked"]) - rows
+    shell.close_launcher()
+    assert rows > 0, "weighing the rows' keys asked no row whether it holds acts alone"
+    assert read == rows, f"weighing the rows' keys read {read} rows' acts for {rows} rows"
+
+
 def drawer_moved(was: str, shown: Json) -> bool:
     """Say whether the drawer is out on the selected row, titled otherwise than it was."""
     return drawer_on_selected(shown) and cast("Json", shown["drawer"])["title"] != was
@@ -2359,21 +2404,54 @@ def test_the_held_notices_are_vims_quickfix_list(shell: Shell) -> None:
     shell.notices_gone()
 
 
-def test_super_n_opens_the_notices_on_the_card_in_front_and_again_closes(shell: Shell) -> None:
-    """Super+N, with cards up, opens the launcher's notices on the one in front; again, it closes.
+def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts(
+    shell: Shell,
+) -> None:
+    """Super+N lists the notices on screen, on the one in front; j moves and Return acts on one.
 
     Notices are the launcher's rows, so its keys, acts and drawer take the held stack's place.
-    The card in front is the oldest, never the row first in Desktop, so the cursor landing on
-    it shows the landing chose it. The cards step aside while it's open, and come back after.
+    The one in front is the oldest, never the row first in Desktop, so the cursor landing on it
+    shows the landing chose it. One rested off the screen is Desktop's alone, never among those
+    on screen, which come in the order the line takes them. Again, Super+N closes.
     """
+    with shell.told("rests Plover"):
+        shell.as_account("notify-send --expire-time=1000 'Plover' 'rested off the screen'")
     for summary in ["Kestrel", "Lapwing"]:
         with shell.told(f"shows card {summary}"):
-            shell.as_account(f"notify-send --expire-time=60000 '{summary}' 'one of two'")
+            shell.as_account(f"notify-send --expire-time=60000 '{summary}' 'one of three'")
+    # Merlin offers to open, and says so once it's asked, as a program would open its window.
+    with shell.told("shows card Merlin"):
+        merlin = subprocess.Popen(
+            ["notify-send", "--expire-time=60000", "--action=default=Open", "Merlin", "one of 3"],
+            stdout=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            text=True,
+        )
+    shell.take_notices()
+    shell.launcher_ready()
+    on_screen = ["Kestrel", "Lapwing", "Merlin"]
+    shell.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Kestrel"
+            and shown["rows"] == on_screen
+            and shown["mode"] == "normal"
+        )
+    )
+    shell.take_notices()
+    shell.launcher_closed()
     shell.take_notices()
     shell.launcher_ready()
     shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Kestrel")
-    shell.take_notices()
-    shell.launcher_closed()
+    for key in ["j", "j"]:
+        shell.send_key(key)
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Merlin")
+    shell.send_key("ret")
+    try:
+        asked, _ = merlin.communicate(timeout=launcher_on_niri.WAITING.total_seconds())
+    except subprocess.TimeoutExpired:
+        merlin.kill()
+        raise
+    assert asked.strip() == "default", f"Return on Merlin asked it {asked!r}, not to open"
     shell.as_account("qs ipc call notices putAway")
     shell.notices_gone()
 
@@ -3407,6 +3485,9 @@ def test_letters_typed_quicker_than_the_rest_make_one_drawer(shell: Shell) -> No
     Chrome's drawer, "calend" 272 ms behind Google Calendar's first (2026-11-13, 06:14).
     A program's drawer, made in 4 to 14 ms here, never joins its key's frame, so typing onto
     one shows it; each letter makes its row again, and its drawer was made again each time.
+    Only the drawers followed before the last letter are judged: once the letters rest, a
+    loaded builder can list Foot's row again, and its drawer rightly follows the new row
+    (75a49d9587e9, the net).
     """
 
     def footed(since: int) -> None:
@@ -3415,9 +3496,12 @@ def test_letters_typed_quicker_than_the_rest_make_one_drawer(shell: Shell) -> No
         shell.held_still()
 
     said = typed_under_the_rest(shell, "foot", footed)
-    followed = [report for report in said if report.startswith("drawer follows ")]
-    assert followed == ["drawer follows program:foot"], (
-        f"a drawer was made between letters: {drawer_trace(said)}"
+    last = max(at for at, report in enumerate(said) if report.startswith("letter typed "))
+    between = [report for report in said[:last] if report.startswith("drawer follows ")]
+    after = [report for report in said[last:] if report.startswith("drawer follows ")]
+    assert between == [], f"a drawer was made between letters: {drawer_trace(said)}"
+    assert after[:1] == ["drawer follows program:foot"], (
+        f"Foot's drawer never followed the letters: {drawer_trace(said)}"
     )
 
 

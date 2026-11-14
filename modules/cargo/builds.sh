@@ -3,8 +3,8 @@
 # the system's disk, attached with direct IO and mounted where every
 # account's cargo puts its intermediates. nixos.nix says why.
 #
-#   builds.sh attach IMAGE SIZE FOLDER [ACCOUNT:GROUP ...]
-#   builds.sh detach FOLDER
+# Its help and failures take the shape every command of ours does
+# (docs/commands.md), by hand.
 set -euo pipefail
 
 # Whether the image's filesystem is sound, repairing what e2fsck can: 0 is
@@ -108,10 +108,31 @@ detach() {
 }
 
 case ${1-} in
+  -h | --help)
+    cat << 'EOF'
+cargo-builds  give cargo's builds a filesystem of their own
+
+  attach makes or grows an ext4 image of at most SIZE,
+  or half the disk's room, and mounts it at FOLDER with
+  a folder for each ACCOUNT:GROUP; detach unmounts it.
+  Its unit runs both.
+
+EXAMPLES
+  cargo-builds attach /var/cache/cargo-builds.img 96G \
+    /var/cache/cargo-builds jitsusama:users
+  cargo-builds detach /var/cache/cargo-builds
+
+EXIT
+  0   attached or detached
+  64  asked wrongly
+  else what failed: losetup, mkfs, e2fsck or mount
+EOF
+    ;;
   attach) shift && attach "$@" ;;
   detach) shift && detach "$@" ;;
   *)
-    echo "usage: builds.sh attach IMAGE SIZE FOLDER [ACCOUNT:GROUP ...] | detach FOLDER" >&2
+    printf '%s\n' "cargo-builds takes attach or detach" \
+      "  try  cargo-builds --help" >&2
     exit 64
     ;;
 esac

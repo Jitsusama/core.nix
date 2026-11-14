@@ -34,6 +34,11 @@
 //! own after sunset and back before sunrise, and the screen takes the
 //! warmer of the room's and the night's. Where no sensor sees colour, the
 //! night is all that warms it.
+//!
+//! While a program that keeps its own colours is in front, such as GIMP
+//! (front.rs), the screen glides to its own white whatever the room and
+//! the night say, as when Joel says it shouldn't follow the room, and once
+//! that program leaves the front the night comes back over its minute.
 
 use std::time::{Duration, Instant};
 
@@ -79,6 +84,10 @@ pub fn for_room(room: f64) -> u16 {
     steps * STEP
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "the lid, Joel's say, the night and the program in front each hold apart"
+)]
 pub struct Warmth {
     /// The warmth the screen is set to, as far as this daemon knows.
     shown: u16,
@@ -107,6 +116,8 @@ pub struct Warmth {
     by_night: bool,
     /// How often the glide under way takes a step.
     pace: Duration,
+    /// Whether a program that keeps its own colours is in front.
+    kept: bool,
 }
 
 impl Warmth {
@@ -127,6 +138,7 @@ impl Warmth {
             night: WHITE,
             by_night: false,
             pace: EVERY,
+            kept: false,
         }
     }
 
@@ -134,6 +146,14 @@ impl Warmth {
     pub fn night(&mut self, kelvin: u16, now: Instant) {
         if self.night != kelvin {
             self.night = kelvin;
+            self.follow(now);
+        }
+    }
+
+    /// Whether a program that keeps its own colours is in front (front.rs).
+    pub fn keep_white(&mut self, kept: bool, now: Instant) {
+        if self.kept != kept {
+            self.kept = kept;
             self.follow(now);
         }
     }
@@ -264,6 +284,9 @@ impl Warmth {
     fn wanted(&self) -> Option<u16> {
         if self.shut {
             return None;
+        }
+        if self.kept {
+            return Some(WHITE);
         }
         let room = if self.follows {
             self.lit().or(self.held)
@@ -646,6 +669,51 @@ mod tests {
             glide(&mut warmth, now).last(),
             Some(&5000),
             "the room's by day"
+        );
+    }
+
+    #[test]
+    fn a_program_keeping_its_colours_takes_the_screen_to_its_own_white() {
+        let now = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.night(4000, now);
+        glide(&mut warmth, now);
+        warmth.keep_white(true, now);
+        assert_eq!(
+            glide(&mut warmth, now).last(),
+            Some(&WHITE),
+            "the night held in front of GIMP"
+        );
+        warmth.night(3950, now);
+        warmth.light(100.0, now);
+        warmth.room(2700.0, now);
+        assert_eq!(
+            warmth.wake(),
+            None,
+            "the night or the room reached a screen held white"
+        );
+    }
+
+    #[test]
+    fn once_it_leaves_the_front_the_night_comes_back_at_its_own_pace() {
+        let start = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.night(4000, start);
+        warmth.keep_white(true, start);
+        glide(&mut warmth, start);
+        warmth.keep_white(false, start);
+        let mut at = start;
+        while let Some(due) = warmth.wake() {
+            at = at.max(due);
+            if let Some(kelvin) = warmth.step(at) {
+                warmth.set(kelvin, at);
+            }
+        }
+        assert_eq!(warmth.stands(), 4000, "the night didn't come back");
+        let took = at - start;
+        assert!(
+            took >= Duration::from_secs(55) && took <= Duration::from_secs(65),
+            "the night's 2500 K came back in {took:?}"
         );
     }
 }

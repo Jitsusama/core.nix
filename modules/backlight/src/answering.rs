@@ -4,12 +4,14 @@
 
 use std::fs;
 use std::io;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use tokio::sync::watch;
 use zbus::Connection;
 
-use crate::dbus::{Refused, RelayProxy, set_warmth};
+use crate::beside;
+use crate::dbus::{Refused, RelayProxy, relay_for, set_warmth};
 use crate::evening::local_minute;
 use crate::night::Place;
 use crate::panel::Panel;
@@ -130,6 +132,9 @@ impl Backlight<'_> {
                 eprintln!("<6>the night light gives the screen back its own white");
             }
         }
+        if kelvin != self.night.wants {
+            self.night.beside.look_now(Instant::now());
+        }
         self.night.wants = kelvin;
         if let Some((warmth, _)) = &mut self.warmth {
             warmth.night(kelvin, Instant::now());
@@ -157,6 +162,32 @@ impl Backlight<'_> {
             eprintln!("<4>can't keep Joel's say over the warmth: {error}");
         }
         self.warm(|warmth, now| warmth.follow_the_room(follows, now));
+    }
+
+    /// A program that keeps its own colours came to the front, or none is
+    /// there now (front.rs): while one is, the screens hold their own white
+    /// and their brightness, and after it they follow again.
+    pub(crate) fn in_front(&mut self, keeps: Option<String>) {
+        let held = keeps.is_some();
+        if held == self.night.beside.keeps_white() {
+            return;
+        }
+        match keeps {
+            Some(program) => eprintln!(
+                "<6>{program} keeps its own colours, so the screens hold their own white and \
+                 brightness"
+            ),
+            None => eprintln!("<6>the screens' white and brightness follow again"),
+        }
+        let now = Instant::now();
+        self.follow.keep_still(held);
+        self.night.beside.keep_white(held, now);
+        // Told directly rather than through `warm`, which would take the
+        // glide for one toward the room's light.
+        if let Some((warmth, _)) = &mut self.warmth {
+            warmth.keep_white(held, now);
+        }
+        self.say_warmth();
     }
 
     /// Tells the shell how the warmth stands, when that changed: the
@@ -205,7 +236,50 @@ impl Backlight<'_> {
             eprintln!("<6>the screens' warmth started again at {WHITE} K");
         }
         self.relay_down = None;
+        self.night.beside.forget(Instant::now());
         self.warm(Warmth::reset);
+    }
+
+    /// Sets each screen beside the panel that hasn't it to the night
+    /// light's white, or its own by day (beside.rs), and says when the
+    /// night first reaches one. A screen niri isn't showing yet is asked
+    /// again at the next look; any other refusal lets them all be a while.
+    async fn warm_beside(&mut self, now: Instant) {
+        let Some((_, relay)) = &self.warmth else {
+            return;
+        };
+        let bus = relay.inner().connection().clone();
+        self.night.beside.looked(now);
+        let panel = self.screen.connector();
+        let shown = beside::shown(Path::new("/sys/class/drm"), panel.as_deref());
+        let kelvin = if self.night.beside.keeps_white() {
+            WHITE
+        } else {
+            self.night.wants
+        };
+        for screen in self.night.beside.owed(&shown, kelvin, now) {
+            let answer = match relay_for(&bus, &screen).await {
+                Ok(relay) => ask::twice(ask::MOMENT, || set_warmth(&relay, kelvin)).await,
+                Err(error) => Some(Err(Refused::Else(error.to_string()))),
+            };
+            let why = match answer {
+                Some(Ok(())) => {
+                    if self.night.beside.took(&screen, kelvin) && kelvin < WHITE {
+                        eprintln!("<6>the night light warms {screen} toward {kelvin} K");
+                    }
+                    continue;
+                }
+                Some(Err(Refused::NotShown)) => {
+                    self.night.beside.missed(&screen, now);
+                    continue;
+                }
+                Some(Err(Refused::Else(why))) => why,
+                None => "wl-gammarelay-rs didn't answer".to_owned(),
+            };
+            eprintln!("<4>can't warm {screen}, so the screens beside the panel are let be: {why}");
+            self.night.beside.rest(now + RELAY_RESTS);
+            return;
+        }
     }
 
     /// Tells the warmth of a change, and says when that starts a glide.
@@ -248,7 +322,7 @@ impl Backlight<'_> {
         // nothing but a set starts it on the bus. A panel that isn't showing
         // is looked at again sooner, since it shows again unannounced.
         let rest = match refused {
-            Refused::NoPanel => {
+            Refused::NotShown => {
                 eprintln!("<5>the panel isn't showing, so its warmth waits for it");
                 PANEL_RESTS
             }
@@ -452,11 +526,13 @@ impl Backlight<'_> {
             None => warmth,
         };
         let night = self.warmth.as_ref().and(self.night.due);
+        let beside = self.warmth.as_ref().and(self.night.beside.wake());
         [
             self.follow.wake(Instant::now()),
             keys,
             warmth,
             night,
+            beside,
             self.evening_due,
             self.lid.wake(),
         ]
@@ -499,6 +575,9 @@ impl Backlight<'_> {
         let now = Instant::now();
         if self.warmth.is_some() && self.night.due.is_some_and(|due| due <= now) {
             self.look_at_night();
+        }
+        if self.warmth.is_some() && self.night.beside.wake().is_some_and(|due| due <= now) {
+            self.warm_beside(now).await;
         }
         if self.evening_due.is_some_and(|due| due <= now) {
             self.look_at_evening(now);

@@ -227,6 +227,7 @@ pub fn steps(
 pub const STOP_PATIENCE: Duration = Duration::from_millis(500);
 
 /// How often the watch looks for a stop held up.
+#[cfg(target_os = "linux")]
 const STOP_LOOK: Duration = Duration::from_millis(50);
 
 /// Lets one of `signals` end the guard once it has waited `STOP_PATIENCE`
@@ -238,6 +239,7 @@ const STOP_LOOK: Duration = Duration::from_millis(50);
 /// program, which systemd counts a clean stop. That's as safe as its kill:
 /// state is written beside and renamed into place, and systemd kills the
 /// commands the guard leaves behind.
+#[cfg(target_os = "linux")]
 pub fn leave_when_held_up(
     signals: &'static [i32],
     err: impl Write + Send + 'static,
@@ -256,6 +258,67 @@ pub fn leave_when_held_up(
             if let Err(error) = unblock(signals) {
                 let _ = writeln!(err, "disk-guard: the stop can't be let through: {error}");
             }
+        })?;
+    Ok(())
+}
+
+/// The same on macOS, where a stop all threads block waits on one of
+/// them, and `sigpending` in another doesn't see it, nor does unblocking
+/// it there let it through: the watch never left, and a held step kept
+/// the stop (a Mac, 14 November). So the watch hears the stop on a
+/// kqueue of its own, and once the guard has run on past its patience,
+/// unblocks that signal in its own thread and sends it there, ending the
+/// guard by it. A stop the loop took between steps has ended the guard
+/// by then.
+#[cfg(target_os = "macos")]
+pub fn leave_when_held_up(
+    signals: &'static [i32],
+    err: impl Write + Send + 'static,
+) -> io::Result<()> {
+    use std::os::fd::AsRawFd;
+    let queue = signal_queue(signals)?;
+    let mut err = err;
+    std::thread::Builder::new()
+        .name("stop-watch".to_owned())
+        .spawn(move || {
+            let mut event = std::mem::MaybeUninit::<libc::kevent>::zeroed();
+            let got = loop {
+                // SAFETY: event has room for the one event asked for, and
+                // no timeout means it waits until one comes.
+                let got = unsafe {
+                    libc::kevent(
+                        queue.as_raw_fd(),
+                        std::ptr::null(),
+                        0,
+                        event.as_mut_ptr(),
+                        1,
+                        std::ptr::null(),
+                    )
+                };
+                if got >= 0 || io::Error::last_os_error().raw_os_error() != Some(libc::EINTR) {
+                    break got;
+                }
+            };
+            if got <= 0 {
+                let _ = writeln!(err, "disk-guard: the stop watch can't hear stops");
+                return;
+            }
+            // SAFETY: kevent filled in the one event it said it got.
+            let heard = unsafe { event.assume_init() };
+            let Ok(signal) = i32::try_from(heard.ident) else {
+                return;
+            };
+            // The patience a step has to finish and the loop to take the
+            // stop, ending the guard; past it, the step is holding it up.
+            std::thread::sleep(STOP_PATIENCE);
+            let _ = writeln!(err, "disk-guard: stopping in the middle of a step");
+            if let Err(error) = unblock(&[signal]) {
+                let _ = writeln!(err, "disk-guard: the stop can't be let through: {error}");
+                return;
+            }
+            // SAFETY: pthread_kill sends a signal to this thread, which now
+            // takes it, and touches no memory.
+            unsafe { libc::pthread_kill(libc::pthread_self(), signal) };
         })?;
     Ok(())
 }
@@ -337,44 +400,9 @@ pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + us
 /// queue could hear it is pending already.
 #[cfg(target_os = "macos")]
 pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + use<>> {
-    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::fd::AsRawFd;
     let set = block(signals)?;
-    // SAFETY: kqueue takes nothing and returns a new descriptor.
-    let queue = unsafe { libc::kqueue() };
-    if queue < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: queue is a new descriptor nothing else owns.
-    let queue = unsafe { OwnedFd::from_raw_fd(queue) };
-    let heard: Vec<libc::kevent> = signals
-        .iter()
-        .map(|&signal| {
-            Ok(libc::kevent {
-                ident: libc::uintptr_t::try_from(signal).map_err(io::Error::other)?,
-                filter: libc::EVFILT_SIGNAL,
-                flags: libc::EV_ADD,
-                fflags: 0,
-                data: 0,
-                udata: std::ptr::null_mut(),
-            })
-        })
-        .collect::<io::Result<_>>()?;
-    let count = libc::c_int::try_from(heard.len()).map_err(io::Error::other)?;
-    // SAFETY: heard is a list of that many kevents, and no events are
-    // asked for back.
-    let added = unsafe {
-        libc::kevent(
-            queue.as_raw_fd(),
-            heard.as_ptr(),
-            count,
-            std::ptr::null_mut(),
-            0,
-            std::ptr::null(),
-        )
-    };
-    if added < 0 {
-        return Err(io::Error::last_os_error());
-    }
+    let queue = signal_queue(signals)?;
     let signals = signals.to_vec();
     Ok(move |wait: Duration| {
         if take_pending(set, &signals) {
@@ -411,6 +439,50 @@ pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + us
             }
         }
     })
+}
+
+/// A kqueue that hears each of `signals` sent to the process, blocked or
+/// not.
+#[cfg(target_os = "macos")]
+fn signal_queue(signals: &[i32]) -> io::Result<std::os::fd::OwnedFd> {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    // SAFETY: kqueue takes nothing and returns a new descriptor.
+    let queue = unsafe { libc::kqueue() };
+    if queue < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: queue is a new descriptor nothing else owns.
+    let queue = unsafe { OwnedFd::from_raw_fd(queue) };
+    let heard: Vec<libc::kevent> = signals
+        .iter()
+        .map(|&signal| {
+            Ok(libc::kevent {
+                ident: libc::uintptr_t::try_from(signal).map_err(io::Error::other)?,
+                filter: libc::EVFILT_SIGNAL,
+                flags: libc::EV_ADD,
+                fflags: 0,
+                data: 0,
+                udata: std::ptr::null_mut(),
+            })
+        })
+        .collect::<io::Result<_>>()?;
+    let count = libc::c_int::try_from(heard.len()).map_err(io::Error::other)?;
+    // SAFETY: heard is a list of that many kevents, and no events are
+    // asked for back.
+    let added = unsafe {
+        libc::kevent(
+            queue.as_raw_fd(),
+            heard.as_ptr(),
+            count,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null(),
+        )
+    };
+    if added < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(queue)
 }
 
 /// Takes one of `signals` if one is pending here, saying whether it did.

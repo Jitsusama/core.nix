@@ -88,10 +88,27 @@ pub fn names(stop: &Standing, scope: &str) -> bool {
 ///
 /// Why a record couldn't be rewritten; those before it stay resumed.
 pub fn resume(folder: &Path, scope: &str, at: u64, by: &str) -> io::Result<Vec<String>> {
+    resume_only(folder, scope, at, by, |_| true)
+}
+
+/// As [`resume`], but only the stops whose records `keep` picks, so a
+/// reader in shadow ends only the stops it wrote in shadow, never one
+/// that stands for real.
+///
+/// # Errors
+///
+/// Why a record couldn't be rewritten; those before it stay resumed.
+pub fn resume_only(
+    folder: &Path,
+    scope: &str,
+    at: u64,
+    by: &str,
+    keep: impl Fn(&Value) -> bool,
+) -> io::Result<Vec<String>> {
     let mut resumed = Vec::new();
     for stop in standing(folder)
         .into_iter()
-        .filter(|stop| names(stop, scope))
+        .filter(|stop| names(stop, scope) && keep(&stop.record))
     {
         let mut record = stop.record;
         if let Some(fields) = record.as_object_mut() {
@@ -179,6 +196,20 @@ mod tests {
             json!({ "at": 7, "by": "joel" }),
             "marked, not removed"
         );
+    }
+
+    #[test]
+    fn a_resume_only_ends_the_stops_its_caller_picks() {
+        let mut live = stop("live", &["pr:example/shop#12"]);
+        live["shadow"] = json!(false);
+        let dir = folder("only", &[stop("shadow", &["pr:example/shop#12"]), live]);
+        let resumed = resume_only(&dir, "pr:example/shop#12", 1, "joel", |record| {
+            record["shadow"] != false
+        })
+        .expect("resumes");
+        assert_eq!(resumed, ["shadow"], "only the shadow stop is ended");
+        let left: Vec<String> = standing(&dir).into_iter().map(|stop| stop.id).collect();
+        assert_eq!(left, ["live"], "the live stop still stands");
     }
 
     #[test]

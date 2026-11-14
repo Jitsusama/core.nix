@@ -459,14 +459,16 @@ Scope {
         screen: root.screen ?? root.launcher.focusedScreen
         anchors.top: true
         anchors.left: true
-        // Where the card's top stands: a quarter down, where the launcher's opens
-        // (Launcher.qml's cardTop), and never nearer the edge than a screen rung. Its talks
-        // stand no lower than as far above the screen's foot, so the line keeps equal margins
-        // above and below at its tallest and never moves while it grows (Joel, 2026-11-14
-        // 09:44: "super-s kinda goes to top of screen and does not have co-equal top and
-        // bottom margins, but launcher does").
-        readonly property real top: Math.round(Math.max(Theme.space.rung.screen,
-            (screen?.height ?? 0) / 4))
+        // The card is the launcher's frame, as tall and in the same place, so the two are one
+        // box (Joel, 2026-11-14 09:44: "super-s kinda goes to top of screen and does not have
+        // co-equal top and bottom margins, but launcher does, i want them to feel like more of
+        // part of the same"). The launcher's card is its chrome and its rows, eight on any
+        // screen of his, whatever it shows, centred on the screen (Launcher.qml's frameTop;
+        // not its low place over a viewer, which the line never sits over). Worked out from
+        // the screen alone, so it never moves as it grows.
+        readonly property real frame: root.launcher.cardChrome
+            + root.launcher.rows * root.launcher.rowTall
+        readonly property real top: !screen ? 0 : root.launcher.frameTop(screen, frame)
         // Quickshell's type files can't place margins, so qmllint can't.
         margins.top: root.up ? surface.top - card.reach // qmllint disable unqualified
             : 1 - implicitHeight
@@ -531,11 +533,11 @@ Scope {
                 readonly property real talksEnd: lineAt - pitch
                     + (root.thread === null ? spoken.height : threadView.height)
                 readonly property real textAt: prompt.fieldX - card.inset
-                // The talks' room: the screen's, the card's top from each edge, less the frame,
-                // the card's inset over and under, everything above them and the foot below.
-                readonly property real talksRoom: (surface.screen?.height ?? Infinity)
-                    - 2 * surface.top - 2 * (card.inset + Theme.border)
-                    - (lineAt - pitch) - pitch - beat
+                // How tall the body stands in the launcher's frame: the frame less its border
+                // and the card's inset over and under.
+                readonly property real framed: surface.frame - 2 * (card.inset + Theme.border)
+                // The talks' room: the frame's, less everything above them and the foot below.
+                readonly property real talksRoom: framed - (lineAt - pitch) - pitch - beat
 
                 width: card.contentWidth
                 height: foot.y + foot.baselineOffset
@@ -670,8 +672,10 @@ Scope {
                 Text {
                     id: foot
                     x: body.textAt
-                    y: (body.talking ? body.talksEnd : body.talksFrom) + body.pitch + body.beat
-                        - baselineOffset
+                    // At the frame's foot, as the launcher's status line is, whatever stands
+                    // above it; lower only when what's typed outgrows the frame.
+                    y: Math.max((body.talking ? body.talksEnd : body.talksFrom) + body.pitch
+                        + body.beat, body.framed) - baselineOffset
                     width: (offer.visible ? offer.x - Theme.space.rung.groups : parent.width) - x
                     // Who hears it alone: what goes with it is its own rows above.
                     text: root.hears === null ? "" : root.said.hearer ?? ""

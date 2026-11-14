@@ -374,9 +374,11 @@ let
       ExecStart = lib.escapeShellArgs words;
       Environment = lib.optional (key != null) "SSH_AUTH_SOCK=%t/${key}.sock";
       # The node lets go of the sessions it carried when told to stop,
-      # and redials a dropped link itself, so only its own failure
-      # restarts it.
-      Restart = "on-failure";
+      # and redials a dropped link itself. It is started again however it
+      # ends, unless systemd stopped it: a terminate signal from anything
+      # else ends it cleanly too, and on 2026-11-14 one left the work
+      # realm's node down for seven minutes.
+      Restart = "always";
       RestartSec = "5s";
       # The node wakes with every session it carries, so it runs among
       # them rather than among Joel's programs, whose tasks each wakeup

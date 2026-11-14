@@ -374,6 +374,8 @@ Scope {
         // found, so an answer given only when nothing is still shows.
         const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
         list.keptLast = null;
+        keysWeighing = 0;
+        readingBegun();
         const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
             : rows.concat(below)).concat(ending));
         matches = listedAs(composed);
@@ -390,7 +392,8 @@ Scope {
         else if (current >= 0)
             current = Rank.pinned(matches, was, current + rows.length - before);
         composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
-            showing: Date.now() - placedAll, kept: list.keptLast };
+            showing: Date.now() - placedAll, kept: list.keptLast, weighing: keysWeighing,
+            reading: readingSpent() };
     }
 
     // The rows with what the first thing found by its name holds listed
@@ -807,7 +810,7 @@ Scope {
             verb: "go to",
             stays: true,
             weight: 1,
-            prepared: Fuzzy.prepare(""),
+            prepared: Fuzzy.kept(""),
             keywords: withSynonyms(named(source)).keywords,
             named: true
         });
@@ -1728,8 +1731,27 @@ Scope {
     // since a daemon's row knows its acts but not the parts laid in beside
     // them, as a screen's Brightness and Warmth.
     function actsAlone(row) {
-        return row.actsOnly === true && (partsOfRows[row.key] ?? []).length === 0;
+        const weighing = actsWeighing.rows;
+        if (weighing !== null && weighing.has(row))
+            return weighing.get(row);
+        const alone = row.actsOnly === true && (partsOfRows[row.key] ?? []).length === 0;
+        if (weighing !== null) {
+            weighing.set(row, alone);
+            actsRead += 1;
+        }
+        return alone;
     }
+    // While the foot weighs the rows listed (noteKeys), what each row's
+    // acts alone were found to be, so a row's keys ask it once: keysFor
+    // asks three or four times a row, and a program's actsOnly asks its
+    // whole step (Applications.qml's startsOnly), 83 ms of a 116 ms step
+    // into Programs under load (vm-desktop-keeps-pace, 2026-11-14). Plain,
+    // so setting it wakes no binding.
+    readonly property var actsWeighing: ({ rows: null })
+    // How many times weighings read a row's acts alone, and how many rows
+    // they asked of, for the check that each row's is read once a weighing.
+    property int actsRead: 0
+    property int actsRowsAsked: 0
 
     // A row's parts as they're named inside it: "Theme" in Slack.
     function partsIn(row) {
@@ -2207,11 +2229,14 @@ Scope {
         const says = sidesOf(source);
         const row = Object.assign(whole(source, false, false), { weight: source.weight },
             says.side !== null ? says : {});
-        row.prepared = Fuzzy.prepare(row.name);
+        // Made again at each joining, as daemons answer while it opens, so
+        // its words are the ones made ready before (Fuzzy.kept), which
+        // stay the same while it's called the same.
+        row.prepared = Fuzzy.kept(row.name);
         // With the other words the vocabulary gives it, as "eero", the
         // name on the Home Network's boxes, finds the place rather than a
         // node whose model says it.
-        row.keywords = Fuzzy.prepare([row.name, collection.noun]
+        row.keywords = Fuzzy.kept([row.name, collection.noun]
             .concat(Words.of(source.settings.name).words ?? []).join(" "));
         // Its words are what a person calls it, so they count as its name.
         row.named = true;
@@ -3129,6 +3154,19 @@ Scope {
     }
 
     function noteKeys() {
+        // A weighing can set off another within it, after a change, so
+        // each asks afresh and gives the outer one its answers back.
+        const outer = actsWeighing.rows;
+        const rows = new Map();
+        actsWeighing.rows = rows;
+        try {
+            weighKeys();
+        } finally {
+            actsRowsAsked += rows.size;
+            actsWeighing.rows = outer;
+        }
+    }
+    function weighKeys() {
         // A keystroke that changes what's typed changes every row, and a row
         // no longer listed can't be named, so it holds no room: the room is
         // weighed afresh for the rows the text now lists, and grows only as
@@ -3295,6 +3333,10 @@ Scope {
         RowsPlace.tell(root, held);
     }
     property int rowsToldEarly: 0
+    // How long weighing the keys of the rows just listed took, in ms, which
+    // a key's showing says beside its laying: every row's foot is weighed
+    // as it's listed, not only those drawn (Trials.qml's composed).
+    property int keysWeighing: 0
 
     onMatchesChanged: {
         // The selection's start keeps to the row it began on, as the
@@ -3308,7 +3350,9 @@ Scope {
             Object.values(placesKept).map(kept => kept.matches).concat([homeKept]));
         rowsMade += 1;
         landed();
+        const weighing = Date.now();
         noteKeys();
+        keysWeighing = Date.now() - weighing;
         noteFigures();
         noteDigits();
     }
@@ -3451,10 +3495,12 @@ Scope {
     // for it (jitsusama.quickshell.launcher.synonyms), so a habit of Joel's
     // finds it. Made once for each row, and never twice for the same one.
     function withSynonyms(row) {
-        const more = (Providers.launcher.synonyms[row.key] ?? []).concat(oldNames(row));
-        if (more.length === 0 || row.synonymised)
+        if (row.synonymised)
             return row;
-        row.keywords = Fuzzy.prepare([row.keywords ? row.keywords.text : ""].concat(more)
+        const more = (Providers.launcher.synonyms[row.key] ?? []).concat(oldNames(row));
+        if (more.length === 0)
+            return row;
+        row.keywords = Fuzzy.kept([row.keywords ? row.keywords.text : ""].concat(more)
             .join(" ").trim());
         row.synonymised = true;
         return row;
@@ -4674,13 +4720,22 @@ Scope {
     // in and a second after it only ever show (Catalogue.js's quietFirst).
     // Anywhere else its own order stands: a setting's act still leads its
     // step, a sound output's use, and an answer's levels its copy. Null
-    // where it holds nothing.
-    function inside(row, things) {
+    // where it holds nothing. `spent`, where given, is told how long its
+    // acts, its parts and their ordering took, so a step's line says which
+    // of its making to cut (Trials.steppedMaking).
+    function inside(row, things, spent) {
+        const began = KeyTimes.now();
         const own = stepRows(row, things);
+        const acted = KeyTimes.now();
         const parts = things ? partsIn(row) : [];
+        const parted = KeyTimes.now();
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
-        return into && things && stepsThing(row)
+        const ordered = into && things && stepsThing(row)
             ? Catalogue.quietFirst(into, one => root.commandNamed(one)) : into;
+        if (spent)
+            Object.assign(spent, { acts: acted - began, parts: parted - acted,
+                ordering: KeyTimes.now() - parted });
+        return ordered;
     }
 
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
@@ -4717,14 +4772,15 @@ Scope {
         // through it, so the path says where it lives.
         if (held.length === 0 && row.category && placesAbove(row.category).length > 0) {
             if (meant)
-                picks.picked(typed, row.key, knowing());
+                learnAfterFrame(typed, row.key);
             intoCategory(row.category, typed);
             return went();
         }
         if (steppedAsLed(row))
             return went();
         const things = asThing(row, held.length === 0 || collecting);
-        const into = inside(row, things);
+        const spent = {};
+        const into = inside(row, things, spent);
         // A collection with nothing in it still holds the places its
         // vocabulary names, which a step into it shows: Agents with no
         // agent running still leads to its Quests and Runs. A row
@@ -4734,7 +4790,7 @@ Scope {
         if ((!into || into.length === 0) && places === 0 && !row.empty)
             return false;
         if (meant)
-            picks.picked(typed, row.key, knowing());
+            learnAfterFrame(typed, row.key);
         const made = Date.now();
         // Going back lands on the row stepped into, as oil's - lands on the
         // folder it came from, though it was stepped into without being
@@ -4770,7 +4826,7 @@ Scope {
         // stepping took, and the search that drew its rows, whose parts
         // restart() left.
         searchParts = trials.stepped(searchParts, { began, made, pushed, opened,
-            ended: Date.now() });
+            ended: Date.now(), making: spent });
         keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
         return went();
     }
@@ -5857,6 +5913,8 @@ Scope {
             const lived = live(found);
             const livedAt = Date.now();
             list.keptLast = null;
+            keysWeighing = 0;
+            readingBegun();
             matches = listedAs(lived);
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
@@ -5874,7 +5932,8 @@ Scope {
             searchParts = { before: 0, lists: foundAt - searchBegan, rows: 0,
                 answers: Date.now() - foundAt, each: {}, within: null,
                 composing: { asking: 0, placing: livedAt - foundAt,
-                    showing: Date.now() - livedAt, kept: list.keptLast } };
+                    showing: Date.now() - livedAt, kept: list.keptLast,
+                    weighing: keysWeighing, reading: readingSpent() } };
             return;
         }
         // What the search spends its time on, said with a key that's slow
@@ -6891,6 +6950,16 @@ Scope {
         return out;
     }
 
+    // A step into a place from what's typed learns it once the step's frame
+    // is drawn, with what was typed as it was then. Learning reads every
+    // row's key and forgets the picks of rows gone, which took 18 to 62 ms
+    // over 2,111 keys in a lab's steps into Capture, Windows and Emoji, all
+    // of it before their rows showed (ZINAWZ, 2026-11-14); nothing reads it
+    // before the next opening's search, and a close runs it at once.
+    function learnAfterFrame(said, key) {
+        afterFrame(() => picks.picked(said, key, knowing()));
+    }
+
     // Acting on a thing says it was what was meant by what was typed; in a
     // collection or a category, the one picked from it was. Learned before
     // the launcher closes, while what's typed and held is still there.
@@ -6978,7 +7047,7 @@ Scope {
         }
         // One that opens a collection steps into it, the launcher kept open.
         if (choice.opens) {
-            picks.picked(typed, choice.key, knowing());
+            learnAfterFrame(typed, choice.key);
             trials.picked(choice, typed, held.length);
             into(choice.opens);
             return;
@@ -8120,15 +8189,26 @@ Scope {
         : drawerRoom >= drawerLeast ? Math.min(drawerMost, drawerRoom) : drawerLeast
     readonly property real cardLeft: !screenHere ? 0 : Math.max(drawerMargin,
         Math.min(centred, screenHere.width - drawerMargin - drawerBeside - width))
-    // A quarter down; over a viewer low, its foot a twelfth of the screen
-    // up, as the lock screen sits, so the picture or the video its line
-    // acts on stays in view above it, as Vim's command line sits at the
-    // bottom. Never so low it leaves no screen margin below it, on a
-    // screen too short for a quarter down.
-    readonly property real cardTop: !screenHere ? 0 : Math.round(over !== null
-        ? screenHere.height * 11 / 12 - card.height
-        : Math.max(Theme.space.rung.screen, Math.min(screenHere.height / 4,
-            screenHere.height - Theme.space.rung.screen - card.height)))
+    // Centred on its screen; over a viewer low, its foot a twelfth of the
+    // screen up, as the lock screen sits, so the picture or the video its
+    // line acts on stays in view above it, as Vim's command line sits at
+    // the bottom.
+    readonly property real cardTop: !screenHere ? 0 : over !== null
+        ? Math.round(screenHere.height * 11 / 12 - card.height)
+        : frameTop(screenHere, card.height)
+
+    // Where a frame this tall stands on a screen: as far from its foot as
+    // from its top, to the device pixel, an odd one going below. Super+S's
+    // line takes it too, so the two cards are one box in one place (Joel,
+    // 2026-11-14 09:44: "does not have co-equal top and bottom margins";
+    // VKCF3Z, 4643352a: centred, since a quarter down read as equal on the
+    // laptop but plainly high on the desk). No bar takes an exclusive
+    // zone, so the whole screen is free; rows already leave a screen rung
+    // either side.
+    function frameTop(screen, tall) {
+        const ratio = screen.devicePixelRatio > 0 ? screen.devicePixelRatio : 1;
+        return Math.floor((screen.height - tall) / 2 * ratio) / ratio;
+    }
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
     // what's typed and held, the first twenty rows' names in order (a
@@ -8145,6 +8225,10 @@ Scope {
             line: talkLine.shown(),
             // How many rows' keys the foot has weighed afresh (noteKeys).
             weighed: root.rowsWeighed,
+            // How many times weighing them read a row's acts alone, and
+            // how many rows they asked of.
+            actsRead: root.actsRead,
+            actsRowsAsked: root.actsRowsAsked,
             // How many times a key listed a list shown lately again.
             listedAgain: root.listedAgain,
             typed: root.typed,
@@ -8654,10 +8738,15 @@ Scope {
     // (Notifications.qml). The opening never waits for that row: it's drawn
     // with what's there, and the cursor moves the moment the row is,
     // in the same frame where it's there already (Y2YBTS, 2026-11-13
-    // [b712b9f2]). Stepping elsewhere or closing first lets it go.
+    // [b712b9f2]). Stepping elsewhere or closing first lets it go. Asked
+    // for normal, the line leaves the find it opened on, so j and k move at
+    // once, as they did through the held notices (Joel, 2026-11-14), and /
+    // finds; the opening took the keys already, so normal holds.
     property var landOn: null
-    function intoOn(name, wanted) {
+    function intoOn(name, wanted, normal) {
         into(name);
+        if (normal === true)
+            prompt.toNormal();
         landOn = wanted;
         landed();
     }
@@ -9020,6 +9109,20 @@ Scope {
     }
     onCataloguingChanged: tallyMarked()
     onSourcesChanged: tallyMarked()
+
+    // How long the rows shown spent reading what they hold, from each
+    // source that keeps a plain `reading` (Applications.qml's), counted
+    // afresh for each showing, so a showing's line says it apart from
+    // laying the rows out (Trials.readingSaid).
+    function readingBegun() {
+        for (const source of sources) {
+            if (source.reading)
+                source.reading.ms = 0;
+        }
+    }
+    function readingSpent() {
+        return sources.reduce((sum, source) => sum + (source.reading?.ms ?? 0), 0);
+    }
 
     onOpenChanged: {
         tallyMarked();
@@ -9946,11 +10049,22 @@ Scope {
     // could save. Weighing walks the heap's chunks, and how long it took
     // is said too.
     property bool collectDue: false
+    // How many megabytes the heap may grow by after the closing's
+    // collection before a miss in its free lists starts the collector
+    // again. Qt starts one at any miss while what's held is over twice
+    // what's live, which it always is once the launcher has closed, so
+    // Emoji's openings ran one to six passes, 47 to 204 ms of them, and
+    // this leaves what the opening makes to the next closing's collection
+    // (modules/quickshell/heap/heap.cpp). An opening grows what's held by
+    // about 1 MB, so 32 is ample, and bounds what a launcher left open
+    // long may grow by before it collects.
+    readonly property real openingRoom: 32
     function collectClosed() {
         if (open || opening || parting !== "")
             return;
         const began = KeyTimes.now();
         gc();
+        Heap.leaveRoom(openingRoom);
         const collected = KeyTimes.now();
         const weight = Heap.weigh();
         const took = Math.round(collected - began);
@@ -10332,7 +10446,8 @@ Scope {
     function feltBegin(from, fromChord) {
         if (feltTicking.running)
             feltSaid();
-        feltTicks = Pacing.feltBegun(KeyTimes.now());
+        feltTicks = Pacing.feltBegun(KeyTimes.now(), Heap.collected());
+        feltCollectedFrom = feltTicks.collected;
         feltFrom = from;
         feltFromChord = fromChord;
         feltSpans = [];
@@ -10343,6 +10458,9 @@ Scope {
     // its longest stall says what it ran into (Pacing.stallSpent). Nothing
     // binds to it, so it's added to in place.
     property var feltSpans: []
+    // The collector's count when the opening began, so its line says what
+    // collecting took of it.
+    property real feltCollectedFrom: 0
     function feltSpan(name, from) {
         if (feltTicking.running)
             feltSpans.push({ name, from, to: KeyTimes.now() });
@@ -10372,7 +10490,7 @@ Scope {
     }
     function feltTicked() {
         const now = KeyTimes.now();
-        feltTicks = Pacing.feltTicked(feltTicks, now, feltPace);
+        feltTicks = Pacing.feltTicked(feltTicks, now, feltPace, Heap.collected());
         if (feltTicks.usable >= 0 || !cardUp || now - feltFrom > feltGiveUp)
             feltSaid();
     }
@@ -10392,12 +10510,14 @@ Scope {
             ? `, ${Math.round(stallAt - feltFrom)} ms in: `
                 + Pacing.stallSpent(feltSpans, stallAt, stallAt + feltTicks.stall)
             : "";
+        const collecting = Pacing.collectorSaid(feltTicks.stallCollected,
+            Heap.collected() - feltCollectedFrom);
         feltSpans = [];
         console.info(usable >= 0
             ? `launcher: opening usable ${usable} ms from ${from}, its longest stall ${stalled} ms`
-                + ranInto
+                + ranInto + collecting
             : `launcher: opening not usable ${waited} ms from ${from}, its longest stall`
-                + ` ${stalled} ms` + ranInto + (cardUp ? "" : ", closed first"));
+                + ` ${stalled} ms` + ranInto + (cardUp ? "" : ", closed first") + collecting);
     }
     Timer {
         id: feltTicking

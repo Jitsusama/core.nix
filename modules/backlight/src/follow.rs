@@ -1,6 +1,9 @@
 //! What the daemon decides about the light: when the screen follows it, what
 //! the curve learns, what a shut lid stops, and when the keyboard's light
-//! comes on and goes out.
+//! comes on and goes out. While a program that keeps its own colours is in
+//! front (front.rs), the screen starts no move for the light, finishing
+//! only one under way, and the move the light asked for meanwhile waits
+//! for it to leave.
 //!
 //! It's given the brightness shown and the time, and says what to do, so it
 //! reads no screen, writes no file and speaks no D-Bus; the daemon does
@@ -58,6 +61,8 @@ pub struct Follow {
     /// What Joel set in each light in the evening, which the evening never
     /// dims past again.
     floor: Option<Curve>,
+    /// Whether a program that keeps its own colours is in front.
+    still: bool,
 }
 
 /// How the evening's share moves toward what the clock says.
@@ -90,6 +95,7 @@ impl Follow {
             clock: 1.0,
             hold: Hold::Unseen,
             floor: None,
+            still: false,
         }
     }
 
@@ -103,6 +109,11 @@ impl Follow {
     /// What Joel set in each light in the evening, once he has.
     pub fn floor(&self) -> Option<&Curve> {
         self.floor.as_ref()
+    }
+
+    /// Whether a program that keeps its own colours is in front (front.rs).
+    pub fn keep_still(&mut self, still: bool) {
+        self.still = still;
     }
 
     /// Whether a brightness Joel picked holds for the rest of the evening.
@@ -231,15 +242,20 @@ impl Follow {
     pub fn wake(&self, now: Instant) -> Option<Instant> {
         if self.ramp.is_some() {
             Some(now + STEP)
+        } else if self.still {
+            None
         } else {
             self.steer.next()
         }
     }
 
-    /// Starts the move the light asked for, from `shown`, once it's due and
-    /// none is under way, and gives where it goes.
+    /// Starts the move the light asked for, from `shown`, once it's due, and
+    /// gives where it goes. One under way gives way to it from where it has
+    /// reached, since a glide down takes 25 seconds and a lamp switched on
+    /// meanwhile shouldn't wait it out; light heard mid-move is weighed
+    /// against where the move goes, so only a real change is due.
     pub fn start(&mut self, shown: f64, now: Instant) -> Option<f64> {
-        if self.ramp.is_some() {
+        if self.still {
             return None;
         }
         let to = self.steer.due(now)?;
@@ -517,6 +533,24 @@ mod tests {
         assert_eq!(follow.wake(start), Some(start + DIMMING));
         let arrived = moved(&mut follow, 0.8, start + DIMMING).unwrap();
         assert!((arrived - 0.2).abs() < 1e-9, "arrived at {arrived}");
+    }
+
+    #[test]
+    fn a_brighter_room_mid_glide_is_followed_at_once() {
+        // A lamp switched on while the screen glides down is followed
+        // within its second, not once the glide ends.
+        let start = Instant::now();
+        let mut follow = following(1000.0, 0.8, start);
+        let _ = follow.heard(10.0, 0.8, start);
+        follow.start(0.8, start + DIMMING).unwrap();
+        let lit = start + DIMMING + Duration::from_secs(5);
+        let shown = follow.step(lit).unwrap();
+        let _ = follow.heard(1000.0, shown, lit);
+        assert_eq!(
+            follow.start(shown, lit + BRIGHTENING),
+            Some(0.8),
+            "the lamp waited on the glide"
+        );
     }
 
     #[test]
@@ -1007,5 +1041,34 @@ mod tests {
         assert_eq!(keys_after_the_hold(&mut keys, start), Some(1));
         keys.unset(0);
         assert!(!keys.saw(0));
+    }
+
+    #[test]
+    fn a_program_keeping_its_colours_holds_the_light_till_it_leaves() {
+        let start = Instant::now();
+        let mut follow = following(1000.0, 0.8, start);
+        follow.keep_still(true);
+        let _ = follow.heard(10.0, 0.8, start);
+        assert_eq!(
+            follow.wake(start),
+            None,
+            "a dimmer room is waited on in front of GIMP"
+        );
+        assert_eq!(
+            follow.start(0.8, start + LATER),
+            None,
+            "the screen dimmed in front of GIMP"
+        );
+        follow.keep_still(false);
+        assert!(
+            follow
+                .wake(start + LATER)
+                .is_some_and(|due| due <= start + LATER),
+            "the move waiting on the dimmer room was lost"
+        );
+        assert!(
+            moved(&mut follow, 0.8, start + LATER).is_some_and(|level| (level - 0.2).abs() < 1e-9),
+            "the dimmer room wasn't followed once GIMP left the front"
+        );
     }
 }

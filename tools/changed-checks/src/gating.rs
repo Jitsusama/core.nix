@@ -1,14 +1,16 @@
 //! Whether a gate runs on this builder, and how a keep's VM tests' traces
 //! give way to one. A gate holds a lock, shared, for as long as it runs;
-//! a keep beside it traces its VM tests one at a time, as memory allows,
-//! and begins none after `BESIDE_A_GATE` but the first, so the next head's
-//! record isn't held back. On 13 November keeps that traced none beside a
-//! gate recorded no VM test all evening, and gates judged from records 50
-//! to 160 files behind main and evaluated 400 to 650 checks.
+//! a keep beside it traces its VM tests `AT_ONCE_BESIDE_A_GATE` at a time,
+//! as memory allows, and begins none after `BESIDE_A_GATE` but the first,
+//! so the next head's record isn't held back. On 13 November keeps that
+//! traced none beside a gate recorded no VM test all evening, and gates
+//! judged from records 50 to 160 files behind main and evaluated 400 to 650
+//! checks.
 
+use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -22,6 +24,23 @@ fn beside_a_gate() -> Duration {
         .ok()
         .and_then(|seconds| seconds.parse().ok())
         .map_or(BESIDE_A_GATE, Duration::from_secs)
+}
+
+/// How many VM tests a keep beside a gate traces at once, unless
+/// `CHANGED_CHECKS_AT_ONCE_BESIDE_A_GATE` gives it. One at a time, keeps
+/// beside gates on 14 November traced 6 to 25 of the 80 to 101 they had to
+/// in their 5 minutes, and left 66 to 90 for a later keep, which a gate
+/// nearly always shared too. On a lent builder busy with other work, 8
+/// chunks of 40 checks took a median 144 s beside 1 at once, 135 s beside
+/// 2 and 147 s beside 4, which finished 19 or 20 traces a round to 1's 8.
+const AT_ONCE_BESIDE_A_GATE: usize = 4;
+
+/// How many VM tests a keep beside a gate traces at once.
+fn at_once_beside_a_gate() -> usize {
+    std::env::var("CHANGED_CHECKS_AT_ONCE_BESIDE_A_GATE")
+        .ok()
+        .and_then(|traces| traces.parse().ok())
+        .unwrap_or(AT_ONCE_BESIDE_A_GATE)
 }
 
 /// Where a gate holds a lock, shared, for as long as it runs.
@@ -63,39 +82,55 @@ fn a_gate_runs(lock: &Path) -> bool {
 }
 
 /// How a keep paces its VM tests' traces beside the gates on its builder:
-/// one at a time while one runs, as memory allows, and, past `bound`, none
-/// begun while one runs but the first.
+/// `at_once` at a time while one runs, as memory allows, and, past `bound`,
+/// none begun while one runs but the first.
 pub struct Paced {
     lock: PathBuf,
     said: AtomicBool,
     began: Instant,
     bound: Duration,
+    at_once: usize,
     one_went: AtomicBool,
+    memory_stalled: fn() -> bool,
 }
 
 impl Paced {
     pub fn beside_gates() -> Self {
+        Self::beside_gates_at(
+            lock(),
+            at_once_beside_a_gate(),
+            crate::pressure::memory_stalled,
+        )
+    }
+
+    fn beside_gates_at(lock: PathBuf, at_once: usize, memory_stalled: fn() -> bool) -> Self {
         Self {
-            lock: lock(),
+            lock,
             said: AtomicBool::new(false),
             began: Instant::now(),
             bound: beside_a_gate(),
+            at_once,
             one_went: AtomicBool::new(false),
+            memory_stalled,
         }
     }
 
-    /// Whether another trace may begin beside those under way.
-    pub fn may_begin(&self) -> bool {
+    /// Whether another trace may begin beside the first and the `asked`
+    /// that `Asked` counts under way.
+    pub fn may_begin(&self, asked: usize) -> bool {
         if a_gate_runs(&self.lock) {
             if !self.said.swap(true, Ordering::Relaxed) {
                 eprintln!(
                     "changed-checks: a gate runs here, so this keep traces its VM tests alone \
-                     one at a time while it does"
+                     {} at a time while it does",
+                    self.at_once.max(1)
                 );
             }
-            return false;
+            if asked + 1 >= self.at_once {
+                return false;
+            }
         }
-        !crate::pressure::memory_stalled()
+        !(self.memory_stalled)()
     }
 
     /// Whether to begin no more traces: the first always goes, so every
@@ -104,6 +139,56 @@ impl Paced {
         self.one_went.swap(true, Ordering::Relaxed)
             && self.began.elapsed() >= self.bound
             && a_gate_runs(&self.lock)
+    }
+}
+
+thread_local! {
+    /// Whether this thread was let begin a trace it hasn't yet begun.
+    static LET_BEGIN: Cell<bool> = const { Cell::new(false) };
+}
+
+/// The traces under way that were begun on asking, as every one but a
+/// run's first is (`checks::each_at_once`), so a pace may count them. A yes
+/// holds a place at once, so threads asking together can't all take the
+/// same last one.
+#[derive(Default)]
+pub struct Asked {
+    under_way: AtomicUsize,
+    asking: Mutex<()>,
+}
+
+impl Asked {
+    /// Whether this thread may begin another trace, as `may_begin` says
+    /// given how many begun on asking are under way.
+    pub fn ask(&self, may_begin: impl Fn(usize) -> bool) -> bool {
+        let _alone = self.asking.lock().unwrap_or_else(PoisonError::into_inner);
+        let yes = may_begin(self.under_way.load(Ordering::Relaxed));
+        if yes && !LET_BEGIN.replace(true) {
+            self.under_way.fetch_add(1, Ordering::Relaxed);
+        }
+        yes
+    }
+
+    /// Say this thread begins a trace, until what this gives is dropped.
+    pub fn begun(&self) -> Begun<'_> {
+        Begun {
+            asked: self,
+            on_asking: LET_BEGIN.replace(false),
+        }
+    }
+}
+
+/// A trace under way, counted while it was begun on asking.
+pub struct Begun<'a> {
+    asked: &'a Asked,
+    on_asking: bool,
+}
+
+impl Drop for Begun<'_> {
+    fn drop(&mut self) {
+        if self.on_asking {
+            self.asked.under_way.fetch_sub(1, Ordering::Relaxed);
+        }
     }
 }
 
@@ -134,6 +219,48 @@ mod tests {
             !runs
         });
         assert!(let_go, "a gate was seen a second after both let go");
+    }
+
+    #[test]
+    fn beside_a_gate_a_keep_traces_four_at_once_and_never_five() {
+        let scratch = Scratch::new("gating-four");
+        let lock = scratch.join("changed-checks/gating.lock");
+        let _gate = held(&lock).expect("the gate's lock");
+        let paced = Paced::beside_gates_at(lock, 4, || false);
+        let asked = Asked::default();
+        let (under_way, most) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let items: Vec<usize> = (0..8).collect();
+        crate::checks::each_at_once(
+            &items,
+            16,
+            || asked.ask(|asked| paced.may_begin(asked)),
+            |_| {
+                let _begun = asked.begun();
+                let now = under_way.fetch_add(1, Ordering::Relaxed) + 1;
+                most.fetch_max(now, Ordering::Relaxed);
+                // Each waits, for up to a second, until four are under way,
+                // so the run can't end before the threads that asked begin.
+                let began = Instant::now();
+                while under_way.load(Ordering::Relaxed) < 4
+                    && began.elapsed() < Duration::from_secs(1)
+                {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                most.fetch_max(under_way.load(Ordering::Relaxed), Ordering::Relaxed);
+                under_way.fetch_sub(1, Ordering::Relaxed);
+                Ok::<_, ()>(())
+            },
+        )
+        .expect("traced");
+        assert_eq!(
+            most.into_inner(),
+            4,
+            "beside a gate, the most traces under way at once wasn't 4"
+        );
+        assert!(
+            !paced.may_begin(3),
+            "beside a gate, a fifth trace was let begin beside four"
+        );
     }
 
     #[test]

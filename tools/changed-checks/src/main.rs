@@ -23,7 +23,7 @@
 //! read alone, for the same (`alone.rs`).
 //!
 //! Usage: `changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] [--name-only]
-//! [--keep-base] [--here]`, or `changed-checks keep-main`
+//! [--keep-base] [--here]`, or `changed-checks keep-main [--follow PATH]`
 //!
 //! The working tree is read as Nix reads a git checkout, so a new file
 //! counts only once git knows it (`git add -N`). A change that only some
@@ -114,7 +114,7 @@ const UNSENT: u8 = 75;
 
 const USED: &str = "Usage: changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] \
                     [--name-only] [--keep-base] [--here] [--first]\n       \
-                    changed-checks keep-main";
+                    changed-checks keep-main [--follow PATH]";
 
 /// Where `keep-main` follows main unless `CHANGED_CHECKS_REPOSITORY` names
 /// another.
@@ -320,10 +320,14 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
 
 /// Follow origin's main, keeping each head once it has stood, until stopped.
 fn keep_main(rest: &[String]) -> ExitCode {
-    if !rest.is_empty() {
-        eprintln!("changed-checks: keep-main takes nothing more\n{USED}");
-        return ExitCode::from(USAGE);
-    }
+    let follow = match rest {
+        [] => None,
+        [flag, path] if flag == "--follow" => Some(PathBuf::from(path)),
+        _ => {
+            eprintln!("changed-checks: keep-main takes only --follow PATH\n{USED}");
+            return ExitCode::from(USAGE);
+        }
+    };
     let url = env::var("CHANGED_CHECKS_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned());
     let clone = state().join("changed-checks/main");
     let mut keeper = keep::Keeper::default();
@@ -332,6 +336,15 @@ fn keep_main(rest: &[String]) -> ExitCode {
         keep::STOOD.as_secs()
     );
     loop {
+        if let Some(installed) = &follow
+            && keep::replaced(std::fs::canonicalize(installed), env::current_exe())
+        {
+            eprintln!(
+                "changed-checks: another changed-checks is installed, so this one ends \
+                 between keeps, for the service to start that one"
+            );
+            return ExitCode::SUCCESS;
+        }
         // The store line names the lent builder by its host key, which is
         // new for each one lent, so it says when what's kept is gone.
         let builder = std::fs::read_to_string(offload_dir().join("store")).ok();
@@ -566,23 +579,26 @@ fn compare(
         // Once the ordinary checks are compared, the build they began, if
         // they moved any; none for a tree kept already.
         let mut building = None;
+        // Every run judges the tree by what each check read, a run only
+        // naming them too: on 14 November the merge net's, which name what
+        // moved, evaluated all 930 checks in 275 to 390 s before a round's
+        // first VM test, while gates beside them evaluated 100 to 600.
         let mut evaluate = || -> Result<Derivations, String> {
-            if !beside {
-                return derivations(flake, system, "tree", noted);
-            }
             let mut evaluation = Run::evaluating("tree");
             let (mut after, vm) =
                 ordinarily(flake, root, system, recorded.as_ref(), &mut evaluation)?;
-            let moved = checks::compare(&before, &after);
-            let targets = if moved.broken.is_empty() {
-                unbuilt(&moved)
-            } else {
-                Vec::new()
-            };
-            building = Some((!targets.is_empty()).then(|| {
-                let derivations = after.clone();
-                scope.spawn(move || built(flake, system, held, &targets, &derivations))
-            }));
+            if beside {
+                let moved = checks::compare(&before, &after);
+                let targets = if moved.broken.is_empty() {
+                    unbuilt(&moved)
+                } else {
+                    Vec::new()
+                };
+                building = Some((!targets.is_empty()).then(|| {
+                    let derivations = after.clone();
+                    scope.spawn(move || built(flake, system, held, &targets, &derivations))
+                }));
+            }
             let (judged, at) = ((&before, recorded.as_ref()), (base, system));
             after.extend(vm_tests(flake, root, at, judged, vm, &mut evaluation)?);
             noted.evaluated(evaluation);

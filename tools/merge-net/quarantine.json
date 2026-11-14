@@ -432,5 +432,38 @@
       "test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
+  },
+  {
+    "at": 1794681104,
+    "commit": "1501fe1f285b10c05bad4246ffc29beae45dc2d4",
+    "owner_pr": null,
+    "reason": "failed, then passed, at 1501fe1f285b",
+    "subtests": [
+      "test_super_v_pastes_into_the_window_it_opened_over_a_terminal_or_not"
+    ],
+    "test": "vm-desktop-keeps-copies"
+  },
+  {
+    "at": 1794688918,
+    "commit": "0d36a13a4b655a56eec46425da9e1dcfef0b9137",
+    "owner_pr": null,
+    "reason": "failed, then passed, at 0d36a13a4b65",
+    "subtests": [
+      "test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window",
+      "test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they_sat",
+      "test_workspaces_go_back_in_the_order_joel_set_as_screens_come_and_go",
+      "test_workspaces_moved_from_a_screen_turned_off_stay_where_joel_puts_them"
+    ],
+    "test": "vm-screens-keep-places"
+  },
+  {
+    "at": 1794690413,
+    "commit": "13a2ff2428ce3901c9cc0c5f989c4569f9651fbe",
+    "owner_pr": 4426,
+    "reason": "has been broken since #4426, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "subtests": [
+      "test_quickshell_warned_of_nothing_it_drew_all_along"
+    ],
+    "test": "vm-desktop-launcher-waits-on-joel"
   }
 ]

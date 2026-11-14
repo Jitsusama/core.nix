@@ -55,7 +55,10 @@ QtObject {
             8: { output: "eDP-1", is_active: false }
         };
         expect("a window on the screen's shown workspace has its tile",
-            Tiles.tile(windows, workspaces, "eDP-1", 1), { left: 420, top: 12, width: 380 });
+            Tiles.tile(windows, workspaces, "eDP-1", 1),
+            { left: 420, top: 12, width: 380, floats: false });
+        expect("a floating window's tile says it floats",
+            Tiles.tile(windows, workspaces, "eDP-1", 3)?.floats, true);
         expect("a window on another screen has none",
             Tiles.tile(windows, workspaces, "DP-1", 1), null);
         expect("a window on a workspace not shown has none",
@@ -65,5 +68,13 @@ QtObject {
             Tiles.of(windows, 7).map(one => [one.id, one.column, one.row]),
             [[1, 1, 1], [2, 1, 2], [3, null, null]]);
         expect("no workspace has no tiles", Tiles.of(windows, null), []);
+        // niri says a workspace shown before its windows' tiles there, as
+        // it slides to one or takes a new scale, so a window not laid out
+        // yet still keeps its workspace from being empty.
+        const unlaid = { 5: { id: 5, workspace_id: 9, layout: {} } };
+        expect("a workspace with a window not laid out yet isn't empty",
+            Tiles.empty(unlaid, 9), false);
+        expect("a workspace no window is on is empty", Tiles.empty(windows, 9), true);
+        expect("a workspace with windows isn't empty", Tiles.empty(windows, 8), false);
     }
 }

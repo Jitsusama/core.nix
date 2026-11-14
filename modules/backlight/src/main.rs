@@ -41,8 +41,9 @@
 //! Joel says whether it follows the room through the session's bus
 //! (switch.rs), and his say is kept in `$XDG_STATE_HOME/backlight/warmth`.
 //! From sunset to sunrise where the laptop is, the night light warms the
-//! built-in panel too, whatever its sensor sees (night.rs), through the
-//! same program; where it is comes from whereabouts'
+//! built-in panel too, whatever its sensor sees (night.rs), and every
+//! screen beside it, such as a monitor on the dock, which takes the night
+//! alone (beside.rs), through the same program; where it is comes from whereabouts'
 //! `$XDG_RUNTIME_DIR/whereabouts/here.json`, what it keeps of where here
 //! is, looked at again within the hour,
 //! or every ten seconds until it says a place,
@@ -54,6 +55,11 @@
 //! shows no Warmth.
 //! Every call to wl-gammarelay-rs is given a moment to answer (ask.rs), so
 //! the warmth never holds the brightness, the keys or the lid.
+//!
+//! While a program that keeps its own colours, such as GIMP, is in front,
+//! as niri's event stream says (front.rs), every screen holds its own
+//! white and its brightness, so the colours Joel picks are the colours
+//! shown; once it leaves the front they follow again.
 //!
 //! In the evening, by the local clock, the screen eases to 70% of what the
 //! curve asks for, and back in the morning (evening.rs), looked at each
@@ -78,11 +84,13 @@
 
 mod answering;
 mod ask;
+mod beside;
 mod curve;
 mod dbus;
 mod evening;
 mod facts;
 mod follow;
+mod front;
 mod keep;
 mod keyboard;
 mod light;
@@ -109,6 +117,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::unix::AsyncFd;
 use zbus::Connection;
 
+use beside::Beside;
 use curve::Curve;
 use dbus::{
     ManagerProxy, RelayProxy, SessionProxy, lid_moved, relay, relay_started, switched, woke,
@@ -349,6 +358,17 @@ async fn keep_the_open_level() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// The standard curve the command line names, and the night white after
+/// it.
+fn arguments() -> Result<(Curve, u16), Box<dyn Error>> {
+    let standard = env::args_os()
+        .nth(1)
+        .ok_or("usage: backlight <standard curve> [night white] [evening]")?;
+    let curve = Curve::read(&fs::read_to_string(&standard)?)
+        .ok_or_else(|| format!("{} holds no curve", Path::new(&standard).display()))?;
+    Ok((curve, night_white()?))
+}
+
 /// The night white the command line gives, after the standard curve, or
 /// the night light's own.
 fn night_white() -> Result<u16, String> {
@@ -401,12 +421,7 @@ fn learned_curve(standard: Curve, learned: &Path) -> io::Result<(Curve, bool)> {
 }
 
 async fn run() -> Result<(), Box<dyn Error>> {
-    let standard = env::args_os()
-        .nth(1)
-        .ok_or("usage: backlight <standard curve> [night white] [evening]")?;
-    let standard = Curve::read(&fs::read_to_string(&standard)?)
-        .ok_or_else(|| format!("{} holds no curve", Path::new(&standard).display()))?;
-    let night_white = night_white()?;
+    let (standard, night_white) = arguments()?;
 
     let Some(screen) = Screen::find(Path::new("/sys/class/backlight"))? else {
         eprintln!("<5>this machine has no backlight to set");
@@ -474,6 +489,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         backlight.warmed(kelvin);
     }
     sensors = sensors.filter(|_| missing(readings.as_ref(), warm.as_ref(), &backlight));
+    let mut front = front::listen();
 
     loop {
         let wake = backlight.wake();
@@ -500,6 +516,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
             again = relay_started(&mut started) => if again {
                 backlight.relay_started();
             },
+            keeps = front::changed(&mut front) => backlight.in_front(keeps),
             () = until(wake) => backlight.step().await,
             changed = monitors.changed() => {
                 changed?;
@@ -575,8 +592,8 @@ const PANEL_RESTS: Duration = Duration::from_mins(1);
 const NIGHT_WHITE: u16 = 4000;
 
 /// The night light: its white, whether Joel has it on and where that's
-/// kept, where whereabouts says the laptop is, what it wants now, and when
-/// to look again.
+/// kept, where whereabouts says the laptop is, what it wants now, when to
+/// look again, and the screens beside the panel, which take it alone.
 struct Nightly {
     white: u16,
     on: bool,
@@ -585,6 +602,7 @@ struct Nightly {
     plan: Option<Plan>,
     wants: u16,
     due: Option<Instant>,
+    beside: Beside,
 }
 
 impl Nightly {
@@ -599,6 +617,7 @@ impl Nightly {
             plan: None,
             wants: WHITE,
             due: Some(Instant::now()),
+            beside: Beside::new(Instant::now()),
         }
     }
 }

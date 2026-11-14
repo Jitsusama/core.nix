@@ -361,15 +361,21 @@ Scope {
             oldest.expire();
     }
 
-    // The notices in the launcher: For You's Desktop, those unread and then
-    // History, what's read (launcher/Now.qml's leadsTo), the cursor on the
-    // card in front while one is up, since notices are rows of the launcher
-    // (PLAN-20261113-821NSZ).
+    // The notices in the launcher, since notices are rows of the launcher
+    // (PLAN-20261113-821NSZ): those on screen while any wait on the arrival
+    // line, in normal, so j and k go through them at once and Return acts
+    // on one, the cursor on the one the line shows, as the daemon chose it
+    // (Joel, 2026-11-14:
+    // "super-n no longer lets me interact with the one in focus"); with
+    // none, or while notices are held, For You's Desktop, those unread and
+    // then History (launcher/Now.qml's leadsTo).
     function history() {
         holding = false;
-        const front = shown.length > 0 ? shown[0] : -1;
+        const front = line.chosen;
+        const onScreen = !Quiet.on && (Notices.front.order ?? []).length > 0;
         if (launcher)
-            launcher.intoOn("notices", row => front >= 0 && row.notice === front);
+            launcher.intoOn(onScreen ? "onScreen" : "notices",
+                row => front >= 0 && row.notice === front, onScreen);
     }
 
     function since(then, now) {

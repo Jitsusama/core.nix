@@ -1027,7 +1027,12 @@ Provider {
             done: () => !Sessions.parked.some(one => String(one.presence?.session ?? "") === id),
             within: Sessions.startsWithin
         });
-        provider.actOn(session, "wake");
+        // One asleep in pi's host wakes as it's viewed, which is the
+        // shell's to do, as Go To is; the daemon's wake reaches a holder.
+        if (Sessions.wokenByViewing(session))
+            Sessions.wake(session);
+        else
+            provider.actOn(session, "wake");
     }
 
     // Does one of a session's acts as the daemon serves it: its row's ask

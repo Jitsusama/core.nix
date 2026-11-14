@@ -1,16 +1,17 @@
 //! PipeWire's side: for each microphone, a source of its own named for it,
 //! "‹microphone›, Noise Cancelled", and a capture of the microphone that
-//! wakes only while something records from that source.
+//! wakes only while something records from that source, or while a call
+//! records from the microphone itself, to be heard and judged (plain.rs).
 //!
 //! Both streams run in PipeWire's real-time thread, where nothing may wait,
 //! so they only move samples through lock-free rings to and from the
 //! denoiser's thread (worker.rs). They're one node group, so the
 //! microphone's clock drives both and the rings never drift. The source
-//! gives silence until two frames are cleaned, a cushion against a frame
-//! that cleans late, and gives silence again for any it's still short of.
+//! gives silence until a cycle and a frame are cleaned, a cushion against a
+//! frame that cleans late, and gives silence again for any it's short of.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -32,6 +33,7 @@ use rtrb::{Consumer, Producer, RingBuffer};
 use crate::chosen::Chosen;
 use crate::denoise::{FRAME, RATE};
 use crate::offer::Offers;
+use crate::plain;
 use crate::worker::{Ends, Shared, Worker};
 
 /// What each source's node name starts with, so they're never taken for
@@ -40,9 +42,6 @@ pub const OURS: &str = dictation::microphone::OURS;
 
 /// How many samples each ring holds: 16 frames, 160 ms.
 const RING: usize = 16 * FRAME;
-
-/// How much is cleaned before the source gives any of it: two frames.
-const CUSHION: usize = 2 * FRAME;
 
 /// A microphone as the registry names it.
 struct Microphone {
@@ -120,6 +119,7 @@ pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String
     // Each link from a source, by its id, to the microphone whose pair
     // the source is, so its going is known by its id alone.
     let links: Rc<RefCell<HashMap<u32, u32>>> = Rc::default();
+    let (_told, heard) = following(&main_loop, &pairs);
 
     let quit = main_loop.downgrade();
     let went: Rc<RefCell<Option<String>>> = Rc::default();
@@ -168,8 +168,9 @@ pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String
                 };
                 let ranked = rank(microphone.priority.as_deref(), &ranking);
                 match Pair::new(&core, &worker, global.id, &microphone, ranked) {
-                    Ok(pair) => {
+                    Ok(mut pair) => {
                         eprintln!("noise-cancelled: offering {}", pair.description);
+                        pair.heard(heard.borrow().contains(&pair.microphone));
                         pairs.borrow_mut().insert(global.id, pair);
                     }
                     Err(why) => eprintln!(
@@ -202,8 +203,39 @@ pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String
     ))
 }
 
+/// Follows calls that record from a microphone itself (plain.rs), telling
+/// each of `pairs` on PipeWire's loop whether one records from its
+/// microphone. Answers what hears the follower, kept while serving, and
+/// the microphones it last told, by node name, for one that comes
+/// mid-call.
+fn following<'a>(
+    main_loop: &'a MainLoopRc,
+    pairs: &Rc<RefCell<HashMap<u32, Pair>>>,
+) -> (
+    pw::channel::AttachedReceiver<'a, BTreeSet<String>>,
+    Rc<RefCell<BTreeSet<String>>>,
+) {
+    let heard: Rc<RefCell<BTreeSet<String>>> = Rc::default();
+    let (tell, told) = pw::channel::channel::<BTreeSet<String>>();
+    let attached = told.attach(main_loop.loop_(), {
+        let (pairs, heard) = (Rc::clone(pairs), Rc::clone(&heard));
+        move |microphones| {
+            for pair in pairs.borrow_mut().values_mut() {
+                pair.heard(microphones.contains(&pair.microphone));
+            }
+            *heard.borrow_mut() = microphones;
+        }
+    });
+    plain::follow(move |microphones| {
+        let _ = tell.send(microphones);
+    });
+    (attached, heard)
+}
+
 /// One microphone's capture and source, and what listens to them.
 struct Pair {
+    /// The microphone's node name.
+    microphone: String,
     description: String,
     capture: StreamRc,
     source: StreamRc,
@@ -211,6 +243,8 @@ struct Pair {
     waker: Thread,
     /// How many links take what the source gives: whatever records it.
     links: usize,
+    /// Whether a call records from the microphone itself, to be heard.
+    listened: bool,
     _heard: StreamListener<Capturing>,
     _given: StreamListener<Giving>,
 }
@@ -321,12 +355,14 @@ impl Pair {
             .map_err(|why| format!("connecting its source: {why}"))?;
 
         Ok(Self {
+            microphone: microphone.name.clone(),
             description,
             capture,
             source,
             shared,
             waker: worker.waker(),
             links: 0,
+            listened: false,
             _heard: heard_listener,
             _given: given_listener,
         })
@@ -348,10 +384,32 @@ impl Pair {
         }
     }
 
-    /// Wakes the capture while something records from the source, and
-    /// rests it otherwise, so the microphone is only heard while it's
-    /// wanted. It goes by the source's links rather than its state: the
-    /// two streams are one node group, so a running capture would keep
+    /// A call began or stopped recording from the microphone itself.
+    fn heard(&mut self, listened: bool) {
+        if self.listened != listened {
+            self.listened = listened;
+            self.shared.listened.store(listened, Ordering::Release);
+            self.woken();
+        }
+    }
+
+    /// Wakes the capture while something records from the source or a
+    /// call from the microphone itself, and rests it otherwise, so the
+    /// microphone is only heard while it's wanted.
+    fn woken(&self) {
+        let awake = self.links > 0 || self.listened;
+        if let Err(why) = self.capture.set_active(awake) {
+            eprintln!(
+                "noise-cancelled: {}'s capture wouldn't change: {why}",
+                self.description
+            );
+        }
+        self.waker.unpark();
+    }
+
+    /// Says whether something records from the source, and wakes or rests
+    /// the capture. It goes by the source's links rather than its state:
+    /// the two streams are one node group, so a running capture would keep
     /// the source running with nothing recording it, and never rest.
     fn recorded(&self, wanted: bool) {
         let (shared, description) = (&self.shared, &self.description);
@@ -369,10 +427,7 @@ impl Pair {
                 shared.lost.load(Ordering::Relaxed)
             );
         }
-        if let Err(why) = self.capture.set_active(wanted) {
-            eprintln!("noise-cancelled: {description}'s capture wouldn't change: {why}");
-        }
-        self.waker.unpark();
+        self.woken();
     }
 }
 
@@ -434,9 +489,6 @@ fn give(stream: &pw::stream::Stream, giving: &mut Giving) {
             chunk.commit_all();
         }
     }
-    if !giving.primed && giving.cleaned.slots() >= CUSHION {
-        giving.primed = true;
-    }
     let mut written = 0;
     if let Some(bytes) = data.data() {
         let room = bytes.len() / 4;
@@ -445,17 +497,10 @@ fn give(stream: &pw::stream::Stream, giving: &mut Giving) {
         } else {
             requested.min(room)
         };
-        for out in bytes.as_chunks_mut::<4>().0.iter_mut().take(wanted) {
-            let sample = if giving.primed {
-                giving.cleaned.pop().unwrap_or_else(|_| {
-                    giving.primed = false;
-                    giving.shared.late.fetch_add(1, Ordering::Relaxed);
-                    0.0
-                })
-            } else {
-                0.0
-            };
-            *out = sample.to_le_bytes();
+        let out = bytes.as_chunks_mut::<4>().0;
+        let short = gives(&mut giving.cleaned, &mut giving.primed, &mut out[..wanted]);
+        if short > 0 {
+            giving.shared.late.fetch_add(short, Ordering::Relaxed);
         }
         written = wanted;
     }
@@ -463,6 +508,32 @@ fn give(stream: &pw::stream::Stream, giving: &mut Giving) {
     *chunk.offset_mut() = 0;
     *chunk.stride_mut() = 4;
     *chunk.size_mut() = u32::try_from(written * 4).unwrap_or(u32::MAX);
+}
+
+/// Fills one cycle's `out` with what's been cleaned, once there's a cushion
+/// of it, and silence for whatever it's short of, giving how often it ran
+/// short. The cushion is the cycle and a frame more: the worker cleans
+/// whole frames, so what's cleaned lags what's heard by up to a frame, and a
+/// cycle needn't be one. At PipeWire's usual 1024 samples, a cushion of two
+/// frames (960) ran short about every second and a half.
+fn gives(cleaned: &mut Consumer<f32>, primed: &mut bool, out: &mut [[u8; 4]]) -> u64 {
+    if !*primed && cleaned.slots() >= (out.len() + FRAME).min(RING) {
+        *primed = true;
+    }
+    let mut short = 0;
+    for slot in out {
+        let sample = if *primed {
+            cleaned.pop().unwrap_or_else(|_| {
+                *primed = false;
+                short += 1;
+                0.0
+            })
+        } else {
+            0.0
+        };
+        *slot = sample.to_le_bytes();
+    }
+    short
 }
 
 /// One channel of 32-bit floats at the denoiser's rate, the only format

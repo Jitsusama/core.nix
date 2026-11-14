@@ -7,10 +7,15 @@
 //! ```text
 //! {"id": 7, "ask": "act", "act": "leave", "network": "Lantern"}
 //! {"id": 7, "done": true}
+//! {"id": 9, "ask": "act", "act": "roam", "bssid": "6c:ae:f6:c1:84:26"}
+//! {"id": 9, "done": true}
 //! {"id": 8, "ask": "act", "act": "join", "network": "Lantern", "password": "..."}
 //! {"id": 8, "stage": "joining", "said": "connecting to Lantern\u{2026}", "done": false}
 //! {"id": 8, "stage": "online", "said": "connected to Lantern", "done": true}
 //! ```
+//!
+//! A roam to an access point wifid no longer hears looks for it once
+//! before refusing it as `NotNearby`.
 //!
 //! What wifid won't do is an error coded `refused`, its `refused` the
 //! varlink interface's name for why, as `WrongPassword`. Each stage and
@@ -18,11 +23,14 @@
 //! as the vocabulary the connection's rows are made in has them, so the
 //! shell's foot says them as they are (2026-11-13).
 
+use std::time::Duration;
+
 use serde_json::{Value, json};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::face::error;
 use crate::service::{Account, Ask, Refused, Stage, stopping};
+use crate::state::State;
 use crate::words::Words;
 
 /// How far ahead of the shell reading them a join's steps may get.
@@ -32,6 +40,8 @@ const STEPS: usize = 8;
 enum Asking {
     Once(Ask, oneshot::Receiver<Result<(), Refused>>),
     Steps(Ask, mpsc::Receiver<Result<Stage, Refused>>),
+    /// A move to the access point at that address, which may look first.
+    Roam(String),
 }
 
 /// What an `act` ask asks the main loop, or its error's code and why it
@@ -49,6 +59,9 @@ fn asking(said: &Value) -> Result<Asking, (&'static str, String)> {
             .ok_or(("bad-ask", format!("say {name} as true or false")))
     };
     let act = said.get("act").and_then(Value::as_str).unwrap_or("");
+    if act == "roam" {
+        return Ok(Asking::Roam(address(said)?));
+    }
     if act == "join" {
         let account = match said.get("account") {
             None | Some(Value::Null) => None,
@@ -95,11 +108,26 @@ fn asking(said: &Value) -> Result<Asking, (&'static str, String)> {
     Ok(Asking::Once(ask, answer))
 }
 
+/// The access point a `roam` ask names, by its address, in lower case as
+/// wpa_supplicant writes it.
+fn address(said: &Value) -> Result<String, (&'static str, String)> {
+    let bssid = said.get("bssid").and_then(Value::as_str).unwrap_or("");
+    let parts: Vec<&str> = bssid.split(':').collect();
+    let hex = |part: &&str| part.len() == 2 && part.chars().all(|digit| digit.is_ascii_hexdigit());
+    if parts.len() == 6 && parts.iter().all(hex) {
+        Ok(bssid.to_ascii_lowercase())
+    } else {
+        let why = "say the access point by its address, as 6c:ae:f6:c1:84:26";
+        Err(("bad-ask", why.to_owned()))
+    }
+}
+
 /// Does what one `act` ask says through wifid's main loop, telling the
 /// connection each answer, until it's done or refused, worded in `words`
 /// where there are any.
 pub async fn act(
     asks: mpsc::Sender<Ask>,
+    air: watch::Receiver<State>,
     id: Value,
     said: Value,
     told: mpsc::Sender<String>,
@@ -134,6 +162,12 @@ pub async fn act(
                 Err(why) => refused(&why),
             });
         }
+        Ok(Asking::Roam(bssid)) => {
+            tell(match roam(&asks, air, &bssid).await {
+                Ok(()) => json!({"id": id, "done": true}),
+                Err(why) => refused(&why),
+            });
+        }
         Ok(Asking::Steps(ask, mut steps)) => {
             if asks.send(ask).await.is_err() {
                 tell(refused(&stopping()));
@@ -158,6 +192,56 @@ pub async fn act(
                 }
             }
         }
+    }
+}
+
+/// How long a roam waits for the look it asked for: one over every
+/// channel took 5 to 6 s (2026-11-14).
+const LOOKING: Duration = Duration::from_secs(15);
+
+/// Moves the card to the access point at `bssid`, looking for it first
+/// where it isn't heard. wpa_supplicant forgets an access point 180 s
+/// after it last heard it, and with nothing looking more than hourly most
+/// of the air is forgotten by the time a roam's asked: Main Floor's own
+/// radio 5 m away was refused (2026-11-14). The look is waited for here,
+/// apart from the main loop, which hears it end.
+async fn roam(
+    asks: &mpsc::Sender<Ask>,
+    mut air: watch::Receiver<State>,
+    bssid: &str,
+) -> Result<(), Refused> {
+    let roaming = |done| Ask::Roam {
+        bssid: bssid.to_owned(),
+        done,
+    };
+    match once(asks, roaming).await {
+        Err(Refused::NotNearby) => {}
+        answered => return answered,
+    }
+    let before = air.borrow_and_update().looks();
+    once(asks, |done| Ask::Scan { done }).await?;
+    // Only whether it ended is kept, since the state it's read from is
+    // held locked for as long as it's borrowed.
+    let looked = air.wait_for(|now| now.looks() != before);
+    let ended = tokio::time::timeout(LOOKING, looked)
+        .await
+        .map(|ended| ended.is_ok());
+    match ended {
+        Ok(true) => once(asks, roaming).await,
+        Ok(false) => Err(stopping()),
+        Err(_) => Err(Refused::NotNearby),
+    }
+}
+
+/// Asks the main loop one thing and waits for its answer.
+async fn once(
+    asks: &mpsc::Sender<Ask>,
+    ask: impl FnOnce(oneshot::Sender<Result<(), Refused>>) -> Ask,
+) -> Result<(), Refused> {
+    let (done, answer) = oneshot::channel();
+    match asks.send(ask(done)).await {
+        Ok(()) => answer.await.unwrap_or_else(|_| Err(stopping())),
+        Err(_) => Err(stopping()),
     }
 }
 
@@ -207,12 +291,13 @@ mod tests {
     ) -> Vec<Value> {
         let (asks, mut taken) = mpsc::channel(1);
         let (told, mut telling) = mpsc::channel(16);
+        let (_state, watching) = watch::channel(State::default());
         tokio::spawn(async move {
             if let Some(ask) = taken.recv().await {
                 answer(ask);
             }
         });
-        act(asks, json!(7), said, told, words).await;
+        act(asks, watching, json!(7), said, told, words).await;
         let mut heard = Vec::new();
         while let Ok(line) = telling.try_recv() {
             heard.push(serde_json::from_str(&line).expect("JSON"));
@@ -264,6 +349,87 @@ mod tests {
         )
         .await;
         assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
+    }
+
+    #[tokio::test]
+    async fn roaming_asks_for_the_access_point_by_its_address() {
+        let heard = acted(
+            json!({"act": "roam", "bssid": "6C:AE:F6:C1:84:26"}),
+            |ask| {
+                let Ask::Roam { bssid, done } = ask else {
+                    panic!("asked {ask:?}, not to roam");
+                };
+                assert_eq!(
+                    bssid, "6c:ae:f6:c1:84:26",
+                    "written as wpa_supplicant writes it"
+                );
+                done.send(Ok(())).expect("answered");
+            },
+        )
+        .await;
+        assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
+    }
+
+    /// Roams to an access point the main loop hears only once it's looked
+    /// `near_after` times, if ever, each look it's asked for ending where
+    /// `ending`, and says what the connection was told and how many looks
+    /// were asked for.
+    async fn roamed(near_after: Option<u32>, ending: bool) -> (Vec<Value>, u32) {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (told, mut telling) = mpsc::channel(16);
+        let (state, watching) = watch::channel(State::default());
+        let main_loop = tokio::spawn(async move {
+            let mut asked = 0;
+            while let Some(ask) = taken.recv().await {
+                match ask {
+                    Ask::Roam { done, .. } => {
+                        let near = near_after.is_some_and(|after| asked >= after);
+                        let answer = if near {
+                            Ok(())
+                        } else {
+                            Err(Refused::NotNearby)
+                        };
+                        done.send(answer).expect("answered");
+                    }
+                    Ask::Scan { done } => {
+                        asked += 1;
+                        done.send(Ok(())).expect("answered");
+                        if ending {
+                            state.send_modify(State::look_ended);
+                        }
+                    }
+                    other => panic!("asked {other:?}, not to roam or look"),
+                }
+            }
+            asked
+        });
+        let asked = json!({"act": "roam", "bssid": "6c:ae:f6:c1:84:26"});
+        act(asks, watching, json!(7), asked, told, None).await;
+        let looks = main_loop.await.expect("the main loop answered");
+        let mut heard = Vec::new();
+        while let Ok(line) = telling.try_recv() {
+            heard.push(serde_json::from_str(&line).expect("JSON"));
+        }
+        (heard, looks)
+    }
+
+    #[tokio::test]
+    async fn roaming_to_an_access_point_forgotten_looks_for_it_first() {
+        let (heard, looks) = roamed(Some(1), true).await;
+        assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
+        assert_eq!(looks, 1, "one look asked for before roaming again");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_access_point_unheard_after_one_look_is_refused() {
+        for ending in [true, false] {
+            let (heard, looks) = roamed(None, ending).await;
+            assert_eq!(
+                heard[0]["error"]["refused"], "NotNearby",
+                "the look ending: {ending}"
+            );
+            assert_eq!(looks, 1, "one look asked for, the look ending: {ending}");
+        }
     }
 
     #[tokio::test]
@@ -420,5 +586,9 @@ mod tests {
         assert_eq!(heard[0]["error"]["code"], "bad-ask");
         let heard = acted(json!({"act": "radio"}), drop).await;
         assert_eq!(heard[0]["error"]["code"], "bad-ask");
+        for bssid in [json!(null), json!("next door"), json!("6c:ae:f6:c1:84")] {
+            let heard = acted(json!({"act": "roam", "bssid": bssid}), drop).await;
+            assert_eq!(heard[0]["error"]["code"], "bad-ask", "roaming to {bssid}");
+        }
     }
 }

@@ -9,6 +9,29 @@
 # It hears logind's word on the lid rather than the lid's switch, since
 # logind's is the one the hold changes, and asks again at each thing logind
 # says, since a change of one of its properties may come without its value.
+# Its help takes the shape every command of ours does (docs/commands.md), by
+# hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+lid-held  lock as the lid shuts while Keep Awake holds it
+
+  Runs for as long as Keep Awake holds the lid, and locks
+  the screen each time the lid shuts away from a desk.
+  Should logind stop answering, it keeps the lid held
+  and only stops locking.
+
+EXAMPLES
+  systemd-inhibit --what=handle-lid-switch lid-held
+
+EXIT
+  none: it runs until it's stopped
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 lid_shut() {
   local said

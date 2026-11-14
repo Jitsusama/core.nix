@@ -6,7 +6,30 @@
 # application and a past install's entries, which systemd-pcrlock can't
 # account for, so PCR 4 left the disk's policy. Our loader gets an entry of
 # its own on the ESP, first in BootOrder, and nothing is written when it
-# already is.
+# already is. Its help takes the shape every command of ours does
+# (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+loader-first-in-boot-order  put our loader first to boot
+
+  Gives the loader on the ESP a boot entry of its own,
+  active and first in BootOrder, so nothing the firmware
+  made boots ahead of it. It writes nothing when it
+  already is. Every boot runs it.
+
+EXAMPLES
+  loader-first-in-boot-order
+
+EXIT
+  0   first already, or made so
+  else efibootmgr's own
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 # The ESP's partition, by the identity the firmware's device path gives it.
 source=$(findmnt --noheadings --output SOURCE --target "$ESP")

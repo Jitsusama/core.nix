@@ -5,12 +5,16 @@
 // screen draws while it moves and none at rest. What it plays, and when, is the
 // scene's (MarginCat.qml), which every screen's cat shares, so a stroll is
 // taken by one screen alone.
+// Long because its place, walks, moves and frames all hang on one surface's
+// state as niri says the layout; its ways and their logic are already the
+// .js files beside it, tested in Qt's engine.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
 import "MarginCat.js" as MarginCat
+import "MarginCatFloats.js" as Floats
 import "MarginCatPaths.js" as Paths
 import "MarginCatPlays.js" as Plays
 import "MarginCatTiles.js" as Tiles
@@ -71,6 +75,20 @@ PanelWindow {
     // work it out again inside its own change, a binding loop.
     readonly property var there: column === null ? null
         : strolled ?? seat(column)
+    // Whether the workspace this screen shows has no windows, where it
+    // has no seat but the screen's floor: it falls there and sits, and
+    // climbs back by an edge as windows come (VKCF3Z, 2026-11-14,
+    // e5a3ee44). Never in the overview or a shared screen, where it
+    // goes as ever.
+    readonly property bool emptied: {
+        void Niri.revision;
+        return space !== null && !window.scene.shared && !Niri.overview
+            && Tiles.empty(Niri.windows, space.id);
+    }
+    onEmptiedChanged: {
+        if (emptied)
+            follow();
+    }
     // A stroll's: the seat it wanders to or sits at, or null for
     // its column; whether the walk under way is a scene's, which
     // hands the scene its next beat as it sits; and whether the next
@@ -187,8 +205,12 @@ PanelWindow {
             return;
         }
         if (there === null) {
-            if (place !== null)
+            if (emptied) {
+                leaving.stop();
+                floors();
+            } else if (place !== null) {
                 leaving.restart();
+            }
             return;
         }
         leaving.stop();
@@ -197,11 +219,20 @@ PanelWindow {
             roams = null;
             resting.stop();
             walkFrom(hurried, saw);
+        } else if (place !== null && going === null && under?.floats && sat !== wanted
+            && Niri.windows[sat] === undefined) {
+            // The floating window it sat on closed under it, which niri
+            // shrinks away at once: it gets off now, never waiting for
+            // the keys to rest (VKCF3Z 26038726).
+            resting.stop();
+            walkFrom(true, saw);
         } else if (place === null || (going === null && wanted === sat)) {
             resting.stop();
+            // A floating window moved up or down carries it, as it's
+            // dragged; only one grown or shrunk across walks it.
             const reshaped = place !== null && wanted === sat && under !== null
                 && column !== null && (Math.abs(column.width - under.width) > 0.5
-                    || Math.abs(column.top - under.top) > 0.5);
+                    || (!column.floats && Math.abs(column.top - under.top) > 0.5));
             sat = wanted;
             under = column;
             if (reshaped)
@@ -227,10 +258,35 @@ PanelWindow {
     // 450 ms, so no two walks begin alike; riding what niri moved of
     // the windows it `saw` (MarginCatFalls.js's rides).
     function walkFrom(hurried: bool, saw: var): void {
-        roams = null;
-        if (place === null || there === null)
+        walkTo(hurried, saw, there);
+    }
+
+    // Its workspace emptied, it falls from where it is to the floor
+    // below and sits there, crossing only the backdrop; with nowhere
+    // to fall from, the shell just started, it's there at once, in the
+    // middle of the floor. Said again as niri says the layout, a fall
+    // under way or done goes on as it is. It rides nothing: the windows
+    // it stood on are gone, not moved.
+    function floors(): void {
+        const floor = modelData.height - size;
+        if (place === null) {
+            place = { x: (modelData.width - size) / 2, y: floor };
             return;
-        const plan = Paths.walk({ x: place.x, y: place.y }, { x: there.x, y: there.y }, {
+        }
+        if (moving !== null || (going !== null && Math.abs(going.to.y - floor) < 0.5)
+            || (going === null && Math.abs(place.y - floor) < 0.5))
+            return;
+        resting.stop();
+        endStroll();
+        walkTo(true, null, { x: place.x, y: floor });
+    }
+
+    function walkTo(hurried: bool, saw: var, to: var): void {
+        roams = null;
+        if (place === null || to === null)
+            return;
+        const tiles = tilesOf(space?.id);
+        const plan = Paths.walk({ x: place.x, y: place.y }, { x: to.x, y: to.y }, {
             cell,
             ratio,
             wide: size,
@@ -242,8 +298,10 @@ PanelWindow {
             hurried,
             facing: stepped?.facing ?? 0,
             height: modelData.height,
-            cols: Paths.columns(tilesOf(space?.id), 0),
+            cols: Paths.columns(tiles, 0),
             before: saw ? Paths.columns(saw, 0) : null,
+            floats: Floats.of(tiles, 0),
+            floated: saw ? Floats.of(saw, 0) : [],
             spring: Theme.motion.spring,
             ahead: MarginCat.behind(frameMs, "resize"),
             frame: frameMs,
@@ -254,7 +312,7 @@ PanelWindow {
         if (plan === null) {
             halt();
             sat = wanted;
-            place = there;
+            place = to;
             sits();
             return;
         }
@@ -291,8 +349,10 @@ PanelWindow {
     }
 
     // A move's plan from `from` to its seat `to` over the new workspace's
-    // windows, or only its hold through the slide where `to` is null.
+    // windows, its floating ones too, or only its hold through the slide
+    // where `to` is null.
     function plan(way: int, from: var, to: var): var {
+        const tiles = tilesOf(space?.id);
         return Paths.moves(from, to, {
             way,
             wide: size,
@@ -307,7 +367,8 @@ PanelWindow {
             spring: Theme.motion.spring,
             ahead: MarginCat.behind(frameMs, "slide"),
             frame: frameMs,
-            now: tilesOf(space?.id),
+            now: tiles,
+            floats: Floats.of(tiles, 0),
             marks: marksLit
         });
     }
@@ -354,7 +415,11 @@ PanelWindow {
         turn = 0;
         halt();
         sat = wanted;
-        place = there;
+        // Its hold done over an empty workspace, it falls to the floor.
+        if (there === null && emptied && place !== null)
+            floors();
+        else
+            place = there;
     }
 
     onSpaceChanged: {
@@ -548,7 +613,7 @@ PanelWindow {
         id: leaving
         interval: MarginCat.LEAVES
         onTriggered: {
-            if (window.there !== null)
+            if (window.there !== null || window.emptied)
                 return;
             window.halt();
             window.endStroll();
@@ -592,8 +657,8 @@ PanelWindow {
         id: mover
         onTriggered: {
             const now = Paths.frame(window.moving, mover.elapsedTime * 1000);
-            // A hold with no column at its end leaves it nowhere, as
-            // an empty workspace has no seat for it.
+            // A hold with no column at its end arrives at once: on an
+            // empty workspace it falls to the floor (arrive).
             if (now.done
                 || (now.beat !== window.moving.beats[0].name && window.movingTo === null)) {
                 window.arrive();

@@ -152,6 +152,30 @@ function sorted(rows, order) {
         .map(each => each.row);
 }
 
+// Lists each already in an order, as their daemons serve them, as one in
+// it, sorting none: each step takes the head that comes first, an earlier
+// list's where two are alike. History joins the looks and the notices so,
+// rather than sorting every row of both again at each change (2026-11-14).
+function merged(lists, order) {
+    const from = (lists ?? []).filter(list => list.length > 0);
+    const heads = from.map(() => 0);
+    const out = [];
+    for (;;) {
+        let next = -1;
+        for (let at = 0; at < from.length; at += 1) {
+            if (heads[at] < from[at].length && (next < 0
+                || order(from[at][heads[at]], from[next][heads[next]]) < 0)) {
+                next = at;
+            }
+        }
+        if (next < 0) {
+            return out;
+        }
+        out.push(from[next][heads[next]]);
+        heads[next] += 1;
+    }
+}
+
 // Where rows listed in this order first break it: the place of the first
 // row that should come after the next one, or -1 where none does.
 function broken(rows, order) {

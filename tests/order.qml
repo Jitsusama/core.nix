@@ -116,6 +116,13 @@ QtObject {
             "HDMI 2 HDMI 10 headphones Speakers");
 
         const newest = Order.stream(row => row.at);
+        const looks = [{ name: "l9", at: 9 }, { name: "l5", at: 5 }, { name: "l2", at: 2 }];
+        const notices = [{ name: "n7", at: 7 }, { name: "n5", at: 5 }, { name: "n1", at: 1 }];
+        check(failures, "merged: two lists in order as one in it",
+            names(Order.merged([looks, notices], newest)), "l9 n7 l5 n5 l2 n1");
+        check(failures, "merged: an empty list, or none, adds nothing",
+            names(Order.merged([[], notices, []], newest)), "n7 n5 n1");
+        check(failures, "merged: no lists, no rows", names(Order.merged([], newest)), "");
         check(failures, "broken: nothing where the rows keep it",
             Order.broken([{ at: 3 }, { at: 2 }, { at: 2 }], newest), -1);
         check(failures, "broken: the first row out of its place",

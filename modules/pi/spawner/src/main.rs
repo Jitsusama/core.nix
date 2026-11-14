@@ -13,7 +13,15 @@
 //! process group of its own, as pi's detached commands do, so pi stops a
 //! command and all it started by signalling the group itself. When stdin
 //! ends pi has gone, and every group still running is killed, as pi kills
-//! its detached commands when it exits.
+//! its detached commands when it exits, but for a command pi keeps.
+//!
+//! A kept command is one whose variables name its files on disk
+//! (`KEEP_VARIABLE`): the harness runs it through a stub that writes its
+//! output and exit status there, so another process can say how it ended
+//! once pi has gone. A shared pi host that stops to restart hands such
+//! commands to the next host, so they are left running when stdin ends.
+//! `pi-spawner keeps` says this spawner spares them; one from before
+//! refuses the word, so the harness keeps no command it starts.
 //!
 //! Its help and its refusal of words it doesn't take are the terminal
 //! kit's (docs/commands.md); stdout is the protocol's alone, written
@@ -29,7 +37,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 
-use terminal_kit::{Exit, Failure, Help};
+use terminal_kit::Help;
 
 /// A command's process id, sent once it has started: four bytes.
 const STARTED: u8 = b'p';
@@ -46,9 +54,15 @@ const FAILED: u8 = b'e';
 /// How much of a command's output one frame carries at most.
 const CHUNK: usize = 64 * 1024;
 
+/// The variable naming a kept command's files, as the agent harness's
+/// shell-workflow sets it (`KEEP_VARIABLE` in its command-line.ts).
+const KEEP_VARIABLE: &[u8] = b"PI_BASH_KEEP";
+
 /// A command still running, as stdin's end and a drop need it.
 struct Running {
     pid: i32,
+    /// Kept on disk, so left running when pi goes.
+    kept: bool,
     /// Set once pi stops listening, so its output goes unsent.
     dropped: Arc<AtomicBool>,
 }
@@ -76,13 +90,18 @@ enum Request {
 fn help() -> Help {
     Help::new("pi-spawner", "starts pi's shell commands for it")
         .example("pi-spawner", "takes framed requests on stdin until pi goes")
+        .subcommand(
+            Help::new("keeps", "says it leaves kept commands running when pi goes")
+                .example("pi-spawner keeps", "keeps, where it does"),
+        )
 }
 
 fn main() -> std::process::ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        if let Some(word) = context.args.first() {
-            return Err(Failure::new(Exit::Usage, format!("it takes no {word}"))
-                .try_this("pi-spawner --help"));
+        // The kit refuses any other word, since keeps is its only one.
+        if context.args.first().is_some_and(|word| word == "keeps") {
+            println!("keeps");
+            return Ok(());
         }
         serve();
         Ok(())
@@ -125,8 +144,9 @@ fn serve() {
             }
         }
     }
-    // pi has gone, so nothing it started outlives it.
-    for one in lock(&shared.running).values() {
+    // pi has gone, so nothing it started outlives it but what it keeps,
+    // which the next pi says the end of.
+    for one in lock(&shared.running).values().filter(|one| !one.kept) {
         // SAFETY: kill only sends a signal; a group already gone answers
         // an error, which leaves nothing to do.
         unsafe {
@@ -222,11 +242,13 @@ fn run(
     };
     let pid = child.id();
     let dropped = Arc::new(AtomicBool::new(false));
+    let kept = env.iter().any(|(name, _)| name == KEEP_VARIABLE);
     if let Ok(group) = i32::try_from(pid) {
         lock(&shared.running).insert(
             id,
             Running {
                 pid: group,
+                kept,
                 dropped: Arc::clone(&dropped),
             },
         );

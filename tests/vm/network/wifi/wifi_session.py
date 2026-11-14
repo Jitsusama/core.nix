@@ -138,6 +138,16 @@ class Wifid:
         stages = [reply["stage"] for reply in replies if "stage" in reply]
         return status, stages, said
 
+    def acting(self, act: Json) -> Json:
+        """Ask an act on the launcher's rows socket as an account would, and read its answer."""
+        asked = json.dumps({"id": 1, "ask": "act", **act})
+        # wifid answers an act it was asked before the account hung up its side.
+        said = self.machine.succeed(
+            f"echo '{asked}' | runuser -u guest -- socat -t 30 - UNIX-CONNECT:/run/wifid/rows"
+        )
+        answer: Json = json.loads(said.splitlines()[0])
+        return answer
+
     def on_network(self, name: str) -> bool:
         """Say whether wifid tells the shell a card is on the network."""
         return any(card["network"] == name for card in self.ask("Describe")["cards"])

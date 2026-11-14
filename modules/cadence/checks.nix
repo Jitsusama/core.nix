@@ -47,4 +47,12 @@ onLinux {
   cadence-asks-when-a-target-slips = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in cadence, its tests included.
   cadence-passes-clippy = passesClippy "cadence-passes-clippy" (pkgs.callPackage ./package.nix { });
+  # cadence-spec's tests run as it builds: a watch of Spec is served the
+  # rows a stand-in cadence prints, and one that fails leaves Spec with
+  # none and the daemon answering.
+  cadence-spec-serves-the-axes = pkgs.callPackage ./spec/package.nix { };
+  # clippy finds nothing in cadence-spec, its tests included.
+  cadence-spec-passes-clippy = passesClippy "cadence-spec-passes-clippy" (
+    pkgs.callPackage ./spec/package.nix { }
+  );
 }

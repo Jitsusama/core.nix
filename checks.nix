@@ -682,11 +682,13 @@ gather {
     ./modules/link-keys/checks.nix
     ./modules/linux-builder/checks.nix
     ./modules/linux-id/checks.nix
+    ./modules/local-sites/checks.nix
     ./modules/litra/checks.nix
     ./modules/machine/checks.nix
     ./modules/margin-cat/checks.nix
     ./modules/meaning/checks.nix
     ./modules/memory-modules/checks.nix
+    ./modules/merge-net/checks.nix
     ./modules/mic-mute-light/checks.nix
     ./modules/mpv/checks.nix
     ./modules/mycelium/checks.nix

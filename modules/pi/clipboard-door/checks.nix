@@ -18,8 +18,9 @@ onLinux {
   # that asks, on a socket in a folder only the account can reach, with
   # its journal lines tagged as its own; its shims stand in a folder of
   # their own the fence puts on PATH; and the sandboxed display runs with
-  # the graphical session at %t/pi-fence/wayland, in a folder only the
-  # account reaches that outlives a restart. A Mac gets none.
+  # the graphical session at %t/pi-fence-display/wayland, in a folder of
+  # its own, never the one the harness keeps the fence's copies in, that
+  # only the account reaches and that outlives a restart. A Mac gets none.
   pi-clipboard-door-reaches-only-the-fence =
     let
       home = account workstation;
@@ -30,7 +31,7 @@ onLinux {
       shims = home.home.file.".local/share/pi-fence/bin".source;
     in
     holds "pi-clipboard-door-reaches-only-the-fence"
-      "pi's clipboard door listens elsewhere than %t/pi-clipboard/door.sock or to more than the account, isn't started by its socket or tagged in the journal, its shims aren't linked from ~/.local/share/pi-fence/bin, the sandboxed display isn't made at %t/pi-fence/wayland with the graphical session in a folder only the account reaches and that outlives a restart, or a Mac gets any of them."
+      "pi's clipboard door listens elsewhere than %t/pi-clipboard/door.sock or to more than the account, isn't started by its socket or tagged in the journal, its shims aren't linked from ~/.local/share/pi-fence/bin, the sandboxed display isn't made at %t/pi-fence-display/wayland with the graphical session in a folder of its own only the account reaches and that outlives a restart, or a Mac gets any of them."
       (
         lib.head (lib.toList socket.ListenStream) == "%t/pi-clipboard/door.sock"
         && lib.head (lib.toList socket.SocketMode) == "0600"
@@ -39,10 +40,10 @@ onLinux {
         && lib.hasSuffix "/bin/pi-clipboard-door" (lib.head (lib.toList door.Service.ExecStart))
         && door.Service.SyslogIdentifier == "pi-clipboard-door"
         && lib.hasSuffix "/share/pi-fence/bin" "${shims}"
-        && lib.hasInfix "/bin/pi-fence-display --socket %t/pi-fence/wayland" (
+        && lib.hasInfix "/bin/pi-fence-display --socket %t/pi-fence-display/wayland" (
           lib.head (lib.toList display.Service.ExecStart)
         )
-        && display.Service.RuntimeDirectory == "pi-fence"
+        && display.Service.RuntimeDirectory == "pi-fence-display"
         && display.Service.RuntimeDirectoryMode == "0700"
         && display.Service.RuntimeDirectoryPreserve == "yes"
         && display.Install.WantedBy == [ "graphical-session.target" ]

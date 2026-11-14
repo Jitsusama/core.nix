@@ -44,6 +44,7 @@ let
     google-sheets = "Sheets, Google's spreadsheets, a page in the browser";
     google-slides = "Slides, Google's presentations, a page in the browser";
     google-drive = "Drive, Google's files, a page in the browser";
+    github = "GitHub, where code is kept and reviewed, a page in the browser";
     slack = "Slack, the chat, in a window of its own";
     onepassword = "1Password, the password manager, in a window of its own";
     gimp = "GIMP, the picture editor, in a window of its own";
@@ -69,6 +70,7 @@ let
     "google-sheets"
     "google-slides"
     "google-drive"
+    "github"
     "slack"
     "onepassword"
     "gimp"
@@ -89,13 +91,15 @@ let
     google-sheets = "chrome";
     google-slides = "chrome";
     google-drive = "chrome";
+    # GitHub is a page too.
+    github = "chrome";
   };
   # Two layers below the desktop sit side by side, and so never hear a key
   # at the same time, unless one is inside the other's window: Neovim, pi and
-  # btop in one terminal, Google's programs in the browser, the terminal, the
-  # picture viewer, the markdown reader, the document viewer, the player, the
-  # browser, Slack, 1Password, GIMP, Inkscape and Spotify in windows of their
-  # own.
+  # btop in one terminal, Google's programs and GitHub in the browser, the
+  # terminal, the picture viewer, the markdown reader, the document viewer,
+  # the player, the browser, Slack, 1Password, GIMP, Inkscape and Spotify in
+  # windows of their own.
   beside =
     upper: lower:
     upper != "desktop"

@@ -341,12 +341,17 @@ function openingParts(parts) {
 // the launcher about 7 s after his chord, when the thread came free (Joel,
 // 2026-11-10: "It takes 7 seconds for me to see the launcher window").
 // `stall` is the longest gap between ticks, begun at `stallAt`, and
-// `usable` is -1 until then.
-function feltBegun(now) {
-    return { last: now, calm: now, stall: 0, stallAt: now, usable: -1 };
+// `usable` is -1 until then. `collected` is the collector's own count of
+// its milliseconds at each tick (Heap.collected), so `stallCollected` is
+// how much of the longest stall was the collector's: profiles of Joel's
+// openings found 24 to 64 ms of collecting in each, which the stall's
+// named work didn't say (H6EDLC, 2026-11-14).
+function feltBegun(now, collected = 0) {
+    return { last: now, calm: now, stall: 0, stallAt: now, usable: -1, collected,
+        stallCollected: 0 };
 }
 
-function feltTicked(felt, now, pace) {
+function feltTicked(felt, now, pace, collected = felt.collected) {
     if (felt.usable >= 0) {
         return felt;
     }
@@ -355,7 +360,19 @@ function feltTicked(felt, now, pace) {
     const longer = gap > felt.stall;
     return { last: now, calm, stall: longer ? gap : felt.stall,
         stallAt: longer ? felt.last : felt.stallAt,
-        usable: now - calm >= pace.calmFor ? calm : -1 };
+        usable: now - calm >= pace.calmFor ? calm : -1, collected,
+        stallCollected: longer ? collected - felt.collected : felt.stallCollected };
+}
+
+// What the collector took of an opening, in its longest stall and in all,
+// said after the stall's parts, or nothing when it took under a
+// millisecond.
+function collectorSaid(inStall, inAll) {
+    const all = Math.round(inAll);
+    if (all < 1) {
+        return "";
+    }
+    return `; the collector ${Math.round(inStall)} ms of the stall, ${all} of the opening`;
 }
 
 // Each frame's own work while an opening is felt, as spans for

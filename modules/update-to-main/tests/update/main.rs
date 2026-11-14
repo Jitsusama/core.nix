@@ -109,7 +109,8 @@ impl World {
         // away or built here already, and while collected is there, every
         // dry run after the first lists a big piece too, as one collected
         // between them would be, which fails on the builders while
-        // collected-fails is there. A batch built here is
+        // collected-fails is there. While lighter is there, a second light
+        // piece is needed too. A batch built here is
         // written in batched, and the pieces linked to be kept in kept, with
         // the outputs of the secret piece the wrapper is built from. A system's
         // build starts a call while call-starts is there. Each input
@@ -126,7 +127,7 @@ impl World {
                  case \" $* \" in\n\
                  *' --dry-run '*) echo 'these derivations will be built:' >&2; \
                  for p in a-light b-heavy c-wrapper t-secret-tool \
-                 $([ -e {big} ] && echo e-big d-modules) \
+                 $([ -e {big} ] && echo e-big d-modules) $([ -e {lighter} ] && echo a-lighter) \
                  $([ -e {collected} ] && [ -e {listed} ] && echo g-collected); do \
                  cat {away} {here} 2>/dev/null | grep -q \"/nix/store/$p.drv\" \
                  || echo \"  /nix/store/$p.drv\" >&2; done; touch {listed}; exit 0;;\n\
@@ -137,6 +138,8 @@ impl World {
                  collected=; [ -e {collected} ] && collected=', \"g-collected.drv\": \
                  {{\"name\": \"linux-7\", \"env\": {{\"requiredSystemFeatures\": \
                  \"big-parallel\"}}}}'\n\
+                 lighter=; [ -e {lighter} ] && lighter=', \"a-lighter.drv\": \
+                 {{\"env\": {{\"preferLocalBuild\": \"1\"}}}}'\n\
                  big=; [ -e {big} ] && big=', \"e-big.drv\": {{\"name\": \"big-1\", \
                  \"env\": {{\"requiredSystemFeatures\": \"big-parallel\"}}}}, \
                  \"d-modules.drv\": {{\"name\": \"modules\", \"env\": {{}}, \
@@ -148,10 +151,11 @@ impl World {
                  \"c-wrapper.drv\": {{\"name\": \"wrapper\", \"env\": {{}}, \
                  \"inputs\": {{\"drvs\": {{\"s-secret.drv\": {{}}}}}}}}, \
                  \"t-secret-tool.drv\": {{\"name\": \"secret-tool-2\", \"env\": {{}}}}\
-                 '\"$secret$big$collected\"'}}}}'; exit 0;;\n\
+                 '\"$secret$big$collected$lighter\"'}}}}'; exit 0;;\n\
                  *'/evaluated/drv '*|*'/evaluated/built '*) echo \"$*\" >> {kept}; exit 0;;\n\
                  *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
-                 *' build --no-link -L '*) echo \"$*\" >> {batched}; exit 0;;\n\
+                 *' build --no-link -L '*|*' build --no-link --builders  -L '*) \
+                 echo \"$*\" >> {batched}; exit 0;;\n\
                  *' --builders @/etc/kept-builders '*) if [ -e {no_kept_builder} ]; then \
                  echo 'no kept builder answers' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
                  *' --max-jobs 0 '*) case \" $* \" in *g-collected*)\n\
@@ -196,6 +200,7 @@ impl World {
                 drops_once = root.join("drops-once").display(),
                 no_small_builder = root.join("no-small-builder").display(),
                 big = root.join("big").display(),
+                lighter = root.join("lighter").display(),
                 collected = root.join("collected").display(),
                 collected_fails = root.join("collected-fails").display(),
                 listed = root.join("listed").display(),
@@ -2316,6 +2321,53 @@ fn building_elsewhere_sends_only_the_heavy_pieces_away() {
     let last = world.read("last-build");
     assert!(last.contains("--builders  "), "{last}");
     assert_eq!(world.builds(), 1);
+}
+
+#[test]
+fn building_elsewhere_in_batches_sends_a_batch_away_at_a_time_then_builds_the_rest_so() {
+    let mut world = World::new();
+    world.config.elsewhere = true;
+    in_batches(&mut world, 1, 600_000);
+    fs::write(world.root.join("lighter"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    let away = world.read("away");
+    let sent: Vec<&str> = away.lines().collect();
+    assert_eq!(
+        sent.len(),
+        3,
+        "three heavy pieces in batches of one: {away}"
+    );
+    for (line, piece) in sent.iter().zip(["b-heavy", "c-wrapper", "t-secret-tool"]) {
+        assert_eq!(line.matches(".drv^*").count(), 1, "{away}");
+        assert!(
+            line.contains(&format!("/nix/store/{piece}.drv^*")),
+            "{away}"
+        );
+    }
+    let batched = world.read("batched");
+    let built: Vec<&str> = batched.lines().collect();
+    assert_eq!(
+        built.len(),
+        2,
+        "two light pieces in batches of one: {batched}"
+    );
+    for (line, piece) in built.iter().zip(["a-light", "a-lighter"]) {
+        assert!(
+            line.contains(&format!("/nix/store/{piece}.drv^*")),
+            "{batched}"
+        );
+        assert!(
+            line.contains("--builders  "),
+            "a light piece left a builder: {batched}"
+        );
+    }
+    assert_eq!(
+        world.builds(),
+        1,
+        "the system is built once the batches are"
+    );
 }
 
 #[test]

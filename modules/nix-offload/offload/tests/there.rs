@@ -7,6 +7,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Duration;
 
+/// Where a run says it wants `dir`'s lender to lend, as `there::wants_of`
+/// says: beside the folder, by its name.
+fn wants_of(dir: &Path) -> PathBuf {
+    dir.with_file_name("offload-wants")
+        .join(dir.file_name().expect("a lender's folder has a name"))
+}
+
 /// ssh as the builder answers: it writes its verbose log where `-E` says,
 /// records every word it was given and its last two (the host and the
 /// command) apart, each command after the last in `ssh-commands` and each
@@ -2319,8 +2326,7 @@ fn a_tree_is_built_at_the_commit_it_was_at_when_asked_however_long_it_waits() {
         .spawn()
         .unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    let asking =
-        || fs::read_dir(offload.join("wanted")).is_ok_and(|mut wanted| wanted.next().is_some());
+    let asking = || fs::read_dir(wants_of(offload)).is_ok_and(|mut wanted| wanted.next().is_some());
     while !asking() {
         assert!(
             std::time::Instant::now() < deadline,
@@ -2771,6 +2777,35 @@ fn a_changed_run_gives_the_other_lent_builder_the_checks_its_base_kept() {
     );
     let asked = changed.asked();
     assert_eq!(asked.len(), 1, "the copy was sent as a run: {asked:?}");
+}
+
+#[test]
+fn what_each_check_read_alone_is_given_where_no_vm_tests_reads_are_kept() {
+    // Keeps trace each VM test alone and keep no joint trace of them, and
+    // on 14 November neither builder held the other's alone records, so 15
+    // of 38 keeps carried from an older record than the newest.
+    let changed = Changed::new();
+    let more = changed.second();
+    fs::write(changed.bin.join("kept-nix-offload-more"), &changed.head).unwrap();
+    fs::write(
+        changed.bin.join("kept-checks-nix-offload-more"),
+        "{\"a\":\"x\"}",
+    )
+    .unwrap();
+    fs::write(
+        changed.bin.join("kept-alone-nix-offload-more"),
+        "{\"checks\":{}}",
+    )
+    .unwrap();
+    let (ran, _) = changed.run_beside(&["--name-only", "--system", "x86_64-linux"], &more);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        fs::read_to_string(changed.bin.join("took-kept-nix-offload"))
+            .ok()
+            .as_deref(),
+        Some("{\"a\":\"x\"}{\"checks\":{}}"),
+        "the other builder wasn't given what each check read alone, after the checks"
+    );
 }
 
 /// `changed`'s main moved on from its kept head in a folder of its own,
@@ -4468,7 +4503,7 @@ fn vm_tests_go_to_a_warm_vm_builder_while_one_stands() {
     assert_eq!(tests_on(&built, "nix-offload-vm-more"), 0, "{built:?}");
     assert!(said.contains("so VM tests go to the warm one"), "{said}");
     assert!(
-        !rig.third.join("wanted").exists(),
+        !wants_of(&rig.third).exists(),
         "the warming one is room enough to come: {said}"
     );
 
@@ -4476,7 +4511,7 @@ fn vm_tests_go_to_a_warm_vm_builder_while_one_stands() {
     assert_eq!(tests_on(&built, "nix-offload-vm"), 14, "{built:?} {said}");
     assert!(said.contains("and 1 more is asked for"), "{said}");
     assert_eq!(
-        fs::read_dir(rig.third.join("wanted")).unwrap().count(),
+        fs::read_dir(wants_of(&rig.third)).unwrap().count(),
         1,
         "the third is asked for while the run waits: {said}"
     );

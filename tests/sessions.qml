@@ -193,6 +193,14 @@ ShellRoot {
         const live = find("LIVE01");
         expect("a kitty with one window has it", live.window && live.window.id === 10,
             JSON.stringify(live.window));
+        // The bell rings for what the daemon says rings, known as it says,
+        // whatever each one's presence holds.
+        expect("only a want the daemon says rings stops its session",
+            Sessions.stopped.map(session => session.address).join(" ") === "LIVE01",
+            Sessions.stopped.map(session => session.address).join(" "));
+        expect("known as the daemon knows it, and rung for, being new",
+            Sessions.key(live) === "LIVE01 question-1" && Sessions.ringing === live,
+            `${Sessions.key(live)} ${Sessions.ringing?.address}`);
         expect("its label shown, cut at its folder",
             live.title === "Live One" && live.folder === "core.nix", `${live.title} ${live.folder}`);
         expect("its quest's title and its folder as its record says them, not its label",
@@ -351,10 +359,47 @@ ShellRoot {
             Sessions.keepPlace("s-DOZER4") === "kept"
             && JSON.stringify(Sessions.keptPlaces["s-DOZER4"] ?? null).startsWith(
                 '{"workspace":8,"column":3,'), JSON.stringify(Sessions.keptPlaces));
+        // A sleep keeps its place marked so, for its window to open there
+        // again as it wakes.
+        expect("a sleeper's window kept as it goes to sleep",
+            Sessions.keepPlaceAsleep("s-NAPPER") === "kept"
+            && Sessions.keptPlaces["s-NAPPER"]?.slept === true,
+            JSON.stringify(Sessions.keptPlaces));
+        sleepsHosted();
         Sessions.keepPlaces({});
         wokeAt = Niri.spawns.length;
         Sessions.wake(napper);
         Sessions.talk("napper", "what now?");
+    }
+
+    // One asleep in pi's host with no window wakes as it's viewed, which the
+    // node's wake can't do: Wake views it where its window was as it went
+    // to sleep, asking the node nothing, and lets that place go.
+    function sleepsHosted() {
+        const sleeper = {
+            address: "SLEEPER", here: true, window: null, kitty: null, held: null,
+            attach: ["mycelium", "--realm", "harbour", "attach", "--host", "harbour-attended",
+                "--session", "s-sleeper"],
+            presence: { hosted: { host: "harbour-attended", conversation: "s-sleeper" },
+                session: "s-sleeper", state: "parked", addresses: ["SLEEPER"] }
+        };
+        Sessions.keepPlaces({ "s-sleeper": { workspace: 5, column: 2, at: 0, slept: true,
+            asleep: true } });
+        const before = Niri.spawns.length;
+        const steered = steers.length;
+        Sessions.wake(sleeper);
+        const viewed = asked(Niri.spawns.slice(before).join(" "));
+        expect("Wake views one asleep in pi's host, in a window named for it",
+            viewed !== null && viewed.classed === "pi-hosted.s-sleeper",
+            Niri.spawns.slice(before).join(" | "));
+        const where = JSON.stringify(Niri.acted);
+        expect("where its window was as it went to sleep", where
+            === '{"OpenNextWindowOn":{"app_id":"pi-hosted.s-sleeper","reference":{"Id":5},'
+            + '"column":2}}', where);
+        expect("asking the node nothing", steers.length === steered,
+            JSON.stringify(steers.slice(steered)));
+        expect("and letting its place go", Sessions.keptPlaces["s-sleeper"] === undefined,
+            JSON.stringify(Sessions.keptPlaces));
     }
 
     // Whether the node was asked to wake the one parked, and then to steer
@@ -464,13 +509,14 @@ ShellRoot {
             return;
         // Each window is opened with an app id of its own, which its process
         // is told, so the node's record of what it holds names it as niri
-        // lists it; a hosted one's viewer, by its session's id.
+        // lists it; a hosted one's viewer, a sleeper's too, by its session's
+        // id.
         const asks = Niri.spawns.map(command => asked(command)).filter(one => one !== null);
         const named = asks.map(one => [one.classed]);
         const socket = `${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.sock`;
         expect("each window is asked of the sessions' socket with an app id of its own",
             asks.every(one => one.socket === socket
-                && /^pi-((session|spawned)\.\d+|hosted\.s-hosted)$/.test(one.classed))
+                && /^pi-((session|spawned)\.\d+|hosted\.s-(hosted|sleeper))$/.test(one.classed))
             && new Set(named.map(([told]) => told)).size === named.length,
             JSON.stringify(asks.map(one => [one.socket, one.classed])));
         // What the script does with them is its own case's
@@ -809,7 +855,14 @@ ShellRoot {
                     column: 1, tile: 1 } } },
                 others: { "an-earlier-boot": [{ app: "slack", title: "Slack" }] } } },
             { key: "kept-places:agents", kind: "kept-places", places: {
-                "s-moving": { workspace: 6, column: 1, at: Date.now() } } }]);
+                "s-moving": { workspace: 6, column: 1, at: Date.now() } } },
+            // What two running sessions ask Joel, as the daemon judges it:
+            // one stopped on his keys since now, which rings, and one whose
+            // run is stuck, which For You lists but never rings for.
+            { key: "want:agents:LIVE01", kind: "want", address: "LIVE01",
+                since: new Date().toISOString(), rings: true, known: "LIVE01 question-1" },
+            { key: "want:agents:OTHER2", kind: "want", address: "OTHER2",
+                since: new Date().toISOString(), rings: false, known: "OTHER2 blocked" }]);
     }
 
     // A stand-in for the agents daemon (modules/agents), speaking the
@@ -837,7 +890,8 @@ ShellRoot {
                     if (ask.ask === "watch") {
                         const watched = JSON.stringify([ask.kind, ask.place]);
                         if (watched
-                            !== '[["reopen","restoring","to-reopen","arrangement","kept-places"],'
+                            !== '[["reopen","restoring","to-reopen","arrangement","kept-places",'
+                                + '"want"],'
                                 + '"agents"]')
                             root.fail(`a watch the shell has no need of: ${line}`);
                         said([{ id: ask.id, records: root.reopenRecords() }]);

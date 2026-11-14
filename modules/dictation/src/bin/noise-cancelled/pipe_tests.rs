@@ -1,5 +1,6 @@
 //! The twins' rank: unranked until Joel keeps a cleaned pick, then just
-//! above the microphone each cleans, whatever that microphone's rank.
+//! above the microphone each cleans, whatever that microphone's rank. And
+//! what a twin gives each cycle, whatever the cycle's length.
 
 use super::*;
 use crate::denoise::Cleaner;
@@ -71,6 +72,53 @@ fn a_broken_connection_said_on_the_core_ends_serving() {
 #[test]
 fn an_error_on_another_object_leaves_the_twins_serving() {
     assert!(!ends(5, -32), "one stream's error ended every twin");
+}
+
+/// What cleaned sound reads as here, so what the source gives can be told
+/// from its silence.
+const CLEANED: f32 = 0.5;
+
+/// Gives a source cycles of `quantum` samples from a ring the worker fills
+/// as it does, a whole frame at a time from what each cycle heard: how often
+/// it ran short, and whether its last cycle was all cleaned sound.
+fn given(quantum: usize) -> (u64, bool) {
+    let (mut cleaning, mut cleaned) = RingBuffer::new(RING);
+    let (mut primed, mut heard, mut short) = (false, 0, 0);
+    let mut out = vec![[0; 4]; quantum];
+    for _ in 0..500 {
+        short += gives(&mut cleaned, &mut primed, &mut out);
+        heard += quantum;
+        while heard >= FRAME {
+            for _ in 0..FRAME {
+                cleaning.push(CLEANED).expect("the ring overflowed");
+            }
+            heard -= FRAME;
+        }
+    }
+    let sounded = out.iter().all(|sample| *sample == CLEANED.to_le_bytes());
+    (short, sounded)
+}
+
+#[test]
+fn a_cycle_longer_than_a_frame_is_given_without_running_short() {
+    for quantum in [1024, 2048] {
+        assert_eq!(
+            given(quantum),
+            (0, true),
+            "at a quantum of {quantum}, the source ran short of what was cleaned, or gave none"
+        );
+    }
+}
+
+#[test]
+fn a_cycle_of_a_frame_or_less_is_given_without_running_short() {
+    for quantum in [128, 256, 480] {
+        assert_eq!(
+            given(quantum),
+            (0, true),
+            "at a quantum of {quantum}, the source ran short of what was cleaned, or gave none"
+        );
+    }
 }
 
 #[test]

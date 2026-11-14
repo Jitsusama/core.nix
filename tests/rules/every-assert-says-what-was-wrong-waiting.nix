@@ -194,7 +194,7 @@
   "modules/nix-offload/offload/src/queue.rs" = 6;
   "modules/nix-offload/offload/src/relay.rs" = 3;
   "modules/nix-offload/offload/src/sleep.rs" = 8;
-  "modules/nix-offload/offload/src/there.rs" = 15;
+  "modules/nix-offload/offload/src/there.rs" = 12;
   "modules/nix-offload/offload/tests/there.rs" = 11;
   "modules/onepassword/manager/src/lib.rs" = 1;
   "modules/open-with/src/bin/file-preview.rs" = 4;
