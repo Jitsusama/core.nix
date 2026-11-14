@@ -2684,8 +2684,9 @@ head while it stands, the path giving way whole and back once it's
 answered. Where even the head can't hold it, what stays gives way from its
 end at a whole word, behind an ellipsis, never what it does or to what.
 Return answers it, as a second Return does an armed row, the foot saying
-"↵ confirm", the key in text and the verb strong; any other key, y and n among them, lets it go
-and reaches nothing, keys pressed in the first 300 ms are ignored, and !
+"↵ confirm", the key in text and the verb strong; any other key, n and Escape among them, lets
+it go and reaches nothing, y leaves it standing, so a press from weeks of (y/n) loses no act
+(VKCF3Z, 2026-11-14, until 2026-12-14), keys pressed in the first 300 ms are ignored, and !
 skips the ask. What asks comes from the act's own data, never a list kept
 in the shell: the language's `costly` on forgetting, sharing the screen,
 cancelling a meeting, installing, flashing, logging out, rebooting and
@@ -2695,7 +2696,11 @@ says it costs nothing. An act with an undo never asks, nor one the
 language marks guarded, which keeps its own work: closing a window, whose
 program asks before losing anything, as Vim's :close refuses a modified
 buffer, and interrupting an agent, whose session :reopen brings back. A
-range asks only where an act in it costs, and a prompt's Return, as
+range asks where an act in it costs, and once with the count where it
+takes more than five that can't be put back, as "Close 20 windows?",
+since twenty gone at a stroke is of significant consequence (VKCF3Z,
+2026-11-14), unless each is served as costing little, as a notice's
+Forget It. A prompt's Return, as
 :reply's, is its own asking. Anything else acts at once, and the foot says
 how to take it back: "3 done · u brings them back". `launcher do` in a
 terminal, where agents type, still asks before anything it can't undo,

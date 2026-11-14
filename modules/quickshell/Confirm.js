@@ -47,11 +47,17 @@ const YES = ["Return", "Enter"];
 // What a key says to an ask: "early" in its first `guard` ms, so the
 // Return that asked, doubled or bounced, and a key typed on from it
 // neither answer nor reach the line, or for no key at all, as a modifier
-// alone; "yes" for Return; and "no" for any other, Escape, - and y among
-// them, as any other key lets an armed row go.
+// alone; "yes" for Return; "stands" for y, which weeks of (y/n) left in
+// the hand, so a press from habit leaves the ask standing rather than
+// losing the act (VKCF3Z, 2026-11-14; y goes back to "no" on
+// 2026-12-14); and "no" for any other, Escape and - among them, as any
+// other key lets an armed row go.
 function answer(ask, key, now, guard) {
     if (key === "" || now - ask.at < guard) {
         return "early";
+    }
+    if (key === "y") {
+        return "stands";
     }
     return YES.includes(key) ? "yes" : "no";
 }

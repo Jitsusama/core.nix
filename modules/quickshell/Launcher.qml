@@ -6288,7 +6288,8 @@ Scope {
     // it stands, so every one it would end shows as included.
     property var askedOver: []
 
-    // Asks once, `yes` done on Return and `no` on any other key, or as the
+    // Asks once, `yes` done on Return and `no` on any other key but y, which
+    // leaves it standing (Confirm.answer), or as the
     // launcher closes, `covering` the places of the rows it covers, or none.
     function askOnce(question, yes, no, covering) {
         asked = Confirm.asked(question, yes, no ?? (() => {}), Date.now());
@@ -6304,7 +6305,7 @@ Scope {
         if (ask === null)
             return;
         const said = Confirm.answer(ask, key, Date.now(), askReady.interval);
-        if (said === "early")
+        if (said === "early" || said === "stands")
             return;
         asked = null;
         Report.say(`answered ${said}`);
