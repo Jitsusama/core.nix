@@ -47,6 +47,21 @@ function stands(top, at) {
     return top - at.tall - at.air;
 }
 
+// The column under the cat's middle at `x`, or the nearest one to it.
+function columnAt(cols, x, wide) {
+    const middle = x + wide / 2;
+    let nearest = null;
+    let far = Infinity;
+    for (const column of cols) {
+        const away = Math.max(column.left - middle, middle - column.right, 0);
+        if (away < far) {
+            far = away;
+            nearest = column;
+        }
+    }
+    return nearest;
+}
+
 // The ledge over each window of a column it fits on: its top, the margin
 // above it, and each gap between two windows stacked in it it fits in, as
 // { row, y } by its window's index.
@@ -94,6 +109,14 @@ function onScreen(x, at) {
 // Where it stands on the screen's bottom, below every window.
 function floor(at) {
     return at.height - at.tall;
+}
+
+// Whether `place` is on the screen's bottom rather than any ledge: where
+// it climbs a floating window's side from with nothing under it
+// (MarginCatFloats.js's onto()).
+function floored(cols, place, at) {
+    return at.height !== undefined && near(place.y, floor(at))
+        && standing(cols, place, at) === null;
 }
 
 // Every stop it can reach from the screen's bottom: along it, and up
@@ -196,6 +219,13 @@ function fromSide(stop, cols, at, add) {
     for (const gap of inGaps.filter(one => near(one.y, stop.y))) {
         add("ledge", stop.c, { x: end, y: gap.y, row: gap.row, how: "hops" }, LEAPS);
     }
+    // Off its side's foot down onto the screen's bottom, only where its
+    // seat is there (quickest()'s `downTo`): elsewhere the floor is never
+    // a short cut, and under a workspace sliding away it's another's.
+    const bottom = column.rows[column.rows.length - 1].bottom - at.tall;
+    if (at.downTo !== undefined && near(stop.y, bottom) && at.downTo > bottom + 1e-6) {
+        add("floor", -1, { x, y: at.downTo, row: 0, how: "falls" }, LEAPS);
+    }
 }
 
 // Every stop it can reach from a ledge with one move: along it to either
@@ -271,6 +301,18 @@ function fromLedge(stop, cols, at, add) {
     }
 }
 
+// Whether a move between `one` and `other` would pass through any of
+// `at.floats`' faces, which are as solid as a tiled window's top: nothing
+// goes through a floating window (VKCF3Z 26038726). Without it the cat
+// climbed the gap between two columns behind one (the GPU rig,
+// 2026-11-14).
+function throughFloats(one, other, at) {
+    return (at.floats ?? []).some(it => Math.max(one.x, other.x) + at.wide > it.left + 0.5
+        && Math.min(one.x, other.x) < it.right - 0.5
+        && Math.max(one.y, other.y) + at.tall > it.top + 0.5
+        && Math.min(one.y, other.y) < it.bottom - 0.5);
+}
+
 function next(stop, cols, at) {
     const found = [];
     // Never into the marks, and past them only along the tops, where it
@@ -280,7 +322,7 @@ function next(stop, cols, at) {
             Object.assign({}, at, { wide: Math.abs(more.x - stop.x) + at.wide,
                 tall: Math.abs(more.y - stop.y) + at.tall }));
         const along = (more.how === "goes" && more.row === 0) || !!more.perches;
-        if (!inMarks(more.x, more.y, at) && (!past || along)) {
+        if (!inMarks(more.x, more.y, at) && (!past || along) && !throughFloats(stop, more, at)) {
             found.push({ stop: Object.assign({ kind, c }, more), ms: ms + (past ? CROSSES : 0) });
         }
     };
@@ -296,7 +338,11 @@ function next(stop, cols, at) {
 // each gap between. Null where there's no way.
 function quickest(open, trip, cols, at) {
     const { from, to } = trip;
-    const goal = standing(cols, to, at) ?? { c: -1, row: 0 };
+    // A seat on the screen's bottom is walked to along it, never along
+    // the tops.
+    const low = floored(cols, to, at);
+    const goal = standing(cols, to, at) ?? { c: -1, row: low ? -1 : 0 };
+    const reach = low ? Object.assign({}, at, { downTo: floor(at) }) : at;
     const length = Math.hypot(to.x - from.x, to.y - from.y);
     const line = stop => {
         const t = length === 0 ? 0 : Math.min(Math.max(((stop.x - from.x) * (to.x - from.x)
@@ -322,6 +368,10 @@ function quickest(open, trip, cols, at) {
             return stops;
         }
         const seat = { kind: "seat", c: -1, x: to.x, y: to.y };
+        if (low && here.stop.kind === "floor") {
+            const ms = (Math.abs(to.x - here.stop.x) / at.cell / WALKS) * 1000;
+            open.push({ stop: seat, ms: here.ms + ms * strays(here.stop, seat), back: here });
+        }
         if (here.stop.kind === "ledge" && (goal.row === 0 ? here.stop.row === 0
             : here.stop.c === goal.c && here.stop.row === goal.row)) {
             const gaps = cols.filter(one => one.left > Math.min(here.stop.x, to.x) + at.wide
@@ -329,7 +379,7 @@ function quickest(open, trip, cols, at) {
             const ms = (Math.abs(to.x - here.stop.x) / at.cell / WALKS) * 1000 + gaps * LEAPS;
             open.push({ stop: seat, ms: here.ms + ms * strays(here.stop, seat), back: here });
         }
-        for (const step of next(here.stop, cols, at)) {
+        for (const step of next(here.stop, cols, reach)) {
             if (!done[key(step.stop)]) {
                 open.push({ stop: step.stop, ms: here.ms + step.ms * strays(here.stop, step.stop),
                     back: here });

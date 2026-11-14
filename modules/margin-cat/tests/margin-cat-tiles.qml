@@ -55,7 +55,10 @@ QtObject {
             8: { output: "eDP-1", is_active: false }
         };
         expect("a window on the screen's shown workspace has its tile",
-            Tiles.tile(windows, workspaces, "eDP-1", 1), { left: 420, top: 12, width: 380 });
+            Tiles.tile(windows, workspaces, "eDP-1", 1),
+            { left: 420, top: 12, width: 380, floats: false });
+        expect("a floating window's tile says it floats",
+            Tiles.tile(windows, workspaces, "eDP-1", 3)?.floats, true);
         expect("a window on another screen has none",
             Tiles.tile(windows, workspaces, "DP-1", 1), null);
         expect("a window on a workspace not shown has none",

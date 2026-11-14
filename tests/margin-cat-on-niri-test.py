@@ -528,18 +528,25 @@ def inked(colours: Counter[str], hue: str) -> int:
 
 
 def drawn_as(shell: Shell, at: Json, scale: float) -> str:
-    """Draw the cat's box as the screen has it: # its exact hue, ~ near it, . anything else."""
+    """Draw the cat's box as the screen has it: # its exact hue, ~ near it, . anything else.
+
+    A box running past the picture's edge, as a cat reported off the screen's has, is blank
+    there, rather than read from the next row or past the picture's end.
+    """
     width, pixels = picture(shell, screen())
     left, top = round(at["x"] * scale) - 1, max(0, round(at["y"] * scale) - 1)
     across = round(at["size"] * scale) + 2
     hue = at["hue"][-6:].lower()
 
-    def mark(spot: int) -> str:
-        colour = pixels[spot * 3 : spot * 3 + 3].hex()
+    def mark(row: int, column: int) -> str:
+        spot = (row * width + column) * 3
+        if not 0 <= column < width or spot + 3 > len(pixels):
+            return " "
+        colour = pixels[spot : spot + 3].hex()
         return "#" if colour == hue else "~" if near(colour, hue) else "."
 
     return "\n".join(
-        "".join(mark(row * width + column) for column in range(left, left + across))
+        "".join(mark(row, column) for column in range(left, left + across))
         for row in range(top, top + across)
     )
 
