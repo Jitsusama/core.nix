@@ -49,8 +49,13 @@
 # QML file, 12 percent of the start's main thread under callgrind
 # (2026-11-13), though past a file's header only a preprocessor block
 # matters, so scanner-reads-headers.patch stops at the header of a file
-# that has none. All twelve are laid over the machine's packages, so the
-# shell, the greeter and the lock all run them.
+# that has none. A restart left the desktop with no launcher, bar or lock
+# client for about a second as the new shell loaded, so
+# shell-held-until-released.patch lets a shell started with QS_HELD load
+# showing no window and serving no socket until SIGUSR1 releases it, while
+# the one it replaces still answers (shell-hands-over.sh, which home.nix
+# runs). All of them are laid over the machine's packages, so the shell,
+# the greeter and the lock all run them.
 #
 # wf-recorder, which records the screen (Recorder.qml), bound the
 # compositor's linux-dmabuf at version 4 whatever it offered, a protocol
@@ -183,6 +188,7 @@ in
             ./ipc-replies-whole.patch
             ./pipewire-node-state-and-format.patch
             ./scanner-reads-headers.patch
+            ./shell-held-until-released.patch
           ];
           qtWrapperArgs = (old.qtWrapperArgs or [ ]) ++ [
             "--prefix"

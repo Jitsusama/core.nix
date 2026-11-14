@@ -18,14 +18,19 @@ file would start a second shell and share them by import.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
+import threading
 import time
+from collections import Counter
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -141,6 +146,31 @@ PRESSED_AGAIN = timedelta(milliseconds=300)
 # and how long it's then watched staying open.
 RESTARTED = timedelta(seconds=30)
 STAYS = timedelta(seconds=1)
+
+# How long a handover is given: the new shell's load and its keeping home, 10 s each at most
+# (modules/quickshell/shell-hands-over.sh), and the old shell's end, with room for a busy builder.
+HANDED_OVER = timedelta(seconds=40)
+
+# How long a chord said through a handover may take to be presented here, software-rendered.
+# One said as the new shell began loading took 454 to 1,262 ms over 15 runs, though the old
+# shell drew its frame in 4 to 11 ms, and the rest 14 to 416, against 508 to 2,098 ms through
+# a restart, one never opened, and 5,517 on the machine (2026-11-13).
+PRESENTED_THROUGH_MS = 2000
+
+# How long a chord's opening is waited for, and how far apart chords are said.
+CHORD_OPENS = timedelta(seconds=5)
+CHORDS_APART = timedelta(milliseconds=300)
+
+# The fewest chords a handover is said through, which it lasts several seconds for.
+CHORDS_THROUGH = 3
+
+# What the shell says as niri presents an opening (Launcher.qml's presentedSaid).
+# And what the shells say of loading, hearing a chord and drawing and presenting its opening.
+CHORD_SAID = re.compile(
+    r"Configuration Loaded|Held until released|Released|heard a chord|opening took|"
+    r"opening presented|opening usable"
+)
+PRESENTED_SAID = re.compile(r"launcher: opening presented (\d+) ms from the chord")
 
 
 @pytest.fixture(scope="module")
@@ -432,6 +462,234 @@ def test_chords_said_as_the_shell_restarts_open_it_once_it_listens(shell: Shell)
     shell.launcher_ready()
     shell.close_launcher()
     shell.launcher_closed()
+
+
+def running(pid: int) -> bool:
+    """Say whether a process is running, one ended but not yet waited on counted as gone."""
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+    except FileNotFoundError, IndexError:
+        return False
+    return state != "Z"
+
+
+def shown_by(pid: int) -> Json | None:
+    """Give what the launcher of the shell with this process shows, or none if it can't say."""
+    said = subprocess.run(
+        ["qs", "ipc", "--pid", str(pid), "call", "launcher", "showing"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return cast("Json", json.loads(said.stdout)) if said.returncode == 0 else None
+
+
+def closed_in(*pids: int) -> None:
+    """Close the launcher of whichever of these shells has it open, and wait until none has."""
+    deadline = time.monotonic() + CHORD_OPENS.total_seconds()
+    while True:
+        shown = {pid: shown_by(pid) for pid in pids if running(pid)}
+        opened = [pid for pid, said in shown.items() if said is not None and said["open"]]
+        if not opened:
+            return
+        assert time.monotonic() < deadline, f"the launcher never closed: {shown}"
+        for pid in opened:
+            subprocess.run(
+                ["qs", "ipc", "--pid", str(pid), "call", "launcher", "toggle"], check=False
+            )
+        time.sleep(launcher_on_niri.POLL * 4)
+
+
+def presented_after_chord(shell: Shell) -> int | None:
+    """Say a chord as launcher-say does, and give how long niri took to present its opening."""
+    since = shell.mark()
+    subprocess.run(
+        [os.environ["LAUNCHER_SAY"], "toggle"], check=True, timeout=HANDED_OVER.total_seconds()
+    )
+    deadline = time.monotonic() + CHORD_OPENS.total_seconds()
+    while time.monotonic() < deadline:
+        with shell.log.open("rb") as log:
+            log.seek(since)
+            found = PRESENTED_SAID.search(log.read().decode(errors="replace"))
+        if found:
+            return int(found[1])
+        time.sleep(launcher_on_niri.POLL)
+    return None
+
+
+def said_of_chords(shell: Shell, since: int) -> str:
+    """Give what the shells said since the mark of loading, hearing and presenting chords."""
+    said = shell.log.read_bytes()[since:].decode(errors="replace").splitlines()
+    return "\n".join(line for line in said if CHORD_SAID.search(line))
+
+
+def layers(shell: Shell) -> Counter[str]:
+    """Count the layer surfaces niri holds, by their namespace."""
+    said = cast("list[Json]", json.loads(shell.as_account("niri msg --json layers")))
+    return Counter(cast("str", layer["namespace"]) for layer in said)
+
+
+def old_shell_alone(shell: Shell) -> subprocess.Popen[bytes]:
+    """Start the shell again in a session of its own, as systemd starts a unit's commands.
+
+    The handover ends the old shell's whole process group, which would otherwise be pytest's.
+    It's waited on as it ends, as systemd waits on a unit's processes, so it's gone, not a
+    zombie the handover waits out.
+    """
+    assert shell.process is not None, "the shell was never started"
+    shell.process.terminate()
+    shell.process.wait(timeout=10)
+    with shell.log.open("ab") as log:
+        old = subprocess.Popen(
+            ["qs", "-p", str(shell.folder)],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    shell.process = old
+    deadline = time.monotonic() + RESTARTED.total_seconds()
+    while (said := shown_by(old.pid)) is None or not said.get("kept"):
+        assert time.monotonic() < deadline, f"the old shell never kept home:\n{shell.tail()}"
+        time.sleep(launcher_on_niri.POLL)
+    # As Shell.restart does, so the next word wtype types is read by its own keymap.
+    subprocess.run(["wtype", "-k", "F24"], check=True)
+    threading.Thread(target=old.wait, daemon=True).start()
+    return old
+
+
+class SystemdSocket:
+    """The socket systemd hears a unit's notifications on, standing in for it."""
+
+    def __init__(self) -> None:
+        """Listen at a path in the runtime directory, taking each message as it comes."""
+        self.path = Path(os.environ["XDG_RUNTIME_DIR"]) / "handover-notify"
+        self.path.unlink(missing_ok=True)
+        self.told: list[str] = []
+        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        self.socket.bind(str(self.path))
+        self.socket.settimeout(launcher_on_niri.POLL)
+        self.listening = threading.Event()
+        self.listening.set()
+        self.hearing = threading.Thread(target=self.heard, daemon=True)
+        self.hearing.start()
+
+    def heard(self) -> None:
+        """Take what systemd-notify says, closing the file it waits on, as systemd does."""
+        while self.listening.is_set():
+            try:
+                message, files, _, _ = socket.recv_fds(self.socket, 4096, 8)
+            except TimeoutError:
+                continue
+            for each in files:
+                os.close(each)
+            self.told.append(message.decode())
+
+    def close(self) -> None:
+        """Stop listening, and take the socket away."""
+        self.listening.clear()
+        self.hearing.join()
+        self.socket.close()
+        self.path.unlink(missing_ok=True)
+
+
+def started_by(shell: Shell, handing: subprocess.Popen[bytes]) -> int:
+    """Give the new shell's process, the handover's child running the shell's folder.
+
+    Not one still running the script: each command substitution forks it, folder and all.
+    """
+    children = Path(f"/proc/{handing.pid}/task/{handing.pid}/children")
+    script = os.environ["HANDS_OVER"].encode()
+    deadline = time.monotonic() + CHORD_OPENS.total_seconds()
+    while time.monotonic() < deadline:
+        with contextlib.suppress(FileNotFoundError, ProcessLookupError):
+            for child in children.read_text().split():
+                said = Path(f"/proc/{child}/cmdline").read_bytes()
+                if str(shell.folder).encode() in said and script not in said:
+                    return int(child)
+        time.sleep(launcher_on_niri.POLL / 10)
+    return 0
+
+
+def chords_through(
+    shell: Shell, handing: subprocess.Popen[bytes], shells: tuple[int, int], before: Counter[str]
+) -> tuple[list[int | None], list[Counter[str]]]:
+    """Say chords until the handover ends, closing each opening, and give what was seen.
+
+    Each chord's presented time, and niri's layers each time they held more than before.
+    """
+    presented: list[int | None] = []
+    doubled: list[Counter[str]] = []
+    deadline = time.monotonic() + HANDED_OVER.total_seconds()
+    while handing.poll() is None:
+        assert time.monotonic() < deadline, f"the handover never ended:\n{shell.tail()}"
+        now = layers(shell)
+        if any(count > max(before[name], 1) for name, count in now.items()):
+            doubled.append(now)
+        presented.append(presented_after_chord(shell))
+        closed_in(*shells)
+        time.sleep(CHORDS_APART.total_seconds())
+    return presented, doubled
+
+
+def shells_ended(shell: Shell, handing: subprocess.Popen[bytes], *pids: int) -> None:
+    """End the handover and both shells, and start the fixture's shell again as it was."""
+    if handing.poll() is None:
+        handing.kill()
+    for pid in pids:
+        if pid and running(pid):
+            os.kill(pid, signal.SIGTERM)
+    deadline = time.monotonic() + RESTARTED.total_seconds()
+    while any(pid and running(pid) for pid in pids) and time.monotonic() < deadline:
+        time.sleep(launcher_on_niri.POLL)
+    shell.launch("ab")
+    subprocess.run(["wtype", "-k", "F24"], check=True)
+
+
+def test_chords_said_through_a_handover_open_it_at_once(shell: Shell) -> None:
+    """Chords said all through a handover open the launcher at once, in one shell or the next.
+
+    A switch restarted the shell, leaving no launcher, bar or lock client while the new one
+    loaded, and a chord said then was presented 5,517 ms after it (2026-11-13, 18:08). A switch
+    hands over instead: the new shell loads held, showing no surface and serving no socket, so
+    the old one answers until the new one takes the unit, and niri never holds both shells'
+    surfaces. The script is run as the unit's reload runs it, told the old shell's process and
+    systemd's socket, which this case holds.
+    """
+    old = old_shell_alone(shell)
+    before = layers(shell)
+    systemd = SystemdSocket()
+    since = shell.mark()
+    with shell.log.open("ab") as log:
+        handing = subprocess.Popen(
+            [os.environ["HANDS_OVER"], "qs", "-p", str(shell.folder)],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            env={**os.environ, "MAINPID": str(old.pid), "NOTIFY_SOCKET": str(systemd.path)},
+            start_new_session=True,
+        )
+    new = started_by(shell, handing)
+    try:
+        assert new, f"the handover started no shell:\n{shell.tail()}"
+        presented, doubled = chords_through(shell, handing, (old.pid, new), before)
+        assert not doubled, f"niri held both shells' surfaces, from {before}: {doubled}"
+        assert handing.returncode == 0, f"the handover failed:\n{shell.tail()}"
+        assert len(presented) >= CHORDS_THROUGH, f"only {len(presented)} chords were said"
+        slow = [ms for ms in presented if ms is None or ms > PRESENTED_THROUGH_MS]
+        assert not slow, (
+            f"chords through the handover were presented in {presented} ms:\n"
+            f"{said_of_chords(shell, since)}"
+        )
+        print(f"chords through the handover were presented in {presented} ms")
+        told = systemd.told
+        assert f"MAINPID={new}" in told, f"systemd was told {told}, not the new shell {new}"
+        assert not running(old.pid), "the old shell outlived the handover"
+        after = presented_after_chord(shell)
+        assert after is not None, f"the new shell never opened on a chord:\n{shell.tail()}"
+        closed_in(new)
+    finally:
+        systemd.close()
+        # Started again as the fixture's shell, so the cases after start where every case does.
+        shells_ended(shell, handing, old.pid, new)
 
 
 def test_an_opening_as_the_shell_starts_puts_off_keeping_its_places(shell: Shell) -> None:

@@ -91,7 +91,8 @@ in
   # An opening draws home as the closed launcher kept it, each row as it
   # stood, then fills it in where its rows stand with nothing flashing; and
   # keys typed as it opens all land (tests/opening-on-niri-test.py); and
-  # chords said by launcher-say as the shell restarts open it once it listens.
+  # chords said by launcher-say as the shell restarts open it once it listens,
+  # and open it at once all through a handover (../shell-hands-over.sh).
   # Its `lab` times each chord's opening, the one way every launcher change
   # quotes (docs/testing.md's Timing the Launcher), built only when asked for
   # by name, since no gate runs it (tests/launcher-lab-on-niri.py), and its
@@ -103,6 +104,7 @@ in
       # What niri runs on a chord, said by the cases through a restart.
       given = clipboard ++ [
         "LAUNCHER_SAY=${lib.getExe (pkgs.callPackage ../launcher-say/package.nix { })}"
+        "HANDS_OVER=${lib.getExe (import ../hands-over.nix { inherit pkgs; })}"
       ];
     in
     (launcherOnNiri {

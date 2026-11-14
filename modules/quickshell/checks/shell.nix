@@ -104,20 +104,22 @@
       triggers = services.quickshell.Unit.X-Restart-Triggers or [ ];
       takesNewFiles = services.quickshell-takes-new-files.Service.ExecStart or [ ];
       companion = lib.concatStringsSep " " takesNewFiles;
+      reload = lib.concatStringsSep " " (lib.toList (services.quickshell.Service.ExecReload or [ ]));
     in
     holds "quickshell-restarts-with-its-files"
-      "A Quickshell file isn't among its unit's triggers, the switch restarts the shell itself, or nothing brings it onto its new files after."
+      "A Quickshell file isn't among its unit's triggers, the switch restarts the shell itself, nothing brings it onto its new files after, or its reload doesn't hand it over."
       (
         files != { }
         && lib.all (file: lib.elem "${file.source}" triggers) (lib.attrValues files)
         && (services.quickshell.Unit.X-SwitchMethod or null) == "keep-old"
         && lib.hasInfix "takes-new-files.sh" companion
+        && lib.hasInfix "quickshell-hands-over" reload
         && home.home.activation ? quickshellTakesNewFiles
       );
 
-  # A switch leaves the shell running and its companion restarts it onto the
+  # A switch leaves the shell running and its companion hands it over onto the
   # new files once the launcher has been shut 30 s, or at its bound however
-  # busy the launcher is, and leaves a shell already on its files, or one
+  # busy the launcher is, restarting it only if the handover refuses, and leaves a shell already on its files, or one
   # stopped, be (modules/quickshell/tests/takes-new-files.sh).
   the-shell-takes-a-switchs-files-at-idle =
     pkgs.runCommandLocal "the-shell-takes-a-switchs-files-at-idle" { }

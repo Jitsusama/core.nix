@@ -1323,7 +1323,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # brings, so the switch onto it changes the unit in a way that would
       # restart it. Over the boot's own unit, which forces the method away.
       # And the same machine with the shell's unit and the slow one changed,
-      # so a switch onto it stops the slow one and restarts the shell, and
+      # so a switch onto it stops the slow one and hands the shell over, and
       # with a shell.qml of its own, so the shell's files change under the
       # old shell while the slow one stops.
       specialisation = lib.mkIf switchesTheHome {

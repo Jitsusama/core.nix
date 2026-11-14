@@ -3,7 +3,7 @@
 # idle. A switch leaves the running shell alone (home.nix's keep-old), since
 # a restart inside the switch came wherever the switch's turn fell: at 18:08
 # on 13 November one landed 60 s after the launcher closed, as Joel opened
-# it. This then restarts the shell once the launcher and Super+S's talk line
+# it. This then hands the shell over once the launcher and Super+S's talk line
 # have been shut 30 s, or after an hour of them in use at their next close,
 # never shutting one under Joel's hands, so a switch that changes the shell
 # is on screen the same night. Its words are the list of the shell's
@@ -12,6 +12,16 @@
 # $XDG_RUNTIME_DIR/quickshell-files, so one already on its files is left be.
 files=$1
 waits_at_most=${2:-3600}
+
+# The unit's reload hands it over to a new shell, the old one answering
+# until the new one is ready (shell-hands-over.sh), where a restart left no
+# launcher, bar or lock client for about a second. A handover that refuses,
+# as when the new shell won't load, leaves the old one, so it restarts.
+take() {
+  systemctl --user reload quickshell.service && exit 0
+  echo "the handover refused, so the shell restarts onto its new files"
+  exec systemctl --user restart quickshell.service
+}
 runtime=${XDG_RUNTIME_DIR:?}
 marks=("${runtime}/quickshell-launcher" "${runtime}/quickshell-talk-line")
 
@@ -54,10 +64,10 @@ while in_use; do
     done
     echo "the launcher stayed in use $((waits_at_most / 60)) min, so the shell takes its new" \
       "files as it shuts"
-    exec systemctl --user restart quickshell.service
+    take
   fi
   sleep 1
 done
 now=$(date +%s)
 echo "the shell takes its new files, the launcher shut 30 s, $((now - started)) s after the switch"
-exec systemctl --user restart quickshell.service
+take

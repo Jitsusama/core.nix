@@ -7,9 +7,10 @@ Its specialisation is the unit as modules/quickshell keeps it, with a changed co
 new kitty brings, so only the switch method keeps it.
 
 And a switch changing the shell beside a unit slow to stop leaves the shell running until that
-stop is done, then restarts it at once. Stopped with the slow unit, as a unit with no switch
-method is, it waited for that stop before starting again: on 2026-11-10 disk-guard's stop ran
-to its 90 s timeout, and the desktop had no launcher, notices or lock client all that time.
+stop is done, then hands it over to a new one, so it's never gone. Stopped with the slow unit,
+as a unit with no switch method is, it waited for that stop before starting again: on
+2026-11-10 disk-guard's stop ran to its 90 s timeout, and the desktop had no launcher, notices
+or lock client all that time. Restarted, it was gone about a second each switch.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -41,9 +42,8 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
     return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
-# How long the slow unit's stop takes (tests/desktop.nix), and the most the shell may be gone.
+# How long the slow unit's stop takes (tests/desktop.nix).
 SLOW_STOP = 30
-SHELL_GONE_AT_MOST = 5
 
 
 def shown(desktop: Desktop, unit: str, *names: str) -> dict[str, str]:
@@ -61,11 +61,11 @@ def kept(desktop: Desktop) -> tuple[str, str]:
 
 
 # The ids of what systemd says of a unit's jobs, from systemd's catalog: a stop begun, a stop
-# done and a start done. A unit's own timestamps don't serve: one stopped when the units
+# done and a reload done. A unit's own timestamps don't serve: one stopped when the units
 # reload is dropped by the reload and made again with none.
 STOPPING = "de5b426a63be47a7b6ac3eaac82e2f6f"
 STOPPED = "9d1aaa27d60140bd96365438aad20286"
-STARTED = "39f53479d3a045ac8e11786248231fbf"
+RELOADED = "7b05ebc668384222baa8881179cfda54"
 
 
 def lasted(desktop: Desktop, unit: str, began: str, ended: str) -> float:
@@ -152,16 +152,18 @@ def test_a_switch_keeps_the_sessions_kitty_and_its_windows(desktop: Desktop) -> 
         machine.succeed(f"{booted}/bin/switch-to-configuration test")
 
 
-def test_a_switch_restarts_the_shell_once_a_slow_stop_is_done(desktop: Desktop) -> None:
-    """A switch changing the shell beside a unit slow to stop leaves the shell gone a moment.
+def test_a_switch_hands_the_shell_over_once_a_slow_stop_is_done(desktop: Desktop) -> None:
+    """A switch changing the shell beside a unit slow to stop hands it over, never stopping it.
 
     The switch stops the slow unit, and every other it stops, in one batch and waits for the
-    slowest. The shell, restarted rather than stopped with them, runs on until that batch is
-    done, and its new process follows the old one at once. Through that batch the old shell
-    runs over the new shell.qml, and loads it no second time.
+    slowest. The shell, kept rather than stopped with them, runs on until that batch is done,
+    and its companion then reloads it, which hands it over to a new process, the unit's own
+    from then on, the unit never stopping. Through
+    that batch the old shell runs over the new shell.qml, and loads it no second time.
     """
     machine = desktop.machine
     booted = machine.succeed("readlink -f /run/booted-system").strip()
+    began = desktop.as_account("date +%s.%N").strip()
     desktop.as_account("systemctl --user start slow-to-stop")
     machine.wait_until_succeeds(
         desktop.in_session("systemctl --user is-active slow-to-stop"), timeout=STARTING
@@ -185,11 +187,25 @@ def test_a_switch_restarts_the_shell_once_a_slow_stop_is_done(desktop: Desktop) 
         assert len(loads) == 1, f"the old shell loaded its files again in the switch: {loads}"
         stopping = lasted(desktop, "slow-to-stop", STOPPING, STOPPED)
         assert stopping > SLOW_STOP - 5, f"the slow unit stopped in {stopping:.1f} s, not slowly"
+        # The switch starts the shell's companion without waiting, which hands it over then.
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                f'test "$(systemctl --user show quickshell -p MainPID --value)" != {old}'
+            ),
+            timeout=STARTING,
+        )
         new = shown(desktop, "quickshell", "MainPID")["MainPID"]
         assert new not in {old, "0"}, f"the shell is still {old}, or none"
-        gone = lasted(desktop, "quickshell", STOPPING, STARTED)
-        assert gone < SHELL_GONE_AT_MOST, (
-            f"the shell was gone {gone:.1f} s of the switch, behind a {stopping:.1f} s stop"
+        said = desktop.as_account(
+            f"journalctl --user -u quickshell -o json --since @{began}"
+            f" MESSAGE_ID={STOPPING} + MESSAGE_ID={RELOADED}"
+        )
+        events = [
+            json.loads(line)["MESSAGE_ID"] for line in said.splitlines() if line.startswith("{")
+        ]
+        assert events == [RELOADED], f"the switch didn't hand the shell over alone: {events}"
+        assert shown(desktop, "quickshell", "ActiveState")["ActiveState"] == "active", (
+            "the shell's unit didn't stay active through the handover"
         )
         machine.wait_until_succeeds(
             desktop.in_session("qs ipc show | grep -q launcher"), timeout=STARTING

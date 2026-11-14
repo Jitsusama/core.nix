@@ -1,8 +1,9 @@
 # shellcheck shell=bash
 # How the shell takes a switch's files (modules/quickshell/takes-new-files.sh),
 # run with bash and that script as its argument. A stand-in systemctl says
-# whether the shell is running and writes down every restart it's asked
-# for, so no real shell is restarted; the launcher's mark is written as the
+# whether the shell is running and writes down every handover and restart
+# it's asked for, refusing a handover when told to, so no real shell is
+# handed over or restarted; the launcher's mark is written as the
 # shell writes it, its time dating the close, and Super+S's talk line's
 # beside it.
 set -u
@@ -15,6 +16,7 @@ export XDG_RUNTIME_DIR=$here/run
   cat << 'EOF'
 if [[ $* == *is-active* ]]; then exit "${SHELL_STOPPED:-0}"; fi
 echo "$*" >> "${XDG_RUNTIME_DIR}/asked"
+if [[ $* == *reload* ]]; then exit "${HANDOVER_REFUSED:-0}"; fi
 EOF
 } > bin/systemctl
 chmod +x bin/systemctl
@@ -25,9 +27,11 @@ failed=0
 case_of() {
   rm -f run/asked run/quickshell-launcher run/quickshell-talk-line run/said
   ln -sfn old run/quickshell-files
-  unset SHELL_STOPPED
+  unset SHELL_STOPPED HANDOVER_REFUSED
 }
-restarted() { grep -qx -- "--user restart quickshell.service" run/asked 2> /dev/null; }
+# Whether it took the new files, handed over, or restarted once refused.
+restarted() { grep -qx -- "--user reload quickshell.service" run/asked 2> /dev/null; }
+restarted_after_all() { grep -qx -- "--user restart quickshell.service" run/asked 2> /dev/null; }
 wrong() {
   echo "$1"
   failed=1
@@ -47,6 +51,15 @@ touch -d '-60 seconds' run/quickshell-launcher
 said=$(bash "${script}" new 1)
 restarted || wrong "a launcher shut a minute didn't bring the new files: ${said}"
 [[ ${said} == *"launcher shut 30 s"* ]] || wrong "the restart didn't say why: ${said}"
+! restarted_after_all || wrong "a handover done was followed by a restart: ${said}"
+
+# A handover refused leaves the old shell, so it restarts onto the files.
+case_of
+echo closed > run/quickshell-launcher
+touch -d '-60 seconds' run/quickshell-launcher
+said=$(HANDOVER_REFUSED=1 bash "${script}" new 1)
+restarted_after_all || wrong "a handover refused left the shell on its old files: ${said}"
+[[ ${said} == *"handover refused"* ]] || wrong "the restart after a refusal didn't say why: ${said}"
 
 case_of
 echo closed > run/quickshell-launcher

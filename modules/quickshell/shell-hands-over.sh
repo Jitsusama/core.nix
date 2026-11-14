@@ -1,0 +1,100 @@
+# shellcheck shell=bash
+# Hands the shell over to a new one as a switch reloads its unit, so the
+# launcher answers all through it: the new shell loads held, drawing
+# nothing and serving no socket, while the old one still draws and answers;
+# once it's ready and has kept home, it becomes the unit's main process, the
+# old one ends, and the new one shows its windows and takes the sockets. Run
+# as the unit's ExecReload, with the shell's command as its arguments.
+#
+# A shell that isn't ready within its time is ended and the old one kept,
+# and the reload fails, which a switch reports. A locked screen restarts
+# instead, since a lock is taken by one shell at a time and a held one
+# can't take it.
+
+ready="$XDG_RUNTIME_DIR/quickshell-held"
+locked="$XDG_RUNTIME_DIR/quickshell-locked"
+
+restart_if_locked() {
+  if [ "$(cat "$locked" 2>/dev/null)" = locked ]; then
+    echo "the screen is locked, so the shell restarts instead"
+    exec systemctl --user --no-block restart quickshell.service
+  fi
+}
+restart_if_locked
+
+old="$MAINPID"
+rm -f "$ready"
+QS_HELD="$ready" "$@" &
+new=$!
+
+# The shell's own start, about a second on a lit machine, with room for a
+# busy one; past it, the old shell stays.
+for _ in $(seq 100); do
+  [ -s "$ready" ] && break
+  if ! kill -0 "$new" 2>/dev/null; then
+    echo "the new shell ended as it loaded, so the old one stays"
+    exit 1
+  fi
+  sleep 0.1
+done
+if [ ! -s "$ready" ]; then
+  echo "the new shell wasn't ready in 10 s, so the old one stays"
+  kill -TERM "$new"
+  exit 1
+fi
+
+# Loaded, a shell is busy for most of a second more making the launcher's
+# home, and a chord it heard then waited on that. So the old one answers
+# until the new one says it holds home kept, which took about 4 s on a
+# software-rendered nested niri; past 10 s it's handed over anyway, since
+# the new shell has loaded and only its first opening would be slower.
+for _ in $(seq 100); do
+  "$1" ipc --pid "$new" call launcher showing 2>/dev/null | jq -e .kept >/dev/null && break
+  sleep 0.1
+done
+
+# Ended open, the old launcher would vanish under Joel, so it's handed over
+# once he has closed it, for up to a minute, past which a switch has waited
+# long enough.
+for _ in $(seq 600); do
+  shown="$("$1" ipc --pid "$old" call launcher showing 2>/dev/null || true)"
+  [ "$(jq -r .open <<<"$shown" 2>/dev/null)" = true ] || break
+  sleep 0.1
+done
+
+# Locked while the new shell loaded, the old one holds the lock, and the
+# restart ends the new one with the unit.
+restart_if_locked
+
+# The main process moves first: had the old one ended first, systemd would
+# take the unit as stopped and end the new shell with it.
+if ! systemd-notify --pid="$new"; then
+  echo "systemd didn't take the new shell as the unit's, so the old one stays"
+  kill -TERM "$new"
+  exit 1
+fi
+
+# A chord said as the old shell ends would be heard by it and lost, so its
+# socket goes first, as the unit's stop does, and launcher-say waits for the
+# new shell's.
+rm -f "$XDG_RUNTIME_DIR/launcher.sock"
+
+# The old shell's group, so what it started (its Process children) ends
+# with it rather than lingering in the unit. One already gone has none.
+group="$(ps -o pgid= -p "$old" | tr -d ' ' || true)"
+if [ -n "$group" ]; then
+  kill -TERM -- "-$group" 2>/dev/null || true
+fi
+# Polled, as the old shell isn't this script's child to wait on. It ends in
+# a fifth of a second or so, and one still there after 3 s is killed, since
+# the new one draws nothing until it's gone.
+for _ in $(seq 300); do
+  kill -0 "$old" 2>/dev/null || break
+  sleep 0.01
+done
+if [ -n "$group" ]; then
+  kill -KILL -- "-$group" 2>/dev/null || true
+fi
+
+kill -USR1 "$new"
+rm -f "$ready"

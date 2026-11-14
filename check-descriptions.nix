@@ -2211,7 +2211,7 @@
   '';
   quickshell-restarts-with-its-files = ''
     a switch that changes a file the shell reads leaves it running, and every switch starts the
-    companion that restarts it onto its files once the launcher is idle
+    companion that hands it over onto its files once the launcher is idle
   '';
   quickshell-takes-its-shape-from-the-theme = ''
     every corner and border in the shell and in each module's surface is the theme's
@@ -3041,7 +3041,10 @@
     stand where they stood once it settles; moved down as it opens, the cursor stays on that row;
     no frame from the first to the settled one empties a row and fills it again or puts a shown
     value back as being read; keys typed the moment it holds them are all found; and chords said
-    as the shell restarts open it once the new one listens, a second never shutting it
+    as the shell restarts open it once the new one listens, a second never shutting it; and
+    chords said all through a handover are each presented within 2 s, software-rendered,
+    with niri never holding both shells' surfaces, the new shell told to systemd as the unit's
+    main process and the old one ended
   '';
   the-rows-hear-only-a-new-place = ''
     the rows drawn wear the last step's glyph and hue and say whether they're home's, and are told
@@ -3641,9 +3644,9 @@
     given one rather than nothing
   '';
   the-shell-takes-a-switchs-files-at-idle = ''
-    after a switch the shell is restarted onto its new files once the launcher and Super+S's talk
-    line have been shut 30 s, or past its bound only as the open one shuts, and a shell already on
-    its files, or one stopped, is left be
+    after a switch the shell is handed over onto its new files once the launcher and Super+S's
+    talk line have been shut 30 s, or past its bound only as the open one shuts, and restarted
+    only if the handover refuses, and a shell already on its files, or one stopped, is left be
   '';
   the-shell-starts-nothing = ''
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
@@ -4279,7 +4282,8 @@
     a switch of the home from the sessions' kitty as it was, with no switch method, onto the one
     kept through a switch, with a changed command line, leaves the same kitty running with the
     same sessions' windows in it, and a switch changing the shell beside a unit 30 s slow to stop
-    restarts the shell once that stop is done, with a new shell under 5 s after the old one
+    hands the shell over once that stop is done, reloading its unit, never stopping it, onto a
+    new main process
   '';
   vm-desktop-reopens-under-orchestrators = ''
     sessions come back, or start, on their orchestrator's workspace by themselves: what
