@@ -82,7 +82,8 @@ impl Follower {
             return None;
         }
         self.said.clone_from(&now);
-        let (app, from) = now?;
+        // A call let go of its microphone, as one ending does, says nothing.
+        let (app, from) = now.filter(|(_, from)| !from.is_empty())?;
         let from: Vec<&str> = from.iter().map(String::as_str).collect();
         Some(format!(
             "the call in {app} records from {}",

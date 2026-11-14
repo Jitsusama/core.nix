@@ -121,6 +121,13 @@ fn the_call_is_said_once_on_and_again_when_what_it_records_from_changes() {
         Some("the call in chrome records from noise-cancelled.alsa_input.mv7"),
         "the call moving to the twin wasn't said"
     );
+    follower.take(&json!([{"id": 45, "info": null}]));
+    follower.stepped(start + Duration::from_secs(5));
+    assert_eq!(
+        follower.recording(),
+        None,
+        "a call let go of its microphone was said to record from nothing"
+    );
 }
 
 #[test]
