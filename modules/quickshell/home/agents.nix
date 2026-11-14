@@ -10,6 +10,7 @@
   "TalkAttached.qml"
   "TalkLine.qml"
   "TalkLine.js"
+  "TalkLineMark.qml"
   "Told.js"
   "Viewers.js"
   "WaitingOnYou.qml"
