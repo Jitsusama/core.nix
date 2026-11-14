@@ -2656,10 +2656,39 @@ Singleton {
     // window with its steer inbox read, so words left there first reach it
     // as it wakes (mycelium's PROTOCOL.md, its steer). One the node can't
     // wake, parked on another machine or with no holder this boot, is said
-    // by `unsteered` with the node's reason.
+    // by `unsteered` with the node's reason. One asleep in pi's host with
+    // no window is viewed instead, since viewing it is what wakes it there
+    // and the node's wake reaches only a holder's file: five such sleepers
+    // on 14 November had their wake file in the host's own folder, which
+    // the node refuses. It opens where its window was as it went to sleep
+    // (keepPlaceAsleep), on Joel's own workspace too since he asked for it,
+    // or where niri opens one when no place was kept.
     function wake(session) {
+        if (wokenByViewing(session)) {
+            const id = String(session.presence?.session ?? "");
+            const into = sleptPlace(id);
+            if (keptPlaces[id] !== undefined) {
+                const kept = Object.assign({}, keptPlaces);
+                delete kept[id];
+                keepPlaces(kept);
+            }
+            view(session, into);
+            return;
+        }
         if (session?.address)
             steer(session.address, { act: "wake" });
+    }
+    // Whether `session` sleeps in pi's host with no window, which only
+    // viewing it wakes.
+    function wokenByViewing(session) {
+        return !!session?.presence?.hosted && !session.window && Viewers.parkedHere(session);
+    }
+    // Where the session pi knows as `id` had its window as it went to
+    // sleep, while that workspace is still there, or null.
+    function sleptPlace(id) {
+        const place = keptPlaces[id];
+        const workspace = place ? (Niri.workspaces ?? {})[place.workspace] : undefined;
+        return workspace ? { workspace: workspace.id, column: place.column ?? null } : null;
     }
     // Each running session's record, by every address it answers to.
     property var present: ({})

@@ -351,10 +351,47 @@ ShellRoot {
             Sessions.keepPlace("s-DOZER4") === "kept"
             && JSON.stringify(Sessions.keptPlaces["s-DOZER4"] ?? null).startsWith(
                 '{"workspace":8,"column":3,'), JSON.stringify(Sessions.keptPlaces));
+        // A sleep keeps its place marked so, for its window to open there
+        // again as it wakes.
+        expect("a sleeper's window kept as it goes to sleep",
+            Sessions.keepPlaceAsleep("s-NAPPER") === "kept"
+            && Sessions.keptPlaces["s-NAPPER"]?.slept === true,
+            JSON.stringify(Sessions.keptPlaces));
+        sleepsHosted();
         Sessions.keepPlaces({});
         wokeAt = Niri.spawns.length;
         Sessions.wake(napper);
         Sessions.talk("napper", "what now?");
+    }
+
+    // One asleep in pi's host with no window wakes as it's viewed, which the
+    // node's wake can't do: Wake views it where its window was as it went
+    // to sleep, asking the node nothing, and lets that place go.
+    function sleepsHosted() {
+        const sleeper = {
+            address: "SLEEPER", here: true, window: null, kitty: null, held: null,
+            attach: ["mycelium", "--realm", "harbour", "attach", "--host", "harbour-attended",
+                "--session", "s-sleeper"],
+            presence: { hosted: { host: "harbour-attended", conversation: "s-sleeper" },
+                session: "s-sleeper", state: "parked", addresses: ["SLEEPER"] }
+        };
+        Sessions.keepPlaces({ "s-sleeper": { workspace: 5, column: 2, at: 0, slept: true,
+            asleep: true } });
+        const before = Niri.spawns.length;
+        const steered = steers.length;
+        Sessions.wake(sleeper);
+        const viewed = asked(Niri.spawns.slice(before).join(" "));
+        expect("Wake views one asleep in pi's host, in a window named for it",
+            viewed !== null && viewed.classed === "pi-hosted.s-sleeper",
+            Niri.spawns.slice(before).join(" | "));
+        const where = JSON.stringify(Niri.acted);
+        expect("where its window was as it went to sleep", where
+            === '{"OpenNextWindowOn":{"app_id":"pi-hosted.s-sleeper","reference":{"Id":5},'
+            + '"column":2}}', where);
+        expect("asking the node nothing", steers.length === steered,
+            JSON.stringify(steers.slice(steered)));
+        expect("and letting its place go", Sessions.keptPlaces["s-sleeper"] === undefined,
+            JSON.stringify(Sessions.keptPlaces));
     }
 
     // Whether the node was asked to wake the one parked, and then to steer
