@@ -2014,7 +2014,7 @@ Singleton {
     // `parked` finds only those opened with an app id of their own, and
     // one in a kitty opened without, as the oldest are, had none to keep
     // (2QZBX9, 2026-11-11: B8RBNW's window 435 was on workspace 8).
-    function keepPlace(id) {
+    function keepPlace(id, marks) {
         const windows = niriWindows;
         const resting = root.resting.find(one => one.presence.session === id);
         const window = running.find(one => one.here && one.presence.session === id)?.window
@@ -2022,9 +2022,16 @@ Singleton {
         const place = /^[A-Za-z0-9-]+$/.test(id) ? Viewers.placeOf(window, Date.now()) : null;
         if (place === null)
             return "no window to keep";
-        keepPlaces(Object.assign({}, keptPlaces, { [id]: place }));
-        console.info(`sessions: kept ${id}'s place, ${place.workspace}/${place.column}`);
+        keepPlaces(Object.assign({}, keptPlaces, { [id]: Object.assign(place, marks ?? {}) }));
+        console.info(`sessions: kept ${id}'s place, ${place.workspace}/${place.column}`
+            + (marks?.slept ? ", as it goes to sleep" : ""));
         return "kept";
+    }
+    // keepPlace, for a session going to sleep in pi's host, its window
+    // closing so it costs next to nothing: its viewer opens there again
+    // once it wakes, whatever wakes it (Viewers.sleeperDue).
+    function keepPlaceAsleep(id) {
+        return keepPlace(id, { slept: true });
     }
     // Opens the viewer of each session kept that now runs hosted where it
     // was, never on the workspace Joel is on and never with his focus
@@ -2032,15 +2039,24 @@ Singleton {
     // (Viewers.viewersDue). Asked again as niri's focus moves, so one waiting
     // for Joel to leave its workspace opens once he has, and as he goes
     // away. Only places kept since this shell started open, and only while
-    // he is away (Away.qml), so a shell restarted by a switch opens none.
+    // he is away (Away.qml), so a shell restarted by a switch opens none;
+    // but a sleeper's opens as it wakes, him there or not, since waking is
+    // what opens it. Asked as each session's record changes too, which is
+    // how a sleeper is seen to wake.
     function viewKept() {
         if (Object.keys(keptPlaces).length === 0)
             return;
-        const due = Viewers.viewersDue(keptPlaces, running, Date.now(),
+        const due = Viewers.viewersDue(keptPlaces, running.concat(parked), Date.now(),
             { workspaces: Niri.workspaces, since: startedAt, away: Away.now });
-        for (const one of due.open)
-            view(one.session, one.into);
-        if (Object.keys(due.kept).length !== Object.keys(keptPlaces).length)
+        for (const one of due.open) {
+            if (one.session.held && !one.session.presence?.hosted)
+                attach(one.session.held, one.into);
+            else
+                view(one.session, one.into);
+        }
+        // A sleeper first seen asleep is marked so in its place, which is
+        // kept as any other change is.
+        if (JSON.stringify(due.kept) !== JSON.stringify(keptPlaces))
             keepPlaces(due.kept);
     }
 
@@ -2051,17 +2067,19 @@ Singleton {
         return /^[A-Za-z0-9-]+$/.test(id) ? `pi-hosted.${id}` : "";
     }
 
-    // Attaches what is held as `id` in a new window of the sessions' kitty.
-    // The node names the window within moments of its joining; until it
-    // does, asking again opens nothing more.
+    // Attaches what is held as `id` in a new window of the sessions' kitty,
+    // `into` a place kept for it (viewKept, as a sleeper wakes), which
+    // opens without the focus, or where niri opens one. The node names the
+    // window within moments of its joining; until it does, asking again
+    // opens nothing more.
     readonly property int attachPatience: 5000
     property var attaching: ({})
-    function attach(id) {
+    function attach(id, into) {
         if (!holds || Date.now() - (attaching[id] ?? 0) < attachPatience)
             return;
         attaching = Object.assign({}, attaching, { [id]: Date.now() });
         root.inSessions("pi-session", ["zsh", "-lic", 'exec mycelium --realm "$0" attach "$1"',
-            realm, id]);
+            realm, id], into ?? null);
         Report.say(`attached session ${id}`);
     }
 
@@ -2313,6 +2331,12 @@ Singleton {
         // pi's host, by pi's session id.
         function keepPlace(session: string): string {
             return root.keepPlace(session);
+        }
+
+        // keepPlaceAsleep, as pi's host asks it before it closes the
+        // window of a session it puts to sleep, by pi's session id.
+        function keepPlaceAsleep(session: string): string {
+            return root.keepPlaceAsleep(session);
         }
     }
 
