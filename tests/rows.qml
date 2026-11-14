@@ -1360,6 +1360,25 @@ ShellRoot {
             expect("the caret stands at the hint's start, as at a typed word's",
                 Math.abs(startCaret - firstLetter) <= 0.5,
                 `caret at ${startCaret}, a typed letter at ${firstLetter}`);
+            // Its bar is drawn in the room before that letter, a pixel apart,
+            // never on its ink: drawn from the caret's place, it cut the S of
+            // "Say anything" (VKCF3Z, 2026-11-14).
+            const bar = root.byName(voicedField, "caret");
+            const barEnd = bar === null ? Infinity
+                : bar.mapToItem(null, bar.width, 0).x;
+            expect("the caret's bar ends a pixel short of the hint's first letter, off its ink",
+                bar !== null && bar.width > 0 && Math.abs(barEnd + 1 - firstLetter) <= 0.5,
+                `bar ends at ${barEnd}, the letter at ${firstLetter}`);
+            // After the last letter typed it starts where that letter ends.
+            typedInput.cursorPosition = typedInput.length;
+            const lastEnds = typedInput.mapToItem(null,
+                typedInput.positionToRectangle(typedInput.length).x, 0).x;
+            const typedBar = root.byName(typedField, "caret");
+            const typedBarFrom = typedBar === null ? -Infinity
+                : typedBar.mapToItem(null, 0, 0).x;
+            expect("after the last letter, the caret's bar starts where that letter ends",
+                Math.abs(typedBarFrom - lastEnds) <= 0.5,
+                `bar from ${typedBarFrom}, the last letter ends at ${lastEnds}`);
             // Where what's typed wraps, a hint too long for a line wraps as
             // typing it would, whole, the field growing for it, rather than cut.
             const wrapping = drawn(wrappedHint, []).find(t => t.text === wrappedHint.hint);
