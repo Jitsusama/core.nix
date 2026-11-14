@@ -12,5 +12,7 @@ publish = false
 rustix = { version = "1.1", features = ["event", "time"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The shape every command of ours takes: its flags, help, errors and exits.
+terminal-kit = { path = "../../terminal-kit" }
 # Its notice when one rings, and what Joel does with it, over D-Bus.
 zbus = "5"

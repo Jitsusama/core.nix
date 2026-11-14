@@ -6,7 +6,8 @@
 //! a ring lost with its server is said to the one after it; what's kept
 //! outlasts the daemon, its notices with it, one that ended meanwhile
 //! ringing late as it starts again; a timer coming due is heard once,
-//! quietly during a call; and an ask it can't do is refused.
+//! quietly during a call; an ask it can't do is refused; and a run its
+//! unit wouldn't make ends at once in the terminal kit's words.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -635,4 +636,49 @@ fn an_ask_it_cant_do_is_refused() {
     assert_eq!(refused["error"]["code"], "refused");
     assert_eq!(refused["error"]["reason"], "resumesPaused");
     running.stop();
+}
+
+/// Handed less than its unit hands it, or words it can't read, it ends at
+/// once with the kit's exit, nothing on stdout, which no one reads, and no
+/// socket left for the shell to find.
+#[test]
+fn a_run_its_unit_wouldnt_make_ends_at_once_in_the_kits_words() {
+    let folder = folder("asked");
+    let socket = folder.join("timers.sock");
+    let kept = folder.join("held.json");
+    let unread = folder.join("no-words.json");
+    let cases: [(Vec<&Path>, i32, &str); 3] = [
+        (vec![&socket, &kept], 64, "timers --help"),
+        (vec![&socket, &kept, &unread, &socket], 64, "timers --help"),
+        (vec![&socket, &kept, &unread], 78, "no-words.json"),
+    ];
+    for (args, exit, names) in cases {
+        let ran = Command::new(env!("CARGO_BIN_EXE_timers"))
+            .args(&args)
+            .env_remove("JOURNAL_STREAM")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        let said = String::from_utf8_lossy(&ran.stderr);
+        assert_eq!(
+            ran.status.code(),
+            Some(exit),
+            "{args:?} ended {:?}, saying {said}",
+            ran.status.code()
+        );
+        assert!(
+            ran.stdout.is_empty(),
+            "{args:?} said {:?} on stdout",
+            String::from_utf8_lossy(&ran.stdout)
+        );
+        assert!(
+            said.contains(names),
+            "{args:?} said {said:?}, naming no {names}"
+        );
+        assert!(
+            !socket.exists(),
+            "{args:?} left a socket at {}",
+            socket.display()
+        );
+    }
 }

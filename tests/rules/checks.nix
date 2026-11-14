@@ -234,8 +234,10 @@
         shutdown-status = pkgs.callPackage ../../modules/systemd/shutdown-status/package.nix { };
         slack-people = slack;
         slack-unreads = slack;
+        sound = pkgs.callPackage ../../modules/sound/package.nix { };
         spend-watch = pkgs.callPackage ../../modules/spend-watch/package.nix { };
         spotify-recent = pkgs.callPackage ../../modules/spotify/spotify-recent/package.nix { };
+        timers = pkgs.callPackage ../../modules/quickshell/timers/package.nix { };
         vm-first = pkgs.callPackage ../../modules/nix-daemon/vm-first/package.nix { };
         without-syncfs = pkgs.callPackage ../../modules/nix-daemon/without-syncfs/package.nix { };
         xwayland-satellite = pkgs.callPackage ../../modules/niri/xwayland-satellite.nix { };
