@@ -123,7 +123,6 @@ layer-rule {
 // and what's beneath it changes.
 layer-rule {
     match namespace="^(launcher|polkit|notifications|volume|microphone|brightness|power)$"
-    match namespace="^notice-line$"
     background-effect {
         xray false
     }
@@ -132,15 +131,14 @@ layer-rule {
 // A shared screen never shows a secret or a message: the launcher holds the
 // clipboard's history, and polkit asks for a password. Notices are kept out
 // of the screenshots niri takes by itself as well, so one never lands in the
-// next shot; picking a region still sees them. The arrival line is a notice
-// in the launcher's place, so it's kept out as the corner's are.
+// next shot; picking a region still sees them.
 layer-rule {
     match namespace="^(launcher|polkit)$"
     block-out-from "screencast"
 }
 
 layer-rule {
-    match namespace="^(notifications|notice-line)$"
+    match namespace="^notifications$"
     block-out-from "screen-capture"
 }
 

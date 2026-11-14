@@ -27,7 +27,7 @@ fn fronted(notice: &Notice) -> Option<i64> {
 
 /// Those waiting in the order the line takes them: each brought to the
 /// front, the last first, then the rest in the order they came, as the
-/// shell's stack kept them (Stack.js).
+/// shell's stack once kept them.
 fn order(notices: &[Notice]) -> Vec<&Notice> {
     let mut waiting: Vec<&Notice> = notices.iter().filter(|notice| waits(notice)).collect();
     waiting.sort_by_key(|notice| match fronted(notice) {
