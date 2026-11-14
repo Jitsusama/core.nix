@@ -168,8 +168,8 @@ impl Notice {
     /// Whether it's served as a record at `now`: while it's unread, open
     /// or missed, and for a day once it's done with. The shell reads only
     /// those (Notices.qml), and History the daemon's own rows of the rest
-    /// (row.rs's notices-history), so the shell holds about fifty rather
-    /// than every one kept (BXNMUC, 2026-11-13: 1.26 MB of 1,000).
+    /// (row.rs's notices-history), so the shell holds about two hundred
+    /// rather than every one kept (BXNMUC, 2026-11-13: 1.26 MB of 1,000).
     pub fn recent(&self, now: i64) -> bool {
         !self.read || self.live || self.missed || now - self.done_at() < RECENT
     }

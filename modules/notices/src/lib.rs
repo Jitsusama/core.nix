@@ -11,6 +11,7 @@
 //!   holds it back.
 //! - [`addressed`]: whether a chat program's notice is to Joel himself.
 //! - [`held`]: every notice held, and what becomes of each.
+//! - [`front`]: the one in front, which the arrival line shows.
 //! - [`picture`]: a notice's own picture, one sent as pixels written out.
 //! - [`store`]: the history on disk, the shell's taken once.
 //! - [`daemon`]: all of it behind one lock, an arrival and the shell's asks.
@@ -25,6 +26,7 @@ pub mod addressed;
 pub mod body;
 pub mod bus;
 pub mod daemon;
+pub mod front;
 pub mod held;
 pub mod judged;
 pub mod notice;
