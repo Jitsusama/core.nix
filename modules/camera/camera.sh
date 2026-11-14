@@ -35,6 +35,10 @@ EOF
     exit 64
     ;;
 esac
+# The window's first title says what Return makes, as camera.lua's keeps
+# saying, so it reads as more than the program's name among windows.
+titled=Photo
+[ "$mode" = video ] && titled=Video
 # A camera made at boot is named by a file.
 [ -c "$device" ] || device=$(cat "$device")
 root=${CAMERA_ROOT:-}
@@ -61,7 +65,7 @@ done
 # the viewfinder's keys were its own only some of the time.
 exec mpv "av://v4l2:$device" --load-scripts=no \
   --vo=gpu-next,wlshm --gpu-context=wayland \
-  --title=Camera --wayland-app-id=camera --force-window=yes \
+  --title="$titled · Camera" --wayland-app-id=camera --force-window=yes \
   --profile=low-latency --untimed --cache=no --hwdec=no --aid=no \
   --vf=hflip --osc=no --input-default-bindings=no \
   --keep-open=no --idle=yes --save-position-on-quit=no --resume-playback=no \

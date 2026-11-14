@@ -38,7 +38,8 @@ onLinux {
   # of the camera and drawing nothing, beside a player script in mpv's own
   # folder that takes Z (stand-in-player.lua), as the player's vi-keys.lua
   # does: Escape and q leave it open, and ZZ closes it all the same
-  # (keeps-its-keys.py).
+  # (keeps-its-keys.py). Its title is read first, saying what Return makes
+  # and following Tab.
   the-viewfinder-keeps-its-own-keys =
     pkgs.runCommandLocal "the-viewfinder-keeps-its-own-keys"
       {

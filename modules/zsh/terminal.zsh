@@ -39,6 +39,25 @@ function _emit_working_directory() {
   printf '\033]7;file://%s%s\007' "$HOST" "$where"
 }
 
+# The window's title, which the launcher's Windows and a line to a session
+# name a window by, so two shells never both read "zsh": the folder at each
+# prompt, and the command while one runs, its first line alone. A control
+# character a command holds, as a paste can bring, is spaced out, so none
+# reaches the terminal as an escape of its own.
+function _emit_title() {
+  emulate -L zsh
+  local title=${1//[[:cntrl:]]/ }
+  printf '\033]2;%s\007' "${title[1,100]}"
+}
+
+function _title_at_prompt() {
+  _emit_title "${(%):-%~}"
+}
+
+function _title_running() {
+  _emit_title "${1%%$'\n'*}"
+}
+
 # Register hooks in execution order
 # precmd: runs before each prompt is displayed
 # CRITICAL: _emit_command_finished must be FIRST to capture exit code
@@ -51,9 +70,11 @@ precmd_functions=(
 precmd_functions+=(
   _emit_prompt_start        # Mark prompt beginning
   _emit_working_directory   # Update terminal's CWD
+  _title_at_prompt          # Title the window by its folder
 )
 
 # preexec: runs after command is entered, before it executes
 preexec_functions+=(
   _emit_command_start       # Mark command beginning
+  _title_running            # Title the window by its command
 )

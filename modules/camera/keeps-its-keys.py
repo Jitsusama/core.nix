@@ -1,5 +1,7 @@
 """Press Escape, q and then ZZ in a viewfinder once it plays, and say whether only ZZ closed it.
 
+It first reads the window's title, which says what Return makes, and Tab's change to it.
+
 The check in checks.nix starts the viewfinder with mpv's IPC server at the path given, beside a
 player script that takes Z if it's loaded (stand-in-player.lua). The keys are pressed once the
 camera shows, and once that script says it has bound Z, if it's there to say so. The viewfinder
@@ -26,6 +28,8 @@ CLOSING = 10.0
 # How long the viewfinder is watched staying open after Escape and q: they
 # are heard in moments, and a close would come as soon.
 STAYING = 1.0
+# The id the window's title is observed under, apart from the camera's.
+TITLE = 2
 
 
 def connected(path: Path) -> socket.socket:
@@ -82,10 +86,33 @@ def ready(ipc: socket.socket) -> None:
             return
 
 
+def titled(ipc: socket.socket, want: str) -> None:
+    """Wait until the window's title is this, or fail saying what it was."""
+    ipc.sendall(json.dumps({"command": ["observe_property", TITLE, "title"]}).encode() + b"\n")
+    deadline = time.monotonic() + BINDING
+    last = None
+    while time.monotonic() < deadline:
+        messages = heard(ipc, deadline)
+        if messages is None:
+            sys.exit("the viewfinder closed before its title was read")
+        for message in messages:
+            if message.get("event") == "property-change" and message.get("id") == TITLE:
+                last = message.get("data")
+                if last == want:
+                    ipc.sendall(
+                        json.dumps({"command": ["unobserve_property", TITLE]}).encode() + b"\n"
+                    )
+                    return
+    sys.exit(f"the viewfinder was titled {last!r}, not {want!r}")
+
+
 def main() -> None:
-    """Press Escape and q once the viewfinder is ready, then ZZ; fail unless only ZZ closes it."""
+    """Read its title and Tab's, press Escape and q, then ZZ; fail unless only ZZ closes it."""
     ipc = connected(Path(sys.argv[1]))
     ready(ipc)
+    titled(ipc, "Photo \u00b7 Camera")
+    ipc.sendall(b'{"command":["keypress","TAB"]}\n')
+    titled(ipc, "Video \u00b7 Camera")
     ipc.sendall(b'{"command":["keypress","ESC"]}\n{"command":["keypress","q"]}\n')
     staying = time.monotonic() + STAYING
     while time.monotonic() < staying:
