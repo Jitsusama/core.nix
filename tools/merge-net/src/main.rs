@@ -144,6 +144,7 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
         booted: holds::booted().unwrap_or(0),
         branch,
         moving: std::sync::Mutex::new(()),
+        dropped: std::sync::Mutex::default(),
     };
     // With nothing passed yet, the first round starts where it's told, or
     // at main's head as it is now, which it takes as passing. It's written
