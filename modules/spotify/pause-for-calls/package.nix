@@ -1,6 +1,7 @@
 # pause-for-calls, built from this directory, its tests run as it builds.
-# It takes what counts as a call from modules/calls' crate, so the source
-# holds both, from modules, and the build runs in this one.
+# It takes what counts as a call from modules/calls' crate, and its shape
+# from the terminal kit, so the source holds all three, from modules, and
+# the build runs in this one.
 { lib, rustPlatform }:
 let
   src = lib.fileset.toSource {
@@ -11,6 +12,8 @@ let
       ./src
       ../../calls/Cargo.toml
       ../../calls/src
+      ../../terminal-kit/Cargo.toml
+      ../../terminal-kit/src
     ];
   };
 in
