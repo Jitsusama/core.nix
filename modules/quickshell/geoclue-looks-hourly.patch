@@ -1,0 +1,34 @@
+Scans for Wi-Fi networks hourly, not every five minutes, for a city.
+At city accuracy GeoClue asks wpa_supplicant for a scan five minutes
+after each one ends, for as long as a client wants a position. A scan
+takes the card off its channel for five to six seconds, over every
+channel it allows, and wpa_supplicant weighs roaming after any scan:
+on a laptop that sat still at a desk, each of its four roams in an
+evening came within 20 ms of one of these scans, flipping between two
+radios of the same access point, and each cost the link 110 to 180 ms.
+A city doesn't move
+in five minutes, and GeoClue already refreshes its position on the
+ScanDone of a scan anyone asked for, as wpa_supplicant makes one on
+joining a network or roaming, so a new place is found as the card
+joins a network there. Nothing in it is particular to this desktop.
+--- a/src/gclue-wifi.c
++++ b/src/gclue-wifi.c
+@@ -29,10 +29,15 @@
+ #include "gclue-mozilla.h"
+ 
+ #define WIFI_SCAN_TIMEOUT_HIGH_ACCURACY 10
+-/* Since this is only used for city-level accuracy, 5 minutes between each
+- * scan is more than enough.
++/* Since this is only used for city-level accuracy, an hour between each
++ * scan is enough. A scan takes the card off its channel for seconds, and
++ * wpa_supplicant may roam after any scan, so one every 5 minutes cost a
++ * connected laptop that sat still more than its position was worth. The
++ * scans wpa_supplicant makes itself, as it joins or roams, reach us as
++ * ScanDone in between, so a new place is still found as soon as the card
++ * joins a network there.
+  */
+-#define WIFI_SCAN_TIMEOUT_LOW_ACCURACY  300
++#define WIFI_SCAN_TIMEOUT_LOW_ACCURACY  3600
+ 
+ /* WiFi APs at and below this signal level in scan results are ignored.
+  * In dBm units.
