@@ -45,19 +45,63 @@ struct Controller {
     driver: Option<String>,
 }
 
+/// The driver holding a PCI device, by name; none where nothing does.
+fn driver_of(device: &Path) -> Option<String> {
+    fs::read_link(device.join("driver"))
+        .ok()?
+        .file_name()?
+        .to_str()
+        .map(str::to_owned)
+}
+
 /// Each Bluetooth controller on PCI under the sysfs root, by address.
-fn controllers(_sysfs: &Path) -> Vec<Controller> {
-    Vec::new()
+fn controllers(sysfs: &Path) -> Vec<Controller> {
+    let Ok(devices) = fs::read_dir(sysfs.join("bus/pci/devices")) else {
+        return Vec::new();
+    };
+    let mut found: Vec<Controller> = devices
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            fs::read_to_string(entry.path().join("class"))
+                .is_ok_and(|class| class.trim().starts_with(BLUETOOTH))
+        })
+        .filter_map(|entry| {
+            Some(Controller {
+                device: entry.file_name().into_string().ok()?,
+                driver: driver_of(&entry.path()),
+            })
+        })
+        .collect();
+    found.sort_by(|one, other| one.device.cmp(&other.device));
+    found
 }
 
 /// The controllers to start again, or why there are none.
 fn found(sysfs: &Path) -> Result<Vec<Controller>, Failure> {
-    Ok(controllers(sysfs))
+    let found = controllers(sysfs);
+    if found.is_empty() {
+        return Err(Failure::new(
+            Exit::NotFound,
+            "it found no Bluetooth controller to start again",
+        )
+        .because("no device on PCI is of Bluetooth's class")
+        .try_this(RESTART));
+    }
+    Ok(found)
 }
 
-/// Where its address is written, in order, to start a controller again.
-fn steps(_sysfs: &Path, _controller: &Controller) -> Vec<PathBuf> {
-    Vec::new()
+/// Where its address is written, in order, to start a controller again:
+/// its driver's unbind then bind, or the bus's drivers_probe for one no
+/// driver holds.
+fn steps(sysfs: &Path, controller: &Controller) -> Vec<PathBuf> {
+    let bus = sysfs.join("bus/pci");
+    match &controller.driver {
+        Some(driver) => {
+            let driver = bus.join("drivers").join(driver);
+            vec![driver.join("unbind"), driver.join("bind")]
+        }
+        None => vec![bus.join("drivers_probe")],
+    }
 }
 
 /// Starts a controller again, each step written with `write`, and gives it
@@ -77,7 +121,19 @@ fn start(
             .try_this(RESTART)
         })?;
     }
-    Ok(controller.clone())
+    let device = sysfs.join("bus/pci/devices").join(&controller.device);
+    let Some(driver) = driver_of(&device) else {
+        return Err(Failure::new(
+            Exit::Failed,
+            format!("{} didn't come back", controller.device),
+        )
+        .because("no driver took it back")
+        .try_this(RESTART));
+    };
+    Ok(Controller {
+        device: controller.device.clone(),
+        driver: Some(driver),
+    })
 }
 
 /// Writes an address to a file of root's, through sudo, which asks for a
