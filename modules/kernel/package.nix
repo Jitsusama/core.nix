@@ -113,6 +113,13 @@ linux_7_2.override {
       patch = ./cfg80211-ssid-without-country.patch;
     }
     {
+      # Lets an Intel Wi-Fi card add a send queue, as it does on joining an
+      # access point, when memory holds no 64 KiB block free in one piece.
+      # Written here; docs/kernel.md has the cause.
+      name = "iwlwifi-txq-entries-kvzalloc";
+      patch = ./iwlwifi-txq-entries-kvzalloc.patch;
+    }
+    {
       # Fills a bar on every screen as a hibernation's image is read, while
       # every process is frozen and the boot screen can't draw. Written here;
       # docs/kernel.md has the cause.

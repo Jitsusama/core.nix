@@ -50,6 +50,7 @@ are fixes written here, kept until the kernel has its own:
 | `irq-resend-nested.patch` | no bad IRQ trap on resume      | written here       |
 | `edp-sdp-caps.patch`      | a single eDP modeset at boot   | written here       |
 | `cfg80211-ssid-without-country.patch` | the joined network's name | written here; [linux-next][3] since |
+| `iwlwifi-txq-entries-kvzalloc.patch` | a join that survives fragmented memory | written here |
 | `hibernate-progress.patch` | a hibernation's image read, on screen | written here |
 | `virtio-gpu-panic-outside-panic.patch` | that bar drawn safely in a VM | written here |
 | `early-wx-warning-gentle.patch` | no false W^X warning at boot | [upstream's][4] |
@@ -95,6 +96,19 @@ the name was never recorded, and networkd couldn't match a saved network's
 file on it, or tell it had moved to another network and needed a new
 address. The patch records the name first. Most access points name their
 country, but hostapd doesn't unless it's told to.
+
+The second Wi-Fi fix is for a card that couldn't join an access point
+while memory was fragmented. Intel's driver adds a send queue as it joins,
+and it allocated that queue's bookkeeping, one entry for each of its
+slots, as a single block of 64 to 128 KiB. The kernel doesn't try hard
+for blocks that large, so under a build's memory pressure the block
+wasn't there, the queue failed ("Tx queue alloc failed") and the join
+timed out: optimus, roaming between eeros on 14 November with a third of
+its 64 GB free, lost half a second and fell back to another radio. Only
+the processor reads those entries, so the patch lets them come from
+scattered pages when no single block is free. The rings the card itself
+reads are left as they were; the IOMMU already lets them be scattered.
+Neither 7.3.4 nor mainline changes it.
 
 The hibernation fix is for a hibernated machine that showed nothing while it
 read its image back. The kernel freezes every process before it reads the
