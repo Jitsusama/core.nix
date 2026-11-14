@@ -255,7 +255,8 @@ or a copy, can be opened, copied or forgotten.
 | window | a program's rectangle on the screen | | |
 | This Window | the launcher's first row in Desktop: the window Joel is in | | |
 | wallpaper | the picture behind every window | painting | |
-| notice | a card at the top right saying what a program said | notification | `Notifications.qml`, `org.freedesktop.Notifications` |
+| notice | what a program said, on the arrival line as it comes and in the launcher's Notices after | notification | `Notifications.qml`, `org.freedesktop.Notifications` |
+| arrival line | one line at the top of the screen, where the launcher stands, showing the notice that waits on Joel as it comes, without taking the keys | | `NoticeLine.qml` |
 | notice kind | what a notice is about, as its program files it, said in its drawer's eyebrow: message, mail, device, network, status or transfer, with failed or bounced after it when it went wrong | | `notices:kind`, the notification's `category` hint |
 | Do Not Disturb | the setting that holds notices back while it's on | dnd, quiet | `session:quiet` |
 | dictation | what Joel says, typed where the focus is, while he holds Super+D or after Return on its row | | `modules/dictation`, `Dictated.qml` |

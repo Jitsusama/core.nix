@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import FROM_THE_CORNER, KEY_PACE, LAUNCHER_OPEN, NOTICES, retry
+from desktop_session import FROM_THE_CORNER, KEY_PACE, LAUNCHER_OPEN, NOTICE_LINE, NOTICES, retry
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -1087,10 +1087,9 @@ def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desk
     """A notice is signed by the name Joel knows what sent it by, never its program's.
 
     Its pictures at both of Joel's scales, alone and held with its acts listed as commands, are
-    look 3's notice (2026-11-03), for a person to measure its room by. So are three notices as
-    one stack, the front card whole and two edges beneath it, each starting on the hairline of
-    the card before it, and what's playing the frames rung above them (docs/design.md, The
-    Ladder). Once what played has gone, niri blurs only under the next card.
+    look 3's notice (2026-11-03), for a person to measure its room by. So are three notices on
+    the arrival line, the front one drawn and the two behind it counted, and what's playing in
+    the corner. Once what played has gone, niri blurs only under the line.
     """
     machine = desktop.machine
     try:
@@ -1257,37 +1256,26 @@ def blurs_only_what_is_drawn(desktop: Desktop, when: str) -> None:
 
 
 def blurs_only_under_the_cards(desktop: Desktop) -> None:
-    """Blur only under the cards drawn, past the stack's last edge and as the edges glide.
+    """Blur only under the arrival line, with more notices waiting than it draws.
 
-    A fifth notice stands behind the last edge, never drawn, and an edge brought to the front
-    makes the front card shorter, so the edges glide up after it. Under the stack's foot each
-    time, a blur where no card is drawn would take out the detail a shadow only darkens, so the
-    room is held to the same room once the notices are put away (Joel, 2026-11-09: "shadows
-    where things don't exist").
+    Five notices wait and the line draws the front one alone, so what niri blurs, and where
+    the pointer reaches, is the line's frame and nothing of the four behind it. Under its foot,
+    a blur would take out the detail a shadow only darkens, so the room is held to the same
+    room once the notices are put away (Joel, 2026-11-09: "shadows where things don't exist").
     """
     machine = desktop.machine
     for summary in ["Fourth in Line", "Fifth in Line"]:
         with desktop.told(f"shows card {summary}"):
             desktop.as_account(f"notify-send --expire-time=60000 {shlex.quote(summary)} 'behind'")
-    blurs_only_what_is_drawn(desktop, "with one past the last edge")
-    measured = [under_the_card(desktop)]
-    tall = json.loads(desktop.as_account("qs ipc call notices front"))
-    high = json.loads(desktop.as_account("niri msg --json focused-output"))["logical"]["height"]
-    # A click on the first edge, a few points under the front card, brings it forward.
-    desktop.click((tall["left"] + tall["right"]) / 2, tall["bottom"] + 4 / high)
-    desktop.held_still()
-    short = json.loads(desktop.as_account("qs ipc call notices front"))
-    assert short["foot"] < tall["foot"], f"no shorter card came forward: {tall}, then {short}"
-    blurs_only_what_is_drawn(desktop, "once the edges glided up")
-    measured.append(under_the_card(desktop))
+    blurs_only_what_is_drawn(desktop, "with four waiting behind the line")
+    under, shown = under_the_card(desktop)
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    machine.wait_until_fails(desktop.in_session(NOTICE_LINE), timeout=timedelta(seconds=30))
     desktop.held_still()
-    gone = desktop.screen_now()
-    for under, shown in measured:
-        kept = shown / detail(gone.crop(under))
-        print(f"UNDER THE STACK at {under}, {kept:.2f} of the detail was left")
-        assert kept > UNBLURRED, f"under the stack, at {under}, only {kept:.2f} was left"
+    kept = shown / detail(desktop.screen_now().crop(under))
+    print(f"UNDER THE LINE at {under}, {kept:.2f} of the detail was left")
+    assert kept > UNBLURRED, f"under the line, at {under}, only {kept:.2f} was left"
 
 
 def under_the_card(desktop: Desktop) -> tuple[tuple[int, int, int, int], float]:

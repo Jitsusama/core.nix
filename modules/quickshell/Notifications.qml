@@ -7,6 +7,12 @@
 // itself when its time is up, unless it's critical. While notices are held
 // (Quiet.qml), only a critical one shows.
 //
+// The front one that still waits on Joel shows on the arrival line instead
+// (NoticeLine.qml), at the top centre where the launcher stands, and the
+// stack draws no notice while it does, nor while Super+S's line stands
+// there, so each is in one place. The stack stays, counting each one's time,
+// until the line has run a day on its own (2RCBOJ, 2026-11-13).
+//
 // Super+N gives the stack the keys while there are notices, and opens the
 // history in the launcher when there are none; pressed again, it lets them
 // go. Held, the stack is Vim's quickfix list, a line a card, and every key
@@ -193,6 +199,12 @@ Scope {
 
     // The launcher, for the history the stack hands on to.
     property var launcher: null
+    // Whether Super+S's line is up, where the arrival line stands, so only a critical notice
+    // shows under it and the rest wait, counting no time, until it's put away.
+    readonly property bool talking: launcher?.talking ?? false
+    // Whether the arrival line shows the front notice, or the talk line stands where it
+    // would, so the stack draws none of the notices and each is in one place.
+    readonly property bool lined: line.up || talking
 
     // The notices on screen, as one stack: their ids, the front first, in
     // the order Stack.js keeps. Those resting off it (Notices.qml) are
@@ -318,6 +330,9 @@ Scope {
         const found = root.playing ? [track] : [];
         if (root.holding)
             return found.concat([held]);
+        // The arrival line has the notices while it's up, and draws its own.
+        if (root.lined)
+            return found;
         const front = root.shown.slice(0, root.behind + 1);
         for (let i = 0; i < cards.count; i++) {
             const card = cards.itemAt(i);
@@ -416,6 +431,19 @@ Scope {
         // wears and that glyph's hue; whether a picture of its own stands
         // in its mark column; and where its links go.
         function front(): string {
+            // While the arrival line is up, the front notice is the one it draws, where it
+            // draws it, and what niri blurs is its own frame.
+            const lined = line.where();
+            if (lined !== null) {
+                const from = line.notice.from;
+                return JSON.stringify(Object.assign({
+                    signed: from.name,
+                    glyph: from.glyph,
+                    hue: from.hue,
+                    pictured: Notices.picture(line.notice) !== "",
+                    links: line.notice.words.links.map(link => link.href)
+                }, lined));
+            }
             let card = null;
             for (let i = 0; i < cards.count && card === null; i++) {
                 if (carded.get(i).noticeId === root.shown[0])
@@ -539,6 +567,43 @@ Scope {
                 : root.order.concat([id]), id);
             Report.say(`raises ${notification.summary}`);
         }
+    }
+
+    // A click on the front notice, the card's or the arrival line's: it opens what it's
+    // about, or puts it away when it's about nothing to open.
+    function choose(notification) {
+        const opens = root.opens(notification);
+        if (opens) {
+            Notices.mark(notification.id, true);
+            Notices.open(opens, notification.appName);
+        } else {
+            notification.dismiss();
+        }
+    }
+
+    // What a notice's signing line says on the right: how many more wait behind it and
+    // when it came, or, for one saying how it stands, that and its time, "sent · 12:40"
+    // (VKCF3Z, 2026-11-12).
+    function whenOf(notification, more) {
+        const now = clock.date.getTime();
+        return (more > 0 ? `${more} more \u00b7 ` : "")
+            + (notification.said !== ""
+                ? `${notification.said} \u00b7 ${When.clock(notification.at)}`
+                : root.since(root.arrivedAt(notification.id) || now, now));
+    }
+
+    // The arrival line, where the front notice shows while the stack draws none of them
+    // (NoticeLine.qml).
+    NoticeLine {
+        id: line
+
+        launcher: root.launcher
+        shown: root.shown
+        talking: root.talking
+        holding: root.holding
+        whenOf: (notification, more) => root.whenOf(notification, more)
+        onClicked: notification => root.choose(notification)
+        onLinked: href => root.follow(href)
     }
 
     Connections {
@@ -798,9 +863,10 @@ Scope {
                 id: pile
 
                 width: noticeColumn.width
-                height: root.shown.length === 0 || root.holding ? 0 : Math.max(root.frontHeight,
-                    root.edgeHeight + Math.min(root.shown.length - 1, root.behind) * root.peek)
-                visible: root.shown.length > 0 && !root.holding
+                height: root.shown.length === 0 || root.holding || root.lined ? 0
+                    : Math.max(root.frontHeight,
+                        root.edgeHeight + Math.min(root.shown.length - 1, root.behind) * root.peek)
+                visible: root.shown.length > 0 && !root.holding && !root.lined
 
             Repeater {
                 id: cards
@@ -846,11 +912,6 @@ Scope {
                             Report.say(`shows card ${card.modelData.summary}`);
                     }
 
-                    // What its sender does when the notice itself is
-                    // chosen, such as opening the conversation it's about,
-                    // or null for one that offers nothing.
-                    readonly property var opens: root.opens(card.modelData)
-
                     // A click anywhere on the front card opens what it's
                     // about, or puts it away when it's about nothing to
                     // open, and one on an edge behind brings it to the
@@ -859,14 +920,10 @@ Scope {
                     whole: MouseArea {
                         anchors.fill: parent
                         onClicked: {
-                            if (!card.front) {
+                            if (!card.front)
                                 root.order = Stack.forward(root.shown, card.modelData.id);
-                            } else if (card.opens) {
-                                Notices.mark(card.modelData.id, true);
-                                Notices.open(card.opens, card.modelData.appName);
-                            } else {
-                                card.modelData.dismiss();
-                            }
+                            else
+                                root.choose(card.modelData);
                         }
                     }
 
@@ -879,7 +936,6 @@ Scope {
                     // ink on every side (Joel, 2026-11-03: "feeling quite
                     // cluttered").
                     NoticeRow {
-                        readonly property real now: clock.date.getTime()
                         readonly property int more: root.shown.length - 1
 
                         visible: card.front
@@ -892,10 +948,7 @@ Scope {
                         words: card.modelData.words.styled
                         onLinked: href => root.follow(href)
                         from: card.from.name
-                        when: (more > 0 ? `${more} more \u00b7 ` : "")
-                            + (card.modelData.said !== ""
-                                ? `${card.modelData.said} \u00b7 ${When.clock(card.modelData.at)}`
-                                : root.since(root.arrivedAt(card.modelData.id) || now, now))
+                        when: root.whenOf(card.modelData, more)
                     }
 
                     // Five seconds when the sender doesn't say, and ten for
@@ -909,7 +962,7 @@ Scope {
                     // again in full after.
                     Timer {
                         running: !card.urgent && !Notices.gathered && card.front && !root.holding
-                            && !root.away
+                            && !root.away && !root.talking
                         onRunningChanged: Report.say(
                             `${running ? "counts" : "waits"} card ${card.modelData.summary}`)
                         interval: card.modelData.expireTimeout > 0

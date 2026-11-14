@@ -2614,6 +2614,11 @@
     the stick for an Apple silicon Mac, aarch64-linux on Asahi's kernel and booted as BOOTAA64.EFI,
     evaluates
   '';
+  the-arrival-line-shows-what-still-waits = ''
+    the arrival line shows the front of the notices' stack that's neither read nor withdrawn, only
+    a critical one while notices are held or over the talk line, none while the launcher or the
+    held list has the notices, and counts those behind it still waiting
+  '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,
     a first Return arms it and a second releases it, r refuses, a yes while locked is refused in
@@ -3385,9 +3390,10 @@
   '';
   the-notices-land-on-niri = ''
     the account's notices, on its real niri nested in a headless sway in the sandbox, draw a notice
-    sent as a card on niri's notices layer, and what Super+Shift+N runs puts a critical one away
-    unread in the history; and Google Drive's notice that answers a save is kept unmissed, by its
-    x-answers hint, while its failure is missed
+    sent as a card on niri's notices layer and on the arrival line, an overlay layer that takes no
+    keys and is mapped only while a notice shows, and what Super+Shift+N runs puts a critical one
+    away unread in the history; and Google Drive's notice that answers a save is kept unmissed, by
+    its x-answers hint, while its failure is missed
   '';
   the-notices-take-vi-keys = ''
     the held notices read Vim's keys in each mode from one table: motions, operators and objects
