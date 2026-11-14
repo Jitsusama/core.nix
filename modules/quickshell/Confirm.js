@@ -1,10 +1,9 @@
 // How the launcher asks once before what costs a lot and can't be put
 // back: what it asks, which keys answer, and how soon. It's answered as
 // an armed row is (Arming.js): the Return or d that asked was the first
-// press, a second Return does it, and any other key lets it go but y,
-// which leaves it standing for a month (answer), never y or n answering
-// (Joel, 2026-11-13: "having to say y/n for launcher items when others
-// allow a double enter is stupid"). Where the ask is drawn is the
+// press, a second Return does it, and any other key lets it go, never
+// y or n (Joel, 2026-11-13: "having to say y/n for launcher items when
+// others allow a double enter is stupid"). Where the ask is drawn is the
 // launcher's to say. Read apart from it so tests/query-keys.qml can hold
 // it in Qt's own engine.
 .pragma library
@@ -48,17 +47,11 @@ const YES = ["Return", "Enter"];
 // What a key says to an ask: "early" in its first `guard` ms, so the
 // Return that asked, doubled or bounced, and a key typed on from it
 // neither answer nor reach the line, or for no key at all, as a modifier
-// alone; "yes" for Return; "stands" for y, which weeks of (y/n) left in
-// the hand, so a press from habit leaves the ask standing rather than
-// losing the act (VKCF3Z, 2026-11-14; y goes back to "no" on
-// 2026-12-14); and "no" for any other, Escape and - among them, as any
-// other key lets an armed row go.
+// alone; "yes" for Return; and "no" for any other, Escape, - and y among
+// them, as any other key lets an armed row go.
 function answer(ask, key, now, guard) {
     if (key === "" || now - ask.at < guard) {
         return "early";
-    }
-    if (key === "y") {
-        return "stands";
     }
     return YES.includes(key) ? "yes" : "no";
 }

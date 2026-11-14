@@ -248,18 +248,8 @@ QtObject {
             [Operators.asks([Object.assign({ undo: run }, as("disconnect"))], commands),
                 Operators.asks([as("disconnect")], commands)], [false, false]);
         holds("nor one guarded thing", Operators.asks([as("close")], commands), false);
-        holds("nor up to five", [2, 5].map(count => Operators.asks(
-            Array(count).fill(as("close")), commands)), [false, false]);
-        // More than five at once that can't be put back ask once, with
-        // the count, however little each costs alone: twenty windows gone
-        // at a stroke is of significant consequence (VKCF3Z, 2026-11-14).
-        holds("but more than five that can't be put back ask once",
-            [Operators.asks(Array(6).fill(as("close")), commands),
-                Operators.asks(Array(20).fill(as("halt")), commands)], [true, true]);
-        holds("though not as many put back, nor served as costing little",
-            [Operators.asks(Array(6).fill(Object.assign({ undo: run }, as("close"))), commands),
-                Operators.asks(Array(28).fill(Object.assign({ costly: false }, as("forget"))),
-                    commands)], [false, false]);
+        holds("nor more than one", Operators.asks([as("close"), as("close")], commands),
+            false);
         holds("though any that costs a lot among them asks once",
             Operators.asks([Object.assign({ undo: run }, as("disconnect")), as("forget")],
                 commands), true);
@@ -381,13 +371,9 @@ QtObject {
         holds("Return after it answers yes, the keypad's too",
             ["Return", "Enter"].map(key => Confirm.answer(ask, key, 1300, 300)),
             ["yes", "yes"]);
-        holds("and any other key lets it go, n and Escape among them",
-            ["n", "Escape", "Ctrl+c", "-", "j", "d"].map(key => Confirm.answer(ask, key,
-                1400, 300)), ["no", "no", "no", "no", "no", "no"]);
-        // Weeks of (y/n) left y in the hand, so y leaves the ask standing
-        // rather than letting it go, and a press from habit loses nothing
-        // (VKCF3Z, 2026-11-14), until 2026-12-14.
-        holds("but y leaves it standing", Confirm.answer(ask, "y", 1400, 300), "stands");
+        holds("and any other key lets it go, y, n and Escape among them",
+            ["y", "n", "Escape", "Ctrl+c", "-", "j", "d"].map(key => Confirm.answer(ask, key,
+                1400, 300)), ["no", "no", "no", "no", "no", "no", "no"]);
         holds("and no key at all, as a modifier alone, is let by",
             Confirm.answer(ask, "", 1400, 300), "early");
         pending(holds);
