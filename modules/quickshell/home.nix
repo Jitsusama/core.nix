@@ -2803,9 +2803,11 @@ in
         LimitNOFILE = "16384:524288";
         # The launcher's open mark, and Super+S's line's, say nothing once the
         # shell is gone, so a switch waiting on them never waits on a shell
-        # that died.
+        # that died. Nor does its away mark (Away.qml), so a question asked
+        # after it died isn't parked as if Joel were gone.
         ExecStopPost =
-          "${lib.getExe' pkgs.coreutils "rm"} -f %t/quickshell-launcher" + " %t/quickshell-talk-line";
+          "${lib.getExe' pkgs.coreutils "rm"} -f %t/quickshell-launcher"
+          + " %t/quickshell-talk-line %t/quickshell-away";
         # Which files this shell started from, for quickshell-takes-new-files
         # to tell whether a switch changed them.
         ExecStartPost = "${lib.getExe' pkgs.coreutils "ln"} -sfn ${shellFilesList} %t/quickshell-files";
