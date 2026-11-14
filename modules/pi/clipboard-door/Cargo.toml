@@ -1,0 +1,29 @@
+# The clipboard a fenced pi command reaches: a door outside the fence that
+# holds the desktop's clipboard, and the wl-copy and wl-paste a fenced
+# command runs, which ask it (src/lib.rs says why and how).
+[package]
+name = "pi-clipboard-door"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "pi-clipboard-door"
+path = "src/main.rs"
+
+# wl-copy and wl-paste in one program, told apart by the name it's run as.
+[[bin]]
+name = "pi-clipboard-shim"
+path = "src/bin/pi-clipboard-shim.rs"
+
+[dependencies]
+# Their help and refusals, as every command here says them.
+terminal-kit = { path = "../../terminal-kit" }
+# The compositor's data-control protocol, which sets and reads the
+# clipboard without a window or the keys (src/desk.rs).
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+# The process on a client's end of the socket, and the account this runs
+# as (src/peer.rs).
+libc = "0.2"

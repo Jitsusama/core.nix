@@ -40,6 +40,12 @@ A daemon that answers in a protocol another program defines, as the agent
 proxy speaks ssh-agent's to ssh and git, keeps that protocol's ways, and the
 check names it as such.
 
+A door for pi's fence, as the clipboard door is to the fence's wl-copy and
+wl-paste, answers only the fence's own commands, from a folder of its own
+the fence binds in alone: binding `%t/daemons` would hand a fenced command
+every daemon there. It's not a store of records the shell draws from, so
+the check names it as a door and holds it to none of the points.
+
 One speaks this interface without daemon-serve: pi-verbs, the launcher's AI
 actions, is the harness's TypeScript, since the secret scrubber it refuses a
 selection with lives there and guards every tool's output too, and a copy in

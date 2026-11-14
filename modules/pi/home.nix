@@ -188,6 +188,7 @@ in
 {
   imports = [
     ./agents.nix
+    ./fence.nix
     ./host.nix
     ../theme/home.nix
     ../keys/home.nix

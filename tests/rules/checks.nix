@@ -130,6 +130,7 @@
         slack = pkgs.callPackage ../../modules/slack/package.nix { };
         pineapple = pkgs.callPackage ../../modules/pineapple/package.nix { };
         recentFiles = pkgs.callPackage ../../modules/open-with/recent-files.nix { };
+        clipboardDoor = pkgs.callPackage ../../modules/pi/clipboard-door/package.nix { };
         # A script whose help is in our shape, run as its module's wrapper
         # runs it: `before` sets what the wrapper sets, and `words` go ahead
         # of a person's, as the wrapper's own do. Only its help is asked.
@@ -192,6 +193,9 @@
         open-now = recentFiles;
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
         pause-for-calls = pkgs.callPackage ../../modules/spotify/pause-for-calls/package.nix { };
+        pi-clipboard-door = clipboardDoor;
+        pi-clipboard-shim = clipboardDoor;
+        pi-fence-display = pkgs.callPackage ../../modules/pi/fence-display/package.nix { };
         pi-github-door = pkgs.callPackage ../../modules/pi/github-door/package.nix { };
         pi-packages = pkgs.callPackage ../../modules/pi-packages/package.nix { };
         pi-spawner = pkgs.callPackage ../../modules/pi/spawner/package.nix { };
