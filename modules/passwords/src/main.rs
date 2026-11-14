@@ -94,8 +94,9 @@ const AGAIN_AT_MOST: Duration = Duration::from_secs(60);
 /// How many of the last asks' times health says.
 const TIMES: usize = 32;
 
+/// The managers file: each manager, and what secret asks are answered with.
 #[derive(Deserialize)]
-struct Managers {
+struct ManagersFile {
     managers: Vec<Manager>,
     /// The references a secret ask may have released; none turns asks
     /// off.
@@ -206,8 +207,9 @@ fn main() {
 
 fn daemon(socket: &std::path::Path, managers: &str, words: Option<&str>) {
     let read = std::fs::read_to_string(managers).map_err(|error| error.to_string());
-    let (given, shown): (Managers, Vec<rows::Shown>) = match read.and_then(|text| {
-        let managers = serde_json::from_str::<Managers>(&text).map_err(|error| error.to_string());
+    let (given, shown): (ManagersFile, Vec<rows::Shown>) = match read.and_then(|text| {
+        let managers =
+            serde_json::from_str::<ManagersFile>(&text).map_err(|error| error.to_string());
         let shown = serde_json::from_str::<Shown>(&text).map_err(|error| error.to_string());
         Ok((managers?, shown?.managers))
     }) {
@@ -275,7 +277,7 @@ fn daemon(socket: &std::path::Path, managers: &str, words: Option<&str>) {
 /// each ask as it comes and tells the rows' watches. Where something it
 /// needs is missing, it says why and answers none, so a release is
 /// refused as not listed.
-fn answer_asks(shared: &Shared, given: Managers, words: Option<&str>) {
+fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) {
     let absolute = |name: &str| {
         std::env::var_os(name)
             .map(PathBuf::from)
