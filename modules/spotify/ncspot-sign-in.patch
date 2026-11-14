@@ -1,18 +1,3 @@
-diff --git a/spotify_player/src/auth.rs b/spotify_player/src/auth.rs
-index 18aabcb..0fef6ae 100644
---- a/spotify_player/src/auth.rs
-+++ b/spotify_player/src/auth.rs
-@@ -13,7 +13,9 @@ use sha2::{Digest as _, Sha256};
- 
- pub const SPOTIFY_CLIENT_ID: &str = "65b708073fc0480ea92a077233ca87bd";
- pub const NCSPOT_CLIENT_ID: &str = "d420a117a32841c2b3474932e49fb54b";
--pub const NCSPOT_REDIRECT_URI: &str = "http://127.0.0.1:8989/login";
-+// ncspot's app takes only this address since 2026-09-28, and answers any other with "redirect_uri:
-+// Not matching configuration".
-+pub const NCSPOT_REDIRECT_URI: &str = "http://127.0.0.1:8989/ncspot_login";
- 
- const SPOTIFY_AUTHORIZE_URL: &str = "https://accounts.spotify.com/authorize";
- const SPOTIFY_TOKEN_URL: &str = "https://accounts.spotify.com/api/token";
 diff --git a/spotify_player/src/cli/handlers.rs b/spotify_player/src/cli/handlers.rs
 index 7c12725..538af72 100644
 --- a/spotify_player/src/cli/handlers.rs
