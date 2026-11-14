@@ -135,7 +135,22 @@ local function hints()
   }
 end
 
+-- The window's title says what Return makes, or that it records, as the
+-- panel's word does, so the window reads as more than the program's name
+-- among Joel's windows. It's set only when it changes, since each set
+-- tells niri and everything that follows its windows.
+local titled = nil
+local function title()
+  local doing = recording and 'Recording' or (mode == 'picture' and 'Photo' or 'Video')
+  local wanted = doing .. ' · Camera'
+  if wanted ~= titled then
+    titled = wanted
+    mp.set_property('title', wanted)
+  end
+end
+
 local function draw()
+  title()
   local width, height = mp.get_osd_size()
   if not width or width == 0 then
     return
