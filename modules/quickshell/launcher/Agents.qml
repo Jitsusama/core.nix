@@ -403,6 +403,28 @@ Provider {
         });
     }
 
+    // As the launcher opens at home, what typing will find is wrapped the
+    // frame after home is drawn, so a session that came or changed while
+    // it was shut is made then, not by the first letter: its row, its
+    // Talk and its top level's row were that letter's five (KP0L6A,
+    // 2026-11-13). The rows that kept their words keep their wraps, so
+    // this makes only those. Opened into a place, typing searches that
+    // place alone, so nothing is.
+    function wrapForTyping() {
+        const launcher = provider.launcher;
+        const home = () => !!launcher?.open && (launcher.held?.length ?? 0) === 0
+            && !launcher.entering;
+        if (!home() || typeof launcher.afterFrame !== "function")
+            return;
+        launcher.afterFrame(() => {
+            if (!home())
+                return;
+            provider.laidOut();
+            if (provider.topServed)
+                top.rows();
+        });
+    }
+
     // Every row at the tree's top, in the daemon's order, a fold holding
     // its members, then the closed orchestrators.
     function laidOut() {
@@ -1283,6 +1305,7 @@ Provider {
 
         function onOpenChanged() {
             provider.wrapAhead();
+            provider.wrapForTyping();
             // Shut, no drawer shows, so none is watched.
             if (!provider.launcher.open)
                 provider.drawerWanted = "";
