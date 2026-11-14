@@ -431,5 +431,19 @@
       "test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_once"
     ],
     "test": "vm-screens-keep-the-launcher"
+  },
+  {
+    "at": 1794646800,
+    "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
+    "owner_pr": 4252,
+    "reason": "has been broken since #4252, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "subtests": [
+      "test_a_sessions_action_is_in_needs_you_once_as_its_item",
+      "test_now_leads_with_what_waits_on_joel",
+      "test_waiting_on_you_holds_only_what_is_true",
+      "test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so",
+      "test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps"
+    ],
+    "test": "vm-desktop-launcher-waits-on-joel"
   }
 ]
