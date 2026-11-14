@@ -44,3 +44,14 @@ mkdir -p "$folder"
 printf '%s\t%s\n' "$name" "$rest" > "$folder/.$pid"
 mv "$folder/.$pid" "$folder/$pid"
 kill -USR1 "$pid"
+
+# swayimg removes the file once it has read it. Each command waits for
+# that, so one sent straight after can't write over it unread, and two
+# signals close together can't arrive as one.
+for _ in $(seq 100); do
+  [ -e "$folder/$pid" ] || exit 0
+  sleep 0.02
+done
+printf '%s\n' "swayimg didn't take $name" \
+  "  try  it again once swayimg answers" >&2
+exit 1
