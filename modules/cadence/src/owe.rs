@@ -6,17 +6,13 @@
 //! owner, who filed it, is told nothing. On 12 November the security
 //! owner asked for a way to file its plan's musts this way.
 
-use std::path::Path;
-use std::process::ExitCode;
-
 use jiff::Timestamp;
 use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
+use terminal_kit::{Exit, Failure};
 
 use crate::findings::{self, Entry};
-
-pub const USAGE: &str = "cadence owe KEY --axis AXIS --owner ADDRESS --due YYYY-MM-DDTHH:MM \
-                         --says WORDS [--kind KIND]\n       cadence owe --done KEY";
+use crate::{failed, folders, wrongly};
 
 /// A must as its owner files it, due at a time in seconds since the epoch.
 #[derive(Debug, PartialEq, Eq)]
@@ -126,16 +122,12 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
         .is_some()
 }
 
-/// Runs `cadence owe` on the ledger in `folder` at `now`.
-pub fn run(args: impl Iterator<Item = String>, folder: &Path, now: i64) -> ExitCode {
+/// Runs `cadence owe` on the ledger in cadence's folder at `now`, once
+/// what was asked has been read.
+pub fn run(args: impl Iterator<Item = String>, now: i64) -> Result<(), Failure> {
     let zone = TimeZone::system();
-    let asked = match parse(args, &zone) {
-        Ok(asked) => asked,
-        Err(why) => {
-            eprintln!("cadence: {why}\nusage: {USAGE}");
-            return ExitCode::from(2);
-        }
-    };
+    let asked = parse(args, &zone).map_err(|why| wrongly("owe", why))?;
+    let (_, _, folder) = folders().map_err(failed)?;
     let kept_at = folder.join("findings.jsonl");
     let mut ledger = findings::read(&kept_at);
     let said = match asked {
@@ -149,21 +141,21 @@ pub fn run(args: impl Iterator<Item = String>, folder: &Path, now: i64) -> ExitC
         }
         Asked::Done(key) => {
             if !settle(&mut ledger, &key) {
-                eprintln!(
-                    "cadence: no open must is filed as {key}; a finding of cadence's own \
-                     closes once its figure is back"
-                );
-                return ExitCode::FAILURE;
+                return Err(Failure::new(
+                    Exit::NotFound,
+                    format!("no open must is filed as {key}"),
+                )
+                .because("a finding of cadence's own closes once its figure is back"));
             }
             format!("cadence: {key} is done")
         }
     };
-    if let Err(err) = findings::keep(&kept_at, &ledger) {
-        eprintln!("cadence: keeping {}: {err}", kept_at.display());
-        return ExitCode::FAILURE;
-    }
+    findings::keep(&kept_at, &ledger).map_err(|err| {
+        Failure::new(Exit::Failed, format!("keeping {}", kept_at.display()))
+            .because(err.to_string())
+    })?;
     println!("{said}");
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 #[cfg(test)]

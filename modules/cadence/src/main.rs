@@ -37,17 +37,14 @@
 //! `cadence review`, run each Friday evening by a timer, sends the week's
 //! noise and blind spots to the addresses it's given (axes/review.rs).
 //!
-//!     cadence tick [--watcher ADDRESS --orchestrator ADDRESS] [--owner PREFIX=ADDRESS]...
-//!         [--restart WORDS [--revive ADDRESS]... [--skip ADDRESS]...]
-//!     cadence units [--at SECONDS]
-//!     cadence day [--orchestrator ADDRESS [--watcher ADDRESS] [--owner PREFIX=ADDRESS]...]
-//!     cadence axes [AXIS | --served WORDS]
-//!     cadence review [--to ADDRESS]...
+//! `cadence --help`, and each command's, say what each takes
+//! (commands.rs).
 
 mod asking;
 mod axes;
 mod builders;
 mod card;
+mod commands;
 mod daily;
 mod day;
 mod findings;
@@ -72,6 +69,7 @@ mod watch;
 
 use std::collections::BTreeMap;
 use std::env;
+use std::fmt::Display;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -80,6 +78,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
+use terminal_kit::{Context, Exit, Failure};
 
 use asking::{State, To};
 use mesh::{Mesh, Message};
@@ -104,36 +103,42 @@ struct Args {
 }
 
 fn main() -> ExitCode {
-    let mut args = env::args().skip(1);
-    match args.next().as_deref() {
-        Some("tick") => {}
-        Some("day") => return day(args),
-        Some("units") => return units_now(args),
-        Some("axes") => return axes::run(args),
-        Some("review") => return axes::review::run(args),
-        Some("owe") => {
-            return match folders() {
-                Ok((_, _, folder)) => owe::run(args, &folder, now_ms() / 1000),
-                Err(err) => {
-                    eprintln!("cadence: {err}");
-                    ExitCode::FAILURE
-                }
-            };
-        }
-        _ => {
-            eprintln!(
-                "usage: cadence tick [--watcher ADDRESS --orchestrator ADDRESS] \
-                 [--owner PREFIX=ADDRESS]... [--restart WORDS \
-                 [--revive ADDRESS]... [--skip ADDRESS]...]\n       \
-                 {UNITS_USAGE}\n       \
-                 {DAY_USAGE}\n       \
-                 cadence axes [AXIS | --served WORDS]\n       \
-                 cadence review [--to ADDRESS]...\n       {}",
-                owe::USAGE
-            );
-            return ExitCode::from(2);
-        }
+    terminal_kit::main(&commands::help(), env!("CARGO_PKG_VERSION"), asked)
+}
+
+/// Runs the command its first word names; the kit has refused any other.
+fn asked(context: &Context) -> Result<(), Failure> {
+    let Some((command, rest)) = context.args.split_first() else {
+        return Err(Failure::new(Exit::Usage, "cadence takes a command")
+            .because("it does only what one asks")
+            .try_this("cadence --help"));
+    };
+    let rest = rest.iter().cloned();
+    match command.as_str() {
+        "tick" => run(&ticking(rest)?).map_err(failed),
+        "day" => day(rest),
+        "units" => units_now(rest),
+        "axes" => axes::run(rest),
+        "review" => axes::review::run(rest),
+        "owe" => owe::run(rest, now_ms() / 1000),
+        _ => Err(Failure::new(Exit::Usage, "cadence takes its command first")
+            .because(format!("{command} came before it"))
+            .try_this("cadence --help")),
     }
+}
+
+/// A command asked wrongly, pointing at its own help.
+fn wrongly(command: &str, what: impl Into<String>) -> Failure {
+    Failure::new(Exit::Usage, what).try_this(format!("cadence {command} --help"))
+}
+
+/// A command that couldn't do what it was asked, saying why.
+fn failed(err: impl Display) -> Failure {
+    Failure::new(Exit::Failed, err.to_string())
+}
+
+/// Reads what `cadence tick` was asked.
+fn ticking(mut args: impl Iterator<Item = String>) -> Result<Args, Failure> {
     let mut parsed = Args {
         watcher: None,
         orchestrator: None,
@@ -155,32 +160,23 @@ fn main() -> ExitCode {
                 parsed.owners.insert(prefix.to_owned(), address.to_owned());
             }
             _ => {
-                eprintln!("cadence: {flag} isn't a flag it takes, or has no value");
-                return ExitCode::from(2);
+                return Err(wrongly(
+                    "tick",
+                    format!("{flag} isn't a flag it takes, or has no value"),
+                ));
             }
         }
     }
-    match run(&parsed) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(err) => {
-            eprintln!("cadence: {err}");
-            ExitCode::FAILURE
-        }
-    }
+    Ok(parsed)
 }
-
-const UNITS_USAGE: &str = "cadence units [--at SECONDS]";
 
 /// Says what the unit watch reads and would tell now, or at `--at`
 /// from the journal alone, sending nothing and keeping nothing.
-fn units_now(mut args: impl Iterator<Item = String>) -> ExitCode {
+fn units_now(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let at = match (args.next().as_deref(), args.next()) {
         (None, _) => None,
         (Some("--at"), Some(v)) if v.parse::<i64>().is_ok() => v.parse().ok(),
-        _ => {
-            eprintln!("usage: {UNITS_USAGE}");
-            return ExitCode::from(2);
-        }
+        _ => return Err(wrongly("units", "--at takes a number of seconds")),
     };
     let now = now_ms() / 1000;
     let runtime = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
@@ -201,13 +197,11 @@ fn units_now(mut args: impl Iterator<Item = String>) -> ExitCode {
     for tell in &tells {
         println!("{}", tell.text);
     }
-    ExitCode::SUCCESS
+    Ok(())
 }
 
-const DAY_USAGE: &str =
-    "cadence day [--orchestrator ADDRESS [--watcher ADDRESS] [--owner PREFIX=ADDRESS]...]";
-
-fn day(mut args: impl Iterator<Item = String>) -> ExitCode {
+/// Reads the day just ended and tells whom it was asked to.
+fn day(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let mut told = daily::Told::default();
     while let Some(flag) = args.next() {
         match (flag.as_str(), args.next()) {
@@ -218,21 +212,18 @@ fn day(mut args: impl Iterator<Item = String>) -> ExitCode {
                 told.owners.insert(prefix.to_owned(), address.to_owned());
             }
             _ => {
-                eprintln!("usage: {DAY_USAGE}");
-                return ExitCode::from(2);
+                return Err(wrongly(
+                    "day",
+                    format!("{flag} isn't a flag it takes, or has no value"),
+                ));
             }
         }
     }
-    let ran = folders().and_then(|(_, state_home, folder)| {
-        daily::run(&folder, &state_home, &told, now_ms() / 1000)
-    });
-    match ran {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(err) => {
-            eprintln!("cadence: {err}");
-            ExitCode::FAILURE
-        }
-    }
+    folders()
+        .and_then(|(_, state_home, folder)| {
+            daily::run(&folder, &state_home, &told, now_ms() / 1000)
+        })
+        .map_err(failed)
 }
 
 /// The account's home, its state folder, and cadence's own in it.
