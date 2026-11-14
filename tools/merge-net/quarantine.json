@@ -271,5 +271,16 @@
       "test_neovims_page_is_shot_at_each_scale"
     ],
     "test": "vm-desktop-looks-programs"
+  },
+  {
+    "at": 1794614305,
+    "commit": "4584e9ba4bdff5d82201423e464a7337ad16eae6",
+    "owner_pr": 4090,
+    "reason": "failed under the builder's memory pressure from 18:05, passed alone at 0759b4b15f11, 78784aaa6205 and 0ffdc57bcd86: a new row told at once lets the count take in rows a busy shell makes after the moment the test waits for",
+    "subtests": [
+      "test_a_shut_launcher_makes_no_agents_rows_as_a_session_comes_and_lands",
+      "test_the_first_letter_typed_at_home_makes_a_few_rows_after_one_arrived_while_shut"
+    ],
+    "test": "an-agents-return-does-its-harmless-act-on-niri"
   }
 ]
