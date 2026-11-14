@@ -18,6 +18,13 @@ function tile(windows, workspaces, output, id) {
     return { left: at[0], top: at[1], width: shown.layout.tile_size[0] };
 }
 
+// Whether no window is on a workspace at all, laid out or not: niri says a
+// workspace shown before its windows' tiles there, as it slides to one or
+// takes a new scale, so their tiles alone would say it empty a moment.
+function empty(windows, workspaceId) {
+    return !Object.values(windows).some(one => one.workspace_id === workspaceId);
+}
+
 // The tiles of a workspace's windows, each with its column and its row in
 // niri's scrolling layout, both null for a floating one, and its window's id.
 function of(windows, workspaceId) {

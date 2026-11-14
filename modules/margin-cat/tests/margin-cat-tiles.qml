@@ -65,5 +65,13 @@ QtObject {
             Tiles.of(windows, 7).map(one => [one.id, one.column, one.row]),
             [[1, 1, 1], [2, 1, 2], [3, null, null]]);
         expect("no workspace has no tiles", Tiles.of(windows, null), []);
+        // niri says a workspace shown before its windows' tiles there, as
+        // it slides to one or takes a new scale, so a window not laid out
+        // yet still keeps its workspace from being empty.
+        const unlaid = { 5: { id: 5, workspace_id: 9, layout: {} } };
+        expect("a workspace with a window not laid out yet isn't empty",
+            Tiles.empty(unlaid, 9), false);
+        expect("a workspace no window is on is empty", Tiles.empty(windows, 9), true);
+        expect("a workspace with windows isn't empty", Tiles.empty(windows, 8), false);
     }
 }
