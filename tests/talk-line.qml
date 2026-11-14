@@ -204,6 +204,12 @@ QtObject {
             const justSaid = Said.begun("VOID", "line 17:49", "line 17:49", at(17, 49) - 900);
             Expect.same("a line said here and kept by the void shows once",
                 shown(Said.gathered([justSaid], lines, events, seen)).length, 3);
+            Expect.same("the same words said again later are a line of their own",
+                shown(Said.gathered([Said.begun("VOID", "line 17:49", "line 17:49",
+                    at(17, 52))], lines, events, seen))[0], "line 17:49");
+            Expect.same("and wait while the one before is answered",
+                Said.gathered([Said.begun("VOID", "line 17:49", "line 17:49", at(17, 52))],
+                    lines, events, seen).length, 4);
             Expect.same("a line said here the void hasn't kept yet waits first",
                 shown(Said.gathered([Said.begun("VOID", "new", "new", at(18, 1))], lines,
                     events, seen))[0], "new");

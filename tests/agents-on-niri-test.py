@@ -1544,18 +1544,6 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
         r"talk line: up (\d+) ms", shell.log.read_bytes()[since:].decode(errors="replace")
     )
     logging.getLogger(__name__).info("the line was up after %s ms each time", times)
-    # The void keeps it, so it waits no longer and the cases after begin from no line open.
-    now = datetime.now(UTC)
-    laid = inbox / "replies" / f"talk-{int(now.timestamp() * 1000)}.jsonl.tmp"
-    laid.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
-        {"stage": "delivered", "at": now.isoformat(), "session": "s-void", "from": "joel",
-         "text": sent[0]},
-        {"stage": "replied", "at": now.isoformat(), "text": "Kept."},
-    ]  # fmt: skip
-    laid.write_text("".join(json.dumps(one) + "\n" for one in lines))
-    laid.rename(laid.with_suffix(""))
-    shell.launcher_until(lambda shown: shown["line"]["talk"] == "answered")
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
@@ -1584,16 +1572,27 @@ def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
             time.sleep(0.1)
 
     def replied(asked: str, answer: str) -> None:
-        """Lay the void's talk of these words as delivered now, then replied to, as pi does."""
+        """Lay the void's talk of these words as delivered now, then replied to, as pi does.
+
+        pi names a talk by the id the line gave it as it was said, so the line knows it
+        for the one it said however late the void answers.
+        """
         replies = STEER / "VOID" / "replies"
         replies.mkdir(parents=True, exist_ok=True)
         now = datetime.now(UTC)
+        ids = [
+            str(steer.get("id", ""))
+            for one in (STEER / "VOID").glob("*.json")
+            if (steer := json.loads(one.read_text())).get("text") == asked
+        ]
+        named = ids[0] if ids and ids[0].startswith("talk-") else ""
+        talk = named or f"talk-{int(now.timestamp() * 1000)}"
         lines = [
             {"stage": "delivered", "at": now.isoformat(), "session": "s-void", "from": "joel",
              "text": asked},
             {"stage": "replied", "at": now.isoformat(), "text": answer},
         ]  # fmt: skip
-        laid = replies / f"talk-{int(now.timestamp() * 1000)}.jsonl.tmp"
+        laid = replies / f"{talk}.jsonl.tmp"
         laid.write_text("".join(json.dumps(line) + "\n" for line in lines))
         laid.rename(laid.with_suffix(""))
 

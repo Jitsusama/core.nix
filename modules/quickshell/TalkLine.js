@@ -86,10 +86,13 @@ function unanswered(served) {
         || (String(served?.reply ?? "") === "" && ["failed", "over"].includes(served?.stage));
 }
 
-// Whether a line said here is one the void serves, said a moment apart.
-const SAID_APART_MS = 30000;
-function same(one, other) {
-    return one.sent === other.sent && Math.abs(one.since - other.since) < SAID_APART_MS;
+// Whether a line said here is one the void serves: the same words, which the void kept a
+// moment after, never before, so the same words said again are a line of their own.
+const KEPT_AFTER_MS = 30000;
+const SAID_BEFORE_MS = 2000;
+function same(here, served) {
+    const after = served.since - here.since;
+    return here.sent === served.sent && after > -SAID_BEFORE_MS && after < KEPT_AFTER_MS;
 }
 
 // What only this shell knows of a line: that it's being taken back, or was.
@@ -117,7 +120,7 @@ function open(talk, events, seen) {
 function gathered(here, served, events, seen) {
     const lines = (served ?? []).filter(one => Number.isFinite(one.since));
     for (const one of here ?? []) {
-        const kept = lines.findIndex(line => same(line, one));
+        const kept = lines.findIndex(line => same(one, line));
         if (kept < 0) {
             lines.push(one);
         } else if (TAKING.includes(one.said)) {
