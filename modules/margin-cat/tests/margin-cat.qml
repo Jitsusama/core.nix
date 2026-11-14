@@ -465,9 +465,9 @@ QtObject {
             aloft.map(one => one.pose), ["leaping", "tucked", "falling"]);
         expect("each seen two frames at 60 Hz", aloft.every(one => one.ms >= 33), true);
         const top = across.beats.find(beat => beat.name === "leaps");
-        const highest = flight.reduce((best, at) => at.y < best.y ? at : best);
-        expect("tucked at the leap's highest",
-            Paths.frame(across, highest.t).pose, "tucked");
+        // Level, its arc is highest halfway.
+        expect("tucked at the top of its arc",
+            [top.from.y, Paths.frame(across, (top.begins + top.ends) / 2).pose], [7, "tucked"]);
         expect("rising before it and falling after",
             [Paths.frame(across, top.begins).pose, Paths.frame(across, top.ends - 1).pose],
             ["leaping", "falling"]);
@@ -724,5 +724,30 @@ QtObject {
             each(pressed, 191).every(one => edgeAt(300, one.t) - one.y <= 20 + 1e-6), true);
         expect("a gap under two cells closes with no pose",
             each(riding(1.5, { away: true }), 191).every(one => one.pose === null), true);
+
+        // Its own motion lands on its art's own pixels, cells of 2 here,
+        // carrying the part-cell a ride leaves it at (RSCH-20261113-24R2QV,
+        // finding 1); the ride keeps niri's pixels.
+        const stepped = Ways.begun({ cell: 2, wide: 16, tall: 16 }, { x: 101, y: 400 });
+        Ways.rides(stepped, { x: 101, y: 413.3 }, { ms: 100, frame: hz120, edge: t => t / 100 });
+        Ways.goes(stepped, 160, 413.3);
+        Ways.leap(stepped, { x: 175, y: 380.7 }, 2);
+        Ways.falls(stepped, { x: 175, y: 431 });
+        const byItself = Ways.timed(stepped);
+        const cells = v => Math.abs(v / 2 - Math.round(v / 2)) < 1e-6;
+        const stepping = each(byItself, byItself.ends).map(one => Object.assign(one,
+            { on: byItself.beats.find(beat => one.t < beat.ends) }));
+        expect("each frame of its own a whole number of cells from where its beat starts or ends",
+            stepping.filter(one => one.on.kind !== "rides").every(one => ["x", "y"].every(axis =>
+                cells(one[axis] - one.on.from[axis]) || cells(one[axis] - one.on.to[axis]))),
+            true);
+        expect("never stepping back to get there",
+            stepping.every((one, i) => i === 0 || one.x >= stepping[i - 1].x), true);
+        expect("walking flush on the part-cell the ride left it at, and ending where it's going",
+            [stepping.filter(one => one.beat === "goes").every(one => one.y === 413.3),
+                Ways.frame(byItself, byItself.ends - 1e-6).y, Ways.frame(byItself, byItself.ends).y],
+            [true, 431, 431]);
+        expect("the ride on niri's own pixels",
+            Math.round(Ways.frame(byItself, 50).y * 100), 40665);
     }
 }
