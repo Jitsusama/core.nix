@@ -14,8 +14,9 @@
 // own tests' (modules/notices' search.rs), and each it answers is counted
 // in `searches`. Those of `unserved`, notices no place serves, as a page
 // served leaves the rest, are found too, each with its row in the answer;
-// while there are any, `notices` says beside its rows how many it has rows
-// for, as the daemon's summary does, and a `rows` ask is answered as a
+// `notices` says beside its rows how many it has rows for, those too, and
+// how many each sender sent and how many of those are unread, as the
+// daemon's summary does, and a `rows` ask is answered as a
 // search is, every notice's key in order with the unserved rows beside
 // them, each counted in `rowsAsked`; History's count holds its unserved
 // too, and its `rows` ask answers every one it keeps, those of the unserved
@@ -160,9 +161,17 @@ Scope {
                     desktop: history("desktop", every).length,
                     slack: history("slack", every).length } } };
         }
-        if (place === "notices" && unserved.length > 0) {
+        if (place === "notices") {
+            const every = notices.concat(unserved);
+            const senders = {};
+            for (const one of every) {
+                const sent = senders[one.app ?? ""] ?? (senders[one.app ?? ""] = { count: 0,
+                    unread: 0 });
+                sent.count += 1;
+                sent.unread += one.read ? 0 : 1;
+            }
             rows["summary:notices"] = { key: "summary:notices", kind: "summary",
-                summary: { count: notices.length + unserved.length } };
+                summary: { count: every.length, senders: senders } };
         }
         return rows;
     }

@@ -50,7 +50,8 @@ pub const HISTORY: &str = "notices-history";
 pub const PAGE: usize = 100;
 
 /// The record beside the `notices` place's rows saying how many notices
-/// it has rows for, served or not, as Notifications counts them.
+/// it has rows for, served or not, as Notifications counts them, and how
+/// many each sender sent and how many of those are unread ([`senders`]).
 pub const SUMMARY: &str = "summary:notices";
 
 /// The record beside History's rows saying how many read notices it has
@@ -543,7 +544,29 @@ pub fn served(made: [Vec<Value>; 3]) -> [(Vec<Value>, Vec<Value>); 3] {
     let sources = json!({ "desktop": of("desktop"), "slack": of("slack") });
     let (rows, mut counted) = page(HISTORY_SUMMARY, history);
     counted[0]["summary"]["sources"] = sources;
-    [page(SUMMARY, mixed), (desktop, Vec::new()), (rows, counted)]
+    let senders = senders(&mixed);
+    let (mixed, mut summed) = page(SUMMARY, mixed);
+    summed[0]["summary"]["senders"] = senders;
+    [(mixed, summed), (desktop, Vec::new()), (rows, counted)]
+}
+
+/// How many notices each sender sent, by the name it sent them as, and
+/// how many of those are unread, which a page can't count past its
+/// hundred: a program's own row counts its notices from this alone,
+/// rather than asking for every row past the page and counting those
+/// (KP0L6A and RTOIMQ, 2026-11-14).
+fn senders(mixed: &[Value]) -> Value {
+    let mut senders: BTreeMap<&str, [usize; 2]> = BTreeMap::new();
+    for held in mixed.iter().map(|row| &row["held"]) {
+        let app = held["app"].as_str().unwrap_or_default();
+        let counts = senders.entry(app).or_default();
+        counts[0] += 1;
+        counts[1] += usize::from(held["read"] != true);
+    }
+    let each = |(app, [count, unread]): (&str, [usize; 2])| {
+        (app.to_owned(), json!({ "count": count, "unread": unread }))
+    };
+    Value::Object(senders.into_iter().map(each).collect())
 }
 
 /// The rows of a paged place it serves, of every one made, in their
@@ -828,6 +851,22 @@ mod tests {
         assert_eq!(mixed_count, PAGE + 3, "the mixed place counts every one");
         let desktop = keys(&desktop.0);
         assert_eq!(desktop, ["row:notices-desktop:200"], "its unread whole");
+    }
+
+    #[test]
+    fn the_mixed_place_counts_each_senders_past_its_page_too() {
+        // Two unread from Mail, then PAGE and one more read from Slack.
+        let mail = json!({ "app": "Mail" });
+        let mut notices = vec![notice(300, &mail), notice(299, &mail)];
+        let read = u32::try_from(PAGE).expect("a page fits") + 1;
+        notices.extend((0..read).map(|at| notice(298 - at, &json!({ "read": true }))));
+        let [mixed, _, _] = served(making(&notices, &[]));
+        let senders = &mixed.1[0]["summary"]["senders"];
+        let wanted = json!({
+            "Mail": { "count": 2, "unread": 2 },
+            "Slack": { "count": PAGE + 1, "unread": 0 },
+        });
+        assert_eq!(senders, &wanted, "each sender's, those past the page too");
     }
 
     fn act_keys(row: &Value) -> Vec<&str> {
