@@ -56,6 +56,44 @@ while read -r line; do
 done
 "#;
 
+/// A manager that releases a listed reference's value to Joel's yes,
+/// as 1Password's does once it's started with `--release`: a made-up
+/// value that looks it, said only to a release `asked` as his.
+pub const RELEASING: &str = r#"
+log=$1
+echo '{"state":"answering"}'
+while read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  [[ $line =~ \"id\":([0-9]+) ]] && id=${BASH_REMATCH[1]}
+  [[ $line =~ \"ask\":\"([a-z-]+)\" ]] && ask=${BASH_REMATCH[1]}
+  case $ask in
+    list) printf '{"id":%s,"entries":[]}\n' "$id" ;;
+    release)
+      if [[ $line != *'"asked":true'* ]]; then
+        printf '{"id":%s,"error":{"code":"refused","message":"not asked"}}\n' "$id"
+        continue
+      fi
+      printf '{"id":%s,"value":"%s"}\n' "$id" "$RELEASED_VALUE" ;;
+    *) printf '{"id":%s,"error":{"code":"refused","message":"no"}}\n' "$id" ;;
+  esac
+done
+"#;
+
+/// The made-up value RELEASING releases, which no answer, log or
+/// command line may hold.
+pub const RELEASED_VALUE: &str = "tr0ub4dor-made-up-for-the-test";
+
+/// A stand-in for bubblewrap, which a build's sandbox can't nest: it
+/// keeps the arguments it was given, then runs what follows `--` with
+/// the environment it was handed, as bwrap does once it's set its
+/// sandbox up.
+const BWRAP: &str = r#"
+printf '%s\n' "$@" > "$0.args"
+while [ "$1" != -- ]; do shift; done
+shift
+exec "$@"
+"#;
+
 /// A stand-in for wl-copy in the foreground: what it's given goes to its
 /// file, and it holds on until it's ended, as wl-copy holds the clipboard.
 const COPIER: &str = r#"
@@ -107,7 +145,57 @@ impl Running {
         set: &[(&str, &str)],
         words: &str,
     ) -> Running {
-        let folder = std::env::temp_dir().join(format!("passwords-{test}-{}", std::process::id()));
+        Running::started_with(test, managers, set, words, &json!({}))
+    }
+
+    /// The daemon with RELEASING as 1Password, reading `op://`
+    /// references, these listed as `releases`, a stand-in bubblewrap,
+    /// and a runtime folder of its own, whose `secret-asks` holds the
+    /// asks (`asks`).
+    pub fn releasing(test: &str, releases: &[&str]) -> Running {
+        let words = std::env::var("LAUNCHER_WORDS")
+            .expect("LAUNCHER_WORDS names no vocabulary; passwords-holds-no-secret hands it one");
+        let folder = Running::folder_of(test);
+        let bwrap = folder.join("bwrap");
+        let runtime = folder.join("runtime");
+        let also = json!({
+            "releases": releases,
+            "git": "git",
+            "bwrap": bwrap,
+            "references": {"1password": "op://"},
+        });
+        let running = Running::started_with(
+            test,
+            &[("1password", RELEASING)],
+            &[
+                ("XDG_RUNTIME_DIR", runtime.to_str().unwrap()),
+                ("RELEASED_VALUE", RELEASED_VALUE),
+            ],
+            &words,
+            &also,
+        );
+        std::fs::write(&bwrap, format!("#!/bin/sh\n{BWRAP}")).unwrap();
+        std::fs::set_permissions(&bwrap, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        running
+    }
+
+    /// The folder a test keeps everything in.
+    fn folder_of(test: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("passwords-{test}-{}", std::process::id()))
+    }
+
+    /// The daemon as `started` makes it, with `also`'s fields beside
+    /// the managers in its file, its `references` given each manager
+    /// by name.
+    fn started_with(
+        test: &str,
+        managers: &[(&str, &str)],
+        set: &[(&str, &str)],
+        words: &str,
+        also: &Value,
+    ) -> Running {
+        let folder = Running::folder_of(test);
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
         let shell = std::env::var("BASH").unwrap_or_else(|_| "bash".to_owned());
@@ -115,11 +203,22 @@ impl Running {
             .iter()
             .map(|(name, script)| {
                 let log = folder.join(format!("{name}.log"));
-                json!({"name": name, "command": [shell, "-c", script, name, log]})
+                let mut manager =
+                    json!({"name": name, "command": [shell, "-c", script, name, log]});
+                if let Some(prefix) = also["references"].get(name) {
+                    manager["references"] = prefix.clone();
+                }
+                manager
             })
             .collect();
+        let mut file = json!({"managers": listed});
+        for (field, value) in also.as_object().into_iter().flatten() {
+            if field != "references" {
+                file[field] = value.clone();
+            }
+        }
         let managers_file = folder.join("managers.json");
-        std::fs::write(&managers_file, json!({"managers": listed}).to_string()).unwrap();
+        std::fs::write(&managers_file, file.to_string()).unwrap();
         let copier = folder.join("copier");
         // Run as wl-copy is, by its path alone, so it names its own shell;
         // it needs nothing past POSIX sh, which Nix's build sandbox has too.
@@ -195,6 +294,16 @@ impl Running {
     /// What a manager was asked so far, a line an ask.
     pub fn asked_of(&self, manager: &str) -> String {
         std::fs::read_to_string(self.folder.join(format!("{manager}.log"))).unwrap_or_default()
+    }
+
+    /// The folder a releasing daemon's asks are put up in.
+    pub fn asks(&self) -> PathBuf {
+        self.folder.join("runtime").join("secret-asks")
+    }
+
+    /// The arguments the stand-in bubblewrap was last given, a line each.
+    pub fn bwrapped(&self) -> String {
+        std::fs::read_to_string(self.folder.join("bwrap.args")).unwrap_or_default()
     }
 
     /// What the daemon and its managers logged so far.
