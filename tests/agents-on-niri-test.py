@@ -419,7 +419,10 @@ def test_a_talks_words_come_back_after_the_shell_starts_again(shell: Shell) -> N
     shell.launcher_until(lambda shown: shown["typed"] == "")
 
 
-def test_a_talk_shows_under_its_field_sent_then_waiting_then_answered(shell: Shell) -> None:
+@pytest.mark.usefixtures("at_shots_scale")
+def test_a_talk_shows_under_its_field_sent_then_waiting_then_answered(
+    shell: Shell, shoot: Callable[[str], None]
+) -> None:
     """What Joel says to a session stands under the field until it answers, as the line's do.
 
     Talk opened over empty rows and said nothing once sent (Joel at 19:30 on 2026-11-13: "no
@@ -444,8 +447,10 @@ def test_a_talk_shows_under_its_field_sent_then_waiting_then_answered(shell: She
         shell.launcher_until(lambda shown: shown["asking"] and shown["talks"] == [])
         card = shell.showing()["card"]
         assert card["foot"] - card["top"] == card["drawn"], card
+        shoot("talk-empty")
         shell.send_chars(words)
         shell.launcher_until(lambda shown: shown["typed"] == words)
+        shoot("talk-typed")
         since = shell.mark()
         shell.send_key("ret")
 
@@ -459,6 +464,7 @@ def test_a_talk_shows_under_its_field_sent_then_waiting_then_answered(shell: She
         card = shell.showing()["card"]
         assert card["foot"] - card["top"] > card["drawn"], card
         shown_after_return(shell, since)
+        shoot("talk-sent")
         # The session's inbox took it, and its talk's own file, named by the id the launcher
         # gave it and opened by the node, says what became of it, as pi says it.
         talk = replies / f"{said_to(inbox, steered, words)}.jsonl"
@@ -467,12 +473,14 @@ def test_a_talk_shows_under_its_field_sent_then_waiting_then_answered(shell: She
         talk.write_text(json.dumps(delivered) + "\n")
         waits = "waiting on Listening Quest"
         shell.launcher_until(lambda shown: standing(shown) == (1, words, "", waits, [], ""))
+        shoot("talk-waiting")
         replied = {"stage": "replied", "at": now(), "text": answer}
         with talk.open("a") as lines:
             lines.write(json.dumps(replied) + "\n")
         shell.launcher_until(
             lambda shown: standing(shown) == (1, words, "", "", [answer], "Listening Quest")
         )
+        shoot("talk-answered")
         # Shown while it's open, the answer is heard, which the daemon says in its file.
         deadline = time.monotonic() + 10
         while '"stage":"read"' not in talk.read_text():
@@ -1603,6 +1611,18 @@ def shoot() -> Callable[[str], None]:
 def own_title(title: str) -> str:
     """Give a pi window's title as Super+S's line shows it, without pi's letter leading it."""
     return title.removeprefix("\u03c0 - ")
+
+
+@pytest.fixture
+def at_shots_scale(shell: Shell) -> Iterator[None]:
+    """Hold niri's screen at SHOTS_SCALE through a case pictured there, then as it was."""
+    scale = os.environ.get("SHOTS_SCALE", "")
+    outputs = json.loads(shell.as_account("niri msg --json outputs")) if scale else {}
+    for name in outputs:
+        shell.as_account(f"niri msg output {name} scale {scale}")
+    yield
+    for name, output in outputs.items():
+        shell.as_account(f"niri msg output {name} scale {output['logical']['scale']}")
 
 
 @pytest.fixture(scope="module")
