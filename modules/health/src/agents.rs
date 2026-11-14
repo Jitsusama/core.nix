@@ -110,7 +110,7 @@ fn gone_by_ps(presences: &Path, processes: &str, now: i64, boot: &str) -> BTreeM
 }
 
 /// The sessions in `presences` that didn't park and whose owner isn't
-/// `alive`, by session.
+/// `alive`, by session; one with no owner here is left unjudged.
 fn gone_from(presences: &Path, alive: impl Fn(&Value) -> bool) -> BTreeMap<String, Died> {
     fs::read_dir(presences)
         .into_iter()
@@ -119,7 +119,10 @@ fn gone_from(presences: &Path, alive: impl Fn(&Value) -> bool) -> BTreeMap<Strin
         .filter_map(|presence| {
             let said: Value = serde_json::from_slice(&fs::read(presence.path()).ok()?).ok()?;
             let state = said["state"].as_str()?;
-            if state == "parked" || alive(&said["owner"]) {
+            // A session held on another machine is heard here with no
+            // owner, since its process isn't this machine's to look for.
+            let owner = said.get("owner").filter(|owner| owner.is_object())?;
+            if state == "parked" || alive(owner) {
                 return None;
             }
             let died = Died {
@@ -273,6 +276,28 @@ mod tests {
             after_a_restart.contains_key("running"),
             "an owner of another boot is gone: {after_a_restart:?}"
         );
+    }
+
+    #[test]
+    fn a_presence_with_no_owner_here_is_not_judged() {
+        let presences = tempfile::tempdir().expect("the presences");
+        // A session held on another machine is heard here with no owner,
+        // since its process isn't this machine's to look for.
+        let said = concat!(
+            r#"{"session":"elsewhere","state":"listening","#,
+            r#""at":"2026-11-12T01:30:48.415Z","machine":"laptop","heldAs":"4dbae29c"}"#
+        );
+        fs::write(presences.path().join("elsewhere.json"), said).expect("a presence");
+        let proc = tempfile::tempdir().expect("a stand-in /proc");
+        let looked = look(presences.path(), proc.path());
+        assert!(looked.is_empty(), "none gone from /proc: {looked:?}");
+        let asked = gone_by_ps(
+            presences.path(),
+            "   10 01:00:00\n",
+            1_794_600_000_000_000,
+            "",
+        );
+        assert!(asked.is_empty(), "none gone from ps: {asked:?}");
     }
 
     #[test]
