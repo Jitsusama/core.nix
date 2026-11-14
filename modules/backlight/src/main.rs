@@ -41,8 +41,9 @@
 //! Joel says whether it follows the room through the session's bus
 //! (switch.rs), and his say is kept in `$XDG_STATE_HOME/backlight/warmth`.
 //! From sunset to sunrise where the laptop is, the night light warms the
-//! built-in panel too, whatever its sensor sees (night.rs), through the
-//! same program; where it is comes from whereabouts'
+//! built-in panel too, whatever its sensor sees (night.rs), and every
+//! screen beside it, such as a monitor on the dock, which takes the night
+//! alone (beside.rs), through the same program; where it is comes from whereabouts'
 //! `$XDG_RUNTIME_DIR/whereabouts/here.json`, what it keeps of where here
 //! is, looked at again within the hour,
 //! or every ten seconds until it says a place,
@@ -110,6 +111,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::unix::AsyncFd;
 use zbus::Connection;
 
+use beside::Beside;
 use curve::Curve;
 use dbus::{
     ManagerProxy, RelayProxy, SessionProxy, lid_moved, relay, relay_started, switched, woke,
@@ -454,6 +456,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
             runtime.join("whereabouts/here.json"),
         ),
         relay_down: None,
+        beside: Beside::new(Instant::now()),
         evening: evening(&kept)?,
         evening_due: Some(Instant::now()),
         panel: Panel::find(Path::new("/sys/class/drm")),
@@ -552,6 +555,8 @@ struct Backlight<'a> {
     night: Nightly,
     /// Until when what sets the warmth is let be, after it couldn't.
     relay_down: Option<Instant>,
+    /// The screens beside the panel, which the night light warms too.
+    beside: Beside,
     /// When the screen dims in the evening, if it does, and when the clock
     /// is next looked at for it.
     evening: Option<Tonight>,

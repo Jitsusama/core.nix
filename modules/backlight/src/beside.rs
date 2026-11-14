@@ -12,6 +12,7 @@
 //! up anyway; after that the night's own small steps are its glide.
 
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -30,8 +31,21 @@ pub const MISSES: u8 = 3;
 /// as niri and the relay name them, such as DP-5, in order.
 #[must_use]
 pub fn shown(drm: &Path, panel: Option<&str>) -> Vec<String> {
-    let _ = (drm, panel);
-    Vec::new()
+    let Ok(entries) = fs::read_dir(drm) else {
+        return Vec::new();
+    };
+    let mut shown: Vec<String> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let (card, connector) = name.split_once('-')?;
+            let enabled = fs::read_to_string(entry.path().join("enabled")).ok()?;
+            (card.starts_with("card") && Some(connector) != panel && enabled.trim() == "enabled")
+                .then(|| connector.to_owned())
+        })
+        .collect();
+    shown.sort();
+    shown
 }
 
 /// What each screen beside the panel was last set to, which have missed,
@@ -48,8 +62,10 @@ impl Beside {
     /// Knowing no screen yet, and due to look at once.
     #[must_use]
     pub fn new(now: Instant) -> Self {
-        let _ = now;
-        Beside::default()
+        Beside {
+            due: Some(now),
+            ..Beside::default()
+        }
     }
 
     /// When the screens are next looked at.
@@ -62,42 +78,69 @@ impl Beside {
     /// no longer shown, so one shown again is set again.
     #[must_use]
     pub fn owed(&mut self, shown: &[String], kelvin: u16, now: Instant) -> Vec<String> {
-        let _ = (shown, kelvin, now);
-        Vec::new()
+        self.set.retain(|screen, _| shown.contains(screen));
+        self.missed.retain(|screen, _| shown.contains(screen));
+        shown
+            .iter()
+            .filter(|screen| {
+                self.set.get(*screen) != Some(&kelvin)
+                    && self
+                        .missed
+                        .get(*screen)
+                        .is_none_or(|&(_, until)| until <= now)
+            })
+            .cloned()
+            .collect()
     }
 
     /// The screens were looked at.
     pub fn looked(&mut self, now: Instant) {
-        let _ = now;
+        let next = now + LOOKS;
+        self.due = Some(self.rests.map_or(next, |rests| rests.max(next)));
     }
 
     /// A screen took `kelvin`. Says whether it's newly warmed by the night.
     pub fn took(&mut self, screen: &str, kelvin: u16) -> bool {
-        let _ = (screen, kelvin);
-        false
+        self.missed.remove(screen);
+        self.set.insert(screen.to_owned(), kelvin).is_none()
     }
 
-    /// The relay had no object for a screen.
+    /// The relay had no object for a screen: it's asked again at the next
+    /// look, until it has missed `MISSES` times in a row.
     pub fn missed(&mut self, screen: &str, now: Instant) {
-        let _ = (screen, now);
+        let tries = self
+            .missed
+            .get(screen)
+            .map_or(0, |&(tries, _)| tries)
+            .saturating_add(1);
+        let until = if tries >= MISSES {
+            now + MISSED_RESTS
+        } else {
+            now
+        };
+        self.missed.insert(screen.to_owned(), (tries, until));
     }
 
     /// The relay refused otherwise, or didn't answer, so the screens are
     /// let be until a moment.
     pub fn rest(&mut self, until: Instant) {
-        let _ = until;
+        self.rests = Some(until);
+        self.due = Some(until);
     }
 
     /// The night moved, so the screens are looked at once, unless they're
     /// let be.
     pub fn look_now(&mut self, now: Instant) {
-        let _ = now;
+        self.due = Some(self.rests.map_or(now, |rests| rests.max(now)));
     }
 
     /// The relay started again at its own white, so every screen is set
     /// again, at once.
     pub fn forget(&mut self, now: Instant) {
-        let _ = now;
+        self.set.clear();
+        self.missed.clear();
+        self.rests = None;
+        self.due = Some(now);
     }
 }
 
