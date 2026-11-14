@@ -75,7 +75,10 @@ Piece {
     arrives: ringing !== null
     withdraws: true
     telling: ringing === null ? "" : Sessions.key(ringing)
-    readonly property var rungSaid: ringing === null ? null : Sessions.rungSaid(ringing)
-    summary: rungSaid === null ? hint : rungSaid.summary
-    message: rungSaid === null ? context : rungSaid.message
+    // Said as the daemon serves the want, whose record rings a pace after
+    // the session's presence has let it go: a presence read then said
+    // nothing (the net, 14 November).
+    readonly property var rung: ringing === null ? null : Sessions.rang(ringing)
+    summary: rung === null ? hint : `${ringing.title} ${Sessions.wanted(rung.wants)}`
+    message: rung === null ? context : String(rung.said ?? "")
 }

@@ -2378,17 +2378,6 @@ Singleton {
         return String(said[kind] ?? said.question ?? "");
     }
 
-    // What the notice of a want that rings says, { summary, message }, as
-    // the daemon serves that want: its record rings a pace after the
-    // session's presence has let it go, and a presence read then said
-    // nothing (net, 14 November).
-    function rungSaid(session) {
-        const want = rang(session);
-        return {
-            summary: `${session.title} ${wanted(want?.wants)}`,
-            message: String(want?.said ?? "")
-        };
-    }
 
     // A session's quest's whole title and its folder's name, as its record
     // says them: `questInfo.title` and the last part of `cwd`, as the
