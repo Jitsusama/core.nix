@@ -167,6 +167,19 @@ pub fn leaves(in_tree: bool, needs: usize, said: &Said) -> String {
     said.fill("stay", &[("kept", &kept)])
 }
 
+/// Whether closing a session standing as `state` (its id) costs enough
+/// to ask first: only while a turn is under way, at work, in line for
+/// the machine or waiting on Joel mid-turn, since closing cuts what it
+/// runs. One listening, paused or parked loses nothing, since :reopen
+/// brings it back and its tree and to-dos stay, so Close does it at once
+/// (Joel, 2026-11-13: "we should only require confirmation if it is
+/// really a dangerous action or an action of significant consequence").
+pub fn closing_costs(state: &str) -> bool {
+    [Stands::Needs, Stands::Working, Stands::InLine]
+        .iter()
+        .any(|stands| stands.id() == state)
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -367,5 +380,22 @@ mod tests {
                 "what Close leaves, in a tree {in_tree}, with {needs}"
             );
         }
+    }
+
+    #[test]
+    fn closing_costs_only_while_a_turn_is_under_way() {
+        for stands in RUNNING {
+            let under_way = matches!(stands, Stands::Needs | Stands::Working | Stands::InLine);
+            assert_eq!(
+                closing_costs(stands.id()),
+                under_way,
+                "closing one {} costs only while a turn is under way",
+                stands.id()
+            );
+        }
+        assert!(
+            !closing_costs(Stands::Off.id()),
+            "one off has nothing to lose"
+        );
     }
 }
