@@ -1675,13 +1675,15 @@ Provider {
     // what it has open, its Recent, its notices and Shortcuts, in that
     // order, never starting.
     // Either way, what's given it to copy comes after everything, as Meet's
-    // Copy a New Meeting's Link does, since Copy is last.
+    // Copy a New Meeting's Link does, since Copy is last. Each made is
+    // counted (stepsMade).
     function controls(entry, start, below) {
         // A program held open as its desktop entries are read again, as on
         // a switch, keeps the entry that's gone, which has no id or name;
         // it offers nothing until the step is drawn from the new one.
         if (entry.id === undefined || entry.name === undefined)
             return [];
+        stepsMade += 1;
         return timedMaking(`${entry.id}'s acts`, () => controlsMade(entry, start, below));
     }
 
@@ -1740,6 +1742,10 @@ Provider {
         return provider.controls(entry, start, below)
             .every(one => one.key === "verb:start" || one.key === "verb:below");
     }
+
+    // How many programs' steps were made, for the check that asking
+    // whether one starts only makes none where it's plain it doesn't.
+    property int stepsMade: 0
 
     // The names a program's own acts have here, which its desktop entry's
     // actions of the same name leave to them.
