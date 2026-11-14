@@ -35,6 +35,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from wayland_wire import message, read_string, string
+
 # The ids this client gives the objects it makes, as the wire protocol has the client choose,
 # each the next unused, in the order it makes them.
 DISPLAY = 1
@@ -73,24 +75,6 @@ LONGER_BY_MS = 40.0
 SETTLES = 0.4
 # How long anything is waited for.
 PATIENCE = 10.0
-
-
-def message(target: int, opcode: int, payload: bytes = b"") -> bytes:
-    """Frame a request to the object `target`, as the wire protocol does."""
-    return struct.pack("<II", target, (8 + len(payload)) << 16 | opcode) + payload
-
-
-def string(text: str) -> bytes:
-    """Encode a string argument: its length with its NUL, then it, padded to 4 bytes."""
-    data = text.encode() + b"\0"
-    return struct.pack("<I", len(data)) + data + b"\0" * (-len(data) % 4)
-
-
-def read_string(payload: bytes, at: int) -> tuple[str, int]:
-    """Read the string argument at `at` in a payload, and where the next one starts."""
-    (length,) = struct.unpack_from("<I", payload, at)
-    text = payload[at + 4 : at + 4 + length - 1].decode()
-    return text, at + 4 + length + (-length % 4)
 
 
 class Window:

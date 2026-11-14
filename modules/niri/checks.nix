@@ -244,7 +244,7 @@ onLinux {
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
         )}
         ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
-          python3 ${./tests/refreshes-once-a-frame.py} logs/niri.log
+          python3 ${./tests}/refreshes-once-a-frame.py logs/niri.log
         touch $out
       '';
 
@@ -279,7 +279,7 @@ onLinux {
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
         )}
         ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
-          python3 ${./tests/tells-a-resize-at-once.py}
+          python3 ${./tests}/tells-a-resize-at-once.py
         touch $out
       '';
 
