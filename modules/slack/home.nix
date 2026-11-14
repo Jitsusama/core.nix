@@ -85,6 +85,10 @@ in
   # whole, its act, conversation and facts ready, so it has no QML source.
   jitsusama.people.sources.slack = {
     order = 5;
+    # Write in Slack stands in its place, looking in Slack, from the first
+    # rows of someone Joel steps into while Slack is asked, and lights
+    # there once it answers, rather than coming in below what's drawn.
+    holds = "verb:person:slack";
     # Slack's reader, run by the people daemon alone, which asks it only
     # what a client of the daemon asks, or ahead of those it lists. It's
     # handed the vocabulary through env, which becomes slack-people, since

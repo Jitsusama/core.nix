@@ -75,7 +75,8 @@ ShellRoot {
         launcher: launcher
         settings: ({
             name: "people",
-            sources: [{ name: "slack", order: 5, file: false }, { name: "tuple", order: 10 },
+            sources: [{ name: "slack", order: 5, file: false, holds: "verb:person:slack" },
+                { name: "tuple", order: 10 },
                 { name: "pages", order: 20 }],
             zones: Quickshell.shellPath("zones.jsonl")
         })
@@ -153,7 +154,12 @@ ShellRoot {
     // What Return does first inside someone: call or join them, after what
     // waits on Joel, which comes before (the stand-in's Lunch on Friday).
     function firstAct(row) {
-        return row.verbs().find(one => one.key !== "mail:lunch");
+        return live(row).find(one => one.key !== "mail:lunch");
+    }
+    // Their rows past Write in Slack's place, which stands dimmed, looking,
+    // from a step-in until Slack answers.
+    function live(row) {
+        return row.verbs().filter(one => !(one.key === "verb:person:slack" && one.gone));
     }
     function reach(row) {
         firstAct(row).run();
@@ -379,14 +385,16 @@ ShellRoot {
                     && Niri.spawned.length === 0, Niri.spawned.join(" "));
                 expect("calling one who's available",
                     reach(open[0]) === "tuple call start ada@example.com", Niri.spawned.join(" "));
-                expect("one in a call is joined", open[1].verbs()[0].name === "Join Their Call",
-                    open[1].verbs()[0].name);
+                expect("one in a call is joined", live(open[1])[0].name === "Join Their Call",
+                    live(open[1])[0].name);
                 expect("joining one in a call",
                     reach(open[1]) === "tuple call join ben@example.com", Niri.spawned.join(" "));
                 expect("calling one who's offline",
                     reach(open[3]) === "tuple call start cal@example.com", Niri.spawned.join(" "));
 
-                const steps = open[0].verbs();
+                // Past Write in Slack's place, held while Slack is asked
+                // of her.
+                const steps = live(open[0]);
                 expect("their page: what waits first, then the ways to reach them, what's "
                     + "between them, the address last", names(steps) === "Lunch on Friday, "
                     + "Call Them, Open in Pages, Last Met, Messages, Favourite, ada@example.com",
@@ -427,7 +435,7 @@ ShellRoot {
                     === "xdg-open https://pages.example.com/ada", Niri.spawned.join(" "));
                 expect("one with no page has no row for it",
                     !names(open[1].verbs()).includes("Open in"), names(open[1].verbs()));
-                const calls = open[3].verbs();
+                const calls = live(open[3]);
                 const waiting = calls[1];
                 expect("a page still being found stands in its place, dimmed, saying so",
                     waiting?.name === "Open in Pages" && waiting.gone === true
@@ -714,6 +722,22 @@ ShellRoot {
                     && held[0].name === "Write in Slack"
                     && held[0].side === "no one at this address",
                     held.map(row => `${row.name} ${row.side} ${row.gone}`).join(", "));
+            }
+        },
+        {
+            // Someone Slack hasn't said a word of yet, as Joel first steps
+            // in, has Write in Slack's place held, looking, leading the ways
+            // to reach them, so it lights there rather than coming in below.
+            what: "Write in Slack's place is held while Slack is asked",
+            check: () => {
+                const held = people.servedActs({ key: "unasked@example.com",
+                    emails: ["unasked@example.com"] }, "slack", "verb:person:slack");
+                expect("held dimmed, looking in Slack, and leading",
+                    held.length === 1 && held[0].name === "Write in Slack"
+                    && held[0].gone === true && held[0].main === true
+                    && held[0].side === "looking in Slack",
+                    held.map(row => `${row.name} ${row.side} ${row.gone} ${row.main}`)
+                        .join(", "));
             }
         },
         // Such a one is no one of Slack's, so the daemon's record of them

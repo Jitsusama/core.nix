@@ -24,11 +24,13 @@ while read -r line; do
     printf '{"email":"%s","id":"U1234","team":"T1","name":"Crowd Person 1234",%s,%s}\n' \
       "$address" '"presence":"active"' "\"acts\":$write"
   else
-    acts='[]'
     case "$stepped" in
       *" $address "*)
         acts='[{"key":"verb:person:slack","side":"no one at this address","gone":true,'
         acts+='"main":true}]'
+        ;;
+      *)
+        acts='[]'
         ;;
     esac
     printf '{"email":"%s","id":null,"known":false,"acts":%s}\n' "$address" "$acts"

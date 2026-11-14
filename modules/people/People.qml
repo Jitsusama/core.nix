@@ -112,9 +112,10 @@ Provider {
         onHeard: provider.changed()
     }
     property var stepped: []
-    // When each key was last asked as Joel stepped in. Plain, so keeping
-    // it notifies nothing.
-    readonly property var steps: ({ asked: {} })
+    // When each key was last asked as Joel stepped in, and those whose
+    // step-in the daemon hasn't answered yet. Plain, so keeping them
+    // notifies nothing.
+    readonly property var steps: ({ asked: {}, awaited: {} })
     function stepIn(person) {
         if (heldBy.length === 0)
             return;
@@ -124,8 +125,10 @@ Provider {
             .filter(key => !(asked[key] > now - 60000));
         if (keys.length === 0)
             return;
-        for (const key of keys)
+        for (const key of keys) {
             asked[key] = now;
+            steps.awaited[key] = true;
+        }
         // Watched once this binding's done, since stepping in is read in
         // one.
         Qt.callLater(() => {
@@ -133,7 +136,13 @@ Provider {
             if (fresh.length > 0)
                 provider.stepped = provider.stepped.concat(fresh);
         });
-        stepper.get(keys, 5000, null);
+        // Answered, or given up on, a source's held place says what it
+        // said, or goes.
+        stepper.get(keys, 5000, () => {
+            for (const key of keys)
+                delete steps.awaited[key];
+            provider.changed();
+        });
     }
 
     // The people daemon, asked what a search finds, its answers given to
@@ -448,10 +457,17 @@ Provider {
     // A source's served acts for someone, each made as a served row's act
     // is, `main` where it leads the ways to reach them. One with no form
     // holds its place dimmed, saying why at its side, as Slack's Write in
-    // Slack does while Slack is asked.
-    function servedActs(person, name) {
+    // Slack does once Slack knows nobody by their address. A source that
+    // names the act it `holds` has it held dimmed, looking, from the first
+    // rows while it's asked and hasn't said, so the act leads from the
+    // start and lights there, since a row coming later goes below those
+    // drawn (Steady.js). One signed out is asked nothing, so holds none.
+    function servedActs(person, name, holds) {
         const key = `person:${person.key}`;
-        return (servedEntry(person, name)?.acts ?? []).map(one => {
+        const served = servedEntry(person, name)?.acts ?? [];
+        const held = served.length === 0 && (holds ?? "") !== "" && asking(person, name)
+            ? [{ key: holds, side: Words.of(holds).said?.looking ?? "", main: true }] : [];
+        return (served.length > 0 ? served : held).map(one => {
             if (Ready.actForm(one) === "")
                 return thing({
                     key: one.key,
@@ -469,6 +485,17 @@ Provider {
             row.main = one.main === true;
             return row;
         });
+    }
+
+    // Whether a source is still to say what it knows of someone: it's
+    // answering, and has said nothing of them, or their step-in is awaited.
+    // Someone with no address is asked nothing, as a Tuple contact known
+    // by their id alone.
+    function asking(person, name) {
+        if (person.emails.length === 0 || lister.sources?.[name] !== "answering")
+            return false;
+        return entriesOf(person, name).length === 0 || person.emails.some(email =>
+            steps.awaited[`person:${Person.address(email)}`] === true);
     }
 
     // What a source serves between Joel and someone, by any address, each

@@ -6,9 +6,10 @@
 # that conversation between them as its ready row. Asked about
 # noone@example.com, it says Slack knows nobody by it, with no id and
 # `known` false, and once it's been stepped into Write in Slack's place
-# held, saying so, ahead too, as slack-people does. It says nothing of anyone else asked, so the
-# steps that read the order of someone's acts see no Write in Slack among
-# them.
+# held, saying so, ahead too, as slack-people does. Anyone else it says
+# it knows nobody by, with no act even once stepped into, so the steps
+# that read the order of someone's acts see no Write in Slack among them
+# once it's answered.
 stepped=""
 while read -r line; do
   case "${line#\?}" in
@@ -37,7 +38,7 @@ while read -r line; do
 '"status":"","emoji":"","zone":"","handle":"","known":false,"acts":'"$acts"'}'
       ;;
     *)
-      # Silent, as slack-people is while Slack hasn't yet answered.
+      echo '{"email":"'"${line#\?}"'","id":null,"known":false,"acts":[]}'
       ;;
   esac
 done
