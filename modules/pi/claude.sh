@@ -39,6 +39,7 @@ EXIT
 EOF
   exit 0
   ;;
+*) ;;
 esac
 
 if [ -n "$OWN_LOGIN" ]; then

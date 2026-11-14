@@ -27,6 +27,7 @@ EXIT
 EOF
   exit 0
   ;;
+*) ;;
 esac
 
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then

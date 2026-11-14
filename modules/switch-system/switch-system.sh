@@ -28,6 +28,7 @@ EXIT
 EOF
   exit 0
   ;;
+*) ;;
 esac
 
 if [ "$#" -ne 1 ]; then
