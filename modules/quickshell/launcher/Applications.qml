@@ -839,22 +839,52 @@ Provider {
     // of them has it (PastNotices.qml), so Return on one does what it does
     // there, and the right arrow steps into what else can be done to one.
     // Without that collection in the launcher, there's none to hold.
-    function notices(same) {
+    function notices(entry, same) {
         const past = (provider.launcher?.sources ?? [])
             .find(source => typeof source.sentBy === "function") ?? null;
-        const sent = past ? past.sentBy(same) : [];
-        if (sent.length === 0)
+        const { count, unread } = past ? sentCount(past, entry, same) : { count: 0, unread: 0 };
+        if (count === 0)
             return [];
-        const unread = sent.filter(row => row.unread).length;
         return [said("program:notices", "", {
             hue: "program",
             // Its figures at its right, where a row's stand (VKCF3Z,
             // 2026-11-05: one place for each kind of fact).
-            side: unread > 0 ? `${sent.length} \u00b7 ${unread} unread` : String(sent.length),
+            side: unread > 0 ? `${count} \u00b7 ${unread} unread` : String(count),
             ask: "which?",
             nested: true,
             targets: () => past.sentBy(same)
         })];
+    }
+
+    // How many notices each program sent, and how many of them are unread,
+    // kept while the notices are one list (PastNotices.qml's every gives
+    // the same one until they change), so making a program's acts again
+    // counts none of them; `read` counts the countings, for the check.
+    // Counted from the notices themselves, never their copies (sentBy's,
+    // lined for a list): copying Slack's for its count each time took
+    // 142 ms of a drawer's 151 making on Joel's (2026-11-13).
+    readonly property var sentCounted: ({ of: null, by: Object.create(null), read: 0 })
+    function sentCount(past, entry, same) {
+        const rows = past.every();
+        const kept = provider.sentCounted;
+        if (kept.of !== rows) {
+            kept.of = rows;
+            kept.by = Object.create(null);
+        }
+        if (!(entry.id in kept.by)) {
+            kept.read += 1;
+            let count = 0;
+            let unread = 0;
+            for (const row of rows) {
+                if (!same(row.sender))
+                    continue;
+                count += 1;
+                if (row.unread)
+                    unread += 1;
+            }
+            kept.by[entry.id] = { count, unread };
+        }
+        return kept.by[entry.id];
     }
 
     // Shortcuts, which says which layer is whose, or null where there's none.
@@ -1652,7 +1682,7 @@ Provider {
         const copies = given.filter(copying);
         const open = () => part("its open tabs", () => openGroup(entry));
         const lately = () => part("its recent", () => recent(entry));
-        const sent = () => part("its notices", () => notices(same));
+        const sent = () => part("its notices", () => notices(entry, same));
         const keys = () => part("its keys", () => keysOf(entry));
         if (stepsIn(entry))
             return leading.concat(doing, open(), lately(), sent(), keys(), copies);

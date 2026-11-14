@@ -871,6 +871,13 @@ ShellRoot {
 
             same("Notices counts its own, at its right", told.side, "2 \u00b7 1 unread");
             same("and holds more", told.nested, true);
+            // Counting Slack's every time its acts were made took 142 ms of
+            // one drawer on Joel's (2026-11-13), so they're counted once
+            // while the notices are the same.
+            const counted = applications.sentCounted.read;
+            const again = program("tester").verbs().find(row => row.name === told.name);
+            same("made again over the same notices, it counts none of them",
+                `${applications.sentCounted.read - counted} ${again.side}`, "0 2 \u00b7 1 unread");
             const sent = told.targets();
             // Each is named by its title alone, as every notice row is (VKCF3Z,
             // 2026-11-08); what it said is its note.
