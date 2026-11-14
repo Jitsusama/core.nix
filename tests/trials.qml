@@ -207,6 +207,24 @@ QtObject {
             Trials.makingSplit(40, null));
         expect("a key that made no rows says none", Trials.madeWhileTyping({ agents: 0 }) === ""
             && Trials.madeWhileTyping(undefined) === "", Trials.madeWhileTyping({ agents: 0 }));
+        // A step's making says what it went on, most first, the rest being
+        // what it did beside its acts, its parts and their order.
+        const split = { acts: 20.4, parts: 59.6, ordering: 2.2 };
+        expect("a step's making says its parts, its acts, their order and the rest",
+            Trials.steppedMaking(87, split)
+                === " (its parts 60, its acts 20, the rest 5, ordering 2)",
+            Trials.steppedMaking(87, split));
+        expect("a step that made nothing, or untold, says no split",
+            Trials.steppedMaking(0, split) === "" && Trials.steppedMaking(40, null) === "",
+            Trials.steppedMaking(40, null));
+        const made = Trials.stepped(null, { began: 0, made: 87, pushed: 90, opened: 91,
+            ended: 95, making: split });
+        expect("a step keeps its making's split", made.each.making === 87
+            && made.makingSplit === split, JSON.stringify(made));
+        expect("a showing says how long rows spent reading what they hold",
+            Trials.readingSaid(12.6) === ", 13 reading what they hold"
+                && Trials.readingSaid(0.4) === "" && Trials.readingSaid(undefined) === "",
+            Trials.readingSaid(12.6));
         const bare = Trials.stepped(null, { began: 0, made: 4, pushed: 4, opened: 5, ended: 9 });
         expect("a step with no search said", bare.answers === 0 && bare.rows === 4
             && bare.composing === null, JSON.stringify(bare));
