@@ -553,6 +553,34 @@ mod tests {
     }
 
     #[test]
+    fn npms_credentials_are_held_back_by_name_and_all_else_kept() {
+        let kept = without_npm_credentials(
+            "registry=https://registry.example/\n\
+             //registry.example/:_authToken=made-up\n\
+             _auth = made-up\n\
+             @scope:registry=https://name:made-up@registry.example/\n\
+             tokenHelper=/a/helper\n",
+        )
+        .expect("settings holding credentials need a copy");
+        assert_eq!(
+            kept,
+            "registry=https://registry.example/\n\
+             ; //registry.example/:_authToken is held back by the agent fence\n\
+             ; _auth is held back by the agent fence\n\
+             ; @scope:registry is held back by the agent fence\n\
+             tokenHelper=/a/helper\n"
+        );
+    }
+
+    #[test]
+    fn npms_settings_holding_no_credential_need_no_copy() {
+        assert_eq!(
+            without_npm_credentials("registry=https://registry.example/\n; a comment\n"),
+            None
+        );
+    }
+
+    #[test]
     fn a_relative_path_or_one_not_there_comes_to_nothing() {
         assert_eq!(chosen_by_root(Path::new("bin/bash")), None);
         assert_eq!(
