@@ -1,8 +1,9 @@
 //! The sites Chrome visited lately, for Chrome's Recent inside the launcher:
 //! one a site, the newest titled page of each, newest first, at most nine.
 //!
-//! `chrome-recent-sites [PROFILE]` reads the History of PROFILE, Chrome's
-//! Default profile when none is given, and prints a line a site: the page's
+//! `chrome-recent-sites sites [--profile PATH]`, or the command bare,
+//! reads the History of that profile, Chrome's Default profile when none
+//! is given, and prints a line a site: the page's
 //! address, its title and when it was last visited in seconds since 1970,
 //! a tab between each, the last left empty where Chrome kept no time, so
 //! the launcher can place it among Recent's other sources by when (as
@@ -15,7 +16,7 @@
 //! what Chrome has open is held to too (../session, which the programs
 //! daemon reads Chrome's open pages with).
 //!
-//! `chrome-recent-sites downloads [PROFILE]` prints the files Chrome
+//! `chrome-recent-sites downloads [--profile PATH]` prints the files Chrome
 //! downloaded that are still where it saved them, newest first, at most
 //! nine (downloads.rs): each one's path, its size in bytes, when it
 //! finished in seconds since 1970, or nothing where Chrome kept no time,
@@ -132,36 +133,79 @@ fn from_history<T>(
 
 fn help() -> Help {
     Help::new("chrome-recent-sites", "the sites Chrome visited lately")
-        .command("[PROFILE]", "a site a line, newest first, nine at most")
-        .command(
-            "downloads [PROFILE]",
-            "the files it downloaded that are still there",
-        )
         .example(
             "chrome-recent-sites",
             "what Chrome's Default profile visited",
         )
         .example("chrome-recent-sites downloads", "what it downloaded")
+        .subcommand(
+            reads("sites", "a site a line, newest first, nine at most")
+                .alias("site")
+                .example("chrome-recent-sites sites", "what Chrome visited lately")
+                .example(
+                    "chrome-recent-sites sites --profile P",
+                    "what profile P visited",
+                ),
+        )
+        .subcommand(
+            reads("downloads", "the files it downloaded that are still there")
+                .alias("download")
+                .example("chrome-recent-sites downloads", "what it downloaded"),
+        )
+        .option("--profile PATH", "a profile's folder; Default's by default")
         .exit(Exit::Failed, "its history couldn't be read, or said")
-        .exit(Exit::Config, "no PROFILE given, and no HOME to find one in")
+        .exit(
+            Exit::Config,
+            "no --profile given, and no HOME to find one in",
+        )
+}
+
+/// A subcommand that reads a profile's history.
+fn reads(name: &str, about: &str) -> Help {
+    Help::new(name, about)
+        .option("--profile PATH", "a profile's folder; Default's by default")
+        .exit(Exit::Failed, "its history couldn't be read, or said")
+        .exit(
+            Exit::Config,
+            "no --profile given, and no HOME to find one in",
+        )
+}
+
+/// What the command line asks: downloads or sites, and of which profile.
+fn asked(args: &[String]) -> Result<(bool, Option<PathBuf>), Failure> {
+    let mut words = Vec::new();
+    let mut profile = None;
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match arg.split_once('=') {
+            Some(("--profile", path)) => profile = Some(PathBuf::from(path)),
+            _ if arg == "--profile" => {
+                let path = args.next().ok_or_else(|| {
+                    Failure::new(Exit::Usage, "--profile needs a folder")
+                        .try_this("chrome-recent-sites --profile ~/.config/google-chrome/Default")
+                })?;
+                profile = Some(PathBuf::from(path));
+            }
+            _ => words.push(arg.as_str()),
+        }
+    }
+    match words.as_slice() {
+        [] | ["sites" | "site"] => Ok((false, profile)),
+        ["downloads" | "download"] => Ok((true, profile)),
+        _ => Err(
+            Failure::new(Exit::Usage, "a profile is named with --profile")
+                .because("sites and downloads take no other words")
+                .try_this("chrome-recent-sites --help"),
+        ),
+    }
 }
 
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        let (downloaded, profile) = match context.args.as_slice() {
-            [first, rest @ ..] if first == "downloads" => (true, rest),
-            all => (false, all),
-        };
+        let (downloaded, profile) = asked(&context.args)?;
         let profile = match profile {
-            [] => default_profile()?,
-            [profile] => PathBuf::from(profile),
-            _ => {
-                return Err(Failure::new(
-                    Exit::Usage,
-                    "chrome-recent-sites takes one profile at most",
-                )
-                .try_this("chrome-recent-sites --help"));
-            }
+            Some(profile) => profile,
+            None => default_profile()?,
         };
         let scratch = env::var_os("XDG_RUNTIME_DIR").map_or_else(env::temp_dir, PathBuf::from);
         let unread = |error: String| {
@@ -193,7 +237,7 @@ fn default_profile() -> Result<PathBuf, Failure> {
         .filter(|home| !home.is_empty())
         .ok_or_else(|| {
             Failure::new(Exit::Config, "there's no HOME to find Chrome's profile in")
-                .try_this("chrome-recent-sites ~/.config/google-chrome/Default")
+                .try_this("chrome-recent-sites --profile ~/.config/google-chrome/Default")
         })?;
     Ok(PathBuf::from(home).join(".config/google-chrome/Default"))
 }
@@ -347,5 +391,47 @@ mod tests {
     #[test]
     fn a_profile_chrome_never_ran_has_none() {
         assert_eq!(read(&folder("none"), &folder("none-scratch")).unwrap(), []);
+    }
+
+    fn words(line: &str) -> Vec<String> {
+        line.split_whitespace().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn sites_are_asked_for_bare_or_by_name() {
+        for line in ["", "sites", "site"] {
+            assert_eq!(
+                asked(&words(line)).ok(),
+                Some((false, None)),
+                "{line:?} should ask for the sites"
+            );
+        }
+    }
+
+    #[test]
+    fn a_profile_is_named_with_its_option_either_way() {
+        for line in ["--profile p", "sites --profile p", "--profile=p sites"] {
+            assert_eq!(
+                asked(&words(line)).ok(),
+                Some((false, Some(PathBuf::from("p")))),
+                "{line:?} should read profile p's sites"
+            );
+        }
+        assert_eq!(
+            asked(&words("downloads --profile p")).ok(),
+            Some((true, Some(PathBuf::from("p")))),
+            "downloads --profile p should read profile p's downloads"
+        );
+    }
+
+    #[test]
+    fn a_stray_word_or_a_missing_folder_is_asked_wrongly() {
+        for line in ["sites p", "downloads p", "--profile"] {
+            assert_eq!(
+                asked(&words(line)).err().map(|failure| failure.exit),
+                Some(Exit::Usage),
+                "{line:?} should be refused as asked wrongly"
+            );
+        }
     }
 }
