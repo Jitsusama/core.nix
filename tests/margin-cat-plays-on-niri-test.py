@@ -7,8 +7,11 @@ Which play comes at each level, how long each pose holds and where a wander goes
 Qt's engine (modules/margin-cat/tests/margin-cat.qml); here, only that niri's idle timers and
 real columns reach it: a single pose held a moment while the keys come, which moves it none
 and draws a frame each way, plays in place once they stop, and once they've been gone a while
-a hop that rises and lands where it sat, and a wander a few cells along the margin, a key
-ending it at once, the cat walking back.
+a hop that rises and lands where it sat, a wander a few cells along the margin, a key
+ending it at once, the cat walking back, and a ball of yarn batted off and a pounce on
+nothing, each shown whole and each walking it back after. How a hop, the yarn and a pounce
+move is held in Qt's engine too (modules/margin-cat/tests/margin-cat-games.qml). Each case
+asks the shell for the play it watches, so none waits on chance.
 """
 
 from __future__ import annotations
@@ -47,6 +50,29 @@ WANDERS = (16, 40)
 # How soon a key ends a stroll, and how long the walk back over its column may take: a
 # gentle long walk, at most about 8 s, and some for a loaded builder.
 BACK, HOME = 1.0, timedelta(seconds=15)
+# What the cat says as a play that moves it is done (MarginCatScreen.qml's tell), each
+# play's beats in order (modules/margin-cat/MarginCatGames.js), the ones every run must
+# show, since a loaded nested frame can skip the shortest, the drawings of a hop, and how
+# long a play may take: about 6 s, and some for a loaded builder.
+PLAYED = "played cat "
+HOP = ["crouches", "hops", "lands"]
+YARN = [
+    "waits",
+    "notices",
+    "eyes",
+    "bats",
+    "watches",
+    "crouches",
+    "wiggles",
+    "leaps",
+    "lands",
+    "pins",
+    "sends",
+]
+POUNCE = ["notices", "eyes", "crouches", "wiggles", "leaps", "lands", "looks"]
+YARN_SEEN, POUNCE_SEEN = {"waits", "watches", "sends"}, {"eyes", "leaps", "looks"}
+HOPPING = {"pouncing", "leaping", "tucked", "falling"}
+PLAYS = timedelta(seconds=20)
 POLL = 0.05
 
 
@@ -96,6 +122,63 @@ def sitting_over(shell: Shell, title: str) -> tuple[Json, Json]:
 
     shell.reported(SITS, sits, since)
     return window, seats[-1]
+
+
+def playing(at: Json | None) -> Json | None:
+    """Give the step of a play a place is, as MarginCatScreen.qml says each, or None."""
+    walk = (at or {}).get("walk") or {}
+    return walk if walk.get("play") else None
+
+
+def in_order(seen: list[str], beats: list[str]) -> bool:
+    """Say whether the beats seen, each once however many frames it held, come in order."""
+    at = 0
+    for beat in seen:
+        if beat not in beats[at:]:
+            return False
+        at = beats.index(beat, at) + 1
+    return True
+
+
+def home(at: Json | None, sat: Json, seat: Json) -> bool:
+    """Say whether the cat sits still over its column, where it sat before it played."""
+    return (
+        at is not None
+        and not walking(at)
+        and at.get("window") == sat["id"]
+        and abs(at["x"] - seat["x"]) <= 1
+    )
+
+
+def plays_out(shell: Shell, kind: str) -> tuple[list[Json], Json, Json]:
+    """Sit over a column, ask for a play, leave the keys, and give it once it's done.
+
+    It gives each place said while it played, how niri showed it, and where it sat before;
+    and it waits for the cat to sit still over the column again, where it sat.
+    """
+    sat, seat = sitting_over(shell, f"a column played beside, {kind}")
+    ask(shell, kind)
+    shell.send_key("F24")
+    since = shell.mark()
+    shell.reported(
+        SITS, lambda said: (playing(placed(said)) or {}).get("play") == kind, since, STROLLS
+    )
+    shell.reported(PLAYED, lambda said: said.split(" ", 1)[1].startswith("{"), since, PLAYS)
+    said, _ = shell.said_since(since)
+    done = next(at for at, line in enumerate(said) if line.startswith(PLAYED))
+    told = json.loads(said[done][len(PLAYED) :].split(" ", 1)[1])
+    during = [placed(line[len(SITS) :]) for line in said[:done] if line.startswith(SITS)]
+    frames = [at for at in during if at is not None and playing(at)]
+    after = [placed(line[len(SITS) :]) for line in said[done:] if line.startswith(SITS)]
+    if not any(home(at, sat, seat) for at in after):
+        shell.reported(SITS, lambda said: home(placed(said), sat, seat), shell.mark(), HOME)
+    return frames, told, seat
+
+
+def beats_of(frames: list[Json]) -> list[str]:
+    """Give a play's beats as its frames came, each once however many frames it held."""
+    beats = [at["walk"]["beat"] for at in frames]
+    return [beat for at, beat in enumerate(beats) if at == 0 or beat != beats[at - 1]]
 
 
 def quiet(shell: Shell) -> int:
@@ -163,24 +246,22 @@ def test_paused_it_plays_a_little_in_place(shell: Shell) -> None:
     poses = {at.get("pose") for at in found}
     assert poses <= IN_PLACE | SITTING, f"a pause's play posed {poses}"
     assert lasted <= SCENE, f"a pause's play lasted {lasted:.2f} s"
-    assert not any(walking(at) or at.get("lift") for at in found), f"a pause moved: {found}"
+    assert not any(walking(at) for at in found), f"a pause moved: {found}"
 
 
 def test_away_it_hops_and_lands_where_it_sat(shell: Shell) -> None:
     """Gone from the keys, it hops: rising from a crouch and landing, never moving along."""
-    _, seat = sitting_over(shell, "a column hopped over")
-    ask(shell, "hop")
-    since = shell.mark()
-    shell.reported(SITS, lambda said: ((placed(said) or {}).get("lift") or 0) > 0, since, STROLLS)
-    risen = shell.mark()
-    shell.reported(SITS, lambda said: (placed(said) or {}).get("lift") == 0, risen)
-    found, _ = reports(shell, since)
-    hop = [at for at in found if (at.get("lift") or 0) > 0]
-    assert {at.get("pose") for at in hop} == {"pouncing"}, f"it hopped as {hop}"
-    assert all(abs(at["x"] - seat["x"]) <= 1 for at in hop), f"a hop moved it along: {hop}"
-    # A hop is a cell or two high, and a nested cell is a pixel, so its arc's shape is the Qt
-    # case's; here, only that niri draws it in the air over more than a frame.
-    assert len(hop) > 1, f"a hop showed for a single frame: {hop}"
+    frames, shown, seat = plays_out(shell, "hop")
+    beats = beats_of(frames)
+    assert in_order(beats, HOP), f"the hop's beats came as {beats}"
+    poses = {at["walk"]["pose"] for at in frames}
+    assert poses <= HOPPING, f"it hopped as {poses}"
+    assert all(abs(at["x"] - seat["x"]) <= 1 for at in frames), f"a hop moved along: {frames}"
+    # A hop is a cell high, and a nested cell is a pixel, so its arc's shape is the Qt case's;
+    # here, only that niri draws it in the air over more than a frame.
+    aloft = [at for at in frames if at["y"] < seat["y"]]
+    assert len(aloft) > 1, f"a hop was in the air for {len(aloft)} frames: {frames}"
+    assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
 
 
 def test_away_it_wanders_and_a_key_brings_it_back(shell: Shell) -> None:
@@ -220,3 +301,32 @@ def test_away_it_wanders_and_a_key_brings_it_back(shell: Shell) -> None:
     )
     found, _ = reports(shell, since)
     assert any(walking(at) for at in found), f"it came back over {sat} unwalked"
+
+
+def test_away_it_bats_a_ball_of_yarn_off_and_walks_back(shell: Shell) -> None:
+    """Away, a ball of yarn rolls in, is batted and pounced on, and goes; it walks back.
+
+    Its beats come in order, the yarn coming into sight, shown whole and then fading as it's
+    sent off, and niri shows every frame of it.
+    """
+    frames, shown, _ = plays_out(shell, "yarn")
+    beats = beats_of(frames)
+    assert in_order(beats, YARN), f"the yarn's beats came as {beats}"
+    assert set(beats) >= YARN_SEEN, f"the yarn's beats came as {beats}"
+    seen = [at["walk"]["yarn"]["opacity"] for at in frames if at["walk"]["yarn"]]
+    whole = seen.index(1) if 1 in seen else None
+    assert whole is not None, f"the yarn was never shown whole: {seen}"
+    assert min(seen[:whole] or [1]) < 1, f"the yarn came from nowhere: {seen}"
+    assert min(seen[whole:]) < 1, f"the yarn never faded as it went: {seen}"
+    assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
+
+
+def test_away_it_pounces_on_nothing_and_walks_back(shell: Shell) -> None:
+    """Away, it eyes, wiggles and leaps on nothing, lands, and walks back."""
+    frames, shown, seat = plays_out(shell, "pounce")
+    beats = beats_of(frames)
+    assert in_order(beats, POUNCE), f"the pounce's beats came as {beats}"
+    assert set(beats) >= POUNCE_SEEN, f"the pounce's beats came as {beats}"
+    assert min(at["y"] for at in frames) < seat["y"], f"it never left the ground: {frames}"
+    assert not any(at["walk"]["yarn"] for at in frames), f"a pounce brought yarn: {frames}"
+    assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"

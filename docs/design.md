@@ -1038,7 +1038,15 @@ and not wait too long. it's play should be a bit random, gentle, but
 playful"): while he types, a single small move about once a minute; once
 he pauses, a play in place every 5 to 12 s, a tail flick, batting at
 nothing, a stretch, looking about or grooming; once he's left the keys a
-minute, every 3 to 8 s, one in four a hop or a short wander and back.
+minute, every 3 to 8 s, one in four a move: a hop, a short wander and
+back, a pounce at nothing, or its ball of yarn rolling up to it, batted
+off, pounced on and sent away (Joel, 2026-11-12: "bat balls of yarn and
+stuff"). A move leaps and lands as its walks do, in whole cells, each
+drawing held two frames at 60 Hz, and keeps to its window's column and
+off the marks; a pounce or the yarn thinks a moment first and walks back
+after. The yarn is drawn in the cat's cells and hue, turns a drawing for
+each two cells it rolls, slows as a rolling ball does, and fades in and
+out, never popping into or out of sight, a key cutting it short included.
 Each beat is drawn a quarter either way, no play comes twice running, a
 key ends any at once, and it keeps still in Do Not Disturb, on a call,
 locked, and where no screen draws it. After three
