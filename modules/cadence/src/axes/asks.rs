@@ -190,7 +190,7 @@ mod tests {
         .join("\n");
         let [middle, late] = readings(&text, NOW).try_into().unwrap();
         assert_eq!(middle.now, Some(2.0));
-        assert!(middle.his);
+        assert!(middle.his, "his asks' time was read from our side");
         assert_eq!(
             middle.detail.as_deref(),
             Some(
@@ -199,7 +199,7 @@ mod tests {
             )
         );
         assert_eq!(late.now, Some(1.0));
-        assert!(late.out());
+        assert!(late.out(), "an ask past its date was in spec");
         assert_eq!(
             late.detail.as_deref(),
             Some("late: B 1; 1 with no date given yet")

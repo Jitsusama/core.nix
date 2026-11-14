@@ -722,7 +722,10 @@ mod tests {
             read.detail.as_deref(),
             Some("2 stopped mid-turn, 3 corrected")
         );
-        assert!(read.his && read.out());
+        assert!(
+            read.his && read.out(),
+            "five agents corrected was in spec, or read from our side"
+        );
         assert_eq!(
             corrected(&Sources::default()).now,
             None,
