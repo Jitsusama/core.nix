@@ -50,18 +50,19 @@
 //! (lib.rs's `Held::kept`). The `health` ask answers it as `checked`, and
 //! each watch is told it as it changes.
 //!
-//! Run with any other word, it's the command line, which reaches no daemon
-//! and so no secret, as `passwords help` says (cli.rs), completed in zsh by
+//! Run with any other word, it's the command line, in the terminal kit's
+//! shape, which reaches no daemon and so no secret, as `passwords --help`
+//! says (cli.rs), completed in zsh by
 //! what `passwords completion zsh` writes (completion.zsh). `passwords
 //! keys` lists the public keys 1Password's SSH agent holds, through
 //! ssh-add, only when asked: ssh and git use the TPM's agent.
 
 use std::collections::{HashMap, VecDeque};
-use std::io::{BufRead, BufReader, IsTerminal, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, ExitCode, Stdio};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -73,6 +74,7 @@ use passwords::{
 use ready_rows::kept::Kept;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
+use terminal_kit::{Exit, Failure};
 
 /// How long a copied secret stays on the clipboard, as 1Password's own
 /// app clears it, unless `$PASSWORDS_CLEARS_MS` says otherwise.
@@ -159,23 +161,30 @@ struct Daemon {
 /// The daemon's state, and what wakes an ask waiting on a manager to start.
 type Shared = Arc<(Mutex<Daemon>, Condvar)>;
 
-fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let typed = match cli::parse(&args) {
-        Ok(typed) => typed,
-        Err(why) => {
-            eprintln!("passwords: {why}\n\n{}", cli::USAGE);
-            std::process::exit(cli::MISTYPED);
-        }
-    };
-    match typed.command {
-        cli::Command::Daemon { managers, words } => daemon(&managers, words.as_deref()),
-        command => std::process::exit(command_line(&command, typed.json)),
-    }
+fn main() -> ExitCode {
+    terminal_kit::main(
+        &cli::help(),
+        env!("CARGO_PKG_VERSION"),
+        |context| match cli::parse(&context.args)? {
+            cli::Command::Daemon { managers, words } => daemon(&managers, words.as_deref()),
+            command => cli::run(context, &command),
+        },
+    )
 }
 
-fn daemon(managers: &str, words: Option<&str>) {
-    harden();
+/// The daemon, from its start to the shell closing its end, when it ends
+/// with its managers: it returns, rather than ending the process itself,
+/// so the kit ends it with the exit a failure names.
+fn daemon(managers: &str, words: Option<&str>) -> Result<(), Failure> {
+    // The kit hears a panic as the command's own while its body runs, and
+    // the daemon's body runs as long as it does: each thread serving the
+    // shell or a manager says its panic in the journal, as Rust's own hook
+    // does, rather than the kit keeping it for an ending that never comes.
+    drop(std::panic::take_hook());
+    if !harden()? {
+        // The shell went before it was told to end with it.
+        return Ok(());
+    }
     let read = std::fs::read_to_string(managers).map_err(|error| error.to_string());
     let (managers, shown): (Vec<Manager>, Vec<rows::Shown>) = match read.and_then(|text| {
         let managers = serde_json::from_str::<Managers>(&text).map_err(|error| error.to_string());
@@ -184,8 +193,9 @@ fn daemon(managers: &str, words: Option<&str>) {
     }) {
         Ok(read) => read,
         Err(why) => {
-            eprintln!("<3>couldn't read the password managers: {why}");
-            std::process::exit(78);
+            return Err(
+                Failure::new(Exit::Config, "couldn't read the password managers").because(why),
+            );
         }
     };
     let names: Vec<String> = managers
@@ -223,8 +233,8 @@ fn daemon(managers: &str, words: Option<&str>) {
     }
     serve(&shared, std::io::stdin().lock(), std::io::stdout());
     // The shell that asked has gone, or closed its end: nothing is left to
-    // answer, and its managers end with it (`run`).
-    std::process::exit(0);
+    // answer, and its managers end with it (`run`) as the process does.
+    Ok(())
 }
 
 /// Keeps what it holds from the account's other processes as far as one
@@ -233,8 +243,9 @@ fn daemon(managers: &str, words: Option<&str>) {
 /// bars them, no core dump writes one, and it ends as the shell that ran
 /// it does, so no orphan keeps a password manager's leave. The same uid
 /// can still open the shell's own end of its pipes, so this closes nothing
-/// alone: agents fenced off Joel's processes do.
-fn harden() {
+/// alone: agents fenced off Joel's processes do. False where the shell
+/// has already gone, with nothing left to serve.
+fn harden() -> Result<bool, Failure> {
     // SAFETY: getppid, prctl and setrlimit read only the integers and the
     // limit given here, and change only this process.
     let (parent, hardened) = unsafe {
@@ -249,17 +260,13 @@ fn harden() {
         (parent, hardened)
     };
     if !hardened {
-        eprintln!(
-            "<3>couldn't keep its memory from the account: {}",
-            std::io::Error::last_os_error()
+        return Err(
+            Failure::new(Exit::Failed, "couldn't keep its memory from the account")
+                .because(std::io::Error::last_os_error().to_string()),
         );
-        std::process::exit(71);
     }
-    // The shell went before it was told to end with it.
     // SAFETY: getppid only reads this process's parent.
-    if unsafe { libc::getppid() } != parent {
-        std::process::exit(0);
-    }
+    Ok(unsafe { libc::getppid() } == parent)
 }
 
 /// The words rows are said in, from the launcher's vocabulary at `path`,
@@ -1228,119 +1235,4 @@ fn audit_read(shared: &Shared, id: &Value) -> Value {
         answer["unreached"] = json!(why);
     }
     answer
-}
-
-/// The command line: one command, its answer set for a person at a
-/// terminal or for a program reading a pipe, or as `--json`, and its exit
-/// status as the usage says. None reaches the daemon, which answers the
-/// shell alone.
-fn command_line(command: &cli::Command, json: bool) -> i32 {
-    let terminal = std::io::stdout().is_terminal();
-    match command {
-        cli::Command::Help => {
-            say(cli::USAGE);
-            0
-        }
-        cli::Command::Completion => {
-            say(include_str!("completion.zsh"));
-            0
-        }
-        cli::Command::Keys => keys(json, terminal),
-        cli::Command::Daemon { .. } => unreachable!("the daemon isn't a command line"),
-    }
-}
-
-/// Writes what the command says, saying nothing more if whatever reads it
-/// has gone, as `head` goes once it has its lines.
-fn say(text: &str) {
-    let mut out = std::io::stdout().lock();
-    let _ = out.write_all(text.as_bytes()).and_then(|()| out.flush());
-}
-
-/// ssh-add and ssh-keygen as the package names them, else as the PATH has
-/// them.
-const SSH_ADD: &str = match option_env!("PASSWORDS_SSH_ADD") {
-    Some(program) => program,
-    None => "ssh-add",
-};
-const SSH_KEYGEN: &str = match option_env!("PASSWORDS_SSH_KEYGEN") {
-    Some(program) => program,
-    None => "ssh-keygen",
-};
-
-/// The keys 1Password's SSH agent holds, read from its socket only when
-/// Joel asks. ssh and git sign with the TPM's agent, never this one, so
-/// nothing else here reaches it. Listing keys reads only their public
-/// halves; nothing is signed and no key is added or taken away.
-fn keys(json: bool, terminal: bool) -> i32 {
-    let home = std::env::var_os("HOME").unwrap_or_default();
-    let socket = PathBuf::from(home).join(".1password/agent.sock");
-    let unanswered = |said: &str| {
-        eprintln!(
-            "1Password's SSH agent isn't answering at {}{said}; 1Password's Settings, under \
-             Developer, turns it on.",
-            socket.display()
-        );
-        cli::UNANSWERED
-    };
-    if !socket.exists() {
-        return unanswered("");
-    }
-    let listed = match Command::new(SSH_ADD)
-        .arg("-L")
-        .env("SSH_AUTH_SOCK", &socket)
-        .stdin(Stdio::null())
-        .output()
-    {
-        Ok(listed) => listed,
-        Err(why) => {
-            eprintln!("couldn't run ssh-add: {why}");
-            return cli::FAILED;
-        }
-    };
-    let public = String::from_utf8_lossy(&listed.stdout).into_owned();
-    let refused = String::from_utf8_lossy(&listed.stderr).trim().to_owned();
-    let keys = match listed.status.code() {
-        Some(0) => match fingerprints(&public) {
-            Ok(fingerprints) => cli::keys(&public, &fingerprints),
-            Err(why) => {
-                eprintln!("couldn't read the keys' fingerprints: {why}");
-                return cli::FAILED;
-            }
-        },
-        // ssh-add says on standard output that an agent holds no key, and
-        // on standard error why it couldn't list them.
-        Some(1) if refused.is_empty() => Vec::new(),
-        Some(1) => {
-            eprintln!("1Password's SSH agent didn't list its keys: {refused}");
-            return cli::FAILED;
-        }
-        _ => return unanswered(&format!(" ({refused})")),
-    };
-    say(&if json {
-        cli::as_json(&Value::Array(keys))
-    } else {
-        cli::keys_text(&keys, terminal)
-    });
-    0
-}
-
-/// What `ssh-keygen -l` says of each public key, a line each, in order.
-fn fingerprints(public: &str) -> std::io::Result<String> {
-    let mut child = Command::new(SSH_KEYGEN)
-        .args(["-l", "-E", "sha256", "-f", "-"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    if let Some(mut input) = child.stdin.take() {
-        input.write_all(public.as_bytes())?;
-    }
-    let said = child.wait_with_output()?;
-    if !said.status.success() {
-        return Err(std::io::Error::other(
-            String::from_utf8_lossy(&said.stderr).trim().to_owned(),
-        ));
-    }
-    Ok(String::from_utf8_lossy(&said.stdout).into_owned())
 }

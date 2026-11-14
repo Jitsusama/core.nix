@@ -12,8 +12,8 @@
 rustPlatform.buildRustPackage {
   pname = "passwords";
   version = "0.1.0";
-  # The ready-rows crate it names by path comes beside it, and it builds
-  # from its own folder within.
+  # The ready-rows and terminal-kit crates it names by path come beside it,
+  # and it builds from its own folder within.
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -23,6 +23,8 @@ rustPlatform.buildRustPackage {
       ./tests
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "source/passwords";
