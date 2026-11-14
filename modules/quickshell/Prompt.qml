@@ -1334,6 +1334,30 @@ Item {
         clip: prompt.scrolled
     }
 
+    // The caret in the accent, since it's where the keys go. It takes no
+    // room of its own, so a ghost reads on as one word. Qt leaves blinking
+    // to a caret drawn as its own, so this one holds steady and a launcher
+    // left still draws nothing (the launcher audit's finding 34, held by
+    // goes-places' frame count). In a modal line it blinks, and only insert
+    // draws it. A bar stands between letters, never on one's ink: at a
+    // line's start, in the room before its first letter, which the field
+    // would clip, so it's drawn beside it; between two letters, centred on
+    // where they meet. Drawn from the caret's place, it lay over a hint's
+    // first letter, cutting the S of "Say anything" (VKCF3Z, 2026-11-14).
+    Rectangle {
+        id: caret
+        objectName: "caret"
+        readonly property rect at: input.cursorRectangle
+        readonly property bool starts: at.x <= input.leftPadding + 0.5
+        x: shown.x + input.x + at.x - (starts ? width : width / 2)
+        y: shown.y + input.y + at.y
+        width: prompt.caretWidth
+        height: at.height
+        color: Theme.accent
+        opacity: prompt.caretLight * input.opacity
+        visible: input.cursorVisible && prompt.caretShown
+    }
+
     TextInput {
         id: input
         parent: shown
@@ -1425,18 +1449,9 @@ Item {
                 prompt.secretKey(event);
         }
 
-        // The caret in the accent, since it's where the keys go. It takes
-        // no room of its own, so a ghost reads on as one word. Qt leaves
-        // blinking to a caret drawn as its own delegate, so this one holds
-        // steady and a launcher left still draws nothing (the launcher
-        // audit's finding 34, held by goes-places' frame count).
-        // In a modal line it blinks, and only insert draws it.
-        cursorDelegate: Rectangle {
-            width: prompt.caretWidth
-            color: Theme.accent
-            opacity: prompt.caretLight
-            visible: input.cursorVisible && prompt.caretShown
-        }
+        // The caret is drawn beside the field, as `caret` below, so the
+        // field's own draws nothing.
+        cursorDelegate: Item {}
 
         // A hint starts where the first letter typed will, on the names'
         // column, so a letter takes its place rather than landing beside it
