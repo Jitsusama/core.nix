@@ -168,12 +168,25 @@ fn executable(path: &Path, script: &str) {
 /// `path-info --json` the `held` file and `path-info --recursive` the
 /// `closure` file, when there is one. Sending held outputs up takes as
 /// many seconds as the `copy-takes` file says, when there is one, and a
-/// send of the path the `slow-to-send` file names takes 30.
+/// send of the path the `slow-to-send` file names takes 30. A copy up
+/// keeps what `NIX_SSHOPTS` said in `nix-sshopts`, and while the
+/// `loses-copy` file is there, the first loses its builder as ssh's
+/// keepalives give up, and takes the file away.
 const NIX: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/nix-was-given"
 echo "$@" >> "$here/nix-calls"
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/nix-marked"
+case "$*" in
+  "copy "*"--to "*)
+    echo "${NIX_SSHOPTS:-}" > "$here/nix-sshopts"
+    if [ -f "$here/loses-copy" ]; then
+      rm -f "$here/loses-copy"
+      echo "Timeout, server localhost not responding." >&2
+      echo "error: Nix daemon disconnected unexpectedly (maybe it crashed?)" >&2
+      exit 1
+    fi ;;
+esac
 case "$*" in
   "copy --to "*--substitute-on-destination*)
     [ -e "$here/copy-takes" ] && exec sleep "$(cat "$here/copy-takes")"
@@ -1570,6 +1583,51 @@ fn a_build_whose_builder_was_lost_is_sent_again_once_one_stands() {
     // A builder that stayed up may finish what it was building, and the
     // build sent again then only waits on it, showing none of its log.
     assert!(said.contains("nix log"), "{said}");
+}
+
+#[test]
+fn a_copy_up_that_loses_its_builder_is_cut_soon_and_sent_again_once_one_stands() {
+    // On 13 November copies up to both lent builders stalled behind a full
+    // uplink, each waited out the 60 s of keepalives the builder's ssh entry
+    // gives before Nix said its daemon had gone, and the run ended there:
+    // five lanes lost about 30 minutes each.
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    fs::write(offload.join("lender"), format!("{}\n", std::process::id())).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
+    fs::write(folder.path().join("loses-copy"), "").unwrap();
+    let ran = there_given(folder.path(), &offload, &["-L", "/nix/store/aaaa-x.drv"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let calls = fs::read_to_string(folder.path().join("nix-calls")).unwrap();
+    assert_eq!(
+        calls
+            .lines()
+            .filter(|call| call.starts_with("copy "))
+            .count(),
+        2,
+        "copied again: {calls}"
+    );
+    // Nothing back from the builder for 15 s cuts the copy, not 60.
+    let sshopts = fs::read_to_string(folder.path().join("nix-sshopts")).unwrap();
+    assert!(
+        sshopts.contains("-o ServerAliveInterval=5 -o ServerAliveCountMax=3"),
+        "{sshopts}"
+    );
+    assert_eq!(
+        given_to(folder.path()),
+        "nix-offload\nnix build --no-link -L '/nix/store/aaaa-x.drv^*'\n"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(said.contains("Nix daemon disconnected"), "{said}");
+    assert!(
+        said.contains("waits for a builder to stand again"),
+        "{said}"
+    );
+    // Nothing was building there, so nothing goes on there.
+    assert!(!said.contains("nix log"), "{said}");
 }
 
 /// ssh as a nearby machine answers: it adds its last two words to a

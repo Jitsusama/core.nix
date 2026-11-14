@@ -229,6 +229,7 @@ mod tests {
             proof::Proven {
                 passed: true,
                 free: Some(6_000_000_000),
+                ..proof::Proven::default()
             },
             100,
         );
