@@ -1244,7 +1244,7 @@ fn vm_room() -> usize {
 fn built_idle(asked: &there::Asked, journal: &Path) -> Option<ExitCode> {
     let pressure = env::var_os("NIX_OFFLOAD_CPU_PRESSURE")
         .map_or_else(|| PathBuf::from("/proc/pressure/cpu"), PathBuf::from);
-    let pressure = fs::read_to_string(pressure).unwrap_or_default();
+    let pressure = || fs::read_to_string(&pressure).unwrap_or_default();
     let began = now();
     let ran = there::here_when_idle(asked, &pressure, &vm_patterns(), "nix")?;
     let ended = now();

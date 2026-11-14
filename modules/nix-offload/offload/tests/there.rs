@@ -193,6 +193,14 @@ case "$*" in
     slow=$(cat "$here/slow-to-send" 2>/dev/null)
     case "$*" in *" $slow"*) [ -n "$slow" ] && exec sleep 30 ;; esac ;;
 esac
+case "$*" in
+  "build --no-link"*)
+    busy=$(cat "$here/grows-busy" 2>/dev/null)
+    if [ -n "$busy" ]; then
+      echo 'some avg10=61.00 avg60=9.00 avg300=30.00 total=1' > "$busy"
+      exec sleep 30
+    fi ;;
+esac
 case "$1 $2" in
   "derivation show") cat "$here/derivations" 2>/dev/null ;;
   "path-info --json") cat "$here/held" 2>/dev/null ;;
@@ -3869,6 +3877,26 @@ fn asked_to_build_here_when_idle_it_builds_here_only_while_this_machine_is_idle(
 
     let (built_here, _, said) = run("checks.x.vm-a", ("2.00", "4.50"));
     assert!(!built_here, "a VM test is never built here: {said}");
+
+    // At 01:20 on 14 November one begun idle built here for 24 minutes as
+    // a switch beside it took the load to 96.
+    fs::write(
+        folder.path().join("grows-busy"),
+        pressure.display().to_string(),
+    )
+    .unwrap();
+    let began = std::time::Instant::now();
+    let (_, sent, said) = run("checks.x.a", ("2.00", "4.50"));
+    assert!(sent, "begun idle, it kept building here once busy: {said}");
+    assert!(
+        said.contains("this machine grew busy, so what's left of this goes to the builders"),
+        "{said}"
+    );
+    assert!(
+        began.elapsed() < std::time::Duration::from_secs(20),
+        "it waited {:?} to give way",
+        began.elapsed()
+    );
 }
 
 /// A lender's folder in `folder`, named `name`, its lender this test and
