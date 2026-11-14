@@ -465,5 +465,15 @@
       "test_quickshell_warned_of_nothing_it_drew_all_along"
     ],
     "test": "vm-desktop-launcher-waits-on-joel"
+  },
+  {
+    "at": 1794696680,
+    "commit": "b3168dd9ad230175227bf66a99f29d245e6889fb",
+    "owner_pr": 4429,
+    "reason": "warns of Sessions.qml and pieces/Pi.qml reading wants #4429 moved, failing twice at b3168dd9ad23; its owner fixes it forward and takes it off this list",
+    "subtests": [
+      "test_quickshell_warned_of_nothing_it_drew_all_along"
+    ],
+    "test": "vm-desktop-launcher-finds-sessions"
   }
 ]
