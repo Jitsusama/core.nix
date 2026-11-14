@@ -15,6 +15,11 @@
 //! since what the account held may not be Joel's to see any more.
 //! What the people daemon writes it (step-ins, asks ahead) is read and
 //! let go: a roster isn't asked, and it ends once the daemon does.
+//!
+//! It takes the shape every command of ours does (docs/commands.md),
+//! through the terminal kit. Its lines are the people daemon's to parse,
+//! so they stay as they are in every form, and `--format` says only how a
+//! failure is told.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -27,6 +32,7 @@ use std::time::{Duration, Instant};
 use google::people::{Met, changes, people};
 use inotify::{Inotify, WatchMask};
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure, Help};
 
 /// How long it first waits to look for google's daemon again, short as a
 /// restart is, so a meeting stepped into just after still names its
@@ -37,11 +43,41 @@ const FIRST: Duration = Duration::from_secs(1);
 /// once google's daemon has gone.
 const LOOKS: Duration = Duration::from_secs(15);
 
+fn help() -> Help {
+    Help::new(
+        "google-people",
+        "who Joel's meetings and mail name, for People",
+    )
+    .command(
+        "SOCKET",
+        "says each person google's daemon at SOCKET names, as they change",
+    )
+    .example(
+        "google-people daemons/google.sock",
+        "a line each, the socket in the runtime folder",
+    )
+}
+
 fn main() -> ExitCode {
-    let Some(socket) = std::env::args_os().nth(1).map(PathBuf::from) else {
-        eprintln!("<3>usage: google-people SOCKET");
-        return ExitCode::from(2);
-    };
+    terminal_kit::main(
+        &help(),
+        env!("CARGO_PKG_VERSION"),
+        |context| match context.args.as_slice() {
+            [socket] => {
+                follow_google(PathBuf::from(socket));
+                Ok(())
+            }
+            _ => Err(
+                Failure::new(Exit::Usage, "google-people takes google's socket alone")
+                    .try_this("google-people --help"),
+            ),
+        },
+    )
+}
+
+/// Says who google's daemon at `socket` names, until the people daemon
+/// stops reading.
+fn follow_google(socket: PathBuf) {
     // A socket named from the runtime folder, as the people daemon's
     // sources can't say where that is.
     let socket = match std::env::var_os("XDG_RUNTIME_DIR") {
@@ -56,11 +92,13 @@ fn main() -> ExitCode {
                 break;
             }
         }
-        std::process::exit(0);
+        // Its end is the daemon's, which the main thread, waiting on
+        // google's, can't hear.
+        Exit::Done.end_now();
     });
     let mut told: BTreeMap<String, Met> = BTreeMap::new();
     if !say(&[json!({"roster": true})]) {
-        return ExitCode::SUCCESS;
+        return;
     }
     // Watched before it's first looked for, so a socket made since is
     // heard, waiting, at the first wait.
@@ -71,13 +109,16 @@ fn main() -> ExitCode {
         let ended = match UnixStream::connect(&socket) {
             Ok(stream) => {
                 let said = follow(stream, &mut told);
+                if matches!(said, Ok(false)) {
+                    return;
+                }
                 lost = Instant::now();
                 wait = FIRST;
                 said
             }
             Err(error) => Err(error),
         };
-        if let Err(error) = ended {
+        if let Err(error) = ended.map(|_| ()) {
             eprintln!(
                 "<6>google's daemon at {} isn't answering: {error}",
                 socket.display()
@@ -87,7 +128,7 @@ fn main() -> ExitCode {
             let went = changes(&told, &BTreeMap::new());
             told.clear();
             if !say(&went) {
-                return ExitCode::SUCCESS;
+                return;
             }
         }
         let made;
@@ -172,8 +213,9 @@ fn say(lines: &[Value]) -> bool {
 }
 
 /// Watches the meetings and the mail on `stream`, saying who they name as
-/// that changes, until the connection ends.
-fn follow(mut stream: UnixStream, told: &mut BTreeMap<String, Met>) -> std::io::Result<()> {
+/// that changes, until the connection ends, or false once the people
+/// daemon has stopped reading.
+fn follow(mut stream: UnixStream, told: &mut BTreeMap<String, Met>) -> std::io::Result<bool> {
     let watch = json!({"id": "people", "ask": "watch", "kind": ["meeting", "mail", "held"]});
     writeln!(stream, "{watch}")?;
     let mut records: BTreeMap<String, Value> = BTreeMap::new();
@@ -186,11 +228,11 @@ fn follow(mut stream: UnixStream, told: &mut BTreeMap<String, Met>) -> std::io::
         }
         let found = people(&records);
         if !say(&changes(told, &found)) {
-            std::process::exit(0);
+            return Ok(false);
         }
         *told = found;
     }
-    Ok(())
+    Ok(true)
 }
 
 /// Takes the records an answer or a change says into those held, and

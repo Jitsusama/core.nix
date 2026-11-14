@@ -38,9 +38,15 @@
 //! Unread and Recent show (lib's `rows`); without it, or with one it
 //! can't read, it says so and serves no rows, and the shell makes its
 //! own.
+//!
+//! It takes the shape every command of ours does (docs/commands.md),
+//! through the terminal kit: `--help` and `--version` answer without
+//! serving anything, and a wrong command line exits 64. It writes nothing
+//! to stdout, so `--format` says only how a failure is told.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use slack_people::messages::Messages;
@@ -49,6 +55,7 @@ use slack_people::unreads::{
     self, Conversation, Counted, Counts, Kind, Said, State, link, sign_in_waits,
 };
 use slack_people::{Account, Refused, Slack};
+use terminal_kit::{Exit, Failure, Help};
 
 /// How often Slack is asked, unless a test says otherwise.
 const EVERY: Duration = Duration::from_secs(30);
@@ -64,15 +71,63 @@ const MISSES: u32 = 2;
 /// `conversations.info` and `users.info` allow a minute.
 const NAMED_EACH_ROUND: usize = 10;
 
-fn main() {
-    let mut args = std::env::args().skip(1);
-    let (Some(credentials), Some(socket), Some(waiting)) = (args.next(), args.next(), args.next())
-    else {
-        eprintln!("usage: slack-unreads CREDENTIALS SOCKET WAITING [ORIGIN [PACE]]");
-        std::process::exit(64);
-    };
-    let waiting = PathBuf::from(waiting);
-    let origin = args.next().unwrap_or_else(|| "https://slack.com".into());
+fn help() -> Help {
+    Help::new(
+        "slack-unreads",
+        "what in Slack wants Joel, for the launcher",
+    )
+    .command(
+        "CREDENTIALS SOCKET WAITING [ORIGIN [PACE]]",
+        "serves what's unread on SOCKET, asking Joel through WAITING to sign in",
+    )
+    .example(
+        "slack-unreads creds.json slack.sock waits.json",
+        "serves Slack's unreads, as its unit does",
+    )
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let (credentials, socket, waiting, rest) = match context.args.as_slice() {
+            [credentials, socket, waiting, rest @ ..] if rest.len() <= 2 => {
+                (credentials, socket, waiting, rest)
+            }
+            _ => {
+                return Err(Failure::new(
+                    Exit::Usage,
+                    "slack-unreads takes CREDENTIALS, SOCKET and WAITING, then ORIGIN and PACE",
+                )
+                .try_this("slack-unreads --help"));
+            }
+        };
+        let pace = match rest.get(1) {
+            Some(pace) => Some(pace.parse().map_err(|_| {
+                Failure::new(Exit::Usage, format!("PACE is milliseconds, not {pace}"))
+                    .try_this("slack-unreads --help")
+            })?),
+            None => None,
+        };
+        serve(
+            credentials,
+            socket,
+            Path::new(waiting),
+            rest.first()
+                .cloned()
+                .unwrap_or_else(|| "https://slack.com".into()),
+            pace.map_or(EVERY, Duration::from_millis),
+        )
+    })
+}
+
+/// Serves what in Slack wants Joel on `socket`, asking Slack every
+/// `every` as the account signed in at `credentials`, until it's stopped.
+fn serve(
+    credentials: &str,
+    socket: &str,
+    waiting: &Path,
+    origin: String,
+    every: Duration,
+) -> Result<(), Failure> {
     let daemon = slack_people::daemon::listen(
         Path::new(&socket),
         PathBuf::from(&credentials),
@@ -85,10 +140,6 @@ fn main() {
         }
     }
     let slack = Slack::new(origin);
-    let every = args
-        .next()
-        .and_then(|every| every.parse().ok())
-        .map_or(EVERY, Duration::from_millis);
     let credentials = PathBuf::from(credentials);
     let mut names = HashMap::new();
     // Those Slack named nothing, so each is asked once a run.
@@ -101,7 +152,7 @@ fn main() {
         // taken without a restart.
         let Some(account) = Account::read(&credentials) else {
             daemon.say(None, millis());
-            ask_joel(&waiting, false);
+            ask_joel(waiting, false);
             std::thread::sleep(every);
             continue;
         };
@@ -152,8 +203,8 @@ fn main() {
             }
         };
         match said.as_ref().map(|said| said.state) {
-            Some(State::SignedOut) => ask_joel(&waiting, true),
-            Some(State::Ok) => ask_joel(&waiting, false),
+            Some(State::SignedOut) => ask_joel(waiting, true),
+            Some(State::Ok) => ask_joel(waiting, false),
             _ => {}
         }
         if let Some(said) = &said {
