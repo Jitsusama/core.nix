@@ -136,6 +136,8 @@
       shell = services.quickshell.Service;
       runs = lib.toList (shell.ExecStart or [ ]) ++ lib.toList (shell.Environment or [ ]);
     in
+    # Kept in Nix because the lines it looks for are the unit's own, which only
+    # Nix holds, and a script beside it would take them all as arguments anyway.
     pkgs.runCommandLocal "the-shells-list-names-what-it-runs" { } ''
       for line in ${lib.escapeShellArgs runs}; do
         if ! grep -qxF -- "$line" ${list}; then
