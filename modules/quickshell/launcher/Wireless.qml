@@ -220,7 +220,9 @@ Provider {
     // it: that it's a network, for the network ahead; its trust, which
     // :setl sets as Vim's :setlocal sets a buffer's, where its row offers
     // Trust It; the drawer wifid serves on it while ahead, the one connected
-    // only; and, connected, that its Return disconnects, which Return typed
+    // only, read from its record as served when drawn, since a change to
+    // it alone leaves the launcher holding this row (allSteady); and,
+    // connected, that its Return disconnects, which Return typed
     // in insert never does.
     function made(row, key) {
         const network = row.held ?? {};
@@ -238,7 +240,8 @@ Provider {
                     }
                 }
             } : undefined,
-            drawer: connected && row.drawer ? () => ready.drawerOf(row) : undefined,
+            drawer: connected && row.drawer
+                ? () => ready.drawerOf(ready.served(key) ?? row) : undefined,
             ends: connected && network.signing !== true ? Words.ending("verb:wifi-leave").ends : ""
         });
     }
@@ -363,6 +366,17 @@ Provider {
         .filter(key => ready.served(key)?.kind === "network").map(key => ready.rowAt(key))
     property var allTold: []
 
+    // Each told row's record as served, with whether it has a drawer in
+    // place of the drawer, so a change to a drawer alone is seen: the
+    // network joined is ahead while the launcher's open, and its drawer's
+    // figures move at every read of its link, every 2 s, each telling the
+    // launcher to make its choices again (Launcher.qml's refreshed).
+    property var allSteady: []
+    function steadyOf(row) {
+        const served = ready.served(ready.madeOf[row.key]);
+        return JSON.stringify(Object.assign({}, served, { drawer: !!served?.drawer }));
+    }
+
     // What a network's spots are made of, so a closing makes again only
     // the parts of a network that changed (Launcher.qml's heldSpots): its
     // served row with its strength left out, and each part inside it by
@@ -384,10 +398,16 @@ Provider {
         });
         return JSON.stringify([steady, parts]);
     }
+    // A row made again for a change to its drawer alone, nobody looking at
+    // it, is quiet: the row told draws that drawer as served now (made).
     onAllChanged: {
-        if (all.length === allTold.length && all.every((row, at) => row === allTold[at]))
+        const steady = all.map(row => steadyOf(row));
+        const quiet = (row, at) => row === allTold[at] || steady[at] === allSteady[at]
+            && row.network !== looking && row.network !== selected;
+        if (all.length === allTold.length && all.every(quiet))
             return;
         allTold = all;
+        allSteady = steady;
         changed();
     }
 
@@ -425,10 +445,18 @@ Provider {
         return at?.key === `wifi:${at?.network}` ? at.network : "";
     }
 
+    // The network joined while the launcher's open, so its drawer and
+    // insides are served before Joel steps onto Wi-Fi or into it, and that
+    // key draws them in its own frame rather than a round trip on ("→
+    // Network" took 112 ms on 2026-11-13, wifid telling it 46 ms after the
+    // key's work).
+    readonly property string joinedAhead: on && (provider.launcher?.open ?? false)
+        ? Wifi.joined?.network ?? "" : ""
+
     // The networks wifid is told are ahead, so it reads their links and
-    // serves their insides (ready-rows.md's Notes): the one looked at and
-    // the one selected, once each.
-    readonly property var ahead: [looking, selected]
+    // serves their insides (ready-rows.md's Notes): the one looked at, the
+    // one selected and the one joined, once each.
+    readonly property var ahead: [looking, selected, joinedAhead]
         .filter((name, at, names) => name !== "" && names.indexOf(name) === at)
         .map(name => keyOf(name))
 
