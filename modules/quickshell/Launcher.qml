@@ -8176,15 +8176,26 @@ Scope {
         : drawerRoom >= drawerLeast ? Math.min(drawerMost, drawerRoom) : drawerLeast
     readonly property real cardLeft: !screenHere ? 0 : Math.max(drawerMargin,
         Math.min(centred, screenHere.width - drawerMargin - drawerBeside - width))
-    // A quarter down; over a viewer low, its foot a twelfth of the screen
-    // up, as the lock screen sits, so the picture or the video its line
-    // acts on stays in view above it, as Vim's command line sits at the
-    // bottom. Never so low it leaves no screen margin below it, on a
-    // screen too short for a quarter down.
-    readonly property real cardTop: !screenHere ? 0 : Math.round(over !== null
-        ? screenHere.height * 11 / 12 - card.height
-        : Math.max(Theme.space.rung.screen, Math.min(screenHere.height / 4,
-            screenHere.height - Theme.space.rung.screen - card.height)))
+    // Centred on its screen; over a viewer low, its foot a twelfth of the
+    // screen up, as the lock screen sits, so the picture or the video its
+    // line acts on stays in view above it, as Vim's command line sits at
+    // the bottom.
+    readonly property real cardTop: !screenHere ? 0 : over !== null
+        ? Math.round(screenHere.height * 11 / 12 - card.height)
+        : frameTop(screenHere, card.height)
+
+    // Where a frame this tall stands on a screen: as far from its foot as
+    // from its top, to the device pixel, an odd one going below. Super+S's
+    // line takes it too, so the two cards are one box in one place (Joel,
+    // 2026-11-14 09:44: "does not have co-equal top and bottom margins";
+    // VKCF3Z, 4643352a: centred, since a quarter down read as equal on the
+    // laptop but plainly high on the desk). No bar takes an exclusive
+    // zone, so the whole screen is free; rows already leave a screen rung
+    // either side.
+    function frameTop(screen, tall) {
+        const ratio = screen.devicePixelRatio > 0 ? screen.devicePixelRatio : 1;
+        return Math.floor((screen.height - tall) / 2 * ratio) / ratio;
+    }
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
     // what's typed and held, the first twenty rows' names in order (a

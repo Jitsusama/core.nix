@@ -463,14 +463,12 @@ Scope {
         // box (Joel, 2026-11-14 09:44: "super-s kinda goes to top of screen and does not have
         // co-equal top and bottom margins, but launcher does, i want them to feel like more of
         // part of the same"). The launcher's card is its chrome and its rows, eight on any
-        // screen of his, whatever it shows; its top a quarter down, never so low it leaves no
-        // screen rung below (Launcher.qml's cardTop, but for a viewer it sits over, which the
-        // line never does). Worked out from the screen alone, so it never moves as it grows.
+        // screen of his, whatever it shows, centred on the screen (Launcher.qml's frameTop;
+        // not its low place over a viewer, which the line never sits over). Worked out from
+        // the screen alone, so it never moves as it grows.
         readonly property real frame: root.launcher.cardChrome
             + root.launcher.rows * root.launcher.rowTall
-        readonly property real top: Math.round(Math.max(Theme.space.rung.screen,
-            Math.min((screen?.height ?? 0) / 4,
-                (screen?.height ?? 0) - Theme.space.rung.screen - frame)))
+        readonly property real top: !screen ? 0 : root.launcher.frameTop(screen, frame)
         // Quickshell's type files can't place margins, so qmllint can't.
         margins.top: root.up ? surface.top - card.reach // qmllint disable unqualified
             : 1 - implicitHeight
