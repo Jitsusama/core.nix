@@ -2,16 +2,17 @@ Paces niri's refresh, the walk over every window that follows each wakeup
 of its event loop, to at most once per frame of its fastest output. A
 wakeup within a frame of the last refresh puts the walk off to one timer,
 so every wakeup is still followed by a refresh within a frame, and a burst
-of client commits by one. Input, an action, a keyboard focus change and a
-window or layer surface coming or going have the next two refreshes at
-once, since niri's layout sends what one changes in the next. Blockers, popups
+of client commits by one. Input, an action, a keyboard focus change, a
+window or layer surface coming or going, and a commit that resizes a
+window, as one acking a resize does, have the next two refreshes at once,
+since niri's layout sends what one changes in the next. Blockers, popups
 and the keyboard's focus are still handled on every wakeup. niri's own
 tests run unpaced, as written; those in src/tests/refresh_pacing.rs pace.
 A debug line once a second, under the target refresh_pacing, says how
 many refreshes ran in how many wakeups.
 
 diff --git a/src/handlers/compositor.rs b/src/handlers/compositor.rs
-index 1163610..da24b4c 100644
+index 1163610..09588c8 100644
 --- a/src/handlers/compositor.rs
 +++ b/src/handlers/compositor.rs
 @@ -228,6 +228,8 @@ impl CompositorHandler for State {
@@ -32,6 +33,24 @@ index 1163610..da24b4c 100644
                      self.add_default_dmabuf_pre_commit_hook(surface);
  
                      // If this is the only instance, then this transaction will complete
+@@ -359,6 +363,17 @@ impl CompositorHandler for State {
+                 }
+ 
+                 // The toplevel remains mapped.
++                //
++                // A commit that resizes the window, as one acking a resize does, moves the
++                // layout, which is laid out and told of at once rather than a frame on.
++                let resized = self
++                    .niri
++                    .layout
++                    .find_window_and_output(surface)
++                    .is_some_and(|(mapped, _)| mapped.commit_resized());
++                if resized {
++                    self.niri.refresh_pacer.hurry();
++                }
+                 self.niri.window_mru_ui.update_window(&self.niri.layout, id);
+                 self.niri.layout.update_window(&window, serial);
+ 
 diff --git a/src/handlers/layer_shell.rs b/src/handlers/layer_shell.rs
 index dda321b..be5e95c 100644
 --- a/src/handlers/layer_shell.rs
@@ -106,10 +125,10 @@ index 1ef3a78..6fcac45 100644
              touch.cancel(self);
          }
 diff --git a/src/ipc/server.rs b/src/ipc/server.rs
-index ca9076b..eff15ac 100644
+index 855b6f9..ba96569 100644
 --- a/src/ipc/server.rs
 +++ b/src/ipc/server.rs
-@@ -427,6 +427,7 @@ async fn process(ctx: &ClientCtx, request: Request) -> Reply {
+@@ -432,6 +432,7 @@ async fn process(ctx: &ClientCtx, request: Request) -> Reply {
              drop(ipc_outputs);
  
              ctx.event_loop.insert_idle(move |state| {
@@ -245,13 +264,13 @@ index 2654dfe..e89cde1 100644
  mod window_opening;
 diff --git a/src/tests/refresh_pacing.rs b/src/tests/refresh_pacing.rs
 new file mode 100644
-index 0000000..d6a7c25
+index 0000000..e408106
 --- /dev/null
 +++ b/src/tests/refresh_pacing.rs
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,154 @@
 +//! niri's refresh, paced to once a frame: what a client's commits change waits for the next
-+//! frame's refresh, and what input, an action, a focus change or a window coming needs is sent
-+//! at once.
++//! frame's refresh, and what input, an action, a focus change, a window coming or a commit
++//! resizing one needs is sent at once.
 +
 +use std::time::Duration;
 +
@@ -366,6 +385,21 @@ index 0000000..d6a7c25
 +
 +    let sent = configures(&mut f, id, &surface);
 +    assert!(sent.contains("Fullscreen"), "{sent:?}");
++}
++
++#[test]
++fn a_resize_commit_refreshes_at_once() {
++    let (mut f, id, surface) = set_up(FOREVER);
++    let before = refreshes(&mut f);
++
++    // A terminal acking a resize commits at its new size; the layout it moves goes out at once.
++    let window = f.client(id).window(&surface);
++    window.attach_new_buffer();
++    window.set_size(200, 100);
++    window.commit();
++    f.double_roundtrip(id);
++
++    assert!(refreshes(&mut f) > before);
 +}
 +
 +#[test]
@@ -701,3 +735,43 @@ index 0000000..ca4cdf3
 +        assert_eq!(pacer.refreshes(), 50);
 +    }
 +}
+diff --git a/src/window/mapped.rs b/src/window/mapped.rs
+index 3db1f66..ae8fda2 100644
+--- a/src/window/mapped.rs
++++ b/src/window/mapped.rs
+@@ -193,6 +193,11 @@ pub struct Mapped {
+ 
+     /// Most recent monotonic time when the window had the focus.
+     focus_timestamp: Option<Duration>,
++
++    /// The window's size as of its latest commit, kept to tell a commit that resizes it.
++    ///
++    /// The window's own geometry is already the new one by the time niri hears of the commit.
++    committed_size: Cell<Size<i32, Logical>>,
+ }
+ 
+ niri_render_elements! {
+@@ -308,8 +313,10 @@ impl Mapped {
+             is_pending_maximized: false,
+             uncommitted_maximized: Vec::new(),
+             focus_timestamp: None,
++            committed_size: Cell::new(Size::default()),
+         };
+ 
++        rv.committed_size.set(rv.window.geometry().size);
+         rv.is_maximized = rv.sizing_mode().is_maximized();
+         rv.is_pending_maximized = rv.pending_sizing_mode().is_maximized();
+ 
+@@ -320,6 +327,12 @@ impl Mapped {
+         self.window.toplevel().expect("no X11 support")
+     }
+ 
++    /// Notes the size the window's latest commit gave it, returning whether that resized it.
++    pub fn commit_resized(&self) -> bool {
++        let size = self.window.geometry().size;
++        self.committed_size.replace(size) != size
++    }
++
+     /// Recomputes the resolved window rules and returns whether they changed.
+     pub fn recompute_window_rules(&mut self, rules: &[WindowRule], is_at_startup: bool) -> bool {
+         self.need_to_recompute_rules = false;
