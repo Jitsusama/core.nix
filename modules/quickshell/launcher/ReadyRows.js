@@ -306,6 +306,12 @@ function actForm(act) {
     return act.step === "drawer" || act.step === "rows" ? "step" : "";
 }
 
+// What a copy act copies at `now`: its words, or its time worded by the
+// clock then, `said` the launcher's words for times; "" for neither.
+function copyOf(act, now, said) {
+    return typeof act?.copy === "string" ? act.copy : "";
+}
+
 // The program an open act names its link opened in, by its desktop
 // entry's id (`in`), or "" for none, which opens as any link does.
 function openedIn(act) {
