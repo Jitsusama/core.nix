@@ -87,15 +87,21 @@ pub fn help() -> Help {
                 .exit(Exit::NotFound, "no such session is open"),
         )
         .subcommand(
-            Help::new("contract", "a feed's contract").subcommand(
-                Help::new("check", "a feed's lines against its contract")
-                    .example(
-                        "spend-watch contract check feed.jsonl",
-                        "each line it breaks",
-                    )
-                    .argument("<file>", "the feed's lines")
-                    .exit(Exit::BadInput, "a line doesn't hold"),
-            ),
+            Help::new("contract", "a feed's contract")
+                .example(
+                    "spend-watch contract check feed.jsonl",
+                    "each line it breaks",
+                )
+                .exit(Exit::BadInput, "a line doesn't hold")
+                .subcommand(
+                    Help::new("check", "a feed's lines against its contract")
+                        .example(
+                            "spend-watch contract check feed.jsonl",
+                            "each line it breaks",
+                        )
+                        .argument("<file>", "the feed's lines")
+                        .exit(Exit::BadInput, "a line doesn't hold"),
+                ),
         )
         .subcommand(
             Help::new("check-config", "whether a config can run")
@@ -259,15 +265,20 @@ fn findings_help() -> Help {
 
 /// `tokens`, whose one action replays its warning.
 fn tokens_help() -> Help {
-    reads("tokens", "the tokens' warnings").subcommand(
-        reads("replay", "the tokens' warning again, over a span")
-            .example(
-                "spend-watch tokens replay 2026-11-01 2026-11-08",
-                "as it would have warned then",
-            )
-            .argument("<from>", "the first day")
-            .argument("<to>", "the last"),
-    )
+    reads("tokens", "the tokens' warnings")
+        .example(
+            "spend-watch tokens replay 2026-11-01 2026-11-08",
+            "as it would have warned then",
+        )
+        .subcommand(
+            reads("replay", "the tokens' warning again, over a span")
+                .example(
+                    "spend-watch tokens replay 2026-11-01 2026-11-08",
+                    "as it would have warned then",
+                )
+                .argument("<from>", "the first day")
+                .argument("<to>", "the last"),
+        )
 }
 
 /// A subcommand reading the config, as most do.
