@@ -123,6 +123,31 @@
         && home.home.activation ? quickshellTakesNewFiles
       );
 
+  # The companion takes a switch whose shell differs from the one running by
+  # the list each start links, so a new Quickshell or a new setting in its
+  # environment has to change the list too: a switch bringing a new
+  # Quickshell with the same files left the shell on the old build
+  # (2026-11-14, 04:23).
+  the-shells-list-names-what-it-runs =
+    let
+      services = (account graphical).systemd.user.services;
+      companion = lib.toList (services.quickshell-takes-new-files.Service.ExecStart or [ ]);
+      list = lib.last (lib.splitString " " (lib.concatStringsSep " " companion));
+      shell = services.quickshell.Service;
+      runs = lib.toList (shell.ExecStart or [ ]) ++ lib.toList (shell.Environment or [ ]);
+    in
+    # Kept in Nix because the lines it looks for are the unit's own, which only
+    # Nix holds, and a script beside it would take them all as arguments anyway.
+    pkgs.runCommandLocal "the-shells-list-names-what-it-runs" { } ''
+      for line in ${lib.escapeShellArgs runs}; do
+        if ! grep -qxF -- "$line" ${list}; then
+          echo "the list the companion compares doesn't name what the shell runs: $line"
+          exit 1
+        fi
+      done
+      touch $out
+    '';
+
   # A switch leaves the shell running and its companion hands it over onto the
   # new files once the launcher has been shut 30 s, or at its bound however
   # busy the launcher is, restarting it only if the handover refuses, and

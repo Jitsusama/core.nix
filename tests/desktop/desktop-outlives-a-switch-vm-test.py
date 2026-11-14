@@ -160,7 +160,8 @@ def test_a_switch_hands_the_shell_over_once_a_slow_stop_is_done(desktop: Desktop
     and its companion then reloads it, which hands it over to a new process, the unit's own
     from then on, the unit never stopping. Through
     that batch the old shell runs over the new shell.qml, and loads it no second time. The new
-    one then answers the launcher and takes polkit's agent back, so a prompt still reaches it.
+    one then answers the launcher and takes polkit's agent back, so a prompt still reaches it,
+    and killed, it's restarted as a shell systemd started itself would be.
     """
     machine = desktop.machine
     booted = machine.succeed("readlink -f /run/booted-system").strip()
@@ -217,6 +218,21 @@ def test_a_switch_hands_the_shell_over_once_a_slow_stop_is_done(desktop: Desktop
             desktop.as_account("niri msg action spawn -- systemctl start polkit-allowed.service")
         machine.send_chars(f"{desktop.values['secret']}\n")
         machine.wait_for_file("/run/polkit-allowed", timeout=STARTING)
+        took = desktop.as_account(f"journalctl --user _PID={new} -o cat")
+        assert "took polkit's agent after" in took, "the new shell didn't say it took the agent"
+        # Handed over, the shell is the unit's main process but not a child systemd started, so
+        # a crash must still be seen and restarted, as systemd warns it may not be.
+        desktop.as_account(f"kill -KILL {new}")
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                f'pid="$(systemctl --user show quickshell -p MainPID --value)";'
+                f' test "$pid" != {new} && test "$pid" != 0'
+            ),
+            timeout=STARTING,
+        )
+        machine.wait_until_succeeds(
+            desktop.in_session("qs ipc show | grep -q launcher"), timeout=STARTING
+        )
     finally:
         # Killed, the slow unit is no longer running for the switch back to stop.
         desktop.as_account("systemctl --user kill --signal=KILL slow-to-stop")
