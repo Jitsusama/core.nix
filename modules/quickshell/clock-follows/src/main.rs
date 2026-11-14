@@ -363,25 +363,63 @@ fn shown(state: &Path) -> Value {
 fn said(state: &Path, now: u64, context: &Context) -> String {
     let moved = read::<Moved>(&state.join("moved.json"));
     let held = read::<Held>(&state.join("held.json")).and_then(|held| held.refused);
-    let ago = moved
-        .as_ref()
-        .map(|moved| format!("{} ago", time::span(now.saturating_sub(moved.when))));
-    let mut facts = Vec::new();
-    if let Some(moved) = &moved {
-        facts.push(("moved to", Some(moved.to.as_str())));
-        facts.push(("from", Some(moved.from.as_str())));
-        facts.push(("found in", moved.place.as_deref()));
-        facts.push(("when", ago.as_deref()));
-    } else {
-        facts.push(("moved", Some("not since it was last put back, or ever")));
-    }
-    facts.push((
-        "held",
-        Some(held.as_deref().unwrap_or("nothing, so the clock follows")),
-    ));
+    let facts = told(moved.as_ref(), held.as_deref(), now);
+    let facts: Vec<(&str, Option<&str>)> = facts
+        .iter()
+        .map(|(label, value)| (*label, value.as_deref()))
+        .collect();
     let mut lines = layout::facts(&facts, "unknown", &context.out, context.room).join("\n");
     lines.push('\n');
     lines
+}
+
+/// What's true for Joel, a fact a line: where the clock last moved and
+/// whether it follows him now, in his words rather than the state's. No
+/// move kept means none since he last set or put back the zone, since a
+/// put back takes the move away.
+fn told(
+    moved: Option<&Moved>,
+    held: Option<&str>,
+    now: u64,
+) -> Vec<(&'static str, Option<String>)> {
+    let mut facts = Vec::new();
+    match moved {
+        Some(moved) => {
+            let ago = time::span(now.saturating_sub(moved.when));
+            facts.push((
+                "moved",
+                Some(format!("to {}, {ago} ago", zone_said(&moved.to))),
+            ));
+            facts.push(("from", Some(zone_said(&moved.from))));
+            facts.push(("found in", moved.place.clone()));
+        }
+        None => facts.push((
+            "moved",
+            Some("no, the clock keeps the zone it was set to".to_owned()),
+        )),
+    }
+    facts.push((
+        "follows",
+        Some(held.map_or_else(
+            || "where you are; nothing pins it".to_owned(),
+            |zone| {
+                format!(
+                    "where you are, but not to {} till you leave it",
+                    zone_said(zone)
+                )
+            },
+        )),
+    ));
+    facts
+}
+
+/// A zone as Now says it, by its city's time: `America/Edmonton` is
+/// "Edmonton time". A zone with no city, such as `UTC`, is said whole.
+fn zone_said(zone: &str) -> String {
+    match zone.rsplit_once('/') {
+        Some((_, city)) => format!("{} time", city.replace('_', " ")),
+        None => zone.to_owned(),
+    }
 }
 
 fn help() -> Help {
@@ -391,7 +429,7 @@ fn help() -> Help {
     )
     .command(
         "show [STATE]",
-        "its last move and any zone held; the bare run",
+        "where the clock last moved, if it follows; bare run",
     )
     .command(
         "follow SOCKET STATE PROGRAM",
@@ -400,7 +438,7 @@ fn help() -> Help {
     .command("put-back STATE PROGRAM", "puts the zone back where it was")
     .example(
         "clock-follows",
-        "what moved the clock last, and any zone held",
+        "where the clock last moved, and if it follows you",
     )
     .example("clock-follows --json", "the same, as JSON")
     .exit(Exit::Failed, "the zone couldn't be set, or its state kept")
@@ -672,6 +710,59 @@ mod tests {
                 held
             ),
             Decision::Unhold
+        );
+    }
+
+    #[test]
+    fn a_move_is_told_by_its_cities_and_how_long_ago() {
+        let moved = Moved {
+            from: "America/Toronto".into(),
+            to: "America/St_Johns".into(),
+            place: Some("Kelpwater".into()),
+            when: 1_000,
+        };
+        let told = told(Some(&moved), Some("America/Vancouver"), 1_000 + 2 * 3600);
+        let line = |label: &str| {
+            told.iter()
+                .find(|(said, _)| *said == label)
+                .and_then(|(_, value)| value.clone())
+                .unwrap_or_else(|| panic!("no {label} line in {told:?}"))
+        };
+        assert_eq!(
+            line("moved"),
+            "to St Johns time, 2 h ago",
+            "the move wasn't told plainly"
+        );
+        assert_eq!(
+            line("from"),
+            "Toronto time",
+            "where it moved from wasn't told plainly"
+        );
+        assert_eq!(
+            line("follows"),
+            "where you are, but not to Vancouver time till you leave it",
+            "a zone put back wasn't told as what it means"
+        );
+    }
+
+    #[test]
+    fn a_clock_left_alone_says_so() {
+        let told = told(None, None, 0);
+        assert_eq!(
+            told,
+            vec![
+                (
+                    "moved",
+                    Some("no, the clock keeps the zone it was set to".to_owned())
+                ),
+                ("follows", Some("where you are; nothing pins it".to_owned())),
+            ],
+            "a clock nothing moved or pins wasn't told plainly"
+        );
+        assert_eq!(
+            zone_said("UTC"),
+            "UTC",
+            "a zone with no city should be said whole"
         );
     }
 
