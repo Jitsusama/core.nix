@@ -252,7 +252,7 @@ Singleton {
     // it starts would inherit, as a session it spawns would, and say as
     // its own window's; the holder keeps it from its program likewise.
     function held(command) {
-        return holds ? `exec mycelium --realm ${realm} hold -- ${command}`
+        return holds ? `exec mycelium --realm ${realm} holds add -- ${command}`
             : `exec env -u MYCELIUM_APP_ID ${command}`;
     }
     // What a hosted session's viewer runs: the node's words, kept by the
@@ -261,7 +261,8 @@ Singleton {
     // window rather than closing it (OSPHT4, 2026-11-11 [56e0fd87]). On a
     // machine in no realm they run as they are.
     function viewing(words) {
-        return holds ? ["mycelium", "--realm", realm, "hold", "--"].concat(words) : words;
+        return holds ? ["mycelium", "--realm", realm, "holds", "add", "--"].concat(words)
+            : words;
     }
 
     // Reopens a session that closed, where it left off: pi told the
