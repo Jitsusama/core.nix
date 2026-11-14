@@ -158,16 +158,17 @@ fn serve(credentials: &Path, at: &Path, words: Option<&Path>) -> Result<(), Fail
     loop {
         if due(last, wait) {
             last = Some(SystemTime::now());
-            let state = watch.look(&Zoned::now());
+            let standing = watch.look(&Zoned::now()).account;
             // The first miss, as often as not the network still coming
             // up after a wake, is tried again a minute on; each after it
-            // waits twice as long as the last.
-            failures = match state.account {
-                Standing::Unreachable => failures.saturating_add(1),
+            // waits twice as long as the last. A keyring that couldn't
+            // be read is looked at each minute, being on this machine.
+            failures = match standing {
+                Standing::Unreachable if !watch.waits_on_keyring() => failures.saturating_add(1),
                 _ => 0,
             };
             wait = (EVERY * 2u32.saturating_pow(failures.saturating_sub(1).min(4))).min(LONGEST);
-            tell(state);
+            tell(watch.held());
         }
         // Asked less often while Meet can't be, as the calendar is.
         let calls_wait = CALLS_EVERY * 2u32.saturating_pow(watch.calls_failed().min(4));

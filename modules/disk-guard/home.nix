@@ -337,6 +337,7 @@ in
         # A stop the guard can't take mid-step is killed after 1 s, not the
         # default 90: a switch's restart of it held the shell's start behind
         # it for 91 s on 10 November, and 5 s still did on 13 November.
+        # The guard leaves by itself at 500 ms, so the kill is a fallback.
         # Killing it is safe: what it learns is saved as it goes, and its
         # commands are killed the same way.
         TimeoutStopSec = "1s";

@@ -44,6 +44,22 @@ pub enum Missing {
     NoFile,
     /// A file without the OAuth app, the account or its refresh token.
     NotSignedIn,
+    /// The keyring couldn't be read, though it may well hold a sign-in,
+    /// and the file holds none: the sign-in last read still stands.
+    Unreadable,
+}
+
+/// What the keyring's reader gave.
+#[derive(Debug, PartialEq, Eq)]
+enum Kept {
+    /// The sign-in, as the reader printed it.
+    Held(String),
+    /// None, as for an item the keyring lacks: secret-tool then fails
+    /// saying nothing, or a reader prints nothing.
+    Lacks,
+    /// The reader couldn't be run, or failed saying why, as secret-tool
+    /// does when the Secret Service can't be reached.
+    Unreadable,
 }
 
 #[derive(Deserialize)]
@@ -87,25 +103,59 @@ struct Tokens {
 /// The account `name` names, else the sign-in's default, else its first,
 /// as the harness itself picks one. The sign-in is the keyring's, printed
 /// by the program `keyring`, while it has one; else the file at `path`.
+/// A keyring that couldn't be read, with no file, is `Unreadable` rather
+/// than no sign-in, since nothing says Joel signed out.
 pub fn read(keyring: Option<&Path>, path: &Path, name: Option<&str>) -> Result<Account, Missing> {
-    let text = keyring
-        .and_then(kept)
-        .or_else(|| fs::read_to_string(path).ok())
-        .ok_or(Missing::NoFile)?;
+    let kept = keyring.map_or(Kept::Lacks, kept);
+    let text = match kept {
+        Kept::Held(text) => text,
+        Kept::Lacks => fs::read_to_string(path).map_err(|_| Missing::NoFile)?,
+        Kept::Unreadable => fs::read_to_string(path).map_err(|_| Missing::Unreadable)?,
+    };
     parse(&text, name)
 }
 
-/// The sign-in the program `keyring` prints, or none when it can't be run,
-/// fails, as it does for an item the keyring lacks, or prints nothing. What
-/// it says otherwise is let go, so no part of a sign-in reaches the journal.
-fn kept(keyring: &Path) -> Option<String> {
-    let out = Command::new(keyring)
+/// What the program `keyring` gives. Why it couldn't be read goes to the
+/// journal, as the first line of what it said, unless that line could be
+/// part of a sign-in; what it prints is never told.
+fn kept(keyring: &Path) -> Kept {
+    let out = match Command::new(keyring)
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .output()
-        .ok()?;
-    let text = String::from_utf8(out.stdout).ok()?;
-    (out.status.success() && !text.trim().is_empty()).then_some(text)
+    {
+        Ok(out) => out,
+        Err(error) => {
+            eprintln!("<4>the keyring's reader couldn't be run: {}", error.kind());
+            return Kept::Unreadable;
+        }
+    };
+    let said = String::from_utf8_lossy(&out.stderr);
+    let why = said.lines().find(|line| !line.trim().is_empty());
+    match (out.status.success(), why) {
+        (true, _) => match String::from_utf8(out.stdout) {
+            Ok(text) if !text.trim().is_empty() => Kept::Held(text),
+            _ => Kept::Lacks,
+        },
+        (false, None) => Kept::Lacks,
+        (false, Some(why)) => {
+            eprintln!(
+                "<4>the keyring couldn't be read ({}): {}",
+                out.status,
+                told(why)
+            );
+            Kept::Unreadable
+        }
+    }
+}
+
+/// A line the keyring's reader said, as the journal may hold it: at most
+/// 120 characters, and none of it if it could be part of a sign-in.
+fn told(line: &str) -> String {
+    if line.contains(['{', '"']) {
+        return "(what it said is kept out, as it could hold a sign-in)".to_owned();
+    }
+    line.trim().chars().take(120).collect()
 }
 
 fn parse(text: &str, name: Option<&str>) -> Result<Account, Missing> {
@@ -248,6 +298,47 @@ mod tests {
             read(Some(nowhere), &path, None).map(|account| account.refresh_token),
             Ok("wr".to_owned()),
             "a keyring that can't be read hid the file"
+        );
+    }
+
+    #[test]
+    fn a_keyring_failing_to_say_why_is_unreadable_and_one_failing_silently_lacks_it() {
+        for (test, reader, missing) in [
+            (
+                "failing",
+                "echo 'Could not connect' >&2; exit 1",
+                Missing::Unreadable,
+            ),
+            ("lacking", "exit 1", Missing::NoFile),
+        ] {
+            let (reader, path) = kept(test, FILE, reader);
+            fs::remove_file(&path).expect("the file is taken away");
+            assert_eq!(
+                read(Some(&reader), &path, None),
+                Err(missing),
+                "{test}: the keyring was misread"
+            );
+        }
+        let (_, path) = kept("unrunnable", FILE, "");
+        fs::remove_file(&path).expect("the file is taken away");
+        assert_eq!(
+            read(Some(Path::new("/nonexistent/keyring")), &path, None),
+            Err(Missing::Unreadable),
+            "a keyring's reader that couldn't be run read as no sign-in"
+        );
+    }
+
+    #[test]
+    fn what_the_keyring_said_is_told_short_and_never_if_it_could_be_a_sign_in() {
+        assert_eq!(
+            told(" Could not connect "),
+            "Could not connect",
+            "why wasn't told"
+        );
+        assert_eq!(told(&"x".repeat(200)).len(), 120, "a long line wasn't cut");
+        assert!(
+            !told(r#"{"refresh_token": "kr""#).contains("kr"),
+            "a sign-in reached the journal"
         );
     }
 }

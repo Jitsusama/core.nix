@@ -7,6 +7,7 @@
 //! Drive folder is listed, and a file downloaded, only when the shell
 //! asks.
 
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -35,6 +36,12 @@ pub struct Watch {
     pub keyring: Option<PathBuf>,
     /// The account to ask as, or the file's default.
     pub account: Option<String>,
+    /// The sign-in last read, which stands while the keyring can't be
+    /// read: nothing says Joel signed out, and one restart beside the
+    /// keyring's left the calendar empty twelve minutes (2026-11-14).
+    last: RefCell<Option<account::Account>>,
+    /// Whether the keyring couldn't be read with no sign-in to stand in.
+    unread: Cell<bool>,
     keeper: Keeper,
     state: State,
     /// The calendars Joel may change events on, as last heard.
@@ -97,6 +104,8 @@ impl Watch {
             credentials,
             keyring: None,
             account,
+            last: RefCell::new(None),
+            unread: Cell::new(false),
             keeper: Keeper::default(),
             state: State::default(),
             writable: Vec::new(),
@@ -589,11 +598,39 @@ impl Watch {
     /// The account to ask as, read afresh, since pi rewrites its sign-in
     /// with each token it refreshes and with each sign-in.
     fn signed_in(&self) -> Result<account::Account, Missing> {
-        account::read(
+        let read = account::read(
             self.keyring.as_deref(),
             &self.credentials,
             self.account.as_deref(),
-        )
+        );
+        self.unread.set(false);
+        match read {
+            Ok(account) => {
+                self.last.replace(Some(account.clone()));
+                Ok(account)
+            }
+            Err(Missing::Unreadable) => {
+                let last = self.last.borrow().clone();
+                self.unread.set(last.is_none());
+                last.ok_or(Missing::Unreadable)
+            }
+            Err(missing) => {
+                self.last.replace(None);
+                Err(missing)
+            }
+        }
+    }
+
+    /// Whether the last look waited on a keyring that couldn't be read,
+    /// which is looked at again each minute rather than less often, as
+    /// Google is while it can't be reached.
+    pub fn waits_on_keyring(&self) -> bool {
+        self.unread.get()
+    }
+
+    /// What's held, as the last look or answer left it.
+    pub fn held(&self) -> &State {
+        &self.state
     }
 
     /// Says a new Meet meeting is being made, which `make` then does, so
@@ -1023,7 +1060,14 @@ impl Watch {
         now: &Zoned,
         ask: impl Fn(&Google, &str) -> Result<T, Refused>,
     ) -> Result<T, Looked> {
-        let account = self.signed_in().map_err(|_: Missing| Looked::Missing)?;
+        let account = self.signed_in().map_err(|missing| match missing {
+            // Held as when Google can't be reached, since it's back once
+            // the keyring is.
+            Missing::Unreadable => Looked::Refused(Refused::Unreachable(
+                "the sign-in waits on the keyring, which couldn't be read".to_owned(),
+            )),
+            Missing::NoFile | Missing::NotSignedIn => Looked::Missing,
+        })?;
         let at = now.timestamp().as_millisecond();
         let google = &self.google;
         let token = self

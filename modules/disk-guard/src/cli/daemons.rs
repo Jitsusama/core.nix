@@ -5,13 +5,16 @@ use super::reads::running;
 use super::{Env, failed, read_config};
 use crate::config::Scope;
 use crate::daemon::{Guard, Places};
-use crate::serve::{answering, hold, steps, stopping};
+use crate::serve::{answering, hold, leave_when_held_up, steps, stopping};
 use std::fs;
 use std::io::{self, Write};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use terminal_kit::{Exit, Failure};
+
+/// The signals that stop a daemon.
+const STOPS: &[i32] = &[libc::SIGTERM, libc::SIGINT, libc::SIGHUP];
 
 /// How often a daemon steps.
 const STEP_EVERY: Duration = Duration::from_secs(5);
@@ -25,7 +28,7 @@ pub(super) fn daemon(
     err: &mut dyn Write,
 ) -> Result<(), Failure> {
     // Before any thread starts, so every thread blocks them too.
-    let mut wait = stopping(&[libc::SIGTERM, libc::SIGINT, libc::SIGHUP]).map_err(failed)?;
+    let mut wait = stopping(STOPS).map_err(failed)?;
     let (default_config, default_state, name) = match scope {
         Scope::User => (&env.config, &env.state, "user"),
         Scope::System => (&env.system_config, &env.system_state, "system"),
@@ -102,6 +105,8 @@ pub(super) fn daemon(
     // A stop waits, blocked, until a step ends, and a survey's walks once
     // held one for 35 s; the survey asks as it goes and ends early.
     guard.stop_when(Box::new(crate::commands::stop_waiting));
+    // A step that doesn't ask, as some walks don't, is left mid-way.
+    leave_when_held_up(STOPS, io::stderr()).map_err(failed)?;
     if let Some(hearing) = hearing {
         guard.hear(hearing);
     }
