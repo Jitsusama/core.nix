@@ -225,6 +225,20 @@ QtObject {
         expect("a part under a millisecond left unsaid",
             Program.makingSaid("zathura's acts", 30, [{ name: "zathura", ms: 0.4 },
                 { name: "neovim", ms: 29.6 }]), "zathura's acts made in 30 ms: neovim 30");
+        // A part timed inside another, as a provider's Recent inside the
+        // program's own, is kept by its own name alone, so no time counts
+        // twice and the rest is what no part spent.
+        const nested = [];
+        Program.timed(nested, "its recent", now, () => {
+            clock += 5;
+            return Program.timed(nested, "neovim", now, spends(40));
+        });
+        expect("a part inside another is kept apart from it",
+            nested.map(part => [part.name, Math.round(part.ms)]),
+            [["neovim", 40], ["its recent", 5]]);
+        expect("so a making's rest is what no part spent",
+            Program.makingSaid("kitty's acts", 60, nested),
+            "kitty's acts made in 60 ms: neovim 40, the rest 15, its recent 5");
         expect("a making quick enough to feel nothing says nothing",
             Program.makingSaid("slack's drawer", 24, [{ name: "kitty", ms: 20 }]), "");
 
