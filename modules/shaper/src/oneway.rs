@@ -139,6 +139,9 @@ const DRAIN_S: f64 = 2.0;
 /// How long a download that found its queue another's leaves that queue
 /// alone, before trying a cut again in case the line itself fell.
 const ANOTHERS_S: f64 = 30.0;
+/// How far a held download's queue must move past the least or the most
+/// it has been, since it was first held, to count as moving.
+const MOVED: f64 = 1.25;
 /// Under this share of its rate, a link with data waiting and our CAKE
 /// holding nothing is held back by something past it.
 const UNDER: f64 = 0.98;
@@ -292,6 +295,15 @@ impl Learned {
     }
 }
 
+/// A held download's queue since it last moved: since when, and the
+/// least and the most its delay has been since it was first held.
+#[derive(Clone, Copy, Debug)]
+struct Draining {
+    since: f64,
+    least_ms: f64,
+    most_ms: f64,
+}
+
 /// One direction's rate.
 #[derive(Clone, Debug)]
 pub struct Way {
@@ -333,9 +345,9 @@ pub struct Way {
     /// crossed the line: its senders hear of a cut only from what CAKE
     /// drops, a round trip later, and what they send meanwhile waits here.
     download: bool,
-    /// Since when a download carrying a sliver has been held under what
-    /// arrives with its queue standing, and how deep the queue was then.
-    draining: Option<(f64, f64)>,
+    /// How a download held under what arrives, with its queue standing,
+    /// has seen that queue since it last moved.
+    draining: Option<Draining>,
     /// Until when a download leaves a queue alone that its cut didn't
     /// drain.
     anothers_until: f64,
@@ -614,7 +626,8 @@ impl Way {
         // A line that fell under our rate leaves our sockets waiting, and
         // is cut to as before.
         let theirs = ours.is_some_and(|ours| !ours.waiting) && carried < self.rate * FULL;
-        let theirs = theirs || self.download && self.anothers(at, delay_ms, carried, crowded);
+        let theirs =
+            theirs || self.download && self.anothers(at, delay_ms, carried, delay_ms > LATE_MS);
         if let (Some(_), Some(plateau)) = (self.probing_until, self.plateau)
             && delay_ms > LATE_MS
         {
@@ -714,26 +727,42 @@ impl Way {
         }
     }
 
-    /// Whether a download's queue is another machine's: held under what
-    /// arrives while it carries a sliver of its connection, a queue of
-    /// ours drains within a moment or two, and one that doesn't sends the
-    /// download straight in. On 12 November a queue of 20 to 110 ms stood
-    /// for a quarter hour while the download carried 5 to 12 Mbit/s of 85,
-    /// and cut to 5 Mbit/s under it, what Joel's apps received waited 100
-    /// to 300 ms more in our own CAKE, behind the queue it couldn't drain.
-    fn anothers(&mut self, at: f64, delay_ms: f64, carried: f64, crowded: bool) -> bool {
+    /// Whether a download's queue is another machine's or the air's: held
+    /// under what arrives, a queue of ours drains within a moment or two,
+    /// however much of its connection the download carries, and one that
+    /// doesn't sends the download straight in. On 12 November a queue of
+    /// 20 to 110 ms stood for a quarter hour while the download carried 5
+    /// to 12 Mbit/s of 85, and cut to 5 Mbit/s under it, what Joel's apps
+    /// received waited 100 to 300 ms more in our own CAKE, behind the queue
+    /// it couldn't drain. On 13 November the same held of downloads
+    /// carrying far more than a sliver, under the access point's air.
+    fn anothers(&mut self, at: f64, delay_ms: f64, carried: f64, late: bool) -> bool {
         let held = self.rate.is_finite() && carried >= self.rate * FULL;
-        if !(crowded && held) {
+        if !(late && held) {
             self.draining = None;
-            return crowded && at < self.anothers_until;
+            return late && at < self.anothers_until;
         }
-        let (since, deep_ms) = *self.draining.get_or_insert((at, delay_ms));
-        if at - since >= DRAIN_S + 2.0 * deep_ms / 1_000.0 {
+        let draining = self.draining.get_or_insert(Draining {
+            since: at,
+            least_ms: delay_ms,
+            most_ms: delay_ms,
+        });
+        // A queue a cut drains falls, and one rising is a line falling
+        // under the cut, as a roam's does: either is ours, and the clock
+        // starts again. Only a queue standing still is another's.
+        if delay_ms < draining.least_ms / MOVED {
+            draining.least_ms = delay_ms;
+            draining.since = at;
+        } else if delay_ms > draining.most_ms * MOVED {
+            draining.most_ms = delay_ms;
+            draining.since = at;
+        }
+        if at - draining.since >= DRAIN_S + 2.0 * draining.most_ms / 1_000.0 {
             self.rate = f64::INFINITY;
             self.draining = None;
             self.anothers_until = at + ANOTHERS_S;
         }
-        crowded && at < self.anothers_until
+        late && at < self.anothers_until
     }
 
     fn cut(&mut self, at: f64, delay_ms: f64, carried: f64, filled: bool) {
@@ -1247,17 +1276,31 @@ mod tests {
         // A line that really falls to a sliver of what the download
         // learned looks at first like another machine's queue, but a cut
         // under it drains its queue, so the download stays held.
+        held_under_a_falling_line(40_000.0);
+    }
+
+    #[test]
+    fn a_download_s_line_falling_to_most_of_it_is_still_shaped() {
+        // A line falling to 60% of what the download learned carries more
+        // than a sliver, and a cut under it drains its queue as surely.
+        held_under_a_falling_line(150_000.0);
+    }
+
+    /// Runs a download learned at 250 Mbit/s for a minute over a line
+    /// fallen to `line_kbit`, whose buffer a greedy flow fills while the
+    /// rate is over it, and asserts the download is held under it.
+    fn held_under_a_falling_line(line_kbit: f64) {
         let mut c = Controller::new(None, Some(250_000.0));
         let held = c.down.limit();
         let mut at = 0.0;
         let mut delay_ms: f64 = 0.0;
         while at < 60.0 {
             let rate = c.down.limit().map_or(f64::INFINITY, crate::rate::float);
-            let carried = rate.min(40_000.0);
-            // A greedy flow fills the line's buffer while the rate is
-            // over it, and it drains as fast as the rate is under.
-            delay_ms =
-                (delay_ms + (rate.min(80_000.0) - 40_000.0) / 40_000.0 * 100.0).clamp(0.0, 600.0);
+            let carried = rate.min(line_kbit);
+            // The buffer fills as fast as the rate is over the line, to
+            // twice it, and drains as fast as the rate is under.
+            delay_ms = (delay_ms + (rate.min(line_kbit * 2.0) - line_kbit) / line_kbit * 100.0)
+                .clamp(0.0, 600.0);
             c.step(&Seen {
                 at_s: at,
                 ..queued(delay_ms, carried)(at)
@@ -1265,23 +1308,59 @@ mod tests {
             at += 0.1;
         }
         assert_ne!(c.down.limit(), held, "never cut");
+        let over = crate::rate::whole(line_kbit * 1.125);
         assert!(
-            c.down.limit() < Some(45_000),
-            "left over a 40 Mbit/s line: {:?}, {delay_ms:.0} ms",
+            c.down.limit() < Some(over),
+            "left over a {line_kbit} kbit/s line: {:?}, {delay_ms:.0} ms",
             c.down.limit()
         );
     }
 
     #[test]
+    fn a_download_carrying_much_under_a_queue_its_cut_cant_drain_is_left_alone() {
+        // As on 13 November from 20:43: 75 times the download's own delay
+        // stood while it carried more than a sliver, and each time it was
+        // cut for 30 s until the guard sent it back. Over the 75, the
+        // recorder's one-way delay coming down had a median of 35 ms
+        // before the cut, 35 during it and 34 after, so the queue was the
+        // access point's air, and what the cut held waited up to a second
+        // more in our own CAKE.
+        let mut c = Controller::from_learned(
+            Learned::default(),
+            Learned {
+                base: Some(85_000.0),
+                plateau: None,
+            },
+        );
+        let mut under_s = 0.0;
+        let mut at = 0.0;
+        while at < 120.0 {
+            let limits = c.step(&Seen {
+                at_s: at,
+                ..queued(40.0, 40_000.0)(at)
+            });
+            if limits.down.is_some_and(|l| l < 40_000) {
+                under_s += 0.1;
+            }
+            at += 0.1;
+        }
+        assert!(
+            under_s <= 12.0,
+            "held under what arrived for {under_s:.1} s of 120, under a queue no cut drained"
+        );
+        assert_eq!(c.returns, 0, "the guard sent it back: {:?}", c.down.limit());
+    }
+
+    #[test]
     fn ten_minutes_after_giving_up_the_connection_is_shaped_again() {
-        let mut c = Controller::new(None, Some(200_000.0));
-        run(&mut c, 0.0, 95.0, queued(40.0, 150_000.0));
+        let mut c = Controller::new(Some(200_000.0), None);
+        run(&mut c, 0.0, 95.0, queued_up(40.0, 150_000.0));
         assert!(c.given_up());
-        let limits = run(&mut c, 95.0, 700.0, quiet(300.0, 100_000.0));
+        let limits = run(&mut c, 95.0, 700.0, quiet(100_000.0, 300.0));
         assert!(!c.given_up());
-        assert_eq!(limits.down, None, "unlimited until a queue stands");
-        let limits = run(&mut c, 700.0, 701.2, queued(40.0, 150_000.0));
-        assert!(limits.down < Some(150_000), "shaped again: {limits:?}");
+        assert_eq!(limits.up, None, "unlimited until a queue stands");
+        let limits = run(&mut c, 700.0, 701.2, queued_up(40.0, 150_000.0));
+        assert!(limits.up < Some(150_000), "shaped again: {limits:?}");
     }
 
     #[test]
@@ -1354,6 +1433,17 @@ mod tests {
             gateway_ms: Some(3.0),
             up_kbit,
             down_kbit,
+            ..Seen::default()
+        }
+    }
+
+    fn queued_up(up_ms: f64, up_kbit: f64) -> impl Fn(f64) -> Seen {
+        move |_| Seen {
+            up_delay_ms: Some(up_ms),
+            down_delay_ms: Some(0.0),
+            gateway_ms: Some(3.0),
+            up_kbit,
+            down_kbit: 300.0,
             ..Seen::default()
         }
     }
@@ -1653,13 +1743,16 @@ mod tests {
         );
     }
 
+    // The guard's own cases are the upload's: a download its cut holds
+    // under a queue standing still goes straight in within seconds, long
+    // before the guard's half minute.
     #[test]
     fn a_queue_standing_half_a_minute_whatever_the_cuts_goes_back_to_its_base() {
-        let mut c = Controller::new(None, Some(200_000.0));
-        let early = run(&mut c, 0.0, 29.0, queued(40.0, 150_000.0));
-        assert!(early.down < Some(10_000), "cut to the least: {early:?}");
-        let limits = run(&mut c, 29.0, 30.2, queued(40.0, 150_000.0));
-        assert_eq!(limits.down, Some(200_000));
+        let mut c = Controller::new(Some(200_000.0), None);
+        let early = run(&mut c, 0.0, 29.0, queued_up(40.0, 150_000.0));
+        assert!(early.up < Some(10_000), "cut to the least: {early:?}");
+        let limits = run(&mut c, 29.0, 30.2, queued_up(40.0, 150_000.0));
+        assert_eq!(limits.up, Some(200_000));
     }
 
     // On 11 November a transfer across the home network sent 300 to 757
@@ -1740,10 +1833,10 @@ mod tests {
 
     #[test]
     fn three_returns_and_the_connection_is_left_unlimited() {
-        let mut c = Controller::new(None, Some(200_000.0));
-        run(&mut c, 0.0, 95.0, queued(40.0, 150_000.0));
+        let mut c = Controller::new(Some(200_000.0), None);
+        run(&mut c, 0.0, 95.0, queued_up(40.0, 150_000.0));
         assert!(c.given_up());
-        let limits = run(&mut c, 95.0, 100.0, queued(40.0, 150_000.0));
+        let limits = run(&mut c, 95.0, 100.0, queued_up(40.0, 150_000.0));
         assert_eq!(
             limits,
             Limits {
