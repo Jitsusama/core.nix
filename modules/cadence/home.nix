@@ -16,7 +16,14 @@
 # account's own PATH, so a crash overnight costs minutes, not the night.
 # Given an orchestrator, it also asks each orchestrator about any session of its
 # that has sat idle two hours, once for each idle spell, so a session that
-# finished its piece doesn't wait the night for its next.
+# finished its piece doesn't wait the night for its next. And it tells the
+# orchestrator, and the unit's owner, of any of the account's units
+# restarting in a loop (three restarts in fifteen minutes), failed, or a
+# daemon whose socket reads a source signed out, unreachable or refused, or
+# doesn't answer, once for each spell, with since when and its last error:
+# on 13 November slack-unreads restarted 44 times and Google read signed out
+# for two hours before anyone knew. A unit's owner is the one `owners` names
+# for `unit:<unit>`, else for `unstamped:<unit>`, else the watcher.
 #
 # Each evening at 18:00, `cadence day` reads the day just ended (crashes,
 # failed units, out-of-memory kills, pressure, switches, each
@@ -48,6 +55,16 @@ let
     cfg.orchestrator
     (cfg.owners.review or null)
   ];
+  # Who owns what, by the prefix of its key, for the tick's units and the
+  # day's findings alike.
+  owning = lib.optionals (cfg.orchestrator != null) (
+    lib.concatLists (
+      lib.mapAttrsToList (prefix: address: [
+        "--owner"
+        "${prefix}=${address}"
+      ]) cfg.owners
+    )
+  );
   asking = lib.optionals (cfg.watcher != null && cfg.orchestrator != null) [
     "--watcher"
     cfg.watcher
@@ -103,8 +120,10 @@ in
         prefix of its key, the longest matching: `crashes:biome`,
         `failed:quickshell.service`, `pressure.cpu.jobs`, `oom.machine`,
         `switch.minutes.longest`. A finding no prefix matches goes to the
-        watcher. The key `review` names who gets Friday's `cadence review`
-        beside the orchestrator.
+        watcher. A broken unit the tick finds goes to the owner of
+        `unit:<unit>`, else of `unstamped:<unit>`, as `unit:google.service`.
+        The key `review` names who gets Friday's `cadence review` beside the
+        orchestrator.
       '';
     };
     revive = {
@@ -144,6 +163,7 @@ in
             "tick"
           ]
           ++ asking
+          ++ owning
           ++ revive
         );
         # git and journalctl, as the account has them, and to revive, the
@@ -177,12 +197,7 @@ in
               "--watcher"
               cfg.watcher
             ]
-            ++ lib.concatLists (
-              lib.mapAttrsToList (prefix: address: [
-                "--owner"
-                "${prefix}=${address}"
-              ]) cfg.owners
-            )
+            ++ owning
           )
         );
         # journalctl and coredumpctl, as the account has them.
