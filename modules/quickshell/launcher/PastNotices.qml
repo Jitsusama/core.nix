@@ -270,48 +270,16 @@ Provider {
     }
 
     // How many notices each sender sent, and how many of those are unread,
-    // by its name, for a program's own row (Applications.qml): read from
-    // the daemon's records, those past the page as its answer brought
-    // them, never from their rows, since counting every row made all
-    // 1,000 of Joel's past the page for two fields each, 97 ms of Google
-    // Calendar's acts (ZINAWZ, 2026-11-14). One object until the notices
-    // change, so a count kept by it holds. A stopgap until the notices
-    // daemon serves each sender's count in its summary, which needs no
-    // answer past the page at all.
-    readonly property var sentKept: ({ of: null, at: -1, by: null })
+    // by its name, for a program's own row (Applications.qml), as the
+    // notices daemon counts them beside its rows, those past the page too
+    // (row.rs's senders), so counting asks for no rows past the page and
+    // makes none: counted from the rows, all 1,000 of Joel's were made
+    // for two fields each, 97 ms of Google Calendar's acts (2026-11-14).
+    // One object until the daemon says it changed, so a count kept by it
+    // holds.
+    readonly property var noSenders: Object.create(null)
     function sentCounts() {
-        const page = all();
-        const count = mixed.held[whole.summary]?.summary?.count ?? page.length;
-        const kept = count > page.length ? whole.kept : null;
-        if (count > page.length && kept === null)
-            wholeAsked(whole);
-        if (sentKept.by !== null && sentKept.of === kept && sentKept.at === mixed.placings)
-            return sentKept.by;
-        const by = Object.create(null);
-        const add = (sender, unread) => {
-            const one = by[sender] ?? (by[sender] = { count: 0, unread: 0 });
-            one.count += 1;
-            if (unread)
-                one.unread += 1;
-        };
-        if (kept === null) {
-            for (const row of page)
-                add(row.sender, row.unread);
-        } else {
-            let missing = false;
-            for (const key of kept.keys) {
-                const held = (mixed.served(key) ?? kept.rows[key])?.held;
-                if (held)
-                    add(String(held.app ?? ""), held.read !== true);
-                else
-                    missing = true;
-            }
-            behind(whole, page, missing);
-        }
-        sentKept.of = kept;
-        sentKept.at = mixed.placings;
-        sentKept.by = by;
-        return by;
+        return mixed.held[summaryKey]?.summary?.senders ?? noSenders;
     }
 
     // A paged place's every row, `state` its whole or History's, `page`
