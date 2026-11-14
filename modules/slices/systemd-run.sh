@@ -10,16 +10,26 @@
 # slice of its own, is given --slice-inherit: the unit goes in the slice
 # its caller runs in. Calls from Joel's own programs, the system manager's
 # and those naming a slice or another machine pass through unchanged.
+#
+# A slice named as a property, -p Slice=, is named too: systemd keeps the
+# last Slice= a unit is given, so an added --slice-inherit put the units
+# of a night's runs back in agents.slice, made for jobs.slice that way.
 real="@real@"
 user=false
+before=""
 for arg in "$@"; do
+  if [[ "${before}" == -p || "${before}" == --property ]] && [[ "${arg}" == Slice=* ]]; then
+    exec "${real}" "$@"
+  fi
   case "${arg}" in
-    --slice | --slice=* | --slice-inherit | -M* | --machine* | -H* | --host*)
+    --slice | --slice=* | --slice-inherit | -pSlice=* | --property=Slice=* | -M* | --machine* | \
+      -H* | --host*)
       exec "${real}" "$@"
       ;;
     --user) user=true ;;
     *) ;;
   esac
+  before=${arg}
 done
 cgroup=""
 read -r cgroup <"@cgroup@" || true
