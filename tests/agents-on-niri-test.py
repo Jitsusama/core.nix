@@ -2018,12 +2018,13 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
     # As far from the screen's foot as its top stands from the screen's top.
     stands = shell.showing()["line"]
     assert 0 < stands["bottom"] <= stands["screen"] - stands["top"], stands
-    shoot("many")
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
     shell.send_key("j")
     shell.launcher_until(lambda shown: shown["line"]["scrolled"] == 1)
     shell.send_key("k")
     shell.launcher_until(lambda shown: shown["line"]["scrolled"] == 0)
+    # Pictured once the keys have come back round, so a surface still taking its size is not.
+    shoot("many")
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
