@@ -72,13 +72,24 @@ Provider {
         });
         if (readied === null)
             return null;
-        const row = provider.gotten(readied, { verb: () => Pasting.verb() });
+        const row = provider.gotten(readied, { verb: pastingVerb });
         row.emoji = Emoji.prepare([held.emoji ?? "", served.name ?? "", row.keywords?.text ?? "",
             held.group ?? ""], served.order ?? 0);
         row.emoji.row = row;
         const copying = (served.acts ?? []).find(one => one.key === "verb:emoji:copy");
         return Pasting.served(row, "verb:emoji:paste", copying, held.emoji ?? "",
-            one => ready.act(key, one));
+            actor(key));
+    }
+
+    // An emoji's verb and its act, made apart from made(), as Qt's engine
+    // keeps every argument and local a closure's function has alive with
+    // it (ReadyRows.qml's thing() says what it cost): one verb for every
+    // row, and an act holding only its key.
+    function pastingVerb() {
+        return Pasting.verb();
+    }
+    function actor(key) {
+        return one => ready.act(key, one);
     }
 
     function search(typed) {

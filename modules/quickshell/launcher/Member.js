@@ -14,16 +14,7 @@
 // row's end, which crashed the shell three times at 23:05 on 2026-11-11.
 function made(defaults, fields, prepare) {
     const row = {};
-    let prepared = null;
-    Object.defineProperty(row, "prepared", {
-        enumerable: true,
-        get: () => {
-            if (prepared === null) {
-                prepared = prepare(row.name);
-            }
-            return prepared;
-        }
-    });
+    preparing(row, prepare);
     for (const name of Object.keys(defaults)) {
         if (!(name in fields)) {
             row[name] = defaults[name];
@@ -35,6 +26,24 @@ function made(defaults, fields, prepare) {
         }
     }
     return row;
+}
+
+// `row`'s getter, made here rather than in made(), since Qt's engine keeps
+// every argument of a function alive with any closure made in it
+// (qv4compilerscanfunctions.cpp's argumentsCanEscape): made there, it kept
+// the defaults and fields each row was made from, 290 bytes of every ready
+// row in the shell (tests/member-light.qml says what it costs).
+function preparing(row, prepare) {
+    let prepared = null;
+    Object.defineProperty(row, "prepared", {
+        enumerable: true,
+        get: () => {
+            if (prepared === null) {
+                prepared = prepare(row.name);
+            }
+            return prepared;
+        }
+    });
 }
 
 // `row` made again over `fields`, each of its own fields standing over

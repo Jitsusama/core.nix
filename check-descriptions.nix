@@ -3138,6 +3138,11 @@
     the history keeps, is copied, and makes a drawing of it; and Inkscape's drawer in Programs
     says its last drawing and how many
   '';
+  the-launcher-makes-rows-lightly = ''
+    a ready row's name, made ready to match once it's first read, adds at most 800 bytes to the
+    row over its own fields, where a getter keeping the defaults and fields the row was made
+    from added 920 to 1,190
+  '';
   the-launcher-makes-texts-ready-lightly = ''
     making a text ready to match and keeping it grows the launcher's memory by at most 3.5 KB a
     text, where one whose letters were spread into calls took 7.6
