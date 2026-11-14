@@ -39,8 +39,9 @@ Provider {
 
     // Where each layer's chords work, by its name, as a row's note and its
     // drawer's eyebrow both say it, one spelling for both (Y2YBTS's review
-    // of #3659). Google's programs are each a page in Chrome, whose own keys
-    // are found beside Chrome's, so a chord found says whose it is.
+    // of #3659). Google's programs and GitHub are each a page in Chrome,
+    // whose own keys are found beside Chrome's, so a chord found says whose
+    // it is.
     readonly property var places: Words.of("shortcuts").said?.places ?? ({})
 
     // The words that find a layer's shortcuts besides their names.
@@ -54,7 +55,8 @@ Provider {
         "google-docs": "google docs document",
         "google-sheets": "google sheets spreadsheet",
         "google-slides": "google slides presentation",
-        "google-drive": "google drive files"
+        "google-drive": "google drive files",
+        github: "github git code review pull request issue"
     })
 
     // A chord as words: its keys joined by +, those pressed one after
