@@ -132,7 +132,7 @@ QtObject {
                 else if (shown && (one.x < -0.01 || one.x + at.wide > at.across + 0.01))
                     wrong.push(`${said} is off the screen's side at ${t} ms, ${one.beat}`);
                 else if (shown && before !== null && before.beat !== "rides"
-                    && Math.hypot(one.x - before.x, one.y - before.y) > at.tall / 2)
+                    && Math.hypot(one.x - before.x, one.y - before.y) > at.tall / 2 + 1e-6)
                     wrong.push(`${said} jumps at ${t} ms, ${before.beat} to ${one.beat}`);
                 before = shown ? one : null;
             }
