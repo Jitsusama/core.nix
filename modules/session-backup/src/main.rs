@@ -33,12 +33,31 @@ fn help() -> Help {
         "session-backup",
         "copies each settled pi session log, packed and sealed, into a Google Drive folder",
     )
-    .command("status", "what is sent, and what waits to go")
-    .command("run", "sends what has settled, as its timer does each hour")
-    .command("fetch", "reads one copy back, by its NAME, to --to PATH")
+    .subcommand(
+        sub("status", "what is sent, and what waits to go")
+            .example("session-backup status", "the same as bare session-backup"),
+    )
+    .subcommand(
+        sub("run", "sends what has settled, as its timer does each hour")
+            .example("session-backup run", "sends every settled log")
+            .example("session-backup run --most 5", "five at most")
+            .option("--most N", "send N logs at most")
+            .exit(
+                Exit::Failed,
+                "Drive or the login refused, or a log couldn't be sealed",
+            ),
+    )
+    .subcommand(
+        sub("fetch", "reads one copy back to a path")
+            .example(
+                "session-backup fetch NAME --to log.jsonl",
+                "NAME's log, opened",
+            )
+            .argument("<name>", "the copy's name, as status lists it")
+            .option("--to PATH", "where the copy goes")
+            .exit(Exit::Failed, "Drive refused, or it couldn't be opened"),
+    )
     .option("--config FILE", "its settings, which the wrapper names")
-    .option("--most N", "run: send N logs at most")
-    .option("--to PATH", "fetch: where the copy goes")
     .example(
         "session-backup",
         "what is sent and what waits, as status says",
@@ -49,6 +68,13 @@ fn help() -> Help {
         "Drive or the login refused, or a log couldn't be read or sealed",
     )
     .exit(Exit::Config, "the settings can't be read")
+}
+
+/// A subcommand, reading the settings as every one does.
+fn sub(name: &str, about: &str) -> Help {
+    Help::new(name, about)
+        .option("--config FILE", "its settings, which the wrapper names")
+        .exit(Exit::Config, "the settings can't be read")
 }
 
 /// A command line read: the command, its settings, and what else it named.
