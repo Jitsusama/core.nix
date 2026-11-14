@@ -85,8 +85,8 @@ function actOf(holder, act, holderKind) {
 // it names (`askedAs`) and what stays once it's done (`leaves`), as
 // Agents' Close says "Close 8IDU4E? Its worktree and 1 to-do stay."; and
 // whether it costs enough to ask at all (`costly`, Operators.asks), read
-// once a daemon serves it, as agentsd will of a Close by its work in
-// flight (KP0L6A, by 2026-11-15). Nothing for one that serves none of
+// once a daemon serves it, as agentsd does of a Close by its work in
+// flight. Nothing for one that serves none of
 // them (ReadyRows.qml).
 function asking(act) {
     const leaves = String(act?.leaves ?? "");

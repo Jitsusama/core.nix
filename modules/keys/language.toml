@@ -36,8 +36,8 @@
 # 2026-11-13: "we should only require confirmation if it is really a
 # dangerous action or an action of significant consequence"); anything
 # else that changes acts at once. Costly is a stopgap for an act a daemon
-# serves: one serving its own costly is asked by that, as agentsd will of
-# a session's Close by its work in flight (KP0L6A, by 2026-11-15); range, that it
+# serves: one serving its own costly is asked by that, as agentsd's is of
+# a session's Close by its work in flight, and notices' of Forget It; range, that it
 # takes rows, as :3,5d and a visual selection give them; ends, that it
 # ends or takes away, as Disconnect It, Forget It, Close It and :reboot
 # do, so Return never runs it from any mode: d or the command line carries

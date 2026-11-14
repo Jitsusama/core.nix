@@ -932,10 +932,11 @@ Provider {
         return String(served(session)?.leaves ?? "");
     }
 
-    // Whether Close costs enough to ask first, read once the agents daemon
-    // serves it by the work a session has in flight (KP0L6A, by
-    // 2026-11-15); nothing while it says neither way, as today, which asks
-    // as long as Close says what stays (Operators.asks).
+    // Whether Close costs enough to ask first, as the agents daemon serves
+    // it by the work a session has in flight: costly while a turn is under
+    // way, not while it listens, is paused or parked (row.rs's act). Before
+    // its row is told, nothing, which asks as long as Close says what stays
+    // (Operators.asks).
     function costly(session) {
         const said = served(session)?.costly;
         return typeof said === "boolean" ? { costly: said } : {};
