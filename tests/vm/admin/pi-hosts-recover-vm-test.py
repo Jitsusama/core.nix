@@ -28,6 +28,8 @@ DOWN = "The test realm's background pi host is down."
 REFUSED = 78
 # A refusing host's starts: the test's first, before it was told to refuse, and the one refused.
 REFUSING_STARTS = 2
+# A restarted host's starts: the test's first, and the one the restart started.
+RESTARTED_STARTS = 2
 # The stand-in's folder, where each start writes its pid and the test leaves what it's told.
 FOLDER = "/home/alice/stand-in"
 STARTS = f"{FOLDER}/background.starts"
@@ -159,6 +161,24 @@ def test_a_host_outlives_a_command_the_kernel_kills_for_memory(host: Host) -> No
         assert host.run(f"cat {FOLDER}/hog.status").strip() == str(KILLED)
     finally:
         host.run(f"systemctl --user set-property --runtime {UNIT} MemoryMax=infinity")
+
+
+def test_a_restart_whose_stop_fails_tells_nobody_the_host_is_down(host: Host) -> None:
+    """A restart whose stop exits failing starts the host again, and the notice stays quiet.
+
+    systemd fails the unit and runs its OnFailure= before the restart's start, which the 13
+    November restart of a host showed as a notice that it was down while it was starting.
+    """
+    [first] = host.starts()
+    host.run(f"touch {FOLDER}/fail-stop")
+    host.run(f"systemctl --user restart {UNIT}")
+    host.until(f"test -e {FOLDER}/failed-stop && systemctl --user is-active {UNIT}")
+    said = host.said()
+    assert "Failed with result 'exit-code'" in said, said
+    told = host.told("failed (exit-code), and is starting again, so nobody is told it's down.")
+    assert DOWN not in told, told
+    assert host.starts()[0] == first
+    assert len(host.starts()) == RESTARTED_STARTS, host.starts()
 
 
 def test_a_host_that_keeps_crashing_stays_down_after_three_starts(host: Host) -> None:
