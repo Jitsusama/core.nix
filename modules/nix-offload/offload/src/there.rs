@@ -784,8 +784,11 @@ fn uploading(nix: &str, systemd_run: Option<&str>) -> Command {
 /// What a copy up tells its ssh before anything `NIX_SSHOPTS` already
 /// says, so it wins: give the builder up once nothing at all has come back
 /// from it for 15 s. A builder taking what it's sent says so as it goes,
-/// ssh's window opening as its side reads, so a copy that moves, however
-/// slowly, is never cut; one nothing reaches is. On 13 November copies up
+/// ssh's window opening as its side reads, so one nothing reaches is cut.
+/// ssh's keepalive waits in the stream behind what it already wrote, up to
+/// its window of about 2 MB, so a copy moving faster than about 1 Mbit/s
+/// (2 MB in 15 s) is never cut, and a slower one is cut and sent again
+/// like one nothing reaches. On 13 November copies up
 /// to both lent builders stalled behind a full uplink and waited out the
 /// 60 s of keepalives the builder's ssh entry gives, while ssh's window
 /// and the relay's buffers held what Nix said it had sent.
