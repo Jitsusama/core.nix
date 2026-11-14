@@ -374,6 +374,7 @@ Scope {
         // found, so an answer given only when nothing is still shows.
         const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
         list.keptLast = null;
+        keysWeighing = 0;
         const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
             : rows.concat(below)).concat(ending));
         matches = listedAs(composed);
@@ -390,7 +391,7 @@ Scope {
         else if (current >= 0)
             current = Rank.pinned(matches, was, current + rows.length - before);
         composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
-            showing: Date.now() - placedAll, kept: list.keptLast };
+            showing: Date.now() - placedAll, kept: list.keptLast, weighing: keysWeighing };
     }
 
     // The rows with what the first thing found by its name holds listed
@@ -3295,6 +3296,10 @@ Scope {
         RowsPlace.tell(root, held);
     }
     property int rowsToldEarly: 0
+    // How long weighing the keys of the rows just listed took, in ms, which
+    // a key's showing says beside its laying: every row's foot is weighed
+    // as it's listed, not only those drawn (Trials.qml's composed).
+    property int keysWeighing: 0
 
     onMatchesChanged: {
         // The selection's start keeps to the row it began on, as the
@@ -3308,7 +3313,9 @@ Scope {
             Object.values(placesKept).map(kept => kept.matches).concat([homeKept]));
         rowsMade += 1;
         landed();
+        const weighing = Date.now();
         noteKeys();
+        keysWeighing = Date.now() - weighing;
         noteFigures();
         noteDigits();
     }
@@ -5857,6 +5864,7 @@ Scope {
             const lived = live(found);
             const livedAt = Date.now();
             list.keptLast = null;
+            keysWeighing = 0;
             matches = listedAs(lived);
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
@@ -5874,7 +5882,8 @@ Scope {
             searchParts = { before: 0, lists: foundAt - searchBegan, rows: 0,
                 answers: Date.now() - foundAt, each: {}, within: null,
                 composing: { asking: 0, placing: livedAt - foundAt,
-                    showing: Date.now() - livedAt, kept: list.keptLast } };
+                    showing: Date.now() - livedAt, kept: list.keptLast,
+                    weighing: keysWeighing } };
             return;
         }
         // What the search spends its time on, said with a key that's slow
