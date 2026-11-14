@@ -108,21 +108,23 @@ Scope {
             read: notice.read === true,
             at: notice.at, live: notice.live === true, said: words };
         // History's rows say when and how each was done with, and which
-        // source it's from (row.rs).
-        if (place === "notices-history")
+        // source it's from, muted and For You's as that source's (row.rs).
+        const history = place === "notices-history";
+        if (history)
             Object.assign(held, { readAt: notice.readAt ?? notice.at, how: "read",
                 source: sourceOf(notice) });
+        const forYou = history ? { forYou: { kind: "notice", source: sourceOf(notice) } } : {};
         return {
             key: `row:${place}:${notice.id}`,
             kind: "row",
-            row: {
+            row: Object.assign(forYou, {
                 key: `row:${place}:${notice.id}`,
                 thing: `notice:${notice.id}`,
                 order: -notice.at,
                 name: notice.summary,
                 note: body.split("\n")[0],
                 glyph: { code: "f0f3" },
-                hue: "program",
+                hue: history ? "muted" : "program",
                 side: (standing === "" ? [] : [{ said: standing }])
                     .concat([{ at: notice.at, as: "came" }]),
                 drawer: { eyebrow: notice.app, eyebrowNames: true, title: notice.summary,
@@ -134,7 +136,7 @@ Scope {
                         ask: { ask: "mark", notices: [notice.id], read: !notice.read } },
                     { key: "verb:notice:copy", copy: words }],
                 held: held
-            }
+            })
         };
     }
 

@@ -17,7 +17,8 @@
 //! - `notices-history`, For You's History, the read, newest done with
 //!   first, each saying how and when it was, "read here 14:02", as Now's
 //!   History says it, and holding the two, `readAt` and `how`, and its
-//!   `source`, Desktop's or Slack's; never the shell's own, which For You
+//!   `source`, Desktop's or Slack's; muted, its `forYou` naming that
+//!   source, so For You lists each as served; never the shell's own, which For You
 //!   lists as what they ask; served a page at a time as `notices` is, with
 //!   its count beside, of each source too, since History keeps about a
 //!   thousand (KP0L6A, 2026-11-13).
@@ -382,13 +383,24 @@ fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &
         held["how"] = json!(notice.done_how());
         held["source"] = json!(notice.source());
     }
-    json!({
+    // History's is muted, as every row done with in For You is, and says
+    // which of For You's sources it's History's for, so the shell lists
+    // it as it comes (RCTRF8, 2026-11-14).
+    let hue = if history || notice.urgency == Urgency::Low {
+        "muted"
+    } else {
+        sender.hue.as_str()
+    };
+    let mut made = json!({
         "key": format!("row:{place}:{}", notice.id), "thing": notice.key(), "place": place,
-        "kind": "notice", "name": name, "note": note, "glyph": sender.glyph,
-        "hue": if notice.urgency == Urgency::Low { "muted" } else { sender.hue.as_str() },
+        "kind": "notice", "name": name, "note": note, "glyph": sender.glyph, "hue": hue,
         "side": side, "drawer": drawer, "acts": acts(notice, sender, &read, &said, words),
         "held": held,
-    })
+    });
+    if history {
+        made["forYou"] = json!({ "kind": "notice", "source": notice.source() });
+    }
+    made
 }
 
 /// What one notice was made into: its card's sender and words, and its
@@ -621,6 +633,19 @@ mod tests {
         let held = &history[0]["held"];
         let told = json!([held["readAt"], held["how"]]);
         assert_eq!(told, json!([9_000, "readInSlack"]), "and held says so");
+    }
+
+    #[test]
+    fn history_serves_each_row_muted_and_whose_for_you_it_is() {
+        let notices = [notice(1, &json!({ "read": true, "readAt": 5_000 }))];
+        let [mixed, _, history] = making(&notices, &[]);
+        let row = &history[0];
+        let served = json!([row["hue"], row["forYou"]]);
+        let wanted = json!(["muted", { "kind": "notice", "source": row["held"]["source"] }]);
+        assert_eq!(served, wanted, "History's row is as For You lists it");
+        let elsewhere = json!([mixed[0]["hue"], mixed[0].get("forYou")]);
+        let own = json!(["person", null]);
+        assert_eq!(elsewhere, own, "the mixed place's keeps its own");
     }
 
     #[test]

@@ -378,6 +378,15 @@ ShellRoot {
             expect("For You's History asked again hands back the rows it held",
                 whole.length > 0 && wholeFresh.length === 0,
                 `${wholeFresh.length} of ${whole.length} new`);
+            // Each notice's row is the one the daemon served, muted and
+            // For You's as it came (row.rs), with nothing made of it here.
+            const served = new Set(pastNotices.pastRows(["desktop", "slack"]));
+            const notices = whole.filter(row => row.notice !== undefined);
+            const unlike = notices.filter(row => !served.has(row) || row.hue !== "muted"
+                || row.forYou?.kind !== "notice" || row.forYou?.source !== row.pastSource);
+            expect("For You's History lists each notice's row as the daemon served it",
+                notices.length === 27 && unlike.length === 0,
+                JSON.stringify([notices.length, unlike.map(row => [row.key, row.hue])]));
             const unanswered = pastNotices.search("notice").rows;
             expect("a search lists no notice until the daemon answers it",
                 unanswered.length === 0, `${unanswered.length} listed`);
