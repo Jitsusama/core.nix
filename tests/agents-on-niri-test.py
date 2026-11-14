@@ -579,11 +579,15 @@ def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures
 
 
 def shown_first(drawer: Json) -> list[str]:
-    """Give the facts a drawer's first screen shows, before any it says are more."""
-    said = str(drawer.get("moreSays") or "")
-    hidden = int(said.split(maxsplit=1)[0]) if said else 0
+    """Give the facts a drawer's first screen shows, each laid above its foot.
+
+    Its more line counts what runs below its words as well as its facts, so the facts are
+    read by where each is laid rather than by that count.
+    """
     facts = cast("list[str]", drawer["facts"])
-    return facts[: len(facts) - hidden]
+    lines = cast("list[float]", drawer["lines"]["facts"])
+    foot = cast("float", drawer["foot"])
+    return [fact for fact, line in zip(facts, lines, strict=True) if line < foot]
 
 
 @pytest.mark.usefixtures("at_shots_scale")
@@ -594,9 +598,10 @@ def test_a_sessions_drawer_glances_at_six_facts_at_most_and_folds_the_rest(
 
     How it stands is its row's, so with no step it says no Doing. What its quest is about
     is the drawer's prose, not a fact, since it runs long (VKCF3Z, a2101591), and leaves out
-    the title the drawer already says. Its glance holds six facts at most, in VKCF3Z's order
-    (2b03e43c); the rest, its quest and machine among them, is folded under z a after its
-    figures, so none is lost.
+    the title the drawer already says, drawn whole rather than cut, since z a opens the fold
+    rather than reading on (VKCF3Z, e3bb38e5). Its glance holds six facts at most, in
+    VKCF3Z's order (2b03e43c); the rest, its quest and machine among them, is folded under
+    z a after its figures, so none is lost.
     """
     found(shell, "listening quest", "Listening Quest")
     glance = ["Last Turn", "Context"]
@@ -607,6 +612,7 @@ def test_a_sessions_drawer_glances_at_six_facts_at_most_and_folds_the_rest(
     assert shown_first(drawer) == glance, f"its first screen hides some: {drawer}"
     summary = WORKS_ON.removeprefix("Listening Quest: ")
     assert drawer["body"] == summary, drawer
+    assert drawer["bodyDrawn"] == summary, drawer
     shoot("agents-drawer-glance")
     nerd = drawer["nerd"]
     assert "Doing" not in nerd, drawer

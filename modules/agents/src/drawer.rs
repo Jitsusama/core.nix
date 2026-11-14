@@ -617,6 +617,7 @@ mod tests {
                 "its prose"
             );
             assert_eq!(drawn["drawer"]["prose"], json!(true), "set as prose");
+            assert_eq!(drawn["drawer"]["whole"], json!(true), "never cut");
             assert_eq!(folded(&drawn), format!("{fold}{last}"), "here: {here}");
             assert_eq!(
                 drawn["drawer"]["facts"][2]["figure"]["warn"],
