@@ -26,6 +26,13 @@ let
   cfg = config.jitsusama.nix-daemon;
   # What the daemon reads last, kept to say whether it has read this line.
   read = "/var/lib/nix-signing/read-by-nix";
+  # The Mac's own Nix makes the key: nix-darwin's when it manages Nix, and
+  # otherwise the installer's, as the disk guard's darwin.nix finds it.
+  nix =
+    if config.nix.enable then
+      lib.getExe' config.nix.package "nix"
+    else
+      "/nix/var/nix/profiles/default/bin/nix";
 in
 {
   options.jitsusama.nix-daemon = {
@@ -52,7 +59,7 @@ in
   config = {
     system.activationScripts.preActivation.text = lib.mkAfter ''
       mkdir -p /etc/nix ${dirOf read}
-      ${pkgs.bash}/bin/bash ${./signing-key.sh} ${config.nix.package}/bin/nix \
+      ${pkgs.bash}/bin/bash ${./signing-key.sh} ${nix} \
         ${
           if cfg.keyName == null then ''"$(/usr/sbin/scutil --get LocalHostName)-1"'' else cfg.keyName
         } /etc/nix/signing-key /etc/nix/signing-key.pub
