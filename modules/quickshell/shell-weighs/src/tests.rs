@@ -128,9 +128,9 @@ fn the_shells_service_is_found_beside_this_programs_own() {
     assert_eq!(service_cgroup("0::/system.slice/sshd.service\n"), None);
 }
 
-#[test]
-fn the_line_says_each_part_and_what_the_service_holds_besides() {
-    let weight = Weight {
+/// A shell weighed on 2026-11-11, its figures as they were.
+fn weighed() -> Weight {
+    Weight {
         shell: Process {
             pid: 2_936_825,
             name: ".quickshell-wra".to_owned(),
@@ -163,11 +163,37 @@ fn the_line_says_each_part_and_what_the_service_holds_besides() {
         ],
         charged: 986 * 1024,
         peak: 1183 * 1024,
-    };
+    }
+}
+
+#[test]
+fn the_line_says_each_part_and_what_the_service_holds_besides() {
     assert_eq!(
-        line(&weight),
+        line(&weighed()),
         "shell weighs 651 MB: JS heap 200, JIT 5, other anonymous 329, files 115; GPU 253, \
          81 of it shared with niri (2 of 32 MB, 2 of 8 MB, 3 of under 1 MB); its service \
          986 MB, at most 1183, with pi 87"
     );
+}
+
+#[test]
+fn a_script_gets_every_figure_in_kb_unrounded() {
+    let answer = answer(&weighed());
+    assert_eq!(answer["schema"], "shell-weighs.weight/1");
+    assert_eq!(answer["shell"]["resident_kb"], 651 * 1024);
+    assert_eq!(answer["parts_kb"]["heap"], 200 * 1024);
+    assert_eq!(answer["gpu_kb"]["shared"], 81 * 1024);
+    assert_eq!(answer["shown_bytes"][1], 33_554_432);
+    // Every helper is there, the small ones the line leaves unsaid too.
+    assert_eq!(answer["helpers"][1]["name"], "cat");
+    assert_eq!(answer["peak_kb"], 1183 * 1024);
+}
+
+#[test]
+fn a_cgroup_with_no_service_is_not_found() {
+    let missing = std::env::temp_dir().join("shell-weighs-no-such-service");
+    let failure = weigh(&missing)
+        .err()
+        .expect("a missing cgroup weighs nothing");
+    assert_eq!(failure.exit, Exit::NotFound, "{failure:?}");
 }

@@ -14,10 +14,12 @@
 //! system memory and an 87 MB helper, and of the shell's own the JavaScript
 //! heap swung between 200 and 307 MB within minutes.
 
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+
+use serde_json::{Value, json};
+use terminal_kit::{Context, Exit, Failure, Help, layout};
 
 /// The shell's resident memory by part, in kB, from its smaps.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -249,9 +251,14 @@ fn number(path: &Path) -> u64 {
 }
 
 /// Weighs the shell in the service whose cgroup this is.
-fn weigh(cgroup: &Path) -> Result<Weight, String> {
-    let procs = fs::read_to_string(cgroup.join("cgroup.procs"))
-        .map_err(|error| format!("can't read {}: {error}", cgroup.display()))?;
+fn weigh(cgroup: &Path) -> Result<Weight, Failure> {
+    let procs = fs::read_to_string(cgroup.join("cgroup.procs")).map_err(|error| {
+        Failure::new(
+            Exit::NotFound,
+            format!("no service is at {}", cgroup.display()),
+        )
+        .because(error.to_string())
+    })?;
     let mut shell = None;
     let mut helpers = Vec::new();
     for pid in procs
@@ -268,9 +275,15 @@ fn weigh(cgroup: &Path) -> Result<Weight, String> {
             helpers.push(found);
         }
     }
-    let shell = shell.ok_or_else(|| format!("no shell runs in {}", cgroup.display()))?;
-    let smaps = fs::read_to_string(format!("/proc/{}/smaps", shell.pid))
-        .map_err(|error| format!("can't read the shell's smaps: {error}"))?;
+    let shell = shell.ok_or_else(|| {
+        Failure::new(
+            Exit::NotFound,
+            format!("no shell runs in {}", cgroup.display()),
+        )
+    })?;
+    let smaps = fs::read_to_string(format!("/proc/{}/smaps", shell.pid)).map_err(|error| {
+        Failure::new(Exit::Failed, "the shell's memory couldn't be read").because(error.to_string())
+    })?;
     let mut gpu_found = Gpu::default();
     let mut shown = Vec::new();
     let fds = format!("/proc/{}/fd", shell.pid);
@@ -307,28 +320,73 @@ fn weigh(cgroup: &Path) -> Result<Weight, String> {
     })
 }
 
-fn main() -> ExitCode {
-    let cgroup = match env::args_os().nth(1) {
-        Some(path) => Some(PathBuf::from(path)),
-        None => fs::read_to_string("/proc/self/cgroup")
+/// The same weight for a script, every figure in kB as the kernel gives
+/// it, so nothing is lost to rounding.
+fn answer(weight: &Weight) -> Value {
+    let process = |process: &Process| json!({"pid": process.pid, "name": process.name, "resident_kb": process.resident});
+    json!({
+        "schema": "shell-weighs.weight/1",
+        "shell": process(&weight.shell),
+        "parts_kb": {
+            "heap": weight.parts.heap,
+            "jit": weight.parts.jit,
+            "anonymous": weight.parts.anonymous,
+            "files": weight.parts.files,
+        },
+        "gpu_kb": {"total": weight.gpu.total, "shared": weight.gpu.shared},
+        "shown_bytes": weight.shown,
+        "helpers": weight.helpers.iter().map(process).collect::<Vec<_>>(),
+        "charged_kb": weight.charged,
+        "peak_kb": weight.peak,
+    })
+}
+
+fn help() -> Help {
+    Help::new("shell-weighs", "what the shell weighs, part by part")
+        .example("shell-weighs", "the shell's weight, as its journal gets it")
+        .example("shell-weighs --json", "the same in kB, for a script")
+        .command(
+            "[CGROUP]",
+            "weighs the shell in that cgroup, or in the account's own",
+        )
+        .exit(Exit::Failed, "the shell's memory couldn't be read")
+        .exit(Exit::NotFound, "no shell runs in the cgroup")
+        .exit(Exit::Config, "no cgroup named, and none found")
+}
+
+/// Weighs the shell and says it: the journal's one line, wrapped to a
+/// terminal's measure, or the figures for a script.
+fn weighed(context: &Context) -> Result<(), Failure> {
+    let cgroup = match context.args.as_slice() {
+        [] => fs::read_to_string("/proc/self/cgroup")
             .ok()
             .as_deref()
-            .and_then(service_cgroup),
-    };
-    let Some(cgroup) = cgroup else {
-        eprintln!("shell-weighs: can't tell where the shell's service is; give its cgroup");
-        return ExitCode::FAILURE;
-    };
-    match weigh(&cgroup) {
-        Ok(weight) => {
-            println!("{}", line(&weight));
-            ExitCode::SUCCESS
+            .and_then(service_cgroup)
+            .ok_or_else(|| {
+                Failure::new(Exit::Config, "there's no shell's service to weigh")
+                    .because("this program runs outside the account's systemd")
+                    .try_this("shell-weighs /sys/fs/cgroup/<its service>")
+            })?,
+        [path] => PathBuf::from(path),
+        [_, ..] => {
+            return Err(Failure::new(Exit::Usage, "it weighs one cgroup at a time")
+                .try_this("shell-weighs --help"));
         }
-        Err(error) => {
-            eprintln!("shell-weighs: {error}");
-            ExitCode::FAILURE
-        }
-    }
+    };
+    let weight = weigh(&cgroup)?;
+    let said = if context.format().is_json() {
+        context.answer(&answer(&weight))
+    } else {
+        let room = context.room.for_prose();
+        context.say(&(layout::paragraph(&line(&weight), 0, room).join("\n") + "\n"))
+    };
+    said.map_err(|error| {
+        Failure::new(Exit::Failed, "the weight couldn't be said").because(error.to_string())
+    })
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), weighed)
 }
 
 #[cfg(test)]
