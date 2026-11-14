@@ -22,7 +22,9 @@ const PATIENCE: Duration = Duration::from_secs(10);
 
 /// Slack's method that names the IM with the people given, here Joel
 /// alone, which is his note-to-self. It's asked never to make one, so it
-/// only looks; it isn't one of slack-people's reads, so it's asked here.
+/// posts and makes nothing, but it is a write-scoped method all the same:
+/// an IM Joel has closed it marks open again, back in his sidebar
+/// (KP0L6A). It isn't one of slack-people's reads, so it's asked here.
 /// Not users.conversations, which lists every IM: an Enterprise Grid
 /// sign-in such as Joel's is refused it (`enterprise_is_restricted`, the
 /// reader's first start against real Slack, 2026-11-14).

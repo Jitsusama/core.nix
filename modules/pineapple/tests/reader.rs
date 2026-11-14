@@ -215,9 +215,12 @@ fn the_one_reply(home: &Path) -> Value {
         .expect("a reply's line is JSON")
 }
 
-/// Holds that the stand-in was asked only Slack's methods that read:
-/// searching and reading threads, and looking for Joel's own IM, which
-/// the reader does once as it starts, for him alone and never making one.
+/// Holds that the stand-in was asked only Slack's methods that post
+/// nothing: searching and reading threads, and looking for Joel's own IM,
+/// which the reader does once as it starts, for him alone and never
+/// making one. That lookup, conversations.open, is write-scoped all the
+/// same, and marks his IM open again if he closed it, so the list isn't
+/// strictly read-only.
 fn only_reads(asked: &Mutex<Vec<String>>) {
     let opened: Vec<String> = asked
         .lock()
@@ -252,7 +255,7 @@ fn only_reads(asked: &Mutex<Vec<String>>) {
         methods
             .iter()
             .all(|method| reading.contains(&method.as_str())),
-        "only reading methods are asked: {methods:?}"
+        "only methods that post nothing are asked: {methods:?}"
     );
 }
 
