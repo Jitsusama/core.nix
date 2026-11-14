@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::common::{Client, RELEASED_VALUE, Running, until};
+use crate::common::{Client, RELEASED_VALUE, Running, stored_folder, until};
 use serde_json::{Value, json};
 
 /// The one reference listed, and one that isn't.
@@ -260,14 +260,23 @@ fn an_ask_to_run_a_program_outside_the_root_owned_folders_is_refused() {
 }
 
 /// A profile the account may repoint, as `~/.nix-profile` is a link it
-/// owns, planted at the store's own bash: an agent could point it at a
-/// program it built itself, which is in the store too.
+/// owns, listed among the daemon's profiles and planted at a store
+/// folder no other profile is: an agent could point it at a program it
+/// built itself, which is in the store too.
 fn planted_profile(running: &Running) -> PathBuf {
-    let profile = running.folder.join("home/.nix-profile");
-    std::fs::create_dir_all(&profile).unwrap();
-    let bin = profile.join("bin");
-    std::os::unix::fs::symlink(stored_bash().parent().unwrap(), &bin).unwrap();
+    let bin = running.planted_profile();
+    std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(stored_elsewhere().parent().unwrap(), &bin).unwrap();
     bin
+}
+
+/// The name of the program only the planted profile holds.
+fn planted_name() -> String {
+    stored_elsewhere()
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned()
 }
 
 #[test]
@@ -275,7 +284,7 @@ fn a_program_named_through_a_profile_the_account_may_repoint_is_refused() {
     let running = Running::releasing("asks-repointed", &[LISTED]);
     planted_profile(&running);
     let id = "7123456789abcdef0123456789abcdef";
-    put_up(&running, id, LISTED, &["bash", "-c", "true"]);
+    put_up(&running, id, LISTED, &[&planted_name()]);
     let answer = answer(&running, id);
     assert_eq!(answer["state"], "refused", "the answer: {answer}");
     assert_eq!(
@@ -288,14 +297,35 @@ fn a_program_named_through_a_profile_the_account_may_repoint_is_refused() {
 #[test]
 fn a_program_whose_path_goes_through_a_link_the_account_owns_is_refused() {
     let running = Running::releasing("asks-linked", &[LISTED]);
-    let planted = planted_profile(&running).join("bash");
+    let planted = planted_profile(&running).join(planted_name());
     let id = "9123456789abcdef0123456789abcdef";
-    put_up(
-        &running,
-        id,
-        LISTED,
-        &[planted.to_str().unwrap(), "-c", "true"],
+    put_up(&running, id, LISTED, &[planted.to_str().unwrap()]);
+    let answer = answer(&running, id);
+    assert_eq!(answer["state"], "refused", "the answer: {answer}");
+    assert_eq!(
+        answer["why"], "not a root-owned program",
+        "the answer: {answer}"
     );
+    assert!(!released(&running), "the manager was asked to release");
+}
+
+/// A program in the store but in none of the profiles: an agent can
+/// build one, or add it to the store, itself.
+fn stored_elsewhere() -> PathBuf {
+    let profile = stored_folder("bash");
+    ["ls", "cat", "true", "env"]
+        .into_iter()
+        .map(|name| stored_folder(name).join(name))
+        .find(|program| !program.starts_with(&profile))
+        .expect("no program in the store outside bash's folder")
+}
+
+#[test]
+fn a_program_named_by_a_store_path_outside_the_profiles_is_refused() {
+    let running = Running::releasing("asks-stored", &[LISTED]);
+    let id = "6123456789abcdef0123456789abcdef";
+    let elsewhere = stored_elsewhere();
+    put_up(&running, id, LISTED, &[elsewhere.to_str().unwrap()]);
     let answer = answer(&running, id);
     assert_eq!(answer["state"], "refused", "the answer: {answer}");
     assert_eq!(

@@ -91,6 +91,18 @@ shift
 exec "$@"
 "#;
 
+/// The store's folder holding the program the tests' PATH names `name`,
+/// as its links come to.
+pub fn stored_folder(name: &str) -> PathBuf {
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .filter_map(|folder| std::fs::canonicalize(folder.join(name)).ok())
+        .find(|program| program.starts_with("/nix/store"))
+        .and_then(|program| program.parent().map(std::path::Path::to_path_buf))
+        .unwrap_or_else(|| panic!("no {name} in the store on PATH"))
+}
+
 /// A stand-in for wl-copy in the foreground: what it's given goes to its
 /// file, and it holds on until it's ended, as wl-copy holds the clipboard.
 const COPIER: &str = r#"
@@ -141,6 +153,9 @@ impl Running {
     /// references, these listed as `releases`, a stand-in bubblewrap,
     /// and a runtime folder and home of its own, whose `secret-asks`
     /// holds the asks (`asks`) and whose home is the account's (`home`).
+    /// Its profiles are the store's folder holding the tests' bash, as a
+    /// machine's are root's folders of the programs it chose, and then
+    /// `planted_profile`, which a test may plant as the account's own.
     pub fn releasing(test: &str, releases: &[&str]) -> Running {
         let words = std::env::var("LAUNCHER_WORDS")
             .expect("LAUNCHER_WORDS names no vocabulary; passwords-holds-no-secret hands it one");
@@ -153,6 +168,7 @@ impl Running {
             "git": "git",
             "bwrap": bwrap,
             "references": {"1password": "op://"},
+            "profiles": [stored_folder("bash"), folder.join("home/.nix-profile/bin")],
         });
         let running = Running::started_with(
             test,
@@ -265,6 +281,12 @@ impl Running {
     /// The folder a releasing daemon's asks are put up in.
     pub fn asks(&self) -> PathBuf {
         self.folder.join("runtime").join("secret-asks")
+    }
+
+    /// The profile a releasing daemon lists last, in its home as
+    /// `~/.nix-profile` is: not there unless a test plants it.
+    pub fn planted_profile(&self) -> PathBuf {
+        self.folder.join("home/.nix-profile/bin")
     }
 
     /// The arguments the stand-in bubblewrap was last given, a line each.
