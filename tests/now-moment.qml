@@ -338,6 +338,8 @@ ShellRoot {
         else if (waiting === "one read" && pastNotices.desktopRows([2]).length === 0
             && inHistory(2))
             oneRead();
+        else if (waiting === "every notice counted" && pastNotices.whole.kept !== null)
+            sendersCounted();
     }
     // The daemon's answer to a search come, the words it answered.
     function heardFound() {
@@ -493,8 +495,33 @@ ShellRoot {
             // notice read joined it, which what was kept didn't list.
             expect("the rows past the page were asked for once, and again for the read",
                 noticesDaemon.rowsAsked === 2, `${noticesDaemon.rowsAsked} asks`);
+            pastNotices.sentCounts();
+        })) {
+            waiting = "every notice counted";
+            if (pastNotices.whole.kept !== null)
+                Qt.callLater(sendersCounted);
+        }
+    }
+    // Each sender's notices are counted past the page too, as a program's
+    // own row counts its (Applications.qml), from the daemon's records
+    // rather than their rows: counted from every row, Joel's 1,000 were
+    // made for two fields each, 97 ms of one program's acts (2026-11-14).
+    function sendersCounted() {
+        waiting = "";
+        if (tried(() => {
+            const made = pastNotices.tally.rows;
+            const counts = pastNotices.sentCounts();
+            const sent = noticesDaemon.notices.concat(noticesDaemon.unserved);
+            const want = { count: sent.length, unread: sent.filter(one => !one.read).length };
+            expect("each sender's notices are counted, those past the page too",
+                JSON.stringify(counts.Tester) === JSON.stringify(want),
+                `${JSON.stringify(counts)} for ${JSON.stringify(want)}`);
+            expect("and counting them makes none of their rows",
+                pastNotices.tally.rows === made, `${pastNotices.tally.rows - made} made`);
+            expect("asked again over the same notices, it gives the same count",
+                pastNotices.sentCounts() === counts, "counted again");
             theLauncher.open = false;
-            expect("and they go as the launcher closes",
+            expect("and the rows past the page go as the launcher closes",
                 pastNotices.whole.kept === null, JSON.stringify(pastNotices.whole.kept?.keys));
         }))
             Qt.exit(0);
