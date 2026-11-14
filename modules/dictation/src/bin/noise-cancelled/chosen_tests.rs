@@ -15,8 +15,8 @@ fn folder(name: &str) -> PathBuf {
     folder
 }
 
-/// A spot by its key, named for it.
-fn spot(key: &str) -> Spot {
+/// A spot by its key, named for it; choosing's tests take it too.
+pub fn spot(key: &str) -> Spot {
     Spot {
         key: key.to_owned(),
         name: key.to_owned(),
@@ -299,6 +299,58 @@ fn a_cleaned_pick_kept_anywhere_is_known() {
         chosen.any_picked(),
         "the MV7's pick at the desk went unseen"
     );
+}
+
+#[test]
+fn what_it_chose_at_a_spot_comes_after_joels_pick_there_alone() {
+    let file = folder("chose").join("cleaner");
+    let chosen = Chosen::new(Some(file), Cleaner::DeepFilterNet);
+    chosen
+        .choose(MV7, &spot("away"), Cleaner::DeepFilterNetGentle)
+        .expect("a pick away can be kept");
+    chosen
+        .chose_itself(MV7, &desk(), Cleaner::RNNoise)
+        .expect("what it chose can be kept");
+    assert_eq!(
+        chosen.cleaner(Some(MV7), Some(&desk())),
+        Cleaner::RNNoise,
+        "Joel's pick away came before what was chosen at the desk"
+    );
+    assert_eq!(
+        chosen.cleaner(Some(MV7), Some(&spot("away"))),
+        Cleaner::DeepFilterNetGentle,
+        "what was chosen at the desk reached away"
+    );
+    chosen
+        .choose(MV7, &desk(), Cleaner::DeepFilterNet)
+        .expect("a pick at the desk can be kept");
+    assert_eq!(
+        chosen.cleaner(Some(MV7), Some(&desk())),
+        Cleaner::DeepFilterNet,
+        "what was chosen came before Joel's pick at the desk"
+    );
+}
+
+#[test]
+fn choosing_again_at_a_spot_replaces_what_was_chosen_there() {
+    let file = folder("chose-again").join("cleaner");
+    let chosen = Chosen::new(Some(file), Cleaner::DeepFilterNet);
+    for cleaner in [Cleaner::RNNoise, Cleaner::DeepFilterNetGentle] {
+        chosen
+            .chose_itself(MV7, &desk(), cleaner)
+            .expect("what it chose can be kept");
+    }
+    chosen
+        .chose_itself(LAPTOP, &desk(), Cleaner::RNNoise)
+        .expect("the laptop's can be kept");
+    let said = std::fs::read_to_string(chosen.beside("chose").expect("chose is beside"))
+        .expect("chose was written");
+    assert_eq!(
+        said.lines().count(),
+        2,
+        "the MV7's first choice at the desk was kept beside its second: {said}"
+    );
+    assert!(!chosen.any_picked(), "what it chose counted as Joel's pick");
 }
 
 #[test]

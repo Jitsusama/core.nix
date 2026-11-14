@@ -36,6 +36,7 @@
 //! (refusals.rs);
 //! a cleaned pick is kept in CHOSEN.
 
+mod chooses;
 mod chosen;
 mod defaults;
 mod denoise;

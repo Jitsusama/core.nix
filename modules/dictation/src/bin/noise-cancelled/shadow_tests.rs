@@ -88,7 +88,10 @@ fn a_calls_line_is_numbers_and_names_alone() {
     let call = Call {
         node: "alsa_input.usb-Shure_Inc_Shure_MV7-00.analog-mono".to_owned(),
         microphone: "Shure MV7".to_owned(),
-        spot: "the desk".to_owned(),
+        spot: Spot {
+            key: "home=6366013+screen=10ac41a1000000022022".to_owned(),
+            name: "the desk".to_owned(),
+        },
         running: Cleaner::DeepFilterNet,
         speech: vec![0.5; LEAST],
     };
@@ -97,10 +100,13 @@ fn a_calls_line_is_numbers_and_names_alone() {
     assert_eq!(
         line,
         json!({
+            // Its key kept beside its name, so calls there stay together
+            // when Joel renames the spot.
             "at": 1_700_000_000_000_u64,
             "microphone": "Shure MV7",
             "node": "alsa_input.usb-Shure_Inc_Shure_MV7-00.analog-mono",
             "spot": "the desk",
+            "key": "home=6366013+screen=10ac41a1000000022022",
             "running": "deepfilternet",
             "best": "rnnoise",
             "marks": {
