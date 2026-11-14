@@ -431,13 +431,7 @@ Provider {
     // directory. One that's another act here already (Chrome's own "New
     // Window") is left to that act, so nothing reads twice.
     function menu(entry, taken) {
-        const own = Array.from(entry.command).join("\u0000");
-        return Array.from(entry.actions).map(action => ({
-            action: action,
-            name: provider.shortened(action.name, entry.name)
-        })).filter(one => one.name !== "" && !taken.includes(one.name.toLowerCase())
-            && Array.from(one.action.command).join("\u0000") !== own)
-            .map(one => thing({
+        return ownActions(entry, taken).map(one => thing({
             key: `verb:desktop:${one.action.id}`,
             // A new window is started; anything else is run.
             verb: /^new\b/i.test(one.name) ? "start" : "run",
@@ -1739,8 +1733,27 @@ Provider {
     function startsOnly(entry, start, below) {
         if ((provider.running[entry.id] ?? []).length > 0 || provider.keepsRecent(entry))
             return false;
+        // Keys or an action of its own are in its step whatever else is,
+        // and cheap to see where making the step isn't: Programs' keys
+        // took 44 of an 84 ms showing under load, each closed program
+        // making its step to be asked this (vm-desktop-keeps-pace,
+        // 2026-11-14).
+        if (provider.keysOf(entry).length > 0
+            || !provider.stepsIn(entry) && provider.ownActions(entry, provider.taken()).length > 0)
+            return false;
         return provider.controls(entry, start, below)
             .every(one => one.key === "verb:start" || one.key === "verb:below");
+    }
+
+    // The desktop entry's actions its menu lists, each with the name it's
+    // listed by.
+    function ownActions(entry, taken) {
+        const own = Array.from(entry.command).join("\u0000");
+        return Array.from(entry.actions).map(action => ({
+            action: action,
+            name: provider.shortened(action.name, entry.name)
+        })).filter(one => one.name !== "" && !taken.includes(one.name.toLowerCase())
+            && Array.from(one.action.command).join("\u0000") !== own);
     }
 
     // How many programs' steps were made, for the check that asking
