@@ -378,15 +378,5 @@
   ];
   xdg-open = [ "helps" ];
   yubikey-once-in = [ "helps" ];
-  zathura-command = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  zathura-next-document = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   zoom-opens = [ "helps" ];
 }

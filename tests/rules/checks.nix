@@ -195,6 +195,8 @@
         spotify-recent = pkgs.callPackage ../../modules/spotify/spotify-recent/package.nix { };
         vm-first = pkgs.callPackage ../../modules/nix-daemon/vm-first/package.nix { };
         xwayland-satellite = pkgs.callPackage ../../modules/niri/xwayland-satellite.nix { };
+        zathura-command = pkgs.callPackage ../../modules/zathura/command/package.nix { };
+        zathura-next-document = pkgs.callPackage ../../modules/zathura/next-document/package.nix { };
       };
     waiting = import ./commands-agree-waiting.nix;
     views =
