@@ -110,6 +110,12 @@ Provider {
     // its daemon nothing, so only Joel's keys in the launcher reach an
     // entry, a manager's let-in or a check.
     readonly property bool outside: provider.launcher?.cataloguing === true
+    // Whether a line from outside the launcher opened it into this place,
+    // over qs ipc or its socket, which any process of the account's can
+    // write and no chord of Joel's does. Opened so, the place lists as
+    // nobody, so 1Password never asks him for what another process opened;
+    // what he types asks as him.
+    readonly property bool told: provider.launcher?.toldInto === settings.name
 
     // The manager whose browser extension fills sign-ins in, and that
     // browser, which the place offers while it's off; null where none has.
@@ -804,7 +810,10 @@ Provider {
     }
 
     function opened() {
-        listAsked();
+        if (told && !off && !outside)
+            daemon.ask({ ask: "list", fresh: true }, null);
+        else
+            listAsked();
     }
 
     // Stepping into an entry, wherever it's listed, reads it in full, so

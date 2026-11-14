@@ -1162,6 +1162,13 @@ Scope {
     // for the walk too.
     property bool cataloguing: false
 
+    // The place a line from outside opened this opening into, by `qs ipc
+    // call launcher collection` or the launcher's socket, which any process
+    // of the account's can write; empty once it closes. A place that asks
+    // its manager as Joel (Passwords) asks as nobody while it's the one
+    // told, since only a key niri delivered is surely his.
+    property string toldInto: ""
+
     // The rows a terminal's `launcher show` last walked through (`walked`)
     // and listed (`listed`), held a few seconds after it asks, so a
     // provider that reads only while its rows are seen, as Machine reads
@@ -7158,8 +7165,10 @@ Scope {
                     const words = said;
                     if (words[0] === "toggle")
                         root.toggled();
-                    else if (words[0] === "collection")
-                        root.pressed(words.slice(1).join(" "));
+                    else if (words[0] === "collection") {
+                        root.toldInto = words.slice(1).join(" ");
+                        root.pressed(root.toldInto);
+                    }
                     else if (words[0] === "command-line" && words.length >= 3)
                         root.viewerCommandLine(words[1], words[2], words.slice(3).join(" "));
                     else
@@ -7194,6 +7203,7 @@ Scope {
 
         function collection(name: string): void {
             root.askedToOpen();
+            root.toldInto = name;
             root.chordInto(name);
             root.askDone();
         }
@@ -8969,6 +8979,7 @@ Scope {
             Report.say("closing");
             drafts.flush();
             landOn = null;
+            toldInto = "";
         }
         else
             spotsBegin();
