@@ -30,14 +30,29 @@ fn help() -> Help {
         "gcloud-broker",
         "mints a service account's hour-long Google Cloud tokens with the person's login",
     )
-    .command("access", "prints a token for Google's APIs as the account")
-    .command("identity", "prints who the account is, for --audience")
-    .command("project", "prints the project the account lives in")
+    .subcommand(
+        mints("access", "prints a token for Google's APIs as the account").example(
+            "gcloud-broker access",
+            "a token, for CLOUDSDK_AUTH_ACCESS_TOKEN",
+        ),
+    )
+    .subcommand(
+        mints("identity", "prints an identity token for one service")
+            .example(
+                "gcloud-broker identity --audience URL",
+                "a token URL's service takes",
+            )
+            .option("--audience URL", "the service the token is for")
+            .exit(Exit::BadInput, "the audience isn't one Google names"),
+    )
+    .subcommand(
+        mints("project", "prints the project the account lives in")
+            .example("gcloud-broker project --json", "the project, as JSON"),
+    )
     .option(
         "--account EMAIL",
         "the service account; the wrapper names it",
     )
-    .option("--audience URL", "identity: the service the token is for")
     .option("--gcloud PROGRAM", "the gcloud to mint with, if not PATH's")
     .example(
         "gcloud-broker access",
@@ -59,6 +74,19 @@ fn help() -> Help {
         Exit::Unavailable,
         "gcloud couldn't be run, or didn't answer in time",
     )
+}
+
+/// A subcommand that asks gcloud as the account.
+fn mints(name: &str, about: &str) -> Help {
+    Help::new(name, about)
+        .option(
+            "--account EMAIL",
+            "the service account; the wrapper names it",
+        )
+        .option("--gcloud PROGRAM", "the gcloud to mint with, if not PATH's")
+        .exit(Exit::Failed, "gcloud refused, or gave no token")
+        .exit(Exit::BadInput, "the account isn't one Google names")
+        .exit(Exit::Unavailable, "gcloud couldn't be run in time")
 }
 
 /// The value each named flag was given, in `FLAGS`' order. A flag given

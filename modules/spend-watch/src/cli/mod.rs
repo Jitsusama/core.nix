@@ -47,21 +47,91 @@ pub fn help() -> Help {
         )
         .example("spend-watch report waste", "context rebuilt, by cause")
         .example("spend-watch budgets --json", "each budget, for a machine")
-        .command("report", "a period's spend, cut one way, or one focus")
-        .command("budgets", "each budget against its allowances")
-        .command("findings", "what holds now; expect <key> marks one")
-        .command("backtest", "the forecast and the notices, replayed")
-        .command("tokens", "replay <from> <to>: the tokens' warning again")
-        .command("refresh", "ask the daemon for a pass now")
-        .command("go", "<session>: bring a session's terminal forward")
-        .command("contract", "check <file>: a feed's lines against it")
-        .command("check-config", "<file>: whether a config can run")
-        .command("show", "the status the shell would draw now")
-        .command("import", "read what's new from pi and the harness")
-        .command("run", "the daemon")
-        .command("serve", "serve the daemon's last files, for fixtures")
+        .subcommand(
+            reads("report", "a period's spend, cut one way, or one focus")
+                .example("spend-watch report", "the week at a glance")
+                .example(
+                    "spend-watch report last week by quest",
+                    "a period, cut one way",
+                )
+                .example("spend-watch report waste", "context rebuilt, by cause")
+                .argument(
+                    "[words]...",
+                    "a period and by a cut, or waste, caps, quests, outliers or forecast",
+                ),
+        )
+        .subcommand(
+            reads("budgets", "each budget against its allowances")
+                .example("spend-watch budgets", "each budget, and how it stands")
+                .example(
+                    "spend-watch budgets --session ID",
+                    "with that session's spend",
+                )
+                .option("--session <id>", "one session's spend too"),
+        )
+        .subcommand(findings_help())
+        .subcommand(
+            reads("backtest", "the forecast and the notices, replayed")
+                .example("spend-watch backtest", "how the forecast would have done"),
+        )
+        .subcommand(tokens_help())
+        .subcommand(
+            reads("refresh", "ask the daemon for a pass now")
+                .example("spend-watch refresh", "the shell's figures, read again")
+                .exit(Exit::Unavailable, "the daemon isn't running to ask"),
+        )
+        .subcommand(
+            reads("go", "bring a session's terminal forward")
+                .example("spend-watch go ID", "its window, in front")
+                .argument("<session>", "the session's id")
+                .exit(Exit::NotFound, "no such session is open"),
+        )
+        .subcommand(
+            Help::new("contract", "a feed's contract")
+                .example(
+                    "spend-watch contract check feed.jsonl",
+                    "each line it breaks",
+                )
+                .exit(Exit::BadInput, "a line doesn't hold")
+                .subcommand(
+                    Help::new("check", "a feed's lines against its contract")
+                        .example(
+                            "spend-watch contract check feed.jsonl",
+                            "each line it breaks",
+                        )
+                        .argument("<file>", "the feed's lines")
+                        .exit(Exit::BadInput, "a line doesn't hold"),
+                ),
+        )
+        .subcommand(
+            Help::new("check-config", "whether a config can run")
+                .example(
+                    "spend-watch check-config config.toml",
+                    "read as the daemon would",
+                )
+                .argument("<file>", "the config")
+                .exit(Exit::BadInput, "the config doesn't hold"),
+        )
+        .subcommand(
+            reads("show", "the status the shell would draw now")
+                .example("spend-watch show", "the shell's figures, as it reads them")
+                // The launcher's collection, which only it asks for.
+                .subcommand(reads("collection", "the launcher's collection").unlisted()),
+        )
+        .subcommand(
+            reads("import", "read what's new from pi and the harness")
+                .example("spend-watch import", "what the daemon reads each pass"),
+        )
+        .subcommand(
+            reads("run", "the daemon")
+                .example("spend-watch run", "as its service runs it")
+                .exit(Exit::TryAgain, "another spend-watch holds the history"),
+        )
+        .subcommand(
+            reads("serve", "serve the daemon's last files, for fixtures")
+                .example("spend-watch serve", "its files, until stopped"),
+        )
         .option("--config <file>", "the config; the module's by default")
-        .option("--session <id>", "with budgets: one session's too")
         .form("markdown")
         .form("csv")
         .exit(Exit::Failed, "the history couldn't be read or kept")
@@ -172,21 +242,51 @@ pub fn act(context: &Context, help: &Help) -> Result<(), Failure> {
             crate::daemon::run(&config).map_err(broke)
         }
         ["serve"] => crate::daemon::serve(&config(&path)?).map_err(broke),
-        [word, ..] if help.command_names().contains(word) => {
-            let words = help
-                .commands
-                .iter()
-                .find(|entry| entry.name == *word)
-                .map(|entry| entry.words.clone())
-                .unwrap_or_default();
-            Err(
-                Failure::new(Exit::Usage, format!("{word} wasn't asked rightly"))
-                    .because(format!("{word}: {words}"))
-                    .try_this("spend-watch --help"),
-            )
-        }
+        [word, ..] if help.command_names().contains(word) => Err(Failure::new(
+            Exit::Usage,
+            format!("{word} wasn't asked rightly"),
+        )
+        .try_this(format!("spend-watch {word} --help"))),
         [word, ..] => Err(flags::unknown("command", word, &help.command_names())),
     }
+}
+
+/// `findings`, and marking one expected.
+fn findings_help() -> Help {
+    reads("findings", "what holds now")
+        .example("spend-watch findings", "each finding standing")
+        .subcommand(
+            reads("expect", "marks a finding as expected")
+                .example("spend-watch findings expect KEY", "KEY stops notifying")
+                .argument("<key>", "the finding's key, as findings gives it")
+                .exit(Exit::NotFound, "no finding has that key"),
+        )
+}
+
+/// `tokens`, whose one action replays its warning.
+fn tokens_help() -> Help {
+    reads("tokens", "the tokens' warnings")
+        .example(
+            "spend-watch tokens replay 2026-11-01 2026-11-08",
+            "as it would have warned then",
+        )
+        .subcommand(
+            reads("replay", "the tokens' warning again, over a span")
+                .example(
+                    "spend-watch tokens replay 2026-11-01 2026-11-08",
+                    "as it would have warned then",
+                )
+                .argument("<from>", "the first day")
+                .argument("<to>", "the last"),
+        )
+}
+
+/// A subcommand reading the config, as most do.
+fn reads(name: &str, about: &str) -> Help {
+    Help::new(name, about)
+        .option("--config <file>", "the config; the module's by default")
+        .exit(Exit::NotFound, "there's no config")
+        .exit(Exit::Config, "the config can't be read")
 }
 
 /// The config, read: missing and unreadable are each their own exit.

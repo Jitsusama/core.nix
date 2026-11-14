@@ -27,19 +27,8 @@ fn help() -> Help {
         "github-broker",
         "hands a GitHub App's hour-long installation tokens to its socket's callers",
     )
-    .command("serve", "holds the App and answers the socket")
-    .command("token", "asks the socket and prints the token alone")
-    .option("--socket PATH", "the socket to answer or ask")
-    .option("--app FILE", "serve: the App, sealed with age")
-    .option(
-        "--installation FILE",
-        "serve: the file holding its installation's id",
-    )
-    .option(
-        "--identity FILE",
-        "serve: the age identity that opens the App",
-    )
-    .option("--api URL", "serve: GitHub's API, if not api.github.com")
+    .subcommand(serve_help())
+    .subcommand(token_help())
     .example("github-broker", "a token, for GH_TOKEN=$(github-broker) gh")
     .example(
         "github-broker --json",
@@ -50,6 +39,38 @@ fn help() -> Help {
         "GitHub refused, or the App couldn't be opened",
     )
     .exit(Exit::Unavailable, "no broker answers at the socket")
+}
+
+fn serve_help() -> Help {
+    Help::new("serve", "holds the App and answers the socket")
+        .example(
+            "github-broker serve --socket S --app A --installation I --identity K",
+            "answer S with A's tokens",
+        )
+        .option("--socket PATH", "the socket to answer")
+        .option("--app FILE", "the App, sealed with age")
+        .option(
+            "--installation FILE",
+            "the file holding its installation's id",
+        )
+        .option("--identity FILE", "the age identity that opens the App")
+        .option("--api URL", "GitHub's API, if not api.github.com")
+        .exit(Exit::Failed, "it couldn't listen on the socket")
+}
+
+fn token_help() -> Help {
+    Help::new("token", "asks the socket and prints the token alone")
+        .example(
+            "github-broker token",
+            "a token, as bare github-broker gives",
+        )
+        .example("github-broker token --json", "the token and when it lapses")
+        .option("--socket PATH", "the socket to ask")
+        .exit(
+            Exit::Failed,
+            "GitHub refused, or the App couldn't be opened",
+        )
+        .exit(Exit::Unavailable, "no broker answers at the socket")
 }
 
 /// The value each named flag was given, in `known`'s order, or a usage

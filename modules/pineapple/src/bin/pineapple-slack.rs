@@ -96,12 +96,20 @@ fn help() -> Help {
     )
     .example("pineapple-slack", "the newest decisions, the same as heard")
     .example("pineapple-slack heard --json", "the same, for a script")
-    .command("heard", "the newest decisions, with where each was said")
-    .command("run", "the reader itself, as its service runs it")
-    .option("--origin URL", "run asks a stand-in for Slack there")
-    .option(
-        "--every MS",
-        "how often run searches, half a minute unless given",
+    .subcommand(
+        Help::new("heard", "the newest decisions, with where each was said")
+            .example("pineapple-slack heard", "the same as bare pineapple-slack")
+            .example("pineapple-slack heard --json", "the same, for a script")
+            .exit(Exit::BadInput, "the log can't be read"),
+    )
+    .subcommand(
+        Help::new("run", "the reader itself, as its service runs it")
+            .example("pineapple-slack run", "reads Slack until stopped")
+            .option("--origin URL", "asks a stand-in for Slack there")
+            .option(
+                "--every MS",
+                "how often it searches, half a minute unless given",
+            ),
     )
     .exit(Exit::BadInput, "the log can't be read")
 }

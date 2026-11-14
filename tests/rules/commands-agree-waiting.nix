@@ -58,9 +58,7 @@
     "exits"
     "helps"
   ];
-  clock-follows = [ "subcommands" ];
   collect = [ "helps" ];
-  collector = [ "subcommands" ];
   console-setup = [ "helps" ];
   declared-last = [ "helps" ];
   dictation = [
@@ -73,18 +71,13 @@
     "exits"
     "helps"
   ];
-  disk-guard = [ "subcommands" ];
   disk-guard-merged-on-github = [ "helps" ];
   eero = [ "inks" ];
-  file-preview = [ "subcommands" ];
-  firmware-settings = [ "subcommands" ];
-  gcloud-broker = [ "subcommands" ];
   git-engine = [
     "kit"
     "exits"
     "helps"
   ];
-  github-broker = [ "subcommands" ];
   gnome-keyring-unlock = [ "helps" ];
   guide = [
     "kit"
@@ -113,7 +106,6 @@
     "kit"
     "helps"
   ];
-  lag-watch = [ "subcommands" ];
   launched = [ "helps" ];
   launcher = [
     "kit"
@@ -126,7 +118,6 @@
     "helps"
   ];
   lid-held = [ "helps" ];
-  load-proof = [ "subcommands" ];
   loader-first-in-boot-order = [ "helps" ];
   location = [
     "kit"
@@ -188,7 +179,6 @@
     "kit"
     "helps"
   ];
-  open-now = [ "subcommands" ];
   option-rom-check = [ "helps" ];
   pain-points = [
     "kit"
@@ -223,10 +213,8 @@
     "exits"
     "helps"
   ];
-  pi-packages = [ "subcommands" ];
   pi-settings = [ "helps" ];
   pi-verbs = [ "helps" ];
-  pineapple-slack = [ "subcommands" ];
   processor-telemetry = [
     "kit"
     "helps"
@@ -247,7 +235,6 @@
     "kit"
     "helps"
   ];
-  recent-files = [ "subcommands" ];
   record-window = [
     "kit"
     "exits"
@@ -270,7 +257,6 @@
     "helps"
   ];
   secure-boot-signed-check = [ "helps" ];
-  session-backup = [ "subcommands" ];
   shaper = [
     "kit"
     "exits"
@@ -286,8 +272,6 @@
     "exits"
     "helps"
   ];
-  spend-watch = [ "subcommands" ];
-  spotify-recent = [ "subcommands" ];
   surface-clock = [
     "kit"
     "helps"
@@ -350,6 +334,5 @@
   xdg-open = [ "helps" ];
   yubikey-once-in = [ "helps" ];
   zathura-command = [ "subcommands" ];
-  zathura-next-document = [ "subcommands" ];
   zoom-opens = [ "helps" ];
 }

@@ -36,13 +36,35 @@ fn help() -> Help {
         "each to its branch's head, swapped in now",
     )
     .example("pi-packages hold a demo", "swaps nothing until released")
-    .command("status", "where each package's current is, and any hold")
-    .command("update", "each to its branch, swapping hourly at most")
-    .command("sweep", "removes the versions no pi runs")
-    .command("hold WHY...", "swaps nothing, however an update runs")
-    .command("release", "ends the hold")
-    .option("--now", "update: swaps in now, unless a hold stands")
-    .option("--for LENGTH", "hold: only that long, as 90m or 2h")
+    .subcommand(
+        sub("status", "where each package's current is, and any hold")
+            .example("pi-packages status", "the same as bare pi-packages"),
+    )
+    .subcommand(
+        sub("update", "each to its branch, swapping hourly at most")
+            .example("pi-packages update", "builds each, swapping in on the hour")
+            .example("pi-packages update --now", "swaps in now")
+            .option("--now", "swaps in now, unless a hold stands")
+            .exit(Exit::Failed, "a package wasn't updated"),
+    )
+    .subcommand(
+        sub("sweep", "removes the versions no pi runs")
+            .example("pi-packages sweep", "frees what no pi holds")
+            .exit(Exit::Failed, "a version wasn't swept"),
+    )
+    .subcommand(
+        sub("hold", "swaps nothing, however an update runs")
+            .example("pi-packages hold a demo", "until released")
+            .example("pi-packages hold --for 2h a demo", "for two hours")
+            .argument("<why>...", "what it's held for, said with status")
+            .option("--for LENGTH", "only that long, as 90m or 2h")
+            .exit(Exit::Failed, "the hold couldn't be put"),
+    )
+    .subcommand(
+        sub("release", "ends the hold")
+            .example("pi-packages release", "updates swap in again")
+            .exit(Exit::Failed, "the hold couldn't be ended"),
+    )
     .option(
         "--config FILE",
         "the settings file the account's command gives",
@@ -52,6 +74,16 @@ fn help() -> Help {
         "a package wasn't updated or swept, or a hold failed",
     )
     .exit(Exit::Config, "the settings couldn't be read")
+}
+
+/// A subcommand, reading the settings file as every one does.
+fn sub(name: &str, about: &str) -> Help {
+    Help::new(name, about)
+        .option(
+            "--config FILE",
+            "the settings file the account's command gives",
+        )
+        .exit(Exit::Config, "the settings couldn't be read")
 }
 
 fn main() -> ExitCode {

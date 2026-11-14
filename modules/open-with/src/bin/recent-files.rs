@@ -36,9 +36,25 @@ use terminal_kit::{Context, Exit, Failure, Help, time};
 
 fn help() -> Help {
     Help::new("recent-files", "the desktop's list of files opened lately")
-        .command("add", "says PROGRAM opened each FILE now")
-        .command("list", "every file on it, by the program that opened it")
-        .command("by", "the files one of PROGRAMs opened")
+        .subcommand(
+            Help::new("add", "says a program opened each file now")
+                .example("recent-files add vi -- a.md", "says vi opened a.md")
+                .argument("<program>", "what opened them")
+                .argument("<file>...", "each file it opened")
+                .exit(Exit::Failed, "the list couldn't be written"),
+        )
+        .subcommand(
+            Help::new("list", "every file on it, by the program that opened it")
+                .example("recent-files list", "a line each: program, file, when")
+                .example("recent-files list --json", "the same, as JSON")
+                .exit(Exit::BadInput, "the list can't be read"),
+        )
+        .subcommand(
+            Help::new("by", "the files one of the programs opened")
+                .example("recent-files by inkscape", "the drawings Inkscape opened")
+                .argument("<program>...", "each program asked of")
+                .exit(Exit::BadInput, "the list can't be read"),
+        )
         .example("recent-files list", "a line each: program, file, when")
         .example("recent-files by inkscape", "the drawings Inkscape opened")
         .example("recent-files add vi -- a.md", "says vi opened a.md")
