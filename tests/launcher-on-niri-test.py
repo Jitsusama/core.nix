@@ -436,10 +436,12 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
 
 
 def test_a_place_stepped_into_from_whats_typed_is_kept_as_what_it_meant(shell: Shell) -> None:
-    """Return into For You from "for you" keeps For You as a pick of those words, at once.
+    """Return into For You from "for you" keeps For You as a pick of those words, once each.
 
     Only doing something learned what was meant, so a place stepped into and left never came
     first for its words, however often (VKCF3Z, 2026-11-12); tests/ranking.qml holds the rest.
+    The pick is learned once the step's frame is drawn, so the letters typed inside before it
+    are never what it's learned for, and a launcher closed before it is drawn still learns it.
     """
     state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
 
@@ -450,12 +452,31 @@ def test_a_place_stepped_into_from_whats_typed_is_kept_as_what_it_meant(shell: S
                 said.update(cast("dict[str, Json]", json.loads(path.read_text())))
         return said
 
+    def times() -> int:
+        answers = cast("dict[str, dict[str, int]]", picked().get("for you", {}))
+        return sum(one["c"] for one in answers.values())
+
+    def kept(at_least: int) -> int:
+        deadline = time.monotonic() + 5
+        while times() < at_least and time.monotonic() < deadline:
+            time.sleep(launcher_on_niri.POLL)
+        return times()
+
+    before = times()
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    typed_at_once(shell, "'for you' -k Return")
+    # Letters typed inside in the step's own turn, before its frame.
+    typed_at_once(shell, "'for you' -k Return 'zq'")
     shell.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
-    assert picked().get("for you"), f"stepping into For You kept nothing for it: {picked()}"
+    assert kept(before + 1) == before + 1, f"stepping in kept {times() - before}: {picked()}"
+    assert "zq" not in picked(), f"the letters typed inside were learned: {picked()}"
     shell.close_launcher()
+    # Closed by :q in the step's own turn, before its frame.
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    typed_at_once(shell, "'for you' -k Return -k Escape ':q' -k Return")
+    shell.launcher_until(lambda shown: not shown["open"])
+    assert kept(before + 2) == before + 2, f"closed at once, kept {times() - before}: {picked()}"
 
 
 def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell) -> None:
