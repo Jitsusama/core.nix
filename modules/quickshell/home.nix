@@ -2760,13 +2760,24 @@ in
         # reload when one changes: one inotify holding 194 watches on Joel's
         # shell (2026-11-12). Here they are store files, which never change,
         # and the shell is handed over onto new ones instead (its companion
-        # below),
-        # so the watch is turned off. shell-preview and the nested niri
-        # checks run the working copy outside this unit, and keep it.
+        # below), so the watch is turned off. shell-preview and the nested
+        # niri checks run the working copy outside this unit, and keep it.
+        #
+        # The shell's JavaScript is compiled to machine code once a function
+        # has run a few times, and a profile of Joel's shell named none of
+        # it, so what his openings spend past the parts the launcher names,
+        # 15 to 50 ms of each fill (2026-11-14), showed only as addresses.
+        # With the map, Qt writes each compiled function's name and address
+        # to /tmp/perf-<pid>.map as it compiles it, and perf reads it. Qt's
+        # profiler would name them too, but only through a debugging port
+        # any local process could drive. In the lab a shell wrote 3,032
+        # functions, 111 KB, and its openings took as long as without it;
+        # /tmp ages a map out after ten days.
         Environment = [
           "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0"
           "MALLOC_CONF=narenas:1"
           "QS_DISABLE_FILE_WATCHER=1"
+          "QV4_PROFILE_WRITE_PERF_MAP=1"
         ];
         # The bar, the launcher, notices and the lock screen are the
         # desktop's own, so they sit with the compositor in session.slice, at
