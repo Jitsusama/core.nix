@@ -5,6 +5,8 @@
   lib,
   rustPlatform,
   makeWrapper,
+  pkg-config,
+  zstd,
   age,
   age-plugin-fido2-hmac,
   age-plugin-tpm,
@@ -25,7 +27,13 @@ rustPlatform.buildRustPackage rec {
   };
   sourceRoot = "${src.name}/session-backup";
   cargoLock.lockFile = ./Cargo.lock;
-  nativeBuildInputs = [ makeWrapper ];
+  # zstd-sys links nixpkgs's zstd, found through pkg-config, since
+  # nixpkgs's cargo hook refuses a crate's vendored copy of a C library.
+  nativeBuildInputs = [
+    makeWrapper
+    pkg-config
+  ];
+  buildInputs = [ zstd ];
   # The plugins age seals through: age-plugin-tag, which comes with age, for
   # a TPM's age1tag1 recipient, and age-plugin-fido2-hmac for a YubiKey's.
   # Sealing touches neither key. A fetch opens a copy with the machine's
