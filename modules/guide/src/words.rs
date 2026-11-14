@@ -54,8 +54,7 @@ pub fn machines(machine: &str, kind: &str) -> String {
     let mut letters = machine.chars();
     let named: String = letters
         .next()
-        .map(|first| first.to_uppercase().chain(letters).collect())
-        .unwrap_or_default();
+        .map_or_default(|first| first.to_uppercase().chain(letters).collect());
     format!("{named} {kind} Phrase")
 }
 
