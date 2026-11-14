@@ -82,6 +82,10 @@ in
         "${(import ../quickshell/launcher/words.nix).file}"
         "--notify-send"
         (lib.getExe' pkgs.libnotify "notify-send")
+        # A notice is closed once its stop no longer stands, so the alarm
+        # goes with what it was about.
+        "--busctl"
+        (lib.getExe' pkgs.systemd "busctl")
       ];
       Restart = "on-failure";
       RestartSec = 5;

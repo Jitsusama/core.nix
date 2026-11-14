@@ -79,6 +79,10 @@ fn help() -> Help {
             "the program it knocks with; none, no notice",
         )
         .option(
+            "--busctl PATH",
+            "closes a notice once its stop is resumed or left",
+        )
+        .option(
             "--every MS",
             "how often it looks for a change; 2 s unless given",
         )
@@ -134,10 +138,17 @@ fn folder() -> PathBuf {
 
 /// The daemon, from its flags, which serves until it's stopped.
 fn serve(rest: &[&str]) -> Result<(), Failure> {
-    const FLAGS: [&str; 4] = ["--socket", "--vocabulary", "--notify-send", "--every"];
+    const FLAGS: [&str; 5] = [
+        "--socket",
+        "--vocabulary",
+        "--notify-send",
+        "--busctl",
+        "--every",
+    ];
     let mut socket = None;
     let mut vocabulary = None;
     let mut notify = None;
+    let mut busctl = None;
     let mut every = serving::EVERY;
     let mut args = rest.iter();
     while let Some(flag) = args.next() {
@@ -149,6 +160,7 @@ fn serve(rest: &[&str]) -> Result<(), Failure> {
             "--socket" => socket = Some(PathBuf::from(args.next().ok_or_else(needs)?)),
             "--vocabulary" => vocabulary = Some(PathBuf::from(args.next().ok_or_else(needs)?)),
             "--notify-send" => notify = Some(PathBuf::from(args.next().ok_or_else(needs)?)),
+            "--busctl" => busctl = Some(PathBuf::from(args.next().ok_or_else(needs)?)),
             "--every" => {
                 every = args
                     .next()
@@ -185,6 +197,7 @@ fn serve(rest: &[&str]) -> Result<(), Failure> {
         state: state(),
         words,
         notify,
+        busctl,
         every,
     })
     .map_err(|error| Failure::new(Exit::Failed, "couldn't serve").because(error.to_string()))
