@@ -46,12 +46,10 @@ if grep -qF -e "report[rests While away]" -e "report[gone notifications]" "$said
   cat "$said" >&2
   exit 1
 fi
-# Read whole before it's matched: piped into grep -q, niri could still be
-# writing when grep stops at the match, and its broken pipe would fail the
-# pipeline under pipefail, as if the layer were missing.
-layers=$(niri msg layers)
-if ! grep -q notifications <<< "$layers"; then
-  echo "niri lists no notices' layer while Joel's away:" >&2
-  echo "$layers" >&2
+# The line's layer stays mapped while it's quiet too, so the shell says
+# whether it still shows the notice.
+shows=$(qs -p "$shell" ipc call notices shows)
+if [ "$shows" != notice ]; then
+  echo "The arrival line shows '$shows' rather than the notice while Joel's away." >&2
   exit 1
 fi

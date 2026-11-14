@@ -27,7 +27,7 @@ import pytest
 
 # pytest finds a fixture by its name in the test's module, so the stand-in Google's is
 # brought here.
-from desktop_session import LAUNCHER_OPEN, google  # noqa: F401
+from desktop_session import LAUNCHER_OPEN, NOTICES, google  # noqa: F401
 
 # pytest finds a fixture by its name in the test's module, so the looks areas' desktop and
 # scales are brought here.
@@ -115,10 +115,7 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
         " 'All 412 checks passed on the laptop, in 38 minutes. The slowest was the desktop.'"
     )
     machine = desktop.machine
-    machine.wait_until_fails(
-        desktop.in_session("niri msg layers | grep -q notifications"),
-        timeout=timedelta(seconds=60),
-    )
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=60))
     for scale in at_each_scale:
         at_scale(desktop, scale)
         desktop.as_account("qs ipc call launcher toggle")

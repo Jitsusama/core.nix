@@ -85,10 +85,7 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     if machine.execute(desktop.notice_kept('.summary == "Build finished"'))[0] != 0:
         with desktop.told("drawn notifications"):
             desktop.as_account("notify-send 'Build finished' 'the laptop is ready'")
-        machine.wait_until_fails(
-            desktop.in_session("niri msg layers | grep -q notifications"),
-            timeout=timedelta(seconds=30),
-        )
+        machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     # One its sender says not to keep isn't, though it's the newest match.
     desktop.as_account("notify-send --transient 'Build finished twice' 'not kept'")
     desktop.as_account("qs ipc call launcher toggle")
@@ -125,9 +122,7 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # With none on screen, Super+N opens all of them, which counts
     # them seen.
-    machine.wait_until_fails(
-        desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
-    )
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
     desktop.shoot("launcher-notices-all")
@@ -217,10 +212,7 @@ class InTheDrawer:
         desktop.as_account("niri msg output winit scale 1")
         body = "\n".join(f"line {at} of the deploy went by" for at in range(1, self.LINES + 1))
         desktop.as_account(f"notify-send {shlex.quote(self.TITLE)} {shlex.quote(body)}")
-        machine.wait_until_fails(
-            desktop.in_session("niri msg layers | grep -q notifications"),
-            timeout=timedelta(seconds=60),
-        )
+        machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=60))
         self.open()
 
     def open(self) -> None:
@@ -1193,9 +1185,7 @@ def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
 ) -> None:
     """Return on a notice in the launcher opens what it's about, with a token."""
     machine = desktop.machine
-    machine.wait_until_fails(
-        desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
-    )
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     desktop.listen()
     with desktop.told("shows card Thread with Sam"):
         desktop.as_account(

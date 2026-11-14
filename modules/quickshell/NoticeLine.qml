@@ -251,6 +251,7 @@ Scope {
         Reported {
             id: reported
             name: "notifications"
+            showing: root.shown
         }
 
         Card {

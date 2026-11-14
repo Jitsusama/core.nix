@@ -359,11 +359,12 @@ class Shell:
         self.as_account(os.environ["TAKE_NOTICES"])
 
     def notices_gone(self, timeout: timedelta = WAITING) -> None:
-        """Wait until niri lists no notices' layer."""
+        """Wait until the arrival line shows nothing, its layer kept mapped off the screen."""
+        shows = f"qs -p {self.folder} ipc call notices shows"
         deadline = time.monotonic() + timeout.total_seconds()
         while time.monotonic() < deadline:
-            status, _ = self.execute("niri msg layers | grep -q notifications")
-            if status != 0:
+            status, said = self.execute(shows)
+            if status == 0 and not said.strip():
                 return
             time.sleep(POLL)
         failed = f"the notices never went:\n{self.tail()}"

@@ -24,6 +24,7 @@ import pytest
 from desktop_session import (
     LAUNCHER_OPEN,
     MISSION,
+    NOTICES,
     STARTING,
     google,  # noqa: F401
     kept,
@@ -677,7 +678,7 @@ def test_a_meeting_coming_wants_joel_and_is_said_at_its_reminder_and_as_it_start
             " | grep '^holds margin' | tail -n 1"
         )
         assert "meeting" not in margin.split(), margin
-        machine.fail(desktop.in_session("niri msg layers | grep -q notifications"))
+        machine.fail(desktop.in_session(NOTICES))
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
         # A minute and a half on: said at its reminder, a minute before,
@@ -713,10 +714,7 @@ def test_a_meeting_coming_wants_joel_and_is_said_at_its_reminder_and_as_it_start
         # link, which kitty stands in for by taking its app id; the meeting
         # no longer wants Joel, so its notice goes, read, untouched.
         desktop.as_account(f"niri msg action spawn -- kitty --class {call} --title Meet")
-        machine.wait_until_fails(
-            desktop.in_session("niri msg layers | grep -q notifications"),
-            timeout=dt.timedelta(seconds=30),
-        )
+        machine.wait_until_fails(desktop.in_session(NOTICES), timeout=dt.timedelta(seconds=30))
         machine.wait_until_succeeds(
             desktop.notice_kept('.summary == "Design Review now" and .read'),
             timeout=dt.timedelta(seconds=10),
