@@ -5,9 +5,9 @@
 //! It is the one exception to never sending in Slack besides the replier,
 //! and Joel's pick 5 (2026-11-13) holds it this narrow. It goes only to
 //! his own IM: [`OwnIm`] is the one thing [`tell`] sends to, and nothing
-//! makes one but [`own_im`], which finds the IM whose user is Joel among
-//! his IMs and has Slack's conversations.info say so before it's trusted,
-//! so no caller can name a channel. It says only the alert's fixed form,
+//! makes one but [`own_im`], which asks Slack for the IM with Joel alone
+//! and has Slack's conversations.info say it's an IM and his before it's
+//! trusted, so no caller can name a channel. It says only the alert's fixed form,
 //! [`text`]: who stopped what, the words said, and where. And it sends
 //! from the safe word's own reader, never from an agent or a tool.
 
@@ -20,16 +20,13 @@ use ureq::Agent;
 /// How long Slack has to answer before it's given up on.
 const PATIENCE: Duration = Duration::from_secs(10);
 
-/// Slack's method that lists a person's conversations, here only IMs.
-/// It only reads, but isn't one of slack-people's, so it's asked here.
-const LIST: &str = "users.conversations";
-
-/// How many IMs one page of the list holds, at most.
-const PAGE: &str = "200";
-
-/// How many pages are read before giving up on finding Joel's own IM:
-/// four thousand IMs, far past anybody's.
-const PAGES: usize = 20;
+/// Slack's method that names the IM with the people given, here Joel
+/// alone, which is his note-to-self. It's asked never to make one, so it
+/// only looks; it isn't one of slack-people's reads, so it's asked here.
+/// Not users.conversations, which lists every IM: an Enterprise Grid
+/// sign-in such as Joel's is refused it (`enterprise_is_restricted`, the
+/// reader's first start against real Slack, 2026-11-14).
+const OPEN: &str = "conversations.open";
 
 /// Slack's method that posts a message.
 const POST: &str = "chat.postMessage";
@@ -100,8 +97,9 @@ impl OwnIm {
     }
 }
 
-/// Finds Joel's own IM: the one among his IMs whose user is him, which
-/// conversations.info then confirms is an IM and his.
+/// Finds Joel's own IM: the one Slack names for Joel alone, never made
+/// if it isn't there, which conversations.info then confirms is an IM
+/// and his.
 ///
 /// # Errors
 ///
@@ -110,50 +108,29 @@ pub fn own_im(origin: &str, slack: &Slack, account: &Account) -> Result<OwnIm, S
     if account.user.is_empty() {
         return Err("the sign-in doesn't say who Joel is".to_owned());
     }
-    let agent = agent();
-    let mut cursor = String::new();
-    for _ in 0..PAGES {
-        let mut asked = vec![
-            ("types", "im"),
-            ("exclude_archived", "true"),
-            ("limit", PAGE),
-        ];
-        if !cursor.is_empty() {
-            asked.push(("cursor", cursor.as_str()));
-        }
-        let mut request = agent.get(format!("{origin}/api/{LIST}"));
-        for (name, value) in asked {
-            request = request.query(name, value);
-        }
-        let mut answer = request
-            .header("Authorization", &format!("Bearer {}", account.token))
-            .header("Cookie", &format!("d={}", account.cookie))
-            .call()
-            .map_err(|error| format!("couldn't reach Slack: {error}"))?;
-        let listed: Value = answer
-            .body_mut()
-            .read_json()
-            .map_err(|error| format!("Slack's list of IMs couldn't be read: {error}"))?;
-        refused(&listed)?;
-        if let Some(id) = picked(&listed, &account.user) {
-            let info = slack
-                .read(account, "conversations.info", &[("channel", &id)])
-                .map_err(|why| format!("Slack wouldn't say what {id} is: {why:?}"))?;
-            return if confirmed(&info, &account.user) {
-                Ok(OwnIm(id))
-            } else {
-                Err(format!("{id} isn't Joel's own IM, as Slack tells it"))
-            };
-        }
-        listed["response_metadata"]["next_cursor"]
-            .as_str()
-            .unwrap_or_default()
-            .clone_into(&mut cursor);
-        if cursor.is_empty() {
-            break;
-        }
+    let mut answer = agent()
+        .get(format!("{origin}/api/{OPEN}"))
+        .query("users", &account.user)
+        .query("prevent_creation", "true")
+        .query("return_im", "true")
+        .header("Authorization", &format!("Bearer {}", account.token))
+        .header("Cookie", &format!("d={}", account.cookie))
+        .call()
+        .map_err(|error| format!("couldn't reach Slack: {error}"))?;
+    let named: Value = answer
+        .body_mut()
+        .read_json()
+        .map_err(|error| format!("Slack's answer for Joel's own IM couldn't be read: {error}"))?;
+    refused(&named)?;
+    let id = picked(&named, &account.user).ok_or("Slack named no IM of Joel's own")?;
+    let info = slack
+        .read(account, "conversations.info", &[("channel", &id)])
+        .map_err(|why| format!("Slack wouldn't say what {id} is: {why:?}"))?;
+    if confirmed(&info, &account.user) {
+        Ok(OwnIm(id))
+    } else {
+        Err(format!("{id} isn't Joel's own IM, as Slack tells it"))
     }
-    Err("none of Joel's IMs is his own".to_owned())
 }
 
 /// Why an alert didn't go, as far as can be told.
@@ -220,14 +197,12 @@ fn refused(said: &Value) -> Result<(), String> {
     }
 }
 
-/// The IM in a page of the list whose user is `joel`, if there is one.
-fn picked(listed: &Value, joel: &str) -> Option<String> {
-    listed["channels"]
-        .as_array()?
-        .iter()
-        .find(|one| one["is_im"].as_bool() != Some(false) && one["user"].as_str() == Some(joel))
-        .and_then(|one| one["id"].as_str())
-        .map(str::to_owned)
+/// The IM Slack named, if it says it's an IM whose user is `joel`; a
+/// missing `is_im` is let through, since conversations.info confirms it.
+fn picked(named: &Value, joel: &str) -> Option<String> {
+    let channel = &named["channel"];
+    let ours = channel["is_im"].as_bool() != Some(false) && channel["user"].as_str() == Some(joel);
+    channel["id"].as_str().filter(|_| ours).map(str::to_owned)
 }
 
 /// Whether conversations.info says it's an IM, and Joel's own.
@@ -292,21 +267,19 @@ mod tests {
     }
 
     #[test]
-    fn only_the_im_whose_user_is_joel_is_picked() {
-        let listed = json!({"ok": true, "channels": [
-            {"id": "D0OTHER001", "is_im": true, "user": "U0OTHER001"},
-            {"id": "D0SELF0001", "is_im": true, "user": JOEL},
-        ]});
-        assert_eq!(picked(&listed, JOEL).as_deref(), Some("D0SELF0001"));
-        let others = json!({"ok": true, "channels": [
-            {"id": "D0OTHER001", "is_im": true, "user": "U0OTHER001"},
-            {"id": "C0ONE00001", "is_im": false, "user": JOEL},
-        ]});
+    fn only_an_im_whose_user_is_joel_is_picked() {
+        let own = json!({"ok": true, "channel": {"id": "D0SELF0001", "is_im": true, "user": JOEL}});
         assert_eq!(
-            picked(&others, JOEL),
-            None,
-            "nobody else's IM, nor a channel"
+            picked(&own, JOEL).as_deref(),
+            Some("D0SELF0001"),
+            "his own IM is picked"
         );
+        let theirs = json!({"ok": true, "channel": {"id": "D0OTHER001", "is_im": true,
+            "user": "U0OTHER001"}});
+        assert_eq!(picked(&theirs, JOEL), None, "nobody else's IM");
+        let channel =
+            json!({"ok": true, "channel": {"id": "C0ONE00001", "is_im": false, "user": JOEL}});
+        assert_eq!(picked(&channel, JOEL), None, "nor a channel");
     }
 
     #[test]
