@@ -5,6 +5,7 @@
 //! piece it together.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::net::Ipv4Addr;
 
 use serde::{Deserialize, Serialize};
 use zlink::introspect::{CustomType, Type};
@@ -49,6 +50,18 @@ pub struct State {
     /// The access point each card is joined to, by the card's name, as a
     /// path in wpa_supplicant.
     at: BTreeMap<String, String>,
+    /// The gateway each card's default route goes through, by link index.
+    gateways: BTreeMap<i32, Ipv4Addr>,
+}
+
+/// A card on a network through an access point it hears, and the gateway
+/// it reaches through it: what's echoed to measure the access point.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Joined {
+    pub card: String,
+    /// The access point's address, as 02:00:00:00:01:00.
+    pub point: String,
+    pub gateway: Ipv4Addr,
 }
 
 /// Every card, every saved network and the networks in the air, as the
@@ -444,6 +457,13 @@ impl State {
             .ok_or(Refused::NotJoined)
     }
 
+    /// Each card on a network through an access point it hears, with a
+    /// gateway to echo.
+    pub fn joined(&self) -> Vec<Joined> {
+        let _ = &self.gateways;
+        Vec::new()
+    }
+
     /// The cards on a network, by name, which are those worth polling.
     pub fn on_networks(&self) -> Vec<String> {
         let on = self.cards.values().filter(|card| card.network.is_some());
@@ -528,6 +548,7 @@ mod tests {
             routable: true,
             dns: Vec::new(),
             portal: None,
+            gateway: Some(Ipv4Addr::new(10, 43, 0, 1)),
         }
     }
 
@@ -1169,6 +1190,35 @@ mod tests {
         state.heard("/Interfaces/0/BSSs/2", Some(other));
         state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
         state
+    }
+
+    #[test]
+    fn a_card_on_a_network_is_measured_through_its_access_point_and_gateway() {
+        let state = at_the_inn();
+
+        let joined = Joined {
+            card: "wlan2".into(),
+            point: "02:00:00:00:01:00".into(),
+            gateway: Ipv4Addr::new(10, 43, 0, 1),
+        };
+        assert_eq!(state.joined(), [joined], "the access point it's on, not the other");
+    }
+
+    #[test]
+    fn a_card_without_a_gateway_or_a_heard_access_point_is_not_measured() {
+        let mut unheard = at_the_inn();
+        unheard.heard("/Interfaces/0/BSSs/1", None);
+        let mut unrouted = at_the_inn();
+        unrouted.follow(&Link {
+            gateway: None,
+            ..inn(2)
+        });
+        let mut gone = at_the_inn();
+        gone.keep_only(&[]);
+
+        assert_eq!(unheard.joined(), [], "its access point unheard");
+        assert_eq!(unrouted.joined(), [], "its gateway gone");
+        assert_eq!(gone, State::default(), "a card that goes takes its gateway");
     }
 
     #[test]

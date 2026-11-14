@@ -62,19 +62,98 @@ struct Point {
 impl Measures {
     /// Takes in an echo of the gateway, sent through the access point.
     pub fn echoed(&mut self, point: &str, at: Instant, echo: Echo) {
-        let _ = (point, at, echo);
+        let kept = self.points.entry(point.to_owned()).or_default();
+        kept.echoes.push_back((at, echo));
+        forget_before(&mut kept.echoes, at);
     }
 
     /// Takes in the station's counts, read on the access point.
     pub fn counted(&mut self, point: &str, at: Instant, counts: Counts) {
-        let _ = (point, at, counts);
+        let kept = self.points.entry(point.to_owned()).or_default();
+        kept.counts.push_back((at, counts));
+        forget_before(&mut kept.counts, at);
     }
 
     /// The access point's figures over the span up to now, if anything was
     /// measured of it in it.
     pub fn of(&self, point: &str, now: Instant) -> Option<Measured> {
-        let _ = (point, now, &self.points);
-        None
+        let kept = self.points.get(point)?;
+        let echoes: Vec<Echo> = within(&kept.echoes, now).collect();
+        let counts: Vec<Counts> = within(&kept.counts, now).collect();
+        if echoes.is_empty() && counts.is_empty() {
+            return None;
+        }
+        let mut times: Vec<Duration> = echoes
+            .iter()
+            .filter_map(|echo| match echo {
+                Echo::Answered(time) => Some(*time),
+                Echo::Lost => None,
+            })
+            .collect();
+        times.sort_unstable();
+        let lost = echoes.len() - times.len();
+        let (sent, retries, failed) = sent_since(&counts);
+        Some(Measured {
+            echoes: echoes.len(),
+            p50: percentile(&times, 50),
+            p95: percentile(&times, 95),
+            lost: per_hundred(lost, echoes.len()),
+            retried: per_hundred(retries, sent),
+            failed: per_hundred(failed, sent),
+            signal: counts.last().and_then(|counts| counts.signal),
+        })
+    }
+}
+
+/// Lets go of what was measured before the span ending at `now`.
+fn forget_before<T>(kept: &mut VecDeque<(Instant, T)>, now: Instant) {
+    while kept.front().is_some_and(|(at, _)| now.duration_since(*at) > SPAN) {
+        kept.pop_front();
+    }
+}
+
+/// What was measured in the span ending at `now`.
+fn within<T: Copy>(kept: &VecDeque<(Instant, T)>, now: Instant) -> impl Iterator<Item = T> {
+    kept.iter()
+        .filter(move |(at, _)| now.duration_since(*at) <= SPAN)
+        .map(|(_, measured)| *measured)
+}
+
+/// The time by which `percent` of the answered echoes had answered, by
+/// nearest rank.
+fn percentile(sorted: &[Duration], percent: usize) -> Option<Duration> {
+    let rank = (sorted.len() * percent).div_ceil(100);
+    sorted.get(rank.checked_sub(1)?).copied()
+}
+
+/// The frames sent, sent again and lost between each reading and the next.
+/// A reading lower than the one before is a new join, whose counts start
+/// again, so the pair across it says nothing.
+fn sent_since(counts: &[Counts]) -> (usize, usize, usize) {
+    let mut totals = (0, 0, 0);
+    for pair in counts.windows(2) {
+        let [before, after] = pair else { continue };
+        let (Some(sent), Some(retries), Some(failed)) = (
+            after.sent.checked_sub(before.sent),
+            after.retries.checked_sub(before.retries),
+            after.failed.checked_sub(before.failed),
+        ) else {
+            continue;
+        };
+        totals.0 += usize::try_from(sent).unwrap_or(usize::MAX);
+        totals.1 += usize::try_from(retries).unwrap_or(usize::MAX);
+        totals.2 += usize::try_from(failed).unwrap_or(usize::MAX);
+    }
+    totals
+}
+
+/// `part` of `whole`, per hundred; none of nothing is none.
+fn per_hundred(part: usize, whole: usize) -> f64 {
+    let figure = |count: usize| f64::from(u32::try_from(count).unwrap_or(u32::MAX));
+    if whole == 0 {
+        0.0
+    } else {
+        figure(part) * 100.0 / figure(whole)
     }
 }
 

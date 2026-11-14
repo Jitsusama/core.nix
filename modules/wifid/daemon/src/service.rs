@@ -569,6 +569,7 @@ mod tests {
             routable: true,
             dns: Vec::new(),
             portal: None,
+            gateway: None,
         }
     }
 
