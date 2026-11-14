@@ -218,7 +218,9 @@ in
         built from none of the others first, each batch once the machine
         has the room for it. The Nix daemon's worker serving one build
         grows with what it's given, so a small machine's one big build can
-        run out of memory where its batches don't.
+        run out of memory where its batches don't. Building `elsewhere`, what
+        isn't light goes to the builders a batch at a time, with no wait for
+        room, and what's left builds here in batches after.
       '';
     };
     refuseWhile = mkOption {
@@ -550,8 +552,8 @@ in
         message = "jitsusama.update-to-main.builders and here are for building elsewhere.";
       }
       {
-        assertion = cfg.batches == null || (!cfg.elsewhere && cfg.system.kind == "nixos");
-        message = "jitsusama.update-to-main.batches are for building here, on NixOS.";
+        assertion = cfg.batches == null || cfg.system.kind == "nixos";
+        message = "jitsusama.update-to-main.batches are for NixOS, whose memory Linux reports.";
       }
     ]
     ++ lib.mapAttrsToList (name: follow: {
