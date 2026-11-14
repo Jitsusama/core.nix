@@ -1,7 +1,8 @@
 //! The safe word's reader for Slack.
 //!
 //! `pineapple-slack run`, as its service runs it, searches Slack every
-//! half minute with Joel's own sign-in (the harness's file, only read)
+//! half minute with Joel's own sign-in (pi's, from the keyring or its old
+//! file, only read)
 //! for "pineapple", and for his tag by id, which finds someone asking him
 //! to stop his agents without the phrase. Each message it hasn't judged
 //! yet is judged in the place it was said, its thread's first message
@@ -180,7 +181,8 @@ fn state() -> PathBuf {
     env_dir("XDG_STATE_HOME", ".local/state").join("pineapple")
 }
 
-/// The harness's Slack sign-in, which it only reads.
+/// The harness's old Slack sign-in file, read only when the keyring
+/// `SIGN_IN_KEYRING` names holds no sign-in (../slack's `Account::read`).
 fn credentials() -> PathBuf {
     env_dir("XDG_CONFIG_HOME", ".config").join("agentic-harness/slack/credentials.json")
 }
