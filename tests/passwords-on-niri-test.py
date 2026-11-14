@@ -33,7 +33,7 @@ import launcher_on_niri
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from launcher_on_niri import Json, Shell
 
@@ -394,14 +394,24 @@ def test_a_place_a_terminal_or_the_catalogue_opens_asks_nothing_as_joel(shell: S
     walk = f"qs -p {shell.folder} ipc call -- launcher"
     catalogue = json.loads(shell.as_account(f"{walk} list"))
     place = next(one for one in catalogue if one["words"] == "Passwords" and one["in"] == "")
-    opens = {
-        "launcher do": f"{walk} doing {shlex.quote(json.dumps({'steps': ['Passwords']}))}",
-        "the catalogue's run": f"{walk} run {shlex.quote(place['id'])}",
+    # Each way's answer says it didn't open (Launcher.qml's doneWalked and
+    # catalogueRunWalked), never that it did.
+    opens: dict[str, tuple[str, Callable[[Json], bool]]] = {
+        "launcher do": (
+            f"{walk} doing {shlex.quote(json.dumps({'steps': ['Passwords']}))}",
+            lambda said: said == {"unopened": True, "in": ["Passwords"]},
+        ),
+        "the catalogue's run": (
+            f"{walk} run {shlex.quote(place['id'])}",
+            lambda said: said.get("done") is False,
+        ),
     }
-    for way, command in opens.items():
+    for way, (command, unopened) in opens.items():
         shell.launcher_until(lambda shown: not shown["open"])
         before = len(asked())
         answer = shell.as_account(command)
+        said = cast("Json", json.loads(answer))
+        assert unopened(said), f"{way} answered {said}"
         shell.launcher_until(lambda shown: shown["open"])
         quiet_until = time.monotonic() + QUIET.total_seconds()
         while time.monotonic() < quiet_until:
