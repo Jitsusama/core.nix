@@ -690,7 +690,8 @@ QtObject {
         const dropping = seen(dropsOut).filter(at => at.beat === "rides");
         expect("from where it sat, only ever down, in the falling drawing, landing crouched",
             [Paths.frame(dropsOut, 0).y, dropping.every((at, i) => i === 0
-                || at.y >= dropping[i - 1].y), posed(dropsOut, "rides").map(one => one.pose),
+                || at.y >= dropping[i - 1].y), dropBeats.includes("rides")
+                ? posed(dropsOut, "rides").map(one => one.pose) : dropBeats,
                 dropBeats.slice(1, 3)], [307, true, ["falling"], ["lands", "shakes"]]);
         const grownFace = at => at.x < 831.5 && at.x + 8 > 432.5 && at.y < 783.5
             && at.y + 8 > 16.5;
