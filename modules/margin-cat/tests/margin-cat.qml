@@ -299,11 +299,15 @@ QtObject {
         const most = xs[middle + 1] - xs[middle];
         expect("it eases in, slow at first and fastest midway", first < most / 4, true);
         expect("and eases out", xs[xs.length - 1] - xs[xs.length - 2] < most / 4, true);
-        expect("in its two strides", Array.from(new Set(frames.map(frame => frame.pose))).sort(),
-            ["walkingA", "walkingB"]);
+        // Each pair of legs apart two strides and gathered two, the hind pair
+        // a stride behind (RSCH-20261113-24R2QV's rule 4).
+        const walk = ["walkingA", "walkingC", "walkingB", "walkingD"];
+        expect("in its four strides, in turn",
+            frames.filter((frame, i) => i === 0 || frame.pose !== frames[i - 1].pose)
+                .slice(0, 5).map(frame => frame.pose), [...walk, walk[0]]);
         expect("each stride a stretch of ground, never a frame's time",
-            frames.every(frame => frame.pose === ["walkingA", "walkingB"][
-                Math.floor((frame.x - 99) / going.stride) % 2]), true);
+            frames.every(frame => frame.pose === walk[
+                Math.floor((frame.x - 99) / going.stride) % walk.length]), true);
         const changes = frames.filter((frame, i) => i > 0 && frame.pose !== frames[i - 1].pose);
         expect("as many strides as its way holds, the last ending as it stops",
             changes.length, Math.ceil((201.5 - 99) / going.stride) - 1);
@@ -447,8 +451,36 @@ QtObject {
         expect("as high as the room above has, never off the screen",
             flight.every(at => at.y >= 0), true);
         expect("long enough to be seen", leaps.ends - leaps.begins >= 160, true);
-        expect("stretched out in the air, never mid-stride",
-            Array.from(new Set(flight.map(at => at.pose))), ["leaping"]);
+        // Each pose a beat of the route shows, in order, and for how many ms.
+        const posed = (route, name) => {
+            const beat = route.beats.find(one => one.name === name);
+            const shown = [];
+            for (let t = beat.begins; t < beat.ends; t++) {
+                const pose = Paths.frame(route, t).pose;
+                if (shown.length && shown[shown.length - 1].pose === pose)
+                    shown[shown.length - 1].ms += 1;
+                else
+                    shown.push({ pose, ms: 1 });
+            }
+            return shown;
+        };
+        const aloft = posed(across, "leaps");
+        expect("rising, tucked at the top, then reaching down, never mid-stride",
+            aloft.map(one => one.pose), ["leaping", "tucked", "falling"]);
+        expect("each seen two frames at 60 Hz", aloft.every(one => one.ms >= 33), true);
+        const top = across.beats.find(beat => beat.name === "leaps");
+        // Level, its arc is highest halfway.
+        expect("tucked at the top of its arc",
+            [top.from.y, Paths.frame(across, (top.begins + top.ends) / 2).pose], [7, "tucked"]);
+        expect("rising before it and falling after",
+            [Paths.frame(across, top.begins).pose, Paths.frame(across, top.ends - 1).pose],
+            ["leaping", "falling"]);
+        // The shortest hop, level: a fifth of it is under two 60 Hz frames.
+        const hop = Ways.begun({ cell: 1, wide: 8, tall: 8 }, { x: 100, y: 400 });
+        Ways.leap(hop, { x: 110, y: 400 }, 0);
+        expect("a hop too short to hold the tuck skips it rather than flash it",
+            posed(Ways.timed(hop), "leaps").map(one => [one.pose, one.ms >= 33]),
+            [["leaping", true], ["falling", true]]);
         expect("never a jump between two frames", smooth(seen(across)), true);
         expect("a walk along one column leaps nothing",
             Paths.walk(seat(100), seat(400), world({ pause: 0 })).beats
@@ -627,6 +659,8 @@ QtObject {
                 Paths.frame(bare, bare.ends)],
             [true, true, { x: 100, y: 792, pose: null, turn: 0, facing: 1, beat: "sits",
                 done: true }]);
+        expect("reaching down all the way",
+            posed(bare, "falls").map(one => one.pose), ["falling"]);
         const risen = Paths.walk({ x: 300, y: 792 }, seat(300), world({ pause: 0 }));
         const onFace = at => at.x < 615.5 && at.x + 8 > 16.5 && at.y < 783.5 && at.y + 8 > 16.5;
         expect("windows come, it climbs to its seat by an edge, never up a face",
@@ -688,11 +722,36 @@ QtObject {
         const falling = runs(each(dropped, 191)).filter(one => one.pose !== null);
         expect("falling in the falling drawing, landing crouched, each seen two frames at 60 Hz",
             [falling.map(one => one.pose), falling.every(one => one.ms >= 33)],
-            [["leaping", "pouncing"], true]);
+            [["falling", "pouncing"], true]);
         const pressed = riding(300, { away: true, room: 20 });
         expect("never more than its room behind, before what follows passes through it",
             each(pressed, 191).every(one => edgeAt(300, one.t) - one.y <= 20 + 1e-6), true);
         expect("a gap under two cells closes with no pose",
             each(riding(1.5, { away: true }), 191).every(one => one.pose === null), true);
+
+        // Its own motion lands on its art's own pixels, cells of 2 here,
+        // carrying the part-cell a ride leaves it at (RSCH-20261113-24R2QV,
+        // finding 1); the ride keeps niri's pixels.
+        const stepped = Ways.begun({ cell: 2, wide: 16, tall: 16 }, { x: 101, y: 400 });
+        Ways.rides(stepped, { x: 101, y: 413.3 }, { ms: 100, frame: hz120, edge: t => t / 100 });
+        Ways.goes(stepped, 160, 413.3);
+        Ways.leap(stepped, { x: 175, y: 380.7 }, 2);
+        Ways.falls(stepped, { x: 175, y: 431 });
+        const byItself = Ways.timed(stepped);
+        const cells = v => Math.abs(v / 2 - Math.round(v / 2)) < 1e-6;
+        const stepping = each(byItself, byItself.ends).map(one => Object.assign(one,
+            { on: byItself.beats.find(beat => one.t < beat.ends) }));
+        expect("each frame of its own a whole number of cells from where its beat starts or ends",
+            stepping.filter(one => one.on.kind !== "rides").every(one => ["x", "y"].every(axis =>
+                cells(one[axis] - one.on.from[axis]) || cells(one[axis] - one.on.to[axis]))),
+            true);
+        expect("never stepping back to get there",
+            stepping.every((one, i) => i === 0 || one.x >= stepping[i - 1].x), true);
+        expect("walking flush on the part-cell the ride left it at, and ending where it's going",
+            [stepping.filter(one => one.beat === "goes").every(one => one.y === 413.3),
+                Ways.frame(byItself, byItself.ends - 1e-6).y, Ways.frame(byItself, byItself.ends).y],
+            [true, 431, 431]);
+        expect("the ride on niri's own pixels",
+            Math.round(Ways.frame(byItself, 50).y * 100), 40665);
     }
 }

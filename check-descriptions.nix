@@ -820,6 +820,10 @@
     touching its top and bottom rows and centred across to within a cell, and the three empty
     places' marks are drawn
   '';
+  every-cat-pose-reads-as-one-cat = ''
+    every pose of the margin's cat has no lit pixel standing alone, a diagonal touching, and lit
+    pixels within 15% of sitting's, and a leap's rise, tuck and fall are all drawn
+  '';
   every-script-meets-shellcheck-at-its-strictest = ''
     every shell script meets shellcheck's optional checks for a hidden failure, a set -e turned
     off, an unset uppercase variable and a case with no default, but those still waiting
