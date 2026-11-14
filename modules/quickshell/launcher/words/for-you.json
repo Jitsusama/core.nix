@@ -14,7 +14,7 @@
       "argument": "all",
       "in": "for-you:source:pineapple",
       "name": "Stop Everything",
-      "verb": "stop everything",
+      "verb": "widen",
       "glyph": "pause"
     },
     {
@@ -30,7 +30,7 @@
       "command": "resume",
       "argument": "asked",
       "in": "for-you:source:pineapple",
-      "name": "Resume as Asked",
+      "name": "Agree",
       "verb": "resume",
       "glyph": "resume"
     },

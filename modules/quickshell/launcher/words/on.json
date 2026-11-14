@@ -614,8 +614,8 @@
       },
       "said": {
         "count": "{count} times",
-        "you": "You",
-        "someone": "Someone",
+        "you": "you",
+        "someone": "someone",
         "stopped": "{who} stopped your agents on {reach}",
         "stoppedAll": "{who} stopped all your agents, naming nothing narrower",
         "asked": "{who} asked you to stop your agents, without the safe word",

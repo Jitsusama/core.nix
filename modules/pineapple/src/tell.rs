@@ -100,6 +100,15 @@ fn who(by_joel: bool, words: &Words) -> String {
     words.fill(if by_joel { "you" } else { "someone" }, &[])
 }
 
+/// A title read as a sentence: the vocabulary says a word in lower case
+/// wherever it may stand, so one opening a title takes its capital here.
+fn sentence(text: &str) -> String {
+    let mut letters = text.chars();
+    letters.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(letters).collect()
+    })
+}
+
 fn stop_row(stop: &Standing, decisions: &[Value], words: &Words) -> Value {
     let record = &stop.record;
     let key = format!("{KIND}:{}", stop.id);
@@ -108,14 +117,14 @@ fn stop_row(stop: &Standing, decisions: &[Value], words: &Words) -> Value {
     let by_joel = record["by_joel"] == true;
     let fell_back = record["fell_back"] == true;
     let who = who(by_joel, words);
-    let title = if everything && fell_back {
+    let title = sentence(&if everything && fell_back {
         words.fill("stoppedAll", &[("who", &who)])
     } else {
         words.fill(
             "stopped",
             &[("reach", &said_reaches(&reaches, words)), ("who", &who)],
         )
-    };
+    });
     let heard_at = record["heard_at"].as_u64().unwrap_or(0);
     // Said again in its thread since, so Joel's row counts the repeats
     // nobody was answered for.
@@ -220,13 +229,13 @@ fn alert_row(key: &str, latest: &Value, count: usize, words: &Words) -> Value {
             latest["would_fall_back"] == true,
         )
     };
-    let title = words.fill(
+    let title = sentence(&words.fill(
         word,
         &[
             ("who", &who(false, words)),
             ("reach", &said_reaches(&reaches, words)),
         ],
-    );
+    ));
     let acts = if resuming {
         vec![act("approve", key), act("dismiss", key)]
     } else {
@@ -351,7 +360,7 @@ mod tests {
         let row = &rows[0];
         assert_eq!(row["key"], "pineapple:slack:C1:1.0", "keyed by its stop");
         assert_eq!(
-            row["title"], "someone stopped agents on pull request example/shop#12",
+            row["title"], "Someone stopped agents on pull request example/shop#12",
             "titled in the launcher's words, with no ids"
         );
         assert_eq!(row["count"], 2, "said twice in its thread");
@@ -367,7 +376,7 @@ mod tests {
         };
         let row = &rows(&kept, 30, &words())[0];
         assert_eq!(
-            row["title"], "someone stopped all agents",
+            row["title"], "Someone stopped all agents",
             "said as all, since nothing narrower was named"
         );
         assert_eq!(verbs(row), ["resume"], "nothing to widen to");
@@ -393,7 +402,7 @@ mod tests {
         assert_eq!(row["count"], 2, "counting both");
         assert_eq!(row["saying"], "slack:C1:3.0", "naming the latest");
         assert_eq!(
-            row["title"], "someone joked, on pull request example/shop#12",
+            row["title"], "Someone joked, on pull request example/shop#12",
             "saying what a stop would have reached"
         );
         assert_eq!(verbs(row), ["stop", "dismiss"], "stop and dismiss");
@@ -435,7 +444,7 @@ mod tests {
         };
         let row = &rows(&kept, 10, &words())[0];
         assert_eq!(
-            row["title"], "someone asked to resume quest QEST-A",
+            row["title"], "Someone asked to resume quest QEST-A",
             "what it resumes"
         );
         assert_eq!(verbs(row), ["approve", "dismiss"], "approve and dismiss");

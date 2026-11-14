@@ -24,12 +24,11 @@ Provider {
         kind: "pineapple"
     }
 
-    // The daemon's rows, oldest first, as it orders them.
+    // The daemon's rows, as it orders them; For You weighs them by since.
     readonly property var records: {
         void daemon.revision;
         return Object.values(daemon.held)
-            .filter(one => one && typeof one.key === "string")
-            .sort((a, b) => Number(a.since ?? 0) - Number(b.since ?? 0));
+            .filter(one => one && typeof one.key === "string");
     }
 
     // A verb the daemon offers on a row: its words the launcher's, by the

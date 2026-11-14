@@ -72,7 +72,7 @@ fn live_rows_are_served_shadow_ones_written_down_and_a_stranger_refused() {
         "the live stop and the live joke, oldest first, and no shadow stop: {listed}"
     );
     assert_eq!(
-        listed["records"][0]["title"], "someone stopped agents on pull request example/shop#12",
+        listed["records"][0]["title"], "Someone stopped agents on pull request example/shop#12",
         "titled in the vocabulary's words"
     );
     let refused = client.ask(&json!({"id": 2, "ask": "resume", "key": "pineapple:slack:C1:1.0"}));
