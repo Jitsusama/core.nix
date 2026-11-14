@@ -506,6 +506,11 @@ ShellRoot {
             expect("For You's History lists the looks as served, making none itself",
                 held.length === 2 && now.looksWeighed.times === weighedBefore,
                 `${held.length} looks, ${now.looksWeighed.times - weighedBefore} sides made`);
+            // Its Return opens the look as the shell holds it, so one gone
+            // quiet is written opened, though the daemon names no file.
+            expect("a served look opens as the shell holds it",
+                now.lookHeld({ id: "d" }).file === "d.json",
+                JSON.stringify(now.lookHeld({ id: "d" })));
             const dated = history.filter(row => typeof row.doneAt === "number");
             expect("For You's History joins the looks and notices by when each was done",
                 dated.every((row, at) => at === 0 || dated[at - 1].doneAt >= row.doneAt),
@@ -590,7 +595,7 @@ ShellRoot {
     // The to-do daemon, serving History's rows of the looks done with,
     // those the History case's look files hold.
     LooksDaemon {
-        looks: ["d", "e"].map(id => ({ id: id, file: `${id}.json`, kind: "page",
+        looks: ["d", "e"].map(id => ({ id: id, kind: "page",
             title: `Looked at ${id}`, why: "Because.", how: "opened",
             doneAt: Date.parse(root.lookedAt) }))
     }

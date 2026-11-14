@@ -1,9 +1,9 @@
 // A stand-in for the to-do daemon (modules/to-do), for a QML test of what
 // the launcher makes of the looks done with: it serves `looks`, each as
-// { id, file, kind, title, why, how, doneAt }, as ready rows in the place
+// { id, kind, title, why, how, doneAt }, as ready rows in the place
 // the daemon serves History's looks, `looks-history`, newest done with
-// first, each holding the look as the daemon read it, with beside them how
-// many there are. Each time `looks` is said anew it tells each watch only
+// first, each holding the look as the daemon read it, which names no file,
+// with beside them how many there are (modules/to-do's history.rs). Each time `looks` is said anew it tells each watch only
 // the rows that read otherwise and those gone, as the daemon does, and
 // counts it in `told`. It keeps only the kinds a History watch asks for,
 // so the shell's watch of every look file whole is refused, as
@@ -43,11 +43,12 @@ Scope {
                 glyph: { code: "f06e" },
                 hue: "muted",
                 side: [{ said: `${look.how} {time}`, at: look.doneAt, as: "moment" }],
-                drawer: { title: look.title, facts: [], nerd: [], body: look.why,
-                    prose: true },
+                drawer: { title: look.title, facts: [{ name: "Resolved",
+                    said: `${look.how} {time}`, at: look.doneAt, as: "moment" }],
+                    nerd: [{ label: "Look", value: look.id }], body: look.why, prose: true },
                 acts: look.kind === "terminal" ? []
                     : [{ key: "verb:on:look:open", open: "https://example.com" }],
-                held: { id: look.id, file: look.file, kind: look.kind,
+                held: { id: look.id, kind: look.kind, title: look.title,
                     target: "https://example.com", state: look.how, how: look.how,
                     at: look.doneAt, resolvedAt: look.doneAt, doneAt: look.doneAt },
                 forYou: { kind: "look", source: "looks" }
@@ -65,7 +66,7 @@ Scope {
                 rows[`row:${place}:${look.id}`] = row(look, at);
             });
         rows[`summary:${place}`] = { key: `summary:${place}`, kind: "summary",
-            summary: { count: looks.length } };
+            count: looks.length };
         return rows;
     }
 

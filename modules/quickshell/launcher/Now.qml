@@ -1236,6 +1236,21 @@ Provider {
         return Order.merged([done(looked ?? []), done(served), own],
             Order.stream(one => one.at)).map(one => one.row);
     }
+    // A served look as the shell holds it, by its id, since the daemon's
+    // names no file, or as the daemon read it where the shell holds none.
+    function lookHeld(held) {
+        return looks.history.find(each => each.id === held.id)
+            ?? Object.assign({}, held, { file: "" });
+    }
+    // Opening a served look: as the shell opens its own, and one the shell
+    // holds no file of, still waiting or gone quiet, settled by the daemon
+    // by its id (FEH1HE, 2026-11-14).
+    function openServed(one) {
+        openLook(one);
+        if (one.file === "" && (one.state === "waiting" || one.state === "quiet"))
+            lookStream.ask({ ask: "settle-look", look: one.id, state: "opened",
+                how: waitingSaid("openedHow", {}) }, () => {});
+    }
     // The looks done with in the shell's own split that doneLooks doesn't
     // serve, by their ids.
     function lookedApart(looked) {
@@ -1273,11 +1288,11 @@ Provider {
     }
     // A served look's row, its key the one the shell's own gave it, so
     // the launcher keeps its place: Return opens it as the shell's own
-    // does, the look as the shell parsed it where it holds it, so one
-    // gone quiet is written opened, and its drawer says who it's from.
+    // does, the look as the shell holds it, so one gone quiet is written
+    // opened, and its drawer says who it's from.
     function lookServed(row, key) {
         const held = row.held ?? {};
-        const one = () => provider.looksParsed.by?.[held.file]?.look ?? held;
+        const one = () => provider.lookHeld(held);
         const opens = held.kind === "terminal" ? "verb:on:waiting:go" : "verb:on:look:open";
         const inside = () => [thing({
             key: `verb:on:look:open:${held.id}`,
@@ -1286,7 +1301,7 @@ Provider {
             glyph: Words.glyph(opens),
             hue: "action",
             later: true,
-            run: () => provider.openLook(one())
+            run: () => provider.openServed(one())
         })];
         return {
             key: `on:look:${held.id}`,
@@ -1295,7 +1310,7 @@ Provider {
             forYou: row.forYou ?? { kind: "look", source: "looks" },
             verb: Words.verb(opens),
             later: true,
-            run: () => provider.openLook(one()),
+            run: () => provider.openServed(one()),
             verbs: inside,
             targets: inside,
             actsOnly: false,
