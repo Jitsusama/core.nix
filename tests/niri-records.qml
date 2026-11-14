@@ -23,7 +23,8 @@ QtObject {
     function window(id, fields) {
         return Object.assign({
             key: `window:${id}`, id: id, order: 1000500 + id, title: `window ${id} - Foot`,
-            named: `window ${id}`, untitled: false, program: "Foot", app_id: "foot", opened: "foot", session: false, pid: 100 + id, workspace: 1,
+            named: `window ${id}`, untitled: false, program: "Foot", app_id: "foot",
+            opened: "foot", session: false, pid: 100 + id, workspace: 1,
             floating: false, urgent: false, column: id, down: 1
         }, fields ?? {});
     }

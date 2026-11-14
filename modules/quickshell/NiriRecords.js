@@ -5,9 +5,10 @@
 // draws tiles (`layout` records, watched only then), nor for what a
 // window reads alike with, which only the launcher's own watch takes. Its
 // name without its program's (`named`) is told, as Super+S's line says a
-// window by it, and moves only as its title or its program does. Each window and workspace is given in niri's own shape,
-// as every reader of Niri.qml reads it, and only those told are made
-// again, in place, as niri's events changed them. Plain JavaScript, held
+// window by it, and moves only as its title or its program does. Each
+// window and workspace is given in niri's own shape, as every reader of
+// Niri.qml reads it, and only those told are made again, in place, as
+// niri's events changed them. Plain JavaScript, held
 // to it by tests/niri-records.qml in Qt's own engine.
 .pragma library
 
@@ -18,8 +19,8 @@ const WINDOW_FIELDS = ["id", "order", "title", "named", "untitled", "program", "
 
 // The fields a list of windows draws from, so a change to one is a change
 // `revision` counts; when a window was used, and where it sits, aren't.
-const LISTED = ["title", "named", "untitled", "program", "app_id", "opened", "session", "pid", "workspace", "urgent",
-    "floating"];
+const LISTED = ["title", "named", "untitled", "program", "app_id", "opened", "session",
+    "pid", "workspace", "urgent", "floating"];
 
 // What says a workspace is another, rather than only activated or
 // focused: niri said these as a whole WorkspacesChanged.
