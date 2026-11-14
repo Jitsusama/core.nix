@@ -1,10 +1,10 @@
 //! `eero events`: what happened on the home network, newest first, as one
 //! timeline of eero's activity list and the changes this machine's daemon
 //! told as notices, each with its time in the machine's zone, who saw it,
-//! its kind and its words, under the day it happened on. The day heads its
-//! run, rather than leading a row in a column of its own, so the rest
-//! keeps to a hundred columns, and a notice's body has its own line
-//! beneath what it summed up for the same reason.
+//! its kind and its words, by the day it happened on. The day opens the
+//! first row of its run, and a blank line parts the days; a notice's body
+//! has its own line beneath what it summed up, and what happened wraps
+//! under itself in a narrow terminal.
 
 use std::cmp::Reverse;
 
@@ -94,21 +94,27 @@ pub fn page(model: &HomeNetwork, clock: &Clock) -> Page {
         counts.join(&format!(" {} ", super::marks::marks().separator))
     };
     head(&mut page, model, clock, titled(model, Some(about)));
-    // The first column is empty, so each row stands two spaces in from the
-    // day heading it.
+    // Each day opens its first row, as the traffic's hours do, so the
+    // header and every row start at one edge.
     let mut table = Table::new(&[Align::Left; 5]);
-    table.header(&["", "at", "seen by", "kind", "what happened"]);
+    table.header(&["day", "at", "seen by", "kind", "what happened"]);
+    // What happened wraps under itself rather than being cut, since it's
+    // a sentence; its kind, which the sentence says, goes first.
+    table.gives_way_by(&["kind", "seen by"]);
+    table.wraps(30);
     let mut last_day = None;
     for (n, happened) in timeline(model).into_iter().enumerate() {
         let day = happened.at.map(|at| clock.day(at));
-        if n == 0 || day != last_day {
-            if n > 0 {
-                table.across(Vec::new());
-            }
-            table.across(vec![muted(day.as_deref().unwrap_or("when unknown"))]);
+        let opens = n == 0 || day != last_day;
+        if opens && n > 0 {
+            table.across(Vec::new());
         }
         table.row(vec![
-            Vec::new(),
+            if opens {
+                vec![muted(day.as_deref().unwrap_or("when unknown"))]
+            } else {
+                Vec::new()
+            },
             happened.at.map_or_else(
                 || vec![plain(happened.stamp)],
                 |at| vec![plain(clock.second(at))],
@@ -124,6 +130,6 @@ pub fn page(model: &HomeNetwork, clock: &Clock) -> Page {
         }
         last_day = day;
     }
-    page.extend(table.lines(0));
+    page.table(0, table);
     page
 }

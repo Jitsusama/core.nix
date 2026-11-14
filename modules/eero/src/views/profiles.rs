@@ -171,6 +171,11 @@ pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
     ]);
     let mut table = Table::new(&aligns);
     table.header(&headings);
+    // What a profile blocks stays longest, cut at a whole item at last.
+    table.gives_way_by(&[
+        "paused", "default", "state", "on now", "up", "down", "schedule", "enforces", "allows",
+        "devices",
+    ]);
     for profile in &model.profiles {
         let usage = profile.usage.as_ref();
         let filters = &profile.filters;
@@ -196,7 +201,7 @@ pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
         ]);
         table.row(cells);
     }
-    page.extend(table.lines(0));
+    page.table(0, table);
     page
 }
 
@@ -235,6 +240,8 @@ pub fn one(model: &HomeNetwork, profile: &Profile, clock: &Clock, ink: &Ink) -> 
     page.blank();
     let mut table = Table::new(&[Align::Left, Align::Left, Align::Left, Align::Left]);
     table.header(&["hardware", "device", "node", "address"]);
+    table.gives_way_by(&["address"]);
+    table.shortens(1, super::devices::NAMES);
     for mac in &profile.devices {
         let device = model
             .devices
@@ -257,7 +264,7 @@ pub fn one(model: &HomeNetwork, profile: &Profile, clock: &Clock, ink: &Ink) -> 
             ],
         });
     }
-    page.extend(table.lines(0));
+    page.table(0, table);
     page
 }
 

@@ -1,0 +1,9 @@
+home · 3 nodes · read 1 min 7 s ago
+
+internet                                 Example ISP
+                                         AS64496
+                                         203.0.113.1
+└─ Hall      Ethernet       5 of 5 bars  gateway · online
+                                         2 devices
+   ├─ Study  Wi-Fi 5.8 GHz  5 of 5 bars  online · 9 devices
+   └─ Den    Wi-Fi 5.8 GHz  5 of 5 bars  online · 4 devices

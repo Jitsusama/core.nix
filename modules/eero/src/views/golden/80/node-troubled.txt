@@ -1,0 +1,31 @@
+Hall · eero Pro 6 · gateway · read 1 min 7 s ago
+
+state            online · heartbeat 1 min 59 s ago
+backhaul         Ethernet · 5 of 5 bars
+model            eero Pro 6 · K010011 · serial SERIAL0003
+addresses        10.0.0.1 · fe80::7/64 · fe80::8/64
+hardware         02:00:00:00:00:21
+firmware         v7.17.4-5 · up to date · support ends –
+up               15 h 31 min · rebooted 2026-11-07 02:22, 15 h 33 min ago
+on eero's cloud  15 h 6 min
+joined           2020-11-13 16:47, 5 y 360 d ago
+light            on · 100 %
+power            USB
+devices          2 · 2 Wi-Fi · 0 Ethernet
+traffic          150 MB down  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀   10.1 MB up  ⣾⣶⣧⣤⣤⣦⣶⣶⣶⣴
+
+radios
+  band        channel   width   power  busy              devices
+  2.4 GHz           6  20 MHz  30 dBm   8 %  ⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀        1
+  5 GHz low        52  80 MHz  22 dBm   5 %  ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀        0
+  5 GHz high      149  80 MHz  28 dBm  97 %  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇        1
+
+ports
+  port  link                           speed   rx        tx
+  1     linked                     1.00 Gb/s  0 B  153 MB    WAN · backhaul
+  2     linked ● under its best  100 Mb/s     0 B   53.7 kB
+
+devices · 2
+  device     band      signal    SNR          rx        tx      down       up
+  generic 3  2.4 GHz  −48 dBm  59 dB   72.2 Mb/s    –       98.2 b/s  154 b/s
+  phone 1    5 GHz    −52 dBm  55 dB  313 Mb/s    721 Mb/s   0 b/s      0 b/s

@@ -1,8 +1,8 @@
 home · 15 speed tests · read 1 min 7 s ago
 
-                      lowest        mean     highest
-down  ⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿  370 Mb/s    370 Mb/s    370 Mb/s
-up    ⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿   11.5 Mb/s   12.0 Mb/s   12.6 Mb/s
+speed                  lowest        mean     highest
+down   ⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿  370 Mb/s    370 Mb/s    370 Mb/s
+up     ⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿   11.5 Mb/s   12.0 Mb/s   12.6 Mb/s
 
 tested                               down         up
 2026-11-05 05:52  2 d 12 h ago   370 Mb/s  11.9 Mb/s

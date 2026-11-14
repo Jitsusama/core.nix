@@ -1,0 +1,19 @@
+printer 1 · 02:00:00:00:00:13 · read 1 min 7 s ago
+
+kind         printer · HP · made by Hewlett Packard
+name         printer 1 · nickname printer 1
+             hostname printer 2
+hardware     02:00:00:00:00:13 · its maker's address
+addresses    10.0.0.31
+reserved     10.0.0.30
+on since     2026-11-07 02:26, 15 h 28 min ago
+last active  2026-11-07 17:49, 6 min 10 s ago
+first seen   2020-11-13 17:18, 5 y 360 d ago
+node         Den · Ethernet
+network      home · WPA2 · subnet main · guest no
+port         port 2 · 100 Mb/s
+packets      rx 2,853 · tx 2,343 · all 5,196 · tx retries 90
+             rx drops 0
+per million  tx retransmitted 0 · tx failed 0 · rx dropped 0
+speed        down 0 b/s · up 0 b/s
+profile      – · paused no · blocked no

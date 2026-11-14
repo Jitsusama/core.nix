@@ -68,6 +68,6 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
             radio_row(&mut table, Some((label, node)), radio, ink);
         }
     }
-    page.extend(table.lines(0));
+    page.table(0, table);
     page
 }

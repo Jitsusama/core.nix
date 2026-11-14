@@ -52,6 +52,8 @@ pub fn page(model: &HomeNetwork, clock: &Clock) -> Page {
     );
     let internet = &model.internet;
     let mut table = Table::new(&[Align::Left, Align::Left, Align::Point, Align::Left]);
+    // Each node's facts wrap under themselves, so the tree keeps every edge.
+    table.wraps(16);
     let way_out: Vec<Line> = [
         internet.isp.clone(),
         internet.asn.map(|asn| format!("AS{asn}")),
@@ -101,7 +103,7 @@ pub fn page(model: &HomeNetwork, clock: &Clock) -> Page {
     for node in &model.nodes {
         branch(&mut table, model, node, "", true, &[], &mut seen);
     }
-    page.extend(table.lines(0));
+    page.table(0, table);
     page
 }
 

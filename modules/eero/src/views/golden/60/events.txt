@@ -1,0 +1,30 @@
+home · 5 events · 5 notices · read 1 min 7 s ago
+
+day         at        what happened
+2026-11-07  17:42:35  tablet 1 connected to Den eero Pro 6
+                      on 5.2 GHz channel 52.
+            17:42:35  tablet 1 disconnected from Study eero
+                      Pro 6.
+            17:31:41  phone 1 connected to Den eero Pro 6
+                      on 5.8 GHz channel 149.
+            17:31:41  phone 1 disconnected from Study eero
+                      Pro 6.
+            17:02:11  phone 1 connected to Hall eero Pro 6
+                      on 5.8 GHz channel 149.
+            02:24:13  The nodes updated to v7.17.4-5
+                      They were on v7.17.3-9.
+
+2026-11-06  11:21:33  A firmware update is waiting
+                      eero updates the nodes to v7.17.4-5
+                      at 02:00.
+
+2026-11-04  21:08:13  laptop computer 1 joined the
+                      home network
+                      Never seen before, on Study over Wi-Fi
+                      at 5 GHz.
+
+2026-11-02  22:14:10  The internet is back
+                      It was out for 1 min 30 s.
+            22:12:40  The internet is out
+                      Nothing past the home network answers
+                      this machine.

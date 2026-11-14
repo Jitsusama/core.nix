@@ -79,6 +79,19 @@ pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
         "up",
         "address",
     ]);
+    // A node's state and how it reaches the rest stay longest: its model,
+    // what its devices are joined by, its address and age go first.
+    table.gives_way_by(&[
+        "model",
+        "Ethernet",
+        "Wi-Fi",
+        "address",
+        "up",
+        "heartbeat",
+        "bars",
+        "firmware",
+        "devices",
+    ]);
     for node in &model.nodes {
         let number = |value: Option<u32>| maybe(value, |n| vec![plain(n.to_string())]);
         table.row(vec![
@@ -96,7 +109,7 @@ pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
             said(node.address.as_deref()),
         ]);
     }
-    page.extend(table.lines(0));
+    page.table(0, table);
     page
 }
 
@@ -193,11 +206,11 @@ pub fn one(model: &HomeNetwork, node: &Node, clock: &Clock, ink: &Ink) -> Page {
 
     page.blank();
     page.line(vec![strong("radios")]);
-    page.extend(radios(node, ink).lines(2));
+    page.table(2, radios(node, ink));
 
     page.blank();
     page.line(vec![strong("ports")]);
-    page.extend(ports(node).lines(2));
+    page.table(2, ports(node));
 
     let on = super::on_node(model, Some(node.id.as_str()));
     page.blank();
@@ -209,7 +222,7 @@ pub fn one(model: &HomeNetwork, node: &Node, clock: &Clock, ink: &Ink) -> Page {
     for device in on {
         devices::row(&mut table, None, device);
     }
-    page.extend(table.lines(2));
+    page.table(2, table);
     page
 }
 
@@ -314,6 +327,7 @@ fn ports(node: &Node) -> Table {
         Align::Left,
     ]);
     table.header(&["port", "link", "speed", "best", "rx", "tx", ""]);
+    table.gives_way_by(&["best", "rx", "tx"]);
     for port in &node.ports {
         let mbit = |value: Option<u32>| maybe(value, |mbps| rate(mbps.into()));
         let mut linked = vec![plain(if port.linked { "linked" } else { "no link" })];
@@ -376,6 +390,13 @@ pub fn radio_table(with_node: bool) -> Table {
     headings.extend(["channel", "width", "power", "busy", "", "devices", "BSSID"]);
     let mut table = Table::new(&aligns);
     table.header(&headings);
+    // How busy a radio is, in figures, stays after its graph goes.
+    table.gives_way(vec![
+        table.under("BSSID"),
+        table.under("power"),
+        table.under("width"),
+        table.under(""),
+    ]);
     table
 }
 

@@ -100,6 +100,6 @@ pub fn page(model: &HomeNetwork, clock: &Clock) -> Page {
             when(node.support_ends.as_deref(), clock),
         ]);
     }
-    page.extend(table.lines(0));
+    page.table(0, table);
     page
 }

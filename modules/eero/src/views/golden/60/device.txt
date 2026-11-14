@@ -1,0 +1,27 @@
+unknown computer 1 · 02:00:00:00:00:08 · read 1 min 7 s ago
+
+kind         unknown computer · made by Intel Corporate
+name         unknown computer 1 · nickname –
+             hostname unknown computer 1
+hardware     02:00:00:00:00:08 · its maker's address
+addresses    10.0.0.20 · fe80::5
+reserved     none
+on since     2026-11-07 10:31, 7 h 24 min ago
+last active  2026-11-07 17:49, 6 min 10 s ago
+first seen   2026-10-06 18:09, 31 d 23 h ago
+node         Study · Wi-Fi
+network      home · WPA2 · subnet main · guest no
+radio        5 GHz · channel 149 · 5,745 MHz
+             BSSID 02:00:00:00:00:09
+signal       −57 dBm · SNR 51 dB · score 1.000 · 5 of 5 bars
+rx           1.20 Gb/s · MCS 11 · 2 streams · 80 MHz
+             800 ns guard · Wi-Fi 6
+tx           1.20 Gb/s · MCS 11 · 2 streams · 80 MHz
+             800 ns guard · Wi-Fi 6
+retries      0 % · idle 0 ms
+packets      rx 31,747,180 · tx 52,879,944 · all 84,627,124
+             tx retries 3,315 · rx drops 0
+per million  tx retransmitted 32 · tx failed 2,967
+             rx dropped 0
+speed        down 11.5 Mb/s · up 9.86 Mb/s
+profile      – · paused no · blocked –

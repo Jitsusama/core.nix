@@ -11,6 +11,10 @@ use super::{
 };
 use crate::model::{Device, DeviceOff, HomeNetwork, Rate};
 
+/// The fewest cells a device's name is shortened to, which still shows
+/// both its ends.
+pub const NAMES: usize = 12;
+
 #[derive(serde::Serialize)]
 struct Every<'a> {
     devices: &'a [Device],
@@ -78,7 +82,7 @@ pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
             row(&mut table, Some(node), device);
         }
     }
-    page.extend(table.lines(0));
+    page.table(0, table);
     off(&mut page, model, clock);
     page
 }
@@ -100,6 +104,9 @@ fn off(page: &mut Page, model: &HomeNetwork, clock: &Clock) {
     table.header(&[
         "device", "kind", "last on", "node", "band", "profile", "made by",
     ]);
+    // When and where it was last on say most of a device that's gone.
+    table.gives_way_by(&["kind", "profile", "made by", "band"]);
+    table.shortens(0, NAMES);
     for device in &model.devices_off {
         let band = if device.ethernet {
             vec![plain("Ethernet")]
@@ -122,7 +129,7 @@ fn off(page: &mut Page, model: &HomeNetwork, clock: &Clock) {
             said(device.manufacturer.as_deref()),
         ]);
     }
-    page.extend(table.lines(0));
+    page.table(0, table);
 }
 
 /// The name of the profile with an id, or the id where eero names none.
@@ -167,6 +174,14 @@ pub fn table(with_node: bool) -> Table {
     ]);
     let mut table = Table::new(&aligns);
     table.header(&headings);
+    // Into a narrow terminal what says least of how a device is doing goes
+    // first: its kind, which its name mostly says, then how its radio makes
+    // each rate, its channel and address, the way out, and its traffic; its
+    // node, name and signal stay.
+    table.gives_way_by(&[
+        "kind", "NSS", "MCS", "ch", "address", "tx", "SNR", "up", "down", "rx", "band",
+    ]);
+    table.shortens(usize::from(with_node), NAMES);
     table
 }
 

@@ -1,0 +1,6 @@
+home · 3 profiles · read 1 min 7 s ago
+
+profile    blocks                                        allows                     devices
+profile 1  nothing                                                                       10
+profile 2  gaming · social · ads · example.com · tiktok  example.org · example.net        3
+profile 3  nothing                                                                        1

@@ -1,0 +1,12 @@
+home · 9 radios · read 1 min 7 s ago
+
+band        node   channel   width   power  busy              devices
+2.4 GHz     Hall         6  20 MHz  30 dBm   8 %  ⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀        1
+            Study        6  20 MHz  30 dBm  18 %  ⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀        2
+            Den          6  20 MHz  30 dBm  20 %  ⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀        1
+5 GHz low   Hall        52  80 MHz  22 dBm   5 %  ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀        0
+            Study       52  80 MHz  22 dBm   5 %  ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀        3
+            Den         52  80 MHz  22 dBm   5 %  ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀        2
+5 GHz high  Hall       149  80 MHz  28 dBm  41 %  ⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀        1
+            Study      149  80 MHz  28 dBm  39 %  ⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀        4
+            Den        149  80 MHz  28 dBm  37 %  ⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀        1

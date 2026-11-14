@@ -15,6 +15,7 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use terminal_kit::Room;
 
 use crate::listeners::KIND;
 use crate::model::HomeNetwork;
@@ -31,13 +32,14 @@ fn socket() -> Result<PathBuf, String> {
         .ok_or_else(|| "XDG_RUNTIME_DIR isn't set".into())
 }
 
-/// How a watch draws: which view, as text or JSON, with what ink, and
-/// whether over the last page on a terminal or after it anywhere else.
+/// How a watch draws: which view, as text or JSON, with what ink,
+/// and in what room: a terminal's width, drawn over the last page, or a
+/// pipe's, after it.
 pub struct Watch<'a> {
     pub view: &'a View,
     pub json: bool,
     pub ink: &'a Ink,
-    pub terminal: bool,
+    pub room: Room,
 }
 
 /// Draws a view, then again with each change, until stopped.
@@ -126,7 +128,7 @@ pub fn follow(
                 let page = if how.json {
                     views::json(how.view, model)
                 } else {
-                    views::text(how.view, model, &now, how.ink)
+                    views::text(how.view, model, &now, how.ink, how.room)
                 };
                 draw(how, out, &page?)?;
                 // JSON holds no ages, so only a new model draws it again.
@@ -177,7 +179,7 @@ fn next_change(model: &HomeNetwork, clock: &Clock) -> u64 {
 /// blank the screen between pages as clearing it first would. Anywhere
 /// else each page follows the last, for a reader to take in turn.
 fn draw(how: &Watch, out: &mut impl Write, page: &str) -> Result<(), String> {
-    let written = if how.terminal {
+    let written = if how.room.cells().is_some() {
         let mut over = String::from("\x1b[H");
         for line in page.lines() {
             over.push_str(line);
@@ -215,7 +217,7 @@ mod tests {
             view,
             json,
             ink: &ink,
-            terminal: false,
+            room: Room::Unbounded,
         };
         let mut out = Vec::new();
         follow(&how, ours, &mut out, &clock).unwrap();
@@ -281,7 +283,7 @@ mod tests {
             view: &View::Status,
             json: false,
             ink: &ink,
-            terminal: false,
+            room: Room::Unbounded,
         };
 
         let refused = follow(&how, ours, &mut Vec::new(), &clock).unwrap_err();
@@ -320,7 +322,7 @@ mod tests {
             view: &View::Status,
             json: false,
             ink: &ink,
-            terminal: true,
+            room: Room::Cells(80),
         };
         let mut out = Vec::new();
 
