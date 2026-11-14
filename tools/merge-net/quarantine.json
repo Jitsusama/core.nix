@@ -138,16 +138,13 @@
       "test_a_usb_cameras_stream_shows_in_the_margin_too_and_leaves_with_the_camera",
       "test_caps_lock_shows_in_the_margin_while_its_on",
       "test_caps_lock_still_shows_after_its_watcher_restarts",
-      "test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin",
       "test_keep_awake_shows_in_the_margin_and_now_says_it_and_lets_it_sleep",
       "test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps",
-      "test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray",
       "test_quickshell_warned_of_nothing_it_drew_all_along",
       "test_the_copilot_key_starts_dictation",
       "test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it",
       "test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near",
-      "test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly",
-      "test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is"
+      "test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly"
     ],
     "test": "vm-desktop-minds-the-margin"
   },
