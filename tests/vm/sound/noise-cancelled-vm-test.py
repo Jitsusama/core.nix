@@ -340,6 +340,7 @@ def test_a_call_on_the_microphone_itself_is_heard_and_nothing_cleaned(joel: Joel
     )
     try:
         joel.wait_until_said(f"hearing a call on {MICROPHONE} at", ANSWERS_WITHIN)
+        joel.wait_until_said(f"the call in zoom records from {MICROPHONE}", ANSWERS_WITHIN)
         joel.wait_for(f"{capture} = running", ANSWERS_WITHIN)
         assert joel.said().count("the model loaded") == loaded, "a cleaner loaded for the call"
     finally:

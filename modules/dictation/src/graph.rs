@@ -62,6 +62,28 @@ impl Graph {
             .min()
     }
 
+    /// The call app's program and the nodes it records from, by name: a
+    /// noise-cancelled twin, a microphone itself or a filter's source. None
+    /// while no call records.
+    pub fn call_records_from(&self) -> Option<(String, BTreeSet<String>)> {
+        let call = self.call()?;
+        let node = self.objects.get(&call)?;
+        let program = calls::program(
+            node,
+            calls::client_of(node).and_then(|c| self.objects.get(&c)),
+        );
+        let feeding = self.feeding(call);
+        let from = feeding
+            .iter()
+            .filter_map(|port| self.objects.get(port))
+            .filter_map(|port| port["info"]["props"]["node.id"].as_u64())
+            .filter_map(|owner| self.objects.get(&owner))
+            .filter_map(|owner| owner["info"]["props"]["node.name"].as_str())
+            .map(str::to_owned)
+            .collect();
+        Some((program, from))
+    }
+
     /// The microphones running now, by node name: devices' own sources,
     /// which something records from, and never a filter's source or a
     /// noise-cancelled twin.
@@ -223,6 +245,20 @@ mod tests {
         let graph = desk();
         assert_eq!(graph.call(), Some(40));
         assert_eq!(graph.feeding(40), vec![31, 32]);
+    }
+
+    #[test]
+    fn the_call_is_named_by_its_program_and_what_it_records_from() {
+        assert_eq!(
+            desk().call_records_from(),
+            Some(("chrome".to_owned(), BTreeSet::from(["-30".to_owned()]))),
+            "the call's program or the headset it records from went unnamed"
+        );
+        assert_eq!(
+            Graph::default().call_records_from(),
+            None,
+            "a call was named with none on"
+        );
     }
 
     #[test]
