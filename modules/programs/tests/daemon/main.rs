@@ -371,7 +371,10 @@ fn a_list_isnt_read_while_nobody_watches_it() {
     let mut client = running.client();
     client.ask(&json!({"id": 1, "ask": "watch", "keys": ["recent:kitty"]}));
     client.changed("recent:kitty");
-    client.ask(&json!({"id": 1, "ask": "unwatch"}));
+    // The list's file changes only once the watch has gone, so the change
+    // is heard with nobody watching.
+    let unwatched = client.ask(&json!({"id": 1, "ask": "unwatch"}));
+    assert_eq!(unwatched, json!({"id": 1, "unwatched": true}));
     let before = running.reads();
     std::fs::write(running.path("lists/folders"), "/a\n").unwrap();
     std::fs::write(running.path("lists/folders"), "/b\n").unwrap();
