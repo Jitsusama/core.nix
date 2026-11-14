@@ -99,6 +99,8 @@ Scope {
     readonly property string key: "line"
     readonly property var words: Words.of("agents:line")
     readonly property var said: words.said ?? {}
+    // The line with a thread open, whose hint asks for a reply.
+    readonly property var inThread: Words.of("agents:line", "thread")
     readonly property string takes: String(Words.of("verb:agent:take-back").name ?? "")
 
     function agents() {
@@ -563,7 +565,7 @@ Scope {
                         leadColumn: Columns.across(0, 0, Columns.ofMark(Theme.level.name.pitch),
                             Theme.space.rung).text
                         hint: root.hears === null ? root.said.nobody ?? ""
-                            : root.thread !== null ? root.said.replying ?? "" : root.words.ask ?? ""
+                            : root.thread !== null ? root.inThread.ask ?? "" : root.words.ask ?? ""
                         aside: ""
                         registers: true
                         onRegistered: name => root.attach(name)

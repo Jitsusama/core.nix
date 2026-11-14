@@ -110,11 +110,15 @@
         "letGo": "{who} let it go",
         "has": "{who} has it",
         "tookUp": "{who} took it up",
-        "replying": "Reply, and the void passes it to whoever has it.",
         "yesterday": "yesterday",
         "selection": "selection",
         "clipboard": "clipboard",
         "lines": "{count} lines"
+      },
+      "states": {
+        "thread": {
+          "ask": "Reply, and the void passes it to whoever has it."
+        }
       }
     },
     {
