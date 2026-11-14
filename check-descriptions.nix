@@ -3120,15 +3120,17 @@
     which signs only logins to the hosts it's told of
   '';
   pi-agent-proxy-runs-only-with-machines = ''
-    pi's SSH agent proxy runs only where it's given machines, never on a Mac, started by the first ssh
-    that asks on a socket only the account reaches, told of those hosts and the agents behind it
+    pi's SSH agent proxy runs only where it's given machines or the builders' key, never on a Mac,
+    started by the first ssh that asks on a socket in a folder only the account reaches, told of
+    those hosts and the agents behind it, or of the builders' key and the machines files lending
   '';
   pi-agent-proxy-signs-only-logins = ''
     pi-agent-proxy lists the keys of the agents behind it and signs a login only once the host it
     names, one it's told of, signed the session; with no session, another host, a forged binding,
     a commit, another session or key, or a forwarded agent, nothing reaches the agent behind; it
-    never adds, removes or locks keys, and answers at most 64 clients at once; and it says each
-    login signed and each refusal in one line of a fixed shape, its host and why as a fixed word
+    never adds, removes or locks keys, and answers at most 64 clients at once; it signs with the
+    builders' key only nix-offload's login to a builder lent now, and no agent's key for one; and it
+    says each login signed and each refusal in one line of a fixed shape, its host and why as a word
   '';
   pi-spawner-passes-clippy = ''
     clippy finds nothing in pi-spawner or its tests, which starts pi's shell commands for it from

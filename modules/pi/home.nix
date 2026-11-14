@@ -162,7 +162,11 @@ let
   # It depends on the hosts alone, since the upstreams' default looks at
   # which sockets are declared, these among them.
   agentProxy = pkgs.callPackage ./agent-proxy/package.nix { };
-  proxied = pkgs.stdenv.hostPlatform.isLinux && config.jitsusama.pi.agentProxy.machines != [ ];
+  proxied =
+    pkgs.stdenv.hostPlatform.isLinux
+    && (
+      config.jitsusama.pi.agentProxy.machines != [ ] || config.jitsusama.pi.agentProxy.builderKey != null
+    );
 
   # Each plan's small, quick model, for answers that take a second or two.
   quickModels = {
@@ -224,7 +228,29 @@ in
       description = ''
         The host keys, as OpenSSH public keys, of the machines a fenced pi
         command may log in to through pi-agent-proxy (agent-proxy/src).
-        With none, no proxy runs and fenced commands reach no SSH agent.
+        With none, and no builderKey, no proxy runs and fenced commands
+        reach no SSH agent.
+      '';
+    };
+    builderKey = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/home/me/.local/state/nix-offload/store_ed25519";
+      description = ''
+        The private key nix-offload logs in to the builders it's lent with,
+        which the proxy holds for fenced commands so the key itself stays
+        hidden from them. It signs with it only a login as nix-offload to a
+        builder a file in lentMachines names now, never any other.
+      '';
+    };
+    lentMachines = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "/run/nix-offload/machines" ];
+      description = ''
+        The Nix machines files naming the builders lent now, read afresh at
+        each login: a line whose host is a nix-offload alias lends its
+        ed25519 host key to builderKey's logins.
       '';
     };
     upstreams = lib.mkOption {
@@ -357,8 +383,15 @@ in
         message = "jitsusama.pi.claude.realm names no realm of jitsusama.mycelium.alsoJoins.";
       }
       {
-        assertion = proxied -> config.jitsusama.pi.agentProxy.upstreams != [ ];
+        assertion =
+          config.jitsusama.pi.agentProxy.machines != [ ] -> config.jitsusama.pi.agentProxy.upstreams != [ ];
         message = "jitsusama.pi.agentProxy.machines names machines, but no agent's socket is given in jitsusama.pi.agentProxy.upstreams to sign their logins with.";
+      }
+      {
+        assertion =
+          config.jitsusama.pi.agentProxy.builderKey != null
+          -> config.jitsusama.pi.agentProxy.lentMachines != [ ];
+        message = "jitsusama.pi.agentProxy.builderKey is given, but no file in jitsusama.pi.agentProxy.lentMachines names the builders it may sign for.";
       }
     ];
 
@@ -402,16 +435,22 @@ in
         piVerbs
       ];
 
-    # The one SSH agent the agent fence lets in, at %t/pi-agent.sock: it
-    # signs, with the agents' key, only logins to the hosts named in
-    # jitsusama.pi.agentProxy.machines, each proved by the machine's own
-    # signature over the session (agent-proxy/src/bind.rs). Started by the
-    # first ssh that asks; every refusal says why in the journal.
+    # The one SSH agent the agent fence lets in, at %t/pi-agent/agent.sock:
+    # it signs, with the agents' key, only logins to the hosts named in
+    # jitsusama.pi.agentProxy.machines, and with the builders' key only
+    # nix-offload's logins to the builders lent now, each proved by the
+    # machine's own signature over the session (agent-proxy/src/bind.rs).
+    # Started by the first ssh that asks; every refusal says why in the
+    # journal. The socket sits in a folder of its own so the fence can let
+    # the folder in, which still holds the socket systemd makes anew when
+    # the socket unit restarts; %t/pi-agent.sock links to it meanwhile.
     systemd.user.sockets.pi-agent-proxy = lib.mkIf proxied {
       Unit.Description = "The SSH agent pi's fenced commands reach, signing only logins to the hosts it's told of";
       Socket = {
-        ListenStream = "%t/pi-agent.sock";
+        ListenStream = "%t/pi-agent/agent.sock";
         SocketMode = "0600";
+        DirectoryMode = "0700";
+        Symlinks = [ "%t/pi-agent.sock" ];
         Service = "pi-agent-proxy.service";
       };
       Install.WantedBy = [ "sockets.target" ];
@@ -432,6 +471,16 @@ in
           "--upstream"
           socket
         ]) config.jitsusama.pi.agentProxy.upstreams
+        ++ lib.optionals (config.jitsusama.pi.agentProxy.builderKey != null) (
+          [
+            "--key"
+            config.jitsusama.pi.agentProxy.builderKey
+          ]
+          ++ lib.concatMap (file: [
+            "--lent"
+            file
+          ]) config.jitsusama.pi.agentProxy.lentMachines
+        )
       );
     };
 

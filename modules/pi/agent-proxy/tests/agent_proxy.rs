@@ -1,6 +1,8 @@
 //! The proxy as ssh reaches it: the real program on a socket of its own,
 //! a fake agent behind it that signs whatever reaches it, and host keys
 //! made for each test, so every refusal is seen not to reach the agent.
+//! Some proxies also hold a builders' key and lend it to the builders a
+//! machines file names, as nix-offload's lent builders are reached.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -12,10 +14,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use signature::Signer;
-use ssh_key::private::Ed25519Keypair;
+use signature::{Signer, Verifier};
+use ssh_key::private::{Ed25519Keypair, KeypairData};
 use ssh_key::public::KeyData;
-use ssh_key::{HashAlg, PublicKey, Signature};
+use ssh_key::{HashAlg, LineEnding, PrivateKey, PublicKey, Signature};
 
 const FAILURE: u8 = 5;
 const SUCCESS: u8 = 6;
@@ -77,12 +79,17 @@ fn bind(host_blob: &[u8], session: &[u8], signature: &[u8], forwarding: bool) ->
     body
 }
 
-/// A login, as ssh asks its agent to sign one.
+/// A login as joel, as ssh asks its agent to sign one.
 fn login(session: &[u8], key: &[u8]) -> Vec<u8> {
+    login_as(session, key, b"joel")
+}
+
+/// A login as `user`, as ssh asks its agent to sign one.
+fn login_as(session: &[u8], key: &[u8], user: &[u8]) -> Vec<u8> {
     let mut data = Vec::new();
     string(&mut data, session);
     data.push(50);
-    string(&mut data, b"joel");
+    string(&mut data, user);
     string(&mut data, b"ssh-connection");
     string(&mut data, b"publickey");
     data.push(1);
@@ -112,22 +119,68 @@ struct Proxy {
 impl Proxy {
     /// A proxy told of the hosts in `hosts`, one OpenSSH key a line.
     fn start(name: &str, hosts: &str) -> Self {
+        Self::launch(name, hosts, None, Behind::Signing)
+    }
+
+    /// A proxy told of the hosts in `hosts` that also holds `builders`'s
+    /// key and lends it to the builders `machines` names, a machines
+    /// file's text.
+    fn lending(name: &str, hosts: &str, builders: &Ed25519Keypair, machines: &str) -> Self {
+        Self::launch(name, hosts, Some((builders, machines)), Behind::Signing)
+    }
+
+    /// A lending proxy like [`Proxy::lending`] whose agent behind takes
+    /// each question and never answers, as one waiting on its person.
+    fn stalled(name: &str, builders: &Ed25519Keypair, machines: &str) -> Self {
+        Self::launch(name, "", Some((builders, machines)), Behind::Stalled)
+    }
+
+    /// Write the machines file a lending proxy reads afresh at each bind.
+    fn lend(&self, machines: &str) {
+        fs::write(self.dir.join("machines"), machines).expect("the machines file is written");
+    }
+
+    fn launch(
+        name: &str,
+        hosts: &str,
+        builders: Option<(&Ed25519Keypair, &str)>,
+        behind: Behind,
+    ) -> Self {
         let dir =
             std::env::temp_dir().join(format!("pi-agent-proxy-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("a folder for the test");
         let upstream = dir.join("upstream.sock");
         let signed = Arc::new(AtomicUsize::new(0));
-        fake_agent(&upstream, Arc::clone(&signed));
+        match behind {
+            Behind::Signing => fake_agent(&upstream, Arc::clone(&signed)),
+            Behind::Stalled => stalled_agent(&upstream),
+        }
         fs::write(dir.join("hosts"), hosts).expect("the hosts file is written");
         let socket = dir.join("proxy.sock");
-        let child = Command::new(env!("CARGO_BIN_EXE_pi-agent-proxy"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_pi-agent-proxy"));
+        command
             .arg("--hosts")
             .arg(dir.join("hosts"))
             .arg("--upstream")
             .arg(&upstream)
             .arg("--socket")
-            .arg(&socket)
+            .arg(&socket);
+        if let Some((builders, machines)) = builders {
+            let key = PrivateKey::new(KeypairData::from(builders.clone()), "builders")
+                .expect("a builders' key is made");
+            let written = key
+                .to_openssh(LineEnding::LF)
+                .expect("a builders' key writes");
+            fs::write(dir.join("builders"), written.as_bytes()).expect("the key is written");
+            fs::write(dir.join("machines"), machines).expect("the machines file is written");
+            command
+                .arg("--key")
+                .arg(dir.join("builders"))
+                .arg("--lent")
+                .arg(dir.join("machines"));
+        }
+        let child = command
             .stderr(Stdio::from(
                 fs::File::create(dir.join("said")).expect("a file for what it says"),
             ))
@@ -177,6 +230,24 @@ fn fingerprint(blob: &[u8]) -> String {
         .to_string()
 }
 
+/// The session this test's process claims, as the proxy reads it from
+/// the client's environment: its `PI_SESSION_ID` when that is plain,
+/// else `unknown`.
+fn claimed() -> String {
+    match std::env::var("PI_SESSION_ID") {
+        Ok(id)
+            if !id.is_empty()
+                && id.len() <= 64
+                && id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_') =>
+        {
+            id
+        }
+        _ => "unknown".to_owned(),
+    }
+}
+
 /// The words a refusal's line may give for why, as src/said.rs has them.
 const REASONS: &[&str] = &[
     "unreadable",
@@ -191,18 +262,30 @@ const REASONS: &[&str] = &[
     "no-holder",
     "upstream",
     "busy",
+    "account",
+    "not-lent",
+    "lent-host",
 ];
 
 /// Whether `line` has the fixed shape a journal reader keeps fields
-/// from: a signature's host alone, or a refusal's reason word and host,
-/// with its sentence only after ` -- `.
+/// from: a signature's host, key, account and claimed session, or a
+/// refusal's reason word, host and claimed session, with its sentence
+/// only after ` -- `.
 fn shaped(line: &str) -> bool {
     let Some(said) = line.strip_prefix("pi-agent-proxy: ") else {
         return false;
     };
     let host = |host: &str| host == "none" || (host.starts_with("SHA256:") && !host.contains(' '));
+    let session = claimed();
     if let Some(signed) = said.strip_prefix("signed host=") {
-        return host(signed);
+        let fields: Vec<&str> = signed.split(' ').collect();
+        return fields.len() == 4
+            && host(fields[0])
+            && ["key=builders", "key=agent"].contains(&fields[1])
+            && fields[2]
+                .strip_prefix("user=")
+                .is_some_and(|user| !user.is_empty())
+            && fields[3] == format!("claimed-session={session}");
     }
     let Some(refused) = said.strip_prefix("refused why=") else {
         return false;
@@ -210,10 +293,13 @@ fn shaped(line: &str) -> bool {
     let Some((fields, sentence)) = refused.split_once(" -- ") else {
         return false;
     };
-    let Some((why, at)) = fields.split_once(" host=") else {
+    let Some((why, rest)) = fields.split_once(" host=") else {
         return false;
     };
-    REASONS.contains(&why) && host(at) && !sentence.is_empty()
+    let Some((at, claim)) = rest.split_once(" claimed-session=") else {
+        return false;
+    };
+    REASONS.contains(&why) && host(at) && claim == session && !sentence.is_empty()
 }
 
 impl Drop for Proxy {
@@ -222,6 +308,26 @@ impl Drop for Proxy {
         let _ = self.child.wait();
         let _ = fs::remove_dir_all(&self.dir);
     }
+}
+
+/// What the agent behind a test's proxy does.
+#[derive(Clone, Copy)]
+enum Behind {
+    /// Holds `LOGIN_KEY` and signs whatever reaches it.
+    Signing,
+    /// Takes each client and never answers it.
+    Stalled,
+}
+
+/// An agent at `path` that takes each client and never answers.
+fn stalled_agent(path: &Path) {
+    let listener = UnixListener::bind(path).expect("the stalled agent binds");
+    thread::spawn(move || {
+        let mut held = Vec::new();
+        for stream in listener.incoming() {
+            held.push(stream.expect("the stalled agent takes each client"));
+        }
+    });
 }
 
 /// An agent at `path` holding `LOGIN_KEY`, signing whatever reaches it.
@@ -311,10 +417,11 @@ fn signs_a_login_to_a_session_its_allowed_host_signed() {
     assert_eq!(
         proxy.lines(),
         [format!(
-            "pi-agent-proxy: signed host={}",
-            fingerprint(&blob)
+            "pi-agent-proxy: signed host={} key=agent user=joel claimed-session={}",
+            fingerprint(&blob),
+            claimed()
         )],
-        "the login it signed is said with its host"
+        "the login it signed is said with its host, key, account and claimed session"
     );
     assert_eq!(proxy.signatures(), 1, "the agent signed once");
 }
@@ -366,13 +473,17 @@ fn refuses_a_host_it_is_not_told_of() {
     let lines = proxy.lines();
     assert!(
         lines[0].starts_with(&format!(
-            "pi-agent-proxy: refused why=untold-host host={} -- ",
-            fingerprint(&other_blob)
+            "pi-agent-proxy: refused why=untold-host host={} claimed-session={} -- ",
+            fingerprint(&other_blob),
+            claimed()
         )),
         "the binding's refusal names the host it was for: {lines:?}"
     );
     assert!(
-        lines[1].starts_with("pi-agent-proxy: refused why=no-session host=none -- "),
+        lines[1].starts_with(&format!(
+            "pi-agent-proxy: refused why=no-session host=none claimed-session={} -- ",
+            claimed()
+        )),
         "the login's refusal says it had no session: {lines:?}"
     );
 }
@@ -451,10 +562,11 @@ fn refuses_anything_but_a_login_to_the_bound_session() {
         .filter_map(|line| line.split_once("why=").map(|(_, rest)| rest.to_owned()))
         .collect();
     let host = fingerprint(&blob);
+    let claim = claimed();
     assert!(
-        reasons[0].starts_with("not-login host=none -- ")
-            && reasons[1].starts_with("no-session host=none -- ")
-            && reasons[2].starts_with(&format!("mismatch host={host} -- ")),
+        reasons[0].starts_with(&format!("not-login host=none claimed-session={claim} -- "))
+            && reasons[1].starts_with(&format!("no-session host=none claimed-session={claim} -- "))
+            && reasons[2].starts_with(&format!("mismatch host={host} claimed-session={claim} -- ")),
         "a commit, another session and another key each say why, with the \
          session's host once it's known: {reasons:?}"
     );
@@ -601,4 +713,286 @@ fn says_each_refusal_and_signature_in_one_fixed_shape() {
         ],
         "each refusal names its reason"
     );
+}
+
+/// `bytes` in base64, as a machines file carries a builder's host key.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let joined = chunk.iter().enumerate().fold(0u32, |joined, (at, byte)| {
+            joined | u32::from(*byte) << (16 - 8 * at)
+        });
+        for at in 0..=chunk.len() {
+            let six = usize::try_from(joined >> (18 - 6 * at) & 63).expect("six bits fit");
+            out.push(char::from(ALPHABET[six]));
+        }
+        for _ in chunk.len()..3 {
+            out.push('=');
+        }
+    }
+    out
+}
+
+/// A machines file's line for a builder at `alias` with `host`'s key,
+/// as root's offload helper writes one.
+fn machine(alias: &str, host: &Ed25519Keypair) -> String {
+    let key = PublicKey::from(KeyData::Ed25519(host.public))
+        .to_openssh()
+        .expect("a host key writes");
+    format!(
+        "ssh-ng://hook@{alias}?compress=true x86_64-linux /etc/nix/offload_ed25519 16 1 big-parallel big-parallel {}\n",
+        base64(key.as_bytes())
+    )
+}
+
+/// The builders' key made for these tests, with its wire blob.
+fn builders() -> (Ed25519Keypair, Vec<u8>) {
+    host(9)
+}
+
+/// A client of `proxy` with a session to `host` bound, or refused.
+fn bound(proxy: &Proxy, host: &Ed25519Keypair, blob: &[u8], session: &[u8]) -> (UnixStream, bool) {
+    let mut client = proxy.client();
+    send(
+        &mut client,
+        &bind(blob, session, &signed(host, session), false),
+    );
+    let taken = receive(&mut client) == Some(vec![SUCCESS]);
+    (client, taken)
+}
+
+#[test]
+fn signs_a_lent_builders_login_with_the_builders_key() {
+    let (builders, key) = builders();
+    let (builder, blob) = host(3);
+    let proxy = Proxy::lending("lent", "", &builders, &machine("nix-offload", &builder));
+    let session = b"a builder's session";
+    let (mut client, taken) = bound(&proxy, &builder, &blob, session);
+    assert!(
+        taken,
+        "a lent builder's binding is taken though --hosts names it not"
+    );
+
+    let data = login_as(session, &key, b"nix-offload");
+    send(&mut client, &sign(&key, &data));
+    let answer = receive(&mut client).expect("an answer");
+
+    assert_eq!(answer.first(), Some(&SIGN_RESPONSE), "the login is signed");
+    let signature = Signature::try_from(&answer[5..]).expect("a signature reads");
+    KeyData::Ed25519(builders.public)
+        .verify(&data, &signature)
+        .expect("the builders' key signed the login itself");
+    assert_eq!(proxy.signatures(), 0, "the agent behind was never asked");
+    assert_eq!(
+        proxy.lines(),
+        [format!(
+            "pi-agent-proxy: signed host={} key=builders user=nix-offload claimed-session={}",
+            fingerprint(&blob),
+            claimed()
+        )],
+        "the login is said with the builders' key and account"
+    );
+}
+
+#[test]
+fn lists_the_builders_key_first() {
+    let (builders, key) = builders();
+    let (builder, _) = host(3);
+    let proxy = Proxy::lending(
+        "lists-lent",
+        "",
+        &builders,
+        &machine("nix-offload", &builder),
+    );
+    let mut client = proxy.client();
+
+    send(&mut client, &[REQUEST_IDENTITIES]);
+    let answer = receive(&mut client).expect("an answer");
+
+    let mut expected = vec![IDENTITIES_ANSWER];
+    expected.extend_from_slice(&2u32.to_be_bytes());
+    string(&mut expected, &key);
+    string(&mut expected, b"nix-offload builders");
+    string(&mut expected, LOGIN_KEY);
+    string(&mut expected, b"login key");
+    assert_eq!(answer, expected, "the builders' key, then the agent's");
+}
+
+#[test]
+fn refuses_the_builders_key_as_another_account() {
+    let (builders, key) = builders();
+    let (builder, blob) = host(3);
+    let proxy = Proxy::lending(
+        "account",
+        "",
+        &builders,
+        &machine("nix-offload-vm-4", &builder),
+    );
+    let session = b"a builder's session";
+    let (mut client, taken) = bound(&proxy, &builder, &blob, session);
+    assert!(taken, "the lent builder's binding is taken");
+
+    send(&mut client, &sign(&key, &login_as(session, &key, b"root")));
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "root's login is refused"
+    );
+    let lines = proxy.lines();
+    assert!(
+        lines[0].contains("why=account "),
+        "the refusal says it was the account: {lines:?}"
+    );
+}
+
+#[test]
+fn refuses_the_builders_key_to_a_host_not_lent() {
+    let (builders, key) = builders();
+    let (allowed, blob) = host(1);
+    let (builder, _) = host(3);
+    let proxy = Proxy::lending(
+        "not-lent",
+        &hosts_file(&[&allowed]),
+        &builders,
+        &machine("nix-offload", &builder),
+    );
+    let session = b"a told host's session";
+    let (mut client, taken) = bound(&proxy, &allowed, &blob, session);
+    assert!(taken, "a told host's binding is taken");
+
+    send(
+        &mut client,
+        &sign(&key, &login_as(session, &key, b"nix-offload")),
+    );
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the login is refused"
+    );
+    let lines = proxy.lines();
+    assert!(
+        lines[0].contains("why=not-lent "),
+        "the refusal says the host isn't lent: {lines:?}"
+    );
+}
+
+#[test]
+fn refuses_an_agents_key_to_a_lent_builder() {
+    let (builders, _) = builders();
+    let (builder, blob) = host(3);
+    let proxy = Proxy::lending(
+        "lent-host",
+        "",
+        &builders,
+        &machine("nix-offload", &builder),
+    );
+    let session = b"a builder's session";
+    let (mut client, taken) = bound(&proxy, &builder, &blob, session);
+    assert!(taken, "the lent builder's binding is taken");
+
+    send(
+        &mut client,
+        &sign(LOGIN_KEY, &login_as(session, LOGIN_KEY, b"nix-offload")),
+    );
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the login is refused"
+    );
+    assert_eq!(proxy.signatures(), 0, "the agent behind was never asked");
+    let lines = proxy.lines();
+    assert!(
+        lines[0].contains("why=lent-host "),
+        "the refusal says the host is a lent builder: {lines:?}"
+    );
+}
+
+#[test]
+fn lends_only_to_builders_named_as_such() {
+    let (builders, _) = builders();
+    let (standing, blob) = host(4);
+    let proxy = Proxy::lending(
+        "standing",
+        "",
+        &builders,
+        &machine("equilibrius-linux", &standing),
+    );
+
+    let (_, taken) = bound(&proxy, &standing, &blob, b"a standing builder's session");
+
+    assert!(
+        !taken,
+        "a machine not named as a lent builder is no lent host"
+    );
+    let lines = proxy.lines();
+    assert!(
+        lines[0].contains("why=untold-host "),
+        "the refusal says the host is untold: {lines:?}"
+    );
+}
+
+#[test]
+fn stops_lending_once_a_builder_leaves_the_machines_file() {
+    let (builders, _) = builders();
+    let (builder, blob) = host(3);
+    let proxy = Proxy::lending("leaves", "", &builders, &machine("nix-offload", &builder));
+    let (_, first) = bound(&proxy, &builder, &blob, b"while lent");
+    assert!(first, "the builder's binding is taken while it's lent");
+
+    proxy.lend("");
+    let (_, second) = bound(&proxy, &builder, &blob, b"once returned");
+
+    assert!(!second, "its binding is refused once it's no longer lent");
+}
+
+#[test]
+fn refuses_a_lent_builder_reached_through_a_forwarded_agent() {
+    let (builders, _) = builders();
+    let (builder, blob) = host(3);
+    let proxy = Proxy::lending(
+        "lent-forwarded",
+        "",
+        &builders,
+        &machine("nix-offload", &builder),
+    );
+    let mut client = proxy.client();
+    let session = b"a builder's session";
+
+    send(
+        &mut client,
+        &bind(&blob, session, &signed(&builder, session), true),
+    );
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "a forwarded binding is refused"
+    );
+}
+
+#[test]
+fn lists_the_builders_key_though_the_agent_behind_never_answers() {
+    let (builders, key) = builders();
+    let (builder, _) = host(3);
+    let proxy = Proxy::stalled("stalled", &builders, &machine("nix-offload", &builder));
+    let mut client = proxy.client();
+    let asked = Instant::now();
+
+    send(&mut client, &[REQUEST_IDENTITIES]);
+    let answer = receive(&mut client).expect("an answer");
+
+    assert!(
+        asked.elapsed() < Duration::from_secs(8),
+        "the agent behind is given up on after 5 s, not waited on: {:?}",
+        asked.elapsed()
+    );
+    let mut expected = vec![IDENTITIES_ANSWER];
+    expected.extend_from_slice(&1u32.to_be_bytes());
+    string(&mut expected, &key);
+    string(&mut expected, b"nix-offload builders");
+    assert_eq!(answer, expected, "the builders' key alone");
 }

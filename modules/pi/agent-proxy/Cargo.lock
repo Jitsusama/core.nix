@@ -368,6 +368,7 @@ dependencies = [
 name = "pi-agent-proxy"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "signature",
  "ssh-key",
 ]
