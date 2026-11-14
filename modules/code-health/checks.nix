@@ -75,7 +75,10 @@
           ];
         }
       ]);
-      started = home.systemd.user.services.code-health.Service.ExecStart;
+      # home-manager keeps ExecStart as a list of its one command line.
+      started = pkgs.lib.concatStringsSep " " (
+        pkgs.lib.toList home.systemd.user.services.code-health.Service.ExecStart
+      );
       handed = pair: pkgs.lib.hasInfix (pkgs.lib.escapeShellArgs pair) started;
     in
     holds "code-health-reads-hourly-against-targets"
