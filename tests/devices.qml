@@ -75,6 +75,47 @@ QtObject {
             [Devices.kind("audio-headset"), Devices.kind("something-else")],
             ["headset", "bluetooth"]);
 
+        // What bluetooth-links says has stopped answering, as its
+        // stopped.json says it.
+        const intel = { name: "hci0", device: "0000:00:14.7",
+            driver: "/sys/bus/pci/drivers/btintel_pcie" };
+        const file = adapters => JSON.stringify({ adapters: adapters });
+        check("the reader's file, read", Devices.halted(file([intel])), [intel]);
+        check("no reader, or a file not its own, says nothing stopped",
+            [Devices.halted(""), Devices.halted("{}")], [[], []]);
+        check("a controller on PCI is started again by one short command",
+            Devices.restart(intel), "bluetooth-again");
+        check("none for a USB adapter's, which that command doesn't start",
+            Devices.restart({ name: "hci1", device: "1-10:1.0",
+                driver: "/sys/bus/usb/drivers/btusb" }), "");
+        check("none where the reader couldn't say what it sits on",
+            Devices.restart({ name: "hci0", device: null, driver: null }), "");
+        check("none for a driver that isn't PCI's own folder", [
+            Devices.restart(Object.assign({}, intel, { driver: "/tmp/bus/pci/drivers/x" })),
+            Devices.restart(Object.assign({}, intel, { driver: "/sys/bus/pci/drivers/x/y" }))
+        ], ["", ""]);
+
+        const [dead] = Devices.stopped([intel], "hci0");
+        check("the adapter stopped is the Adapter's own row in Bluetooth",
+            [dead.key, dead.place], ["adapter", "bluetooth"]);
+        check("it wants Joel, said as it comes and taken back once it answers",
+            [dead.active, dead.wants, dead.arrives, dead.withdraws], [true, true, true, true]);
+        check("its notice says it stopped answering, plainly",
+            [dead.app, dead.hint, dead.value], ["Bluetooth", "Bluetooth stopped answering",
+                "not answering"]);
+        check("and gives the command to type, and that a device may need pairing again",
+            dead.message, "Type bluetooth-again in a terminal to start it again. "
+                + "Afterwards, a device may need pairing again.");
+        check("which it holds for its row to copy", dead.line, "bluetooth-again");
+        check("where there's no line, restarting the machine is what's left",
+            Devices.stopped([{ name: "hci0" }], "hci0")[0].message,
+            "Restarting the machine starts it again. "
+                + "Afterwards, a device may need pairing again.");
+        check("another adapter is a fact of its own, with no row",
+            Devices.stopped([Object.assign({}, intel, { name: "hci1" })], "hci0")
+                .map(thing => [thing.key, thing.place]), [["adapter:hci1", ""]]);
+        check("nothing stopped, nothing said", Devices.stopped([], "hci0"), []);
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

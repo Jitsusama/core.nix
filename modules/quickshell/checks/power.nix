@@ -63,7 +63,9 @@
   # Each Bluetooth device running low is a thing of its own, by its own
   # charge, name and kind, as tests/devices.qml holds Devices.js to with
   # plain objects standing in for BlueZ's devices, since the desktop VM has
-  # no Bluetooth.
+  # no Bluetooth. So is an adapter whose controller stopped answering, with
+  # bluetooth-again to type for one on PCI, which that command starts, and a
+  # restart for any other.
   a-low-device-is-its-own-notice =
     let
       qt = pkgs.qt6.qtdeclarative;

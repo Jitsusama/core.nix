@@ -4,9 +4,13 @@
 # it's held; and each adapter's traffic, address and version. BlueZ says
 # none of it for a connected device, so bluetooth-links asks the controller
 # every five seconds while a link is up, and while none is only lists the
-# adapters and connections, writing only what's new (src/main.rs says how). It writes /run/bluetooth-links/links.json,
-# readable by everyone, which /run/bluetooth-links.json points at, so the
-# file goes when the reader does rather than saying how things stood.
+# adapters and connections, writing only what's new (src/main.rs says how).
+# It writes /run/bluetooth-links/links.json, readable by everyone, which
+# /run/bluetooth-links.json points at, so the file goes when the reader
+# does rather than saying how things stood. Beside it, stopped.json says
+# which controllers are up but have stopped answering, and what each sits
+# on, for the shell to say so with the command that starts it again; it's
+# pointed at from /run/bluetooth-stopped.json the same way.
 { lib, pkgs, ... }:
 let
   links = pkgs.callPackage ./package.nix { };
@@ -20,8 +24,10 @@ in
       ExecStart = "${lib.getExe links} %t/bluetooth-links/links.json";
       Restart = "on-failure";
       RestartSec = 5;
-      # It writes in a folder of its own, renaming each file into place so
-      # a reader never sees one half written.
+      # It reads which device and driver an adapter sits on from /sys,
+      # which nothing here hides. It writes in a folder of its own,
+      # renaming each file into place so a reader never sees one half
+      # written.
       RuntimeDirectory = "bluetooth-links";
       RuntimeDirectoryMode = "0755";
       UMask = "0022";
@@ -68,6 +74,8 @@ in
     };
   };
 
-  systemd.tmpfiles.settings.bluetooth-links."/run/bluetooth-links.json"."L+".argument =
-    "/run/bluetooth-links/links.json";
+  systemd.tmpfiles.settings.bluetooth-links = {
+    "/run/bluetooth-links.json"."L+".argument = "/run/bluetooth-links/links.json";
+    "/run/bluetooth-stopped.json"."L+".argument = "/run/bluetooth-links/stopped.json";
+  };
 }

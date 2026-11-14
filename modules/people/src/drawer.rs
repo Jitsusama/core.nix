@@ -121,8 +121,8 @@ pub fn key(person: &Person) -> String {
     format!("drawer:people:{known}")
 }
 
-/// A record as a search answers it, with the row it's found as and the
-/// drawer the row names.
+/// A record as a search answers it, with the row it's found as, the one
+/// it's listed as, and the drawer the row names.
 #[must_use]
 pub fn found(
     record: &Record,
@@ -132,7 +132,7 @@ pub fn found(
 ) -> Value {
     let mut said = record.json();
     let one = listing::person(record, sources);
-    said["row"] = one.found();
+    said["row"] = one.row();
     said["drawer"] = drawer(&one, record, sources, named, standings)["drawer"].take();
     said
 }

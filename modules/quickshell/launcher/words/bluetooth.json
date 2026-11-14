@@ -150,6 +150,11 @@
       "term": "Machine/model"
     },
     {
+      "id": "bluetooth:restart",
+      "in": "bluetooth",
+      "name": "Start It Again"
+    },
+    {
       "id": "verb:bluetooth-trust",
       "command": "set",
       "argument": "reconnect",

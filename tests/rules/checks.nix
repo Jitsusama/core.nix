@@ -157,6 +157,7 @@
         ssh-askpass = script "ssh-askpass" ../../modules/quickshell/askpass.sh { };
         swayidle-away = script "swayidle-away" ../../modules/swayidle/away.sh { };
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
+        bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };
         clock-follows = pkgs.callPackage ../../modules/quickshell/clock-follows/package.nix { };
         code-health = pkgs.callPackage ../../modules/code-health/package.nix { };

@@ -54,6 +54,9 @@ pub fn page(model: &HomeNetwork, clock: &Clock) -> Page {
     let mut table = Table::new(&[Align::Left, Align::Left, Align::Point, Align::Left]);
     // Each node's facts wrap under themselves, so the tree keeps every edge.
     table.wraps(16);
+    // Into a narrow terminal its bars go, then its backhaul, which its
+    // place in the tree mostly says; its state stays beside it.
+    table.gives_way(vec![vec![2], vec![1]]);
     let way_out: Vec<Line> = [
         internet.isp.clone(),
         internet.asn.map(|asn| format!("AS{asn}")),

@@ -4,6 +4,11 @@
 //! only as it's drawn, against the room the terminal kit finds: into a
 //! pipe every line is whole, and into a terminal each fits its width,
 //! as docs/commands.md's Width and What Gives Way sets it (`fit.rs`).
+//!
+//! Long because a table's layout is one piece: its columns' widths, what
+//! gives way to a narrow terminal, and the columns it shares with the
+//! tables under it on a page are each read by the others, and its tests
+//! sit beside them.
 
 use std::fmt::Write as _;
 
@@ -68,8 +73,9 @@ enum Block {
     Line(Line),
     /// Labels and their values, `indent` cells in.
     Facts(usize, Vec<(String, Line)>),
-    /// A table, `indent` cells in.
-    Table(usize, Table),
+    /// A table, `indent` cells in, and whether it shares its leading
+    /// columns with the page's other tables that do.
+    Table(usize, Table, bool),
 }
 
 /// A view's text: its lines, facts and tables, top to bottom.
@@ -99,11 +105,20 @@ impl Page {
 
     /// A table, set `indent` cells in.
     pub fn table(&mut self, indent: usize, table: Table) {
-        self.blocks.push(Block::Table(indent, table));
+        self.blocks.push(Block::Table(indent, table, false));
+    }
+
+    /// A table, set `indent` cells in, whose leading columns sit where the
+    /// same columns of the page's other shared tables do, so a column
+    /// reads down through each: the columns under the same headings, in
+    /// the same order, from the first.
+    pub fn shared_table(&mut self, indent: usize, table: Table) {
+        self.blocks.push(Block::Table(indent, table, true));
     }
 
     /// The page's lines as `room` lays them out.
     pub fn lines(self, room: Room) -> Vec<Line> {
+        let alike = Shared::of(&self.blocks, room);
         let mut lines = Vec::new();
         for block in self.blocks {
             match block {
@@ -112,10 +127,86 @@ impl Page {
                     lines.extend(hung(line, lead, room));
                 }
                 Block::Facts(indent, facts) => lines.extend(set_facts(indent, facts, room)),
-                Block::Table(indent, table) => lines.extend(table.lines(indent, room)),
+                Block::Table(indent, table, shares) => {
+                    lines.extend(table.lines(indent, room, shares.then_some(&alike)));
+                }
             }
         }
         lines
+    }
+}
+
+/// What a page's shared tables set alike in their leading columns: each
+/// as wide as the widest of them, figures ending at one place, and gone
+/// from every table, or shortened in every one, where any gives it way.
+#[derive(Debug, Default)]
+struct Shared {
+    /// How many leading columns the tables share.
+    columns: usize,
+    wide: Vec<usize>,
+    before: Vec<usize>,
+    after: Vec<usize>,
+    gone: Vec<bool>,
+    set: Vec<usize>,
+}
+
+impl Shared {
+    fn of(blocks: &[Block], room: Room) -> Self {
+        let tables: Vec<(usize, &Table)> = blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::Table(indent, table, true) => Some((*indent, table)),
+                _ => None,
+            })
+            .collect();
+        let Some(((_, first), rest)) = tables.split_first() else {
+            return Self::default();
+        };
+        let columns = rest
+            .iter()
+            .fold(first.headings.len(), |columns, (_, table)| {
+                let alike = first
+                    .headings
+                    .iter()
+                    .zip(&first.aligns)
+                    .zip(table.headings.iter().zip(&table.aligns))
+                    .take_while(|(ours, theirs)| ours == theirs)
+                    .count();
+                columns.min(alike)
+            });
+        let mut shared = Self {
+            columns,
+            wide: vec![0; columns],
+            before: vec![0; columns],
+            after: vec![0; columns],
+            gone: vec![false; columns],
+            set: vec![usize::MAX; columns],
+        };
+        for (_, table) in &tables {
+            let (wide, before, after) = table.widths();
+            for at in 0..columns {
+                shared.wide[at] = shared.wide[at].max(wide[at]);
+                shared.before[at] = shared.before[at].max(before[at]);
+                shared.after[at] = shared.after[at].max(after[at]);
+            }
+        }
+        // Each table is placed in the room at the shared widths; a column
+        // any of them gives way goes from all, and one any shortens is
+        // shortened alike, which only ever leaves each more room.
+        let (mut gone, mut set) = (vec![false; columns], vec![usize::MAX; columns]);
+        for (indent, table) in &tables {
+            let placed = table.placed(*indent, room, Some(&shared));
+            for at in 0..columns {
+                if placed.kept.contains(&at) {
+                    set[at] = set[at].min(placed.set[at]);
+                } else {
+                    gone[at] = true;
+                }
+            }
+        }
+        shared.gone = gone;
+        shared.set = set;
+        shared
     }
 }
 
@@ -227,8 +318,9 @@ fn line_width(runs: &[Run]) -> usize {
 pub enum Align {
     Left,
     Right,
-    /// Figures by their decimal point, or where it would be, so whole
-    /// numbers and tenths share a column and each unit follows its figure.
+    /// Figures, each ending where the column's figures end, whole numbers
+    /// and a missing figure's dash as much as tenths, so the units after
+    /// them start at one place.
     Point,
 }
 
@@ -268,6 +360,18 @@ enum Row {
 
 /// Two cells between columns.
 const GAP: usize = 2;
+
+/// The fewest cells a last column is cut to; in fewer, a cell says
+/// nothing but its ellipsis.
+const SHORTEST: usize = 6;
+
+/// Where a table's columns are set: those kept, by their places, each
+/// one's width, and the widest unit after its figures.
+struct Placed {
+    kept: Vec<usize>,
+    set: Vec<usize>,
+    after: Vec<usize>,
+}
 
 impl Table {
     pub fn new(aligns: &[Align]) -> Self {
@@ -337,21 +441,18 @@ impl Table {
         self.rows.push(Row::Across(line));
     }
 
-    /// The part of a cell before its point, and the part from it on.
+    /// The part of a cell its figure takes, its first run, and the part
+    /// after it, its unit.
     fn split(cell: &[Run]) -> (usize, usize) {
         let all = line_width(cell);
         let Some(first) = cell.first() else {
             return (0, 0);
         };
-        let before = first.text.find('.').map_or_else(
-            || width(first.text.trim_end()),
-            |at| width(&first.text[..at]),
-        );
-        (before, all - before)
+        let figure = width(first.text.trim_end()).min(all);
+        (figure, all - figure)
     }
 
-    /// Each column's width, and its figures' widths before and from their
-    /// point.
+    /// Each column's width, and its figures' widths and their units'.
     fn widths(&self) -> (Vec<usize>, Vec<usize>, Vec<usize>) {
         let columns = self.aligns.len();
         let mut wide = vec![0; columns];
@@ -379,9 +480,10 @@ impl Table {
     }
 
     /// The columns kept in `cells`, and the width each is set at: whole
-    /// columns go first, then the names shorten, then the last column.
-    fn kept(&self, wide: &[usize], cells: usize) -> (Vec<usize>, Vec<usize>) {
-        let mut kept: Vec<usize> = (0..self.aligns.len()).collect();
+    /// columns go first, then the names shorten, then the last column. Only
+    /// the columns `from` are set, the rest having gone already.
+    fn kept(&self, from: Vec<usize>, wide: &[usize], cells: usize) -> (Vec<usize>, Vec<usize>) {
+        let mut kept = from;
         let across = |kept: &[usize], at: &dyn Fn(usize) -> usize| {
             kept.iter().map(|column| at(*column)).sum::<usize>()
                 + GAP * kept.len().saturating_sub(1)
@@ -419,22 +521,57 @@ impl Table {
             set[names] -= less;
             over -= less;
         }
-        if let Some(last) = kept.last().copied()
+        // The last column of words is cut to what's left, but one left
+        // fewer cells than say anything goes rather than show its ellipsis,
+        // as does a last column of figures with no room, and the one before
+        // it is weighed in its place, so no row runs past the terminal.
+        while let Some(last) = kept.last().copied()
             && over > 0
             && last > 0
-            && self.aligns[last] == Align::Left
         {
-            set[last] = set[last].saturating_sub(over).max(1);
+            if self.aligns[last] == Align::Left && set[last].saturating_sub(over) >= SHORTEST {
+                set[last] -= over;
+                break;
+            }
+            kept.pop();
+            over = across(&kept, &|column| set[column]).saturating_sub(cells);
         }
         (kept, set)
     }
 
-    pub fn lines(self, indent: usize, room: Room) -> Vec<Line> {
-        let (wide, before, after) = self.widths();
-        let (kept, set) = match room.cells() {
-            Some(cells) => self.kept(&wide, cells.saturating_sub(indent)),
-            None => ((0..self.aligns.len()).collect(), wide.clone()),
+    /// The columns kept in `room` and each one's width, with its units'
+    /// widths, set alike with the tables it shares columns with.
+    fn placed(&self, indent: usize, room: Room, shared: Option<&Shared>) -> Placed {
+        let (mut wide, mut before, mut after) = self.widths();
+        if let Some(shared) = shared {
+            for at in 0..shared.columns {
+                before[at] = before[at].max(shared.before[at]);
+                after[at] = after[at].max(shared.after[at]);
+                wide[at] = wide[at].max(shared.wide[at]);
+                if self.aligns[at] == Align::Point {
+                    wide[at] = wide[at].max(before[at] + after[at]);
+                }
+            }
+        }
+        // A shared column another table gave way goes before this one is
+        // set, so what it leaves is room for the rest.
+        let from: Vec<usize> = (0..self.aligns.len())
+            .filter(|at| shared.is_none_or(|shared| *at >= shared.columns || !shared.gone[*at]))
+            .collect();
+        let (kept, mut set) = match room.cells() {
+            Some(cells) => self.kept(from, &wide, cells.saturating_sub(indent)),
+            None => (from, wide),
         };
+        if let Some(shared) = shared {
+            for (width, alike) in set.iter_mut().zip(&shared.set) {
+                *width = (*width).min(*alike);
+            }
+        }
+        Placed { kept, set, after }
+    }
+
+    fn lines(self, indent: usize, room: Room, shared: Option<&Shared>) -> Vec<Line> {
+        let Placed { kept, set, after } = self.placed(indent, room, shared);
         let names = self.shortens.map(|(at, _)| at);
         let last = kept.last().copied();
         let pad = plain(" ".repeat(indent));
@@ -481,9 +618,14 @@ impl Table {
                     Align::Right => (room_for - size, 0),
                     // A heading over figures sits flush right, over their units.
                     Align::Point if header => (room_for - size, 0),
+                    // Its figure ends where the widest figure does, so its
+                    // unit starts where every other unit starts.
                     Align::Point => {
-                        let (b, _) = Self::split(&cell);
-                        let lead = room_for - before[at] - after[at] + before[at] - b;
+                        let (figure, _) = Self::split(&cell);
+                        let lead = room_for
+                            .saturating_sub(after[at])
+                            .saturating_sub(figure)
+                            .min(room_for - size);
                         (lead, room_for - size - lead)
                     }
                 };
@@ -610,20 +752,88 @@ mod tests {
     }
 
     #[test]
-    fn figures_line_up_by_their_point_and_units_follow_them() {
+    fn figures_end_together_so_their_units_line_up() {
         let mut table = Table::new(&[Align::Left, Align::Point]);
         table.header(&["device", "speed"]);
-        table.row(vec![vec![plain("laptop")], figure("11.5", "Mbit/s")]);
-        table.row(vec![vec![plain("printer")], figure("98", "bit/s")]);
-        table.row(vec![vec![plain("tablet")], figure("145.4", "kbit/s")]);
+        table.row(vec![vec![plain("laptop")], figure("1.20", "Gb/s")]);
+        table.row(vec![vec![plain("printer")], figure("433", "Mb/s")]);
+        table.row(vec![vec![plain("tablet")], figure("72.2", "Mb/s")]);
+        table.row(vec![vec![plain("phone")], vec![muted("–")]]);
         let mut page = Page::default();
         page.table(0, table);
         assert_eq!(
             set(page, Room::Unbounded),
-            "device          speed\n\
-             laptop    11.5 Mbit/s\n\
-             printer   98 bit/s\n\
-             tablet   145.4 kbit/s\n"
+            "device       speed\n\
+             laptop   1.20 Gb/s\n\
+             printer   433 Mb/s\n\
+             tablet   72.2 Mb/s\n\
+             phone       –\n",
+            "a whole number and a missing figure's dash end where tenths do"
+        );
+    }
+
+    #[test]
+    fn shared_tables_set_their_leading_columns_alike() {
+        let mut on = Table::new(&[Align::Left, Align::Left, Align::Point]);
+        on.header(&["device", "kind", "speed"]);
+        on.gives_way_by(&["kind"]);
+        on.row(vec![
+            vec![plain("laptop computer 1")],
+            vec![plain("laptop")],
+            figure("11.5", "Mb/s"),
+        ]);
+        let mut off = Table::new(&[Align::Left, Align::Left, Align::Left]);
+        off.header(&["device", "kind", "last on"]);
+        off.row(vec![
+            vec![plain("printer")],
+            vec![plain("office printer")],
+            vec![plain("2 d ago")],
+        ]);
+        let page = |on, off| {
+            let mut page = Page::default();
+            page.shared_table(0, on);
+            page.blank();
+            page.shared_table(0, off);
+            page
+        };
+        assert_eq!(
+            set(page(on, off), Room::Unbounded),
+            "device             kind                speed\n\
+             laptop computer 1  laptop          11.5 Mb/s\n\
+             \n\
+             device             kind            last on\n\
+             printer            office printer  2 d ago\n",
+            "each table's device and kind start where the other's do"
+        );
+    }
+
+    #[test]
+    fn a_column_one_shared_table_gives_way_goes_from_both() {
+        let mut on = Table::new(&[Align::Left, Align::Left, Align::Point]);
+        on.header(&["device", "kind", "speed"]);
+        on.gives_way_by(&["kind"]);
+        on.row(vec![
+            vec![plain("laptop computer 1")],
+            vec![plain("laptop")],
+            figure("11.5", "Mb/s"),
+        ]);
+        let mut off = Table::new(&[Align::Left, Align::Left, Align::Left]);
+        off.header(&["device", "kind", "last on"]);
+        off.row(vec![
+            vec![plain("printer")],
+            vec![plain("printer")],
+            vec![plain("2 d ago")],
+        ]);
+        let mut page = Page::default();
+        page.shared_table(0, on);
+        page.shared_table(0, off);
+        assert_eq!(
+            set(page, Room::Cells(32)),
+            "device                 speed\n\
+             laptop computer 1  11.5 Mb/s\n\
+             device             last on\n\
+             printer            2 d ago\n",
+            "the kind the first table gave way to 32 cells goes from the second too"
         );
     }
 
@@ -638,7 +848,7 @@ mod tests {
             set(page, Room::Cells(24)),
             "device             speed\n\
              lapto…ter 1  11.5 Mbit/s\n\
-             printer      98 bit/s\n"
+             printer        98 bit/s\n"
         );
         let mut whole = Page::default();
         let mut table = speeds();
@@ -648,7 +858,7 @@ mod tests {
             set(whole, Room::Unbounded),
             "device             kind           speed\n\
              laptop computer 1  laptop   11.5 Mbit/s\n\
-             printer            printer  98 bit/s\n"
+             printer            printer    98 bit/s\n"
         );
     }
 

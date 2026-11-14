@@ -21,11 +21,11 @@ radios
   5 GHz high      149  80 MHz  28 dBm  97 %  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇        1
 
 ports
-  port  link                           speed   rx        tx
-  1     linked                     1.00 Gb/s  0 B  153 MB    WAN · backhaul
-  2     linked ● under its best  100 Mb/s     0 B   53.7 kB
+  port  link                         speed   rx       tx
+  1     linked                   1.00 Gb/s  0 B   153 MB  WAN · backhaul
+  2     linked ● under its best   100 Mb/s  0 B  53.7 kB
 
 devices · 2
-  device     band      signal    SNR          rx        tx      down       up
-  generic 3  2.4 GHz  −48 dBm  59 dB   72.2 Mb/s    –       98.2 b/s  154 b/s
-  phone 1    5 GHz    −52 dBm  55 dB  313 Mb/s    721 Mb/s   0 b/s      0 b/s
+  device     band      signal    SNR         rx        tx      down       up
+  generic 3  2.4 GHz  −48 dBm  59 dB  72.2 Mb/s    –       98.2 b/s  154 b/s
+  phone 1    5 GHz    −52 dBm  55 dB   313 Mb/s  721 Mb/s     0 b/s    0 b/s

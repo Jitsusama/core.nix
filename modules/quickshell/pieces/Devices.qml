@@ -7,8 +7,17 @@
 // notice offers to show it there. Its charge is read from the
 // devices Quickshell.Bluetooth already holds, as the Bluetooth place
 // reads it, so nothing more is opened for it, and nothing for each device.
+//
+// Beside them, an adapter whose controller stopped answering, as the link
+// reader says in its stopped.json (modules/bluetooth-links): BlueZ still
+// says it's on while nothing it carries works, so it's a thing too, said
+// as a notice with the command that starts it again and in Now as the
+// Adapter's own row, until it answers. The file changes only as one stops
+// or answers again, so it's watched always.
 import qs
+import Quickshell
 import Quickshell.Bluetooth
+import Quickshell.Io
 import QtQuick
 import "../Devices.js" as Devices
 
@@ -34,31 +43,64 @@ Piece {
     // How each stood at its last reading, by address (Devices.js).
     property var standing: ({})
 
+    // The adapters stopped, as the reader last said them (Devices.js).
+    property var halted: []
+
+    FileView {
+        path: piece.settings.stopped ?? "/run/bluetooth-stopped.json"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: piece.halted = Devices.halted(text())
+        onLoadFailed: piece.halted = []
+    }
+
     present: adapter !== null
     each: []
 
     onReadingsChanged: read()
+    onHaltedChanged: read()
     Component.onCompleted: read()
 
-    // How they stand, and the things running low, worked out together at
-    // each reading, so no thing is ever made from a reading and the
-    // standing before it.
+    // How they stand, and the things running low or stopped, worked out
+    // together at each reading, so no thing is ever made from a reading
+    // and the standing before it.
     function read() {
         standing = Devices.standings(readings, standing, marks);
-        each = Devices.low(readings, standing).map(own => thing(Object.assign(own, {
+        const low = Devices.low(readings, standing).map(own => thing(Object.assign(own, {
             actions: [{
                 glyph: Words.glyph("verb:on:device:show"),
                 name: Words.name("verb:on:device:show"),
                 verb: Words.verb("verb:on:device:show"),
-                run: shell => piece.show(shell, own.address)
+                run: shell => piece.show(shell, "bluetooth:" + own.address)
             }]
         })));
+        const stopped = Devices.stopped(halted, adapter?.adapterId ?? "").map(own => thing(
+            Object.assign(own, { actions: piece.restarting(own) })));
+        each = low.concat(stopped);
     }
 
-    // Into the device's own place in Bluetooth, where its battery is, or
-    // Bluetooth itself should it have gone by then.
-    function show(shell, address) {
+    // What a stopped adapter's notice offers: to copy the command that starts
+    // it again, where there is one, and to show its row in Bluetooth.
+    function restarting(own) {
+        const copy = own.line === "" ? [] : [{
+            glyph: Words.glyph("verb:on:bluetooth:copy"),
+            name: Words.name("verb:on:bluetooth:copy"),
+            verb: Words.verb("verb:on:bluetooth:copy"),
+            run: () => Quickshell.clipboardText = own.line
+        }];
+        return copy.concat(own.place === "" ? [] : [{
+            glyph: Words.glyph("verb:on:device:show"),
+            name: Words.name("verb:on:device:show"),
+            verb: Words.verb("verb:on:device:show"),
+            run: shell => piece.show(shell, "bluetooth:adapter")
+        }]);
+    }
+
+    // Into the row keyed `key` in Bluetooth, a device's where its battery
+    // is or the Adapter's, or Bluetooth itself should it have gone by then.
+    function show(shell, key) {
         shell.launcher.into("bluetooth");
-        shell.launcher.enter(shell.launcher.matches.find(row => row.key === `bluetooth:${address}`));
+        shell.launcher.enter(shell.launcher.matches.find(row => row.key === key));
     }
 }

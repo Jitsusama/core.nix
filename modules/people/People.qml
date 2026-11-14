@@ -205,9 +205,8 @@ Provider {
     // first; and the words asked last, so each text is asked once.
     property var sought: ({ words: "", records: [] })
     property string seeking: ""
-    // Those the search found, by key, for the rows they came with: a listed
-    // record's row says how they stand, which one found among everyone
-    // doesn't.
+    // Those the search found, by key, for the rows they came with, each
+    // the row it's listed as, saying how they stand and their time.
     readonly property var soughtOf: {
         const by = {};
         for (const record of sought.records)
@@ -456,10 +455,13 @@ Provider {
                 // doesn't hold gives: Slack's are the daemon's, so someone
                 // Slack found once is held only while listed or found, and
                 // a first letter makes no row for them.
+                // One saying their time is kept for the minute too, as one
+                // listed is.
                 const record = readyFor(person);
-                return record ? keptOr(made.keeping, person.key, record, () => provider.made(
-                    person, Person.standing(person, []), record.row, () => record.drawer),
-                    heardAlike)
+                return record ? keptAlike(made.keeping, person.key,
+                    [record.key, record.heard, clocked(record.row) ? provider.minute : 0],
+                    () => provider.made(person, Person.standing(person, []), record.row,
+                        () => record.drawer))
                     : keptOr(made.keeping, person.key, JSON.stringify(person),
                         () => provider.made(person, Person.standing(person, [])));
             });
@@ -475,11 +477,6 @@ Provider {
         for (const row of listedNow())
             by[row.person.key] = row;
         return by;
-    }
-
-    // Whether two of the daemon's records say the same of someone.
-    function heardAlike(was, now) {
-        return was?.key === now.key && was.heard === now.heard;
     }
 
     // The daemon's record for one only its sources know, when it came
@@ -715,6 +712,8 @@ Provider {
     // wanted, so those saying someone's time are made again (`clocked`);
     // while they aren't, nothing ticks and nothing is made.
     property int minute: Math.floor(Date.now() / 60000)
+    // Those found saying their time are made again as it turns.
+    onMinuteChanged: rowsOfEveryone.stale = true
     Timer {
         running: provider.wanted
         repeat: true

@@ -17,7 +17,10 @@
 // settings, its Traffic as a spark, and its Name, Hardware Address, Version and
 // Chip.
 // A device the devices piece says is running low (the check's Facts.qml)
-// says so at its side, and one that isn't says it's connected.
+// says so at its side, and one that isn't says it's connected. An adapter
+// the piece says stopped answering says so at its side, warning, with what
+// to do as its note, and holds first the command that starts it again,
+// which Return copies; once it answers it's on again.
 // How the links are doing is answered too; with no such file, neither the
 // links nor the answer say a thing.
 //
@@ -28,6 +31,7 @@
 // connecting that fails says what BlueZ answered, in words.json's words
 // (launcher/Nearby.js). It exits 0 once every case holds, and otherwise 1,
 // saying which case didn't.
+import qs
 import qs.launcher
 import Quickshell
 import QtQuick
@@ -253,6 +257,13 @@ ShellRoot {
     }
 
     // A machine without the link reader.
+    // The adapter's own row, as Bluetooth lists it, given the radio as its
+    // case starts, since within it `radio` would name its own.
+    Accessories {
+        id: stalled
+        settings: ({ links: `${Quickshell.env("XDG_RUNTIME_DIR")}/bluetooth-links.json` })
+    }
+
     Accessories {
         id: unread
         settings: ({ links: `${Quickshell.env("XDG_RUNTIME_DIR")}/nothing.json` })
@@ -367,6 +378,37 @@ ShellRoot {
         expect("one not low doesn't warn", fine.warns === false, String(fine.warns));
     }
 
+    // The adapter whose controller stopped answering, as the devices piece
+    // would say it, and then answering again.
+    function stoppedHolds() {
+        stalled.adapter = radio;
+        const before = Facts.all;
+        const line = "bluetooth-again";
+        Facts.all = before.concat([{ entry: { mark: "bluetooth:adapter" }, piece: {
+            place: "bluetooth", line: line,
+            context: "type bluetooth-again in a terminal to start it again" } }]);
+        const row = stalled.adapterRow;
+        expect("one stopped says so at its side, warning", row.side === "not answering"
+            && row.warns === true, `${row.side}; ${row.warns}`);
+        expect("and what to do as its note",
+            row.note === "type bluetooth-again in a terminal to start it again", row.note);
+        const parts = stalled.adapterParts(radio);
+        expect("the command that starts it again first",
+            parts[0].key === "bluetooth:adapter:restart"
+                && said([parts[0]]) === "Start It Again=", said(parts));
+        expect("which Return copies", parts[0].verb === "copy" && parts[0].copies() === line,
+            parts[0].verb);
+        // Its notice is withdrawn as this same fact goes, so the row says on
+        // again on the look Now stops saying not answering.
+        Facts.all = before;
+        const back = stalled.adapterRow;
+        expect("once it answers, as its fact goes, it's as its radio is",
+            back.side === (radio.enabled ? "on" : "off")
+                && back.warns === false && back.note === "", `${back.side}; ${back.warns}`);
+        expect("with no command in its parts", stalled.adapterParts(radio)
+            .every(part => part.key !== "bluetooth:adapter:restart"), said(parts));
+    }
+
     // The adapter's parts: its settings, its traffic, and what it is.
     function adapterHolds() {
         const parts = bluetooth.adapterParts(radio);
@@ -461,6 +503,7 @@ ShellRoot {
                     .every(row => !row.key.endsWith(":input")), "a stranger got facts");
                 root.linksHold();
                 root.adapterHolds();
+                root.stoppedHolds();
                 root.lowHolds();
                 root.nearbyHolds();
                 Qt.callLater(() => Qt.exit(0));

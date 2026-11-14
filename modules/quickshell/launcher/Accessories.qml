@@ -31,7 +31,10 @@
 // by itself and Wakes the machine, settings whose two choices are a step
 // in; and its Hardware Address, which Return copies. The Adapter holds its Radio,
 // whether it's Visible to others and Pairable, as settings, then its
-// Traffic as a spark, its Name, Hardware Address, Version and Chip.
+// Traffic as a spark, its Name, Hardware Address, Version and Chip. Once
+// its controller stops answering, as the link reader hears it, the
+// Adapter says not answering, and holds first the command that starts it
+// again, which Return copies.
 //
 // BlueZ says nothing of a link's signal, quality, channels or how it's
 // held, nor of an adapter's traffic, address or version, so they're from
@@ -279,14 +282,25 @@ Provider {
     // The machine's own adapter, last, so Return on the first row still
     // connects the likeliest device: a thing holding how it's set and what
     // it is.
+    // One whose controller stopped answering says so at its side, where it
+    // warns, since BlueZ still says it's on while nothing it carries works.
     readonly property var adapterRow: adapter === null ? null : thingRow({
         thing: true,
         key: "bluetooth:adapter",
         name: Words.name("bluetooth:adapter"),
-        side: on ? "on" : "off",
+        side: stopped !== null ? "not answering" : on ? "on" : "off",
+        warns: stopped !== null,
+        note: stopped?.context ?? "",
         glyph: Theme.glyph.bluetooth,
         adapter: adapter
     }, () => provider.adapterParts(provider.adapter))
+
+    // The adapter's controller as the devices piece says it stopped
+    // answering (pieces/Devices.qml), or null while it answers: the
+    // piece's word on it, so this row and Now, which lists it as this row,
+    // never disagree.
+    readonly property var stopped: Facts.all
+        .find(fact => fact.entry.mark === "bluetooth:adapter")?.piece ?? null
 
     // A device as Nearby hears it: what kind it is, how strong it's heard,
     // as a bar and in dBm, and whether it's paired or connected; the same
@@ -704,12 +718,23 @@ Provider {
         const told = Links.adapter(Links.adapters(linksText(false)), radio.adapterId);
         const mark = Theme.glyph.bluetooth;
         const enabled = radio.enabled;
-        const rows = [setting("adapter", "powered", enabled ? "on" : "off", mark, () => [
-            choice("bluetooth-radio-on", enabled, Words.glyph("bluetooth:radio", "off"),
-                () => radio.enabled = true),
-            choice("bluetooth-radio-off", !enabled, Words.glyph("bluetooth:radio"),
-                () => radio.enabled = false)
-        ])];
+        // Stopped, the command that starts it again comes first, for
+        // Return to copy.
+        const line = stopped?.line ?? "";
+        const again = line === "" ? [] : [saying({
+            key: "bluetooth:adapter:restart",
+            name: Words.name("bluetooth:restart"),
+            side: "",
+            copy: line,
+            note: "the command to type in a terminal"
+        })];
+        const rows = again.concat([setting("adapter", "powered", enabled ? "on" : "off", mark,
+            () => [
+                choice("bluetooth-radio-on", enabled, Words.glyph("bluetooth:radio", "off"),
+                    () => radio.enabled = true),
+                choice("bluetooth-radio-off", !enabled, Words.glyph("bluetooth:radio"),
+                    () => radio.enabled = false)
+            ])]);
         if (enabled) {
             const visible = radio.discoverable;
             rows.push(setting("adapter", "discoverable", visible ? "yes" : "no", mark, () => [

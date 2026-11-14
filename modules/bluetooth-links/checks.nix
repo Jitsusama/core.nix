@@ -18,8 +18,12 @@ onLinux {
   # failed one leaving its field null; each link keeps its last twenty
   # reads, starting afresh when it comes back, and each adapter its
   # traffic, a counter starting again counting from nothing; the version
-  # is asked once; nothing new is written while nothing is connected; and
-  # the file is replaced whole, readable by everyone.
+  # is asked once, and of an idle adapter every thirty seconds; nothing
+  # new is written while nothing is connected; the file is replaced whole,
+  # readable by everyone; an adapter that's up and answers nothing for
+  # three looks has stopped, one down or gone hasn't, and one stopped is
+  # asked only every thirty seconds until it answers again; and what an
+  # adapter sits on, its device and driver, is read from sysfs.
   bluetooth-links-reads-the-replies = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in it, its tests included.
   bluetooth-links-passes-clippy = passesClippy "bluetooth-links-passes-clippy" (

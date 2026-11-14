@@ -77,6 +77,9 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
     // The corner names what the table measures, so its heading and its
     // rows start at one edge.
     totals.header(&["traffic", "down", "", "up", ""]);
+    // Each way's total says more than its graph, so the graphs go first,
+    // the upload's before the download's.
+    totals.gives_way(vec![vec![4], vec![2]]);
     let graph = |series: &Series| {
         #[expect(clippy::cast_precision_loss, reason = "a graph's height")]
         let values: Vec<f64> = series.hours.iter().map(|hour| hour.bytes as f64).collect();
