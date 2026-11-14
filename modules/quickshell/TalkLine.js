@@ -233,9 +233,18 @@ function same(here, served) {
 // What only this shell knows of a line: that it's being taken back, or was.
 const TAKING = ["taking", "taken", "told"];
 
-// Whether a line is still open: the void, or whoever has it, hasn't answered, or it has an
-// answer he hasn't seen, or he's taking it back and the void hasn't said; one taken back is
-// done. `seen` holds how many of each line's answers he has seen, by its key.
+// The events that carry an answer's words: answered, landed once it's done, and
+// taken where whoever took it up said something, as what it will do and then what
+// it did (QCXZEB [203d9e2c]); a taking with no words is dropped with the empty.
+const ANSWERING = ["answered", "landed", "taken"];
+// The events after which someone has the line and it waits on them.
+const HOLDING = ["routed", "taken"];
+
+// Whether a line is still open: it has an answer he hasn't seen, or nobody has answered it
+// yet, or he's taking it back and the void hasn't said; one taken back is done, and so is
+// one whose every answer he has seen, whoever still has it (Joel at 23:39 on 2026-11-13,
+// [ff6c6197]: "shows tons of things still waiting even though they were done hours ago").
+// `seen` holds how many of each line's answers he has seen, by its key.
 function open(talk, events, seen) {
     if (TAKING.includes(talk.said)) {
         return talk.said === "taking";
@@ -245,7 +254,8 @@ function open(talk, events, seen) {
     if (heard.last === "") {
         return talk.said === "sent";
     }
-    return heard.waiting !== "" || heard.answers.length > (seen?.[key] ?? 0);
+    return heard.answers.length > (seen?.[key] ?? 0)
+        || (heard.answers.length === 0 && HOLDING.includes(heard.last));
 }
 
 // The lines a talk line shows, each once: those the void keeps, and those said in this
@@ -263,8 +273,34 @@ function gathered(here, served, events, seen) {
         }
     }
     lines.sort((one, other) => other.since - one.since);
-    const opened = lines.filter(line => open(line, events, seen));
-    return opened.concat(lines.filter(line => !opened.includes(line)).slice(0, KEPT_TALKS));
+    const lined = keyed(lines, events);
+    const opened = lined.filter(line => open(line, events, seen));
+    return opened.concat(lined.filter(line => !opened.includes(line)).slice(0, KEPT_TALKS));
+}
+
+// Each line's key from the void's own routings: a talk carries only its latest reply, and
+// the steer inbox can file a later line's reply under an earlier one (8GYNJ6 [0f78d301]),
+// whose undo then names the later line's key. So, newest first, a line holds its reply's
+// key where the void routed it and no newer line holds it, else the earliest routing free
+// between the minute it was said and that key.
+function keyed(lines, events) {
+    const routed = (events ?? []).filter(event => event.event === "routed")
+        .map(event => ({ key: event.line, at: Date.parse(String(event.line).replace(" ", "T")) }))
+        .sort((one, other) => one.at - other.at);
+    const held = [];
+    return lines.map(line => {
+        const own = keyOf(line);
+        const minute = line.since - (line.since % 60000);
+        const free = one => !held.includes(one.key) && one.at >= minute;
+        const owned = Date.parse(own.replace(" ", "T"));
+        const key = routed.find(one => one.key === own && free(one))
+            ?? routed.find(one => free(one) && one.at <= owned);
+        if (own === "" || key === undefined) {
+            return line;
+        }
+        held.push(key.key);
+        return Object.assign({}, line, { key: key.key });
+    });
 }
 
 // What he has seen once the line is put away: every answer of each line it showed, added to
@@ -295,8 +331,11 @@ function seenIn(text) {
 
 // The line's key in the void's day file, "YYYY-MM-DD HH:MM": the day it
 // was said, on the local clock, and the time the void keeps it at, which
-// its first answer's undo says; "" before the void has said.
+// its first answer's undo says, or its routing (keyed); "" before the void has said.
 function keyOf(talk) {
+    if (typeof talk?.key === "string") {
+        return talk.key;
+    }
     if (talk === null || talk.kept === "") {
         return "";
     }
@@ -324,13 +363,6 @@ function eventOf(line) {
         return null;
     }
 }
-
-// The events that carry an answer's words: answered, landed once it's done, and
-// taken where whoever took it up said something, as what it will do and then what
-// it did (QCXZEB [203d9e2c]); a taking with no words is dropped with the empty.
-const ANSWERING = ["answered", "landed", "taken"];
-// The events after which someone has the line and it waits on them.
-const HOLDING = ["routed", "taken"];
 
 // Every answer in the order written, one that supersedes another in its place.
 function answersIn(own) {
