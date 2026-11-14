@@ -28,6 +28,7 @@ import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "AgentWindows.js" as AgentWindows
 import "HeldWindows.js" as HeldWindows
 import "KeyLayers.js" as KeyLayers
 import "Order.js" as Order
@@ -90,11 +91,18 @@ Provider {
     // keeps through the gap may no longer be true; the row's name already
     // says Windows.
     function noted() {
-        return pressing;
+        return silent ? Words.of("windows").said.silent : "";
     }
     // What the head says of Windows while it's entered, where a find's
-    // count is, as home's row says it (Launcher.qml reads it).
-    readonly property string pressing: silent ? Words.of("windows").said.silent : ""
+    // count is (Launcher.qml reads it): that it's not answering, or how
+    // many windows need Joel, as home's row says at its right (homeSays)
+    // and Agents' row says of its sessions, "1 needs you" (VKCF3Z,
+    // 2026-11-14 [961bf73d]).
+    readonly property string pressing: silent ? Words.of("windows").said.silent : needingSaid
+    property string needingSaid: ""
+    function homeSays() {
+        return provider.needingSaid !== "" ? provider.needingSaid : null;
+    }
     stillReading: daemon.live && !daemon.answeredThisWatch && daemon.state !== "not answering"
 
     // An open list follows windows opening, closing and being renamed, and
@@ -241,6 +249,19 @@ Provider {
     readonly property var thisOne: ({ key: "", row: null })
     // The windows whose rows say they wait on Joel, by id.
     readonly property var waitingOf: ({ ids: {} })
+    // Since when each window niri marks urgent has needed Joel, by key
+    // (HeldWindows.js's urgentSince).
+    property var urgentSince: ({})
+
+    // What's held says again since when each window has needed Joel, and
+    // how many do, as a window's urgency or its agent's waiting turned.
+    function needsHeard() {
+        provider.urgentSince = HeldWindows.urgentSince(provider.urgentSince, provider.held,
+            Date.now());
+        provider.needingSaid = AgentWindows.needed(
+            HeldWindows.needing(provider.held, provider.waitingOf.ids),
+            Words.of("windows:agents").said);
+    }
 
     Daemon {
         id: daemon
@@ -321,6 +342,8 @@ Provider {
         if (told.reworded.length > 0)
             rewordingLater.restart();
         letGo(windowsOnly(gone));
+        if (told.reworded.length > 0)
+            provider.needsHeard();
         if (told.unknown.length > 0)
             provider.askWhole(told.unknown);
     }
@@ -466,6 +489,7 @@ Provider {
     function remake(keys, gone) {
         if (keys.length === 0 && gone.length === 0)
             return;
+        provider.needsHeard();
         for (const key of gone) {
             delete provider.kept[key];
             if (key === provider.thisOne.key)
@@ -509,8 +533,18 @@ Provider {
                 record.elsewhere ? null : workspace, record.alike),
             workspace: workspace ? workspace.idx : null,
             focused: record.focused,
-            waiting: String(record.id) in provider.waitingOf.ids
+            waiting: String(record.id) in provider.waitingOf.ids,
+            urgent: record.urgent === true,
+            since: provider.urgentSince[record.key] ?? null
         };
+    }
+
+    // The time a window came to need Joel, as a drawer gives it: the
+    // clock's, and the day's too when it wasn't today.
+    function clocked(at) {
+        const when = new Date(at);
+        const today = new Date().toDateString() === when.toDateString();
+        return Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm");
     }
 
     // What Shift+Return opens below a window: another of its program, its
@@ -546,13 +580,24 @@ Provider {
             name: title,
             glyph: noted === program ? provider.glyphOf(window, entry)
                 : provider.programGlyph(noted),
-            hue: "program",
+            // One niri marks urgent wears its own glyph in the alert, its
+            // name in the text's ink, since colour goes on glyphs, never on
+            // words (VKCF3Z, 2026-11-14 [961bf73d]).
+            hue: said.urgent ? "alert" : "program",
             side: [title === noted ? "" : noted, said.where]
                 .filter(part => part !== "").join(" \u00b7 "),
             context: said.workspace !== null ? `on workspace ${said.workspace}` : "",
             focused: said.focused,
-            waiting: said.waiting,
-            count: said.waiting ? Words.of("windows").said.needs : "",
+            // Waiting on Joel by its agent's word or niri's, it says so the
+            // same, one thing in one word, and leads the rest as Windows
+            // opens (promoted).
+            waiting: said.waiting || said.urgent,
+            count: said.waiting || said.urgent ? Words.of("windows").said.needs : "",
+            drawer: said.since === null ? null : {
+                title: title,
+                facts: [{ label: Words.name("windows:needs-since"),
+                    value: provider.clocked(said.since) }]
+            },
             run: () => Niri.act({ FocusWindow: { id: window.id } }),
             below: below,
             verbs: () => provider.verbs(window, title, program, below),

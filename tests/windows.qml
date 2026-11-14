@@ -287,6 +287,27 @@ ShellRoot {
             Expect.same("and marked pi's", rowOf(16).glyph, windows.programGlyph("pi"));
             told({ gone: ["window:16"] });
 
+            // A window niri marks urgent, as a sandboxed program's opens
+            // behind, needs Joel: its own glyph in the alert, "needs you"
+            // beside its name, a drawer saying since when, and Windows
+            // counting it at home and in its head (VKCF3Z, 2026-11-14).
+            const logbookGlyph = rowOf(11).glyph;
+            const unasked = Object.assign({}, logbook, { focused: false });
+            told({ changed: [Object.assign({}, unasked, { urgent: true })] });
+            Expect.same("a window urgent says it needs Joel", rowOf(11).count, "needs you");
+            Expect.same("its glyph in the alert", rowOf(11).hue, "alert");
+            Expect.same("and still its own", rowOf(11).glyph, logbookGlyph);
+            Expect.same("its drawer says since when",
+                (rowOf(11).drawer?.facts ?? []).map(one => `${one.label} ${one.value}`).join(),
+                `Needs You Since ${windows.clocked(windows.urgentSince["window:11"])}`);
+            Expect.same("Windows counts it at home", windows.homeSays(), "1 needs you");
+            Expect.same("and in its head", windows.pressing, "1 needs you");
+            told({ changed: [unasked] });
+            Expect.same("no longer urgent, it says nothing", rowOf(11).count, "");
+            Expect.same("nor wears the alert", rowOf(11).hue, "program");
+            Expect.expect("nor has a drawer", rowOf(11).drawer === null, rowOf(11).drawer);
+            Expect.same("and isn't counted", windows.homeSays(), null);
+
             // Print, then Return on This Window, as the launcher opens
             // after a pick moved the keys unheard: until the watch's
             // answer, niri's word on where the keys are is the window

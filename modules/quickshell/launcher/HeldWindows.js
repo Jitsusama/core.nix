@@ -16,9 +16,10 @@ function kept() {
 // against the workspace in front, its name, the title it copies, the
 // workspace it says it's on (niri renumbers them as one is removed), and
 // the column and how far down, which it says when windows are alike
-// (Windows.qml's saidOf, Provider.qml's placeOf).
+// (Windows.qml's saidOf, Provider.qml's placeOf), and whether niri marks
+// it urgent, which says it needs Joel.
 const WORDED = ["elsewhere", "named", "title", "workspace", "workspace_idx", "column", "down",
-    "alike"];
+    "alike", "urgent"];
 
 // Whether two records say the same, field by field; a record's fields
 // are plain values.
@@ -162,6 +163,30 @@ function used(held, records) {
         }
     }
     return { unknown, turned, reworded };
+}
+
+// When each window held came to need Joel by niri's word, by key: niri
+// marks a window urgent as it asks for the focus unfocused, as a
+// sandboxed program's window opens behind on a workspace no screen shows
+// (JMJ7J4, 2026-11-14). The time it was first heard so is kept while it
+// stays so and let go once it isn't or it closes, so its drawer says
+// since when (VKCF3Z, 2026-11-14 [961bf73d]).
+function urgentSince(since, held, now) {
+    const out = {};
+    for (const key of held.order) {
+        if (held.records[key].urgent === true) {
+            out[key] = since[key] ?? now;
+        }
+    }
+    return out;
+}
+
+// How many windows held need Joel: urgent, or waiting on him by their
+// agent's word (`waiting`, by id). The one he's in is left out, since
+// he's there already.
+function needing(held, waiting) {
+    return held.order.map(key => held.records[key]).filter(record => !record.focused
+        && (record.urgent === true || String(record.id) in waiting)).length;
 }
 
 // What of a window's record its row says, beside whether it has the focus

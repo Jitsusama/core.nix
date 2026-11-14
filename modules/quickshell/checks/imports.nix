@@ -310,6 +310,7 @@
   ];
   "launcher/Windows.qml" = [
     "Fuzzy.js"
+    "launcher/AgentWindows.js"
     "launcher/HeldWindows.js"
     "launcher/KeyLayers.js"
     "launcher/Order.js"

@@ -88,7 +88,7 @@ QtObject {
             { unknown: [], turned: [], reworded: ["window:3", "window:2"] });
         Expect.same("what a row says is what the shut launcher hears beside the order",
             HeldWindows.worded(), ["elsewhere", "named", "title", "workspace",
-                "workspace_idx", "column", "down", "alike"]);
+                "workspace_idx", "column", "down", "alike", "urgent"]);
         Expect.same("so a whole answer after the switch differs in none",
             HeldWindows.take(held, [record(3, 800, { title: "renamed", focused: true,
                 elsewhere: true }), record(2, 400, { title: "later", named: "later" }),
@@ -154,5 +154,29 @@ QtObject {
             HeldWindows.ownersMoved(kitty([one]), {}), "unmoved");
         Expect.expect("and a program's first opening",
             HeldWindows.ownersMoved({}, kitty([one])), "unmoved");
+
+        // A window niri marks urgent needs Joel from the time it was first
+        // heard so, which it keeps while it stays so, and lets go after.
+        const asking = HeldWindows.kept();
+        HeldWindows.take(asking, [record(1, 300, { focused: true }), record(2, 200),
+            record(3, 100, { urgent: true })], []);
+        const since = HeldWindows.urgentSince({}, asking, 1000);
+        Expect.same("a window urgent needs Joel since it was heard so", since,
+            { "window:3": 1000 });
+        HeldWindows.take(asking, [record(2, 200, { urgent: true })], []);
+        Expect.same("and keeps that time while another comes to need him",
+            HeldWindows.urgentSince(since, asking, 2000), { "window:2": 2000, "window:3": 1000 });
+        HeldWindows.take(asking, [record(3, 100)], ["window:2"]);
+        Expect.same("one no longer urgent, or gone, needs him no more",
+            HeldWindows.urgentSince({ "window:2": 2000, "window:3": 1000 }, asking, 3000), {});
+        Expect.same("the urgent field is a row's word, heard while shut",
+            HeldWindows.worded().includes("urgent"), true);
+
+        // How many need Joel: urgent, or waiting on him by their agent's
+        // word (by id), but never the one he's in.
+        HeldWindows.take(asking, [record(3, 100, { urgent: true }), record(4, 50),
+            record(5, 40, { urgent: true, focused: true })], []);
+        Expect.same("those urgent and those waiting are counted, his own left out",
+            HeldWindows.needing(asking, { 4: true, 1: true }), 2);
     }
 }
