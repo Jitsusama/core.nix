@@ -8654,10 +8654,15 @@ Scope {
     // (Notifications.qml). The opening never waits for that row: it's drawn
     // with what's there, and the cursor moves the moment the row is,
     // in the same frame where it's there already (Y2YBTS, 2026-11-13
-    // [b712b9f2]). Stepping elsewhere or closing first lets it go.
+    // [b712b9f2]). Stepping elsewhere or closing first lets it go. Asked
+    // for normal, the line leaves the find it opened on, so j and k move at
+    // once, as they did through the held notices (Joel, 2026-11-14), and /
+    // finds; the opening took the keys already, so normal holds.
     property var landOn: null
-    function intoOn(name, wanted) {
+    function intoOn(name, wanted, normal) {
         into(name);
+        if (normal === true)
+            prompt.toNormal();
         landOn = wanted;
         landed();
     }

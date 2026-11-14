@@ -40,7 +40,9 @@ fn order(notices: &[Notice]) -> Vec<&Notice> {
 /// The record served: `{ key, kind: "front", front }`, where `front` is
 /// the id of the one in front, the id of the first critical one, which
 /// alone shows while notices are held (the shell's Quiet.qml), each null
-/// where there's none, and how many wait in all.
+/// where there's none, how many wait in all, and the ids of those waiting
+/// in the line's order, which Super+N lists as the notices on screen (the
+/// launcher's Now.qml), so Joel goes through them as the line would.
 pub fn record(notices: &[Notice]) -> Value {
     let order = order(notices);
     let critical = order
@@ -53,6 +55,7 @@ pub fn record(notices: &[Notice]) -> Value {
             "id": order.first().map(|notice| notice.id),
             "critical": critical.map(|notice| notice.id),
             "waiting": order.len(),
+            "order": order.iter().map(|notice| notice.id).collect::<Vec<_>>(),
         },
     })
 }
@@ -77,7 +80,7 @@ mod tests {
     #[test]
     fn the_oldest_waiting_is_in_front_and_every_one_waiting_is_counted() {
         let said = front(&[open(3, 30), open(2, 20), open(1, 10)]);
-        let wanted = json!({ "id": 1, "critical": null, "waiting": 3 });
+        let wanted = json!({ "id": 1, "critical": null, "waiting": 3, "order": [1, 2, 3] });
         assert_eq!(said, wanted, "the first to come isn't in front");
     }
 
@@ -100,7 +103,7 @@ mod tests {
             ..open(4, 40)
         };
         let said = front(&[open(5, 50), gone, resting, withdrawn, read]);
-        let wanted = json!({ "id": 5, "critical": null, "waiting": 1 });
+        let wanted = json!({ "id": 5, "critical": null, "waiting": 1, "order": [5] });
         assert_eq!(said, wanted, "one done with stayed in front");
     }
 
@@ -115,8 +118,13 @@ mod tests {
             ..open(1, 10)
         };
         let notices = [open(4, 50), raised.clone(), urgent.clone()];
-        let said = front(&notices)["id"].clone();
-        assert_eq!(said, json!(1), "the one raised last isn't in front");
+        let said = front(&notices);
+        assert_eq!(said["id"], json!(1), "the one raised last isn't in front");
+        let wanted = json!([1, 2, 4]);
+        assert_eq!(
+            said["order"], wanted,
+            "those waiting aren't in the line's order"
+        );
         let later = Notice { at: 60, ..urgent };
         let said = front(&[open(4, 50), raised, later])["id"].clone();
         assert_eq!(said, json!(2), "a later one that stays isn't in front");
@@ -129,7 +137,7 @@ mod tests {
             ..open(id, at)
         };
         let said = front(&[critical(3, 30), open(2, 20), open(1, 10)]);
-        let wanted = json!({ "id": 1, "critical": 3, "waiting": 3 });
+        let wanted = json!({ "id": 1, "critical": 3, "waiting": 3, "order": [1, 2, 3] });
         assert_eq!(said, wanted, "the critical one first in line isn't named");
     }
 
@@ -139,7 +147,7 @@ mod tests {
         let wanted = json!({
             "key": "front:notices",
             "kind": "front",
-            "front": { "id": null, "critical": null, "waiting": 0 },
+            "front": { "id": null, "critical": null, "waiting": 0, "order": [] },
         });
         assert_eq!(said, wanted, "a front was served with nothing waiting");
     }
