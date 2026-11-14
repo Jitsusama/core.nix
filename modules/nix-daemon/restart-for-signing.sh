@@ -11,8 +11,11 @@ set -euo pipefail
 label=$1
 read=$2
 
-line=$(/usr/bin/shasum -a 256 /etc/nix/signing.conf | /usr/bin/cut -d' ' -f1)
-if [ "$line" != "$(/bin/cat "$read" 2>/dev/null)" ] &&
+line=$(/usr/bin/shasum -a 256 /etc/nix/signing.conf)
+line=${line%% *}
+# None read yet reads as empty, so the first activation restarts it.
+last=$(/bin/cat "$read" 2>/dev/null || true)
+if [ "$line" != "$last" ] &&
   /bin/launchctl print "system/$label" >/dev/null 2>&1; then
   echo "restarting $label, so it signs what it builds" >&2
   /bin/launchctl kickstart -k "system/$label"
