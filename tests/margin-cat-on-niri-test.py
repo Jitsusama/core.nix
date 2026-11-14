@@ -539,9 +539,12 @@ def drawn_as(shell: Shell, at: Json, scale: float) -> str:
         colour = pixels[spot * 3 : spot * 3 + 3].hex()
         return "#" if colour == hue else "~" if near(colour, hue) else "."
 
+    # A box past the screen's edge, the cat on its floor, is drawn only as far as the screen.
+    height = len(pixels) // (width * 3)
+    columns = range(max(0, left), min(width, left + across))
     return "\n".join(
-        "".join(mark(row * width + column) for column in range(left, left + across))
-        for row in range(top, top + across)
+        "".join(mark(row * width + column) for column in columns)
+        for row in range(top, min(height, top + across))
     )
 
 

@@ -82,7 +82,7 @@ PanelWindow {
     readonly property bool emptied: {
         void Niri.revision;
         return space !== null && !window.scene.shared && !Niri.overview
-            && tilesOf(space.id).length === 0;
+            && Tiles.empty(Niri.windows, space.id);
     }
     onEmptiedChanged: {
         if (emptied)
