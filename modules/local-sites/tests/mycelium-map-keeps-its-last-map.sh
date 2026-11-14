@@ -2,7 +2,8 @@
 # Checks the mycelium site's writer against a stand-in for mycelium: while
 # no node answers, it ends well, says so in a line and leaves the last map as
 # it was, with nothing of its own left beside it; once one answers, it writes
-# a new map holding the live sessions alone and no message's words.
+# a new map holding mycelium's networks and session cells as it drew them,
+# each machine, and no message's words.
 # usage: mycelium-map-keeps-its-last-map.sh <mycelium-map.sh> <filter> <jq> <coreutils bin>
 set -euo pipefail
 
@@ -23,9 +24,10 @@ if [ -e "$work/down" ]; then
   exit 1
 fi
 case "\$1" in
-  sessions)
-    echo '{"Ok":{"Sessions":[{"id":"a","address":"AAAAAA","title":"one","machine":"m","state":"busy","groups":["peer.x","quest.y"],"presence":{}},{"id":"b","address":"BBBBBB","title":"two","machine":"m","state":"ended","groups":[],"presence":{}}]}}' ;;
-  swarm) echo '{"kind":"team","key":"team:Y","title":"Y","members":["AAAAAA"],"counts":{}}' ;;
+  networks)
+    echo '{"kind":"network","name":"orchestration.y","shape":"orchestration","cells":["AAAAAA"]}'
+    echo '{"kind":"cell","type":"session","name":"AAAAAA","networks":["orchestration.y"]}'
+    echo '{"kind":"cell","type":"machine","name":"m","networks":["machines"]}' ;;
   machines) echo '{"Ok":{"Machines":[{"name":"m","state":"ready","cpu":{"cores":4},"room":{}}]}}' ;;
   messages) echo '{"Ok":{"Messages":[{"at":"now","from":"AAAAAA","intent":"fyi","groups":[],"text":"words"}]}}' ;;
 esac
@@ -58,8 +60,8 @@ fi
 
 rm "$work/down"
 "$BASH" "$writer" "$filter" "$work/site"
-drawn=$("$jq" -c '[.sessions[].id, .teams[].key, .machines[].name]' "$work/site/now.json")
-if [ "$drawn" != '["a","Y","m"]' ]; then
+drawn=$("$jq" -c '[.cells[].name, .networks[].name, .machines[].name]' "$work/site/now.json")
+if [ "$drawn" != '["AAAAAA","orchestration.y","m"]' ]; then
   echo "Once the node answered, the map drew $drawn." >&2
   exit 1
 fi
