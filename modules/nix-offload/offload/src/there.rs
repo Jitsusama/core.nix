@@ -4241,7 +4241,7 @@ pub fn quoted(word: &str) -> String {
 /// Base64 as text, or none when it isn't both. Nix's store URIs carry a
 /// host key this way, and it's the only base64 this reads, so it's
 /// decoded here rather than with a crate.
-fn decoded(encoded: &str) -> Option<String> {
+pub(crate) fn decoded(encoded: &str) -> Option<String> {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut bits: u32 = 0;
     let mut held = 0;

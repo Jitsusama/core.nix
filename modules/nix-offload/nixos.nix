@@ -295,6 +295,9 @@ in
     ++ lib.optionals (lines != null) (
       [ "d ${linesFolder} 0755 nix-offload-lines nix-offload-lines -" ]
       ++ map (file: "f ${linesFolder}/${file} 0644 nix-offload-lines nix-offload-lines -") lineFiles
+      # The lent builders root vouches for, which the fence's ssh agent
+      # reads, there from boot so a reader never finds it missing.
+      ++ [ "f ${linesFolder}/lent 0644 nix-offload-lines nix-offload-lines -" ]
     );
 
     # The lender leaves the cloud token readable by this account alone,

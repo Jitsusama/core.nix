@@ -81,11 +81,17 @@ def lending(
 
 
 def test_root_is_given_only_the_lines_it_trusts(
-    lending: BaseMachine, lent: str, standing: str
+    lending: BaseMachine, lent: str, standing: str, values: dict[str, Any]
 ) -> None:
-    """The lent builder's line and the standing one's reach root; a forged host key doesn't."""
+    """The lent builder's line and the standing one's reach root; a forged host key doesn't.
+
+    The lent file names the lent builder by its lender and instance, for the fence's agent.
+    """
     lending.wait_until_succeeds(f"grep -qxF {shlex.quote(lent)} {ROOTS}/machines", timeout=COPYING)
     assert lending.succeed(f"cat {ROOTS}/machines") == f"{lent}\n"
+    vouched = f"nix-offload a-builder-1 ssh-ed25519 {values['lentKey']}\n"
+    named = lending.succeed(f"cat {ROOTS}/lent")
+    assert named == vouched, f"the lent file says {named!r}, not {vouched!r}"
     lending.wait_until_succeeds(
         f"grep -qxF {shlex.quote(standing)} {ROOTS}/machines-with-standing", timeout=COPYING
     )
@@ -100,9 +106,10 @@ def test_the_lenders_account_is_in_none_of_the_services_groups(lending: BaseMach
 
 def test_the_lenders_account_cannot_write_roots_lines(lending: BaseMachine) -> None:
     """Root's lines are the service's account's, which the lender's can't change or add to."""
-    owners = lending.succeed(f"stat -c %U {ROOTS} {ROOTS}/machines").split()
-    assert owners == ["nix-offload-lines", "nix-offload-lines"], owners
+    owners = lending.succeed(f"stat -c %U {ROOTS} {ROOTS}/machines {ROOTS}/lent").split()
+    assert owners == ["nix-offload-lines"] * 3, owners
     lending.fail(f"runuser -u someone -- sh -c ': >> {ROOTS}/machines'")
+    lending.fail(f"runuser -u someone -- sh -c ': >> {ROOTS}/lent'")
     lending.fail(f"runuser -u someone -- touch {ROOTS}/machines.draft")
 
 
@@ -212,7 +219,11 @@ def test_no_other_account_opens_the_standing_door(
 
 
 def test_nothing_lent_takes_the_lent_line_away(lending: BaseMachine, standing: str) -> None:
-    """With no instance named, the lent builder's line no longer reaches root, the standing does."""
+    """With no instance named, the lent builder's line no longer reaches root, the standing does.
+
+    Nor does the lent file name it.
+    """
     write(lending, f"{LENDER}/instance", "")
     lending.wait_until_succeeds(f"test ! -s {ROOTS}/machines", timeout=COPYING)
+    lending.wait_until_succeeds(f"test ! -s {ROOTS}/lent", timeout=COPYING)
     assert lending.succeed(f"cat {ROOTS}/machines-with-standing") == f"{standing}\n"
