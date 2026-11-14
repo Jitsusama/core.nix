@@ -1749,7 +1749,12 @@ fn search(
     if fixed()? {
         return Ok(None);
     }
-    let (bad, narrowed) = if narrowed != test && bad.as_deref() == Some(head) {
+    // The bisect counts the last merge to change the test as failing, run
+    // or not, and that is often not the head: on 14 November #4426 was
+    // blamed for vm-desktop-launcher-waits-on-joel so, its subtest having
+    // passed alone at every merge run and at the head itself, where the
+    // merge before it, #4429, had broken the test.
+    let (bad, narrowed) = if narrowed != test && bad.is_some() && bad.as_ref() == merges.last() {
         alone_at_head(
             world,
             state,
@@ -1837,7 +1842,8 @@ fn narrowed_at(world: &dyn World, state: &State, head: &str, test: &str) -> Stri
 }
 
 /// The merge to blame and the check that found it, once a search narrowed
-/// to `narrowed` blamed the last of `merges`, the head. A bisect counts
+/// to `narrowed` blamed the last of `merges`, the head or the last merge
+/// before it to change the test. A bisect counts
 /// its last merge as failing without a run there, so subtests that pass
 /// alone even at the head, failing only after the others run, put the
 /// blame on it. On 14 November vm-desktop-launcher-waits-on-joel's two
@@ -3734,6 +3740,34 @@ mod tests {
             *world.reverted.lock().unwrap(),
             names("m2"),
             "test_b passes alone even at the head, so only the whole test can say m2 broke it"
+        );
+    }
+
+    #[test]
+    fn subtests_that_pass_alone_at_the_last_merge_to_change_the_test_send_it_whole() {
+        let state = state("subtests-pass-alone-before-head");
+        state.set_heads("s", "s").unwrap();
+        state.make().unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 m2 m3 h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            still: vec![("h".to_owned(), "vm-a".to_owned())],
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("m3", "vm-a", &[1, 1])
+        .exits("m2", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("m2"),
+            "test_b passes alone at m3, the last merge to change vm-a, so only the whole test \
+             can say m2 broke it"
         );
     }
 
