@@ -220,11 +220,14 @@ PanelWindow {
             roams = null;
             resting.stop();
             walkFrom(hurried, saw);
-        } else if (place !== null && going === null && under?.floats && sat !== wanted
+        } else if (place !== null && going === null && sat !== wanted
             && Niri.windows[sat] === undefined) {
-            // The floating window it sat on closed under it, which niri
-            // shrinks away at once: it gets off now, never waiting for
-            // the keys to rest (VKCF3Z 26038726).
+            // The window it sat on closed under it, which niri takes
+            // away at once: it gets off now, never waiting for the keys
+            // to rest (VKCF3Z 26038726), and a row of a column falls
+            // ahead of the window grown down over it (Joel, 2026-11-14
+            // 17:24: "it seems to hang out in the middle then walk
+            // across, that is not believable").
             resting.stop();
             walkFrom(true, saw);
         } else if (place === null || (going === null && wanted === sat)) {
@@ -304,6 +307,8 @@ PanelWindow {
             floats: Floats.of(tiles, 0),
             floated: saw ? Floats.of(saw, 0) : [],
             spring: Theme.motion.spring,
+            // The window it sat on gone, until it sits again.
+            closed: sat !== null && Niri.windows[sat] === undefined,
             ahead: MarginCat.behind(frameMs, "resize"),
             frame: frameMs,
             marks: marksLit

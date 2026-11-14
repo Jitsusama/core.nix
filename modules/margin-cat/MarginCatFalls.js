@@ -198,13 +198,39 @@ function rides(way, cols, at) {
         away, room, frame: at.frame });
 }
 
+// The window it sat on closed (`at.closed`), and the one over it in its
+// column grown down over where it sat, as niri lays a column out again
+// as a row goes: it falls at once ahead of that window's edge, on niri's
+// own spring, onto what's under where the edge stops, lands and shakes
+// it off, rather than hanging there or shoved across the face (Joel,
+// 2026-11-14 17:24: "it seems to hang out in the middle then walk
+// across, that is not believable"). True where it fell.
+function drops(way, cols, at) {
+    const inWindow = at.closed && at.spring && way.legs.length === 0
+        ? within(way, cols, at) : null;
+    if (inWindow === null || inWindow.row.top > way.y) {
+        return false;
+    }
+    const lands = under({ x: way.x, y: inWindow.row.bottom + at.air }, cols, at);
+    const spring = Object.assign({}, at.spring, { slowdown: at.slowdown ?? 1 });
+    const ms = MarginCat.slides(spring);
+    const ahead = Math.min(at.ahead ?? 0, ms - 1);
+    way.turn = 0;
+    Ways.rides(way, { x: way.x, y: lands.y }, { ms: ms - ahead, frame: at.frame,
+        edge: t => MarginCat.slid(t + ahead, spring), away: true, falls: true });
+    Ways.holds(way, "lands", MarginCat.LANDS);
+    Ways.holds(way, "shakes", SHAKES);
+    return true;
+}
+
 // From wherever it is on a way, onto something that holds it on
-// `cols`: shoved clear of a window grown into it, then, in the air, a
-// grab at an edge in reach or a fall onto what's below, landing on its
-// feet and shaking it off. The stop it ends on.
+// `cols`: fallen from a row closed under it, or shoved clear of a
+// window grown into it, then, in the air, a grab at an edge in reach or
+// a fall onto what's below, landing on its feet and shaking it off. The
+// stop it ends on.
 function settle(way, cols, at) {
     rides(way, cols, at);
-    const inWindow = within(way, cols, at);
+    const inWindow = drops(way, cols, at) ? null : within(way, cols, at);
     if (inWindow !== null) {
         const out = clear(way, cols, at, inWindow);
         if (out !== null) {

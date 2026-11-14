@@ -124,7 +124,9 @@ function fallen(speed, s) {
 // must sit flush by the time the edge stops, and never more than
 // `ride.room` behind, before what follows would pass through it; past two
 // cells in the falling drawing, landing crouched, and no pose for less
-// than two frames at 60 Hz.
+// than two frames at 60 Hz. Fallen from a row gone under it
+// (`ride.falls`), it's in the falling drawing the whole way, and lands
+// after.
 function rides(way, to, ride) {
     const at = way.at;
     const edge = ride.edge;
@@ -156,7 +158,9 @@ function rides(way, to, ride) {
             }
         }
         slide = t => (ground * edge(t) - behind(t)) / ground;
-        if (lifts !== null && lands - lifts >= SHOWN) {
+        if (ride.falls) {
+            posed = () => "falling";
+        } else if (lifts !== null && lands - lifts >= SHOWN) {
             const crouches = ms - lands >= SHOWN ? lands + MarginCat.LANDS : lands;
             posed = t => t >= lifts && t < lands ? "falling"
                 : t >= lands && t < crouches ? "pouncing" : null;
