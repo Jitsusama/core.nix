@@ -108,7 +108,9 @@ fn offered(picture: &Picture, fits: &str) -> Option<Action> {
 fn go_to(session: &str) -> Action {
     Action {
         name: "Go to the session".into(),
-        run: vec!["spend-watch".into(), "go".into(), session.into()],
+        run: ["spend-watch", "sessions", session, "go"]
+            .map(String::from)
+            .to_vec(),
     }
 }
 

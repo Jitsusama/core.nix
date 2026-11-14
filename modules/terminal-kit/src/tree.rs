@@ -128,16 +128,20 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
             continue;
         }
         let here = walked.chain.last().copied().unwrap_or(root);
-        if takes_name(here, filled) {
+        let answers = |sub: &&Help| sub.name == *word || sub.aliases.contains(word);
+        // An old word typed where its collection now takes a name, as
+        // `findings expect KEY` before `findings KEY expect`, still
+        // answers: an unlisted subcommand is the only kind matched
+        // before the name, so a name never meets a listed word.
+        let old = (filled == 0)
+            .then(|| here.subs.iter().find(|sub| !sub.listed && answers(sub)))
+            .flatten();
+        if old.is_none() && takes_name(here, filled) {
             filled += 1;
             typed.push(quoted(word));
             continue;
         }
-        if let Some(sub) = here
-            .subs
-            .iter()
-            .find(|sub| sub.name == *word || sub.aliases.contains(word))
-        {
+        if let Some(sub) = old.or_else(|| here.subs.iter().find(answers)) {
             walked.words[at].clone_from(&sub.name);
             typed.push(sub.name.clone());
             walked.chain.push(sub);
@@ -320,6 +324,41 @@ mod tests {
         assert_eq!(
             path("devices Pixel Study"),
             "refused: eero devices takes no more words"
+        );
+    }
+
+    #[test]
+    fn an_old_word_before_a_collections_name_still_answers() {
+        let help = Help::new("spend", "what it costs").subcommand(
+            Help::new("findings", "each finding, or one")
+                .argument("<key>", "a finding's key")
+                .subcommand(Help::new("expect", "mark it expected"))
+                .subcommand(
+                    Help::new("expect", "mark one expected")
+                        .argument("<key>", "a finding's key")
+                        .unlisted(),
+                ),
+        );
+        let path = |line: &str| {
+            walk(&help, &words(line)).map_or_else(
+                |failure| format!("refused: {}", failure.what),
+                |walked| walked.path(),
+            )
+        };
+        assert_eq!(
+            path("findings burn:s1 expect"),
+            "spend findings expect",
+            "the action after its name"
+        );
+        assert_eq!(
+            path("findings expect burn:s1"),
+            "spend findings expect",
+            "the old word before the name was read as a name"
+        );
+        assert_eq!(
+            path("findings burn:s1"),
+            "spend findings",
+            "a name alone is still a name"
         );
     }
 

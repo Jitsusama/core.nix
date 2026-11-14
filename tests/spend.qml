@@ -56,11 +56,11 @@ ShellRoot {
         actions: [{
             kind: "go",
             name: "Go to the session",
-            run: ["spend-watch", "go", "s1"]
+            run: ["spend-watch", "sessions", "s1", "go"]
         }, {
             kind: "mark",
             name: "It's expected",
-            run: ["spend-watch", "findings", "expect", "k"]
+            run: ["spend-watch", "findings", "k", "expect"]
         }]
     })
 

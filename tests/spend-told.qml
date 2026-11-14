@@ -348,10 +348,10 @@ ShellRoot {
             quiet: said("the weekly cap is close", "The weekly cap is close"),
             actions: [{
                 kind: "go", key: "status:finding:burn:s1", name: "Go to the session",
-                run: ["spend-watch", "go", "s1"]
+                run: ["spend-watch", "sessions", "s1", "go"]
             }, {
                 kind: "mark", key: "status:mark:burn:s1", name: "It's expected",
-                run: ["spend-watch", "findings", "expect", "burn:s1"]
+                run: ["spend-watch", "findings", "burn:s1", "expect"]
             }]
         }));
         until("the bar's actions offered", () => bar.actions.length === 3, () => {

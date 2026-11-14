@@ -684,7 +684,7 @@ fn finding_line(finding: &Finding) -> Line {
         made.verb = verb(action).into();
     }
     made.expect = (!finding.marked).then(|| {
-        ["spend-watch", "findings", "expect", &finding.key]
+        ["spend-watch", "findings", &finding.key, "expect"]
             .map(String::from)
             .to_vec()
     });

@@ -10,9 +10,12 @@
 //!   something wait for the processor, memory or the disk
 //!   (src/pressure.rs says which), and every ten seconds what the account
 //!   and its slices with memory floors hold (src/held.rs).
-//! - `collector at 09:01:57 [--around 5s]` lists every span open within
-//!   that much of the moment, by when it began.
-//! - `collector trace <id>` shows one trace's spans as the tree they make.
+//! - `collector spans [--at 09:01:57] [--around 5s]` lists every span open
+//!   within that much of the moment, now by default, by when it began.
+//! - `collector traces <id>` shows one trace's spans as the tree they make.
+//!
+//! `collector at <time>`, as it was asked before each resource took its
+//! own word, still answers, unlisted.
 //!
 //! It takes the shape every command of ours does (docs/commands.md),
 //! through the terminal kit: `--json` answers `collector.spans/1`, one
@@ -39,8 +42,9 @@ use terminal_kit::{Context, Exit, Failure, Format, Help, Room, flags, layout};
 use otlp::Span;
 use store::{Keep, Store};
 
-/// What it does, by the first word.
-const COMMANDS: [&str; 3] = ["at", "trace", "serve"];
+/// What it does, by the first word: each listed first, then their
+/// singulars and the old `at`, which the kit answers silently.
+const COMMANDS: [&str; 6] = ["spans", "traces", "trace", "serve", "at", "span"];
 
 /// What it says of itself, set as help and read by the check.
 fn help() -> Help {
@@ -48,21 +52,35 @@ fn help() -> Help {
         "collector",
         "keeps the traces programs send, to read a moment back",
     )
-    .example("collector at 09:01:57 --around 5s", "every span open then")
-    .example("collector trace 4bf92f35", "one trace's spans, as a tree")
-    .example("collector at now --json", "the spans open now, as JSON")
+    .example(
+        "collector spans --at 09:01:57 --around 5s",
+        "every span open then",
+    )
+    .example("collector traces 4bf92f35", "one trace's spans, as a tree")
+    .example("collector spans --json", "the spans open now, as JSON")
     .subcommand(
-        reads("at", "the spans open at a moment, by when each began")
-            .example("collector at 09:01:57", "every span open then")
-            .example("collector at now --around 5s", "five seconds either side")
-            .argument("<time>", "a moment, as 09:01:57 or now")
+        reads("spans", "the spans open at a moment, by when each began")
+            .alias("span")
+            .example("collector spans", "every span open now")
+            .example("collector spans --at 09:01:57", "every span open then")
+            .example("collector spans --around 5s", "five seconds either side")
+            .option("--at TIME", "a moment, as 09:01:57; now by default")
             .option("--around LENGTH", "that much either side, as 500ms or 5s"),
     )
     .subcommand(
-        reads("trace", "one trace's spans, each below its parent")
-            .example("collector trace 4bf92f35", "that trace, as a tree")
+        reads("traces", "one trace's spans, each below its parent")
+            .alias("trace")
+            .example("collector traces 4bf92f35", "that trace, as a tree")
             .argument("<id>", "the trace's id, or its start")
+            .exit(Exit::Usage, "no trace's id was given")
             .exit(Exit::NotFound, "no such trace is kept"),
+    )
+    // How a moment was asked before spans took its own word.
+    .subcommand(
+        reads("at", "the spans open at a moment")
+            .argument("<time>", "a moment, as 09:01:57 or now")
+            .option("--around LENGTH", "that much either side")
+            .unlisted(),
     )
     .subcommand(
         Help::new("serve", "keeps what's sent, as its unit runs it")
@@ -94,6 +112,8 @@ fn main() -> ExitCode {
 /// A command line read: the words and the places it names.
 struct Asked {
     words: Vec<String>,
+    /// The moment `spans` reads, as typed; now when none is.
+    at: Option<String>,
     around: i64,
     store: PathBuf,
     socket: PathBuf,
@@ -108,6 +128,7 @@ fn usage(what: impl Into<String>) -> Failure {
 fn asked(args: &[String]) -> Result<Asked, Failure> {
     let mut asked = Asked {
         words: Vec::new(),
+        at: None,
         around: 0,
         store: home("XDG_STATE_HOME", ".local/state")?.join("collector"),
         socket: env::var_os("XDG_RUNTIME_DIR")
@@ -123,6 +144,7 @@ fn asked(args: &[String]) -> Result<Asked, Failure> {
                 .ok_or_else(|| usage(format!("{arg} needs a value")))
         };
         match arg.as_str() {
+            "--at" => asked.at = Some(value()?),
             "--around" => asked.around = when::length(&value()?).map_err(usage)?,
             "--store" => asked.store = PathBuf::from(value()?),
             "--socket" => asked.socket = PathBuf::from(value()?),
@@ -131,7 +153,7 @@ fn asked(args: &[String]) -> Result<Asked, Failure> {
                 return Err(flags::unknown(
                     "option",
                     flag,
-                    &["--around", "--store", "--socket", "--pressure"],
+                    &["--at", "--around", "--store", "--socket", "--pressure"],
                 ));
             }
             _ => asked.words.push(arg.clone()),
@@ -150,7 +172,7 @@ fn home(variable: &str, usual: &str) -> Result<PathBuf, Failure> {
         .ok_or_else(|| {
             Failure::new(Exit::Config, "there's nowhere the spans are kept")
                 .because(format!("neither {variable} nor HOME is set"))
-                .try_this("collector --store FOLDER at now")
+                .try_this("collector --store FOLDER spans")
         })
 }
 
@@ -176,30 +198,21 @@ fn body(context: &Context) -> Result<(), Failure> {
         ["serve"] => serve::serve(&asked.socket, store(&asked)?, &asked.pressure).map_err(|why| {
             Failure::new(Exit::Failed, "the collector stopped keeping spans").because(why)
         }),
-        ["at", moment] => {
-            let at = when::moment(moment, &zone, Timestamp::now()).map_err(usage)?;
-            let spans = store(&asked)?
-                .during(at - asked.around, at + asked.around)
-                .map_err(unread)?;
-            let ordered: Vec<(&Span, usize)> = spans.iter().map(|span| (span, 0)).collect();
-            if spans.is_empty() && *context.format() == Format::Text {
-                return said(context, "No span was open then.\n");
-            }
-            answered(context, &ordered, &zone)
-        }
-        ["trace", id] => {
+        ["spans" | "span"] => open_at(context, &asked, asked.at.as_deref().unwrap_or("now"), &zone),
+        ["at", moment] => open_at(context, &asked, moment, &zone),
+        ["traces" | "trace", id] => {
             let spans = store(&asked)?.trace(id).map_err(unread)?;
             if spans.is_empty() {
                 return Err(
                     Failure::new(Exit::NotFound, format!("no trace {id} is kept"))
                         .because("it's past seven days, or was never sent")
-                        .try_this("collector at TIME"),
+                        .try_this("collector spans --at TIME"),
                 );
             }
             answered(context, &tree(&spans), &zone)
         }
         ["at"] => Err(usage("at needs a time, as 09:01:57 or now")),
-        ["trace"] => Err(usage("trace needs a trace's id")),
+        ["traces" | "trace"] => Err(usage("traces needs a trace's id")),
         [word, ..] if !COMMANDS.contains(&word) => Err(flags::unknown("command", word, &COMMANDS)),
         [word, ..] => Err(usage(format!("{word} takes {}", takes(word)))),
     }
@@ -209,9 +222,23 @@ fn body(context: &Context) -> Result<(), Failure> {
 fn takes(command: &str) -> &'static str {
     match command {
         "at" => "one time",
-        "trace" => "one trace's id",
+        "traces" | "trace" => "one trace's id",
         _ => "no words",
     }
+}
+
+/// `spans`: every span open within `--around` of a moment, by when each
+/// began.
+fn open_at(context: &Context, asked: &Asked, moment: &str, zone: &TimeZone) -> Result<(), Failure> {
+    let at = when::moment(moment, zone, Timestamp::now()).map_err(usage)?;
+    let spans = store(asked)?
+        .during(at - asked.around, at + asked.around)
+        .map_err(unread)?;
+    let ordered: Vec<(&Span, usize)> = spans.iter().map(|span| (span, 0)).collect();
+    if spans.is_empty() && *context.format() == Format::Text {
+        return said(context, "No span was open then.\n");
+    }
+    answered(context, &ordered, zone)
 }
 
 fn said(context: &Context, text: &str) -> Result<(), Failure> {

@@ -424,7 +424,10 @@ in
       }
     ];
     goes = "That page, by its number";
-    run = [ command ];
+    run = [
+      command
+      "run"
+    ];
   };
 
   # What each zathura has open now, for its Recent to lead with, read as

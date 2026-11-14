@@ -228,9 +228,12 @@ or launchd, and [`home.nix`][2] the account's.
   5 GiB or more is listed beside the ten biggest, so a leak shows by name
   before it's big. A folder that measurement didn't size isn't said to
   grow. `src/ledger.rs` holds it.
-- **Keeps.** `disk-guard keep FOLDER REASON...` tells the account's guard
-  never to clear anything in a folder, or holding one, for Joel's reason;
-  `disk-guard unkeep FOLDER` lets go. They live in the state folder's
+- **Keeps.** `disk-guard keeps FOLDER add REASON...` tells the account's
+  guard never to clear anything in a folder, or holding one, for Joel's
+  reason; `disk-guard keeps FOLDER remove` lets go. `disk-guard keeps` lists
+  every keep, and `disk-guard keeps FOLDER` names the one covering it. The
+  words before, `keep FOLDER REASON...` and `unkeep FOLDER`, still answer,
+  offered nowhere. They live in the state folder's
   `keeps.json`, read afresh at each survey, so a keep holds from the next
   step. A holder a keep covers says his reason, and carries it as `kept`,
   while `clearable` and `clears` stay what the guard judged of it. The
@@ -241,7 +244,7 @@ or launchd, and [`home.nix`][2] the account's.
   daemon writes them into `keeps.json` marked `declared` as it starts,
   takes back those the config stops naming, and leaves a hand keep on
   the same folder as it is. A survey counts them even before a daemon
-  wrote them, so a plan does too, and `unkeep` refuses one, since only
+  wrote them, so a plan does too, and `remove` refuses one, since only
   the config lets it go. `src/keeps.rs` holds it.
 - **Clears.** `disk-guard clear FOLDER` asks the account's guard to clear
   what it may of a folder now, without waiting for its band or for it to
@@ -314,8 +317,8 @@ and `--color` anywhere before `--`, and a failure in three parts on stderr, as
 `error/1` under `--json`. A bare `disk-guard` reads the status. Each answer
 under `--json` names its schema, `disk-guard.<command>/1`, and holds facts in
 units its keys name, never a sentence; `journal --format jsonl` streams one
-`entry` line each. The machine daemon runs `keep`, `unkeep`, `clear` and
-`thaw` for the launcher's disk piece with `--json` and words Joel's sentence
+`entry` line each. The machine daemon runs `keeps FOLDER add`, `keeps FOLDER
+remove`, `clear` and `thaw` for the launcher's disk piece with `--json` and words Joel's sentence
 itself, so the text for a person may change without changing the shell.
 
 Its exits are the kit's: 1 when it couldn't be done or a footprint couldn't be

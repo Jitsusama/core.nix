@@ -11,14 +11,19 @@
 //!
 //! Run by hand, it asks that socket:
 //!
-//! - `chrome-open-tabs list` prints each tab in Chrome's own windows, one a
+//! - `chrome-open-tabs tabs` prints each tab in Chrome's own windows, one a
 //!   line: its id, its window, whether it's the window's tab in front, when
 //!   it was last looked at (milliseconds since 1970), its address and its
 //!   title, apart by tabs;
-//! - `chrome-open-tabs go ID` brings that tab to the front of its window;
-//! - `chrome-open-tabs close ID` closes it.
+//! - `chrome-open-tabs tabs ID` says that one tab's facts;
+//! - `chrome-open-tabs tabs ID go` brings it to the front of its window;
+//! - `chrome-open-tabs tabs ID close` closes it.
 //!
-//! An ID is one `list` gave, the id Chrome's tabs have for an extension;
+//! `list`, `go ID` and `close ID`, as it was asked before the tabs took a
+//! word of their own, still answer, unlisted; the socket's own lines are
+//! those words, since the programs daemon asks it so.
+//!
+//! An ID is one `tabs` gave, the id Chrome's tabs have for an extension;
 //! one missing or not a number is refused, so a tab told of by Chrome's
 //! session file, which `chrome-recent-sites open` gives no id, is never
 //! gone to or closed by another's.
@@ -48,7 +53,7 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value as Json, json};
-use terminal_kit::{Context, Exit, Failure, Help, time};
+use terminal_kit::{Context, Exit, Failure, Help, layout, time};
 
 /// The socket's name in the account's runtime folder.
 const SOCKET: &str = "chrome-open-tabs.sock";
@@ -322,16 +327,11 @@ fn socket() -> Option<PathBuf> {
     env::var_os("XDG_RUNTIME_DIR").map(|runtime| PathBuf::from(runtime).join(SOCKET))
 }
 
-fn help() -> Help {
+/// The help as Chrome starts it, with no subcommands for the kit to walk,
+/// since Chrome's first word is the extension's address.
+fn hosting_help() -> Help {
     Help::new("chrome-open-tabs", "Chrome's open tabs, for the launcher")
-        .command(
-            "list",
-            "each tab: id, window, front, looked at, address, title",
-        )
-        .command("go ID", "brings that tab to the front of its window")
-        .command("close ID", "closes it")
-        .example("chrome-open-tabs list", "a tab a line, apart by tabs")
-        .example("chrome-open-tabs list --json", "the same, as JSON")
+        .example("chrome-open-tabs tabs", "a tab a line, apart by tabs")
         .exit(
             Exit::Failed,
             "the host couldn't serve, or the answer be said",
@@ -340,22 +340,70 @@ fn help() -> Help {
         .exit(Exit::Config, "there's no runtime folder for the socket")
 }
 
+fn help() -> Help {
+    hosting_help()
+        .example("chrome-open-tabs tabs --json", "the same, as JSON")
+        .example("chrome-open-tabs tabs 7 go", "tab 7, in front")
+        .subcommand(
+            asks(
+                "tabs",
+                "each tab: id, window, front, looked at, address, title",
+            )
+            .alias("tab")
+            .example("chrome-open-tabs tabs", "a tab a line, apart by tabs")
+            .example("chrome-open-tabs tabs 7", "tab 7's facts")
+            .example("chrome-open-tabs tabs 7 close", "tab 7, closed")
+            .argument("<id>", "a tab's id, as tabs gives it")
+            .exit(Exit::Usage, "the id isn't a number")
+            .exit(Exit::NotFound, "no tab open has that id")
+            .subcommand(
+                asks("go", "brings the tab to the front of its window")
+                    .example("chrome-open-tabs tabs 7 go", "tab 7, in front"),
+            )
+            .subcommand(
+                asks("close", "closes the tab")
+                    .example("chrome-open-tabs tabs 7 close", "tab 7, closed"),
+            ),
+        )
+        // How the launcher asked before the tabs took a word of their own.
+        .subcommand(asks("list", "each tab").unlisted())
+        .subcommand(
+            asks("go", "a tab, in front")
+                .argument("<id>", "")
+                .unlisted(),
+        )
+        .subcommand(
+            asks("close", "a tab, closed")
+                .argument("<id>", "")
+                .unlisted(),
+        )
+}
+
+/// A subcommand that asks the host over its socket.
+fn asks(name: &str, about: &str) -> Help {
+    Help::new(name, about)
+        .exit(Exit::Unavailable, "the host's socket broke off")
+        .exit(Exit::Config, "there's no runtime folder for the socket")
+}
+
 fn asked_wrongly(what: &str) -> Failure {
     Failure::new(Exit::Usage, what).try_this("chrome-open-tabs --help")
 }
 
+/// Whether Chrome started it, which names the extension's origin first.
+fn hosting(first: Option<&str>) -> bool {
+    first.is_some_and(|origin| origin.starts_with("chrome-extension://"))
+}
+
 fn main() -> ExitCode {
-    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+    let hosted = hosting(env::args().nth(1).as_deref());
+    let help = if hosted { hosting_help() } else { help() };
+    terminal_kit::main(&help, env!("CARGO_PKG_VERSION"), |context| {
         let socket = socket().ok_or_else(|| {
             Failure::new(Exit::Config, "there's no runtime folder for the socket")
                 .because("XDG_RUNTIME_DIR isn't set")
         })?;
-        // Chrome names the extension's origin first.
-        let hosting = context
-            .args
-            .first()
-            .is_some_and(|origin| origin.starts_with("chrome-extension://"));
-        if hosting {
+        if hosting(context.args.first().map(String::as_str)) {
             return host(io::stdin().lock(), io::stdout(), &socket).map_err(|error| {
                 Failure::new(Exit::Failed, "it couldn't host the extension")
                     .because(error.to_string())
@@ -365,14 +413,31 @@ fn main() -> ExitCode {
     })
 }
 
+/// What the command line asks of the host, and the one tab it names when
+/// it asks for that tab alone: none where it's asked wrongly.
+fn from_words(words: &[&str]) -> Option<(Ask, Option<u64>)> {
+    match words {
+        ["tabs" | "tab"] => Some((Ask::List, None)),
+        ["tabs" | "tab", tab] => tab.parse().ok().map(|tab| (Ask::List, Some(tab))),
+        ["tabs" | "tab", tab, "go"] => tab.parse().ok().map(|tab| (Ask::Go(tab), None)),
+        ["tabs" | "tab", tab, "close"] => tab.parse().ok().map(|tab| (Ask::Close(tab), None)),
+        // The words it was asked in before, the socket's own.
+        _ => Ask::from_line(&words.join(" ")).map(|ask| (ask, None)),
+    }
+}
+
 /// Asks the host what the command line says, and says its answer.
 fn asked(context: &Context, socket: &Path) -> Result<(), Failure> {
-    let Some(asked) = Ask::from_line(&context.args.join(" ")) else {
-        return Err(match context.args.first().map(String::as_str) {
-            Some("list") => asked_wrongly("list takes nothing more"),
-            Some("go" | "close") => asked_wrongly("go and close take a tab's ID, a number"),
-            Some(word) => terminal_kit::flags::unknown("command", word, &["list", "go", "close"]),
-            None => asked_wrongly("chrome-open-tabs needs a command: list, go or close"),
+    let words: Vec<&str> = context.args.iter().map(String::as_str).collect();
+    let Some((asked, one)) = from_words(&words) else {
+        return Err(match words.first() {
+            Some(&"tabs" | &"tab") => asked_wrongly("a tab's id is a number, as tabs gives it"),
+            Some(&"list") => asked_wrongly("list takes nothing more"),
+            Some(&"go" | &"close") => asked_wrongly("go and close take a tab's ID, a number"),
+            Some(word) => terminal_kit::flags::unknown("command", word, &["tabs"]),
+            None => asked_wrongly("chrome-open-tabs needs a command")
+                .because("tabs lists the tabs open")
+                .try_this("chrome-open-tabs tabs"),
         });
     };
     let said = ask(socket, &asked).map_err(|error| {
@@ -381,6 +446,9 @@ fn asked(context: &Context, socket: &Path) -> Result<(), Failure> {
     let unsaid = |error: io::Error| {
         Failure::new(Exit::Failed, "its answer couldn't be said").because(error.to_string())
     };
+    if let Some(tab) = one {
+        return one_tab(context, &said, tab);
+    }
     if !context.format().is_json() {
         return io::stdout().write_all(said.as_bytes()).map_err(unsaid);
     }
@@ -392,6 +460,45 @@ fn asked(context: &Context, socket: &Path) -> Result<(), Failure> {
         }
     };
     context.answer(&answer).map_err(unsaid)
+}
+
+/// `tabs ID`: one open tab's facts, from the host's list.
+fn one_tab(context: &Context, said: &str, tab: u64) -> Result<(), Failure> {
+    let listed = tabs(said);
+    let Some(found) = listed["tabs"]
+        .as_array()
+        .and_then(|tabs| tabs.iter().find(|one| one["id"] == tab))
+    else {
+        return Err(
+            Failure::new(Exit::NotFound, format!("no tab {tab} is open"))
+                .because("Chrome is closed, or the tab is")
+                .try_this("chrome-open-tabs tabs"),
+        );
+    };
+    let unsaid = |error: io::Error| {
+        Failure::new(Exit::Failed, "its answer couldn't be said").because(error.to_string())
+    };
+    if context.format().is_json() {
+        let mut answer = found.clone();
+        answer["schema"] = json!("chrome-open-tabs.tab/1");
+        return context.answer(&answer).map_err(unsaid);
+    }
+    let text = |field: &str| found[field].as_str().map(str::to_owned);
+    let window = found["window"].to_string();
+    let front = if found["front"] == true { "yes" } else { "no" };
+    let facts = [
+        ("title", text("title")),
+        ("address", text("address")),
+        ("window", Some(window)),
+        ("in front", Some(front.to_owned())),
+        ("looked at", text("looked_at")),
+    ];
+    let facts: Vec<(&str, Option<&str>)> = facts
+        .iter()
+        .map(|(label, value)| (*label, value.as_deref()))
+        .collect();
+    let lines = layout::facts(&facts, "not said", &context.out, context.room);
+    context.say(&(lines.join("\n") + "\n")).map_err(unsaid)
 }
 
 #[cfg(test)]
@@ -441,6 +548,31 @@ mod tests {
         ] {
             assert_eq!(Ask::from_line(line), None, "{line}");
         }
+    }
+
+    // The words the launcher asked in before the tabs took their own ask
+    // the host the same thing as the new ones.
+    #[test]
+    fn the_old_words_ask_as_the_new_ones() {
+        for (old, new) in [
+            (vec!["list"], vec!["tabs"]),
+            (vec!["go", "12"], vec!["tabs", "12", "go"]),
+            (vec!["close", "7"], vec!["tabs", "7", "close"]),
+        ] {
+            assert_eq!(from_words(&old), from_words(&new), "{old:?} beside {new:?}");
+            assert!(from_words(&new).is_some(), "{new:?} should ask the host");
+        }
+        assert_eq!(from_words(&["tabs", "12"]), Some((Ask::List, Some(12))));
+        assert_eq!(
+            from_words(&["tabs", "twelve", "go"]),
+            None,
+            "an id is a number"
+        );
+        assert!(
+            hosting(Some("chrome-extension://abc/")),
+            "Chrome's start is hosting"
+        );
+        assert!(!hosting(Some("tabs")), "a person's words aren't");
     }
 
     #[test]

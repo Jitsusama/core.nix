@@ -180,7 +180,7 @@ QtObject {
 
         // Go To and Close It reach a page's tabs only by ids the source gave,
         // never a session file's tab's, which has none.
-        const go = ["chrome-open-tabs", "go", "{id}"];
+        const go = ["chrome-open-tabs", "tabs", "{id}", "go"];
         check(failures, "a tab the host named is reached", Recent.reaches(go, [{ id: "7" }]),
             true);
         check(failures, "one read from the session file isn't",

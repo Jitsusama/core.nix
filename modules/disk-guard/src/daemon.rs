@@ -2751,7 +2751,7 @@ pub fn news(written: &Status, status: &Status, now: f64) -> bool {
 }
 
 /// Marks a status's holders with the keeps and clears in `state` as they
-/// are now, since `disk-guard keep` and `clear` change them between
+/// are now, since `disk-guard keeps` and `clear` change them between
 /// steps. Keeps that won't read leave the holders as they were.
 fn mark(status: &mut Status, state: &Path, home: Option<&Path>) {
     if let Ok(keeps) = crate::keeps::load(state) {

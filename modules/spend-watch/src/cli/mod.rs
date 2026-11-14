@@ -37,110 +37,8 @@ const CUTS: [&str; 9] = [
 /// Its own flags, beside the kit's.
 const OPTIONS: [&str; 2] = ["--config", "--session"];
 
-/// The help, declared once for the text and for the commands check.
-pub fn help() -> Help {
-    Help::new("spend-watch", "what AI use costs")
-        .example("spend-watch", "the week at a glance")
-        .example(
-            "spend-watch report last week by quest",
-            "a period, cut one way",
-        )
-        .example("spend-watch report waste", "context rebuilt, by cause")
-        .example("spend-watch budgets --json", "each budget, for a machine")
-        .subcommand(
-            reads("report", "a period's spend, cut one way, or one focus")
-                .example("spend-watch report", "the week at a glance")
-                .example(
-                    "spend-watch report last week by quest",
-                    "a period, cut one way",
-                )
-                .example("spend-watch report waste", "context rebuilt, by cause")
-                .argument(
-                    "[words]...",
-                    "a period and by a cut, or waste, caps, quests, outliers or forecast",
-                ),
-        )
-        .subcommand(
-            reads("budgets", "each budget against its allowances")
-                .example("spend-watch budgets", "each budget, and how it stands")
-                .example(
-                    "spend-watch budgets --session ID",
-                    "with that session's spend",
-                )
-                .option("--session <id>", "one session's spend too"),
-        )
-        .subcommand(findings_help())
-        .subcommand(
-            reads("backtest", "the forecast and the notices, replayed")
-                .example("spend-watch backtest", "how the forecast would have done"),
-        )
-        .subcommand(tokens_help())
-        .subcommand(
-            reads("refresh", "ask the daemon for a pass now")
-                .example("spend-watch refresh", "the shell's figures, read again")
-                .exit(Exit::Unavailable, "the daemon isn't running to ask"),
-        )
-        .subcommand(
-            reads("go", "bring a session's terminal forward")
-                .example("spend-watch go ID", "its window, in front")
-                .argument("<session>", "the session's id")
-                .exit(Exit::NotFound, "no such session is open"),
-        )
-        .subcommand(
-            Help::new("contract", "a feed's contract")
-                .example(
-                    "spend-watch contract check feed.jsonl",
-                    "each line it breaks",
-                )
-                .exit(Exit::BadInput, "a line doesn't hold")
-                .subcommand(
-                    Help::new("check", "a feed's lines against its contract")
-                        .example(
-                            "spend-watch contract check feed.jsonl",
-                            "each line it breaks",
-                        )
-                        .argument("<file>", "the feed's lines")
-                        .exit(Exit::BadInput, "a line doesn't hold"),
-                ),
-        )
-        .subcommand(
-            Help::new("check-config", "whether a config can run")
-                .example(
-                    "spend-watch check-config config.toml",
-                    "read as the daemon would",
-                )
-                .argument("<file>", "the config")
-                .exit(Exit::BadInput, "the config doesn't hold"),
-        )
-        .subcommand(
-            reads("show", "the status the shell would draw now")
-                .example("spend-watch show", "the shell's figures, as it reads them")
-                // The launcher's collection, which only it asks for.
-                .subcommand(reads("collection", "the launcher's collection").unlisted()),
-        )
-        .subcommand(
-            reads("import", "read what's new from pi and the harness")
-                .example("spend-watch import", "what the daemon reads each pass"),
-        )
-        .subcommand(
-            reads("run", "the daemon")
-                .example("spend-watch run", "as its service runs it")
-                .exit(Exit::TryAgain, "another spend-watch holds the history"),
-        )
-        .subcommand(
-            reads("serve", "serve the daemon's last files, for fixtures")
-                .example("spend-watch serve", "its files, until stopped"),
-        )
-        .option("--config <file>", "the config; the module's by default")
-        .form("markdown")
-        .form("csv")
-        .exit(Exit::Failed, "the history couldn't be read or kept")
-        .exit(Exit::BadInput, "a feed's line or a config doesn't hold")
-        .exit(Exit::NotFound, "a file, finding or session isn't there")
-        .exit(Exit::Unavailable, "the daemon isn't running to ask")
-        .exit(Exit::TryAgain, "another spend-watch holds the history")
-        .exit(Exit::Config, "the config can't be read")
-}
+mod help;
+pub use help::help;
 
 /// The config the home module renders, found the way the module puts it.
 fn default_config(context: &Context) -> PathBuf {
@@ -220,7 +118,11 @@ pub fn act(context: &Context, help: &Help) -> Result<(), Failure> {
         ["report", rest @ ..] => report_command(context, &config(&path)?, rest),
         ["budgets"] => budgets(context, &config(&path)?, session.as_deref()),
         ["findings"] => findings(context, &config(&path)?),
-        ["findings", "expect", key] => expect(context, &config(&path)?, key),
+        // The old order first, which notices written before still say.
+        ["findings", "expect", key] | ["findings", key, "expect"] => {
+            expect(context, &config(&path)?, key)
+        }
+        ["findings", key] => finding(context, &config(&path)?, key),
         ["backtest"] => {
             let config = config(&path)?;
             let (history, picture) = picture(&config)?;
@@ -230,7 +132,11 @@ pub fn act(context: &Context, help: &Help) -> Result<(), Failure> {
         }
         ["tokens", "replay", from, to] => replay(context, &config(&path)?, from, to),
         ["refresh"] => refresh(context, &config(&path)?),
-        ["go", session] => go(context, &config(&path)?, session),
+        ["sessions" | "session"] => report_command(context, &config(&path)?, &["by", "session"]),
+        ["sessions" | "session", id] => session_spend(context, &config(&path)?, id),
+        ["sessions" | "session", session, "go"] | ["go", session] => {
+            go(context, &config(&path)?, session)
+        }
         ["contract", "check", file] => contract(context, file),
         ["check-config", file] => check_config(context, file),
         ["show"] => show(context, &config(&path)?, false),
@@ -249,44 +155,6 @@ pub fn act(context: &Context, help: &Help) -> Result<(), Failure> {
         .try_this(format!("spend-watch {word} --help"))),
         [word, ..] => Err(flags::unknown("command", word, &help.command_names())),
     }
-}
-
-/// `findings`, and marking one expected.
-fn findings_help() -> Help {
-    reads("findings", "what holds now")
-        .example("spend-watch findings", "each finding standing")
-        .subcommand(
-            reads("expect", "marks a finding as expected")
-                .example("spend-watch findings expect KEY", "KEY stops notifying")
-                .argument("<key>", "the finding's key, as findings gives it")
-                .exit(Exit::NotFound, "no finding has that key"),
-        )
-}
-
-/// `tokens`, whose one action replays its warning.
-fn tokens_help() -> Help {
-    reads("tokens", "the tokens' warnings")
-        .example(
-            "spend-watch tokens replay 2026-11-01 2026-11-08",
-            "as it would have warned then",
-        )
-        .subcommand(
-            reads("replay", "the tokens' warning again, over a span")
-                .example(
-                    "spend-watch tokens replay 2026-11-01 2026-11-08",
-                    "as it would have warned then",
-                )
-                .argument("<from>", "the first day")
-                .argument("<to>", "the last"),
-        )
-}
-
-/// A subcommand reading the config, as most do.
-fn reads(name: &str, about: &str) -> Help {
-    Help::new(name, about)
-        .option("--config <file>", "the config; the module's by default")
-        .exit(Exit::NotFound, "there's no config")
-        .exit(Exit::Config, "the config can't be read")
 }
 
 /// The config, read: missing and unreadable are each their own exit.
@@ -501,22 +369,84 @@ fn findings(context: &Context, config: &Config) -> Result<(), Failure> {
     }
     let said = findings
         .iter()
-        .map(|finding| {
-            format!(
-                "{}{}: {}\n  {}\n  key {}\n",
-                finding.severity.name(),
-                if finding.marked { ", expected" } else { "" },
-                finding.title,
-                finding.detail,
-                finding.key
-            )
-        })
+        .map(said_finding)
         .collect::<Vec<_>>()
         .join("\n");
     wrote(context.say(&said))
 }
 
-/// `findings expect <key>`: marks the finding whose key is it, or starts
+/// `findings <key>`: the standing finding whose key is it, or alone
+/// starts so, as `findings` says each.
+fn finding(context: &Context, config: &Config, key: &str) -> Result<(), Failure> {
+    no_own_form(context, "findings")?;
+    let history = History::open(&config.history()).map_err(unread)?;
+    let standing = crate::findings::standing(&history).map_err(unread)?;
+    let exact: Vec<_> = standing
+        .iter()
+        .filter(|finding| finding.key == key)
+        .collect();
+    let found = if exact.is_empty() {
+        standing
+            .iter()
+            .filter(|finding| finding.key.starts_with(key))
+            .collect()
+    } else {
+        exact
+    };
+    let [one] = found.as_slice() else {
+        return Err(if found.is_empty() {
+            Failure::new(Exit::NotFound, format!("no finding {key}"))
+                .because("none standing has that key, or starts so")
+                .try_this("spend-watch findings")
+        } else {
+            Failure::new(Exit::Usage, format!("{} findings start {key}", found.len()))
+                .because("a key's start has to name one")
+                .try_this("spend-watch findings")
+        });
+    };
+    if context.format().is_json() {
+        return answer(context, "spend-watch.finding/1", one);
+    }
+    wrote(context.say(&said_finding(one)))
+}
+
+/// One finding as a person reads it, in `findings` and `findings <key>`.
+fn said_finding(finding: &crate::findings::Finding) -> String {
+    format!(
+        "{}{}: {}\n  {}\n  key {}\n",
+        finding.severity.name(),
+        if finding.marked { ", expected" } else { "" },
+        finding.title,
+        finding.detail,
+        finding.key
+    )
+}
+
+/// `sessions <id>`: all one session has spent, and the budget it draws
+/// on, as `budgets --session` says it beside the budgets.
+fn session_spend(context: &Context, config: &Config, id: &str) -> Result<(), Failure> {
+    no_own_form(context, "sessions")?;
+    let (_, picture) = picture(config)?;
+    let standing = crate::standing::standing(&picture, config, Some(id));
+    let Some(session) = standing.session.filter(|session| session.budget.is_some()) else {
+        return Err(
+            Failure::new(Exit::NotFound, format!("no session {id} has spent"))
+                .because("a session is named by its whole id")
+                .try_this("spend-watch sessions"),
+        );
+    };
+    if context.format().is_json() {
+        return answer(context, "spend-watch.session/1", &session);
+    }
+    wrote(context.say(&format!(
+        "Session {} draws on {}: {} in all.\n",
+        session.id,
+        session.budget.as_deref().unwrap_or("nothing yet"),
+        session.spent.shown
+    )))
+}
+
+/// `findings <key> expect`: marks the finding whose key is it, or starts
 /// so, expected.
 fn expect(context: &Context, config: &Config, key: &str) -> Result<(), Failure> {
     no_own_form(context, "findings")?;
@@ -608,7 +538,7 @@ fn refresh(context: &Context, config: &Config) -> Result<(), Failure> {
     wrote(context.say(&format!("{said}\n")))
 }
 
-/// `go <session>`: brings a session's terminal forward.
+/// `sessions <session> go`: brings a session's terminal forward.
 fn go(context: &Context, config: &Config, session: &str) -> Result<(), Failure> {
     no_own_form(context, "go")?;
     crate::go::go(&config.registry, session).map_err(|unbrought| match unbrought {

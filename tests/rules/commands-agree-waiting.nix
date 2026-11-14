@@ -50,8 +50,6 @@
     "kit"
     "helps"
   ];
-  chrome-open-tabs = [ "subcommands" ];
-  chrome-recent-sites = [ "subcommands" ];
   chrony-network-servers = [ "helps" ];
   clipboard-history = [
     "kit"
@@ -333,6 +331,5 @@
   ];
   xdg-open = [ "helps" ];
   yubikey-once-in = [ "helps" ];
-  zathura-command = [ "subcommands" ];
   zoom-opens = [ "helps" ];
 }

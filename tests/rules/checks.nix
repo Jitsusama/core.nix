@@ -234,12 +234,17 @@
         chrome-recent-sites = [
           {
             state = history;
-            args = [ "@HERE@" ];
+            args = [
+              "sites"
+              "--profile"
+              "@HERE@"
+            ];
           }
           {
             state = history;
             args = [
               "downloads"
+              "--profile"
               "@HERE@"
             ];
           }
