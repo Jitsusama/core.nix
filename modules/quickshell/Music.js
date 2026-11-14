@@ -80,7 +80,7 @@ function calls(byKey, held, keyed) {
 // took over, began playing and changed track in; "" where it says nothing
 // new: no player, one not playing, or the track it last said (`announced`).
 function announcement(player, announced) {
-    if (!player || !player.isPlaying) {
+    if (!player?.isPlaying) {
         return "";
     }
     const now = `${player.dbusName} ${player.trackTitle}`;
@@ -91,8 +91,8 @@ function announcement(player, announced) {
 // (`act`) and words.json's state for its words (`state`): play where it's
 // paused and can, else pause; the next and the previous track where it can
 // go to them; going to it where it has somewhere to go (`revealable`); and
-// pausing each other player playing beside it (`others`), as `other`.
-function offered(player, revealable, others) {
+// pausing each other player playing beside it (`beside`), as `other`.
+function offered(player, revealable, beside) {
     if (!player) {
         return [];
     }
@@ -102,7 +102,7 @@ function offered(player, revealable, others) {
         player.canGoNext ? [{ act: "next", state: "" }] : [],
         player.canGoPrevious ? [{ act: "previous", state: "" }] : [],
         revealable ? [{ act: "show", state: "" }] : [],
-        (others ?? []).map(other => ({ act: "pauseOther", state: "", other })));
+        (beside ?? []).map(other => ({ act: "pauseOther", state: "", other })));
 }
 
 // What's playing as a launcher row, in the ready-row form a daemon serves
@@ -110,10 +110,10 @@ function offered(player, revealable, others) {
 // and the arrival line draw the one row. `track` says it: its `title`,
 // `artist`, `album`, its player (`from`), whether an act names that player
 // (`revealable`), its cover (`art`) and `where` in it, "" where it isn't
-// read. Its name is Now's for it (`name`); its side the track and where in
+// read. Its name is Now's for it (`heading`); its side the track and where in
 // it, the track kept longest; its note who plays it, the album, and the
 // player once, unless an act names it. Null with nothing playing.
-function row(track, name, acts) {
+function row(track, heading, acts) {
     if (!track) {
         return null;
     }
@@ -122,7 +122,7 @@ function row(track, name, acts) {
     return {
         key: "on:playing",
         kind: "playing",
-        name,
+        name: heading,
         side,
         note: [track.artist, track.album, track.revealable ? "" : track.from]
             .filter(said => said).join(" \u00b7 "),
