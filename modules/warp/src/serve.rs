@@ -185,12 +185,8 @@ fn now_ms() -> u64 {
 
 /// What `warp` prints for these words, as JSON.
 fn printed(words: &[&str], cli: &impl Ask) -> Value {
-    let args: Vec<String> = words
-        .iter()
-        .map(|word| (*word).to_owned())
-        .chain(["--json".to_owned()])
-        .collect();
-    serde_json::from_str(&crate::run(&args, cli).out).unwrap_or(Value::Null)
+    let args: Vec<String> = words.iter().map(|word| (*word).to_owned()).collect();
+    serde_json::from_str(&crate::run(&args, true, cli).out).unwrap_or(Value::Null)
 }
 
 /// Serves the link on this socket for as long as the program runs.

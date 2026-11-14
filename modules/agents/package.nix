@@ -1,8 +1,9 @@
 # The agents daemon, built from this directory, its tests run as it
 # builds. It words rows from the launcher's own vocabulary and serves
-# them with the serving side every daemon shares (../daemon-serve), so
-# the source is cut from the modules folder holding all three, and built
-# from this one.
+# them with the serving side every daemon shares (../daemon-serve), and
+# takes its shape from the terminal kit (../terminal-kit), so the source
+# is cut from the modules folder holding all four, and built from this
+# one.
 {
   lib,
   rustPlatform,
@@ -19,6 +20,8 @@ rustPlatform.buildRustPackage rec {
       ./tests/words.json
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/agents";

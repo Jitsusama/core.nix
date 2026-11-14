@@ -252,8 +252,8 @@ fn escaped(s: &str) -> String {
 
 /// `update-to-main job FOLDER`, the job's own end: runs the command written
 /// in the folder, its output and errors to files there, and writes down
-/// its status last, as the sign it has ended. The status is also what it
-/// exits with.
+/// its status last, as the sign it has ended, which root reads. main.rs
+/// ends 0 for a status of 0 and 1 for any other.
 pub fn job(folder: &Path) -> i32 {
     let status = ran(folder).unwrap_or_else(|e| {
         let _ = fs::write(folder.join(ERR), format!("update-to-main job: {e}\n"));

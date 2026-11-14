@@ -61,11 +61,13 @@ once instead each time, so a link coming back is said within seconds.
 
 `src/switch.rs` decides what a switch says before it asks warp-cli: a
 switch the organisation holds (`switch_locked`) is left as it is and
-says who holds it, ending 6; WARP already as asked is said, and nothing
-asked; and WARP always on says, once disconnected, that it comes back by
-itself after `auto_connect_after_min`. warp-cli refusing ends 7, in its
-words. warp-cli decides the rest, as it does for anyone, so nothing here
-needs root.
+says who holds it, ending 77, refused; WARP already as asked is said,
+and nothing asked; and WARP always on says, once disconnected, that it
+comes back by itself after `auto_connect_after_min`. warp-cli refusing
+ends 1, in its words. A reading that fails ends as the terminal kit
+says: 66 with no warp-cli, 69 with no service answering, 65 with an
+answer it can't read. warp-cli decides the rest, as it does for anyone,
+so nothing here needs root.
 
 [contract]: contract/README.md
 [serve]: src/serve.rs

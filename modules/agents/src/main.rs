@@ -30,12 +30,16 @@
 //! where pi-packages installs the harness, which says the same of its
 //! landings. A machine with no realm runs no node,
 //! so it's started with none, and serves the sessions to reopen alone.
+//! Its help, its failures and its exits take the terminal kit's shape
+//! (`help()`).
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, mpsc};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+use terminal_kit::{Exit, Failure, Help};
 
 use agents::acts;
 use agents::arrangement::{Arrangement, Still};
@@ -84,11 +88,32 @@ const DOMAIN: Domain = Domain {
     named_only: &["landed-drawer"],
 };
 
-const USAGE: &str = "usage: agents --vocabulary WORDS [--node NODE] --to-do TODO \
-                     --windows WINDOWS --spend SPEND --orchestrators ORCHESTRATORS \
-                     --restore RESTORE --kept KEPT --landed LANDED --steer STEER \
-                     --shells SHELLS [--switched SWITCHED --clone CLONE] \
-                     [--harness HARNESS] --socket SOCKET";
+/// What `agents --help` says: each file, socket and folder it reads,
+/// as its unit names them.
+fn help() -> Help {
+    Help::new("agents", "makes Agents' rows ready for the launcher")
+        .example(
+            "agents --vocabulary FILE --socket FILE",
+            "and the rest, as its unit runs it",
+        )
+        .option("--vocabulary FILE", "the launcher's words")
+        .option("--node SOCKET", "mycelium's node, where there's one")
+        .option("--to-do SOCKET", "the to-do daemon's")
+        .option("--windows SOCKET", "the windows daemon's")
+        .option("--spend FILE", "spend-watch's collection")
+        .option("--orchestrators FILE", "the harness's orchestrators")
+        .option("--restore FILE", "the sessions there are to reopen")
+        .option("--kept FILE", "what was said of those, its own")
+        .option("--landed FILE", "the landings read, its own")
+        .option("--steer FOLDER", "the sessions' inboxes")
+        .option("--shells FOLDER", "each shell's own state")
+        .option("--switched FILE", "what of core runs, with --clone")
+        .option("--clone FOLDER", "core's bare clone, with --switched")
+        .option("--harness FOLDER", "where the harness is installed")
+        .option("--socket FILE", "where it serves the rows")
+        .exit(Exit::Failed, "it couldn't serve or hear its sources")
+        .exit(Exit::Config, "the vocabulary couldn't be read")
+}
 
 /// This boot, as Linux names it, or none where it isn't said, when no
 /// boot's sessions are offered as the last boot's.
@@ -120,28 +145,36 @@ struct Args {
 }
 
 /// What it was started with, every path named.
-fn args() -> Option<Args> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+///
+/// # Errors
+///
+/// Asked wrongly, 64, naming the first flag it needs and wasn't given.
+fn args(args: &[String]) -> Result<Args, Failure> {
     let named = |flag: &str| {
         let at = args.iter().position(|one| one == flag)?;
         args.get(at + 1).map(PathBuf::from)
     };
-    Some(Args {
-        vocabulary: named("--vocabulary")?,
+    let needed = |flag: &str| {
+        named(flag).ok_or_else(|| {
+            Failure::new(Exit::Usage, format!("agents needs {flag}")).try_this("agents --help")
+        })
+    };
+    Ok(Args {
+        vocabulary: needed("--vocabulary")?,
         node: named("--node"),
-        to_do: named("--to-do")?,
-        windows: named("--windows")?,
-        spend: named("--spend")?,
-        orchestrators: named("--orchestrators")?,
-        restore: named("--restore")?,
-        kept: named("--kept")?,
-        landed: named("--landed")?,
-        steer: named("--steer")?,
-        shells: named("--shells")?,
+        to_do: needed("--to-do")?,
+        windows: needed("--windows")?,
+        spend: needed("--spend")?,
+        orchestrators: needed("--orchestrators")?,
+        restore: needed("--restore")?,
+        kept: needed("--kept")?,
+        landed: needed("--landed")?,
+        steer: needed("--steer")?,
+        shells: needed("--shells")?,
         switched: named("--switched"),
         clone: named("--clone"),
         harness: named("--harness"),
-        socket: named("--socket")?,
+        socket: needed("--socket")?,
     })
 }
 
@@ -307,23 +340,31 @@ fn started(words: Words, paths: &Paths) -> Inputs {
 }
 
 fn main() -> ExitCode {
-    let Some(args) = args() else {
-        eprintln!("{USAGE}");
-        return ExitCode::from(2);
-    };
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        serve(args(&context.args)?)
+    })
+}
+
+/// Serves the rows until the sources it hears from are gone.
+///
+/// # Errors
+///
+/// 78 when the vocabulary can't be read, and 1 when it can't listen on
+/// its socket or hear the files it reads.
+fn serve(args: Args) -> Result<(), Failure> {
     let words = std::fs::read_to_string(&args.vocabulary)
         .map_err(|why| why.to_string())
-        .and_then(|text| Words::from_vocabulary(&text).map_err(|why| why.to_string()));
-    let words = match words {
-        Ok(words) => words,
-        Err(why) => {
-            eprintln!(
-                "agents: can't read the vocabulary {}: {why}",
-                args.vocabulary.display()
-            );
-            return ExitCode::FAILURE;
-        }
-    };
+        .and_then(|text| Words::from_vocabulary(&text).map_err(|why| why.to_string()))
+        .map_err(|why| {
+            Failure::new(
+                Exit::Config,
+                format!(
+                    "agents can't read the vocabulary {}",
+                    args.vocabulary.display()
+                ),
+            )
+            .because(why)
+        })?;
     let (to, heard) = mpsc::channel();
     let routes = Routes::default();
     let landings = Landings::default();
@@ -344,8 +385,11 @@ fn main() -> ExitCode {
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
         Err(why) => {
-            eprintln!("agents: can't listen on {}: {why}", args.socket.display());
-            return ExitCode::FAILURE;
+            return Err(Failure::new(
+                Exit::Failed,
+                format!("agents can't listen on {}", args.socket.display()),
+            )
+            .because(why.to_string()));
         }
     }
     if let Some(node) = args.node {
@@ -380,10 +424,9 @@ fn main() -> ExitCode {
             "agents: can't hear the sessions' inboxes, so talks not yet taken go unshown: {why}"
         );
     }
-    if let Err(why) = sources::follow_files(&paths, to) {
-        eprintln!("agents: can't hear the files it reads: {why}");
-        return ExitCode::FAILURE;
-    }
+    sources::follow_files(&paths, to).map_err(|why| {
+        Failure::new(Exit::Failed, "agents can't hear the files it reads").because(why.to_string())
+    })?;
     let mut inputs = started(words, &paths);
     let mut served = Served::default();
     let mut still = Still::default();
@@ -409,5 +452,5 @@ fn main() -> ExitCode {
             served.all(),
         );
     }
-    ExitCode::SUCCESS
+    Ok(())
 }
