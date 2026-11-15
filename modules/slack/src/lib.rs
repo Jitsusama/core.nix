@@ -176,8 +176,8 @@ pub const READS: [&str; 4] = [
 
 /// How long knowing nobody by an address holds before Slack is asked
 /// again, in seconds: someone new to Slack, or saying something there for
-/// the first time, is found within a week.
-pub const NOBODY_HOLDS: u64 = 7 * 24 * 60 * 60;
+/// the first time, is found within a day, with no restart.
+pub const NOBODY_HOLDS: u64 = 24 * 60 * 60;
 
 /// Who each address was found to be, kept in a file of the program's own
 /// so a restart of the shell, as each switch brings, forgets nobody:
@@ -219,19 +219,27 @@ impl Kept {
     }
 
     /// Who `email` is, as `held` while running says, over what's kept.
+    /// Knowing nobody there lapses as it does kept, so someone who joins
+    /// Slack after they were asked about is found without a restart.
     #[must_use]
     pub fn over(&self, held: Option<&Found>, email: &str, now: u64) -> Option<Found> {
-        held.cloned().or_else(|| self.get(email, now).cloned())
+        match held {
+            Some(held) if held.id.is_some() => Some(held.clone()),
+            _ => self.get(email, now).cloned(),
+        }
     }
 
     /// Keeps who someone was found to be, writing the file anew whole, so
     /// it's never read half written.
     pub fn keep(&mut self, found: &Found, now: u64) {
         let who = found.who();
-        if self
-            .by
-            .get(&who.email)
-            .is_some_and(|kept| kept.found == who)
+        // Nobody found there again holds from now, so it's asked a day on
+        // rather than at every step-in once the first day is out.
+        if who.id.is_some()
+            && self
+                .by
+                .get(&who.email)
+                .is_some_and(|kept| kept.found == who)
         {
             return;
         }
@@ -926,7 +934,7 @@ mod tests {
     }
 
     #[test]
-    fn who_was_found_is_kept_without_how_they_were_and_nobody_only_a_week() {
+    fn who_was_found_is_kept_without_how_they_were_and_nobody_only_a_day() {
         let path = std::env::temp_dir()
             .join(format!("slack-people-kept-{}", std::process::id()))
             .join("known.json");
