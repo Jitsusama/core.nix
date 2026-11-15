@@ -589,8 +589,17 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            ["needs", "m0", "m1", "m2", "m3", "m4", "21 More"],
-            "the pressing and the five busiest show, and one row holds the rest, last"
+            [
+                "Repositories",
+                "needs",
+                "m0",
+                "m1",
+                "m2",
+                "m3",
+                "m4",
+                "21 More"
+            ],
+            "under its heading, the pressing and the five busiest show, then one row holding the rest"
         );
         let fold = under.last().expect("a fold");
         assert_eq!(
