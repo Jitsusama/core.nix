@@ -3431,9 +3431,10 @@ fn a_gate_kept_to_the_lent_builders_keeps_a_macs_comparison_as_skipped() {
     // A fenced session writes its commits, and a Mac nearby builds as the
     // person, so its gate never sends one there; the net compares it once
     // a gate that may has run.
-    if option_env!("NIX_OFFLOAD_CHANGED_CHECKS").is_none() {
-        panic!("built without a changed-checks of its own, which package.nix gives it");
-    }
+    assert!(
+        option_env!("NIX_OFFLOAD_CHANGED_CHECKS").is_some(),
+        "built without a changed-checks of its own, which package.nix gives it"
+    );
     let changed = Changed::new();
     let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     changed.mac_at(answering.local_addr().unwrap());

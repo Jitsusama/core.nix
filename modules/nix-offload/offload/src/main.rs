@@ -1488,18 +1488,8 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
     // again rather than evaluated and built anew (`passed.rs`).
     let passed = passed::Passed::here(&state());
     let at = there::at_of(&source);
-    if let Some(at) = &at
-        && let Some(printed) = passed.run(at, arguments)
-    {
+    if passed_already(&passed, at.as_ref(), arguments) {
         forget();
-        print!("{printed}");
-        eprintln!(
-            "nix-offload: changed-checks {} passed at {} already, so nothing is evaluated \
-             or built again; `nix-offload passed forget {}` has it run again",
-            arguments.join(" "),
-            at.short(),
-            at.commit
-        );
         return ExitCode::SUCCESS;
     }
     let wanted = changed::wanted(arguments);
@@ -1592,6 +1582,26 @@ enum OnAMac {
     Skipped(String),
     /// It failed, and the run ends as it did.
     Failed(ExitCode),
+}
+
+/// Whether a changed-checks run with `arguments` passed at `at` already,
+/// saying what it printed then, and so.
+fn passed_already(passed: &passed::Passed, at: Option<&passed::At>, arguments: &[String]) -> bool {
+    let Some(at) = at else {
+        return false;
+    };
+    let Some(printed) = passed.run(at, arguments) else {
+        return false;
+    };
+    print!("{printed}");
+    eprintln!(
+        "nix-offload: changed-checks {} passed at {} already, so nothing is evaluated \
+         or built again; `nix-offload passed forget {}` has it run again",
+        arguments.join(" "),
+        at.short(),
+        at.commit
+    );
+    true
 }
 
 /// Keeps that a changed-checks run with `arguments`, started at `started`
