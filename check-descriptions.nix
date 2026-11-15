@@ -4846,6 +4846,10 @@
   wifid-calls-passes-clippy = ''
     clippy finds nothing in what tells wifid of calls, or its tests
   '';
+  wifid-calls-starts-at-a-switch = ''
+    what tells wifid of calls starts with the account's session as well as with PipeWire, so a
+    switch that brings it in starts it while PipeWire already runs
+  '';
   wifid-calls-tells-wifid = ''
     what tells wifid of calls says nothing is on at its start, then a change or a call still on a
     minute later, as exactly a calling act wifid's rows socket takes, and says a refusal as it is
