@@ -1774,11 +1774,7 @@ fn list_still_red(
 ) -> Result<(), String> {
     let failing = failing_at(state, head, test);
     let owner = world.unlisted_by(test, &failing, head);
-    let reason = format!(
-        "failed at {}, and at {} after it",
-        short(base),
-        short(head)
-    );
+    let reason = format!("failed at {}, and at {} after it", short(base), short(head));
     let by_subtests = listed_by_subtests_on_main(world, test, &failing);
     let listed = (!by_subtests && !listed_on_main(world, head, test))
         .then(|| quarantine_owned(world, test, &failing, owner, head, &reason));

@@ -214,7 +214,9 @@ impl State {
         text.lines()
             .filter_map(|line| serde_json::from_str::<Value>(line).ok())
             .filter(|line| line["commit"] == commit && line["check"] == check)
-            .filter(|line| line["passed"] == true && line["code"].as_i64().is_some_and(|code| code != 0))
+            .filter(|line| {
+                line["passed"] == true && line["code"].as_i64().is_some_and(|code| code != 0)
+            })
             .filter_map(|line| line["log"].as_str().map(PathBuf::from))
             .collect()
     }
