@@ -224,19 +224,4 @@ mod tests {
         let network: Network = serde_json::from_str(RECORD).expect("the record reads");
         assert_eq!(network.schema, SCHEMA, "the record names another schema");
     }
-
-    #[test]
-    fn one_eero_is_one_device_with_both_its_roles() {
-        let network: Network = serde_json::from_str(RECORD).expect("the record reads");
-        let gateway = network
-            .devices
-            .iter()
-            .find(|device| device.id == "eero:2001")
-            .expect("the gateway eero is a device");
-        assert_eq!(
-            gateway.roles,
-            [Role::Router, Role::AccessPoint],
-            "the gateway eero isn't both a router and an access point"
-        );
-    }
 }

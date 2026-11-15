@@ -14,8 +14,11 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.toml
       ./Cargo.lock
       ./src
-      # The record every view's tests draw from.
+      # The record every view's tests draw from, and what it's collected
+      # from: a real modem's pages and eero's golden record.
       ./tests/network.json
+      ./contract
+      ../eero/home-network.json
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

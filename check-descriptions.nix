@@ -1552,8 +1552,10 @@
     clippy finds nothing in net or its tests
   '';
   net-reads-the-home-network = ''
-    net reads the home network's record into its model and writes it back unchanged, naming its
-    schema, with one eero as one device holding both the router and access point roles
+    a real modem's pages and eero's golden record collect into net's golden record, the modem
+    first with every channel and its log placed in time by its own clock, the gateway eero one
+    device with the router and access point roles and its cable to the modem, and a source that
+    doesn't answer is said so while the others' devices are kept
   '';
   network-revive-looks-once-the-network-settles = ''
     network-revive looks at the network once a burst of changes goes quiet, or anyway if it never

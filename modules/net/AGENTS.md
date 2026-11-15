@@ -38,4 +38,33 @@ A figure keeps its unit in its key (`speed_mbps`, `power_dbmv`, `up_s`),
 and one a source doesn't give is `null`, never a guess. `src/model.rs`
 holds the types, and its tests hold the record to them both ways.
 
+## The Daemon
+
+`net daemon`, the user service `net-daemon` in background.slice, reads
+each source once a minute and writes the record whole, through
+`network.json.new` and a rename, so a view never reads half of one.
+
+- eero: the eero daemon's record, `$XDG_RUNTIME_DIR/eero/home-network.json`,
+  never eero's cloud, which keeps one reader. `src/sources/eero.rs` maps
+  each node and device; its whole entry stays as `detail.eero`.
+- The modem: nine status pages at `http://192.168.100.1/data/<page>.asp`,
+  read without signing in, one at a time with a two-second limit.
+  `src/sources/modem.rs` maps them, and every page's answer stays as
+  `detail.modem`. Its log's times are placed by the modem's own clock
+  against ours, rounded to 15 minutes, and `clock` keeps what it wrote.
+
+It listens on nothing and asks nothing outside the home network. Away
+from home the modem doesn't answer, and the record says so while eero's
+devices stay.
+
+## Changing It
+
+[`contract/modem/`][contract] holds a real modem's pages, its addresses
+and serials replaced, and `src/collect.rs`'s tests collect them with
+eero's golden record into the golden record. After a change that's
+meant to move it, `NET_BLESS=1 cargo test` writes it anew; read the
+diff before committing it. `cargo` runs from the dev shell:
+`direnv exec ../.. cargo test` here.
+
 [record]: tests/network.json
+[contract]: contract/modem/

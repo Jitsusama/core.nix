@@ -20,8 +20,12 @@
 //! It takes the shape every command of ours does (docs/commands.md),
 //! through the terminal kit.
 
+mod collect;
 mod commands;
+mod daemon;
 pub mod model;
+mod sources;
+mod time;
 
 use std::process::ExitCode;
 
@@ -36,10 +40,7 @@ fn main() -> ExitCode {
 fn run(context: &Context) -> Result<(), Failure> {
     let words: Vec<&str> = context.args.iter().map(String::as_str).collect();
     match words.as_slice() {
-        ["daemon"] => Err(Failure::new(
-            Exit::Unavailable,
-            "the collector isn't built yet",
-        )),
+        ["daemon"] => daemon::run().map_err(|why| Failure::new(Exit::Failed, why)),
         _ => Err(Failure::new(Exit::Usage, "net doesn't know those words").try_this("net --help")),
     }
 }

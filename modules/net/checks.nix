@@ -6,9 +6,11 @@
   ...
 }:
 {
-  # net's tests run as it builds: the record reads into the model and
-  # writes back unchanged, names its schema, and holds one eero as one
-  # device with both its roles.
+  # net's tests run as it builds: a real modem's pages and eero's golden
+  # record collect into the golden record, the modem first with every
+  # channel and its log placed by its own clock, the gateway eero as one
+  # device with both its roles and its cable to the modem, and a source
+  # that doesn't answer said so while the rest are kept.
   net-reads-the-home-network = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in net, its tests included.
   net-passes-clippy = passesClippy "net-passes-clippy" (pkgs.callPackage ./package.nix { });
