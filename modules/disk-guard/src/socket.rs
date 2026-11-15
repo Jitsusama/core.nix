@@ -221,17 +221,36 @@ fn peer(stream: &UnixStream) -> io::Result<u32> {
     Ok(credentials.cr_uid)
 }
 
-/// Asks the daemon listening at `path`, waiting at most `timeout` for each
-/// part of the exchange. A reply of an error is an error.
+/// How often an asker waiting on a reply looks whether it has been told
+/// to stop, so a wait of seconds never holds up a guard's stop.
+const LOOK_EVERY: Duration = Duration::from_millis(250);
+
+/// Asks the daemon listening at `path`, waiting at most `timeout` to send
+/// the request and `timeout` in all for the reply, which a stop waiting
+/// for the guard cuts short. A reply of an error is an error.
 pub fn ask(path: &Path, request: &Request, timeout: Duration) -> io::Result<Reply> {
     let mut stream = UnixStream::connect(path)?;
-    stream.set_read_timeout(Some(timeout))?;
+    stream.set_read_timeout(Some(timeout.min(LOOK_EVERY)))?;
     stream.set_write_timeout(Some(timeout))?;
     let mut line = serde_json::to_vec(request).map_err(io::Error::other)?;
     line.push(b'\n');
     stream.write_all(&line)?;
+    let until = Instant::now() + timeout;
     let mut reply = Vec::new();
-    (&mut stream).take(ANSWER_LIMIT).read_to_end(&mut reply)?;
+    let mut reading = (&mut stream).take(ANSWER_LIMIT);
+    // What came before a look is kept, and reading goes on after it.
+    while let Err(error) = reading.read_to_end(&mut reply) {
+        let waiting = matches!(
+            error.kind(),
+            io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut | io::ErrorKind::Interrupted
+        );
+        if !waiting || Instant::now() >= until {
+            return Err(error);
+        }
+        if crate::commands::stop_waiting() {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "stopping"));
+        }
+    }
     match serde_json::from_slice(&reply) {
         Ok(Reply::Error(why)) => Err(io::Error::other(why)),
         Ok(reply) => Ok(reply),

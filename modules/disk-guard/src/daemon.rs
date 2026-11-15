@@ -605,6 +605,37 @@ pub struct LastPass {
 /// it as written, so there it's left off.
 const ERROR_LEVEL: &str = if cfg!(target_os = "linux") { "<3>" } else { "" };
 
+/// What marks a line as a warning there, as `ERROR_LEVEL` marks an error.
+const WARNING_LEVEL: &str = if cfg!(target_os = "linux") { "<4>" } else { "" };
+
+/// Says how a pass that took `seconds` went, at `when`, and how it went
+/// wrong if it did, where people look: the journal or the Mac's log file,
+/// since the guard's own journal is read only by the guard.
+fn say_pass(
+    report: &crate::pass::Report,
+    scan: &Scan,
+    seconds: f64,
+    when: &str,
+) -> Option<crate::pass::Failing> {
+    if let Some(line) = crate::pass::told(report, seconds, when) {
+        eprintln!("{line}");
+    }
+    if scan.went_unheard() {
+        eprintln!(
+            "{WARNING_LEVEL}{}",
+            crate::pass::unheard_line(scan.unheard(), when)
+        );
+    }
+    let failing = crate::pass::failing(report);
+    if let Some(failing) = &failing {
+        eprintln!(
+            "{ERROR_LEVEL}{}",
+            crate::pass::failed_line(failing, report, when)
+        );
+    }
+    failing
+}
+
 impl Guard {
     pub fn new(config: Config, places: &Places) -> io::Result<Guard> {
         let state = &places.state;
@@ -2291,19 +2322,7 @@ impl Guard {
         self.note_actions(here, &report.actions, tick.wall);
         let end = ending(&report.end);
         let seconds = started.elapsed().as_secs_f64();
-        // Said where people look, the journal or the Mac's log file, since
-        // the guard's own journal is read only by the guard.
-        let when = crate::clock::stamp(tick.wall);
-        if let Some(line) = crate::pass::told(&report, seconds, &when) {
-            eprintln!("{line}");
-        }
-        let failing = crate::pass::failing(&report);
-        if let Some(failing) = &failing {
-            eprintln!(
-                "{ERROR_LEVEL}{}",
-                crate::pass::failed_line(failing, &report, &when)
-            );
-        }
+        let failing = say_pass(&report, scan, seconds, &crate::clock::stamp(tick.wall));
         self.journal.write(&Line::Pass {
             at: tick.wall,
             band: report.band,

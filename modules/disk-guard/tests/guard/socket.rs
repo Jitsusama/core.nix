@@ -148,6 +148,41 @@ fn an_asker_that_says_nothing_cant_hold_the_server() {
     assert!(started.elapsed() < Duration::from_secs(3));
 }
 
+/// A guard told to stop while it waits on a reply leaves at once, rather
+/// than wait out its patience: the stop is held, blocked in this thread,
+/// as the guard holds its own until it takes them between steps.
+#[test]
+fn an_ask_waiting_on_its_reply_gives_up_once_a_stop_waits() {
+    let (_dir, path, _asked, handed) = serving(Duration::ZERO, 1);
+    // SAFETY: a set made on the stack, filled by sigemptyset before use;
+    // the stop is blocked and sent to this thread alone.
+    let stops = unsafe {
+        let mut stops = std::mem::zeroed::<libc::sigset_t>();
+        libc::sigemptyset(&raw mut stops);
+        libc::sigaddset(&raw mut stops, libc::SIGTERM);
+        libc::pthread_sigmask(libc::SIG_BLOCK, &raw const stops, std::ptr::null_mut());
+        libc::pthread_kill(libc::pthread_self(), libc::SIGTERM);
+        stops
+    };
+    let collect = Request::Collect {
+        path: PathBuf::from("/home"),
+        band: Band::NearlyFull,
+    };
+    let started = std::time::Instant::now();
+    let asked = ask(&path, &collect, Duration::from_secs(10));
+    let took = started.elapsed();
+    // SAFETY: takes the stop sent above, so it ends nothing once unblocked.
+    unsafe {
+        let mut taken = 0;
+        libc::sigwait(&raw const stops, &raw mut taken);
+        libc::pthread_sigmask(libc::SIG_UNBLOCK, &raw const stops, std::ptr::null_mut());
+    }
+    drop(handed);
+    let error = asked.unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::Interrupted, "{error}");
+    assert!(took < Duration::from_secs(2), "it waited {took:?}");
+}
+
 #[test]
 fn no_server_is_an_error_at_once() {
     let dir = tempfile::tempdir().unwrap();

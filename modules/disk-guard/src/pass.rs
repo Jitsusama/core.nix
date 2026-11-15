@@ -158,6 +158,17 @@ pub fn told(report: &Report, seconds: f64, when: &str) -> Option<String> {
     })
 }
 
+/// The line a pass leaves when the system daemon couldn't be asked about
+/// the processes this account can't read, for `why`, said at `when`: what
+/// they might use was kept, and until 14 November nothing said so.
+pub fn unheard_line(why: Option<&str>, when: &str) -> String {
+    let why = why.map_or_else(String::new, |why| format!(" ({why})"));
+    format!(
+        "disk-guard: at {when} the system daemon couldn't be asked about the processes \
+         this account can't read{why}, so what they might use was kept"
+    )
+}
+
 /// How a pass on a disk at least filling went wrong where nobody would
 /// see it: what it tried all failed or was kept and it freed nothing, or
 /// something it ran timed out. On 11 November a laptop's system guard
