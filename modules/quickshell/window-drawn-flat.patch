@@ -1,0 +1,74 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] window: let a surface be drawn flat, without depth or stencil
+
+Every window asked for a depth and a stencil buffer, each as large as
+the window, though a wallpaper's picture needs neither: at 2880 by 1800
+they hold about 30 MB of a GPU's memory a surface. A surface format now
+takes flat, which asks for neither and has Qt Quick draw the window's
+opaque items back to front, as it does without a depth buffer, rather
+than front to back against one it doesn't have. QSG_NO_DEPTH_BUFFER and
+QSG_NO_STENCIL_BUFFER do the same for every window, the launcher's too,
+whose first openings they slowed.
+
+diff --git a/src/window/proxywindow.cpp b/src/window/proxywindow.cpp
+--- a/src/window/proxywindow.cpp
++++ b/src/window/proxywindow.cpp
+@@ -134,6 +134,11 @@
+ 		if (enableDebug) format.setOption(QSurfaceFormat::DebugContext);
+ 		if (disableVSync) format.setSwapInterval(0);
+ 
++		if (this->qsSurfaceFormat.flat) {
++			format.setDepthBufferSize(0);
++			format.setStencilBufferSize(0);
++		}
++
+ 		format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
+ 		format.setRedBufferSize(8);
+ 		format.setGreenBufferSize(8);
+@@ -163,6 +168,8 @@
+ 	    "VK_EXT_external_memory_dma_buf",
+ 	    "VK_EXT_image_drm_format_modifier",
+ 	});
++	// a flat surface has no depth buffer, so its scene is drawn back to front without one
++	if (this->qsSurfaceFormat.flat) graphicsConfig.setDepthBufferFor2D(false);
+ 	this->window->setGraphicsConfiguration(graphicsConfig);
+ }
+ 
+diff --git a/src/window/windowinterface.hpp b/src/window/windowinterface.hpp
+--- a/src/window/windowinterface.hpp
++++ b/src/window/windowinterface.hpp
+@@ -20,10 +20,12 @@
+ 	QML_VALUE_TYPE(surfaceFormat);
+ 	QML_STRUCTURED_VALUE;
+ 	Q_PROPERTY(bool opaque MEMBER opaque WRITE setOpaque);
++	Q_PROPERTY(bool flat MEMBER flat);
+ 
+ public:
+ 	bool opaque = false;
+ 	bool opaqueModified = false;
++	bool flat = false;
+ 
+ 	void setOpaque(bool opaque) {
+ 		this->opaque = opaque;
+@@ -31,7 +33,8 @@
+ 	}
+ 
+ 	[[nodiscard]] bool operator==(const QsSurfaceFormat& other) const {
+-		return other.opaqueModified == this->opaqueModified && other.opaque == this->opaque;
++		return other.opaqueModified == this->opaqueModified && other.opaque == this->opaque
++		    && other.flat == this->flat;
+ 	}
+ };
+ 
+@@ -140,6 +143,11 @@
+ 	/// with those behind it, saving power and GPU load. If unset, this property defaults to
+ 	/// true if @@color is opaque, or false if not. *You should not need to modify this
+ 	/// property unless you create a surface that starts opaque and later becomes transparent.*
++	/// - `flat` - If the surface is drawn without depth or stencil buffers, each as large as
++	/// the window. Qt Quick draws opaque items front to back against the depth buffer, and
++	/// clips rotated items with the stencil, so only a window of plain pictures and shapes
++	/// that are never clipped while rotated, such as a wallpaper, should be flat. Defaults
++	/// to false.
+ 	///
+ 	/// > [!NOTE] The surface format cannot be changed after the window is created.
+ 	Q_PROPERTY(QsSurfaceFormat surfaceFormat READ surfaceFormat WRITE setSurfaceFormat NOTIFY surfaceFormatChanged);
