@@ -8,6 +8,8 @@
 //!   moving sends that row alone.
 //! - [`kept`]: a place's rows as last told, each making answered with
 //!   only the records that read differently and the keys that went.
+//! - [`money`]: dollars as a person reads them, so spend-watch's figures
+//!   and the agents daemon's sums of them read alike.
 //! - [`numbers`]: a measure said as the launcher says it, three
 //!   significant digits grouped and pointed as the account's settings
 //!   say, its cases in `numbers.json`.
@@ -19,6 +21,7 @@
 
 pub mod fuzzy;
 pub mod kept;
+pub mod money;
 pub mod numbers;
 pub mod order;
 pub mod time;
