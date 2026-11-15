@@ -12,7 +12,6 @@
     "inks"
     "helps"
   ];
-  cadence = [ "inks" ];
   changed-checks = [
     "kit"
     "helps"
