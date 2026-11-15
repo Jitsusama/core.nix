@@ -447,7 +447,8 @@ const ABOUT_THE_FILE: [&str; 3] = ["Version", "schemaLocation", "AlertTable"];
 /// A source's facts, each path said once: a fact alone under its first
 /// part keeps its whole path as its label, and those come first, lined up
 /// together. Facts sharing a first part follow under a line of the path
-/// they all share, each named by the rest of its own, two cells in.
+/// they all share, two cells in, said once again in the same way at
+/// every depth, so a path shared deeper in is a line of its own too.
 fn said_once(fields: &[(Vec<String>, String)], pen: &Pen, room: Room) -> Vec<String> {
     let mut groups: Vec<&[(Vec<String>, String)]> = Vec::new();
     let mut start = 0;
@@ -460,24 +461,16 @@ fn said_once(fields: &[(Vec<String>, String)], pen: &Pen, room: Room) -> Vec<Str
     let (alone, shared): (Vec<_>, Vec<_>) = groups
         .into_iter()
         .partition(|group| group.len() < 2 || group.iter().any(|(path, _)| path.len() < 2));
-    let labelled = |group: &[(Vec<String>, String)], from: usize| -> Vec<(String, String)> {
-        group
-            .iter()
-            .map(|(path, value)| (path[from..].join(" "), value.clone()))
-            .collect()
-    };
-    let laid = |facts: &[(String, String)], room: Room| {
-        let facts: Vec<(&str, Option<&str>)> = facts
-            .iter()
-            .map(|(label, value)| (label.as_str(), Some(value.as_str())))
-            .collect();
-        layout::facts(&facts, "unknown", pen, room)
-    };
-    let alone: Vec<(String, String)> = alone
+    let alone: Vec<(String, &str)> = alone
         .into_iter()
-        .flat_map(|group| labelled(group, 0))
+        .flatten()
+        .map(|(path, value)| (path.join(" "), value.as_str()))
         .collect();
-    let mut lines = laid(&alone, room);
+    let alone: Vec<(&str, Option<&str>)> = alone
+        .iter()
+        .map(|(label, value)| (label.as_str(), Some(*value)))
+        .collect();
+    let mut lines = layout::facts(&alone, "unknown", pen, room);
     for group in shared {
         let shortest = group.iter().map(|(path, _)| path.len()).min().unwrap_or(1);
         let first = &group[0].0;
@@ -487,8 +480,12 @@ fn said_once(fields: &[(Vec<String>, String)], pen: &Pen, room: Room) -> Vec<Str
             + 1;
         lines.push(pen.role("text", &first[..common].join(" ")));
         let inset = " ".repeat(INSET);
+        let rest: Vec<(Vec<String>, String)> = group
+            .iter()
+            .map(|(path, value)| (path[common..].to_vec(), value.clone()))
+            .collect();
         lines.extend(
-            laid(&labelled(group, common), room.less(INSET))
+            said_once(&rest, pen, room.less(INSET))
                 .into_iter()
                 .map(|line| format!("{inset}{line}")),
         );
