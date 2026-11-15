@@ -90,10 +90,10 @@ fn processor() -> Option<f64> {
     Some(user + system)
 }
 
-/// The title of each owner's quest, by address, from the H1 of its
-/// README in `quests`, whose folders end in the address
+/// The title of each owner's quest, by address, from its README in
+/// `quests`, whose folders end in the address
 /// (QEST-20261111-1JQPPC is 1JQPPC's). An owner with none is left out,
-/// and served by address.
+/// and said to have no quest.
 fn titles(quests: &Path, axes: &[Axis]) -> BTreeMap<String, String> {
     let owners: BTreeSet<&str> = axes
         .iter()
@@ -114,12 +114,21 @@ fn titles(quests: &Path, axes: &[Axis]) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// A README's H1, past its frontmatter.
+/// A README's short title from its frontmatter, as Joel's launcher names
+/// a quest, else its H1 past the frontmatter.
 fn title(readme: &str) -> Option<String> {
-    let body = readme
+    let (front, body) = readme
         .strip_prefix("---\n")
         .and_then(|front| front.split_once("\n---\n"))
-        .map_or(readme, |(_, body)| body);
+        .unwrap_or(("", readme));
+    let short = front
+        .lines()
+        .find_map(|line| line.strip_prefix("short:"))
+        .map(|short| short.trim().trim_matches('"').trim())
+        .filter(|short| !short.is_empty());
+    if let Some(short) = short {
+        return Some(short.to_owned());
+    }
     body.lines()
         .find_map(|line| line.strip_prefix("# "))
         .map(|title| title.trim().to_owned())
@@ -138,6 +147,16 @@ mod tests {
             Some("The Loop".to_owned())
         );
         assert_eq!(title("no heading"), None);
+    }
+
+    #[test]
+    fn a_quest_with_a_short_title_is_named_by_it() {
+        let readme = "---\nid: QEST-1\nshort: Launcher\n---\n# A Launcher That Fits\n";
+        assert_eq!(title(readme), Some("Launcher".to_owned()));
+        assert_eq!(
+            title("---\nshort: \"\"\n---\n# The Loop\n"),
+            Some("The Loop".to_owned())
+        );
     }
 
     #[test]

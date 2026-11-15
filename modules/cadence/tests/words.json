@@ -4,7 +4,8 @@
       "id": "spec:head",
       "in": "spec",
       "said": {
-        "head": "{count} out of spec",
+        "head": "{count} readings out of spec",
+        "one": "1 reading out of spec",
         "none": "all in spec"
       }
     },
@@ -29,7 +30,7 @@
     {
       "id": "spec:yours-out",
       "in": "spec:axis:drawer",
-      "name": "Yours Out"
+      "name": "Your Use Out"
     },
     {
       "id": "spec:ours-out",
@@ -43,7 +44,10 @@
     {
       "id": "spec:reading:owner",
       "in": "spec:reading",
-      "name": "Owner"
+      "name": "Owner",
+      "said": {
+        "untitled": "a session with no quest"
+      }
     },
     {
       "id": "spec:reading:from",
@@ -51,12 +55,12 @@
       "name": "Read From"
     },
     {
-      "id": "spec:reading:side",
+      "id": "spec:reading:on",
       "in": "spec:reading",
-      "name": "Side",
+      "name": "Read On",
       "said": {
-        "yours": "yours",
-        "ours": "ours, a stand-in"
+        "yours": "your own use",
+        "ours": "a stand-in"
       }
     }
   ]

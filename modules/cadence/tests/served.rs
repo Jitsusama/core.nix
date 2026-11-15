@@ -57,7 +57,7 @@ fn spec_is_made_from_the_axes_with_its_headline_and_owners_named() {
         "the read says its cost: {said}"
     );
     let made: Value = serde_json::from_slice(&ran.stdout).expect("one line of JSON");
-    assert_eq!(made["head"]["said"], "1 out of spec", "{made}");
+    assert_eq!(made["head"]["said"], "1 reading out of spec", "{made}");
     assert_eq!(made["head"]["glyph"], "failed");
     let rows: BTreeMap<&str, &Value> = made["rows"]
         .as_array()

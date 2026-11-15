@@ -30,8 +30,8 @@ pub struct Made {
 }
 
 /// Spec's rows and headline from `axes`, each owner named by the title of
-/// its quest in `titles` (by address), or by its address where it has
-/// none.
+/// its quest in `titles` (by address), or said to have none, since an
+/// address on his screen names nothing he knows (VKCF3Z, 694b965f).
 #[must_use]
 pub fn made(axes: &[Axis], titles: &BTreeMap<String, String>, words: &Words) -> Made {
     let mut rows = Vec::new();
@@ -49,8 +49,12 @@ pub fn made(axes: &[Axis], titles: &BTreeMap<String, String>, words: &Words) -> 
     let mut head = json!({
         "key": format!("head:{PLACE}"),
         "place": PLACE,
+        // It counts readings, not axes, and says so: "14 out of spec"
+        // beside ten axes read as 14 of 10 (VKCF3Z, 694b965f).
         "said": if out == 0 {
             words.said("spec:head", "none", &[])
+        } else if out == 1 {
+            words.said("spec:head", "one", &[])
         } else {
             words.said("spec:head", "head", &[("count", &count)])
         },
@@ -156,15 +160,15 @@ fn reading_row(
     let owner = titles
         .get(reading.owner)
         .cloned()
-        .unwrap_or_else(|| reading.owner.to_owned());
-    let side = if reading.his { "yours" } else { "ours" };
+        .unwrap_or_else(|| words.said("spec:reading:owner", "untitled", &[]));
+    let on = if reading.his { "yours" } else { "ours" };
     let mut facts = vec![json!({"name": words.name("spec:reading:owner"), "said": owner})];
     if !reading.from.is_empty() {
         facts.push(json!({"name": words.name("spec:reading:from"), "said": reading.from}));
     }
     facts.push(json!({
-        "name": words.name("spec:reading:side"),
-        "said": words.said("spec:reading:side", side, &[]),
+        "name": words.name("spec:reading:on"),
+        "said": words.said("spec:reading:on", on, &[]),
     }));
     let mut nerd = vec![json!({"label": "owner", "value": reading.owner})];
     if let Some(figure) = reading.now.filter(|_| reading.held.is_none()) {
@@ -272,12 +276,22 @@ mod tests {
     fn the_headline_counts_only_his_readings_out() {
         let made = made(&axes(), &titles(), &words());
         assert_eq!(made.head["key"], "head:spec");
-        assert_eq!(made.head["said"], "1 out of spec");
+        assert_eq!(made.head["said"], "1 reading out of spec");
         assert_eq!(made.head["glyph"], "failed");
         assert!(
             made.head.get("hue").is_none(),
             "the headline's text takes no hue"
         );
+    }
+
+    #[test]
+    fn the_headline_says_it_counts_readings_not_axes() {
+        let mut axes = axes();
+        axes[1].readings[0] = Reading::new("{} pi windows", Some(14.0), "", "OSPHT4")
+            .bar(Bar::AtMost(12.0))
+            .his();
+        let made = made(&axes, &titles(), &words());
+        assert_eq!(made.head["said"], "2 readings out of spec");
     }
 
     #[test]
@@ -323,7 +337,7 @@ mod tests {
         assert_eq!(
             drawer["facts"],
             json!([
-                {"name": "Yours Out", "said": "1 of 1"},
+                {"name": "Your Use Out", "said": "1 of 1"},
                 {"name": "Stand-ins Out", "said": "1 of 1"},
             ])
         );
@@ -360,14 +374,25 @@ mod tests {
             json!([
                 {"name": "Owner", "said": "Joel's Orchestration"},
                 {"name": "Read From", "said": "the asks ledger"},
-                {"name": "Side", "said": "yours"},
+                {"name": "Read On", "said": "your own use"},
             ])
         );
         assert_eq!(his["drawer"]["body"], "4 owners");
         assert_eq!(raw(4.140_277_7, " h"), "4.14 h");
         assert_eq!(raw(20.0, " min"), "20 min");
         let untitled = row(&made, "row:spec:time-to-done:0");
-        assert_eq!(untitled["side"], json!([{"said": "5FWIUS"}]));
-        assert_eq!(untitled["drawer"]["facts"][2]["said"], "ours, a stand-in");
+        assert_eq!(
+            untitled["side"],
+            json!([{"said": "a session with no quest"}])
+        );
+        assert_eq!(
+            untitled["drawer"]["facts"][0]["said"],
+            "a session with no quest"
+        );
+        assert_eq!(untitled["drawer"]["facts"][2]["said"], "a stand-in");
+        assert_eq!(
+            untitled["owner"], "5FWIUS",
+            "Return still finds it by address"
+        );
     }
 }

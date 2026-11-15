@@ -1904,7 +1904,7 @@ Provider {
 
     // Spec after Budgets, since it's a reading of the agents as Budgets is
     // (VKCF3Z, 2026-11-14 [efa2d961]): how they deliver against the bars
-    // Joel set, its side the head cadence-spec serves, "14 out of spec",
+    // Joel set, its side the head cadence-spec serves, "14 readings out of spec",
     // wearing the daemon's glyph, and a step in its axes, each stepping in
     // to its readings (modules/cadence/Spec.qml). Agents' own row says
     // nothing of it, so it never competes with "needs you". None where

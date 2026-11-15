@@ -5,14 +5,14 @@
 # saying one is out. Its arguments are cadence's, and read by nobody here.
 cat <<'EOF'
 {
-  "head": {"key": "head:spec", "place": "spec", "said": "1 out of spec", "glyph": "failed"},
+  "head": {"key": "head:spec", "place": "spec", "said": "1 reading out of spec", "glyph": "failed"},
   "rows": [
     {
       "key": "row:spec:time-to-done", "thing": "axis:time-to-done", "place": "spec",
       "kind": "axis", "depth": 0, "name": "Time to Done", "glyph": "failed",
       "side": [{"said": "1 out"}], "acts": [{"key": "verb:more", "step": "rows"}],
       "drawer": {"eyebrow": "from cadence \u00b7 time to done", "title": "Time to Done",
-        "facts": [{"name": "Yours Out", "said": "1 of 1"}]}
+        "facts": [{"name": "Your Use Out", "said": "1 of 1"}]}
     },
     {
       "key": "row:spec:time-to-done:0", "thing": "axis:time-to-done:0", "place": "spec",

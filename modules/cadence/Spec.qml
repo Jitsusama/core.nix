@@ -1,7 +1,7 @@
 // Spec in the launcher: how the agents deliver against the bars Joel set,
 // read on ten axes. It sits inside Agents, after Budgets, since it's a
 // reading of the agents, as Budgets is (VKCF3Z, 2026-11-14 [efa2d961]):
-// Agents' row says the head, "14 out of spec" or "all in spec", and a step
+// Agents' row says the head, "14 readings out of spec" or "all in spec", and a step
 // in lists the axes, each stepping in to its readings, worst first as the
 // daemon orders them. It earns a row on Home by Joel's use, never ahead of
 // it.
