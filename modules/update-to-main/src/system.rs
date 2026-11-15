@@ -164,7 +164,8 @@ fn build_elsewhere(
             builders,
             "building the system on the machine's builders",
         ) {
-            // The builders stay, so a piece only they take still goes to them.
+            // The builders stay for what only they take; the rest builds
+            // here without them.
             here(
                 config,
                 &pieces,
@@ -661,16 +662,45 @@ fn here(
     // the builders didn't: on 9 November a kept build lost 391s to a cause
     // no line kept.
     eprintln!("{}", fell_back(&apart));
-    in_turn(config, shown, pieces, what, |batch, what| {
-        let mut local = nix(config);
-        local.args(["build", "--no-link"]);
-        if let Some(builders) = builders {
-            local.args(["--builders", builders]);
+    let small = |pieces: &[String], builders: Option<&str>, what: &str| {
+        in_turn(config, shown, pieces, what, |batch, what| {
+            let mut local = nix(config);
+            local.args(["build", "--no-link"]);
+            if let Some(builders) = builders {
+                local.args(["--builders", builders]);
+            }
+            local.args(["--max-jobs", &here.max_jobs.to_string()]);
+            local.args(["--cores", &here.cores.to_string()]);
+            told(config, local, what, batch)
+        })
+    };
+    if builders == Some("") {
+        return small(pieces, builders, what);
+    }
+    // Nix offers each piece to a builder with room before building it
+    // here, so with the builders given, what failed on them went back to
+    // them: on 14 November a test that ran out of time on the Mac's VM
+    // failed there twice more in the build meant for the laptop. Only what
+    // this machine can't build goes to them now, first, so a piece of its
+    // own built from one finds it built.
+    let (theirs, ours) = match local(config) {
+        Ok(local) => theirs_and_ours(shown, pieces, &local),
+        Err(failure) => {
+            eprintln!("{}, so the builders take what they will", failure.why);
+            (pieces.to_vec(), Vec::new())
         }
-        local.args(["--max-jobs", &here.max_jobs.to_string()]);
-        local.args(["--cores", &here.cores.to_string()]);
-        told(config, local, what, batch)
-    })
+    };
+    if !theirs.is_empty() {
+        small(
+            &theirs,
+            builders,
+            &format!("{what}, what only the builders take"),
+        )?;
+    }
+    if ours.is_empty() {
+        return Ok(());
+    }
+    small(&ours, Some(""), what)
 }
 
 /// How long the machine has been behind main, from when an update first
@@ -724,8 +754,85 @@ pub(crate) struct Piece {
     light: bool,
     /// Whether it asks for `big-parallel`, as nixpkgs' kernel does.
     big: bool,
+    /// The system it builds for, such as `x86_64-linux`.
+    system: String,
+    /// The features it asks of whatever builds it.
+    features: Vec<String>,
     /// The derivations it's built from, by their paths.
     pub(crate) inputs: Vec<String>,
+}
+
+/// What this machine builds itself, as Nix's settings say: the systems it
+/// runs and the features it has.
+pub(crate) struct Local {
+    systems: Vec<String>,
+    features: Vec<String>,
+}
+
+impl Local {
+    /// Reads `nix config show --json`, each setting's `value`.
+    fn from_settings(shown: &str) -> Result<Local, Failure> {
+        let shown: serde_json::Value = serde_json::from_str(shown)
+            .map_err(|e| Failure::new(format!("reading what this machine builds: {e}")))?;
+        let words = |name: &str| -> Vec<String> {
+            let value = &shown[name]["value"];
+            value
+                .as_array()
+                .map(|all| {
+                    all.iter()
+                        .filter_map(|w| w.as_str())
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .or_else(|| value.as_str().map(|one| vec![one.to_owned()]))
+                .unwrap_or_default()
+        };
+        let systems: Vec<String> = words("system")
+            .into_iter()
+            .chain(words("extra-platforms"))
+            .collect();
+        if systems.is_empty() {
+            return Err(Failure::new(
+                "reading what this machine builds: Nix names no system",
+            ));
+        }
+        Ok(Local {
+            systems,
+            features: words("system-features"),
+        })
+    }
+
+    /// Whether Nix would build `piece` here: its system is one this
+    /// machine runs, or Nix's own, and it asks for no feature it lacks.
+    fn builds(&self, piece: &Piece) -> bool {
+        (piece.system == "builtin" || self.systems.contains(&piece.system))
+            && piece.features.iter().all(|f| self.features.contains(f))
+    }
+}
+
+/// Of `pieces`, those only builders take, then those this machine builds
+/// itself. A piece `shown` doesn't name stays with the builders, as every
+/// piece did before.
+fn theirs_and_ours(
+    shown: &BTreeMap<String, Piece>,
+    pieces: &[String],
+    local: &Local,
+) -> (Vec<String>, Vec<String>) {
+    pieces
+        .iter()
+        .cloned()
+        .partition(|drv| !shown.get(drv).is_some_and(|piece| local.builds(piece)))
+}
+
+/// What this machine builds itself, from Nix's settings, or why that
+/// can't be read.
+fn local(config: &Config) -> Result<Local, Failure> {
+    let shown = run::output(
+        nix(config),
+        "reading what this machine builds",
+        ["config", "show", "--json"],
+    )?;
+    Local::from_settings(&shown)
 }
 
 /// The derivations `nix derivation show` gave, by their paths. Newer Nix
@@ -752,10 +859,13 @@ pub(crate) fn pieces(shown: &str) -> Result<BTreeMap<String, Piece>, Failure> {
                 .or_else(|| d["inputDrvs"].as_object())
                 .map(|drvs| drvs.keys().map(|k| stored(k)).collect())
                 .unwrap_or_default();
+            let features = features(d);
             let piece = Piece {
                 names,
                 light: is_light(d),
-                big: is_big(d),
+                big: features.iter().any(|f| f == "big-parallel"),
+                system: d["system"].as_str().unwrap_or_default().to_owned(),
+                features,
                 inputs,
             };
             (stored(key), piece)
@@ -772,17 +882,24 @@ fn is_light(derivation: &serde_json::Value) -> bool {
         || structured(derivation)["preferLocalBuild"].as_bool() == Some(true)
 }
 
-/// Whether a derivation asks for `big-parallel`, in its environment as
-/// words or in its structured attributes as a list.
-fn is_big(derivation: &serde_json::Value) -> bool {
-    const BIG: &str = "big-parallel";
-    let asked = derivation["env"]["requiredSystemFeatures"]
+/// The features a derivation asks for, such as `big-parallel`, in its
+/// environment as words or in its structured attributes as a list.
+fn features(derivation: &serde_json::Value) -> Vec<String> {
+    if let Some(words) = derivation["env"]["requiredSystemFeatures"]
         .as_str()
-        .is_some_and(|words| words.split_whitespace().any(|word| word == BIG));
-    asked
-        || structured(derivation)["requiredSystemFeatures"]
-            .as_array()
-            .is_some_and(|features| features.iter().any(|f| f.as_str() == Some(BIG)))
+        .filter(|words| !words.trim().is_empty())
+    {
+        return words.split_whitespace().map(str::to_owned).collect();
+    }
+    structured(derivation)["requiredSystemFeatures"]
+        .as_array()
+        .map(|all| {
+            all.iter()
+                .filter_map(|f| f.as_str())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// A derivation's structured attributes, from `__json` in older Nix's
@@ -1183,6 +1300,57 @@ mod tests {
             "building the kept pieces on their own builders failed (exit status: 1), so \
              they build here, after:\n  error: path '/nix/store/a-defmt' is required\n  \
              copying path '/nix/store/a-defmt'"
+        );
+    }
+
+    #[test]
+    fn what_this_machine_builds_itself_builds_here_and_only_the_rest_goes_to_builders() {
+        // On 14 November a test that ran out of time on the builder failed
+        // the same way twice more, since the build here still offered
+        // every piece to it first.
+        let local = Local::from_settings(
+            r#"{"system": {"value": "x86_64-linux"},
+                "extra-platforms": {"value": ["i686-linux"]},
+                "system-features": {"value": ["benchmark", "big-parallel", "kvm"]}}"#,
+        )
+        .unwrap();
+        let shown = pieces(
+            r#"{"derivations": {
+            "a-sound.drv": {"system": "x86_64-linux", "env": {}},
+            "b-kernel.drv": {"system": "x86_64-linux",
+                "env": {"requiredSystemFeatures": "big-parallel"}},
+            "c-older.drv": {"system": "i686-linux", "env": {}},
+            "d-mac.drv": {"system": "aarch64-darwin", "env": {}},
+            "e-gpu.drv": {"system": "x86_64-linux", "env": {},
+                "structuredAttrs": {"requiredSystemFeatures": ["cuda"]}},
+            "f-fetched.drv": {"system": "builtin", "env": {}}}}"#,
+        )
+        .unwrap();
+        let store = |names: &[&str]| -> Vec<String> {
+            names
+                .iter()
+                .map(|n| format!("/nix/store/{n}.drv"))
+                .collect()
+        };
+        let all = store(&[
+            "a-sound",
+            "b-kernel",
+            "c-older",
+            "d-mac",
+            "e-gpu",
+            "f-fetched",
+            "g-unshown",
+        ]);
+        assert_eq!(
+            theirs_and_ours(&shown, &all, &local),
+            (
+                store(&["d-mac", "e-gpu", "g-unshown"]),
+                store(&["a-sound", "b-kernel", "c-older", "f-fetched"])
+            )
+        );
+        assert!(
+            Local::from_settings("{}").is_err(),
+            "settings naming no system leave every piece with the builders"
         );
     }
 
