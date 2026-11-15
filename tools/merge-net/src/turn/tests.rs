@@ -149,15 +149,15 @@ fn a_head_whose_change_main_took_rebased_counts_as_merged() {
         git_in(&repo, &["commit", "-qm", message]);
         git_in(&repo, &["rev-parse", "HEAD"])
     };
-    let base = write("a\nb\nc\nd\ne\n", "base");
-    let change = write("a\nb\nC\nd\ne\n", "change");
+    let base = write("a\nb\nc\nd\ne\nf\ng\nh\n", "base");
+    let change = write("a\nb\nc\nd\ne\nf\nG\nh\n", "change");
     git_in(&repo, &["checkout", "-q", &base]);
-    write("a\nB\nc\nd\ne\n", "moved");
+    write("a\nB\nc\nd\ne\nf\ng\nh\n", "moved");
     git_in(&repo, &["cherry-pick", &change]);
     let main = git_in(&repo, &["rev-parse", "HEAD"]);
     git_in(&repo, &["update-ref", "refs/remotes/origin/main", &main]);
     git_in(&repo, &["checkout", "-q", &base]);
-    let other = write("a\nb\nc\nD\ne\n", "other");
+    let other = write("a\nb\nc\nD\ne\nf\ng\nh\n", "other");
     let said = (on_main_in(&repo, &change), on_main_in(&repo, &other));
     fs::remove_dir_all(&repo).unwrap();
     assert_eq!(
