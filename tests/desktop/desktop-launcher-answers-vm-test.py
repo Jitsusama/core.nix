@@ -1490,7 +1490,11 @@ def test_the_screens_warmth_stands_beside_them_and_return_switches_it(desktop: D
     # begun an hour ago and ending in ten, and a sensor that sees the room's colour.
     now = int(machine.succeed("date +%s").strip())
     sunrise = now + 10 * 3600
-    clock = desktop.as_account(f"date -d @{sunrise} +%H:%M").strip()
+    # The shell says a moment on another day with its day, "tomorrow 00:03" (When.moment), and
+    # ten hours on is tomorrow once the day is past 14:00, so the note is read as it says it.
+    clock, today, its_day = desktop.as_account(
+        f"date -d @{sunrise} +%H:%M; date -d @{now} +%F; date -d @{sunrise} +%F"
+    ).split()
     night = {
         "kelvin": 4000,
         "followsTheRoom": True,
@@ -1514,9 +1518,9 @@ def test_the_screens_warmth_stands_beside_them_and_return_switches_it(desktop: D
     desktop.launcher_until(lambda shown: shown["rows"][-2:] == ["Warmth", "Turn Every Screen Off"])
     desktop.down_to("Warmth")
     desktop.launcher_until(selected("Warmth", "4,000 K", "more"))
-    assert desktop.showing()["selected"]["note"] == f"night light until {clock}", desktop.showing()[
-        "selected"
-    ]
+    assert desktop.showing()["selected"]["note"] == "night light until " + (
+        clock if its_day == today else f"tomorrow {clock}"
+    ), desktop.showing()["selected"]
     desktop.shoot("launcher-warmth")
     inside = ["Night Light", "Follow the Room", "Room's White", "Sunrise", "Sunset"]
     desktop.follow()

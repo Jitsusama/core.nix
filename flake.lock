@@ -106,11 +106,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1794732959,
-        "narHash": "sha256-5JiyabC91JJ73Z3N2TeyHIZMVZC0f1zueyKDh79JhbQ=",
+        "lastModified": 1794745110,
+        "narHash": "sha256-kkOQp/0A3FeqDJx47QeARPp+GlOj43oMEPIseAHYbtc=",
         "owner": "Jitsusama",
         "repo": "mycelium",
-        "rev": "6b808c2f828d9aa8af32b4b9dda26c66ebbd4e6d",
+        "rev": "7f278939bde6fa246f6649a761af122c7167e6f8",
         "type": "github"
       },
       "original": {
