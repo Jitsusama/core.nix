@@ -724,20 +724,21 @@ Provider {
         keepingBegun(keptListed);
         const rows = listed.map(person => {
             // One the daemon listed comes with their row ready, kept while
-            // their record is the one it last told, which it tells anew
-            // only when they changed, even once it's started again, since a
-            // record told alike is the one held (Daemon.qml's took): so
-            // nothing about them is written out
-            // again to find it the same, and nothing of the row is worded
-            // here.
+            // their record says what it said, by the stamp the daemon
+            // gives it (listing.rs's `listing`) rather than by the record
+            // held: started again, the daemon tells each source's part as
+            // it comes, each a new record, though the last says all the
+            // first did. So nothing about them is written out again to
+            // find it the same, and nothing of the row is worded here.
             // Their row reads only what their record says, but for its
             // order, which places it and is read no further, so it's kept
-            // by the record.
+            // by the record's stamp.
             const record = person.stood ? lister.held[`person:${person.key}`] : null;
             const ready = record ? rowsHeld[`row:people:${person.key}`] : null;
             // One saying their time is kept for the minute too.
             if (ready)
-                return keptAlike(keptListed, person.key, [record, clocked(ready) ? now : 0],
+                return keptAlike(keptListed, person.key,
+                    [record.said ?? record, clocked(ready) ? now : 0],
                     () => made(person, person.stood, ready,
                         () => Ready.drawerServed(ready, lister.held)));
             const stood = person.stood ?? standOf(person);

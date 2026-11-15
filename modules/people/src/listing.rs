@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 
 use crate::drawer::{self, Named};
 use crate::name::{self, bare};
-use crate::{Book, LISTING, Record, address};
+use crate::{Book, LISTING, Record, address, said};
 
 /// How a source's entry says someone stands, as its module tells the
 /// daemon in the sources file: the entry's field that says it, which of
@@ -363,6 +363,23 @@ impl Person {
         })
     }
 
+    /// Their record beside their row, as one person with what each source
+    /// said, stamped by all it says (`said`): a daemon started again tells
+    /// each source's part as it comes, so the shell holds a new record of
+    /// them for each, the last saying all the first one did, and it keeps
+    /// their row by the stamp, which comes back as it was, rather than
+    /// by the record. Kept by the record, every listed row was made again
+    /// at the first letter after a switch started the daemon again, 136
+    /// and 137 of them (Joel's journal, 2026-11-14).
+    pub fn listing(&self, record: &Record, sources: &[(String, Option<Stands>)]) -> Value {
+        let mut listing = json!({
+            "key": self.key, "kind": LISTING, "person": self.json(),
+            "sources": sourced(record, sources),
+        });
+        listing["said"] = Value::String(said(&listing));
+        listing
+    }
+
     /// Their row as the launcher draws it, ready, in the form every
     /// daemon's rows take (ready-rows.md): its key, the person it is as
     /// `thing`, which Joel's picks remember, name, glyph and hue by the
@@ -484,10 +501,7 @@ impl Told {
             .filter_map(|person| book.record(&person.key).map(|record| (person, record)))
             .flat_map(|(person, record)| {
                 [
-                    json!({
-                        "key": person.key, "kind": LISTING, "person": person.json(),
-                        "sources": sourced(record, sources),
-                    }),
+                    person.listing(record, sources),
                     drawer::drawer(person, record, sources, named, book.standings()),
                 ]
             })
@@ -715,6 +729,31 @@ pub(crate) mod tests {
             away.row()["side"],
             json!([{"zone": "Europe/London", "as": "zone"}]),
             "their zone is the last of their side, for the shell's clock to say"
+        );
+    }
+
+    #[test]
+    fn their_listing_is_stamped_by_all_it_says() {
+        let stamp = |entries: &[(&str, Value)]| {
+            let record = record("person:bo@example.com", entries);
+            person(&record, &sources()).listing(&record, &sources())["said"].clone()
+        };
+        let busy = [("tuple", json!({"name": "Bo", "status": "busy"}))];
+        assert!(stamp(&busy).is_string(), "a listing says its stamp");
+        assert_eq!(
+            stamp(&busy),
+            stamp(&busy),
+            "said again alike, stamped alike"
+        );
+        assert_ne!(
+            stamp(&busy),
+            stamp(&[("tuple", json!({"name": "Bo", "status": "online"}))]),
+            "how they stand moved, so the stamp moves"
+        );
+        assert_ne!(
+            stamp(&busy),
+            stamp(&[busy[0].clone(), ("slack", json!({"name": "Bo"}))]),
+            "a source more, so the stamp moves"
         );
     }
 
