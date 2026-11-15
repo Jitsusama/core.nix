@@ -1235,6 +1235,21 @@
           "power_dbm": 28
         }
       ],
+      "path": {
+        "through": ["modem"],
+        "down": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 369.86,
+          "unmeasured": 0
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 0
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.1",
@@ -1642,6 +1657,21 @@
           "power_dbm": 28
         }
       ],
+      "path": {
+        "through": ["eero:2003", "modem"],
+        "down": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 369.86,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.88",
@@ -2051,6 +2081,21 @@
           "power_dbm": 28
         }
       ],
+      "path": {
+        "through": ["eero:2003", "modem"],
+        "down": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 369.86,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.209",
@@ -2429,6 +2474,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2001", "eero:2003", "modem"],
+        "down": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 369.86,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.45",
@@ -2541,6 +2601,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2001", "eero:2003", "modem"],
+        "down": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 369.86,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.24",
@@ -2653,6 +2728,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2001", "eero:2003", "modem"],
+        "down": {
+          "a": "mac:02:00:00:00:00:13",
+          "b": "eero:2001",
+          "room_mbps": 57.6,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.31",
@@ -2758,6 +2848,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2001", "eero:2003", "modem"],
+        "down": {
+          "a": "mac:02:00:00:00:00:01",
+          "b": "eero:2001",
+          "room_mbps": 45.6,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.29",
@@ -2871,6 +2976,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2002", "eero:2003", "modem"],
+        "down": {
+          "a": "mac:02:00:00:00:00:15",
+          "b": "eero:2002",
+          "room_mbps": 264.1,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.25",
@@ -2983,6 +3103,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2002", "eero:2003", "modem"],
+        "down": {
+          "a": "mac:02:00:00:00:00:17",
+          "b": "eero:2002",
+          "room_mbps": 39.4,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.112",
@@ -3088,6 +3223,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2002", "eero:2003", "modem"],
+        "down": {
+          "a": "mac:02:00:00:00:00:16",
+          "b": "eero:2002",
+          "room_mbps": 198.3,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.33",
@@ -3193,6 +3343,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2002", "eero:2003", "modem"],
+        "down": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 369.86,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.20",
@@ -3305,6 +3470,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2002", "eero:2003", "modem"],
+        "down": {
+          "a": "mac:02:00:00:00:00:0d",
+          "b": "eero:2002",
+          "room_mbps": 237.9,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.30",
@@ -3417,6 +3597,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2002", "eero:2003", "modem"],
+        "down": {
+          "a": "mac:02:00:00:00:00:0f",
+          "b": "eero:2002",
+          "room_mbps": 59.0,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.47",
@@ -3529,6 +3724,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2002", "eero:2003", "modem"],
+        "down": {
+          "a": "mac:02:00:00:00:00:07",
+          "b": "eero:2002",
+          "room_mbps": 342.0,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.28",
@@ -3634,6 +3844,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2002", "eero:2003", "modem"],
+        "down": {
+          "a": "mac:02:00:00:00:00:03",
+          "b": "eero:2002",
+          "room_mbps": 45.6,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.40",
@@ -3739,6 +3964,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2002", "eero:2003", "modem"],
+        "down": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 369.86,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.26",
@@ -3849,6 +4089,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2003", "modem"],
+        "down": {
+          "a": "mac:02:00:00:00:00:0b",
+          "b": "eero:2003",
+          "room_mbps": 66.2,
+          "unmeasured": 0
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 0
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.99",
@@ -3954,6 +4209,21 @@
           "power_dbm": null
         }
       ],
+      "path": {
+        "through": ["eero:2003", "modem"],
+        "down": {
+          "a": "mac:02:00:00:00:00:05",
+          "b": "eero:2003",
+          "room_mbps": 184.7,
+          "unmeasured": 0
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 0
+        }
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.23",
@@ -4312,6 +4582,50 @@
       "channel": 149,
       "signal_dbm": -52,
       "source": "eero"
+    }
+  ],
+  "internet": {
+    "provider": "Example ISP",
+    "down_mbps": 369.86,
+    "up_mbps": 11.93,
+    "measured_at": 1793875935,
+    "source": "eero"
+  },
+  "concerns": [
+    {
+      "kind": "busy",
+      "device": "eero:2003",
+      "on": "5 GHz high",
+      "says": "Hall's 5 GHz high radio is busy 41% of the time"
+    },
+    {
+      "kind": "busy",
+      "device": "eero:2002",
+      "on": "5 GHz high",
+      "says": "Study's 5 GHz high radio is busy 39% of the time"
+    },
+    {
+      "kind": "busy",
+      "device": "eero:2001",
+      "on": "5 GHz high",
+      "says": "Den's 5 GHz high radio is busy 37% of the time"
+    },
+    {
+      "kind": "weak",
+      "device": "mac:02:00:00:00:00:0e",
+      "on": "5 GHz",
+      "other": "eero:2002",
+      "says": "laptop computer 1 reaches Study at -75 dBm"
+    },
+    {
+      "kind": "ceiling",
+      "device": "modem",
+      "says": "The internet comes in at 369.9 Mbit/s down, the least room on 7 devices' way"
+    },
+    {
+      "kind": "ceiling",
+      "device": "modem",
+      "says": "The internet comes in at 11.9 Mbit/s up, the least room on 18 devices' way"
     }
   ]
 }

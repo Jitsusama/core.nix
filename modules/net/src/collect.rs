@@ -1,10 +1,12 @@
 //! One record of the home network from what each source said: the modem,
 //! the switch, then eero's devices and links, in that order, so a reader
-//! always finds the same device in the same place.
+//! always finds the same device in the same place; then where it runs out
+//! of room (src/room.rs).
 
 use serde_json::Value;
 
 use crate::model::{Device, LinkState, Medium, Network, SCHEMA};
+use crate::room;
 use crate::sources::{eero, modem, switch};
 
 /// What each source said in one round of reads.
@@ -25,7 +27,7 @@ pub fn network(said: Said, now: u64) -> Network {
         eero.devices.retain(|device| device.id != switch.id);
         reach_the_switch(&mut eero.links, switch);
     }
-    Network {
+    let mut network = Network {
         schema: SCHEMA.into(),
         collected_at: now,
         sources: vec![eero.source, modem_source, switch_source],
@@ -35,7 +37,11 @@ pub fn network(said: Said, now: u64) -> Network {
             .chain(eero.devices)
             .collect(),
         links: eero.links,
-    }
+        internet: eero.internet,
+        concerns: Vec::new(),
+    };
+    room::work_out(&mut network);
+    network
 }
 
 /// Gives eero's cable to the switch the switch's end: when one port alone

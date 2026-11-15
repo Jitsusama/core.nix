@@ -460,8 +460,12 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | port | a socket on a device that a cable plugs into, with its link and speed | | net's `ports` |
 | link | of the home network, a cable or a radio joining two devices, port to port or radio to radio; the home network's map is drawn from them | | net's `links` |
 | source | of the home network, a vendor's way of saying what its devices are: eero's record, the modem's status pages, the switch's web page; all it says is kept as its detail | | net's `sources`, `detail` |
-| internet | the home network's way out, through its gateway node | WAN, ISP connection | |
+| internet | the home network's way out, through its gateway node, with its speed each way as last measured | WAN, ISP connection | net's `internet` |
 | internet provider | who carries the internet to the home network, as eero names it | carrier | `isp` |
+| path | a device's way to the internet: the devices its traffic crosses, in order, up to the modem | | net's `path` |
+| room | how much a link or the internet can still carry: a cable's speed, or a radio link's less the time its radio is busy | | net's `room_mbps` |
+| chokepoint | the hop on a path with least room, one each way | bottleneck | net's `down`, `up` |
+| concern | something on the home network worth a look, worked out from its figures: a busy radio, a weak signal, a slow cable, or the internet as a chokepoint | | net's `concerns` |
 | outage | a time the internet was down | downtime | |
 | update | the home network's firmware installing itself, at the hour it's set to, apart from the machine's update | | the eero's `update_hour` |
 | radio | a Wi-Fi or Bluetooth transmitter on one band: the machine's card's or adapter's, or one of a node's | | `bluetooth:powered` |

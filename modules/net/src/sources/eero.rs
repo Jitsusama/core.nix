@@ -8,7 +8,8 @@
 use serde_json::{Map, Value};
 
 use crate::model::{
-    Device, End, Link, LinkState, Medium, Port, PortKind, Radio, Role, Source, SourceState,
+    Device, End, Internet, Link, LinkState, Medium, Port, PortKind, Radio, Role, Source,
+    SourceState,
 };
 use crate::time;
 
@@ -22,6 +23,7 @@ pub struct Read {
     pub source: Source,
     pub devices: Vec<Device>,
     pub links: Vec<Link>,
+    pub internet: Option<Internet>,
 }
 
 /// The record as the source says it, or why it isn't there.
@@ -40,6 +42,7 @@ pub fn read(record: Result<Value, String>, now: u64) -> Read {
                 },
                 devices: Vec::new(),
                 links: Vec::new(),
+                internet: None,
             };
         }
     };
@@ -65,7 +68,26 @@ pub fn read(record: Result<Value, String>, now: u64) -> Read {
         source: source(&record, read_at),
         devices,
         links,
+        internet: internet(&record),
     }
+}
+
+/// The internet, from the record's block of that name: the provider eero
+/// names and its last speed test, which eero runs from the gateway, so it
+/// measures the internet rather than any Wi-Fi.
+fn internet(record: &Value) -> Option<Internet> {
+    let block = record.get("internet")?;
+    let test = block.get("speed_test");
+    let rate = |key| test.and_then(|test| test.get(key)).and_then(Value::as_f64);
+    let internet = Internet {
+        provider: text(block, "isp").map(Into::into),
+        down_mbps: rate("down_mbps"),
+        up_mbps: rate("up_mbps"),
+        measured_at: test.and_then(|test| text(test, "at")).and_then(time::parse),
+        source: NAME.into(),
+    };
+    (internet.provider.is_some() || internet.down_mbps.is_some() || internet.up_mbps.is_some())
+        .then_some(internet)
 }
 
 /// What the source reads, in words.
@@ -131,6 +153,7 @@ fn node_device(node: &Value, read_at: Option<u64>) -> Device {
         ports: list(node, "ports").into_iter().map(port).collect(),
         radios: list(node, "radios").into_iter().map(radio).collect(),
         modem: None,
+        path: None,
         detail: detail(node),
     }
 }
@@ -290,6 +313,7 @@ fn client_device(client: &Value, read_at: Option<u64>) -> Device {
             Vec::new()
         },
         modem: None,
+        path: None,
         detail: detail(client),
     }
 }
@@ -462,5 +486,36 @@ mod tests {
     #[test]
     fn a_clients_link_carries_its_signal() {
         assert_eq!(laptop_at_home().links[0].signal_dbm, Some(-55));
+    }
+
+    #[test]
+    fn the_internet_is_eeros_last_speed_test_and_the_provider_it_names() {
+        let read = read(
+            Ok(json!({
+                "cloud": {"state": "answering"},
+                "internet": {
+                    "isp": "Example ISP",
+                    "speed_test": {
+                        "down_mbps": 369.86, "up_mbps": 11.93, "at": "2026-11-05T10:52:15Z"
+                    }
+                }
+            })),
+            1_794_092_100,
+        );
+        assert_eq!(
+            read.internet,
+            Some(Internet {
+                provider: Some("Example ISP".into()),
+                down_mbps: Some(369.86),
+                up_mbps: Some(11.93),
+                measured_at: Some(1_793_875_935),
+                source: NAME.into(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_record_with_no_internet_block_says_no_internet() {
+        assert_eq!(laptop_at_home().internet, None);
     }
 }

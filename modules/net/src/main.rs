@@ -27,6 +27,7 @@ mod collect;
 mod commands;
 mod daemon;
 pub mod model;
+mod room;
 mod sources;
 mod switch_reader;
 mod time;
