@@ -36,6 +36,7 @@ mod learn;
 mod link;
 mod lookup;
 mod measure;
+mod moves;
 mod network;
 mod nl80211;
 mod page;
@@ -265,7 +266,7 @@ async fn serve(
     };
     let (asks, taken) = mpsc::channel(1);
     // How well each access point carries, measured from where the machine
-    // is, and the card moved to one carrying better (measure.rs), with what
+    // is, and the card moved to one carrying better (moves.rs), with what
     // each carried at each hour kept for a trusted network (learn.rs).
     tokio::spawn(measure::follow(
         state.subscribe(),
