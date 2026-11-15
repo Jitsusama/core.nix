@@ -274,19 +274,22 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
         )
     )
     desktop.shoot("launcher-for-you-slack-messages")
-    desktop.follow()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Open in Slack", "Copy the Link"])
-    # The link copied is the message's own, where Slack shows it, and
-    # copying closes the launcher, as everywhere.
-    closed = desktop.in_session(LAUNCHER_OPEN)
-    desktop.down_to("Copy the Link")
-    machine.send_key("ret")
+    # Its acts lie on its row, which holds nothing to step into, as a
+    # conversation's do.
+    acts = slack_row_does(desktop, "Ada Lovelace")
+    assert acts == ["Open in Slack", "Copy the Link"], f"Ada Lovelace's acts: {acts}"
+    # The link copied by y, from normal, is the message's own, where Slack
+    # shows it, and y keeps the launcher open, as everywhere.
+    desktop.normal()
+    since = desktop.mark()
+    machine.send_chars("yy")
+    desktop.reported("yanked 1", lambda rest: rest == "", since)
     link = "https://slack.example/archives/D1/p1730000002000100"
     machine.wait_until_succeeds(
         desktop.in_session(f'[ "$(wl-paste --no-newline)" = "{link}" ]'),
         timeout=dt.timedelta(seconds=30),
     )
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # Each message row is made by its one component, as a conversation's is.
     actless = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
     assert actless["uncomposed"] == [], "\n".join(actless["uncomposed"])
@@ -412,7 +415,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         # nothing to step into (Joel, 2026-11-11: "if they have nothing under
         # them, we shouldn't open a submenu for them"), so they're read as a
         # terminal is told them.
-        acts = conversation_acts(desktop, "Ada Lovelace")
+        acts = slack_row_does(desktop, "Ada Lovelace")
         assert acts == ["Open in Slack"], f"Ada Lovelace's acts: {acts}"
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -455,8 +458,8 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
-def conversation_acts(desktop: Desktop, name: str) -> list[str]:
-    """Name what a conversation in For You's Slack does, as `launcher show` says it."""
+def slack_row_does(desktop: Desktop, name: str) -> list[str]:
+    """Name what the first row so named in For You's Slack does, as `launcher show` says it."""
     # Each step after the mark, since qs takes no empty argument, and after
     # `--`, since `show` is also qs ipc's own command otherwise.
     path = shlex.quote("".join(f"\u203a{step}" for step in ("now", "for you", "slack", name)))
