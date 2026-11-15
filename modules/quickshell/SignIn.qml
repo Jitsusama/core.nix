@@ -74,6 +74,20 @@ Singleton {
         }
     }
 
+    // A notice arrives a moment after it's told, as niri starts its sender,
+    // so one for a network that stopped wanting a sign-in in that moment is
+    // taken back as it comes, rather than staying (2026-11-15).
+    Connections {
+        target: Notices
+
+        function onCame(notification, notice) {
+            const found = notification?.appName === "Wi-Fi"
+                ? String(notification.summary).match(/^(.*) wants a sign-in$/) : null;
+            if (found && !root.told.includes(found[1]))
+                root.withdraw(found[1]);
+        }
+    }
+
     IpcHandler {
         target: "wifi"
 

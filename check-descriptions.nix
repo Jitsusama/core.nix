@@ -168,6 +168,10 @@
     google daemon tells a row, then hold every document once it opens, made once in the daemon's
     order, and keep them, making none, once it's shut again
   '';
+  a-sign-in-notice-is-taken-back-even-late = ''
+    a network wanting a sign-in is told of once, its notice staying while it wants one and taken
+    back once it doesn't, even a notice arriving only after its network was signed in
+  '';
   a-silent-hub-is-driven-as-one-stream = ''
     the XPS 14's kernel drives an MST hub whose first branch didn't answer its link address as a
     single stream until the sink goes away, so the monitor behind it still lights
