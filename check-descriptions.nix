@@ -4739,7 +4739,9 @@
   vm-wifi-joins = ''
     wifid joins the networks it's given, off the frequencies Nix avoids on each, finds sign-ins
     and sessions ending, measures how well the access point it's on carries, hears an account say
-    a call is on and names who said it, tells the shell what it hears in detail, chooses a network the launcher saved first, and trusts one when asked
+    a call is on and names who said it, tells the shell what it hears in detail, chooses a network
+    the launcher saved first, trusts one when asked, and moves a card whose access point carries
+    slowly to another of its network
   '';
   vm-wifi-joins-when-asked = ''
     the shell has wifid sign in, join with a password or an account, leave, save and switch the

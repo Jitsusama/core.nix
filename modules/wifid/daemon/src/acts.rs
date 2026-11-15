@@ -204,8 +204,9 @@ const LOOKING: Duration = Duration::from_secs(15);
 /// after it last heard it, and with nothing looking more than hourly most
 /// of the air is forgotten by the time a roam's asked: Main Floor's own
 /// radio 5 m away was refused (2026-11-14). The look is waited for here,
-/// apart from the main loop, which hears it end.
-async fn roam(
+/// apart from the main loop, which hears it end. The chooser moves the
+/// card this way too (measure.rs).
+pub(crate) async fn roam(
     asks: &mpsc::Sender<Ask>,
     mut air: watch::Receiver<State>,
     bssid: &str,

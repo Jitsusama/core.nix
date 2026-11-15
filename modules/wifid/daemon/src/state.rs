@@ -435,10 +435,6 @@ impl State {
     /// the one that hears it and is on its network, since a card roams only
     /// within the network it's on.
     pub fn roamer(&self, bssid: &str) -> Result<String, Refused> {
-        // An access point's path in wpa_supplicant begins with its card's.
-        fn card_of(path: &str) -> Option<&str> {
-            path.split_once("/BSSs/").map(|(card, _)| card)
-        }
         let mut heard = self
             .heard
             .iter()
@@ -460,6 +456,22 @@ impl State {
                 Some(card.name.clone())
             })
             .ok_or(Refused::NotJoined)
+    }
+
+    /// The access points of the network a card is on that it hears, the
+    /// one it's on among them, for choosing between them (choose.rs).
+    pub fn around(&self, card: &str) -> Vec<Heard> {
+        let Some(path) = self.at.get(card) else {
+            return Vec::new();
+        };
+        let (Some(on), Some(under)) = (self.heard.get(path), card_of(path)) else {
+            return Vec::new();
+        };
+        self.heard
+            .iter()
+            .filter(|(other, heard)| card_of(other) == Some(under) && heard.name == on.name)
+            .map(|(_, heard)| heard.clone())
+            .collect()
     }
 
     /// Each card on a network through an access point it hears, with a
@@ -545,6 +557,12 @@ pub fn bars(signal: i16) -> u8 {
         -80.. => 2,
         _ => 1,
     }
+}
+
+/// The card an access point's path is under, since its path in
+/// `wpa_supplicant` begins with its card's.
+fn card_of(path: &str) -> Option<&str> {
+    path.split_once("/BSSs/").map(|(card, _)| card)
 }
 
 #[cfg(test)]
@@ -1219,6 +1237,29 @@ mod tests {
             state.joined(),
             [joined],
             "the access point it's on, not the other"
+        );
+    }
+
+    #[test]
+    fn a_card_hears_around_it_only_its_own_network_s_access_points() {
+        let mut state = at_the_inn();
+        state.heard("/Interfaces/0/BSSs/3", Some(heard("Lantern", -40)));
+        state.heard("/Interfaces/1/BSSs/1", Some(heard("Roadside Inn", -45)));
+
+        let around: Vec<_> = state
+            .around("wlan2")
+            .into_iter()
+            .map(|heard| heard.signal)
+            .collect();
+
+        assert_eq!(
+            around,
+            [-52, -60],
+            "the inn's two, not Lantern nor another card's"
+        );
+        assert!(
+            state.around("wlan9").is_empty(),
+            "a card on no network hears none"
         );
     }
 
