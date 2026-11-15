@@ -428,10 +428,18 @@ PanelWindow {
         if (was === null || space === null || was.id === space.id)
             return;
         const way = Math.sign(space.idx - was.idx);
+        const kept = place === null ? "nowhere" : way === 0 ? "level"
+            : window.scene.asleep ? "asleep" : Niri.overview ? "overview"
+            : window.scene.shared ? "shared" : "";
+        // Which of those kept it from moving, so a test that waits on a
+        // move it never made says why (Y2YBTS, 2026-11-14, a0cd2ad5).
+        if (Options.reports)
+            Report.say(`moves cat ${modelData?.name ?? ""} ${JSON.stringify({
+                from: was, to: space, way, kept, walking: going !== null,
+                moving: moving !== null })}`);
         // A move begun on a move under way holds where it's got to,
         // rather than being put on its seat first.
-        if (place !== null && way !== 0 && !window.scene.asleep && !Niri.overview
-            && !window.scene.shared)
+        if (kept === "")
             moveTo(way);
         else if (moving !== null)
             arrive();

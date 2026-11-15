@@ -39,6 +39,8 @@ if TYPE_CHECKING:
 
 # What the cat says each time it's placed (modules/margin-cat/MarginCatScreen.qml).
 SITS = "sits cat "
+# What it says as the workspace changes under it: whether it moves, or what kept it still.
+MOVES = "moves cat "
 # How long the cat's last frame, or its hearing the lock's word, may take to land.
 LANDS = 2.0
 # How long with no keys draws none of its frames, how long after the last key it may take to
@@ -145,7 +147,8 @@ def heard(shell: Shell, test: Callable[[str], bool], since: int) -> None:
         shell.reported(SITS, test, since)
     except AssertionError:
         said, _ = shell.said_since(0)
-        sat = "\n".join(report for report in said if report.startswith(SITS)) or "nothing"
+        told = (SITS, MOVES)
+        sat = "\n".join(report for report in said if report.startswith(told)) or "nothing"
         failed = f"the cat never sat as wanted; it said, since the shell started:\n{sat}"
         raise AssertionError(failed) from None
 
