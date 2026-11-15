@@ -340,7 +340,7 @@ mod tests {
     fn a_unit_is_said_once_in_its_label() {
         let lines = tins_table("sent", &busy(), &Pen::plain(), Room::Cells(200));
         assert!(
-            lines[0].contains("DELAY MS") && lines[0].contains("PEAK MS"),
+            lines[0].contains("DELAY ms") && lines[0].contains("PEAK ms"),
             "{:?}",
             lines[0]
         );
@@ -366,7 +366,7 @@ mod tests {
         for cells in [80, 100, 200] {
             let lines = tins_table("sent", &busy(), &Pen::plain(), Room::Cells(cells));
             assert!(
-                lines[0].contains("MARKED") && lines[0].contains("PEAK MS"),
+                lines[0].contains("MARKED") && lines[0].contains("PEAK ms"),
                 "{:?}",
                 lines[0]
             );
