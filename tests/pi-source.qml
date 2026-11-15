@@ -159,6 +159,31 @@ QtObject {
                 && record(againRecords, "s-new") !== undefined
                 && !("s-done" in made), JSON.stringify(Object.keys(made)));
 
+        // What Sessions.qml makes of each entry is kept while the entry is
+        // the same object, so a change makes copies only of what it named:
+        // a window moved comes as a new entry, so its copy is new too, with
+        // the new window, and one gone is let go.
+        let makes = 0;
+        const copied = one => {
+            makes += 1;
+            return { file: one.file, window: one.window?.id ?? null };
+        };
+        const copies = {};
+        const before = Pi.keptBy(first.live, copies, copied);
+        const making = makes;
+        const moved = Object.assign({}, entry(first, "s-asks"), { window: { id: 9 } });
+        const after = Pi.keptBy(first.live.filter(one => one.file !== "s-away")
+            .map(one => one.file === "s-asks" ? moved : one), copies, copied);
+        const copyOf = (list, id) => list.find(one => one.file === id);
+        expect("a copy is kept while its entry stands",
+            copyOf(after, "s-busy") === copyOf(before, "s-busy")
+                && copyOf(after, "s-out") === copyOf(before, "s-out") && makes === making + 1,
+            `${makes - making} made again`);
+        expect("an entry made anew is copied anew, as it now stands",
+            copyOf(after, "s-asks") !== copyOf(before, "s-asks")
+                && copyOf(after, "s-asks").window === 9, JSON.stringify(copyOf(after, "s-asks")));
+        expect("one gone is let go", !("s-away" in copies), JSON.stringify(Object.keys(copies)));
+
         // What the node tells as a session works on: a step moving alone
         // carries no new digest of what's read shut, and anything more does.
         const stepped = { id: 2, changed: [{ key: "session:s-busy", step: "edit",
