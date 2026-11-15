@@ -1,7 +1,9 @@
 //! A band of the one tall page, drawn as a screen-sized tile: only what
 //! crosses the band is drawn, so a tile costs what it shows, not the page.
 
+use typst::foundations::Smart;
 use typst::layout::{Abs, Frame, FrameItem, FrameKind, Point, Size};
+use typst::visualize::Paint;
 use typst_layout::Page;
 
 /// How far ink may stand past the frame of a group it's set in, which ends
@@ -47,14 +49,47 @@ fn cull(frame: &Frame, offset: Point, top: f64, height: f64, band: &mut Frame) {
     }
 }
 
-pub fn draw(page: &Page, top: f64, height: f64, scale: f32) -> tiny_skia::Pixmap {
+/// What of the page crosses a band, placed from the band's top.
+pub fn band(page: &Page, top: f64, height: f64) -> Frame {
     let width = page.frame.size().x;
     let mut band = Frame::new(Size::new(width, Abs::pt(height)), FrameKind::Hard);
     cull(&page.frame, Point::zero(), top, height, &mut band);
+    band
+}
+
+/// Draws a band of the page. The glow at its head the reader paints
+/// itself, under what Typst draws over a clear canvas, as Typst would take
+/// a third of a second sampling it; any other band is all Typst's.
+pub fn draw(page: &Page, top: f64, height: f64, scale: f32) -> tiny_skia::Pixmap {
+    let mut band = band(page, top, height);
+    if let Some(Paint::Solid(ground)) = page.fill_or_white()
+        && let Some(glow) = crate::glow::lift(&mut band)
+    {
+        let clear = Smart::Custom(None);
+        let words = render(page, band, clear, scale);
+        let mut canvas =
+            tiny_skia::Pixmap::new(words.width(), words.height()).expect("a band's canvas");
+        let [r, g, b, a] = crate::glow::rgba(&ground);
+        canvas.fill(tiny_skia::Color::from_rgba(r, g, b, a).unwrap_or(tiny_skia::Color::WHITE));
+        glow.paint(&mut canvas, scale);
+        canvas.draw_pixmap(
+            0,
+            0,
+            words.as_ref(),
+            &tiny_skia::PixmapPaint::default(),
+            tiny_skia::Transform::identity(),
+            None,
+        );
+        return canvas;
+    }
+    render(page, band, page.fill.clone(), scale)
+}
+
+fn render(page: &Page, band: Frame, fill: Smart<Option<Paint>>, scale: f32) -> tiny_skia::Pixmap {
     let tile = Page {
         frame: band,
         bleed: page.bleed,
-        fill: page.fill.clone(),
+        fill,
         numbering: None,
         supplement: page.supplement.clone(),
         number: page.number,
@@ -121,5 +156,59 @@ mod tests {
             inked.first() == Some(&0),
             "a band starting under the baseline at {last} pt drew no descenders: ink on rows {inked:?}"
         );
+    }
+
+    #[test]
+    fn a_band_the_glow_crosses_draws_as_typst_draws_it() {
+        // The glow is the reader's to paint, under the words, so each band
+        // it crosses must come out as Typst alone would draw it: the head,
+        // one across the glow's foot at 720 pt, at two zooms.
+        let dir = std::env::temp_dir().join(format!("reader-tiles-glow-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a folder");
+        let file = dir.join("page.md");
+        let words = "A paragraph of words, and `code`, set over the glow.\n\n".repeat(40);
+        std::fs::write(&file, format!("# A Title Over the Glow\n\n{words}")).expect("the file");
+        let (page, _) = Setter::new(file.to_str().expect("a path"))
+            .set()
+            .expect("set");
+        std::fs::remove_dir_all(&dir).expect("cleaned");
+        for (top, height, scale) in [
+            (0.0, 192.0, 8.0 / 3.0),
+            (600.0, 192.0, 8.0 / 3.0),
+            (0.0, 256.0, 2.0),
+        ] {
+            let ours = super::draw(&page, top, height, scale);
+            let typst = super::render(
+                &page,
+                super::band(&page, top, height),
+                page.fill.clone(),
+                scale,
+            );
+            assert_eq!(
+                (ours.width(), ours.height()),
+                (typst.width(), typst.height())
+            );
+            let off = ours
+                .pixels()
+                .iter()
+                .zip(typst.pixels())
+                .map(|(a, b)| {
+                    [
+                        a.red().abs_diff(b.red()),
+                        a.green().abs_diff(b.green()),
+                        a.blue().abs_diff(b.blue()),
+                        a.alpha().abs_diff(b.alpha()),
+                    ]
+                    .into_iter()
+                    .max()
+                    .unwrap_or(0)
+                })
+                .max()
+                .unwrap_or(0);
+            assert!(
+                off <= 1,
+                "the band at {top} pt, {scale} px a point, is {off} levels off Typst's"
+            );
+        }
     }
 }
