@@ -13,10 +13,8 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
-import desktop_session
-import pytest
 from desktop_session import (
     FROM_THE_EDGE,
     KEY_PACE,
@@ -30,13 +28,6 @@ from desktop_session import (
 
 if TYPE_CHECKING:
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 # A call comes before the other apps when the machine is busy.

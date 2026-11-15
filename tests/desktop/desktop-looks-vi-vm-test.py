@@ -22,10 +22,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 import desktop_session
-
-# pytest finds a fixture by its name in the test's module, so the looks areas' desktop and
-# scales are brought here.
-from looks_session import at_each_scale, at_scale, changed_from, chose, desktop, drawn, pressed  # noqa: F401
+from looks_session import at_scale, changed_from, chose, pressed
 from PIL import Image, ImageChops
 
 if TYPE_CHECKING:

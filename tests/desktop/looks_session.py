@@ -1,8 +1,9 @@
 """What the desktop test's looks areas share.
 
-Joel's scales, the card's and the drawer's measures, the desktop and the scales as fixtures, and the
-helpers more than one looks area measures with. tests/desktop.nix gives it to the looks areas'
-driver beside desktop_session.py, and each area imports what it uses.
+Joel's scales, the card's and the drawer's measures, the scales as a fixture, and the helpers more
+than one looks area measures with. tests/desktop.nix gives it to the looks areas' driver beside
+desktop_session.py, and to pytest as a plugin beside it too, so each area finds the fixture
+without importing it, and imports the helpers it uses.
 """
 
 from __future__ import annotations
@@ -12,9 +13,8 @@ import io
 import json
 from datetime import timedelta
 from itertools import pairwise
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
-import desktop_session
 import pytest
 from desktop_session import LAUNCHER_OPEN
 from PIL import Image, ImageChops, ImageDraw, ImageStat
@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
 
 # Joel's scales.
 JOELS_SCALES = ("1.5", "2")
@@ -52,12 +51,6 @@ INSET = 24
 BORDER = 1
 # How long QEMU holds a key down.
 HELD_MS = 20
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 @pytest.fixture

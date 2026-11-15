@@ -524,6 +524,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       )
     ))
   ];
+  # Taken by pytest as plugins, so every area finds the fixtures they hold,
+  # the desktop among them, without declaring or importing them.
+  plugins = [ "desktop_session" ] ++ pkgs.lib.optional isLooks "looks_session";
   # The base role sets nixpkgs' own settings.
   node.pkgsReadOnly = false;
 

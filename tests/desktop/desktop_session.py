@@ -1,8 +1,10 @@
 """The desktop every area of the desktop test drives: its boot, and the helpers each area shares.
 
-tests/desktop.nix gives this to the driver as a module of its Python, and its opening comment
-says what the test proves. Each area asks for a `Desktop` as a fixture, made once a run by
-`started`. A helper two areas use comes here, and nothing here is a test.
+tests/desktop.nix gives this to the driver as a module of its Python, which pytest takes as a
+plugin, and its opening comment says what the test proves. So every area finds the fixtures here
+without declaring or importing them: the desktop, made once a run by `started`, the launcher
+closed after each test, for an area that asks for it, and the stand-in Google. A helper two
+areas use comes here too, and nothing here is a test.
 """
 
 from __future__ import annotations
@@ -327,8 +329,8 @@ def keyed(name: str, *, down: bool) -> Json:
 def started(machine: BaseMachine, values: Values) -> Desktop:
     """Give the desktop on a test's machine, started, with every wait paced to the host.
 
-    An area written for pytest makes its `desktop` fixture of this, once a run. A busy host is
-    slower at everything, so every wait allows for how busy it is as it starts.
+    The `desktop` fixture makes it of this, once a run. A busy host is slower at everything, so
+    every wait allows for how busy it is as it starts.
     """
     assert isinstance(machine, test_driver.machine.QemuMachine), "the desktop is QEMU's"
     desktop = Desktop(machine, values)
@@ -341,6 +343,23 @@ def started(machine: BaseMachine, values: Values) -> Desktop:
     )
     desktop.start()
     return desktop
+
+
+@pytest.fixture(scope="module", name="desktop")
+def started_once(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
+    """Give the desktop, started once a run."""
+    return started(machine, cast("Values", values))
+
+
+@pytest.fixture
+def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
+    """Close the launcher after each test, so one failing with it open fails alone.
+
+    An area asks for it for every test it holds, by `pytest.mark.usefixtures` as its
+    `pytestmark`.
+    """
+    yield
+    desktop.launcher_left_closed()
 
 
 class Desktop:  # The helpers every area shares, as one machine's desktop.

@@ -14,9 +14,8 @@ import json
 import re
 import shlex
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
-import desktop_session
 import pytest
 from desktop_session import (
     CAPITALS,
@@ -32,13 +31,6 @@ from desktop_session import (
 
 if TYPE_CHECKING:
     from desktop_session import Desktop
-    from test_driver.machine import BaseMachine
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 # How far right of a glyph's middle a click lands, in pixels: inside its

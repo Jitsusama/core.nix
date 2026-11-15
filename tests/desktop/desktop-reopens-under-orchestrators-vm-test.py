@@ -27,26 +27,17 @@ import datetime as dt
 import json
 import shlex
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
-import desktop_session
-import pytest
 from desktop_session import ARRANGED, KEPT_PLACES, PI_PRESENCE, kept
 
 if TYPE_CHECKING:
     from desktop_session import Desktop
-    from test_driver.machine import BaseMachine
 
 # How long every window of a list may take to come back where it sat, on a loaded builder.
 BACK = 240
 # Where a window sits: its workspace's number, its column and its tile in that column.
 Sits = tuple[int, int, int]
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 def sitting(desktop: Desktop, prefix: str) -> dict[str, Sits]:

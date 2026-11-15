@@ -17,7 +17,6 @@ import shlex
 import time
 from typing import TYPE_CHECKING, Any, cast
 
-import desktop_session
 import pytest
 from desktop_session import (
     HARNESS,
@@ -36,10 +35,7 @@ from desktop_session import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
 
 # The scales Joel uses, where what VKCF3Z judges is shot.
 JOELS_SCALES = ("1.5", "2")
@@ -50,17 +46,8 @@ READ_ON_TWICE = dt.timedelta(seconds=30)
 READ_THROUGH = 2
 
 
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
-
-
-@pytest.fixture(autouse=True)
-def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone."""
-    yield
-    desktop.launcher_left_closed()
+# Each test closes the launcher after it, so one failing with it open fails alone.
+pytestmark = pytest.mark.usefixtures("launcher_closed_after")
 
 
 def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_reading_an_answer(

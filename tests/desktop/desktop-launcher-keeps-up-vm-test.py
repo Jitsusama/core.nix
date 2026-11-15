@@ -23,9 +23,8 @@ import json
 import math
 import time
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
-import desktop_session
 import pytest
 from desktop_session import LAUNCHER_OPEN, PI_PRESENCE, retry
 
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
 
 # Joel's scales.
 JOELS_SCALES = ("2", "1.5")
@@ -91,12 +89,6 @@ BAND = 8
 REACHING = timedelta(seconds=30)
 # How long freezing or thawing the changes may take before the test says it couldn't.
 FREEZING = timedelta(minutes=3)
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 @pytest.fixture(scope="module")

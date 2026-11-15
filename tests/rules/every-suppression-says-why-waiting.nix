@@ -10,9 +10,9 @@
   "tests/desktop/desktop-launcher-answers-vm-test.py" = 4;
   "tests/desktop/desktop-launcher-finds-by-name-vm-test.py" = 11;
   "tests/desktop/desktop-launcher-finds-sessions-vm-test.py" = 6;
-  "tests/desktop/desktop-launcher-goes-places-vm-test.py" = 2;
-  "tests/desktop/desktop-launcher-holds-meetings-vm-test.py" = 2;
-  "tests/desktop/desktop-launcher-reads-mail-vm-test.py" = 2;
+  "tests/desktop/desktop-launcher-goes-places-vm-test.py" = 1;
+  "tests/desktop/desktop-launcher-holds-meetings-vm-test.py" = 1;
+  "tests/desktop/desktop-launcher-reads-mail-vm-test.py" = 1;
   "tests/desktop/desktop-looks-machine-vm-test.py" = 2;
   "tests/desktop/desktop-opens-and-sets-vm-test.py" = 1;
   "tests/vm/boot/greeter-vm-test.py" = 2;

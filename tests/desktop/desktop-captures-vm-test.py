@@ -15,18 +15,14 @@ import json
 import re
 import shlex
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
-import desktop_session
 import pytest
 from desktop_session import NOTICES, retry
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
 
 # The camera's window, which the viewfinder is.
 CAMERA = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
@@ -52,17 +48,8 @@ type Box = tuple[int, int, int, int]
 RECORDING = re.compile(r"Recording \u00b7 (\d+):(\d\d)")
 
 
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
-
-
-@pytest.fixture(autouse=True)
-def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone."""
-    yield
-    desktop.launcher_left_closed()
+# Each test closes the launcher after it, so one failing with it open fails alone.
+pytestmark = pytest.mark.usefixtures("launcher_closed_after")
 
 
 def test_print_opens_capture_where_return_takes_the_whole_screen(desktop: Desktop) -> None:

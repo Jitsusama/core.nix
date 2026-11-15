@@ -16,16 +16,29 @@
   values ? null,
   # The Python packages the tests import beyond what VM tests share.
   extraPythonPackages ? _: [ ],
+  # The modules among those packages pytest takes as plugins, by name, so
+  # the fixtures they hold reach the tests without the tests importing
+  # them: what several tests' files share.
+  plugins ? [ ],
   ...
 }@test:
 let
+  # pytest takes each module PYTEST_PLUGINS names as a plugin, as it would
+  # one given with -p, its asserts rewritten too. It's set only when there
+  # are plugins, and vm_pytest is left as it is, so a test without them
+  # builds the same script and derivation as before: a change to
+  # vm_pytest moves every pytest VM test.
+  named = pkgs.lib.concatStringsSep "," plugins;
+  taken = pkgs.lib.optionalString (
+    plugins != [ ]
+  ) ''import os; os.environ["PYTEST_PLUGINS"] = "${named}"; '';
   script =
     file:
     if file == null then
-      ''import vm_pytest; vm_pytest.run(globals(), "${tests}")''
+      ''${taken}import vm_pytest; vm_pytest.run(globals(), "${tests}")''
     else
       ''
-        import vm_pytest
+        ${taken}import vm_pytest
         vm_pytest.run(globals(), "${tests}", values="${file}")
       '';
 in
@@ -33,6 +46,7 @@ pkgs.testers.runNixOSTest (
   removeAttrs test [
     "tests"
     "values"
+    "plugins"
   ]
   // {
     extraPythonPackages =

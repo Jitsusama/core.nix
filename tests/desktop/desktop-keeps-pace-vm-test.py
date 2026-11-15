@@ -22,9 +22,8 @@ import shlex
 import time
 from datetime import timedelta
 from functools import partial
-from typing import TYPE_CHECKING, Any, NamedTuple, cast
+from typing import TYPE_CHECKING, NamedTuple, cast
 
-import desktop_session
 import pytest
 from desktop_session import (
     chrome_download_gone,
@@ -40,7 +39,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
 
 # Where the stand-in keyboard is told what to press, and says when it did (desktop/keyboard.py).
 KEYBOARD = "/run/keyboard"
@@ -157,12 +155,6 @@ OPENINGS = 20
 OPENED_WITHIN = 50
 OPENED_TAIL = 0.99
 FROZEN = 8
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 @pytest.fixture

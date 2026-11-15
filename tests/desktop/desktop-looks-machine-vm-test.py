@@ -19,9 +19,8 @@ from __future__ import annotations
 import json
 import shlex
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
-import desktop_session
 import pytest
 from desktop_session import LAUNCHER_OPEN
 
@@ -29,7 +28,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
 
 # The scales Joel's screens are drawn at, as niri spells them.
 JOELS_SCALES = ("1.5", "2")
@@ -43,12 +41,6 @@ MACHINES_PARTS = [
     ("disk", "Speed", "Reading"),
     ("uptime", "Asleep", None),
 ]
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 @pytest.fixture
