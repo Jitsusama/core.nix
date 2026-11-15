@@ -1912,8 +1912,8 @@ impl Wifid<'_> {
                 let _ = done.send(self.scan().await);
                 return;
             }
-            Ask::Ready { bssid: _, done } => {
-                let _ = done.send(Ok(()));
+            Ask::Ready { bssid, done } => {
+                let _ = done.send(self.ready(&bssid).await);
                 return;
             }
             Ask::Roam { bssid, done } => {
@@ -1999,6 +1999,10 @@ impl Wifid<'_> {
     /// move went silent for 200 to 800 ms. It's held before the move, so
     /// what the card hears meanwhile can't take it back, and let go if
     /// the move fails.
+    ///
+    /// Held, wpa_supplicant can take the card there itself on what the
+    /// look `ready` asked for hears, and a card on its way or there already
+    /// isn't asked again, which would join it over.
     async fn roam(&self, bssid: &str) -> Result<(), Refused> {
         let card = self.state.borrow().roamer(bssid)?;
         let roamed = async {
@@ -2007,7 +2011,13 @@ impl Wifid<'_> {
             let network = interface.current_network().await?;
             self.hold(&network, bssid).await?;
             self.held.borrow_mut().insert(card.clone(), network);
-            interface.roam(bssid).await
+            let step = interface.state().await?;
+            if self.on_its_way(&card, bssid, &step) {
+                println!("<7>{card} is {step} on its own, held to {bssid}");
+                Ok(())
+            } else {
+                interface.roam(bssid).await
+            }
         };
         if let Err(error) = roamed.await {
             self.let_go(&card, false).await;
@@ -2017,6 +2027,71 @@ impl Wifid<'_> {
         }
         println!("<6>{card} moved to {bssid}, as asked");
         println!("<7>{card} keeps to {bssid} until it comes off its network");
+        Ok(())
+    }
+
+    /// Whether the card, at this step, is joining the access point it's
+    /// held to or is on it already. Any join while held is to that point.
+    fn on_its_way(&self, card: &str, bssid: &str, step: &str) -> bool {
+        let there = self
+            .state
+            .borrow()
+            .joined()
+            .iter()
+            .any(|joined| joined.card == card && joined.point.eq_ignore_ascii_case(bssid));
+        supplicant::holds_a_network(step) && (step != "completed" || there)
+    }
+
+    /// Holds the card's network to the access point it's about to move to,
+    /// then has it look over that point's channel alone. The kernel keeps
+    /// what it hears 30 s, and looks for a point it's forgotten as the
+    /// move begins: 145 ms of the 401 ms one move went silent (2026-11-15),
+    /// the replies held for the card meanwhile lost as it left straight
+    /// after. Looked for beforehand, they're given it as it comes back.
+    /// Held first, so what the look hears can't take the card elsewhere.
+    async fn ready(&self, bssid: &str) -> Result<(), Refused> {
+        let card = self.state.borrow().roamer(bssid)?;
+        let frequency = self
+            .state
+            .borrow()
+            .around(&card)
+            .iter()
+            .find(|point| point.bssid.eq_ignore_ascii_case(bssid))
+            .map(|point| point.frequency)
+            .filter(|&frequency| frequency != 0);
+        let held = async {
+            let interface =
+                interface(self.bus, self.supplicant.get_interface(&card).await?).await?;
+            let network = interface.current_network().await?;
+            self.hold(&network, bssid).await?;
+            self.held.borrow_mut().insert(card.clone(), network);
+            zbus::Result::Ok(interface)
+        };
+        let interface = match held.await {
+            Ok(interface) => interface,
+            Err(error) => {
+                self.let_go(&card, false).await;
+                return Err(Refused::Failed {
+                    reason: format!("{card} couldn't be held to {bssid}: {error}"),
+                });
+            }
+        };
+        // Looking over every channel takes 5 to 6 s, longer than a move
+        // waits, so one whose channel isn't known moves as it did.
+        let Some(frequency) = frequency else {
+            println!("<7>{card} moves to {bssid} without looking, its channel unknown");
+            return Ok(());
+        };
+        let looking = HashMap::from([
+            ("Type", zvariant::Value::from("active")),
+            ("Channels", zvariant::Value::from(vec![(frequency, 20_u32)])),
+        ]);
+        println!("<7>{card} looks over {frequency} MHz for {bssid} before moving to it");
+        // A card already looking is refused, and the move waits for that
+        // look instead.
+        if let Err(error) = interface.scan(looking).await {
+            println!("<7>{card} didn't look before moving: {error}");
+        }
         Ok(())
     }
 

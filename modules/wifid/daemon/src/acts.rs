@@ -14,8 +14,9 @@
 //! {"id": 8, "stage": "online", "said": "connected to Lantern", "done": true}
 //! ```
 //!
-//! A roam to an access point wifid no longer hears looks for it once
-//! before refusing it as `NotNearby`.
+//! A roam readies the access point first, looking over its channel so the
+//! move needn't, and one wifid no longer hears looks for it once before
+//! refusing it as `NotNearby`.
 //!
 //! What wifid won't do is an error coded `refused`, its `refused` the
 //! varlink interface's name for why, as `WrongPassword`. Each stage and
@@ -199,6 +200,11 @@ pub async fn act(
 /// channel took 5 to 6 s (2026-11-14).
 const LOOKING: Duration = Duration::from_secs(15);
 
+/// How long a move waits for the look over its access point's channel
+/// alone, which the kernel took 145 ms over as a move began (2026-11-15).
+/// A look that doesn't end by then holds up no move.
+const READYING: Duration = Duration::from_secs(2);
+
 /// Moves the card to the access point at `bssid`, looking for it first
 /// where it isn't heard. wpa_supplicant forgets an access point 180 s
 /// after it last heard it, and with nothing looking more than hourly most
@@ -206,32 +212,56 @@ const LOOKING: Duration = Duration::from_secs(15);
 /// radio 5 m away was refused (2026-11-14). The look is waited for here,
 /// apart from the main loop, which hears it end. The chooser moves the
 /// card this way too (moves.rs).
+///
+/// One that's heard is readied first, its channel alone looked over for
+/// the kernel, which forgets a point sooner, and moved to once that look
+/// ends or `READYING` passes.
 pub(crate) async fn roam(
     asks: &mpsc::Sender<Ask>,
     mut air: watch::Receiver<State>,
     bssid: &str,
 ) -> Result<(), Refused> {
+    let readying = |done| Ask::Ready {
+        bssid: bssid.to_owned(),
+        done,
+    };
     let roaming = |done| Ask::Roam {
         bssid: bssid.to_owned(),
         done,
     };
-    match once(asks, roaming).await {
+    let before = air.borrow_and_update().looks();
+    match once(asks, readying).await {
+        Ok(()) => {
+            if looked(&mut air, before, READYING).await == Ok(false) {
+                return Err(stopping());
+            }
+            return once(asks, roaming).await;
+        }
         Err(Refused::NotNearby) => {}
-        answered => return answered,
+        Err(refused) => return Err(refused),
     }
     let before = air.borrow_and_update().looks();
     once(asks, |done| Ask::Scan { done }).await?;
-    // Only whether it ended is kept, since the state it's read from is
-    // held locked for as long as it's borrowed.
-    let looked = air.wait_for(|now| now.looks() != before);
-    let ended = tokio::time::timeout(LOOKING, looked)
-        .await
-        .map(|ended| ended.is_ok());
-    match ended {
+    match looked(&mut air, before, LOOKING).await {
         Ok(true) => once(asks, roaming).await,
         Ok(false) => Err(stopping()),
         Err(_) => Err(Refused::NotNearby),
     }
+}
+
+/// Waits as long as `within` for a look to end after `before` had, saying
+/// whether one did, or `false` where wifid is stopping.
+async fn looked(
+    air: &mut watch::Receiver<State>,
+    before: u32,
+    within: Duration,
+) -> Result<bool, tokio::time::error::Elapsed> {
+    // Only whether it ended is kept, since the state it's read from is
+    // held locked for as long as it's borrowed.
+    let looked = air.wait_for(|now| now.looks() != before);
+    tokio::time::timeout(within, looked)
+        .await
+        .map(|ended| ended.is_ok())
 }
 
 /// Asks the main loop one thing and waits for its answer.
