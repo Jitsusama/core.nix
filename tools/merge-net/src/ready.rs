@@ -1,7 +1,10 @@
 //! `merge-net ready COMMIT`: whether a branch's head may merge, asked
 //! before merging by whatever merges it. It may when it sits on origin's
 //! main as it is now, changed-checks built what it named there, and
-//! `needs` was asked of the change (`gated.rs`).
+//! `needs` was asked of the change (`gated.rs`). A head behind main may
+//! merge as it stands, as a merge commit, when main moved none of its
+//! files since its base, as a rebased head's earlier run is judged
+//! ([`speakers`]).
 //!
 //! On 8 November four checks were red on main by 11:00. changed-checks
 //! named each at its merge, but one branch was built before main gained
@@ -118,12 +121,15 @@ pub fn checked_before(
 /// head. A head on main with a run of its own is judged by it before
 /// this, so it never speaks for itself here.
 pub fn speakers(head: &str, behind: bool, candidates: &[String]) -> Vec<String> {
-    let _ = behind;
-    candidates
+    let others = candidates
         .iter()
         .filter(|candidate| *candidate != head)
-        .cloned()
-        .collect()
+        .cloned();
+    if behind {
+        std::iter::once(head.to_owned()).chain(others).collect()
+    } else {
+        others.collect()
+    }
 }
 
 /// What `then` makes of `candidate`'s base (`base_of`), only when the
