@@ -2,7 +2,8 @@
   {
     "at": 1794337827,
     "commit": "26852ce9a8ec1e828c6d26df64581bccba210135",
-    "due": "2026-11-12",
+    "due": "2026-11-16",
+    "due_why": "Y2YBTS reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 2855,
     "reason": "failed twice at 420e2aa35b28, and at 26852ce9a8ec after it",
     "subtests": [
@@ -15,8 +16,9 @@
   {
     "at": 1794342753,
     "commit": "26852ce9a8ec1e828c6d26df64581bccba210135",
-    "due": "2026-11-12",
-    "owner_pr": 2880,
+    "due": "2026-11-16",
+    "due_why": "2RCBOJ, whose #4478 last changed the subtest, fixes it forward or shows it steady on an idle builder by 2026-11-16 23:59 UTC, then takes it off",
+    "owner_pr": 4478,
     "reason": "broken since #2880, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "subtests": [
       "test_dd_on_a_notice_shows_on_the_frame_after_its_key",
@@ -27,8 +29,9 @@
   {
     "at": 1794346840,
     "commit": "a693826b5ecfa6c0a2d7dfd66671cbe93dbd8ee7",
-    "due": "2026-11-12",
-    "owner_pr": null,
+    "due": "2026-11-16",
+    "due_why": "RTOIMQ reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
+    "owner_pr": 4499,
     "reason": "failed, then passed, at a693826b5ecf",
     "subtests": [
       "test_the_launcher_draws_each_key_soon_while_every_core_is_busy"
@@ -60,8 +63,9 @@
   {
     "at": 1794377740,
     "commit": "405fff7e09e75f5f21857d710e1f02306a80664b",
-    "due": "2026-11-13",
-    "owner_pr": null,
+    "due": "2026-11-16",
+    "due_why": "RCTRF8 reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
+    "owner_pr": 4515,
     "reason": "failed, then passed, at 405fff7e09e7",
     "subtests": [
       "test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_password",
@@ -83,7 +87,8 @@
   {
     "at": 1794409299,
     "commit": "6e396fae765b7bee38c3af3a418e0ff73ad7d294",
-    "due": "2026-11-13",
+    "due": "2026-11-16",
+    "due_why": "XY9H5C reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 3176,
     "reason": "failed, then passed, at 6e396fae765b",
     "subtests": [
@@ -115,7 +120,8 @@
   {
     "at": 1794421209,
     "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
-    "due": "2026-11-13",
+    "due": "2026-11-17",
+    "due_why": "5FWIUS reruns it on an idle builder by 2026-11-17 23:59 UTC and takes it off if it holds, or fixes it; a day later than the rest, after tonight's builder work",
     "owner_pr": 3304,
     "reason": "failed, then passed, at 042387bc604a",
     "subtests": [
@@ -141,7 +147,8 @@
   {
     "at": 1794433532,
     "commit": "5b1b2d0a9c9cf58e0e5885705ec2dcdd426c9fd7",
-    "due": "2026-11-13",
+    "due": "2026-11-16",
+    "due_why": "ZINAWZ reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 3370,
     "reason": "failed, then passed, at 5b1b2d0a9c9c",
     "subtests": [
@@ -162,8 +169,9 @@
   {
     "at": 1794437795,
     "commit": "461743399d56dac959e8e102cd6c137100886045",
-    "due": "2026-11-13",
-    "owner_pr": 3363,
+    "due": "2026-11-16",
+    "due_why": "Y2YBTS reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
+    "owner_pr": 3795,
     "reason": "failed, then passed, at 461743399d56",
     "subtests": [
       "test_a_charge_told_in_batterys_step_is_said_there",
@@ -176,7 +184,8 @@
   {
     "at": 1794468889,
     "commit": "dd21b75e8c65f6847ad9ff3a7e8a54a902417fa0",
-    "due": "2026-11-14",
+    "due": "2026-11-16",
+    "due_why": "7QEY1S reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 3542,
     "reason": "failed, then passed, at dd21b75e8c65",
     "subtests": [
@@ -187,7 +196,8 @@
   {
     "at": 1794478078,
     "commit": "1c6f5f46964301dcd2d1889ccbbc127c00db041b",
-    "due": "2026-11-14",
+    "due": "2026-11-16",
+    "due_why": "RTOIMQ reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 3596,
     "reason": "failed twice at 4e0cc018600f, and at 1c6f5f469643 after it",
     "subtests": [
@@ -211,7 +221,8 @@
   {
     "at": 1794506844,
     "commit": "97b968eb686397074b9cd1695fba20e2c2ca4c2e",
-    "due": "2026-11-14",
+    "due": "2026-11-16",
+    "due_why": "RCTRF8 reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 3737,
     "reason": "failed, then passed, at 97b968eb6863",
     "subtests": [
@@ -223,7 +234,8 @@
   {
     "at": 1794514033,
     "commit": "1e94ca1cd67d2c73e02ea0d67f3d85a51f55ac53",
-    "due": "2026-11-14",
+    "due": "2026-11-16",
+    "due_why": "B8RBNW reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 3757,
     "reason": "failed, then passed, at 1e94ca1cd67d",
     "subtests": [
@@ -234,7 +246,8 @@
   {
     "at": 1794515309,
     "commit": "1e94ca1cd67d2c73e02ea0d67f3d85a51f55ac53",
-    "due": "2026-11-14",
+    "due": "2026-11-16",
+    "due_why": "XY9H5C reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 3758,
     "reason": "failed, then passed, at 1e94ca1cd67d",
     "subtests": [
@@ -269,7 +282,8 @@
   {
     "at": 1794519380,
     "commit": "b0e3be7a0f1bf6c0be687e741bc129afcbb83cd7",
-    "due": "2026-11-14",
+    "due": "2026-11-17",
+    "due_why": "5FWIUS reruns it on an idle builder by 2026-11-17 23:59 UTC and takes it off if it holds, or fixes it; a day later than the rest, after tonight's builder work",
     "owner_pr": 3794,
     "reason": "failed, then passed, at b0e3be7a0f1b",
     "subtests": [
@@ -462,7 +476,8 @@
     "at": 1794681104,
     "commit": "1501fe1f285b10c05bad4246ffc29beae45dc2d4",
     "due": "2026-11-16",
-    "owner_pr": null,
+    "due_why": "Y2YBTS reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
+    "owner_pr": 4560,
     "reason": "failed, then passed, at 1501fe1f285b",
     "subtests": [
       "test_super_v_pastes_into_the_window_it_opened_over_a_terminal_or_not"
@@ -473,7 +488,8 @@
     "at": 1794688918,
     "commit": "0d36a13a4b655a56eec46425da9e1dcfef0b9137",
     "due": "2026-11-16",
-    "owner_pr": null,
+    "due_why": "F8TT8O reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
+    "owner_pr": 3380,
     "reason": "failed, then passed, at 0d36a13a4b65",
     "subtests": [
       "test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window",
@@ -486,8 +502,9 @@
   {
     "at": 1794702911,
     "commit": "a52af4357be29c48580dbc6ecc5cc07e1ad3e61d",
-    "due": "2026-11-17",
-    "owner_pr": null,
+    "due": "2026-11-16",
+    "due_why": "RTOIMQ reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
+    "owner_pr": 4577,
     "reason": "failed, then passed, at a52af4357be2",
     "subtests": [
       "test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts"
