@@ -7,6 +7,8 @@
 # systemctl and systemd-notify write down what they're asked, so nothing real is touched.
 set -u
 script=$1
+# The stand-in for a busy old shell that reads a chord late (late-chord.py).
+late_chord=$2
 here=$PWD
 mkdir -p bin run
 export XDG_RUNTIME_DIR=$here/run
@@ -147,6 +149,29 @@ echo false > run/old-open
 done_within || failures+=("the chord's opening closed didn't hand the shell over: $(< run/said)")
 [[ ! -e run/launcher.sock && ! -e run/launcher.sock.handing-over ]] ||
   failures+=("the old shell's socket outlived it")
+over
+
+# A chord sent to the old shell before its socket went, read only once the busy shell comes
+# to it, opens it after it was found shut: the handover waits for the shell to read it rather
+# than a fixed moment, which a loaded builder outlasted (2026-11-15).
+case_of
+rm -f run/launcher.sock
+# By its whole path, as the shell binds it, since the kernel lists a socket by the path bound.
+python3 "${late_chord}" "${here}/run/launcher.sock" run/old-open run/chord-sent &
+late=$!
+for ((i = 0; i < 50; i++)); do
+  [[ -e run/chord-sent ]] && break
+  # The stand-in's own start, polled; past 5 s the case below says so.
+  sleep 0.1
+done
+[[ -e run/chord-sent ]] || failures+=("the late chord's stand-in never sent its chord")
+hand_over
+# As above, the 2 s in which the old shell must not be ended.
+sleep 2
+! handed_over || failures+=("the old launcher was ended as a chord read late opened it")
+echo false > run/old-open
+done_within || failures+=("the late chord's opening closed didn't hand the shell over: $(< run/said)")
+kill "${late}" 2> /dev/null || true
 over
 
 case_of

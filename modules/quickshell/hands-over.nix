@@ -6,6 +6,7 @@ pkgs.writeShellApplication {
   name = "quickshell-hands-over";
   runtimeInputs = [
     pkgs.coreutils
+    pkgs.gnugrep
     pkgs.jq
     pkgs.procps
     pkgs.systemd
