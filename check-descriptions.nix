@@ -3844,6 +3844,10 @@
     the shell's QML asks niri for an activation token through Quickshell.activationToken and is
     given one rather than nothing
   '';
+  flat-windows-hold-no-depth-on-niri = ''
+    a full-screen window drawn flat weighs at least half a 2880 by 1800 depth and stencil buffer
+    less than one drawn with them, and niri shows it drawn in order, a square over its picture
+  '';
   the-shell-hands-over-only-once-its-surfaces-are-shut = ''
     the old shell is ended in a handover only once its launcher and Super+S's line are shut,
     even one come up while the new shell loaded or opened by a chord heard just after it was

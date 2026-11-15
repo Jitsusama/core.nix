@@ -57,7 +57,11 @@
 # shell-held-until-released.patch lets a shell started with QS_HELD load
 # showing no window and serving no socket until SIGUSR1 releases it, while
 # the one it replaces still answers (shell-hands-over.sh, which home.nix
-# runs). All of them are laid over the machine's packages, so the shell,
+# runs). Each window asked for a depth and a stencil buffer as large as
+# itself, about 30 MB of the GPU's memory at 2880 by 1800, though the
+# wallpaper draws one picture, so window-drawn-flat.patch lets a window's
+# surface format ask for neither (Wallpaper.qml). All of them are laid over
+# the machine's packages, so the shell,
 # the greeter and the lock all run them.
 #
 # wf-recorder, which records the screen (Recorder.qml), bound the
@@ -210,6 +214,7 @@ in
             ./polkit-flow-says-its-details.patch
             ./scanner-reads-headers.patch
             ./shell-held-until-released.patch
+            ./window-drawn-flat.patch
           ];
           qtWrapperArgs = (old.qtWrapperArgs or [ ]) ++ [
             "--prefix"

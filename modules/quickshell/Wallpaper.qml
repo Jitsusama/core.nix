@@ -42,6 +42,12 @@ Scope {
             // others reserve into the backdrop.
             exclusionMode: ExclusionMode.Ignore
             color: Theme.deepest
+            // One picture over a colour needs no depth or stencil buffer,
+            // each as large as the screen, about 30 MB of the GPU's memory
+            // at 2880 by 1800 (window-drawn-flat.patch). Only this window
+            // goes without, since the launcher's first openings were slower
+            // with every window drawn so.
+            surfaceFormat.flat: true
             WlrLayershell.layer: WlrLayer.Background
             WlrLayershell.namespace: "wallpaper"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
