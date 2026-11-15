@@ -156,13 +156,13 @@ pub async fn follow(
                 let call = calling.borrow().on(now);
                 choosers.retain(|card, _| joined.iter().any(|on| on.card == *card));
                 for on in joined {
-                    let Some(measured) = measures.of(&on.point, now) else {
+                    let Some(carried) = measures.of(&on.point, now) else {
                         continue;
                     };
-                    println!("<6>{}", said(&on, &measured, call));
+                    println!("<6>{}", said(&on, &carried, call));
                     let around = state.borrow().around(&on.card);
                     let chooser = choosers.entry(on.card.clone()).or_default();
-                    let figures = (&on, &measured);
+                    let figures = (&on, &carried);
                     if let Some(to) = chosen(chooser, now, figures, &around, &measures, call) {
                         tokio::spawn(roam(asks.clone(), state.clone(), on.card, to));
                     }
@@ -235,7 +235,7 @@ fn chosen(
     now: Instant,
     (on, measured): (&Joined, &Measured),
     around: &[Heard],
-    measures: &Measures,
+    lately: &Measures,
     call: bool,
 ) -> Option<String> {
     let signal = around.iter().find(|heard| heard.bssid == on.point)?.signal;
@@ -246,7 +246,7 @@ fn chosen(
             point: heard.bssid.clone(),
             signal: heard.signal,
             busy: heard.radio.load.map(|load| load.busy),
-            measured: measures.of(&heard.bssid, now),
+            measured: lately.of(&heard.bssid, now),
         })
         .collect();
     match chooser.choose(now, (&on.point, measured, signal), &others, call) {

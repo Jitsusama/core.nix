@@ -335,6 +335,9 @@ def test_a_card_whose_access_point_carries_slowly_moves_to_another_of_its_networ
         " wpa_cli -i wlan2 scan_results | grep -q 02:00:00:00:05:00",
         timeout=timedelta(seconds=30),
     )
+    # What each of Lantern's access points is heard at, since one heard over 6 dB fainter than
+    # the first isn't tried.
+    machine.log(machine.succeed("wpa_cli -i wlan2 scan_results | grep Lantern"))
     assert wifid.hears("Lantern")
     # Each answer from the first comes 200 ms late, five times the slowness worth a try.
     machine.succeed("ip netns exec air tc qdisc add dev wlan0 root netem delay 200ms")
