@@ -192,7 +192,6 @@ fn alone_saying(
     every: Duration,
     say: &mut dyn FnMut(String),
 ) -> Alone {
-    let _ = every;
     let twins = state.join("nix-offload/twins");
     let work = stable_digest(&[at.folder.as_os_str().as_encoded_bytes(), at.asked.as_bytes()]);
     let file = twins.join(format!("{}-{work:016x}.lock", at.commit));
@@ -211,24 +210,44 @@ fn alone_saying(
         Err(fs::TryLockError::WouldBlock) => {}
         Err(fs::TryLockError::Error(_)) => return Alone::Unheld,
     }
-    let going = twin(state, me, at).map_or_else(
-        || "another run".to_owned(),
-        |going| {
-            format!(
-                "run {}, going {} s so far,",
-                going.pid,
-                now().saturating_sub(going.started)
-            )
-        },
-    );
+    let going = || {
+        twin(state, me, at).map_or_else(
+            || "another run".to_owned(),
+            |going| {
+                format!(
+                    "run {}, going {} s so far,",
+                    going.pid,
+                    now().saturating_sub(going.started)
+                )
+            },
+        )
+    };
+    let commit = at.commit.get(..12).unwrap_or(at.commit);
     say(format!(
-        "nix-offload: {going} already runs these changed-checks in this tree at {}, so this \
+        "nix-offload: {} already runs these changed-checks in this tree at {commit}, so this \
          waits for it to end and then reads what it passed",
-        at.commit.get(..12).unwrap_or(at.commit),
+        going()
     ));
-    match lock.lock() {
-        Ok(()) => Alone::Waited,
-        Err(_) => Alone::Unheld,
+    // Looked at a few times a second rather than blocked on, so a wait
+    // behind a first that hangs keeps saying so; a first that dies frees
+    // its lock with it.
+    let look = every.min(Duration::from_millis(250));
+    let mut since = Duration::ZERO;
+    loop {
+        match lock.try_lock() {
+            Ok(()) => return Alone::Waited,
+            Err(fs::TryLockError::WouldBlock) => {}
+            Err(fs::TryLockError::Error(_)) => return Alone::Unheld,
+        }
+        std::thread::sleep(look);
+        since += look;
+        if since >= every {
+            since = Duration::ZERO;
+            say(format!(
+                "nix-offload: this still waits on {} at {commit}; stop that one to go on",
+                going()
+            ));
+        }
     }
 }
 
