@@ -9,7 +9,7 @@ use serde_json::Value;
 
 mod misses;
 
-pub use misses::{merged, misses, named_in};
+pub use misses::checked;
 
 const DAY: i64 = 86_400;
 

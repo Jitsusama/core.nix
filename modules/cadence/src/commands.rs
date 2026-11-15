@@ -119,7 +119,15 @@ fn hour() -> Help {
     Help::new("hour", "the hour against its targets, and its drag")
         .example("cadence hour", "the hour's card, its drag filed")
         .example("cadence hour --to O", "and the card sent to O")
+        .example(
+            "cadence hour --checkout mycelium=~/src/mycelium",
+            "and a check named there closes once it merges",
+        )
         .option("--to ADDRESS", "who the card is sent to")
+        .option(
+            "--checkout NAME=PATH",
+            "a repository whose main says what merged",
+        )
         .exit(Exit::Usage, "a flag it doesn't take, or one with no value")
         .exit(Exit::Failed, "the hour couldn't be read, kept or sent")
 }

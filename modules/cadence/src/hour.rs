@@ -59,26 +59,32 @@ pub struct Held {
     pub unmoved: u32,
 }
 
-/// `cadence hour [--to ADDRESS]`: prints the hour's card, and sends it to
-/// the address given, the orchestrator's.
+/// `cadence hour [--to ADDRESS] [--checkout NAME=PATH]...`: prints the
+/// hour's card, and sends it to the address given, the orchestrator's.
+/// Each checkout is another repository whose main says which of the
+/// misses' checks merged, beside core's and the harness's.
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
-    let to = match (args.next(), args.next(), args.next()) {
-        (None, ..) => None,
-        (Some(flag), Some(address), None) if flag == "--to" => Some(address),
-        (Some(flag), ..) => {
-            return Err(wrongly(
-                "hour",
-                format!("{flag} isn't a flag it takes, or has no value"),
-            ));
+    let mut to = None;
+    let mut checkouts = Vec::new();
+    while let Some(flag) = args.next() {
+        match (flag.as_str(), args.next()) {
+            ("--to", Some(address)) => to = Some(address),
+            ("--checkout", Some(named)) if named.contains('=') => checkouts.push(named),
+            _ => {
+                return Err(wrongly(
+                    "hour",
+                    format!("{flag} isn't a flag it takes, or has no value"),
+                ));
+            }
         }
-    };
-    hour(to.as_deref()).map_err(failed)
+    }
+    hour(to.as_deref(), &checkouts).map_err(failed)
 }
 
-fn hour(to: Option<&str>) -> io::Result<()> {
+fn hour(to: Option<&str>, checkouts: &[String]) -> io::Result<()> {
     let (_, state_home, folder) = folders()?;
     let now = now_ms() / 1000;
-    let measures = gather(&folder, &state_home, now);
+    let measures = gather(&folder, &state_home, now, checkouts)?;
     let kept_at = folder.join("hour.json");
     let kept: Kept = fs::read_to_string(&kept_at)
         .ok()
@@ -111,7 +117,12 @@ fn hour(to: Option<&str>) -> io::Result<()> {
 /// Reads every measure from the machine: the orchestrator's misses and
 /// asks, the net's quarantine, reverts and results, the tick's card, the
 /// three mains, and code health's hourly read.
-fn gather(folder: &Path, state_home: &Path, now: i64) -> Vec<Measure> {
+fn gather(
+    folder: &Path,
+    state_home: &Path,
+    now: i64,
+    checkouts: &[String],
+) -> io::Result<Vec<Measure>> {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
     let mission = state_home.join("mission");
     let core = folder.join("core.git");
@@ -127,14 +138,8 @@ fn gather(folder: &Path, state_home: &Path, now: i64) -> Vec<Measure> {
     .unwrap_or_default();
     let card_text = text(&folder.join("card.txt"));
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
-    let misses = text(&mission.join("misses.jsonl"));
-    let merged = measures::merged(
-        &measures::named_in(&misses),
-        &core,
-        &axes::landings::harness_mirror(),
-    );
     let mut all = vec![
-        measures::misses(&misses, &merged),
+        measures::checked(&text(&mission.join("misses.jsonl")), folder, checkouts)?,
         measures::slips(&text(&mission.join("asks.jsonl")), now),
         measures::to_first_slice(&text(&mission.join("asks.jsonl")), now),
         measures::undated(&quarantine, &today(now), NET_RULES),
@@ -157,7 +162,7 @@ fn gather(folder: &Path, state_home: &Path, now: i64) -> Vec<Measure> {
     all.extend(measures::clean(&text(
         &state_home.join("code-health/hour.json"),
     )));
-    all
+    Ok(all)
 }
 
 /// The date at `now` here, as `2026-11-14`.
