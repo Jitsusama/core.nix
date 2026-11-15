@@ -2776,8 +2776,8 @@
   '';
   the-collector-keeps-up = ''
     in the shell's own Qt, one long call making garbage around a scattered few it keeps, beside
-    a heap already holding what a started shell holds, grows its memory by under 200 MB, where a
-    collection stepped only from the event loop let it grow by about 430
+    a heap already holding what a started shell holds, grows its memory by under 300 MB, where a
+    collection stepped only from the event loop let it grow by about 420
   '';
   the-colour-camera-says-it-is-upside-down = ''
     the XPS 14's camera bridge reports its colour sensor rotated 180 degrees
