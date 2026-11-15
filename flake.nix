@@ -667,12 +667,13 @@
           packages = [
             pkgs.cargo
             pkgs.clippy
-            # code-health's tests run both over Terraform.
+            # code-health's tests run these three over Terraform.
             pkgs.opentofu
             pkgs.rust-analyzer
             pkgs.rustc
             pkgs.rustfmt
             pkgs.tflint
+            pkgs.trivy
             (pkgs.callPackage ./tools/changed-checks/package.nix { })
             (pkgs.callPackage ./tools/merge-net/package.nix { })
             (pkgs.callPackage ./tools/shots-changed/shots-changed.nix { })
