@@ -1,4 +1,4 @@
-# pi-keys samples, four times a day, what a key typed into the pi window
+# pi-keys samples, five times a day, what a key typed into the pi window
 # Joel is at waits on (src/main.rs says how), and keeps a line a sample in
 # $XDG_STATE_HOME/pi-keys/<UTC day>.jsonl, so a day's typing in pi can be
 # read beside the others without anyone measuring it by hand. Each line
@@ -30,14 +30,17 @@ in
   };
 
   # Through the day, so the hours Joel types most are each sampled; a
-  # sample waits up to an hour for him to be at a pi window.
+  # sample waits up to an hour for him to be at a pi window. The evening
+  # gets one too: in the eight days from 8 November, 370 of the 1,595 messages
+  # he typed into pi came between 20:00 and midnight, after the 19:00 sample.
   systemd.user.timers.pi-keys = {
-    Unit.Description = "Samples pi's keys four times a day";
+    Unit.Description = "Samples pi's keys five times a day";
     Timer.OnCalendar = [
       "*-*-* 10:00"
       "*-*-* 13:00"
       "*-*-* 16:00"
       "*-*-* 19:00"
+      "*-*-* 22:00"
     ];
     Install.WantedBy = [ "timers.target" ];
   };
