@@ -55,6 +55,9 @@ in
   systemd.user.services.gnome-keyring = {
     description = "GNOME Keyring, unlocked with its password from the TPM";
     wantedBy = [ "default.target" ];
+    # A person's: a system account's home is /var/empty, where its state
+    # folder can't be made, so it failed at each of their logins.
+    unitConfig.ConditionUser = "!@system";
     serviceConfig = {
       # Ready once it holds the Secret Service's name, which it takes only
       # after unlocking, so nothing in the session reaches a locked keyring.

@@ -16,6 +16,8 @@ in
   systemd.user.services.probe = {
     description = "Waits as a newly woken program would, for watchers to read";
     wantedBy = [ "default.target" ];
+    # A person's, so not a system account's lingering manager's.
+    unitConfig.ConditionUser = "!@system";
     serviceConfig = {
       Slice = "probe.slice";
       ExecStart = "${sorter}/bin/jobs-sorter probe";

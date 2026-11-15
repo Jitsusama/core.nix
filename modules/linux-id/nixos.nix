@@ -45,7 +45,12 @@ in
     wantedBy = [ "default.target" ];
     # The TPM's resource manager is all it needs; systemd's tpm2 condition
     # also asks the firmware, which a machine booted without UEFI can't say.
-    unitConfig.ConditionPathExists = "/dev/tpmrm0";
+    # A person's: a system account's home is /var/empty, where its folder
+    # can't be made, so it failed and restarted every 5 seconds there.
+    unitConfig = {
+      ConditionPathExists = "/dev/tpmrm0";
+      ConditionUser = "!@system";
+    };
     environment.PINENTRY_PATH = lib.getExe' pinentry "pinentry-askpass";
     serviceConfig = {
       ExecStart = lib.getExe linuxId;
