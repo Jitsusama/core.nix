@@ -18,17 +18,18 @@
 //! cast itself; the file is written in one-second fragments, so what was
 //! recorded until then still plays.
 //!
-//! It exits 0 once the file is saved, 3 when it was stopped before anything
-//! was recorded, 2 when it was asked wrongly, and otherwise 1, saying why on
-//! standard error, with no file left behind.
-//!
-//! Usage: record-window WINDOW WIDTH HEIGHT FILE
+//! It takes the terminal kit's shape: it exits 0 once the file is saved,
+//! 130 when it was stopped before anything was recorded, 64 when it was
+//! asked wrongly, and otherwise 1, saying why on standard error, with no
+//! file left behind.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
 use std::time::Duration;
 use std::{env, fs, process};
+
+use terminal_kit::{Exit, Failure, Help, flags};
 
 use futures_util::StreamExt;
 use tokio::io::AsyncReadExt;
@@ -72,7 +73,19 @@ trait Stream {
 /// How long GStreamer has to finish the file once it's told to.
 const FINISHING: Duration = Duration::from_secs(10);
 
-const USAGE: &str = "usage: record-window WINDOW WIDTH HEIGHT FILE";
+fn help() -> Help {
+    Help::new("record-window", "records one window into a video")
+        .example(
+            "record-window 7 1400 1748 ~/Videos/a.mp4",
+            "niri's window 7, fitted into 1400 by 1748",
+        )
+        .argument("<window>", "niri's id for the window")
+        .argument("<width>", "the video's width in pixels, made even")
+        .argument("<height>", "the video's height in pixels, made even")
+        .argument("<file>", "where the video goes")
+        .exit(Exit::Failed, "niri or GStreamer couldn't record it")
+        .exit(Exit::Interrupted, "stopped before anything was recorded")
+}
 
 /// What was asked for: niri's id for the window, the video's size in pixels
 /// and where it goes.
@@ -85,14 +98,23 @@ struct Asked {
 }
 
 impl Asked {
-    fn parse(args: &[String]) -> Result<Self, String> {
+    fn parse(args: &[String]) -> Result<Self, Failure> {
+        // A flag the kit didn't take is a mistake, never a window or a size.
+        if let Some(flag) = args.iter().find(|arg| arg.starts_with('-')) {
+            return Err(flags::unknown("option", flag, &["--help", "--version"])
+                .try_this("record-window --help"));
+        }
         let [window, width, height, file] = args else {
-            return Err(USAGE.to_owned());
+            return Err(Failure::new(
+                Exit::Usage,
+                "record-window takes a window, a width, a height and a file",
+            )
+            .try_this("record-window --help"));
         };
         let number = |what: &str, given: &str| {
-            given
-                .parse::<u64>()
-                .map_err(|_| format!("the {what} {given:?} isn't a number"))
+            given.parse::<u64>().map_err(|_| {
+                Failure::new(Exit::Usage, format!("the {what} {given:?} isn't a number"))
+            })
         };
         Ok(Self {
             window: number("window", window)?,
@@ -362,24 +384,25 @@ async fn record(asked: &Asked) -> Result<Ended, String> {
     ))
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> ExitCode {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let asked = match Asked::parse(&args) {
-        Ok(asked) => asked,
-        Err(why) => {
-            eprintln!("{why}");
-            return ExitCode::from(2);
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let asked = Asked::parse(&context.args)?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| {
+                Failure::new(Exit::Bug, "its runtime couldn't start").because(error.to_string())
+            })?;
+        match runtime.block_on(record(&asked)) {
+            Ok(Ended::Saved) => Ok(()),
+            Ok(Ended::Stopped) => Err(Failure::new(
+                Exit::Interrupted,
+                "stopped before anything was recorded",
+            )),
+            // One line, which the recorder's notice says whole.
+            Err(why) => Err(Failure::new(Exit::Failed, why)),
         }
-    };
-    match record(&asked).await {
-        Ok(Ended::Saved) => ExitCode::SUCCESS,
-        Ok(Ended::Stopped) => ExitCode::from(3),
-        Err(why) => {
-            eprintln!("{why}");
-            ExitCode::FAILURE
-        }
-    }
+    })
 }
 
 #[cfg(test)]
@@ -417,20 +440,39 @@ mod tests {
         assert_eq!(even(u64::MAX), u32::MAX - 1);
     }
 
+    /// What a wrong ask fails with: its exit and its words.
+    fn refused(args: &str) -> (u8, String) {
+        let failure = Asked::parse(&words(args)).expect_err("a wrong ask was taken");
+        (failure.exit.code(), failure.to_string())
+    }
+
     #[test]
     fn says_how_its_asked_when_asked_wrongly() {
-        assert_eq!(Asked::parse(&words("7 1400 1748")), Err(USAGE.to_owned()));
+        let usage = "record-window takes a window, a width, a height and a file";
+        assert_eq!(refused("7 1400 1748"), (64, usage.to_owned()), "too few");
         assert_eq!(
-            Asked::parse(&words("7 1400 1748 a.mp4 b.mp4")),
-            Err(USAGE.to_owned())
+            refused("7 1400 1748 a.mp4 b.mp4"),
+            (64, usage.to_owned()),
+            "too many"
         );
         assert_eq!(
-            Asked::parse(&words("seven 1400 1748 a.mp4")),
-            Err("the window \"seven\" isn't a number".to_owned())
+            refused("seven 1400 1748 a.mp4"),
+            (64, "the window \"seven\" isn't a number".to_owned()),
+            "a window that isn't a number"
         );
         assert_eq!(
-            Asked::parse(&words("7 wide 1748 a.mp4")),
-            Err("the width \"wide\" isn't a number".to_owned())
+            refused("7 wide 1748 a.mp4"),
+            (64, "the width \"wide\" isn't a number".to_owned()),
+            "a width that isn't a number"
+        );
+        assert_eq!(
+            refused("7 1400 1748 --hepl").0,
+            64,
+            "an unknown flag was taken"
+        );
+        assert!(
+            refused("7 1400 1748 --hepl").1.contains("--help"),
+            "an unknown flag didn't name the nearest"
         );
     }
 

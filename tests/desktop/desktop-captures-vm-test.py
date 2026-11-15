@@ -371,12 +371,15 @@ def test_capture_records_the_window_and_says_why_when_niri_cant_share_it(
     assert desktop.showing()["selected"]["chord"] == "Ctrl Alt Print"
     # niri here offers no screencast on the session bus, so the
     # recording can't start, and the notice says why rather than it
-    # failing unseen.
+    # failing unseen. Its words open with what failed, the failed mark
+    # record-window writes before them left to the notice's title.
     with desktop.told("shows card The window could not be recorded"):
         desktop.machine.send_key("ret")
     print(
         desktop.machine.wait_until_succeeds(
-            desktop.notice_kept('.summary | startswith("The window could not")'),
+            desktop.notice_kept(
+                '(.summary | startswith("The window could not")) and (.body | startswith("niri"))'
+            ),
             timeout=timedelta(seconds=10),
         )
     )

@@ -285,8 +285,10 @@ Singleton {
     }
 
     // Records a window into a new file: its id, then the video's width and
-    // height. record-window says why it couldn't on its standard error, and
-    // exits 3 when it was stopped before it began, which needs no notice.
+    // height. record-window says why it couldn't on its standard error, the
+    // terminal kit's failed mark and a space before its words, which the
+    // notice leaves to its own title, and exits 130 when it was stopped
+    // before it began, which needs no notice.
     readonly property string windowScript: [
         'folder=$1 window=$2 width=$3 height=$4',
         'mkdir -p "$folder" || exit',
@@ -294,8 +296,9 @@ Singleton {
         'why=$(record-window "$window" "$width" "$height" "$file" 2>&1 > /dev/null)',
         'case $? in',
         '    0) ;;',
-        '    3) exit ;;',
+        '    130) exit ;;',
         '    *) printf "%s\\n" "$why" >&2',
+        '       why=${why#* }',
         '       exec notify-send --app-name=Recorder "The window could not be recorded" "$why" ;;',
         'esac'
     ].concat(saved).join("\n")
