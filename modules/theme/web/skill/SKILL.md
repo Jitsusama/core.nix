@@ -759,13 +759,30 @@ destroyed by it" (2026-11-11).
 
 ## An Interface to Work In
 
+- **The whole first, drawn, then the exceptions.** It opens on everything it
+  holds as one picture, lets him narrow by stepping in or finding, and shows
+  a record's detail only when asked (Shneiderman's overview, zoom and
+  filter, details on demand). Its first words say what's wrong, busy or
+  worth a look, a sentence each, never totals that read alike on every row:
+  the network page's Worth a Look. Every mark carries what's true (how big,
+  how busy, how stale) by its size, fill or weight, and alike things are
+  drawn alike so one reads against the next. The Code page opened on two
+  tables of 172 names in one weight, with figures that said nothing to act
+  on, and he called it "complete shit" (2026-11-15) beside two drawn pages
+  he liked.
+- **What can be done, where it can be done.** The keys that act on the row
+  under the cursor show on that row while it has the cursor, never behind ?
+  alone, as the launcher's key line does. A page with one act, hidden, and
+  nothing linking onward is a dead end however clean its parts.
 - **Still water.** Nothing under the reader moves unless they moved it: a view
   switch, a drawer, a teammate's edit or a new build. Redraw only what
   changed, measure before painting, keep the cursor on the same item at the
   same place, batch arrivals, and let a new item that would land in view wait
   behind a quiet "one new". The cursor moves at once, with no transition. "i
   get a lot of flashing ... profile pics flash" (2026-11-05). A new build
-  never reloads a tab under its reader, and old tabs keep working.
+  never reloads a tab under its reader, and old tabs keep working. A drawn
+  place keeps its position between readings, so his memory of where a thing
+  sits keeps working, and only what changed moves.
 - **Density between two failures, judged by measurement.** "wastes way too
   much horizontal space. you have way over-corrected" (2026-11-05) and, an
   hour later, "things are a little too tight". Rows are scanned, prose is
@@ -823,6 +840,9 @@ Each is a verdict on a real site; the rule it gave is above.
   takes it over.
 - A page of words alone, with no figure, no favicon and no mark: "all imagery
   is gone, no icon, a lot missing" (2026-11-09).
+- An interface that's tables with nothing drawn, figures alike on every row,
+  one act behind ? and no way onward: "this one is complete shit"
+  (2026-11-15).
 - A section in a different style, and text running over text.
 - A site grown section by section until "it feels like frankenstein right
   now" (2026-11-11): parts that each work, in no one design, with good UX
@@ -849,7 +869,9 @@ Each is a verdict on a real site; the rule it gave is above.
 ## Judging Without Him
 
 - **Gates aren't taste.** A page that passed AAA, a keyboard walk and every
-  width still "looks like shit" (2026-09-10). Pass the checks, then look at it
+  width still "looks like shit" (2026-09-10), and so did the Code page,
+  every part of it passed and never the whole (2026-11-15). The first-sight
+  walk asks of the whole what no probe does (`checks.md`). Pass the checks, then look at it
   whole, at every width, every fold open, against this skill and the
   aesthetic skill's questions.
 - **Turn each complaint into a measurement** before saying it's fixed, and

@@ -92,6 +92,14 @@ through axe-core and its own console.
    like ([Judging Without Him](SKILL.md#judging-without-him)), part by part:
    every figure, ornament and fold the model has, this one has too, or says
    why not. Then [Looking](#looking).
+8. **First sight.** A reader who hasn't seen the page, given only its shots
+   at 1440 and 390 and the aesthetic skill, says what it's for, what Joel can
+   do from it and where it leads, from what ten seconds' look would take in.
+   Fewer than three acts and one way onward, or an eyesore named, fails the
+   page, whatever the steps above said. For an interface, it also says
+   what's wrong or worth a look; a reader who can only repeat totals fails
+   it too. The Code page passed every step above on 15 November and failed
+   this one at a glance.
 
 ## The Widths
 
