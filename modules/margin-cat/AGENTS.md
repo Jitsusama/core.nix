@@ -221,5 +221,13 @@ animals."
 - Held by `margin-cat-pets.qml`: "a paw raised toward the side it left by, beside its head, the
   rest unmoved"
 - Held by `margin-cat-pets.qml`: "either way, the same paw"
+- Held by `margin-cat-games.qml`: "a click on the cat rolls its yarn in, noticed and eyed"
+- Held by `margin-cat-games.qml`: "from just behind its column's edge, never appearing at rest"
+- Held by `margin-cat-games.qml`: "a click on the yarn's near side rolls it four to eight cells
+  away"
+- Held by `margin-cat-games.qml`: "a cell short of its column's end, and with no room for a bat,
+  it eyes it"
+- Held by `margin-cat-games.qml`: "the cat's eyes follow it, it walks up to it and bats it on"
+- Held by `margin-cat-games.qml`: "the cat never on the yarn"
 
 [design]: ../../docs/design.md

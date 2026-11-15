@@ -133,8 +133,8 @@ PanelWindow {
     // Whether it's sitting still, neither going, moving, at play nor
     // stretching, so a pointer may pet it; and since when, so one it
     // came to under isn't one that moved onto it (MarginCat.strokes).
-    readonly property bool still: going === null && moving === null && yarnAt === null
-        && window.scene.posed === "" && !window.scene.stretching
+    readonly property bool still: going === null && moving === null
+        && (yarnAt === null || yarnLies) && window.scene.posed === "" && !window.scene.stretching
     property real stillSince: 0
     onStillChanged: {
         stillSince = Date.now();
@@ -692,7 +692,44 @@ PanelWindow {
     function play(asked: var): void {
         if (asked === null)
             return;
-        const playing = Games.play(asked.kind, {
+        const playing = Games.play(asked.kind, playsFrom(asked.pause));
+        if (playing === null)
+            return;
+        window.scene.strollTaken = true;
+        handsBack = true;
+        plays(playing);
+    }
+
+    // Its yarn by Joel's click on it (VKCF3Z 73c59942; Joel, 2026-11-12:
+    // "i want to be able to also use my mouse to engage with my
+    // animals."), rolled in where it sits still and awake with none out.
+    // No scene's, so no scene waits on it.
+    function clicked(): void {
+        if (!still || yarnAt !== null || window.scene.asleep || place === null || column === null
+            || resting.running || wanted !== sat)
+            return;
+        plays(Games.fetch(playsFrom(0)));
+    }
+
+    // A click on its yarn lying by it, on the yarn's `side` (-1 its left,
+    // 1 its right): the yarn rolls away from it and the cat goes after it,
+    // then sits. Its yarn kept again only once it's done, so a key cutting
+    // the chase short fades it where it rolled.
+    function batted(side: int): void {
+        if (!yarnLies || !still || window.scene.asleep || place === null || column === null
+            || resting.running || wanted !== sat)
+            return;
+        const playing = Games.chase(playsFrom(0), yarnAt, side, Math.random());
+        if (playing === null)
+            return;
+        yarnKept = false;
+        plays(playing);
+    }
+
+    // Where it plays from, as a play takes it (MarginCatGames.js), thinking
+    // `pause` ms.
+    function playsFrom(pause: real): var {
+        return {
             seat: { x: place.x, y: place.y },
             column,
             across: modelData.width,
@@ -702,13 +739,15 @@ PanelWindow {
             cell,
             wide: size,
             tall: size,
-            pause: asked.pause,
+            pause,
             slowdown: Theme.motion.slowdown
-        });
+        };
+    }
+
+    // A play, `playing`, run on the walker as a walk is.
+    function plays(playing: var): void {
         if (playing === null)
             return;
-        window.scene.strollTaken = true;
-        handsBack = true;
         roams = null;
         shown = [];
         costs = [];
@@ -729,11 +768,19 @@ PanelWindow {
 
     // Its yarn where a play has it, or null; and, a key cutting the
     // play short, how much of it is left as it fades where it lay,
-    // rather than vanishing.
+    // rather than vanishing. A click's play leaves it lying (`yarnKept`),
+    // drawn once and still, with no timer, till a click on it sends it
+    // on, or any walk, other play or doze fades it.
     property var yarnAt: null
     property real yarnLeft: 1
+    property bool yarnKept: false
+    readonly property bool yarnLies: yarnKept && yarnAt !== null && !yarnFades.running
+    onYarnLiesChanged: say()
     onGoingChanged: {
-        if (yarnAt !== null && going?.kind === undefined)
+        if (yarnAt === null || yarnFades.running)
+            return;
+        if (going === null ? !yarnKept : going.kind === undefined
+            || (yarnKept && going.kind !== "chase"))
             yarnFades.restart();
     }
     NumberAnimation {
@@ -745,6 +792,7 @@ PanelWindow {
         duration: Theme.motion.short
         onFinished: {
             window.yarnAt = null;
+            window.yarnKept = false;
             window.yarnLeft = 1;
         }
     }
@@ -798,6 +846,9 @@ PanelWindow {
             if (kind !== undefined && !yarnFades.running)
                 window.yarnAt = now.yarn;
             if (now.done) {
+                // A click's play leaves its yarn lying where it ends.
+                if (window.yarnAt !== null && !yarnFades.running)
+                    window.yarnKept = true;
                 window.tell(kind ?? "walk");
                 window.halt();
                 window.sat = window.goingTo;
@@ -908,7 +959,14 @@ PanelWindow {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     // Only its own cells take the pointer, to be petted, so the gap
     // around it stays the windows' and a click beside it reaches them.
-    mask: Region { item: cat }
+    mask: Region {
+        item: cat
+
+        Region {
+            item: yarnHit
+            intersection: Intersection.Combine
+        }
+    }
 
     // The pointer over it at `at`, in the screen's pixels, `across` its
     // cells: one that moved onto it as it sat still starts a pet.
@@ -997,6 +1055,7 @@ PanelWindow {
             stretching: window.scene.stretching,
             leaning: window.leaning,
             swatting: window.swatting,
+            yarn: yarnLies ? { x: yarnAt.x, y: yarnAt.y } : null,
             walk: going === null || stepped === null ? null : {
                 t: Math.round(walker.elapsedTime * 10000) / 10,
                 beat: stepped.beat,
@@ -1032,6 +1091,8 @@ PanelWindow {
     onAsleepChanged: {
         if (asleep)
             unpetted();
+        if (asleep && yarnLies)
+            yarnFades.restart();
         say();
     }
     readonly property bool stretching: window.scene.stretching
@@ -1070,6 +1131,11 @@ PanelWindow {
                 if (hovered)
                     window.felt(point.scenePosition, point.position.x);
             }
+        }
+
+        // A click on it rolls its yarn in.
+        TapHandler {
+            onTapped: window.clicked()
         }
 
         Repeater {
@@ -1125,6 +1191,21 @@ PanelWindow {
                     color: Theme.voice
                 }
             }
+        }
+    }
+
+    // Where the yarn lying by it takes a click, on its cells only while
+    // it lies there, so they leave the input region as its fade ends.
+    Item {
+        id: yarnHit
+
+        x: window.yarnAt ? window.snapped(window.yarnAt.x) : 0
+        y: window.yarnAt ? window.snapped(window.yarnAt.y) : 0
+        width: window.yarnKept && window.yarnAt !== null ? window.size : 0
+        height: width
+
+        TapHandler {
+            onTapped: eventPoint => window.batted(eventPoint.position.x < window.size / 2 ? -1 : 1)
         }
     }
 

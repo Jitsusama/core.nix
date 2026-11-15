@@ -43,12 +43,12 @@ const STRIDING = { goes: WALKS, climbs: WALKS };
 // (MarginCatGames.js): sitting as the yarn comes, as it watches it go and
 // as it sends it off; its ears up as it notices, its tail going as it
 // eyes it, crouched as it wiggles, a paw on the yarn, and its ears again
-// as it looks about.
+// as it looks about, or as it follows the yarn a click sent rolling.
 const HOLDS = { turns: "walkingB", thinks: "walkingB", settles: "walkingB", grabs: "walkingB",
     crouches: "pouncing", lands: "pouncing", perches: "pouncing", shoved: "pouncing",
     bats: "batting", shakes: "grooming", waits: "nothingHere", watches: "nothingHere",
     sends: "nothingHere", notices: "earFlick", eyes: "tailSwish", wiggles: "pouncing",
-    pins: "batting", looks: "earFlick" };
+    pins: "batting", looks: "earFlick", follows: "earFlick" };
 
 // A way begun at `from`, the legs it takes added as it goes, each from
 // where the last left it.
