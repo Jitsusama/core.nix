@@ -151,7 +151,10 @@ function matchOther(kept, used, app, title) {
 // column goes under it (`under`). Else it's given a workspace
 // of its own (`make`), just after the one holding those kept at the next
 // number below on its screen (`output`, `index`), or first, on a screen
-// unknown, when none is.
+// unknown, when none is. One below that sits on another screen than this
+// one's, as one that opened while every screen was gone sits on one
+// standing in for its own, isn't followed there: its number says nothing
+// of this screen's.
 function whereBack(at, beside) {
     const screenOf = one => one.screen || one.output;
     const there = beside.filter(one => screenOf(one.at) === screenOf(at));
@@ -173,6 +176,7 @@ function whereBack(at, beside) {
     }
     const below = there
         .filter(one => one.at.workspace < at.workspace)
+        .filter(one => !at.output || one.workspace.output === at.output)
         .sort((a, b) => b.at.workspace - a.at.workspace)[0];
     if (below === undefined) {
         return { make: true, output: null, index: 1 };

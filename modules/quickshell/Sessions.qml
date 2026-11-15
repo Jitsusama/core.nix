@@ -1077,8 +1077,12 @@ Singleton {
     // where it goes is moved; then the next round, once niri has said
     // what moved. A window that opened while Joel moved the focus, or that
     // a screen coming back moved, so goes back. It ends when every one
-    // holds, or after a round for each and a few more, so two that can't
-    // both be had never move back and forth.
+    // holds, or once each is moved a few times (settleTries), so two that
+    // can't both be had never move back and forth. Each counts its own,
+    // so one that won't go where it's asked is left where it is and the
+    // rest are still placed: one counted for all, a window moved seven
+    // times to no effect left the two after it on the wrong screen
+    // (screens-keep-places, 2026-11-14).
     function settleReopened() {
         if (!reopening || !root.placeable())
             return;
@@ -1099,6 +1103,7 @@ Singleton {
         id: reopenSettling
         onTriggered: root.settleNextReopened()
     }
+    readonly property int settleTries: 3
     function settleNextReopened() {
         const going = reopening;
         // Behind the lock every move would be refused; placeBehind settles
@@ -1107,24 +1112,28 @@ Singleton {
             return;
         const ordered = going.placed.filter(one => Niri.windows[one.id])
             .sort((a, b) => root.keptOrder(a.at, b.at));
-        if (going.rounds < ordered.length + 3) {
-            for (let at = 0; at < ordered.length; at += 1) {
-                // A window that has landed stays wherever it is now, so a
-                // move Joel or a session makes after it lands sticks (Joel,
-                // 2026-11-09: one placer, "and his own moves stick"). It
-                // still counts beside the ones after it, by its id.
-                if (ordered[at].landed)
-                    continue;
-                const beside = root.besideOf(ordered.slice(0, at));
-                const placed = root.placeSession(ordered[at], beside);
-                ordered[at].landed = placed === "held";
-                if (placed === "moved") {
-                    going.rounds += 1;
-                    // Sooner once niri says what moved (settleReopenedSoon).
-                    reopenSettling.interval = 1000;
-                    reopenSettling.restart();
-                    return;
-                }
+        for (let at = 0; at < ordered.length; at += 1) {
+            // A window that has landed stays wherever it is now, so a
+            // move Joel or a session makes after it lands sticks (Joel,
+            // 2026-11-09: one placer, "and his own moves stick"). It
+            // still counts beside the ones after it, by its id, as does
+            // one given up on.
+            const entry = ordered[at];
+            if (entry.landed || (entry.tries ?? 0) >= root.settleTries)
+                continue;
+            const beside = root.besideOf(ordered.slice(0, at));
+            const placed = root.placeSession(entry, beside);
+            entry.landed = placed === "held";
+            if (placed === "moved") {
+                going.rounds += 1;
+                entry.tries = (entry.tries ?? 0) + 1;
+                if (entry.tries >= root.settleTries)
+                    console.info(`sessions: window ${entry.id} is left where it is after `
+                        + `${entry.tries} moves`);
+                // Sooner once niri says what moved (settleReopenedSoon).
+                reopenSettling.interval = 1000;
+                reopenSettling.restart();
+                return;
             }
         }
         root.reopenDone();

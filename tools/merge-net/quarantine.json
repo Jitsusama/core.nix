@@ -402,18 +402,6 @@
     "test": "vm-desktop-keeps-copies"
   },
   {
-    "at": 1794688918,
-    "commit": "0d36a13a4b655a56eec46425da9e1dcfef0b9137",
-    "due": "2026-11-16",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
-    "owner_pr": 3380,
-    "reason": "failed 3 of 3 on idle builders on 2026-11-15: sessions reopened while their screen is gone are asked onto the wrong screen, a race in the session restore",
-    "subtests": [
-      "test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they_sat"
-    ],
-    "test": "vm-screens-keep-places"
-  },
-  {
     "at": 1794702911,
     "commit": "a52af4357be29c48580dbc6ecc5cc07e1ad3e61d",
     "due": "2026-11-16",
