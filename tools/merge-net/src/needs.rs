@@ -61,13 +61,9 @@ pub fn needs(base: &str) -> Result<ExitCode, String> {
     // hasn't, so changed-checks is asked which moved; it costs an
     // evaluation, which only a change touching an area or a VM test's
     // files pays, and none whose gate already passed at its head.
-    let (said, asked) = gated::moved(
-        &record,
-        clean,
-        &merge_base,
-        &came_before,
-        || moved_from(base),
-    );
+    let (said, asked) = gated::moved(&record, clean, &merge_base, &came_before, || {
+        moved_from(base)
+    });
     gated::keep(&head, began, asked);
     if asked == gated::Asked::Gate {
         println!(

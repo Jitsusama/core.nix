@@ -23,7 +23,6 @@ import tomllib
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
-
 # An area's path opening so names a check that moved, not a file.
 CHECK = "check:"
 
