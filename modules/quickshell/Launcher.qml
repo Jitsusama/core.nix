@@ -10704,7 +10704,7 @@ Scope {
     function feltBegin(from, fromChord) {
         if (feltTicking.running)
             feltSaid();
-        feltTicks = Pacing.feltBegun(KeyTimes.now(), Heap.collected());
+        feltTicks = Pacing.feltBegun(KeyTimes.now(), Heap.collected(), feltThread());
         feltCollectedFrom = feltTicks.collected;
         feltFrom = from;
         feltFromChord = fromChord;
@@ -10746,9 +10746,13 @@ Scope {
     function feltSynced() {
         feltFramed("synced", KeyTimes.now());
     }
+    // The shell thread's clocks now, as Pacing.feltBegun reads them.
+    function feltThread() {
+        return { ran: KeyTimes.ran(), waited: KeyTimes.waited() };
+    }
     function feltTicked() {
         const now = KeyTimes.now();
-        feltTicks = Pacing.feltTicked(feltTicks, now, feltPace, Heap.collected());
+        feltTicks = Pacing.feltTicked(feltTicks, now, feltPace, Heap.collected(), feltThread());
         if (feltTicks.usable >= 0 || !cardUp || now - feltFrom > feltGiveUp)
             feltSaid();
     }
@@ -10769,7 +10773,8 @@ Scope {
                 + Pacing.stallSpent(feltSpans, stallAt, stallAt + feltTicks.stall)
             : "";
         const collecting = Pacing.collectorSaid(feltTicks.stallCollected,
-            Heap.collected() - feltCollectedFrom);
+            Heap.collected() - feltCollectedFrom)
+            + Pacing.threadSaid(feltTicks.stall, feltTicks.stallThread);
         feltSpans = [];
         console.info(usable >= 0
             ? `launcher: opening usable ${usable} ms from ${from}, its longest stall ${stalled} ms`
