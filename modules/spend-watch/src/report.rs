@@ -11,7 +11,7 @@ use crate::time::Zone;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::Write as _;
-use terminal_kit::{Room, layout};
+use terminal_kit::{Align, Pen, Room, layout};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Period {
@@ -182,6 +182,10 @@ pub struct Row {
     pub share: f64,
     pub shown: String,
     pub estimated: bool,
+    /// What it says under its report's columns after its name, in a
+    /// terminal; a row of a report with none says `shown` beside it.
+    #[serde(skip)]
+    pub cells: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -199,6 +203,31 @@ pub struct Report {
     /// together, which a note says too.
     #[serde(skip)]
     pub rest: Option<(usize, f64)>,
+    /// The columns its rows are set in, in a terminal, its names' first;
+    /// none where each row says a sentence, set as facts.
+    #[serde(skip)]
+    pub columns: Vec<(&'static str, Align)>,
+}
+
+/// The columns of a report of spend: what each row names, what it spent
+/// and its share of the whole.
+fn spend_columns(noun: &'static str) -> Vec<(&'static str, Align)> {
+    vec![
+        (noun, Align::Left),
+        ("spent", Align::Right),
+        ("share", Align::Right),
+    ]
+}
+
+/// A spend row's cells under those columns; a share of nothing says
+/// nothing.
+fn spend_cells(shown: &str, share: f64) -> Vec<String> {
+    let share = if share > 0.0 {
+        percent(share)
+    } else {
+        String::new()
+    };
+    vec![shown.to_owned(), share]
 }
 
 /// What an agent's work is called in a report.
@@ -293,13 +322,16 @@ pub fn cut(picture: &Picture, period: Period, cut: Cut, top: usize) -> Report {
         .into_iter()
         .filter(|(_, (spent, _, _))| *spent >= 0.005)
         .map(|(name, (spent, estimated, first))| {
+            let share = if total > 0.0 { spent / total } else { 0.0 };
+            let shown = crate::money::maybe_about(dollars(spent), estimated);
             (
                 first,
                 Row {
                     name,
                     dollars: spent,
-                    share: if total > 0.0 { spent / total } else { 0.0 },
-                    shown: crate::money::maybe_about(dollars(spent), estimated),
+                    share,
+                    cells: spend_cells(&shown, share),
+                    shown,
                     estimated,
                 },
             )
@@ -339,6 +371,7 @@ pub fn cut(picture: &Picture, period: Period, cut: Cut, top: usize) -> Report {
         rest: left_out,
         rows,
         notes,
+        columns: spend_columns(cut.id()),
     }
 }
 
@@ -664,6 +697,7 @@ pub fn summary(picture: &Picture, findings: &[Finding]) -> Report {
             share: 0.0,
             shown: finding.detail.clone(),
             estimated: false,
+            cells: Vec::new(),
         })
         .collect();
     let week = picture.between(
@@ -681,6 +715,7 @@ pub fn summary(picture: &Picture, findings: &[Finding]) -> Report {
         rest: None,
         rows,
         notes,
+        columns: Vec::new(),
     }
 }
 
@@ -757,16 +792,20 @@ pub fn waste(picture: &Picture) -> Report {
     let rows = waste
         .causes
         .iter()
-        .map(|(cause, spent)| Row {
-            name: crate::logs::Cause::words(cause).to_owned(),
-            dollars: *spent,
-            share: if waste.rebuilt > 0.0 {
+        .map(|(cause, spent)| {
+            let share = if waste.rebuilt > 0.0 {
                 spent / waste.rebuilt
             } else {
                 0.0
-            },
-            shown: dollars(*spent),
-            estimated: true,
+            };
+            Row {
+                name: crate::logs::Cause::words(cause).to_owned(),
+                dollars: *spent,
+                share,
+                shown: dollars(*spent),
+                estimated: true,
+                cells: spend_cells(&dollars(*spent), share),
+            }
         })
         .collect();
     let mut notes = vec![format!(
@@ -795,6 +834,7 @@ pub fn waste(picture: &Picture) -> Report {
         rest: None,
         rows,
         notes,
+        columns: spend_columns("cause"),
     }
 }
 
@@ -817,10 +857,14 @@ pub fn quests(picture: &Picture, period: Period) -> Report {
                 .map_or((id.to_owned(), "unknown".to_owned(), 0), |quest| {
                     (quest.title.clone(), quest.status.clone(), quest.prs)
                 });
+            let share = if total > 0.0 { spent / total } else { 0.0 };
+            let mut cells = spend_cells(&dollars(spent), share);
+            cells.extend([status.clone(), prs.to_string()]);
             Row {
                 name: title,
                 dollars: spent,
-                share: if total > 0.0 { spent / total } else { 0.0 },
+                share,
+                cells,
                 shown: format!(
                     "{} · {status} · {}",
                     dollars(spent),
@@ -858,6 +902,11 @@ pub fn quests(picture: &Picture, period: Period) -> Report {
         shown: dollars(total),
         source: source_line(pieces),
         rest: None,
+        columns: [
+            spend_columns("quest"),
+            vec![("status", Align::Left), ("pull requests", Align::Right)],
+        ]
+        .concat(),
         rows,
         notes,
     }
@@ -895,6 +944,7 @@ pub fn outliers(picture: &Picture, false_discovery: f64, floor: f64) -> Report {
                     outlier.work.turns
                 ),
                 estimated: true,
+                cells: Vec::new(),
             }
         })
         .collect();
@@ -908,6 +958,7 @@ pub fn outliers(picture: &Picture, false_discovery: f64, floor: f64) -> Report {
         shown: dollars(found.iter().map(|o| o.excess).sum()),
         source: "pi's logs at list prices".into(),
         rest: None,
+        columns: Vec::new(),
         rows,
         notes: vec![format!(
             "{} sessions compared, each shrunk toward the usual by its turns, held to a {} false \
@@ -946,6 +997,7 @@ pub fn caps(picture: &Picture) -> Report {
                 whole(event.spent)
             ),
             estimated: false,
+            cells: Vec::new(),
         })
         .collect();
     let refused = picture
@@ -967,6 +1019,7 @@ pub fn caps(picture: &Picture) -> Report {
         shown: String::new(),
         source: String::new(),
         rest: None,
+        columns: Vec::new(),
         rows,
         notes,
     }
@@ -1009,6 +1062,7 @@ pub fn forecast(picture: &Picture) -> Report {
                 share: 0.0,
                 shown: format!("{} ({} to {})", whole(q(0.5)), whole(q(0.1)), whole(q(0.9))),
                 estimated: true,
+                cells: Vec::new(),
             }
         })
         .collect();
@@ -1021,6 +1075,7 @@ pub fn forecast(picture: &Picture) -> Report {
         shown: picture.week_ahead().map_or(String::new(), |w| whole(w.1)),
         source: "forecast".into(),
         rest: None,
+        columns: Vec::new(),
         rows,
         notes,
     }
@@ -1059,7 +1114,7 @@ pub fn render(report: &Report, format: Format) -> String {
         Format::Json => serde_json::to_string_pretty(report).unwrap_or_default() + "\n",
         Format::Csv => render_csv(report),
         Format::Markdown => render_markdown(report),
-        Format::Text => render_text_in(report, Room::Unbounded),
+        Format::Text => render_text_in(report, &Pen::plain(), Room::Unbounded),
     }
 }
 
@@ -1126,16 +1181,16 @@ fn render_markdown(report: &Report) -> String {
     out
 }
 
-/// A report as plain text, its rows in columns, set to `room`. In a
-/// terminal its prose wraps, a name too long for its column is cut at a
-/// whole word, or shortened in its middle where it's one word, and a row that says a sentence hangs it under itself;
-/// into a pipe, or a file the daemon keeps, nothing gives way.
-pub fn render_text_in(report: &Report, room: Room) -> String {
-    const NAME: usize = 60;
-    // An inset, then a gap between the name and what it shows.
-    const AROUND: usize = 4;
-    // The fewest cells a name is shortened to, so it still tells rows apart.
-    const FEWEST: usize = 24;
+/// The inset of a report's rows under its title.
+const INSET: &str = "  ";
+
+/// A report as plain text, set to `room`: its rows in the kit's table
+/// where it has columns, and as the kit's facts where each says a
+/// sentence. In a terminal its prose wraps, a name too long for its
+/// column is cut at a whole word, or shortened in its middle where it's
+/// one word, and a sentence hangs under itself; into a pipe nothing
+/// gives way.
+pub fn render_text_in(report: &Report, pen: &Pen, room: Room) -> String {
     let prose = room.for_prose();
     let mut out = format!("{}\n", report.title);
     if !report.shown.is_empty() {
@@ -1148,53 +1203,17 @@ pub fn render_text_in(report: &Report, room: Room) -> String {
         }
     }
     out.push('\n');
-    let widest = report
-        .rows
-        .iter()
-        .map(|row| row.name.chars().count())
-        .max()
-        .unwrap_or(0)
-        .min(NAME);
-    // A cut's figures line up on the right; a sentence doesn't.
-    let figures = report.rows.iter().all(|row| row.share > 0.0);
-    let shown_width = if figures {
-        report
-            .rows
-            .iter()
-            .map(|row| row.shown.chars().count())
-            .max()
-            .unwrap_or(0)
-    } else {
-        0
+    let inside = match room.cells() {
+        Some(cells) => Room::Cells(cells.saturating_sub(INSET.len())),
+        None => Room::Unbounded,
     };
-    // A share is said in at most four cells, after a gap.
-    let share_width = if figures { 6 } else { 0 };
-    // A name gives way to the figures beside it, or leaves a sentence at
-    // least as many cells as it keeps itself.
-    let beside = if figures {
-        shown_width + share_width
+    let lines = if report.columns.is_empty() {
+        sentences(report, pen, inside)
     } else {
-        FEWEST
+        table(report, pen, inside)
     };
-    let width = room.cells().map_or(widest, |cells| {
-        widest.min(cells.saturating_sub(AROUND + beside).max(FEWEST))
-    });
-    for row in &report.rows {
-        let name: String = match room {
-            Room::Unbounded => row.name.chars().take(NAME).collect(),
-            Room::Cells(_) => layout::cut(&row.name, width),
-        };
-        let share = if row.share > 0.0 {
-            format!("  {:>4}", percent(row.share))
-        } else {
-            String::new()
-        };
-        let shown = if figures {
-            row.shown.clone()
-        } else {
-            layout::hung(&row.shown, AROUND + width, room)
-        };
-        _ = writeln!(out, "  {name:<width$}  {shown:>shown_width$}{share}");
+    for line in lines {
+        _ = writeln!(out, "{INSET}{line}");
     }
     if !report.rows.is_empty() && !report.notes.is_empty() {
         out.push('\n');
@@ -1205,6 +1224,61 @@ pub fn render_text_in(report: &Report, room: Room) -> String {
         }
     }
     out
+}
+
+/// A report's rows in its columns, each name cut to the room the other
+/// columns leave, so a long quest's title never moves its figures.
+fn table(report: &Report, pen: &Pen, room: Room) -> Vec<String> {
+    // The fewest cells a name is cut to, so it still tells rows apart.
+    const FEWEST: usize = 24;
+    if report.rows.is_empty() {
+        return Vec::new();
+    }
+    let others: usize = report
+        .columns
+        .iter()
+        .skip(1)
+        .enumerate()
+        .map(|(at, (label, _))| {
+            report
+                .rows
+                .iter()
+                .filter_map(|row| row.cells.get(at))
+                .map(|cell| layout::width(cell))
+                .chain([layout::width(label)])
+                .max()
+                .unwrap_or(0)
+                + layout::GAP
+        })
+        .sum();
+    let rows: Vec<Vec<String>> = report
+        .rows
+        .iter()
+        .map(|row| {
+            let name = room.cells().map_or_else(
+                || row.name.clone(),
+                |cells| layout::cut(&row.name, cells.saturating_sub(others).max(FEWEST)),
+            );
+            std::iter::once(name)
+                .chain(row.cells.iter().cloned())
+                .collect()
+        })
+        .collect();
+    // Where even a name cut short leaves too little room, the columns
+    // past what it spent go, the last first.
+    let gives_way: Vec<usize> = (2..report.columns.len()).rev().collect();
+    layout::table_in(&report.columns, &rows, pen, room, &gives_way)
+}
+
+/// A report whose rows each say a sentence, as facts: its name, and the
+/// sentence beside it or under it.
+fn sentences(report: &Report, pen: &Pen, room: Room) -> Vec<String> {
+    let facts: Vec<(&str, Option<&str>)> = report
+        .rows
+        .iter()
+        .map(|row| (row.name.as_str(), Some(row.shown.as_str())))
+        .collect();
+    layout::facts(&facts, "unknown", pen, room)
 }
 
 #[cfg(test)]
@@ -1220,14 +1294,21 @@ mod tests {
     }
 
     /// A report with a name too long for a narrow terminal, and a note
-    /// longer than any line.
+    /// longer than any line: a cut where its rows have a share, sentences
+    /// where they don't.
     fn a_wide_report(period: &str, share: f64, shown: &str) -> Report {
+        let cut = share > 0.0;
         let row = |name: &str| Row {
             name: name.into(),
             dollars: 12.5,
             share,
             shown: shown.into(),
             estimated: false,
+            cells: if cut {
+                spend_cells(shown, share)
+            } else {
+                Vec::new()
+            },
         };
         Report {
             title: "Spend by quest".into(),
@@ -1238,6 +1319,11 @@ mod tests {
             shown: "$25.00".into(),
             source: "pi's logs at list prices".into(),
             rest: None,
+            columns: if cut {
+                spend_columns("quest")
+            } else {
+                Vec::new()
+            },
             rows: vec![
                 row("QEST-20261112-0TUD09 Exquisite Command Lines for People and Machines"),
                 row("short"),
@@ -1258,7 +1344,11 @@ mod tests {
 
     #[test]
     fn a_cut_fits_a_narrow_terminal() {
-        let said = render_text_in(&a_wide_report("last week", 0.5, "$12.50"), Room::Cells(60));
+        let said = render_text_in(
+            &a_wide_report("last week", 0.5, "$12.50"),
+            &Pen::plain(),
+            Room::Cells(60),
+        );
         assert!(past(&said, 60).is_empty(), "lines ran past 60:\n{said}");
         assert!(
             said.contains("  QEST-20261112-0TUD09 Exquisite Command") && said.contains('…'),
@@ -1267,9 +1357,48 @@ mod tests {
     }
 
     #[test]
+    fn a_cut_heads_its_columns_and_lines_its_figures_up_under_them() {
+        let said = render_text_in(
+            &a_wide_report("last week", 0.5, "$12.50"),
+            &Pen::plain(),
+            Room::Cells(60),
+        );
+        let head = said
+            .lines()
+            .find(|line| line.contains("SPENT"))
+            .unwrap_or_else(|| panic!("the cut's columns weren't headed:\n{said}"));
+        assert_eq!(
+            head.split_whitespace().collect::<Vec<_>>(),
+            ["QUEST", "SPENT", "SHARE"],
+            "the cut was headed otherwise:\n{said}"
+        );
+        assert!(head.starts_with("  QUEST"), "the head isn't inset:\n{said}");
+        let ends = |line: &str, word: &str| {
+            line.find(word)
+                .map(|at| layout::width(&line[..at + word.len()]))
+        };
+        for line in said.lines().filter(|line| line.contains("$12.50")) {
+            assert_eq!(
+                ends(line, "$12.50"),
+                ends(head, "SPENT"),
+                "a figure didn't end under its label:\n{said}"
+            );
+            assert_eq!(
+                ends(line, "50%"),
+                ends(head, "SHARE"),
+                "a share didn't end under its label:\n{said}"
+            );
+        }
+    }
+
+    #[test]
     fn a_sentence_row_hangs_under_itself() {
         let sentence = "the default budget's cap rose from $100 to $200 at the start of the month";
-        let said = render_text_in(&a_wide_report("caps", 0.0, sentence), Room::Cells(60));
+        let said = render_text_in(
+            &a_wide_report("caps", 0.0, sentence),
+            &Pen::plain(),
+            Room::Cells(60),
+        );
         assert!(past(&said, 60).is_empty(), "lines ran past 60:\n{said}");
         let words = said.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
@@ -1281,16 +1410,22 @@ mod tests {
     #[test]
     fn into_a_pipe_a_report_is_set_as_its_files_are() {
         let report = a_wide_report("last week", 0.5, "$12.50");
-        let said = render_text_in(&report, Room::Unbounded);
+        let said = render_text_in(&report, &Pen::plain(), Room::Unbounded);
         assert_eq!(
             said,
             render(&report, Format::Text),
             "a report into a pipe differs from the one the daemon keeps"
         );
+        // Its title, what it covers, a gap, the head and two rows, a gap
+        // and its note.
         assert_eq!(
             said.lines().count(),
-            7,
+            8,
             "a pipe's report gave way somewhere:\n{said}"
+        );
+        assert!(
+            said.contains("for People and Machines  $12.50"),
+            "a pipe's name was cut:\n{said}"
         );
     }
 
