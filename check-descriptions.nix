@@ -549,8 +549,8 @@
     code-health counts a repository's long files and crowded folders without their reasons, its
     suppressions in each language's own way, its lines repeated from elsewhere and its tests in
     quarantine, the lint rules its configs turn off, its files nothing reaches, its folders with
-    no note, its VM test lines, and its Terraform not as tofu fmt writes it, what tflint finds and
-    what trivy finds insecure,
+    no note, its VM test lines, and its Terraform not as tofu fmt writes it, what tflint finds,
+    what trivy finds insecure and what has no description or README,
     from a ref's files, and writes the day's figures as cadence reads them, and the hour's
     against each target, the hour before and the owner
   '';

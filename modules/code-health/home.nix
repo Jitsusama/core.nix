@@ -7,7 +7,7 @@
 # in quarantine and the points of docs/daemons.md daemons still break;
 # lint rules turned off, files nothing reaches, folders with no note and
 # VM test lines; and Terraform not as tofu fmt writes it, what tflint
-# finds and what trivy finds insecure.
+# finds, what trivy finds insecure and what says nothing of what it is.
 # It writes hour.json beside them, each figure against the target and
 # owner a repository's `targets`, `owner` and `owners` give it, and the
 # figure the hour before, which `cadence hour` reads at ten past. A read
