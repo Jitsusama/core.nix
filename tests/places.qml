@@ -169,6 +169,16 @@ QtObject {
         expect("first on its screen when nothing sat below it",
             Places.whereBack({ screen: panel, output: "eDP-1", workspace: 2, column: 1, tile: 1 },
                 beside), { make: true, output: null, index: 1 });
+        // One kept below it that opened while every screen was gone sits on
+        // a screen standing in for its own, whose numbers say nothing of
+        // its own screen: after it there, the second of the monitor's
+        // stayed on the laptop's once the monitor came back
+        // (screens-keep-places, 2026-11-14).
+        const standing = [{ id: 7, at: { screen: monitor, output: "DP-4", workspace: 1, column: 1,
+            tile: 1 }, workspace: { id: 31, idx: 1, output: "eDP-1" }, column: 2 }];
+        expect("one below it on a screen standing in for its own isn't followed there",
+            Places.whereBack({ screen: monitor, output: "DP-4", workspace: 2, column: 1, tile: 1 },
+                standing), { make: true, output: null, index: 1 });
         expect("one kept under another goes under it",
             Places.whereBack({ screen: monitor, output: "DP-4", workspace: 5, column: 2, tile: 2 },
                 beside), { join: 24, after: 4, under: true });
