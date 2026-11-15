@@ -1039,7 +1039,6 @@
     {
       "id": "code",
       "name": "Code",
-      "term": "Code",
       "noun": "repositories",
       "what": "repository",
       "glyph": "branch",
