@@ -54,8 +54,19 @@ pub struct Tree<'a> {
 /// What to do for the change at `tree.asked`.
 #[must_use]
 pub fn decide(tree: &Tree) -> Rerun {
-    let _ = tree;
-    Rerun::Leave
+    if tree.ours == Some(tree.asked) {
+        return Rerun::Runs;
+    }
+    if tree.theirs || tree.head != tree.asked || !tree.clean {
+        return Rerun::Leave;
+    }
+    if tree.ours.is_some() {
+        Rerun::Restart
+    } else if tree.ran {
+        Rerun::Failed
+    } else {
+        Rerun::Start
+    }
 }
 
 /// The user unit a run started for the tree at `folder` goes as: one per
