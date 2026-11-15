@@ -1611,16 +1611,25 @@ Floating {
     }
     // Whether that fade is drawn, as it is wherever effects draw.
     readonly property bool fadeDrawn: wordsFaded.item !== null
-    // The letters of the line that fades, without the space a laid line
-    // ends on, or the fade would fall past its last letter.
+    // Its words as drawn, laid in lines as Qt wraps them, each its letters,
+    // without the space a laid line ends on, and how wide they are, for
+    // the launcher to report.
+    readonly property var proseLines: {
+        void bodyFace.font;
+        const plain = shown?.styled === true ? Prose.lettersOf(bodySaid).plain : bodySaid;
+        const width = widthIn(bodyFace);
+        return Prose.laid(plain, wordsBox.width, width).map(line => {
+            const letters = plain.slice(line.start, line.end).replace(/\s+$/, "");
+            return { letters, width: width(letters) };
+        });
+    }
+    // The letters of the line that fades, or the fade would fall past its
+    // last letter.
     readonly property string fadedLetters: {
         const line = wordsKept - 1;
         if (line < 0 || wordsKept >= bodyText.lineCount)
             return "";
-        void bodyFace.font;
-        const plain = shown?.styled === true ? Prose.lettersOf(bodySaid).plain : bodySaid;
-        const laid = Prose.laid(plain, wordsBox.width, widthIn(bodyFace))[line];
-        return laid === undefined ? "" : plain.slice(laid.start, laid.end).replace(/\s+$/, "");
+        return proseLines[line]?.letters ?? "";
     }
     // Those letters laid out as the words are drawn, to say where their
     // ink ends: the face's metrics put a line of the serif some 3% wider

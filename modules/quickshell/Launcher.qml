@@ -8628,6 +8628,9 @@ Scope {
                 bodyDrawn: drawerCard.bodySaid,
                 // How many lines Qt draws them in.
                 bodyLines: drawerCard.bodyLines,
+                // How wide each line the drawer lays them in measures
+                // (Drawer.qml's proseLines), rounded up.
+                laidWidths: drawerCard.proseLines.map(line => Math.ceil(line.width)),
                 eyebrow: root.drawerShows?.eyebrow ?? "",
                 // Whether it's set as written, naming things, or in capitals.
                 eyebrowNames: !!root.drawerShows?.eyebrowNames,
