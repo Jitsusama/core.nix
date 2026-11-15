@@ -9,7 +9,8 @@
 //! from 2.4 GHz whenever one is heard well enough: 2.4 GHz can be quicker
 //! to the gateway but carries far less.
 //! wpa_supplicant still roams on its own when the signal fades; this
-//! moves the card only between access points it can already hear.
+//! moves the card only between access points it can already hear, and
+//! has one carrying badly that hears no other look, as often as it moves.
 //!
 //! The figures to beat are a desk's on 14 Nov 2026, one access point's
 //! two radios at 4 dB apart: the gateway's p95 was 15 ms on one and
@@ -98,6 +99,9 @@ pub enum Choice {
 #[derive(Default)]
 pub struct Chooser {
     moved: Option<Instant>,
+    /// When it last had the card look for another access point, which it
+    /// does no more often than it moves.
+    looked: Option<Instant>,
     trial: Option<Trial>,
     spurned: HashMap<String, Instant>,
 }
@@ -183,7 +187,7 @@ impl Chooser {
                 .or_else(|| near.max_by_key(|other| (wide(other.frequency), other.signal)))
         });
         let Some(chosen) = chosen else {
-            return Choice::Stay;
+            return self.look(now, bad && others.iter().all(|other| other.point == point));
         };
         self.moved = Some(now);
         self.trial = Some(Trial {
@@ -192,6 +196,20 @@ impl Chooser {
             banded: banded.is_some(),
         });
         Choice::Try(chosen.point.clone())
+    }
+
+    /// Has a card carrying badly that hears no other access point of its
+    /// network look for one, once a settle at most, so the next choice has
+    /// others to choose from.
+    fn look(&mut self, now: Instant, alone: bool) -> Choice {
+        let rested = self
+            .looked
+            .is_none_or(|looked| now.duration_since(looked) >= SETTLE);
+        if !alone || !rested {
+            return Choice::Stay;
+        }
+        self.looked = Some(now);
+        Choice::Look
     }
 }
 
