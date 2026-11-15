@@ -224,11 +224,6 @@ fn command_line(
 /// with its managers: it returns, rather than ending the process itself,
 /// so the kit ends it with the exit a failure names.
 fn daemon(managers: &str, words: Option<&str>) -> Result<(), Failure> {
-    // The kit hears a panic as the command's own while its body runs, and
-    // the daemon's body runs as long as it does: each thread serving the
-    // shell or a manager says its panic in the journal, as Rust's own hook
-    // does, rather than the kit keeping it for an ending that never comes.
-    drop(std::panic::take_hook());
     if !harden()? {
         // The shell went before it was told to end with it.
         return Ok(());
