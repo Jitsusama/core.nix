@@ -492,5 +492,12 @@
       "test_the_cat_holds_its_ground_through_a_slide_between_workspaces"
     ],
     "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
+    "at": 1794711310,
+    "commit": "c51fcc200e172b08a4e9705edeb9c397ebb75861",
+    "owner_pr": 4356,
+    "reason": "failed, then passed, at c51fcc200e17",
+    "test": "niri-tells-a-resize-at-once"
   }
 ]
