@@ -8,6 +8,20 @@
 /// again.
 pub const ALIKE: f64 = 0.6;
 
+/// Words a swear can sharpen into praise, as in "looks damn good".
+const PRAISE: [&str; 10] = [
+    "amazing",
+    "awesome",
+    "beautiful",
+    "brilliant",
+    "cool",
+    "fantastic",
+    "good",
+    "great",
+    "gorgeous",
+    "nice",
+];
+
 /// Whether a message reads as a correction: the last reply didn't do it.
 pub fn correcting(text: &str) -> bool {
     let low = lowered(text);
@@ -22,9 +36,11 @@ pub fn correcting(text: &str) -> bool {
         || ["again", "still", "keeps", "wtf", "ffs", "broken", "stuck"]
             .iter()
             .any(|w| said(w))
-        || words
-            .iter()
-            .any(|w| ["fuck", "shit", "damn"].iter().any(|s| w.starts_with(s)))
+        || words.iter().enumerate().any(|(at, w)| {
+            // A swear before a word of praise is delight, not a fault.
+            ["fuck", "shit", "damn"].iter().any(|s| w.starts_with(s))
+                && !words.get(at + 1).is_some_and(|next| PRAISE.contains(next))
+        })
         || [
             "not that",
             "every time",
@@ -153,10 +169,7 @@ mod tests {
             !correcting("make it look fucking awesome."),
             "a swear that praises"
         );
-        assert!(
-            !correcting("that's damn good"),
-            "a swear before praise"
-        );
+        assert!(!correcting("that's damn good"), "a swear before praise");
         assert!(
             correcting("this fucking thing"),
             "a swear before anything else"
