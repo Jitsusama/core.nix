@@ -6181,6 +6181,15 @@ Scope {
         keyDrawn(swapped.shown);
     }
 
+    // And the acts it drew, each timed to it (actsDrawn).
+    function actsFrameSwapped() {
+        const swapped = Pacing.frameSwapped(actsDrawing);
+        if (swapped.shown.length === 0)
+            return;
+        actsDrawing = swapped.acts;
+        actsDrawn(swapped.shown);
+    }
+
     // A key's drawing said apart by the render thread's own times of its
     // frame (frame-presentation.patch's timesOf): from the frame's start to
     // the end of its sync, the polish and sync the GUI thread does; then its
@@ -6206,6 +6215,7 @@ Scope {
         const drawn = Date.now();
         const shown = KeyTimes.now();
         const newest = drawnKeys[drawnKeys.length - 1];
+        Report.say(`key framed ${newest.text}`);
         // Its time after its own work said apart, as a drawer's is: waiting
         // for the frame that drew it, then drawing it, so a key whose frame
         // came 80 ms after a 30 ms search says which held it (Joel's "ag",
@@ -11027,11 +11037,7 @@ Scope {
             }
 
             function onFrameSwapped() {
-                const swapped = Pacing.frameSwapped(root.actsDrawing);
-                if (swapped.shown.length === 0)
-                    return;
-                root.actsDrawing = swapped.acts;
-                root.actsDrawn(swapped.shown);
+                root.actsFrameSwapped();
             }
         }
 
