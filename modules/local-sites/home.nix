@@ -27,14 +27,18 @@
 # rather than in the system module, so a machine with the system daemon
 # and no local sites still evaluates.
 #
-# Two sites still read files written beside them. mycelium/ maps the realm as it stands, from a
-# now.json beside it that a timer rewrites every 20 seconds from what the
-# machine's node says (mycelium-map.sh, shaped by mycelium-map.jq). A
-# machine in no realm has no node to read, so it runs no timer. network/
-# maps the home network from net's record (modules/net), copied in each
-# time net rewrites it, since the server serves nothing outside its root
-# and won't follow a link out of it; on a machine that runs no net, the
-# record never appears and nothing is copied.
+# Three sites still read files written beside them. mycelium/ maps the
+# realm as it stands, from a now.json beside it that a timer rewrites every
+# 20 seconds from what the machine's node says (mycelium-map.sh, shaped by
+# mycelium-map.jq). A machine in no realm has no node to read, so it runs
+# no timer. network/ maps the home network from net's record (modules/net),
+# copied in each time net rewrites it, since the server serves nothing
+# outside its root and won't follow a link out of it; on a machine that
+# runs no net, the record never appears and nothing is copied. code/ lists
+# every repository on the disk from a repos.json beside it that a timer
+# rewrites every minute from repos's record (code-site.sh), until Code
+# reads a feed of its own; a machine without repos (modules/repos) runs no
+# timer.
 { mycelium }:
 {
   config,
@@ -103,6 +107,7 @@ let
   };
   root = "%h/.local/share/jitsusama/sites";
   realm = config.jitsusama.mycelium.realm or null;
+  roots = config.jitsusama.repos.roots or null;
   build = lib.escapeShellArgs [
     (lib.getExe pkgs.python3)
     "${./home/home.py}"
@@ -271,19 +276,59 @@ in
         Slice = "background.slice";
       };
     };
+  }
+  // lib.optionalAttrs (roots != null) {
+    # repos reads git's own files alone, taking no lock and running no git, so
+    # a reading never gets in the way of an agent's work in a checkout.
+    code-site = {
+      Unit.Description = "Writes the code site's record from what repos reads on the disk";
+      Service = {
+        Type = "oneshot";
+        Environment = [
+          "REPOS_ROOTS=${lib.concatStringsSep ":" roots}"
+          "PATH=${
+            lib.makeBinPath [
+              (pkgs.callPackage ../repos/package.nix { })
+              pkgs.coreutils
+            ]
+          }"
+        ];
+        ExecStart = lib.escapeShellArgs [
+          (lib.getExe pkgs.bash)
+          "${./code-site.sh}"
+          "${config.xdg.dataHome}/jitsusama/sites/code"
+        ];
+        Slice = "background.slice";
+      };
+    };
   };
 
   # Every 20 seconds, as the page reads it; a run takes about a tenth of a
   # second.
-  config.systemd.user.timers = lib.optionalAttrs (realm != null) {
-    mycelium-map = {
-      Unit.Description = "Rewrites the mycelium site's map every 20 seconds";
-      Timer = {
-        OnActiveSec = "1s";
-        OnUnitActiveSec = "20s";
-        AccuracySec = "1s";
+  config.systemd.user.timers =
+    lib.optionalAttrs (realm != null) {
+      mycelium-map = {
+        Unit.Description = "Rewrites the mycelium site's map every 20 seconds";
+        Timer = {
+          OnActiveSec = "1s";
+          OnUnitActiveSec = "20s";
+          AccuracySec = "1s";
+        };
+        Install.WantedBy = [ "timers.target" ];
       };
-      Install.WantedBy = [ "timers.target" ];
+    }
+    # Every minute: a reading takes about 60 ms, and the page says how old
+    # its record is, so a minute keeps it current without the disk being read
+    # more than it changes.
+    // lib.optionalAttrs (roots != null) {
+      code-site = {
+        Unit.Description = "Rewrites the code site's record every minute";
+        Timer = {
+          OnActiveSec = "5s";
+          OnUnitActiveSec = "60s";
+          AccuracySec = "5s";
+        };
+        Install.WantedBy = [ "timers.target" ];
+      };
     };
-  };
 }

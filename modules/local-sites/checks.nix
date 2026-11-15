@@ -66,6 +66,19 @@ in
     touch $out
   '';
 
+  # The code site's writer keeps its last record while repos fails, and
+  # replaces it whole once repos answers
+  # (tests/code-site-keeps-its-last-record.sh).
+  code-site-keeps-its-last-record = pkgs.runCommandLocal "code-site-keeps-its-last-record" { } ''
+    ${lib.getExe pkgs.bash} ${./tests/code-site-keeps-its-last-record.sh} ${
+      lib.escapeShellArgs [
+        ./code-site.sh
+        "${pkgs.coreutils}/bin"
+      ]
+    }
+    touch $out
+  '';
+
   # The mycelium site's writer keeps its last map while no node answers, and
   # writes the live sessions alone, without a message's words, once one does
   # (tests/mycelium-map-keeps-its-last-map.sh).
