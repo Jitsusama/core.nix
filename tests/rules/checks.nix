@@ -266,6 +266,7 @@
         lid-docked = pkgs.callPackage ../../modules/lid/docked/package.nix { };
         load-proof = pkgs.callPackage ../../modules/load-proof/package.nix { };
         loopback-holders = pkgs.callPackage ../../modules/v4l2loopback/holders/package.nix { };
+        machine = pkgs.callPackage ../../modules/machine/package.nix { };
         meaning = dictation;
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
         net = pkgs.callPackage ../../modules/net/package.nix { };
@@ -287,6 +288,7 @@
         pineapple-slack = pineapple;
         plymouth-waits = pkgs.callPackage ../../modules/plymouth/waits/package.nix { };
         processor-telemetry = pkgs.callPackage ../../modules/processor-telemetry/package.nix { };
+        programs = pkgs.callPackage ../../modules/programs/package.nix { };
         quickshell-hands-over = import ../../modules/quickshell/hands-over.nix { inherit pkgs; };
         reader = pkgs.callPackage ../../modules/reader/package.nix { };
         recent-files = recentFiles;
@@ -308,6 +310,7 @@
             { };
         timekeeping = pkgs.callPackage ../../modules/quickshell/timekeeping/package.nix { };
         timers = pkgs.callPackage ../../modules/quickshell/timers/package.nix { };
+        to-do = pkgs.callPackage ../../modules/to-do/package.nix { };
         transcripts-people = pkgs.callPackage ../../modules/call-transcripts/package.nix { };
         tuple-call = pkgs.callPackage ../../modules/tuple/call/package.nix { };
         update-to-main = pkgs.callPackage ../../modules/update-to-main/package.nix { };

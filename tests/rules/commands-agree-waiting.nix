@@ -44,11 +44,6 @@
     "exits"
     "helps"
   ];
-  machine = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   merge-net = [
     "kit"
     "exits"
@@ -94,11 +89,6 @@
     "helps"
   ];
   pi-verbs = [ "helps" ];
-  programs = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   qt-javascript-lint = [ "helps" ];
   quests = [
     "kit"
@@ -118,11 +108,6 @@
   switch-system-as-root = [ "helps" ];
   switch-system-known = [ "helps" ];
   systemd-run = [ "helps" ];
-  to-do = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   wifid = [
     "kit"
     "helps"
