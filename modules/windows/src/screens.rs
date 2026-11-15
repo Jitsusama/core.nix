@@ -31,6 +31,7 @@ use serde_json::{Value, json};
 use crate::light::{self, Seen};
 
 pub mod acts;
+mod answers;
 mod facts;
 pub mod line;
 pub mod settings;
@@ -692,6 +693,7 @@ pub fn rows(
         rows.extend(facts::rows(name, &screen, desk, words));
     }
     rows.extend(warmth_rows(&shown, seen, words));
+    rows.extend(answers::rows(&rows, &shown, focused));
     if lit > 0 {
         let turned_off: Vec<String> = shown
             .iter()
