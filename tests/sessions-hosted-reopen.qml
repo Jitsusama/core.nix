@@ -7,8 +7,11 @@ pragma ComponentBehavior: Bound
 // it, on the screen's empty workspace, and holds there; one no host serves
 // yet has its place kept, for its viewer to open once one does; one the
 // boot kept no place of opens none. One bound for the workspace Joel is on
-// waits until he leaves it, then opens there. It exits 0 once that holds,
-// and otherwise 1, saying what didn't.
+// waits until he leaves it, then opens there. Asked to reopen as a plain pi
+// one its host's own list names, it begins none; one whose hosted presence
+// outlived its host's list is begun; and one parked in its holder here is
+// woken, told to carry on, its place kept for its window to open there as it
+// wakes. It exits 0 once that holds, and otherwise 1, saying what didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -31,13 +34,24 @@ ShellRoot {
             "--session", id];
     }
 
-    // A session pi's host runs here, as the node tells of it.
+    // A session pi's host runs here, as the node tells of it, its owner the
+    // host's process, whose own list the state script lays out naming
+    // s-viewed alone.
     function hosted(id, address) {
         return { key: `session:${id}`, kind: "session", heard: Date.now(), id,
             state: "idle", standing: "running", here: true, machine: Sessions.machine,
             at: new Date().toISOString(), window: null, held: null, attach: viewing(id),
             presence: { session: id, addresses: [address],
+                owner: { pid: 4100, startedAt: 17, bootId: "b1", startTicks: 7,
+                    session: id, host: "harbour-background" },
                 hosted: { host: "harbour-background", conversation: id } } };
+    }
+    // A session parked in its holder here, its window closed as it slept.
+    function napping(id, address) {
+        return { key: `session:${id}`, kind: "session", heard: Date.now(), id,
+            state: "ended", standing: "parked", here: true, machine: Sessions.machine,
+            at: new Date().toISOString(), window: null, held: "hold-n", attach: null,
+            presence: { session: id, addresses: [address], state: "parked" } };
     }
 
     // Where the last boot kept each window, by session id, on the monitor.
@@ -96,6 +110,10 @@ ShellRoot {
                 present();
             else if (stage === "back")
                 back();
+            else if (stage === "told")
+                told();
+            else if (stage === "asked")
+                asked();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -245,9 +263,47 @@ ShellRoot {
             ["s-old", "s-parked"].every(id => viewerSpawns(id).length === 0
                 && Sessions.keptPlaces[id] !== undefined),
             `${Niri.spawns.join("\n")} ${JSON.stringify(Sessions.keptPlaces)}`);
+        // The node tells of one whose hosted presence its host no longer
+        // lists, as XUBK2E's after the drill of 15 November (OSPHT4
+        // [58d7fa8e]), and one parked in its holder, as 2RCBOJ was.
+        stage = "told";
+        Watch.tell(root.watch, { changed: [
+            Object.assign(hosted("s-stale", "STALE"), { told: "0000000000000005" }),
+            Object.assign(napping("s-napped", "NAPPED"), { told: "0000000000000006" })] });
+    }
+
+    // Each is asked to reopen as a plain pi, as Reopen Them All asks the last
+    // boot's, telling each to carry on.
+    function told() {
+        if (!find("STALE") || !Sessions.parkedAs("NAPPED"))
+            return;
+        stage = "asked";
+        Sessions.reopenAll([{ id: "s-viewed", cwd: "/tmp" }, { id: "s-stale", cwd: "/tmp" },
+            { id: "s-napped", cwd: "/tmp" }], (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone`),
+            kept({ "s-napped": keptOn(2) }), Sessions.carryOn);
+    }
+
+    function piFor(id) {
+        return Niri.spawns.filter(command => command.includes(` pi --session ${id}`));
+    }
+    function asked() {
+        const woken = steers.find(one => one.address === "NAPPED");
+        if (piFor("s-stale").length === 0 || !woken)
+            return;
+        Expect.expect("one its host lists is begun no more", piFor("s-viewed").length === 0,
+            Niri.spawns.join("\n"));
+        Expect.expect("one parked is woken, told to carry on, never begun",
+            woken.steer.text === Sessions.carryOn && piFor("s-napped").length === 0,
+            JSON.stringify(woken));
+        const place = Sessions.keptPlaces["s-napped"];
+        Expect.expect("its place kept for its window as it wakes", place?.slept === true
+            && place?.asleep === true && typeof place?.workspace === "number",
+            JSON.stringify(Sessions.keptPlaces));
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
     }
+    // Each steer the node was asked.
+    property var steers: []
 
     // Every step waits on niri's stand-in, the node or a timer of Sessions'
     // own, so each is looked at often rather than heard.
@@ -278,6 +334,9 @@ ShellRoot {
                         answer = { id: ask.id, records: [root.hosted("s-viewed", "VIEWED")] };
                     } else if (ask.ask === "watch") {
                         answer = { id: ask.id, records: [] };
+                    } else if (ask.ask === "steer") {
+                        root.steers = root.steers.concat([ask]);
+                        answer = { id: ask.id, steered: { machine: Sessions.machine } };
                     }
                     asked.write(`${JSON.stringify(answer)}\n`);
                     asked.flush();

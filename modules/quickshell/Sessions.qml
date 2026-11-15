@@ -1636,15 +1636,26 @@ Singleton {
             reopenViewer(next);
             return;
         }
-        // One already running or parked here is never begun again, as a
-        // restart watch may have begun it meanwhile, since two pis on one
-        // log would each write over the other.
-        if (root.running.concat(root.parked).some(session => session.here
-            && session.presence.session === next.one.id)) {
+        // One already running here is never begun again, as a restart
+        // watch may have begun it meanwhile, since two pis on one log would
+        // each write over the other; but a hosted presence is believed only
+        // while its host's own list names it, and one parked here is woken
+        // rather than left asleep (Places.foundHere).
+        const found = Places.foundHere(next.one.id, root.running, root.parked,
+            owner => Places.hostSays(owner, root.hostList(owner)));
+        if (found.as === "parked") {
+            root.wakeReopened(found.session, next);
+            reopenNext();
+            return;
+        }
+        if (found.as === "running") {
             console.info(`sessions: ${next.one.id} not reopened, since it runs here`);
             reopenNext();
             return;
         }
+        if (found.as === "stale")
+            console.info(`sessions: ${next.one.id}'s hosted presence is stale, since `
+                + `${found.session.presence.owner.host} doesn't list it, so it's reopened`);
         reopening.begun.push(next.one.id);
         reopening.looking = true;
         lookFor([next.one.cwd], there => {
@@ -1760,6 +1771,57 @@ Singleton {
         reopenStartedAt = Date.now();
         reopenPatience.restart();
     }
+    // One parked here, in its holder or in pi's host, which Reopen Them All
+    // wakes rather than begins again: told to carry on as it wakes when
+    // `next` is told that and the uplink has room, else woken and told
+    // once it runs (carryOnLater). Its place is kept as a sleeper's
+    // (keepPlaceAsleep), so its window opens there as it wakes
+    // (Viewers.sleeperDue), unless one was kept as it went to sleep. Left
+    // asleep, 2RCBOJ's parked hold stayed shut after the drill of 15
+    // November until it was woken by hand (OSPHT4, [58d7fa8e]).
+    function wakeReopened(session, next) {
+        const id = next.one.id;
+        const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
+            column: next.at.column, tile: next.at.tile ?? 1 } : null;
+        const into = keptPlaces[id]?.slept === true ? null
+            : root.opensOn(next.one, at, root.besideOf(reopening.placed));
+        if (into !== null)
+            keepPlaces(Object.assign({}, keptPlaces, { [id]: { workspace: into.workspace,
+                column: into.column, at: Date.now(), slept: true, asleep: true } }));
+        console.info(`sessions: waking ${id}, parked here, kept at ${root.keptSaid(at)}`);
+        const telling = next.told === root.carryOn;
+        if (telling && !wokenByViewing(session) && carryOnNow(next.one, next.kept)) {
+            steer(session.address, { text: carryOn, id: `carry-on-${Date.now()}-${id}` });
+            return;
+        }
+        wake(session);
+        if (telling)
+            carryOnLater(next.one, next.kept);
+    }
+
+    // A pi host's own list of the sessions it runs, as the harness keeps it
+    // in its hosts folder, read as it is now for the host `owner` names
+    // (Places.hostListOf), or "" for none. Reopen Them All reads it before
+    // it believes a hosted presence, since one can outlive its session
+    // while its owner, the host's process, runs on.
+    Component {
+        id: hostListing
+
+        FileView {
+            blockAllReads: true
+            printErrors: false
+        }
+    }
+    function hostList(owner) {
+        const name = Places.hostListOf(owner);
+        if (name === "")
+            return "";
+        const file = hostListing.createObject(root, { path: `${state}/hosts/${name}` }) as FileView;
+        const text = file.text();
+        file.destroy();
+        return text;
+    }
+
     // The session pi's host runs here as `id`, or null.
     function hostedHere(id) {
         return running.find(one => one.here && one.presence?.hosted
