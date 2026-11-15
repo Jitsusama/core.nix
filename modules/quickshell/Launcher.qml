@@ -8577,6 +8577,7 @@ Scope {
                     previewEnd: root.hundredths(lines.previewEnd),
                     previewLines: lines.previewLines.map(line => root.hundredths(line)),
                     words: root.hundredths(lines.words),
+                    nerd: lines.nerd.map(line => root.hundredths(line)),
                     facts: lines.facts.map(line => root.hundredths(line)),
                     time: root.hundredths(lines.time),
                     timeMiddle: root.hundredths(lines.timeMiddle),

@@ -631,6 +631,29 @@ def test_a_sessions_drawer_glances_at_six_facts_at_most_and_folds_the_rest(
     )
 
 
+def test_za_shows_a_sessions_fold_above_its_more_line_its_prose_giving_way(shell: Shell) -> None:
+    """Opened by z a, the fold's line and its first bit stand above the more line.
+
+    A session's prose runs past its card, so opened, the fold would stand under it, out of
+    sight, and z a would change nothing seen. The prose gives up whole lines from its end for
+    the fold instead, its rest counted under the more line (VKCF3Z, bfdad751).
+    """
+    found(shell, "listening quest", "Listening Quest")
+    shell.launcher_until(lambda shown: shown["drawer"]["shown"] and shown["drawer"]["nerd"])
+    shell.normal()
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is False)
+    opened = shell.showing()["drawer"]
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is True)
+    shell.on_find()
+    _, *bits = cast("list[float]", opened["lines"]["nerd"])
+    foot = cast("float", opened["foot"])
+    assert bits, f"its fold opens on no bits: {opened}"
+    assert bits[0] < foot, f"its fold's line and first bit stand below its foot: {opened}"
+    assert opened["moreSays"] != "", f"it hides its prose's rest unsaid: {opened}"
+
+
 def drawn_figures(shown: dict[str, Any]) -> dict[str, str]:
     """Each drawer fact drawing a figure, by its name, to the figure's shape."""
     drawer = shown["drawer"]

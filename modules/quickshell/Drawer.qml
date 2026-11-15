@@ -453,6 +453,14 @@ Floating {
             eyebrow: shown(eyebrowText),
             eyebrowMiddle: eyebrowText.visible ? contentTop + eyebrowText.y
                 + eyebrowText.height / 2 : null,
+            // The fold's line's and each open bit's first line's.
+            nerd: foldShown.visible ? [contentTop + flow.y + foldShown.y + foldName.y
+                + foldName.baselineOffset].concat(Array.from({ length: nerdRows.count },
+                (_, at) => {
+                    const bit = nerdRows.itemAt(at);
+                    return bit ? contentTop + flow.y + foldShown.y + bit.y
+                        + bit.valueWords.y + bit.valueWords.baselineOffset : null;
+                })) : [],
             words: wordsBox.visible ? contentTop + flow.y + wordsBox.y + bodyText.y
                 + bodyText.baselineOffset : null,
             title: flowed(titleText),
