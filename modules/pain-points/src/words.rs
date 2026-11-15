@@ -149,6 +149,18 @@ mod tests {
         assert!(correcting("wtf happened"), "a swear");
         assert!(!correcting("now do the backlight"), "a plain ask");
         assert!(!correcting("know this"), "no as part of a word");
+        assert!(
+            !correcting("make it look fucking awesome."),
+            "a swear that praises"
+        );
+        assert!(
+            !correcting("that's damn good"),
+            "a swear before praise"
+        );
+        assert!(
+            correcting("this fucking thing"),
+            "a swear before anything else"
+        );
         assert!(asking_status("where are we at?"), "where are we");
         assert!(asking_status("What\u{2019}s left"), "a curly apostrophe");
         assert!(
