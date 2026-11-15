@@ -385,8 +385,10 @@ td {
 }
 
 /* A disclosure grows open rather than jumping, and its summary looks like
-   something to press. */
+   something to press. It is a whole target tall by padding, so its words
+   stay centred in the ring. */
 summary {
+  padding-block: max(0px, calc((var(--target) - 1lh) / 2));
   cursor: pointer;
 }
 
@@ -453,17 +455,13 @@ video {
   white-space: nowrap;
 }
 
-/* Every control is a whole target, for a pointer as for a finger. A
-   checkbox's or a radio's target is its label, so the box keeps its size. A
-   summary reaches it by padding, so its words stay centred in the ring. */
+/* Every control is a whole target, for a pointer as for a finger, and a
+   summary is one by its padding (above). A checkbox's or a radio's target
+   is its label, so the box keeps its size. */
 button,
 input:not([type="checkbox"], [type="radio"]),
 select {
   min-block-size: var(--target);
-}
-
-summary {
-  padding-block: max(0px, calc((var(--target) - 1lh) / 2));
 }
 
 /* Less motion asked for: nothing moves, and every change lands at once. A
