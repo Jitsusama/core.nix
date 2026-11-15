@@ -2400,8 +2400,10 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
     picked = shell.showing()["line"]["talks"][far]["line"]
     shell.send_key("ret")
     shell.launcher_until(
-        lambda shown: (shown["line"]["thread"] or {}).get("line") == picked
-        and shown["line"]["mode"] == "insert"
+        lambda shown: (
+            (shown["line"]["thread"] or {}).get("line") == picked
+            and shown["line"]["mode"] == "insert"
+        )
     )
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
@@ -2492,8 +2494,9 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
     shell.send_key("ret")
     # It opens ready to type, so the reply's first letter is its first letter, no i before.
     shell.launcher_until(
-        lambda shown: (shown["line"]["thread"] or {}).get("key") == key
-        and shown["line"]["mode"] == "insert"
+        lambda shown: (
+            (shown["line"]["thread"] or {}).get("key") == key and shown["line"]["mode"] == "insert"
+        )
     )
     words = "and the reply?"
     shell.send_chars(words)
