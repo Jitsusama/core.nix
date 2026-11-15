@@ -133,7 +133,9 @@ pub fn slice_of(cgroup: &str) -> Option<&str> {
         .find_map(|line| line.strip_prefix("0::"))?
         .split('/')
         .rfind(|part| {
-            Path::new(part).extension().is_some_and(|kind| kind == "slice")
+            Path::new(part)
+                .extension()
+                .is_some_and(|kind| kind == "slice")
                 && !part.starts_with("user")
         })
 }
