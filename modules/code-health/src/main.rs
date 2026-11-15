@@ -9,8 +9,9 @@
 //! reaches (reached.rs) and its folders that don't say what they hold
 //! (notes.rs), as the quality standard has them; its Terraform's files
 //! not as `tofu fmt` writes them, what tflint finds and what trivy finds
-//! insecure (terraform.rs); and how long the changes it merged in the
-//! last day took from first edit to merge (merges.rs).
+//! insecure (terraform.rs), and what of it says nothing of what it is
+//! (`terraform_docs.rs`); and how long the changes it merged in the last
+//! day took from first edit to merge (merges.rs).
 //!
 //! It writes `<date>.json` in its folder as `{repo: {measure: figure}}`,
 //! the form cadence reads, and `<date>-named.json` beside it naming what
@@ -43,6 +44,7 @@ mod merges;
 mod notes;
 mod reached;
 mod terraform;
+mod terraform_docs;
 
 use std::collections::BTreeMap;
 use std::env;
@@ -64,7 +66,7 @@ const FLAGS: [&str; 6] = [
 ];
 
 /// Every measure it reads (measure.rs and merges.rs).
-const MEASURES: [&str; 16] = [
+const MEASURES: [&str; 17] = [
     "crowded-folders",
     "daemons-waiting",
     "duplicated-lines",
@@ -76,6 +78,7 @@ const MEASURES: [&str; 16] = [
     "quarantined-tests",
     "shared-files",
     "suppressions",
+    "tf-undocumented",
     "tf-unformatted",
     "tflint-findings",
     "trivy-findings",
@@ -156,6 +159,10 @@ fn run(context: &Context) -> Result<(), Failure> {
         match git::files_in(&repo.checkout, &repo.reference, &repo.under) {
             Ok((paths, files)) => {
                 let mut health = measure::measure(&paths, &files);
+                if let Some(undocumented) = terraform_docs::undocumented(&files) {
+                    let count = undocumented.len();
+                    health.put("tf-undocumented", undocumented, count);
+                }
                 match terraform::read(&files) {
                     Some(Ok(read)) => {
                         let count = read.unformatted.len();

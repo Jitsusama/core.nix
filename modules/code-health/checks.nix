@@ -58,8 +58,9 @@
   # each file nothing reaches, each folder that says nothing of what it
   # holds and each VM test's lines; and of its Terraform, each file not as
   # tofu fmt writes it, each finding of tflint's, a workspace it can't
-  # load among them, and each of trivy's security findings, with the real
-  # tools.
+  # load among them, each of trivy's security findings, with the real
+  # tools, and each variable or output with no description and workspace
+  # with no README.
   code-health-counts-what-got-messier = pkgs.callPackage ./package.nix { };
   # A repository can be several folders of a larger one, such as one
   # team's Terraform kept in a few places of a monorepo; each is handed
