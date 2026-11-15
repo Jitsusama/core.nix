@@ -39,10 +39,6 @@
     "shown"
     "speaks"
   ];
-  passwords = [
-    "shown"
-    "speaks"
-  ];
   people = [ "speaks" ];
   screen-text = [
     "held"

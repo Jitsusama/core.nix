@@ -1180,6 +1180,13 @@ Scope {
     // for the walk too.
     property bool cataloguing: false
 
+    // The place a line from outside opened this opening into, by `qs ipc
+    // call launcher collection` or the launcher's socket, which any process
+    // of the account's can write; empty once it closes. A place that asks
+    // its manager as Joel (Passwords) asks as nobody while it's the one
+    // told, since only a key niri delivered is surely his.
+    property string toldInto: ""
+
     // The rows a terminal's `launcher show` last walked through (`walked`)
     // and listed (`listed`), held a few seconds after it asks, so a
     // provider that reads only while its rows are seen, as Machine reads
@@ -7337,8 +7344,10 @@ Scope {
                     const words = said;
                     if (words[0] === "toggle")
                         root.toggled();
-                    else if (words[0] === "collection")
-                        root.pressed(words.slice(1).join(" "));
+                    else if (words[0] === "collection") {
+                        root.toldInto = words.slice(1).join(" ");
+                        root.pressed(root.toldInto);
+                    }
                     else if (words[0] === "command-line" && words.length >= 3)
                         root.viewerCommandLine(words[1], words[2], words.slice(3).join(" "));
                     else
@@ -7373,6 +7382,7 @@ Scope {
 
         function collection(name: string): void {
             root.askedToOpen();
+            root.toldInto = name;
             root.chordInto(name);
             root.askDone();
         }
@@ -8161,6 +8171,24 @@ Scope {
     // The acts' and the showing's ms of the drawer shown last, said with its
     // making, then let go.
     property var drawerSplit: null
+    // Return's way into the selected row's drawer, for a row whose Return
+    // has nothing else to do, since every row's does something (Y2YBTS,
+    // 2026-11-10), as Passwords' off row's: its drawer out at once rather
+    // than after the selection's rest, so Return just after a step still
+    // finds it, then the keys in it, as Space and Right's drawer act give
+    // them. It isn't named intoDrawer, which a ready row's drawer step and
+    // a past notice's Return look for before taking a way of their own
+    // (ReadyRows.qml, PastNotices.qml), so they keep theirs.
+    function drawerAtOnce() {
+        if (!open || selected === null)
+            return;
+        drawerFollowDue = false;
+        drawerRow = selected;
+        drawerResting.stop();
+        drawerSettled();
+        if (drawerOut)
+            prompt.resume("page");
+    }
     // How long the selection rests before the drawer comes or goes.
     Timer {
         id: drawerResting
@@ -9256,6 +9284,7 @@ Scope {
             Report.say("closing");
             drafts.flush();
             landOn = null;
+            toldInto = "";
         }
         else
             spotsBegin();

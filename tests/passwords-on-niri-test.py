@@ -1,28 +1,31 @@
-"""The Passwords place, asking the passwords daemon over its socket, on niri.
+"""The Passwords place, asking the passwords daemon the shell runs as its own child, on niri.
 
 modules/quickshell/checks.nix runs this through pytest inside tests/nested-niri.sh. The daemon
-is the store's own, which the check names, run as its unit runs it, on the daemons' socket, with
-one password manager: a stand-in for 1Password's, named as 1Password's is
-(tests/passwords-stand-in.sh), which never runs op. It starts signed out. Nothing asks it
-anything until Joel steps into Passwords, which asks it once, and while it's signed out the
-place leads with 1Password's row, its side saying it's locked, whose Return unlocks it, and a
-window of 1Password's opening for that ask closes the launcher and takes the keys. Refused
-the first time, as a dismissed prompt is, the launcher says why the next time it opens. Once
-in, GitHub leads as a favourite, its username at its side, its Return copies its password
-through the daemon to the clipboard and the launcher goes, the margin wearing the clipboard's
-mark and the foot, opened again, saying when it clears; resting on it reads it in full, its
-drawer never saying its password, and stepped into, it holds its acts in the design's order.
-Open the Website, Chrome's a stand-in that writes down what it's given, hands Chrome GitHub's
-website as the launcher goes, its foot saying 1Password offers to fill it there.
+is the store's own, which the check gives the shell to run, with no socket, with one password
+manager: a stand-in for 1Password's, named as 1Password's is (tests/passwords-stand-in.sh),
+which never runs op, and logs where this file's environment says. It starts signed out. Nothing
+asks it anything until Joel steps into Passwords, which asks it once, and while it's signed out
+the place leads with 1Password's row, its side saying it's locked, whose Return unlocks it, and
+a window of 1Password's opening for that ask closes the launcher and takes the keys. Refused the
+first time, as a dismissed prompt is, the launcher says why the next time it opens. Once in,
+GitHub leads as a favourite, its username at its side, its Return copies its password through
+the daemon to the clipboard and the launcher goes, the margin wearing the clipboard's mark and
+the foot, opened again, saying when it clears; resting on it reads it in full, its drawer never
+saying its password, and stepped into, it holds its acts in the design's order. Open the
+Website, Chrome's a stand-in that writes down what it's given, hands Chrome GitHub's website as
+the launcher goes, its foot saying 1Password offers to fill it there. A walk from outside the
+launcher, as `launcher show` and `launcher do` make, finds no entry and asks the manager
+nothing.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
-import subprocess
 import time
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -30,11 +33,10 @@ import launcher_on_niri
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from launcher_on_niri import Json, Shell
 
-SOCKET = Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "passwords.sock"
 LOGS = Path(os.environ["LOGS"])
 # What the stand-in manager was asked, a line each.
 ASKED = LOGS / "passwords-asked.log"
@@ -52,6 +54,9 @@ UNLOCKS = 2
 CHROME_GIVEN = LOGS.resolve() / "chrome-given.log"
 # The act opening an entry's website, in Chrome, where 1Password's extension fills it.
 WEBSITE = "Open the Website"
+# How long a place opened from outside is watched for asking as Joel: an ask a moment
+# after the opening reaches the stand-in in well under a second.
+QUIET = timedelta(seconds=3)
 
 
 def stand_in_chrome() -> None:
@@ -76,30 +81,15 @@ def asked() -> list[Json]:
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
-    """Give the shell, started once a run after the passwords daemon and its manager."""
+    """Give the shell, started once a run, which starts the passwords daemon itself."""
     LOGS.mkdir(parents=True, exist_ok=True)
     stand_in_chrome()
-    managers = LOGS / "password-managers.json"
-    stand_in = ["bash", os.environ["PASSWORDS_STAND_IN"], str(ASKED)]
-    managers.write_text(json.dumps({"managers": [{"name": "1password", "command": stand_in}]}))
-    environment = {**os.environ, "PASSWORDS_COPIER": "wl-copy"}
-    with (LOGS / "passwords.log").open("w") as log:
-        daemon = subprocess.Popen(
-            [os.environ["PASSWORDS"], "daemon", str(SOCKET), str(managers)],
-            stdout=log,
-            stderr=log,
-            env=environment,
-        )
-    deadline = time.monotonic() + 30
-    while not SOCKET.exists():
-        assert daemon.poll() is None, (LOGS / "passwords.log").read_text()
-        assert time.monotonic() < deadline, "the passwords daemon never listened"
-        time.sleep(0.1)
+    # The shell's environment is this file's, and the daemon's the shell's, so the stand-in
+    # manager logs here.
+    os.environ["PASSWORDS_ASKED"] = str(ASKED.resolve())
     started = launcher_on_niri.started()
     yield started
     started.stop()
-    daemon.terminate()
-    daemon.wait()
 
 
 @pytest.fixture(autouse=True)
@@ -110,9 +100,14 @@ def launcher_closed_after(shell: Shell) -> Iterator[None]:
 
 
 def opened(shell: Shell) -> None:
-    """Open Passwords, as its row at home or "passwords" typed steps into it."""
-    shell.as_account(shell.ipc("collection", "passwords"))
-    shell.launcher_ready()
+    """Open Passwords as Joel does, by keys: "passwords" typed at home, and Return.
+
+    A place opened by a line from outside the launcher asks nothing as his (the test of
+    `collection`), so only keys niri delivered step in as Joel.
+    """
+    shell.answer("passwords")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Passwords")
+    shell.step_in()
     shell.launcher_until(lambda shown: shown["held"] == ["passwords"])
 
 
@@ -342,3 +337,88 @@ def test_open_the_website_hands_chrome_the_website_as_the_launcher_goes(shell: S
     shell.launcher_until(
         lambda _: CHROME_GIVEN.exists() and CHROME_GIVEN.read_text() == "https://github.com/login\n"
     )
+
+
+def test_a_walk_from_outside_the_launcher_reaches_no_entry(shell: Shell) -> None:
+    """A walk from outside the launcher, as any process's qs ipc call makes, finds no entry.
+
+    `launcher show` and `launcher do` walk its places for any process of the account's, so
+    Passwords holds nothing for them and asks its daemon nothing: only Joel's keys reach an
+    entry, an act on one, a manager's let-in or a check.
+    """
+    let_in(shell)
+    opened(shell)
+    shell.launcher_until(lambda shown: shown["rows"][:1] == ["GitHub"])
+    shell.close_launcher()
+    before = len(asked())
+    # As the terminal's launcher calls them, after `--`, since `show` is qs ipc's own command
+    # too; what qs says when it fails is on its standard error, said here too.
+    walk = f"qs -p {shell.folder} ipc call -- launcher"
+    path = shlex.quote("\u203aPasswords")
+    shown = shell.as_account(f"{walk} show {path} 2>&1")
+    for held in ["GitHub", "Bank Card", "Check Every Password"]:
+        assert held not in shown, f"a walk from outside found {held}: {shown}"
+    walked = json.dumps({"steps": ["Passwords", "GitHub", "Copy the Password"]})
+    done = json.loads(shell.as_account(f"{walk} doing {shlex.quote(walked)}"))
+    assert done.get("missing") == "GitHub", f"a do from outside reached GitHub: {done}"
+    assert len(asked()) == before, f"a walk from outside asked: {asked()[before:]}"
+    shell.launcher_until(lambda shown: not shown["open"])
+
+
+def test_a_place_opened_from_outside_the_launcher_asks_nothing_as_joel(shell: Shell) -> None:
+    """Passwords opened by `collection`, which any process of the account's can call, asks as none.
+
+    Only a key niri delivered to the launcher is Joel's, so a place opened over qs ipc or the
+    launcher's socket lists without `asked`, and 1Password is never brought to ask him.
+    """
+    shell.launcher_until(lambda shown: not shown["open"])
+    before = len(asked())
+    shell.as_account(shell.ipc("collection", "passwords"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["passwords"])
+    shell.launcher_until(lambda _: "list" in asks()[before:])
+    since = asked()[before:]
+    assert all(one.get("asked") is not True for one in since), f"asked as Joel: {since}"
+    assert "let-in" not in asks()[before:], f"it asked to be let in: {since}"
+
+
+def test_a_place_a_terminal_or_the_catalogue_opens_asks_nothing_as_joel(shell: Shell) -> None:
+    """Passwords asked open by `launcher do` or the catalogue's run is never stepped into.
+
+    Both open a place for any process of the account's, walking to it while the launcher is
+    walked from outside, when Passwords holds no row (Passwords.qml's `outside`). So the step
+    into it finds nowhere to go and the launcher opens at home: it never opens, and asks its
+    daemon nothing as Joel. Its asks are watched for a few seconds after, since what's proven
+    is that none comes.
+    """
+    walk = f"qs -p {shell.folder} ipc call -- launcher"
+    catalogue = json.loads(shell.as_account(f"{walk} list"))
+    place = next(one for one in catalogue if one["words"] == "Passwords" and one["in"] == "")
+    # Each way's answer says it didn't open (Launcher.qml's doneWalked and
+    # catalogueRunWalked), never that it did.
+    opens: dict[str, tuple[str, Callable[[Json], bool]]] = {
+        "launcher do": (
+            f"{walk} doing {shlex.quote(json.dumps({'steps': ['Passwords']}))}",
+            lambda said: said == {"unopened": True, "in": ["Passwords"]},
+        ),
+        "the catalogue's run": (
+            f"{walk} run {shlex.quote(place['id'])}",
+            lambda said: said.get("done") is False,
+        ),
+    }
+    for way, (command, unopened) in opens.items():
+        shell.launcher_until(lambda shown: not shown["open"])
+        before = len(asked())
+        answer = shell.as_account(command)
+        said = cast("Json", json.loads(answer))
+        assert unopened(said), f"{way} answered {said}"
+        shell.launcher_until(lambda shown: shown["open"])
+        quiet_until = time.monotonic() + QUIET.total_seconds()
+        while time.monotonic() < quiet_until:
+            since = asked()[before:]
+            assert all(one.get("asked") is not True for one in since), f"{way} asked: {since}"
+            assert "let-in" not in asks()[before:], f"{way} asked to be let in: {since}"
+            time.sleep(0.1)
+        held = shell.showing()["held"]
+        assert held == [], f"{way} answered {answer} and stepped into {held}"
+        shell.close_launcher()

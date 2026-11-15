@@ -1942,11 +1942,17 @@ in
                 builtins.toJSON (
                   map (
                     provider:
-                    removeAttrs provider [
-                      "source"
-                      "order"
-                      "enable"
-                    ]
+                    # A place that's off is given no daemon to run, so
+                    # a process rewriting its off setting in the files
+                    # the shell reads finds nothing to start.
+                    removeAttrs provider (
+                      [
+                        "source"
+                        "order"
+                        "enable"
+                      ]
+                      ++ lib.optional (provider.off or false) "daemon"
+                    )
                     // {
                       file = providerFile provider;
                     }
