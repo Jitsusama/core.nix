@@ -13,8 +13,8 @@ rustPlatform.buildRustPackage {
   pname = "passwords";
   version = "0.1.0";
   # The crates it names by path come beside it, secret-asks with the
-  # serving side it answers errors in, and it builds from its own folder
-  # within.
+  # serving side it answers errors in, and terminal-kit with the shape its
+  # command line takes, and it builds from its own folder within.
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -28,6 +28,8 @@ rustPlatform.buildRustPackage {
       ../ready-rows/src
       ../secret-asks/Cargo.toml
       ../secret-asks/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "source/passwords";

@@ -1921,7 +1921,8 @@
     held list or get without asking a manager, gives a secret only to the ask for it, never to a
     watch, or to the clipboard marked sensitive and cleared when its time is up, refuses a copy
     before reading any secret while no copier is named, can't be read through /proc by the
-    account's other processes nor write a core dump, ends once whatever ran it closes its end,
+    account's other processes nor write a core dump, says nothing of its own on the shell's pipe
+    whether it ends well, fails or panics, ends once whatever ran it closes its end,
     says a one-time code's period, gives a one-time code's detail as its code and
     never its seed, says a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
     serves each entry's row and drawer keyed by its place, in the account's own words and with no
@@ -1939,13 +1940,15 @@
     on Joel's yes on the ask's own key, for what was drawn and once it was shown long enough,
     refuses on a no, refuses a program outside the root-owned folders, and runs the asked command
     alone in a stand-in bubblewrap with the value masked in what it prints;
-    and no passwords command reaches an entry or a secret, each refused as mistyped, the usage
-    saying passwords are in the launcher's Passwords place
+    and no passwords command reaches an entry or a secret, each refused as asked wrongly with
+    nothing on stdout and nothing typed after it said back, a bare run and the help saying
+    passwords are in the launcher, and the help fitting 60 columns with the exits it ends with
   '';
   passwords-lists-1passwords-ssh-keys = ''
     passwords keys lists the keys an SSH agent holds at 1Password's socket, each by its type, size,
-    fingerprint, comment and public half, as rows and as JSON, nothing for an agent holding none,
-    and says how to turn the agent on when none listens, against a stand-in agent alone
+    fingerprint, comment and public half, as a table under a head counting them, drawn whole into
+    a pipe, and as JSON naming passwords.keys/1, no row for an agent holding none, and says how
+    to turn the agent on when none listens, against a stand-in agent alone
   '';
   passwords-passes-clippy = ''
     clippy finds nothing in the passwords daemon or its tests

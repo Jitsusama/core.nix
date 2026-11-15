@@ -265,6 +265,7 @@
         noise-cancelled = dictation;
         open-now = recentFiles;
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
+        passwords = pkgs.callPackage ../../modules/passwords/package.nix { };
         pause-for-calls = pkgs.callPackage ../../modules/spotify/pause-for-calls/package.nix { };
         pi-clipboard-door = clipboardDoor;
         pi-clipboard-shim = clipboardDoor;
