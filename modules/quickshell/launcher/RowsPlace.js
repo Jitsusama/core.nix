@@ -20,14 +20,6 @@ function of(held) {
     };
 }
 
-// Whether `rows` already wear the place of `held`, so telling it would
-// tell them nothing.
-function told(rows, held) {
-    const place = of(held);
-    return rows.rowsGlyph === place.glyph && rows.rowsHue === place.hue
-        && rows.rowsAtHome === place.home;
-}
-
 // Says it on `rows`, the launcher, whose rowsGlyph, rowsHue and rowsAtHome
 // the rows read; a value that hasn't changed tells no row.
 function tell(rows, held) {

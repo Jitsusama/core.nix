@@ -3335,29 +3335,23 @@ Scope {
 
     // Where the rows drawn stand, the glyph and hue an act of its own
     // without them wears and whether they're home's, told as their rows
-    // come rather than as held moves (RowsPlace.js), as the list keeps
-    // them (list.keep): once the rows of a place left are aside, so they
-    // never redraw for the place they give way to, and before the new
-    // ones are laid out, so none is laid out twice. A refresh in the
-    // place they stay in redraws none. A move of held that brings no
+    // come rather than as held moves (RowsPlace.js), once the list keeps
+    // them (list.keep), so the rows of a place left never redraw for the
+    // place they give way to, and a refresh in the place they stay in
+    // redraws none. A move of held that brings no
     // new rows tells them once it's done.
     property string rowsGlyph: ""
     property string rowsHue: ""
     property bool rowsAtHome: true
-    function rowsPlaced(laid) {
+    function rowsPlaced() {
         // Told while the rows drawn are still the last ones, it redraws
         // rows about to go, as home's did for each kept opening, about
         // 3 ms (ZINAWZ, 2026-11-11); counted for the check that it isn't.
         if (list.rows !== matches)
             rowsToldEarly += 1;
-        // Told once the rows given were laid out, it lays each out again
-        // for its place; counted for the check that it isn't.
-        if (laid && !RowsPlace.told(root, held))
-            rowsToldLate += 1;
         RowsPlace.tell(root, held);
     }
     property int rowsToldEarly: 0
-    property int rowsToldLate: 0
     // How long weighing the keys of the rows just listed took, in ms, which
     // a key's showing says beside its laying: every row's foot is weighed
     // as it's listed, not only those drawn (Trials.qml's composed).
@@ -9486,7 +9480,6 @@ Scope {
     property var openFirstRedone: null
     function redone() {
         return { measured: prompt.crumbsMade + prompt.stepsMade, toldEarly: rowsToldEarly,
-            toldLate: rowsToldLate,
             blocked: markBlocked };
     }
     property real openBegun: -1
@@ -10304,7 +10297,6 @@ Scope {
         const redoneBy = openFirstRedone ?? redone();
         const measured = redoneBy.measured - (openAskedRedone.measured ?? 0);
         const toldEarly = redoneBy.toldEarly - (openAskedRedone.toldEarly ?? 0);
-        const toldLate = redoneBy.toldLate - (openAskedRedone.toldLate ?? 0);
         const blocked = redone().blocked - (openAskedRedone.blocked ?? 0);
         openFirstRedone = null;
         // How long after the ask the mark said open, or -1 while it hasn't.
@@ -10313,8 +10305,8 @@ Scope {
         // Numbered, since only the last 20 are kept, so a check opening more
         // than that still sees each new one come.
         const timed = { nth: openingsDrawn, took, worked, parts: openParts, after, rows, weighings,
-            marked, measured, toldEarly, toldLate, blocked, made: most,
-            verbs: kept ? 0 : openVerbsWeighed, first, kept, felt,
+            marked, measured, toldEarly, blocked, made: most, verbs: kept ? 0 : openVerbsWeighed, first,
+            kept, felt,
             frames: kept ? openFramesWaited : 1, woke: kept ? {} : openWoke,
             into: openChord };
         if (kept)
@@ -12040,12 +12032,6 @@ Scope {
                                     && steps.some(one => one.insert !== undefined))
                                     list.forceLayout();
                                 const aside = Date.now() - asideFrom;
-                                // Told where they stand before they go in,
-                                // once those they replace are aside, so each
-                                // is laid out once, wearing its place: told
-                                // after, every row of a step in from home
-                                // was laid out again for it.
-                                root.rowsPlaced(false);
                                 for (const step of steps.filter(one => one.remove === undefined)) {
                                     if (step.move !== undefined)
                                         rowsKept.move(step.move, step.to, 1);
@@ -12089,7 +12075,7 @@ Scope {
                                 const same = list.keep(root.matches);
                                 // Told where they stand once they're the
                                 // rows drawn, so those they replace aren't.
-                                root.rowsPlaced(!same);
+                                root.rowsPlaced();
                                 // The selection goes where its row now
                                 // stands, should a row above it have changed
                                 // height.
