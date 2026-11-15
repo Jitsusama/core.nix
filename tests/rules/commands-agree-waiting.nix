@@ -100,11 +100,6 @@
     "exits"
     "helps"
   ];
-  shell-preview = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   switch-system-as-root = [ "helps" ];
   switch-system-known = [ "helps" ];
   systemd-run = [ "helps" ];
