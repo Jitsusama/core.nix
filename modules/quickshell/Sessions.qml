@@ -834,9 +834,23 @@ Singleton {
         const others = root.inUse(root.running).filter(session => session.here
             && (session.window !== null || session.kitty !== null)
             && session.presence.session !== one.id);
-        const homed = root.homeSpace(one, others, home ?? Places.homeOf(one, null));
+        const address = home ?? Places.homeOf(one, null);
+        const homed = root.homeSpace(one, others, address);
         if (homed !== null)
             return homed;
+        // An orchestrator back before its home is named names the workspace
+        // it opens on, so its sessions back before its pi says who it is
+        // join it rather than make a workspace of their own (homeSpace).
+        const into = root.keptOrKin(one, at, beside, others);
+        const name = Places.homeToName(one, address, into?.workspace ?? null,
+            Object.values(Niri.workspaces));
+        if (name !== "")
+            Niri.act({ SetWorkspaceName: { name, workspace: { Id: into.workspace } } });
+        return into;
+    }
+    // Where a session with no home to go to opens, as opensOn says: where
+    // it was kept, else beside its kin, else on the screen's empty workspace.
+    function keptOrKin(one, at, beside, others) {
         if (at !== null) {
             const where = Places.whereBack(at, beside);
             if (!where.make)
@@ -867,7 +881,7 @@ Singleton {
     // orchestrator's window isn't told apart from its kitty's yet, which is
     // placed once it is (placeQuietly). The orchestrator itself goes to the
     // workspace named for it when its sessions came back first, else to
-    // its own kept place.
+    // its own kept place, which opensOn names for it.
     function homeSpace(one, others, home) {
         if (home === "")
             return null;

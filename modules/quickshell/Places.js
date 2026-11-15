@@ -277,6 +277,23 @@ function homeOf(one, kept) {
     return address(one?.workspace) || address(one?.orchestratedBy) || address(kept?.under);
 }
 
+// The name the workspace `into` takes as an orchestrator opens on it, by
+// its id, as Sessions.qml's opensOn finds it: its `home`, when `one` is
+// the orchestrator of that home and no workspace has the name yet, so a
+// session of its own back before its pi says who it is joins it there
+// (Joel, 2026-11-14 22:36: one made a workspace of its own, two seconds
+// after its orchestrator came back, and stayed alone on it). "" for any
+// other: a workspace already named, for this home or another's, keeps its
+// name. `workspaces` are niri's, { id, name } each.
+function homeToName(one, home, into, workspaces) {
+    const leads = one?.address === home || one?.orchestrates === home;
+    const there = workspaces.find(space => space.id === into);
+    if (home === "" || !leads || !there || there.name) {
+        return "";
+    }
+    return workspaces.some(space => space.name === home) ? "" : home;
+}
+
 // Where a session started under an orchestrator opens, { workspace, column }
 // as opensOn gives it: on the orchestrator's workspace, the column after the
 // last of the sessions it orchestrates there whose title comes before this
