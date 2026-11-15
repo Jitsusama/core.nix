@@ -84,18 +84,12 @@
 //! polkit answers and his weight, sessions' mycelium holders and pis among
 //! them.
 //!
-//! Usage: jobs-sorter [--under app.slice[=JOBS]]... [--home kitty-]... [--keep pi]...
-//!        [--jobs jobs.slice/jobs.service] [--busy 500] [--ticks 2]
-//!        [--every 1000] [--split jobs.slice/jobs.service[=SLICE]]...
-//!        [--no-real-time jobs.slice/jobs-work.slice]...
-//!        [--by-quest jobs-work.slice]... [--quests FILE]
-//!        [--tiers FILE --parents FILE] [--tier-order NAME,NAME...]
-//!        [--background DIR] [--low-weight 10] [--weigh PREFIX]...
-//!        [--revive jobs.slice] [--door jobs.slice] [--calls pw-dump]
-//!        [--orchestrators DIR] [--niri niri] [--hosts PREFIX]
-//!        [--sessions agents.slice]
+//! Its help, refusals and exits are the terminal kit's, and `jobs-sorter
+//! --help` names every flag (src/cli.rs): asked wrongly ends 64, and a
+//! sorter that can't read or sort the cgroups 1.
 
 mod calls;
+mod cli;
 mod door;
 mod focus;
 mod holds;
@@ -116,9 +110,11 @@ mod tiers;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{self, Command, Stdio};
+use std::process::{Command, ExitCode, Stdio};
 use std::thread;
 use std::time::Duration;
+
+use terminal_kit::{Exit, Failure, flags};
 
 /// /proc's CPU times are in `USER_HZ`, which is 100 on every Linux ABI.
 const MS_PER_TICK: u64 = 10;
@@ -1426,7 +1422,8 @@ fn send(jobs: &Path, pids: &[u32], warned: &mut bool) {
     }
 }
 
-fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> {
+fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure> {
+    let wrongly = |why: &str| cli::wrongly("jobs-sorter", why);
     let mut settings = Settings {
         under: Vec::new(),
         homes: Vec::new(),
@@ -1455,7 +1452,10 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
         sends: Vec::new(),
     };
     while let Some(flag) = args.next() {
-        let mut value = || args.next().ok_or(format!("{flag} needs a value"));
+        let mut value = || {
+            args.next()
+                .ok_or_else(|| wrongly(&format!("{flag} needs a value")))
+        };
         match flag.as_str() {
             "--under" => {
                 let given = value()?;
@@ -1475,7 +1475,9 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
             "--quests" => settings.quests = Some(PathBuf::from(value()?)),
             "--tiers" => settings.tiers = Some(PathBuf::from(value()?)),
             "--parents" => settings.parents = Some(PathBuf::from(value()?)),
-            "--tier-order" => settings.tier_order = tiers::Order::new(&value()?)?,
+            "--tier-order" => {
+                settings.tier_order = tiers::Order::new(&value()?).map_err(|why| wrongly(&why))?;
+            }
             "--background" => settings.background = Some(PathBuf::from(value()?)),
             "--weigh" => settings.weigh.push(value()?),
             "--revive" => settings.revive = Some(value()?),
@@ -1485,16 +1487,17 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
             "--hosts" => settings.hosts = Some(value()?),
             "--sessions" => settings.sessions = Some(value()?),
             "--orchestrators" => settings.orchestrators = Some(PathBuf::from(value()?)),
-            "--low-weight" => {
-                settings.low_weight = value()?.parse().map_err(|_| "--low-weight is a weight")?;
-            }
-            "--busy" => settings.busy_ms = value()?.parse().map_err(|_| "--busy is ms")?,
-            "--ticks" => settings.ticks = value()?.parse().map_err(|_| "--ticks is a count")?,
+            "--low-weight" => settings.low_weight = number(&value()?, "--low-weight is a weight")?,
+            "--busy" => settings.busy_ms = number(&value()?, "--busy is ms")?,
+            "--ticks" => settings.ticks = number(&value()?, "--ticks is a count")?,
             "--every" => {
-                let ms = value()?.parse().map_err(|_| "--every is ms")?;
-                settings.every = Duration::from_millis(ms);
+                settings.every = Duration::from_millis(number(&value()?, "--every is ms")?);
             }
-            _ => return Err(format!("unknown argument {flag}")),
+            _ => {
+                return Err(
+                    flags::unknown("flag", &flag, &cli::flags()).try_this("jobs-sorter --help")
+                );
+            }
         }
     }
     if settings.under.is_empty() {
@@ -1505,11 +1508,16 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
         settings.homes.push("kitty-".into());
     }
     if settings.sessions.is_some() && settings.weigh.is_empty() {
-        return Err(
-            "--sessions names a session's scope by a --weigh prefix, and none is given".into(),
-        );
+        return Err(wrongly(
+            "--sessions names a session's scope by a --weigh prefix, and none is given",
+        ));
     }
     Ok(settings)
+}
+
+/// A flag's value read as a number, or the refusal saying what it is.
+fn number<T: std::str::FromStr>(value: &str, what: &str) -> Result<T, Failure> {
+    value.parse().map_err(|_| cli::wrongly("jobs-sorter", what))
 }
 
 #[cfg(test)]
@@ -1733,8 +1741,7 @@ fn sends_from(root: &Path, settings: &Settings) -> Result<Vec<PathBuf>, String> 
     Ok(sends)
 }
 
-fn run() -> Result<(), String> {
-    let settings = settings(std::env::args().skip(1))?;
+fn run(settings: &Settings) -> Result<(), String> {
     let own = fs::read_to_string("/proc/self/cgroup").map_err(|e| e.to_string())?;
     let manager = manager_of(&own).ok_or("not running under a user manager")?;
     let root = Path::new(CGROUPS).join(manager.trim_start_matches('/'));
@@ -1747,7 +1754,7 @@ fn run() -> Result<(), String> {
         "/{}",
         settings.jobs.split('/').next().unwrap_or(&settings.jobs)
     );
-    let sends = sends_from(&root, &settings)?;
+    let sends = sends_from(&root, settings)?;
     if let Some(cgroup) = &settings.revive {
         revive::watch(&root.join(cgroup));
     }
@@ -1757,7 +1764,7 @@ fn run() -> Result<(), String> {
     };
     let mut warned = false;
     let mut holders: Vec<Option<u32>> = vec![None; settings.split.len()];
-    let mut weights = weights_from(&settings);
+    let mut weights = weights_from(settings);
     let mut pass: u32 = 0;
     let windows = settings.windows();
     let mut watch = settings.background.as_deref().and_then(watch_marks);
@@ -1790,7 +1797,7 @@ fn run() -> Result<(), String> {
                 let procs = samples(&scope);
                 alive.extend(procs.iter().map(|proc| proc.pid));
                 let name = scope.file_name().unwrap_or_default().to_string_lossy();
-                for found in sorter.look(&name, &procs, now, &settings) {
+                for found in sorter.look(&name, &procs, now, settings) {
                     send(jobs, &found.pids, &mut warned);
                     eprintln!("{}", found.says);
                 }
@@ -1800,7 +1807,7 @@ fn run() -> Result<(), String> {
             return_stray(&scope, &root, &manager, &slice, &mut warned);
         }
         if pass.is_multiple_of(sessions::EVERY) {
-            return_sessions(&root, &settings, &mut warned);
+            return_sessions(&root, settings, &mut warned);
         }
         sorter.told.say(&under);
         // After the terminals' work is moved, so what moved is split too.
@@ -1813,7 +1820,7 @@ fn run() -> Result<(), String> {
         }
         if pass.is_multiple_of(real_time::EVERY) {
             let looking = Looking {
-                settings: &settings,
+                settings,
                 root: &root,
                 under: &under,
                 windows: &windows,
@@ -1912,35 +1919,28 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
     }
 }
 
-fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if let Some((first, rest)) = args.split_first()
-        && first == "probe"
-    {
-        match probe::every(rest) {
-            Ok(beat) => probe::run(beat),
-            Err(error) => {
-                eprintln!("jobs-sorter probe: {error}");
-                process::exit(64);
+fn main() -> ExitCode {
+    terminal_kit::main(
+        &cli::help(),
+        env!("CARGO_PKG_VERSION"),
+        |context| match context.args.split_first() {
+            Some((first, rest)) if first == "probe" => {
+                let beat =
+                    probe::every(rest).map_err(|why| cli::wrongly("jobs-sorter probe", why))?;
+                probe::run(beat)
             }
-        }
-    }
-    if let Some((first, rest)) = args.split_first()
-        && first == "swap-in"
-    {
-        match swap_in::main(rest) {
-            Ok(said) => eprintln!("{said}"),
-            Err(error) => {
-                eprintln!("jobs-sorter swap-in: {error}");
-                process::exit(1);
+            Some((first, rest)) if first == "swap-in" => {
+                eprintln!("{}", swap_in::main(rest)?);
+                Ok(())
             }
-        }
-        return;
-    }
-    if let Err(error) = run() {
-        eprintln!("jobs-sorter: {error}");
-        process::exit(1);
-    }
+            _ => {
+                let settings = settings(context.args.iter().cloned())?;
+                run(&settings).map_err(|why| {
+                    Failure::new(Exit::Failed, "jobs-sorter couldn't sort the cgroups").because(why)
+                })
+            }
+        },
+    )
 }
 
 #[cfg(test)]
@@ -2083,7 +2083,7 @@ mod tests {
 
     #[test]
     fn a_hosts_commands_are_looked_at_beside_the_terminals() {
-        let slice = std::env::temp_dir().join(format!("jobs-sorter-hosts-{}", process::id()));
+        let slice = std::env::temp_dir().join(format!("jobs-sorter-hosts-{}", std::process::id()));
         for unit in [
             "kitty-1-1.scope",
             "pi-host-work-background.service",

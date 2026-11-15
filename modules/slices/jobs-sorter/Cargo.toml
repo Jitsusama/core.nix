@@ -11,3 +11,5 @@ publish = false
 # What counts as a call, kept in one place for everything that asks.
 calls = { path = "../../calls" }
 serde_json = "1"
+# The shape every command of ours takes: its flags, help, errors and exits.
+terminal-kit = { path = "../../terminal-kit" }
