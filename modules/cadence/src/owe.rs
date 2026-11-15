@@ -108,6 +108,7 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         told: Some(date.to_owned()),
         late: false,
         kind: Some(owed.kind),
+        reopened: 0,
     });
 }
 
