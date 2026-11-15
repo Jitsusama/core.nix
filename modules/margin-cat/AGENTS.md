@@ -205,8 +205,7 @@ want to see its paws moving when it is walking or running."
 Joel, 2026-11-14 22:40: "the kitten when crawling up or across window edges
 still often does not look like its paws are moving."
 
-- Owed since 2026-11-14: a climb up or down a side stepped in whole strides by the ground it
-  covers, as a walk is, each drawing held two 60 Hz frames, in every journey.
+- Held by `margin-cat-journeys.qml`: "each ends on its seat, every frame of it a cat's"
 
 ### Play With the Mouse
 
