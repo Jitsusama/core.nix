@@ -157,4 +157,31 @@ mod tests {
         );
         assert!(day.things.is_empty(), "an ask isn't a thing's warning");
     }
+
+    #[test]
+    fn an_ask_an_agents_lab_run_said_is_not_joels() {
+        // On 15 November a lab run of the passwords daemon wrote 95 lines
+        // under this identifier while Joel slept, and the day counted
+        // them as 65 asks shown to him.
+        for cgroup in [
+            "/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs.service",
+            "/user.slice/user-1000.slice/user@1000.service/agents.slice/pi-host.service",
+        ] {
+            let line = format!(
+                r#"{{"__REALTIME_TIMESTAMP":"1","PRIORITY":"6",
+                "SYSLOG_IDENTIFIER":"secret-asks","MESSAGE":"k3 released",
+                "_SYSTEMD_CGROUP":"{cgroup}",
+                "ASK_OUTCOME":"released","ASK_SHOWN_MS":"812","ASK_ITEM_HASH":"i",
+                "ASK_ARGV_HASH":"v","ASK_AVOIDABLE":"unknown"}}"#
+            )
+            .replace('\n', "");
+            let entry = journal::parse(&line).expect("an entry");
+            let mut day = Day::new("1970-01-01");
+            day.take(&entry);
+            assert_eq!(
+                day.asks.shown, 0,
+                "an ask said from {cgroup} was counted as shown to Joel"
+            );
+        }
+    }
 }

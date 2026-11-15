@@ -11,7 +11,8 @@ use crate::{launcher, launches};
 
 /// The fields each entry is read by; journalctl always adds its time.
 const FIELDS: &str = "MESSAGE,PRIORITY,SYSLOG_IDENTIFIER,_COMM,USER_UNIT,UNIT,_SYSTEMD_UNIT,\
-                      _SYSTEMD_USER_UNIT,COREDUMP_COMM,COREDUMP_CGROUP,MESSAGE_ID,_TRANSPORT,\
+                      _SYSTEMD_USER_UNIT,_SYSTEMD_CGROUP,COREDUMP_COMM,COREDUMP_CGROUP,MESSAGE_ID,\
+                      _TRANSPORT,\
                       KERNEL_USEC,INITRD_USEC,USERSPACE_USEC,ASK_OUTCOME,ASK_SHOWN_MS,\
                       ASK_ITEM_HASH,ASK_ARGV_HASH,ASK_AVOIDABLE";
 
@@ -143,9 +144,9 @@ pub fn parse(line: &str) -> Option<Entry> {
     let message = text("MESSAGE").unwrap_or_default();
     let identifier = text("SYSLOG_IDENTIFIER").or_else(|| text("_COMM"));
     let unit = text("USER_UNIT").or_else(|| text("UNIT"));
-    let ask = (identifier.as_deref() == Some(asks::IDENTIFIER))
-        .then(|| asks::of(text))
-        .flatten();
+    let asked_joel = identifier.as_deref() == Some(asks::IDENTIFIER)
+        && !agents_ran(&text("_SYSTEMD_CGROUP").unwrap_or_default());
+    let ask = asked_joel.then(|| asks::of(text)).flatten();
     let thing = match (identifier.as_deref(), unit) {
         (Some("systemd") | None, Some(unit)) => unit,
         (Some(identifier), _) => identifier.to_owned(),
@@ -246,6 +247,13 @@ fn whose(fields: &Map<String, Value>) -> Whose {
     } else {
         Whose::Agents
     }
+}
+
+/// Whether the cgroup a line came from is an agent's or its commands':
+/// a lab run of a daemon writes under the installed one's identifier, and
+/// what it says was never put to Joel.
+fn agents_ran(cgroup: &str) -> bool {
+    cgroup.contains("/agents.slice") || cgroup.contains("/jobs.slice")
 }
 
 /// What each journal follower asks journalctl for.
