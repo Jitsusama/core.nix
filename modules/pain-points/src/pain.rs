@@ -33,6 +33,11 @@ pub const SEARCHED_AGAIN_MS: i64 = 90_000;
 /// The most an abandoned opening is counted for, since one left open
 /// while he looked away would otherwise outweigh every real struggle.
 pub const GAVE_UP_MOST_MS: f64 = 120_000.0;
+/// The most finding a pick is counted for, as much as giving up is: an
+/// opening he acts in again and again keeps only its last pick, so its time
+/// runs to that pick, as it ran 212 s to the third look he settled at 09:38
+/// on 14 Nov, and one left open while he looked away runs on as well.
+pub const HUNTING_MOST_MS: f64 = GAVE_UP_MOST_MS;
 /// What a pick is expected to take before he has made it often enough to
 /// have his own: about what the keystroke-level model gives a chord, a
 /// few letters, a look and Return.
@@ -554,6 +559,17 @@ mod tests {
         let named = painful(&[hunted], &Usable::new(vec![(AT + 1400, 1400.0)]), &usual);
         assert_eq!((named[0].slowed, named[0].part), ("hunting", "finding"));
         assert_eq!((named[0].seconds, named[0].usual_seconds), (20.0, 4.0));
+    }
+
+    #[test]
+    fn finding_a_pick_loses_two_minutes_at_most() {
+        let usual = usual_of("on:look", &[4000, 4000, 4000]);
+        let long = pick(AT, "on:look", 212_000);
+        assert_eq!(
+            lost(&long, None, &usual).hunting,
+            HUNTING_MOST_MS,
+            "one opening can't outweigh a day's struggles"
+        );
     }
 
     #[test]
