@@ -18,7 +18,8 @@ pub struct Record {
     pub machine: String,
     /// The folders looked under for checkouts.
     pub roots: Vec<String>,
-    /// What read the record: git's own files, for now the only source.
+    /// What read the record: git's own files, and GitHub where a refresh
+    /// has asked it.
     pub sources: Vec<Source>,
     /// Each repository, the one written to last first.
     pub repositories: Vec<Repository>,
@@ -30,6 +31,13 @@ pub struct Source {
     pub name: String,
     /// What it reads, for a person.
     pub what: String,
+    /// When it was last read, where that isn't the record's own reading,
+    /// as GitHub's is a refresh's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_at: Option<u64>,
+    /// Why it couldn't be read, or couldn't see a repository, for a person.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unread: Vec<String>,
 }
 
 /// One history, listed once however many checkouts of it there are.
@@ -52,6 +60,74 @@ pub struct Repository {
     pub written_at: Option<u64>,
     /// Each clone of it on the machine, the one written to last first.
     pub checkouts: Vec<Checkout>,
+    /// Its changes still open on its remote, the one updated last first;
+    /// none where no source has read them.
+    #[serde(default)]
+    pub changes: Vec<Change>,
+}
+
+/// Work put up for review on a repository's remote.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Change {
+    pub title: String,
+    /// Who put it up, by their name on the remote.
+    pub author: Option<String>,
+    /// Whether it's put up only to be seen, not yet to be reviewed.
+    pub draft: bool,
+    /// The branch it holds, which a tree may be checked out at.
+    pub branch: String,
+    /// The branch it would merge into.
+    pub base: String,
+    /// The commit its branch is at.
+    pub commit: Option<String>,
+    pub updated_at: u64,
+    pub checks: Checks,
+    pub review: Review,
+    /// What GitHub calls it, in its own words, where GitHub holds it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github: Option<GitHubChange>,
+}
+
+/// A change as GitHub names it: its pull request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitHubChange {
+    pub number: u64,
+    pub url: String,
+}
+
+/// What a change's checks say, as one: failing if any failed, else
+/// pending if any still runs, else passing if any ran.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Checks {
+    pub state: ChecksState,
+    pub passed: usize,
+    /// The names of those that failed, as their source names them.
+    pub failed: Vec<String>,
+    /// The names of those still to finish.
+    pub pending: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ChecksState {
+    Passing,
+    Failing,
+    Pending,
+    /// No check runs where its source holds it, as for a repository
+    /// proved on the machine rather than by its remote.
+    None,
+}
+
+/// Where a change's review stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Review {
+    Approved,
+    ChangesAsked,
+    /// A review is asked for and none has come.
+    Waiting,
+    /// Its remote asks for none.
+    None,
 }
 
 /// A place a repository is kept away from the machine, as git names it.

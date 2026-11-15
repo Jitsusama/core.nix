@@ -10,10 +10,12 @@
 //! every view reads: the command's screens here, and the launcher's Code
 //! place through the programs daemon.
 //!
-//! Git's own files are the one source for now. GitHub and GitLab, read for
-//! each repository's changes and checks, come as sources beside it, each
-//! keeping its own words in a section of its own, as net's do.
+//! Git's own files are read each time. GitHub, read for each repository's
+//! open changes and their checks, is a source beside them, asked by a
+//! refresh on a timer and merged in (github.rs), keeping its own words in
+//! a section of its own, as net's sources do.
 
+pub mod github;
 pub mod keys;
 pub mod model;
 pub mod read;

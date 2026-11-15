@@ -1,0 +1,232 @@
+//! GitHub's part over an answer GitHub gave, cut down: three of this
+//! repository's own changes, which run no checks there; one repository
+//! the App can't see; and a busy one, since renamed, whose changes pass,
+//! wait and fail.
+
+use super::*;
+use crate::model::{Repository, SCHEMA as RECORD};
+
+fn answer() -> Value {
+    serde_json::from_str(include_str!("answer.json")).expect("the answer is JSON")
+}
+
+fn one(key: &str) -> Asked {
+    let (owner, name) = key.split_once('/').expect("an owner and a name");
+    Asked {
+        key: format!("github:{key}"),
+        owner: owner.to_owned(),
+        name: name.to_owned(),
+    }
+}
+
+/// The repositories the answer answers, as the disk keys them: the busy
+/// one by its name before GitHub renamed it.
+fn asked_after() -> Vec<Asked> {
+    vec![
+        one("Jitsusama/core.nix"),
+        one("someone/private"),
+        one("someone/once-quiet"),
+    ]
+}
+
+fn parsed() -> (BTreeMap<String, Vec<Change>>, Vec<String>) {
+    parse(&answer(), &asked_after())
+}
+
+fn busy() -> Vec<Change> {
+    parsed().0.remove("github:someone/once-quiet").expect("the busy one")
+}
+
+fn repository(key: &str) -> Repository {
+    Repository {
+        key: key.to_owned(),
+        name: key.rsplit('/').next().unwrap_or(key).to_owned(),
+        owner: None,
+        remotes: Vec::new(),
+        trunk: None,
+        written_at: None,
+        checkouts: Vec::new(),
+        changes: Vec::new(),
+    }
+}
+
+fn record_of(keys: &[&str]) -> Record {
+    Record {
+        schema: RECORD.to_owned(),
+        read_at: 1_794_755_500,
+        machine: "laptop".to_owned(),
+        roots: Vec::new(),
+        sources: Vec::new(),
+        repositories: keys.iter().map(|key| repository(key)).collect(),
+    }
+}
+
+#[test]
+fn only_github_s_repositories_are_asked_after_each_once() {
+    let record = record_of(&[
+        "github:Jitsusama/core.nix",
+        "gitlab:group/sub/thing",
+        "local:~/scratch",
+        "github:Jitsusama/core.nix",
+        "git.example.org:someone/thing",
+        "github:someone/busy",
+    ]);
+    assert_eq!(
+        asked(&record),
+        vec![one("Jitsusama/core.nix"), one("someone/busy")]
+    );
+}
+
+#[test]
+fn each_repository_is_asked_under_its_own_alias_quoted() {
+    let text = query(&[one("Jitsusama/core.nix"), one("some\"one/busy")]);
+    assert!(text.contains(r#"r0: repository(owner: "Jitsusama", name: "core.nix") { ...open }"#));
+    assert!(text.contains(r#"r1: repository(owner: "some\"one", name: "busy") { ...open }"#));
+    assert!(text.contains("pullRequests(states: OPEN, first: 50,"));
+    assert!(text.lines().all(|line| line.len() <= 100));
+}
+
+#[test]
+fn a_renamed_repository_keeps_the_key_the_disk_gives_it() {
+    let (changes, _) = parsed();
+    assert_eq!(
+        changes.keys().collect::<Vec<_>>(),
+        ["github:Jitsusama/core.nix", "github:someone/once-quiet"]
+    );
+}
+
+#[test]
+fn a_repository_the_app_cannot_see_is_said_to_be_unread() {
+    let (changes, unread) = parsed();
+    assert!(!changes.contains_key("github:someone/private"));
+    assert_eq!(
+        unread,
+        [
+            "github:someone/private: GitHub's App can't see it, or it's gone",
+            "github:Jitsusama/core.nix: the 3 of its 35 open changes updated last",
+            "github:someone/once-quiet: the 3 of its 12584 open changes updated last",
+        ]
+    );
+}
+
+#[test]
+fn a_change_running_no_checks_says_none() {
+    let (changes, _) = parsed();
+    let core = &changes["github:Jitsusama/core.nix"];
+    assert_eq!(
+        core.iter()
+            .map(|change| change.github.as_ref().map(|github| github.number))
+            .collect::<Vec<_>>(),
+        [Some(4783), Some(4725), Some(4782)]
+    );
+    let first = &core[0];
+    assert_eq!(first.title, "Let the Merge Net Finish Its Round When a New Build Is Installed");
+    assert_eq!(first.branch, "jitsusama/net-hands-over-between-rounds");
+    assert_eq!(first.base, "main");
+    assert_eq!(first.author.as_deref(), Some("Jitsusama"));
+    assert_eq!(first.updated_at, 1_794_755_403);
+    assert_eq!(
+        first.github.as_ref().map(|github| github.url.as_str()),
+        Some("https://github.com/Jitsusama/core.nix/pull/4783")
+    );
+    assert_eq!(
+        first.checks,
+        Checks {
+            state: ChecksState::None,
+            passed: 0,
+            failed: Vec::new(),
+            pending: Vec::new(),
+        }
+    );
+    assert_eq!(first.review, Review::None);
+}
+
+#[test]
+fn skipped_checks_pass_an_approved_change() {
+    let approved = &busy()[0];
+    assert_eq!(approved.checks.state, ChecksState::Passing);
+    assert_eq!(approved.checks.passed, 4);
+    assert_eq!(approved.review, Review::Approved);
+    assert!(!approved.draft);
+}
+
+#[test]
+fn a_check_still_running_leaves_a_draft_pending() {
+    let waiting = &busy()[1];
+    assert!(waiting.draft);
+    assert_eq!(waiting.review, Review::Waiting);
+    assert_eq!(waiting.checks.state, ChecksState::Pending);
+    assert_eq!(waiting.checks.passed, 3);
+    assert_eq!(waiting.checks.pending, ["Check / reminders"]);
+}
+
+#[test]
+fn a_failed_run_or_status_fails_its_change_whatever_else_runs() {
+    let failing = &busy()[2];
+    assert_eq!(failing.review, Review::ChangesAsked);
+    assert_eq!(failing.checks.state, ChecksState::Failing);
+    assert_eq!(failing.checks.failed, ["build (x86_64-linux)", "ci/lint"]);
+    assert_eq!(failing.checks.pending, ["Check / commits"]);
+    assert_eq!(failing.checks.passed, 1);
+}
+
+#[test]
+fn changes_come_updated_last_first() {
+    let times: Vec<u64> = busy().iter().map(|change| change.updated_at).collect();
+    assert!(times.windows(2).all(|pair| pair[0] >= pair[1]));
+}
+
+#[test]
+fn a_query_refused_whole_says_why() {
+    let refused = serde_json::json!({
+        "errors": [{ "message": "Bad credentials" }]
+    });
+    let (changes, unread) = parse(&refused, &asked_after());
+    assert_eq!(changes, BTreeMap::new());
+    assert_eq!(unread, ["GitHub: Bad credentials"]);
+}
+
+#[test]
+fn github_s_times_read_as_seconds() {
+    assert_eq!(seconds_of("2026-11-15T15:10:03Z"), Some(1_794_755_403));
+    assert_eq!(seconds_of("2024-02-29T23:59:59Z"), Some(1_709_251_199));
+    assert_eq!(seconds_of("1970-01-01T00:00:00.250Z"), Some(0));
+    assert_eq!(seconds_of("2026-11-15T15:10:03+01:00"), None);
+    assert_eq!(seconds_of("2026-13-01T00:00:00Z"), None);
+    assert_eq!(seconds_of("yesterday"), None);
+}
+
+#[test]
+fn a_refresh_merged_gives_each_repository_its_changes_and_github_a_source() {
+    let (changes, unread) = parsed();
+    let seen = Seen {
+        schema: SCHEMA.to_owned(),
+        read_at: 1_794_755_410,
+        changes,
+        unread,
+    };
+    let mut record = record_of(&["github:Jitsusama/core.nix", "local:~/scratch"]);
+    merge(&mut record, &seen);
+    assert_eq!(record.repositories[0].changes.len(), 3);
+    assert_eq!(record.repositories[1].changes, Vec::new());
+    let github = record.sources.last().expect("GitHub as a source");
+    assert_eq!(github.name, "github");
+    assert_eq!(github.read_at, Some(1_794_755_410));
+    assert_eq!(github.unread.len(), 3);
+}
+
+#[test]
+fn what_a_refresh_saw_reads_back_as_it_was_written() {
+    let (changes, unread) = parsed();
+    let seen = Seen {
+        schema: SCHEMA.to_owned(),
+        read_at: 1_794_755_410,
+        changes,
+        unread,
+    };
+    let written = serde_json::to_string(&seen).expect("it writes");
+    let back: Seen = serde_json::from_str(&written).expect("it reads back");
+    assert_eq!(back, seen);
+    assert!(written.contains(r#""review":"changes_asked""#));
+    assert!(written.contains(r#""state":"failing""#));
+}

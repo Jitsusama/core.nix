@@ -1,0 +1,268 @@
+{
+  "data": {
+    "r0": {
+      "nameWithOwner": "Jitsusama/core.nix",
+      "pullRequests": {
+        "totalCount": 35,
+        "nodes": [
+          {
+            "number": 4783,
+            "title": "Let the Merge Net Finish Its Round When a New Build Is Installed",
+            "url": "https://github.com/Jitsusama/core.nix/pull/4783",
+            "isDraft": false,
+            "headRefName": "jitsusama/net-hands-over-between-rounds",
+            "baseRefName": "main",
+            "headRefOid": "38e77f30ab6c6ced1c893e40f1c066834f8b94b7",
+            "updatedAt": "2026-11-15T15:10:03Z",
+            "author": {
+              "login": "Jitsusama"
+            },
+            "reviewDecision": null,
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": null
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 4725,
+            "title": "Say a Shared Path Once in a Device's Maker Sections",
+            "url": "https://github.com/Jitsusama/core.nix/pull/4725",
+            "isDraft": false,
+            "headRefName": "jitsusama/net-says-a-path-once",
+            "baseRefName": "main",
+            "headRefOid": "e86b826ecfbde509dfc1c888f0d1e92aaebd1b9d",
+            "updatedAt": "2026-11-15T15:09:38Z",
+            "author": {
+              "login": "Jitsusama"
+            },
+            "reviewDecision": null,
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": null
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 4782,
+            "title": "Time a Launcher Key by the Screen It Left",
+            "url": "https://github.com/Jitsusama/core.nix/pull/4782",
+            "isDraft": false,
+            "headRefName": "jitsusama/key-shown-settled",
+            "baseRefName": "main",
+            "headRefOid": "743dd366cfdc6109a04e8bc239a50b36a10fb510",
+            "updatedAt": "2026-11-15T15:07:27Z",
+            "author": {
+              "login": "Jitsusama"
+            },
+            "reviewDecision": null,
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": null
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "r1": null,
+    "r2": {
+      "nameWithOwner": "someone/busy",
+      "pullRequests": {
+        "totalCount": 12584,
+        "nodes": [
+          {
+            "number": 588611,
+            "title": "vimPlugins.rustaceanvim: unbreak on darwin",
+            "url": "https://github.com/someone/busy/pull/588611",
+            "isDraft": false,
+            "headRefName": "mj/push-mlmutmtzsvxn",
+            "baseRefName": "master",
+            "headRefOid": "7f4ef356235de505066ed8af1f54ae8bd4917e2d",
+            "updatedAt": "2026-11-15T15:10:37Z",
+            "author": {
+              "login": "someone"
+            },
+            "reviewDecision": "APPROVED",
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "state": "SUCCESS",
+                      "contexts": {
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "name": "Backport Pull Request",
+                            "status": "COMPLETED",
+                            "conclusion": "SKIPPED"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "name": "Backport Pull Request",
+                            "status": "COMPLETED",
+                            "conclusion": "SKIPPED"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "name": "Backport Pull Request",
+                            "status": "COMPLETED",
+                            "conclusion": "SKIPPED"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "name": "Trigger jobs",
+                            "status": "COMPLETED",
+                            "conclusion": "SKIPPED"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 588630,
+            "title": "invidious: 2.20261103.0 -> 2.20261114.0",
+            "url": "https://github.com/someone/busy/pull/588630",
+            "isDraft": true,
+            "headRefName": "update/invidious",
+            "baseRefName": "master",
+            "headRefOid": "a40f9f84ae7a2660ed9efb69faad811b30f85965",
+            "updatedAt": "2026-11-15T15:10:19Z",
+            "author": {
+              "login": "someone"
+            },
+            "reviewDecision": "REVIEW_REQUIRED",
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "state": "PENDING",
+                      "contexts": {
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "name": "prepare",
+                            "status": "COMPLETED",
+                            "conclusion": "SUCCESS"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "name": "Check / commits",
+                            "status": "COMPLETED",
+                            "conclusion": "SUCCESS"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "name": "Check / manual-file-edits",
+                            "status": "COMPLETED",
+                            "conclusion": "SUCCESS"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "name": "Check / reminders",
+                            "status": "IN_PROGRESS",
+                            "conclusion": null
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 577286,
+            "title": "sable-next-unwrapped, sable-next: init at 2.3.9",
+            "url": "https://github.com/someone/busy/pull/577286",
+            "isDraft": false,
+            "headRefName": "sable-unwrapped-2.1.4",
+            "baseRefName": "master",
+            "headRefOid": "64ab4ca64ec01148259a667350ad93299e2823da",
+            "updatedAt": "2026-11-15T15:10:09Z",
+            "author": {
+              "login": "someone"
+            },
+            "reviewDecision": "CHANGES_REQUESTED",
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "state": "FAILURE",
+                      "contexts": {
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "name": "build (x86_64-linux)",
+                            "status": "COMPLETED",
+                            "conclusion": "FAILURE"
+                          },
+                          {
+                            "__typename": "StatusContext",
+                            "context": "ci/lint",
+                            "state": "ERROR"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "name": "prepare",
+                            "status": "COMPLETED",
+                            "conclusion": "SUCCESS"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "name": "Check / commits",
+                            "status": "IN_PROGRESS",
+                            "conclusion": null
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "rateLimit": {
+      "cost": 3,
+      "remaining": 6197,
+      "resetAt": "2026-11-15T16:10:59Z"
+    }
+  },
+  "errors": [
+    {
+      "type": "NOT_FOUND",
+      "path": [
+        "r1"
+      ],
+      "locations": [
+        {
+          "line": 3,
+          "column": 3
+        }
+      ],
+      "message": "Could not resolve to a Repository with the name 'someone/private'."
+    }
+  ]
+}

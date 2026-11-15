@@ -14,12 +14,8 @@ const ROOMS: [Room; 4] = [
     Room::Unbounded,
 ];
 
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "every view takes home as an option, and each test passes this one"
-)]
-fn home() -> Option<&'static Path> {
-    Some(Path::new(HOME))
+fn home() -> &'static Path {
+    Path::new(HOME)
 }
 
 fn tree(path: &str, branch: Option<&str>, present: bool, ago: u64) -> Tree {
@@ -58,6 +54,7 @@ fn made(key: &str, owner: Option<&str>, checkouts: Vec<Checkout>, ago: u64) -> R
         trunk: Some("main".to_owned()),
         written_at: Some(NOW - ago),
         checkouts,
+        changes: Vec::new(),
     }
 }
 
@@ -100,6 +97,8 @@ fn record() -> Record {
         sources: vec![Source {
             name: "git".to_owned(),
             what: "each checkout's and tree's own git files".to_owned(),
+            read_at: None,
+            unread: Vec::new(),
         }],
         repositories: vec![
             made(
@@ -141,7 +140,7 @@ fn record() -> Record {
 fn the_collection_is_a_line_for_each_repository_under_its_labels() {
     let record = record();
     for room in ROOMS {
-        let text = repositories(&record, NOW, home(), &Pen::plain(), room);
+        let text = repositories(&record, NOW, Some(home()), &Pen::plain(), room);
         assert_eq!(layout::overrun(&text, room), None);
         assert!(
             text.starts_with("repositories · 4 on laptop · under ~/src\n"),
@@ -151,7 +150,7 @@ fn the_collection_is_a_line_for_each_repository_under_its_labels() {
         assert!(text.contains("core.nix  "), "{text}");
         assert!(text.contains("repos NAME trees"), "{text}");
     }
-    let text = repositories(&record, NOW, home(), &Pen::plain(), Room::Unbounded);
+    let text = repositories(&record, NOW, Some(home()), &Pen::plain(), Room::Unbounded);
     let line = text
         .lines()
         .find(|line| line.starts_with("core.nix"))
@@ -166,7 +165,7 @@ fn the_collection_is_a_line_for_each_repository_under_its_labels() {
 
 #[test]
 fn a_name_two_repositories_share_is_said_with_its_owner() {
-    let text = repositories(&record(), NOW, home(), &Pen::plain(), Room::Unbounded);
+    let text = repositories(&record(), NOW, Some(home()), &Pen::plain(), Room::Unbounded);
     assert!(text.contains("Jitsusama/walgit-rs "), "{text}");
     assert!(text.contains("someone-else/walgit-rs "), "{text}");
     assert!(
@@ -177,7 +176,7 @@ fn a_name_two_repositories_share_is_said_with_its_owner() {
 
 #[test]
 fn a_narrow_terminal_drops_the_key_before_the_checkouts() {
-    let text = repositories(&record(), NOW, home(), &Pen::plain(), Room::Cells(50));
+    let text = repositories(&record(), NOW, Some(home()), &Pen::plain(), Room::Cells(50));
     assert_eq!(layout::overrun(&text, Room::Cells(50)), None);
     assert!(!text.contains("KEY"), "{text}");
     assert!(text.contains("CHECKOUTS"), "{text}");
@@ -198,7 +197,7 @@ fn a_key_goes_whole_and_is_never_cut() {
         60,
     ));
     for room in ROOMS {
-        let text = repositories(&record, NOW, home(), &Pen::plain(), room);
+        let text = repositories(&record, NOW, Some(home()), &Pen::plain(), room);
         assert_eq!(layout::overrun(&text, room), None);
         assert!(!text.contains('\u{2026}'), "a cell was cut: {text}");
         assert_eq!(
@@ -207,7 +206,7 @@ fn a_key_goes_whole_and_is_never_cut() {
             "the keys are shown only in part: {text}"
         );
     }
-    let text = repositories(&record, NOW, home(), &Pen::plain(), Room::Cells(80));
+    let text = repositories(&record, NOW, Some(home()), &Pen::plain(), Room::Cells(80));
     assert!(!text.contains("KEY"), "{text}");
     assert!(text.contains("CHECKOUTS"), "{text}");
 }
@@ -218,8 +217,8 @@ fn trees_say_their_shared_folder_once_and_each_its_own_name() {
     let core = &record.repositories[0];
     for room in ROOMS {
         for text in [
-            repository(core, NOW, home(), &Pen::plain(), room),
-            trees(core, NOW, home(), &Pen::plain(), room),
+            repository(core, NOW, Some(home()), &Pen::plain(), room),
+            trees(core, NOW, Some(home()), &Pen::plain(), room),
         ] {
             assert_eq!(layout::overrun(&text, room), None);
             assert!(
@@ -251,7 +250,7 @@ fn a_tree_cut_somewhere_else_is_said_whole_beside_the_rest() {
     let text = trees(
         &record.repositories[0],
         NOW,
-        home(),
+        Some(home()),
         &Pen::plain(),
         Room::Cells(100),
     );
@@ -274,7 +273,7 @@ fn a_tree_cut_somewhere_else_is_said_whole_beside_the_rest() {
 fn no_checkout_under_the_roots_says_so() {
     let mut record = record();
     record.repositories.clear();
-    let text = repositories(&record, NOW, home(), &Pen::plain(), Room::Cells(80));
+    let text = repositories(&record, NOW, Some(home()), &Pen::plain(), Room::Cells(80));
     assert!(text.contains("no checkout is there"), "{text}");
 }
 
@@ -283,7 +282,7 @@ fn a_repository_shows_its_facts_checkouts_and_newest_trees() {
     let record = record();
     let core = &record.repositories[0];
     for room in ROOMS {
-        let text = repository(core, NOW, home(), &Pen::plain(), room);
+        let text = repository(core, NOW, Some(home()), &Pen::plain(), room);
         assert_eq!(layout::overrun(&text, room), None);
         assert!(
             text.starts_with("core.nix · github:Jitsusama/core.nix\n"),
@@ -301,7 +300,7 @@ fn a_repository_shows_its_facts_checkouts_and_newest_trees() {
             "the more isn't the rest of the trees on the disk: {text}"
         );
     }
-    let text = repository(core, NOW, home(), &Pen::plain(), Room::Unbounded);
+    let text = repository(core, NOW, Some(home()), &Pen::plain(), Room::Unbounded);
     let trees: Vec<&str> = text
         .lines()
         .skip_while(|line| !line.starts_with("TREE"))
@@ -328,7 +327,7 @@ fn a_repository_with_no_remote_says_it_is_only_here() {
     let text = repository(
         &record.repositories[3],
         NOW,
-        home(),
+        Some(home()),
         &Pen::plain(),
         Room::Cells(80),
     );
@@ -340,7 +339,7 @@ fn every_tree_is_listed_and_a_gone_one_says_so() {
     let record = record();
     let core = &record.repositories[0];
     for room in ROOMS {
-        let text = trees(core, NOW, home(), &Pen::plain(), room);
+        let text = trees(core, NOW, Some(home()), &Pen::plain(), room);
         assert_eq!(layout::overrun(&text, room), None);
         assert_eq!(
             text.lines()
@@ -350,7 +349,7 @@ fn every_tree_is_listed_and_a_gone_one_says_so() {
             "{text}"
         );
     }
-    let text = trees(core, NOW, home(), &Pen::plain(), Room::Unbounded);
+    let text = trees(core, NOW, Some(home()), &Pen::plain(), Room::Unbounded);
     let gone = text
         .lines()
         .find(|line| line.starts_with("jitsusama-change-7"))
