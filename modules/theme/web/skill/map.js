@@ -106,6 +106,13 @@
   for (let step = 0; step < 24; step += 1) {
     const arrow = order[step % order.length];
     const from = here();
+    if (from === null || map.querySelector(`[data-key="${CSS.escape(from)}"]`) === null) {
+      strayed.add(
+        `after ${step} arrow presses the keys rest on no mark (${from}): ` +
+          "mark the one they rest on with data-here, on a mark with data-key",
+      );
+      break;
+    }
     const want = expected(from, ways[arrow]);
     const before = said();
     await press(arrow);

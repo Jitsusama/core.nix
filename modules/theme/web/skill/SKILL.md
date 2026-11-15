@@ -34,8 +34,8 @@ Beside this file:
 - `layout.js`: the probe run after it, finding rows and folds that don't
   hold their layout ([Layout That Holds](#layout-that-holds)).
 - `map.js`: the probe for a walked map or graph, finding arrows that don't
-  keep to one rule and names that cross a line or each other (the walk
-  below, in [A picture is walked](#an-interface-to-work-in)).
+  keep to one rule and names that cross a line or each other (a picture
+  is walked, under [Keys](#keys)).
 
 The theme itself, ready for a site, is the kit at `~/.local/share/jitsusama/web/`
 ([The Kit](#the-kit)). Never retype a colour, a size or a face.
