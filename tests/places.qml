@@ -531,6 +531,32 @@ QtObject {
             found("s-a", [hostedHere], [], "unknown"), ["running", "S-A"]);
         expect("none", found("s-a", [pi("s-b")], [pi("s-c")], "gone"), ["", null]);
 
+        // A session whose folder is gone starts afresh on its quest, in the
+        // folder the harness's quest index says a new one starts in.
+        const index = JSON.stringify({ quests: [
+            { id: "QEST-REEF", start: "/home/skiff/harbour" },
+            { id: "QEST-KEEL", start: "harbour" },
+            { id: "QEST-HULL" }] });
+        expect("a quest's start", Places.questStart(index, "QEST-REEF"), "/home/skiff/harbour");
+        expect("a start not a whole path is none", Places.questStart(index, "QEST-KEEL"), "");
+        expect("a quest saying no start has none", Places.questStart(index, "QEST-HULL"), "");
+        expect("a quest not held has none", Places.questStart(index, "QEST-MAST"), "");
+        expect("no index says none", Places.questStart("", "QEST-REEF"), "");
+        let rolled = 0;
+        const rolls = [0, 0.5, 0.99];
+        const roll = () => rolls[rolled++ % rolls.length];
+        const minted = Places.freshId(0x019a1b2c3d4e, roll);
+        const version7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+        expect("a fresh id is a UUID version 7", version7.test(minted), true);
+        expect("a fresh id begins with when", minted.slice(0, 13), "019a1b2c-3d4e");
+        expect("two fresh ids differ", Places.freshId(1, Math.random)
+            === Places.freshId(1, Math.random), false);
+        const lost = { id: "s-a", cwd: "/gone", quest: "QEST-REEF", title: "Reef" };
+        expect("afresh starts anew in its quest's start", Places.afresh(lost, "/home/skiff/harbour",
+            "s-new"), { id: "s-new", cwd: "/home/skiff/harbour", quest: "QEST-REEF",
+            title: "Reef", fresh: true, afreshFor: "s-a" });
+        expect("afresh leaves the one lost as it was", lost.id, "s-a");
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);
