@@ -352,8 +352,11 @@ td {
    page until then, it shows at once in the top centre as a label, a whole
    target tall, and eases back once focus moves on. Arriving takes no
    motion, since a keyboard user pressing Tab must see where focus went
-   that instant, not after a slide. One for every site, so none draws its
-   own. */
+   that instant, not after a slide. It shows on any focus, not only the
+   focus a browser judges visible: focus reached some other way, by a
+   script or after a click, would otherwise sit on a link out of sight,
+   and nobody clicks a link they can't see, so showing it costs nothing.
+   One for every site, so none draws its own. */
 .skip {
   position: fixed;
   z-index: 10;
@@ -377,7 +380,7 @@ td {
   transition: translate var(--arrive) var(--ease);
 }
 
-.skip:focus-visible {
+.skip:focus {
   translate: -50% 0;
   transition: none;
 }
