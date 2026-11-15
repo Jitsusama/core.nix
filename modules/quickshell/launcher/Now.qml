@@ -255,6 +255,7 @@ Provider {
     Component.onCompleted: {
         Qt.callLater(retime);
         Qt.callLater(looksHeard);
+        Qt.callLater(armLift);
     }
     onLauncherChanged: Qt.callLater(retime)
     onWantedChanged: {
@@ -1756,17 +1757,44 @@ Provider {
     // what To Look At and To Try hold, which For You's row says as a run,
     // "1 to do \u00b7 44 to look at \u00b7 2 to try", and home's Now row says
     // the last two of while nothing needs Joel now (VKCF3Z, 3a92c450).
-    // Being bound, they're banded at the moment the items last changed, so
-    // For You's rows are banded again as it's stepped into a minute on,
-    // since a deadline coming within the day lifts a row with no change.
-    readonly property var forYouBands: bandsAt(Date.now())
+    // Being bound, they're banded as the items change, and again as time
+    // alone lifts one, a deadline coming within the day (liftedAt), so the
+    // counts say it then; For You's rows are banded again as it's stepped
+    // into a minute on too, for their order.
+    readonly property var forYouBands: bandsAt(Math.max(liftedAt, Date.now()))
+
+    // When time alone last lifted a row into what needs Joel now, and when it
+    // next will (ForYou.js's liftsAt), with one timer set for then rather
+    // than a wake each minute: banded only as its items changed, a look due
+    // tomorrow stayed in To Look At, and For You's count left it out, past
+    // the hour it was due within the day (2026-11-14). A timer runs no more
+    // than a day at once, then sets itself again.
+    property real liftedAt: 0
+    readonly property var liftsAt: ForYou.liftsAt(forYouItems, Math.max(liftedAt, Date.now()))
+    onLiftsAtChanged: armLift()
+    function armLift() {
+        if (liftsAt === null) {
+            lift.stop();
+            return;
+        }
+        lift.interval = Math.min(86400000, Math.max(0, liftsAt - Date.now()));
+        lift.restart();
+    }
+    Timer {
+        id: lift
+
+        onTriggered: {
+            provider.liftedAt = Date.now();
+            provider.armLift();
+        }
+    }
 
     // For You's items banded, once for each change of them and each
     // minute: its count, its rows and its filter each banded them afresh,
     // three to five times for each act in it and each step into it, as
-    // many milliseconds each as it holds items (2026-11-10). A deadline
-    // passing is heard within the minute. The node's ready For You rows
-    // (the agents daemon, Sat 14 Nov) take the banding over.
+    // many milliseconds each as it holds items (2026-11-10). The agents
+    // daemon takes the banding over once it serves them banded, with the
+    // time each changes (KP0L6A, 2026-11-14).
     function bandsAt(now) {
         const items = forYouItems;
         const minute = Math.floor(now / 60000);

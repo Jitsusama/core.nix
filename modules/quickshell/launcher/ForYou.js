@@ -167,6 +167,22 @@ function banded(items, now) {
         read: inOrder(bands.read) };
 }
 
+// The moment after `now` when time alone next lifts one of `items` into
+// what needs Joel now, as `banded` would band it then: a look or a thing to
+// try due further off than a day is lifted as its due comes within one. A
+// to-do, a look to read, one already lifted and one with no due never are
+// by time, so it's null when none will be. For You bands again then, rather
+// than every minute or only as its items change.
+function liftsAt(items, now) {
+    const lifts = (items ?? [])
+        .filter(item => OWN_ROWS.includes(item.kind) && !NEVER_LIFTED.includes(item.kind)
+            && Number(item.thing.blocks ?? 0) === 0)
+        .map(item => when(item.thing.due))
+        .filter(due => due !== null && due - DAY > now)
+        .map(due => due - DAY);
+    return lifts.length > 0 ? Math.min(...lifts) : null;
+}
+
 // A band's items heaviest first, those alike the oldest first, one with no
 // time after every one with one, then in the order they came: the order
 // Order.then and Order.smaller say, on numbers already read.
