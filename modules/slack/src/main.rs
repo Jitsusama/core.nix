@@ -289,10 +289,7 @@ impl Asker {
 
     /// Who an address is, as said last while running or kept.
     fn had(&self, email: &str) -> Option<Found> {
-        self.known
-            .get(email)
-            .cloned()
-            .or_else(|| self.kept.get(email, now()).cloned())
+        self.kept.over(self.known.get(email), email, now())
     }
 
     /// What's known of someone asked about ahead, said with nothing
