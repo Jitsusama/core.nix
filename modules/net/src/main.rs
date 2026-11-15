@@ -14,6 +14,8 @@
 //! shows is.
 //!
 //! ```text
+//! net                             whether each source answers, what the devices do
+//! net devices [NAME]              every device, or one in full (views.rs)
 //! net daemon                      keep the home network's record
 //! ```
 //!
@@ -26,9 +28,15 @@ mod daemon;
 pub mod model;
 mod sources;
 mod time;
+mod views;
 
+use std::io;
+use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use model::{Network, SCHEMA};
+use serde_json::Value;
 use terminal_kit::{Context, Exit, Failure};
 
 fn main() -> ExitCode {
@@ -41,6 +49,80 @@ fn run(context: &Context) -> Result<(), Failure> {
     let words: Vec<&str> = context.args.iter().map(String::as_str).collect();
     match words.as_slice() {
         ["daemon"] => daemon::run().map_err(|why| Failure::new(Exit::Failed, why)),
+        [] => {
+            let network = record()?;
+            show(context, &views::home_json(&network), || {
+                views::home(&network, now(), &context.out, context.room)
+            })
+        }
+        ["devices" | "device"] => {
+            let network = record()?;
+            show(context, &views::devices_json(&network), || {
+                views::devices(&network, now(), &context.out, context.room)
+            })
+        }
+        ["devices" | "device", name] => {
+            let network = record()?;
+            let device = views::find(&network, name)?;
+            show(context, &views::device_json(&network, device), || {
+                views::device(&network, device, now(), &context.out, context.room)
+            })
+        }
         _ => Err(Failure::new(Exit::Usage, "net doesn't know those words").try_this("net --help")),
     }
+}
+
+/// The answer as JSON when asked for, and otherwise the view laid out.
+fn show(context: &Context, answer: &Value, view: impl FnOnce() -> String) -> Result<(), Failure> {
+    let written = if context.format().is_json() {
+        context.answer(answer)
+    } else {
+        context.say(&view())
+    };
+    written.or_else(|error| match error.kind() {
+        // A reader that stopped early, as `head` does, ends the answer.
+        io::ErrorKind::BrokenPipe => Ok(()),
+        _ => {
+            Err(Failure::new(Exit::Failed, "net couldn't write its answer")
+                .because(error.to_string()))
+        }
+    })
+}
+
+/// The time now, in seconds since the epoch, as the record's times are.
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
+}
+
+/// The record the daemon keeps, which every view reads and nothing else.
+/// Its folder comes from the process, since the kit's environment holds
+/// only the variables it draws by.
+fn record() -> Result<Network, Failure> {
+    let runtime = std::env::var("XDG_RUNTIME_DIR")
+        .ok()
+        .filter(|runtime| !runtime.is_empty())
+        .ok_or_else(|| Failure::new(Exit::Config, "XDG_RUNTIME_DIR isn't set"))?;
+    let path = PathBuf::from(runtime).join("net/network.json");
+    let text = std::fs::read_to_string(&path).map_err(|error| {
+        Failure::new(
+            Exit::Unavailable,
+            "there's no record of the home network yet",
+        )
+        .because(format!("{}: {error}", path.display()))
+        .try_this("systemctl --user status net-daemon")
+    })?;
+    let unreadable = |why: String| {
+        Failure::new(Exit::Unavailable, "the home network's record can't be read").because(why)
+    };
+    let network: Network = serde_json::from_str(&text)
+        .map_err(|error| unreadable(format!("{}: {error}", path.display())))?;
+    if network.schema != SCHEMA {
+        return Err(unreadable(format!(
+            "it's {}, and net reads {SCHEMA}",
+            network.schema
+        )));
+    }
+    Ok(network)
 }

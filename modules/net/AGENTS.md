@@ -57,6 +57,31 @@ It listens on nothing and asks nothing outside the home network. Away
 from home the modem doesn't answer, and the record says so while eero's
 devices stay.
 
+## The Views
+
+Every view reads the record alone, never a source, so it answers at once
+and the same way away from home. `src/views.rs` draws each as a function
+of the record, the time, a pen and the room, so its tests set every
+width without a terminal; tables and facts come from the terminal kit.
+
+- `net`: how each source answers and how long ago, how many devices do
+  what, and the commands that go further.
+- `net devices`: one line per device, its roles, address, time up and
+  model; a narrow terminal drops the model, then the time, then the
+  address.
+- `net devices NAME` (`device` too): one device in layers. What any
+  device can say, its ports and radios, the links it's on, a modem's
+  channels and log, then what each source says that those didn't, in
+  the source's words. A list of records or a series of readings is left
+  to `--json`, which keeps every source's detail whole.
+
+A name is matched in any case, and an id always works. eero can give
+two devices one name, so a shared name is refused (64) with each one's
+id; an unknown one is refused (66) with the nearest. `--json` answers
+`net.network/1`, `net.devices/1` or `net.device/1`, each time in RFC
+3339 (docs/commands.md). No record yet ends 69, pointing at
+`systemctl --user status net-daemon`.
+
 ## Changing It
 
 [`contract/modem/`][contract] holds a real modem's pages, its addresses
