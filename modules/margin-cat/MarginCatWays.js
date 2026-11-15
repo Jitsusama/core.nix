@@ -245,9 +245,27 @@ function timed(way) {
         all + Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y), 0) / at.cell;
     const pace = Math.min(Math.max(walked / (MarginCat.CRUISES / MarginCat.MS), MarginCat.AMBLES),
         MarginCat.HURRIES);
-    const stride = Math.min(Math.max(pace * MarginCat.STRIDE_SECONDS, MarginCat.SHORTEST_STRIDE),
-        MarginCat.LONGEST_STRIDE) * at.cell;
-    const natural = way.legs.map(one => one.kind === "rides" ? 0 : lasts(one, pace, at));
+    // Whole cells, as it's drawn on them: a stride part of a cell long
+    // would end some drawings a cell early, held for two cells' time.
+    const stride = Math.min(Math.max(Math.ceil(pace * MarginCat.STRIDE_SECONDS - 1e-6),
+        MarginCat.SHORTEST_STRIDE), MarginCat.LONGEST_STRIDE) * at.cell;
+    // A walk eases in over its first stride from a standstill and out over
+    // its last, and goes at its pace between, keeping it through a leg
+    // joined to another it walks or climbs (VKCF3Z d1d1ead2): each ramp its
+    // share of the leg's ground, none where it walks on. Easing costs time
+    // rather than quickening its pace, so no drawing is held for less
+    // than its stride at that pace.
+    const ramps = way.legs.map((one, i) => {
+        const ground = Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y);
+        if (one.kind !== "goes" || ground === 0) {
+            return [0, 0];
+        }
+        const ramp = Math.min(stride, ground / 2) / ground;
+        return [STRIDING[way.legs[i - 1]?.kind] ? 0 : ramp,
+            STRIDING[way.legs[i + 1]?.kind] ? 0 : ramp];
+    });
+    const natural = way.legs.map((one, i) => one.kind === "rides" ? 0
+        : lasts(one, pace, at) * (1 + ramps[i][0] + ramps[i][1]));
     const unseen = way.legs.reduce((all, one, i) =>
         one.kind === "rides" || seen(one, at) ? all : all + natural[i], 0);
     const hurries = Math.min(1, UNSEEN / Math.max(unseen, 1));
@@ -259,7 +277,7 @@ function timed(way) {
         if (ms > 0) {
             const ground = Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y);
             beats.push(Object.assign({}, one, { name: one.name ?? one.kind, begins: ends,
-                ends: ends + ms, stride: STRIDING[one.kind] ? stride : 0,
+                ends: ends + ms, stride: STRIDING[one.kind] ? stride : 0, ramps: ramps[i],
                 bounds: one.kind === "climbs"
                     ? Math.max(1, Math.round(ground / (BOUNDS * at.tall))) : 0 }));
             ends += ms;
@@ -275,6 +293,24 @@ function timed(way) {
         }
     }
     return route;
+}
+
+// How far along a walk it is at `p` of its time, from 0 to 1: speeding up
+// evenly over its first `ramps[0]` of the ground, steady, then slowing
+// evenly over its last `ramps[1]`, its time stretched to keep its pace
+// between them (timed()).
+function paced(p, ramps) {
+    const [rises, eases] = ramps;
+    const steady = 1 + rises + eases;
+    const risen = (2 * rises) / steady;
+    const easing = 1 - (2 * eases) / steady;
+    if (p < risen) {
+        return (steady * steady * p * p) / (4 * rises);
+    }
+    if (p > easing) {
+        return 1 - (steady * steady * (1 - p) * (1 - p)) / (4 * eases);
+    }
+    return rises + steady * (p - risen);
 }
 
 // A leap's pose `ms` into it, `whole` ms long, `peak` its share of the way
@@ -344,11 +380,12 @@ function frame(route, t) {
 }
 
 // How many strides of `beat` it's taken at `spot`, by the ground drawn or
-// the bounds of a climb.
+// the bounds of a climb, a whole stride counted where floating point
+// leaves it a hair short.
 function strode(beat, spot) {
     const ground = Math.abs(spot.x - beat.from.x) + Math.abs(spot.y - beat.from.y);
     return beat.bounds > 0 ? Math.floor(2 * beat.bounds * spot.p)
-        : Math.floor(ground / beat.stride);
+        : Math.floor(ground / beat.stride + 1e-6);
 }
 
 // Where `beat` of `route` has it `t` ms in, drawn, its share `p` of the beat
@@ -373,6 +410,8 @@ function placed(route, beat, t) {
         const drop = Math.abs(to.y - from.y);
         const seconds = (p * beat.ms) / MarginCat.MS;
         s = drop === 0 ? 1 : Math.min(fallen(beat.speed, seconds) / drop, 1);
+    } else if (beat.kind === "goes") {
+        s = paced(p, beat.ramps);
     } else if (beat.kind !== "leaps") {
         s = MarginCat.easeInOut(p);
     }

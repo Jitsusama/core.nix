@@ -119,7 +119,8 @@ QtObject {
                 }
                 const ms = run === null ? 0 : run.ends - run.begins + 1;
                 if (run !== null && run.begins > 0 && run.pose && ms < 33)
-                    wrong.push(`${said} shows ${run.pose} ${ms} ms at ${run.begins} ms`);
+                    wrong.push(`${said} shows ${run.pose} ${ms} ms at ${run.begins} ms, `
+                        + `${run.first.beat} to ${run.last.beat}`);
                 if (run !== null && run.pose)
                     skids();
                 run = { pose, begins: t, ends: t, first: one, last: one,
@@ -137,13 +138,15 @@ QtObject {
             // 2026-11-13 17:22, by WCJQSG fc3f716a: "Going up the side of
             // a window should be at the same speed roughly as walking on
             // top, it seems accelerated in the video"), each pace its
-            // cells a second, of the beats seen.
+            // cells a second, of the beats seen; a walk's between the eases
+            // over its first and last strides (MarginCatWays.js's timed).
             const seenOn = beat => Math.max(beat.from.y, beat.to.y) + at.tall > 0
                 && Math.min(beat.from.y, beat.to.y) < at.height;
             const pace = beat => (Math.abs(beat.to.x - beat.from.x)
                 + Math.abs(beat.to.y - beat.from.y)) / at.cell / ((beat.ends - beat.begins) / 1000);
+            const cruises = beat => pace(beat) * (1 + beat.ramps[0] + beat.ramps[1]);
             const walks = journey.beats.filter(beat => beat.kind === "goes" && seenOn(beat)
-                && pace(beat) > 0).map(pace);
+                && pace(beat) > 0).map(cruises);
             for (const beat of journey.beats.filter(one => one.kind === "climbs" && seenOn(one)))
                 if (walks.some(walked => Math.abs(pace(beat) - walked) > walked / 5))
                     climbs.push(`${said} climbs at ${Math.round(pace(beat))} cells a second, `
