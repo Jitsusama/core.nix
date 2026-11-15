@@ -28,23 +28,8 @@
     "exits"
     "helps"
   ];
-  notices = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  pain-points = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   passwords-1password = [
     "kit"
-    "helps"
-  ];
-  people = [
-    "kit"
-    "exits"
     "helps"
   ];
   pi-carry = [ "helps" ];

@@ -14,7 +14,8 @@
 //! whole each time so the file always says the day so far. It keeps kinds
 //! and timings alone: what he typed, copied or opened by name never
 //! leaves the launcher's own record, and what he typed to pi is never
-//! written or sent anywhere, nor is any page Chrome visited.
+//! written or sent anywhere, nor is any page Chrome visited. Its help,
+//! its refusals and its exits take the terminal kit's shape (`help()`).
 
 mod chrome;
 mod pain;
@@ -28,8 +29,9 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitCode, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
+use terminal_kit::{Exit, Failure, Help, flags};
 
 /// How far back his usual time for each kind of pick is drawn from.
 const USUAL_DAYS: i64 = 14;
@@ -47,41 +49,109 @@ struct Run {
     at: i64,
 }
 
-fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
-    if args.first().map(String::as_str) != Some("read") {
-        eprintln!(
-            "usage: pain-points read [--trials FILE] [--sessions DIR] [--journalctl PATH] \
-             [--chrome DIR] [--date PATH] [--at MILLIS]"
-        );
-        std::process::exit(64);
-    }
-    let given = |flag: &str| {
-        args.windows(2)
-            .find(|pair| pair[0] == flag)
-            .map(|pair| pair[1].clone())
+/// The flags `read` takes, each with a value.
+const FLAGS: [&str; 6] = [
+    "--trials",
+    "--sessions",
+    "--journalctl",
+    "--chrome",
+    "--date",
+    "--at",
+];
+
+/// What `pain-points --help` says, and `read`'s own.
+fn help() -> Help {
+    Help::new("pain-points", "names what slowed Joel most today")
+        .example("pain-points read", "writes today's file and says the day")
+        .subcommand(
+            Help::new("read", "reads today's use and writes its worst")
+                .example(
+                    "pain-points read --journalctl PATH --date PATH",
+                    "as its timer runs it",
+                )
+                .option("--trials FILE", "the launcher's openings, or its newest")
+                .option("--sessions DIR", "pi's session logs, or its own")
+                .option("--journalctl PATH", "the journalctl on PATH, or this")
+                .option("--chrome DIR", "Chrome's profiles, or its own")
+                .option("--date PATH", "the date on PATH, or this")
+                .option("--at MILLIS", "the day to count, or today")
+                .exit(Exit::Failed, "today's use couldn't be read or written"),
+        )
+}
+
+/// The flags `read` was given, each by its name. The kit has walked them,
+/// so the first word is `read`, or there are none for a bare run.
+///
+/// # Errors
+///
+/// Asked wrongly, 64, for a flag it doesn't know, a flag with no value, a
+/// word that isn't a flag's, or a time that isn't a number.
+fn asked(args: &[String]) -> Result<Option<BTreeMap<&'static str, String>>, Failure> {
+    let wrongly =
+        |what: String| Failure::new(Exit::Usage, what).try_this("pain-points read --help");
+    let Some((_, rest)) = args.split_first() else {
+        return Ok(None);
     };
-    let home = PathBuf::from(env::var_os("HOME").unwrap_or_default());
-    let run = Run {
-        trials: given("--trials").map(PathBuf::from).or_else(newest_trials),
-        sessions: given("--sessions")
-            .map_or_else(|| home.join(".pi/agent/sessions"), PathBuf::from),
-        chrome: given("--chrome").map_or_else(|| home.join(".config/google-chrome"), PathBuf::from),
-        journalctl: given("--journalctl").map_or_else(|| "journalctl".into(), PathBuf::from),
-        date: given("--date").map_or_else(|| "date".into(), PathBuf::from),
-        state: state_home().join("pain-points"),
-        // A past day can be counted again, to try a change on it.
-        at: given("--at")
-            .and_then(|at| at.parse().ok())
-            .unwrap_or_else(millis_now),
-    };
-    match read(&run) {
-        Ok(said) => println!("{said}"),
-        Err(error) => {
-            eprintln!("pain-points: {error}");
-            std::process::exit(1);
-        }
+    let mut given = BTreeMap::new();
+    let mut rest = rest.iter();
+    while let Some(arg) = rest.next() {
+        let flag = match FLAGS.iter().find(|flag| **flag == arg) {
+            Some(flag) => *flag,
+            None if arg.starts_with('-') => {
+                return Err(
+                    flags::unknown("option", arg, &FLAGS).try_this("pain-points read --help")
+                );
+            }
+            None => {
+                return Err(wrongly(format!(
+                    "pain-points read takes no word like {arg}"
+                )));
+            }
+        };
+        let value = rest
+            .next()
+            .ok_or_else(|| wrongly(format!("{flag} needs a value")))?;
+        given.insert(flag, value.clone());
     }
+    if let Some(at) = given.get("--at").filter(|at| at.parse::<i64>().is_err()) {
+        return Err(wrongly(format!("--at takes Unix milliseconds, not {at}")));
+    }
+    Ok(Some(given))
+}
+
+fn main() -> ExitCode {
+    let help = help();
+    terminal_kit::main(&help, env!("CARGO_PKG_VERSION"), |context| {
+        let Some(mut given) = asked(&context.args)? else {
+            return context
+                .say(&help.brief(&context.out, context.room))
+                .map_err(|why| {
+                    Failure::new(Exit::Failed, "it couldn't say its help").because(why.to_string())
+                });
+        };
+        let home = PathBuf::from(env::var_os("HOME").unwrap_or_default());
+        let mut take = |flag: &str| given.remove(flag);
+        let run = Run {
+            trials: take("--trials").map(PathBuf::from).or_else(newest_trials),
+            sessions: take("--sessions")
+                .map_or_else(|| home.join(".pi/agent/sessions"), PathBuf::from),
+            chrome: take("--chrome")
+                .map_or_else(|| home.join(".config/google-chrome"), PathBuf::from),
+            journalctl: take("--journalctl").map_or_else(|| "journalctl".into(), PathBuf::from),
+            date: take("--date").map_or_else(|| "date".into(), PathBuf::from),
+            state: state_home().join("pain-points"),
+            // A past day can be counted again, to try a change on it.
+            at: take("--at")
+                .and_then(|at| at.parse().ok())
+                .unwrap_or_else(millis_now),
+        };
+        // The day's line goes to the journal as it always has.
+        let said = read(&run).map_err(|error| {
+            Failure::new(Exit::Failed, "pain-points couldn't read today's use").because(error)
+        })?;
+        println!("{said}");
+        Ok(())
+    })
 }
 
 /// Writes the day file and says, in a line for the journal, how the day
