@@ -306,6 +306,13 @@
       }
     },
     {
+      "id": "verb:eero:device:map",
+      "in": "eero:device",
+      "name": "On the Map",
+      "verb": "open",
+      "glyph": "web"
+    },
+    {
       "id": "eero:internet:state",
       "in": "eero:internet",
       "name": "State"

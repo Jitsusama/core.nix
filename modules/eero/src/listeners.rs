@@ -35,7 +35,7 @@ use serde_json::{Value, json};
 
 use crate::acts::Act;
 use crate::model::HomeNetwork;
-use crate::served::{self, Said, Vocabularies};
+use crate::served::{self, Mapped, Said, Vocabularies};
 
 /// What a listener did, which wakes the daemon.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,7 +118,7 @@ impl Listeners {
     /// Listens at `path`, replacing a socket an earlier daemon left, and
     /// tells `wake` whenever a listener joins, leaves, looks or asks for a
     /// read. Its rows offer the network map's page, `map`, if any.
-    pub fn listen(path: &Path, wake: Sender<Call>, map: Option<String>) -> io::Result<Listeners> {
+    pub fn listen(path: &Path, wake: Sender<Call>, map: Option<Mapped>) -> io::Result<Listeners> {
         Listeners::listen_within(path, wake, Vocabularies::default().mapped(map))
     }
 

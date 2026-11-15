@@ -38,6 +38,18 @@ const SQM_OFF: &str = "verb:eero:sqm-off";
 /// here, since a map wants the room (VKCF3Z's ruling, 2026-11-14).
 pub(crate) const MAP: &str = "verb:eero:map";
 
+/// Opening the map on one device, an act inside each device's row, as
+/// the speed test is inside the internet's: first in its step in, before
+/// its figures.
+pub(crate) const DEVICE_ON_MAP: &str = "verb:eero:device:map";
+
+/// The map of the network: its page, and the worst of what net finds
+/// worth a look (modules/net), in net's words, while there is any.
+pub struct Map<'a> {
+    pub page: &'a str,
+    pub worst: Option<&'a str>,
+}
+
 /// How the items a row's side or note gives way whole are joined, where
 /// one item holds several.
 pub(crate) const DOT: &str = " \u{b7} ";
@@ -84,9 +96,10 @@ pub fn rows(
     model: &HomeNetwork,
     words: &Words,
     numbers: &Numbers,
-    map: Option<&str>,
+    map: Option<&Map>,
 ) -> Vec<Value> {
-    let mut rows: Vec<Value> = map.map(|page| map_row(page, words)).into_iter().collect();
+    let mut rows: Vec<Value> = map.map(|map| map_row(map, words)).into_iter().collect();
+    let page = map.map(|map| map.page);
     rows.push(internet_row(model, words, numbers));
     rows.extend(acts_inside(model, words));
     for (node, devices) in grouped(model) {
@@ -95,6 +108,7 @@ pub fn rows(
         }
         for device in devices {
             rows.push(device_row(device, &model.profiles, words, numbers));
+            rows.extend(page.map(|page| on_the_map(device, page, words)));
         }
     }
     for profile in &model.profiles {
@@ -277,14 +291,39 @@ fn acts_inside(model: &HomeNetwork, words: &Words) -> Vec<Value> {
     rows
 }
 
-/// The map of the network, whose Return opens its `page` in the browser,
-/// as any link opens.
-fn map_row(page: &str, words: &Words) -> Value {
-    json!({
+/// The map of the network, whose Return opens its page in the browser,
+/// as any link opens. While net finds something worth a look, its note
+/// says the worst in net's words and its mark warns, so the place says
+/// how the network stands as a row does by its mark, the words carrying
+/// it rather than the colour alone; the foot says it whole, where the
+/// note runs out of room (VKCF3Z, 2026-11-15).
+fn map_row(map: &Map, words: &Words) -> Value {
+    let mut row = json!({
         "key": key("map"), "thing": MAP, "place": PLACE, "kind": "act", "depth": 0,
         "name": words.name(MAP), "glyph": words.glyph(MAP), "hue": "action",
-        "side": [], "note": items([item(words.say(MAP, "note"))]),
-        "acts": [{"key": MAP, "open": page}],
+        "side": [], "note": items([item(map.worst.unwrap_or(words.say(MAP, "note")))]),
+        "acts": [{"key": MAP, "open": map.page}],
+    });
+    if let Some(worst) = map.worst {
+        row["hue"] = json!("warning");
+        row["state"] = json!(worst);
+    }
+    row
+}
+
+/// The map opened on a device, inside its row. net names a device eero
+/// counts by its mac (modules/net's sources/eero.rs), which the page
+/// takes after its address's # and reads back as the device's name. Its
+/// thing is the device's own, so each device's is told apart.
+fn on_the_map(device: &Device, page: &str, words: &Words) -> Value {
+    let fragment = format!("mac:{}", device.mac).replace(':', "%3A");
+    json!({
+        "key": key(&format!("device:{}:map", device.mac)),
+        "thing": format!("{DEVICE_ON_MAP}:{}", device.mac), "place": PLACE,
+        "parent": key(&format!("device:{}", device.mac)), "kind": "act", "depth": 2,
+        "name": words.name(DEVICE_ON_MAP), "glyph": words.glyph(DEVICE_ON_MAP),
+        "hue": "action", "side": [], "note": [],
+        "acts": [{"key": DEVICE_ON_MAP, "open": format!("{page}#{fragment}")}],
     })
 }
 

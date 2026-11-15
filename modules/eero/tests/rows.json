@@ -4290,7 +4290,7 @@
           "said": "10.0.0.29"
         }
       ],
-      "order": 11264,
+      "order": 17408,
       "place": "eero",
       "side": [
         {
@@ -4298,6 +4298,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:01"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:01:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A01"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:01:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 18432,
+      "parent": "row:eero:device:02:00:00:00:00:01",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:01"
     }
   },
   {
@@ -4330,7 +4354,7 @@
           "said": "10.0.0.40"
         }
       ],
-      "order": 21504,
+      "order": 36864,
       "place": "eero",
       "side": [
         {
@@ -4338,6 +4362,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:03"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:03:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A03"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:03:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 37888,
+      "parent": "row:eero:device:02:00:00:00:00:03",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:03"
     }
   },
   {
@@ -4370,7 +4418,7 @@
           "said": "10.0.0.23"
         }
       ],
-      "order": 6144,
+      "order": 8192,
       "place": "eero",
       "side": [
         {
@@ -4378,6 +4426,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:05"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:05:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A05"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:05:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 9216,
+      "parent": "row:eero:device:02:00:00:00:00:05",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:05"
     }
   },
   {
@@ -4410,7 +4482,7 @@
           "said": "10.0.0.28"
         }
       ],
-      "order": 20480,
+      "order": 34816,
       "place": "eero",
       "side": [
         {
@@ -4418,6 +4490,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:07"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:07:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A07"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:07:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 35840,
+      "parent": "row:eero:device:02:00:00:00:00:07",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:07"
     }
   },
   {
@@ -4450,7 +4546,7 @@
           "said": "10.0.0.20"
         }
       ],
-      "order": 17408,
+      "order": 28672,
       "place": "eero",
       "side": [
         {
@@ -4458,6 +4554,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:08"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:08:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A08"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:08:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 29696,
+      "parent": "row:eero:device:02:00:00:00:00:08",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:08"
     }
   },
   {
@@ -4490,7 +4610,7 @@
           "said": "10.0.0.45"
         }
       ],
-      "order": 8192,
+      "order": 11264,
       "place": "eero",
       "side": [
         {
@@ -4498,6 +4618,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:0a"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:0a:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A0a"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:0a:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 12288,
+      "parent": "row:eero:device:02:00:00:00:00:0a",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:0a"
     }
   },
   {
@@ -4530,7 +4674,7 @@
           "said": "10.0.0.99"
         }
       ],
-      "order": 5120,
+      "order": 6144,
       "place": "eero",
       "side": [
         {
@@ -4538,6 +4682,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:0b"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:0b:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A0b"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:0b:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 7168,
+      "parent": "row:eero:device:02:00:00:00:00:0b",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:0b"
     }
   },
   {
@@ -4570,7 +4738,7 @@
           "said": "10.0.0.30"
         }
       ],
-      "order": 18432,
+      "order": 30720,
       "place": "eero",
       "side": [
         {
@@ -4578,6 +4746,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:0d"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:0d:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A0d"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:0d:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 31744,
+      "parent": "row:eero:device:02:00:00:00:00:0d",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:0d"
     }
   },
   {
@@ -4610,7 +4802,7 @@
           "said": "10.0.0.26"
         }
       ],
-      "order": 13312,
+      "order": 20480,
       "place": "eero",
       "side": [
         {
@@ -4621,6 +4813,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:0e"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:0e:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A0e"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:0e:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 21504,
+      "parent": "row:eero:device:02:00:00:00:00:0e",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:0e"
     }
   },
   {
@@ -4653,7 +4869,7 @@
           "said": "10.0.0.47"
         }
       ],
-      "order": 19456,
+      "order": 32768,
       "place": "eero",
       "side": [
         {
@@ -4661,6 +4877,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:0f"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:0f:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A0f"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:0f:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 33792,
+      "parent": "row:eero:device:02:00:00:00:00:0f",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:0f"
     }
   },
   {
@@ -4693,7 +4933,7 @@
           "said": "10.0.0.24"
         }
       ],
-      "order": 9216,
+      "order": 13312,
       "place": "eero",
       "side": [
         {
@@ -4701,6 +4941,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:11"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:11:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A11"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:11:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 14336,
+      "parent": "row:eero:device:02:00:00:00:00:11",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:11"
     }
   },
   {
@@ -4733,7 +4997,7 @@
           "said": "10.0.0.31"
         }
       ],
-      "order": 10240,
+      "order": 15360,
       "place": "eero",
       "side": [
         {
@@ -4741,6 +5005,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:13"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:13:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A13"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:13:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 16384,
+      "parent": "row:eero:device:02:00:00:00:00:13",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:13"
     }
   },
   {
@@ -4773,7 +5061,7 @@
           "said": "10.0.0.25"
         }
       ],
-      "order": 14336,
+      "order": 22528,
       "place": "eero",
       "side": [
         {
@@ -4781,6 +5069,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:15"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:15:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A15"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:15:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 23552,
+      "parent": "row:eero:device:02:00:00:00:00:15",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:15"
     }
   },
   {
@@ -4813,7 +5125,7 @@
           "said": "10.0.0.33"
         }
       ],
-      "order": 16384,
+      "order": 26624,
       "place": "eero",
       "side": [
         {
@@ -4821,6 +5133,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:16"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:16:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A16"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:16:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 27648,
+      "parent": "row:eero:device:02:00:00:00:00:16",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:16"
     }
   },
   {
@@ -4853,7 +5189,7 @@
           "said": "10.0.0.112"
         }
       ],
-      "order": 15360,
+      "order": 24576,
       "place": "eero",
       "side": [
         {
@@ -4861,6 +5197,30 @@
         }
       ],
       "thing": "eero:device:02:00:00:00:00:17"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:17:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:device:map",
+          "open": "http://sites.localhost:8484/network/#mac%3A02%3A00%3A00%3A00%3A00%3A17"
+        }
+      ],
+      "depth": 2,
+      "glyph": "web",
+      "hue": "action",
+      "key": "row:eero:device:02:00:00:00:00:17:map",
+      "kind": "act",
+      "name": "On the Map",
+      "note": [],
+      "order": 25600,
+      "parent": "row:eero:device:02:00:00:00:00:17",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:device:map:02:00:00:00:00:17"
     }
   },
   {
@@ -4895,7 +5255,7 @@
           "said": "15 devices on now"
         }
       ],
-      "order": 1024,
+      "order": 2048,
       "place": "eero",
       "side": [
         {
@@ -4906,6 +5266,34 @@
         }
       ],
       "thing": "eero:internet"
+    }
+  },
+  {
+    "key": "row:eero:map",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "key": "verb:eero:map",
+          "open": "http://sites.localhost:8484/network/"
+        }
+      ],
+      "depth": 0,
+      "glyph": "web",
+      "hue": "warning",
+      "key": "row:eero:map",
+      "kind": "act",
+      "name": "Map",
+      "note": [
+        {
+          "said": "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair since the modem started, against at most 18 on any other; if that keeps climbing, Example ISP can check the line"
+        }
+      ],
+      "order": 1024,
+      "place": "eero",
+      "side": [],
+      "state": "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair since the modem started, against at most 18 on any other; if that keeps climbing, Example ISP can check the line",
+      "thing": "verb:eero:map"
     }
   },
   {
@@ -4935,7 +5323,7 @@
           "said": "v7.17.4-5"
         }
       ],
-      "order": 7168,
+      "order": 10240,
       "place": "eero",
       "side": [
         {
@@ -4972,7 +5360,7 @@
           "said": "v7.17.4-5"
         }
       ],
-      "order": 12288,
+      "order": 19456,
       "place": "eero",
       "side": [
         {
@@ -5012,7 +5400,7 @@
           "said": "v7.17.4-5"
         }
       ],
-      "order": 4096,
+      "order": 5120,
       "place": "eero",
       "side": [
         {
@@ -5044,7 +5432,7 @@
           "said": "none on now"
         }
       ],
-      "order": 22528,
+      "order": 38912,
       "place": "eero",
       "side": [
         {
@@ -5076,7 +5464,7 @@
           "said": "none on now"
         }
       ],
-      "order": 23552,
+      "order": 39936,
       "place": "eero",
       "side": [
         {
@@ -5108,7 +5496,7 @@
           "said": "none on now"
         }
       ],
-      "order": 24576,
+      "order": 40960,
       "place": "eero",
       "side": [
         {
@@ -5163,7 +5551,7 @@
           "said": "eero measures the internet from the gateway node"
         }
       ],
-      "order": 2048,
+      "order": 3072,
       "parent": "row:eero:internet",
       "place": "eero",
       "side": [],
@@ -5222,7 +5610,7 @@
           "said": "what the internet carries, queued so a call stays quick"
         }
       ],
-      "order": 3072,
+      "order": 4096,
       "parent": "row:eero:internet",
       "place": "eero",
       "side": [

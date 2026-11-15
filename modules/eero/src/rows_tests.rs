@@ -88,9 +88,15 @@ fn the_internet_comes_first_then_each_node_with_its_devices_then_the_profiles() 
     assert_eq!(devices, 15, "every device on now is a row inside its node");
 }
 
+/// The map at `PAGE`, with net finding nothing worth a look.
+const CALM: Map = Map {
+    page: PAGE,
+    worst: None,
+};
+
 #[test]
 fn the_map_of_the_network_comes_first_and_opens_its_page() {
-    let rows = rows(&model(), &words(), &Numbers::default(), Some(PAGE));
+    let rows = rows(&model(), &words(), &Numbers::default(), Some(&CALM));
     let names: Vec<&str> = rows
         .iter()
         .filter(|row| row["depth"] == 0)
@@ -113,8 +119,74 @@ fn the_map_of_the_network_comes_first_and_opens_its_page() {
         "Return opens the map's page"
     );
     assert_eq!(
-        joined(&map["note"]),
-        "every device on the home network, drawn"
+        (joined(&map["note"]), &map["hue"], map.get("state")),
+        (
+            "every device on the home network, drawn".to_owned(),
+            &json!("action"),
+            None
+        ),
+        "with nothing worth a look, the map says what it is in its own ink"
+    );
+}
+
+#[test]
+fn the_map_says_the_worst_net_finds_and_marks_itself_until_it_goes() {
+    let says = "The modem's downstream channel 16 has lost 878 pieces of data";
+    let worried = Map {
+        page: PAGE,
+        worst: Some(says),
+    };
+    let rows = rows(&model(), &words(), &Numbers::default(), Some(&worried));
+    let map = named(&rows, "Map");
+    assert_eq!(
+        (joined(&map["note"]), &map["hue"], &map["state"]),
+        (says.to_owned(), &json!("warning"), &json!(says)),
+        "the note says it in net's words, the mark warns, and the foot says it whole \
+         (VKCF3Z, 2026-11-15)"
+    );
+}
+
+#[test]
+fn each_device_holds_on_the_map_opening_the_page_on_it() {
+    let model = model();
+    let mac = model.devices[0].mac.clone();
+    let rows = rows(&model, &words(), &Numbers::default(), Some(&CALM));
+    let device = key(&format!("device:{mac}"));
+    let inside: Vec<&Value> = rows.iter().filter(|row| row["parent"] == device).collect();
+    // net names a device eero counts by its mac, which the page takes
+    // after its address's #, its colons written as a link writes them.
+    let fragment = format!("mac:{mac}").replace(':', "%3A");
+    assert_eq!(
+        inside
+            .iter()
+            .map(|row| (&row["name"], &row["kind"], &row["glyph"], &row["acts"]))
+            .collect::<Vec<_>>(),
+        [(
+            &json!("On the Map"),
+            &json!("act"),
+            &json!("web"),
+            &json!([{"key": DEVICE_ON_MAP, "open": format!("{PAGE}#{fragment}")}])
+        )],
+        "its step in opens the map on it, as the internet's holds its speed test \
+         (VKCF3Z, 2026-11-15)"
+    );
+    let things: std::collections::HashSet<&Value> = rows.iter().map(|row| &row["thing"]).collect();
+    assert_eq!(
+        things.len(),
+        rows.len(),
+        "each device's is a thing of its own"
+    );
+}
+
+#[test]
+fn a_device_holds_no_map_where_there_is_none() {
+    assert!(
+        made(&model()).iter().all(|row| {
+            row["thing"]
+                .as_str()
+                .is_none_or(|thing| !thing.starts_with(DEVICE_ON_MAP))
+        }),
+        "with no page, nothing opens one"
     );
 }
 
@@ -490,6 +562,9 @@ fn a_vocabulary_without_a_word_says_which() {
 /// of the contract's network, each ordered as Kept orders it and the
 /// place's own drawer and each profile's beside them, so the stand-in
 /// never says what the daemon wouldn't.
+/// They offer the map, with net's golden record's worst concern
+/// (modules/net/tests/network.json), as Joel's machine does, so the
+/// desktop's tests and shots see the map warn and each device open on it.
 /// `EERO_GOLDEN=write cargo test` writes them afresh, to be read before
 /// they're committed. They're compared as JSON, so `nix fmt` may lay the
 /// file out as it likes.
@@ -502,7 +577,15 @@ fn the_rows_the_desktops_tests_serve_are_the_daemons() {
     let beside = std::iter::once(crate::place::record(&model, &words(), &numbers))
         .chain(crate::drawers::records(&model, &words(), &numbers))
         .collect();
-    kept.take(made(&model), beside);
+    let map = Map {
+        page: PAGE,
+        worst: Some(
+            "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair \
+             since the modem started, against at most 18 on any other; if that keeps climbing, \
+             Example ISP can check the line",
+        ),
+    };
+    kept.take(rows(&model, &words(), &numbers, Some(&map)), beside);
     let rows: Value = kept.all().cloned().collect();
     if std::env::var("EERO_GOLDEN").as_deref() == Ok("write") {
         let text = serde_json::to_string_pretty(&rows).expect("rows are JSON");
