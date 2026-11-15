@@ -1475,10 +1475,14 @@ Floating {
     // An identifier, as a supply's "ucsi-source-psy-USBC000:001" or a
     // desktop entry's "com.onepassword.OnePassword", breaks at its own
     // marks rather than draw past the frame (VKCF3Z, 2026-11-08 and 09), as
-    // DrawerValue.identifierLines lays it; a line that fits is held whole.
+    // DrawerValue.identifierLines lays it; a line that fits is held whole,
+    // at its hyphens too: "claude-opus-5-5" fit by the face's measure yet
+    // the text, a fraction short, broke it at a hyphen, onto a second line
+    // nothing had counted.
     function identifierKept(words, face, wide) {
         return Value.identifierLines(words, wide, widthIn(face))
-            .map(line => widthIn(face)(line) <= wide ? line.replace(/ /g, "\u00a0") : line)
+            .map(line => widthIn(face)(line) <= wide
+                ? line.replace(/ /g, "\u00a0").replace(/-/g, "-\u2060") : line)
             .join("\n");
     }
 
@@ -1577,9 +1581,21 @@ Floating {
     // so it ended through the second.
     function nerdLines(bit) {
         void nerdFace.font;
-        const wide = foldShown.width - drawer.nerdLabelsWide - drawer.labelsGap;
-        return Math.max(1, Value.identifierLines(String(bit?.value), wide,
+        const under = drawer.nerdUnder(bit);
+        const wide = foldShown.width - (under ? 0 : drawer.nerdLabelsWide + drawer.labelsGap);
+        return (under ? 1 : 0) + Math.max(1, Value.identifierLines(String(bit?.value), wide,
             widthIn(nerdFace)).length);
+    }
+    // Whether a bit in the fold stands its value under its name: where a
+    // word of the value, a quest's id of twenty letters in a 288 pixel
+    // drawer, is too wide for the column beside the name, so it is drawn
+    // whole at the full measure rather than broken at a mark, as a
+    // glance's fact is (VKCF3Z, bfdad751).
+    function nerdUnder(bit) {
+        void nerdFace.font;
+        const beside = foldShown.width - drawer.nerdLabelsWide - drawer.labelsGap;
+        return String(bit?.value ?? "").split(/\s+/).some(
+            word => widthIn(nerdFace)(word) > beside);
     }
     function lineSpans() {
         const spans = [];
@@ -2698,13 +2714,15 @@ Floating {
                             required property var modelData
                             readonly property Item labelWords: bitLabel
                             readonly property Item valueWords: bitValue
+                            readonly property bool under: drawer.nerdUnder(modelData)
                             width: parent.width
-                            height: Math.max(1, bitValue.lineCount) * drawer.pitch
+                            height: ((under ? 1 : 0) + Math.max(1, bitValue.lineCount))
+                                * drawer.pitch
 
                             PageText {
                                 id: bitLabel
                                 sought: drawer.washing
-                                width: drawer.nerdLabelsWide
+                                width: bit.under ? parent.width : drawer.nerdLabelsWide
                                 y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                                 plain: String(bit.modelData.label ?? "")
                                 leading: drawer.pitch
@@ -2715,9 +2733,10 @@ Floating {
                             PageText {
                                 id: bitValue
                                 sought: drawer.washing
-                                x: drawer.nerdLabelsWide + drawer.labelsGap
+                                x: bit.under ? 0 : drawer.nerdLabelsWide + drawer.labelsGap
                                 width: parent.width - x
-                                y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                                y: (bit.under ? drawer.pitch : 0) + drawer.pitch / 2
+                                    + drawer.dropped - baselineOffset
                                 plain: drawer.identifierKept(String(bit.modelData.value), nerdFace,
                                     width)
                                 leading: drawer.pitch
