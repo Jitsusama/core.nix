@@ -67,6 +67,7 @@
 
 mod fits;
 mod floors;
+mod lost;
 mod oneshot;
 mod restored;
 mod zswap;
