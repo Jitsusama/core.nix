@@ -1,6 +1,7 @@
 use disk_guard::band::{Band, Space, Thresholds};
 use disk_guard::pass::{
-    Disk, End, Failing, Goal, Learned, Outcome, Reclaimer, Report, failed_line, failing, pass, told,
+    Disk, End, Failing, Goal, Learned, Outcome, Reclaimer, Report, failed_line, failing, pass,
+    told, unheard_line,
 };
 use disk_guard::plan::{Candidate, Class};
 use disk_guard::units::float;
@@ -118,6 +119,24 @@ fn a_timeout_is_an_error_even_when_the_rest_freed_something() {
         failed_line(&failing, &report, "2026-11-11 15:40:00"),
         "disk-guard: error: at 2026-11-11 15:40:00 a pass while filling freed only 3.0 GiB: 1 \
          of the 2 it tried failed, one timing out; the last: nix ran past 600s"
+    );
+}
+
+#[test]
+fn a_system_daemon_that_couldnt_be_asked_is_said_with_why() {
+    assert_eq!(
+        unheard_line(
+            Some("Resource temporarily unavailable"),
+            "2026-11-14 14:18:48"
+        ),
+        "disk-guard: at 2026-11-14 14:18:48 the system daemon couldn't be asked about the \
+         processes this account can't read (Resource temporarily unavailable), so what they \
+         might use was kept"
+    );
+    assert_eq!(
+        unheard_line(None, "2026-11-14 14:18:48"),
+        "disk-guard: at 2026-11-14 14:18:48 the system daemon couldn't be asked about the \
+         processes this account can't read, so what they might use was kept"
     );
 }
 

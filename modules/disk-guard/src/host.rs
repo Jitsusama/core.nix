@@ -58,11 +58,16 @@ struct Voucher {
 }
 
 /// How long to wait for the system daemon, which scans every process to
-/// answer.
-const ASK_TIMEOUT: Duration = Duration::from_secs(2);
+/// answer, one ask at a time. A scan of 1,900 processes took 1.8 s, and
+/// more at background weight on a loaded machine, so at 2 s the ask failed
+/// in spells: every process this account can't read then counted as maybe
+/// using every target, and nothing short of critically full was freed.
+/// On 14 November 27 targets were kept at nearly full for "process 1
+/// can't be read" while one build filled cargo's filesystem.
+const ASK_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How long to go without asking a system daemon that didn't answer, so
-/// one that hangs costs a pass two seconds now and then, not every scan.
+/// one that hangs costs a pass its wait now and then, not every scan.
 const ASK_AGAIN: Duration = Duration::from_secs(30);
 
 impl Scan {

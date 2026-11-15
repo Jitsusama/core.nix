@@ -327,6 +327,34 @@ fn an_ask_refused_as_too_soon_is_asked_again_once_allowed() {
     assert_eq!(asked.try_iter().count(), 2);
 }
 
+/// A system daemon whose scan takes 3 s, as one of 2,100 processes does on
+/// a loaded machine, waited on for its answer rather than given up on.
+#[test]
+fn a_system_daemon_slow_to_scan_is_waited_for() {
+    let proc = tempfile::tempdir().unwrap();
+    hidden(proc.path(), 300, 77);
+    let socket = proc.path().join("socket");
+    let mut server = disk_guard::socket::Server::bind(&socket, Duration::ZERO).unwrap();
+    std::thread::spawn(move || {
+        server
+            .serve(&mut |_, _, responder| {
+                // The scan's own time, which a loaded machine stretches.
+                std::thread::sleep(Duration::from_secs(3));
+                let touching = vec![building(300, 77)];
+                responder.send(&disk_guard::socket::Reply::Answer(
+                    disk_guard::vouch::Answer {
+                        vouched: vec![(300, 77)],
+                        touching,
+                    },
+                ));
+            })
+            .unwrap();
+    });
+    let mut scan = vouched_scan(proc.path(), &socket, Duration::ZERO);
+    assert_eq!(scan.judge(Path::new(TARGET), None).unwrap(), Use::Busy(300));
+    assert!(!scan.went_unheard(), "gave up on it: {:?}", scan.unheard());
+}
+
 /// A system daemon that finds `pid` gone by the time it scans, as a short
 /// build step is once it's been asked about, and so can't vouch for it.
 fn outlived(proc: &Path, socket: &Path, pid: u32, then: impl FnOnce(&Path) + Send + 'static) {
