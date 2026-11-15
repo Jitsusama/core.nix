@@ -218,7 +218,10 @@ fn config(mut args: impl Iterator<Item = String>) -> Result<Config, Failure> {
             "--upstream" => upstreams.push(PathBuf::from(value()?)),
             "--key" => key = Some(PathBuf::from(value()?)),
             "--lent" => lent.push(PathBuf::from(value()?)),
-            _ => socket = Some(PathBuf::from(value()?)),
+            "--socket" => socket = Some(PathBuf::from(value()?)),
+            // The FLAGS check above refuses every other word, so a flag added there and not
+            // here is a bug to say loudly rather than a socket to take silently.
+            other => unreachable!("{other} is in FLAGS but has no arm here"),
         }
     }
     let hosts = hosts.ok_or_else(|| cli::wrongly("--hosts is needed"))?;
