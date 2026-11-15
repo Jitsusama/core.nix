@@ -423,6 +423,17 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi loads extensions without sorting its alias map for every
+  # module jiti evaluates, while the aliases resolve as before and each
+  # folder's load still evaluates an extension's modules afresh.
+  pi-hosted-loads-extensions-lightly =
+    pkgs.runCommandLocal "pi-hosted-loads-extensions-lightly" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-loads-extensions-lightly.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   # A hosted pi's screen stays in its own conversation: quitting or a crash
   # ends only that screen and what it was doing, a stopped screen builds
   # nothing for an extension and disposes the footer, header and editor one
