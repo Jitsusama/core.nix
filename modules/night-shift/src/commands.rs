@@ -36,6 +36,7 @@ fn run() -> Help {
         .option("--stop SLICE=PCT", "stops past a slice's pressure")
         .option("--stop-machine PCT", "stops past the machine's; 25")
         .option("--rests HOURS", "does nothing this long after; 12")
+        .option("--wait-at-most SECONDS", "waits this long for the turn")
         .option("--every SECONDS", "how often it looks; 5")
         .option("--grace SECONDS", "how long a stop waits; 60")
         .option("--memory-high SIZE", "the job's memory.high")
@@ -46,6 +47,7 @@ fn run() -> Help {
             Exit::Failed,
             "its folders, lock or cgroup failed it, or the job didn't start",
         )
+        .exit(Exit::TryAgain, "it waited for the turn as long as it was let")
         .passes("the job's own code, when it fails")
 }
 
@@ -105,7 +107,7 @@ mod tests {
     #[test]
     fn a_units_words_reach_the_job_as_written() {
         let unit = "run repack --start-under 3 --stop app.slice=1 --stop-machine 25 \
-                    --rests 12 --memory-high 12G --reads-at-most /dev/nvme0n1=50M \
+                    --rests 12 --wait-at-most 1800 --memory-high 12G --reads-at-most /dev/nvme0n1=50M \
                     -- git -C /srv maintenance run --help";
         let (exit, said, command) = parsed(unit);
         assert_eq!(exit, Exit::Done, "the unit's words were refused: {said}");

@@ -7,7 +7,8 @@ mod common;
 use common::Folder;
 use std::fs::{self, File};
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
 
 const MANAGER: &str = "user.slice/user-1000.slice/user@1000.service";
@@ -56,6 +57,11 @@ impl Machine {
 
     /// Runs `night-shift run` with `options` and the shell line `job`.
     fn run(&self, options: &str, job: &str) -> Output {
+        self.command(options, job).output().unwrap()
+    }
+
+    /// `night-shift run` with `options` and the shell line `job`, to start.
+    fn command(&self, options: &str, job: &str) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_night-shift"));
         command
             .args(["run", "test-job"])
@@ -65,8 +71,17 @@ impl Machine {
             .env("NIGHT_SHIFT_CGROUPS", self.path("cgroups"))
             .env("XDG_STATE_HOME", self.path("state"))
             .env("XDG_RUNTIME_DIR", self.path("runtime"))
-            .current_dir(&self.root);
-        command.output().unwrap()
+            .current_dir(&self.root)
+            .stdout(Stdio::piped());
+        command
+    }
+
+    /// Takes the turn as another heavy job would, until the file is dropped.
+    fn hold_the_turn(&self) -> File {
+        fs::create_dir_all(self.path("runtime/night-shift")).unwrap();
+        let held = File::create(self.path("runtime/night-shift/lock")).unwrap();
+        held.try_lock().unwrap();
+        held
     }
 }
 
@@ -149,14 +164,72 @@ fn a_busy_machine_starts_nothing() {
 #[test]
 fn only_one_night_job_runs_at_a_time() {
     let machine = Machine::new();
-    fs::create_dir_all(machine.path("runtime/night-shift")).unwrap();
-    let held = File::create(machine.path("runtime/night-shift/lock")).unwrap();
-    held.try_lock().unwrap();
+    let _held = machine.hold_the_turn();
     let output = machine.run("", "echo ran > ran");
     assert!(output.status.success(), "{}", said(&output));
     assert!(!machine.path("ran").exists(), "the job ran beside another");
     assert!(
         said(&output).contains("another heavy job is running"),
+        "{}",
+        said(&output)
+    );
+}
+
+#[test]
+fn a_night_job_told_to_wait_takes_the_turn_once_it_is_free() {
+    let machine = Machine::new();
+    let held = machine.hold_the_turn();
+    let waiting = machine
+        .command("--wait-at-most 10", "echo ran > ran")
+        .spawn()
+        .unwrap();
+    thread::sleep(Duration::from_millis(300));
+    assert!(!machine.path("ran").exists(), "the job ran beside another");
+    drop(held);
+    let output = waiting.wait_with_output().unwrap();
+    assert!(output.status.success(), "{}", said(&output));
+    assert!(machine.path("ran").exists(), "{}", said(&output));
+    assert!(
+        said(&output).contains("waiting for the turn, which a job that doesn't say has")
+            && said(&output).contains("has the turn after"),
+        "{}",
+        said(&output)
+    );
+}
+
+#[test]
+fn a_night_job_waiting_past_its_most_leaves_with_try_again_later() {
+    let machine = Machine::new();
+    let _held = machine.hold_the_turn();
+    let output = machine.run("--wait-at-most 0.3", "echo ran > ran");
+    assert_eq!(output.status.code(), Some(75), "{}", said(&output));
+    assert!(!machine.path("ran").exists(), "the job ran beside another");
+    assert!(
+        said(&output).contains("not started, having waited as long as it was let"),
+        "{}",
+        said(&output)
+    );
+}
+
+#[test]
+fn a_night_job_that_waited_still_starts_only_on_a_quiet_machine() {
+    let machine = Machine::new();
+    let held = machine.hold_the_turn();
+    let waiting = machine
+        .command("--wait-at-most 10 --start-under 3", "echo ran > ran")
+        .spawn()
+        .unwrap();
+    thread::sleep(Duration::from_millis(300));
+    machine.set("proc/pressure/memory", 0.0, 3.5);
+    drop(held);
+    let output = waiting.wait_with_output().unwrap();
+    assert!(output.status.success(), "{}", said(&output));
+    assert!(
+        !machine.path("ran").exists(),
+        "the job ran on a busy machine"
+    );
+    assert!(
+        said(&output).contains("not started: memory full avg60 is 3.50%"),
         "{}",
         said(&output)
     );

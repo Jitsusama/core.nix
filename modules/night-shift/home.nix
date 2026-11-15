@@ -72,6 +72,10 @@ let
         "--rests"
         (number job.restsHours)
       ]
+      ++ lib.optionals (job.waitsAtMost != null) [
+        "--wait-at-most"
+        (number job.waitsAtMost)
+      ]
       ++ lib.optionals (job.memoryHigh != null) [
         "--memory-high"
         job.memoryHigh
@@ -147,6 +151,17 @@ let
         type = lib.types.number;
         default = 12;
       };
+      waitsAtMost = lib.mkOption {
+        description = ''
+          How long a try waits for the turn another heavy job holds, in
+          seconds, rather than leaving at once; it starts once the turn is
+          free and the machine quiet. A try that waits this long leaves
+          with 75, which its unit counts a success, and the next try comes
+          as the timer says. The wait counts toward `longest`.
+        '';
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+      };
       longest = lib.mkOption {
         description = "How long one run may take before systemd stops it.";
         type = lib.types.str;
@@ -216,6 +231,9 @@ in
               IOWeight = 1;
               IOAccounting = true;
               RuntimeMaxSec = job.longest;
+              # A try that waited as long as it was let for the turn didn't
+              # fail; the next try comes as the timer says.
+              SuccessExitStatus = lib.mkIf (job.waitsAtMost != null) 75;
               # night-shift splits its cgroup, so the job's limits hold the job
               # and never the watcher beside it.
               Delegate = "memory io";

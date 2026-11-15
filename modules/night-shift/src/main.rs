@@ -35,6 +35,14 @@
 //! which waits for it rather than leaving the turn (src/turn.rs says how),
 //! so a night job tried meanwhile leaves it to a later try.
 //!
+//! Unless the night job waits too: with `--wait-at-most`, `run` waits for
+//! the turn as `turn` does, looking each second, and only then reads the
+//! machine's pressure, so it starts on what the machine is once its turn
+//! comes. Heavy jobs by day take the turn again within a second of its
+//! release, so a night job that tries once can lose every try of a busy
+//! night. A run that waited as long as it was let ends 75, as `turn`
+//! does, so its unit can say a later try goes on.
+//!
 //! Its help, its failures and its exits take the terminal kit's shape
 //! (src/commands.rs); a failed job's run ends with the job's own code.
 
@@ -64,6 +72,7 @@ struct Job {
     stops: Vec<(String, f64)>,
     stop_machine: f64,
     rests: Duration,
+    wait_at_most: Option<Duration>,
     every: Duration,
     grace: Duration,
     limits: Limits,
@@ -99,6 +108,7 @@ fn parse(args: &[String]) -> Result<Job, String> {
         stops: Vec::new(),
         stop_machine: 25.0,
         rests: Duration::from_hours(12),
+        wait_at_most: None,
         every: Duration::from_secs(5),
         grace: Duration::from_secs(60),
         limits: Limits::default(),
@@ -119,6 +129,9 @@ fn parse(args: &[String]) -> Result<Job, String> {
             "--start-under" => job.start_under = number(value)?,
             "--stop-machine" => job.stop_machine = number(value)?,
             "--rests" => job.rests = Duration::from_secs_f64(number(value)? * 3600.0),
+            "--wait-at-most" => {
+                job.wait_at_most = Some(Duration::from_secs_f64(number(value)?));
+            }
             "--every" => job.every = Duration::from_secs_f64(number(value)?),
             "--grace" => job.grace = Duration::from_secs_f64(number(value)?),
             "--stop" => {
@@ -296,21 +309,52 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
     // Held until this process ends, however it ends.
     let lock = File::create(places.runtime.join("lock"))
         .map_err(|error| failed(job, "can't open the lock").because(error.to_string()))?;
-    match lock.try_lock() {
-        Ok(()) => turn::note(&places.runtime, &job.name),
-        Err(TryLockError::WouldBlock) => {
-            say(
-                job,
-                &format!(
-                    "not started: another heavy job is running, {}, and only one runs at a time; a later try goes on",
-                    turn::holder(&places.runtime)
-                ),
-            );
-            return Ok(None);
+    let began = Instant::now();
+    let mut told: Option<String> = None;
+    loop {
+        match lock.try_lock() {
+            Ok(()) => break,
+            Err(TryLockError::WouldBlock) => {
+                let who = turn::holder(&places.runtime);
+                let Some(most) = job.wait_at_most else {
+                    say(
+                        job,
+                        &format!(
+                            "not started: another heavy job is running, {who}, and only one runs at a time; a later try goes on"
+                        ),
+                    );
+                    return Ok(None);
+                };
+                if told.as_ref() != Some(&who) {
+                    say(job, &format!("waiting for the turn, which {who} has"));
+                    told = Some(who);
+                }
+                if began.elapsed() >= most {
+                    return Err(Failure::new(
+                        Exit::TryAgain,
+                        format!(
+                            "night-shift {}: not started, having waited as long as it was let",
+                            job.name
+                        ),
+                    )
+                    .because("another heavy job still has the turn; a later try goes on"));
+                }
+                thread::sleep(turn::LOOK_EVERY);
+            }
+            Err(TryLockError::Error(error)) => {
+                return Err(failed(job, "can't take the lock").because(error.to_string()));
+            }
         }
-        Err(TryLockError::Error(error)) => {
-            return Err(failed(job, "can't take the lock").because(error.to_string()));
-        }
+    }
+    turn::note(&places.runtime, &job.name);
+    if told.is_some() {
+        say(
+            job,
+            &format!(
+                "has the turn after {} s of waiting",
+                began.elapsed().as_secs()
+            ),
+        );
     }
 
     let now = pressure::read(&Places::of_this_machine().machine()).unwrap_or_default();

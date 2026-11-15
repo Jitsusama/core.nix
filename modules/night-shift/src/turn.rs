@@ -27,7 +27,7 @@ use terminal_kit::{Exit, Failure};
 
 /// How often a waiting job looks whether the turn is free: a heavy job
 /// runs minutes, so a second's lateness taking it costs nothing.
-const LOOK_EVERY: Duration = Duration::from_secs(1);
+pub const LOOK_EVERY: Duration = Duration::from_secs(1);
 
 /// One heavy job asking for the turn, as its arguments give it.
 #[derive(Debug, PartialEq)]
