@@ -844,16 +844,19 @@ def descended(shell: Shell, since: int) -> list[Json]:
 
     It goes off the top with the workspace it leaves, never off the bottom, and its way drops
     across the gap to grab a top's corner below (MarginCatStacked.js; Joel, 2026-11-14 17:30,
-    "drop down and grab with its claws on the top of the window below").
+    "drop down and grab with its claws on the top of the window below"), or lands on a top
+    with no corner in its reach (VKCF3Z fcd95edd), never on the floor through a window. Which
+    it takes is held in Qt's engine; here, niri centres the window alone below, so no corner
+    is within a width of a side above, and it lands (2026-11-15).
     """
     took = moved(shell, since)
     assert took, "the cat never said a step of its move down"
     beats = took[-1]["move"]["beats"]
     assert "drops" in beats, f"its way down was {beats}"
-    assert beats[beats.index("drops") + 1] == "grabs", f"its way down was {beats}"
+    assert beats[beats.index("drops") + 1] in {"grabs", "lands"}, f"its way down was {beats}"
     assert any(step["y"] + step["size"] <= 0 for step in took), f"it never went up: {took[:3]}"
-    under = [step for step in took if step["y"] + step["size"] > step["reach"]]
-    assert not under, f"it went off the screen's bottom: {under[:3]}"
+    under = [step for step in took if step["y"] + step["size"] >= step["reach"]]
+    assert not under, f"it went down to the floor or off the bottom: {under[:3]}"
     assert {step["move"]["way"] for step in took} == {1}, f"it moved {took[:3]}"
     return took
 
