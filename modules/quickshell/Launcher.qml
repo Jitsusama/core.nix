@@ -88,6 +88,7 @@ import "launcher/KeysHeld.js" as KeysHeld
 import "launcher/Awaited.js" as Awaited
 import "launcher/RowsPlace.js" as RowsPlace
 import "launcher/Reached.js" as Reached
+import "launcher/Headings.js" as Headings
 
 Scope {
     id: root
@@ -3386,7 +3387,8 @@ Scope {
     // The same rows listed lately are that list again, as a backspace back
     // to a place's whole list lists them, so what was worked out over every
     // one of them is kept (RowsKept.lately).
-    function listedAs(rows) {
+    function listedAs(given) {
+        const rows = unheaded(given);
         const again = RowsKept.again(listedLately, rows, matches);
         if (again !== rows)
             listedAgain += 1;
@@ -3424,6 +3426,10 @@ Scope {
     property int keysWeighing: 0
 
     onMatchesChanged: {
+        // Rows that came put a heading where the selection is: it rests on
+        // the row under it.
+        if (Headings.isHeading(matches[current]))
+            current = Headings.off(matches, current, current);
         // The selection's start keeps to the row it began on, as the
         // cursor does (compose's Rank.pinned), so rows arriving above it
         // never move what d would take from what's tinted.
@@ -4121,12 +4127,18 @@ Scope {
         const shown = commanding !== null ? commandRows : list;
         const from = shown.contentY;
         const placed = [];
+        // Rows alone are numbered, and counted, past the headings among
+        // them (Headings.js).
+        const headings = shown === list ? headingsAt : [];
         for (let at = Math.max(0, shown.indexAt(shown.width / 2, from));
             at < shown.count && placed.length < rowsGutter.slots; at += 1) {
             const entry = shown.itemAtIndex(at);
             if (!entry || entry.y - from >= shown.height)
                 break;
-            placed.push({ at, base: shown.y + entry.y - from + entry.nameBaseline });
+            if (headings.length > 0 && Headings.isHeading(matches[at]))
+                continue;
+            placed.push({ at: headings.length > 0 ? Headings.rank(headings, at) : at,
+                base: shown.y + entry.y - from + entry.nameBaseline });
         }
         rowsGutter.rows = placed;
     }
@@ -4523,7 +4535,7 @@ Scope {
         }
         if (read.go !== undefined) {
             const last = matches.length - 1;
-            arrowed(read.go === "$" ? last : Math.max(0, Math.min(read.go - 1, last)), ":");
+            arrowed(read.go === "$" ? last : Headings.nth(headingsAt, read.go, last), ":");
             return;
         }
         const entry = read.entry;
@@ -5823,6 +5835,12 @@ Scope {
 
     property string typed: ""
     property var matches: []
+    // Where the rows' headings stand, which name the rows under them and
+    // are never a row (Headings.js): none, for nearly every list.
+    readonly property var headingsAt: Headings.at(matches)
+    // Where the selection was, which it leaves a heading the way it went
+    // from.
+    property int currentWas: 0
     // How many more a held place's daemon found for what's typed than it
     // listed, as the notices list 60 of the 971 Joel's "s" finds
     // (modules/notices' search.rs), so the field says so rather than
@@ -6047,7 +6065,7 @@ Scope {
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
             if (steadying) {
-                matches = live(ordering ? found : steadied(found));
+                matches = unheaded(live(ordering ? found : steadied(found)));
                 if (current === -1 && !lined)
                     current = 0;
                 return;
@@ -7020,6 +7038,13 @@ Scope {
     property int searched: 0
 
     onCurrentChanged: {
+        // Never on a heading, whichever key or refresh put it there: past
+        // it the way it went, as a move counting rows alone goes.
+        if (Headings.isHeading(matches[current])) {
+            current = Headings.off(matches, current, currentWas);
+            return;
+        }
+        currentWas = current;
         list.pick();
         if (current >= 0)
             list.reveal(current);
@@ -8338,6 +8363,23 @@ Scope {
     // the hairline, the rows' bands, the hairline and the status line, now
     // its Title is the line's size (VKCF3Z, 2026-11-06).
     readonly property real headTall: rowTall
+    // A heading's line, the row's face at the note's size (Choice.qml's
+    // heading).
+    readonly property real headingTall: Math.ceil(headingFace.height)
+    // How tall a row stands in the list: its band, with a gap above one
+    // that has one; a heading its line alone, with the groups' rung above
+    // it but for the list's first, which stands where the list starts
+    // (VKCF3Z, 2026-11-15 [90904822]).
+    function tallOf(row, at) {
+        if (Headings.isHeading(row))
+            return (at === 0 ? 0 : Theme.space.rung.groups) + headingTall;
+        return rowTall + (row?.gap ? apart : 0);
+    }
+    // The rows as a search shows them: its ranking mixes the groups, so
+    // none is headed (Headings.js).
+    function unheaded(rows) {
+        return typed === "" ? rows : Headings.without(rows);
+    }
     // How tall a row's capitals stand, which its ground is set round.
     readonly property real rowCaps: nameCaps.tightBoundingRect.height
     // Where the foot's baseline stands under its hairline: its capitals
@@ -11364,6 +11406,13 @@ Scope {
                 }
 
                 TextMetrics {
+                    id: headingFace
+                    text: "H"
+                    font.family: Theme.level.name.family
+                    font.pointSize: Theme.level.note.pointSize
+                }
+
+                TextMetrics {
                     id: footCaps
                     text: "H"
                     font.family: Theme.level.note.family
@@ -11782,7 +11831,7 @@ Scope {
                                 return;
                             }
                             const view = list.inView();
-                            const to = Operators.moved(act, count, {
+                            const to = Headings.moved(act, count, {
                                 at: root.current,
                                 highest,
                                 last: root.matches.length - 1,
@@ -11790,7 +11839,7 @@ Scope {
                                 bottom: view.bottom,
                                 screen: root.rows,
                                 runOf: at => root.runOf(at)
-                            });
+                            }, root.headingsAt);
                             if (act === "halfDown" || act === "halfUp")
                                 list.scrollRows(to - root.current);
                             // Timed under the arrows' names, as they were
@@ -12031,8 +12080,9 @@ Scope {
                             slots: Math.ceil(height / root.rowTall) + 1
                             // On the : line, its menu's chosen line, which
                             // its numbers count as the rows' are counted.
-                            current: root.commanding !== null
-                                ? commandRows.chosen : root.current
+                            current: root.commanding !== null ? commandRows.chosen
+                                : root.headingsAt.length > 0
+                                ? Headings.rank(root.headingsAt, root.current) : root.current
                             relative: root.numbersCounted
                             digits: root.gutterDigits
                             // On the : line, as many as its lines need.
@@ -12293,12 +12343,12 @@ Scope {
                             function rowTop(at) {
                                 let top = 0;
                                 for (let each = 0; each < at && each < root.matches.length; each += 1)
-                                    top += root.rowTall + (root.matches[each].gap ? root.apart : 0);
+                                    top += root.tallOf(root.matches[each], each);
                                 return top;
                             }
 
                             function rowHeight(at) {
-                                return root.rowTall + (root.matches[at]?.gap ? root.apart : 0);
+                                return root.tallOf(root.matches[at], at);
                             }
 
                             // Where a row's name has its baseline, down
@@ -12359,6 +12409,14 @@ Scope {
                             // Where the list stands to show a row, from
                             // where it stands, moving as little as it can.
                             function showing(at, from) {
+                                if (root.headingsAt.length > 0)
+                                    return list.clamped(Headings.showing(at, from, {
+                                        height: list.height,
+                                        count: root.matches.length,
+                                        top: one => list.rowY(one),
+                                        tall: one => list.rowHeight(one),
+                                        heading: one => Headings.isHeading(root.matches[one])
+                                    }));
                                 const top = list.rowY(at);
                                 const bottom = top + list.rowHeight(at);
                                 return list.clamped(top < from ? top
@@ -12469,7 +12527,7 @@ Scope {
                                     : "act"
 
                                 width: list.width
-                                height: root.rowTall + (modelData.gap ? root.apart : 0)
+                                height: root.tallOf(modelData, entry.index)
 
                                 // Its name's baseline, down from its top.
                                 readonly property real nameBaseline: choice.y
@@ -12502,6 +12560,7 @@ Scope {
                                     // to, as a session under its
                                     // orchestrator (Agents.qml).
                                     depth: entry.modelData.depth ?? 0
+                                    heading: entry.modelData.heading === true
                                     sort: entry.sort
                                     graph: entry.modelData.graph ?? null
                                     warns: !!entry.modelData.warns

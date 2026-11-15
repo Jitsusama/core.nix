@@ -570,6 +570,9 @@ Scope {
             key: row.thing ?? key,
             thing: !!row.drawer,
             name: row.name ?? "",
+            // A heading names the rows under it and is never one: no move
+            // rests on it, and a search shows none (launcher/Headings.js).
+            heading: row.kind === "heading",
             // Made its characters once, here (ReadyRows.js's glyphOf).
             glyph: Ready.glyphOf(row.glyph ?? "", Theme.glyph),
             hue: row.hue ?? "",
