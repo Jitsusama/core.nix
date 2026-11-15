@@ -1,0 +1,186 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Let an uncached picture's image go once it is a texture
+
+An Image read with cache: false is read for that Image alone, yet its
+texture factory kept the file's pixels for as long as it was shown,
+beside the texture made of them: a full-screen wallpaper of 2880 by
+1800 pixels held 20 MB of memory it never read again. Once such a
+picture's factory has made a texture it now lets the image go, keeping
+only how it was read, and reads the file again, as it was, for another
+texture or anyone asking for the image, as when a window is made again
+for another screen. QSG_TRANSIENT_IMAGES lets every image go, and a
+cached picture shown in a second window then draws nothing, so only an
+uncached picture from a local file read by Qt's own reader lets go.
+
+---
+--- a/src/quick/util/qquickpixmap_p.h
++++ b/src/quick/util/qquickpixmap_p.h
+@@ -39,11 +39,21 @@
+     QSGTexture *createTexture(QQuickWindow *window) const override;
+     QSize textureSize() const override { return size; }
+     int textureByteCount() const override { return size.width() * size.height() * 4; }
+-    QImage image() const override { return im; }
++    QImage image() const override;
++
++    // Lets go of the image once a texture is made of it, for a picture read
++    // uncached from a file, which nothing else shares: the texture holds it,
++    // and the file is read again, as it was, should another be asked for.
++    void letGo(const QUrl &url, const QRect &region, const QSize &requested,
++               const QQuickImageProviderOptions &options, int frame, qreal ratio);
+ 
+ private:
++    struct Reading;
++    QImage readAgain() const;
++
+     QImage im;
+     QSize size;
++    std::shared_ptr<const Reading> reading;
+ };
+ 
+ class QQuickImageProviderPrivate
+--- a/src/quick/util/qquickpixmapcache.cpp
++++ b/src/quick/util/qquickpixmapcache.cpp
+@@ -115,7 +115,8 @@
+     return url.toString(QUrl::RemoveScheme | QUrl::RemoveAuthority).mid(1);
+ }
+ 
+-QQuickDefaultTextureFactory::QQuickDefaultTextureFactory(const QImage &image)
++// The image in a format a texture is made of as it is.
++static QImage drawable(const QImage &image)
+ {
+     if (image.format() == QImage::Format_ARGB32_Premultiplied ||
+         image.format() == QImage::Format_RGB32 ||
+@@ -125,19 +126,26 @@
+         image.format() == QImage::Format_RGBA32FPx4_Premultiplied ||
+         image.format() == QImage::Format_RGBA32FPx4 ||
+         image.format() == QImage::Format_RGBX32FPx4) {
+-        im = image;
+-    } else {
+-        im = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
++        return image;
+     }
++    return image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
++}
++
++QQuickDefaultTextureFactory::QQuickDefaultTextureFactory(const QImage &image)
++    : im(drawable(image))
++{
+     size = im.size();
+ }
+ 
+ 
+ QSGTexture *QQuickDefaultTextureFactory::createTexture(QQuickWindow *window) const
+ {
+-    QSGTexture *t = window->createTextureFromImage(im, QQuickWindow::TextureCanUseAtlas);
++    // A picture let go of is read again for each texture after its first,
++    // as when its window is made anew for another screen.
++    const QImage image = im.isNull() && reading ? readAgain() : im;
++    QSGTexture *t = window->createTextureFromImage(image, QQuickWindow::TextureCanUseAtlas);
+     static bool transient = qEnvironmentVariableIsSet("QSG_TRANSIENT_IMAGES");
+-    if (transient)
++    if (transient || reading)
+         const_cast<QQuickDefaultTextureFactory *>(this)->im = QImage();
+     return t;
+ }
+@@ -407,10 +415,23 @@
+     bool storeToCache;
+ #endif
+ 
++    // Read uncached from a file, so its texture factory is the only one
++    // holding its image, which it lets go of once it's made a texture.
++    bool letsGoOfItsImage = false;
++    void letGoOfItsImage();
++
+ private:
+     Q_DISABLE_COPY(QQuickPixmapData)
+ };
+ 
++void QQuickPixmapData::letGoOfItsImage()
++{
++    if (QQmlFile::urlToLocalFileOrQrc(url).isEmpty())
++        return;
++    if (auto *factory = qobject_cast<QQuickDefaultTextureFactory *>(textureFactory))
++        factory->letGo(url, requestRegion, requestSize, providerOptions, frame, devicePixelRatio);
++}
++
+ int QQuickPixmapReply::finishedMethodIndex = -1;
+ int QQuickPixmapReply::downloadProgressMethodIndex = -1;
+ 
+@@ -593,6 +614,50 @@
+     return localFile;
+ }
+ 
++QImage QQuickDefaultTextureFactory::image() const
++{
++    return im.isNull() && reading ? readAgain() : im;
++}
++
++// What a picture let go of was first read with, to read it again the same.
++struct QQuickDefaultTextureFactory::Reading
++{
++    QUrl url;
++    QRect region;
++    QSize requested;
++    QQuickImageProviderOptions options;
++    int frame;
++    qreal ratio;
++};
++
++void QQuickDefaultTextureFactory::letGo(const QUrl &url, const QRect &region, const QSize &requested,
++                                        const QQuickImageProviderOptions &options, int frame,
++                                        qreal ratio)
++{
++    reading = std::make_shared<const Reading>(
++        Reading { url, region, requested, options, frame, ratio });
++}
++
++// The picture read again from its file with what it was first read with,
++// or none where it can't be.
++QImage QQuickDefaultTextureFactory::readAgain() const
++{
++    QFile f(existingImageFileForPath(QQmlFile::urlToLocalFileOrQrc(reading->url)));
++    QImage image;
++    QString errorString;
++    QSize read;
++    int frameCount = 0;
++    if (!f.open(QIODevice::ReadOnly)
++        || !readImage(reading->url, &f, &image, &errorString, &read, &frameCount,
++                      reading->region, reading->requested, reading->options, nullptr,
++                      reading->frame, reading->ratio)) {
++        qWarning().noquote() << "Cannot read" << reading->url.toString() << "again:"
++                             << errorString;
++        return QImage();
++    }
++    return drawable(image);
++}
++
+ QQuickPixmapReader::QQuickPixmapReader(QQmlEngine *eng)
+ : QThread(eng), engine(eng)
+ #if QT_CONFIG(qml_network)
+@@ -1448,6 +1513,8 @@
+                 data->textureFactory = de->textureFactory;
+                 de->textureFactory = nullptr;
+                 data->implicitSize = de->implicitSize;
++                if (data->letsGoOfItsImage)
++                    data->letGoOfItsImage();
+                 PIXMAP_PROFILE(pixmapLoadingFinished(data->url,
+                         data->textureFactory != nullptr && data->textureFactory->textureSize().isValid() ?
+                         data->textureFactory->textureSize() :
+@@ -1950,6 +2017,8 @@
+                 PIXMAP_PROFILE(pixmapLoadingFinished(url, QSize(width(), height())));
+                 if (options & QQuickPixmap::Cache)
+                     d->addToCache();
++                else
++                    d->letGoOfItsImage();
+ #ifdef Q_OS_WEBOS
+                 d->storeToCache = orgOptions & QQuickPixmap::Cache;
+ #endif
+@@ -1966,6 +2035,8 @@
+                                  frameCount, devicePixelRatio);
+         if (options & QQuickPixmap::Cache)
+             d->addToCache();
++        else
++            d->letsGoOfItsImage = true;
+ #ifdef Q_OS_WEBOS
+         d->storeToCache = orgOptions & QQuickPixmap::Cache;
+ #endif
