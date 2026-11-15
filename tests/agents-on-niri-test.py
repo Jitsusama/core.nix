@@ -1559,7 +1559,7 @@ def test_networks_never_rests_with_a_row_or_a_heading_cut(shell: Shell) -> None:
     """Where Networks' rows overflow the card, each step leaves no row or heading cut.
 
     A view rests on a row's top and draws only what's wholly in it, a heading only with its
-    first row (VKCF3Z, c09d8222).
+    first row (VKCF3Z, c09d8222), and the gutter numbers only the rows it draws.
     """
     opened(shell)
     shell.down_to("Networks")
@@ -1571,7 +1571,10 @@ def test_networks_never_rests_with_a_row_or_a_heading_cut(shell: Shell) -> None:
 
         def rested(shown: Json, name: str = name) -> bool:
             return bool(
-                shown["selected"]["name"] == name and shown["cut"] == [] and shown["restsOnARow"]
+                shown["selected"]["name"] == name
+                and shown["cut"] == []
+                and shown["restsOnARow"]
+                and len(shown["gutter"]["numbers"]) == shown["drawnRows"]
             )
 
         shell.send_chars(key)

@@ -8608,6 +8608,7 @@ Scope {
             // whether the view starts where a row does.
             cut: list.cut(),
             restsOnARow: list.restsOnARow(),
+            drawnRows: list.drawnRows(),
             // How wide its caret is drawn, and whether it's drawn: not in
             // normal. How lit it is as it blinks isn't said, since this is
             // said on every change.
@@ -12565,6 +12566,23 @@ Scope {
                                         cuts.push(at);
                                 }
                                 return cuts;
+                            }
+
+                            // How many rows, headings aside, are drawn in
+                            // the view, as many as the gutter numbers.
+                            function drawnRows() {
+                                const from = list.contentY;
+                                let drawn = 0;
+                                for (let at = 0; at < root.matches.length; at += 1) {
+                                    const entry = list.itemAtIndex(at);
+                                    if (entry === null || entry.opacity === 0
+                                        || Headings.isHeading(root.matches[at]))
+                                        continue;
+                                    if (entry.y + entry.height > from + 0.5
+                                        && entry.y < from + list.height - 0.5)
+                                        drawn += 1;
+                                }
+                                return drawn;
                             }
 
                             // Whether the view starts where a row does, with
