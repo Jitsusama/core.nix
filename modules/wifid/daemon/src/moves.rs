@@ -435,7 +435,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let learned = Learned::kept_in(&dir.path().join("carried"));
         let (lately, now) = (Measures::default(), Instant::now());
-        let around = [heard(DESK, -50), heard(HALL, -50)];
+        let on_5_ghz = |bssid| Heard {
+            frequency: 5260,
+            ..heard(bssid, -50)
+        };
+        let around = [on_5_ghz(DESK), on_5_ghz(HALL)];
         let known = known(&lately, &learned, now, 20);
 
         let to = chosen(

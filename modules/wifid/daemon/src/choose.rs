@@ -11,11 +11,15 @@
 //! to the gateway but carries far less.
 //! wpa_supplicant still roams on its own when the signal fades; this
 //! moves the card only between access points it can already hear, and
-//! has one carrying badly that hears no other look, as often as it moves.
+//! has it look for what it doesn't, as often as it moves: another of its
+//! network when it carries badly, or one on a wider band from 2.4 GHz.
 //!
 //! The figures to beat are a desk's on 14 Nov 2026, one access point's
 //! two radios at 4 dB apart: the gateway's p95 was 15 ms on one and
 //! 119 ms on the other, with 2% and 31% of ten-second spells over 150 ms.
+//!
+//! Long because its cases, near two thirds of it, stay beside the private
+//! rules they prove one by one, as every module in wifid keeps them.
 
 use std::collections::HashMap;
 
