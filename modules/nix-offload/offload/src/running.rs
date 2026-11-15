@@ -197,7 +197,6 @@ fn alone_saying(
     every: Duration,
     say: &mut dyn FnMut(String),
 ) -> Alone {
-    let _ = waits;
     let twins = state.join("nix-offload/twins");
     let work = stable_digest(&[
         at.folder.as_os_str().as_encoded_bytes(),
@@ -235,6 +234,14 @@ fn alone_saying(
         )
     };
     let commit = at.commit.get(..12).unwrap_or(at.commit);
+    if !waits {
+        say(format!(
+            "nix-offload: {} already runs these changed-checks in this tree at {commit}, and \
+             --never-ask waits for nothing, so this ends; stop that one to go on",
+            going()
+        ));
+        return Alone::Busy;
+    }
     say(format!(
         "nix-offload: {} already runs these changed-checks in this tree at {commit}, so this \
          waits for it to end and then reads what it passed",

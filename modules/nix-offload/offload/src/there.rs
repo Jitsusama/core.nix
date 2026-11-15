@@ -42,6 +42,8 @@
 //! stands, and never ask the lender for one, for a run not worth a
 //! builder of its own, as keeping main's checks ahead isn't: asked at
 //! 00:11 on 6 November, through a tunnel gone dead, it asked for one.
+//! Nor does it wait on the same changed-checks run going in its tree: it
+//! ends at once as one no builder took (`running.rs`).
 //! `there --takes` says which of these it takes, a word a line.
 //!
 //! Derivations, given by their paths in place of a flake and its
