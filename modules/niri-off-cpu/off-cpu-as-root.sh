@@ -21,8 +21,7 @@ EXAMPLES
 
 EXIT
   0   traced until stopped
-  1   no niri session runs as the account, or the trace
-      couldn't start
+  1   no such account, or no niri session runs as it
   64  asked wrongly
 EOF
   exit 0

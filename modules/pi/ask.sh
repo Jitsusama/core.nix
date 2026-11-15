@@ -39,8 +39,9 @@ pi-ask  pi for the launcher's Ask row
 
   The launcher speaks pi's RPC protocol over its stdin and
   stdout: a quick question and a short answer each. It
-  loads only the machine's extensions and the digest of
-  what's true on it. Every other word is pi's, as pi --help
+  loads only the extensions the machine names, the digest
+  of what's true on it and, where there's a launcher, the
+  launcher's tool. Every other word is pi's, as pi --help
   says.
 
 EXAMPLES

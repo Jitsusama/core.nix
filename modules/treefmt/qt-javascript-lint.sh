@@ -16,7 +16,8 @@ qt-javascript-lint  lint the JavaScript QML imports
 
   Each file is read as the module its .pragma and .import
   lines mean, and biome holds it to biome.jsonc in the
-  folder it's run in. nix fmt runs it on every .js file.
+  folder it's run in. Each file is a path below that
+  folder. nix fmt runs it on every .js file.
 
 EXAMPLES
   qt-javascript-lint modules/quickshell/Fuzzy.js
