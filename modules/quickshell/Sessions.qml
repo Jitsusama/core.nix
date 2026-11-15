@@ -1186,6 +1186,15 @@ Singleton {
     // then.
     readonly property int reopenPace: 2000
     property real reopenStartedAt: 0
+    // Counts the pace from now, and reports how long after the last this
+    // one was begun, by the shell's own clock: the journal stamps each line
+    // as it reads it, and on 15 November stamped two begun by this pace
+    // 0.98 s apart, the first after the window kitty opened for it.
+    function paceFromNow(id) {
+        const now = Date.now();
+        Report.say(`began ${id} ${now - reopenStartedAt} ms after the last`);
+        reopenStartedAt = now;
+    }
     // And none is begun while the machine queue says the machine has no
     // room (Places.mayBegin), looked at again this often, since eighty
     // sessions begun two seconds apart still swamped it after a boot.
@@ -1717,7 +1726,7 @@ Singleton {
                 waits ? "" : next.told, into);
             if (waits)
                 root.carryOnLater(next.one, next.kept);
-            reopenStartedAt = Date.now();
+            paceFromNow(next.one.id);
             reopenPatience.restart();
         });
     }
@@ -1769,7 +1778,7 @@ Singleton {
             quest: next.one.quest ?? "", from: next.one.from ?? "", id,
             orchestratedBy: next.one.orchestratedBy ?? "" };
         view(session, into);
-        reopenStartedAt = Date.now();
+        paceFromNow(id);
         reopenPatience.restart();
     }
     // One parked here, in its holder or in pi's host, which Reopen Them All

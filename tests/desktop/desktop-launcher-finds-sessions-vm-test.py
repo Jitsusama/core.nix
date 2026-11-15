@@ -32,7 +32,6 @@ from desktop_session import (
     lighthouse_listed,
     listed_quest,
     quests_listed,
-    started_apart,
     watch_the_focus,
     window_box,
 )
@@ -44,10 +43,8 @@ if TYPE_CHECKING:
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
-# How late, in seconds, the journal may stamp a line of the shell's on a busy machine: a
-# quarter of a second, since a builder running other VM tests beside it once stamped one
-# 0.11 s late (9 November), while starts the shell didn't pace would come together.
-JOURNAL_LAG = 0.25
+# How long after the last Reopen Them All begins each session, at the least.
+REOPEN_PACE_MS = 2000
 # Where a spawn's frames are recorded, and what the recorder says, and the frames taken out.
 RECORDING = "/run/user/1000/spawn.mkv"
 RECORDED = "/run/user/1000/spawn.log"
@@ -1468,13 +1465,17 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
         )
         desktop.launcher_until(lambda shown: not shown["open"])
         # Each began two seconds or more after the one before, so they don't
-        # all start at once. The shell paces them by its own clock, and the
-        # journal stamps each line as it reads it, late on a busy machine: one
-        # read late once made a gap of 1.89 s between two the shell began 2 s
+        # all start at once, as the shell's own clock says it: the journal
+        # stamps each line as it reads it, up to a second late on a busy
+        # machine, which once stamped two the shell began 2 s apart 0.98 s
         # apart.
-        began = started_apart(desktop, since, "report[resumed session 01c3-")
+        said = desktop.as_account(
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            f" --after-cursor={shlex.quote(since)}"
+        )
+        began = [int(ms) for ms in re.findall(r"report\[began 01c3-\S+ (\d+) ms after", said)]
         assert len(began) == len(where), began
-        assert all(gap >= 2 - JOURNAL_LAG for gap in began[1:]), began
+        assert all(ms >= REOPEN_PACE_MS for ms in began[1:]), began
         back = sat(desktop, "01c3-")
         # Each workspace's sessions go back together, in order, on a workspace
         # of their own: by who sits with whom, never by the number a workspace
