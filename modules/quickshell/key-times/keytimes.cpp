@@ -49,6 +49,10 @@ double KeyTimes::pressed() const { return handling; }
 
 double KeyTimes::now() const { return monotonicNow(); }
 
+double KeyTimes::ran() const { return 0; }
+
+double KeyTimes::waited() const { return 0; }
+
 bool KeyTimes::eventFilter(QObject *watched, QEvent *event) {
     const auto type = event->type();
     if (type == QEvent::KeyPress || type == QEvent::MouseButtonPress) {

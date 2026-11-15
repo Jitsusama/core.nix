@@ -25,6 +25,16 @@ public:
     // The monotonic clock now, in milliseconds.
     Q_INVOKABLE double now() const;
 
+    // How many milliseconds the calling thread has run on a CPU, and how
+    // many it has waited for one while it could have run, since it began,
+    // so an opening's stall says what of it was the shell's thread at work,
+    // what was the machine's other work ahead of it, and what was the
+    // thread asleep: Joel's journal called a mean 39 ms of each opening's
+    // longest stall unnamed, beside bursts of other programs starting
+    // (2026-11-15). `waited` is 0 where the kernel keeps no schedstat.
+    Q_INVOKABLE double ran() const;
+    Q_INVOKABLE double waited() const;
+
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
