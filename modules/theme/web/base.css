@@ -15,6 +15,9 @@
      theme's edge, drawn for windows, doesn't. */
   --field: color-mix(in srgb, var(--muted) 70%, var(--background));
   --ring: 2px;
+  /* The least a target may be, for a pointer and a finger alike (WCAG
+     2.5.5, AAA), reached by padding what it hits rather than its type. */
+  --target: 44px;
   /* The theme's spring (stiffness 1600, critically damped), sampled for a
      transition of 200ms: it settles without a wobble. */
   --spring: linear(
@@ -335,6 +338,47 @@ td {
   content: "\2039\00a0";
 }
 
+/* Its links are a whole target tall, padded above and below and given
+   back by as much margin, so they reach the least target while the strip
+   stays one quiet line. */
+.sites-strip > a {
+  --reach: max(0px, calc((var(--target) - 1lh) / 2));
+  display: inline-block;
+  padding-block: var(--reach);
+  margin-block: calc(var(--reach) * -1);
+}
+
+/* The skip link, the first thing focus reaches: out of sight above the
+   page until then, it drops into the top centre as a label, a whole target
+   tall, and goes back once focus moves on. One for every site, so none
+   draws its own. */
+.skip {
+  position: fixed;
+  z-index: 10;
+  inset-block-start: var(--items);
+  inset-inline-start: 50%;
+  translate: -50% calc(-100% - var(--frames));
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--target);
+  padding-inline: var(--inset);
+  color: var(--strong);
+  background: var(--sunken);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features), "case";
+  font-size: var(--step-small);
+  letter-spacing: var(--label-tracking);
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: translate var(--arrive) var(--ease);
+}
+
+.skip:focus-visible {
+  translate: -50% 0;
+}
+
 .sites-strip > .asks {
   color: var(--strong);
   white-space: normal;
@@ -409,14 +453,17 @@ video {
   white-space: nowrap;
 }
 
-/* A target a finger can hit, where the pointer is one. */
-@media (pointer: coarse) {
-  button,
-  summary,
-  input,
-  select {
-    min-block-size: 44px;
-  }
+/* Every control is a whole target, for a pointer as for a finger. A
+   checkbox's or a radio's target is its label, so the box keeps its size. A
+   summary reaches it by padding, so its words stay centred in the ring. */
+button,
+input:not([type="checkbox"], [type="radio"]),
+select {
+  min-block-size: var(--target);
+}
+
+summary {
+  padding-block: max(0px, calc((var(--target) - 1lh) / 2));
 }
 
 /* Less motion asked for: nothing moves, and every change lands at once. A

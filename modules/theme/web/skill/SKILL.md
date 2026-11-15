@@ -281,7 +281,8 @@ and `gate.js` finds each one missing before it's published (`checks.md`).
   alternate, and `llms.txt` at the root.
 - **The key line, the Keys list and the switch**, as omni-ref has them
   (above), with a skip link the first thing focus reaches and one `<h1>`,
-  the title.
+  the title. The skip link is the kit's, `<a class="skip" href="#main">`
+  from `base.css`, a whole target tall; a site never draws its own.
 
 An interface keeps every part but the figures, which its rows and charts
 replace.
