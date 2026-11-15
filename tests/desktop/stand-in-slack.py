@@ -146,6 +146,16 @@ class Watch:
     id: object
     kinds: set[str]
     places: set[str] | None = None
+    # A watch of these keys hears them alone, whatever their kind or place,
+    # as the daemon's does (daemon-serve's serve.rs, wants): the launcher's
+    # watch ahead names the rows beside the one drawn and no place.
+    keys: list[str] | None = None
+
+    def hears(self, key: str) -> bool:
+        """Say whether this watch is told of the record of `key`."""
+        if self.keys is not None:
+            return key in self.keys
+        return seen(self.kinds, self.places, key)
 
 
 @dataclass
@@ -312,10 +322,8 @@ def retell() -> None:
         stood = HELD.state
         HELD.state = state
         for watch in HELD.watches:
-            told = [
-                record for record in changed if seen(watch.kinds, watch.places, str(record["key"]))
-            ]
-            went = [key for key in gone if seen(watch.kinds, watch.places, key)]
+            told = [record for record in changed if watch.hears(str(record["key"]))]
+            went = [key for key in gone if watch.hears(key)]
             if told or went:
                 watch.line.say({"id": watch.id, "changed": told, "gone": went})
             if stood != state:
@@ -364,14 +372,26 @@ def watch(said: dict[str, object], line: Line) -> dict[str, object] | None:
     watched = kinds(said)
     if watched is None:
         return unknown(asked)
-    places = narrowed(said)
+    keyed = said.get("keys")
+    added = Watch(
+        line=line,
+        id=asked,
+        kinds=watched,
+        places=narrowed(said),
+        keys=[str(key) for key in keyed] if isinstance(keyed, list) else None,
+    )
     with HOLDING:
-        records = [record for key, record in HELD.records.items() if seen(watched, places, key)]
+        # Those of a watch of keys come in the keys' order, as the daemon's
+        # (daemon-serve's serve.rs, records_of).
+        if added.keys is not None:
+            records = [HELD.records[key] for key in added.keys if key in HELD.records]
+        else:
+            records = [record for key, record in HELD.records.items() if added.hears(key)]
         line.say({"id": asked, "records": records})
         HELD.watches = [
             each for each in HELD.watches if not (each.line is line and each.id == asked)
         ]
-        HELD.watches.append(Watch(line=line, id=asked, kinds=watched, places=places))
+        HELD.watches.append(added)
     return None
 
 
