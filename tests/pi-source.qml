@@ -123,6 +123,42 @@ QtObject {
                 && !("cost.usd" in said) && !("pi.quest" in said) && said.machine === "lantern",
             JSON.stringify(said));
 
+        // A change the node tells of re-places only the sessions it names:
+        // the rest keep their entries and records as the same objects, so
+        // whatever compares them in place stops at once, and what's sorted
+        // is what sorting everything again would say.
+        const now = held();
+        const kept = {};
+        const made = {};
+        const first = Pi.resorted(now, kept, Object.keys(now));
+        const firstRecords = Pi.sessions(first, "skiff", made);
+        now["session:s-busy"] = Object.assign({}, now["session:s-busy"], {
+            presence: presence("s-busy", "A001", { stepDetail: { kind: "tool", name: "edit" } }) });
+        delete now["session:s-done"];
+        now["session:s-new"] = { state: "idle", standing: "running", here: true,
+            at: "2026-11-08T01:00:00Z", presence: presence("s-new", "A010") };
+        const again = Pi.resorted(now, kept, ["session:s-busy", "session:s-done",
+            "session:s-new"]);
+        expect("what's re-placed by the keys heard sorts as everything sorted again",
+            Pi.alike(again, Pi.sorted(now)), `${JSON.stringify(again)} against ${
+                JSON.stringify(Pi.sorted(now))}`);
+        const entry = (sorting, id) => sorting.live.concat(sorting.resting, sorting.ending)
+            .find(one => one.file === id);
+        const untouched = ["s-asks", "s-away", "s-out", "s-nap"];
+        const placedAgain = untouched.filter(id => entry(again, id) !== entry(first, id));
+        expect("a session the change didn't name keeps its entry",
+            placedAgain.length === 0, placedAgain.join(" "));
+        const againRecords = Pi.sessions(again, "skiff", made);
+        const record = (records, id) => records.find(one => one["gen_ai.conversation.id"] === id);
+        const remade = untouched.filter(id =>
+            record(againRecords, id) !== record(firstRecords, id));
+        expect("a session the change didn't name keeps its record",
+            remade.length === 0, remade.join(" "));
+        expect("a session it named is said anew, and one gone is let go",
+            record(againRecords, "s-busy").step.name === "edit"
+                && record(againRecords, "s-new") !== undefined
+                && !("s-done" in made), JSON.stringify(Object.keys(made)));
+
         // What the node tells as a session works on: a step moving alone
         // carries no new digest of what's read shut, and anything more does.
         const stepped = { id: 2, changed: [{ key: "session:s-busy", step: "edit",

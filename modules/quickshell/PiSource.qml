@@ -83,8 +83,17 @@ Singleton {
             // back and sends it once the launcher shows them again.
             watching: root.showing ? ({}) : ({ when: ["told"] })
             changesDiffer: true
+            onHeard: (changed, gone) => root.hear(changed, gone)
             onTold: answer => root.resort(answer)
         }
+    }
+    // A new node holds nothing yet, so what was placed from the last is
+    // let go, and its first answer places every session it holds.
+    onNodeChanged: {
+        for (const key of Object.keys(placedBy))
+            delete placedBy[key];
+        for (const key of Object.keys(unplaced))
+            delete unplaced[key];
     }
     readonly property var runKind: runLink.item
     LazyLoader {
@@ -165,8 +174,24 @@ Singleton {
         }
         heldBack = false;
         sorts.taken += 1;
-        sorting = Pi.sorted(node?.held ?? {});
+        const heard = Object.keys(unplaced);
+        for (const key of heard)
+            delete unplaced[key];
+        sorting = Pi.resorted(node?.held ?? {}, placedBy, heard);
         sorted();
+    }
+    // The keys the node's changes named or let go since it last sorted,
+    // heard before each change is told (Daemon.qml), and each key's place
+    // as it last sorted, so a sorting places anew only those (Pi.resorted).
+    // Held back while the launcher is shut, they wait here until it
+    // shows them. Plain objects, so hearing notifies nothing.
+    readonly property var unplaced: ({})
+    readonly property var placedBy: ({})
+    function hear(changed, gone) {
+        for (let at = 0; at < changed.length; at += 1)
+            unplaced[changed[at]] = true;
+        for (let at = 0; at < gone.length; at += 1)
+            unplaced[gone[at]] = true;
     }
     // How many sortings it has made and how many it took, in a plain
     // object, so counting notifies nothing.
@@ -182,7 +207,9 @@ Singleton {
         }
     }
     // Every session it tells of, as the contract's records.
-    readonly property var sessions: Pi.sessions(sorting, machine)
+    // Each record is made again only where its session was placed anew.
+    readonly property var sessions: Pi.sessions(sorting, machine, made)
+    readonly property var made: ({})
 
     // Puts a steer in a session's inbox by its address: `{ text, id }`
     // talks to it, `{ act }` pauses, resumes, stops or closes it, and

@@ -65,9 +65,28 @@ function placed(key, session) {
 // agents daemon, and the daemon's ready rows take over this sorting for
 // Now and the windows' readers too, with the session acts, Thu 12 Nov.
 function sorted(held) {
+    return resorted(held, {}, Object.keys(held));
+}
+
+// The node's records sorted again as `sorted` sorts them, placing anew
+// only the keys `heard` names, as Daemon.qml's `heard` names those a
+// change moved or let go. `kept` holds each key's place as last sorted,
+// `{ into, entry }`, and is mended in place, so a session the change
+// didn't name keeps its entry, the same object, and whatever compares it
+// stops at once. Joel's 126 sessions were placed again at each of the
+// node's changes, about one a second (2026-11-14).
+function resorted(held, kept, heard) {
+    for (let at = 0; at < (heard?.length ?? 0); at += 1) {
+        const key = heard[at];
+        if (key in held) {
+            kept[key] = placed(key, held[key]);
+        } else {
+            delete kept[key];
+        }
+    }
     const sorting = { live: [], resting: [], ending: [] };
-    for (const key of Object.keys(held).sort()) {
-        const { into, entry } = placed(key, held[key]);
+    for (const key of Object.keys(kept).sort()) {
+        const { into, entry } = kept[key];
         if (into !== null) {
             sorting[into].push(entry);
         }
@@ -190,11 +209,34 @@ function record(one, how, machine) {
 }
 
 // Every session pi tells of, as the contract's records: those running,
-// then those parked, then those closed this boot.
-function sessions(sorting, machine) {
-    return sorting.live.map(one => record(one, "live", machine))
-        .concat(sorting.resting.map(one => record(one, "parked", machine)))
-        .concat(sorting.ending.map(one => record(one, "closed", machine)));
+// then those parked, then those closed this boot. `made`, where given,
+// keeps each session's record by its id beside the entry it was made
+// from, mended in place: a record is made again only where its entry is
+// a new one, as `resorted` makes only for what a change named. Making
+// every record again took 2 of the 2.1 ms of each change at 126
+// sessions, in Qt's engine (2026-11-15).
+function sessions(sorting, machine, made) {
+    const kept = made ?? {};
+    const seen = new Set();
+    const recordOf = (one, how) => {
+        const was = kept[one.file];
+        seen.add(one.file);
+        if (was && was.one === one && was.how === how && was.machine === machine) {
+            return was.record;
+        }
+        const now = record(one, how, machine);
+        kept[one.file] = { one, how, machine, record: now };
+        return now;
+    };
+    const records = sorting.live.map(one => recordOf(one, "live"))
+        .concat(sorting.resting.map(one => recordOf(one, "parked")))
+        .concat(sorting.ending.map(one => recordOf(one, "closed")));
+    for (const file of Object.keys(kept)) {
+        if (!seen.has(file)) {
+            delete kept[file];
+        }
+    }
+    return records;
 }
 
 // How a source stands, in the contract's words, from its node's link
