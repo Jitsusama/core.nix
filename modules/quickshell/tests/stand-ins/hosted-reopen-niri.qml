@@ -2,7 +2,10 @@
 // (tests/sessions-hosted-reopen.qml): Joel's window on the monitor's first
 // workspace, and the empty one niri keeps last, the test making more as
 // windows open there. What the shell asks of niri is kept, acts and
-// spawns alike, and asked for, never answered.
+// spawns alike, and each request with the answer it waits on, answered
+// only by a case that answers it: a monitor coming back while niri is
+// slow to say so (tests/sessions-screen-comes-home.qml) sets its own
+// workspaces and answers late.
 pragma Singleton
 import Quickshell
 import QtQuick
@@ -21,6 +24,7 @@ Singleton {
     property var focused: null
     property var acts: []
     property var spawns: []
+    property var asked: []
 
     signal windowOpenedOrChanged(var window)
 
@@ -28,7 +32,9 @@ Singleton {
         acts = acts.concat([request]);
     }
 
-    function request(asked, answer) {}
+    function request(asking, answer) {
+        asked = asked.concat([{ asking, answer }]);
+    }
 
     // The workspace by its id, or the one in front with none named.
     function workspace(id) {

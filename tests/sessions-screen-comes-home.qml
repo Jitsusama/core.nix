@@ -1,7 +1,8 @@
 pragma ComponentBehavior: Bound
 // Unplugs the monitor and plugs it back in under Sessions
 // (modules/quickshell/Sessions.qml), with niri stood in
-// (stand-ins/screens-niri.qml). niri sends the monitor's two workspaces to
+// (stand-ins/hosted-reopen-niri.qml): the laptop's screen with Joel's
+// window on its one workspace, and the monitor's two. niri sends the monitor's two workspaces to
 // the laptop's screen and, once the monitor is back, gives back only the
 // first, since a window opened in the second meanwhile. niri answers the
 // shell's look at the screens after its patience has run out, as it did
@@ -68,7 +69,14 @@ ShellRoot {
     // they are before any moves.
     function docked() {
         Sessions.lookAtScreens(() => {});
-        root.workspacesAre(Object.values(Niri.workspaces));
+        Niri.windows = { "90": { id: 90, pid: 900, workspace_id: 6, opened: "kitty",
+            layout: { pos_in_scrolling_layout: [1, 1] } } };
+        Niri.current = 90;
+        root.workspacesAre([
+            { id: 6, idx: 1, output: "Virtual-1", is_focused: true, active_window_id: 90 },
+            { id: 10, idx: 1, output: "Virtual-2" },
+            { id: 14, idx: 2, output: "Virtual-2" }
+        ]);
         stage = "looked";
     }
 

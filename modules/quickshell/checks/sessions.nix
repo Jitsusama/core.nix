@@ -400,7 +400,7 @@ in
       cp ${report} Report.qml
       cp ${../../../tests/sessions-screen-comes-home.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
-      cp ${../tests/stand-ins/screens-niri.qml} Niri.qml
+      cp ${../tests/stand-ins/hosted-reopen-niri.qml} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
       cp ${away} Away.qml
