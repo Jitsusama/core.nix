@@ -127,8 +127,14 @@ fn gather(folder: &Path, state_home: &Path, now: i64) -> Vec<Measure> {
     .unwrap_or_default();
     let card_text = text(&folder.join("card.txt"));
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
+    let misses = text(&mission.join("misses.jsonl"));
+    let merged = measures::merged(
+        &measures::named_in(&misses),
+        &core,
+        &axes::landings::harness_mirror(),
+    );
     let mut all = vec![
-        measures::misses(&text(&mission.join("misses.jsonl"))),
+        measures::misses(&misses, &merged),
         measures::slips(&text(&mission.join("asks.jsonl")), now),
         measures::to_first_slice(&text(&mission.join("asks.jsonl")), now),
         measures::undated(&quarantine, &today(now), NET_RULES),

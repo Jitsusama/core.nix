@@ -19,7 +19,7 @@ mod asks;
 mod counted;
 mod faults;
 mod kept;
-mod landings;
+pub mod landings;
 mod launcher;
 mod measure;
 mod messages;

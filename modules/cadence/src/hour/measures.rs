@@ -7,6 +7,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use jiff::Timestamp;
 use serde_json::Value;
 
+mod misses;
+
+pub use misses::{merged, misses, named_in};
+
 const DAY: i64 = 86_400;
 
 /// What a measure is about, in the order the drag is chosen from: a miss
@@ -100,40 +104,6 @@ fn seconds(value: &Value) -> Option<i64> {
 #[expect(clippy::cast_precision_loss, reason = "counts stay far below 2^52")]
 const fn count(n: usize) -> f64 {
     n as f64
-}
-
-/// The misses Joel found himself, from the orchestrator's `misses.jsonl`:
-/// one stays open until its owner names the check that would have caught
-/// it, and that check merges.
-#[must_use]
-pub fn misses(text: &str) -> Measure {
-    let open: Vec<(String, String)> = lines(text)
-        .filter(|miss| miss["check"].is_null())
-        .map(|miss| {
-            let what = miss["what"]
-                .as_str()
-                .or_else(|| miss["words"].as_str())
-                .unwrap_or_default()
-                .to_owned();
-            (
-                what,
-                first_owner(miss["owner"].as_str().unwrap_or_default()),
-            )
-        })
-        .collect();
-    Measure {
-        key: "misses".to_owned(),
-        class: Class::Miss,
-        says: "misses Joel found himself, with no check yet to catch the next".to_owned(),
-        now: count(open.len()),
-        target: Some(0.0),
-        // The oldest open miss's owner moves it first.
-        owner: open.first().map(|(_, o)| o.clone()).unwrap_or_default(),
-        behind: open
-            .iter()
-            .map(|(what, owner)| format!("{what} · {owner}"))
-            .collect(),
-    }
 }
 
 /// The dates promised in the orchestrator's `asks.jsonl` that passed in
@@ -325,7 +295,8 @@ pub fn reverts(text: &str, now: i64, owner: &str) -> Measure {
 /// The checks still failing on main that last passed before a merge in
 /// the day before `now`, from the net's `results.jsonl`: a check whose
 /// newest result failed where the one before it passed. A stalled run
-/// proves nothing either way, so it's left out.
+/// proves nothing either way, so it's left out, and a subtest's failure
+/// gives way to its whole test passing since, which ran it again.
 #[must_use]
 pub fn broken(text: &str, now: i64, owner: &str) -> Measure {
     let mut by_check: BTreeMap<String, Vec<(i64, bool)>> = BTreeMap::new();
@@ -342,14 +313,27 @@ pub fn broken(text: &str, now: i64, owner: &str) -> Measure {
             .or_default()
             .push((at, passed));
     }
+    let passed_whole = |whole: &str| {
+        by_check.get(whole).map_or(i64::MIN, |runs| {
+            runs.iter()
+                .filter(|(_, passed)| *passed)
+                .map(|(at, _)| *at)
+                .max()
+                .unwrap_or(i64::MIN)
+        })
+    };
     let failing: Vec<String> = by_check
-        .into_iter()
-        .filter_map(|(check, mut runs)| {
+        .iter()
+        .filter_map(|(check, runs)| {
+            let mut runs = runs.clone();
             runs.sort_by_key(|(at, _)| *at);
             let [.., (_, before), (at, last)] = runs.as_slice() else {
                 return None;
             };
-            (*before && !last && *at > now - DAY).then_some(check)
+            let since = check
+                .split_once("::")
+                .is_some_and(|(whole, _)| passed_whole(whole) > *at);
+            (*before && !last && *at > now - DAY && !since).then(|| check.clone())
         })
         .collect();
     Measure {
@@ -552,24 +536,6 @@ mod tests {
     }
 
     #[test]
-    fn a_miss_stays_open_until_a_check_is_named_for_it() {
-        let text = concat!(
-            r#"{"words":"w","what":"the map had no network","owner":"KNURBN (VKCF3Z)","check":null}"#,
-            "\n",
-            r#"{"words":"w","what":"History paused","owner":"RCTRF8","check":"core#4500"}"#,
-            "\n",
-        );
-        let m = misses(text);
-        assert!((m.now - 1.0).abs() < 0.5, "one open, got {}", m.now);
-        assert_eq!(m.owner, "KNURBN", "its first owner moves it");
-        assert_eq!(
-            m.behind,
-            ["the map had no network · KNURBN"],
-            "it says what it was"
-        );
-    }
-
-    #[test]
     fn a_date_passed_without_landing_is_a_slip_and_each_move_counts() {
         let ask = |expected: i64, landed: Option<i64>| {
             serde_json::json!({
@@ -679,12 +645,18 @@ mod tests {
             result("stalled", NOW - 60, false, true),
             result("mended", NOW - 900, false, false),
             result("mended", NOW - 60, true, false),
+            result("whole::sub", NOW - 900, true, false),
+            result("whole::sub", NOW - 600, false, false),
+            result("whole", NOW - 300, true, false),
+            result("later::sub", NOW - 900, true, false),
+            result("later", NOW - 600, true, false),
+            result("later::sub", NOW - 300, false, false),
         ]
         .join("\n");
         assert_eq!(
             broken(&text, NOW, "D5QEKR").behind,
-            ["broke"],
-            "only the one a merge broke"
+            ["broke", "later::sub"],
+            "only those a merge broke: a subtest's fail gives way to its whole test passing since"
         );
     }
 
