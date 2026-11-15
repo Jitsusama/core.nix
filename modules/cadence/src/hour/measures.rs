@@ -175,6 +175,92 @@ pub fn slips(text: &str, now: i64) -> Measure {
     }
 }
 
+/// How long Joel's asks in the orchestrator's `asks.jsonl` took to put a
+/// first piece he can use in front of him, as the median in hours over
+/// every ask still open or first reached in the day before `now`. An
+/// open ask counts the hours it has waited so far, so one can't hide by
+/// staying open. A date moved is a new line for the same ask, known by
+/// when it was asked and its words, so each ask counts once. Its first
+/// slice is `first` where the orchestrator wrote one, else `landed`.
+#[must_use]
+pub fn to_first_slice(text: &str, now: i64) -> Measure {
+    // Each ask, by when and what was asked: its owner and first reaching.
+    let mut asks: BTreeMap<(i64, String), (String, Option<i64>)> = BTreeMap::new();
+    for ask in lines(text) {
+        let Some(asked) = seconds(&ask["at"]) else {
+            continue;
+        };
+        let reached = seconds(&ask["first"]).or_else(|| seconds(&ask["landed"]));
+        let words = ask["words"].as_str().unwrap_or_default().to_owned();
+        let owner = first_owner(ask["owner"].as_str().unwrap_or_default());
+        let entry = asks.entry((asked, words)).or_insert((owner, None));
+        entry.1 = match (entry.1, reached) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+    }
+    let counted: Vec<(i64, &str, &str, bool)> = asks
+        .iter()
+        .filter(|((asked, _), (_, reached))| {
+            *asked <= now && reached.is_none_or(|reached| reached > now - DAY)
+        })
+        .map(|((asked, words), (owner, reached))| {
+            let until = reached.map_or(now, |reached| reached.min(now));
+            (
+                until - asked,
+                words.as_str(),
+                owner.as_str(),
+                reached.is_none(),
+            )
+        })
+        .collect();
+    let mut hours: Vec<f64> = counted
+        .iter()
+        .map(|(waited, ..)| hours_of(*waited))
+        .collect();
+    hours.sort_by(f64::total_cmp);
+    let mut open: Vec<&(i64, &str, &str, bool)> =
+        counted.iter().filter(|(.., open)| *open).collect();
+    open.sort_by_key(|(waited, ..)| std::cmp::Reverse(*waited));
+    Measure {
+        key: "ask-to-first-slice".to_owned(),
+        class: Class::Ship,
+        says: "median hours from his ask to a first piece he can use".to_owned(),
+        now: median(&hours),
+        target: Some(4.0),
+        owner: ASKS.to_owned(),
+        behind: open
+            .iter()
+            .take(3)
+            .map(|(waited, words, owner, _)| {
+                format!(
+                    "{} · {owner}, open {:.0} h",
+                    short(words),
+                    hours_of(*waited)
+                )
+            })
+            .collect(),
+    }
+}
+
+/// Who keeps the asks ledger, and so steers how fast asks reach him.
+const ASKS: &str = "WCJQSG";
+
+#[expect(clippy::cast_precision_loss, reason = "seconds stay far below 2^52")]
+fn hours_of(seconds: i64) -> f64 {
+    seconds as f64 / 3600.0
+}
+
+/// The middle of figures already sorted, the mean of the two middle ones
+/// when there's an even count, and nought when there are none.
+fn median(sorted: &[f64]) -> f64 {
+    match sorted.len() {
+        0 => 0.0,
+        n if n % 2 == 1 => sorted[n / 2],
+        n => f64::midpoint(sorted[n / 2 - 1], sorted[n / 2]),
+    }
+}
+
 /// The first few words of an ask, enough to know it by.
 fn short(words: &str) -> String {
     let mut said: Vec<&str> = words.split_whitespace().take(9).collect();
@@ -436,6 +522,45 @@ mod tests {
             m.now
         );
         assert_eq!(m.owner, "Y2YBTS", "the oldest slip's owner");
+    }
+
+    #[test]
+    fn an_ask_counts_until_its_first_slice_and_an_open_one_counts_its_age() {
+        let ask = |words: &str, asked: i64, first: Option<i64>, landed: Option<i64>| {
+            serde_json::json!({
+                "at": at(asked), "words": words, "owner": "Y2YBTS (H6EDLC)",
+                "expected": at(NOW + 3600), "first": first.map(at),
+                "landed": landed.map(at),
+            })
+            .to_string()
+        };
+        let text = [
+            ask("landed whole", NOW - 2 * 3600, None, Some(NOW - 3600)),
+            ask(
+                "a slice first",
+                NOW - 10 * 3600,
+                Some(NOW - 7 * 3600),
+                Some(NOW - 60),
+            ),
+            ask("still open", NOW - 30 * 3600, None, None),
+            ask("still open", NOW - 30 * 3600, None, None), // its date moved
+            ask("long done", NOW - 3 * DAY, None, Some(NOW - 2 * DAY)),
+        ]
+        .join("\n");
+        let m = to_first_slice(&text, NOW);
+        assert!(
+            (m.now - 3.0).abs() < 0.01,
+            "the median of 1, 3 and 30 hours, got {}",
+            m.now
+        );
+        assert_eq!(m.target, Some(4.0), "within hours");
+        assert_eq!(m.class, Class::Ship, "it's how fast things ship");
+        assert_eq!(m.owner, "WCJQSG", "the asks ledger's keeper steers it");
+        assert_eq!(
+            m.behind,
+            ["still open · Y2YBTS, open 30 h"],
+            "the oldest open asks, each once"
+        );
     }
 
     #[test]

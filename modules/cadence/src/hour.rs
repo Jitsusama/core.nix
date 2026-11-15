@@ -129,6 +129,7 @@ fn gather(folder: &Path, state_home: &Path, now: i64) -> Vec<Measure> {
     let mut all = vec![
         measures::misses(&text(&mission.join("misses.jsonl"))),
         measures::slips(&text(&mission.join("asks.jsonl")), now),
+        measures::to_first_slice(&text(&mission.join("asks.jsonl")), now),
         measures::undated(&quarantine, &today(now), NET_RULES),
         measures::reverts(&text(&folder.join("reverted.json")), now, NET_RULES),
         measures::broken(&text(&state_home.join("net/results.jsonl")), now, NET),
