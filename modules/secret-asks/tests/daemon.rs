@@ -116,6 +116,14 @@ impl Setting {
             ),
         );
         before(&folder);
+        // The git the daemon runs: a stand-in where `before` wrote one,
+        // else the test's own.
+        let stand_in = folder.join("git");
+        let git = if stand_in.exists() {
+            stand_in
+        } else {
+            on_path("git")
+        };
         let socket = folder.join("secret-asks.sock");
         let journal =
             UnixDatagram::bind(folder.join("journal.sock")).expect("the journal stand-in binds");
@@ -137,7 +145,7 @@ impl Setting {
             .arg("--op")
             .arg(folder.join("op"))
             .arg("--git")
-            .arg(on_path("git"))
+            .arg(git)
             .arg("--forge")
             .arg(format!("file://{}/", folder.join("forge").display()))
             .arg("--loginctl")
@@ -626,6 +634,57 @@ fn a_grant_never_covers_another_repository() {
         "a grant covered another repository"
     );
     assert_eq!(setting.op_ran(), 1, "op ran for another repository");
+}
+
+#[test]
+fn a_slow_forge_holds_no_other_ask_up() {
+    // How long the stand-in forge takes to say where main is: long
+    // beside a yes, which answers in milliseconds, and short of the ten
+    // seconds the daemon gives a forge.
+    const ANSWERING: &str = "4";
+    let setting = Setting::after("forge-slow", |folder| {
+        script(
+            &folder.join("git"),
+            &format!(
+                "if [ \"$1\" = ls-remote ]; then : > '{asking}'; '{sleep}' {ANSWERING}; fi\n\
+                 exec '{git}' \"$@\"",
+                asking = folder.join("asking").display(),
+                sleep = on_path("sleep").display(),
+                git = on_path("git").display(),
+            ),
+        );
+    });
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    let other = another_repository(&setting.folder);
+    let elsewhere = put_up_in(&setting.folder, &other, ITEM);
+    let drawn = row(&mut client, &elsewhere);
+    let worktree = setting.folder.join("worktree");
+    git(
+        &setting.folder.join("tree"),
+        &["worktree", "add", "-q", &worktree.to_string_lossy()],
+    );
+    let covered = put_up_in(&setting.folder, &worktree, ITEM);
+    until("the forge wasn't asked", || {
+        setting.folder.join("asking").exists()
+    });
+    let asked = std::time::Instant::now();
+    assert_eq!(
+        act(&mut client, &drawn, 0)["releasing"],
+        true,
+        "the yes to another repository's ask wasn't taken"
+    );
+    let waited = asked.elapsed();
+    assert!(
+        waited < std::time::Duration::from_secs(2),
+        "a yes waited {waited:?} on the forge asked for another ask"
+    );
+    let answer = setting.answer(&covered);
+    assert_eq!(
+        answer["granted"], true,
+        "the grant didn't run the ask the forge was asked for: {answer}"
+    );
 }
 
 #[test]
