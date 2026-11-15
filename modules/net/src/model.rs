@@ -45,6 +45,26 @@ pub struct Internet {
     pub up_mbps: Option<f64>,
     pub measured_at: Option<u64>,
     pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carried: Option<Carried>,
+}
+
+/// What the line carried over the last day, as its source counted it at
+/// the gateway: the bytes each way, and each hour's average speed, oldest
+/// first, so an hour reads against the line's own.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Carried {
+    pub down_bytes: u64,
+    pub up_bytes: u64,
+    pub hours: Vec<Hour>,
+}
+
+/// One hour of what the line carried, from `at`, as its average speed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Hour {
+    pub at: u64,
+    pub down_mbps: f64,
+    pub up_mbps: f64,
 }
 
 /// A device's way to the internet: the devices its traffic crosses, in

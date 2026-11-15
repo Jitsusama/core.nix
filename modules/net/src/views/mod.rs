@@ -178,7 +178,8 @@ fn worth_a_look(network: &Network, pen: &Pen, room: Room) -> Vec<Vec<String>> {
         block.extend(layout::facts(&facts, "", pen, room));
         blocks.push(block);
     }
-    if !ceilings.is_empty() {
+    let day = carried(network, pen, room);
+    if !ceilings.is_empty() || !day.is_empty() {
         let mut block = vec![pen.label("the internet")];
         for (at, concern) in ceilings.into_iter().enumerate() {
             if at > 0 {
@@ -190,9 +191,73 @@ fn worth_a_look(network: &Network, pen: &Pen, room: Room) -> Vec<Vec<String>> {
                     .map(|line| pen.role("text", &line)),
             );
         }
+        if !day.is_empty() && block.len() > 1 {
+            block.push(String::new());
+        }
+        block.extend(day);
         blocks.push(block);
     }
     blocks
+}
+
+/// What the line carried over the last day, each way: its bytes, the
+/// hours' average speed and its share of the line's, and the busiest
+/// hour's, so a line full all day reads apart from one busy for an hour.
+/// Nothing, when the source counted no hours.
+fn carried(network: &Network, pen: &Pen, room: Room) -> Vec<String> {
+    let Some(internet) = network.internet.as_ref() else {
+        return Vec::new();
+    };
+    let Some(carried) = internet
+        .carried
+        .as_ref()
+        .filter(|day| !day.hours.is_empty())
+    else {
+        return Vec::new();
+    };
+    let way = |bytes: u64, line: Option<f64>, mbps: fn(&crate::model::Hour) -> f64| {
+        let hours: Vec<f64> = carried.hours.iter().map(mbps).collect();
+        #[allow(clippy::cast_precision_loss)]
+        let average = hours.iter().sum::<f64>() / hours.len() as f64;
+        let busiest = hours.iter().copied().fold(0.0, f64::max);
+        let share = line
+            .filter(|line| *line > 0.0)
+            .map(|line| format!(", {:.0}% of its speed", average / line * 100.0))
+            .unwrap_or_default();
+        format!(
+            "{}, averaging {average:.1} Mbit/s{share}; {busiest:.1} in its busiest hour",
+            gigabytes(bytes)
+        )
+    };
+    let down = way(carried.down_bytes, internet.down_mbps, |hour| {
+        hour.down_mbps
+    });
+    let up = way(carried.up_bytes, internet.up_mbps, |hour| hour.up_mbps);
+    let mut lines = layout::paragraph("What the line carried over the last day:", 0, room)
+        .into_iter()
+        .map(|line| pen.role("text", &line))
+        .collect::<Vec<_>>();
+    lines.extend(layout::facts(
+        &[("down", Some(down.as_str())), ("up", Some(up.as_str()))],
+        "",
+        pen,
+        room,
+    ));
+    lines
+}
+
+/// Bytes as a person reads them, in decimal units as a provider bills:
+/// whole gigabytes from a hundred, a tenth below, megabytes under one.
+#[allow(clippy::cast_precision_loss)]
+fn gigabytes(bytes: u64) -> String {
+    let gb = bytes as f64 / 1e9;
+    if gb >= 100.0 {
+        format!("{gb:.0} GB")
+    } else if gb >= 1.0 {
+        format!("{gb:.1} GB")
+    } else {
+        format!("{:.0} MB", gb * 1000.0)
+    }
 }
 
 /// `net`: whether each source answers, what the devices do, what's worth
@@ -509,6 +574,18 @@ mod tests {
                 .find("The internet is the narrowest point up for every device")
                 .expect("the line's ceiling is said");
             assert!(internet < up, "the ceiling is the internet's: {text}");
+            let mut last = up;
+            for said in [
+                "What the line carried over the last day:",
+                "down 167 GB, averaging 14.9 Mbit/s, 4% of its speed; 28.1 in its busiest hour",
+                "up 72.7 GB, averaging 6.5 Mbit/s, 54% of its speed; 10.8 in its busiest hour",
+            ] {
+                let at = words
+                    .find(said)
+                    .unwrap_or_else(|| panic!("{said:?}: {text}"));
+                assert!(last < at, "{said:?} follows the ceilings: {text}");
+                last = at;
+            }
         }
     }
 
@@ -518,6 +595,14 @@ mod tests {
         network.concerns.clear();
         let text = home(&network, now(), &Pen::plain(), Room::Unbounded);
         assert!(!text.contains("WORTH A LOOK"), "{text}");
+        assert!(
+            text.contains("THE INTERNET\nWhat the line carried"),
+            "the internet says only its day: {text}"
+        );
+        if let Some(internet) = network.internet.as_mut() {
+            internet.carried = None;
+        }
+        let text = home(&network, now(), &Pen::plain(), Room::Unbounded);
         assert!(!text.contains("THE INTERNET"), "{text}");
     }
 

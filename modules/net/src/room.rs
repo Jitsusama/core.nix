@@ -454,6 +454,7 @@ pub(crate) mod tests {
             up_mbps: Some(11.93),
             measured_at: Some(1_793_875_935),
             source: "eero".into(),
+            carried: None,
         });
         network
     }

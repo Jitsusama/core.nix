@@ -40,7 +40,9 @@ Apple TV are net's alone, and `eero` keeps only what's eero's.
   map is drawn from these.
 - `internet`: the internet beyond the modem, its provider and speed each
   way from eero's last speed test, which runs from the gateway and so
-  measures the internet alone.
+  measures the internet alone; and `carried`, what the line carried over
+  the last day as eero counted it at the gateway, the bytes each way and
+  each hour's average speed, so an hour reads against the line's own.
 - Each device's `path` and the record's `concerns`, worked out rather
   than read (`src/room.rs`). A path lists the devices to the modem and,
   each way, its chokepoint: the hop with least room, a cable's speed or a
@@ -167,7 +169,9 @@ words is `said.rs`.
 - `net`: how each source answers and how long ago, how many devices do
   what, each concern but the ceilings in net's words beside its kind
   under Worth a Look, the ceilings under The Internet, since they're the
-  line's speed rather than a fault, and the commands that go further.
+  line's speed rather than a fault, then what the line carried over the
+  last day each way: its bytes, average, share of the line's speed and
+  busiest hour, and the commands that go further.
 - `net devices`: one line per device, its roles, address, time up and
   model; a narrow terminal drops the model, then the time, then the
   address.

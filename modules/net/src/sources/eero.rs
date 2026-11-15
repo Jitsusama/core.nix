@@ -8,8 +8,8 @@
 use serde_json::{Map, Value};
 
 use crate::model::{
-    Device, End, Internet, Link, LinkState, Medium, Port, PortKind, Radio, Role, Source,
-    SourceState, Speed,
+    Carried, Device, End, Hour, Internet, Link, LinkState, Medium, Port, PortKind, Radio, Role,
+    Source, SourceState, Speed,
 };
 use crate::time;
 
@@ -85,9 +85,50 @@ fn internet(record: &Value) -> Option<Internet> {
         up_mbps: rate("up_mbps"),
         measured_at: test.and_then(|test| text(test, "at")).and_then(time::parse),
         source: NAME.into(),
+        carried: carried(block),
     };
     (internet.provider.is_some() || internet.down_mbps.is_some() || internet.up_mbps.is_some())
         .then_some(internet)
+}
+
+/// What the line carried over the last day, from eero's hourly counts of
+/// bytes each way, each hour said as its average speed. The hours pair up
+/// by their start, since eero counts each way apart.
+fn carried(block: &Value) -> Option<Carried> {
+    let usage = block.get("usage")?;
+    let down = usage.get("download")?;
+    let up = usage.get("upload")?;
+    let hours = |way: &Value| -> Vec<(u64, u64)> {
+        list(way, "hours")
+            .into_iter()
+            .filter_map(|hour| Some((time::parse(text(hour, "at")?)?, number(hour, "bytes")?)))
+            .collect()
+    };
+    let ups = hours(up);
+    let hours = hours(down)
+        .into_iter()
+        .filter_map(|(at, down)| {
+            let (_, up) = ups.iter().find(|(other, _)| *other == at)?;
+            Some(Hour {
+                at,
+                down_mbps: average_mbps(down),
+                up_mbps: average_mbps(*up),
+            })
+        })
+        .collect();
+    Some(Carried {
+        down_bytes: number(down, "total_bytes")?,
+        up_bytes: number(up, "total_bytes")?,
+        hours,
+    })
+}
+
+/// An hour's bytes as the average speed that carries them, in Mbit/s to
+/// the hundredth, so the record stays readable.
+#[allow(clippy::cast_precision_loss)]
+fn average_mbps(bytes: u64) -> f64 {
+    // An hour's bytes stay far below 2^52, where f64 starts to round.
+    (bytes as f64 * 8.0 / 3600.0 / 1e4).round() / 100.0
 }
 
 /// What the source reads, in words.
@@ -592,6 +633,51 @@ mod tests {
                 up_mbps: Some(11.93),
                 measured_at: Some(1_793_875_935),
                 source: NAME.into(),
+                carried: None,
+            })
+        );
+    }
+
+    #[test]
+    fn the_internet_says_what_it_carried_each_hour_of_the_day() {
+        let read = read(
+            Ok(json!({
+                "internet": {
+                    "isp": "Example ISP",
+                    "usage": {
+                        "download": {"total_bytes": 13_500_000_000_u64, "hours": [
+                            {"at": "2026-11-05T10:00:00Z", "bytes": 4_500_000_000_u64},
+                            {"at": "2026-11-05T11:00:00Z", "bytes": 9_000_000_000_u64}
+                        ]},
+                        "upload": {"total_bytes": 7_200_000_000_u64, "hours": [
+                            {"at": "2026-11-05T10:00:00Z", "bytes": 3_600_000_000_u64},
+                            {"at": "2026-11-05T11:00:00Z", "bytes": 3_600_000_000_u64}
+                        ]}
+                    }
+                }
+            })),
+            1_794_092_100,
+        );
+
+        let carried = read.internet.and_then(|internet| internet.carried);
+
+        assert_eq!(
+            carried,
+            Some(Carried {
+                down_bytes: 13_500_000_000,
+                up_bytes: 7_200_000_000,
+                hours: vec![
+                    Hour {
+                        at: 1_793_872_800,
+                        down_mbps: 10.0,
+                        up_mbps: 8.0
+                    },
+                    Hour {
+                        at: 1_793_876_400,
+                        down_mbps: 20.0,
+                        up_mbps: 8.0
+                    },
+                ],
             })
         );
     }
