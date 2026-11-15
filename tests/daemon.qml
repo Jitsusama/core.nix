@@ -57,12 +57,14 @@ ShellRoot {
             root.peopleChanged = root.peopleChanged.concat(changed);
             root.peopleGone = root.peopleGone.concat(gone);
         }
-        // Told by the people daemon's answer to the watch ahead, which
-        // tells Ada as she was before it stopped, so her record held
-        // doesn't change: the answer itself is what says it was asked.
+        // Told by the people daemon's watch ahead, which tells Ada as she
+        // was before it stopped, so her record held doesn't change: what
+        // it tells is what says it was asked. Started again, it knows her
+        // only once the source it asks ahead answers, so she comes as a
+        // change of the watch rather than in its first answer.
         onTold: answer => {
-            if (answer.id === "ahead"
-                && (answer.records ?? []).some(record => record?.key === root.ada))
+            if (answer.id === "ahead" && (answer.records ?? answer.changed ?? [])
+                .some(record => record?.key === root.ada))
                 root.aheadTold += 1;
         }
     }

@@ -860,8 +860,13 @@ ShellRoot {
                 root.left -= 1;
                 if (root.left === 0) {
                     stop();
+                    // Those listed too, with how each stands, since a
+                    // shut launcher's home lists no one.
+                    const listed = people.listedPersons()
+                        .map(person => `${person.key} ${person.stood?.said ?? "?"}`);
                     root.fail(`never came: ${now.what}: home ${root.names(people.all)}`
-                        + ` (${root.sides(people.all)}), sought ${people.sought.words}`);
+                        + ` (${root.sides(people.all)}), sought ${people.sought.words}`
+                        + `, pressing "${people.pressing}", listed ${listed.join(", ")}`);
                 }
             }
         }
