@@ -31,6 +31,16 @@
         "closedOn": "closed {day} {time}",
         "allOf": "{spent} in all",
         "closedCount": "{count} closed",
+        "stuckCount": "{count} stuck",
+        "movingCount": "{count} moving",
+        "quietCount": "{count} quiet",
+        "dormantCount": "{count} dormant",
+        "machinesCount": "{count} machines",
+        "moreCount": "{count} More",
+        "allStuck": "all stuck",
+        "allMoving": "all moving",
+        "allQuiet": "all quiet",
+        "allDormant": "all dormant",
         "workingOf": "{count} of {all} working",
         "since": "since {at}",
         "under": "under {address}",
@@ -115,6 +125,31 @@
       "id": "agents:closed",
       "in": "agents",
       "name": "Closed"
+    },
+    {
+      "id": "agents:networks",
+      "in": "agents",
+      "name": "Networks"
+    },
+    {
+      "id": "agents:repositories",
+      "in": "agents",
+      "name": "Repositories"
+    },
+    {
+      "id": "agents:quests",
+      "in": "agents",
+      "name": "Quests"
+    },
+    {
+      "id": "agents:groups",
+      "in": "agents",
+      "name": "Groups"
+    },
+    {
+      "id": "agents:machines",
+      "in": "agents",
+      "name": "Machines"
     },
     {
       "id": "agents:budget",
