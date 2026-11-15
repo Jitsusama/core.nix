@@ -26,6 +26,18 @@ const CLEARED_SHOWN: usize = 3;
 /// the rest.
 const HOLDERS_SHOWN: usize = 3;
 
+/// The plan's columns for what a pass would take: the path names each.
+const TAKEN: [(&str, layout::Align); 4] = [
+    ("PATH", layout::Align::Left),
+    ("KIND", layout::Align::Left),
+    ("SIZE", layout::Align::Right),
+    ("IDLE", layout::Align::Right),
+];
+
+/// Where the room is short, the kind goes first, since the path mostly
+/// says it; then how long it's been idle.
+const TAKEN_GIVES_WAY: [usize; 2] = [1, 3];
+
 /// How old a heartbeat may be before its guard is taken to have stopped.
 const STOPPED_AFTER: f64 = 120.0;
 
@@ -477,29 +489,51 @@ pub(super) fn plan(
         )
         .map_err(failed)?;
     }
-    for preview in previews {
-        writeln!(
-            out,
-            "{}: {}, {} free, target {}; the pass would end {}",
-            preview.path.display(),
-            band_word(preview.band).as_str().unwrap_or("?"),
-            size(preview.free),
-            size(preview.target),
-            preview.end,
-        )
+    // A table's first column never shortens, so a long path is shortened
+    // here, in its middle, as `keeps` does; into a pipe it's whole.
+    let path_room = context
+        .room
+        .cells()
+        .map(|cells| (cells / 2).max(layout::SHORTENED));
+    let blocks: Vec<Vec<String>> = previews
+        .iter()
+        .map(|preview| {
+            let rows: Vec<Vec<String>> = preview
+                .taken
+                .iter()
+                .map(|candidate| {
+                    let path = candidate.path.display().to_string();
+                    vec![
+                        path_room
+                            .map_or_else(|| path.clone(), |room| layout::shortened(&path, room)),
+                        candidate.class.kind().to_owned(),
+                        size(candidate.size),
+                        span(candidate.idle),
+                    ]
+                })
+                .collect();
+            let mut block = vec![format!(
+                "{}: {}, {} free, target {}; the pass would end {}",
+                preview.path.display(),
+                band_word(preview.band).as_str().unwrap_or("?"),
+                size(preview.free),
+                size(preview.target),
+                preview.end,
+            )];
+            if !rows.is_empty() {
+                block.extend(layout::table_in(
+                    &TAKEN,
+                    &rows,
+                    &context.out,
+                    context.room,
+                    &TAKEN_GIVES_WAY,
+                ));
+            }
+            block
+        })
+        .collect();
+    out.write_all(layout::joined(blocks).as_bytes())
         .map_err(failed)?;
-        for candidate in &preview.taken {
-            writeln!(
-                out,
-                "  {:<10} {:>10}  idle {:>7}  {}",
-                candidate.class.kind(),
-                size(candidate.size),
-                span(candidate.idle),
-                candidate.path.display(),
-            )
-            .map_err(failed)?;
-        }
-    }
     if unread > 0 {
         let why = why.map_or_else(String::new, |why| {
             format!(" and the system daemon couldn't be asked about them ({why})")

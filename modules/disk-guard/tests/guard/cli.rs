@@ -717,7 +717,16 @@ fn plan_shows_what_a_pass_would_take() {
         "with no survey kept it says it walks first: {out}"
     );
     assert!(out.contains("filling"), "{out}");
-    assert!(out.contains("old.txt"), "{out}");
+    let lines: Vec<&str> = out.lines().collect();
+    let heading = lines
+        .iter()
+        .position(|line| line.split_whitespace().eq(["PATH", "KIND", "SIZE", "IDLE"]))
+        .unwrap_or_else(|| panic!("what it would take isn't headed by its columns: {out}"));
+    let row: Vec<&str> = lines[heading + 1].split_whitespace().collect();
+    assert!(
+        row[0].ends_with("old.txt") && row[1] == "trash" && row[2..4] == ["4.0", "KiB"],
+        "the row under the heading isn't the path, its kind and its size: {out}"
+    );
     assert!(trash.join("files/old.txt").exists());
     assert!(
         !machine.env.state.join("journal.jsonl").exists(),
