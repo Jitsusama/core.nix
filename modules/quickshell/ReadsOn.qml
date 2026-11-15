@@ -11,6 +11,7 @@
 // ruling, 2026-10-30: a long value slides exactly as a long name does).
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Effects
 import "Measures.js" as Measures
 import "Reading.js" as Reading
 
@@ -56,15 +57,29 @@ Item {
     // So the voice can be set on another face's baseline (anchors.baseline).
     baselineOffset: words.baselineOffset
     clip: scrolls
+    // While they move, the words fade out over a mark at each end of their
+    // room, rather than end cut through a letter there (VKCF3Z, 2026-11-14:
+    // a glyph clipped at both ends of a selected long name). The layer is
+    // made only then, so words at rest, and a shut launcher, cost nothing.
+    layer.enabled: moving && fadedBy !== null
+    layer.effect: MultiEffect {
+        maskEnabled: true
+        maskSource: room.fadedBy
+        // The mask's alpha read smoothly from none to whole, not as a cut.
+        maskSpreadAtMin: 1
+    }
 
     // How far past their room the words run, when they do.
     readonly property real over: Math.max(0, words.implicitWidth - width)
     readonly property bool scrolls: reading && over > 0
+    // How wide each end's fade is, and so how far short of the room's right
+    // edge the words' end stops, clear of it.
+    readonly property real fade: Theme.space.rung.mark
     // A reading pace of twelve characters a second, held between soft
     // ends (Reading.js). A short rest to see how they start, and a longer
     // one at their end to read that (Joel, 2026-10-29: the slide stuttered,
     // was too slow, and started and stopped abruptly).
-    readonly property var slide: Reading.slide(over, 12 * figure)
+    readonly property var slide: Reading.slide(over + fade, 12 * figure)
     readonly property int restFirst: Math.round(500 * Theme.motion.slowdown)
     readonly property int restLast: Math.round(1000 * Theme.motion.slowdown)
     // Whether the words are off their start: from the moment they slide out
@@ -147,6 +162,75 @@ Item {
         }
     }
 
+    // What the words are seen through while they move: whole across their
+    // room but for a fade at each end. At their start their first letter
+    // stands at the room's left edge, so its fade comes in only as they
+    // slide off it, over the slide's soft start, and goes again as they
+    // glide back, so no letter dims or brightens at once.
+    component Fades: Item {
+        id: fadesMade
+        // Where along the room each end's fade gives way to the whole.
+        readonly property real edge: room.fade / Math.max(room.width, 2 * room.fade)
+        // How far in from each end the words are whole.
+        readonly property real whole: room.width * edge
+        // Covers the left fade while the words are at their start.
+        readonly property Item cover: startCover
+        width: room.width
+        height: room.height
+        visible: false
+        layer.enabled: true
+
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop {
+                    position: 0
+                    color: "transparent"
+                }
+                GradientStop {
+                    position: fadesMade.edge
+                    color: "white"
+                }
+                GradientStop {
+                    position: 1 - fadesMade.edge
+                    color: "white"
+                }
+                GradientStop {
+                    position: 1
+                    color: "transparent"
+                }
+            }
+        }
+        Rectangle {
+            id: startCover
+            width: room.fade
+            height: parent.height
+            color: "white"
+        }
+    }
+    readonly property Fades fadedBy: fades.item as Fades
+    Loader {
+        id: fades
+        active: room.moving
+        sourceComponent: Fades {}
+    }
+    OpacityAnimator {
+        id: fadeIn
+        target: room.fadedBy?.cover ?? null
+        to: 0
+        duration: Math.round(1000 * Theme.motion.slowdown * room.slide.ramp)
+        easing.type: Easing.InQuad
+    }
+    OpacityAnimator {
+        id: fadeOut
+        target: room.fadedBy?.cover ?? null
+        to: 1
+        duration: slideBack.duration
+        easing.type: Easing.BezierSpline
+        easing.bezierCurve: Theme.motion.curve
+    }
+
     // Animators, which move the words on the render thread, so the slide
     // keeps every frame while the shell is busy making rows again, as it
     // is each second in Machine (Joel, 2026-10-29: "scrolling long lines
@@ -172,6 +256,8 @@ Item {
         resting.stop();
         slideOut.stop();
         slideBack.stop();
+        fadeIn.stop();
+        fadeOut.stop();
         words.x = room.restAt;
         room.moving = false;
     }
@@ -182,13 +268,14 @@ Item {
             if (room.outward)
                 room.moving = true;
             (room.outward ? slideOut : slideBack).start();
+            (room.outward ? fadeIn : fadeOut).start();
         }
     }
     XAnimator {
         id: slideOut
         target: words
         from: room.restAt
-        to: -room.over
+        to: -room.over - room.fade
         duration: Math.round(1000 * Theme.motion.slowdown * room.slide.seconds)
         easing.type: Easing.BezierSpline
         easing.bezierCurve: room.slide.curve
