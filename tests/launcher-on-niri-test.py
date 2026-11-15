@@ -2278,6 +2278,12 @@ def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) ->
     key did, so a program's drawer was made before the key was timed and its making was said as
     the key's: Joel's down onto Slack took 28 ms before the shell heard its frame swapped,
     beside Slack's drawer made in 28, and onto mpv 39 beside 39 (2026-11-13, 20:05).
+
+    A drawer whose kind made in under 3 ms of late is made in the key's own handler instead,
+    to come in the key's frame, so it's said first by design. A program's makes in 4 to 6 ms
+    here, but a quick builder, or the subtests before it in the same shell, brought it under
+    3: it was said first on five unrelated changes' runs on 2026-11-14 and 15, and passed
+    alone. So the order asserted is the one the way it came promises.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -2288,9 +2294,21 @@ def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) ->
     shell.reported("drawer follows ", lambda _: True, since)
     shell.held_still()
     said, _ = shell.said_since(since)
+    drawn = [
+        line
+        for line in said_once(shell, since, DRAWER_SAID).splitlines()
+        if DRAWER_SAID.search(line)
+    ]
     shell.close_launcher()
+    assert drawn, "the drawer the key brought was never said presented"
     order = [one for one in said if one.startswith(("drawer follows ", "key framed "))]
-    assert order[:1] == ["key framed ↓"], f"the key was timed after its drawer: {order}"
+    follows = next((one for one in order if one.startswith("drawer follows ")), "")
+    if drawn[-1].endswith("in the key's frame"):
+        assert order[:2] == [follows, "key framed ↓"], (
+            f"a drawer in its key's frame wasn't made in the key's handler: {order}"
+        )
+    else:
+        assert order[:1] == ["key framed ↓"], f"the key was timed after its drawer: {order}"
 
 
 def drawer_moved(was: str, shown: Json) -> bool:
