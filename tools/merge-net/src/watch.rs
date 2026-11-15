@@ -74,6 +74,27 @@ pub const DROPPED: &str = "main's newest head passes its test, so it was dropped
 /// too, so it lands nothing.
 const MENDS_NOTHING: &str = "the revert mends nothing";
 
+/// Why a test went unlisted: every quarantined test has an owner who mends
+/// it and takes it off, and on 15 November the net listed five subtests
+/// owned by nobody, so nobody was told.
+const NO_OWNER: &str = "it has no owner to mend it and take it off, since no merge since the \
+                        round's base moved it alone and no PR took it off the list, so the \
+                        net lists nothing; the watcher names one and lists it";
+
+/// Put `test` on the quarantine list owned by `owner`, or refuse with
+/// `NO_OWNER` where there is none.
+fn quarantine_owned(
+    world: &dyn World,
+    test: &str,
+    subtests: &BTreeSet<String>,
+    owner: Option<u64>,
+    head: &str,
+    reason: &str,
+) -> Result<Merged, String> {
+    let owner = owner.ok_or_else(|| NO_OWNER.to_owned())?;
+    world.quarantine(test, subtests, owner, head, reason)
+}
+
 /// How many times a run the builder never took is sent again, two minutes
 /// apart, before the round leaves it for the next.
 const SENDS: u32 = 15;
@@ -226,7 +247,7 @@ pub trait World: Sync {
         &self,
         test: &str,
         subtests: &BTreeSet<String>,
-        owner: Option<u64>,
+        owner: u64,
         commit: &str,
         reason: &str,
     ) -> Result<Merged, String>;
@@ -1655,14 +1676,14 @@ fn list_flaky(
     let reason = format!("failed, then passed, at {}", short(head));
     let failing = failing_at(state, head, test);
     let made = (!listed_by_subtests_on_main(world, test, &failing))
-        .then(|| world.quarantine(test, &failing, owner, head, &reason));
+        .then(|| quarantine_owned(world, test, &failing, owner, head, &reason));
     // On 10 November a refused merge was kept only in the finding, and the
     // list it would have landed sat unmerged for an hour and a half.
     match &made {
         Some(Ok(landed)) => {
             state.say(&format!("listed {test} as quarantined in #{}", landed.pr));
         }
-        Some(Err(why)) => state.say(&format!("listing {test} as quarantined failed: {why}")),
+        Some(Err(why)) => state.say(&format!("{test} isn't listed as quarantined: {why}")),
         None => state.say(&format!(
             "{test} failed, then passed, at {}, and main lists it by subtests already, so \
              its list stays as it is",
@@ -1748,7 +1769,7 @@ fn list_still_red(
     );
     let by_subtests = listed_by_subtests_on_main(world, test, &failing);
     let listed = (!by_subtests && !listed_on_main(world, head, test))
-        .then(|| world.quarantine(test, &failing, owner, head, &reason));
+        .then(|| quarantine_owned(world, test, &failing, owner, head, &reason));
     state.find(&json!({
         "kind": "failed-before", "test": test, "commit": head, "since": base,
         "owner_pr": owner, "log": log,
@@ -2299,7 +2320,7 @@ fn list_broken(
         )
     };
     let subtests = failing_at(state, head, &found.test);
-    let made = world.quarantine(&found.test, &subtests, found.pr, head, &reason)?;
+    let made = quarantine_owned(world, &found.test, &subtests, found.pr, head, &reason)?;
     state.clear_hold()?;
     state.say(&format!(
         "listed {} as quarantined in #{}, owned by {what}, so the hold is cleared",
@@ -2385,7 +2406,7 @@ mod tests {
         /// The reason each test put in quarantine was listed for.
         quarantine_reasons: Mutex<Vec<String>>,
         /// The owner each test put in quarantine was listed with.
-        quarantine_owners: Mutex<Vec<Option<u64>>>,
+        quarantine_owners: Mutex<Vec<u64>>,
         /// The PR that last took a test off the list.
         unlisted_by: Option<u64>,
         /// The failing subtests each owner was asked for by.
@@ -2667,7 +2688,7 @@ mod tests {
             &self,
             test: &str,
             subtests: &BTreeSet<String>,
-            owner: Option<u64>,
+            owner: u64,
             _: &str,
             reason: &str,
         ) -> Result<Merged, String> {
@@ -4827,7 +4848,7 @@ mod tests {
             names("vm-a"),
             "a test red at its base and its head was left off the list, owned by nobody"
         );
-        assert_eq!(*world.quarantine_owners.lock().unwrap(), vec![Some(2603)]);
+        assert_eq!(*world.quarantine_owners.lock().unwrap(), vec![2603]);
         let found = findings(&state);
         assert_eq!(found[0]["owner_pr"], 2603);
         assert_eq!(found[0]["quarantine_pr"], 8);
