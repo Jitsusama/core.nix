@@ -93,8 +93,13 @@ QtObject {
         // "i never want the kitty to skid into place, i always want to see
         // its paws moving when it is walking or running"): walking, no
         // drawing held while it goes more than its stride and a cell, and
-        // nothing backward in a drawing held as it walks, stops or turns.
-        const walking = ["goes", "turns", "thinks", "settles", "lands", "shakes"];
+        // nothing backward in a drawing held as it walks, stops or turns;
+        // climbing up or down a side the same (Joel, 2026-11-14 22:40: "the
+        // kitten when crawling up or across window edges still often does
+        // not look like its paws are moving").
+        const walking = ["goes", "climbs", "turns", "thinks", "settles", "lands",
+            "shakes"];
+        const striding = ["goes", "climbs"];
         const flashes = (journey, said) => {
             let run = null;
             const skids = () => {
@@ -102,7 +107,7 @@ QtObject {
                     + Math.abs(run.last.y - run.first.y);
                 if (run.walks && run.goes && went > journey.stride + at.cell + 0.01)
                     wrong.push(`${said} glides ${Math.round(went / at.cell)} cells in one `
-                        + `${run.pose} at ${run.begins} ms`);
+                        + `${run.pose} at ${run.begins} ms, ${run.first.beat} to ${run.last.beat}`);
                 if (run.walks && (run.last.x - run.first.x) * run.first.facing < -0.01)
                     wrong.push(`${said} slides back in one ${run.pose} at ${run.begins} ms`);
             };
@@ -114,7 +119,7 @@ QtObject {
                     run.ends = t;
                     run.last = one;
                     run.walks = run.walks && walking.includes(one.beat);
-                    run.goes = run.goes || one.beat === "goes";
+                    run.goes = run.goes || striding.includes(one.beat);
                     continue;
                 }
                 const ms = run === null ? 0 : run.ends - run.begins + 1;
@@ -124,7 +129,7 @@ QtObject {
                 if (run !== null && run.pose)
                     skids();
                 run = { pose, begins: t, ends: t, first: one, last: one,
-                    walks: walking.includes(one.beat), goes: one.beat === "goes" };
+                    walks: walking.includes(one.beat), goes: striding.includes(one.beat) };
             }
         };
         // Every frame of `journey` a cat's, in none of `solid`'s windows
@@ -138,7 +143,7 @@ QtObject {
             // 2026-11-13 17:22, by WCJQSG fc3f716a: "Going up the side of
             // a window should be at the same speed roughly as walking on
             // top, it seems accelerated in the video"), each pace its
-            // cells a second, of the beats seen; a walk's between the eases
+            // cells a second, of the beats seen; each between the eases
             // over its first and last strides (MarginCatWays.js's timed).
             const seenOn = beat => Math.max(beat.from.y, beat.to.y) + at.tall > 0
                 && Math.min(beat.from.y, beat.to.y) < at.height;
@@ -148,8 +153,8 @@ QtObject {
             const walks = journey.beats.filter(beat => beat.kind === "goes" && seenOn(beat)
                 && pace(beat) > 0).map(cruises);
             for (const beat of journey.beats.filter(one => one.kind === "climbs" && seenOn(one)))
-                if (walks.some(walked => Math.abs(pace(beat) - walked) > walked / 5))
-                    climbs.push(`${said} climbs at ${Math.round(pace(beat))} cells a second, `
+                if (walks.some(walked => Math.abs(cruises(beat) - walked) > walked / 5))
+                    climbs.push(`${said} climbs at ${Math.round(cruises(beat))} cells a second, `
                         + `walking at ${walks.map(Math.round).join(", ")}`);
             // Every fall straight down onto what's under it, never across
             // the air (Joel, 2026-11-13 17:22, by WCJQSG fc3f716a: "it
