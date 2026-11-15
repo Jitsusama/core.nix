@@ -452,8 +452,8 @@ impl Inputs {
         let listed = |address: &str| self.listed(address);
         let windowed = |session: Session| session.windowed();
         let to_dos = |quest: &str| self.needs(quest).len();
-        let shapes = shape::by_lead(self.teams.records().map(|(_, team)| team));
-        let shaped = |id: &str| shapes.get(id).copied();
+        let by_lead = shape::by_lead(self.teams.records().map(|(_, team)| team));
+        let shaped = |id: &str| by_lead.get(id).copied();
         let known = Known {
             joel_can: &joel_can,
             jobs: &jobs,
