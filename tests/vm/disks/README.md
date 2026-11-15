@@ -14,3 +14,4 @@ takes away or stands in for.
 | `full-swap.nix`, `-vm-test.py`       | systemd-oomd ending what filled memory and swap, first         |
 | `full-swap-grow.py`                  | that test's program, taking memory as a repack's grows         |
 | `hibernate.nix`, `-vm-test.py`       | a machine laid out as the laptops are, hibernating and back    |
+| `hibernate-entry.nix`, `-vm-test.py` | an image read back through the boot entry its start came from  |

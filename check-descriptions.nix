@@ -4714,6 +4714,11 @@
     was swapped out for it on the disk and none in zswap's pool, zswap on again; and asked first,
     says a quiet machine's image fits, and with no room exits 1 saying not, plainly
   '';
+  vm-hibernation-resumes-through-its-boot-entry = ''
+    a machine started through systemd-boot from an entry whose initrd isn't its default's, as
+    between a switch and its reboot, hibernates and comes back from its image through that same
+    entry, the one-shot entry hibernate-unlock set for it gone after
+  '';
   vm-joel-comes-first = ''
     on an eighth of the laptop's memory, with agents' sessions, their work and shared work each under
     its slice's ceiling and walking what it holds, a stand-in shell in session.slice drops no

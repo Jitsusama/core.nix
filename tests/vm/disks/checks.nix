@@ -29,4 +29,9 @@ onLinux {
   # Whether a machine comes back from hibernating with no resume= shows only
   # with systemd's initrd opening LUKS and reading the image it wrote.
   vm-hibernation-comes-back = import ./hibernate.nix { inherit self pkgs; };
+  # Which entry a start takes after a hibernation shows only with a
+  # firmware starting systemd-boot, and the image read back.
+  vm-hibernation-resumes-through-its-boot-entry = import ./hibernate-entry.nix {
+    inherit self pkgs;
+  };
 }
