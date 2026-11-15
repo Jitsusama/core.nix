@@ -15,6 +15,7 @@ use std::time::Duration;
 use crate::common::{Client, RELEASED_VALUE, Running, stored_folder, until};
 use serde_json::{Value, json};
 
+mod grants;
 mod history;
 
 /// The one reference listed, and one that isn't.
@@ -34,6 +35,11 @@ fn stored_bash() -> PathBuf {
 /// Puts an ask up as the harness does, written aside and renamed into
 /// place, asking for `item` to run `argv` with it as `GIVEN`.
 fn put_up(running: &Running, id: &str, item: &str, argv: &[&str]) {
+    put_up_in(running, &running.folder, id, item, argv);
+}
+
+/// Puts an ask up as `put_up` does, from the tree at `tree`.
+fn put_up_in(running: &Running, tree: &Path, id: &str, item: &str, argv: &[&str]) {
     let asks = running.asks();
     std::fs::create_dir_all(&asks).unwrap();
     let asked_ms = std::time::SystemTime::now()
@@ -44,7 +50,7 @@ fn put_up(running: &Running, id: &str, item: &str, argv: &[&str]) {
         "version": 1, "id": id, "asked_ms": u64::try_from(asked_ms).unwrap(),
         "session": "TESTER", "quest": null, "item": item,
         "why": "To try the line.", "argv": argv,
-        "tree": running.folder.to_str().unwrap(), "given": "GIVEN", "minutes": 1,
+        "tree": tree.to_str().unwrap(), "given": "GIVEN", "minutes": 1,
     });
     let aside = asks.join(format!(".{id}.writing"));
     std::fs::write(&aside, ask.to_string()).unwrap();
