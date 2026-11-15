@@ -52,8 +52,25 @@ pub struct Found {
 /// eero reaches it at: a device whose maker is HP that eero takes for a
 /// printer, so an HP laptop isn't asked.
 pub fn listed(eero: &Value) -> Vec<(String, String)> {
-    let _ = eero;
-    Vec::new()
+    let Some(Value::Array(devices)) = eero.get("devices") else {
+        return Vec::new();
+    };
+    devices
+        .iter()
+        .filter(|device| {
+            let said = |key| device.get(key).and_then(Value::as_str);
+            let hp = ["make", "manufacturer"].into_iter().any(|key| {
+                said(key)
+                    .is_some_and(|maker| maker.starts_with("HP") || maker.starts_with("Hewlett"))
+            });
+            hp && said("kind") == Some("printer")
+        })
+        .filter_map(|device| {
+            let mac = device.get("mac")?.as_str()?;
+            let address = device.get("address")?.as_str()?;
+            Some((mac.to_owned(), address.to_owned()))
+        })
+        .collect()
 }
 
 /// Each printer as it answered, and the source, or none when eero lists
@@ -91,18 +108,64 @@ pub fn read(
 
 /// One printer from its pages, each kept whole in its own words.
 fn heard(mac: String, answers: &Answers) -> Found {
-    let _ = answers;
+    let mut detail = Map::new();
+    for (name, text) in answers {
+        if let Some((_, value)) = xml::read(text) {
+            detail.insert(name.clone(), value);
+        }
+    }
+    let product = detail
+        .get("ProductConfigDyn")
+        .and_then(|page| page.get("ProductInformation"));
+    let said = |field: &str| {
+        product
+            .and_then(|product| product.get(field))
+            .and_then(text)
+            .map(str::to_owned)
+    };
+    let firmware = product
+        .and_then(|product| product.get("Version"))
+        .and_then(|version| version.get("Revision"))
+        .and_then(text)
+        .map(str::to_owned);
+    let state = listed_in(detail.get("ProductStatusDyn"), "Status")
+        .into_iter()
+        .filter_map(|status| status.get("StatusCategory").and_then(text))
+        .map(doing)
+        .collect();
+    let ink = listed_in(detail.get("ConsumableConfigDyn"), "ConsumableInfo")
+        .into_iter()
+        .filter(|cartridge| {
+            cartridge.get("ConsumableTypeEnum").and_then(text) == Some("inkCartridge")
+        })
+        .filter_map(|cartridge| {
+            Some(Ink {
+                colour: colour(cartridge.get("ConsumableLabelCode").and_then(text)?),
+                left_percent: cartridge
+                    .get("ConsumablePercentageLevelRemaining")
+                    .and_then(text)
+                    .and_then(|left| left.parse().ok()),
+                state: cartridge
+                    .get("ConsumableLifeState")
+                    .and_then(|life| life.get("MeasuredQuantityState"))
+                    .and_then(text)
+                    .map(words),
+            })
+        })
+        .collect();
+    let pages = detail
+        .get("ProductUsageDyn")
+        .and_then(|page| page.get("PrinterSubunit"))
+        .and_then(|printer| printer.get("TotalImpressions"))
+        .and_then(text)
+        .and_then(|pages| pages.parse().ok());
     Found {
         mac,
-        model: None,
-        firmware: None,
-        serial: None,
-        printer: Printer {
-            state: Vec::new(),
-            ink: Vec::new(),
-            pages: None,
-        },
-        detail: Value::Object(Map::new()),
+        model: said("MakeAndModel"),
+        firmware,
+        serial: said("SerialNumber"),
+        printer: Printer { state, ink, pages },
+        detail: Value::Object(detail),
     }
 }
 
@@ -129,18 +192,38 @@ fn text(value: &Value) -> Option<&str> {
 /// What a printer is doing, in plain words, from its status category; a
 /// category not named here is its own word, split and lowered.
 fn doing(category: &str) -> String {
-    category.to_owned()
+    match category {
+        "ready" => "ready".into(),
+        "processing" => "printing".into(),
+        "inPowerSave" => "saving power".into(),
+        "trayEmpty" => "out of paper".into(),
+        other => words(other),
+    }
 }
 
 /// A cartridge's colour from its label's code: K for black, the letters
 /// of cyan, magenta and yellow, or CMY for one cartridge of all three.
 fn colour(code: &str) -> String {
-    code.to_owned()
+    match code {
+        "K" => "black".into(),
+        "CMY" => "colour".into(),
+        "C" => "cyan".into(),
+        "M" => "magenta".into(),
+        "Y" => "yellow".into(),
+        other => other.to_lowercase(),
+    }
 }
 
 /// An HP word, such as `veryLow`, as words: very low.
 fn words(word: &str) -> String {
-    word.to_owned()
+    let mut said = String::new();
+    for character in word.chars() {
+        if character.is_uppercase() && !said.is_empty() {
+            said.push(' ');
+        }
+        said.extend(character.to_lowercase());
+    }
+    said
 }
 
 #[cfg(test)]

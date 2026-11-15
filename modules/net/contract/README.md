@@ -25,3 +25,9 @@ golden copy is `../../eero/home-network.json`.
   `getSystemInformation`, one file each, byte for byte apart from its
   address, the hardware address in its UDN and its name's suffix
   (`10.0.0.60`, `020000000060`, `000060`).
+- `hp/`: an HP OfficeJet 3830's four LEDM pages, as
+  `http://<printer>/DevMgmt/<page>.xml` answered them on 2026-11-15, one
+  file per page, byte for byte apart from its addresses (`10.0.0.70`,
+  `10.0.1.1`, `FE80::FF:FE00:70`), its hardware address
+  (`020000000070`), its serial (`SERIAL00000070`), its UUID, its country
+  and the ids of its firmware and cartridges (`0000`).

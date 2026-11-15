@@ -1,7 +1,7 @@
 //! `net devices NAME`: one device in layers. What every device can say,
 //! its ports, radios and links, a role's own figures (a modem's channels
-//! and log, a receiver's volume and what it's doing), then what each
-//! source says that none of those held, in the source's own words.
+//! and log, a receiver's volume and what it's doing, a printer's ink),
+//! then what each source says that none of those held, in the source's own words.
 
 use serde_json::Value;
 use terminal_kit::layout::{self, Align, ITEMS, Room};
@@ -57,6 +57,34 @@ pub fn device(network: &Network, device: &Device, now: u64, pen: &Pen, room: Roo
             ("track", receiver.track.as_deref()),
         ];
         let mut block = vec![pen.label("receiver")];
+        block.extend(known_facts(&facts, pen, room));
+        blocks.push(block);
+    }
+    if let Some(printer) = &device.printer {
+        let doing = (!printer.state.is_empty()).then(|| printer.state.join(", "));
+        let pages = printer.pages.map(|pages| pages.to_string());
+        // Each cartridge is a fact of its own, its state said only when it
+        // isn't fine, so a page with nothing wrong reads as its figures.
+        let ink: Vec<(String, Option<String>)> = printer
+            .ink
+            .iter()
+            .map(|ink| {
+                let left = ink.left_percent.map(|left| format!("{left}%"));
+                let state = ink.state.as_deref().filter(|state| *state != "ok");
+                let said = match (left, state) {
+                    (Some(left), Some(state)) => Some(format!("{left}, {state}")),
+                    (left, state) => left.or(state.map(str::to_owned)),
+                };
+                (format!("{} ink", ink.colour), said)
+            })
+            .collect();
+        let mut facts = vec![("doing", doing.as_deref())];
+        facts.extend(
+            ink.iter()
+                .map(|(label, said)| (label.as_str(), said.as_deref())),
+        );
+        facts.push(("pages printed", pages.as_deref()));
+        let mut block = vec![pen.label("printer")];
         block.extend(known_facts(&facts, pen, room));
         blocks.push(block);
     }

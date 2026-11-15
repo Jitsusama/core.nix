@@ -33,6 +33,14 @@
       "read_at": 1794702033,
       "since": null,
       "reason": null
+    },
+    {
+      "name": "hp",
+      "what": "the HP printers eero lists, asked only to read",
+      "state": "answering",
+      "read_at": 1794702033,
+      "since": null,
+      "reason": null
     }
   ],
   "devices": [
@@ -4768,6 +4776,1623 @@
           }
         }
       }
+    },
+    {
+      "id": "mac:02:00:00:00:00:70",
+      "name": "Printer",
+      "roles": ["printer"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Hewlett Packard",
+      "model": "OfficeJet 3830 All-in-One Printer series",
+      "hardware": null,
+      "firmware": "SPP5FN2223AR",
+      "serial": "SERIAL00000070",
+      "macs": ["02:00:00:00:00:70"],
+      "addresses": ["10.0.0.70"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "2.4 GHz",
+          "band": "2.4 GHz",
+          "channel": 6,
+          "width_mhz": null,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "path": {
+        "through": ["eero:2003", "modem"],
+        "down": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 369.86,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
+      "printer": {
+        "state": ["out of paper", "saving power"],
+        "ink": [
+          {
+            "colour": "colour",
+            "left_percent": 60,
+            "state": "ok"
+          },
+          {
+            "colour": "black",
+            "left_percent": 50,
+            "state": "ok"
+          }
+        ],
+        "pages": 1900
+      },
+      "detail": {
+        "eero": {
+          "address": "10.0.0.70",
+          "addresses": ["10.0.0.70"],
+          "band": "2.4 GHz",
+          "channel": 6,
+          "ethernet": false,
+          "hostname": "hp000070",
+          "kind": "printer",
+          "mac": "02:00:00:00:00:70",
+          "make": "HP",
+          "manufacturer": "Hewlett Packard",
+          "name": "Printer",
+          "nickname": "Printer",
+          "node": "2003"
+        },
+        "hp": {
+          "ConsumableConfigDyn": {
+            "ConsumableInfo": [
+              {
+                "Capacity": {
+                  "MaxCapacity": "0",
+                  "Unit": "tenthsOfMilliliters"
+                },
+                "ConsumableAcceptibilityUpgradability": "notSupported",
+                "ConsumableContentType": "markingAgent",
+                "ConsumableFamilyName": "TIJ2",
+                "ConsumableID": "0000",
+                "ConsumableIcon": {
+                  "BackGroundColor": {
+                    "Blue": "255",
+                    "Green": "255",
+                    "Red": "255"
+                  },
+                  "FillColor": {
+                    "Blue": "255",
+                    "Green": "255",
+                    "Red": "255"
+                  },
+                  "OutlineColor": {
+                    "Blue": "255",
+                    "Green": "255",
+                    "Red": "255"
+                  },
+                  "Rotation": "rotateZero",
+                  "Shape": "CMYTriDots"
+                },
+                "ConsumableKeyingDescriptor": "large1",
+                "ConsumableLabelCode": "CMY",
+                "ConsumableLevelMessagingStyle": "Eureka",
+                "ConsumableLifeState": {
+                  "Brand": "HP",
+                  "ConsumableState": "newGenuineHP",
+                  "IsRefilled": "false",
+                  "IsSETUP": "false",
+                  "IsSubscription": "true",
+                  "IsTrial": "false",
+                  "MeasuredQuantityState": "ok"
+                },
+                "ConsumableLowUseAlgorithm": "everyday3",
+                "ConsumablePercentageLevelRemaining": "60",
+                "ConsumableReplaceabilityType": "userReplaceable",
+                "ConsumableSegmentClass": "class2",
+                "ConsumableSelectibilityNumber": "INSTANT INK",
+                "ConsumableStateAvailableActions": {
+                  "ConsumableState": "newGenuineHP",
+                  "DefaultAction": "acknowledge",
+                  "SupportedActions": {
+                    "ConsumableStateAction": ["acknowledge", "none"]
+                  }
+                },
+                "ConsumableStation": "0",
+                "ConsumableSubBrand": "generic",
+                "ConsumableTypeEnum": "inkCartridge",
+                "ConsumableUniqueID": "0000",
+                "RegionalCartridge": {
+                  "RegionIdentifier": "1"
+                }
+              },
+              {
+                "Capacity": {
+                  "MaxCapacity": "0",
+                  "Unit": "tenthsOfMilliliters"
+                },
+                "ConsumableAcceptibilityUpgradability": "notSupported",
+                "ConsumableContentType": "markingAgent",
+                "ConsumableFamilyName": "TIJ2",
+                "ConsumableID": "0000",
+                "ConsumableIcon": {
+                  "BackGroundColor": {
+                    "Blue": "255",
+                    "Green": "255",
+                    "Red": "255"
+                  },
+                  "FillColor": {
+                    "Blue": "0",
+                    "Green": "0",
+                    "Red": "0"
+                  },
+                  "OutlineColor": {
+                    "Blue": "0",
+                    "Green": "0",
+                    "Red": "0"
+                  },
+                  "Rotation": "rotateZero",
+                  "Shape": "Circle"
+                },
+                "ConsumableKeyingDescriptor": "large1",
+                "ConsumableLabelCode": "K",
+                "ConsumableLevelMessagingStyle": "Eureka",
+                "ConsumableLifeState": {
+                  "Brand": "HP",
+                  "ConsumableState": "newGenuineHP",
+                  "IsRefilled": "false",
+                  "IsSETUP": "false",
+                  "IsSubscription": "true",
+                  "IsTrial": "false",
+                  "MeasuredQuantityState": "ok"
+                },
+                "ConsumableLowUseAlgorithm": "everyday3",
+                "ConsumablePercentageLevelRemaining": "50",
+                "ConsumableReplaceabilityType": "userReplaceable",
+                "ConsumableSegmentClass": "class2",
+                "ConsumableSelectibilityNumber": "INSTANT INK",
+                "ConsumableStateAvailableActions": {
+                  "ConsumableState": "newGenuineHP",
+                  "DefaultAction": "acknowledge",
+                  "SupportedActions": {
+                    "ConsumableStateAction": ["acknowledge", "none"]
+                  }
+                },
+                "ConsumableStation": "1",
+                "ConsumableSubBrand": "generic",
+                "ConsumableTypeEnum": "inkCartridge",
+                "ConsumableUniqueID": "0000",
+                "RegionalCartridge": {
+                  "RegionIdentifier": "1"
+                }
+              }
+            ],
+            "ProductConsumableInfo": {
+              "AlignmentMode": "semiAutomatic",
+              "AntiTheftMode": "disabled",
+              "CartridgeChipInfo": "disabled",
+              "ConsumableSlotDirection": "leftToRight",
+              "IK": "483",
+              "MarkingAgentSubscriptionLevel": "1",
+              "NumOfNonUserReplaceableConsumables": "0",
+              "NumOfUserReplaceableConsumables": "2",
+              "RewardsRegistrationStatus": {
+                "AutoSendData": "false",
+                "OptedIn": "false",
+                "PromptAutoSendData": "false"
+              },
+              "SingleCartridgeMode": "enabled"
+            },
+            "Version": {
+              "Date": "2010-06-02",
+              "Revision": "SVN-IPG-LEDM.290"
+            },
+            "schemaLocation": "http://www.hp.com/schemas/imaging/con/ledm/consumableconfigdyn/2007/11/19 ../schemas/ConsumableConfigDyn.xsd http://www.hp.com/schemas/imaging/con/dictionaries/1.0/ ../schemas/dd/DataDictionaryMasterLEDM.xsd"
+          },
+          "ProductConfigDyn": {
+            "Memory": {
+              "AvailableMemory": "33910",
+              "MemorySlot": {
+                "DigitalStorageConfig": [
+                  {
+                    "Capacity": {
+                      "MaxCapacity": "34113",
+                      "Unit": "kilobyte"
+                    },
+                    "DigitalStorageTypeEnum": "ram",
+                    "Sides": "1"
+                  },
+                  {
+                    "Capacity": {
+                      "MaxCapacity": "4924",
+                      "Unit": "kilobyte"
+                    },
+                    "DigitalStorageTypeEnum": "rom",
+                    "Sides": "1"
+                  }
+                ],
+                "DigitalStorageTypeEnum": "DIMM"
+              },
+              "TotalMemory": "34113"
+            },
+            "ProductInformation": {
+              "AvailableLanguages": {
+                "Language": [
+                  "en",
+                  "es",
+                  "fr",
+                  "pt",
+                  "de",
+                  "zh-CN",
+                  "ko",
+                  "zh-TW",
+                  "it",
+                  "nl",
+                  "da",
+                  "sv",
+                  "no",
+                  "fi",
+                  "ar",
+                  "ru",
+                  "tr",
+                  "pl",
+                  "el",
+                  "cs",
+                  "hu",
+                  "sk",
+                  "ro",
+                  "sl",
+                  "bg",
+                  "hr"
+                ]
+              },
+              "FirmwareDownloadID": "0000",
+              "MakeAndModel": "OfficeJet 3830 All-in-One Printer series",
+              "MakeAndModelBase": "OfficeJet 3830 All-in-One Printer series",
+              "MakeAndModelFamily": "OfficeJet 3830 series",
+              "Manufacturer": {
+                "Date": "2017-12-22",
+                "Name": "HP"
+              },
+              "PasswordStatus": "notSet",
+              "ProductDerivativeFlavorStatus": "valid",
+              "ProductDerivativeNumber": "7172320",
+              "ProductNumber": "K7V40A",
+              "RegionInformation": {
+                "FailedAttemptsRemaining": "50",
+                "RegionIdentifier": "2",
+                "RegionSetupCode": "0000",
+                "SuccessfulAttemptsRemaining": "3"
+              },
+              "SKUIdentifier": "3830",
+              "SerialNumber": "SERIAL00000070",
+              "ServiceID": "28078",
+              "UUID": "00000000-0000-1000-8000-020000000070",
+              "Version": {
+                "Date": "2022-05-30",
+                "Revision": "SPP5FN2223AR"
+              },
+              "WOOBESeriesID": "oj3830"
+            },
+            "ProductSettings": {
+              "AutoOffTime": "2hours",
+              "ControlPanel": {
+                "Contrast": "99",
+                "Detachable": "false",
+                "Display": "monoLCD"
+              },
+              "CountryAndRegionName": {
+                "PEID": "30062",
+                "text": "country"
+              },
+              "DateFormat": "DDMMMYYYY",
+              "DeviceInformation": {
+                "Description": "",
+                "DeviceLocation": "",
+                "GeoLocation": {
+                  "GeoCoordinates": {
+                    "Accuracy": "NaN",
+                    "Latitude": "NaN",
+                    "Longitude": "NaN"
+                  }
+                },
+                "ResourceURI": ""
+              },
+              "EWS": {
+                "EnableDisable": "enabled",
+                "LanguageConfiguration": {
+                  "Language": "en",
+                  "LanguageSource": "browser"
+                },
+                "ResourceURI": [
+                  "http://10.0.0.70",
+                  "http://[FE80::FF:FE00:70]",
+                  "http://10.0.1.1",
+                  "http://[FE80::FF:FE00:71]"
+                ]
+              },
+              "Fax": "Yes",
+              "KeyPressVolume": "soft",
+              "OobePhase": "setupComplete",
+              "PowerSave": "on",
+              "PowerSaveTimeout": "5minutes",
+              "ProductLanguage": {
+                "DeviceLanguage": "en",
+                "PreferredLanguage": "en"
+              },
+              "QuietPrintMode": "disabled",
+              "QuietPrintModeSchedule": {
+                "IsActive": "false",
+                "State": "disabled",
+                "TimeSettings": {
+                  "TimeSetting": {
+                    "StartTime": "22:00:00.0Z",
+                    "StopTime": "07:00:00.0Z"
+                  }
+                }
+              },
+              "TimeFormat": "HR12",
+              "TimeStamp": "2026-11-15T04:00:15"
+            },
+            "Version": {
+              "Date": "2011-03-30",
+              "Revision": "SVN-IPG-LEDM.690"
+            },
+            "schemaLocation": "http://www.hp.com/schemas/imaging/con/ledm/productconfigdyn/2009/03/16 ../schemas/ledm2/ProductConfigDyn.xsd                               http://www.hp.com/schemas/imaging/con/ledm/productconfigdyn/2007/11/05 ../schemas/ProductConfigDyn.xsd                               http://www.hp.com/schemas/imaging/con/dictionaries/1.0/ ../schemas/dd/DataDictionaryMasterLEDM.xsd"
+          },
+          "ProductStatusDyn": {
+            "AlertTable": {
+              "Alert": [
+                {
+                  "AlertDetails": {
+                    "AlertDetailsInputBin": "Tray1"
+                  },
+                  "AlertPriority": "300",
+                  "ProductStatusAlertID": "trayEmpty",
+                  "ResourceType": "ledm:hpLedmMediaHandlingDyn",
+                  "ResourceURI": "/DevMgmt/MediaHandlingDyn.xml",
+                  "SequenceNumber": "11",
+                  "Severity": "Warning",
+                  "StringId": "65803"
+                },
+                {
+                  "AlertDetails": {
+                    "AlertDetailsConsumableTypeEnum": "inkCartridge",
+                    "AlertDetailsMarkerColor": "CyanMagentaYellow",
+                    "AlertDetailsMarkerLocation": "0",
+                    "AlertDetailsUserAction": "acknowledgeConsumableState"
+                  },
+                  "AlertPriority": "399",
+                  "ProductStatusAlertID": "genuineHP",
+                  "ResourceType": "ledm:hpLedmConsumableConfigDyn",
+                  "ResourceURI": "/DevMgmt/ConsumableConfigDyn.xml",
+                  "SequenceNumber": "8",
+                  "Severity": "Info",
+                  "StringId": "65766"
+                },
+                {
+                  "AlertDetails": {
+                    "AlertDetailsConsumableTypeEnum": "inkCartridge",
+                    "AlertDetailsMarkerColor": "Black",
+                    "AlertDetailsMarkerLocation": "1",
+                    "AlertDetailsUserAction": "acknowledgeConsumableState"
+                  },
+                  "AlertPriority": "399",
+                  "ProductStatusAlertID": "genuineHP",
+                  "ResourceType": "ledm:hpLedmConsumableConfigDyn",
+                  "ResourceURI": "/DevMgmt/ConsumableConfigDyn.xml",
+                  "SequenceNumber": "9",
+                  "Severity": "Info",
+                  "StringId": "65766"
+                }
+              ],
+              "ModificationNumber": "7"
+            },
+            "Status": [
+              {
+                "StatusCategory": "trayEmpty",
+                "StringId": "65803"
+              },
+              {
+                "StatusCategory": "inPowerSave",
+                "StringId": "65640"
+              }
+            ],
+            "Version": {
+              "Date": "2011-02-08",
+              "Revision": "SVN-IPG-LEDM.216"
+            },
+            "schemaLocation": "http://www.hp.com/schemas/imaging/con/dictionaries/1.0/ ../schemas/dd/DataDictionaryMasterLEDM.xsd http://www.hp.com/schemas/imaging/con/ledm/alertdetails/2007/10/31 ../schemas/AlertDetails.xsd http://www.hp.com/schemas/imaging/con/ledm/productstatuscategories/2007/10/31 ../schemas/ProductStatusCategories.xsd http://www.hp.com/schemas/imaging/con/ledm/localizationids/2007/10/31 ../schemas/LocalizationIds.xsd http://www.hp.com/schemas/imaging/con/ledm/productstatusdyn/2007/10/31 ../schemas/ProductStatusDyn.xsd"
+          },
+          "ProductUsageDyn": {
+            "ConsumableSubunit": {
+              "Consumable": [
+                {
+                  "ConsumableRawPercentageLevelRemaining": "65",
+                  "ConsumableTypeEnum": "inkCartridge",
+                  "CumulativeConsumableCount": "5",
+                  "CumulativeHPMarkingAgentUsed": {
+                    "PEID": "64105",
+                    "Unit": "microliters",
+                    "ValueFloat": "29"
+                  },
+                  "CumulativeMarkingAgentUsed": {
+                    "PEID": "64104",
+                    "Unit": "microliters",
+                    "ValueFloat": "27"
+                  },
+                  "MarkerColor": "CyanMagentaYellow",
+                  "PVPCartridgeCounter": [
+                    {
+                      "PEID": "28025",
+                      "text": "0"
+                    },
+                    {
+                      "PEID": "28026",
+                      "text": "0"
+                    },
+                    {
+                      "PEID": "28027",
+                      "text": "0"
+                    }
+                  ],
+                  "PenInsertionTriggerSnapshotCounter": {
+                    "PEID": "28031",
+                    "text": "319"
+                  },
+                  "RefilledCount": {
+                    "CounterfeitRefilledCount": {
+                      "PEID": "16086",
+                      "text": "0"
+                    },
+                    "GenuineRefilledCount": "0"
+                  },
+                  "UsageByMarkingAgentCount": [
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11001",
+                        "text": "4346550"
+                      },
+                      "MarkingAgentCountType": "HPDropsCount"
+                    },
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11002",
+                        "text": "2863453"
+                      },
+                      "MarkingAgentCountType": "HPDropsCount"
+                    },
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11003",
+                        "text": "5492541"
+                      },
+                      "MarkingAgentCountType": "HPDropsCount"
+                    },
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11057",
+                        "text": "2792193"
+                      },
+                      "MarkingAgentCountType": "LDWDropsCount"
+                    },
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11057",
+                        "text": "2792193"
+                      },
+                      "MarkingAgentCountType": "LDWDropsCount"
+                    },
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11058",
+                        "text": "2131923"
+                      },
+                      "MarkingAgentCountType": "LDWDropsCount"
+                    },
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11059",
+                        "text": "3284108"
+                      },
+                      "MarkingAgentCountType": "LDWDropsCount"
+                    },
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11039",
+                        "text": "0"
+                      },
+                      "MarkingAgentCountType": "nonHPDropsCount"
+                    },
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11070",
+                        "text": "3201"
+                      },
+                      "MarkingAgentCountType": "OOISensorFiredDropsCount"
+                    },
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11015",
+                        "text": "3222530"
+                      },
+                      "MarkingAgentCountType": "serviceDropsCount"
+                    }
+                  ],
+                  "UsageByPenStall": [
+                    {
+                      "NonHPFlagCounter": {
+                        "PEID": "28022",
+                        "text": "0"
+                      },
+                      "PenStall": [
+                        {
+                          "PenStallValue": {
+                            "PEID": "64219",
+                            "text": "2903229"
+                          },
+                          "PenStallValueLocation": "zero"
+                        },
+                        {
+                          "PenStallValue": {
+                            "PEID": "64220",
+                            "text": "134930560"
+                          },
+                          "PenStallValueLocation": "one"
+                        },
+                        {
+                          "PenStallValue": {
+                            "PEID": "64221",
+                            "text": "2689434881"
+                          },
+                          "PenStallValueLocation": "two"
+                        },
+                        {
+                          "PenStallValue": {
+                            "PEID": "64222",
+                            "text": "7873807"
+                          },
+                          "PenStallValueLocation": "three"
+                        }
+                      ],
+                      "PenStallNumber": "1",
+                      "TijGenAndVersion": {
+                        "PEID": "64227",
+                        "text": "7"
+                      }
+                    },
+                    {
+                      "NonHPFlagCounter": {
+                        "PEID": "28023",
+                        "text": "0"
+                      },
+                      "PenStall": [
+                        {
+                          "PenStallValue": {
+                            "PEID": "64223",
+                            "text": "137376951"
+                          },
+                          "PenStallValueLocation": "zero"
+                        },
+                        {
+                          "PenStallValue": {
+                            "PEID": "64224",
+                            "text": "2668881486"
+                          },
+                          "PenStallValueLocation": "one"
+                        },
+                        {
+                          "PenStallValue": {
+                            "PEID": "64225",
+                            "text": "3246881819"
+                          },
+                          "PenStallValueLocation": "two"
+                        },
+                        {
+                          "PenStallValue": {
+                            "PEID": "64226",
+                            "text": "363594752"
+                          },
+                          "PenStallValueLocation": "three"
+                        }
+                      ],
+                      "PenStallNumber": "2",
+                      "TijGenAndVersion": {
+                        "PEID": "64228",
+                        "text": "7"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "ConsumableRawPercentageLevelRemaining": "47",
+                  "ConsumableTypeEnum": "inkCartridge",
+                  "CumulativeConsumableCount": "5",
+                  "CumulativeHPMarkingAgentUsed": {
+                    "PEID": "64103",
+                    "Unit": "microliters",
+                    "ValueFloat": "56"
+                  },
+                  "CumulativeMarkingAgentUsed": {
+                    "PEID": "64102",
+                    "Unit": "microliters",
+                    "ValueFloat": "56"
+                  },
+                  "MarkerColor": "Black",
+                  "PVPCartridgeCounter": {
+                    "PEID": "28024",
+                    "text": "0"
+                  },
+                  "PenInsertionTriggerSnapshotCounter": {
+                    "PEID": "28031",
+                    "text": "319"
+                  },
+                  "RefilledCount": {
+                    "CounterfeitRefilledCount": {
+                      "PEID": "16086",
+                      "text": "0"
+                    },
+                    "GenuineRefilledCount": "0"
+                  },
+                  "UsageByMarkingAgentCount": [
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11000",
+                        "text": "10179425"
+                      },
+                      "MarkingAgentCountType": "HPDropsCount"
+                    },
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11038",
+                        "text": "0"
+                      },
+                      "MarkingAgentCountType": "nonHPDropsCount"
+                    },
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11069",
+                        "text": "243"
+                      },
+                      "MarkingAgentCountType": "OOISensorFiredDropsCount"
+                    },
+                    {
+                      "MarkingAgentCount": {
+                        "PEID": "11014",
+                        "text": "1660876"
+                      },
+                      "MarkingAgentCountType": "serviceDropsCount"
+                    }
+                  ],
+                  "UsageByPenStall": [
+                    {
+                      "NonHPFlagCounter": {
+                        "PEID": "28022",
+                        "text": "0"
+                      },
+                      "PenStall": [
+                        {
+                          "PenStallValue": {
+                            "PEID": "64219",
+                            "text": "2903229"
+                          },
+                          "PenStallValueLocation": "zero"
+                        },
+                        {
+                          "PenStallValue": {
+                            "PEID": "64220",
+                            "text": "134930560"
+                          },
+                          "PenStallValueLocation": "one"
+                        },
+                        {
+                          "PenStallValue": {
+                            "PEID": "64221",
+                            "text": "2689434881"
+                          },
+                          "PenStallValueLocation": "two"
+                        },
+                        {
+                          "PenStallValue": {
+                            "PEID": "64222",
+                            "text": "7873807"
+                          },
+                          "PenStallValueLocation": "three"
+                        }
+                      ],
+                      "PenStallNumber": "1",
+                      "TijGenAndVersion": {
+                        "PEID": "64227",
+                        "text": "7"
+                      }
+                    },
+                    {
+                      "NonHPFlagCounter": {
+                        "PEID": "28023",
+                        "text": "0"
+                      },
+                      "PenStall": [
+                        {
+                          "PenStallValue": {
+                            "PEID": "64223",
+                            "text": "137376951"
+                          },
+                          "PenStallValueLocation": "zero"
+                        },
+                        {
+                          "PenStallValue": {
+                            "PEID": "64224",
+                            "text": "2668881486"
+                          },
+                          "PenStallValueLocation": "one"
+                        },
+                        {
+                          "PenStallValue": {
+                            "PEID": "64225",
+                            "text": "3246881819"
+                          },
+                          "PenStallValueLocation": "two"
+                        },
+                        {
+                          "PenStallValue": {
+                            "PEID": "64226",
+                            "text": "363594752"
+                          },
+                          "PenStallValueLocation": "three"
+                        }
+                      ],
+                      "PenStallNumber": "2",
+                      "TijGenAndVersion": {
+                        "PEID": "64228",
+                        "text": "7"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "CopyApplicationSubunit": {
+              "AdfImages": "17",
+              "ColorImpressions": "6",
+              "FlatbedImages": "49",
+              "MonochromeImpressions": "58",
+              "TotalAdfLegallmages": {
+                "PEID": "3027",
+                "text": "0"
+              },
+              "TotalImpressions": {
+                "PEID": "3019",
+                "text": "64"
+              },
+              "UsageByMedia": {
+                "MediaSizeName": "na_legal_8.5x14in",
+                "TotalImpressions": {
+                  "PEID": "3026",
+                  "text": "0"
+                }
+              }
+            },
+            "FaxApplicationSubunit": {
+              "AdfImages": "0",
+              "ColorImpressions": "0",
+              "FlatbedImages": "0",
+              "ImagesReceivedFromPC": "0",
+              "ImagesSentOverIPP": "0",
+              "MonochromeImpressions": "0",
+              "TotalAdfLegallmages": {
+                "PEID": "4017",
+                "text": "0"
+              },
+              "TotalImagesSent": {
+                "PEID": "4011",
+                "text": "0"
+              },
+              "TotalImpressions": {
+                "PEID": "4016",
+                "text": "0"
+              },
+              "TotalReceivedImages": {
+                "PEID": "4007",
+                "text": "0"
+              }
+            },
+            "MobileApplicationSubunit": {
+              "DocumentUsage": [
+                {
+                  "Counter": {
+                    "TotalImpressions": {
+                      "PEID": "36017",
+                      "text": "81"
+                    }
+                  },
+                  "RemoteDeviceType": "OSX"
+                },
+                {
+                  "Counter": {
+                    "TotalImpressions": {
+                      "PEID": "36018",
+                      "text": "544"
+                    }
+                  },
+                  "RemoteDeviceType": "iOS"
+                },
+                {
+                  "Counter": {
+                    "TotalImpressions": {
+                      "PEID": "36021",
+                      "text": "0"
+                    }
+                  },
+                  "RemoteDeviceType": "Android"
+                }
+              ],
+              "PhotoUsage": [
+                {
+                  "Counter": {
+                    "TotalImpressions": {
+                      "PEID": "36019",
+                      "text": "28"
+                    }
+                  },
+                  "RemoteDeviceType": "OSX"
+                },
+                {
+                  "Counter": {
+                    "TotalImpressions": {
+                      "PEID": "36020",
+                      "text": "33"
+                    }
+                  },
+                  "RemoteDeviceType": "iOS"
+                },
+                {
+                  "Counter": {
+                    "TotalImpressions": {
+                      "PEID": "36022",
+                      "text": "0"
+                    }
+                  },
+                  "RemoteDeviceType": "Android"
+                }
+              ],
+              "TotalUsage": [
+                {
+                  "Counter": {
+                    "TotalImpressions": {
+                      "PEID": "36024",
+                      "text": "0"
+                    }
+                  },
+                  "DriverType": "ePrint",
+                  "RemoteDeviceType": "Windows"
+                },
+                {
+                  "Counter": {
+                    "TotalImpressions": {
+                      "PEID": "36025",
+                      "text": "0"
+                    }
+                  },
+                  "DriverType": "inOS",
+                  "RemoteDeviceType": "Windows"
+                },
+                {
+                  "Counter": {
+                    "TotalImpressions": {
+                      "PEID": "36026",
+                      "text": "30"
+                    }
+                  },
+                  "DriverType": "discrete",
+                  "RemoteDeviceType": "Windows"
+                },
+                {
+                  "Counter": {
+                    "TotalImpressions": {
+                      "PEID": "36028",
+                      "text": "0"
+                    }
+                  },
+                  "DriverType": "UniversalPrintDriver",
+                  "RemoteDeviceType": "Windows"
+                },
+                {
+                  "Counter": {
+                    "TotalImpressions": {
+                      "PEID": "36027",
+                      "text": "0"
+                    }
+                  },
+                  "DriverType": "inOS",
+                  "RemoteDeviceType": "OSX"
+                },
+                {
+                  "Counter": {
+                    "TotalImpressions": {
+                      "PEID": "36023",
+                      "text": "0"
+                    }
+                  },
+                  "RemoteDeviceType": "samsung"
+                }
+              ]
+            },
+            "PonyExpressSubunit": {
+              "PECounter": [
+                {
+                  "PEID": "5000",
+                  "text": "1906"
+                },
+                {
+                  "PEID": "5088",
+                  "text": "0"
+                },
+                {
+                  "PEID": "5033",
+                  "text": "0"
+                },
+                {
+                  "PEID": "5031",
+                  "text": "10"
+                },
+                {
+                  "PEID": "5032",
+                  "text": "1"
+                },
+                {
+                  "PEID": "5037",
+                  "text": "1919"
+                },
+                {
+                  "PEID": "5011",
+                  "text": "0"
+                },
+                {
+                  "PEID": "3001",
+                  "text": "60"
+                },
+                {
+                  "PEID": "5106",
+                  "text": "349"
+                },
+                {
+                  "PEID": "5105",
+                  "text": "0"
+                },
+                {
+                  "PEID": "5108",
+                  "text": "0"
+                },
+                {
+                  "PEID": "5109",
+                  "text": "0"
+                },
+                {
+                  "PEID": "64106",
+                  "text": "83000"
+                },
+                {
+                  "PEID": "64107",
+                  "text": "56300"
+                },
+                {
+                  "PEID": "64108",
+                  "text": "56300"
+                },
+                {
+                  "PEID": "64109",
+                  "text": "26700"
+                },
+                {
+                  "PEID": "64110",
+                  "text": "26700"
+                },
+                {
+                  "PEID": "5110",
+                  "text": "0"
+                },
+                {
+                  "PEID": "5111",
+                  "text": "0"
+                },
+                {
+                  "PEID": "5112",
+                  "text": "0"
+                },
+                {
+                  "PEID": "5113",
+                  "text": "0"
+                },
+                {
+                  "PEID": "30065",
+                  "text": "0"
+                },
+                {
+                  "PEID": "30066",
+                  "text": "2"
+                },
+                {
+                  "PEID": "30069",
+                  "text": "0"
+                }
+              ]
+            },
+            "PrintApplicationSubunit": {
+              "CloudPrintImpressions": {
+                "PEID": "36016",
+                "text": "1"
+              },
+              "MediaSize_4x6in_10x15cm_Impressions": {
+                "PEID": "7006",
+                "text": "10"
+              },
+              "PhotoImpressions": {
+                "PEID": "7002",
+                "text": "11"
+              },
+              "TotalImpressions": {
+                "PEID": "7009",
+                "text": "1800"
+              }
+            },
+            "PrinterSubunit": {
+              "EWSAccessCount": {
+                "PEID": "16081",
+                "text": "2"
+              },
+              "JamEvents": {
+                "PEID": "16076",
+                "text": "4"
+              },
+              "MispickEvents": "188",
+              "NetworkImpressions": {
+                "PEID": "25000",
+                "text": "488"
+              },
+              "QuietModeImpressions": {
+                "TotalImpressions": {
+                  "PEID": "5107",
+                  "text": "0"
+                }
+              },
+              "SubscriptionImpressions": "1895",
+              "TotalImpressions": {
+                "PEID": "5082",
+                "text": "1900"
+              },
+              "UIButtonPressCounters": {
+                "ButtonPressCount": {
+                  "PEID": "30039",
+                  "text": "0"
+                },
+                "ButtonPressOptions": "startScanButtonPress"
+              },
+              "UsageByConsumableSubscription": {
+                "TrialEnrolledImpressions": "36",
+                "TrialUnenrolledImpressions": "2"
+              },
+              "UsageByDataPath": {
+                "ImpressionsByDataPathID": [
+                  {
+                    "DataPathID": "googleLocal",
+                    "TotalImpressions": {
+                      "PEID": "36030",
+                      "text": "0"
+                    }
+                  },
+                  {
+                    "DataPathID": "googleCloud",
+                    "TotalImpressions": {
+                      "PEID": "36029",
+                      "text": "0"
+                    }
+                  }
+                ]
+              },
+              "UsageByMarkingAgent": {
+                "CumulativeHPMarkingAgentInserted": {
+                  "PEID": "64001",
+                  "Unit": "microliters",
+                  "ValueFloat": "172"
+                },
+                "CumulativeHPMarkingAgentUsed": {
+                  "PEID": "64101",
+                  "Unit": "microliters",
+                  "ValueFloat": "83"
+                },
+                "CumulativeMarkingAgentUsed": {
+                  "PEID": "64100",
+                  "Unit": "microliters",
+                  "ValueFloat": "83"
+                }
+              },
+              "UsageByMedia": [
+                {
+                  "MediaSizeName": "na_executive_7.25x10.5in",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "na_letter_8.5x11in",
+                  "TotalImpressions": {
+                    "PEID": "5087",
+                    "text": "1885"
+                  }
+                },
+                {
+                  "MediaSizeName": "na_legal_8.5x14in",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "na_govt-letter_8x10in",
+                  "TotalImpressions": {
+                    "PEID": "5086",
+                    "text": "0"
+                  }
+                },
+                {
+                  "MediaSizeName": "na_invoice_5.5x8.5in",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "iso_a5_148x210mm",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "iso_a4_210x297mm",
+                  "TotalImpressions": {
+                    "PEID": "5087",
+                    "text": "1885"
+                  }
+                },
+                {
+                  "MediaSizeName": "jis_b5_182x257mm",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "jpn_hagaki_100x148mm",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "iso_a6_105x148mm",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "na_index-4x6_4x6in",
+                  "TotalImpressions": {
+                    "PEID": "5084",
+                    "text": "10"
+                  }
+                },
+                {
+                  "MediaSizeName": "na_index-5x8_5x8in",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "na_index-3x5_3x5in",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "na_monarch_3.875x7.5in",
+                  "TotalImpressions": {
+                    "PEID": "5083",
+                    "text": "0"
+                  }
+                },
+                {
+                  "MediaSizeName": "na_number-10_4.125x9.5in",
+                  "TotalImpressions": {
+                    "PEID": "5083",
+                    "text": "0"
+                  }
+                },
+                {
+                  "MediaSizeName": "iso_dl_110x220mm",
+                  "TotalImpressions": {
+                    "PEID": "5083",
+                    "text": "0"
+                  }
+                },
+                {
+                  "MediaSizeName": "iso_c5_162x229mm",
+                  "TotalImpressions": {
+                    "PEID": "5083",
+                    "text": "0"
+                  }
+                },
+                {
+                  "MediaSizeName": "iso_c6_114x162mm",
+                  "TotalImpressions": {
+                    "PEID": "5083",
+                    "text": "0"
+                  }
+                },
+                {
+                  "MediaSizeName": "na_a2_4.375x5.75in",
+                  "TotalImpressions": {
+                    "PEID": "5083",
+                    "text": "0"
+                  }
+                },
+                {
+                  "MediaSizeName": "jpn_chou3_120x235mm",
+                  "TotalImpressions": {
+                    "PEID": "5083",
+                    "text": "0"
+                  }
+                },
+                {
+                  "MediaSizeName": "jpn_chou4_90x205mm",
+                  "TotalImpressions": {
+                    "PEID": "5083",
+                    "text": "0"
+                  }
+                },
+                {
+                  "MediaSizeName": "om_photo_89x127mm",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "custom_photo-2l-size-card_127x178mm",
+                  "TotalImpressions": {
+                    "PEID": "5085",
+                    "text": "1"
+                  }
+                },
+                {
+                  "MediaSizeName": "na_5x7_5x7in",
+                  "TotalImpressions": {
+                    "PEID": "5085",
+                    "text": "1"
+                  }
+                },
+                {
+                  "MediaSizeName": "na_personal_3.625x6.5in",
+                  "TotalImpressions": {
+                    "PEID": "5083",
+                    "text": "0"
+                  }
+                },
+                {
+                  "MediaSizeName": "jpn_oufuku_148x200mm",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "iso_b5_176x250mm",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "om_small-photo_100x150mm",
+                  "TotalImpressions": "0"
+                },
+                {
+                  "MediaSizeName": "na_foolscap_8.5x13in",
+                  "TotalImpressions": "0"
+                }
+              ],
+              "UsageByMediaType": [
+                {
+                  "MediaType": "plain",
+                  "TotalImpressions": {
+                    "PEID": "5003",
+                    "text": "1888"
+                  },
+                  "UsageByJobSize": [
+                    {
+                      "PagesPerJob": "one",
+                      "TotalImpressions": {
+                        "PEID": "5048",
+                        "text": "431"
+                      }
+                    },
+                    {
+                      "PagesPerJob": "two",
+                      "TotalImpressions": {
+                        "PEID": "5049",
+                        "text": "142"
+                      }
+                    },
+                    {
+                      "PagesPerJob": "threeToFive",
+                      "TotalImpressions": {
+                        "PEID": "5050",
+                        "text": "163"
+                      }
+                    },
+                    {
+                      "PagesPerJob": "sixToTen",
+                      "TotalImpressions": {
+                        "PEID": "5051",
+                        "text": "57"
+                      }
+                    },
+                    {
+                      "PagesPerJob": "greaterThanTen",
+                      "TotalImpressions": {
+                        "PEID": "5052",
+                        "text": "9"
+                      }
+                    }
+                  ],
+                  "UsageByQuality": {
+                    "BetterImpressions": {
+                      "PEID": "5043",
+                      "text": "76"
+                    },
+                    "DraftImpressions": {
+                      "PEID": "5042",
+                      "text": "0"
+                    },
+                    "NormalImpressions": {
+                      "PEID": "5041",
+                      "text": "1812"
+                    }
+                  }
+                },
+                {
+                  "MediaType": "photoStandard",
+                  "TotalImpressions": {
+                    "PEID": "5004",
+                    "text": "40"
+                  },
+                  "UsageByJobSize": [
+                    {
+                      "PagesPerJob": "one",
+                      "TotalImpressions": {
+                        "PEID": "5053",
+                        "text": "37"
+                      }
+                    },
+                    {
+                      "PagesPerJob": "two",
+                      "TotalImpressions": {
+                        "PEID": "5054",
+                        "text": "0"
+                      }
+                    },
+                    {
+                      "PagesPerJob": "threeToFive",
+                      "TotalImpressions": {
+                        "PEID": "5055",
+                        "text": "1"
+                      }
+                    },
+                    {
+                      "PagesPerJob": "sixToTen",
+                      "TotalImpressions": {
+                        "PEID": "5056",
+                        "text": "0"
+                      }
+                    },
+                    {
+                      "PagesPerJob": "greaterThanTen",
+                      "TotalImpressions": {
+                        "PEID": "5057",
+                        "text": "0"
+                      }
+                    }
+                  ],
+                  "UsageByQuality": {
+                    "BetterImpressions": {
+                      "PEID": "5046",
+                      "text": "28"
+                    },
+                    "NormalImpressions": {
+                      "PEID": "5044",
+                      "text": "12"
+                    }
+                  }
+                }
+              ],
+              "UsageByTimeInterval": [
+                {
+                  "JobCount": {
+                    "PEID": "39000",
+                    "text": "336"
+                  },
+                  "JobDuration": "lessthanTwoMinutes"
+                },
+                {
+                  "JobCount": {
+                    "PEID": "39001",
+                    "text": "29"
+                  },
+                  "JobDuration": "twoToFiveMinutes"
+                },
+                {
+                  "JobCount": {
+                    "PEID": "39002",
+                    "text": "60"
+                  },
+                  "JobDuration": "fiveToThirtyMinutes"
+                },
+                {
+                  "JobCount": {
+                    "PEID": "39003",
+                    "text": "26"
+                  },
+                  "JobDuration": "thirtyToSixtyMinutes"
+                },
+                {
+                  "JobCount": {
+                    "PEID": "39004",
+                    "text": "35"
+                  },
+                  "JobDuration": "oneToSixHours"
+                },
+                {
+                  "JobCount": {
+                    "PEID": "39005",
+                    "text": "72"
+                  },
+                  "JobDuration": "sixHoursToOneDay"
+                },
+                {
+                  "JobCount": {
+                    "PEID": "39006",
+                    "text": "96"
+                  },
+                  "JobDuration": "oneToThreeDays"
+                },
+                {
+                  "JobCount": {
+                    "PEID": "39007",
+                    "text": "102"
+                  },
+                  "JobDuration": "threeToSevenDays"
+                },
+                {
+                  "JobCount": {
+                    "PEID": "39008",
+                    "text": "128"
+                  },
+                  "JobDuration": "sevenDaysToOneMonth"
+                },
+                {
+                  "JobCount": {
+                    "PEID": "39009",
+                    "text": "14"
+                  },
+                  "JobDuration": "oneToThreeMonths"
+                }
+              ],
+              "WirelessConfigUserSelectedOption": {
+                "PEID": "30064",
+                "text": "noSelectionMade"
+              },
+              "WirelessNetworkImpressions": {
+                "PEID": "25002",
+                "text": "488"
+              }
+            },
+            "ScanApplicationSubunit": {
+              "AdfImages": "7",
+              "FlatbedImages": "245",
+              "ScanToHostImages": {
+                "PEID": "6001",
+                "text": "252"
+              }
+            },
+            "ScannerEngineSubunit": {
+              "AdfImages": {
+                "PEID": "6011",
+                "text": "24"
+              },
+              "FlatbedImages": "286",
+              "JamEvents": "0",
+              "MispickEvents": "0",
+              "ScanImages": {
+                "PEID": "6000",
+                "text": "310"
+              },
+              "UsageByADF": {
+                "TotalLegalScanlmages": {
+                  "PEID": "6022",
+                  "text": "0"
+                },
+                "UsageByJobSize": [
+                  {
+                    "PagesPerJob": "oneToTen",
+                    "TotalImpressions": {
+                      "PEID": "6016",
+                      "text": "19"
+                    }
+                  },
+                  {
+                    "PagesPerJob": "elevenToTwenty",
+                    "TotalImpressions": {
+                      "PEID": "6017",
+                      "text": "0"
+                    }
+                  },
+                  {
+                    "PagesPerJob": "twentyOneToThirtyFive",
+                    "TotalImpressions": {
+                      "PEID": "6018",
+                      "text": "0"
+                    }
+                  },
+                  {
+                    "PagesPerJob": "greaterThanThirtyfive",
+                    "TotalImpressions": {
+                      "PEID": "6019",
+                      "text": "0"
+                    }
+                  }
+                ],
+                "UsageByJobSizeAndMedia": [
+                  {
+                    "MediaSizeName": "na_legal_8.5x14in",
+                    "UsageByJobSize": {
+                      "PagesPerJob": "oneToTen",
+                      "TotalImpressions": {
+                        "PEID": "6023",
+                        "text": "0"
+                      }
+                    }
+                  },
+                  {
+                    "MediaSizeName": "na_legal_8.5x14in",
+                    "UsageByJobSize": {
+                      "PagesPerJob": "elevenToTwenty",
+                      "TotalImpressions": {
+                        "PEID": "6024",
+                        "text": "0"
+                      }
+                    }
+                  },
+                  {
+                    "MediaSizeName": "na_legal_8.5x14in",
+                    "UsageByJobSize": {
+                      "PagesPerJob": "twentyOneToThirtyFive",
+                      "TotalImpressions": {
+                        "PEID": "6025",
+                        "text": "0"
+                      }
+                    }
+                  },
+                  {
+                    "MediaSizeName": "na_legal_8.5x14in",
+                    "UsageByJobSize": {
+                      "PagesPerJob": "greaterThanThirtyfive",
+                      "TotalImpressions": {
+                        "PEID": "6026",
+                        "text": "0"
+                      }
+                    }
+                  }
+                ]
+              },
+              "UsageByScanMediaSize": [
+                {
+                  "ScanImages": {
+                    "PEID": "6000",
+                    "text": "310"
+                  },
+                  "ScanMediaSize": "any"
+                },
+                {
+                  "ScanImages": {
+                    "PEID": "6021",
+                    "text": "0"
+                  },
+                  "ScanMediaSize": "na_legal_8.5x14in"
+                }
+              ]
+            },
+            "Version": {
+              "Date": "2010-08-31",
+              "Revision": "SVN-IPG-LEDM.119"
+            },
+            "schemaLocation": "http://www.hp.com/schemas/imaging/con/ledm/productusagedyn/2007/12/11 ../schemas/ProductUsageDyn.xsd"
+          }
+        }
+      }
     }
   ],
   "links": [
@@ -5055,6 +6680,21 @@
       "channel": 6,
       "signal_dbm": null,
       "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:70",
+        "radio": "2.4 GHz"
+      },
+      "b": {
+        "device": "eero:2003",
+        "radio": "2.4 GHz"
+      },
+      "medium": "wifi",
+      "speed_mbps": null,
+      "channel": 6,
+      "signal_dbm": null,
+      "source": "eero"
     }
   ],
   "internet": {
@@ -5093,12 +6733,12 @@
     {
       "kind": "ceiling",
       "device": "modem",
-      "says": "The internet comes in at 369.9 Mbit/s down, the least room on 8 devices' way"
+      "says": "The internet comes in at 369.9 Mbit/s down, the least room on 9 devices' way"
     },
     {
       "kind": "ceiling",
       "device": "modem",
-      "says": "The internet comes in at 11.9 Mbit/s up, the least room on 19 devices' way"
+      "says": "The internet comes in at 11.9 Mbit/s up, the least room on 20 devices' way"
     }
   ]
 }
