@@ -218,7 +218,7 @@ function record(one, how, machine) {
 function sessions(sorting, machine, made) {
     const kept = made ?? {};
     const seen = new Set();
-    const said = (one, how) => {
+    const recordOf = (one, how) => {
         const was = kept[one.file];
         seen.add(one.file);
         if (was && was.one === one && was.how === how && was.machine === machine) {
@@ -228,9 +228,9 @@ function sessions(sorting, machine, made) {
         kept[one.file] = { one, how, machine, record: now };
         return now;
     };
-    const records = sorting.live.map(one => said(one, "live"))
-        .concat(sorting.resting.map(one => said(one, "parked")))
-        .concat(sorting.ending.map(one => said(one, "closed")));
+    const records = sorting.live.map(one => recordOf(one, "live"))
+        .concat(sorting.resting.map(one => recordOf(one, "parked")))
+        .concat(sorting.ending.map(one => recordOf(one, "closed")));
     for (const file of Object.keys(kept)) {
         if (!seen.has(file)) {
             delete kept[file];
