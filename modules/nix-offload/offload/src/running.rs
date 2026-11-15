@@ -103,8 +103,24 @@ pub struct Going {
 /// The run going under `state`, other than process `me`, that does the
 /// work `at` names, if one does.
 pub fn twin(state: &Path, me: u32, at: &Twin) -> Option<Going> {
-    let _ = (state, me, at);
-    None
+    let folder = at.folder.to_string_lossy();
+    fs::read_dir(state.join("nix-offload/running"))
+        .ok()?
+        .filter_map(|entry| fs::read_to_string(entry.ok()?.path()).ok())
+        .filter_map(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .find_map(|said| {
+            let pid = u32::try_from(said["pid"].as_u64()?).ok()?;
+            let same = pid != me
+                && said["commit"].as_str() == Some(at.commit)
+                && said["folder"].as_str() == Some(&folder)
+                && said["system"].as_str() == at.system;
+            // A process id comes back to another program, so the run is
+            // there only while its process started when the file says.
+            (same && ticks(pid) == said["ticks"].as_u64()).then(|| Going {
+                pid,
+                started: said["started"].as_u64().unwrap_or_default(),
+            })
+        })
 }
 
 /// Wait while a twin of the run `at` goes, saying so once: whether one
@@ -207,8 +223,7 @@ mod tests {
     fn a_second_run_waits_for_its_twin_to_end() {
         let state = tempfile::tempdir().unwrap();
         let mut child = std::process::Command::new("sh")
-            .args(["-c", "read -t 2 _ || true"])
-            .stdin(std::process::Stdio::piped())
+            .args(["-c", "sleep 2"])
             .spawn()
             .expect("a stand-in run started");
         let first = at("abc", "/t", "x86_64-linux");
