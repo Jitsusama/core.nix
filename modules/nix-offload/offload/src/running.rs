@@ -22,8 +22,9 @@
 //! the same work again (`twin`). From 15 November merge-net's `ready`
 //! starts a change's run again itself in its author's tree, and an
 //! author's loop that starts one too would otherwise double it on the
-//! builders. A tree with changes not committed sends a commit of its own
-//! making, so it never matches one without them.
+//! builders. Runs match only when they send the same commit, and a run
+//! from a tree with changes not committed sends a commit it makes then
+//! (`there.rs`), so those changes keep it apart from the run before.
 
 use std::fs;
 use std::path::{Path, PathBuf};
