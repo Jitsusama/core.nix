@@ -25,6 +25,12 @@ const EVERY: Duration = Duration::from_secs(60);
 /// How long one page may take.
 const PAGE: Duration = Duration::from_secs(5);
 
+/// How long the sign-in may take. The real switch answered its sign-in
+/// as a failure in 13 of 25 rounds on 15 Nov, far more often than it drops
+/// a page, so it may take longer over it than over a page; a slow answer
+/// needn't end the round either, since the next read is what tells.
+const SIGN_IN: Duration = Duration::from_secs(20);
+
 /// How many times each request is made before the switch reads as
 /// unreachable, and the pause between them. The switch's web server closes
 /// about one connection in four without a reply, at times twice running
@@ -77,7 +83,10 @@ fn password() -> Option<String> {
 }
 
 /// One round: the pages as they come, and a sign-in and a second read only
-/// when they hold no status.
+/// when they hold no status. A sign-in the switch answered and the pages
+/// still hold no status was refused, so the password isn't sent again; one
+/// it didn't answer may still have started the session, so only the read
+/// after it says whether to send it again.
 fn round(agent: &Agent, address: &str, password: Option<&str>, now: u64) -> Report {
     let report = |state, reason: Option<String>, status| Report {
         schema: switch::SCHEMA.into(),
@@ -100,18 +109,28 @@ fn round(agent: &Agent, address: &str, password: Option<&str>, now: u64) -> Repo
             None,
         );
     };
-    if let Err(why) = sign_in(agent, address, password) {
-        return report(SourceState::Unreachable, Some(why), None);
+    let mut unanswered = "";
+    for _ in 0..TRIES {
+        let answered = sign_in(agent, address, password);
+        match pages(agent, address).map(|pages| switch::parse(&pages)) {
+            Ok(Ok(status)) => return report(SourceState::Answering, None, Some(status)),
+            Ok(Err(why)) if answered.is_ok() => {
+                return report(
+                    SourceState::SignedOut,
+                    Some(format!("its sign-in was refused: {why}")),
+                    None,
+                );
+            }
+            Ok(Err(_)) => unanswered = answered.err().unwrap_or_default(),
+            Err(why) => return report(SourceState::Unreachable, Some(why), None),
+        }
+        thread::sleep(PAUSE);
     }
-    match pages(agent, address).map(|pages| switch::parse(&pages)) {
-        Ok(Ok(status)) => report(SourceState::Answering, None, Some(status)),
-        Ok(Err(why)) => report(
-            SourceState::SignedOut,
-            Some(format!("its sign-in was refused: {why}")),
-            None,
-        ),
-        Err(why) => report(SourceState::Unreachable, Some(why), None),
-    }
+    report(
+        SourceState::Unreachable,
+        Some(format!("its sign-in didn't answer: {unanswered}")),
+        None,
+    )
 }
 
 /// Each status page, one at a time, since the switch drops a reply when
@@ -122,44 +141,67 @@ fn pages(agent: &Agent, address: &str) -> Result<Pages, String> {
         .map(|page| {
             let url = format!("http://{address}/{page}.htm");
             again(|| {
-                agent
+                let text = agent
                     .get(&url)
                     .call()
                     .and_then(|mut answer| answer.body_mut().read_to_string())
-                    .ok()
-                    .filter(|text| !text.is_empty())
+                    .map_err(|error| kind(&error))?;
+                if text.is_empty() {
+                    Err("it sent an empty page")
+                } else {
+                    Ok(text)
+                }
             })
             .map(|text| ((*page).to_owned(), text))
-            .ok_or_else(|| format!("its {page} page didn't answer"))
+            .map_err(|why| format!("its {page} page didn't answer: {why}"))
         })
         .collect()
 }
 
-/// Signs in. The switch ties the session to the address asking, and its
-/// answer says nothing reliable, so the next read is what tells.
-fn sign_in(agent: &Agent, address: &str, password: &str) -> Result<(), String> {
-    let url = format!("http://{address}/logon.cgi");
-    again(|| {
-        agent
-            .post(&url)
-            .send_form([
-                ("username", USER),
-                ("password", password),
-                ("logon", "Login"),
-            ])
-            .ok()
-    })
-    .map(drop)
-    // Only the kind of failure is said: ureq's own words could carry what
-    // was sent.
-    .ok_or_else(|| "its sign-in page didn't answer".to_owned())
+/// Signs in, once. The switch ties the session to the address asking, and
+/// its answer says nothing reliable, so the next read is what tells.
+fn sign_in(agent: &Agent, address: &str, password: &str) -> Result<(), &'static str> {
+    agent
+        .post(format!("http://{address}/logon.cgi"))
+        .config()
+        .timeout_global(Some(SIGN_IN))
+        .build()
+        .send_form([
+            ("username", USER),
+            ("password", password),
+            ("logon", "Login"),
+        ])
+        .map(drop)
+        .map_err(|error| kind(&error))
+}
+
+/// What kind of failure a request met, in net's words. Only the kind is
+/// said: ureq's own words could carry what was sent, the password included.
+fn kind(error: &ureq::Error) -> &'static str {
+    use io::ErrorKind;
+    match error {
+        ureq::Error::Timeout(_) => "it took too long",
+        ureq::Error::Io(error) => match error.kind() {
+            ErrorKind::ConnectionRefused => "it refused the connection",
+            ErrorKind::ConnectionReset
+            | ErrorKind::ConnectionAborted
+            | ErrorKind::UnexpectedEof => "it closed the connection without a reply",
+            ErrorKind::TimedOut => "it took too long",
+            _ => "the connection failed",
+        },
+        ureq::Error::Protocol(_)
+        | ureq::Error::Http(_)
+        | ureq::Error::LargeResponseHeader(..)
+        | ureq::Error::BodyExceedsLimit(_) => "its answer couldn't be read",
+        _ => "the connection failed",
+    }
 }
 
 /// Makes one request until the switch answers it, at most `TRIES` times.
-fn again<T>(mut ask: impl FnMut() -> Option<T>) -> Option<T> {
+fn again<T>(mut ask: impl FnMut() -> Result<T, &'static str>) -> Result<T, &'static str> {
     for _ in 1..TRIES {
-        if let Some(answer) = ask() {
-            return Some(answer);
+        if let Ok(answer) = ask() {
+            return Ok(answer);
         }
         thread::sleep(PAUSE);
     }
@@ -187,20 +229,35 @@ mod tests {
     /// once signed in with `PASSWORD`, and the sign-in form until then, and
     /// keeps every request it was sent.
     fn switch_on_loopback(signed_in: bool) -> (String, Arc<Mutex<Vec<String>>>) {
-        stand_in(signed_in, false)
+        stand_in(signed_in, Behaves::Well)
     }
 
-    /// The stand-in, and when `flaky`, one that closes two connections in
-    /// every three without a reply, twice in a row, as the real switch's web
-    /// server closes about one in four.
-    fn stand_in(signed_in: bool, flaky: bool) -> (String, Arc<Mutex<Vec<String>>>) {
+    /// How the stand-in's web server behaves.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Behaves {
+        Well,
+        /// It closes about one connection in three without a reply, at
+        /// random but the same each run, before acting on what was asked, as
+        /// the real switch's web server closes about one in four. A fixed
+        /// rhythm would fall in step with the round's requests.
+        Flakily,
+        /// It starts the session, then answers the sign-in only after longer
+        /// than a page may take.
+        SlowlyOverTheSignIn,
+        /// It starts the session, then closes the sign-in's connection
+        /// without a reply.
+        SilentlyOverTheSignIn,
+    }
+
+    fn stand_in(signed_in: bool, behaves: Behaves) -> (String, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
         let address = listener.local_addr().expect("its address").to_string();
         let heard = Arc::new(Mutex::new(Vec::new()));
         let kept = Arc::clone(&heard);
         thread::spawn(move || {
             let mut session = signed_in;
-            for (count, stream) in listener.incoming().enumerate() {
+            let mut dice: u32 = 0x9e37_79b9;
+            for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { return };
                 let mut reader = BufReader::new(stream.try_clone().expect("a second handle"));
                 let mut request = String::new();
@@ -219,13 +276,24 @@ mod tests {
                 reader.read_exact(&mut body).expect("the body");
                 let body = String::from_utf8_lossy(&body).into_owned();
                 request.push_str(&body);
-                if flaky && count % 3 != 2 {
+                dice ^= dice << 13;
+                dice ^= dice >> 17;
+                dice ^= dice << 5;
+                if behaves == Behaves::Flakily && dice.is_multiple_of(3) {
+                    kept.lock()
+                        .expect("the log")
+                        .push(format!("dropped {request}"));
                     continue;
                 }
                 let path = request.split_whitespace().nth(1).unwrap_or("/").to_owned();
                 kept.lock().expect("the log").push(request);
                 if path == "/logon.cgi" {
                     session = body.contains("password=a+test+password+%26+more");
+                    match behaves {
+                        Behaves::SlowlyOverTheSignIn => thread::sleep(PAGE + PAUSE),
+                        Behaves::SilentlyOverTheSignIn => continue,
+                        _ => {}
+                    }
                 }
                 let page = path.trim_start_matches('/').trim_end_matches(".htm");
                 let text = if session && switch::PAGES.contains(&page) {
@@ -284,18 +352,52 @@ mod tests {
 
     #[test]
     fn a_switch_that_drops_connections_is_asked_again_until_it_answers() {
-        let (address, heard) = stand_in(false, true);
+        let (address, heard) = stand_in(false, Behaves::Flakily);
         let report = round(&agent(), &address, Some(PASSWORD), 10);
         assert_eq!(report.state, SourceState::Answering, "{:?}", report.reason);
         assert_eq!(report.status.map(|status| status.ports.len()), Some(8));
         assert_eq!(signed_in(&heard), 1, "a sign-in it answered was sent again");
+        let dropped = |what: &str| {
+            heard
+                .lock()
+                .expect("the log")
+                .iter()
+                .any(|request| request.starts_with(&format!("dropped {what}")))
+        };
+        assert!(dropped("GET"), "the stand-in dropped no page");
+        assert!(dropped("POST"), "the stand-in dropped no sign-in");
     }
 
     #[test]
-    fn a_refused_password_reads_as_signed_out() {
-        let (address, _) = switch_on_loopback(false);
+    fn a_sign_in_answered_slowly_still_reads_the_status() {
+        let (address, heard) = stand_in(false, Behaves::SlowlyOverTheSignIn);
+        let report = round(&agent(), &address, Some(PASSWORD), 10);
+        assert_eq!(report.state, SourceState::Answering, "{:?}", report.reason);
+        assert_eq!(
+            signed_in(&heard),
+            1,
+            "it signed in again over a session it had"
+        );
+    }
+
+    #[test]
+    fn a_sign_in_closed_without_a_reply_is_judged_by_the_next_read() {
+        let (address, heard) = stand_in(false, Behaves::SilentlyOverTheSignIn);
+        let report = round(&agent(), &address, Some(PASSWORD), 10);
+        assert_eq!(report.state, SourceState::Answering, "{:?}", report.reason);
+        assert_eq!(
+            signed_in(&heard),
+            1,
+            "it signed in again over a session it had"
+        );
+    }
+
+    #[test]
+    fn a_refused_password_reads_as_signed_out_and_is_sent_once() {
+        let (address, heard) = switch_on_loopback(false);
         let report = round(&agent(), &address, Some("not it"), 10);
         assert_eq!(report.state, SourceState::SignedOut);
+        assert_eq!(signed_in(&heard), 1, "a refused password was sent again");
     }
 
     #[test]
@@ -315,6 +417,10 @@ mod tests {
         drop(listener);
         let report = round(&agent(), &address, Some(PASSWORD), 10);
         assert_eq!(report.state, SourceState::Unreachable);
+        assert_eq!(
+            report.reason.as_deref(),
+            Some("its SystemInfoRpm page didn't answer: it refused the connection")
+        );
         let written = serde_json::to_string(&report).expect("it writes");
         assert!(
             !written.contains(PASSWORD),
