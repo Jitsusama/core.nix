@@ -18,6 +18,7 @@ pkgs.pi-coding-agent.overrideAttrs (old: {
     ./pi-host-models-cloned-once.patch
     ./pi-host-tools-found-once.patch
     ./pi-host-extension-aliases-sorted-once.patch
+    ./pi-host-boundary-context-when-read.patch
   ];
   patchFlags = [
     "-p1"

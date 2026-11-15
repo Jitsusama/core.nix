@@ -1,0 +1,94 @@
+A host builds a turn's boundary context only when a handler reads it.
+
+At each turn's end and before a run settles, pi builds the boundary
+context, the session's branch copied into a session of its own,
+projected and converted for the model, before the first handler and
+again after every one, whether a handler read it or returned anything.
+On a long session each build holds the main thread tens of milliseconds,
+in a process every conversation of a host shares, and keys typed into
+any of them wait behind it. The harness's turn_end handlers only
+observe, so all of it was for nothing. Now it is built when read, and
+afresh after each handler, which may have changed what it holds. Entries
+a handler returns are still built at once, to check them.
+
+Apply only to the host's private pi build; ordinary interactive pi stays
+unchanged.
+
+--- a/packages/coding-agent/src/core/extensions/runner.ts
++++ b/packages/coding-agent/src/core/extensions/runner.ts
+@@ -1054,13 +1054,23 @@
+ 
+ 	async emitBoundary(
+ 		baseEvent: BoundaryBaseEvent,
+-		buildContext: (entries: SessionBoundaryDraft[]) => BoundaryContextPreview | Promise<BoundaryContextPreview>,
++		buildContext: (entries: SessionBoundaryDraft[]) => BoundaryContextPreview,
+ 	): Promise<BoundaryDispatchResult> {
+ 		const ctx = this.createContext();
+ 		let entries: SessionBoundaryDraft[] = [];
+ 		let shouldContinue = false;
+-		let context = await buildContext(entries);
+ 		let valid = true;
++		// pi-host: building the context copies the whole branch and projects it, tens of ms on a long
++		// session, and it ran before the handlers and again after each, though observers never read
++		// it. It is built only when read, from the last entries that built, and again after each
++		// handler, which may have changed what it holds. Entries a handler returns are built at once,
++		// to check them, as before.
++		let goodEntries: SessionBoundaryDraft[] = entries;
++		let built: BoundaryContextPreview | undefined;
++		const context = (): BoundaryContextPreview => {
++			built ??= buildContext(goodEntries);
++			return built;
++		};
+ 
+ 		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, baseEvent.type)) {
+ 			for (const handler of handlers) {
+@@ -1068,11 +1078,15 @@
+ 					...baseEvent,
+ 					entries,
+ 					continue: shouldContinue,
+-					context,
++					get context() {
++						return context();
++					},
+ 				} as TurnEndEvent | AgentBeforeSettleEvent;
++				let returned: SessionBoundaryDraft[] | undefined;
+ 				try {
+ 					const handlerResult = (await handler(event, ctx)) as BoundaryResult | undefined;
+-					if (handlerResult?.entries !== undefined) entries = handlerResult.entries;
++					returned = handlerResult?.entries;
++					if (returned !== undefined) entries = returned;
+ 					if (handlerResult?.continue !== undefined) shouldContinue = handlerResult.continue;
+ 				} catch (err) {
+ 					this.emitError({
+@@ -1083,8 +1097,11 @@
+ 					});
+ 				}
+ 
++				built = undefined;
++				if (returned === undefined) continue;
+ 				try {
+-					context = await buildContext(entries);
++					built = buildContext(entries);
++					goodEntries = entries;
+ 					valid = true;
+ 				} catch (err) {
+ 					valid = false;
+@@ -1098,9 +1115,15 @@
+ 			}
+ 		}
+ 
+-		return valid
+-			? { entries, continue: shouldContinue, context, valid: true }
+-			: { entries: [], continue: false, context, valid: false };
++		const settled = valid
++			? { entries, continue: shouldContinue, valid: true }
++			: { entries: [], continue: false, valid: false };
++		return {
++			...settled,
++			get context() {
++				return context();
++			},
++		};
+ 	}
+ 
+ 	private isSessionBeforeEvent(event: RunnerEmitEvent): event is SessionBeforeEvent {
