@@ -397,6 +397,22 @@ fn newest_rules(main: &str) -> String {
     .unwrap_or_default()
 }
 
+/// Refuse `commit`, behind origin's main at `main`, which since moved
+/// `shared` of its files unseen by its run at `checked`. A run again at a
+/// head behind main would check it against the same old base, so only a
+/// rebase brings main's moves in.
+fn rebase_over(commit: &str, main: &str, checked: &str, shared: &[String]) -> ExitCode {
+    eprintln!(
+        "merge-net: {} doesn't sit on origin's main as it is now, {}, which has since moved \
+         {}, so its run at {} didn't see them; rebase onto origin/main, push, and merge again",
+        short(commit),
+        short(main),
+        shared.join(", "),
+        short(checked)
+    );
+    ExitCode::FAILURE
+}
+
 /// Where `commit` stands against origin's main at `main`, as `ready` says
 /// it: on it, or behind it and merging as it stands.
 fn stands(commit: &str, main: &str, behind: bool) -> String {
@@ -515,18 +531,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
                 return Ok(said);
             }
             if behind {
-                // A run again at a head behind main would check it against
-                // the same old base, so only a rebase brings main's moves in.
-                eprintln!(
-                    "merge-net: {} doesn't sit on origin's main as it is now, {}, which has \
-                     since moved {}, so its run at {} didn't see them; rebase onto \
-                     origin/main, push, and merge again",
-                    short(commit),
-                    short(main),
-                    shared.join(", "),
-                    short(&checked)
-                );
-                return Ok(ExitCode::FAILURE);
+                return Ok(rebase_over(commit, main, &checked, &shared));
             }
             // Its run again keeps the place this pass's gate had.
             turn::keep_place(&[commit, &checked]);
