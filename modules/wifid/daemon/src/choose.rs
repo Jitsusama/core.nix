@@ -27,6 +27,33 @@ pub const TRIAL: Duration = Duration::from_secs(300);
 /// How long an access point found worse from here is left untried.
 pub const SPURNED: Duration = Duration::from_secs(3600);
 
+/// Past either, an access point carries badly enough to try another: a
+/// p95 near three times the better radio's on 14 Nov, or a loss a call
+/// hears.
+const SLOW: Duration = Duration::from_millis(40);
+const LOSSY: f64 = 2.0;
+
+/// Past this loss the link is failing, and it's left even during a call.
+const FAILING: f64 = 10.0;
+
+/// How much fainter than the one it's on an untried access point may be
+/// heard and still be tried: about a quarter of the power.
+const FAINTER: i16 = 6;
+
+/// How busy an untried access point's channel may say it is and still be
+/// tried.
+const BUSIEST: u8 = 70;
+
+/// How much quicker one measured lately must have been to be moved to:
+/// both, so neither a small figure's ratio nor a large one's few
+/// milliseconds moves the card.
+const QUICKER_BY: f64 = 0.7;
+const QUICKER: Duration = Duration::from_millis(10);
+
+/// How much worse a trial may carry before the card goes back.
+const WORSE: Duration = Duration::from_millis(10);
+const WORSE_LOSS: f64 = 2.0;
+
 /// What another access point of the network is known by.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Other {
@@ -72,17 +99,80 @@ impl Chooser {
         others: &[Other],
         calling: bool,
     ) -> Choice {
-        let _ = (
-            now,
-            on,
-            others,
-            calling,
-            &mut self.moved,
-            &self.trial,
-            &self.spurned,
-        );
-        Choice::Stay
+        let (point, measured, signal) = on;
+        let failing = measured.lost > FAILING;
+        if calling && !failing {
+            return Choice::Stay;
+        }
+        if let Some(trial) = self.trial.take() {
+            let over = self
+                .moved
+                .is_none_or(|moved| now.duration_since(moved) >= TRIAL);
+            if !over && !failing {
+                self.trial = Some(trial);
+                return Choice::Stay;
+            }
+            if worse(measured, &trial.before) {
+                self.spurned.insert(point.to_owned(), now);
+                self.moved = Some(now);
+                return Choice::Back(trial.from);
+            }
+        }
+        let settled = self
+            .moved
+            .is_none_or(|moved| now.duration_since(moved) >= SETTLE);
+        if !settled && !failing {
+            return Choice::Stay;
+        }
+        self.spurned
+            .retain(|_, spurned| now.duration_since(*spurned) < SPURNED);
+        let bad = failing || slowness(measured) > SLOW || measured.lost > LOSSY;
+        let untried = others
+            .iter()
+            .filter(|other| other.point != point && !self.spurned.contains_key(&other.point));
+        let faster = untried.clone().filter_map(|other| {
+            let theirs = other.measured.as_ref()?;
+            quicker(theirs, measured).then_some((slowness(theirs), other))
+        });
+        let near = untried.filter(|other| {
+            bad && other.measured.is_none()
+                && other.signal >= signal - FAINTER
+                && other.busy.is_none_or(|busy| busy <= BUSIEST)
+        });
+        let chosen = faster
+            .min_by_key(|(slowness, _)| *slowness)
+            .map(|(_, other)| other)
+            .or_else(|| near.max_by_key(|other| other.signal));
+        let Some(chosen) = chosen else {
+            return Choice::Stay;
+        };
+        self.moved = Some(now);
+        self.trial = Some(Trial {
+            from: point.to_owned(),
+            before: measured.clone(),
+        });
+        Choice::Try(chosen.point.clone())
     }
+}
+
+/// An access point's p95, where nothing answered as slow as can be.
+fn slowness(measured: &Measured) -> Duration {
+    measured.p95.unwrap_or(Duration::MAX)
+}
+
+/// Whether one access point carried far quicker than another, and lost no
+/// more.
+fn quicker(theirs: &Measured, ours: &Measured) -> bool {
+    let (their_p95, our_p95) = (slowness(theirs), slowness(ours));
+    theirs.lost <= ours.lost.max(LOSSY)
+        && their_p95 <= our_p95.mul_f64(QUICKER_BY)
+        && our_p95.saturating_sub(their_p95) >= QUICKER
+}
+
+/// Whether a trial carried worse than what it left.
+fn worse(trial: &Measured, before: &Measured) -> bool {
+    slowness(trial) > slowness(before).saturating_add(WORSE)
+        || trial.lost > before.lost + WORSE_LOSS
 }
 
 #[cfg(test)]
