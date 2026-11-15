@@ -186,6 +186,11 @@
     back as a shell starts; words sent are kept until their talk is delivered or replied to, and
     kept when it fails; a week-old file, or one not written by the shell, gives nothing back
   '';
+  a-terminal-sudo-goes-through-run0 = ''
+    sudo typed at a NixOS account's zsh, with the sudo module, hands a command or a root shell
+    alone to run0, whose polkit prompt takes the key's touch, and every form of sudo's own, such
+    as another user, to sudo
+  '';
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind, but in the web kit's other look
   '';

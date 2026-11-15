@@ -3,8 +3,11 @@
 # plugged in and named. The person is signed in to a desktop at the seat,
 # cage with a terminal in it standing in for niri, and run0 is asked from
 # that terminal with the shell's lock let go, up, or saying nothing, from a
-# text console signed in beside it, and from an ssh login. canokey says yes
-# to every touch, so a prompt that takes the touch needs nothing typed. The
+# text console signed in beside it, and from an ssh login. sudo as the
+# terminal types it (modules/sudo/by-touch.sh) is asked too, and run0 once
+# the key is pulled out, last, which the password still answers. canokey
+# says yes to every touch, so a prompt that takes the touch needs nothing
+# typed. The
 # tests are yubikey-touch-vm-test.py, which pytest runs inside the driver
 # (tests/lib/vm_pytest.py).
 { self, pkgs }:
@@ -17,9 +20,23 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   qemu.package = qemu;
 
   nodes.machine =
-    { lib, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     {
       imports = [ self.nixosModules.yubikey ];
+
+      # sudo as the person's terminal has it, given this machine's run0 and
+      # sudo, as modules/sudo/home.nix gives a machine's.
+      environment.systemPackages = [
+        (pkgs.callPackage ../../../modules/sudo/by-touch.nix {
+          run0 = "${config.systemd.package}/bin/run0";
+          sudo = "${config.security.wrapperDir}/sudo";
+        })
+      ];
 
       virtualisation.qemu.options = [
         # cage draws through virtio's GPU, not QEMU's standard VGA.
@@ -28,7 +45,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         # The key's state is made as QEMU starts, in the machine's own
         # temporary folder, since a key plugged in later can't make one.
         "-device qemu-xhci,id=keys"
-        "-device canokey,bus=keys.0,file=$TMPDIR/canokey"
+        # Named, so the last test can pull it out.
+        "-device canokey,bus=keys.0,id=key,file=$TMPDIR/canokey"
       ];
 
       users.users.someone = {
