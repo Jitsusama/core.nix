@@ -125,7 +125,11 @@ impl Trial {
     /// (09:38 on 14 Nov, 212 s for three); the last, for trials older
     /// than the launcher's saying so.
     pub fn found(&self) -> i64 {
-        self.ms
+        if self.first_ms >= 0 {
+            self.first_ms
+        } else {
+            self.ms
+        }
     }
 
     /// When it closed, in milliseconds since the epoch.

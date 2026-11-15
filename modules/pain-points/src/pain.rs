@@ -570,8 +570,15 @@ mod tests {
             HUNTING_MOST_MS,
             "one opening can't outweigh a day's struggles"
         );
-        let settled = Trial { first_ms: 9000, ..long };
-        assert_eq!(lost(&settled, None, &usual).hunting, 5000.0, "found at the first");
+        let settled = Trial {
+            first_ms: 9000,
+            ..long
+        };
+        assert_eq!(
+            lost(&settled, None, &usual).hunting,
+            5000.0,
+            "found at the first"
+        );
     }
 
     #[test]
