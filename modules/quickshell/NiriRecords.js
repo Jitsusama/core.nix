@@ -2,7 +2,7 @@
 // (modules/windows) rather than from niri's own event stream, so the shell
 // wakes only for what something here reads: never for a window's tile
 // moving, which niri says at every resize and scroll, unless a reader
-// draws tiles (`layout` records, watched only then), nor for what a
+// sits over it (`layout` records, watched only then), nor for what a
 // window reads alike with, which only the launcher's own watch takes. Its
 // name without its program's (`named`) is told, as Super+S's line says a
 // window by it, and moves only as its title or its program does. Each

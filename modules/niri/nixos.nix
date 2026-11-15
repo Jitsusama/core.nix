@@ -141,7 +141,7 @@
     # niri gives an on-demand layer surface the keys only as it first maps
     # or is clicked, so the shell's launcher, kept mapped while closed,
     # asked for them exclusively: a click on a window left them in the
-    # launcher, and notices held over it never had them, since between two
+    # launcher, and a surface over it never had them, since between two
     # exclusive surfaces niri takes the first. The patch
     # (on-demand-when-asked.patch) gives them to a mapped surface as it
     # turns on-demand, the newest to ask having them, and back to the one

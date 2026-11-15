@@ -1,7 +1,6 @@
 // The changes u and Ctrl+R move between, as Vim's undo list: what's done,
 // the last last, and what u took back, whatever each change holds. The
-// held notices keep theirs here (HeldNotices.qml) and the launcher's rows
-// theirs (Launcher.qml), so the two take back alike. Apart from the shell,
+// launcher's rows keep theirs here (Launcher.qml). Apart from the shell,
 // so tests/query-keys.qml can hold it in Qt's own engine.
 .pragma library
 

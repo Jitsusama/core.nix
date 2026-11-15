@@ -1,6 +1,6 @@
 """Hold the shell's cards to the one card (every-card-is-the-one-card).
 
-The launcher, the held notices and a notice are one card (Card.qml): its
+The launcher and the arrival line's notice are one card (Card.qml): its
 frame, and everything inside it standing the inset from its edge
 (docs/design.md, Shape and Kinds). Each surface drew its own frame from
 Floating and placed its own ink from the inset, so a change to one never

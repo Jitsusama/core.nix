@@ -4,7 +4,7 @@ modules/quickshell/checks/helpers.nix's launcherOnNiri runs a file of tests
 through pytest inside tests/nested-niri.sh, in the build sandbox: the shell's
 own QML on niri's real surfaces, typed at through wtype, in seconds rather than
 a machine booted for it. wtype's keys reach the surface holding the keyboard,
-the launcher's or the held notices', but never niri's binds, so what a bind runs
+the launcher's, but never niri's binds, so what a bind runs
 is run instead, and nothing of a machine's is here: no battery, backlight,
 system services or other programs, only the machine daemon over the sandbox's
 own /proc when the check gives it as MACHINE, the programs daemon over the
@@ -59,9 +59,6 @@ KEYS = {
     "ctrl-u": ["-M", "ctrl", "-k", "u", "-m", "ctrl"],
     "ctrl-y": ["-M", "ctrl", "-k", "y", "-m", "ctrl"],
     "ctrl-bracketright": ["-M", "ctrl", "-k", "bracketright", "-m", "ctrl"],
-    # The notices read a letter by what it types (NoticeKeys.js), so Shift and g come as the
-    # G they type, typed as text: wtype finds a key's name without its case, so -k G is a g.
-    "shift-g": ["--", "G"],
 }
 
 
@@ -361,16 +358,13 @@ class Shell:
         """Open the notices in the launcher, by what Super+N runs, as wtype never reaches it."""
         self.as_account(os.environ["TAKE_NOTICES"])
 
-    def hold_notices(self) -> None:
-        """Hold the stack by the keys as Vim's quickfix list, as Super+N did before."""
-        self.as_account("qs ipc call notices hold")
-
     def notices_gone(self, timeout: timedelta = WAITING) -> None:
-        """Wait until niri lists no notices' layer."""
+        """Wait until the arrival line shows nothing, its layer kept mapped off the screen."""
+        shows = f"qs -p {self.folder} ipc call notices shows"
         deadline = time.monotonic() + timeout.total_seconds()
         while time.monotonic() < deadline:
-            status, _ = self.execute("niri msg layers | grep -q notifications")
-            if status != 0:
+            status, said = self.execute(shows)
+            if status == 0 and not said.strip():
                 return
             time.sleep(POLL)
         failed = f"the notices never went:\n{self.tail()}"

@@ -1,6 +1,6 @@
 //! One notice as the daemon holds it: what its sender said over the bus,
 //! what was judged of it as it arrived, and what became of it since. The
-//! card on screen, the held list and the launcher's rows all read this one
+//! arrival line on screen and the launcher's rows both read this one
 //! record (Y2YBTS, 2026-11-11: "cards and rows come off one record"), so
 //! its fields keep the names the shell's history gave them.
 

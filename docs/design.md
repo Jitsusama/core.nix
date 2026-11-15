@@ -650,7 +650,7 @@ The rest follows from the ladder:
   while its ink stays on the inset. The list's first band starts a tie
   under the head's hairline and its last ends a tie over the foot's, so a
   ground never touches a rule. One shape for the launcher's rows, the
-  command line's, the held list and the drawer's lines. A selection inside a
+  command line's and the drawer's lines. A selection inside a
   line covers its characters exactly, as Vim's Visual does, and so does a
   find's wash.
 - **One hairline**: a logical pixel snapped to the device, inset to inset as
@@ -767,7 +767,7 @@ that does. The kinds that follow from it:
 | window  | a program              | the accent when focused, the edge otherwise | tiled | its own | opaque |
 | palette | the launcher           | the accent                | centred on its screen, as far from the foot as from the top, Super+S's line in the same frame; its command line over a picture or a video low, a twelfth of the screen up, so what it acts on stays in view | large, monospace  | a command line over a list |
 | prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre over windows; the lock screen and the greeter low, a twelfth of the screen up, so the picture's sky stays clear | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
-| notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical; the arrival line never takes them | the one that waits on the arrival line, a step inside the top of the focused screen, centred on the launcher's line as Super+S's line is; what's playing, and the stack while Super+N holds it, the frames rung inside the window at the top right | large, both | three groups, the room from frame to ink the same on every side: who first, then the message, then a signature of what sent it and when; Super+N holds the stack as lines, Vim's quickfix list |
+| notice  | a notification         | the edge, the alert when critical; it never takes the keys | the one that waits on the arrival line, a step inside the top of the focused screen, centred on the launcher's line as Super+S's line is; what's playing there too, for its moment | large, both | three groups, the room from frame to ink the same on every side: who first, then the message, then a signature of what sent it and when; Super+N opens the notices in the launcher, a row each |
 | meter   | the volume, the microphone, the brightness, the charge when power comes or goes, dictation while it's on | the edge | bottom centre | body, monospace | reads a level back while it changes; dictation's says what it's doing in a word, with a wave rather than a bar, so it's never the microphone's volume |
 | map     | the keyboard's layout  | the edge                  | bottom centre         | body, monospace   | the keys where they sit, their layer named, following the board while typing carries on |
 
@@ -2415,10 +2415,9 @@ held, it opens For You's Desktop. A notice is a launcher row like any
 other: Return goes to who
 sent it, as the quickfix list's Return goes to where a line came from,
 its acts and drawer are beside it, and d and y take it as they take any
-row. The stack on screen is still held by the keys as lines until the
-launcher's notices take its place whole, its verbs commands: its own
-actions (:reply, Mark as read), copying what it said, and forgetting
-it, listed under its words by their names and first in the : menu.
+row. The arrival line never takes the keys: what a notice offers, a
+reply typed in the launcher's field, copying what it said and forgetting
+it are its row's acts, commands on the : line as any row's are.
 
 On the desktop, windows sit in a grid: columns side by side, each holding
 windows stacked above and below. Super with the arrows moves focus through
@@ -2480,13 +2479,13 @@ disagree with this section, this section is the design.
 | --- | --- |
 | the launcher | an oil buffer over a tree, home its root and a place a folder, found through Vim's `/` line |
 | the file picker | the same buffer over real folders, its first line the name when it saves |
-| the notices, held | the quickfix list, a line a card |
+| the notices | the quickfix list, a row a notice |
 | the reader | a help buffer, read-only, with a cursor |
 | the drawer | the preview window |
 | the gallery, a PDF, a video | a buffer whose lines are pictures, pages and seconds |
 | a question, the lock, the greeter, a Wi-Fi password | `inputsecret()`: a secret, with no modes |
 | a reply, a new name, a save name | a prompt buffer |
-| the launcher, held notices, which-key, a menu | popups, closed by :q, never by Escape |
+| the launcher, which-key, a menu | popups, closed by :q, never by Escape |
 
 The launcher is oil rather than netrw or Telescope. netrw's keys are
 one-letter shortcuts that aren't Vim's, and Telescope's pickers are right
@@ -2771,10 +2770,11 @@ the key that does it, "↵ open" and "- up".
 
 His other groups have nothing to act on here, and none is faked.
 
-**The launcher and held notices are one family** (Joel, 2026-11-05: "we
+**The launcher and notices are one family** (Joel, 2026-11-05: "we
 need for notifications and the laucnher to feel more similar ... i like the
-status line in notifications better"). Each is the same card: a head, a
-hairline, the rows, a hairline, the status line.
+status line in notifications better"). The launcher is the card whole: a
+head, a hairline, the rows, a hairline, the status line; the arrival
+line's notice is the same card, on the same columns and inset.
 
 - **The head** is the card's one line for typing, a 48 band like the rows.
   It draws nothing over the gutter in any mode. The place's glyph stands in
@@ -2810,8 +2810,7 @@ hairline, the rows, a hairline, the status line.
   at the right (Wi-Fi's "Lantern" then "a password", "connected" at
   its right). It has the room the rest leave and gives way first, by whole
   items from its end, so the right never gives way to it (VKCF3Z,
-  2026-11-09). A held notice's card
-  opens under its line, typed as the drawer's plate is.
+  2026-11-09).
 - **A path** gives way from its middle: a middle step shortens to its last
   folder ("…/more"), then to "…", while the ask and the last step stay
   whole at every width. What's typed after it scrolls inside its own room
@@ -2820,16 +2819,16 @@ hairline, the rows, a hairline, the status line.
   `:` and `/` are one line (Joel, 2026-11-06: "it is basically / by
   default"): its `:` where the find's `/` stands, what's typed on the
   rows' names, over the line it completes. Its completions take the rows'
-  place as rows, never indented, in held notices too.
-- **One set of pieces** draws them, and the notice that pops up: Card.qml
+  place as rows, never indented.
+- **One set of pieces** draws them, and the arrival line's notice: Card.qml
   is the frame, its edge, radius and fill and the inset on every side, and
   Columns.js finds the gutter, the mark column and the text column from
   what stands in them (Joel, 2026-11-06: "they need to share more code and
   UI/UX design to stop them from constantly drifting"). A glyph in the mark
   column is followed by a mark (8), a picture, as music's 48 cover, by an
-  apart (12). The pop-up has no gutter, as Vim's `nonumber`, and is as wide
-  as forty letters of Words beside its mark column, so a notice breaks the
-  same popped as held. `every-card-is-the-one-card` fails on a surface that
+  apart (12). The arrival line's notice has no gutter, as Vim's
+  `nonumber`, and is as wide as forty letters of Words beside its mark
+  column. `every-card-is-the-one-card` fails on a surface that
   draws its own frame, reads the inset or sets its own x.
 - **The status line** is one component both read (StatusLine.qml), below.
 
@@ -2839,8 +2838,7 @@ or VIS: muted in normal and in the accent otherwise, first where the eye
 starts the line, as his status line starts with its mode, and every mark
 the same width, so nothing beside it moves. Pending, a prompt's normal and
 the key list are NOR. It then gives its surface's own facts, the glance
-where the launcher has it and the position ("1 of 4") where held notices
-do, the mode word's room, then the cursor row's keys
+where the launcher has it, the mode word's room, then the cursor row's keys
 in this mode by letter and lowercase verb, each key in text and its word
 muted, joined by a muted dot a mark each side, "d disconnect · Space ?
 keys · ↵ go to": Return
@@ -2904,27 +2902,14 @@ fits whole on the laptop's plate.
   with :sort! the other way, are kept across asks; :e, :cd, :set hidden
   and :mkdir go with them, ]b [b to the folders beside, gx to a file's own
   program. :q cancels the dialog, and Escape never does.
-- **The notices,** held, are the quickfix list: a line a card,
-  the sender's glyph, who, the first words and the time, the cursor card
-  whole under its line, the newest first. / finds among them; its acts are
-  commands, listed under its words and first in the : menu; Return goes to
-  whoever sent it. d is done, its
-  read sent at once, and the foot says "d read" where the sender offers a
-  read and "d forget" where it doesn't; :forg forgets a card unread, :reply
-  writes one, and :g/Slack/d takes all of one sender's. `:e Notices` opens
-  their history. :q, ZZ, Space w and Super+N let them go, and Escape at
-  rest does nothing. It's a launcher page in shape (2026-11-06, so the two
-  can't drift apart): its numbers on the inset, as wide as it numbers, the
-  sender's mark in the mark column and every line on the text column, a
-  band a line, meeting the next with no gap, the cursor's ground filling
-  its band from one inside edge of the frame to the other. The cursor's
-  card makes its band taller, keeping as much room under its last line as
-  over its first, and signs it with when at the far end. Its head is a
-  band of the same height, its mark in the mark column, where the find's
-  / and the command line's : take its cell while they last, and the Title
-  on the text column. Its : line is the launcher's: it takes the head, what's
-  typed on the text column, and its completions are the list's rows in the
-  lines' place, each a launcher row, never a menu indented under the line.
+- **The notices** are launcher rows, under For You's Desktop while unread
+  and in its History once read, and Super+N opens them on the one the
+  arrival line shows. Return goes to whoever sent it, as the quickfix
+  list's Return goes to where a line came from, bringing its window
+  forward where it didn't come by itself; its acts are commands on the :
+  line, :reply asking for the words in the launcher's field; d is done
+  with it, its read sent at once where the sender offers one, y copies
+  what it said, and u brings back what d took until the launcher closes.
 - **The reader** has a cursor, as a help buffer does: the cursor line marked
   by a thin accent rule in the left margin, as his `cursorlineopt=number`
   lights only the number, and a block only in visual, which starts on the

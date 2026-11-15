@@ -1,4 +1,4 @@
-"""The launcher, the held notices and a window share the keys by one rule, on niri.
+"""The launcher and a window share the keys by one rule, on niri.
 
 modules/quickshell/checks/core.nix runs this through pytest inside tests/nested-niri.sh, with the
 shell launcher_on_niri.py starts once a run. The newest surface Joel opened takes the keys, a
@@ -12,7 +12,7 @@ cases are the shell asking for it. A window a program puts up for Joel because h
 from the open launcher, as 1Password's unlock, closes the launcher and takes the focus, where
 it came up under the launcher holding the keys (Joel, 2026-11-10: "the unlock screen shows
 below the launcher. very poor UX"); any other window opening meanwhile leaves it be.
-Every test starts with the launcher closed and no notice held, and leaves them so.
+Every test starts with the launcher closed, and leaves it so.
 """
 
 from __future__ import annotations
@@ -55,25 +55,6 @@ def launcher_closed_after(shell: Shell) -> Iterator[None]:
     """Close the launcher after each test, so one failing with it open fails alone."""
     yield
     shell.launcher_left_closed()
-
-
-def holds_the_notices(shell: Shell) -> None:
-    """Take the keys to the held notices, a card having come for them to hold."""
-    with shell.told("shows card Alpha"):
-        shell.as_account("notify-send --expire-time=60000 'Alpha' 'held'")
-    with shell.told("keys notices"):
-        shell.hold_notices()
-
-
-def notices_answer_then_let_go(shell: Shell) -> None:
-    """See the held notices answer a key, then let them go by :q, and put the card away."""
-    with shell.told("notice mode command"):
-        shell.send_chars(":")
-    with shell.told("lets notices go"):
-        shell.send_chars("q")
-        shell.send_key("ret")
-    shell.as_account("qs ipc call notices putAway")
-    shell.notices_gone()
 
 
 def opened(shell: Shell) -> None:
@@ -122,37 +103,16 @@ def click(shell: Shell, x: int, y: int) -> None:
     shell.as_account(f"{wlrctl} pointer click left")
 
 
-def test_a_launcher_opened_over_held_notices_takes_the_keys_and_gives_them_back(
-    shell: Shell,
-) -> None:
-    """The launcher, opened while the notices hold the keys, takes them, and gives them back."""
-    holds_the_notices(shell)
-    opened(shell)
-    shell.send_chars("k")
-    shell.launcher_until(lambda shown: shown["typed"] == "k")
-    with shell.told("keys notices"):
-        shell.as_account(shell.ipc("toggle"))
-        shell.launcher_closed()
-    notices_answer_then_let_go(shell)
-
-
-def test_held_notices_take_the_keys_from_the_launcher_and_a_notice_arriving_never_does(
-    shell: Shell,
-) -> None:
-    """A notice coming leaves the launcher the keys; the notices held take them, and give back."""
+def test_a_notice_arriving_leaves_the_open_launcher_the_keys(shell: Shell) -> None:
+    """A notice coming while the launcher is open leaves it the keys and what's typed."""
     opened(shell)
     with shell.told("shows card Bravo"):
         shell.as_account("notify-send --expire-time=60000 'Bravo' 'arriving'")
     shell.send_chars("a")
     shell.launcher_until(lambda shown: shown["keys"] and shown["typed"] == "a")
-    with shell.told("keys notices"):
-        shell.hold_notices()
-    shell.launcher_until(lambda shown: not shown["keys"])
-    notices_answer_then_let_go(shell)
-    # Let go, the notices give the keys back to the launcher, still open beneath them.
-    shell.launcher_until(lambda shown: shown["keys"])
     shell.send_chars("b")
-    shell.launcher_until(lambda shown: shown["typed"] == "ab")
+    shell.launcher_until(lambda shown: shown["keys"] and shown["typed"] == "ab")
+    shell.as_account("qs ipc call notices putAway")
 
 
 def test_a_click_on_a_window_takes_the_keys_and_closes_the_launcher(shell: Shell) -> None:

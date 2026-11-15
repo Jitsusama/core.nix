@@ -8177,12 +8177,12 @@ Scope {
     // rather than a space of its own.
     readonly property real rowTall: 4 * Theme.space.beat
     // The card's columns, from its content's edge, the inset in from the
-    // frame (Card.qml), as the held notices' and a notice's are
+    // frame (Card.qml), as a notice's are
     // (Columns.js): the gutter's numbers on the content's edge, as wide as
     // the room they hold for the place's list (the gutter keeps it) and a
     // mark after, the glyphs' column, and the text column a mark past a
-    // glyph's square cell, so a launcher row differs from a held notice by
-    // its gutter's width alone (Joel, 2026-11-06: "they need to share more
+    // glyph's square cell, so a launcher row differs from a notice by its
+    // gutter's width alone (Joel, 2026-11-06: "they need to share more
     // code and UI/UX design to stop them from constantly drifting").
     readonly property var columns: Columns.across(card.contentWidth,
         Columns.gutterOf(rowsGutter.room, Theme.space.rung),
@@ -12758,7 +12758,7 @@ Scope {
                             font: measure.font
                         }
 
-                        // The status line held notices' foot is too (StatusLine.qml):
+                        // The one status line every card's foot is (StatusLine.qml):
                         // the mode in three capitals first (Joel, 2026-11-05: "the
                         // mode should be 3 letters, in caps, and in a place where
                         // they are more obvious and not lost with other things"),

@@ -136,7 +136,7 @@
       touch $out
     '';
 
-  # The launcher, the held notices and a notice are one card: each takes
+  # The launcher and the arrival line's notice are one card: each takes
   # its frame from Card.qml and stands its ink on the card's content, the
   # inset from its edge, and on its columns (Columns.js), never drawing a
   # frame, reading the inset, placing ink across by hand or tinting a row's
@@ -149,10 +149,9 @@
     let
       check = "${lib.getExe pkgs.python3} ${../every-card-is-the-one-card.py}";
       cards = [
-        "HeldNotices.qml"
         "Launcher.qml"
+        "NoticeLine.qml"
         "NoticeRow.qml"
-        "Notifications.qml"
       ];
       surfaces = lib.fileset.toSource {
         root = ../.;

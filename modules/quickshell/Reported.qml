@@ -3,7 +3,9 @@
 // it's shown or something in it changed, "keys <name>" when niri gives it
 // the keys, and "gone <name>" when it's hidden. A surface that shows
 // something new while it stays up calls changed(), so its next frame is
-// said too. With reports off it listens to nothing.
+// said too. A surface kept mapped while it shows nothing, off its output,
+// says whether it shows anything by `showing`, so it's drawn and gone as
+// one mapped only while it shows. With reports off it listens to nothing.
 import QtQuick
 
 Item {
@@ -11,10 +13,13 @@ Item {
 
     required property string name
 
+    // Whether the surface shows anything, for one kept mapped while it doesn't.
+    property bool showing: true
     // Whether the next frame is one to say.
     property bool due: true
     readonly property var surface: Options.reports ? Window.window : null
     readonly property bool shown: surface !== null && Window.visibility !== Window.Hidden
+        && showing
     readonly property bool keys: surface !== null && Window.active
 
     function changed() {

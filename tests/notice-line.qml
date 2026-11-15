@@ -1,4 +1,5 @@
-// What the arrival line says, and when a notice knocks, run in Qt's own
+// What the arrival line says and how long a notice stays on it, and when a
+// notice knocks, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-arrival-line-shows-what-still-waits` check copies
 // modules/quickshell/NoticeLine.js, modules/quickshell/Knock.js and
@@ -61,6 +62,28 @@ QtObject {
         Expect.same("nothing chosen counts every one waiting",
             Line.more(front(3, null, 2), -1), 2);
         Expect.same("no front heard counts none", Line.more(null, -1), 0);
+
+        // [what, a notice up, critical, playing, gathered, talking, shown]
+        const showing = [
+            ["a notice up shows it", true, false, false, false, false, "notice"],
+            ["nothing up shows nothing", false, false, false, false, false, ""],
+            ["what's playing shows for its moment", false, false, true, false, false, "playing"],
+            ["what's playing goes over a notice that can wait", true, false, true, false, false,
+                "playing"],
+            ["but never over a critical one", true, true, true, false, false, "notice"],
+            ["nor in the launcher's notices", false, false, true, true, false, ""],
+            ["nor under the talk line", false, false, true, false, true, ""]
+        ];
+        for (const [what, noticeUp, critical, playing, gathered, talking, want] of showing) {
+            const shown = Line.shows({ noticeUp, critical, playing, gathered, talking });
+            Expect.same(what, shown, want);
+        }
+
+        Expect.same("a notice stays as long as its sender asked", Line.lasts(8000, 0), 8000);
+        Expect.same("or five seconds", Line.lasts(0, 0), 5000);
+        Expect.same("or ten with something to do", Line.lasts(-1, 2), 10000);
+        Expect.same("an artist's name reads as written", Line.escaped("Simon & <Garfunkel>"),
+            "Simon &amp; &lt;Garfunkel&gt;");
 
         // [what, chimes, alarms, the sound, held, now, the last knock, knocks]
         const knocking = [

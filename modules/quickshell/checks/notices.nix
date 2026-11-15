@@ -1,4 +1,4 @@
-# The checks of the notices: the desktop's cards, their history and how they're
+# The checks of the notices: the arrival line, their history and how they're
 # kept, which the folder's checks.nix gathers with every other place's; its
 # opening comment says why each place keeps its own.
 {
@@ -16,9 +16,9 @@
   ...
 }:
 {
-  # The notices draw a notice a program sends as a card on a layer niri
-  # lists and on the arrival line, which takes no keys and stays mapped off
-  # the screen while it's quiet, and Super+Shift+N puts away one that stays
+  # The notices draw a notice a program sends on the arrival line, niri's
+  # notices layer, which takes no keys and stays mapped off the screen
+  # while it's quiet, and Super+Shift+N puts away one that stays
   # (tests/notices-on-niri.sh). Away only after an hour, since nobody types
   # here but the check.
   the-notices-land-on-niri = noticesOnNiri {
@@ -100,12 +100,11 @@
       touch $out
     '';
 
-  # A notice stands in its card's columns: drawn as the pop-up draws it and
-  # as the held list will, through the one card and row, at 2 and at 1.5,
-  # its ink stands the inset from the frame on every side, its mark centred
-  # on the title's capitals, and the two cards' text columns differ by the
-  # gutter alone, as modules/quickshell/tests/notice-columns.py reads the
-  # pictures back.
+  # A notice stands in its card's columns: drawn as the arrival line draws
+  # it, through the one card and row, at 2 and at 1.5, its ink stands the
+  # inset from the frame on every side, its mark centred on the title's
+  # capitals and its text column a mark's column past the inset, as
+  # modules/quickshell/tests/notice-columns.py reads the picture back.
   notices-stand-on-the-cards-columns =
     let
       machine = graphical.config;
@@ -218,26 +217,12 @@
       touch $out
     '';
 
-  # The notices' stack keeps the order tests/stack.qml holds: a critical one
-  # in front, the rest as they came, one unheard at the back, and turning and
-  # bringing one forward as the keys and a click do.
-  the-notices-keep-their-order =
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    pkgs.runCommandLocal "the-notices-keep-their-order" { } ''
-      cp ${../../../tests/stack.qml} stack.qml
-      ${copied [ "Stack.js" ]}
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml stack.qml
-      touch $out
-    '';
-
-  # The arrival line shows the front of the stack still waiting on Joel,
-  # only a critical one while notices are held or he's talking, none while
-  # the launcher shows them, and counts the rest (tests/notice-line.qml).
+  # The arrival line shows the notice in front still waiting on Joel, only
+  # a critical one while notices are held or he's talking, none while the
+  # launcher shows them, and counts the rest; what's playing takes it for
+  # its moment over one that can wait, and a notice stays as long as its
+  # sender asked, else five seconds, ten with something to do
+  # (tests/notice-line.qml).
   the-arrival-line-shows-what-still-waits =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -271,50 +256,6 @@
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml live-notice.qml
-      touch $out
-    '';
-
-  # The held notices take Vim's keys in each mode from one table, as
-  # tests/notice-keys.qml holds NoticeKeys.js to: motions, operators and
-  # objects with their counts, visual's operator taken with a second press,
-  # fresh presses only for what acts, the lines typed on, a prompt's
-  # editing, Space ?'s list and the foot's hints; and Search.js, which
-  # their / shares with the launcher's, to what it finds.
-  the-notices-take-vi-keys =
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    pkgs.runCommandLocal "the-notices-take-vi-keys" { } ''
-      cp ${../../../tests/notice-keys.qml} notice-keys.qml
-      ${copied [
-        "NoticeKeys.js"
-        "Search.js"
-      ]}
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-keys.qml
-      touch $out
-    '';
-
-  # The held notices are Vim's quickfix list, as tests/notice-list.qml
-  # holds NoticeList.js to: the newest first, where each motion lands, what
-  # an operator takes, the view kept around the cursor, the gutter's
-  # numbers, and what u and Ctrl+R move between.
-  the-notices-are-a-quickfix-list =
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    pkgs.runCommandLocal "the-notices-are-a-quickfix-list" { } ''
-      cp ${../../../tests/notice-list.qml} notice-list.qml
-      ${copied [
-        "Changes.js"
-        "NoticeList.js"
-      ]}
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-list.qml
       touch $out
     '';
 }

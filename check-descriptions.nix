@@ -8,7 +8,7 @@
     keyboard's key does, in a rule udev reads without a complaint
   '';
   a-card-says-how-it-stands-in-one-row = ''
-    a card's status line, the launcher's and held notices' alike, gives its middle hints way first
+    a card's status line, as the launcher's is, gives its middle hints way first
     as room runs short, the keys list's and Return's staying
   '';
   a-claimed-chord-is-refused = ''
@@ -778,7 +778,7 @@
     saying what was expected, but those still waiting for theirs
   '';
   every-card-is-the-one-card = ''
-    the launcher, the held notices and a notice take their frame from the one card and stand their
+    the launcher and the arrival line's notice take their frame from the one card and stand their
     ink on its content, never drawing a frame, reading the inset or tinting a row's ground
     themselves
   '';
@@ -1789,9 +1789,9 @@
     clippy finds nothing in the notices daemon or its tests
   '';
   notices-stand-on-the-cards-columns = ''
-    a notice drawn on the one card, as the pop-up does and as the held list does with a gutter,
-    holds its ink the inset from the frame on every side, at 2 and at 1.5, with its mark centred
-    on the title's capitals and its text column moved by the gutter alone
+    a notice drawn on the one card, as the arrival line draws it, holds its ink the inset from
+    the frame on every side, at 2 and at 1.5, with its mark centred on the title's capitals and
+    its text column a mark's column past the inset
   '';
   notices-starts-in-each-account = ''
     each graphical account's session starts the notices daemon from its socket, the bus starts it
@@ -2712,9 +2712,12 @@
   '';
   the-arrival-line-shows-what-still-waits = ''
     the arrival line shows the notice the notices daemon serves as in front, only its critical one
-    while notices are held or over the talk line, none while the launcher or the held list has the
-    notices, and counts those behind it still waiting; a message to Joel knocks once for a burst,
-    never while notices are held or with no sound set, and his safe word knocks even while held
+    while notices are held or over the talk line, none while the launcher has the notices, and
+    counts those behind it still waiting; what's playing shows for its moment over a notice that
+    can wait but never a critical one, a notice stays its sender's time or five seconds, ten with
+    something to do, and an artist's name reads as written; a message to Joel knocks once for a
+    burst, never while notices are held or with no sound set, and his safe word knocks even while
+    held
   '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,
@@ -2958,10 +2961,9 @@
     niri refuses says niri's words for why on the : line
   '';
   the-newest-surface-takes-the-keys-on-niri = ''
-    on niri, the launcher opened over held notices takes the keys and gives them back as it
-    closes; held notices take them from the open launcher and give them back, and a notice
-    arriving never takes them; and a click on a window gives that window the keys, leaving the
-    launcher open without them
+    on niri, a notice arriving while the launcher is open never takes its keys; a click on a
+    window gives that window the keys and closes the launcher; and a window of the program the
+    launcher handed to closes it and takes the focus
   '';
   an-agents-return-does-its-harmless-act-on-niri = ''
     on the account's whole shell on niri, its sessions the realm's mycelium node's, a listening
@@ -3520,14 +3522,6 @@
     the music is the player that started last, never playerctld's echo,
     and it shows itself as one row, on a key always, on a track unless held
   '';
-  the-notices-are-a-quickfix-list = ''
-    the held notices are Vim's quickfix list: the newest first, each motion's landing, what an
-    operator takes, the view kept around the cursor, the gutter's numbers, and u and Ctrl+R
-  '';
-  the-notices-keep-their-order = ''
-    the notices' stack puts a critical one in front and the rest in the order they came, one unheard
-    at the back, and turns and brings one forward as the keys and a click ask
-  '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the
     void says it went is told apart from the time it can be undone by, and a take-back stands
@@ -3544,16 +3538,10 @@
   '';
   the-notices-land-on-niri = ''
     the account's notices, on its real niri nested in a headless sway in the sandbox, draw a notice
-    sent as a card on niri's notices layer and on the arrival line, an overlay layer that takes no
-    keys and stays mapped while it's quiet, showing nothing, and what Super+Shift+N runs puts a
-    critical one
+    sent on the arrival line, niri's notices layer, an overlay that takes no keys and stays mapped
+    while it's quiet, showing nothing, and what Super+Shift+N runs puts a critical one
     away unread in the history; and Google Drive's notice that answers a save is kept unmissed, by
     its x-answers hint, while its failure is missed
-  '';
-  the-notices-take-vi-keys = ''
-    the held notices read Vim's keys in each mode from one table: motions, operators and objects
-    with counts, visual's operator taken with a second press, fresh presses only for what acts, the
-    find and command lines, a reply's editing, Space ?'s list and the foot's hints
   '';
   the-notices-wait-while-joel-is-away = ''
     a notice that comes while nothing has been typed or moved stays on niri past the time its sender
@@ -3672,7 +3660,8 @@
     the rows; and Vim's d and y over the rows, dd 3dd d3j dgg dG yy y{motion}, each row's ending
     action and copy, the ask once before what costs a lot and can't be put back, the rest done
     at once, and yG or dG over 400 rows
-    within half a key's 4 ms
+    within half a key's 4 ms, u and Ctrl+R taking back and doing again as many changes as counted,
+    and a page's search by smartcase
   '';
   the-queue-is-heard-from-the-node = ''
     the machine queue is the harness's file as the node's record holds it, none of a version it

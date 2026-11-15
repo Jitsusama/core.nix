@@ -705,9 +705,7 @@ def test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is(
             "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
             f" {desktop.values['track']}"
         )
-    machine.wait_until_fails(
-        desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
-    )
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     desktop.shoot("margin-playing")
     # The play key pauses it, and the card says what was paused.
     with desktop.told("drawn notifications"):

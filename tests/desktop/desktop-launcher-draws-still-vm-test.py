@@ -26,6 +26,7 @@ import desktop_session
 import pytest
 from desktop_session import (
     LAUNCHER_OPEN,
+    NOTICES,
     STARTING,
     laid_out,
     retry,
@@ -322,8 +323,7 @@ def test_dd_on_a_notice_shows_on_the_frame_after_its_key(desktop: Desktop) -> No
         desktop.launcher_until(lunch)
         # Its card steps aside while Desktop lists it, so it's in one place.
         desktop.machine.wait_until_fails(
-            desktop.in_session("niri msg layers | grep -q notifications"),
-            timeout=dt.timedelta(seconds=10),
+            desktop.in_session(NOTICES), timeout=dt.timedelta(seconds=10)
         )
         desktop.down_to(LUNCH)
         desktop.normal()

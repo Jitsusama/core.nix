@@ -40,15 +40,7 @@ function across(width, gutter, held, rungs) {
 // How wide a list's gutter is, given its numbers' room (Gutter.qml's: its
 // digits and the tie after them): that, and the mark rung before its
 // marks, as far as the launcher's glyphs stand past its numbers
-// (Choice.qml), so a held notice's mark and a launcher row's stand alike.
+// (Choice.qml), so a notice's mark and a launcher row's stand alike.
 function gutterOf(room, rungs) {
     return room + rungs.mark;
-}
-
-// How wide a card with no gutter is whose text column holds `measure`
-// across: the measure, the mark column before it, and the inset and a
-// `border` on either side. A card is sized for what it says, so its words
-// keep their measure whatever stands beside them (VKCF3Z, 2026-11-06).
-function cardFor(measure, held, rungs, border) {
-    return across(0, 0, held, rungs).text + measure + 2 * (rungs.inset + border);
 }

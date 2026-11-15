@@ -498,18 +498,16 @@ def test_an_opening_is_traced_and_sent_to_the_collector_as_it_closes(desktop: De
             " | grep -a -F quickshell.io.socket | grep -a -F Socket_QML_; true"
         )
         assert warned.strip() == "", f"a send warned:\n{warned}"
-        refresh_and_hold_are_traced(desktop, heard)
+        refresh_is_traced(desktop)
     finally:
         desktop.as_account("systemctl --user stop keep-awake.service stand-in-collector")
 
 
-def refresh_and_hold_are_traced(desktop: Desktop, heard: str) -> None:
-    """See a source's refresh traced in its opening, and a hold of the notices sent as its own.
+def refresh_is_traced(desktop: Desktop) -> None:
+    """See a source's refresh traced in its opening.
 
     Keep Awake starting changes the session's rows while the launcher is open, and the refresh
-    is a span saying which source, how long it took and how many rows were listed. The stack
-    held is a trace of the service "notices": the hold its root, ended as Super+N lets the
-    keys go, and j's act a span under it (Y2YBTS, 2026-11-07).
+    is a span saying which source, how long it took and how many rows were listed.
     """
     machine = desktop.machine
     desktop.as_account("qs ipc call launcher toggle")
@@ -540,25 +538,6 @@ def refresh_and_hold_are_traced(desktop: Desktop, heard: str) -> None:
     assert refresh["parent"] == opening["span"], refresh
     assert refresh["about"]["rows"] >= 0, refresh
     assert refresh["about"]["tookMs"] >= 0, refresh
-    with desktop.told("shows card Traced"):
-        desktop.as_account("notify-send --expire-time=60000 'Traced' 'held and let go'")
-    with desktop.told("keys notices"):
-        desktop.hold_notices()
-    machine.send_key("j")
-    with desktop.told("lets notices go"):
-        machine.send_key("meta_l-n")
-    line = machine.wait_until_succeeds(
-        desktop.in_session(f'grep -a \'"stringValue":"notices"\' {heard} | tail -1 | grep .'),
-        timeout=dt.timedelta(seconds=10),
-    )
-    sent = json.loads(line)["resourceSpans"][0]["scopeSpans"][0]["spans"]
-    hold = next(span for span in sent if span["name"] == "hold")
-    acts = [span for span in sent if span["name"] == "act"]
-    assert acts, sent
-    assert all(span["parentSpanId"] == hold["spanId"] for span in acts), sent
-    said = {each["key"]: each["value"] for each in acts[0]["attributes"]}
-    assert said["act"] == {"stringValue": "down"}, said
-    assert "doubleValue" in said["tookMs"] or "intValue" in said["tookMs"], said
 
 
 def selects_from_the_top(name: str, program: str) -> Callable[[Json], bool]:

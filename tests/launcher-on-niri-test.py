@@ -1,4 +1,4 @@
-"""The launcher and the held notices answer what's typed, on the account's whole shell on niri.
+"""The launcher answers what's typed, on the account's whole shell on niri.
 
 modules/quickshell/checks/core.nix runs this through pytest inside tests/nested-niri.sh, with the
 shell launcher_on_niri.py starts once a run. Each case here needs only the launcher or the
@@ -1544,8 +1544,8 @@ def test_the_heads_title_holds_still_and_its_mark_takes_the_glyphs_cell(shell: S
 def test_ctrl_r_puts_the_clipboard_on_the_command_line(shell: Shell) -> None:
     """Ctrl+R then + puts the clipboard's first line at the : line's caret, as Vim's does.
 
-    The held notices' : line took it and the launcher's didn't, so the two lines kept two
-    sets of keys; they're one line now (Joel, 2026-11-06: "they need to share more code").
+    The side notices' : line took it and the launcher's didn't, so the two lines kept two
+    sets of keys; they were made one line (Joel, 2026-11-06: "they need to share more code").
     """
     shell.as_account("printf 'lockscreen\\nand more' | wl-copy > /dev/null 2>&1")
     shell.as_account(shell.ipc("toggle"))
@@ -2428,68 +2428,15 @@ def test_a_name_too_long_for_its_row_reads_on_while_selected(shell: Shell) -> No
 READINGS = 2
 
 
-def test_the_held_notices_are_vims_quickfix_list(shell: Shell) -> None:
-    """The held notices are Vim's quickfix list, as the vi-paradigm spec's Notices sets out.
-
-    The cursor starts on the card in front, the oldest, and the newest is line 1: k and j
-    move, G and gg go to the ends, a count goes before a motion. V and k choose three, d is
-    done with them, u brings them back, q says it does nothing, Escape cancels a count, and
-    :q lets them go. Each key's act is told by what the list says it did.
-    """
-    # They stay a minute, so they're all still there when the keys come, the oldest in front.
-    for summary in ["Alpha", "Bravo", "Charlie"]:
-        with shell.told(f"shows card {summary}"):
-            shell.as_account(f"notify-send --expire-time=60000 '{summary}' 'one of three'")
-    with shell.told("keys notices"), shell.told("notice cursor Alpha"):
-        shell.hold_notices()
-    moves = [
-        (["k"], "Bravo"),
-        (["k"], "Charlie"),
-        (["shift-g"], "Alpha"),
-        (["g", "g"], "Charlie"),
-        (["2", "j"], "Alpha"),
-    ]
-    for keys, cursor in moves:
-        with shell.told(f"notice cursor {cursor}"):
-            for key in keys:
-                shell.send_key(key)
-    with shell.told("notice selects 1"):
-        shell.send_chars("V")
-    with shell.told("notice selects 3"):
-        shell.send_chars("kk")
-    # A second d within 300 ms joins visual's first, which tests/notice-keys.qml holds: a
-    # loaded builder can take longer than that to draw the first, so here d is pressed once.
-    with shell.told("notice done 3"):
-        shell.send_chars("d")
-    with shell.told("notice brought back 3"):
-        shell.send_key("u")
-    with shell.told("notice says q does nothing \u00b7 :q closes"):
-        shell.send_key("q")
-    # Back, the cursor is on the first of them, Charlie. Two moves up from Alpha would reach
-    # Charlie again, so Bravo shows the count went with Escape.
-    with shell.told("notice cursor Alpha"):
-        shell.send_key("shift-g")
-    with shell.told("notice cursor Bravo"):
-        for key in ["2", "esc", "k"]:
-            shell.send_key(key)
-    with shell.told("notice mode command"):
-        shell.send_chars(":")
-    with shell.told("lets notices go"):
-        shell.send_chars("q")
-        shell.send_key("ret")
-    shell.as_account("qs ipc call notices putAway")
-    shell.notices_gone()
-
-
 def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts(
     shell: Shell,
 ) -> None:
     """Super+N lists the notices on screen, on the one in front; j moves and Return acts on one.
 
-    Notices are the launcher's rows, so its keys, acts and drawer take the held stack's place.
-    The one in front is the oldest, never the row first in Desktop, so the cursor landing on it
-    shows the landing chose it. One rested off the screen is Desktop's alone, never among those
-    on screen, which come in the order the line takes them. It searches only there, and - climbs
+    Notices are the launcher's rows, so its keys, acts and drawer are theirs. The one in front
+    is the oldest, never the row first in Desktop, so the cursor landing on it shows the
+    landing chose it. One rested off the screen is Desktop's alone, never among those on
+    screen, which come in the order the line takes them. It searches only there, and - climbs
     back onto For You. Again, Super+N closes.
     """
     with shell.told("rests Plover"):

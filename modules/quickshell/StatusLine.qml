@@ -1,11 +1,11 @@
-// A card's status line, the launcher's and held notices' alike (Joel,
+// A card's status line, the launcher's as any card's (Joel,
 // 2026-11-05: "we need for notifications and the laucnher to feel more
 // similar ... i like the status line in notifications better"): the mode in
 // three capitals first, where the eye starts the line, then the surface's
 // own facts, then the hints at the right, joined by dots, Return last. One
 // component both read, so the two lines can't drift apart (VKCF3Z's family
-// cut, docs/design.md). The facts are the surface's own, the launcher's
-// glance or the held list's position and what's found, so it sets them
+// cut, docs/design.md). The facts are the surface's own, as the launcher's
+// glance, so it sets them
 // itself beside this, from factsAt, short of rightAt.
 pragma ComponentBehavior: Bound
 import QtQuick

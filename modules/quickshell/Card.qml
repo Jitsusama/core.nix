@@ -1,4 +1,4 @@
-// The one card the launcher, the held notices and a notice are drawn in
+// The one card the launcher and the arrival line's notice are drawn in
 // (docs/design.md, Shape and Kinds): a floating surface's frame, whose
 // colour says where the keys go, and everything inside it standing the
 // inset from the frame's inside edge on every side, measured to the ink

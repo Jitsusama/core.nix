@@ -211,7 +211,7 @@ let
       # The shell, niri's configuration, and the theme the shell reads its
       # colours from. A loaded builder can stall the shell past niri's
       # repeat delay between a key's press and its release, and Qt then
-      # repeats the key: one k moved the held notices two lines. No check
+      # repeats the key: one k moved a list's cursor two lines. No check
       # here holds a key, so none repeats.
       given =
         lib.filterAttrs (

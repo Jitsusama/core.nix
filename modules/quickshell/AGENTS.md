@@ -58,8 +58,8 @@ machine, one path through each connection.
 - `*.qml` at the top: the singletons and the surfaces, `shell.qml` making
   each surface.
 - `*.js` at the top: what a surface works out apart from drawing, such as
-  `Stack.js` for the notices' order or `Picking.js` for the region picker,
-  each held by a test in Qt's own engine, as its header says.
+  `NoticeLine.js` for what the arrival line shows or `Picking.js` for the
+  region picker, each held by a test in Qt's own engine, as its header says.
 - Programs the shell runs: `askpass.sh`, OpenSSH's askpass asked through
   the shell; `pi-helper.nix`, which builds a helper of one Rust file,
   Tuple's among them; `keyboard-lights.rs`, which says whether caps
@@ -109,8 +109,8 @@ its model as `required` properties. A nested item names its delegate by id
 rather than reading the delegate's properties bare.
 
 A ListView that sizes itself to its rows takes its height from its model's
-length, never from its own `count`: bound to that, the held notices' menu
-stood no taller than nothing with eleven rows listed. A check that reads a
+length, never from its own `count`: bound to that, a menu stood no taller
+than nothing with eleven rows listed. A check that reads a
 view's rows counts only those wholly inside it, since `itemAtIndex` also
 answers for rows made but clipped away.
 

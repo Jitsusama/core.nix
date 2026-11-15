@@ -1424,7 +1424,7 @@ Provider {
     }
 
     // Where a place named from outside leads, by the rows Joel would step
-    // through from home: "notices", as Super+N with no cards and the
+    // through from home: "notices", as Super+N with none on screen and the
     // margin's Show Them ask, is For You's Desktop, one key to one place
     // whatever it holds (VKCF3Z, 2026-11-09), never the Notices place it
     // once was; the notices stay found by `/` (PastNotices.qml). "forYou",
@@ -2058,9 +2058,9 @@ Provider {
             verbs: listed,
             targets: listed,
             stepped: () => Qt.callLater(() => Notices.seen()),
-            // Held, the desktop's lists the notices the screen shows, so the
-            // cards step aside while it's open (PastNotices.qml), each in one
-            // place; Slack's, standing in while its daemon doesn't answer,
+            // The desktop's lists the notices the screen shows, so the arrival
+            // line steps aside while it's open (NoticeLine.js's up), each in
+            // one place; Slack's, standing in while its daemon doesn't answer,
             // lists Slack's alone, so the rest stay on screen.
             gathers: from === "desktop",
             run: () => provider.launcher?.enter(row)

@@ -34,8 +34,6 @@
   "ModeMarks.js" = [ "QueryKeys.js" ];
   "Niri.qml" = [ "NiriRecords.js" ];
   "NoiseCancelling.qml" = [ "launcher/ByEar.js" ];
-  "NoticeKeys.js" = [ "LineEditing.js" ];
-  "NoticeList.js" = [ "launcher/Order.js" ];
   "NoticeLine.qml" = [ "NoticeLine.js" ];
   "NoticeRow.qml" = [ "Columns.js" ];
   "PiSource.qml" = [ "PiSource.js" ];

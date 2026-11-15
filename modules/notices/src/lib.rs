@@ -3,8 +3,8 @@
 //! "the daemons need to be the data layer, and they need to serve the
 //! launcher") and a notice sent while the shell restarts is still held.
 //! It's the session bus's notifications server, keeps the history on disk,
-//! and serves each notice to the shell as one record, which its cards, its
-//! held list and the launcher's rows all read (Y2YBTS, 2026-11-11).
+//! and serves each notice to the shell as one record, which its arrival
+//! line and the launcher's rows both read (Y2YBTS, 2026-11-11).
 //!
 //! - [`notice`]: one notice, as held and kept.
 //! - [`judged`]: how far one reaches as it arrives, and whether Quiet

@@ -2,11 +2,6 @@
 # place's list; README.md says which list a file goes in.
 [
   "Arrivals.qml"
-  "Stack.js"
-  "NoticeKeys.js"
-  "NoticeList.js"
-  "Changes.js"
-  "HeldNotices.qml"
   "LiveNotice.js"
   "Notifications.qml"
   "Floating.qml"

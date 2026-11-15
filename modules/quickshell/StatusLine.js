@@ -1,5 +1,5 @@
-// What a card's status line works out, the launcher's and held notices'
-// alike (StatusLine.qml), here so tests/status-line.qml can hold it in Qt's
+// What a card's status line works out, the launcher's as any card's
+// (StatusLine.qml), here so tests/status-line.qml can hold it in Qt's
 // own engine: which hints keep their place as the room runs short.
 .pragma library
 

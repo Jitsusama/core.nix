@@ -84,8 +84,8 @@ Singleton {
     // Those of them resting off the screen, by id.
     property var resting: ({})
     // Said once a notice arrives, as it's first heard open: not for those
-    // open as the shell starts, which the stack (Notifications.qml) puts
-    // at the back as it finds them, as Quickshell's kept across a reload.
+    // open as the shell starts, which the arrival line (Notifications.qml)
+    // finds already there, as Quickshell's kept across a reload.
     signal came(var notification, var notice)
     // Whether the launcher's collection of them is open.
     property bool gathered: false
@@ -320,6 +320,12 @@ Singleton {
     // for it to come, and then its window is focused, if it has one.
     function open(action, app) {
         action.invoke();
+        bringForward(app);
+    }
+
+    // Brings forward the sender of a notice opened, its window focused a second on if it
+    // didn't come by itself, as the launcher's Return on a notice asks (PastNotices.qml).
+    function bringForward(app) {
         const entry = DesktopEntries.heuristicLookup(app);
         forwarding = [app.toLowerCase()].concat(entry ? [entry.id.toLowerCase()] : []);
         forwarded.restart();

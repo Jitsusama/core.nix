@@ -8,6 +8,7 @@
   "Editing.js"
   "Typing.js"
   "Search.js"
+  "Changes.js"
   "Operators.js"
   "Finding.js"
   "Confirm.js"

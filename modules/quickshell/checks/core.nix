@@ -29,8 +29,8 @@ let
   ];
 in
 {
-  # The launcher answers what's typed into it, and the held notices take
-  # vi's keys, on the account's whole shell on niri, in seconds rather than
+  # The launcher answers what's typed into it, and takes vi's keys, on the
+  # account's whole shell on niri, in seconds rather than
   # a machine's minutes (tests/launcher-on-niri-test.py). Its meanings come
   # from the meaning daemon's stand-in, which loads no model
   # (tests/desktop/stand-in-meaning.py). WARP stands in as warp-cli
@@ -137,9 +137,9 @@ in
         };
       });
 
-  # The launcher, the held notices and a window share the keys by one rule:
-  # the newest Joel opened takes them, a notice arriving never does, and a
-  # click on a window gives it them (tests/focus-on-niri-test.py).
+  # The launcher and a window share the keys by one rule: the newest Joel
+  # opened takes them, a notice arriving never does, and a click on a
+  # window gives it them (tests/focus-on-niri-test.py).
   the-newest-surface-takes-the-keys-on-niri = launcherOnNiri {
     name = "the-newest-surface-takes-the-keys-on-niri";
     tests = ../../../tests/focus-on-niri-test.py;

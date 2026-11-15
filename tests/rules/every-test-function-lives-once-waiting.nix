@@ -112,8 +112,6 @@
   "tests/machine.qml" = 1;
   "tests/machines.qml" = 1;
   "tests/mpv-program.qml" = 2;
-  "tests/notice-keys.qml" = 1;
-  "tests/notice-list.qml" = 1;
   "tests/notices-on-niri.sh" = 1;
   "tests/notices-wait-while-away.sh" = 1;
   "tests/now-moment.qml" = 1;
@@ -143,7 +141,6 @@
   "tests/sound.qml" = 2;
   "tests/vm/sound/speakers-vm-test.py" = 1;
   "tests/spotify-program.qml" = 2;
-  "tests/stack.qml" = 1;
   "tests/status-line.qml" = 1;
   "tests/swayimg-galleries.qml" = 1;
   "tests/talks.qml" = 3;

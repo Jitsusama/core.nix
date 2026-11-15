@@ -12,7 +12,7 @@ pragma ComponentBehavior: Bound
 // changing by itself shows it only while they aren't, so it never breaks
 // into a call or a screen share, and never over what a key just put up
 // (Music.js's calls). It's one row, the one Now's Playing row is (`row`),
-// which the arrival line draws, and until it does the stack's card.
+// which the arrival line draws.
 //
 // Mpris says when a track or a state changes, so nothing is asked, but for
 // the position, which it never reports: that's read once a second, only
@@ -61,7 +61,7 @@ Singleton {
     readonly property var row: Players.row(trackOf(player, ""), heading, actsOf(player))
     // The same row, with where in the track, while what's playing shows
     // itself for a moment, of the player a key acted on; null otherwise.
-    // The arrival line draws it, and until it does the stack's card.
+    // The arrival line draws it.
     readonly property var arrival: shown && featured !== null
         ? Players.row(trackOf(featured, card.where), heading, actsOf(featured)) : null
 

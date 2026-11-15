@@ -121,6 +121,9 @@ Scope {
 
     // A change to the records, past placing: the keys changed and gone.
     signal heard(var changed, var gone)
+    // An act of a row's asked of the daemon, as it's sent, so a place can do what no served
+    // act form says beside it, as a notice opened brings its sender forward (PastNotices.qml).
+    signal acted(string key, var one)
 
     LazyLoader {
         id: daemon
@@ -933,6 +936,7 @@ Scope {
         const row = served(key);
         if (!row || !link)
             return;
+        acted(key, one);
         // What it becomes may be another row, as a charge limit's stop
         // becomes the limit's own row, so that row is the one held.
         const into = one.becomes ?? null;

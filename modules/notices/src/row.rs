@@ -236,6 +236,15 @@ fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str, words: &Words
                 "glyph": glyph, "ask": invoke(&offer.id), "token": true,
             }));
         }
+        // A reply typed in place asks for its words in the launcher's
+        // field first, as a network asks its password, and the daemon
+        // sends it to the sender, which closes the notice.
+        if notice.reply.is_some() {
+            acts.push(json!({
+                "key": "verb:notice:reply", "ask": { "ask": "reply", "notice": notice.id },
+                "fields": [{ "ask": "notices:asks:reply", "into": "text" }],
+            }));
+        }
     }
     // Each link keyed by the words it's said in, which the shell tells
     // apart by where it goes (Y2YBTS, 19edbd31).
@@ -264,14 +273,16 @@ fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str, words: &Words
         || json!({ "ask": "mark", "notices": [notice.id], "read": !notice.read }),
         |action| invoke(&action.id),
     );
+    // Marking notices read, and forgetting them, cost too little to ask
+    // first, though neither can be put back: the launcher asks only before
+    // what costs a lot (Joel, 2026-11-13), and before more than five that
+    // can't be put back unless each is served as costing little (VKCF3Z,
+    // 2026-11-14), so :%delete over every notice reads them at once. The
+    // language's costly on Forget is a network's or a device's.
     acts.push(json!({
         "key": "verb:notice:read", "name": words.name("verb:notice:read", state),
-        "glyph": words.glyph("verb:notice:read", state), "ask": ask,
+        "glyph": words.glyph("verb:notice:read", state), "ask": ask, "costly": false,
     }));
-    // Forgetting a notice costs too little to ask first, though it can't
-    // be put back: the launcher asks only before what costs a lot (Joel,
-    // 2026-11-13), and the language's costly on Forget is a network's or
-    // a device's.
     if notice.live {
         acts.push(json!({
             "key": "verb:notice:forget", "ask": { "ask": "dismiss", "notices": [notice.id] },
@@ -869,6 +880,27 @@ mod tests {
         assert_eq!(senders, &wanted, "each sender's, those past the page too");
     }
 
+    #[test]
+    fn one_taking_a_reply_typed_here_asks_for_its_words_first() {
+        let chat = notice(9, &json!({ "live": true, "reply": "Reply to Bo" }));
+        let [mixed, ..] = making(&[chat], &[]);
+        let acts = mixed[0]["acts"].as_array().cloned().unwrap_or_default();
+        let reply = acts.iter().find(|act| act["key"] == "verb:notice:reply");
+        assert_eq!(
+            reply.map(|act| (&act["ask"], &act["fields"])),
+            Some((
+                &json!({ "ask": "reply", "notice": 9 }),
+                &json!([{ "ask": "notices:asks:reply", "into": "text" }])
+            )),
+            "a reply typed here asks for its words, then the daemon: {acts:?}"
+        );
+        let [closed, ..] = making(&[notice(10, &json!({ "reply": "Reply" }))], &[]);
+        assert!(
+            !act_keys(&closed[0]).contains(&"verb:notice:reply"),
+            "a closed notice takes no reply"
+        );
+    }
+
     fn act_keys(row: &Value) -> Vec<&str> {
         row["acts"]
             .as_array()
@@ -1010,6 +1042,10 @@ mod tests {
         assert_eq!(
             acts[4]["costly"], false,
             "forgetting a notice costs too little to ask first"
+        );
+        assert_eq!(
+            acts[3]["costly"], false,
+            "marking a notice read costs too little to ask first"
         );
         assert_eq!(
             acts[2]["also"],

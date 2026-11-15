@@ -174,8 +174,8 @@ Singleton {
     readonly property string daemonSocket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
     property var kept: NiriRecords.held()
 
-    // What draws tiles, by name, as notices do while they're up, beside
-    // the window under them; the daemon tells tiles only while one does.
+    // What draws tiles, by name, as the margin cat does while it travels,
+    // its ways being over them; the daemon tells tiles only while one does.
     property var tilesFor: ({})
     readonly property bool tilesWanted: Object.keys(tilesFor).length > 0
     // Whether the tiles held are current: once the daemon's watch of them

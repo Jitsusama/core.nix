@@ -39,6 +39,19 @@
       }
     },
     {
+      "id": "verb:notice:reply",
+      "command": "reply",
+      "in": "notices",
+      "name": "Reply",
+      "verb": "reply",
+      "glyph": "reply"
+    },
+    {
+      "id": "notices:asks:reply",
+      "in": "notices",
+      "ask": "your reply"
+    },
+    {
       "id": "verb:notice:forget",
       "command": "forget",
       "in": "notices",

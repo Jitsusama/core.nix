@@ -24,6 +24,7 @@ import pytest
 # brought here.
 from desktop_session import (
     LAUNCHER_OPEN,
+    NOTICES,
     SHELL_STARTS,
     STARTING,
     google,  # noqa: F401
@@ -77,7 +78,7 @@ def test_a_signed_out_account_wants_joel_to_sign_in_again(desktop: Desktop) -> N
         )
         desktop.as_account(f'grep -qx "$HOME " {opened}')
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-        machine.fail(desktop.in_session("niri msg layers | grep -q notifications"))
+        machine.fail(desktop.in_session(NOTICES))
         desktop.as_account(f"rm -f {opened}")
     finally:
         desktop.as_account("systemctl --user unset-environment GOOGLE_STAND_IN_ACCOUNT")

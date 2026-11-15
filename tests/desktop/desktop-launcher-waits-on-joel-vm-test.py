@@ -1236,7 +1236,7 @@ def test_a_safe_word_stop_resumes_only_on_a_second_return(desktop: Desktop) -> N
 def test_a_waiting_notice_goes_read_once_its_item_stops_waiting(desktop: Desktop) -> None:
     """A waiting notice goes, read, once its item can't be done now any more."""
     machine = desktop.machine
-    notices = desktop.in_session("niri msg layers | grep -q notifications")
+    notices = desktop.in_session(NOTICES)
     machine.wait_until_fails(notices, timeout=dt.timedelta(seconds=30))
     indexed(desktop, "QEST-20261027-GONEQA")
     path = f"{MISSION}/waiting/GONEQA.json"
