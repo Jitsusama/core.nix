@@ -3975,6 +3975,10 @@
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build
     leaves window buffers alone
   '';
+  theme-json-says-which-marks-turn = ''
+    theme.json says of every mark whether it's turned, and turns only the down triangle, so a
+    terminal reading it draws that one as pointing down rather than as the bare triangle
+  '';
   thermald-starts-after-its-drivers = ''
     the XPS 14's thermal drivers load before thermald starts, and a thermald that stops is restarted
   '';
