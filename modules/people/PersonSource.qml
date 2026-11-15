@@ -88,6 +88,8 @@ QtObject {
     // What stood() reads beyond the daemon's entry, as Tuple's favourites
     // changed here: People makes everyone again once it changes, since it
     // makes them only when asked rather than following what stood() reads.
+    // Each entry names whom it's of by the daemon's key, as `key`, so
+    // People draws everyone else as the daemon serves them meanwhile.
     property var standing: null
     // The People place it's a source of, given as it's made.
     property var place: null

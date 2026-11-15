@@ -722,6 +722,17 @@ Provider {
         if (listedRows.from === listed && listedRows.minute === now)
             return listedRows.rows;
         keepingBegun(keptListed);
+        // Those a source holds something of its own for, as a favourite
+        // changed here until Tuple says it, are the only ones drawn here
+        // while they're merged here; everyone else is drawn as the daemon
+        // serves them and kept by its stamp either way. Kept by a key of
+        // each way's own, every listed row was made again at each
+        // Favourite flipped and once more when Tuple said it.
+        const own = {};
+        for (const source of sources) {
+            for (const id in source.standing ?? {})
+                own[source.standing[id].key] = true;
+        }
         const rows = listed.map(person => {
             // One the daemon listed comes with their row ready, kept while
             // their record says what it said, by the stamp the daemon
@@ -733,7 +744,8 @@ Provider {
             // Their row reads only what their record says, but for its
             // order, which places it and is read no further, so it's kept
             // by the record's stamp.
-            const record = person.stood ? lister.held[`person:${person.key}`] : null;
+            const record = own[`person:${person.key}`] ? null
+                : lister.held[`person:${person.key}`];
             const ready = record ? rowsHeld[`row:people:${person.key}`] : null;
             // One saying their time is kept for the minute too.
             if (ready)
