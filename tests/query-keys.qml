@@ -1302,6 +1302,16 @@ QtObject {
         ];
         for (const [what, said, want] of read)
             holds(`an identifier's words: ${what}`, Value.identifierWords(said), want);
+        // A hash whose first figure comes late is its letters however often
+        // it's read, as a drawer reads it each time it's laid: Qt's engine
+        // read it as one word from the third time on, so 1Password's store
+        // path broke inside it at scale 2 (80ECO2, 2026-11-15).
+        const late = "mjpswjcqksfhgrx7gk8dilz4fdrmzdfq";
+        const readOften = [0, 1, 2, 3, 4, 5].map(() =>
+            Value.identifierWords(`/nix/store/${late}-1password-in-its-unit`));
+        holds("an identifier's words: a hash whose figure comes late, read often",
+            readOften[readOften.length - 1], ["/nix/", "store/"]
+                .concat([...late.slice(0, -1)], ["q-", "1password-", "in-", "its-", "unit"]));
         // How many of a drawer's acts stand on each line: as few lines as
         // hold them, split evenly by width, none broken inside and none alone
         // on a line, "Close" under "↵Talk Go To Pause Stop" being a gross
