@@ -248,7 +248,7 @@ fn run(job: &Job) -> Result<(), Failure> {
             job.command.join(" ")
         ),
     );
-    match watch(
+    if let Some(status) = watch(
         job,
         &mut child,
         &pressures,
@@ -256,15 +256,14 @@ fn run(job: &Job) -> Result<(), Failure> {
         &watched,
         samples,
     ) {
-        Some(status) => finish(
+        finish(
             job,
             status,
             &places.state.join(format!("{}.done", job.name)),
-        ),
-        None => {
-            stop(job, &mut child);
-            Ok(())
-        }
+        )
+    } else {
+        stop(job, &mut child);
+        Ok(())
     }
 }
 
