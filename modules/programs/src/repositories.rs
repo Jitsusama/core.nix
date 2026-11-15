@@ -59,7 +59,14 @@ pub fn read(key: &str) -> Option<Read> {
             .iter()
             .map(|one| json!({"path": one.path, "at": one.at, "page": one.page}))
             .collect();
-        let pages: Vec<&Value> = listed.iter().filter(|one| !one["page"].is_null()).collect();
+        // Two checkouts of one repository share its page, which is listed
+        // once, by the one written last, since they come in that order.
+        let mut addresses = std::collections::HashSet::new();
+        let pages: Vec<&Value> = listed
+            .iter()
+            .filter(|one| !one["page"].is_null())
+            .filter(|one| addresses.insert(one["page"]["address"].to_string()))
+            .collect();
         return Some(Read {
             record: json!({
                 "key": key, "kind": "repositories", "folder": folder,
@@ -332,6 +339,44 @@ mod tests {
             found.heard,
             [src.clone(), git],
             "the folder a repository could be cloned into and its git, never its own files"
+        );
+        fs::remove_dir_all(&src).unwrap();
+    }
+
+    #[test]
+    fn a_page_two_checkouts_share_is_listed_once_by_the_one_written_last() {
+        let src = folder("shared");
+        for (name, seconds) in [("old", 1_700_000_000), ("new", 1_700_000_500)] {
+            let git = src.join(name).join(".git");
+            fs::create_dir_all(&git).unwrap();
+            fs::write(
+                git.join("config"),
+                "[remote \"origin\"]\n\turl = git@github.com:a/b.git\n",
+            )
+            .unwrap();
+            fs::File::open(&git)
+                .unwrap()
+                .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(seconds))
+                .unwrap();
+        }
+        let record = read(&format!("repositories:{}", src.display()))
+            .unwrap()
+            .record;
+        let pages: Vec<&str> = record["pages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|one| one["path"].as_str().unwrap_or_default())
+            .collect();
+        assert_eq!(
+            pages,
+            [src.join("new").display().to_string()],
+            "one page, by the checkout written last"
+        );
+        assert_eq!(
+            record["repositories"].as_array().map(Vec::len),
+            Some(2),
+            "both checkouts still listed as repositories"
         );
         fs::remove_dir_all(&src).unwrap();
     }
