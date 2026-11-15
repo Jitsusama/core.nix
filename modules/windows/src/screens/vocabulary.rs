@@ -9,7 +9,7 @@ use std::path::Path;
 use ready_rows::numbers::Numbers;
 use serde_json::Value;
 
-use super::{FACTS, PRIMARIES, Sleep, TRANSFORMS, Told, Words, acts, line, tells};
+use super::{Counted, FACTS, PRIMARIES, Sleep, TRANSFORMS, Told, Words, acts, line, tells};
 use crate::light;
 
 impl Words {
@@ -55,6 +55,7 @@ impl Words {
             none_given: said("none-given"),
             offers_range: said("offers-range"),
             is_unplugged: said("isUnplugged"),
+            counted: Counted::read(&said),
             stood: line::Stood::read(&word),
             wakes: word("verb:display-off", &["said", "wakes"], "wakes"),
             moves: word("verb:display-unplug", &["said", "moves"], "moves"),
@@ -124,6 +125,17 @@ impl Words {
     #[must_use]
     pub fn numbered(self, numbers: Numbers) -> Words {
         Words { numbers, ..self }
+    }
+}
+
+impl Counted {
+    /// How many screens there are, in the place's own words.
+    fn read(said: &impl Fn(&str) -> String) -> Counted {
+        Counted {
+            one: said("counted-one"),
+            many: said("counted-many"),
+            on: said("counted-on"),
+        }
     }
 }
 

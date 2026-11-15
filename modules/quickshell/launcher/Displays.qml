@@ -22,7 +22,8 @@
 // follows and serves, in its drawer and as rows inside the screen's
 // after its settings and the ways it turns off, named first as parts are
 // (Colour Depth "10 bit"), Return copying one (screens/facts.rs), so the
-// shell reads no file for them.
+// shell reads no file for them. How many screens there are and how many
+// are on, beside the place's name, is the daemon's summary.
 //
 // The panel's backlight is the one brightness, lid shut or not: the
 // backlight daemon (modules/backlight) sets every monitor it reaches to
@@ -85,6 +86,7 @@ Provider {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
         place: "displays"
+        beside: ["summary"]
         ahead: [provider.drawerWanted,
             provider.lightsSeen || provider.terminalLooks || !provider.lightReadOnce
                 ? provider.backlitKey : ""]
@@ -325,10 +327,9 @@ Provider {
         return ready.served(screenKey(output))?.name ?? output.name;
     }
 
-    // Screens in the order the daemon serves them: the built-in first, as
-    // it's always there, then by connector.
-    readonly property var shown: Object.values(outputs)
-    readonly property var lit: shown.filter(output => output.logical !== null)
+    // The screens niri lays out, in the order the daemon serves them: the
+    // built-in first, as it's always there, then by connector.
+    readonly property var lit: Object.values(outputs).filter(output => output.logical !== null)
 
     readonly property string focusedOutput: {
         void Niri.revision;
@@ -633,9 +634,10 @@ Provider {
         return all.slice();
     }
 
+    // How many screens there are and how many are on, as the windows
+    // daemon's summary says it beside their rows (screens.rs).
     function counted() {
-        const each = shown.length === 1 ? "screen" : "screens";
-        return lit.length === shown.length ? `${shown.length} ${each}`
-            : `${lit.length} of ${shown.length} on`;
+        void ready.placings;
+        return String(ready.held["summary:displays"]?.summary?.said ?? "");
     }
 }

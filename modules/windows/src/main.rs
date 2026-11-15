@@ -426,7 +426,7 @@ fn refresh(served: &Served, daemon: &mut Daemon) {
         };
         rows.take(
             screens::rows(outputs, desk, desktop.output(), *each, &seen, words),
-            Vec::new(),
+            vec![screens::summary(outputs, words)],
         );
         records.extend(rows.all().cloned());
     }

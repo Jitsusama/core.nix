@@ -76,6 +76,15 @@ const TRANSFORMS: [&str; 8] = [
     "Flipped270",
 ];
 
+/// How many screens there are: "1 screen", "{count} screens" with
+/// every one on, else "{on} of {count} on".
+#[derive(Clone, Debug, PartialEq)]
+struct Counted {
+    one: String,
+    many: String,
+    on: String,
+}
+
 /// What the rows are said in: the vocabulary's words for a screen.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Words {
@@ -105,6 +114,8 @@ pub struct Words {
     offers_range: String,
     /// A screen gone before niri came to it: "{name} is unplugged".
     is_unplugged: String,
+    /// How many screens the place holds, said beside its name.
+    counted: Counted,
     /// What the : line says of a screen already standing as it's asked.
     stood: line::Stood,
     /// Beside the last lit screen's Turn It Off: a key wakes it.
@@ -535,6 +546,30 @@ fn warmth_rows(shown: &[(&String, &Value)], seen: &Seen, words: &Words) -> Vec<V
         },
         &words.light,
     )
+}
+
+/// How many screens there are, and how many are on, as the place's row
+/// says beside its name: "2 screens" with every one on, else "1 of 2
+/// on", a screen dark by name not among them.
+pub fn summary(outputs: &BTreeMap<String, Value>, words: &Words) -> Value {
+    let count = outputs.len();
+    let on = outputs
+        .values()
+        .filter(|output| standing(output) == "lit")
+        .count();
+    let said = if on < count {
+        words.counted.on.replace("{on}", &on.to_string())
+    } else if count == 1 {
+        words.counted.one.clone()
+    } else {
+        words.counted.many.clone()
+    };
+    json!({
+        "key": format!("summary:{PLACE}"),
+        "kind": "summary",
+        "summary": {"place": PLACE, "count": count, "on": on,
+            "said": said.replace("{count}", &count.to_string())},
+    })
 }
 
 /// A row's key in the place.

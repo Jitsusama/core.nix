@@ -583,6 +583,36 @@ fn niri_gone_and_back_describes_the_desktop_again() {
 }
 
 #[test]
+fn a_watch_of_screens_summary_is_told_how_many_there_are_and_how_many_are_on() {
+    let running = Running::worded(
+        "screens-summary",
+        &json!({"eDP-1": screen("BOE", Some(2.0)), "DP-2": screen("Dell", None)}),
+    );
+    let mut client = running.daemon.client();
+    let summarised = |said: &Value| {
+        said["records"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|record| record["key"] == "summary:displays")
+            .map(|record| record["summary"]["said"].clone())
+    };
+    // The screens are read as the daemon starts, so a first watch can
+    // come before them, as the case below waits for its rows.
+    let mut said = Value::Null;
+    for _ in 0..50 {
+        said = client.ask(&json!({"id": 1, "ask": "watch",
+            "kind": ["row", "summary"], "place": "displays"}));
+        if summarised(&said) == Some(json!("1 of 2 on")) {
+            return;
+        }
+        client.ask(&json!({"id": 1, "ask": "unwatch"}));
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    panic!("the place's summary isn't served beside its rows: {said}");
+}
+
+#[test]
 fn a_watch_of_screens_is_told_each_screens_row_and_only_those_a_change_moved() {
     let running = Running::worded(
         "screens",

@@ -16,7 +16,8 @@
   # Turn Every Screen Off and :set noscreens ask niri to power its monitors
   # off, which keeps each output connected, read on their way to niri; and
   # a scale niri refuses, turned into its ReturnError on the way, says
-  # niri's words for why on the : line.
+  # niri's words for why on the : line; and Screens says how many screens
+  # there are, as the windows daemon counts them.
   the-screens-go-off-on-niri = launcherOnNiri {
     name = "the-screens-go-off-on-niri";
     tests = ../../../tests/screens-off-on-niri-test.py;
