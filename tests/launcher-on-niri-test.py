@@ -2658,6 +2658,37 @@ def test_returns_place_is_weighed_for_the_rows_whats_typed_lists_now(shell: Shel
         shell.close(window)
 
 
+def test_a_letter_weighs_the_keys_of_only_the_rows_it_lists_anew(shell: Shell) -> None:
+    """A letter typed on weighs the foot's keys for the rows it lists that the last didn't.
+
+    A found row is the same as long as it's found alike (launcher/Member.js's copiedAgain),
+    so its keys are too. Held for what's typed, each letter weighed every listed row's keys
+    again: the keys lab's "c" and "co" called keysFor 1,400 times over 20 letters, 123 ms of
+    their weighing, profiled (2026-11-15).
+    """
+    # Windows named alike, so the letters typed on keep each of them.
+    windows = [shell.opened(f"Weighed Once {name}") for name in ("Alder", "Birch", "Cedar")]
+    try:
+        shell.answer("weighed o")
+        before = launcher_on_niri.weighed_held_still(shell)
+        listed = shell.showing()["rows"]
+        shell.type_in("nc")
+        weighed = launcher_on_niri.weighed_held_still(shell) - before
+        now = shell.showing()
+        anew = [name for name in now["rows"] if name not in listed]
+        kept = len(now["rows"]) - len(anew)
+        # Within the twenty rows showing() names, and the windows kept, or this proves nothing.
+        assert len(now["tinted"]) <= len(now["rows"]), f"more listed than named: {now['rows']}"
+        assert kept >= len(windows), f"too few rows kept from {listed}: {now['rows']}"
+        # One more for a row whose keys a letter may change, as the selection's are.
+        assert weighed <= len(anew) + 1, (
+            f"letters keeping {kept} rows weighed {weighed}, with {anew} new"
+        )
+    finally:
+        for window in windows:
+            shell.close(window)
+
+
 def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: Shell) -> None:
     """`launcher show` is answered any place by the names its steps say, and a miss the nearest.
 

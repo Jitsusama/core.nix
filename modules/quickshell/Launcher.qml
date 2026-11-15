@@ -3269,7 +3269,17 @@ Scope {
         // rows, so those are weighed each time (keysFor).
         // Held for the last few places shown, so one shown again, as a
         // chord's kept place is, weighs only its rows new since then.
-        const held = Pacing.weighingAmong(footRowsWeighed, `${weighing}|${prompt.mode}`,
+        // Held by the step, not what's typed: a row found alike by the
+        // next letter is the same row (Member.js's copiedAgain), and held
+        // by what's typed, each letter weighed every row it kept again:
+        // the keys lab's "c" and "co" called keysFor 1,400 times over 20
+        // letters, 123 ms of their weighing, profiled (2026-11-15). The room is still weighed afresh
+        // for each letter's rows, above; only their keys are kept. The
+        // place as shown is held apart from a search in it, so a backspace
+        // back to it finds its own rows still weighed.
+        const searching = typed === "" ? "place" : "search";
+        const held = Pacing.weighingAmong(footRowsWeighed,
+            `${stepsTaken}|${searching}|${holdsWords}|${prompt.mode}`,
             { words: Words.all, face: statusLine.keys.measured }, typed === "");
         footRowsWeighed = held;
         const kept = held[0];

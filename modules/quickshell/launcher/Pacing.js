@@ -240,9 +240,9 @@ function verbRoom(kept, words, face, weigh) {
     return { words, face, widest: weigh(words) };
 }
 
-// The rows' keys as the foot weighed them, kept for what's typed, the steps
-// and the mode, `key`, in these words and the face the foot measured them
-// in: a row is the same object for as long as it says the same, so one
+// The rows' keys as the foot weighed them, kept for the step, whether a
+// search is typed, and the mode, `key` (Launcher.qml's weighKeys), in these
+// words and the face the foot measured them in: a row is the same object for as long as it says the same, so one
 // weighed before says the same keys at the same widths. Weighed afresh each
 // time, one act in For You's 115 rows weighed every row again, 7 to 46 ms of
 // the 11 to 52 its rows took to be shown, where one row had changed
