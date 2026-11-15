@@ -1219,6 +1219,91 @@ Singleton {
         onTriggered: root.reopenSoon()
     }
 
+    // Each session Reopen Them All opened is told to carry on only as the
+    // uplink has room (Places.carryOnsDue), since the words make it send,
+    // not its window: an idle pi sends a fraction of a kbit/s, and on
+    // 2026-11-14 seventy-two told as each opened sent 6.4 Mbit/s of the
+    // home line's 8.2 for 17 minutes, past the builders sharing it. Every
+    // window still opens as it did. Each is told through its steer inbox
+    // once its pi says it runs, and one that never does within
+    // carryOnPatience is let go and said. The holder gives a reopened pi
+    // its turn four at a time, a turn lasting up to a minute, so seventy-
+    // two can take eighteen minutes to run: half an hour lets each come.
+    // The uplink's rate lags the window it's measured over, so about one
+    // a look goes before a climb shows; their first requests are small
+    // beside the line.
+    property var carryingOn: ({ pending: [], told: [] })
+    readonly property int carryOnPatience: 1800000
+    // A session told counts as working this long, in seconds, before its
+    // pi idle says it's done: one just told hasn't begun its turn yet.
+    readonly property int carryOnSettles: 15
+    function pendingOf(one, kept) {
+        return { id: one.id, carried: one.carried, leads: kept?.leads === true,
+            opened: Date.now() };
+    }
+    // Whether `one` may be told as it opens: none waits ahead of it, and
+    // the uplink has room for one more now.
+    function carryOnNow(one, kept) {
+        if (carryingOn.pending.length > 0)
+            return false;
+        const now = Date.now() / 1000;
+        // Those told an hour ago are long past counting.
+        carryingOn.told = carryingOn.told.filter(told => now - told.at < 3600);
+        machineQueue.reload();
+        const due = Places.carryOnsDue([pendingOf(one, kept)], toldSoFar(now),
+            machineQueue.text(), now);
+        if (due.length === 0)
+            return false;
+        carryingOn.told.push({ id: one.id, at: now });
+        return true;
+    }
+    function carryOnLater(one, kept) {
+        carryingOn.pending.push(pendingOf(one, kept));
+        carryOnSoon();
+    }
+    function runsHere(id) {
+        return running.find(one => one.here && one.presence?.session === id);
+    }
+    // Those told so far, each idle once its pi has settled and isn't busy.
+    function toldSoFar(now) {
+        return carryingOn.told.map(one => ({ id: one.id, at: one.at,
+            idle: now - one.at > carryOnSettles && !!runsHere(one.id)
+                && !runsHere(one.id).presence?.busy }));
+    }
+    function carryOnSoon() {
+        const now = Date.now();
+        const runs = runsHere;
+        const lost = carryingOn.pending.filter(one => !runs(one.id)
+            && now - one.opened > carryOnPatience);
+        lost.forEach(one => console.warn(`sessions: ${one.id} never ran, so isn't told to carry on`));
+        carryingOn.pending = carryingOn.pending.filter(one => !lost.includes(one));
+        const ready = carryingOn.pending.filter(one => runs(one.id));
+        const told = toldSoFar(now / 1000);
+        machineQueue.reload();
+        const asked = ready.map(one => Object.assign({}, one,
+            { wants: wanting.some(session => session.presence?.session === one.id) }));
+        const due = Places.carryOnsDue(asked, told, machineQueue.text(), now / 1000);
+        for (const one of due) {
+            steer(runs(one.id).address, { text: carryOn, id: `carry-on-${now}-${one.id}` });
+            carryingOn.told.push({ id: one.id, at: now / 1000 });
+        }
+        const telling = due.map(one => one.id);
+        carryingOn.pending = carryingOn.pending.filter(one => !telling.includes(one.id));
+        if (carryingOn.pending.length > 0) {
+            if (due.length === 0 && ready.length > 0 && !carryingOn.heldForRoom)
+                Report.say(`carrying on waits for the uplink, ${carryingOn.pending.length} to go`);
+            carryingOn.heldForRoom = due.length === 0 && ready.length > 0;
+            carryOnPacing.restart();
+        } else {
+            carryingOn.heldForRoom = false;
+        }
+    }
+    Timer {
+        id: carryOnPacing
+        interval: root.roomPace
+        onTriggered: root.carryOnSoon()
+    }
+
     // Reopens every session the last boot took away, each in its own
     // folder, back where it sat: those held on another machine joined
     // again at once, then this machine's one at a time, a screen and its
@@ -1603,7 +1688,14 @@ Singleton {
             // The pace is counted from once it's begun and said, so the next
             // is said two seconds after however long this one took to start.
             // Its window's app id, which niri says as it opens, after this.
-            reopening.waiting.classed = reopened(next.one, next.one.cwd, next.told, into);
+            // Reopen Them All's carry-on is said as it opens while the
+            // uplink has room, else it opens untold and waits its turn
+            // (carryOnSoon).
+            const waits = next.told === root.carryOn && !root.carryOnNow(next.one, next.kept);
+            reopening.waiting.classed = reopened(next.one, next.one.cwd,
+                waits ? "" : next.told, into);
+            if (waits)
+                root.carryOnLater(next.one, next.kept);
             reopenStartedAt = Date.now();
             reopenPatience.restart();
         });
