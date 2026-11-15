@@ -315,7 +315,7 @@ QtObject {
         const changes = frames.filter((frame, i) => i > 0 && frame.pose !== frames[i - 1].pose);
         expect("as many strides as its way holds, the last ending as it stops",
             changes.length, Math.ceil((200 - 99) / going.stride) - 1);
-        expect("it walks onto its seat, never past it", Math.max(...xs), 200);
+        expect("it walks onto its seat, never past it", Math.max(...xs) <= 200, true);
         const lastStride = frames.filter((frame, i) => i > 0 && frame.pose !== frames[i - 1].pose)
             .pop();
         expect("and in its last drawing goes no more than a stride and a cell",
@@ -324,8 +324,12 @@ QtObject {
             [at(begins("lands")).pose, at(begins("lands")).x], ["pouncing", 200]);
         expect("then sits, done", [at(going.ends).done, at(going.ends).x, at(going.ends).pose],
             [true, 200, null]);
+        // Its eases cost time rather than quicken its pace (VKCF3Z d1d1ead2),
+        // so a walk's pace is told between them.
+        const eased = beat => (beat.ends - beat.begins) / (1 + beat.ramps[0] + beat.ramps[1]);
         expect("a short way at a walking pace, about two seconds",
-            Math.round(ends("goes") - begins("goes")), MarginCat.CRUISES);
+            Math.round(eased(going.beats.find(beat => beat.name === "goes"))),
+            MarginCat.CRUISES);
 
         const back = Paths.walk(on(200), on(100), cat({ pause: 0 }));
         expect("back the other way it faces left", back.facing, -1);
@@ -347,7 +351,7 @@ QtObject {
         const goes = far.beats.find(beat => beat.name === "goes");
         // Drawn back no further than the screen's left edge, it goes 1000.
         expect("far, it hurries, never more than 80 cells a second",
-            Math.round(goes.ends - goes.begins), Math.round(1000 / 80 * 1000));
+            Math.round(eased(goes)), Math.round(1000 / 80 * 1000));
         expect("at a run, at most three cells a drawing", far.stride, 3);
         const held = [];
         for (let t = goes.begins, run = null; t < goes.ends; t += 1) {

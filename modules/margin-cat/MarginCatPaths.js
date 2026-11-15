@@ -192,21 +192,11 @@ function along(way, x, cols, lit) {
     Ways.goes(way, x, ground(x));
 }
 
-// Its last steps onto its seat `to`: a cell and a half past it, if it was
-// walking, then back onto it, and a crouch a moment as it stops.
+// Its last steps onto its seat `to`, and no further, and a crouch a moment
+// as it stops: never past it and back with its paws still (Joel,
+// 2026-11-14 17:19: "i never want the kitty to skid into place").
 function arrives(way, to) {
-    const at = way.at;
-    const last = way.legs[way.legs.length - 1];
-    const dir = Math.sign(to.x - (last?.from.x ?? to.x));
-    if (last?.kind === "goes" && dir !== 0) {
-        // Never past the screen's edge.
-        const past = to.x + dir * MarginCat.OVERSHOOTS * at.cell;
-        last.to = { x: onScreen(past, at), y: to.y };
-        way.x = last.to.x;
-        holds(way, "settles", MarginCat.SETTLES, to);
-    } else {
-        Ways.goes(way, to.x, to.y);
-    }
+    Ways.goes(way, to.x, to.y);
     holds(way, "lands", MarginCat.LANDS);
 }
 

@@ -73,29 +73,33 @@ const CLOSING = 500;
 // (Joel, 2026-11-12: "proper smooth animations with character to them"):
 // it stands and turns its head the way it's going, stops a moment to
 // think, draws back a cell crouched, as anticipation, then walks, easing
-// in and out, its two strides stepped by the ground it covers so its feet
-// never slide. It overshoots its seat by a cell and a half, steps back
-// onto it, and crouches a moment as it stops, before it sits.
+// in over its first stride and out over its last, its strides stepped by
+// the ground it covers so its feet never slide. It walks onto its seat and
+// no further, and crouches a moment as it stops, before it sits (Joel,
+// 2026-11-14 17:19: "i never want the kitty to skid into place").
 const TURNS = 140;
 const CROUCHES = 110;
 const SETTLES = 180;
 const LANDS = 120;
-// How far, in its own cells, it draws back and overshoots.
+// How far, in its own cells, it draws back.
 const DRAWS_BACK = 1;
-const OVERSHOOTS = 1.5;
 // Its pace, in cells a second: an amble over a short way, each walk taking
 // about `CRUISES` ms where it can, and never over `HURRIES`, so a long way
 // is a gentle long walk, several seconds across a column, rather than a
 // dash (VKCF3Z, 2026-11-12: fast motion at the edge of his eye pulls focus,
-// and a walk blocks nothing of his). Each stride covers a tenth of a second
-// at its pace, and never under four cells, half its body, nor over ten, so
-// its legs never blur.
+// and a walk blocks nothing of his). Each stride, one drawing, covers
+// `STRIDE_SECONDS` at its pace: never under two cells, so four drawings
+// walk its own length, nor over three at a run, so its paws are always
+// seen moving (Joel, 2026-11-14 17:19: "i always want to see its paws
+// moving when it is walking or running"; VKCF3Z d1d1ead2). Three cells a
+// drawing held two frames at 60 Hz is about 90 cells a second, so a hurry
+// is capped under it, rather than its stride stretched.
 const AMBLES = 40;
-const HURRIES = 120;
+const HURRIES = 80;
 const CRUISES = 2000;
-const STRIDE_SECONDS = 0.1;
-const SHORTEST_STRIDE = 4;
-const LONGEST_STRIDE = 10;
+const STRIDE_SECONDS = 0.0375;
+const SHORTEST_STRIDE = 2;
+const LONGEST_STRIDE = 3;
 const MS = 1000;
 
 // The theme's one ease-out curve (docs/design.md's Motion), for the crouch
