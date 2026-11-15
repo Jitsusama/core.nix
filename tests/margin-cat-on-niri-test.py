@@ -1109,6 +1109,44 @@ def test_a_pointer_resting_on_the_cat_leans_it_in_and_a_click_beside_it_reaches_
         time.sleep(POLL)
 
 
+def lying(said: str) -> Json | None:
+    """Give where a report has the cat's yarn lying after a click, or None."""
+    at = placed(said)
+    return None if at is None else at.get("yarn")
+
+
+def click(shell: Shell, x: float, y: float) -> None:
+    """Click the pointer's left button at a point on the screen."""
+    point(shell, x, y)
+    shell.as_account(f"{os.environ['WLRCTL']} pointer click left")
+
+
+def test_a_click_on_the_cat_rolls_its_yarn_in_and_one_on_the_yarn_sends_it_on(
+    shell: Shell,
+) -> None:
+    """A click on the cat rolls its yarn in to lie by it, and a click on the yarn rolls it on.
+
+    Joel, 2026-11-12: "i want to be able to also use my mouse to engage with my animals". The
+    plays are held in Qt's engine (margin-cat-games.qml); here, that niri's clicks reach the
+    cat's cells and the yarn's, whose cells take the pointer while it lies there. A click on
+    its left rolls it away to the right.
+    """
+    since = shell.mark()
+    played = shell.opened("a column the cat plays with its yarn on")
+    at = seat(shell, played, since)
+    shell.send_key("F24")
+    since = shell.mark()
+    click(shell, at["x"] + at["size"] / 2, at["y"] + at["size"] / 2)
+    heard(shell, lambda said: lying(said) is not None, since)
+    said, _ = shell.said_since(since)
+    yarn = next(lying(report[len(SITS) :]) for report in reversed(said) if report.startswith(SITS))
+    assert yarn is not None, "the cat's yarn came to lie by it and then went"
+    since = shell.mark()
+    click(shell, yarn["x"] + 1, yarn["y"] + at["size"] / 2)
+    heard(shell, lambda said: (now := lying(said)) is not None and now["x"] > yarn["x"], since)
+    point(shell, TO_THE_CORNER, TO_THE_CORNER)
+
+
 def test_the_cat_never_leans_on_a_pointer_it_came_to_under(shell: Shell) -> None:
     """A pointer at rest where the cat sits down leaves it sitting, until the pointer moves.
 
