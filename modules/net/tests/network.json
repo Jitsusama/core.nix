@@ -4,7 +4,7 @@
   "sources": [
     {
       "name": "eero",
-      "what": "eero's cloud, through the eero daemon's record",
+      "what": "eero's own account of the network, from its cloud",
       "state": "answering",
       "read_at": 1794092083,
       "since": null,

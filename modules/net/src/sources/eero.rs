@@ -91,7 +91,7 @@ fn internet(record: &Value) -> Option<Internet> {
 }
 
 /// What the source reads, in words.
-const WHAT: &str = "eero's cloud, through the eero daemon's record";
+const WHAT: &str = "eero's own account of the network, from its cloud";
 
 /// Whether eero's cloud is answering the daemon, as the record says.
 fn source(record: &Value, read_at: Option<u64>) -> Source {
