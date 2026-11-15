@@ -122,6 +122,52 @@ if (away !== "no") {
   print("FAIL holding off sleep from the node outside the active session: " + away);
 }
 
+// An agent's run0 or pkexec asks Joel, once for its command alone, from
+// wherever agents work; a unit's other verbs and its files stay refused.
+// Today's case: an agent's run0 adding an address to the Wi-Fi.
+var run0 = asking("org.freedesktop.systemd1.manage-units", {
+  verb: "start",
+  unit: "run-u42.service",
+});
+var pkexec = asking("org.freedesktop.policykit.exec", {
+  program: "/run/current-system/sw/bin/ip",
+});
+var stopping = asking("org.freedesktop.systemd1.manage-units", {
+  verb: "stop",
+  unit: "nix-daemon.service",
+});
+var unitFiles = asking("org.freedesktop.systemd1.manage-unit-files", {});
+var addsAnAddress = "run0 /run/current-system/sw/bin/ip addr add 192.168.0.2/24 dev wlp0s20f3";
+for (var asker in pids) {
+  commands[pids[asker]] = addsAnAddress;
+}
+var agentsPlaces = ["session", "host", "work", "command", "timed", "shared", "brokered", "held"];
+for (var j = 0; j < agentsPlaces.length; j++) {
+  expect("run0", run0, agentsPlaces[j], "auth_admin");
+  expect("pkexec", pkexec, agentsPlaces[j], "auth_admin");
+  expect("stopping a unit", stopping, agentsPlaces[j], "no");
+  expect("a unit's files", unitFiles, agentsPlaces[j], "no");
+}
+expect("run0", run0, "terminal", null);
+expect("run0", run0, "gone", "no");
+
+// Nor does it ask a screen Joel isn't at, or for a command it can't name.
+var notInFront = joels(pids.held);
+notInFront.active = false;
+if (polkit._runRules(run0, notInFront) !== "no") {
+  failed += 1;
+  print("FAIL run0 from an agent while Joel's session isn't in front was asked");
+}
+var remote = joels(pids.held);
+remote.local = false;
+if (polkit._runRules(run0, remote) !== "no") {
+  failed += 1;
+  print("FAIL run0 from an agent of a session elsewhere was asked");
+}
+delete commands[pids.held];
+expect("run0 for a command gone", run0, "held", "no");
+commands[pids.held] = addsAnAddress;
+
 // A process gone before it's read is refused, since nobody's there to ask.
 expect("libvirt's system connection", libvirt, "gone", "no");
 
@@ -153,6 +199,15 @@ says(
   firmware,
   "terminal",
   "asks Joel for org.freedesktop.fwupd.update-internal for pid 13 in " + where.terminal
+);
+says(
+  "run0",
+  run0,
+  "held",
+  "asks Joel for org.freedesktop.systemd1.manage-units for pid 20 in " +
+    where.held +
+    " running " +
+    addsAnAddress
 );
 says(
   "libvirt's system connection",

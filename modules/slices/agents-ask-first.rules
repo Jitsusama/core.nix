@@ -1,4 +1,8 @@
-// No agent's process may put a polkit prompt on Joel's screen: whatever
+// No agent's process may put a polkit prompt on Joel's screen but one:
+// running a command as root, through run0 or pkexec, which asks him once
+// for that command alone while his session is in front (agentAsks). An
+// agent's root step that has to become a line he types himself stops him
+// getting things done, which is a bug, not a safeguard. Whatever else
 // would have asked him is refused outright, so the agent hears a plain
 // "not authorized" and he never sees a box he didn't call up. An agent's
 // process is one in agents.slice, where every pi session runs, in
@@ -58,6 +62,61 @@ function refused(action, subject, place) {
   return polkit.Result.NO;
 }
 
+// What an agent may ask Joel for, each with the verb its asker names:
+// run0 starts its command as a transient unit of the system's (systemd's
+// StartTransientUnit asks manage-units for "start"), and pkexec asks for
+// itself. A unit's other verbs, its files and every other action stay
+// refused, so a stray client, as libvirt's was on 12 November, still
+// raises nothing.
+var agentsMayAsk = {
+  "org.freedesktop.systemd1.manage-units": "start",
+  "org.freedesktop.policykit.exec": null,
+};
+
+// The command a process runs, as ps says it on one line, cut short where
+// it runs on; null for one gone. The journal keeps what Joel was asked.
+function commandOf(subject) {
+  try {
+    var said = polkit.spawn(["@ps@", "-o", "args=", "-p", String(subject.pid)]);
+    var command = said.replace(/\s+/g, " ").replace(/^ | $/g, "");
+    return command === "" ? null : command.slice(0, 300);
+  } catch (_gone) {
+    return null;
+  }
+}
+
+// An agent's ask to run one command as root, put to Joel: his password,
+// or his key's touch where yubikey's once-in.sh lets polkit take one,
+// for this command only (auth_admin, never kept), and only while his
+// session is the one in front, so nothing asks a screen he isn't at. Null
+// for anything else an agent asks, which is refused.
+function agentAsks(action, subject, place) {
+  if (!agentsMayAsk.hasOwnProperty(action.id)) {
+    return null;
+  }
+  var verb = agentsMayAsk[action.id];
+  if (verb !== null && action.lookup("verb") !== verb) {
+    return null;
+  }
+  if (place === null || !subject.local || !subject.active) {
+    return null;
+  }
+  var command = commandOf(subject);
+  if (command === null) {
+    return null;
+  }
+  record(
+    "asks Joel for " + action.id + " for pid " + subject.pid + " in " + place +
+      " running " + command
+  );
+  return polkit.Result.AUTH_ADMIN;
+}
+
+// An agent's answer: its one ask put to Joel, or a refusal.
+function forAgent(action, subject, place) {
+  return agentAsks(action, subject, place) || refused(action, subject, place);
+}
+
 // Every rule added from here on has its asking turned into a refusal for
 // an agent's process, so a rule that asks an administrator (fwupd's, or a
 // switch to a system it doesn't know) never asks on an agent's behalf.
@@ -74,7 +133,7 @@ polkit._addRuleAsGiven = polkit._addRuleAsGiven || polkit.addRule;
       }
       var place = placeOf(subject);
       if (fromAgents(place)) {
-        return refused(action, subject, place);
+        return forAgent(action, subject, place);
       }
       record("asks Joel for " + action.id + " for pid " + subject.pid + " in " + place);
       return result;

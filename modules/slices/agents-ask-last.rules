@@ -2,7 +2,8 @@
 // asks for a password, and for some lets any process of the seat's session
 // through: libvirt's system connection, run0, a suspend. For an agent's
 // process this answers first, refusing it, so no default asks Joel or acts
-// for an agent unasked. placeOf, fromAgents and refused are
+// for an agent unasked, but for running one command as root, which it
+// asks Joel for (agentAsks). placeOf, fromAgents and forAgent are
 // agents-ask-first.rules', read first.
 //
 // One process of agents.slice keeps what logind's defaults give the seat's
@@ -22,7 +23,10 @@ function mycelium(place) {
   return place !== null && /\/agents\.slice\/mycelium\.service(\/|$)/.test(place);
 }
 
-polkit.addRule(function (action, subject) {
+// It's added as polkit gives rules, past agents-ask-first.rules' wrapping:
+// it answers an agent itself, and its one ask to Joel wrapped again would
+// be asked, and written to the journal, twice.
+polkit._addRuleAsGiven.call(polkit, function (action, subject) {
   var place = placeOf(subject);
   if (
     holdsOffSleep.indexOf(action.id) >= 0 &&
@@ -33,7 +37,7 @@ polkit.addRule(function (action, subject) {
     return polkit.Result.YES;
   }
   if (fromAgents(place)) {
-    return refused(action, subject, place);
+    return forAgent(action, subject, place);
   }
   return polkit.Result.NOT_HANDLED;
 });
