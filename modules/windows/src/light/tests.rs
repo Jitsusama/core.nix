@@ -113,6 +113,25 @@ fn the_panel_says_its_light_in_the_order_the_shell_laid_it() {
 }
 
 #[test]
+fn each_fact_says_which_part_it_is_whatever_its_words() {
+    let records = [
+        backlight(),
+        sensor(),
+        settled(0.6, &json!(28), &json!(0.6), true),
+        warmed(),
+    ];
+    let parts: Vec<String> = facts_of(&records, Reading::Read, true)
+        .iter()
+        .map(|fact| fact["part"].as_str().unwrap_or("").to_owned())
+        .collect();
+    assert_eq!(
+        parts.join(", "),
+        "brightness, stepping, driven-by, room, raw, per-count, follows, warmth, curve, \
+         device, sensor"
+    );
+}
+
+#[test]
 fn a_monitor_following_the_panel_says_only_its_share() {
     let records = [
         backlight(),
@@ -269,13 +288,13 @@ fn the_night_light_is_said_until_sunrise_by_night_and_from_sunset_by_day() {
     };
     assert_eq!(
         warmth_at(true, json!(1000), 1500),
-        json!({"name": "Warmth", "at": 2000, "as": "moment",
+        json!({"name": "Warmth", "part": "warmth", "at": 2000, "as": "moment",
             "said": "6,500 K \u{b7} night light until {time}"}),
         "by night"
     );
     assert_eq!(
         warmth_at(true, json!(1000), 500),
-        json!({"name": "Warmth", "at": 1000, "as": "moment",
+        json!({"name": "Warmth", "part": "warmth", "at": 1000, "as": "moment",
             "said": "6,500 K \u{b7} night light from {time}"}),
         "by day"
     );

@@ -533,11 +533,12 @@ fn warmth(warmth: &Warmth, name: &str, now: u64, words: &Words, numbers: &Number
     let kelvin = warmth::kelvin(warmth.kelvin, numbers);
     let said = |key: &str| words.warmth.get(key).map_or("", String::as_str);
     let timed = |key: &str, at: u64| {
-        json!({"name": name, "at": at, "as": "moment",
+        json!({"name": name, "part": "warmth", "at": at, "as": "moment",
             "said": runs(&[&kelvin, said(key)])})
     };
     match (warmth.night_light, warmth.sunset, warmth.sunrise) {
-        (true, None, _) => json!({"name": name, "said": runs(&[&kelvin, said("waits")])}),
+        (true, None, _) => json!({"name": name, "part": "warmth",
+            "said": runs(&[&kelvin, said("waits")])}),
         (true, _, Some(sunrise)) if warmth.dark(now) => timed("until", sunrise),
         (true, Some(sunset), _) => timed("from", sunset),
         (false, _, _) => {
@@ -546,7 +547,7 @@ fn warmth(warmth: &Warmth, name: &str, now: u64, words: &Words, numbers: &Number
             } else {
                 "own"
             };
-            json!({"name": name, "said": runs(&[&kelvin, said(holds)])})
+            json!({"name": name, "part": "warmth", "said": runs(&[&kelvin, said(holds)])})
         }
     }
 }
@@ -578,8 +579,10 @@ pub struct Screen<'a> {
 /// Brightness, in the order Displays.qml laid them: Brightness with its
 /// steps, what the kernel says of them, the Room light and what the
 /// sensor counts, Follows, Warmth, the curve, then the backlight's and
-/// the sensor's devices, which identify them. A monitor following the
-/// panel says only the Brightness. None without a backlight.
+/// the sensor's devices, which identify them. Each says its part by id
+/// beside its worded name, so the shell finds one whatever the words
+/// call it. A monitor following the panel says only the Brightness.
+/// None without a backlight.
 #[must_use]
 pub fn facts(seen: &Seen, screen: &Screen, words: &Words) -> Vec<Value> {
     let (light, reading) = (seen.light, seen.reading);
@@ -605,6 +608,7 @@ pub fn facts(seen: &Seen, screen: &Screen, words: &Words) -> Vec<Value> {
     };
     let mut facts = vec![json!({
         "name": named("brightness"),
+        "part": "brightness",
         "said": brightness,
         "figure": {"shape": "stroke", "values": [if read { lit.now / lit.most } else { 0.0 }],
             "warn": false},
@@ -614,7 +618,7 @@ pub fn facts(seen: &Seen, screen: &Screen, words: &Words) -> Vec<Value> {
     }
     let mut add = |id: &str, said: String| {
         if !said.is_empty() {
-            facts.push(json!({"name": named(id), "said": said}));
+            facts.push(json!({"name": named(id), "part": id, "said": said}));
         }
     };
     let word = |kind: &str, key: &Option<String>| {
@@ -666,11 +670,17 @@ pub fn facts(seen: &Seen, screen: &Screen, words: &Words) -> Vec<Value> {
         })
         .collect();
     if !curve.is_empty() {
-        facts.push(json!({"name": named("curve"), "said": curve.join(APART)}));
+        facts.push(json!({"name": named("curve"), "part": "curve", "said": curve.join(APART)}));
     }
-    facts.push(json!({"name": named("device"), "said": lit.device, "identifies": true}));
+    facts.push(
+        json!({"name": named("device"), "part": "device", "said": lit.device,
+        "identifies": true}),
+    );
     if let Some(sensor) = &light.sensor {
-        facts.push(json!({"name": named("sensor"), "said": sensor.device, "identifies": true}));
+        facts.push(
+            json!({"name": named("sensor"), "part": "sensor", "said": sensor.device,
+            "identifies": true}),
+        );
     }
     facts
 }
