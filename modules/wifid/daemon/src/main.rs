@@ -27,6 +27,7 @@ mod air;
 mod calling;
 mod card;
 mod check;
+mod choose;
 mod detail;
 mod echo;
 mod face;
