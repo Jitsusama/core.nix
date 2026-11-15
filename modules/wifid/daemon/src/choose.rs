@@ -41,8 +41,12 @@ const LOSSY: f64 = 2.0;
 /// Past this loss the link is failing, and it's left even during a call.
 const FAILING: f64 = 10.0;
 
-/// How much fainter than the one it's on an untried access point may be
-/// heard and still be tried: about a quarter of the power.
+/// How much fainter than the one it's on another access point may be
+/// heard and still be tried: about a quarter of the power. It holds for
+/// one known to carry quickly too, since an echo's figure says nothing of
+/// room: on 15 Nov 2026 the card moved twice from -47 dBm to another eero
+/// heard at -65, and its link rate fell from about 900 Mbit/s to between
+/// 245 and 432 as each carried worse than what it left.
 const FAINTER: i16 = 6;
 
 /// How busy an untried access point's channel may say it is and still be
@@ -180,15 +184,13 @@ impl Chooser {
         } else {
             None
         };
-        let faster = untried.clone().filter_map(|other| {
+        let reached = untried.filter(|other| within_reach(other, signal, frequency));
+        let faster = reached.clone().filter_map(|other| {
             let theirs = other.measured.as_ref()?;
             quicker(theirs, measured).then_some((slowness(theirs), other))
         });
-        let near = untried.filter(|other| {
-            bad && other.measured.is_none()
-                && (other.signal >= signal - FAINTER
-                    || (wide(other.frequency) && other.signal >= FAINTEST))
-                && other.busy.is_none_or(|busy| busy <= BUSIEST)
+        let near = reached.filter(|other| {
+            bad && other.measured.is_none() && other.busy.is_none_or(|busy| busy <= BUSIEST)
         });
         let chosen = banded.or_else(|| {
             faster
@@ -241,6 +243,15 @@ fn for_the_band<'a>(untried: impl Iterator<Item = &'a Other> + Clone) -> Option<
         .min_by_key(|(slowness, _)| *slowness)
         .map(|(_, other)| other)
         .or_else(|| heard.max_by_key(|other| other.signal))
+}
+
+/// Whether another access point is heard loud enough, from one heard this
+/// loud on this channel, to be tried: within `FAINTER`, or on a wider band
+/// and no fainter than `FAINTEST`, since the same access point is heard
+/// fainter there.
+fn within_reach(other: &Other, signal: i16, frequency: u32) -> bool {
+    other.signal >= signal - FAINTER
+        || (wider(other.frequency, frequency) && other.signal >= FAINTEST)
 }
 
 /// Whether a channel is on 5 or 6 GHz.
@@ -683,6 +694,53 @@ pub(crate) mod tests {
             Choice::Try(DESK.into()),
             "5 GHz is heard fainter than 2.4 from the same radio, and -45 is loud"
         );
+    }
+
+    /// Another eero's 5 GHz radio, heard from the desk far more faintly.
+    fn far_at(signal: i16, measured: Option<Measured>) -> Other {
+        Other {
+            point: "6c:ae:f6:ba:85:88".into(),
+            signal,
+            busy: Some(20),
+            frequency: 5745,
+            measured,
+        }
+    }
+
+    #[test]
+    fn one_on_5_ghz_carrying_badly_keeps_off_5_ghz_heard_much_more_faintly() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let badly = carried(56, 0.0);
+
+        let on = (DESK, &badly, -47, CH52);
+        let choice = chooser.choose(Instant::now(), on, &[far_at(-65, None)], false);
+
+        assert_eq!(choice, Choice::Stay, "18 dB fainter carries less");
+    }
+
+    #[test]
+    fn one_carrying_badly_keeps_off_one_known_quicker_but_heard_much_more_faintly() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let badly = carried(61, 0.0);
+        let known = far_at(-65, Some(carried(26, 0.0)));
+
+        let on = (DESK, &badly, -48, CH52);
+        let choice = chooser.choose(Instant::now(), on, &[known], false);
+
+        assert_eq!(choice, Choice::Stay, "17 dB fainter isn't room");
+    }
+
+    #[test]
+    fn one_on_2_4_ghz_carrying_badly_moves_to_5_ghz_known_quicker_though_fainter() {
+        let mut chooser = after_a_bad_minute(NEAR);
+        let badly = carried(119, 0.0);
+        let known = desk_at(-45, Some(carried(20, 0.0)));
+
+        let on = (NEAR, &badly, -34, CH6);
+        let choice = chooser.choose(Instant::now(), on, &[known], false);
+
+        let to_the_desk = Choice::Try(DESK.into());
+        assert_eq!(choice, to_the_desk, "5 GHz is heard fainter, and wider");
     }
 
     #[test]
