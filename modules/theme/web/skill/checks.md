@@ -44,13 +44,13 @@ through axe-core and its own console.
    `getBoundingClientRect` answers in, never canvas or device pixels,
    which a canvas drawn at twice its size gets wrong without a word.
    `map.js` calls it afresh each time it measures. A check that finds
-   nothing to test fails rather than passing: marks with no line or no
-   name said, or a map that never holds still for Escape to be judged.
-   It presses keys on the map, so run it on a page nobody is reading. Run them at 320, 390, 768,
-   1024, 1440 and 1920 px, in both looks, since a row that holds at one
-   width breaks at another. Each passes on an empty list at every one. A
-   part with nothing to picture gets
-   `data-figure="why"` on its
+   nothing to test fails rather than passing: marks with no line, or
+   names with no place said, or a map that never holds still for Escape
+   to be judged. It presses keys on the map, so run it on a page nobody
+   is reading. Run them at 320, 390, 768, 1024, 1440 and 1920 px, in
+   both looks, since a row that holds at one width breaks at another.
+   Each passes on an empty list at every one. A part with nothing to
+   picture gets `data-figure="why"` on its
    section, the reason in words; never one to quiet the probe, and never a
    drawing added only so the page has one. A dated record kept as written
    says it once, on its `main` or its `article`. A proper

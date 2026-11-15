@@ -294,7 +294,7 @@
       canvas && sayers.length === 0
         ? "a canvas draws the links, but nothing says where they run: " +
             "give it data-lines and lines()"
-        : "nothing says where the links run: give each data-line, or what draws them " +
+        : "nothing says where the links run: give each link data-line, or what draws them " +
             "data-lines and lines()",
     );
   }
