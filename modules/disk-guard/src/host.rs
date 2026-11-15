@@ -293,8 +293,11 @@ fn doing(what: &str, error: &io::Error) -> io::Error {
 /// it was a command or a wait.
 const STOPPED: &str = "it was stopped with the guard";
 
+/// A reclaim the guard's stop cut short is kept, not failed: the stop was
+/// asked for, by a switch or a shutdown, and the next pass tries again. As
+/// a failure it said a pass while filling freed nothing.
 fn stopped() -> Outcome {
-    Outcome::Failed(STOPPED.to_owned())
+    Outcome::Kept(STOPPED.to_owned())
 }
 
 /// What a reclaim that waited on work came to: done, failed saying why, or
@@ -639,6 +642,8 @@ fn run(argv: &[String], timeout: Duration, idle: bool) -> Outcome {
         }
         Ok(Ran::TimedOut) => Outcome::Failed(format!("it ran past its {timeout:?} and was killed")),
         Ok(Ran::Stopped) => stopped(),
+        // A stop waiting before the command could start.
+        Err(error) if error.kind() == io::ErrorKind::Interrupted => stopped(),
         Err(error) => Outcome::Failed(format!("starting it: {error}")),
     }
 }
