@@ -1032,11 +1032,28 @@ def leaning_to(way: int) -> Callable[[str], bool]:
 
 
 def seat(shell: Shell, window: Json, since: int) -> Json:
-    """Wait until the cat sits on this window's column, and give where it says it sits."""
+    """Wait until the cat sits still on this window's column, and give where it sits.
+
+    Still, its walk done, since it says it's over the middle from its walk's last beats on,
+    and a pointer it comes to under as it walks never pets it (a builder, 2026-11-15).
+    """
+
+    def still_on(said: str) -> bool:
+        at = placed(said)
+        return bool(
+            at is not None
+            and at.get("window") == window["id"]
+            and at.get("walk") is None
+            and at.get("move") is None
+        )
+
     sits_over(shell, window, since)
+    heard(shell, still_on, since)
     said, _ = shell.said_since(since)
-    at = placed(next(report for report in reversed(said) if report.startswith(SITS))[len(SITS) :])
-    assert at is not None, "the cat sat over its window and then said it was nowhere"
+    sat = next(report[len(SITS) :] for report in reversed(said) if report.startswith(SITS))
+    assert still_on(sat), f"the cat sat still over its window and went on: {sat}"
+    at = placed(sat)
+    assert at is not None
     return at
 
 
