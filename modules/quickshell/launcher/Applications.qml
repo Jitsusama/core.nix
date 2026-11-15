@@ -1370,10 +1370,10 @@ Provider {
     // (2026-11-15).
     readonly property var hooking: ["keepsRecentOf", "layerOf", "programActs", "programFacts",
         "programOpen", "recentOf", "sentBy"]
-        .reduce((held, hook) => Object.assign(held, { [hook]: provider.holding(hook) }), {})
+        .reduce((held, hook) => Object.assign(held, { [hook]: provider.holders(hook) }), {})
 
     // The other providers with the hook `hook`, looked for now.
-    function holding(hook) {
+    function holders(hook) {
         return (provider.launcher?.sources ?? [])
             .filter(other => other !== provider && typeof other[hook] === "function");
     }
@@ -1386,7 +1386,7 @@ Provider {
     // What every other provider with the hook `hook` gives `program`, each
     // provider's answer timed by its name while a making is (`making`).
     function hooked(hook, program) {
-        return (provider.hooking[hook] ?? provider.holding(hook))
+        return (provider.hooking[hook] ?? provider.holders(hook))
             .reduce((rows, other) => rows.concat(Program.timed(making.parts,
                 other.settings?.name ?? hook, provider.now, () => other[hook](program))), []);
     }
