@@ -1054,7 +1054,12 @@ ShellRoot {
     function doneKept(toDo) {
         const hour = 3600000;
         const at = Date.now();
-        WaitingOnYou.asked = [toDo("Signed In"), toDo("Said Yes")];
+        // Each said as the node keeps it, so said anew it reads the same:
+        // toDo stamps when it was raised by the clock as it's called.
+        const signed = toDo("Signed In");
+        const yes = toDo("Said Yes");
+        const anew = one => Object.assign({}, one);
+        WaitingOnYou.asked = [signed, yes];
         WaitingOnYou.settled = { done: { "Signed In": at - hour, "Said Yes": at - 2 * hour } };
         const mail = finished => ({ entry: { mark: "mail" }, piece: { present: true,
             active: true, group: "on", title: "mail", value: "", lately: "mail", came: [],
@@ -1074,7 +1079,7 @@ ShellRoot {
         // The node says its to-dos anew at each revision, and one more
         // waits now, so History is made again, but none of its done rows.
         let before = now.tally.rows;
-        WaitingOnYou.asked = [toDo("Signed In"), toDo("Said Yes"), toDo("Sign Up")];
+        WaitingOnYou.asked = [anew(signed), anew(yes), toDo("Sign Up")];
         const again = done();
         const remade = again.filter(row => !first.includes(row)).map(row => row.key);
         expect("History made again keeps every done row that reads the same",
