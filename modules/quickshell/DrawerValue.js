@@ -61,6 +61,23 @@ function identifierWords(said) {
     return Identifier.wordsOf(said);
 }
 
+// How many of a drawer's acts, `widths` wide, stand on each line of `wide`
+// with `apart` between two.
+function actLines(widths, wide, apart) {
+    const counts = [];
+    let used = Infinity;
+    for (const one of widths) {
+        if (used + apart + one <= wide) {
+            counts[counts.length - 1] += 1;
+            used += apart + one;
+        } else {
+            counts.push(1);
+            used = one;
+        }
+    }
+    return counts;
+}
+
 // A list alone in a value, as its one line no wider than `wide`: every
 // item a dot apart where they fit, else whole items giving way from the
 // end to `tail`, "{count} more", saying how many went, "PDF \u00b7 HTML \u00b7
