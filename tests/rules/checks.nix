@@ -232,6 +232,7 @@
         a-call-is-on = pkgs.callPackage ../../modules/calls/package.nix { };
         agents = pkgs.callPackage ../../modules/agents/package.nix { };
         asker-says = pkgs.callPackage ../../modules/quickshell/asker-says/package.nix { };
+        backlight = pkgs.callPackage ../../modules/backlight/package.nix { };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
         bluetooth-links = pkgs.callPackage ../../modules/bluetooth-links/package.nix { };
         cadence = pkgs.callPackage ../../modules/cadence/package.nix { };

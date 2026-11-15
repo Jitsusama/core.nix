@@ -85,6 +85,7 @@
 mod answering;
 mod ask;
 mod beside;
+mod cli;
 mod curve;
 mod dbus;
 mod evening;
@@ -114,10 +115,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use terminal_kit::{Exit, Failure};
 use tokio::io::unix::AsyncFd;
 use zbus::Connection;
 
 use beside::Beside;
+use cli::Asked;
 use curve::Curve;
 use dbus::{
     ManagerProxy, RelayProxy, SessionProxy, lid_moved, relay, relay_started, switched, woke,
@@ -133,23 +136,31 @@ use screen::Screen;
 use tonight::Tonight;
 use warmth::{WHITE, Warmth};
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> ExitCode {
-    let ran = if env::args_os()
-        .nth(1)
-        .is_some_and(|arg| arg == "--keeps-the-open-level")
-    {
-        keep_the_open_level().await
-    } else {
-        run().await
-    };
-    match ran {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("<3>{error}");
-            ExitCode::FAILURE
+fn main() -> ExitCode {
+    terminal_kit::main(&cli::help(), env!("CARGO_PKG_VERSION"), |context| {
+        let asked = cli::asked(&context.args)?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| stopped(&error))?;
+        match asked {
+            Asked::Keep { saver } => runtime.block_on(keep_the_open_level(&saver)),
+            Asked::Set {
+                standard,
+                night_white,
+                evening,
+            } => {
+                let standard = cli::standard_curve(&standard)?;
+                runtime.block_on(run(standard, night_white, evening))
+            }
         }
-    }
+        .map_err(|error| stopped(&*error))
+    })
+}
+
+/// How a run that stopped ends: 1, saying why.
+fn stopped(error: &dyn Error) -> Failure {
+    Failure::new(Exit::Failed, "backlight stopped").because(error.to_string())
 }
 
 /// A light sensor's readings and the reading now, or none when there's no
@@ -335,10 +346,7 @@ fn write_whole(path: &Path, text: &str) -> io::Result<()> {
 
 /// Keeps the panel's saved level current while the lid is open, through the
 /// saver the command line names (keep.rs).
-async fn keep_the_open_level() -> Result<(), Box<dyn Error>> {
-    let saver = env::args_os()
-        .nth(2)
-        .ok_or("usage: backlight --keeps-the-open-level <saver>")?;
+async fn keep_the_open_level(saver: &Path) -> Result<(), Box<dyn Error>> {
     let Some(screen) = Screen::find(Path::new("/sys/class/backlight"))? else {
         eprintln!("<5>this machine has no backlight to keep");
         return Ok(());
@@ -348,7 +356,7 @@ async fn keep_the_open_level() -> Result<(), Box<dyn Error>> {
     keep::keep(
         keep::HOLD,
         async || watch.changed().await,
-        || match Command::new(&saver).arg(&instance).status() {
+        || match Command::new(saver).arg(&instance).status() {
             Ok(status) if status.success() => (),
             Ok(status) => eprintln!("<4>saving {instance} ended {status}"),
             Err(error) => eprintln!("<4>can't save {instance}: {error}"),
@@ -358,42 +366,10 @@ async fn keep_the_open_level() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// The standard curve the command line names, and the night white after
-/// it.
-fn arguments() -> Result<(Curve, u16), Box<dyn Error>> {
-    let standard = env::args_os()
-        .nth(1)
-        .ok_or("usage: backlight <standard curve> [night white] [evening]")?;
-    let curve = Curve::read(&fs::read_to_string(&standard)?)
-        .ok_or_else(|| format!("{} holds no curve", Path::new(&standard).display()))?;
-    Ok((curve, night_white()?))
-}
-
-/// The night white the command line gives, after the standard curve, or
-/// the night light's own.
-fn night_white() -> Result<u16, String> {
-    let Some(said) = env::args().nth(2) else {
-        return Ok(NIGHT_WHITE);
-    };
-    said.parse::<u16>()
-        .ok()
-        .filter(|kelvin| (1000..=WHITE).contains(kelvin))
-        .ok_or_else(|| format!("{said} is no night white between 1000 and {WHITE} K"))
-}
-
-/// The evening the command line gives, after the night white, or none,
-/// moved by rhythm's profile beside `kept`, the backlight's own state.
-fn evening(kept: &Path) -> Result<Option<Tonight>, String> {
-    match env::args().nth(3) {
-        None => Ok(None),
-        Some(said) if said == "off" => Ok(None),
-        Some(said) => Evening::read(&said)
-            .map(|set| {
-                let profile = kept.with_file_name("rhythm").join("profile.json");
-                Some(Tonight::new(set, profile))
-            })
-            .ok_or_else(|| format!("{said} is no evening, as 21:30-05:00")),
-    }
+/// The evening the command line gave, moved by rhythm's profile beside
+/// `kept`, the backlight's own state.
+fn tonight(evening: Option<Evening>, kept: &Path) -> Option<Tonight> {
+    evening.map(|set| Tonight::new(set, kept.with_file_name("rhythm").join("profile.json")))
 }
 
 /// What Joel set in the evening, in each light, kept beside the curve.
@@ -420,9 +396,11 @@ fn learned_curve(standard: Curve, learned: &Path) -> io::Result<(Curve, bool)> {
     }
 }
 
-async fn run() -> Result<(), Box<dyn Error>> {
-    let (standard, night_white) = arguments()?;
-
+async fn run(
+    standard: Curve,
+    night_white: u16,
+    evening: Option<Evening>,
+) -> Result<(), Box<dyn Error>> {
     let Some(screen) = Screen::find(Path::new("/sys/class/backlight"))? else {
         eprintln!("<5>this machine has no backlight to set");
         return Ok(());
@@ -468,7 +446,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
             runtime.join("whereabouts/here.json"),
         ),
         relay_down: None,
-        evening: evening(&kept)?,
+        evening: tonight(evening, &kept),
         evening_due: Some(Instant::now()),
         panel: Panel::find(Path::new("/sys/class/drm")),
         lid: Lid::default(),
@@ -585,11 +563,6 @@ const RELAY_RESTS: Duration = Duration::from_mins(10);
 /// How long the warmth waits after the panel wasn't showing, short enough
 /// that it's warm again soon after the panel shows.
 const PANEL_RESTS: Duration = Duration::from_mins(1);
-
-/// The night light's white unless the command line gives another: GNOME's
-/// Night Light's, gentle enough that code's colours still read (VKCF3Z,
-/// 2026-11-08).
-const NIGHT_WHITE: u16 = 4000;
 
 /// The night light: its white, whether Joel has it on and where that's
 /// kept, where whereabouts says the laptop is, what it wants now, when to
