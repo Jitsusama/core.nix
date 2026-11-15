@@ -36,6 +36,43 @@
       touch $out
     '';
 
+  # Machines makes again only the machine a node change names, keeping every
+  # other row, and makes none while the launcher doesn't want it
+  # (tests/machines-rows.qml), over a stand-in for the realm's node, with the
+  # launcher and pi's sessions stood in.
+  machines-remake-only-the-machine-that-changed =
+    let
+      sessions = singleton "Sessions.qml" ''
+        readonly property string machine: "anchor"
+        readonly property string realm: "personal"
+        function startOn(on, quest, folder, realm) {}
+      '';
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Quickshell runs them with.
+    pkgs.runCommandLocal "machines-remake-only-the-machine-that-changed" { } ''
+      mkdir -p launcher runtime/mycelium && chmod -R 700 runtime
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/Watch.js} Watch.js
+      ${copied [
+        "Daemon.qml"
+        "Words.qml"
+        "launcher/Machines.qml"
+        "launcher/Provider.qml"
+        "launcher/words.json"
+      ]}
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${singleton "Niri.qml" "function spawn(command) {}"} Niri.qml
+      cp ${singleton "Report.qml" "function say(text) {}"} Report.qml
+      cp ${sessions} Sessions.qml
+      cp ${../../../tests/machines-rows.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # The disk piece hears the guards' status files as tests/disk.qml writes
   # them, through Quickshell itself and the machine daemon over a machine of
   # the check's own, with niri stood in for, and systemd too, on a session

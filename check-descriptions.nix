@@ -1374,6 +1374,10 @@
     the shell brings the machine daemon, on the daemons' socket, which systemd holds whether or not
     it runs, restarted by a switch
   '';
+  machines-remake-only-the-machine-that-changed = ''
+    the launcher's Machines makes again only the row of the machine a node change names, keeping
+    the others, and none while the launcher doesn't want it
+  '';
   machines-yield-to-what-the-person-works-in = ''
     system virtual machines are weighed as a build is, and the account's containers and session
     machines are idle
