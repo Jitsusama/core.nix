@@ -8,7 +8,10 @@ after round and types each word a letter at a time, each letter once the one bef
 he types, then prints each key's line and each part's median by key. Given LAB_PROFILE, it holds
 Qt's profiler on the shell (QMLPROFILER, the shell started with `--debug`), and says which
 bindings, handlers and functions took the most of their own time in the launcher's searches and
-each of their parts, as the key's line splits them. It fails only when a key is never shown.
+each of their parts, as the key's line splits them. Given LAB_STEP, it steps into that place
+from home after each round's words, and given LAB_PROGRAMS, it installs that many programs
+first, so a step into Programs is profiled over as many rows as Joel's. It fails only when a
+key is never shown.
 """
 
 from __future__ import annotations
@@ -104,6 +107,48 @@ def typed_from_home(shell: Shell, word: str) -> dict[str, str]:
     return said
 
 
+def stepped_from_home(shell: Shell, name: str) -> str | None:
+    """Open home, find the place by its name, step in with Return, and give the step's line.
+
+    The step's line is a key's, typed as an arrow and the place's name, said only for a step
+    Joel could feel (launcher/Trials.js's felt); one quicker gives none.
+    """
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in(name.lower(), selecting=name)
+    since = shell.mark()
+    shell.step_in()
+    step = f"\u2192 {name}"
+    deadline = time.monotonic() + SAYING
+    said = keys_said(shell, since)
+    while step not in said and time.monotonic() < deadline:
+        time.sleep(launcher_on_niri.POLL)
+        said = keys_said(shell, since)
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"])
+    return said.get(step)
+
+
+def tallied(
+    round_: int,
+    word: str,
+    said: dict[str, str],
+    parts: dict[str, dict[str, list[int]]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Print each of a word's keys' lines as typed this round, and add its parts to the tally."""
+    for end in range(1, len(word) + 1):
+        typed = word[:end]
+        line = said.get(typed)
+        with capsys.disabled():
+            print(f"lab-key {round_} {typed!r}: {line or 'under the felt'}", flush=True)
+        took = part(f"took {line}", "took") if line else None
+        parts[typed]["took"].append(took or 0)
+        for name in PARTS:
+            parts[typed][name].append((part(line, name) or 0) if line else 0)
+
+
 class Spent:
     """What one place took inside a span: how often it ran, its own time and its whole."""
 
@@ -157,7 +202,9 @@ class Parts:
 
     Each call of its search is a span, `search`, and so is each of its parts, `search-<part>`:
     `before` it gathers its lists, `lists` while gathering them, `rows` until it composes its
-    answers, and `answers` from then on, as the key's line splits it.
+    answers, and `answers` from then on, as the key's line splits it. A step into a place
+    gathers nothing: its rows are the place's, so it's `step` from when it lives them on, which
+    is its showing as the step's line says it.
     """
 
     def __init__(self) -> None:
@@ -166,6 +213,7 @@ class Parts:
             "search": set(),
             "gathering": set(),
             "compose": set(),
+            "live": set(),
         }
         self.ends = 0
         self.part = ""
@@ -185,6 +233,8 @@ class Parts:
             self.part = "rows"
         if index in self.functions["compose"] and self.part in {"lists", "rows"}:
             self.part = "answers"
+        if index in self.functions["live"] and self.part == "before":
+            self.part = "step"
         # Each search's time before it gathers is a span of its own too, `before#<n>`, so the
         # slowest are named apart from the rest.
         alone = [f"before#{self.count}"] if self.part == "before" else []
@@ -283,6 +333,8 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     profiling = tmp_path / "profiler.log"
     profiler: subprocess.Popen[bytes] | None = None
     parts: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
+    step = os.environ.get("LAB_STEP", "")
+    launcher_on_niri.installed(int(os.environ.get("LAB_PROGRAMS", "0")))
     with launcher_on_niri.running() as shell:
         shell.launcher_until(lambda shown: shown.get("kept"))
         if os.environ.get("LAB_PROFILE"):
@@ -306,18 +358,15 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
         # Typed once untimed first, as the openings' lab opens once, for what a fresh shell
         # pays only once: its first search compiles what Joel's has run since he logged in.
         typed_from_home(shell, words[0])
+        if step:
+            stepped_from_home(shell, step)
         for round_ in range(rounds):
             for word in words[round_ % len(words) :] + words[: round_ % len(words)]:
-                said = typed_from_home(shell, word)
-                for end in range(1, len(word) + 1):
-                    typed = word[:end]
-                    line = said.get(typed)
-                    with capsys.disabled():
-                        print(f"lab-key {round_} {typed!r}: {line or 'under the felt'}", flush=True)
-                    took = part(f"took {line}", "took") if line else None
-                    parts[typed]["took"].append(took or 0)
-                    for name in PARTS:
-                        parts[typed][name].append((part(line, name) or 0) if line else 0)
+                tallied(round_, word, typed_from_home(shell, word), parts, capsys)
+            if step:
+                line = stepped_from_home(shell, step)
+                with capsys.disabled():
+                    print(f"lab-step {round_} {step}: {line or 'under the felt'}", flush=True)
         if profiler is not None:
             flushed(profiler, trace)
     heard: list[str] = []

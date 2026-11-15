@@ -656,6 +656,20 @@ def laid_whole(path: Path, text: str) -> None:
     laid.rename(path)
 
 
+def installed(count: int) -> None:
+    """Install that many programs as desktop entries, where the shell and its daemon find them.
+
+    A lab gives Programs as many as Joel's this way, before the shell starts.
+    """
+    data = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    applications = data / "applications"
+    applications.mkdir(parents=True, exist_ok=True)
+    for nth in range(count):
+        (applications / f"lab-program-{nth}.desktop").write_text(
+            f"[Desktop Entry]\nType=Application\nName=Lab Program {nth}\nExec=true\n"
+        )
+
+
 def started() -> Shell:
     """Start the shell in the folder the check gives, logging where it says."""
     shell = Shell(Path(os.environ["SHELL_FOLDER"]).resolve(), Path(os.environ["LOGS"]))

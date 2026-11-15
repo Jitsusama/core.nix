@@ -78,21 +78,10 @@ WATCHING = 20.0
 PROGRAMS = 0
 
 
-def installed(count: int) -> None:
-    """Install that many programs as desktop entries, where the shell and its daemon find them."""
-    data = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
-    applications = data / "applications"
-    applications.mkdir(parents=True, exist_ok=True)
-    for nth in range(count):
-        (applications / f"lab-program-{nth}.desktop").write_text(
-            f"[Desktop Entry]\nType=Application\nName=Lab Program {nth}\nExec=true\n"
-        )
-
-
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
     """Give the shell once it has kept home by itself, started once a run and never opened."""
-    installed(int(os.environ.get("LAB_PROGRAMS", str(PROGRAMS))))
+    launcher_on_niri.installed(int(os.environ.get("LAB_PROGRAMS", str(PROGRAMS))))
     with launcher_on_niri.running() as started:
         started.launcher_until(lambda shown: shown.get("kept"))
         yield started
