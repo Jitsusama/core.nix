@@ -258,11 +258,17 @@ def shell() -> Iterator[Shell]:
             **under,
             "state": "listening",
             "repo": "core.nix",
+            # The mesh groups it joined, each a network (mycelium's networks).
+            "groups": ["repo.core.nix", "harbour"],
             "usage": FULL,
             "worksOn": WORKS_ON,
         },
     )
-    lay("PAUSED", "Paused Quest", {**under, "state": "paused", "landings": LANDINGS})
+    lay(
+        "PAUSED",
+        "Paused Quest",
+        {**under, "state": "paused", "landings": LANDINGS, "groups": ["repo.core.nix"]},
+    )
     lay("CLOSED", "Closed Quest", {"state": "idle", "repo": "tidepool"}, closed=True)
     lost_on_the_last_boot()
     orchestrators_listed()
@@ -1402,6 +1408,59 @@ def test_a_closed_orchestrator_stands_dimmed_at_the_trees_end_the_last_live_firs
     # Its acts: Reopen, then its talks, of which it has none.
     shell.step_in("ctrl-bracketright")
     shell.launcher_until(lambda shown: shown["rows"] == ["Reopen"])
+
+
+HEADINGS = {"Repositories", "Quests", "Groups", "Machines"}
+
+
+def presented_after(shell: Shell, key: str) -> int:
+    """Press a key and give how long it took to the frame niri presented with it, in ms."""
+    before = len(json.loads(shell.as_account(shell.ipc("keysPresented"))))
+    shell.send_key(key)
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    presented: list[Json] = []
+    while len(presented) <= before:
+        assert time.monotonic() < deadline, f"{key} was never presented: {presented}"
+        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        time.sleep(launcher_on_niri.POLL)
+    return round(presented[before]["at"] - presented[before]["from"])
+
+
+@pytest.mark.usefixtures("at_shots_scale")
+def test_networks_is_one_row_after_the_tree_its_kinds_under_headings_never_selected(
+    shell: Shell, shoot: Callable[[str], None]
+) -> None:
+    """One Networks row after the tree steps into every other network, under its kind's heading.
+
+    A heading is never selected: the selection lands on the first network, j and k step over
+    headings, and the gutter numbers only the rows (VKCF3Z, e1eb0ebe; Y2YBTS, fc1b8044).
+    """
+    opened(shell)
+    shell.down_to("Networks")
+    took = presented_after(shell, "ret")
+    logging.getLogger(__name__).info("LAB the step into Networks was presented %s ms on", took)
+    shell.launcher_until(
+        lambda shown: shown["rows"][:4] == ["Repositories", "core.nix", "Groups", "harbour"]
+    )
+    shown = shell.showing()
+    assert shown["selected"]["name"] == "core.nix", shown
+    shoot("agents-networks")
+    numbered = [number for number in shown["gutter"]["numbers"] if number != ""]
+    rows = [row for row in shown["rows"] if row not in HEADINGS]
+    assert len(numbered) == len(rows), shown["gutter"]
+    shell.normal()
+    shell.send_chars("j")
+    shell.launcher_until(lambda shown: shown["selected"]["name"] == "harbour")
+    shell.send_chars("k")
+    shell.launcher_until(lambda shown: shown["selected"]["name"] == "core.nix")
+    shell.send_chars("gg")
+    shell.launcher_until(lambda shown: shown["selected"]["name"] == "core.nix")
+    # Return on a network steps into its cells, each its session's own row.
+    shell.step_in()
+    shell.launcher_until(
+        lambda shown: sorted(shown["rows"]) == ["Listening Quest", "Paused Quest"]
+    )
+    shell.close_launcher()
 
 
 def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_start(
