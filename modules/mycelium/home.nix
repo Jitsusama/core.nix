@@ -78,6 +78,10 @@ let
   linking = cfg.links != [ ];
   serving = cfg.realm != null;
   agentsKey = config.systemd.user.sockets ? agent-signing;
+  # Only the fences a machine says run here, in mycelium's shape.
+  fenced = lib.filterAttrs (_: doors: doors != null) (
+    lib.optionalAttrs (cfg.declares != null) cfg.declares.fence
+  );
   name = lib.types.strMatching "[a-z0-9-]+";
   further = lib.types.submodule (
     { name, ... }:
@@ -205,6 +209,51 @@ let
           machine reaches it, that its node writes its power and room to
           each minute.
         '';
+      };
+      # A carry an orchestrator orders lands only on ground at least as
+      # firm as the session's own, judged from what each machine says
+      # here; a kind left unsaid is one no ordered carry lands in, so the
+      # default refuses them all.
+      fence = lib.mkOption {
+        type = lib.types.submodule {
+          options = lib.genAttrs [ "none" "fence" "strict" ] (
+            kind:
+            lib.mkOption {
+              type = lib.types.nullOr doors;
+              default = null;
+              description = "The doors a session run ${kind} opens here, or null if none runs.";
+            }
+          );
+        };
+        default = { };
+        example.strict = {
+          builders = [ "remote" ];
+          forges = [ "github" ];
+          secrets = [ ];
+        };
+        description = ''
+          The fences an agent session runs in here, by kind, unfenced (none),
+          fenced (fence) or strictly fenced (strict), each with the doors it
+          opens, so an orchestrator's carry never lands looser than it left.
+        '';
+      };
+    };
+  };
+  # What a fence opens, each door named as the fence's settings name it.
+  # Each is said, since a door left out would read as one shut.
+  doors = lib.types.submodule {
+    options = {
+      builders = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        description = "The builders a fenced command may build on.";
+      };
+      forges = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        description = "The forges a fenced command may reach.";
+      };
+      secrets = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        description = "The secrets released to a fenced command.";
       };
     };
   };
@@ -568,6 +617,7 @@ in
         // lib.optionalAttrs (cfg.agents != { }) { inherit (cfg) agents; }
         // lib.optionalAttrs (cfg.declares.within != null) { inherit (cfg.declares) within; }
         // lib.optionalAttrs (cfg.declares.hosts != [ ]) { inherit (cfg.declares) hosts; }
+        // lib.optionalAttrs (fenced != { }) { fence = fenced; }
       );
     })
     (lib.mkIf serving {
