@@ -13,11 +13,6 @@
     "helps"
     "tables"
   ];
-  clipboard-history = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   eero = [ "inks" ];
   guide = [
     "exits"
@@ -29,11 +24,6 @@
   ];
   jobs-sorter = [
     "kit"
-    "helps"
-  ];
-  location = [
-    "kit"
-    "exits"
     "helps"
   ];
   merge-net = [
