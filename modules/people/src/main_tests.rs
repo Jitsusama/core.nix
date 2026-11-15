@@ -33,7 +33,7 @@ fn a_watch_is_answered_whole_before_any_change_told_it() {
                 .pending
                 .insert("someone@example.com".to_owned(), someone.clone());
         }
-        say_gathered(&mut daemon);
+        watching::say_gathered(&mut daemon);
     }
     if let Some(first) = first {
         told.send(first.to_string()).expect("told");
