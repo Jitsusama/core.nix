@@ -2435,6 +2435,14 @@
     memory and the processors have room and the disk isn't stalling, a queue unread or gone quiet
     holding nothing back
   '';
+  repos-passes-clippy = ''
+    clippy finds nothing in repos or its tests
+  '';
+  repos-reads-the-disk = ''
+    checkouts and trees laid out as git lays them out, a reftable's included, read as one
+    repository for each remote with each checkout's trees and heads, its trunk and when it was
+    last written, a tree whose folder is gone said so, and every view of them fitting each width
+  '';
   resolved-is-set-per-network = ''
     a laptop leaves resolved's global DNS settings as they ship
   '';

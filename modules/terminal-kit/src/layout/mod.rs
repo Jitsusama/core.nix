@@ -132,6 +132,14 @@ pub fn width(words: &str) -> usize {
     UnicodeWidthStr::width(words)
 }
 
+/// The first of a text's lines wider than the room, if any; in a pipe, none.
+/// Every view's tests ask this of it at each width, so the rule lives here
+/// once rather than in each program's tests.
+pub fn overrun(text: &str, room: Room) -> Option<&str> {
+    let cells = room.cells()?;
+    text.lines().find(|line| width(line) > cells)
+}
+
 /// Words padded with spaces to `cells`, on the right or, for a figure,
 /// on the left.
 fn padded(words: &str, inked: String, cells: usize, right: bool) -> String {
@@ -461,6 +469,14 @@ pub fn joined(blocks: Vec<Vec<String>>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn overrun_names_the_first_line_past_the_room_and_none_in_a_pipe() {
+        let text = "short\nfar too long\nalso too long";
+        assert_eq!(overrun(text, Room::Cells(5)), Some("far too long"));
+        assert_eq!(overrun(text, Room::Cells(13)), None);
+        assert_eq!(overrun(text, Room::Unbounded), None);
+    }
 
     fn rows() -> Vec<Row> {
         vec![

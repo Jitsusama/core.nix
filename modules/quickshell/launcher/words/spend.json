@@ -108,7 +108,7 @@
     {
       "id": "spend:most-repo",
       "in": "spend",
-      "name": "Most by Repo"
+      "name": "Most by Repository"
     },
     {
       "id": "spend:most-session",

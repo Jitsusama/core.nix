@@ -48,9 +48,9 @@ the-launcher-names-each-thing-its-term holds the row's name to it.
 
 ## The Context Map
 
-Nine contexts have places in the launcher. Eight are home's rows, in its
-order after Now: Agents, Programs, People, Passwords, Desktop, Machine,
-Network and Keyboards, so home has nine rows. Disk's place is inside Machine,
+Ten contexts have places in the launcher. Nine are home's rows, in its
+order after Now: Agents, Code, Programs, People, Passwords, Desktop, Machine,
+Network and Keyboards, so home has ten rows. Disk's place is inside Machine,
 beside Processor, Memory and Heat, and Mail and Calendar are places inside
 Programs. Security, which the others lean on, has one place, Passwords, on a
 machine with a password manager. The Library and Checks, which are core.nix's
@@ -63,6 +63,8 @@ own, are never places.
   view onto the others' rows, each kept in its own place, with rows of its
   own last: the time, the date, the weather and the next meeting. A filling
   disk shows in Now, with its forecast, while it fills.
+- **Agents works in Code**: a session works in a tree of a repository, and
+  its work is put up as a change.
 - **Agents uses Machine's queue**: a session's heavy work waits there, shown on
   the session as what it's waiting on, and listed whole in Agents' Queue.
 - **Disk acts on Machine's jobs**: the disk guard freezes and thaws them.
@@ -81,7 +83,8 @@ and AI spend, then Budgets, how each budget stands, and Spec, how the
 agents deliver against the bars Joel set, always last. A
 session can be talked to, gone to, paused and stopped, and a closed
 orchestrator reopened; a quest can start a session, orchestrate, go first in
-the queue and conclude.
+the queue and conclude. The trees, checkouts and changes agents work in are
+[Code](#code)'s words.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
@@ -133,10 +136,6 @@ the queue and conclude.
 | pivot | an orchestrator changing what a session it orchestrates is doing, each answering once it has changed course | | `intent: pivot` |
 | fyi | a mesh message given as context only, asking nothing | | `intent: fyi` |
 | hand | a subagent, seen on the mesh as its parent's hands | | `hand.ts` |
-| tree | a folder holding a repository's files to work in: a worktree or a snapshot | working tree | the `work` tool |
-| worktree | a tree checked out at a branch, one session's alone | | `git worktree` |
-| snapshot | a tree pinned at a commit, read only and shareable | | |
-| checkout | a repository's clone, which trees are cut from | | |
 | cut | making a tree | scaffold | `work tree` |
 | release | giving back a tree one holds | prune, reap | `work release`; `quest tree-release` |
 | tidy | reporting which trees on the machine are spent, removing nothing | | `work tidy` |
@@ -152,7 +151,6 @@ the queue and conclude.
 | council | reviewing models each reading one change on their own | | `review_ask council` |
 | judge | the model that consolidates a council's findings | | |
 | finding | something a review or a peer found, for whoever owns what it's about | | `intent: finding` |
-| change | work put up for review | PR, pull request, proposal | |
 | AI spend | what agents have cost | cost, usage | spend-watch |
 | model | the AI a session or a subagent runs on, such as Claude Opus | | `provider/model` |
 | context | what a session's model is sent each turn: its conversation so far and what it read | | |
@@ -168,6 +166,34 @@ the queue and conclude.
 | window | the stretch of time an allowance counts over, such as five hours or a week | | |
 | Joel | the human every session works for | user, human, operator | |
 | status line | the line under a session saying how it stands | status bar | |
+
+## Code
+
+Repositories, every copy of each on a machine, and the work put up on them.
+The words are git's, with a source for each kind of remote, as Network has
+one for each vendor: git (the disk), GitHub and GitLab are core's, and a
+machine adds its own. A vendor's own words, such as a pull request's number
+or a CI job's name, stay in its source's section of the record. Where a
+checkout lives is a machine. Its command is `repos`.
+
+| Word | Means | Not | In code |
+| ---- | ----- | --- | ------- |
+| repository | one history of code, listed once however many checkouts of it a machine holds | repo | `repos`, `repos.repositories/1` |
+| key | how a repository is named once: its remote's host and path, or its folder's when it has none | | `github:owner/name`, `local:<folder>` |
+| remote | where a repository is kept beyond the machine, by its name and address | | `git remote` |
+| source | a kind of remote repos reads, each with its own section of the record | forge | |
+| checkout | a repository's whole copy on a machine, which trees are cut from; bare when it holds no files to work in | clone | |
+| tree | a folder holding a repository's files to work in, cut from a checkout: a worktree or a snapshot | working tree | the `work` tool |
+| worktree | a tree checked out at a branch, one session's alone | | `git worktree` |
+| snapshot | a tree pinned at a commit, read only and shareable | | |
+| gone | a tree its checkout still lists whose folder isn't there | | `prunable` |
+| branch | a named line of commits a tree can be checked out at | | `refs/heads/` |
+| commit | one recorded state of a repository's files | | |
+| trunk | the branch a repository's changes merge into, as its remote names it | default branch | `origin/HEAD` |
+| change | work put up for review, whichever source holds it | PR, pull request, merge request, proposal | |
+| stack | changes each built on the one before | | |
+| check | what proves a change before it merges, run where its source runs it | CI, pipeline | |
+| merge | a change taken into its trunk | | |
 
 ## Programs
 
@@ -617,7 +643,7 @@ says which module broke.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
-| check | one promise that `nix flake check` builds and holds | | `checks.x86_64-linux.<name>` |
+| check | a check that `nix flake check` builds, one promise held | | `checks.x86_64-linux.<name>` |
 | VM test | a check that boots machines in VMs | | a `vm-` name |
 | subtest | a named part of a VM test, which can run alone | | `with subtest(...)` |
 | example machine | a whole machine built only from core's outputs, as a machine repository would | | `example-nixos`, `example-laptop`, `example-apple-laptop`, `example-darwin` |
