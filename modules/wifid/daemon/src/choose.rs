@@ -205,7 +205,14 @@ impl Chooser {
                 .or_else(|| near.max_by_key(|other| (wide(other.frequency), other.signal)))
         });
         let Some(chosen) = chosen else {
-            return self.look(now, bad && others.iter().all(|other| other.point == point));
+            let alone = bad && others.iter().all(|other| other.point == point);
+            let unbanded = narrow && !bad && !others.iter().any(|other| wide(other.frequency));
+            let look = if alone {
+                Some(Choice::Look)
+            } else {
+                unbanded.then_some(Choice::LookWider)
+            };
+            return self.look(now, look);
         };
         self.moved = Some(now);
         self.trial = Some(Trial {
@@ -216,18 +223,23 @@ impl Chooser {
         Choice::Try(chosen.point.clone())
     }
 
-    /// Has a card carrying badly that hears no other access point of its
-    /// network look for one, once a settle at most, so the next choice has
-    /// others to choose from.
-    fn look(&mut self, now: Instant, alone: bool) -> Choice {
+    /// Has a card look for what it doesn't hear, once a settle at most, so
+    /// the next choice has it to choose from: another access point of its
+    /// network, carrying badly, or one on a wider band, on 2.4 GHz. A
+    /// heard access point is forgotten 180 s after the last look, so on 15
+    /// Nov 2026 a card that tried 2.4 GHz and carried well soon heard no
+    /// 5 GHz point to go back to, and kept to a third of the link rate.
+    fn look(&mut self, now: Instant, look: Option<Choice>) -> Choice {
         let rested = self
             .looked
             .is_none_or(|looked| now.duration_since(looked) >= SETTLE);
-        if !alone || !rested {
-            return Choice::Stay;
+        match look {
+            Some(look) if rested => {
+                self.looked = Some(now);
+                look
+            }
+            _ => Choice::Stay,
         }
-        self.looked = Some(now);
-        Choice::Look
     }
 }
 
