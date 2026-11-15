@@ -119,6 +119,7 @@ pub fn backtest(history: &History, picture: &Picture, config: &Config) -> Result
                         .map_or(String::new(), |c| format!(", {c} from caps"))
                 ),
                 estimated: false,
+                cells: Vec::new(),
             });
         }
     }
@@ -135,6 +136,7 @@ pub fn backtest(history: &History, picture: &Picture, config: &Config) -> Result
         rows,
         notes,
         rest: None,
+        columns: Vec::new(),
     })
 }
 
@@ -165,6 +167,7 @@ fn forecast_rows(days: &Days) -> Vec<Row> {
                 score.origins
             ),
             estimated: false,
+            cells: Vec::new(),
         });
     }
     rows

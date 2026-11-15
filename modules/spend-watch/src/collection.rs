@@ -2128,6 +2128,7 @@ mod tests {
             share,
             shown: String::new(),
             estimated: false,
+            cells: Vec::new(),
         };
         let mut cut = report::Report {
             title: String::new(),
@@ -2140,6 +2141,7 @@ mod tests {
             rows: vec![row("claude-opus-5-5", 1.0)],
             notes: Vec::new(),
             rest: None,
+            columns: Vec::new(),
         };
         assert_eq!(
             most(Cut::Model, &cut).map(|fact| fact.value),

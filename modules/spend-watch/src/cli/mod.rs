@@ -240,7 +240,7 @@ fn give_report(
         }
         Format::Own(_) => wrote(context.say(&report::render(report, report::Format::Markdown))),
         Format::Text => {
-            let mut out = report::render_text_in(report, context.room);
+            let mut out = report::render_text_in(report, &context.out, context.room);
             if glance {
                 out.push('\n');
                 for line in terminal_kit::layout::paragraph(MORE, 0, context.room.for_prose()) {

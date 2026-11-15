@@ -148,7 +148,6 @@
     "exits"
     "helps"
   ];
-  spend-watch = [ "tables" ];
   switch-system-as-root = [ "helps" ];
   switch-system-known = [ "helps" ];
   systemd-run = [ "helps" ];
