@@ -26,5 +26,6 @@ pub mod open;
 pub mod order;
 pub mod screens;
 pub mod shows;
+pub mod socket;
 pub mod timed;
 pub mod unasked;

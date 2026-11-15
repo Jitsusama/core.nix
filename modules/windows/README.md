@@ -18,6 +18,11 @@ shell's main thread to walk every window, look each one's program up and
 make its row again, shut or open (Joel's shell, 2026-11-10: 657 window
 rows made in four minutes with the launcher shut).
 
+A boot's first ask of its socket can start it before niri has named
+`NIRI_SOCKET` to the user manager. It then waits, asking the user
+manager's environment every two seconds, and starts listening once niri
+is named, rather than ending with an error each boot (src/socket.rs).
+
 A watch may name `fields`, and is then told each record as its key and
 those fields alone, and only when one of them changed. The shell holds
 one on when each window was used while the launcher is shut, so Super+Tab's
