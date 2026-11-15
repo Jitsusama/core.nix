@@ -590,6 +590,14 @@ ShellRoot {
             // last listed, which would read as if all were well.
             what: "the people daemon gone",
             run: () => {
+                // Tuple says the favourites changed here within moments,
+                // which the stand-in never does, so they're taken as said
+                // and those listed are the daemon's, as Joel's are when a
+                // switch restarts it. Kept here, they were merged here,
+                // and listed as the daemon's once it was back, which
+                // remade them all.
+                tuple().favoured = ({});
+                void people.all;
                 root.stoppedAt = Date.now();
                 stopping.running = true;
             },
@@ -795,6 +803,10 @@ ShellRoot {
     // null.
     function slackOf(address) {
         return people.recordFor(`person:${address}`)?.sources?.slack ?? null;
+    }
+    // Tuple's source, as People made it.
+    function tuple() {
+        return people.sources.find(source => source.settings.name === "tuple");
     }
     // How many rows People had made once Slack was asked, the launcher
     // shut.
