@@ -477,10 +477,18 @@ Rectangle {
         readonly property string said: Reading.rightSays(row.landed, row.kind, stands)
         // The items a side of them keeps in its room, the least needed
         // given way first (Reading.js's keptItems); a side of parts gives
-        // way from its last back, to none if it must (partsKept).
+        // way from its last back, to none if it must (partsKept), but only
+        // while that leaves the name whole: a name too long to be whole
+        // even alone keeps the whole parts the side's share holds, so the
+        // row still says what it is (VKCF3Z, 2026-11-14 [65e08e6f]).
         readonly property var kept: !itemised ? []
-            : parted ? Reading.partsKept(Reading.partsOf(row.side), room, row.sideMeasured)
+            : parted ? Reading.partsKept(Reading.partsOf(row.side),
+                room >= 0 ? room : partsShare, row.sideMeasured)
             : Reading.keptItems(row.sideItems, room, row.sideMeasured)
+        // A side of parts' share beside a name cut whatever it says, as a
+        // plain side's, reckoned without what it says so it can't loop.
+        readonly property real partsShare: Math.min(row.width * 0.45,
+            Math.max(row.width * 0.2, room + row.indent))
         // The colour each kept item is drawn in where it names a role of
         // its own (`hue`), as a count of what failed wears the alert's,
         // or "" for the side's.

@@ -107,6 +107,16 @@ ShellRoot {
                 side: "Foot \u00b7 workspace 2"
                 glyph: "$"
             }
+            // A title too long to be whole even alone: dropping the side
+            // would gain it nothing, so the side keeps the whole parts its
+            // share holds (VKCF3Z, 2026-11-14 [65e08e6f]).
+            Choice {
+                id: partsShared
+                width: 440
+                name: "\u03c0 - Launcher - agentic-harness.pi"
+                side: "Kitty \u00b7 workspace 2, 3rd column, 2nd down"
+                glyph: "$"
+            }
             // A side that fits beside its name, as Inkscape's copied picture's
             // does, with less room to spare than a glyph's column, which the
             // side's share once took from it a second time.
@@ -1135,6 +1145,10 @@ ShellRoot {
             expect("then its program, before its name gives a letter",
                 partsSaid(partsNone) === "$ | Sanderling Notes" && partsCut(partsNone) === 0,
                 partsSaid(partsNone));
+            texts = apart(partsShared, partsShared.width);
+            expect("a name too long even alone keeps its program whole beside it",
+                JSON.stringify(cut(texts)) === JSON.stringify([partsShared.name])
+                    && texts.some(t => t.text === "Kitty" && !t.truncated), said(texts));
             texts = apart(sideWins, sideWins.width);
             const nameCut = texts.find(t => t.text === sideWins.name);
             const nameWide = nameCut === undefined ? 0 : nameCut.to - nameCut.from;
