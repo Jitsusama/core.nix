@@ -108,8 +108,9 @@ Provider {
         return out;
     }
 
-    // :set brightness=60 sets the screen as its Brightness row does, on a
-    // machine with a backlight, and :set nowarmth gives it its own white by
+    // :set brightness=60 sets the screen as its Brightness levels do, asking
+    // the windows daemon what they ask (brighten), on a machine with a
+    // backlight, and :set nowarmth gives it its own white by
     // day as Warmth's Follow the Room does, where a sensor sees colour. :set
     // noscreens turns every screen off, doing Turn Every Screen Off's act;
     // they are on whenever the launcher can be seen, so screens alone does
@@ -131,8 +132,8 @@ Provider {
             least: 0,
             most: 100,
             now: () => provider.light?.share ?? 0,
-            set: to => {
-                provider.brighten(to);
+            set: (to, change, later) => {
+                provider.brighten(to, later);
                 return "";
             }
         }
@@ -214,13 +215,27 @@ Provider {
     }
 
 
-    // Sets the screen to a share, as the brightness keys do, through the
-    // machine daemon (modules/machine/src/screen_acts.rs) rather than a
-    // program started for each step, for :set brightness= and "brightness
-    // 40"; the first step stays lit, since none at all leaves the screen
-    // black. The Brightness's levels ask the windows daemon to do the same.
-    function brighten(share) {
-        lights.ask({ ask: "act", act: "brightness", share: Math.max(1, share) }, null);
+    // Sets the screen to a share, for :set brightness= and "brightness
+    // 40", asking the windows daemon what its Brightness levels ask, at
+    // that share (Screens.js's brightening), so it goes as a level's
+    // Return does; nothing is asked while no level is served. No row asked
+    // it, so none is drawn becoming: a refusal, in the daemon's words or
+    // the launcher's for an answer that never came, goes to `later` as the
+    // : line's other answers do (lineAsk), else to the journal, the
+    // Brightness saying the light as it stands.
+    function brighten(share, later) {
+        const ask = Screens.brightening(ready.keys.map(key => ready.served(key)), share);
+        if (ask === null || !ready.link)
+            return;
+        const becoming = Words.field.becoming ?? {};
+        ready.link.ask(ask, answer => {
+            const why = !answer ? becoming.noAnswer ?? ""
+                : answer.error ? answer.error.said || (becoming.couldNot ?? "") : "";
+            if (later)
+                later(why, true);
+            else if (why !== "")
+                console.info(`launcher: brightness ${ask.share} refused: ${why}`);
+        });
     }
 
     // How the screen's warmth stands, as the backlight program says it
