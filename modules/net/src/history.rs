@@ -374,16 +374,21 @@ mod tests {
     }
 
     #[test]
-    fn a_channel_that_lost_nothing_lately_is_said_to_have_stopped() {
+    fn a_channel_that_lost_nothing_lately_is_no_concern() {
+        // Its counts stay in the record for whoever reads the channels; a
+        // concern is what's worth a look now, and a calm line isn't.
         let now = network();
         let day = [earlier(&now, 5 * HOUR, 878, 41)];
         let network = recalled(now, &day);
         assert_eq!(sixteen(&network).lost_lately, Some(0));
-        assert_eq!(
-            says(&network, ConcernKind::Lost),
-            "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair \
-             since the modem started, against at most 18 on any other, and none in the last 5 \
-             hours, so it isn't climbing now"
+        assert_eq!(sixteen(&network).uncorrectable, Some(878));
+        assert!(
+            network
+                .concerns
+                .iter()
+                .all(|concern| concern.kind != ConcernKind::Lost),
+            "a channel losing nothing lately is still a concern: {:?}",
+            network.concerns
         );
     }
 

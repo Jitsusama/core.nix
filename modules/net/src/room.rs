@@ -292,18 +292,16 @@ fn lost(network: &Network) -> Option<Concern> {
         .as_ref()
         .and_then(|internet| internet.provider.as_deref())
         .unwrap_or("the provider");
-    // With the day's readings it says whether the count still climbs,
-    // which is what the provider would ask first.
+    // With the day's readings it says how much the count climbed, which is
+    // what the provider would ask first. A channel that lost none lately
+    // is calm, so it's no concern, its counts left to the channel's figures.
     let lately = device
         .modem
         .as_ref()
         .and_then(|modem| modem.lately_s)
         .zip(channel.lost_lately);
     let after = match lately {
-        Some((over, 0)) => format!(
-            ", and none in the last {}, so it isn't climbing now",
-            span(over)
-        ),
+        Some((_, 0)) => return None,
         Some((over, recent)) => format!(
             ", {recent} of them in the last {}; {provider} can check the line",
             span(over)

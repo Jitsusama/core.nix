@@ -49,7 +49,8 @@ Apple TV are net's alone, and `eero` keeps only what's eero's.
   `unmeasured`, never guessed. A concern is a radio busy 50% or more (the
   map's gold), a Wi-Fi link at -70 dBm or weaker, a cable under a gigabit,
   the internet as a chokepoint, said once each way, a modem channel that
-  lost 100 or more it couldn't repair and ten times any other's, or a
+  lost 100 or more it couldn't repair and ten times any other's, unless
+  the day shows it lost none lately, or a
   device using 80% or more of the internet's speed one way, which fills
   it for every other. They're listed worst first, by how far each kind
   reaches: the channel's losses, a device filling the line, a slow cable,
