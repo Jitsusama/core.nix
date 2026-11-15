@@ -92,7 +92,10 @@ impl Watched {
 pub fn agents_unit(cgroup: &str) -> Option<&str> {
     let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
     let agents = path.split('/').any(|part| {
-        part == "agents.slice" || (part.starts_with("jobs") && part.ends_with(".slice"))
+        part == "agents.slice"
+            || part
+                .strip_suffix(".slice")
+                .is_some_and(|slice| slice.starts_with("jobs"))
     });
     agents
         .then(|| path.rsplit('/').next())
