@@ -2483,7 +2483,13 @@ Singleton {
     // Each record of a session here that ended this boot, unparked, as
     // `resting` keeps the parked ones', with when it changed last.
     property var ending: []
+    // Each list's copies as relive last made them, beside the entries they
+    // were made from (Pi.keptBy), so only a session the node's change named
+    // is copied again, and alike passes the rest at once. In plain objects,
+    // so keeping them notifies nothing.
+    readonly property var copied: ({ live: {}, resting: {}, ending: {} })
     function relive() {
+        // It reads nothing but its record, which Pi.keptBy relies on.
         const kitted = record => {
             const kitty = kittyOfWindow(record.window);
             const kept = Object.assign({}, record, {
@@ -2494,9 +2500,9 @@ Singleton {
             delete kept.window;
             return kept;
         };
-        const next = PiSource.live.map(kitted);
-        const sleeping = PiSource.resting.map(kitted);
-        const ended = PiSource.ending.map(kitted);
+        const next = Pi.keptBy(PiSource.live, copied.live, kitted);
+        const sleeping = Pi.keptBy(PiSource.resting, copied.resting, kitted);
+        const ended = Pi.keptBy(PiSource.ending, copied.ending, kitted);
         // Only the list a change moved is set again, so what reads the
         // others isn't told: one session's step moving had made the 36
         // parked and 36 closed of Joel's 113 shown again (2026-11-09).

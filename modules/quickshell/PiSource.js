@@ -208,6 +208,33 @@ function record(one, how, machine) {
             ["pi.orchestratedBy", "pi.held"]));
 }
 
+// What `make` makes of each entry, kept in `kept` by its session's id
+// beside the entry it was made from, and made again only for an entry
+// that's new, as `resorted` makes one only for a session a change named;
+// one no longer listed is let go. So `make` must read nothing but its
+// entry. Sessions.qml copied each of Joel's sessions at every change and
+// compared the copies field by field, about 280,000 characters of them
+// (2026-11-09); kept, unchanged ones compare as the same object.
+function keptBy(entries, kept, make) {
+    const listed = new Set();
+    const made = entries.map(one => {
+        listed.add(one.file);
+        const was = kept[one.file];
+        if (was && was.one === one) {
+            return was.made;
+        }
+        const now = make(one);
+        kept[one.file] = { one, made: now };
+        return now;
+    });
+    for (const file of Object.keys(kept)) {
+        if (!listed.has(file)) {
+            delete kept[file];
+        }
+    }
+    return made;
+}
+
 // Every session pi tells of, as the contract's records: those running,
 // then those parked, then those closed this boot. `made`, where given,
 // keeps each session's record by its id beside the entry it was made
