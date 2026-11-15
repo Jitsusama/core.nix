@@ -14,6 +14,16 @@ use serde_json::{Value, json};
 /// holds the rest.
 pub const FILES: usize = 20;
 
+/// How many of the newest day records a target is ratcheted by: a week,
+/// so a gain holds a week after it's lost, and a change to how a measure
+/// counts is forgotten within one.
+pub const DAYS: usize = 7;
+
+/// The measures of the day's merges, which swing with how many merged
+/// and what, so their lowest says nothing of what's kept; they're held
+/// only to the target set.
+const SWINGING: [&str; 3] = ["edit-to-merge", "files-per-change", "shared-files"];
+
 /// What a repository's machine judges it by: a target for some of its
 /// measures, who owns each, by measure or for the whole repository, and
 /// who owns each folder, by its path from the repository's top.
@@ -38,6 +48,11 @@ pub struct Judged {
 /// its deepest folder the repository's `folders` name, else the measure's;
 /// with no counts the day before, there's no `by_owner`.
 ///
+/// A target ratchets down to the lowest figure `days`, the newest day
+/// records, held two in a row, so a gain is kept rather than lost back to
+/// the target set, which it then says as `set`; the merges' figures,
+/// which swing day to day, are held only to the target set.
+///
 /// The worst is the measure most past its target for the target's size,
 /// so 22 tests past 21 outranks 227 lines past 7,000; a measure with no
 /// target, or at or under it, is never the worst, and with none past
@@ -49,6 +64,7 @@ pub fn hour(
     judged: &BTreeMap<String, Judged>,
     before: Option<&Value>,
     earlier: Option<&Value>,
+    days: &[Value],
 ) -> Value {
     let unjudged = Judged::default();
     let mut measures = Vec::new();
@@ -56,7 +72,9 @@ pub fn hour(
     for (repo, read) in figures {
         let judged = judged.get(repo).unwrap_or(&unjudged);
         for (measure, now) in read {
-            let target = judged.targets.get(*measure).copied();
+            let set = judged.targets.get(*measure).copied();
+            let lowest = held(days, repo, measure).filter(|_| !SWINGING.contains(measure));
+            let target = set.map(|set| lowest.map_or(set, |lowest| set.min(lowest)));
             let owner = judged.owners.get(*measure).or(judged.owner.as_ref());
             let counted = named.get(repo).and_then(|named| named.get(measure));
             let had = earlier.map(|earlier| &earlier[repo][*measure]);
@@ -78,6 +96,9 @@ pub fn hour(
                 "owner": owner,
                 "files": files,
             });
+            if target != set {
+                said["set"] = json!(set);
+            }
             if let (Some(counted), Some(gained)) = (counted, &gained) {
                 said["by_owner"] = json!(by_owner(counted, gained, &judged.folders, owner));
             }
@@ -86,6 +107,16 @@ pub fn hour(
     }
     let worst = worst.map_or(Value::Null, |(_, index)| measures[index].clone());
     json!({"at": at, "measures": measures, "worst": worst})
+}
+
+/// The lowest figure `days` held for a measure two records in a row, the
+/// higher of each two, so one odd read doesn't lower it.
+fn held(days: &[Value], repo: &str, measure: &str) -> Option<f64> {
+    let figures: Vec<Option<f64>> = days.iter().map(|day| day[repo][measure].as_f64()).collect();
+    figures
+        .windows(2)
+        .filter_map(|two| Some(two[0]?.max(two[1]?)))
+        .reduce(f64::min)
 }
 
 /// The files `counted` names more entries of than `had`, the day before's
@@ -228,7 +259,7 @@ mod tests {
         let before = json!({"at": "then", "measures": [
             {"repo": "core", "measure": "long-files", "now": 97.0},
         ]});
-        let hour = hour("now", &read, &named, &judged, Some(&before), None);
+        let hour = hour("now", &read, &named, &judged, Some(&before), None, &[]);
         assert_eq!(hour["at"], "now", "the hour didn't say when it was read");
         let long = measure(&hour, "core", "long-files");
         assert_eq!(
@@ -277,7 +308,7 @@ mod tests {
             ),
             ("pi".to_owned(), judged(&[("long-files", 0.0)], None)),
         ]);
-        let hour = hour("now", &read, &BTreeMap::new(), &judged, None, None);
+        let hour = hour("now", &read, &BTreeMap::new(), &judged, None, None, &[]);
         assert_eq!(
             (&hour["worst"]["repo"], &hour["worst"]["measure"]),
             (&json!("core"), &json!("quarantined-tests")),
@@ -298,7 +329,7 @@ mod tests {
             ("core", "suppressions", 900.0),
         ]);
         let judged = BTreeMap::from([("core".to_owned(), judged(&[("long-files", 96.0)], None))]);
-        let hour = hour("now", &read, &BTreeMap::new(), &judged, None, None);
+        let hour = hour("now", &read, &BTreeMap::new(), &judged, None, None, &[]);
         assert_eq!(
             hour["worst"],
             Value::Null,
@@ -317,6 +348,7 @@ mod tests {
             &BTreeMap::new(),
             Some(&before),
             None,
+            &[],
         );
         assert_eq!(
             measure(&hour, "core", "long-files")["was"],
@@ -341,7 +373,15 @@ mod tests {
             ]),
         )]);
         let earlier = json!({"core": {"suppressions": {"a.sh": 1, "b.rs": 1}, "tf-invalid": 3}});
-        let hour = hour("now", &read, &named, &BTreeMap::new(), None, Some(&earlier));
+        let hour = hour(
+            "now",
+            &read,
+            &named,
+            &BTreeMap::new(),
+            None,
+            Some(&earlier),
+            &[],
+        );
         assert_eq!(
             measure(&hour, "core", "suppressions")["files"],
             json!(["b.rs:4", "b.rs:9", "c.py:2", "a.sh:3"]),
@@ -362,7 +402,15 @@ mod tests {
         let named =
             BTreeMap::from([("core".to_owned(), BTreeMap::from([("suppressions", every)]))]);
         let earlier = json!({"core": {"suppressions": {"a.rs": 250}}});
-        let hour = hour("now", &read, &named, &BTreeMap::new(), None, Some(&earlier));
+        let hour = hour(
+            "now",
+            &read,
+            &named,
+            &BTreeMap::new(),
+            None,
+            Some(&earlier),
+            &[],
+        );
         assert_eq!(
             measure(&hour, "core", "suppressions")["files"][0],
             "z.rs:1",
@@ -391,7 +439,7 @@ mod tests {
         ]);
         let judged = BTreeMap::from([("core".to_owned(), core)]);
         let earlier = json!({"core": {"suppressions": {"old.rs": 1}}});
-        let hour = hour("now", &read, &named, &judged, None, Some(&earlier));
+        let hour = hour("now", &read, &named, &judged, None, Some(&earlier), &[]);
         assert_eq!(
             measure(&hour, "core", "suppressions")["by_owner"],
             json!({
@@ -411,11 +459,75 @@ mod tests {
             BTreeMap::from([("suppressions", vec!["a.rs:1".to_owned()])]),
         )]);
         let judged = BTreeMap::from([("core".to_owned(), judged(&[], Some("me")))]);
-        let hour = hour("now", &read, &named, &judged, None, None);
+        let hour = hour("now", &read, &named, &judged, None, None, &[]);
         assert_eq!(
             measure(&hour, "core", "suppressions").get("by_owner"),
             None,
             "entries were given owners with nothing to say what they gained"
+        );
+    }
+
+    #[test]
+    fn a_figure_held_two_days_running_is_the_lowest_held() {
+        let days = |each: &[Option<f64>]| -> Vec<Value> {
+            each.iter()
+                .map(|figure| figure.map_or(json!({}), |f| json!({"core": {"long-files": f}})))
+                .collect()
+        };
+        let cases = [
+            (
+                days(&[Some(10.0), Some(10.0), Some(0.0), Some(0.0)]),
+                Some(0.0),
+            ),
+            (
+                days(&[Some(10.0), Some(0.0), Some(10.0), Some(0.0)]),
+                Some(10.0),
+            ),
+            (days(&[Some(9.0), None, Some(3.0)]), None),
+            (days(&[Some(4.0)]), None),
+        ];
+        for (given, lowest) in cases {
+            assert_eq!(
+                held(&given, "core", "long-files"),
+                lowest,
+                "the lowest held two records running wasn't found in {given:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_target_ratchets_down_to_what_was_held_but_not_a_merges_figure() {
+        let read = figures(&[
+            ("dots", "duplicated-lines", 3.0),
+            ("dots", "edit-to-merge", 3.0),
+        ]);
+        let set = judged(&[("duplicated-lines", 10.0), ("edit-to-merge", 10.0)], None);
+        let judged = BTreeMap::from([("dots".to_owned(), set)]);
+        let day = json!({"dots": {"duplicated-lines": 0.0, "edit-to-merge": 1.0}});
+        let hour = hour(
+            "now",
+            &read,
+            &BTreeMap::new(),
+            &judged,
+            None,
+            None,
+            &[day.clone(), day],
+        );
+        let lines = measure(&hour, "dots", "duplicated-lines");
+        assert_eq!(
+            (&lines["target"], &lines["set"]),
+            (&json!(0.0), &json!(10.0)),
+            "the target wasn't ratcheted to what was held, beside the one set"
+        );
+        assert_eq!(
+            hour["worst"]["measure"], "duplicated-lines",
+            "a figure past its ratcheted target wasn't the worst"
+        );
+        let merges = measure(&hour, "dots", "edit-to-merge");
+        assert_eq!(
+            (&merges["target"], merges.get("set")),
+            (&json!(10.0), None),
+            "a merges figure was ratcheted"
         );
     }
 }

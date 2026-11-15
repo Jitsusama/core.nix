@@ -185,6 +185,7 @@ fn run(context: &Context) -> Result<(), Failure> {
         .and_then(|text| serde_json::from_str(&text).ok());
     let at = now.timestamp().to_string();
     let earlier = earlier_counts(&into, &date);
+    let days = newest_days(&into);
     let hour = hour::hour(
         &at,
         &figures,
@@ -192,6 +193,7 @@ fn run(context: &Context) -> Result<(), Failure> {
         &judged,
         before.as_ref(),
         earlier.as_ref(),
+        &days,
     );
     write_whole(&into, "hour.json", &hour).map_err(|what| Failure::new(Exit::Failed, what))?;
     let day = Day {
@@ -382,6 +384,27 @@ fn earlier_counts(into: &Path, date: &str) -> Option<serde_json::Value> {
     serde_json::from_str(&text).ok()
 }
 
+/// The newest `hour::DAYS` records of the day's figures, today's among
+/// them, oldest first; one that can't be read is left out.
+fn newest_days(into: &Path) -> Vec<serde_json::Value> {
+    let Ok(entries) = fs::read_dir(into) else {
+        return Vec::new();
+    };
+    let mut dated: Vec<String> = entries
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .filter(|file| {
+            file.strip_suffix(".json")
+                .is_some_and(|day| jiff::civil::Date::strptime("%Y-%m-%d", day).is_ok())
+        })
+        .collect();
+    dated.sort();
+    let newest = &dated[dated.len().saturating_sub(hour::DAYS)..];
+    newest
+        .iter()
+        .filter_map(|file| serde_json::from_str(&fs::read_to_string(into.join(file)).ok()?).ok())
+        .collect()
+}
+
 /// Put `text` in `file` of `into` at once, so no reader sees half of it.
 fn written(into: &Path, file: &str, text: &str) -> Result<(), String> {
     let failed = |error: &dyn std::fmt::Display| format!("{}: {error}", into.display());
@@ -495,6 +518,32 @@ mod tests {
             earlier_counts(into, "2026-11-15"),
             None,
             "a day before that isn't JSON was read as one"
+        );
+    }
+
+    #[test]
+    fn the_newest_days_are_the_last_week_of_figures_oldest_first() {
+        let folder = tempfile::tempdir().expect("no folder to write in");
+        let into = folder.path();
+        for day in 1..=9 {
+            fs::write(
+                into.join(format!("2026-11-0{day}.json")),
+                format!("{{\"d\": {day}}}"),
+            )
+            .expect("a day's figures weren't written");
+        }
+        fs::write(into.join("2026-11-08.json"), "half").expect("it wasn't written");
+        fs::write(into.join("2026-11-09-files.json"), "{\"d\": 0}")
+            .expect("counts weren't written");
+        fs::write(into.join("hour.json"), "{}").expect("the hour wasn't written");
+        let days: Vec<_> = newest_days(into)
+            .iter()
+            .map(|day| day["d"].clone())
+            .collect();
+        assert_eq!(
+            days,
+            [3, 4, 5, 6, 7, 9].map(|day| json!(day)),
+            "the newest week of figures wasn't read, oldest first, without what's unreadable"
         );
     }
 }
