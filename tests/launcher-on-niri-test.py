@@ -3855,6 +3855,18 @@ def first_changed(before: bytes, deadline: float) -> tuple[float, float]:
     return -1.0, unchanged
 
 
+def settled_shown(
+    before: bytes, said: Callable[[], list[Json]], deadline: float
+) -> tuple[float, float, list[Json]]:
+    """Red stub: the old judging, the first picture to differ from `before`."""
+    seen, unchanged = first_changed(before, deadline)
+    presented: list[Json] = []
+    while not presented and time.monotonic() < deadline:
+        presented = said()
+        time.sleep(launcher_on_niri.POLL)
+    return seen, unchanged, presented
+
+
 def presented_after_unchanged(at: float, unchanged: float, what: str) -> None:
     """Fail when `what` is said presented at `at` before a picture still without it was taken.
 
@@ -3917,18 +3929,29 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
     the shell hears a swap only once it's free, which made Joel's "meet" say 77 ms drawing with
     3 rows new (2026-11-11).
     """
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
-    before = still_screen()
-    since = shell.mark()
-    shell.as_account("wtype w")
-    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    seen, unchanged = first_changed(before, deadline)
+    behind = shell.opened("Ruff Notes")
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        before = still_screen()
+        since = shell.mark()
+        with shell.frozen():
+            shell.as_account("wtype w")
+            # A change not the key's lands first, as a frame of the shell's late to niri did
+            # on a loaded builder 123 ms after the press and 245 before the key's own frame
+            # began (2026-11-15): a window behind the card is widened, which foot draws while
+            # the shell is held, and the hold outlasts the lead so the two can't be confused.
+            shell.as_account(f"niri msg action set-window-width --id {behind['id']} 100%")
+            time.sleep(2 * COPIED_BEFORE_PRESENTED.total_seconds())
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        seen, unchanged, presented = settled_shown(
+            before,
+            lambda: json.loads(shell.as_account(shell.ipc("keysPresented"))),
+            deadline,
+        )
+    finally:
+        shell.close(behind)
     assert seen >= 0, "niri's screen never showed what the key found"
-    presented: list[Json] = []
-    while not presented and time.monotonic() < deadline:
-        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
-        time.sleep(launcher_on_niri.POLL)
     assert presented, "the key was never said presented"
     key = presented[-1]
     lead = COPIED_BEFORE_PRESENTED.total_seconds() * 1000
