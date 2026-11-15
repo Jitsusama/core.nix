@@ -388,6 +388,32 @@ def test_and_wpa_supplicant_picking_again_keeps_it_there_though_the_first_is_lou
     )
 
 
+def test_and_wifid_starting_again_holds_it_there_whether_it_was_held_or_not(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """And wifid starting again holds it there, whether it was held there or not."""
+    # On 15 Nov 2026 wpa_supplicant moved the card on its own 10 s after a switch restarted
+    # wifid, the card on an access point wifid hadn't held it to. Let go first, it stands in
+    # for that; the next case shows a hold from before the restart is let go as one is.
+    lantern = machine.succeed(
+        "wpa_cli -i wlan2 list_networks | awk -F'\\t' '$2 == \"Lantern\" {print $1}'"
+    ).strip()
+    machine.succeed(f"wpa_cli -i wlan2 set_network {lantern} bssid any")
+    machine.succeed("systemctl restart wifid")
+    wifid.says("wlan2 keeps to 02:00:00:00:05:00, which it was on as wifid started")
+    since = wifid.journal_now()
+    machine.succeed("wpa_cli -i wlan2 reassociate")
+    machine.wait_until_succeeds(
+        f"journalctl -o cat -u wpa_supplicant --after-cursor='{since}'"
+        " | grep -q 'wlan2: CTRL-EVENT-CONNECTED'",
+        timeout=timedelta(seconds=30),
+    )
+    status = machine.succeed("wpa_cli -i wlan2 status")
+    assert "bssid=02:00:00:00:05:00" in status.splitlines(), (
+        f"wpa_supplicant moved the card off its access point once wifid started again:\n{status}"
+    )
+
+
 def test_and_once_that_one_goes_wpa_supplicant_takes_it_to_the_first_again(
     machine: BaseMachine, wifid: Wifid
 ) -> None:

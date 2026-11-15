@@ -1343,8 +1343,10 @@ impl Wifid<'_> {
         // A card kept on its network as wifid restarts says nothing of the
         // access point it's at until it moves, so it's asked.
         let point = interface.current_access_point().await.ok();
-        let point = point.and_then(|point| joined_to(&point));
-        change(self.state, |state| state.at(&card.name, point));
+        let point = point.filter(|point| joined_to(point).is_some());
+        let joined = point.as_ref().map(ToString::to_string);
+        change(self.state, |state| state.at(&card.name, joined));
+        self.hold_where_it_is(&card.name, &interface, point).await;
         // The driver makes up each address, so the card's own link stays up
         // as it looks, as it wouldn't were its address changed for a look.
         let masks = HashMap::from([("scan", LOOKING_MASK.to_vec())]);
@@ -1376,6 +1378,50 @@ impl Wifid<'_> {
             }
         }
         Ok(interface)
+    }
+
+    /// Holds a card on its network as it's handed over to the access point
+    /// it's on, and lets go of any other of its networks held before.
+    /// wifid forgets what it held as it stops: 10 s after a switch
+    /// restarted it on 15 Nov 2026, wpa_supplicant moved the card on its
+    /// own, the gateway silent 291 ms, and a hold kept from before was
+    /// never let go, so once its point went the card couldn't rejoin its
+    /// network elsewhere.
+    async fn hold_where_it_is(
+        &self,
+        card: &str,
+        interface: &InterfaceProxy<'_>,
+        point: Option<OwnedObjectPath>,
+    ) {
+        let held = async {
+            let on = match point {
+                Some(point) if interface.state().await? == "completed" => {
+                    let heard = AccessPoint::new(described(self.bus, &point).await?).heard();
+                    let network = interface.current_network().await?;
+                    heard.map(|heard| (network, heard.bssid))
+                }
+                _ => None,
+            };
+            for network in interface.networks().await? {
+                if on.as_ref().is_some_and(|(held, _)| *held == network) {
+                    continue;
+                }
+                let fields = self.joinable(&network).await?.properties().await?;
+                if fields.contains_key("bssid") {
+                    self.hold(&network, "any").await?;
+                    println!("<7>{card} may join a network held before at any access point");
+                }
+            }
+            if let Some((network, bssid)) = on {
+                self.hold(&network, &bssid).await?;
+                self.held.borrow_mut().insert(card.to_owned(), network);
+                println!("<7>{card} keeps to {bssid}, which it was on as wifid started");
+            }
+            zbus::Result::Ok(())
+        };
+        if let Err(error) = held.await {
+            eprintln!("<4>{card} isn't held where it is: {error}");
+        }
     }
 
     /// Gives the card every saved network it hasn't, takes away any it holds
