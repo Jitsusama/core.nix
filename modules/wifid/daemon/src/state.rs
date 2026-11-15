@@ -484,12 +484,14 @@ impl State {
         joined
             .filter_map(|(index, card)| {
                 let path = self.at.get(&card.name)?;
+                let network = card.network.clone()?;
+                let saved = self.saved.iter().find(|saved| saved.name == network);
                 Some(Joined {
                     card: card.name.clone(),
                     point: self.heard.get(path)?.bssid.clone(),
                     gateway: *self.gateways.get(index)?,
-                    network: String::new(),
-                    trusted: false,
+                    trusted: saved.is_some_and(|saved| saved.trusted),
+                    network,
                 })
             })
             .collect()
@@ -497,7 +499,7 @@ impl State {
 
     /// The saved networks' names.
     pub fn saved_names(&self) -> Vec<String> {
-        Vec::new()
+        self.saved.iter().map(|saved| saved.name.clone()).collect()
     }
 
     /// The cards on a network, by name, which are those worth polling.

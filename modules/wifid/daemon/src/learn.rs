@@ -20,10 +20,29 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use tokio::time::Duration;
 
+use crate::echo;
 use crate::measure::Measured;
+
+/// How many minutes an access point must have been measured at an hour,
+/// from about one place, before what it carried is gone by.
+const ENOUGH: u32 = 5;
+
+/// How much each minute weighs against every one before it: the last
+/// twenty or so carry most of it.
+const LATEST: f64 = 0.1;
+
+/// How wide a place is, in dB of signal: as much fainter as the chooser
+/// lets an untried access point be heard (choose.rs).
+const STEP: i16 = 6;
+
+/// How few echoes a minute's figures may be of and still be learned from:
+/// the first minute after a join has hardly any.
+const ECHOES: usize = 30;
 
 /// Where a card is: on which access point of which network, at what hour
 /// of the day, heard how loud, in dBm.
@@ -63,27 +82,89 @@ impl Learned {
     /// What was learned before, kept in this file. One that can't be read
     /// is begun again empty, which leaves the chooser to signals as before.
     pub fn kept_in(file: &Path) -> Learned {
+        let kept = fs::read(file).ok();
+        let learnt: Option<Vec<Learnt>> = kept.and_then(|kept| serde_json::from_slice(&kept).ok());
+        let mut learnt = learnt.unwrap_or_default();
+        for learnt in &mut learnt {
+            learnt.kept = true;
+        }
         Learned {
             file: file.to_path_buf(),
-            learnt: Vec::new(),
+            learnt,
         }
     }
 
     /// Folds in what the access point a card is on carried over the span,
-    /// keeping it on the disk where its network is trusted.
-    pub fn carried(&mut self, _here: &Here, _measured: &Measured) -> io::Result<()> {
-        Ok(())
+    /// keeping it on the disk where its network is trusted. An echo never
+    /// answered counts as slow as it was waited for.
+    pub fn carried(&mut self, here: &Here, measured: &Measured) -> io::Result<()> {
+        if measured.echoes < ECHOES {
+            return Ok(());
+        }
+        let p95 = measured.p95.unwrap_or(echo::LOST).as_secs_f64() * 1000.0;
+        let step = here.signal.div_euclid(STEP);
+        let same = |learnt: &&mut Learnt| {
+            learnt.point == here.point && learnt.hour == here.hour && learnt.step == step
+        };
+        match self.learnt.iter_mut().find(same) {
+            Some(learnt) => {
+                learnt.p95 += (p95 - learnt.p95) * LATEST;
+                learnt.lost += (measured.lost - learnt.lost) * LATEST;
+                learnt.minutes = learnt.minutes.saturating_add(1);
+                learnt.kept = here.trusted;
+            }
+            None => self.learnt.push(Learnt {
+                network: here.network.to_owned(),
+                point: here.point.to_owned(),
+                hour: here.hour,
+                step,
+                p95,
+                lost: measured.lost,
+                minutes: 1,
+                kept: here.trusted,
+            }),
+        }
+        if here.trusted { self.keep() } else { Ok(()) }
     }
 
     /// What an access point carried at this hour, heard about this loud,
-    /// once it's been measured long enough there to go by.
-    pub fn of(&self, _point: &str, _hour: u8, _signal: i16) -> Option<Measured> {
-        None
+    /// once it's been measured long enough there to go by. Its figures
+    /// from a step louder or fainter count too, weighed by their minutes,
+    /// so a signal wavering across a step's edge isn't two places.
+    pub fn of(&self, point: &str, hour: u8, signal: i16) -> Option<Measured> {
+        let step = signal.div_euclid(STEP);
+        let near = self.learnt.iter().filter(|learnt| {
+            learnt.point == point && learnt.hour == hour && (learnt.step - step).abs() <= 1
+        });
+        let (mut minutes, mut p95, mut lost) = (0, 0.0, 0.0);
+        for learnt in near {
+            minutes += learnt.minutes;
+            p95 += learnt.p95 * f64::from(learnt.minutes);
+            lost += learnt.lost * f64::from(learnt.minutes);
+        }
+        if minutes < ENOUGH {
+            return None;
+        }
+        let whole = f64::from(minutes);
+        Some(Measured {
+            echoes: 0,
+            p50: None,
+            p95: Some(Duration::from_secs_f64(p95 / whole / 1000.0)),
+            lost: lost / whole,
+            retried: 0.0,
+            failed: 0.0,
+            signal: Some(i32::from(signal)),
+        })
     }
 
     /// Forgets what the access points of every network but these carried.
-    pub fn keep_only(&mut self, _names: &[String]) -> io::Result<()> {
-        Ok(())
+    pub fn keep_only(&mut self, names: &[String]) -> io::Result<()> {
+        let before = self.learnt.len();
+        self.learnt.retain(|learnt| names.contains(&learnt.network));
+        if self.learnt.len() == before {
+            return Ok(());
+        }
+        self.keep()
     }
 
     /// Writes what's kept whole or not at all, readable by wifid alone.
@@ -102,17 +183,29 @@ impl Learned {
     }
 }
 
-/// The hour of the day here, by the machine's own time zone.
+/// The hour of the day here, by the machine's own time zone; midnight's
+/// where the time can't be read.
 pub fn hour_here() -> u8 {
-    0
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let Ok(now) = libc::time_t::try_from(since.as_secs()) else {
+        return 0;
+    };
+    // SAFETY: a tm is plain numbers and a pointer, for which zero is null.
+    let mut here: libc::tm = unsafe { std::mem::zeroed() };
+    // SAFETY: it reads the one time and writes the one tm it's given.
+    let read = unsafe { libc::localtime_r(&raw const now, &raw mut here) };
+    if read.is_null() {
+        return 0;
+    }
+    u8::try_from(here.tm_hour).unwrap_or(0)
 }
 
 #[cfg(test)]
 mod tests {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
-
-    use tokio::time::Duration;
 
     use super::*;
 

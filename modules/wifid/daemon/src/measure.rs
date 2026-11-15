@@ -270,11 +270,15 @@ fn forget_the_forgotten(learned: &mut Learned, saved: &[String]) {
 /// in the span, else what it's carried at this hour, heard about as loud.
 fn known<'a>(
     lately: &'a Measures,
-    _learned: &'a Learned,
+    learned: &'a Learned,
     now: Instant,
-    _hour: u8,
+    hour: u8,
 ) -> impl Fn(&str, i16) -> Option<Measured> + 'a {
-    move |point, _signal| lately.of(point, now)
+    move |point, signal| {
+        lately
+            .of(point, now)
+            .or_else(|| learned.of(point, hour, signal))
+    }
 }
 
 /// Asks a card's chooser where it should be, from what it's on carried and
