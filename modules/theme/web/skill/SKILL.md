@@ -567,7 +567,11 @@ destroyed by it" (2026-11-11).
     name sits over a line or another name, or runs past the map's edge.
     `map.js` measures each. The
     arrows on the mycelium map once jumped to whatever lay nearest at any
-    level, and he said they "seem to pick at random" (2026-11-14).
+    level, and he said they "seem to pick at random" (2026-11-14). A map
+    drawn on a canvas tells `map.js` where its links run, with
+    `data-lines` and `lines()`, or the check fails: when the mycelium map
+    moved onto a canvas (2026-11-15), the check found no lines and passed
+    whatever lay under its names.
   - **A screen reader gets the same structure**, as a tree, grid or list
     with names and states, never a picture with a caption. Each thing says
     what it is, how it stands and what it links to.

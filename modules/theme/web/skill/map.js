@@ -16,7 +16,15 @@
 //   the top, data-within, the key of what holds it;
 // - data-here on the one mark the keys rest on;
 // - data-name on each drawn name, the whole of its ink, halo or plate
-//   included, and data-line on each drawn link.
+//   included, and data-line on each drawn link;
+// - data-lines on an element, a canvas most often, that draws links
+//   without an element for each, with a lines() method answering them as
+//   polylines of {x, y} in CSS pixels of the viewport, the space
+//   getBoundingClientRect answers in, never canvas or device pixels.
+//
+// A check that finds nothing to test fails rather than passing, since a
+// map that hides what it draws would otherwise read as one that draws it
+// well.
 (async () => {
   const missing = [];
   const page = document;
@@ -174,7 +182,12 @@
   const still = view() === placed;
   const level = [map.dataset.level, map.dataset.within].join();
   await press("Escape");
-  if (still && view() !== placed) {
+  if (!still) {
+    missing.push(
+      "the map never held still for a settle, so Escape went unjudged: " +
+        "let nothing but motion's own marks move once it has drawn",
+    );
+  } else if (view() !== placed) {
     missing.push("Escape moved the map: let it close only what a mode opened, never move the view");
   }
   if ([map.dataset.level, map.dataset.within].join() !== level) {
@@ -210,8 +223,11 @@
     edges: box(name),
     words: name.textContent.trim().slice(0, 40),
   }));
-  if (names.length === 0 && [...map.querySelectorAll("text")].some(shown)) {
-    missing.push("the map draws names without data-name: mark each, halo included, to be measured");
+  if (names.length === 0 && marks().length > 1) {
+    missing.push(
+      "nothing says where the map's names are drawn: " +
+        "mark each with data-name, halo included, to be measured",
+    );
   }
   const crosses = (one, other) =>
     Math.min(one.right, other.right) - Math.max(one.left, other.left) > 1 &&
@@ -237,17 +253,57 @@
   }
   const inside = (edges, [x, y]) =>
     x > edges.left + 1 && x < edges.right - 1 && y > edges.top + 1 && y < edges.bottom - 1;
-  for (const line of [...map.querySelectorAll("[data-line]")].filter(shown)) {
+  // Every link as points 4 px or less apart on screen, read afresh now,
+  // after the settle, so a re-layout or a resize is never judged stale.
+  const drawn = [...map.querySelectorAll("[data-line]")].filter(shown).map((line) => {
     const length = typeof line.getTotalLength === "function" ? line.getTotalLength() : 0;
     const toScreen = line.getScreenCTM();
     const steps = Math.min(400, Math.ceil(length / 4));
+    const points = [];
     for (let at = 0; toScreen !== null && length > 0 && at <= steps; at += 1) {
-      const point = line.getPointAtLength((length * at) / steps).matrixTransform(toScreen);
-      const under = names.find((one) => inside(one.edges, [point.x, point.y]));
-      if (under !== undefined) {
-        clashes.add(`a line runs under "${under.words}": no name sits over a line`);
-        break;
+      points.push(line.getPointAtLength((length * at) / steps).matrixTransform(toScreen));
+    }
+    return points;
+  });
+  const sayers = [...map.querySelectorAll("[data-lines]")].filter(shown);
+  for (const sayer of sayers) {
+    const polylines = typeof sayer.lines === "function" ? sayer.lines() : null;
+    if (!Array.isArray(polylines)) {
+      missing.push("a data-lines element has no lines(): answer its links as polylines");
+      continue;
+    }
+    for (const polyline of polylines) {
+      const points = [];
+      for (const [at, end] of polyline.slice(1).entries()) {
+        const start = polyline[at];
+        const steps = Math.min(400, Math.ceil(Math.hypot(end.x - start.x, end.y - start.y) / 4));
+        for (let step = 0; step <= steps; step += 1) {
+          const along = steps === 0 ? 0 : step / steps;
+          points.push({
+            x: start.x + (end.x - start.x) * along,
+            y: start.y + (end.y - start.y) * along,
+          });
+        }
       }
+      drawn.push(points);
+    }
+  }
+  if (drawn.every((points) => points.length === 0) && marks().length > 1) {
+    const canvas = [...map.querySelectorAll("canvas")].some(shown);
+    missing.push(
+      canvas && sayers.length === 0
+        ? "a canvas draws the links, but nothing says where they run: " +
+            "give it data-lines and lines()"
+        : "nothing says where the links run: give each data-line, or what draws them " +
+            "data-lines and lines()",
+    );
+  }
+  for (const points of drawn) {
+    const under = points
+      .map((point) => names.find((one) => inside(one.edges, [point.x, point.y])))
+      .find((one) => one !== undefined);
+    if (under !== undefined) {
+      clashes.add(`a line runs under "${under.words}": no name sits over a line`);
     }
   }
   missing.push(...[...clashes].slice(0, 8));
