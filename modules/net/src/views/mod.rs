@@ -193,9 +193,34 @@ pub fn devices(network: &Network, now: u64, pen: &Pen, room: Room) -> String {
     ])
 }
 
+/// One of several devices sharing a name, told apart as a person would:
+/// its id, then its first address and what it reaches the network
+/// through, where the record says them.
+fn told_apart(network: &Network, device: &Device) -> String {
+    let through = touching(network, device).find_map(|link| {
+        let other = if link.a.device == device.id {
+            &link.b
+        } else {
+            &link.a
+        };
+        network.devices.iter().find(|each| each.id == other.device)
+    });
+    let at = device
+        .addresses
+        .first()
+        .map(|address| format!(" at {address}"));
+    let on = through.map(|through| format!(" on {}", through.name));
+    format!(
+        "{}{}{}",
+        device.id,
+        at.unwrap_or_default(),
+        on.unwrap_or_default()
+    )
+}
+
 /// The device a word names: its id, or its name in any case. Two devices
 /// can share a name, as eero gives two phones the same one, and then the
-/// word is refused with each one's id to choose by.
+/// word is refused with each one's id to choose by, beside where it is.
 pub fn find<'a>(network: &'a Network, word: &str) -> Result<&'a Device, Failure> {
     if let Some(device) = network.devices.iter().find(|device| device.id == word) {
         return Ok(device);
@@ -208,12 +233,15 @@ pub fn find<'a>(network: &'a Network, word: &str) -> Result<&'a Device, Failure>
     match sharing.as_slice() {
         [device] => return Ok(device),
         [first, ..] => {
-            let ids: Vec<&str> = sharing.iter().map(|device| device.id.as_str()).collect();
+            let each: Vec<String> = sharing
+                .iter()
+                .map(|device| told_apart(network, device))
+                .collect();
             return Err(Failure::new(
                 Exit::Usage,
                 format!("{} devices are called {word}", sharing.len()),
             )
-            .because(format!("they're {}", flags::and(&ids)))
+            .because(each.join(ITEMS))
             .try_this(format!("net devices {}", first.id)));
         }
         [] => {}
@@ -424,14 +452,17 @@ mod tests {
     }
 
     #[test]
-    fn a_name_two_devices_share_is_refused_with_their_ids() {
+    fn a_name_two_devices_share_is_refused_with_where_each_is() {
         let network = network();
         let failure = find(&network, "phone 1").expect_err("two phones are called phone 1");
         assert_eq!(failure.exit, Exit::Usage, "{failure:?}");
         assert_eq!(
             failure.why.as_deref(),
-            Some("they're mac:02:00:00:00:00:03 and mac:02:00:00:00:00:05"),
-            "{failure:?}"
+            Some(&*format!(
+                "mac:02:00:00:00:00:03 at 10.0.0.40 on Study{ITEMS}\
+                 mac:02:00:00:00:00:05 at 10.0.0.23 on Hall"
+            )),
+            "each id doesn't say its address and access point: {failure:?}"
         );
         assert_eq!(
             failure.then.as_deref(),
