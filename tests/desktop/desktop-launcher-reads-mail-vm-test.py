@@ -410,8 +410,8 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         # Its acts are the conversation's, Open in Slack alone; with no link
         # to share, there's nothing to copy. They lie on its row, which holds
         # nothing to step into (Joel, 2026-11-11: "if they have nothing under
-        # them, we shouldn't open a submenu for them"), so they're read in its
-        # drawer, as a terminal is told it, since a step in brings no drawer out.
+        # them, we shouldn't open a submenu for them"), so they're read as a
+        # terminal is told them.
         acts = conversation_acts(desktop, "Ada Lovelace")
         assert acts == ["Open in Slack"], f"Ada Lovelace's acts: {acts}"
         desktop.as_account("qs ipc call launcher toggle")
@@ -456,21 +456,22 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
 
 
 def conversation_acts(desktop: Desktop, name: str) -> list[str]:
-    """Name the acts in a conversation's drawer in For You's Slack, as `launcher show` says it."""
+    """Name what a conversation in For You's Slack does, as `launcher show` says it."""
     # Each step after the mark, since qs takes no empty argument, and after
     # `--`, since `show` is also qs ipc's own command otherwise.
     path = shlex.quote("".join(f"\u203a{step}" for step in ("now", "for you", "slack", name)))
     ask = f"qs ipc call -- launcher show {path}"
-    # A drawer read as it's first asked for is still being read until it's in,
-    # so the ask is made again while the shell says so.
+    # What a source still reads is said to the next ask, so the ask is made
+    # again while the shell says it's reading.
     deadline = time.monotonic() + 30
     said = cast("Json", json.loads(desktop.as_account(ask)))
     while said.get("reading") is True and time.monotonic() < deadline:
         time.sleep(0.5)
         said = cast("Json", json.loads(desktop.as_account(ask)))
-    drawer = cast("Json", cast("Json", said.get("row") or {}).get("drawer") or {})
-    assert "acts" in drawer, f"{name}'s drawer lists no acts: {said}"
-    return [str(act["name"]) for act in cast("list[Json]", drawer["acts"])]
+    # Its verbs are said as its acts, or as its rows where it isn't taken for
+    # a thing; either way they're what it does.
+    told = cast("list[Json]", said["rows"]) + cast("list[Json]", said["acts"])
+    return [str(one["name"]) for one in told]
 
 
 def slack_program(desktop: Desktop) -> None:
