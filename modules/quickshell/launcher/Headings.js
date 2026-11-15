@@ -65,26 +65,56 @@ function moved(act, count, place, headings) {
     if (headings.length === 0) {
         return Operators.moved(act, count, place);
     }
-    const rows = place.last + 1 - headings.length;
-    if (rows <= 0) {
+    const ranked = ranks(place, headings);
+    if (ranked.last < 0) {
         return place.at;
     }
+    const to = Operators.moved(act, count, ranked);
+    return to < 0 ? to : placeOf(headings, to);
+}
+
+// The rows an operator takes (Operators.spanned), counted in rows alone,
+// so 3dd and d2j take three rows whatever headings stand between: the
+// span read in ranks, then as the list has it, the headings within it
+// included, which `taken` leaves out.
+function spanned(count, motion, place, headings) {
+    if (headings.length === 0) {
+        return Operators.spanned(count, motion, place);
+    }
+    const ranked = ranks(place, headings);
+    const span = Operators.spanned(count, motion, ranked);
+    if (span.to < span.from) {
+        return span;
+    }
+    const back = one => one < 0 ? one : placeOf(headings, one);
+    return { from: back(span.from), to: back(span.to) };
+}
+
+// The rows a span takes (Operators.taken), no heading among them, since
+// a heading has nothing to end, copy or run.
+function taken(rows, span, headline) {
+    return Operators.taken(rows, span, headline).filter(one => !isHeading(one.row));
+}
+
+// A place as the list has it, read in ranks: where the selection is, the
+// view's ends, the last row and each run's ends, each counting rows alone.
+// Above the rows (-1, a headline) stays where it is.
+function ranks(place, headings) {
     const below = one => one < 0 ? one : rank(headings, one);
     const above = one => one < 0 ? one : rankAbove(headings, one);
     const runOf = place.runOf ? ranked => {
         const run = place.runOf(placeOf(headings, ranked));
         return { from: below(run.from), to: above(run.to) };
     } : undefined;
-    const to = Operators.moved(act, count, {
+    return {
         at: below(place.at),
         highest: place.highest,
-        last: rows - 1,
+        last: place.last - headings.length,
         top: below(place.top),
         bottom: Math.max(below(place.top), above(place.bottom)),
         screen: place.screen,
         runOf
-    });
-    return to < 0 ? to : placeOf(headings, to);
+    };
 }
 
 // The row the n-th the gutter numbers stands at, as :5 goes to, within

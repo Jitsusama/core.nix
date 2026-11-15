@@ -4106,7 +4106,7 @@ Scope {
     property int numberDigits: 1
 
     function noteDigits() {
-        const digits = String(Math.max(1, matches.length)).length;
+        const digits = String(Math.max(1, matches.length - headingsAt.length)).length;
         if (digits > gutterDigits)
             gutterDigits = digits;
         numberDigits = typed === "" ? digits : Math.max(numberDigits, digits);
@@ -6830,11 +6830,15 @@ Scope {
     function operated(act, count, motion) {
         searchNow();
         if (motion?.act === "visual") {
-            const taken = Operators.taken(matches, visualSpan, headline);
+            const taken = Headings.taken(matches, visualSpan, headline);
             // Visual's d is done again by . over as many rows as it took,
-            // from the cursor, as Vim's is.
+            // from the cursor, as Vim's is, its headings uncounted.
             if (act === "ending")
-                lastChange = { count: visualSpan.to - visualSpan.from + 1, motion: null };
+                lastChange = {
+                    count: Headings.rank(headingsAt, visualSpan.to + 1)
+                        - Headings.rank(headingsAt, visualSpan.from),
+                    motion: null
+                };
             if (act === "copy")
                 yanked(taken);
             else if (act === "ending")
@@ -6844,7 +6848,7 @@ Scope {
             return;
         }
         const view = list.inView();
-        const span = Operators.spanned(count, motion, {
+        const span = Headings.spanned(count, motion, {
             at: current,
             highest: prompt.highest,
             last: matches.length - 1,
@@ -6852,8 +6856,8 @@ Scope {
             bottom: view.bottom,
             screen: rows,
             runOf: at => runOf(at)
-        });
-        const taken = Operators.taken(matches, span, headline);
+        }, headingsAt);
+        const taken = Headings.taken(matches, span, headline);
         if (act === "copy")
             yanked(taken);
         else {
