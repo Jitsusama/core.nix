@@ -96,6 +96,8 @@ fn a_socket_it_cant_listen_on_ends_it_as_failed_naming_the_socket() {
     std::fs::write(&file, "").expect("a file");
     let socket = file.join("tuple-call.sock");
     let output = ran(&[socket.to_str().expect("a path"), "tuple"]);
+    // Removed before the asserts, so a failing run leaves nothing behind.
+    let _ = std::fs::remove_file(&file);
     let why = said(&output.stderr);
     assert_eq!(
         output.status.code(),
@@ -107,5 +109,9 @@ fn a_socket_it_cant_listen_on_ends_it_as_failed_naming_the_socket() {
         why.contains("tuple-call.sock"),
         "the failure never named the socket: {why}"
     );
-    let _ = std::fs::remove_file(&file);
+    assert!(
+        output.stdout.is_empty(),
+        "a failure said {:?} on stdout",
+        said(&output.stdout)
+    );
 }
