@@ -138,7 +138,6 @@
     "Fuzzy.js"
     "Hearing.js"
     "launcher/Order.js"
-    "launcher/ScreenAnswers.js"
     "launcher/Screens.js"
     "launcher/Seen.js"
   ];

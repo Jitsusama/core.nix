@@ -148,10 +148,6 @@
     quietly where the last boot kept it, and keeps the place of one no host serves yet, opens none
     for one kept nowhere, and holds one bound for the workspace Joel is on until he leaves it
   '';
-  a-screens-power-says-how-it-stands = ''
-    a screen's power says how it stands before asking niri, and the last lit screen not turned off
-    or unplugged says so as niri's refusals are, a $ in a name kept as written
-  '';
   a-session-behind-the-lock-waits-for-its-kin = ''
     a session handed over while the screen is locked, beside its sender in the sessions' kitty,
     waits once the lock is gone until the node says which window is the sender's, by the app id it
@@ -3063,6 +3059,11 @@
     the Ask row says why pi-ask can't start before it's asked and within 3 s of Return, which
     asks again rather than closing, and each question is answered by a pi of its own
   '';
+  the-launcher-asks-the-served-light = ''
+    a Brightness share typed asks what a served level asks, its first step kept lit, the Brightness
+    served says its screen and share, none while it's read, and the Warmth's switches ask only to
+    turn the other way
+  '';
   every-command-row-has-a-drawer = ''
     every command the launcher offers says in its drawer, under the place that lists it or
     anywhere, what it answers and one or two worked examples, naming only documentation addresses
@@ -3482,11 +3483,6 @@
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
     typical key under five milliseconds
-  '';
-  the-launcher-turns-each-screen-off = ''
-    where niri powers one output off by name, Turn It Off darkens a screen and Unplug It follows
-    while another is lit, the last lit one darkening only after the key that asked comes up, a
-    dark screen turning on by name; an older niri only unplugs, keeping the last screen on
   '';
   the-launcher-traces-each-opening = ''
     each opening of the launcher is a trace whose steps, backs, acts and searches are spans under

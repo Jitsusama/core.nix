@@ -22,39 +22,21 @@
     tests = ../../../tests/screens-off-on-niri-test.py;
   };
 
-  # How a screen stands, and which act its row serves the : line's :setl
-  # power and unplugged do, as tests/screens.qml holds launcher/Screens.js
-  # to in Qt's own engine; the ways themselves are the windows daemon's.
-  the-launcher-turns-each-screen-off =
+  # What the : line's Brightness and the Warmth's switches ask of the rows
+  # Screens serves, as tests/screens.qml holds launcher/Screens.js to in
+  # Qt's own engine; a screen's ways, and what :setl power and unplugged
+  # do with them, are the windows daemon's.
+  the-launcher-asks-the-served-light =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-launcher-turns-each-screen-off" { } ''
+    pkgs.runCommandLocal "the-launcher-asks-the-served-light" { } ''
       cp ${../../../tests/screens.qml} screens.qml
       cp ${../launcher/Screens.js} Screens.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml screens.qml
-      touch $out
-    '';
-
-  # A screen's power says how it stands before asking niri, the last lit
-  # screen not turned off or unplugged said as niri's refusals are, as
-  # tests/screen-answers.qml holds launcher/ScreenAnswers.js to it in Qt's
-  # own engine; what niri refuses, the windows daemon says (acts.rs).
-  a-screens-power-says-how-it-stands =
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    pkgs.runCommandLocal "a-screens-power-says-how-it-stands" { } ''
-      cp ${../../../tests/screen-answers.qml} screen-answers.qml
-      cp ${../launcher/ScreenAnswers.js} ScreenAnswers.js
-      cp ${../../../tests/lib/Expect.js} Expect.js
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml screen-answers.qml
       touch $out
     '';
 

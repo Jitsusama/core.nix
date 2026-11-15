@@ -61,7 +61,6 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Hearing.js" as Hearing
 import "Order.js" as Order
-import "ScreenAnswers.js" as ScreenAnswers
 import "Screens.js" as Screens
 import "Seen.js" as Seen
 
@@ -423,7 +422,6 @@ Provider {
     // done, closes the launcher as it did, and the key language reads none
     // of its act.
     function made(output, row, key) {
-        const stands = Screens.standing(output);
         return ready.thing(row, key, {
             thing: true,
             keywords: output.name,
@@ -432,10 +430,7 @@ Provider {
             targets: undefined,
             verbs: () => provider.verbs(output),
             drawer: () => provider.drawerOf(key),
-            options: Object.assign({
-                power: provider.screenOption(output, "power"),
-                unplugged: provider.screenOption(output, "unplugged")
-            }, provider.lineOptions(output))
+            options: provider.lineOptions(output)
         });
     }
 
@@ -445,13 +440,16 @@ Provider {
     // completing from its screen's own choices with their words beside
     // and saying where it stands. What's typed is the daemon's to find,
     // and to refuse in words saying what the screen offers, so a set says
-    // nothing at once and the answer comes later.
+    // nothing at once and the answer comes later. On every screen, power
+    // and unplugged do the way the daemon serves for them (lineWay).
     function lineOptions(output) {
         const key = screenKey(output);
         const line = name => ready.served(key)?.held?.line?.[name] ?? null;
         const options = {};
         for (const [name, served] of Object.entries(ready.served(key)?.held?.line ?? {})) {
-            const set = (to, change, later) => lineAsk(output, name, to, later);
+            const set = served.ways
+                ? to => lineWay(key, line(name)?.ways?.[to ? "on" : "off"])
+                : (to, change, later) => lineAsk(output, name, to, later);
             options[name] = served.kind === "switch"
                 ? { kind: "switch", now: () => line(name)?.now === true, set: set }
                 : { kind: "choice", choices: () => line(name)?.values ?? [],
@@ -476,25 +474,18 @@ Provider {
         return "";
     }
 
-    // A screen's option for the : line's :setl, which does the act its
-    // Turn It Off, Turn It On or Unplug It row does (Screens.wayTo); one it
-    // can't take, as unplugging the last lit screen, says so and does
-    // nothing else.
-    function screenOption(output, option) {
-        return {
-            kind: "switch",
-            now: () => Screens.optionNow(output, option),
-            set: on => {
-                const key = screenKey(output);
-                const acts = ready.served(key)?.acts ?? [];
-                const asked = { option: option, on: on };
-                const told = Screens.toldOf(output, acts, asked);
-                if (told !== "")
-                    return ScreenAnswers.toldSaid(told, named(output), screenWords);
-                ready.act(key, Screens.wayTo(output, acts, asked));
-                return "";
-            }
-        };
+    // What :setl power or :setl unplugged does on the screen of row `key`,
+    // as the daemon serves the `way` (line.rs): the act its Turn It Off,
+    // Turn It On or Unplug It row does, asked as Return asks it, so the
+    // last lit screen's darkening closes the launcher first; or the words
+    // said in its place, as unplugging the last lit screen's are.
+    function lineWay(key, way) {
+        if (way?.said !== undefined)
+            return way.said;
+        const act = (ready.served(key)?.acts ?? []).find(one => one.key === way?.act);
+        if (act)
+            ready.act(key, act);
+        return "";
     }
 
     function screenKey(output) {
@@ -525,11 +516,6 @@ Provider {
         return String((Words.of(id === "" ? "displays" : `displays:${id}`).said ?? {})[key]
             ?? key);
     }
-
-    // The vocabulary as ScreenAnswers.js says a screen in it.
-    readonly property var screenWords: ({
-        said: (id, key) => provider.partSaid(id, key)
-    })
 
     // The screen whose drawer shows, by its row's key, which is watched
     // ahead while it does (ready.ahead), so its light is read; set as the

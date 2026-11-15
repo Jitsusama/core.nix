@@ -1086,6 +1086,38 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
     desktop.close_launcher()
 
 
+def test_the_line_powers_a_screen_as_its_rows_do(desktop: Desktop) -> None:
+    """:setl power and :setl unplugged do what the screen's rows serve, or say why not."""
+    machine = desktop.machine
+
+    def outputs() -> list[str]:
+        """Give the outputs niri draws to, by connector."""
+        return sorted(json.loads(desktop.as_account("niri msg --json outputs")))
+
+    was = outputs()
+    desktop.as_account("qs ipc call launcher collection displays")
+    desktop.launcher_ready()
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "Scale" in shown["rows"])
+    desktop.normal()
+    # The way is the windows daemon's, served on the screen's row: the one
+    # screen is on already, as Vim's :set says, and as the last lit one it
+    # isn't unplugged, so it stays in niri's outputs (VKCF3Z, 2026-11-08).
+    for typed, answer in [
+        ("power", " is on"),
+        ("unplugged", " not unplugged \u00b7 the last lit screen"),
+    ]:
+        machine.send_chars(f":setl {typed}\n", delay=KEY_PACE)
+
+        def answered(shown: Json, answer: str = answer) -> bool:
+            """Say whether the line closed saying what the daemon served."""
+            return shown["command"] is None and str(shown["commandSaid"]).endswith(answer)
+
+        desktop.launcher_until(answered)
+    assert outputs() == was, f"the last lit screen left niri's outputs: {outputs()}"
+    desktop.close_launcher()
+
+
 # One walk through joining networks, as its subtest was: each step starts where the last left
 # it.
 # How many times wifid has left Lantern as asked, so a wait sees a new one.

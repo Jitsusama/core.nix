@@ -5,5 +5,4 @@
   "DeskLight.qml"
   "launcher/Plate.js"
   "launcher/Screens.js"
-  "launcher/ScreenAnswers.js"
 ]
