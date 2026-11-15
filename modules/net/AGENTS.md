@@ -43,7 +43,7 @@ switch, the receiver and the printer are net's alone, and `eero` keeps only what
   each way, its chokepoint: the hop with least room, a cable's speed or a
   radio link's less the time its busier radio is busy, or the internet. A hop
   with no figure (eero gives Wi-Fi backhaul only as bars) is counted in
-  `unmeasured`, never guessed. A concern is a radio busy 30% or more (the
+  `unmeasured`, never guessed. A concern is a radio busy 50% or more (the
   map's gold), a Wi-Fi link at -70 dBm or weaker, a cable under a gigabit,
   or the internet as a chokepoint, said once each way.
 

@@ -87,7 +87,7 @@ pub struct Concern {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ConcernKind {
-    /// A radio busy 30% of the time or more, slowing all it carries.
+    /// A radio busy half the time or more, slowing all it carries.
     Busy,
     /// A Wi-Fi link heard at -70 dBm or weaker.
     Weak,

@@ -7,14 +7,17 @@
 use std::collections::{HashMap, VecDeque};
 
 use crate::model::{
-    Chokepoint, Concern, ConcernKind, Device, Internet, Link, Medium, Network, Path,
+    Chokepoint, Concern, ConcernKind, Device, Internet, Link, Medium, Network, Path, Role,
 };
 use crate::sources::modem;
 
 /// A radio busy this share of the time or more is a concern: past it,
 /// everything the radio carries waits its turn often enough to be felt,
-/// and it's the line the map draws in gold.
-const BUSY_PCT: u32 = 30;
+/// and it's the line the map draws in gold. At 30% every radio in the
+/// home crossed it on a quiet night (33% to 46% on 15 Nov), so the gold
+/// said nothing, and an engineer reading the map cold called those
+/// figures normal; half the time is where waiting starts to show.
+const BUSY_PCT: u32 = 50;
 
 /// A Wi-Fi link heard this weakly or worse is a concern, since below it
 /// the rate falls and retries climb.
@@ -215,20 +218,39 @@ fn ceiling(
     } else {
         internet.up_mbps
     }?;
-    let devices = network
+    // The devices on the eeros, counted as the map counts them: the eeros
+    // themselves carry the others' traffic, so they aren't among them.
+    let paths: Vec<&Path> = network
         .devices
         .iter()
-        .filter_map(|device| device.path.as_ref().and_then(&chokepoint))
+        .filter(|device| {
+            !device
+                .roles
+                .iter()
+                .any(|role| matches!(role, Role::Router | Role::AccessPoint))
+        })
+        .filter_map(|device| device.path.as_ref())
+        .collect();
+    let devices = paths
+        .iter()
+        .filter_map(|path| chokepoint(path))
         .filter(|hop| hop.b.is_none())
         .count();
+    // Every device or so many of them all, since a bare count beside the
+    // map's own count of devices on the eeros reads as a mistake.
+    let whom = if devices == paths.len() {
+        "every device on the eeros".to_owned()
+    } else {
+        format!("{devices} of the {} devices on the eeros", paths.len())
+    };
     (devices > 0).then(|| Concern {
         kind: ConcernKind::Ceiling,
         device: modem::ID.into(),
         on: None,
         other: None,
         says: format!(
-            "The internet comes in at {mbps:.1} Mbit/s {way}, the least room on {devices} \
-             devices' way"
+            "The internet is the narrowest point {way} for {whom}: {mbps:.1} Mbit/s, as eero \
+             last measured it"
         ),
     })
 }
@@ -368,9 +390,28 @@ mod tests {
         assert_eq!(up.unmeasured, 2, "the backhaul and the internet");
     }
 
+    /// Sets a node's 5 GHz high radio busy this share of the time.
+    fn busy(network: &mut Network, node: &str, pct: u32) {
+        let radio = network
+            .devices
+            .iter_mut()
+            .find(|device| device.id == node)
+            .and_then(|device| {
+                device
+                    .radios
+                    .iter_mut()
+                    .find(|radio| radio.name == "5 GHz high")
+            })
+            .expect("the node has a 5 GHz high radio");
+        radio.busy_pct = Some(pct);
+    }
+
     #[test]
-    fn each_radio_busy_a_third_of_the_time_or_more_is_a_concern() {
+    fn each_radio_busy_half_the_time_or_more_is_a_concern() {
         let mut network = network();
+        busy(&mut network, "eero:2003", 64);
+        busy(&mut network, "eero:2002", 49);
+        busy(&mut network, "eero:2001", 50);
         work_out(&mut network);
         let busy: Vec<(&str, Option<&str>)> = network
             .concerns
@@ -382,7 +423,6 @@ mod tests {
             busy,
             [
                 ("eero:2003", Some("5 GHz high")),
-                ("eero:2002", Some("5 GHz high")),
                 ("eero:2001", Some("5 GHz high")),
             ]
         );
@@ -391,13 +431,26 @@ mod tests {
             .iter()
             .find(|concern| concern.kind == ConcernKind::Busy)
             .expect("Hall's radio is busy");
-        assert_eq!(hall.says, "Hall's 5 GHz high radio is busy 41% of the time");
+        assert_eq!(hall.says, "Hall's 5 GHz high radio is busy 64% of the time");
+    }
+
+    #[test]
+    fn a_radio_busy_under_half_the_time_is_no_concern() {
+        let mut network = network();
+        work_out(&mut network);
+        let busy: Vec<_> = network
+            .concerns
+            .iter()
+            .filter(|concern| concern.kind == ConcernKind::Busy)
+            .collect();
+        assert!(busy.is_empty(), "radios 37% to 41% busy: {busy:?}");
     }
 
     #[test]
     fn a_name_ending_in_s_takes_the_apostrophe_alone() {
         let mut network = network();
         network.devices[2].name = "Upstairs".into();
+        busy(&mut network, "eero:2003", 64);
         work_out(&mut network);
         let busy = network
             .concerns
@@ -406,7 +459,7 @@ mod tests {
             .expect("the renamed node's radio is busy");
         assert_eq!(
             busy.says,
-            "Upstairs' 5 GHz high radio is busy 41% of the time"
+            "Upstairs' 5 GHz high radio is busy 64% of the time"
         );
     }
 
@@ -469,8 +522,10 @@ mod tests {
         assert_eq!(
             ceilings,
             [
-                "The internet comes in at 369.9 Mbit/s down, the least room on 9 devices' way",
-                "The internet comes in at 11.9 Mbit/s up, the least room on 20 devices' way",
+                "The internet is the narrowest point down for 6 of the 17 devices on the eeros: \
+                 369.9 Mbit/s, as eero last measured it",
+                "The internet is the narrowest point up for every device on the eeros: 11.9 \
+                 Mbit/s, as eero last measured it",
             ]
         );
     }

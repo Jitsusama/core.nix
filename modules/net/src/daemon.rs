@@ -85,11 +85,12 @@ pub fn run() -> Result<(), String> {
 
 fn read_eero(file: &Path) -> Result<Value, String> {
     let text = fs::read_to_string(file).map_err(|error| match error.kind() {
-        io::ErrorKind::NotFound => "the eero daemon's record isn't there".to_owned(),
-        _ => format!("can't read the eero daemon's record: {error}"),
+        io::ErrorKind::NotFound => {
+            "eero hasn't written what it read; see systemctl --user status eero-daemon".to_owned()
+        }
+        _ => format!("what eero read can't be opened: {error}"),
     })?;
-    serde_json::from_str(&text)
-        .map_err(|error| format!("the eero daemon's record doesn't read: {error}"))
+    serde_json::from_str(&text).map_err(|error| format!("what eero read doesn't parse: {error}"))
 }
 
 fn read_switch(file: &Path) -> Result<switch::Report, String> {

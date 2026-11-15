@@ -4,7 +4,7 @@
   "sources": [
     {
       "name": "eero",
-      "what": "eero's cloud, through the eero daemon's record",
+      "what": "eero's own account of the network, from its cloud",
       "state": "answering",
       "read_at": 1794092083,
       "since": null,
@@ -6706,24 +6706,6 @@
   },
   "concerns": [
     {
-      "kind": "busy",
-      "device": "eero:2003",
-      "on": "5 GHz high",
-      "says": "Hall's 5 GHz high radio is busy 41% of the time"
-    },
-    {
-      "kind": "busy",
-      "device": "eero:2002",
-      "on": "5 GHz high",
-      "says": "Study's 5 GHz high radio is busy 39% of the time"
-    },
-    {
-      "kind": "busy",
-      "device": "eero:2001",
-      "on": "5 GHz high",
-      "says": "Den's 5 GHz high radio is busy 37% of the time"
-    },
-    {
       "kind": "weak",
       "device": "mac:02:00:00:00:00:0e",
       "on": "5 GHz",
@@ -6733,12 +6715,12 @@
     {
       "kind": "ceiling",
       "device": "modem",
-      "says": "The internet comes in at 369.9 Mbit/s down, the least room on 9 devices' way"
+      "says": "The internet is the narrowest point down for 6 of the 17 devices on the eeros: 369.9 Mbit/s, as eero last measured it"
     },
     {
       "kind": "ceiling",
       "device": "modem",
-      "says": "The internet comes in at 11.9 Mbit/s up, the least room on 20 devices' way"
+      "says": "The internet is the narrowest point up for every device on the eeros: 11.9 Mbit/s, as eero last measured it"
     }
   ]
 }

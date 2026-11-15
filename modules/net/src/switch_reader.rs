@@ -8,7 +8,8 @@
 //! for net-daemon to read; never the password or the sign-in.
 
 use std::fs;
-use std::io;
+use std::io::{self, Read, Write};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
@@ -111,7 +112,7 @@ fn round(agent: &Agent, address: &str, password: Option<&str>, now: u64) -> Repo
     };
     let mut unanswered = "";
     for _ in 0..TRIES {
-        let answered = sign_in(agent, address, password);
+        let answered = sign_in(address, password);
         match pages(agent, address).map(|pages| switch::parse(&pages)) {
             Ok(Ok(status)) => return report(SourceState::Answering, None, Some(status)),
             Ok(Err(why)) if answered.is_ok() => {
@@ -153,46 +154,94 @@ fn pages(agent: &Agent, address: &str) -> Result<Pages, String> {
                 }
             })
             .map(|text| ((*page).to_owned(), text))
-            .map_err(|why| format!("its {page} page didn't answer: {why}"))
+            .map_err(|why| format!("its {} page didn't answer: {why}", switch::plainly(page)))
         })
         .collect()
 }
 
 /// Signs in, once. The switch ties the session to the address asking, and
 /// its answer says nothing reliable, so the next read is what tells.
-fn sign_in(agent: &Agent, address: &str, password: &str) -> Result<(), &'static str> {
-    agent
-        .post(format!("http://{address}/logon.cgi"))
-        .config()
-        .timeout_global(Some(SIGN_IN))
-        .build()
-        .send_form([
-            ("username", USER),
-            ("password", password),
-            ("logon", "Login"),
-        ])
-        .map(drop)
-        .map_err(|error| kind(&error))
+fn sign_in(address: &str, password: &str) -> Result<(), &'static str> {
+    // Written by hand rather than through ureq, which sends a body after
+    // its headers: the switch's web server reads a request in one read, so
+    // it saw a sign-in with no body and hung up on every one. This goes in
+    // one write, with the Referer and Origin the switch's own page sends.
+    let body = format!(
+        "username={}&password={}&logon=Login",
+        form(USER),
+        form(password)
+    );
+    let request = format!(
+        "POST /logon.cgi HTTP/1.1\r\nHost: {address}\r\nUser-Agent: Mozilla/5.0\r\n\
+         Referer: http://{address}/\r\nOrigin: http://{address}\r\n\
+         Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\
+         Connection: close\r\n\r\n{body}",
+        body.len()
+    );
+    let at = if address.contains(':') {
+        address.to_owned()
+    } else {
+        format!("{address}:80")
+    };
+    let to = at
+        .to_socket_addrs()
+        .ok()
+        .and_then(|mut all| all.next())
+        .ok_or("its address doesn't resolve")?;
+    let mut stream = TcpStream::connect_timeout(&to, PAGE).map_err(|error| io_kind(&error))?;
+    stream
+        .set_write_timeout(Some(PAGE))
+        .and_then(|()| stream.set_read_timeout(Some(SIGN_IN)))
+        .and_then(|()| stream.write_all(request.as_bytes()))
+        .map_err(|error| io_kind(&error))?;
+    // Any answer at all counts as answered; the read after it decides
+    // whether the session started.
+    let mut first = [0; 1];
+    match stream.read(&mut first) {
+        Ok(0) => Err("it closed the connection without a reply"),
+        Ok(_) => Ok(()),
+        Err(error) => Err(io_kind(&error)),
+    }
+}
+
+/// A form value as a browser encodes it: letters, digits and `-_.*` as
+/// they are, a space as `+`, and every other byte as `%XX`.
+fn form(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| match byte {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'*' => {
+                char::from(byte).to_string()
+            }
+            b' ' => "+".to_owned(),
+            other => format!("%{other:02X}"),
+        })
+        .collect()
 }
 
 /// What kind of failure a request met, in net's words. Only the kind is
 /// said: ureq's own words could carry what was sent, the password included.
 fn kind(error: &ureq::Error) -> &'static str {
-    use io::ErrorKind;
     match error {
         ureq::Error::Timeout(_) => "it took too long",
-        ureq::Error::Io(error) => match error.kind() {
-            ErrorKind::ConnectionRefused => "it refused the connection",
-            ErrorKind::ConnectionReset
-            | ErrorKind::ConnectionAborted
-            | ErrorKind::UnexpectedEof => "it closed the connection without a reply",
-            ErrorKind::TimedOut => "it took too long",
-            _ => "the connection failed",
-        },
+        ureq::Error::Io(error) => io_kind(error),
         ureq::Error::Protocol(_)
         | ureq::Error::Http(_)
         | ureq::Error::LargeResponseHeader(..)
         | ureq::Error::BodyExceedsLimit(_) => "its answer couldn't be read",
+        _ => "the connection failed",
+    }
+}
+
+/// What kind of failure a connection met, in the same words.
+fn io_kind(error: &io::Error) -> &'static str {
+    use io::ErrorKind;
+    match error.kind() {
+        ErrorKind::ConnectionRefused => "it refused the connection",
+        ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::UnexpectedEof => {
+            "it closed the connection without a reply"
+        }
+        ErrorKind::TimedOut | ErrorKind::WouldBlock => "it took too long",
         _ => "the connection failed",
     }
 }
@@ -219,7 +268,7 @@ fn write(file: &Path, contents: &str) -> io::Result<()> {
 mod tests {
     use super::*;
 
-    use std::io::{BufRead, BufReader, Read, Write};
+    use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::sync::{Arc, Mutex};
 
@@ -227,7 +276,10 @@ mod tests {
 
     /// A stand-in switch on a loopback port: it serves the contract's pages
     /// once signed in with `PASSWORD`, and the sign-in form until then, and
-    /// keeps every request it was sent.
+    /// keeps every request it was sent. Like the real switch's web server,
+    /// it reads a request in one read and hangs up on one whose body hasn't
+    /// come with it: the reader's sign-in, sent as headers then body, was
+    /// closed without a reply every time on 15 Nov.
     fn switch_on_loopback(signed_in: bool) -> (String, Arc<Mutex<Vec<String>>>) {
         stand_in(signed_in, Behaves::Well)
     }
@@ -259,23 +311,23 @@ mod tests {
             let mut dice: u32 = 0x9e37_79b9;
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { return };
-                let mut reader = BufReader::new(stream.try_clone().expect("a second handle"));
-                let mut request = String::new();
-                let mut length = 0;
-                loop {
-                    let mut line = String::new();
-                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
-                        break;
-                    }
-                    if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
-                        length = value.trim().parse().unwrap_or(0);
-                    }
-                    request.push_str(&line);
+                let mut buffer = [0; 8192];
+                let read = stream.read(&mut buffer).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buffer[..read]).into_owned();
+                let (headers, body) = request.split_once("\r\n\r\n").unwrap_or((&request, ""));
+                let length = headers
+                    .lines()
+                    .find_map(|line| {
+                        let line = line.to_ascii_lowercase();
+                        let value = line.strip_prefix("content-length:")?;
+                        value.trim().parse().ok()
+                    })
+                    .unwrap_or(0);
+                if body.len() < length {
+                    kept.lock().expect("the log").push(format!("cut {request}"));
+                    continue;
                 }
-                let mut body = vec![0; length];
-                reader.read_exact(&mut body).expect("the body");
-                let body = String::from_utf8_lossy(&body).into_owned();
-                request.push_str(&body);
+                let body = body.to_owned();
                 dice ^= dice << 13;
                 dice ^= dice >> 17;
                 dice ^= dice << 5;
@@ -340,6 +392,17 @@ mod tests {
         assert_eq!(report.state, SourceState::Answering, "{:?}", report.reason);
         assert_eq!(report.status.map(|status| status.ports.len()), Some(8));
         assert_eq!(signed_in(&heard), 1);
+        let sign_in = heard
+            .lock()
+            .expect("the log")
+            .iter()
+            .find(|request| request.starts_with("POST /logon.cgi"))
+            .cloned()
+            .expect("a sign-in was sent");
+        assert!(
+            sign_in.contains(&format!("\r\nReferer: http://{address}/\r\n")),
+            "the sign-in lacks the Referer the switch's own page sends: {sign_in}"
+        );
     }
 
     #[test]
@@ -419,7 +482,7 @@ mod tests {
         assert_eq!(report.state, SourceState::Unreachable);
         assert_eq!(
             report.reason.as_deref(),
-            Some("its SystemInfoRpm page didn't answer: it refused the connection")
+            Some("its System Info page didn't answer: it refused the connection")
         );
         let written = serde_json::to_string(&report).expect("it writes");
         assert!(

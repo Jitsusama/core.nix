@@ -34,6 +34,18 @@ pub const PAGES: [&str; 4] = [
     "CableDiagRpm",
 ];
 
+/// A page as a reason names it: the words the switch's own menu gives it,
+/// since its file name is the firmware's and reads as code to a person.
+pub fn plainly(page: &str) -> &str {
+    match page {
+        "SystemInfoRpm" => "System Info",
+        "PortSettingRpm" => "Port Setting",
+        "PortStatisticsRpm" => "Port Statistics",
+        "CableDiagRpm" => "Cable Test",
+        other => other,
+    }
+}
+
 /// Each page's text, by its name.
 pub type Pages = BTreeMap<String, String>;
 
@@ -144,13 +156,18 @@ pub fn parse(pages: &Pages) -> Result<Status, String> {
         pages
             .get(name)
             .map(String::as_str)
-            .ok_or_else(|| format!("its {name} page is missing"))
+            .ok_or_else(|| format!("its {} page is missing", plainly(name)))
     };
     let system = page("SystemInfoRpm")?;
     let setting = page("PortSettingRpm")?;
     let statistics = page("PortStatisticsRpm")?;
     let cables = page("CableDiagRpm")?;
-    let refused = |name: &str| format!("its {name} page holds no status, as if signed out");
+    let refused = |name: &str| {
+        format!(
+            "its {} page holds no status, as if signed out",
+            plainly(name)
+        )
+    };
     let first = |key| array(system, key).and_then(|said| said.into_iter().next());
     if first("macStr").is_none() {
         return Err(refused("SystemInfoRpm"));
