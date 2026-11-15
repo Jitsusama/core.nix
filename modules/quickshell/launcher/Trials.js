@@ -37,7 +37,8 @@ function begun(at, home) {
         keys[kind] = 0;
     }
     return { at, home, keys, picked: "", kind: "", typed: "", depth: 0,
-        ms: -1, open: -1, missed: false, sought: [], looked: "", drawerAt: -1,
+        ms: -1, firstMs: -1, picks: 0,
+        open: -1, missed: false, sought: [], looked: "", drawerAt: -1,
         timed: { count: 0, searched: 0, searchedMost: 0, drawn: 0, drawnMost: 0, felt: [] } };
 }
 
@@ -216,7 +217,10 @@ function soughtWith(sought, search) {
 
 // The trial with this picked at `at`, `where` saying what was typed for it
 // and how many steps in it was: { typed, depth }. A later pick in the same
-// opening, as a collection opened and then a thing in it, is the one kept.
+// opening, as a collection opened and then a thing in it, is the one kept,
+// but the first's time is kept beside it, with how many there were, so an
+// opening kept open through many picks isn't read as one long finding
+// (7QEY1S, 2026-11-15: 15 picks in one opening read as a 212 s pick).
 function picked(trial, at, row, where) {
     if (!(trial && row)) {
         return trial;
@@ -225,7 +229,9 @@ function picked(trial, at, row, where) {
     // counted by the name answerCounted gives it.
     const named = String(row.counted ?? row.key ?? "");
     return Object.assign({}, trial, { picked: named, kind: String(row.kind ?? ""),
-        typed: String(where?.typed ?? ""), depth: where?.depth ?? 0, ms: at - trial.at });
+        typed: String(where?.typed ?? ""), depth: where?.depth ?? 0, ms: at - trial.at,
+        firstMs: (trial.firstMs ?? -1) >= 0 ? trial.firstMs : at - trial.at,
+        picks: (trial.picks ?? 0) + 1 });
 }
 
 // What an answer is counted as when Return picks it: by the word its

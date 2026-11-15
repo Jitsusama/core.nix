@@ -6,10 +6,14 @@
 # to the machine itself). The sites are what sessions write, so they're
 # state, never a Nix value; only the server is declared.
 #
-# One site is live: mycelium/ maps the realm as it stands, from a now.json
-# beside it that a timer rewrites every 20 seconds from what the machine's
-# node says (mycelium-map.sh, shaped by mycelium-map.jq). A machine in no
-# realm has no node to read, so it runs no timer.
+# Two sites are live. mycelium/ maps the realm as it stands, from a
+# now.json beside it that a timer rewrites every 20 seconds from what the
+# machine's node says (mycelium-map.sh, shaped by mycelium-map.jq). A
+# machine in no realm has no node to read, so it runs no timer. network/
+# maps the home network from net's record (modules/net), copied in each
+# time net rewrites it, since the server serves nothing outside its root
+# and won't follow a link out of it; on a machine that runs no net, the
+# record never appears and nothing is copied.
 { mycelium }:
 {
   config,
@@ -22,7 +26,27 @@ let
   realm = config.jitsusama.mycelium.realm or null;
 in
 {
+  systemd.user.paths.network-site = {
+    Unit.Description = "Watches net's record for the network site";
+    Path.PathChanged = "%t/net/network.json";
+    Install.WantedBy = [ "paths.target" ];
+  };
+
   systemd.user.services = {
+    # A copy put in place by a rename, so the page never reads half of one.
+    network-site = {
+      Unit.Description = "Copies net's record into the network site";
+      Service = {
+        Type = "oneshot";
+        ExecStart = [
+          "${lib.getExe' pkgs.coreutils "mkdir"} -p ${root}/network"
+          "${lib.getExe' pkgs.coreutils "cp"} %t/net/network.json ${root}/network/network.json.new"
+          "${lib.getExe' pkgs.coreutils "mv"} -f ${root}/network/network.json.new ${root}/network/network.json"
+        ];
+        Slice = "background.slice";
+      };
+    };
+
     local-sites = {
       Unit.Description = "Serves Joel's local sites, on loopback only";
       Service = {
