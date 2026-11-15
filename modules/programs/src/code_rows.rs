@@ -277,6 +277,7 @@ mod tests {
                 checkout("/home/j/old/core.nix", false, vec![tree("/t/d", true)]),
             ],
             changes: Vec::new(),
+            read_through: None,
         }
     }
 
@@ -347,6 +348,7 @@ mod tests {
             written_at: None,
             checkouts: vec![checkout("/home/j/scratch/thing", false, Vec::new())],
             changes: Vec::new(),
+            read_through: None,
         };
         let rows = rows(&record(vec![local]), Some(Path::new("/home/j")), &words());
         let row = &rows[0];

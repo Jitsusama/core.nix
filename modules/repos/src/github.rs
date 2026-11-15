@@ -352,7 +352,7 @@ pub struct Failed {
 }
 
 impl Failed {
-    fn refused(why: String) -> Self {
+    pub fn refused(why: String) -> Self {
         Self { why, refused: true }
     }
 }
