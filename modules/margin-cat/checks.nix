@@ -47,4 +47,13 @@ onLinux {
       done
       touch $out
     '';
+
+  # Every design Joel stated for the cat, under the guide's "Joel's Words",
+  # is held by a phrase a case says, or owed with the date it was asked for,
+  # so a ruling that would drop one fails a named case rather than going
+  # unseen.
+  the-cat-keeps-joels-words = pkgs.runCommandLocal "the-cat-keeps-joels-words" { } ''
+    ${pkgs.lib.getExe pkgs.python3} ${./tests/keeps-joels-words.py} ${./AGENTS.md} ${./tests}
+    touch $out
+  '';
 }

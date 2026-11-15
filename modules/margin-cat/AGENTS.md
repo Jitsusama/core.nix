@@ -1,0 +1,167 @@
+# The Margin Cat
+
+A pixel-art cat that lives in the margin above Joel's windows on niri: it
+sits over the column the keys are in, walks, climbs and leaps to the next
+one when they move, and plays a little while he rests. `MarginCat.qml` is
+its surface, one per screen, and `MarginCatScreen.qml` follows niri's
+layout for it. The scripts work out everything it does, so the Qt cases in
+`tests/` reach all of it in Qt's own engine, in seconds:
+
+| Script               | Works out                                                |
+| -------------------- | -------------------------------------------------------- |
+| `MarginCat.js`       | how lively it is, its plays, niri's spring, its drawings |
+| `MarginCatPaths.js`  | its way to a seat: a walk, or a move between workspaces  |
+| `MarginCatRoutes.js` | the stops a way goes by: tops, sides, gaps and the floor |
+| `MarginCatWays.js`   | a way's legs as beats in time, and where it is at a time |
+| `MarginCatFalls.js`  | what it does as the window under it moves or goes        |
+| `MarginCatFloats.js` | floating windows' tops as stops                          |
+| `MarginCatPlays.js`  | a play's beats, as a route on its ways                   |
+| `MarginCatTiles.js`  | niri's layout read as tiles                              |
+
+How it looks and moves is the design's ([docs/design.md][design]); what it
+must keep, whatever a ruling says, is Joel's.
+
+## Joel's Words
+
+Each design Joel has stated for the cat, in his words and dated, and the Qt
+cases that hold it. A ruling on the cat's design is read against this list
+first, so none quietly replaces what he asked for; one that crosses his
+words fails a case before anyone builds it. The check
+`the-cat-keeps-joels-words` reads this section: every design says when he
+said it, every case it names is in that file of `tests/` outside a comment,
+and a design with no case yet is listed as owed, with the date it was owed
+from, so the list says what's still to do. A new design he states goes
+here, owed, the moment it's taken up.
+
+### Smooth, With Character
+
+Joel, 2026-11-12 16:35: "the cat is not animated, it just jerkily moves, it
+is not enjoyable with this change. we need proper smooth animations with
+character to them"
+
+- Held by `margin-cat.qml`: "it turns its head the way it's going first, standing where it sat"
+- Held by `margin-cat.qml`: "it draws back a cell, crouched, before it sets off"
+- Held by `margin-cat.qml`: "in its four strides, in turn"
+- Held by `margin-cat.qml`: "each stride a stretch of ground, never a frame's time"
+
+### Mild While He Works, More as He Rests
+
+Joel, 2026-11-12: "mild movements when i'm active, increeeasing as I'm less
+engaged"
+
+- Held by `margin-cat.qml`: "while he types it's mild"
+- Held by `margin-cat.qml`: "ten seconds with no keys, a little more"
+- Held by `margin-cat.qml`: "a minute with none, livelier"
+
+### Play Random, Gentle and Playful
+
+Joel, 2026-11-12 21:22: "I would like for it to play a bit more and not wait
+too long. it's play should be a bit random, gentle, but playful."
+
+- Held by `margin-cat.qml`: "a pause rests 5 to 12 s"
+- Held by `margin-cat.qml`: "a minute with no keys rests 3 to 8 s"
+- Held by `margin-cat.qml`: "never the same play twice running"
+- Held by `margin-cat.qml`: "each play short, under two and a half seconds"
+
+### Walk Between Workspaces as One Screen
+
+Joel, 2026-11-12 21:15: "it would be nice if when changing workspaces up or
+down it walked up or down to the new location"
+
+Joel, 2026-11-14 17:30: "when going up or down it should appear on the
+screen from the position that would make sense for how it would have to
+path if they were all on one screen. so the top of the left would have to
+walk to the right, climb down the right side, drop down and grab with its
+claws on the top of the window below, climb up, and then walk over."
+
+- Held by `margin-cat.qml`: "down a workspace to a window under another, never gliding"
+- Owed since 2026-11-14: one path through the workspaces stacked as one screen, down and up,
+  arriving where that path crosses the screen's edge.
+
+### Climb, Path and Leap About the Windows
+
+Joel, 2026-11-13: "it should stay on top of the previous workspaces window
+... climb up ... pathfinding through the spaces between windows"; "when
+crossing across gaps between windows, the kitty should jump"
+
+Joel, 2026-11-13, by WCJQSG: "i might be on a window in the second row and
+it needs to travel to it. or I am in a column on the left and change
+workspaces where the last focused window is on the right"
+
+Joel, 2026-11-13, by WCJQSG: "the cat should always be moving from where it
+is to where my focus shifts, in a believable and adorable way. the windows
+are the walls and roofs it is climbing or jumping off of"
+
+- Held by `margin-cat.qml`: "across a gap between columns it crouches, leaps and lands"
+- Held by `margin-cat.qml`: "to a window under another it goes down a side and leaps the gap to it"
+- Held by `margin-cat.qml`: "windows come, it climbs to its seat by an edge, never up a face"
+- Held by `margin-cat-journeys.qml`: "each ends on its seat, every frame of it a cat's"
+
+### Insanely High Quality
+
+Joel, 2026-11-13 17:15: "insanely high quality pixel art and the animations
+are held to an insanely high quality"
+
+- Held by `margin-cat-rides.qml`: "each frame of its own a whole number of cells from where its beat starts or ends"
+- Held by `margin-cat.qml`: "each seen two frames at 60 Hz"
+- Held by `margin-cat.qml`: "up and down again in an arc, never a glide"
+- Held by `margin-cat.qml`: "never a jump between two frames"
+
+### Climb at Walking Pace
+
+Joel, 2026-11-13 17:22: "Going up the side of a window should be at the same
+speed roughly as walking on top, it seems accelerated in the video"
+
+- Held by `margin-cat-journeys.qml`: "} climbs at ${Math.round("
+
+### Believable Routes
+
+Joel, 2026-11-13 17:22: "it would not be able to drop down near the center
+of a window below. we need it to be very believable"
+
+- Held by `margin-cat-journeys.qml`: "falls from"
+- Held by `margin-cat.qml`: "and in no face from there to its seat, never a fall"
+
+### Resized Windows
+
+Joel, 2026-11-13, by WCJQSG: "the kitten also needs to handle resizing
+windows"
+
+- Held by `margin-cat-rides.qml`: "told of the resize late, it rides as far into niri's spring as the edge has gone"
+- Held by `margin-cat-rides.qml`: "its column narrowed out from under it, it falls"
+
+### Closed Rows
+
+Joel, 2026-11-14 17:24: "when a row in a column is deleted, it seems to hang
+out in the middle then walk across, that is not believable"
+
+- Held by `margin-cat-rides.qml`: "a row closed under it, it falls at once onto the floor, never shoved or thinking"
+- Held by `margin-cat-rides.qml`: "and from the floor to its seat by an edge, in no face, never gliding"
+
+### Floating Windows
+
+Joel, 2026-11-13 18:59: "we need to have the cat support jumping down on to
+a floating window, and then jumping to the top of a non floating one when it
+closes or loses focus"
+
+- Held by `margin-cat-floats.qml`: "onto a floating window it drops straight down from the top over it"
+- Held by `margin-cat-floats.qml`: "off it, it crouches and leaps straight up onto the ledge in reach"
+- Held by `margin-cat-floats.qml`: "its window closed, it leaps up at once, never thinking or walking first"
+
+### Never Skid
+
+Joel, 2026-11-14 17:19: "i never want the kitty to skid into place, i always
+want to see its paws moving when it is walking or running."
+
+- Owed since 2026-11-14: a walk onto its seat, never past it, at most two cells a drawing
+  walking and three at a run, each drawing held two 60 Hz frames, in every journey.
+
+### Paws Moving Up and Across Edges
+
+Joel, 2026-11-14 22:40: "the kitten when crawling up or across window edges
+still often does not look like its paws are moving."
+
+- Owed since 2026-11-14: a climb up or down a side stepped in whole strides by the ground it
+  covers, as a walk is, each drawing held two 60 Hz frames, in every journey.
+
+[design]: ../../docs/design.md
