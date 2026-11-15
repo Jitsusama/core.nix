@@ -191,6 +191,8 @@ let
       inputs ? [ ],
       # What more the account's shell is given, as a stand-in for a program.
       shell ? { },
+      # The screen's size, as 2880x1800, or null for nested-niri.sh's own.
+      size ? null,
     }:
     let
       home = account (bareNixos [
@@ -268,6 +270,7 @@ let
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") given
         )}
         ${lib.optionalString (root != null) "install -m 644 ${root} quickshell/shell.qml"}
+        ${lib.optionalString (size != null) "export NESTED_SIZE=${size}"}
         ${lib.getExe pkgs.bash} ${../../../tests/nested-niri.sh} niri/config.kdl logs \
           ${lib.getExe pkgs.bash} ${../../../tests/notices-beside.sh} ${command}
         touch $out

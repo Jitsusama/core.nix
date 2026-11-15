@@ -48,6 +48,19 @@
     command = "${lib.getExe pkgs.bash} ${../../../tests/activation-token-on-niri.sh} quickshell logs";
   };
 
+  # A window drawn flat holds no depth or stencil buffer, and still draws
+  # what's set over its picture over it, in the Quickshell the machine runs
+  # (window-drawn-flat.patch, tests/flat-windows-hold-no-depth-on-niri.sh),
+  # on a screen of Joel's size.
+  flat-windows-hold-no-depth-on-niri = shellOnNiri {
+    name = "flat-windows-hold-no-depth-on-niri";
+    away = 3600;
+    size = "2880x1800";
+    root = ../../../tests/flat-windows-hold-no-depth.qml;
+    inputs = [ pkgs.imagemagick ];
+    command = "${lib.getExe pkgs.bash} ${../../../tests/flat-windows-hold-no-depth-on-niri.sh} quickshell logs ${../../../tests/lib/Memory.js}";
+  };
+
   # The wallpaper's picture is read at its screen's own pixels, by niri's
   # scale for the output, as tests/wallpaper.qml holds Wallpaper.js to, in
   # Qt's engine.
