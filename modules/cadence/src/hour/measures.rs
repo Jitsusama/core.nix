@@ -369,14 +369,66 @@ pub fn broken(text: &str, now: i64, owner: &str) -> Measure {
 #[must_use]
 pub fn card_median(card: &str, label: &str) -> Option<(f64, f64)> {
     let line = card.lines().find(|line| line.starts_with(label))?;
-    let number = |after: &str| -> Option<f64> {
-        let rest = &line[line.find(after)? + after.len()..];
-        let end = rest
-            .find(|c: char| !(c.is_ascii_digit() || c == '.'))
-            .unwrap_or(rest.len());
-        rest[..end].parse().ok()
+    Some((
+        card_number(line, "): median ")?,
+        card_number(line, "target median ")?,
+    ))
+}
+
+/// The number a card's `line` prints right after `after`.
+fn card_number(line: &str, after: &str) -> Option<f64> {
+    let rest = &line[line.find(after)? + after.len()..];
+    let end = rest
+        .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .unwrap_or(rest.len());
+    rest[..end].parse().ok()
+}
+
+/// Merge to on from the card, as a measure owned by `owner`: the card's
+/// median where a switch landed in its hour, else the median of the merges
+/// not on yet, each at its wait so far, which each has taken at least; so
+/// an hour with no switch reads its waits rather than nothing. The three
+/// longest waits are named behind it either way.
+#[must_use]
+pub fn merge_to_on(card: &str, owner: &str) -> Option<Measure> {
+    let label = "Merge to on";
+    let line = card.lines().find(|line| line.starts_with(label))?;
+    let target = card_number(line, "target median ")?;
+    // The card prints `#4534 2 min, #4533 14 min, ...`, shortest first.
+    let mut waits: Vec<(&str, f64)> = card
+        .lines()
+        .find_map(|line| line.trim_start().strip_prefix("not on yet: "))
+        .into_iter()
+        .flat_map(|list| list.split(", "))
+        .filter_map(|wait| {
+            let (pr, minutes) = wait.split_once(' ')?;
+            Some((pr, minutes.strip_suffix(" min")?.parse().ok()?))
+        })
+        .collect();
+    waits.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let now = match card_median(card, label) {
+        Some((median_on, _)) => median_on,
+        None if waits.is_empty() => return None,
+        None => {
+            let mut minutes: Vec<f64> = waits.iter().map(|(_, m)| *m).collect();
+            minutes.sort_by(f64::total_cmp);
+            median(&minutes)
+        }
     };
-    Some((number("): median ")?, number("target median ")?))
+    Some(Measure {
+        key: "merge-to-on".to_owned(),
+        class: Class::Ship,
+        says: "median minutes from merge to on his machine, those not on yet at their wait so far"
+            .to_owned(),
+        now,
+        target: Some(target),
+        owner: owner.to_owned(),
+        behind: waits
+            .iter()
+            .take(3)
+            .map(|(pr, minutes)| format!("{pr} waiting {minutes} min"))
+            .collect(),
+    })
 }
 
 /// How many first-parent merges `log`, as `%H %ct %s` lines, holds from
@@ -626,6 +678,41 @@ mod tests {
             "median and target"
         );
         assert_eq!(card_median(card, "Last commit"), None, "a line it lacks");
+    }
+
+    #[test]
+    fn with_no_switch_merge_to_on_reads_the_merges_still_waiting() {
+        let card = "Card at 21:55\nMerge to on (target median 18): none.\n  not on yet: #4534 2 \
+                    min, #4533 14 min, #4518 27 min, #4495 144 min, #4356 145 min\n  \
+                    switches: 0, last at none\n";
+        let measure = merge_to_on(card, "80ECO2").expect("waits are read");
+        assert_eq!(
+            (measure.now, measure.target),
+            (27.0, Some(18.0)),
+            "the waits' median, against the card's target"
+        );
+        assert_eq!(
+            measure.behind,
+            [
+                "#4356 waiting 145 min",
+                "#4495 waiting 144 min",
+                "#4518 waiting 27 min"
+            ],
+            "the three longest waits"
+        );
+        let switched = "Merge to on (target median 18): median 37.9, p90 47.7, max 47.7 min \
+                        (n 6).\n  not on yet: #4534 2 min\n";
+        let measure = merge_to_on(switched, "80ECO2").expect("a median is read");
+        assert_eq!(
+            (measure.now, measure.target),
+            (37.9, Some(18.0)),
+            "the card's own median where a switch landed"
+        );
+        assert_eq!(measure.behind, ["#4534 waiting 2 min"], "what still waits");
+        assert!(
+            merge_to_on("Merge to on (target median 18): none.\n", "80ECO2").is_none(),
+            "nothing merged, nothing to read"
+        );
     }
 
     #[test]
