@@ -24,6 +24,7 @@
 //! - `landed`: what the sessions landed, and what of it Joel has read.
 //! - `closed`: the closed orchestrators, and what reopening each needs.
 //! - `top`: Agents' top level, one row for each orchestration.
+//! - `networks`: the mycelium's other networks, one row after the tree.
 //! - `answered`: the sessions' answers to Joel's talks he hasn't read.
 //! - `talks`: Joel's talks with each session, as rows inside its step.
 //! - `windows`: which kitty pane and window each session here is in.
@@ -52,6 +53,7 @@ pub mod inboxes;
 pub mod inputs;
 pub mod kept_places;
 pub mod landed;
+pub mod networks;
 pub mod recent;
 pub mod reopen;
 pub mod row;

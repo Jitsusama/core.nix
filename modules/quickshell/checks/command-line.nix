@@ -91,7 +91,8 @@
   # and view, DrawerFigure.js to where a fact's figure stands, DrawerProse.js to where
   # its prose is cut and DrawerValue.js to how its value is laid on lines; Operators.js to what d and y do to the rows they take; and
   # Confirm.js to how the launcher asks once, answered by Return as an armed row is; and
-  # Changes.js to what u and Ctrl+R take back, with Search.js to how a page's search matches.
+  # Changes.js to what u and Ctrl+R take back, with Search.js to how a page's search matches;
+  # and launcher/Headings.js to how the rows' moves count past a list's headings.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -109,6 +110,7 @@
         "KeyNames.js"
         "ListedKeys.js"
         "ModeMarks.js"
+        "launcher/Headings.js"
       ]}
       cp ${(import ../launcher/words.nix).file} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

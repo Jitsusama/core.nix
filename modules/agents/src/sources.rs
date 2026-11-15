@@ -37,6 +37,8 @@ pub enum Heard {
     Talks(Value),
     /// An answer to the node's watch of its teams, each orchestration's.
     Teams(Value),
+    /// An answer to the node's watch of the mycelium's networks.
+    Networks(Value),
     /// An answer to the to-do daemon's watch of its to-dos.
     ToDos(Value),
     /// An answer to the windows daemon's watch of its windows.
@@ -212,6 +214,9 @@ impl Inputs {
             }
             Heard::Teams(answer) => {
                 self.teams.took(&answer);
+            }
+            Heard::Networks(answer) => {
+                self.networks.took(&answer);
             }
             Heard::ToDos(answer) => {
                 self.to_dos.took(&answer);

@@ -729,6 +729,24 @@ in
     console = "n";
     means = "the network: what this machine is joined to, and what's on it";
   };
+  # The mycelium's networks, each by what it's for, as Agents lists them
+  # under Networks: cells joined as a graph's nodes are, rather than the
+  # network this machine is joined to.
+  networks = {
+    glyph = nerd "f104a";
+    console = "N";
+    means = "the mycelium's networks: what its cells share";
+  };
+  repository = {
+    glyph = nerd "f0ccf";
+    console = "r";
+    means = "a repository, and the network of the cells working in it";
+  };
+  group = {
+    glyph = nerd "f0849";
+    console = "g";
+    means = "a group its cells named and joined, and its network";
+  };
   # A plug rather than a bolt, since the bolt is energy as a unit and the
   # battery is the one thing Power holds (VKCF3Z, 2026-11-09).
   power = {

@@ -285,6 +285,31 @@
       "name": "Closed"
     },
     {
+      "id": "agents:networks",
+      "in": "agents",
+      "name": "Networks"
+    },
+    {
+      "id": "agents:repositories",
+      "in": "agents",
+      "name": "Repositories"
+    },
+    {
+      "id": "agents:quests",
+      "in": "agents",
+      "name": "Quests"
+    },
+    {
+      "id": "agents:groups",
+      "in": "agents",
+      "name": "Groups"
+    },
+    {
+      "id": "agents:machines",
+      "in": "agents",
+      "name": "Machines"
+    },
+    {
       "id": "agents:works",
       "in": "agents",
       "name": "Working On",

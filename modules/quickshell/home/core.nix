@@ -67,6 +67,7 @@
   "launcher/RowsPlace.js"
   "launcher/Gathering.qml"
   "launcher/Reached.js"
+  "launcher/Headings.js"
   "launcher/Becoming.js"
   "launcher/Recent.js"
   "launcher/Recents.js"
