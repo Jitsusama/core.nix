@@ -1370,25 +1370,22 @@ def sat(desktop: Desktop, prefix: str) -> dict[str, tuple[int, int]]:
     }
 
 
-def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
-    """Where each session sits is kept, and Reopen Them All puts each back there, in order."""
-    machine = desktop.machine
-    # A session's workspace, column and tile are kept by its own id for
-    # this boot, once its windows have been still a moment.
-    desktop.pi_session()
-    arranged = ARRANGED
-    machine.wait_until_succeeds(
-        desktop.in_session(f"grep -q 01a1face-test {arranged}"), timeout=dt.timedelta(seconds=30)
-    )
-    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
-    found: dict[str, Any] = {}
+def kept_where_it_sits(desktop: Desktop, boot: str) -> str:
+    """Wait until the pi window's place kept this boot is where niri has it, and name its screen.
 
-    def kept_where_it_sits(last: bool) -> bool:
+    Places are kept once the windows and workspaces have been still a moment, and the last
+    subtest's windows closing can number the workspaces again just after this one was first
+    kept, which put it a workspace out in four of the net's runs on 14 and 15 Nov; so it's
+    read until the place kept is where niri has it now.
+    """
+    found: dict[str, str] = {}
+
+    def kept(last: bool) -> bool:
         pi = desktop.window_titled(PI_WINDOW)
         spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
         space = next(one for one in spaces if one["id"] == pi["workspace_id"])
         at = pi["layout"]["pos_in_scrolling_layout"]
-        boots = json.loads(desktop.as_account(f"cat {arranged}"))["boots"]
+        boots = json.loads(desktop.as_account(f"cat {ARRANGED}"))["boots"]
         held: dict[str, Any] = boots[boot]["01a1face-test"]
         # Its screen is kept by what it is as well as its connector, as
         # niri's config names one, since a dock or a boot can move it to
@@ -1408,13 +1405,22 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
         assert not last or held == sits, held
         return held == sits
 
-    # Places are kept once the windows and workspaces have been still a
-    # moment, and the last subtest's windows closing can number the
-    # workspaces again just after this one was first kept, which put it a
-    # workspace out in four of the net's runs on 14 and 15 Nov; so it's
-    # read until the place kept is where niri has it now.
-    desktop_session.retry(kept_where_it_sits, timeout=dt.timedelta(seconds=15))
-    screen = found["screen"]
+    desktop_session.retry(kept, timeout=dt.timedelta(seconds=15))
+    return found["screen"]
+
+
+def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
+    """Where each session sits is kept, and Reopen Them All puts each back there, in order."""
+    machine = desktop.machine
+    # A session's workspace, column and tile are kept by its own id for
+    # this boot, once its windows have been still a moment.
+    desktop.pi_session()
+    arranged = ARRANGED
+    machine.wait_until_succeeds(
+        desktop.in_session(f"grep -q 01a1face-test {arranged}"), timeout=dt.timedelta(seconds=30)
+    )
+    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
+    screen = kept_where_it_sits(desktop, boot)
     # The last boot's three, listed out of order: two on the first
     # workspace, west then east, and one on the second, kept on this
     # screen when it was on another connector.
