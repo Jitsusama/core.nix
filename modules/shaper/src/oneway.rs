@@ -449,6 +449,7 @@ impl Way {
     }
 
     /// How it tells a queue and finds its line.
+    #[cfg(test)]
     pub fn tuning(&self) -> Tuning {
         self.tuning
     }
@@ -456,6 +457,11 @@ impl Way {
     /// Tell a queue and find the line as `tuning` says, within its bounds.
     pub fn tune(&mut self, tuning: Tuning) {
         let tuning = tuning.bounded();
+        // The shaper tunes it each second, by the same trial or by none,
+        // which leaves it as it was.
+        if tuning == self.tuning {
+            return;
+        }
         // A hold lowered comes down at once, as a probe that met a queue
         // does; one raised is climbed to gently, as after a cut.
         if let Some(plateau) = self.plateau
@@ -2091,7 +2097,10 @@ mod tests {
     fn a_trial_s_later_queue_leaves_a_delay_under_it_uncut() {
         let mut today = Controller::new(None, None);
         let cut = run(&mut today, 0.0, 1.5, queued_up(18.0, 10_000.0));
-        assert!(cut.up.is_some(), "today's 15 ms cuts it, so this shows nothing");
+        assert!(
+            cut.up.is_some(),
+            "today's 15 ms cuts it, so this shows nothing"
+        );
         let mut trial = Controller::new(None, None);
         trial.up.tune(Tuning {
             late_ms: 22.0,
@@ -2138,7 +2147,32 @@ mod tests {
         let plateau = c.up.plateau.expect("a plateau");
         let held = flow_queued(&mut c, 10.0, 71.0, |_| 12_000.0);
         let most = held.iter().filter_map(|&(_, limit)| limit).max();
-        assert!(near(most, plateau * 1.05), "probed at {most:?} over {plateau}");
+        assert!(
+            near(most, plateau * 1.05),
+            "probed at {most:?} over {plateau}"
+        );
+    }
+
+    // The shaper tunes the upload each second, trial or none. A cut for a
+    // queue only the VPN meets holds the rate at no less than half what
+    // the stay reached, which may be over the hold of the plateau it
+    // lowered, and being tuned the same must leave it there.
+    #[test]
+    fn being_tuned_the_same_each_second_changes_nothing() {
+        let mut c = Controller::new(None, None);
+        c.up.plateau = Some(10_000.0);
+        c.up.rate = 11_000.0;
+        c.up.tune(Tuning::default());
+        assert_eq!(c.up.limit(), Some(11_000), "tuned the same");
+        c.up.tune(Tuning {
+            hold: 0.9,
+            ..Tuning::default()
+        });
+        assert_eq!(
+            c.up.limit(),
+            Some(9_000),
+            "a hold lowered comes down at once"
+        );
     }
 
     #[test]

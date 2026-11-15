@@ -87,6 +87,9 @@ struct Options {
     /// what the recorder writes in `record`, rather than the round trip's.
     one_way: bool,
     record: PathBuf,
+    /// Where a trial of how the upload finds its line may be written, by
+    /// an account that may stop the shaper anyway (src/live.rs).
+    trial: PathBuf,
 }
 
 /// Reads the flags `run`, `status` and `record` take, refusing any other
@@ -108,6 +111,7 @@ fn options(command: &str, args: &[String]) -> Result<Options, Failure> {
         vpns: Vec::new(),
         one_way: false,
         record: "/var/lib/shaper-record".into(),
+        trial: "/run/shaper-trial/upload.json".into(),
     };
     // A network of its own, a test's among them, names its own distant hosts.
     if let Ok(hosts) = std::env::var("SHAPER_HOSTS") {
@@ -128,6 +132,7 @@ fn options(command: &str, args: &[String]) -> Result<Options, Failure> {
             "--proc" => o.proc = value()?.into(),
             "--users" => o.users = value()?.into(),
             "--record" => o.record = value()?.into(),
+            "--trial" => o.trial = value()?.into(),
             "--controller" => match value()?.as_str() {
                 "one-way" => o.one_way = true,
                 "round-trip" => o.one_way = false,
@@ -669,6 +674,7 @@ fn run(options: &Options) -> Result<(), Failure> {
             reach = local(&shaped, &vpns.0);
             watch_real_time(&mut shaped, (now - began).as_secs_f64());
             if let Some(l) = live.as_mut() {
+                l.tune(live::trial(&options.trial));
                 tell_live(l, options, &mut shaped, &vpns.0, (&mut last_resent, now));
             }
         }

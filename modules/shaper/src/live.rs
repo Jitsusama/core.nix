@@ -6,7 +6,7 @@
 //! What each network's directions learned is kept, on disk too, so a
 //! network met again, after a restart or a rejoin, starts from it.
 
-use crate::oneway::{self, Learned, Ours};
+use crate::oneway::{self, Learned, Ours, Tuning};
 use crate::record::day_file;
 use crate::replay::{Controller as _, Rates, Reading, Sample, parse};
 use crate::vpndelay::Probe;
@@ -49,6 +49,21 @@ pub struct Heard {
     /// What the upload is held to, in kbit/s, and where it holds under.
     pub up_limit: Option<u64>,
     pub plateau: Option<f64>,
+    /// The trial the upload is tuned by, while one is on: what a
+    /// second's limit and delay are to be judged as.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trial: Option<Tuning>,
+}
+
+/// The trial written at `path`, held within its bounds: none while there
+/// is no file, and today's tuning for whatever it doesn't say. A file
+/// that can't be read as one is no trial, so a slip in writing it leaves
+/// the shaper as it was.
+pub fn trial(path: &Path) -> Option<Tuning> {
+    let text = fs::read_to_string(path).ok()?;
+    serde_json::from_str::<Tuning>(&text)
+        .ok()
+        .map(Tuning::bounded)
 }
 
 /// The name a recording gives a network it couldn't name, which is no one
@@ -76,6 +91,8 @@ pub struct Follow {
     /// When the shaper started, in ms since 1970: what was recorded before
     /// it is no stay of its own.
     from_ms: u64,
+    /// The trial the upload is tuned by, which outlasts a stay.
+    trial: Option<Tuning>,
 }
 
 impl Follow {
@@ -92,7 +109,15 @@ impl Follow {
             network: UNKNOWN.into(),
             known,
             from_ms: 0,
+            trial: None,
         }
+    }
+
+    /// Tunes the upload by a trial from now on, or by none, and in every
+    /// stay to come.
+    pub fn tune(&mut self, trial: Option<Tuning>) {
+        self.trial = trial.map(Tuning::bounded);
+        self.controller.up.tune(self.trial.unwrap_or_default());
     }
 
     /// What each network met learned, the stay's included.
@@ -131,6 +156,7 @@ impl Follow {
                 self.reading = Reading::new(network.clone());
                 let (up, down) = self.known.get(network).copied().unwrap_or_default();
                 self.controller = oneway::Controller::from_learned(up, down);
+                self.controller.up.tune(self.trial.unwrap_or_default());
                 self.network.clone_from(network);
                 self.rates = Rates::default();
                 return;
@@ -173,6 +199,7 @@ impl Follow {
             vpn_base_ms: self.controller.vpn_base(),
             up_limit: self.controller.up.limit(),
             plateau: self.controller.up.learned().plateau,
+            trial: self.trial,
         };
         Some((link, heard))
     }
@@ -252,6 +279,11 @@ impl Live {
     /// Takes whose a link's upload queue is now.
     pub fn see(&mut self, link: &str, ours: Ours) {
         self.follow.see(link, ours);
+    }
+
+    /// Tunes the upload by a trial, or by none.
+    pub fn tune(&mut self, trial: Option<Tuning>) {
+        self.follow.tune(trial);
     }
 
     /// The link the controller holds, and what it last heard of it.
@@ -486,6 +518,54 @@ mod tests {
             follow.controller.up.learned().plateau,
             "the plateau: {heard:?}"
         );
+    }
+
+    // A trial set before a stay begins tunes it too: the A/B it serves
+    // runs over roams and rejoins, and each begins a stay.
+    #[test]
+    fn a_trial_tunes_every_stay_until_it_ends() {
+        let trial = Tuning {
+            late_ms: 22.0,
+            ..Tuning::default()
+        };
+        let mut follow = waiting(Known::new());
+        follow.tune(Some(trial));
+        for line in &flow_queued(NOV3) {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        assert_eq!(follow.controller.up.tuning(), trial, "the stay's upload");
+        assert_eq!(
+            follow.controller.down.tuning(),
+            Tuning::default(),
+            "the download is no part of the trial"
+        );
+        let (_, heard) = follow.heard().expect("a second heard");
+        assert_eq!(heard.trial, Some(trial), "the trial isn't told: {heard:?}");
+        follow.tune(None);
+        assert_eq!(follow.controller.up.tuning(), Tuning::default(), "ended");
+        assert_eq!(follow.heard().expect("heard").1.trial, None);
+    }
+
+    #[test]
+    fn a_trial_is_read_from_what_its_file_says() {
+        let folder = std::env::temp_dir().join(format!("shaper-trial-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let path = folder.join("upload.json");
+        assert_eq!(trial(&path), None, "no file is no trial");
+        fs::write(&path, r#"{"late_ms": 22, "hold": 5}"#).expect("written");
+        assert_eq!(
+            trial(&path),
+            Some(Tuning {
+                late_ms: 22.0,
+                hold: 1.0,
+                ..Tuning::default()
+            }),
+            "what it says, within bounds, and today's for the rest"
+        );
+        fs::write(&path, "late_ms = 22").expect("written");
+        assert_eq!(trial(&path), None, "a file that isn't one is no trial");
+        let _ = fs::remove_dir_all(&folder);
     }
 
     // On 11 November a shaper started at 13:17 stepped through two hours
