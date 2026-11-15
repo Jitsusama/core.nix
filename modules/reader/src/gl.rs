@@ -89,6 +89,10 @@ pub struct Made<T> {
     pub tag: T,
     texture: Texture,
     fence: Fence,
+    /// Whether its first look finds the fence unsignalled whatever the GPU
+    /// did, as a busy GPU's would be: `READER_LATE_FENCE` sets it, so a
+    /// test sees the window wait for one and still show.
+    late: bool,
 }
 
 /// Where bands go to be made into textures off the frame's path. Let go,
@@ -206,6 +210,7 @@ fn make_all<T>(
     };
     unsafe { gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 4) };
     let warm = std::env::var_os("READER_WARM").is_some();
+    let late = std::env::var_os("READER_LATE_FENCE").is_some();
     for job in jobs {
         match unsafe { make(&gl, &job, warm) } {
             Ok((texture, fence)) => {
@@ -220,6 +225,7 @@ fn make_all<T>(
                         tag: job.tag,
                         texture,
                         fence,
+                        late,
                     })
                     .is_err()
                 {
@@ -451,6 +457,12 @@ impl Gl {
     /// Takes a texture the loader made once the GPU has it whole, or gives
     /// it back to wait for a later frame.
     pub fn adopt<T>(&self, made: Made<T>) -> Result<(T, Texture), Made<T>> {
+        if made.late {
+            return Err(Made {
+                late: false,
+                ..made
+            });
+        }
         let status = unsafe { self.gl.client_wait_sync(made.fence.0, 0, 0) };
         if status == glow::ALREADY_SIGNALED || status == glow::CONDITION_SATISFIED {
             unsafe { self.gl.delete_sync(made.fence.0) };

@@ -143,6 +143,8 @@ struct App {
     /// be filling: neither asked nor held, so nothing asks for them again.
     loading: HashSet<Key>,
     made: Vec<gl::Made<Loading>>,
+    /// Whether a timer will look at `made` again before the first frame.
+    looks_again: bool,
     /// Textures taken from the loader and not yet drawn, for the measure.
     fresh: HashSet<Key>,
     asked: HashSet<Key>,

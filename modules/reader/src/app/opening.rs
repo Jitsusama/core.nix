@@ -46,6 +46,7 @@ impl App {
             made_to: senders.made_to,
             loading: HashSet::new(),
             made: Vec::new(),
+            looks_again: false,
             fresh: HashSet::new(),
             asked: HashSet::new(),
             arrived: VecDeque::new(),
