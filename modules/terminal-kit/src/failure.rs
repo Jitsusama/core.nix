@@ -137,6 +137,10 @@ pub struct Failure {
     pub then: Option<String>,
     /// The causes under `why`, said only with `--verbose`.
     pub chain: Vec<String>,
+    /// The code of the program it ran as its stand-in, which it ends with
+    /// in place of its exit's (docs/commands.md, A stand-in passes
+    /// through).
+    pub passed: Option<u8>,
 }
 
 impl Failure {
@@ -148,7 +152,24 @@ impl Failure {
             why: None,
             then: None,
             chain: Vec::new(),
+            passed: None,
         }
+    }
+
+    /// A failure of the program a command ran as its stand-in, which ends
+    /// with that program's own code, saying what failed. Its exit stays
+    /// the table's `Failed`, so the table holds every exit; a code of 0
+    /// ends 1, as a failure never ends done.
+    pub fn passed(code: u8, what: impl Into<String>) -> Self {
+        Self {
+            passed: Some(code.max(1)),
+            ..Self::new(Exit::Failed, what)
+        }
+    }
+
+    /// The number the process ends with: the stand-in's, or its exit's.
+    pub fn code(&self) -> u8 {
+        self.passed.unwrap_or_else(|| self.exit.code())
     }
 
     /// The same, saying why.
@@ -213,7 +234,7 @@ impl Failure {
         let mut value = json!({
             "schema": "error/1",
             "kind": self.exit.kind(),
-            "exit": self.exit.code(),
+            "exit": self.code(),
             "what": self.what,
             "why": self.why,
             "try": self.then,
@@ -307,6 +328,26 @@ mod tests {
         assert_eq!(
             Failure::new(Exit::Failed, "lost").json(false)["why"],
             Value::Null
+        );
+    }
+
+    #[test]
+    fn a_stand_ins_failure_ends_with_its_own_code() {
+        let failure = Failure::passed(3, "the job failed");
+        assert_eq!(
+            (failure.exit, failure.code()),
+            (Exit::Failed, 3),
+            "a stand-in's 3 wasn't kept beside the table's failed"
+        );
+        assert_eq!(
+            failure.json(false)["exit"],
+            3,
+            "its JSON didn't give the stand-in's code"
+        );
+        assert_eq!(
+            Failure::passed(0, "the job failed").code(),
+            1,
+            "a stand-in's failure ended done"
         );
     }
 }

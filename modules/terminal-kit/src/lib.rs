@@ -169,6 +169,16 @@ pub struct Ending {
     pub exit: Exit,
     pub stdout: String,
     pub stderr: String,
+    /// The code of the program it ran as its stand-in, where it failed
+    /// with one (`Failure::passed`).
+    pub passed: Option<u8>,
+}
+
+impl Ending {
+    /// The number the process ends with.
+    pub fn code(&self) -> u8 {
+        self.passed.unwrap_or_else(|| self.exit.code())
+    }
 }
 
 /// Runs a command's body over a command line in an environment, catching
@@ -222,6 +232,7 @@ pub fn run_question(
             exit: Exit::Done,
             stdout,
             stderr: String::new(),
+            passed: None,
         };
     }
     if context.shared.version {
@@ -229,14 +240,15 @@ pub fn run_question(
             exit: Exit::Done,
             stdout: format!("{} {version}\n", help.name),
             stderr: String::new(),
+            passed: None,
         };
     }
     if let Some(walked) = walked {
         context.args = walked.words;
     }
     match caught(|| body(&context)) {
-        Ok(true) => ended(&context, Exit::Done, "done", String::new()),
-        Ok(false) => ended(&context, Exit::Failed, "no", String::new()),
+        Ok(true) => ended(&context, (Exit::Done, None), "done", String::new()),
+        Ok(false) => ended(&context, (Exit::Failed, None), "no", String::new()),
         Err(failure) => failed(&context, environment, &failure),
     }
 }
@@ -270,24 +282,32 @@ fn failed(context: &Context, environment: &Environment, failure: &Failure) -> En
             environment,
         )
     };
-    ended(context, failure.exit, "failed", said)
+    ended(context, (failure.exit, failure.passed), "failed", said)
 }
 
-/// How a run ends, with a stream's `end` line under `jsonl`.
-fn ended(context: &Context, exit: Exit, outcome: &str, stderr: String) -> Ending {
+/// How a run ends, with its exit and any stand-in's code, and a stream's
+/// `end` line under `jsonl`.
+fn ended(
+    context: &Context,
+    (exit, passed): (Exit, Option<u8>),
+    outcome: &str,
+    stderr: String,
+) -> Ending {
+    let ending = Ending {
+        exit,
+        stdout: String::new(),
+        stderr,
+        passed,
+    };
     let stdout = if context.shared.format == Format::Jsonl {
         format!(
             "{}\n",
-            json!({"type": "end", "outcome": outcome, "exit": exit.code()})
+            json!({"type": "end", "outcome": outcome, "exit": ending.code()})
         )
     } else {
         String::new()
     };
-    Ending {
-        exit,
-        stdout,
-        stderr,
-    }
+    Ending { stdout, ..ending }
 }
 
 /// A failure's text as the journal reads an error, where stderr is the
@@ -313,6 +333,7 @@ fn unread(environment: &Environment, failure: &Failure) -> Ending {
     );
     Ending {
         exit: failure.exit,
+        passed: failure.passed,
         stdout: String::new(),
         stderr: for_the_journal(
             failure.text(&pen, Room::of_stderr(environment), false),
@@ -432,7 +453,7 @@ fn ends(ending: &Ending) -> ExitCode {
     // pipe's reader stops early.
     let _ = io::stdout().lock().write_all(ending.stdout.as_bytes());
     let _ = io::stderr().lock().write_all(ending.stderr.as_bytes());
-    ending.exit.into()
+    ExitCode::from(ending.code())
 }
 
 #[cfg(test)]
@@ -488,6 +509,29 @@ mod tests {
         });
         let value: Value = serde_json::from_str(&ending.stderr).expect("the error is JSON");
         assert_eq!(value["kind"], "not-found");
+    }
+
+    #[test]
+    fn a_stand_ins_failure_ends_with_its_code_saying_only_its_line() {
+        let ending = ran("go", |_| Err(Failure::passed(3, "the job failed")));
+        assert_eq!(
+            (ending.exit, ending.code()),
+            (Exit::Failed, 3),
+            "the stand-in's 3 didn't pass through"
+        );
+        assert_eq!(
+            (ending.stdout.as_str(), ending.stderr.as_str()),
+            ("", "\u{2715} the job failed\n"),
+            "it said more than its line"
+        );
+        let streamed = ran("go --format jsonl", |_| {
+            Err(Failure::passed(3, "the job failed"))
+        });
+        let end: Value = serde_json::from_str(&streamed.stdout).expect("the end line is JSON");
+        assert_eq!(
+            end["exit"], 3,
+            "the end line didn't give the stand-in's code"
+        );
     }
 
     #[test]
