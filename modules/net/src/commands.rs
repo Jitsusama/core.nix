@@ -10,11 +10,50 @@ pub fn help() -> Help {
         "net",
         "the home network: every device, what it does, and how they link",
     )
-    .example("net daemon", "keep the home network's record for the views");
-    [daemon()]
+    .example(
+        "net",
+        "whether each source answers, and what the devices do",
+    )
+    .example(
+        "net devices",
+        "every device, what it does and where it's reached",
+    )
+    .example(
+        "net devices Study",
+        "one device in full, from each of its sources",
+    )
+    .example("net --json", "the whole record, as net.network/1");
+    [devices(), daemon()]
         .into_iter()
         .fold(root, Help::subcommand)
         .exit(Exit::Failed, "the daemon stopped")
+        .exit(
+            Exit::Unavailable,
+            "there's no record of the home network yet",
+        )
+        .exit(Exit::Config, "XDG_RUNTIME_DIR isn't set")
+}
+
+/// Every device, and one by its name: a collection answering to its
+/// singular too, as eero's are.
+fn devices() -> Help {
+    Help::new("devices", "every device, or one in full")
+        .alias("device")
+        .argument("<name>", "a device's name, in any case, or its id")
+        .example(
+            "net devices",
+            "each device as a line: its roles, address and model",
+        )
+        .example(
+            "net devices Study",
+            "the study's eero: its fields, ports, radios and links",
+        )
+        .example("net devices Modem --json", "the same as net.device/1")
+        .exit(Exit::NotFound, "no device goes by that name")
+        .exit(
+            Exit::Unavailable,
+            "there's no record of the home network yet",
+        )
         .exit(Exit::Config, "XDG_RUNTIME_DIR isn't set")
 }
 
