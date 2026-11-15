@@ -1772,6 +1772,18 @@ Floating {
         // pulls contentY back inside its bounds, which would leave the view
         // resting at the page's top rather than viewTop until the next key.
         contentHeight: drawer.viewTop + drawer.viewEnd + drawer.tall
+        // A Flickable sets its own contentY as it fixes its bounds, which
+        // leaves the binding's value behind until shownFrom next moves: za
+        // opening the fold left it at the page's top, the view drawn its
+        // rest's height lower than its cut, and the last bit kept whole
+        // across the foot. It's bound again once it's done.
+        onContentYChanged: {
+            if (Math.abs(contentY - drawer.shownFrom) <= 0.5)
+                return;
+            Qt.callLater(() => {
+                view.contentY = Qt.binding(() => drawer.shownFrom);
+            });
+        }
 
         Item {
             id: column
