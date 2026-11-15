@@ -222,13 +222,7 @@ fn is_path_char(c: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn file(path: &str, text: &str) -> File {
-        File {
-            path: path.to_owned(),
-            text: text.to_owned(),
-        }
-    }
+    use crate::measure::file;
 
     fn dead(files: &[File]) -> Vec<String> {
         let paths: Vec<String> = files.iter().map(|file| file.path.clone()).collect();

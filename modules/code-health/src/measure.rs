@@ -14,6 +14,15 @@ pub struct File {
     pub text: String,
 }
 
+/// A file at `path` holding `text`, for the tests of every measure.
+#[cfg(test)]
+pub fn file(path: &str, text: &str) -> File {
+    File {
+        path: path.to_owned(),
+        text: text.to_owned(),
+    }
+}
+
 /// Past this many lines a code file is long, and needs to say why.
 pub const LONG: usize = 800;
 /// Past this many entries a folder is crowded, and needs to say why.
@@ -387,13 +396,6 @@ fn figure(count: usize) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn file(path: &str, text: &str) -> File {
-        File {
-            path: path.to_owned(),
-            text: text.to_owned(),
-        }
-    }
 
     fn lines(count: usize, each: &str) -> String {
         let lines: Vec<String> = (0..count).map(|n| format!("{each} {n}\n")).collect();

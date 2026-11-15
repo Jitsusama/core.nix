@@ -399,13 +399,7 @@ fn clippy_allowed(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn file(path: &str, text: &str) -> File {
-        File {
-            path: path.to_owned(),
-            text: text.to_owned(),
-        }
-    }
+    use crate::measure::file;
 
     fn off(path: &str, text: &str) -> Vec<String> {
         turned_off(&[file(path, text)])
