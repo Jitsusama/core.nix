@@ -36,6 +36,13 @@ public:
     // collector's (Joel's slowest keys waited on it, 2026-11-12).
     Q_INVOKABLE double collected() const;
 
+    // What jemalloc, which Quickshell allocates through, holds outside the
+    // heap, in megabytes: `used`, what's allocated and not yet freed;
+    // `resident`, its pages in memory; and `kept`, the pages it was handed
+    // back and keeps for a while before giving them to the kernel. Empty
+    // where the process doesn't allocate through jemalloc.
+    Q_INVOKABLE QVariantMap allocator() const;
+
     // Lets the heap take this many megabytes of new chunks before a miss
     // in its free lists starts the collector, and its strings as many
     // more outside it, until the next collection ends. Asked after the

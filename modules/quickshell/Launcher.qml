@@ -10405,7 +10405,9 @@ Scope {
     // which of the two grows. Of what's held, the resident pages with
     // nothing in them are said too, which is what giving free pages back
     // could save. Weighing walks the heap's chunks, and how long it took
-    // is said too.
+    // is said too. What jemalloc holds outside the heap comes last, in use,
+    // resident, and freed but kept, since only the shell can read it and
+    // its memory outside the heap is the larger part (heap.cpp).
     property bool collectDue: false
     // How many megabytes the heap may grow by after the closing's
     // collection before a miss in its free lists starts the collector
@@ -10428,6 +10430,7 @@ Scope {
         Heap.leaveRoom(openingRoom);
         const collected = KeyTimes.now();
         const weight = Heap.weigh();
+        const allocator = Heap.allocator();
         const took = Math.round(collected - began);
         const weighing = Math.round(KeyTimes.now() - collected);
         const live = Math.round(weight.live);
@@ -10437,7 +10440,11 @@ Scope {
         console.info(
             `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
             + ` held, ${free} MB of it in free pages, ${outside} MB outside, weighed in`
-            + ` ${weighing} ms`);
+            + ` ${weighing} ms`
+            + (allocator.used === undefined ? ""
+                : `; jemalloc ${Math.round(allocator.used)} MB in use of`
+                + ` ${Math.round(allocator.resident)} MB resident,`
+                + ` ${Math.round(allocator.kept)} MB freed and kept`));
     }
 
     // The rows the card shows, by what each is, what each says at its

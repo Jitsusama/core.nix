@@ -28,11 +28,14 @@ target_compile_options(heap PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries(heap PRIVATE Qt6::Qml Qt6::QmlPrivate)
 
 # What it says of a heap that keeps and lets go, run as the module is built
-# (heap_test.cpp), and never installed.
+# (heap_test.cpp), and never installed. It allocates through jemalloc, as
+# Quickshell does, so what the module says of jemalloc is tested there; the
+# plugin itself finds jemalloc in whatever process loads it.
 enable_testing()
+find_library(JEMALLOC jemalloc REQUIRED)
 qt_add_executable(heap_test heap_test.cpp heap.h heap.cpp)
 target_compile_options(heap_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
-target_link_libraries(heap_test PRIVATE Qt6::Qml Qt6::QmlPrivate)
+target_link_libraries(heap_test PRIVATE Qt6::Qml Qt6::QmlPrivate ${JEMALLOC})
 add_test(NAME heap_test COMMAND heap_test)
 
 install(TARGETS heap LIBRARY DESTINATION ${QML_INSTALL_DIR}/Heap)
