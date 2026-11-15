@@ -92,6 +92,26 @@ let
           max-free = cfg.disk * 1024 * 1024 * 5 / 12;
         };
       })
+      # vzvm's NAT is macOS's Internet Sharing, whose DNS proxy has
+      # mDNSResponder answer on the Mac's port 53 while the guest runs. A
+      # VPN's own resolver can then not bind there: on 15 November the work
+      # Mac's dropped every 5 s for hours. So vzvm is patched to put a guest
+      # on a NAT of its own without the proxy (macOS 26 and newer), and the
+      # guest asks public resolvers itself, never one DHCP names. Only a
+      # changed guest, like the clock, so one given nothing stays cached.
+      (lib.mkIf changed {
+        # The network it asks for is in macOS 26's SDK, not nixpkgs' default.
+        virtualisation.vz.package = pkgs.vzvm.overrideAttrs (old: {
+          patches = (old.patches or [ ]) ++ [ ./vzvm-without-dns-proxy.patch ];
+          buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.apple-sdk_26 ];
+        });
+        virtualisation.vz.extraConfig.dnsProxy = false;
+        networking.nameservers = [
+          "1.1.1.1"
+          "1.0.0.1"
+        ];
+        networking.dhcpcd.extraConfig = "nooption domain_name_servers";
+      })
       (lib.mkIf (cfg.features != [ ]) {
         # Added to what the guest's Nix already offers, so it builds a piece
         # asking for one rather than refuse it.

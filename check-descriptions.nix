@@ -1296,6 +1296,10 @@
     a Mac's Linux builder offers benchmark and big-parallel and any feature it's given, on the Mac's
     line and in the guest's Nix, and with none given offers only its own
   '';
+  linux-builder-leaves-the-macs-port-53-alone = ''
+    a changed Linux builder guest's network serves it no DNS from the Mac, through a vzvm patched
+    to leave the NAT's DNS proxy out, and the guest asks resolvers of its own
+  '';
   linux-builder-keeps-a-changed-guests-time = ''
     a Mac's Linux VM given keys or features steps its clock with chrony at any time, past a second,
     in place of timesyncd, and one given nothing keeps the cached guest's clock
