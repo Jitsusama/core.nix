@@ -83,17 +83,14 @@ PHASE = 20
 # decide is judged: how long the compositor and the shell were ready to run and waited for a
 # processor, which the guest's kernel counts in each one's cpu.pressure. Waking an idle
 # processor waits on the builder too, so they wait with the load frozen as well, 20 to 38 ms a
-# key on 5 November. Under load a key may cost them twice that, and WAITED ms more: weighed as
-# a workstation weighs them they waited 50 and 60 ms a key against 35 and 38, and weighed 1,
-# 78 against 20.
-WAITED = 10
-# A builder with nothing else to run wakes the guest's idle processors at once, so the frozen
-# turns wait as little as 3.9 ms a key, and twice that leaves the load less than a processor's
-# share: on 9 November #2724, which touched nothing the launcher runs, failed three times at
-# 21.8 to 26.1 ms against 3.9 to 6.9 frozen, where main passed at 22.8 to 41.8 against 7.8 to
-# 20.8. The frozen wait is taken as at least WAITED_FREE_LEAST ms, which still fails the
-# desktop weighed 1, 78 ms against 20.
-WAITED_FREE_LEAST = 10
+# key on 5 November. The load adds to that wait rather than multiplying it, so under load a key
+# may wait WAITED ms more than frozen. Weighed as a workstation weighs them they waited 15 and
+# 22 ms more (50 and 60 against 35 and 38), and in the net's 48 runs from 12 to 15 November 20
+# to 37.5 ms more, a median 26.8, whether the frozen wait was 17 ms or 31. Weighed 1 they waited
+# 58 ms more, 78 against 20. Twice the frozen wait and 10 ms more failed 5 of those 48 runs with
+# the weights as they should be, four where the frozen wait came in at 17 to 20 ms; and it failed
+# #2724 on 9 November at 21.8 to 26.1 against 3.9 to 6.9, 18 to 19 ms more.
+WAITED = 45
 SLOWER_MOST = 2
 MIDDLE_MORE = 50
 TAIL = 0.95
@@ -448,7 +445,7 @@ class Timing:
             f"load frozen; "
             f"as written, {middle:.0f} ms against {middle_free:.0f}"
         )
-        assert wait <= SLOWER_MOST * max(wait_free, WAITED_FREE_LEAST) + WAITED, (
+        assert wait <= wait_free + WAITED, (
             f"under load the compositor and the shell waited {wait:.1f} ms a key for a processor "
             f"in the middle turn, against {wait_free:.1f} ms with the load frozen"
         )
