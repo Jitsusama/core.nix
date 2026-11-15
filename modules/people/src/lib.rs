@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde_json::{Value, json};
 
+pub mod between;
 pub mod drawer;
 pub mod held;
 pub mod listing;
@@ -504,6 +505,7 @@ impl Book {
     pub fn take(&mut self, source: &str, heard: Heard) -> Option<String> {
         match heard {
             Heard::Person { address, entry } => {
+                let entry = between::ready(entry);
                 self.stand(source, Standing::Answering);
                 let key = key_of(source, &address, id_of(&entry).as_deref());
                 self.answered
