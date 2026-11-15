@@ -458,7 +458,23 @@ function holdsOn(route, t) {
 }
 
 // Where a way has it `t` ms in (MarginCatWays.js's frame), and a move as
-// far ahead as it was told of late.
+// far ahead as it was told of late; one walked as one screen
+// (MarginCatStacked.js) where niri's slide has the ground it's on.
 function frame(route, t) {
-    return Ways.frame(route, t + (route.ahead ?? 0));
+    const at = Ways.frame(route, t + (route.ahead ?? 0));
+    const off = view(route, t);
+    return off === 0 ? at : Object.assign(at, { y: at.y + off });
+}
+
+// How far down the screen niri's slide still has a move's ground `t` ms
+// in, in pixels, where it's walked as one screen: the workspace it left
+// as far as the slide hasn't taken it, and so the one it goes to, which
+// its way is laid over. None once the slide's done, or for any other way.
+function view(route, t) {
+    const stacked = route.stacked;
+    if (!stacked) {
+        return 0;
+    }
+    const slid = MarginCat.slid(t + (route.ahead ?? 0), stacked.spring);
+    return slid >= 1 - stacked.spring.epsilon ? 0 : stacked.lift * (1 - slid);
 }
