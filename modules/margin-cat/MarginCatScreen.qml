@@ -317,6 +317,8 @@ PanelWindow {
             spring: Theme.motion.spring,
             // The window it stands on gone, until it sits again.
             closed: standsOn() !== null && Niri.windows[standsOn()] === undefined,
+            // Gone too where the window over it has grown over it first.
+            on: standsOn(),
             ahead: MarginCat.behind(frameMs, "resize"),
             frame: frameMs,
             marks: marksLit

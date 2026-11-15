@@ -700,6 +700,39 @@ QtObject {
             [climbedOut.some(grownFace), dropBeats.includes("climbs"), glides(dropsOut),
                 smooth(seen(dropsOut)), ends(dropsOut)], [false, true, false, true, [532, 7]]);
 
+        // niri says the window over it grew before it says its own closed,
+        // so for a moment its row is still there, under the grown window
+        // (a nested niri, 2026-11-14): it falls at once all the same.
+        const overlapped = ided.map(tile => tile.id !== 2 ? tile
+            : Object.assign({}, tile, { height: 768 }));
+        const fallsFirst = Paths.walk({ x: 532, y: 307 }, { x: 532, y: 7 }, among({
+            hurried: true, on: 3, cols: Paths.columns(overlapped, 0),
+            before: Paths.columns(ided, 0), ahead: 72, frame: 1000 / 60 }));
+        expect("its row still listed under the window grown over it, it falls at once all the same",
+            [fallsFirst.beats[0].name, fallsFirst.beats[0].to.y,
+                fallsFirst.beats.some(beat => beat.name === "shoved"), ends(fallsFirst)],
+            ["rides", 792, false, [532, 7]]);
+        // Or it says its own closed first, the window over it not grown yet,
+        // so nothing is where it sat: it rides down on niri's spring all the
+        // same, ahead of the edge to come, never falling by weight under it.
+        const closedFirst = Paths.walk({ x: 532, y: 307 }, { x: 532, y: 7 }, among({
+            hurried: true, closed: true, on: 3,
+            cols: Paths.columns(ided.filter(tile => tile.id !== 3), 0),
+            before: Paths.columns(ided, 0), ahead: 72, frame: 1000 / 60 }));
+        const firstBeats = closedFirst.beats.map(beat => beat.name);
+        expect("its row closed before the window over it grows, it rides down ahead all the same",
+            [firstBeats[0], closedFirst.beats[0].to?.y, firstBeats.includes("rides")
+                ? posed(closedFirst, "rides").map(one => one.pose) : firstBeats,
+                ends(closedFirst)], ["rides", 792, ["falling"], [532, 7]]);
+        const opened = ided.concat([{ id: 9, left: 432, top: 500, width: 400, height: 284,
+            column: 1 }]);
+        const staysOn = Paths.walk({ x: 532, y: 307 }, { x: 532, y: 7 }, among({
+            hurried: true, on: 3, cols: Paths.columns(opened, 0),
+            before: Paths.columns(ided, 0) }));
+        expect("a window just opened over its row a moment, before niri shrinks it, it stays on",
+            staysOn.beats.filter(beat => beat.kind === "falls" || beat.kind === "rides")
+                .map(beat => beat.name), []);
+
         expect("with nothing on the new workspace it only holds",
             Paths.moves(seat(100), seat(100), world({ way: 1, now: [] })).beats
                 .map(beat => beat.name), ["rides"]);

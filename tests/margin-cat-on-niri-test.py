@@ -79,6 +79,8 @@ POLL = 0.05
 JUDGING_LOOKS = 2
 # The longest a wait for the cat to sit and be judged may last, for a cat that never sits.
 SETTLES_BY = 90.0
+# How far, in logical pixels, the cat's feet may be from a window's top for it to sit flush.
+FLUSH = 0.5
 # How far each channel may be from the cat's hue for a pixel to be called near it, when
 # looking for a cat drawn somewhere other than where it said.
 NEAR = 24
@@ -842,6 +844,9 @@ def test_a_row_closed_under_it_has_it_fall_at_once(shell: Shell) -> None:
     since = shell.mark()
     shell.as_account("niri msg action consume-or-expel-window-left")
 
+    # Sat flush on the lower row's top, so the move into the column has settled and the
+    # first walk after the close is the close's (a loaded builder, 2026-11-14: a ride
+    # of the move's last pixel came first).
     def in_the_lower_row(said: str) -> bool:
         at = placed(said)
         column = json.loads(said.split(" over ", 1)[1])
@@ -851,6 +856,7 @@ def test_a_row_closed_under_it_has_it_fall_at_once(shell: Shell) -> None:
             and at.get("window") == closed["id"]
             and column is not None
             and column["top"] > at["size"] * 4
+            and abs(at["y"] + at["size"] + at["air"] - column["top"]) < FLUSH
         )
 
     heard(shell, in_the_lower_row, since)

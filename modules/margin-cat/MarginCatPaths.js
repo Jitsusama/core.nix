@@ -319,7 +319,32 @@ function walk(from, to, at) {
     if (there(from, to, at)) {
         return null;
     }
-    return Ways.timed(onward(Ways.begun(at, from), to, at));
+    const now = closing(at);
+    return Ways.timed(onward(Ways.begun(now, from), to, now));
+}
+
+// `at` with the row it stands on (`at.on`) taken out of its `cols` and
+// `closed` said, where a window of its column that was there `before`
+// has grown over it: niri says the window over a closing one grew
+// before it says that one closed (a nested niri, 2026-11-14). A window
+// just opened may overlap it a moment too, and it stays for that.
+function closing(at) {
+    const column = (at.cols ?? []).find(one => one.rows.some(each => each.id === at.on));
+    const row = column?.rows.find(one => one.id === at.on);
+    const overlaps = (one, other) => one.top < other.bottom - 0.5
+        && other.top < one.bottom - 0.5;
+    const was = id => (at.before ?? []).reduce((all, one) => all.concat(one.rows), [])
+        .find(one => one.id === id);
+    const over = column?.rows.some(one => one !== row && one.id !== undefined
+        && overlaps(one, row) && was(one.id) !== undefined && !overlaps(was(one.id), row));
+    if (at.on === undefined || at.on === null || !over) {
+        return at;
+    }
+    const rows = column.rows.filter(one => one !== row);
+    const left = Object.assign({}, column, { rows, top: Math.min(...rows.map(one => one.top)),
+        bottom: Math.max(...rows.map(one => one.bottom)) });
+    return Object.assign({}, at, { closed: true,
+        cols: at.cols.map(one => one === column ? left : one) });
 }
 
 // Whether `from` is `to`, to the screen's pixel.

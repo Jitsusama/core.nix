@@ -206,12 +206,15 @@ function rides(way, cols, at) {
 // 2026-11-14 17:24: "it seems to hang out in the middle then walk
 // across, that is not believable"). True where it fell.
 function drops(way, cols, at) {
-    const inWindow = at.closed && at.spring && way.legs.length === 0
-        ? within(way, cols, at) : null;
-    if (inWindow === null || inWindow.row.top > way.y) {
+    if (!at.closed || !at.spring || way.legs.length !== 0) {
         return false;
     }
-    const lands = under({ x: way.x, y: inWindow.row.bottom + at.air }, cols, at);
+    const inWindow = within(way, cols, at);
+    const bottom = inWindow === null ? closedUnder(way, at) : inWindow.row.bottom;
+    if (bottom === null || (inWindow !== null && inWindow.row.top > way.y)) {
+        return false;
+    }
+    const lands = under({ x: way.x, y: bottom + at.air }, cols, at);
     const spring = Object.assign({}, at.spring, { slowdown: at.slowdown ?? 1 });
     const ms = MarginCat.slides(spring);
     const ahead = Math.min(at.ahead ?? 0, ms - 1);
@@ -221,6 +224,23 @@ function drops(way, cols, at) {
     Ways.holds(way, "lands", MarginCat.LANDS);
     Ways.holds(way, "shakes", SHAKES);
     return true;
+}
+
+// Where the row it stood on (`at.on`) reached down to, as it was
+// `before`, when a window over it in its column is still to grow down
+// over where it sat: niri can say the row closed before it lays the
+// column out again (a nested niri, 2026-11-14). Null otherwise.
+function closedUnder(way, at) {
+    for (const column of at.before ?? []) {
+        const r = column.rows.findIndex(one => one.id !== undefined && one.id === at.on);
+        const row = column.rows[r];
+        const on = row !== undefined && way.x < column.right && way.x + at.wide > column.left
+            && Math.abs(Routes.stands(row.top, at) - way.y) <= at.cell;
+        if (on && r > 0) {
+            return row.bottom;
+        }
+    }
+    return null;
 }
 
 // From wherever it is on a way, onto something that holds it on
