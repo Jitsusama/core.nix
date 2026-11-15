@@ -2758,6 +2758,10 @@
     a pixel mark's ink is laid in runs along its rows, each cell a whole number of the screen's
     pixels at 1, 1.5 and 2, and the drawing moved by less than one to start on a screen pixel
   '';
+  the-cat-keeps-joels-words = ''
+    every design Joel stated for the margin cat, dated, is held by a phrase one of its cases says
+    outside a comment, or owed since a date, and the owed ones are listed
+  '';
   the-click-strength-finds-the-intensity = ''
     the click strength's setter finds a haptic pad's intensity, the XPS 14's among them, and writes
     only it, only when it differs
