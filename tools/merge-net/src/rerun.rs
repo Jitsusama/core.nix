@@ -78,7 +78,13 @@ pub fn unit(folder: &Path) -> String {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default()
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     format!("merge-net-rerun-{name}.service")
 }
@@ -126,7 +132,10 @@ pub fn slice_of(cgroup: &str) -> Option<&str> {
         .lines()
         .find_map(|line| line.strip_prefix("0::"))?
         .split('/')
-        .rfind(|part| part.ends_with(".slice") && !part.starts_with("user"))
+        .rfind(|part| {
+            Path::new(part).extension().is_some_and(|kind| kind == "slice")
+                && !part.starts_with("user")
+        })
 }
 
 /// Where the run at `commit` writes its words.
@@ -170,11 +179,16 @@ pub fn offer(folder: &Path, commit: &str, gates: &[crate::turn::Gate]) -> Option
     let unit = unit(folder);
     let shown = systemctl(&["show", &unit, "--property=Description,ActiveState,MainPID"]);
     let field = |name: &str| {
-        shown.lines().find_map(|line| line.strip_prefix(name)?.strip_prefix('='))
+        shown
+            .lines()
+            .find_map(|line| line.strip_prefix(name)?.strip_prefix('='))
     };
-    let active = field("ActiveState") == Some("active") || field("ActiveState") == Some("activating");
+    let active =
+        field("ActiveState") == Some("active") || field("ActiveState") == Some("activating");
     let ours = field("Description").and_then(running_at).filter(|_| active);
-    let main_pid: u32 = field("MainPID").and_then(|pid| pid.parse().ok()).unwrap_or(0);
+    let main_pid: u32 = field("MainPID")
+        .and_then(|pid| pid.parse().ok())
+        .unwrap_or(0);
     let head = git_in(folder, &["rev-parse", "HEAD"])?;
     let dirty = git_in(folder, &["status", "--porcelain", "--untracked-files=no"])?;
     let theirs = gates
@@ -359,7 +373,11 @@ mod tests {
             .iter()
             .find_map(|argument| argument.strip_prefix("--description="))
             .and_then(running_at);
-        assert_eq!(described, Some("c1"), "the unit didn't say the commit it runs at");
+        assert_eq!(
+            described,
+            Some("c1"),
+            "the unit didn't say the commit it runs at"
+        );
     }
 
     #[test]

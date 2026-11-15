@@ -299,7 +299,9 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
 /// `ready` started for it in this tree, or run it, where it was left to
 /// its author (`rerun.rs`).
 fn run_again(commit: &str) -> String {
-    let gates = turn::folder().map(|folder| turn::gates(&folder)).unwrap_or_default();
+    let gates = turn::folder()
+        .map(|folder| turn::gates(&folder))
+        .unwrap_or_default();
     env::current_dir()
         .ok()
         .and_then(|here| rerun::offer(&here, commit, &gates))
