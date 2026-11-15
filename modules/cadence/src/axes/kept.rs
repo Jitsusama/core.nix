@@ -22,8 +22,9 @@ pub type Dated = BTreeMap<String, BTreeMap<String, f64>>;
 /// from the ledger's text `ledger`; none read where there's no ledger. A
 /// fix is a figure finding the day closed, its kind none, last found in
 /// the four weeks; musts and holes close by their owners' word, not by a
-/// figure, so they aren't fixes here. It came back when a later line
-/// carries its key, since the day opens a new entry for a closed key.
+/// figure, so they aren't fixes here. A fix that came back is one the day
+/// reopened, its line counting how often; one written before the day
+/// reopened lines came back when a later line carries its key.
 #[must_use]
 pub fn came_back(ledger: &str, dated: &Dated, now: i64) -> Reading {
     let entries: Vec<Entry> = ledger
@@ -33,11 +34,13 @@ pub fn came_back(ledger: &str, dated: &Dated, now: i64) -> Reading {
     let fixes: Vec<(usize, &Entry)> = entries
         .iter()
         .enumerate()
-        .filter(|(_, e)| !e.open && e.kind.is_none() && e.last_to > now - WATCHED)
+        .filter(|(_, e)| {
+            (!e.open || e.reopened > 0) && e.kind.is_none() && e.last_to > now - WATCHED
+        })
         .collect();
     let back: Vec<&Entry> = fixes
         .iter()
-        .filter(|(at, fix)| entries[at + 1..].iter().any(|e| e.key == fix.key))
+        .filter(|(at, fix)| fix.reopened > 0 || entries[at + 1..].iter().any(|e| e.key == fix.key))
         .map(|(_, fix)| *fix)
         .collect();
     let detail = if fixes.is_empty() {
@@ -141,6 +144,28 @@ mod tests {
                  median time in the launcher, key to frame, 66 ms then, 39 ms now"
             ),
             "it says how many held, names what came back, and what one that held moved"
+        );
+    }
+
+    #[test]
+    fn a_fix_its_line_reopened_came_back() {
+        let mut slipped: serde_json::Value =
+            serde_json::from_str(&entry("slipped", NOW - DAY, true, None)).expect("an entry");
+        slipped["reopened"] = 1.into();
+        let ledger = [
+            entry(DRAWER, NOW - 3 * DAY, false, None),
+            slipped.to_string(),
+        ]
+        .join("\n");
+        let reading = came_back(&ledger, &dated(), NOW);
+        assert_eq!(reading.figure(), Some(1.0), "the reopened fix came back");
+        assert_eq!(
+            reading.detail.as_deref(),
+            Some(
+                "kept down 1 of 2 · came back: slipped rose · H6EDLC · held: a row's details' \
+                 median time in the launcher, key to frame, 66 ms then, 39 ms now"
+            ),
+            "a reopened line is a fix, and one that didn't hold"
         );
     }
 
