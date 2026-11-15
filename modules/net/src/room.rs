@@ -37,6 +37,12 @@ const GIGABIT: u32 = 1000;
 const LOST_MANY: u64 = 100;
 const LOST_TIMES: u64 = 10;
 
+/// A device using this share of the internet's speed one way, or more,
+/// fills it: every other device shares what's left, so a call beside a
+/// backup feels the backup. eero's own measure of the line is a sample
+/// too, so a share just under the whole is the line full.
+const FILLS_PCT: f64 = 80.0;
+
 /// Fills in each device's path and the network's concerns, replacing any
 /// worked out before, so the same record gives the same answer.
 pub fn work_out(network: &mut Network) {
@@ -225,6 +231,7 @@ fn concerns(network: &Network) -> Vec<Concern> {
     }
     concerns.extend(lost(network));
     if let Some(internet) = &network.internet {
+        concerns.extend(fills(network, internet));
         concerns.extend(ceiling(network, internet, "down", |path| {
             path.down.as_ref()
         }));
@@ -313,6 +320,42 @@ fn lost(network: &Network) -> Option<Concern> {
              modem started, against at most {others} on any other{after}"
         ),
     })
+}
+
+/// Each device using most of the internet's speed one way, as eero counts
+/// it now.
+fn fills(network: &Network, internet: &Internet) -> Vec<Concern> {
+    let mut concerns = Vec::new();
+    for device in &network.devices {
+        let Some(speed) = &device.speed else {
+            continue;
+        };
+        let ways = [
+            ("down", speed.down_mbps, internet.down_mbps),
+            ("up", speed.up_mbps, internet.up_mbps),
+        ];
+        for (way, using, line) in ways {
+            let (Some(using), Some(line)) = (using, line) else {
+                continue;
+            };
+            let share = using / line * 100.0;
+            if line > 0.0 && share >= FILLS_PCT {
+                concerns.push(Concern {
+                    kind: ConcernKind::Fills,
+                    device: device.id.clone(),
+                    on: Some(way.into()),
+                    other: None,
+                    says: format!(
+                        "{} is using {share:.0}% of the internet's speed {way}: {:.1} of its \
+                         {line:.1} Mbit/s",
+                        device.name,
+                        tenths(using)
+                    ),
+                });
+            }
+        }
+    }
+    concerns
 }
 
 /// The internet as the narrowest hop one way, said once for every device
@@ -535,6 +578,35 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_device_using_most_of_the_internet_one_way_fills_it() {
+        // The record's computer moves 9.86 of the line's 11.93 up; down,
+        // 290 of 369.86 is 78%, under the line.
+        let mut network = network();
+        let computer = network
+            .devices
+            .iter_mut()
+            .find(|device| device.id == "mac:02:00:00:00:00:08")
+            .and_then(|device| device.speed.as_mut())
+            .expect("the record has the computer's speed");
+        computer.down_mbps = Some(290.0);
+        work_out(&mut network);
+        let fills: Vec<(Option<&str>, &str)> = network
+            .concerns
+            .iter()
+            .filter(|concern| concern.kind == ConcernKind::Fills)
+            .map(|concern| (concern.on.as_deref(), concern.says.as_str()))
+            .collect();
+        assert_eq!(
+            fills,
+            [(
+                Some("up"),
+                "unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s"
+            )],
+            "78% of the way down is under the line, and 83% up is over it"
+        );
+    }
+
+    #[test]
     fn each_radio_busy_half_the_time_or_more_is_a_concern() {
         let mut network = network();
         busy(&mut network, "eero:2003", 64);
@@ -706,7 +778,7 @@ pub(crate) mod tests {
         assert_eq!(
             ceilings,
             [
-                "The internet is the narrowest point down for 6 of the 17 devices on the eeros: \
+                "The internet is the narrowest point down for 7 of the 18 devices on the eeros: \
                  369.9 Mbit/s, as eero last measured it",
                 "The internet is the narrowest point up for every device on the eeros: 11.9 \
                  Mbit/s, as eero last measured it",

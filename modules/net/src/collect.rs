@@ -1,15 +1,14 @@
 //! One record of the home network from what each source said: the modem,
 //! the switch, then eero's devices and links, in that order, so a reader
-//! always finds the same device in the same place, each receiver's and
-//! printer's own figures on eero's device for it; then where it runs out
-//! of room
-//! (src/room.rs).
+//! always finds the same device in the same place, each receiver's,
+//! printer's and Apple TV's own figures on eero's device for it; then
+//! where it runs out of room (src/room.rs).
 
 use serde_json::Value;
 
 use crate::model::{Device, LinkState, Medium, Network, SCHEMA};
 use crate::room;
-use crate::sources::{eero, hp, modem, sony, switch};
+use crate::sources::{airplay, eero, hp, modem, sony, switch};
 
 /// What each source said in one round of reads.
 pub struct Said {
@@ -20,6 +19,8 @@ pub struct Said {
     pub receivers: Vec<(String, Result<sony::Answers, String>)>,
     /// What each printer eero lists answered, by its hardware address.
     pub printers: Vec<(String, Result<hp::Answers, String>)>,
+    /// What each Apple TV eero lists answered, by its hardware address.
+    pub apple_tvs: Vec<(String, Result<airplay::Answer, String>)>,
 }
 
 pub fn network(said: Said, now: u64) -> Network {
@@ -33,6 +34,10 @@ pub fn network(said: Said, now: u64) -> Network {
     let (printer_source, printers) = hp::read(said.printers, now);
     for found in printers {
         hear_the_printer(&mut eero.devices, found);
+    }
+    let (apple_tv_source, apple_tvs) = airplay::read(said.apple_tvs, now);
+    for found in apple_tvs {
+        hear_the_apple_tv(&mut eero.devices, found);
     }
     if let Some(switch) = &switch {
         // eero lists the switch as a wired client by the same hardware
@@ -48,6 +53,7 @@ pub fn network(said: Said, now: u64) -> Network {
             .into_iter()
             .chain(receiver_source)
             .chain(printer_source)
+            .chain(apple_tv_source)
             .collect(),
         devices: modem
             .into_iter()
@@ -93,6 +99,19 @@ fn hear_the_printer(devices: &mut [Device], found: hp::Found) {
     device.detail.insert(hp::NAME.into(), found.detail);
 }
 
+/// Puts what an Apple TV said on eero's device for it: it stays a client,
+/// since no role of the glossary's names a box that plays to a screen,
+/// but its model and build are its own, and its answer sits beside eero's.
+fn hear_the_apple_tv(devices: &mut [Device], found: airplay::Found) {
+    let id = format!("mac:{}", found.mac);
+    let Some(device) = devices.iter_mut().find(|device| device.id == id) else {
+        return;
+    };
+    device.model = found.model.or(device.model.take());
+    device.firmware = found.firmware.or(device.firmware.take());
+    device.detail.insert(airplay::NAME.into(), found.detail);
+}
+
 /// Gives eero's cable to the switch the switch's end: when one port alone
 /// is linked, the cable must come in on it, since the switch reaches
 /// nothing else; with more, the pages don't say which, so it's left unsaid.
@@ -136,6 +155,7 @@ mod tests {
         if let Some(Value::Array(devices)) = eero.get_mut("devices") {
             devices.push(sony::tests::listing());
             devices.push(hp::tests::listing());
+            devices.push(airplay::tests::listing());
         }
         let pages = modem::PAGES
             .iter()
@@ -171,6 +191,7 @@ mod tests {
             }),
             receivers: vec![(sony::tests::MAC.into(), Ok(sony::tests::answers()))],
             printers: vec![(hp::tests::MAC.into(), Ok(hp::tests::answers()))],
+            apple_tvs: vec![(airplay::tests::MAC.into(), Ok(airplay::tests::answer()))],
         }
     }
 
@@ -391,6 +412,42 @@ mod tests {
                 .iter()
                 .any(|source| source.name == hp::NAME && source.state == SourceState::Answering),
             "the printers aren't said as a source"
+        );
+    }
+
+    #[test]
+    fn the_apple_tv_is_eeros_device_for_it_heard_with_its_model() {
+        let network = network(contract(), NOW);
+        let named: Vec<_> = network
+            .devices
+            .iter()
+            .filter(|device| device.id == "mac:02:00:00:00:00:80")
+            .collect();
+        let [apple_tv] = named.as_slice() else {
+            panic!("the Apple TV should be one device: {named:?}");
+        };
+        assert_eq!(apple_tv.roles, [Role::Client], "it isn't a client");
+        assert_eq!(apple_tv.name, "Apple TV", "eero's name for it was lost");
+        assert_eq!(
+            apple_tv.model.as_deref(),
+            Some("Apple TV 4K (1st generation)"),
+            "its model wasn't heard"
+        );
+        assert_eq!(
+            apple_tv.firmware.as_deref(),
+            Some("23L781"),
+            "its build wasn't heard"
+        );
+        assert!(
+            apple_tv.detail.contains_key("eero") && apple_tv.detail.contains_key("airplay"),
+            "a source's words were lost: {:?}",
+            apple_tv.detail.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            network.sources.iter().any(
+                |source| source.name == airplay::NAME && source.state == SourceState::Answering
+            ),
+            "the Apple TVs aren't said as a source"
         );
     }
 

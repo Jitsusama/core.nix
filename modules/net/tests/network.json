@@ -41,6 +41,14 @@
       "read_at": 1794702033,
       "since": null,
       "reason": null
+    },
+    {
+      "name": "airplay",
+      "what": "the Apple TVs eero lists, read and never changed",
+      "state": "answering",
+      "read_at": 1794702033,
+      "since": null,
+      "reason": null
     }
   ],
   "devices": [
@@ -2505,6 +2513,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.45",
@@ -2631,6 +2647,14 @@
           "room_mbps": 11.93,
           "unmeasured": 1
         }
+      },
+      "speed": {
+        "down_mbps": 0.1453838,
+        "up_mbps": 0.0976319,
+        "busiest_down_mbps": 0.2616908,
+        "busiest_down_at": 1794090883,
+        "busiest_up_mbps": 0.1757374,
+        "busiest_up_at": 1794090883
       },
       "detail": {
         "eero": {
@@ -2759,6 +2783,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.31",
@@ -2878,6 +2910,14 @@
           "room_mbps": 11.93,
           "unmeasured": 1
         }
+      },
+      "speed": {
+        "down_mbps": 1.2238973,
+        "up_mbps": 0.0239604,
+        "busiest_down_mbps": 2.2030151,
+        "busiest_down_at": 1794090883,
+        "busiest_up_mbps": 0.0431287,
+        "busiest_up_at": 1794090883
       },
       "detail": {
         "eero": {
@@ -3007,6 +3047,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0022339,
+        "up_mbps": 0.0033066,
+        "busiest_down_mbps": 0.004021,
+        "busiest_down_at": 1794090883,
+        "busiest_up_mbps": 0.0059519,
+        "busiest_up_at": 1794090883
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.25",
@@ -3134,6 +3182,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.112",
@@ -3254,6 +3310,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.33",
@@ -3373,6 +3437,14 @@
           "room_mbps": 11.93,
           "unmeasured": 1
         }
+      },
+      "speed": {
+        "down_mbps": 11.452299,
+        "up_mbps": 9.8644349,
+        "busiest_down_mbps": 20.6141382,
+        "busiest_down_at": 1794090883,
+        "busiest_up_mbps": 17.7559828,
+        "busiest_up_at": 1794090883
       },
       "detail": {
         "eero": {
@@ -3501,6 +3573,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0001323,
+        "up_mbps": 0.0001064,
+        "busiest_down_mbps": 0.0002381,
+        "busiest_down_at": 1794090883,
+        "busiest_up_mbps": 0.0001915,
+        "busiest_up_at": 1794090883
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.30",
@@ -3627,6 +3707,14 @@
           "room_mbps": 11.93,
           "unmeasured": 1
         }
+      },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
       },
       "detail": {
         "eero": {
@@ -3755,6 +3843,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.28",
@@ -3875,6 +3971,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.40",
@@ -3994,6 +4098,14 @@
           "room_mbps": 11.93,
           "unmeasured": 1
         }
+      },
+      "speed": {
+        "down_mbps": 0.1296713,
+        "up_mbps": 0.0145117,
+        "busiest_down_mbps": 0.1556056,
+        "busiest_down_at": 1794091483,
+        "busiest_up_mbps": 0.017414,
+        "busiest_up_at": 1794091483
       },
       "detail": {
         "eero": {
@@ -4120,6 +4232,14 @@
           "unmeasured": 0
         }
       },
+      "speed": {
+        "down_mbps": 0.0000982,
+        "up_mbps": 0.0001537,
+        "busiest_down_mbps": 0.0001768,
+        "busiest_down_at": 1794090883,
+        "busiest_up_mbps": 0.0002767,
+        "busiest_up_at": 1794090883
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.99",
@@ -4239,6 +4359,14 @@
           "room_mbps": 11.93,
           "unmeasured": 0
         }
+      },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
       },
       "detail": {
         "eero": {
@@ -6393,6 +6521,107 @@
           }
         }
       }
+    },
+    {
+      "id": "mac:02:00:00:00:00:80",
+      "name": "Apple TV",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Apple, Inc.",
+      "model": "Apple TV 4K (1st generation)",
+      "hardware": null,
+      "firmware": "23L781",
+      "serial": null,
+      "macs": ["02:00:00:00:00:80"],
+      "addresses": ["10.0.0.80"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "5 GHz",
+          "band": "5 GHz",
+          "channel": 149,
+          "width_mhz": null,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "path": {
+        "through": ["eero:2001", "eero:2003", "modem"],
+        "down": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 369.86,
+          "unmeasured": 2
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 2
+        }
+      },
+      "detail": {
+        "airplay": {
+          "canRecordScreenStream": false,
+          "deviceID": "02:00:00:00:00:80",
+          "features": 4330070159449382869,
+          "featuresEx": "1d9/St5/Fzw4oY58",
+          "forwardFrameUserData": false,
+          "hasUDPMirroringSupport": true,
+          "initialVolume": 0.0,
+          "keepAliveSendStatsAsBody": true,
+          "macAddress": "02:00:00:00:00:80",
+          "model": "AppleTV6,2",
+          "name": "Den",
+          "osBuildVersion": "23L781",
+          "playbackCapabilities": {
+            "supportsAirPlayVideoWithSharePlay": true,
+            "supportsFPSSecureStop": true,
+            "supportsIntegratedTimeline": false,
+            "supportsInterstitials": true,
+            "supportsOfflineHLS": false,
+            "supportsStopAtEndOfQueue": false,
+            "supportsUIForAudioOnlyContent": true,
+            "supportsV2ArtworkMetadata": true
+          },
+          "protocolVersion": "1.1",
+          "receiverHDRCapability": "4k30",
+          "screenDemoMode": false,
+          "sourceVersion": "960.13.1",
+          "statusFlags": 1604,
+          "supportedAudioFormatsExtended": {
+            "bufferStream": [
+              49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 60, 61, 62, 19, 23, 21, 22, 63, 65, 66, 70,
+              71, 72, 73, 33, 34, 35, 74, 75, 39, 40
+            ]
+          },
+          "supportedFormats": {
+            "audioStream": 21235712,
+            "bufferStream": -577021992844656640,
+            "lowLatencyAudioStream": 0,
+            "screenStream": 21235712
+          },
+          "volumeControlType": 4,
+          "vv": 1
+        },
+        "eero": {
+          "address": "10.0.0.80",
+          "addresses": ["10.0.0.80"],
+          "band": "5 GHz",
+          "channel": 149,
+          "ethernet": false,
+          "hostname": "Den",
+          "kind": "media_streamer",
+          "mac": "02:00:00:00:00:80",
+          "make": "Apple",
+          "manufacturer": "Apple, Inc.",
+          "name": "Apple TV",
+          "nickname": null,
+          "node": "2001"
+        }
+      }
     }
   ],
   "links": [
@@ -6695,6 +6924,21 @@
       "channel": 6,
       "signal_dbm": null,
       "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:80",
+        "radio": "5 GHz"
+      },
+      "b": {
+        "device": "eero:2001",
+        "radio": "5 GHz high"
+      },
+      "medium": "wifi",
+      "speed_mbps": null,
+      "channel": 149,
+      "signal_dbm": null,
+      "source": "eero"
     }
   ],
   "internet": {
@@ -6719,9 +6963,15 @@
       "says": "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair since the modem started, against at most 18 on any other; if that keeps climbing, Example ISP can check the line"
     },
     {
+      "kind": "fills",
+      "device": "mac:02:00:00:00:00:08",
+      "on": "up",
+      "says": "unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s"
+    },
+    {
       "kind": "ceiling",
       "device": "modem",
-      "says": "The internet is the narrowest point down for 6 of the 17 devices on the eeros: 369.9 Mbit/s, as eero last measured it"
+      "says": "The internet is the narrowest point down for 7 of the 18 devices on the eeros: 369.9 Mbit/s, as eero last measured it"
     },
     {
       "kind": "ceiling",

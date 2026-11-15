@@ -12,7 +12,7 @@ pub fn help() -> Help {
     )
     .example(
         "net",
-        "whether each source answers, and what the devices do",
+        "whether each source answers, what the devices do, and what's worth a look",
     )
     .example(
         "net devices",

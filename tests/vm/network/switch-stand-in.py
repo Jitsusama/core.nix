@@ -22,6 +22,9 @@ SIGN_IN = b"<html><form action=logon.cgi></form></html>"
 def main() -> None:
     """Serve the switch's pages on port 80 until stopped."""
     contract, password, counted = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
+    # The switch's own address on the test's network, as a real switch has
+    # one, rather than every address the machine holds.
+    address = sys.argv[4]
     signed_in: set[str] = set()
     counted.write_text("0\n")
 
@@ -56,7 +59,7 @@ def main() -> None:
             self.end_headers()
             self.wfile.write(body)
 
-    ThreadingHTTPServer(("0.0.0.0", 80), Switch).serve_forever()  # noqa: S104 (the test's own network)
+    ThreadingHTTPServer((address, 80), Switch).serve_forever()
 
 
 if __name__ == "__main__":

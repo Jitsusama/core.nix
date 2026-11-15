@@ -31,7 +31,9 @@ def reader(machines: dict[str, BaseMachine]) -> BaseMachine:
     """Give the machine once its reader and the stand-in switch both run."""
     machines["switch"].start()
     machines["switch"].wait_for_unit("switch-stand-in.service")
-    machines["switch"].wait_for_open_port(80)
+    # The stand-in serves on the switch's own address, as a real switch
+    # does, which the test's hosts file names after the node.
+    machines["switch"].wait_for_open_port(80, "switch")
     reader = machines["machine"]
     reader.start()
     reader.wait_for_unit("net-switch.service")

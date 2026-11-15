@@ -31,3 +31,9 @@ golden copy is `../../eero/home-network.json`.
   `10.0.1.1`, `FE80::FF:FE00:70`), its hardware address
   (`020000000070`), its serial (`SERIAL00000070`), its UUID, its country
   and the ids of its firmware and cartridges (`0000`).
+- `airplay/`: an Apple TV 4K's answer to `http://<apple-tv>:7000/info`,
+  asked on 2026-11-15 without pairing, as `info.plist`, the binary
+  property list it sent, read and written again with its name, its
+  hardware address and device id (`Den`, `02:00:00:00:00:80`), the
+  address it saw the ask from (`10.0.0.41`) and its pairing keys (zeros
+  and stand-in UUIDs) replaced; every other field is as it answered.

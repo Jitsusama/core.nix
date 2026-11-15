@@ -15,9 +15,10 @@ access point, switch, receiver, printer or client (docs/glossary.md's Network
 words). One eero is one device with the router and access point roles,
 listed once. Each vendor is a source behind those roles: eero's record
 (the eero daemon's), the cable modem's status pages, the switch's web
-page, a Sony receiver's UPnP answers and an HP printer's status pages.
-No vendor's command reads another vendor's equipment, so the modem, the
-switch, the receiver and the printer are net's alone, and `eero` keeps only what's eero's.
+page, a Sony receiver's UPnP answers, an HP printer's status pages and
+an Apple TV's AirPlay answer. No vendor's command reads another vendor's
+equipment, so the modem, the switch, the receiver, the printer and the
+Apple TV are net's alone, and `eero` keeps only what's eero's.
 
 ## The Record
 
@@ -31,7 +32,9 @@ switch, the receiver and the printer are net's alone, and `eero` keeps only what
   out, and why.
 - `devices`: each device's generic fields, its ports and radios, a
   role's own block (a modem's channels and log, a receiver's volume and
-  what it's doing, a printer's ink and what it's doing), and `detail`, every
+  what it's doing, a printer's ink and what it's doing), a client's `speed`
+  each way as eero counts it, now and at its busiest in eero's last hour
+  with when, and `detail`, every
   field each source gives about it in the source's own words.
 - `links`: a cable or a radio link, port to port or radio to radio; the
   map is drawn from these.
@@ -45,8 +48,10 @@ switch, the receiver and the printer are net's alone, and `eero` keeps only what
   with no figure (eero gives Wi-Fi backhaul only as bars) is counted in
   `unmeasured`, never guessed. A concern is a radio busy 50% or more (the
   map's gold), a Wi-Fi link at -70 dBm or weaker, a cable under a gigabit,
-  the internet as a chokepoint, said once each way, or a modem channel that
-  lost 100 or more it couldn't repair and ten times any other's.
+  the internet as a chokepoint, said once each way, a modem channel that
+  lost 100 or more it couldn't repair and ten times any other's, or a
+  device using 80% or more of the internet's speed one way, which fills
+  it for every other.
 - What the day says, from net's own readings (`src/history.rs`): each
   radio's `busiest_pct` and `busiest_at`, and the modem's `lately_s` with
   each downstream channel's `lost_lately`, counted from the earliest
@@ -111,6 +116,17 @@ what net says of the day.
   firmware and serial, and every page stays whole as `detail.hp`.
   Printing, scanning, changing a setting or clearing an alert waits on
   Joel's yes, so none is asked.
+- An Apple TV: each device eero lists with Apple as its maker and
+  media streamer as its kind, at the address eero gives. It asks
+  `:7000/info` once, two seconds at most, following no redirect: what
+  the AirPlay receiver says of itself to anyone, as a binary property
+  list. `src/sources/airplay.rs` gives eero's device for it its model by
+  the name Apple sells it under (`AppleTV6,2` is an Apple TV 4K, 1st
+  generation) and its build as firmware; it stays a client, since no
+  role names a box that plays to a screen. The answer stays as
+  `detail.airplay`, but for the keys it pairs with and the address it
+  was asked from. What it's playing and its volume are said only to a
+  paired device, and pairing waits on Joel's yes, so none is asked.
 
 It listens on nothing and asks nothing outside the home network. Away
 from home the modem doesn't answer, and the record says so while eero's
@@ -144,7 +160,9 @@ of the record, the time, a pen and the room, so its tests set every
 width without a terminal; tables and facts come from the terminal kit.
 
 - `net`: how each source answers and how long ago, how many devices do
-  what, and the commands that go further.
+  what, each concern but the ceilings in net's words beside its kind
+  under Worth a Look, the ceilings under The Internet, since they're the
+  line's speed rather than a fault, and the commands that go further.
 - `net devices`: one line per device, its roles, address, time up and
   model; a narrow terminal drops the model, then the time, then the
   address.

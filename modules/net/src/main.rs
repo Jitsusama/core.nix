@@ -14,7 +14,7 @@
 //! shows is.
 //!
 //! ```text
-//! net                             whether each source answers, what the devices do
+//! net                             each source, the devices, and what's worth a look
 //! net devices [NAME]              every device, or one in full (views.rs)
 //! net daemon                      keep the home network's record
 //! net switch-reader ADDRESS       read the switch for the daemon (switch_reader.rs)
