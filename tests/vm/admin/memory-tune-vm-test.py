@@ -87,9 +87,14 @@ def test_an_administrator_turns_the_multi_gen_lru_off_without_a_password(
 
 
 def test_an_administrator_sets_swappiness_without_a_password(reverted: BaseMachine) -> None:
-    status, said = start(reverted, "someone", "memory-swappiness@60")
+    status, said = start(reverted, "someone", "memory-swappiness@100")
     assert status == 0, said
-    assert read(reverted, SWAPPINESS) == "60"
+    assert read(reverted, SWAPPINESS) == "100", "swappiness wasn't set"
+
+
+def test_the_machine_boots_swapping_at_60(reverted: BaseMachine) -> None:
+    swappiness = read(reverted, SWAPPINESS)
+    assert swappiness == "60", f"booted with swappiness at {swappiness}"
 
 
 def test_an_administrator_sets_swaps_read_ahead_without_a_password(reverted: BaseMachine) -> None:
