@@ -45,14 +45,22 @@ impl Teller {
     /// that's changed, or when nothing's been said yet, or again when a
     /// call has been on a minute since it was last said.
     fn tell(&mut self, on: bool, now: Instant) -> Option<bool> {
-        let _ = (on, now);
-        None
+        if let Some((said, at)) = self.said
+            && said == on
+            && (!on || now.duration_since(at) < AGAIN)
+        {
+            return None;
+        }
+        self.said = Some((on, now));
+        Some(on)
     }
 
     /// How long until a call still on is to be said again.
     fn due(&self, now: Instant) -> Option<Duration> {
-        let _ = now;
-        None
+        match self.said {
+            Some((true, at)) => Some(AGAIN.saturating_sub(now.duration_since(at))),
+            _ => None,
+        }
     }
 }
 
@@ -64,8 +72,27 @@ fn on(call: Call) -> bool {
 /// Tells wifid on its rows socket whether a call is on, and reads that it
 /// took it.
 fn tell(socket: &Path, on: bool) -> Result<(), String> {
-    let _ = (socket, on);
-    Err("unsaid".into())
+    let stream = UnixStream::connect(socket).map_err(|why| format!("{why}"))?;
+    stream
+        .set_read_timeout(Some(ANSWERED))
+        .and_then(|()| stream.set_write_timeout(Some(ANSWERED)))
+        .map_err(|why| format!("{why}"))?;
+    let act = json!({"id": 1, "ask": "act", "act": "calling", "on": on});
+    writeln!(&stream, "{act}").map_err(|why| format!("{why}"))?;
+    let mut line = String::new();
+    BufReader::new(&stream)
+        .read_line(&mut line)
+        .map_err(|why| format!("{why}"))?;
+    let answer: Value = serde_json::from_str(&line).map_err(|_| "an answer not JSON")?;
+    if answer["done"] == true {
+        return Ok(());
+    }
+    let error = &answer["error"];
+    Err(format!(
+        "{}: {}",
+        error["code"].as_str().unwrap_or("no code"),
+        error["message"].as_str().unwrap_or("no message")
+    ))
 }
 
 /// The sooner of two waits, either of which may be none.
@@ -111,8 +138,8 @@ fn main() -> ExitCode {
     let mut teller = Teller::default();
     loop {
         let now = Instant::now();
-        if let Some(on) = teller.tell(on(call), now)
-            && let Err(why) = tell(Path::new(&socket), on)
+        if let Some(said) = teller.tell(on(call), now)
+            && let Err(why) = tell(Path::new(&socket), said)
         {
             eprintln!("wifid-calls: couldn't tell wifid: {why}");
         }
