@@ -5,7 +5,7 @@
 
 use super::{Env, failed, read_config, said_path, wall};
 use crate::band::Band;
-use crate::daemon::{Explained, Guard, Places};
+use crate::daemon::{Explained, Guard, Places, Preview};
 use crate::units::{Size, Span, shown as size};
 use crate::words::span;
 use serde_json::{Value, json};
@@ -422,6 +422,48 @@ fn band_word(band: Band) -> Value {
     serde_json::to_value(band).unwrap_or(Value::Null)
 }
 
+/// One filesystem's preview as a person reads it: its line, then a table
+/// of what the pass would take, when it would take anything.
+fn previewed(preview: &Preview, context: &Context) -> Vec<String> {
+    // A table's first column never shortens, so a long path is shortened
+    // here, in its middle, as `keeps` does; into a pipe it's whole.
+    let path_room = context
+        .room
+        .cells()
+        .map(|cells| (cells / 2).max(layout::SHORTENED));
+    let rows: Vec<Vec<String>> = preview
+        .taken
+        .iter()
+        .map(|candidate| {
+            let path = candidate.path.display().to_string();
+            vec![
+                path_room.map_or_else(|| path.clone(), |room| layout::shortened(&path, room)),
+                candidate.class.kind().to_owned(),
+                size(candidate.size),
+                span(candidate.idle),
+            ]
+        })
+        .collect();
+    let mut block = vec![format!(
+        "{}: {}, {} free, target {}; the pass would end {}",
+        preview.path.display(),
+        band_word(preview.band).as_str().unwrap_or("?"),
+        size(preview.free),
+        size(preview.target),
+        preview.end,
+    )];
+    if !rows.is_empty() {
+        block.extend(layout::table_in(
+            &TAKEN,
+            &rows,
+            &context.out,
+            context.room,
+            &TAKEN_GIVES_WAY,
+        ));
+    }
+    block
+}
+
 pub(super) fn plan(
     env: &Env,
     config: Option<&Path>,
@@ -489,48 +531,9 @@ pub(super) fn plan(
         )
         .map_err(failed)?;
     }
-    // A table's first column never shortens, so a long path is shortened
-    // here, in its middle, as `keeps` does; into a pipe it's whole.
-    let path_room = context
-        .room
-        .cells()
-        .map(|cells| (cells / 2).max(layout::SHORTENED));
     let blocks: Vec<Vec<String>> = previews
         .iter()
-        .map(|preview| {
-            let rows: Vec<Vec<String>> = preview
-                .taken
-                .iter()
-                .map(|candidate| {
-                    let path = candidate.path.display().to_string();
-                    vec![
-                        path_room
-                            .map_or_else(|| path.clone(), |room| layout::shortened(&path, room)),
-                        candidate.class.kind().to_owned(),
-                        size(candidate.size),
-                        span(candidate.idle),
-                    ]
-                })
-                .collect();
-            let mut block = vec![format!(
-                "{}: {}, {} free, target {}; the pass would end {}",
-                preview.path.display(),
-                band_word(preview.band).as_str().unwrap_or("?"),
-                size(preview.free),
-                size(preview.target),
-                preview.end,
-            )];
-            if !rows.is_empty() {
-                block.extend(layout::table_in(
-                    &TAKEN,
-                    &rows,
-                    &context.out,
-                    context.room,
-                    &TAKEN_GIVES_WAY,
-                ));
-            }
-            block
-        })
+        .map(|preview| previewed(preview, context))
         .collect();
     out.write_all(layout::joined(blocks).as_bytes())
         .map_err(failed)?;
