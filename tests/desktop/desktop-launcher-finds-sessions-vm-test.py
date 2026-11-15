@@ -153,25 +153,27 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(
     # What's known of it is in its drawer, each fact beside its name, since a session alone
     # holds only acts, so it has no step of its own (Joel, 2026-11-11: no menu of acts alone).
     known = {
-        "Quest": r"QEST-20261022-TESTQA",
         # What its councils spent is a part of what it spent, so it shares the line (VKCF3Z,
         # 2b03e43c).
         "Spent Today": r"\$12\.50 \u00b7 councils \$4\.00",
-        "Working On": r"Tidy the tests",
     }
 
+    # What its quest is about is the drawer's prose under its facts (VKCF3Z, a2101591).
     def says_what_is_known(shown: Json) -> bool:
         facts = dict(zip(shown["drawer"]["facts"], shown["drawer"]["values"], strict=True))
-        return all(re.fullmatch(said, facts.get(name, "")) for name, said in known.items())
+        return shown["drawer"]["body"] == "Tidy the tests" and all(
+            re.fullmatch(said, facts.get(name, "")) for name, said in known.items()
+        )
 
     desktop.launcher_until(says_what_is_known)
     # Its acts are its drawer's, Return's first, and Close last (VKCF3Z, 3a742b67).
     acts = [act.removeprefix("\u21b5 ") for act in desktop.showing()["drawer"]["acts"]]
     assert acts[-1] == "Close", acts
     assert {"Go To", "Talk", "Pause", "Stop"} <= set(acts), acts
-    # The groups it hears are its wiring, so they're in the fold under z a, not the glance.
+    # The groups it hears are its wiring, so they're in the fold under z a, not the glance,
+    # and its quest is folded after them (VKCF3Z, 2b03e43c).
     nerd = desktop.showing()["drawer"]["nerd"]
-    assert "Hears" in nerd, nerd
+    assert nerd.index("Quest") > nerd.index("Hears"), nerd
     desktop.shoot("launcher-agent-facts")
     desktop.as_account(
         "rm $XDG_RUNTIME_DIR/spend-watch/collection.json $XDG_RUNTIME_DIR/jobs/queue.json"

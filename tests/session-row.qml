@@ -211,6 +211,16 @@ QtObject {
             + " Machine=skiff | try Stop twice | Change=core.nix#2140";
         if (landingSays !== landingWant)
             failures.push(`a landing's drawer: "${landingSays}", not "${landingWant}"`);
+        // A session's last landing is folded under z a, out of its glance
+        // (VKCF3Z, 2b03e43c), and still says when, worded as a fact's is.
+        const foldedNerd = SessionDrawer.shown({ facts: [], nerd: [
+            { label: "Session", value: "s-1" },
+            { label: "Last Landing", value: "Serve rows \u00b7 core.nix#1",
+                at: { at: 1544, as: "clock" } }] }, clock).nerd
+            .map(bit => `${bit.label}=${bit.value}${bit.at ? "+at" : ""}`).join("; ");
+        const foldedWant = "Session=s-1; Last Landing=Serve rows \u00b7 core.nix#1 \u00b7 @1544";
+        if (foldedNerd !== foldedWant)
+            failures.push(`the fold's times: "${foldedNerd}", not "${foldedWant}"`);
         // Its row's side is when it landed, its time today and its day
         // before.
         const landedSaid = {

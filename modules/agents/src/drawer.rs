@@ -1,17 +1,21 @@
 //! What a session's drawer says, made ready as the launcher's
 //! SessionDrawer.js once made it, so its first screen holds what matters:
-//! what it's doing, what it needs Joel for, what it landed last, what it
-//! spent and its figures, then its quest and machine, and what its quest
-//! is about last of all. The drawer shows only whole facts, so a long one
-//! ahead of the rest left the title and "13 more" alone on every session
-//! (Joel, 2026-11-07: "the agents side panel generally just shows its
-//! title. i have to ctrl-w h into it and then scroll a ton of lines
-//! before i see any more details").
+//! a glance of six facts at most, in VKCF3Z's order (2b03e43c), and the
+//! rest folded under z a. The drawer shows only whole facts, so a long
+//! one ahead of the rest left the title and "13 more" alone on every
+//! session (Joel, 2026-11-07: "the agents side panel generally just shows
+//! its title. i have to ctrl-w h into it and then scroll a ton of lines
+//! before i see any more details"), and fourteen of them made a glance
+//! no one could take in at once.
 //!
 //! It's a record of its own, `drawer:agents:<address>`, never part of a
 //! row, since its figures move every turn: the shell watches it by key
 //! only while it's shown. Its times go out as `{at, as}`, worded by the
 //! shell, so a drawer left open doesn't change each minute.
+//!
+//! Long because its cases are over half of it: each place in the glance
+//! and the fold is held to one, and every fact is made in one pass that
+//! splitting would leave two files reading the same session.
 
 use serde_json::{Value, json};
 
@@ -30,6 +34,50 @@ const DOT: &str = " \u{b7} ";
 pub fn key(address: &str) -> String {
     format!("drawer:agents:{address}")
 }
+
+/// Its glance, six places at most, each taking the first of its facts
+/// that says something, in VKCF3Z's order (2b03e43c, 2026-11-14): what
+/// it needs Joel for, else what it's doing, since a waiting session's
+/// step would only say so again; its last turn; what it spent, its
+/// councils and fleets on that line; how full its context is; then its
+/// sessions, for an orchestration, or its host where it isn't here. One
+/// with neither stops at four, nothing moving up. What its quest is
+/// about is the drawer's prose under them rather than a fact (VKCF3Z,
+/// 2026-11-14, a2101591): it runs to 47 to 282 letters in each of Joel's
+/// 202 drawers that day, which as the ruling's second fact wrapped past
+/// the first screen of a 288-pixel drawer, hiding every figure after it.
+const GLANCE: [&[&str]; 5] = [
+    &["wants", "step"],
+    &["last-turn"],
+    &["spent"],
+    &["context"],
+    &["under", "host"],
+];
+
+/// Its fold under z a, in order: its figures that move least and its
+/// wiring (VKCF3Z, 2b03e43c), then every fact its glance once held, so
+/// none is lost, what its quest is about last where what it stands for
+/// at the top is its prose. A step that gave way to what it needs Joel
+/// for is in neither.
+const FOLD: [&str; 14] = [
+    "model",
+    "turns",
+    "tokens",
+    "cache",
+    "session",
+    "rebuilt",
+    "hears",
+    "last-landing",
+    "budget",
+    "task",
+    "own",
+    "host",
+    "machine",
+    "works",
+];
+
+/// A fact by the id its name is said by, as the drawer gives it.
+type Told = (String, Value);
 
 /// What a drawer is made from beyond the session's own record, each as
 /// its source tells of it.
@@ -167,25 +215,45 @@ fn landed(presence: Option<&Value>) -> Option<(Vec<String>, Option<i64>)> {
 /// gives its position way whole: when it started goes first, then where
 /// it works, and its address never (VKCF3Z, 2026-11-07: "since 0…" tells
 /// nothing). How it stands is its row's, on the same line, so none is
-/// said again. Then its facts, each as a name and a value: those that
-/// matter first (`first`), its figures, then where it belongs (`last`)
-/// (VKCF3Z, 2026-11-07). Nothing it hasn't said is guessed, and no amount
-/// is said while the screen is shared.
+/// said again. Then its facts, each as a name and a value, its glance's
+/// (`GLANCE`) and the rest folded (`FOLD`). Nothing it hasn't said is
+/// guessed, and no amount is said while the screen is shared.
 pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known) -> Value {
     let presence = session.presence();
-    let named = |id: &str| words.names.word(id).to_owned();
     let (title, folder) = session.named();
     let usage = presence.and_then(|presence| presence.get("usage"));
-    let mut facts = first(session, orchestrates, words, known);
-    for figure in figures::figures(usage, known.today, &words.agents, &named) {
-        let mut said = json!({"label": figure.label, "value": figure.value});
+    let mut told = first(session, orchestrates, words, known);
+    for figure in figures::figures(usage, known.today, &words.agents, &|id| id.to_owned()) {
+        let mut said = json!({"label": words.names.word(&figure.label), "value": figure.value});
         if let Some(stroke) = figure.stroke {
             said["figure"] = json!({"shape": "stroke", "values": [stroke.value],
                 "warn": stroke.warn});
         }
-        facts.push(said);
+        told.push((figure.label, said));
     }
-    facts.extend(last(session, &title, words, known));
+    told.extend(last(session, &title, words, known));
+    told.extend(hears(session, words));
+    let facts: Vec<Value> = GLANCE
+        .iter()
+        .filter_map(|place| place.iter().find_map(|id| taken(&mut told, id)))
+        .collect();
+    // Its prose: what it stands for at the top, else what its quest is
+    // about, drawn whole, since z a opens the fold rather than reading on
+    // (VKCF3Z, e3bb38e5); what runs past the card is its more line's.
+    let stands_for = session.stands_for();
+    let prose = if stands_for.is_empty() {
+        taken(&mut told, "works")
+    } else {
+        None
+    };
+    let body = prose
+        .as_ref()
+        .map_or(stands_for, |about| text(Some(about), "/value"));
+    let nerd: Vec<Value> = FOLD
+        .iter()
+        .filter_map(|id| taken(&mut told, id))
+        .map(folded)
+        .collect();
     let address = session.address();
     let mut drawn = json!({
         "key": key(address),
@@ -194,21 +262,38 @@ pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known
             "title": title,
             "eyebrow": eyebrow(session, &folder),
             "facts": facts,
-            // What one standing at the top is for, so Joel needn't know it.
-            "body": session.stands_for()
+            "body": body
         }
     });
-    let nerd = nerd(session, words);
+    if prose.is_some() {
+        drawn["drawer"]["prose"] = json!(true);
+        drawn["drawer"]["whole"] = json!(true);
+    }
     if !nerd.is_empty() {
         drawn["drawer"]["nerd"] = Value::Array(nerd);
     }
     drawn
 }
 
+/// The fact `id` names, taken from those told, or none where none said it.
+fn taken(told: &mut Vec<Told>, id: &str) -> Option<Value> {
+    let at = told.iter().position(|(one, _)| one == id)?;
+    Some(told.remove(at).1)
+}
+
+/// A fact as the fold says it: its name, its value and when, since a
+/// folded bit draws nothing beside its value and runs as long as it is.
+fn folded(mut fact: Value) -> Value {
+    if let Some(fact) = fact.as_object_mut() {
+        fact.retain(|field, _| matches!(field.as_str(), "label" | "value" | "at"));
+    }
+    fact
+}
+
 /// Its wiring, folded under z a rather than in the glance (VKCF3Z,
 /// 2026-11-13): the groups it hears beside its own address, as the node
 /// says them.
-fn nerd(session: Session, words: &Words) -> Vec<Value> {
+fn hears(session: Session, words: &Words) -> Option<Told> {
     let hears: Vec<&str> = session
         .presence()
         .and_then(|presence| presence.get("groups"))
@@ -218,17 +303,18 @@ fn nerd(session: Session, words: &Words) -> Vec<Value> {
         .filter_map(Value::as_str)
         .collect();
     if hears.is_empty() {
-        return Vec::new();
+        return None;
     }
-    vec![json!({"label": words.names.word("hears"), "value": hears.join(", ")})]
+    let said = json!({"label": words.names.word("hears"), "value": hears.join(", ")});
+    Some(("hears".to_owned(), said))
 }
 
-/// What matters of it first: what it's doing, its step alone; what it
-/// needs Joel for, its want then its quest's to-dos; what it landed last,
-/// with when; what it's spent today (an orchestrator's whole
-/// orchestration, then its own and its sessions'), its own carrying its
-/// hours as Graph's spark; and the budget it drew on last.
-fn first(session: Session, orchestrates: bool, words: &Words, known: &Known) -> Vec<Value> {
+/// What it's doing, its step alone; what it needs Joel for, its want then
+/// its quest's to-dos; what it landed last, with when; what it's spent
+/// today (an orchestrator's whole orchestration, then its own and its
+/// sessions'), its own carrying its hours as Graph's spark; and the
+/// budget it drew on last.
+fn first(session: Session, orchestrates: bool, words: &Words, known: &Known) -> Vec<Told> {
     let presence = session.presence();
     let said = |path| text(presence, path);
     let id = said("/session");
@@ -303,13 +389,7 @@ fn first(session: Session, orchestrates: bool, words: &Words, known: &Known) -> 
         {
             said["at"] = json!({"at": at, "as": "clock"});
         }
-        if fact == "last-landing" {
-            said["valueItems"] = landed_items
-                .iter()
-                .map(|item| json!({"said": item, "whole": true}))
-                .collect();
-        }
-        said
+        (fact.to_owned(), said)
     })
     .collect()
 }
@@ -345,10 +425,11 @@ fn hours(spend: Option<&Value>, id: &str) -> Option<Value> {
     })
 }
 
-/// Where it belongs, after its figures: what rebuilding its context cost;
-/// its quest, how that stands said only where it isn't active; its
-/// machine; and what its quest is about, as words, since it runs long.
-fn last(session: Session, title: &str, words: &Words, known: &Known) -> Vec<Value> {
+/// Where it belongs: what rebuilding its context cost; its session by
+/// pi's id; its quest, how that stands said only where it isn't active;
+/// its machine, its host where that isn't here; and what its quest is
+/// about, as words, since it runs long.
+fn last(session: Session, title: &str, words: &Words, known: &Known) -> Vec<Told> {
     let presence = session.presence();
     let said = |path| text(presence, path);
     let stands = said("/questInfo/status");
@@ -369,18 +450,28 @@ fn last(session: Session, title: &str, words: &Words, known: &Known) -> Vec<Valu
             "/rebuilt",
         )
     };
-    let mut facts: Vec<Value> = [
+    let machine = if session.here() { "machine" } else { "host" };
+    let mut facts: Vec<Told> = [
         ("rebuilt", rebuilt),
+        ("session", said("/session")),
         ("task", task.as_str()),
-        ("machine", session.machine()),
+        (machine, session.machine()),
     ]
     .into_iter()
     .filter(|(_, value)| !value.is_empty())
-    .map(|(fact, value)| json!({"label": words.names.word(fact), "value": value}))
+    .map(|(fact, value)| {
+        // Where it isn't here its machine takes the glance's sixth place,
+        // still named Machine: Host is pi's host, said only on a session
+        // given back (VKCF3Z, 2026-11-14, b6631488).
+        let named = if fact == "host" { "machine" } else { fact };
+        let said = json!({"label": words.names.word(named), "value": value});
+        (fact.to_owned(), said)
+    })
     .collect();
     let summary = about(said("/worksOn"), &[title, said("/questInfo/title")]);
     if !summary.is_empty() {
-        facts.push(json!({"label": words.names.word("works"), "value": summary, "words": true}));
+        let said = json!({"label": words.names.word("works"), "value": summary, "words": true});
+        facts.push(("works".to_owned(), said));
     }
     facts
 }
@@ -434,13 +525,21 @@ mod tests {
             "presence": presence})
     }
 
-    /// Each fact as `label=value`, a figure's shape after a colon, a
-    /// time's form after an at, words marked so.
+    /// Each fact of its glance as `label=value`, a figure's shape after a
+    /// colon, a time's form after an at, words marked so.
     fn facts(drawn: &Value) -> String {
-        drawn["drawer"]["facts"]
-            .as_array()
-            .expect("facts")
-            .iter()
+        listed(&drawn["drawer"]["facts"])
+    }
+
+    /// Each bit folded under z a, as `facts` says a fact.
+    fn folded(drawn: &Value) -> String {
+        listed(&drawn["drawer"]["nerd"])
+    }
+
+    fn listed(list: &Value) -> String {
+        list.as_array()
+            .into_iter()
+            .flatten()
             .map(|fact| {
                 let mut said = format!(
                     "{}={}",
@@ -462,51 +561,115 @@ mod tests {
             .join("; ")
     }
 
-    #[test]
-    fn its_first_screen_holds_what_matters_in_order() {
-        let presence = json!({
+    /// A session with everything to say, as one working all day says it.
+    fn busy() -> Value {
+        json!({
             "addresses": ["8IDU4E"], "session": "s-1", "quest": "QEST-1",
             "worksOn": "A Quest: what it's for, at length",
             "stepDetail": {"kind": "tool", "name": "edit", "detail": "/src/core.nix/Drawer.qml"},
-            "wants": {"said": "which way?"},
             "questInfo": {"id": "QEST-1", "title": "A Quest", "status": "active"},
+            "groups": ["#desk"],
             "landings": [
                 {"what": "older", "ref": "core.nix#0", "at": "2026-11-10T20:00:00Z"},
                 {"what": "Serve rows", "ref": "core.nix#1", "at": "2026-11-10T20:44:00Z"}],
-            "usage": {"context": {"used": 84_000, "limit": 200_000}}
-        });
+            "usage": {
+                "day": "2026-11-10",
+                "gen_ai.request.model": "claude-opus-5-5",
+                "last": {"gen_ai.usage.output_tokens": 4100},
+                "today": {"gen_ai.usage.input_tokens": 786,
+                    "gen_ai.usage.output_tokens": 272_470,
+                    "gen_ai.usage.cache_read.input_tokens": 124_620_036,
+                    "gen_ai.usage.cache_creation.input_tokens": 1_194_960},
+                "context": {"used": 84_000, "limit": 200_000},
+                "turns": {"today": 359,
+                    "last": {"duration_ms": 38000, "first_token_ms": 900}}
+            }
+        })
+    }
+
+    /// Its glance holds six facts at most, in VKCF3Z's order (2b03e43c):
+    /// what it's doing, what it works on, its last turn, what it spent
+    /// with its councils on that line, how full its context is, then its
+    /// host where that isn't here. A session here stops at five, nothing
+    /// moving up. The rest is folded under z a, its wiring first, then
+    /// every other fact it had, so none is lost.
+    #[test]
+    fn its_glance_holds_six_facts_in_order_and_folds_the_rest() {
         let spend = json!({"sessions": {"s-1": "$4.20"},
+            "helpers": {"s-1": [{"on": "councils", "spent": "$4.00"}]},
             "sessionsToday": {"s-1": {"graph": {"shape": "spark", "values": [0, 1]},
                 "rebuilt": "$1.20"}}});
         let budgets = json!({"sessions": {"s-1": "proxy"}, "budgets": [
             {"name": "proxy", "label": "Your AI proxy token", "standing": "$24,349 of $40,000"}]});
+        let glance = "Doing=edit Drawer.qml; \
+                      Last Turn=38 s \u{b7} 4.1k out \u{b7} 0.9 s first token; \
+                      Spent Today=$4.20 \u{b7} councils $4.00:spark; Context=84k of 200k:stroke";
+        let fold = "Model=claude-opus-5-5; Turns Today=359; Tokens=126M in \u{b7} 272k out; \
+                    Cache=99.0% read; Session=s-1; Context Rebuilt=$1.20; Hears=#desk; \
+                    Last Landing=Serve rows \u{b7} core.nix#1@clock; \
+                    Budget=Your AI proxy token \u{b7} $24,349 of $40,000; Quest=QEST-1";
+        for (here, sixth, last) in [
+            (false, "; Machine=skiff", ""),
+            (true, "", "; Machine=skiff"),
+        ] {
+            let mut record = record(&busy());
+            record["here"] = json!(here);
+            let drawn = drawer(
+                Session(&record),
+                false,
+                &words(),
+                &known(Some(&spend), Some(&budgets)),
+            );
+            assert_eq!(facts(&drawn), format!("{glance}{sixth}"), "here: {here}");
+            assert_eq!(
+                drawn["drawer"]["body"], "what it's for, at length",
+                "its prose"
+            );
+            assert_eq!(drawn["drawer"]["prose"], json!(true), "set as prose");
+            assert_eq!(drawn["drawer"]["whole"], json!(true), "never cut");
+            assert_eq!(folded(&drawn), format!("{fold}{last}"), "here: {here}");
+            assert_eq!(
+                drawn["drawer"]["facts"][2]["figure"]["warn"],
+                json!(false),
+                "the spark never warns"
+            );
+            assert_eq!(drawn["key"], "drawer:agents:8IDU4E");
+            assert_eq!(drawn["kind"], "drawer");
+            assert_eq!(drawn["drawer"]["title"], "A Quest");
+        }
+    }
+
+    /// What it needs Joel for takes Doing's place rather than a seventh,
+    /// since a waiting session's step would only say so again (VKCF3Z,
+    /// 2026-11-14).
+    #[test]
+    fn what_it_needs_joel_for_takes_doings_place() {
+        let mut presence = busy();
+        presence["wants"] = json!({"said": "which way?"});
         let needs = |quest: &str| {
             assert_eq!(quest, "QEST-1", "asked for its own quest's needs");
             vec!["Sign In".to_owned()]
         };
         let known = Known {
             needs: &needs,
-            ..known(Some(&spend), Some(&budgets))
+            ..known(None, None)
         };
         let drawn = drawer(Session(&record(&presence)), false, &words(), &known);
-        assert_eq!(
-            facts(&drawn),
-            "Doing=edit Drawer.qml; Needs You For=which way? \u{b7} Sign In; \
-             Last Landing=Serve rows \u{b7} core.nix#1@clock; Spent Today=$4.20:spark; \
-             Budget=Your AI proxy token \u{b7} $24,349 of $40,000; Context=84k of 200k:stroke; \
-             Context Rebuilt=$1.20; Quest=QEST-1; Machine=skiff; \
-             Working On=what it's for, at length:words"
+        let facts = facts(&drawn);
+        assert!(
+            facts.starts_with("Needs You For=which way? \u{b7} Sign In; Last Turn="),
+            "{facts}"
         );
-        assert_eq!(drawn["key"], "drawer:agents:8IDU4E");
-        assert_eq!(drawn["kind"], "drawer");
-        assert_eq!(drawn["drawer"]["title"], "A Quest");
+        assert!(
+            !facts.contains("Doing") && !folded(&drawn).contains("Doing"),
+            "it said its step as well: {facts}"
+        );
     }
 
-    /// Its last landing breaks only between its title, its change and
-    /// when, never inside one (Y2YBTS, 2026-11-12: "i hate gross line
-    /// wraps"), each whole on its line, its value still all of it.
+    /// Its last landing is folded whole, its title, its change and when,
+    /// as the shell words it.
     #[test]
-    fn its_last_landing_is_said_as_its_title_its_change_and_when() {
+    fn its_last_landing_is_folded_with_when() {
         let presence = json!({"addresses": ["8IDU4E"], "session": "s-1", "landings": [
             {"what": "Serve rows", "ref": "core.nix#1", "at": "2026-11-10T20:44:00Z"}]});
         let drawn = drawer(
@@ -515,18 +678,17 @@ mod tests {
             &words(),
             &known(None, None),
         );
-        let landing = &drawn["drawer"]["facts"][0];
+        assert_eq!(facts(&drawn), "", "a landing in the glance");
         assert_eq!(
-            landing["valueItems"],
-            json!([{"said": "Serve rows", "whole": true},
-                {"said": "core.nix#1", "whole": true}]),
-            "its title and its change as items"
+            folded(&drawn),
+            "Session=s-1; Last Landing=Serve rows \u{b7} core.nix#1@clock; Machine=skiff"
         );
         assert_eq!(
-            landing["value"], "Serve rows \u{b7} core.nix#1",
-            "copied whole"
+            drawn["drawer"]["nerd"][1],
+            json!({"label": "Last Landing", "value": "Serve rows \u{b7} core.nix#1",
+                "at": {"at": 1_794_343_440_000_i64, "as": "clock"}}),
+            "a folded bit is its name, its value and when, nothing drawn beside it"
         );
-        assert_eq!(landing["at"]["as"], "clock", "when, for the shell to say");
     }
 
     #[test]
@@ -543,10 +705,19 @@ mod tests {
         );
         assert_eq!(
             facts(&drawn),
-            "Spent Today=$14.20 in all; Its Own=$3.10:spark; Its Sessions=$11.10; Machine=skiff"
+            "Spent Today=$14.20 in all; Its Sessions=$11.10"
         );
-        let graph = &drawn["drawer"]["facts"][1]["figure"];
-        assert_eq!(graph["warn"], json!(false), "the spark never warns");
+        assert_eq!(folded(&drawn), "Session=s-o; Its Own=$3.10; Machine=skiff");
+        // Elsewhere, its sessions keep the sixth place, and its host is
+        // folded where its machine was.
+        let mut away = record(&presence);
+        away["here"] = json!(false);
+        let drawn = drawer(Session(&away), true, &words(), &known(Some(&spend), None));
+        assert_eq!(
+            facts(&drawn),
+            "Spent Today=$14.20 in all; Its Sessions=$11.10"
+        );
+        assert_eq!(folded(&drawn), "Session=s-o; Its Own=$3.10; Machine=skiff");
     }
 
     #[test]
@@ -564,12 +735,12 @@ mod tests {
         );
         assert_eq!(
             facts(&drawn),
-            "Spent Today=$12.50 \u{b7} councils $4.00 \u{b7} fleets $1.10; Machine=skiff",
+            "Spent Today=$12.50 \u{b7} councils $4.00 \u{b7} fleets $1.10",
             "what its helpers spent is a part of its spend"
         );
         assert_eq!(
-            drawn["drawer"]["nerd"],
-            json!([{"label": "Hears", "value": "#desk, #quest/reef"}]),
+            folded(&drawn),
+            "Session=s-a; Hears=#desk, #quest/reef; Machine=skiff",
             "what it hears is its wiring, folded"
         );
     }
@@ -588,7 +759,8 @@ mod tests {
             ..known(Some(&spend), Some(&budgets))
         };
         let drawn = drawer(Session(&record(&presence)), true, &words(), &known);
-        assert_eq!(facts(&drawn), "Machine=skiff");
+        assert_eq!(facts(&drawn), "");
+        assert_eq!(folded(&drawn), "Session=s-o; Machine=skiff");
     }
 
     #[test]
@@ -601,7 +773,7 @@ mod tests {
             &words(),
             &known(None, None),
         );
-        assert_eq!(facts(&drawn), "Quest=QEST-1 \u{b7} paused; Machine=skiff");
+        assert_eq!(folded(&drawn), "Quest=QEST-1 \u{b7} paused; Machine=skiff");
     }
 
     #[test]
@@ -705,7 +877,7 @@ mod tests {
             &known(None, None),
         );
         assert_eq!(
-            facts(&drawn),
+            folded(&drawn),
             "Machine=skiff",
             "yesterday's turns are not today's"
         );

@@ -550,10 +550,16 @@ def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures
     # Found by typing, whom it's under leads, before what's its own.
     assert row["side"].endswith(" \u00b7 84% full \u00b7 listening"), row
     assert row["hue"] == "warning", row
-    # Its drawer gives its figures by gen_ai's names after what's known of it, how full
-    # its context is and its last turn first.
-    figures = ["Context", "Last Turn", "Model", "Turns Today", "Tokens", "Cache"]
-    shell.launcher_until(lambda shown: ", ".join(figures) in ", ".join(shown["drawer"]["facts"]))
+    # Its drawer's glance gives its last turn and how full its context is, the figures that
+    # move as it works, and folds the rest under z a by gen_ai's names (VKCF3Z, 2b03e43c).
+    moving = ["Last Turn", "Context"]
+    folded = ["Model", "Turns Today", "Tokens", "Cache"]
+    shell.launcher_until(
+        lambda shown: (
+            [fact for fact in shown["drawer"]["facts"] if fact in moving] == moving
+            and shown["drawer"]["nerd"][: len(folded)] == folded
+        )
+    )
     # Context alone draws a figure beside its value, Meter's stroke of how full.
     shell.launcher_until(lambda shown: drawn_figures(shown) == {"Context": "stroke"})
     # Once spend-watch says how its day went, its spend today carries its hours as a
@@ -565,7 +571,7 @@ def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures
         shell.launcher_until(
             lambda shown: (
                 drawn_figures(shown) == {"Context": "stroke", "Spent Today": "spark"}
-                and "Context Rebuilt" in shown["drawer"]["facts"]
+                and "Context Rebuilt" in shown["drawer"]["nerd"]
             )
         )
     finally:
@@ -573,50 +579,54 @@ def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures
 
 
 def shown_first(drawer: Json) -> list[str]:
-    """Give the facts a drawer's first screen shows, before any it says are more."""
-    said = str(drawer.get("moreSays") or "")
-    hidden = int(said.split(maxsplit=1)[0]) if said else 0
+    """Give the facts a drawer's first screen shows, each laid above its foot.
+
+    Its more line counts what runs below its words as well as its facts, so the facts are
+    read by where each is laid rather than by that count.
+    """
     facts = cast("list[str]", drawer["facts"])
-    return facts[: len(facts) - hidden]
+    lines = cast("list[float]", drawer["lines"]["facts"])
+    foot = cast("float", drawer["foot"])
+    return [fact for fact, line in zip(facts, lines, strict=True) if line < foot]
 
 
-def test_a_sessions_drawer_shows_what_matters_first_and_what_its_quest_is_about_last(
-    shell: Shell,
+@pytest.mark.usefixtures("at_shots_scale")
+def test_a_sessions_drawer_glances_at_six_facts_at_most_and_folds_the_rest(
+    shell: Shell, shoot: Callable[[str], None]
 ) -> None:
-    """Its first screen holds what it landed, what it spent and its figures.
+    """Its glance says its last turn and how full, all on its first screen, its quest's prose under.
 
-    How it stands is its row's, so with no step it says no Doing; its quest, nearly always
-    active, comes after its figures. What its quest is about runs long, as every real
-    session's does, so it comes last and leaves out the title the drawer already says; it
-    once came first and hid all the rest.
+    How it stands is its row's, so with no step it says no Doing. What its quest is about
+    is the drawer's prose, not a fact, since it runs long (VKCF3Z, a2101591), and leaves out
+    the title the drawer already says, drawn whole rather than cut, since z a opens the fold
+    rather than reading on (VKCF3Z, e3bb38e5). Its glance holds six facts at most, in
+    VKCF3Z's order (2b03e43c); the rest, its quest and machine among them, is folded under
+    z a after its figures, so none is lost.
     """
     found(shell, "listening quest", "Listening Quest")
-    wanted = "Context, Last Turn, Model"
+    glance = ["Last Turn", "Context"]
     shell.launcher_until(
-        lambda shown: (
-            shown["drawer"]["shown"]
-            and wanted in ", ".join(shown_first(shown["drawer"]))
-            and shown["drawer"]["facts"][-1] == "Working On"
-        )
+        lambda shown: shown["drawer"]["shown"] and shown["drawer"]["facts"] == glance
     )
     drawer = shell.showing()["drawer"]
-    facts = drawer["facts"]
-    assert "Doing" not in facts, drawer
-    assert facts.index("Quest") > facts.index("Cache"), drawer
-    # Its quest is active, which goes unsaid.
-    assert drawer["values"][facts.index("Quest")] == "QEST-20261107-LISTEN", drawer
+    assert shown_first(drawer) == glance, f"its first screen hides some: {drawer}"
     summary = WORKS_ON.removeprefix("Listening Quest: ")
-    assert drawer["values"][-1] == summary, drawer
+    assert drawer["body"] == summary, drawer
+    assert drawer["bodyDrawn"] == summary, drawer
+    unfolded(shell, shoot, "agents-drawer-glance")
+    nerd = drawer["nerd"]
+    assert "Doing" not in nerd, drawer
+    assert nerd.index("Quest") > nerd.index("Cache"), drawer
     # Nor does its row's note, under the same title; found by typing, whom it's under leads.
     note = shell.showing()["selected"]["note"]
     assert note == f"under BOSSES \u00b7 {summary}", note
-    # One that landed something says what it landed last on its first screen too.
+    # One that landed something folds what it landed last, out of its glance.
     found(shell, "paused quest", "Paused Quest")
     shell.launcher_until(
         lambda shown: (
             shown["drawer"]["shown"]
-            and shown_first(shown["drawer"])[:1] == ["Last Landing"]
-            and shown["drawer"]["values"][0].startswith(f"{STOPPED} \u00b7 core.nix#2140 \u00b7 ")
+            and "Last Landing" not in shown["drawer"]["facts"]
+            and "Last Landing" in shown["drawer"]["nerd"]
         )
     )
 
@@ -1023,7 +1033,26 @@ def test_an_orchestrations_waiting_sessions_fold_into_one_row_return_steps_into(
     shell.launcher_until(lambda shown: shown["rows"][:2] == ["Listening Quest", "Paused Quest"])
 
 
-def test_agents_top_level_is_the_rows_its_daemon_serves_ready(shell: Shell) -> None:
+def unfolded(shell: Shell, shoot: Callable[[str], None], name: str) -> None:
+    """Shoot a drawer as it stands, then with its fold opened on za, and fold it again.
+
+    za is normal mode's, typed on the find otherwise, so it's pressed from there and the line
+    is left typing again.
+    """
+    shoot(name)
+    shell.normal()
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is False)
+    shoot(f"{name}-open")
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is True)
+    shell.on_find()
+
+
+@pytest.mark.usefixtures("at_shots_scale")
+def test_agents_top_level_is_the_rows_its_daemon_serves_ready(
+    shell: Shell, shoot: Callable[[str], None]
+) -> None:
     """Agents opens on the orchestration rows the agents daemon serves as agents-top.
 
     The shell draws them as served rather than laying them out (VKCF3Z, 3a742b67).
@@ -1043,12 +1072,13 @@ def test_agents_top_level_is_the_rows_its_daemon_serves_ready(shell: Shell) -> N
             drawer["shown"]
             and isinstance(drawer["eyebrow"], str)
             and drawer["eyebrow"] != ""
-            and drawer["facts"] != []
-            and all(label != "" for label in drawer["facts"])
+            and drawer["facts"] + drawer["nerd"] != []
+            and all(label != "" for label in drawer["facts"] + drawer["nerd"])
         )
 
     shell.launcher_until(worded)
     assert not shell.showing()["drawer"]["eyebrowDrawn"].startswith("[object"), shell.showing()
+    unfolded(shell, shoot, "agents-drawer-orchestrator")
 
 
 def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(

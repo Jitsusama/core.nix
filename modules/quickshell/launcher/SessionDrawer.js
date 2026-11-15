@@ -21,34 +21,38 @@ function worded(time, words) {
     return time.as === "since" ? words.since.replace("{at}", clock) : clock;
 }
 
+// A fact, or a bit folded under z a, with its time said after its value,
+// and after its items too where it's given as items, an item whole of its
+// own, so its lines break only between them.
+function timed(fact, words) {
+    if (!fact.at) {
+        return fact;
+    }
+    // Its other fields as they are, its time said in its value.
+    const told = {};
+    for (const name of Object.keys(fact)) {
+        if (name !== "at") {
+            told[name] = fact[name];
+        }
+    }
+    const when = worded(fact.at, words);
+    told.value = [String(fact.value ?? ""), when].filter(part => part !== "").join(DOT);
+    if (fact.valueItems) {
+        told.valueItems = fact.valueItems.concat([{ said: when, whole: true }]);
+    }
+    return told;
+}
+
 // What it says, the daemon's record with its times worded: each eyebrow
-// item that's a time, and each fact's time after its value, and after its
-// items too where it's given as items, an item whole of its own, so its
-// lines break only between them. The eyebrow gives way by whole items,
-// those it keeps least first (Reading.js).
+// item that's a time, and each fact's and folded bit's (`timed`). The
+// eyebrow gives way by whole items, those it keeps least first
+// (Reading.js).
 function shown(drawer, words) {
     const eyebrowItems = (drawer.eyebrow ?? []).map(item => ({
         said: item.at ? worded(item.at, words) : String(item.said ?? ""),
         keep: item.keep
     }));
-    const facts = (drawer.facts ?? []).map(fact => {
-        if (!fact.at) {
-            return fact;
-        }
-        // Its other fields as they are, its time said in its value.
-        const told = {};
-        for (const name of Object.keys(fact)) {
-            if (name !== "at") {
-                told[name] = fact[name];
-            }
-        }
-        const when = worded(fact.at, words);
-        told.value = [String(fact.value ?? ""), when].filter(part => part !== "").join(DOT);
-        if (fact.valueItems) {
-            told.valueItems = fact.valueItems.concat([{ said: when, whole: true }]);
-        }
-        return told;
-    });
+    const facts = (drawer.facts ?? []).map(fact => timed(fact, words));
     return {
         eyebrow: eyebrowItems.map(item => item.said).filter(said => said !== "").join(DOT),
         eyebrowItems,
@@ -61,7 +65,8 @@ function shown(drawer, words) {
         // (modules/agents/src/landed.rs).
         prose: drawer.prose === true,
         whole: drawer.whole === true,
-        // Its identifiers, which Drawer.qml folds under z a.
-        nerd: drawer.nerd ?? []
+        // Its identifiers and the facts past its glance, which Drawer.qml
+        // folds under z a, a session's last landing saying when.
+        nerd: (drawer.nerd ?? []).map(bit => timed(bit, words))
     };
 }

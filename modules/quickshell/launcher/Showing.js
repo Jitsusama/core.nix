@@ -287,6 +287,12 @@ function adds(plate, row) {
         || (preview.picture ?? "") !== "" || (preview.lines ?? []).length > 0) {
         return true;
     }
+    // What it folds under z a is said nowhere on its row either, so a
+    // session whose glance has nothing yet still opens on its quest and
+    // machine; a folded bit of no value is drawn as none (Drawer.qml).
+    if ((plate.nerd ?? []).some(bit => String(bit?.value ?? "") !== "")) {
+        return true;
+    }
     const own = [row.name, row.side, row.note].map(said => String(said ?? "").trim());
     return [plate.title, plate.body].map(said => String(said ?? "").trim())
         .some(said => said !== "" && !own.includes(said));
