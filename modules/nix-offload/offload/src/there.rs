@@ -3339,7 +3339,18 @@ pub fn shared<'a>(
                 .iter()
                 .any(|attribute| machine.takes(attribute))
         })
-        .filter(|machine| answers(&machine.address))
+        .filter(|machine| {
+            let answering = answers(&machine.address);
+            // Said, so a machine nearby that builds nothing for a while
+            // is seen to be away rather than thought idle.
+            if !answering {
+                eprintln!(
+                    "nix-offload: {} nearby doesn't answer, so what it takes goes the other way",
+                    machine.host
+                );
+            }
+            answering
+        })
         .collect();
     let mut parts: Vec<(&Nearby, Vec<String>)> = Vec::new();
     let mut left = Vec::new();

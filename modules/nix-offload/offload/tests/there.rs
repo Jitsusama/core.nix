@@ -1981,6 +1981,55 @@ fn a_part_for_a_nearby_machine_ssh_cant_reach_goes_with_the_rest() {
 }
 
 #[test]
+fn a_nearby_machine_that_doesnt_answer_is_named_as_its_part_goes_the_other_way() {
+    // On 15 November a Mac nearby stopped answering, and the build listed
+    // for it went to the lent builder without a word, so nobody could tell
+    // the Mac had built nothing since.
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    let zone = folder.path().join("zone");
+    fs::create_dir(&zone).unwrap();
+    fs::write(zone.join("flake.nix"), "{ }").unwrap();
+    fs::write(zone.join("flake.lock"), r#"{"nodes": {}}"#).unwrap();
+    // A port that was listening and no longer is answers nothing.
+    let away = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{away} mac aarch64-darwin\n"),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+
+    let ran = there_command(&bin, &offload, folder.path())
+        .args([
+            &format!("path:{}", zone.display()),
+            "checks.aarch64-darwin.a",
+        ])
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("mac nearby doesn't answer, so what it takes goes the other way"),
+        "{said}"
+    );
+    assert!(
+        !bin.join("ssh-was-given").exists(),
+        "an away machine isn't sent anything"
+    );
+}
+
+#[test]
 fn a_folder_sent_to_a_nearby_machine_leaves_what_its_git_ignores_here() {
     // A working tree's zone held 509 MB, almost all one ignored target.
     let folder = tempfile::tempdir().unwrap();
