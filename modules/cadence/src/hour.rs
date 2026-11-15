@@ -157,7 +157,13 @@ fn gather(
         measures::to_first_slice(&text(&mission.join("asks.jsonl")), now),
         measures::undated(&quarantine, &today(now), NET_RULES),
         measures::reverts(&text(&folder.join("reverted.json")), now, NET_RULES),
-        measures::broken(&text(&state_home.join("net/results.jsonl")), now, NET),
+        measures::broken(
+            &text(&state_home.join("net/results.jsonl")),
+            now,
+            NET,
+            &measures::Main::read(&core, &quarantine),
+            &measures::failed_in,
+        ),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
     all.extend(measures::merge_to_on(&card_text, NET_RULES));

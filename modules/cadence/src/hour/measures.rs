@@ -7,8 +7,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use jiff::Timestamp;
 use serde_json::Value;
 
+mod broken;
 mod misses;
 
+pub use broken::{Main, broken, failed_in};
 pub use misses::checked;
 
 const DAY: i64 = 86_400;
@@ -289,61 +291,6 @@ pub fn reverts(text: &str, now: i64, owner: &str) -> Measure {
         target: Some(0.0),
         owner: owner.to_owned(),
         behind: recent,
-    }
-}
-
-/// The checks still failing on main that last passed before a merge in
-/// the day before `now`, from the net's `results.jsonl`: a check whose
-/// newest result failed where the one before it passed. A stalled run
-/// proves nothing either way, so it's left out, and a subtest's failure
-/// gives way to its whole test passing since, which ran it again.
-#[must_use]
-pub fn broken(text: &str, now: i64, owner: &str) -> Measure {
-    let mut by_check: BTreeMap<String, Vec<(i64, bool)>> = BTreeMap::new();
-    for result in lines(text).filter(|r| r["stalled"] != Value::Bool(true)) {
-        let (Some(check), Some(at), Some(passed)) = (
-            result["check"].as_str(),
-            result["at"].as_i64(),
-            result["passed"].as_bool(),
-        ) else {
-            continue;
-        };
-        by_check
-            .entry(check.to_owned())
-            .or_default()
-            .push((at, passed));
-    }
-    let passed_whole = |whole: &str| {
-        by_check.get(whole).map_or(i64::MIN, |runs| {
-            runs.iter()
-                .filter(|(_, passed)| *passed)
-                .map(|(at, _)| *at)
-                .max()
-                .unwrap_or(i64::MIN)
-        })
-    };
-    let failing: Vec<String> = by_check
-        .iter()
-        .filter_map(|(check, runs)| {
-            let mut runs = runs.clone();
-            runs.sort_by_key(|(at, _)| *at);
-            let [.., (_, before), (at, last)] = runs.as_slice() else {
-                return None;
-            };
-            let since = check
-                .split_once("::")
-                .is_some_and(|(whole, _)| passed_whole(whole) > *at);
-            (*before && !last && *at > now - DAY && !since).then(|| check.clone())
-        })
-        .collect();
-    Measure {
-        key: "broken".to_owned(),
-        class: Class::Functional,
-        says: "checks a merge broke in the last day, still failing".to_owned(),
-        now: count(failing.len()),
-        target: Some(0.0),
-        owner: owner.to_owned(),
-        behind: failing,
     }
 }
 
@@ -674,36 +621,6 @@ mod tests {
         );
         let m = reverts(&text, NOW, "80ECO2");
         assert_eq!(m.behind, ["#4426"], "the undone merge, from today");
-    }
-
-    #[test]
-    fn a_check_failing_after_it_passed_is_broken_and_a_stall_proves_nothing() {
-        let result = |check: &str, at: i64, passed: bool, stalled: bool| {
-            serde_json::json!({"check": check, "at": at, "passed": passed, "stalled": stalled})
-                .to_string()
-        };
-        let text = [
-            result("broke", NOW - 900, true, false),
-            result("broke", NOW - 60, false, false),
-            result("always", NOW - 900, false, false),
-            result("always", NOW - 60, false, false),
-            result("stalled", NOW - 900, true, false),
-            result("stalled", NOW - 60, false, true),
-            result("mended", NOW - 900, false, false),
-            result("mended", NOW - 60, true, false),
-            result("whole::sub", NOW - 900, true, false),
-            result("whole::sub", NOW - 600, false, false),
-            result("whole", NOW - 300, true, false),
-            result("later::sub", NOW - 900, true, false),
-            result("later", NOW - 600, true, false),
-            result("later::sub", NOW - 300, false, false),
-        ]
-        .join("\n");
-        assert_eq!(
-            broken(&text, NOW, "D5QEKR").behind,
-            ["broke", "later::sub"],
-            "only those a merge broke: a subtest's fail gives way to its whole test passing since"
-        );
     }
 
     #[test]
