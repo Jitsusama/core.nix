@@ -44,11 +44,20 @@ Weight weighed(QJSEngine &engine, const Heap &heap) {
 // How much room a heap is left, in megabytes, well beyond what's made in it.
 constexpr double ROOM_MB = 64;
 
-// Whether making twice as many objects as are let go starts the collector
-// on a heap left holding a scattered few, given that much room first. The
-// objects hold only numbers, so no memory outside the heap, which starts the
-// collector on its own, comes into it.
-bool collectsWhileMaking(double room, const QString &made) {
+// What's made, and how many: objects holding only numbers, twice as many as
+// are let go, so nothing outside the heap comes into it; or strings of 200
+// characters, whose text Qt holds outside the heap, about 8 MB of it against
+// 2 MB inside, so only what Qt allows outside can start the collector.
+struct Making {
+    const char *each;
+    int count;
+};
+constexpr Making NUMBERS{"{ n: i, m: i }", 2 * KEPT};
+constexpr Making STRINGS{"String(i).padEnd(200, ' of the clipboard history')", 20000};
+
+// Whether making them starts the collector on a heap left holding a
+// scattered few, given that much room first.
+bool collectsWhileMaking(double room, const Making &made) {
     QJSEngine engine;
     Heap heap(&engine);
     QJSValue few = engine.evaluate(
@@ -62,16 +71,10 @@ bool collectsWhileMaking(double room, const QString &made) {
     QJSValue making = engine.evaluate(
         QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push(%2); "
                        "return made; })()")
-            .arg(2 * KEPT)
-            .arg(made));
+            .arg(made.count)
+            .arg(QLatin1StringView(made.each)));
     return heap.collected() > before;
 }
-
-// What's made: objects holding only numbers, so nothing outside the heap;
-// and strings, whose text Qt holds outside it, which start the collector on
-// their own once they pass what Qt allows outside.
-const QString NUMBERS = QStringLiteral("{ n: i, m: i }");
-const QString STRINGS = QStringLiteral("`row ${i} of the clipboard's history`");
 
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
     if (!holds)
