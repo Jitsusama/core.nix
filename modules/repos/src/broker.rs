@@ -86,6 +86,9 @@ mod tests {
         let socket = std::env::temp_dir().join(format!("repos-{}-none.sock", std::process::id()));
         let _ = std::fs::remove_file(&socket);
         let why = token(&socket).expect_err("nothing answers");
-        assert!(why.starts_with(&format!("no GitHub broker answers at {}", socket.display())));
+        assert!(
+            why.starts_with(&format!("no GitHub broker answers at {}", socket.display())),
+            "the failure didn't name the socket: {why}"
+        );
     }
 }

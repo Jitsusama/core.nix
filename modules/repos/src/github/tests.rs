@@ -83,10 +83,17 @@ fn only_github_s_repositories_are_asked_after_each_once() {
 #[test]
 fn each_repository_is_asked_under_its_own_alias_quoted() {
     let text = query(&[one("Jitsusama/core.nix"), one("some\"one/busy")]);
-    assert!(text.contains(r#"r0: repository(owner: "Jitsusama", name: "core.nix") { ...open }"#));
-    assert!(text.contains(r#"r1: repository(owner: "some\"one", name: "busy") { ...open }"#));
-    assert!(text.contains("pullRequests(states: OPEN, first: 50,"));
-    assert!(text.lines().all(|line| line.len() <= 100));
+    for asked in [
+        r#"r0: repository(owner: "Jitsusama", name: "core.nix") { ...open }"#,
+        r#"r1: repository(owner: "some\"one", name: "busy") { ...open }"#,
+        "pullRequests(states: OPEN, first: 50,",
+    ] {
+        assert!(text.contains(asked), "the query lacks {asked}:\n{text}");
+    }
+    assert!(
+        text.lines().all(|line| line.len() <= 100),
+        "a line of the query runs past 100:\n{text}"
+    );
 }
 
 #[test]
@@ -101,7 +108,10 @@ fn a_renamed_repository_keeps_the_key_the_disk_gives_it() {
 #[test]
 fn a_repository_the_app_cannot_see_is_said_to_be_unread() {
     let (changes, unread) = parsed();
-    assert!(!changes.contains_key("github:someone/private"));
+    assert!(
+        !changes.contains_key("github:someone/private"),
+        "a repository the App can't see was given changes"
+    );
     assert_eq!(
         unread,
         ["github:someone/private: GitHub's App can't see it, or it's gone"]
@@ -149,13 +159,13 @@ fn skipped_checks_pass_an_approved_change() {
     assert_eq!(approved.checks.state, ChecksState::Passing);
     assert_eq!(approved.checks.passed, 4);
     assert_eq!(approved.review, Review::Approved);
-    assert!(!approved.draft);
+    assert!(!approved.draft, "a change ready for review read as a draft");
 }
 
 #[test]
 fn a_check_still_running_leaves_a_draft_pending() {
     let waiting = &busy()[1];
-    assert!(waiting.draft);
+    assert!(waiting.draft, "a draft read as ready for review");
     assert_eq!(waiting.review, Review::Waiting);
     assert_eq!(waiting.checks.state, ChecksState::Pending);
     assert_eq!(waiting.checks.passed, 3);
@@ -175,7 +185,10 @@ fn a_failed_run_or_status_fails_its_change_whatever_else_runs() {
 #[test]
 fn changes_come_updated_last_first() {
     let times: Vec<u64> = busy().iter().map(|change| change.updated_at).collect();
-    assert!(times.windows(2).all(|pair| pair[0] >= pair[1]));
+    assert!(
+        times.windows(2).all(|pair| pair[0] >= pair[1]),
+        "changes aren't updated last first: {times:?}"
+    );
 }
 
 #[test]
@@ -250,6 +263,10 @@ fn what_a_refresh_saw_reads_back_as_it_was_written() {
     let written = serde_json::to_string(&seen).expect("it writes");
     let back: Seen = serde_json::from_str(&written).expect("it reads back");
     assert_eq!(back, seen);
-    assert!(written.contains(r#""review":"changes_asked""#));
-    assert!(written.contains(r#""state":"failing""#));
+    for field in [r#""review":"changes_asked""#, r#""state":"failing""#] {
+        assert!(
+            written.contains(field),
+            "the record lacks {field}: {written}"
+        );
+    }
 }

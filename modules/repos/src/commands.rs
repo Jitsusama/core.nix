@@ -19,10 +19,11 @@ pub fn help() -> Help {
         "after a name: its open changes, with their checks and review",
     )
     .argument("[trees]", "after a name: every tree cut from it")
-    .command(
-        "refresh",
-        "asks GitHub after each repository's open changes, as a timer does",
-    )
+    // The word after repos is always a name (docs/commands.md), so no
+    // listed subcommand stands there. The timer's refresh is unlisted,
+    // which the kit matches before a name, and taught by its example. A
+    // repository named refresh is still reached by its key.
+    .subcommand(refresh().unlisted())
     .example(
         "repos",
         "each repository as a line: its changes, trees and checkouts",
@@ -51,4 +52,22 @@ pub fn help() -> Help {
         Exit::Config,
         "there's nowhere to look, or to keep GitHub's part",
     )
+}
+
+/// The refresh: what `repos-refresh.service` runs on its timer, and what
+/// Joel runs for GitHub's part at once.
+fn refresh() -> Help {
+    Help::new(
+        "refresh",
+        "ask GitHub after each repository's open changes, as a timer does",
+    )
+    .example(
+        "repos refresh",
+        "GitHub's part now, rather than at the timer's next",
+    )
+    .exit(
+        Exit::Unavailable,
+        "neither the GitHub broker nor GitHub answered",
+    )
+    .exit(Exit::Config, "there's nowhere to keep GitHub's part")
 }
