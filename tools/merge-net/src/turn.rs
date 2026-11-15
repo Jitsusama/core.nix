@@ -25,7 +25,8 @@
 //! (`places.rs`), so a change that runs again after a merge left its pass
 //! stale keeps its place rather than going behind every gate since.
 //!
-//! A change that passed waits so for at most [`PATIENCE`], then goes first.
+//! A change that passed waits so for at most [`PATIENCE`], from its pass or
+//! from when it was rebased, if later, then goes first.
 //! Waiting saves the other gate's run only by costing this change one of its
 //! own once the other merges, so it's a turn, not a right: on 11 November a
 //! change that passed at 22:40 and again at 23:14 was refused six times in
@@ -164,18 +165,31 @@ pub struct Ahead<'a> {
 /// the tree it's in, and the files it changes.
 pub struct Asking<'a> {
     pub started: u64,
-    /// When its pass was kept, which [`PATIENCE`] counts from.
+    /// When its pass was kept, or its head committed if later, which
+    /// [`PATIENCE`] counts from ([`patience_from`]).
     pub passed: u64,
     pub here: &'a Path,
     pub ours: &'a [String],
 }
 
 /// When a change's [`PATIENCE`] counts from: when the pass it merges on
-/// was `kept`, or when its head was `committed`, if later.
+/// was `kept`, or when its head was `committed`, if later. A head rebased
+/// onto main merges on a pass kept before the rebase, and counting from
+/// that let it go first at once: on 15 November #4721 and #4718 merged
+/// 19 and 25 seconds after rebasing, ahead of #4513's earlier gate on the
+/// kit they read, and left its pass stale.
 #[must_use]
 pub fn patience_from(kept: u64, committed: Option<u64>) -> u64 {
-    let _ = committed;
-    kept
+    committed.map_or(kept, |committed| kept.max(committed))
+}
+
+/// When `commit` was committed, in seconds since 1970, as git says in the
+/// asking tree.
+fn committed(commit: &str) -> Option<u64> {
+    git_in(Path::new("."), &["show", "-s", "--format=%ct", commit])?
+        .trim()
+        .parse()
+        .ok()
 }
 
 /// The gate among `gates` that holds back the change `asking`: the
@@ -245,7 +259,10 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     let here = std::env::current_dir().ok()?;
     let now = crate::state::now();
     let places = placed(&gates, &here, Some(its_gate), now);
-    let kept = kept_at(passes, &crate::ready::record).unwrap_or(now);
+    let kept = patience_from(
+        kept_at(passes, &crate::ready::record).unwrap_or(now),
+        committed(commit),
+    );
     let asking = Asking {
         started: places.start(&here, its_gate, now),
         passed: kept,
