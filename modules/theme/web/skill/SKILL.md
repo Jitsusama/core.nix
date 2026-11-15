@@ -197,7 +197,7 @@ own links, and none would meet.
 
   | Kind       | Home        | Its address, for example           |
   | ---------- | ----------- | ---------------------------------- |
-  | machine    | `mycelium/` | `mycelium/#machine=optimus`        |
+  | machine    | `mycelium/` | `mycelium/#machine=studio`         |
   | cell       | `mycelium/` | `mycelium/#cell=E2ZIAQ`            |
   | network    | `mycelium/` | `mycelium/#net=repo.world`         |
   | repository | `code/`     | `code/#repo=Jitsusama%2Fcore.nix`  |
@@ -236,9 +236,9 @@ own links, and none would meet.
     in it;
   - a device, the machine it is, when it is one.
 
-  A thing that is two kinds (optimus is a machine and a device) links once
-  from each home to the other. Up is the trail at the top, every crumb a
-  link.
+  A thing that is two kinds (a laptop is a machine and, on the home
+  network, a device) links once from each home to the other. Up is the
+  trail at the top, every crumb a link.
 
 ## The Kit
 
