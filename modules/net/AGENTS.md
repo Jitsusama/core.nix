@@ -112,9 +112,11 @@ width without a terminal; tables and facts come from the terminal kit.
   the source's words. A list of records or a series of readings is left
   to `--json`, which keeps every source's detail whole.
 
-A name is matched in any case, and an id always works. eero can give
-two devices one name, so a shared name is refused (64) with each one's
-id; an unknown one is refused (66) with the nearest. `--json` answers
+A name is matched in any case, and any of a device's addresses or its
+id always works. eero can give two devices one name, so a shared name
+is refused (64) with each one's address and access point, its id last,
+offering the first one's address to type; an unknown one is refused
+(66) with the nearest. `--json` answers
 `net.network/1`, `net.devices/1` or `net.device/1`, each time in RFC
 3339 (docs/commands.md). No record yet ends 69, pointing at
 `systemctl --user status net-daemon`.
