@@ -220,7 +220,9 @@ pub fn checked_out(source: Source) -> (String, Option<PathBuf>) {
     // A folder named for the far side's shell, gone when it ends. Named
     // for this process instead, a run sent again after its connection
     // dropped shared the folder with the first, still running there,
-    // which removed it as it ended: "cannot get cwd" on 8 November.
+    // which removed it as it ended: "cannot get cwd" on 8 November. Named
+    // in `leaves` too, so a `--run` takes it over from the shell, whose end
+    // a lost link brings while the run goes on in it.
     let into = "/tmp/nix-offload-changed-$$";
     let unbundled = bundle.as_ref().map_or_else(String::new, |(_, tip)| {
         format!(
@@ -233,8 +235,8 @@ pub fn checked_out(source: Source) -> (String, Option<PathBuf>) {
     // "cannot lock ref 'refs/heads/main'" on 11 November. A far side with
     // no flock, as macOS has none, goes on without the lock, as before.
     let command = format!(
-        "set -e; rm -rf {into}; mkdir -p {into}; trap 'rm -rf {into}' EXIT; \
-         command -v git >/dev/null || \
+        "leaves={into}; set -e; rm -rf {into}; mkdir -p {into}; \
+         trap 'rm -rf {into}' EXIT; command -v git >/dev/null || \
          git() {{ nix shell nixpkgs#git -c git \"$@\"; }}; \
          command -v flock >/dev/null || flock() {{ :; }}; \
          mkdir -p \"$HOME\"/.cache/nix-offload/changed; \
