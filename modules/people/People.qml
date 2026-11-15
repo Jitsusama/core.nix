@@ -1402,7 +1402,7 @@ Provider {
         for (const key of placing.keys) {
             const thing = rowsHeld[key]?.thing;
             if (thing)
-                stamps[thing] = lister.held[thing]?.said ?? "";
+                stamps[thing] = lister.held[thing]?.stamp ?? "";
         }
         return stamps;
     }
