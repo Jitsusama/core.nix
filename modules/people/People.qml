@@ -498,17 +498,22 @@ Provider {
         });
     }
 
-    // What a source serves between Joel and someone, by any address, each
-    // once by its key.
+    // What a source serves between Joel and someone, under any of their
+    // addresses, each once by its key and the oldest first. The people
+    // daemon serves each address's so (its between.rs), so here they're
+    // only taken together; one address's alone is already in order.
     function servedThings(person, name) {
+        const entries = entriesOf(person, name);
+        if (entries.length === 1)
+            return entries[0].between ?? [];
         const by = {};
-        for (const entry of entriesOf(person, name)) {
+        for (const entry of entries) {
             for (const one of entry.between ?? []) {
                 if (one?.key && !(one.key in by))
                     by[one.key] = one;
             }
         }
-        return Object.values(by);
+        return Object.values(by).sort((one, other) => (one.at ?? 0) - (other.at ?? 0));
     }
 
     // Whether a served thing waits now: theirs on Joel however long ago,
@@ -529,13 +534,14 @@ Provider {
     }
 
     // The first of a source's served things for their drawer, with no row
-    // made: the oldest that waits and the newest they met at.
+    // made: the oldest that waits now, the first of those served oldest
+    // first, since what waits turns with the clock, and the newest they
+    // met at, the newest of each address's `met` as the people daemon
+    // serves it ready.
     function servedFirsts(person, name) {
         const now = Date.now();
-        const all = servedThings(person, name);
-        const wait = all.filter(one => waitsNow(one, now))
-            .reduce((first, one) => first && first.at <= one.at ? first : one, null);
-        const met = all.filter(one => one.kind === "met")
+        const wait = servedThings(person, name).find(one => waitsNow(one, now)) ?? null;
+        const met = entriesOf(person, name).map(entry => entry.met).filter(Boolean)
             .reduce((newest, one) => newest && newest.at >= one.at ? newest : one, null);
         return {
             wait: wait ? {
@@ -543,7 +549,7 @@ Provider {
                 mine: wait.mine === true,
                 opens: (wait.row?.acts ?? []).find(one => typeof one.open === "string")?.open
             } : null,
-            met: met ? { at: met.at, name: met.row?.name ?? "", one: met.one === true } : null
+            met: met
         };
     }
 

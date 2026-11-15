@@ -760,6 +760,30 @@ ShellRoot {
             }
         },
         {
+            // Someone known by two addresses has what a source serves
+            // under each: the daemon makes each address's ready, and
+            // People takes them together, so the oldest thing waiting and
+            // the newest meeting may be under the one Slack knows nobody by.
+            what: "one known by two addresses has what's between them under each",
+            run: () => people.stepIn({ key: "zoe@example.com",
+                emails: ["zoe@example.com", "zed@example.com"] }),
+            holds: () => slackOf("zoe@example.com") !== null
+                && slackOf("zed@example.com") !== null,
+            check: () => {
+                const both = { key: "zoe@example.com",
+                    emails: ["zoe@example.com", "zed@example.com"] };
+                const firsts = people.servedFirsts(both, "slack");
+                expect("the oldest waiting and the newest met, under either",
+                    firsts.wait?.name === "Old note" && firsts.met?.name === "Coffee"
+                    && firsts.met?.one === true,
+                    JSON.stringify(firsts));
+                const keys = people.servedThings(both, "slack").map(one => one.key);
+                expect("each once, the oldest first",
+                    keys.join() === "slack:conversation:D8,slack:huddle:H1,"
+                    + "slack:conversation:D9", keys.join());
+            }
+        },
+        {
             // Slack answers an address it knows nobody by with no id and
             // `known` false, and the daemon holds that answer as any other.
             what: "one Slack knows nobody by is asked about",
