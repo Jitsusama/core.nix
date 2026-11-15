@@ -499,6 +499,55 @@ fn failing_at(state: &State, commit: &str, test: &str) -> BTreeSet<String> {
         .collect()
 }
 
+/// Whether each failed run of `check` at `commit` ran to pytest's end and
+/// failed only in subtests other than `aimed`, those failing at a search's
+/// head, so it fails there for something else than what broke the head.
+/// On 14 November #4404 was blamed for vm-desktop-launcher-finds-sessions
+/// failing at the head in
+/// `test_quickshell_warned_of_nothing_it_drew_all_along`, from two runs
+/// at #4404 where a slow kitty failed another subtest; that one passed in
+/// each, and #4429 had broken it. A run cut
+/// off before its end says nothing of the subtests it never ran.
+fn failed_otherwise(state: &State, commit: &str, check: &str, aimed: &BTreeSet<String>) -> bool {
+    !aimed.is_empty()
+        && (1..=FAILURES)
+            .filter_map(|run| u32::try_from(run).ok())
+            .all(|run| {
+                let lines: Vec<String> =
+                    crate::world::lines_of(&state.log(commit, check, run)).collect();
+                let failed = subtests::failed_in(&lines);
+                subtests::finished(&lines) && !failed.is_empty() && failed.is_disjoint(aimed)
+            })
+}
+
+/// The subtests main lists `test` by as quarantined, as last fetched.
+fn listed_subtests_of(world: &dyn World, test: &str) -> BTreeSet<String> {
+    world
+        .fetched()
+        .map(|newest| world.listed_subtests(&newest, test))
+        .unwrap_or_default()
+}
+
+/// The subtests a search for `test` at `head` looks for the break of:
+/// those `narrowed` names, or where it runs the whole test, every one that
+/// failed in a run there and main doesn't list.
+fn aimed_at(
+    state: &State,
+    head: &str,
+    test: &str,
+    narrowed: &str,
+    listed: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    if narrowed == test {
+        &failing_at(state, head, test) - listed
+    } else {
+        subtests::subtests_of(narrowed)
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
+    }
+}
+
 /// Like `attempt`, but every run still needed to call `check` broken at
 /// `commit` starts at once, for a search and a fix-forward check, where
 /// a failure is likely and the search waits on it. A failure is then
@@ -595,24 +644,27 @@ pub fn attempt_all(
 /// checked by `before` before it's blamed. None when a run wasn't taken, so it
 /// can't be told, or when `go_on`, asked before each step after the first,
 /// says to stop. Each step tries as many merges as `splits` says then.
+/// A merge failing only in other subtests than `aimed`, those failing at
+/// the head, counts as passing (`failed_otherwise`).
 pub fn bisect(
     world: &dyn World,
     state: &State,
     merges: &[String],
     check: &str,
+    aimed: &BTreeSet<String>,
     go_on: &dyn Fn() -> bool,
     splits: &dyn Fn() -> usize,
 ) -> Option<String> {
     // `good` is how many of the merges are known to pass, `bad` the index
     // of the first known to fail.
-    let (mut good, mut bad) = known(state, merges, check)?;
+    let (mut good, mut bad) = known(state, merges, check, aimed)?;
     let mut first = true;
     while good < bad {
         if !std::mem::take(&mut first) && !go_on() {
             return None;
         }
         let tried = spread(good, bad, splits());
-        let passed = step(world, state, merges, check, &tried)?;
+        let passed = step(world, state, merges, check, aimed, &tried)?;
         // The first merge tried that fails is where it may have broken, and
         // the last before it to pass is past where it can have. A pass after
         // a failure tells nothing, since the failure already bounds it, and
@@ -645,6 +697,7 @@ fn step(
     state: &State,
     merges: &[String],
     check: &str,
+    aimed: &BTreeSet<String>,
     tried: &[usize],
 ) -> Option<Vec<Option<bool>>> {
     let (told, heard) = std::sync::mpsc::channel();
@@ -652,7 +705,7 @@ fn step(
         for (nth, &index) in tried.iter().enumerate() {
             let told = told.clone();
             scope.spawn(move || {
-                let _ = told.send((nth, passes(world, state, &merges[index], check)));
+                let _ = told.send((nth, passes(world, state, &merges[index], check, aimed)));
             });
         }
         drop(told);
@@ -701,12 +754,32 @@ fn spread(good: usize, bad: usize, splits: usize) -> Vec<usize> {
 }
 
 /// Whether `check` passes at `commit` for a bisect, a commit without it
-/// passing; None when a run wasn't taken or it couldn't be told.
-fn passes(world: &dyn World, state: &State, commit: &str, check: &str) -> Option<bool> {
+/// passing, as does one failing only in other subtests than `aimed`; None
+/// when a run wasn't taken or it couldn't be told.
+fn passes(
+    world: &dyn World,
+    state: &State,
+    commit: &str,
+    check: &str,
+    aimed: &BTreeSet<String>,
+) -> Option<bool> {
     match world.has_check(commit, check) {
         Ok(false) => Some(true),
         Ok(true) => match attempt_together(world, state, commit, check) {
             Outcome::Passed | Outcome::Flaky => Some(true),
+            Outcome::Failed if failed_otherwise(state, commit, check, aimed) => {
+                state.say(&format!(
+                    "{check} failed at {} only in {}, none of what it fails in at the head \
+                     ({}), so it counts as passed there for this search",
+                    short(commit),
+                    failing_at(state, commit, check)
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    aimed.iter().cloned().collect::<Vec<_>>().join(", ")
+                ));
+                Some(true)
+            }
             Outcome::Failed => Some(false),
             Outcome::Unsent | Outcome::Stalled => None,
         },
@@ -725,7 +798,12 @@ fn passes(world: &dyn World, state: &State, commit: &str, check: &str) -> Option
 /// failing twice, or else the last merge. A test that passed at a merge and
 /// fails at one before it now fails for something no merge did, such as the
 /// date, and searching the merges before the pass would blame one of them.
-fn known(state: &State, merges: &[String], check: &str) -> Option<(usize, usize)> {
+fn known(
+    state: &State,
+    merges: &[String],
+    check: &str,
+    aimed: &BTreeSet<String>,
+) -> Option<(usize, usize)> {
     let last = merges.len().checked_sub(1)?;
     let runs: Vec<Vec<Ran>> = merges
         .iter()
@@ -748,6 +826,7 @@ fn known(state: &State, merges: &[String], check: &str) -> Option<(usize, usize)
                 .filter(|&&ran| ran == Ran::Failed)
                 .count()
                 >= FAILURES
+                && !failed_otherwise(state, &merges[index], check, aimed)
         })
         .unwrap_or(last);
     Some((good, bad))
@@ -773,7 +852,13 @@ enum Before {
 /// merge. So would one that began failing for something outside the code,
 /// such as the date, at every commit after its last pass: the bisect then
 /// finds the merge just after that pass, which changed nothing it runs.
-fn before(world: &dyn World, state: &State, commit: &str, check: &str) -> Result<Before, String> {
+fn before(
+    world: &dyn World,
+    state: &State,
+    commit: &str,
+    check: &str,
+    aimed: &BTreeSet<String>,
+) -> Result<Before, String> {
     let parent = world.parent(commit)?;
     if !world.has_check(&parent, check)? {
         return Ok(Before::Absent);
@@ -786,6 +871,7 @@ fn before(world: &dyn World, state: &State, commit: &str, check: &str) -> Result
     }
     Ok(match attempt(world, state, &parent, check) {
         Outcome::Passed | Outcome::Flaky => Before::Passed,
+        Outcome::Failed if failed_otherwise(state, &parent, check, aimed) => Before::Passed,
         Outcome::Failed => Before::Failed,
         Outcome::Unsent | Outcome::Stalled => Before::Unsent,
     })
@@ -1727,6 +1813,8 @@ fn search(
     }
     let merges = to_search(world, state, base, head, test)?;
     let narrowed = narrowed_at(world, state, head, test);
+    let listed = listed_subtests_of(world, test);
+    let aimed = aimed_at(state, head, test, &narrowed, &listed);
     // Whether main's newest head fixed it is asked beside the search's first
     // step, and the search waits for the answer before its second. On
     // 7 November asking first took 16 minutes, two VM runs one after the
@@ -1755,6 +1843,7 @@ fn search(
                 state,
                 &merges,
                 &narrowed,
+                &aimed,
                 &|| fixed() == Ok(false),
                 splits,
             )
@@ -1791,7 +1880,7 @@ fn search(
     };
     let log = log.display().to_string();
     let bad = match bad {
-        Some(commit) => match before(world, state, &commit, &narrowed)? {
+        Some(commit) => match before(world, state, &commit, &narrowed, &aimed)? {
             Before::Passed => Some(commit),
             Before::Unsent => None,
             not_broken_here => {
@@ -1835,10 +1924,7 @@ fn search(
 /// quarantined, since they excuse a run; the whole test where none can be
 /// named. What it finds is checked at its parent the same way.
 fn narrowed_at(world: &dyn World, state: &State, head: &str, test: &str) -> String {
-    let listed = world
-        .fetched()
-        .map(|newest| world.listed_subtests(&newest, test))
-        .unwrap_or_default();
+    let listed = listed_subtests_of(world, test);
     let at_head: Vec<_> = (1..=2)
         .map(|run| {
             &subtests::failed_in(crate::world::lines_of(&state.log(head, test, run))) - &listed
@@ -1889,12 +1975,13 @@ fn alone_at_head(
     let Some(head) = merges.last() else {
         return (None, narrowed);
     };
+    let aimed = aimed_at(state, head, test, &narrowed, &BTreeSet::new());
     // Failing alone there already, as a failure confirmed on them does
     // (`confirmed_apart`), says so without another run.
     let failed = if state.runs(head, &narrowed).contains(&Ran::Failed) {
         Some(false)
     } else {
-        passes(world, state, head, &narrowed)
+        passes(world, state, head, &narrowed, &aimed)
     };
     match failed {
         Some(false) => (Some(head.clone()), narrowed),
@@ -1908,7 +1995,7 @@ fn alone_at_head(
             let bad = if merges.len() == 1 {
                 Some(head.clone())
             } else {
-                bisect(world, state, merges, test, go_on, splits)
+                bisect(world, state, merges, test, &aimed, go_on, splits)
             };
             (bad, test.to_owned())
         }
@@ -2323,6 +2410,9 @@ mod tests {
         running: Vec<String>,
         /// The subtest pytest names in each failed run's log.
         fails_in: Option<String>,
+        /// The subtest pytest names in a failed run's log at a commit, in
+        /// place of `fails_in` there.
+        fails_at: Vec<(String, String)>,
         /// Commits where a failed run's log says only that something it
         /// needs didn't build, so the test never ran.
         unbuilt: Vec<String>,
@@ -2497,8 +2587,18 @@ mod tests {
             };
             if exit != 0 && self.unbuilt.iter().any(|at| at == commit) {
                 let _ = fs::write(log, "error: Cannot build '/nix/store/x-needed.drv'.\n");
-            } else if let Some(subtest) = self.fails_in.as_ref().filter(|_| exit != 0) {
-                let line = format!("vm-test-run> FAILED vm-pytest-ab/t.py::{subtest} - Error\n");
+            } else if let Some(subtest) = self
+                .fails_at
+                .iter()
+                .find(|(at, _)| at == commit)
+                .map(|(_, subtest)| subtest)
+                .or(self.fails_in.as_ref())
+                .filter(|_| exit != 0)
+            {
+                let line = format!(
+                    "vm-test-run> FAILED vm-pytest-ab/t.py::{subtest} - Error\n\
+                     vm-test-run> ======= 1 failed, 9 passed in 1.00s =======\n"
+                );
                 let _ = fs::write(log, line);
             }
             (exit != STALL).then_some(exit)
@@ -3093,6 +3193,37 @@ mod tests {
             alone,
             vec![("h".to_owned(), "vm-a::test_b".to_owned())],
             "test_b passed alone at the head, so the search ran vm-a whole from its first step"
+        );
+    }
+
+    #[test]
+    fn a_whole_search_takes_no_failure_in_other_subtests_than_the_heads_for_the_break() {
+        // On 14 November #4404 was blamed for vm-desktop-launcher-finds-
+        // sessions failing at the head in one subtest, from two runs at
+        // #4404 where a slow kitty failed another.
+        let state = state("failed-otherwise");
+        state.set_heads("s", "s").unwrap();
+        state.make().unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 m2 h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            fails_at: vec![("m1".into(), "test_c".into())],
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("h", "vm-a::test_b", &[0])
+        .exits("m1", "vm-a", &[1, 1])
+        .exits("m2", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("m2"),
+            "m1 failed only in test_c, not in test_b as at the head, so m2 broke vm-a"
         );
     }
 
@@ -4358,7 +4489,15 @@ mod tests {
             ..Stand::default()
         }
         .exits("m2", "vm-a", &[1, 1]);
-        let found = bisect(&world, &state, &world.merges, "vm-a", &|| true, &|| SPLITS);
+        let found = bisect(
+            &world,
+            &state,
+            &world.merges,
+            "vm-a",
+            &BTreeSet::new(),
+            &|| true,
+            &|| SPLITS,
+        );
         assert_eq!(found.as_deref(), Some("m2"), "the bisect didn't find m2");
         assert!(
             world.waited_out.lock().unwrap().is_empty(),
