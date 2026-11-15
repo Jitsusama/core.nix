@@ -570,6 +570,13 @@ impl Releaser for Passwords {
         None
     }
 
+    /// The program as `program` resolves it, root's choice alone, so a
+    /// standing yes covers the same file and never one a later profile or
+    /// link would come to.
+    fn program(&self, ask: &Ask) -> Option<PathBuf> {
+        self.program(ask.argv.first()?).ok()
+    }
+
     fn locked(&self) -> bool {
         self.loginctl.as_deref().is_some_and(engine::session_locked)
     }
