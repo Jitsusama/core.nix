@@ -48,7 +48,10 @@
 # frame's presentation feedback and says when it was shown: the launcher
 # times Joel's every opening to it (Launcher.qml). It times each frame's
 # sync, render and swap on the render thread too, since the GUI thread
-# hears a swap only once it's free. Each start read every line of every
+# hears a swap only once it's free, and for an asked frame when the GPU
+# finished it, from a native fence, and niri's refresh, since Joel's
+# openings spent a median 20 ms after their swap with nothing saying
+# whether the shell's GPU or niri held them (2026-11-15). Each start read every line of every
 # QML file, 12 percent of the start's main thread under callgrind
 # (2026-11-13), though past a file's header only a preprocessor block
 # matters, so scanner-reads-headers.patch stops at the header of a file
