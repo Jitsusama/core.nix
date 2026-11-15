@@ -441,6 +441,7 @@ mod tests {
 
     #[test]
     fn the_hour_here_is_an_hour_of_the_day() {
-        assert!(hour_here() < 24);
+        let hour = hour_here();
+        assert!(hour < 24, "the hour here should be of the day: {hour}");
     }
 }

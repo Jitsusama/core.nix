@@ -4835,7 +4835,7 @@
   '';
   wifid-reads-the-air = ''
     wifid's tests pass: what it hears and offers, how each network is joined, the addresses it
-    shows, what it keeps, and sign-ins
+    shows, what it keeps, sign-ins, and what each access point carried by the hour
   '';
   wifid-sign-in-reads-its-network = ''
     the sign-in window's tests pass: its proxy lets on only the window, and it follows which card
