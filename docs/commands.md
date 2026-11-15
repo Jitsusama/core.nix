@@ -279,10 +279,13 @@ duf and bat) and from what they and their guides say:
   mark. A list gives way the same way, as the prompt does: a row's words
   after its name, then its side, each by whole items from its end, and
   then its name.
-- **A label goes above its value when room is short.** Facts keep each
-  label beside its value while the labels take less than half the room,
-  and stack each over its value past that, rather than squeezing values
-  into a column too narrow for a phrase. Help does the same: a flag's
+- **A label goes above its value when room is short.** Facts line their
+  values up beside the longest label whose fact fits there, whole on its
+  line or wrapping in no more than half the room, and stack only a fact
+  that can't over its value, two cells in, rather than squeezing it into
+  a column too narrow for a phrase or cutting a word that fits whole
+  under. Each fact is judged on its own, so one long one doesn't send
+  short ones under their labels. Help does the same: a flag's
   words go under its name when fewer than 24 cells are left beside it, as
   clap moves them once the names take 40 per cent of the width and the
   words no longer fit beside them, which uv and cargo do at 60. Beside
