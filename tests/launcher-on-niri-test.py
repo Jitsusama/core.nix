@@ -1560,6 +1560,29 @@ def test_ctrl_r_puts_the_clipboard_on_the_command_line(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_the_command_line_draws_no_line_chosen_until_tab_chooses_one(shell: Shell) -> None:
+    """The : line's menu stands with no line on the selection's ground until Tab chooses one.
+
+    Its rows read their chosen line from the list's own, which a list sets to its first row as
+    a model comes, so the first line stood chosen before any key chose it.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.normal()
+    shell.send_chars(":")
+    shell.launcher_until(lambda shown: bool((shown["command"] or {}).get("menu")))
+    command = shell.showing()["command"]
+    assert command["chosen"] == -1, command
+    assert command["drawnChosen"] == -1, f"a line was drawn chosen before Tab: {command}"
+    shell.send_key("tab")
+    shell.launcher_until(
+        lambda shown: (shown["command"] or {}).get("chosen") == 0
+        and shown["command"].get("drawnChosen") == 0
+    )
+    shell.send_key("esc")
+    shell.close_launcher()
+
+
 def head_title(shell: Shell) -> tuple[int, int]:
     """Give where the head's Title starts and where the word before it, its cell's, starts."""
     field = laid_out(shell)["field"]

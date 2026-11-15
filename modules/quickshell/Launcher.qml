@@ -8266,6 +8266,17 @@ Scope {
         return Math.floor((screen.height - tall) / 2 * ratio) / ratio;
     }
 
+    // The : line's row drawn on the selection's ground, -1 for none: read
+    // from the rows as drawn, so a case sees what Joel would.
+    function commandDrawnChosen() {
+        const rows = commandRows.contentItem.children;
+        for (let at = 0; at < rows.length; at += 1) {
+            if (rows[at].drawnChosen === true)
+                return rows[at].index;
+        }
+        return -1;
+    }
+
     // What the launcher shows, as JSON: whether it holds the keyboard,
     // what's typed and held, the first twenty rows' names in order (a
     // collection holds thousands), and the row Return
@@ -8344,6 +8355,9 @@ Scope {
                 line: commandLoader.item.text,
                 caret: commandLoader.item.caret,
                 chosen: commandLoader.item.choosing.at,
+                // The line drawn on the selection's ground, -1 for none, as
+                // the rows draw it rather than as the line says.
+                drawnChosen: root.commandDrawnChosen(),
                 menu: commandLoader.item.shown.map(line => (line.argument ?? "") === ""
                     ? `${line.command} ${line.title}`
                     : `${line.command} ${line.argument} ${line.title}`),
@@ -11780,10 +11794,15 @@ Scope {
                             interactive: false
                             boundsBehavior: Flickable.StopAtBounds
                             model: commandLoader.item?.shown ?? []
-                            currentIndex: commandLoader.item?.choosing.at ?? -1
-                            onCurrentIndexChanged: {
-                                if (currentIndex >= 0)
-                                    positionViewAtIndex(currentIndex, ListView.Contain);
+                            // The line Tab or an arrow chose, -1 for none, read
+                            // from the command line rather than the list's own
+                            // currentIndex, which a ListView sets to its first
+                            // row as a model comes, so a line stood chosen
+                            // before any key chose it.
+                            readonly property int chosen: commandLoader.item?.choosing.at ?? -1
+                            onChosenChanged: {
+                                if (chosen >= 0)
+                                    positionViewAtIndex(chosen, ListView.Contain);
                                 else
                                     positionViewAtBeginning();
                             }
@@ -11804,12 +11823,13 @@ Scope {
                                 // Its name's baseline, down from its top, which
                                 // the gutter sets its number on.
                                 readonly property real nameBaseline: commandChoice.nameBaseline
+                                readonly property bool drawnChosen: commandChoice.selected
 
                                 Choice {
                                     id: commandChoice
                                     anchors.fill: parent
                                     groundFrom: commandRows.x
-                                    selected: commandRow.index === commandRows.currentIndex
+                                    selected: commandRow.index === commandRows.chosen
                                     shown: card.opacity > 0
                                     glyph: commandRow.modelData.glyph
                                         || (commandRow.act?.glyph ?? "")
@@ -11862,7 +11882,7 @@ Scope {
                             // On the : line, its menu's chosen line, which
                             // its numbers count as the rows' are counted.
                             current: root.commanding !== null
-                                ? commandRows.currentIndex : root.current
+                                ? commandRows.chosen : root.current
                             relative: root.numbersCounted
                             digits: root.gutterDigits
                             // On the : line, as many as its lines need.
