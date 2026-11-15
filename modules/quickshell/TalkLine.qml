@@ -442,10 +442,18 @@ Scope {
     // once the screens change and the one it's on is gone, it's put away, its draft kept, and
     // made again on the screen the keys are on, as the launcher's is (Launcher.qml's remake);
     // with no screen at all it waits unmade for the next, which changes the screens again.
+    // The screen it's on, gone, is let go at once rather than once the change settles: up
+    // till then its place and width read a screen Qt has freed, and Quickshell warns it's
+    // dangling (the net's vm-screens-keep-the-launcher, 2026-11-14 11:00 on, as the line came
+    // up and both screens went).
     Connections {
         target: Quickshell
         function onScreensChanged() {
-            Qt.callLater(root.remake);
+            const on = [root.screen, surface.screen].filter(one => one !== null);
+            if (on.some(one => !Quickshell.screens.includes(one)))
+                root.remake();
+            else
+                Qt.callLater(root.remake);
         }
     }
     function remake() {
@@ -476,7 +484,9 @@ Scope {
         // the screen alone, so it never moves as it grows.
         readonly property real frame: root.launcher.cardChrome
             + root.launcher.rows * root.launcher.rowTall
-        readonly property real top: !screen ? 0 : root.launcher.frameTop(screen, frame)
+        // Read only while it's up, so a screen going under a quiet line is never measured.
+        readonly property real top: !root.up || !screen ? 0
+            : root.launcher.frameTop(screen, frame)
         // Quickshell's type files can't place margins, so qmllint can't.
         margins.top: root.up ? surface.top - card.reach // qmllint disable unqualified
             : 1 - implicitHeight

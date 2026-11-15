@@ -208,10 +208,15 @@ Scope {
         id: surface
 
         Counted { name: "notices" }
-        visible: !root.remaking
+        // Unmade with no real screen to stand on: Qt's stand-in for one has no name and holds
+        // no surface, so made there, niri refuses it and Quickshell warns, as it did on the
+        // net's vm-screens-keep-the-launcher each time every screen went (2026-11-14 18:22 on).
+        visible: !root.remaking && surface.standsOn !== null
         // Made again for another screen, its first frame is the one the timing waits for.
         onVisibleChanged: if (visible && root.timing !== null) surface.FramePresentation.ask()
-        screen: root.launcher?.focusedScreen ?? Quickshell.screens[0] ?? null
+        readonly property var standsOn: root.launcher !== null ? root.launcher.focusedScreen
+            : Quickshell.screens.find(one => one.name !== "") ?? null
+        screen: surface.standsOn
         anchors.top: true
         anchors.left: true
         // Off the screen while quiet, but its last clear pixel in the corner the launcher's
