@@ -1,17 +1,16 @@
 // How a thing's drawer says its parts, and how a screen's light is read,
 // run in Qt's own JavaScript engine, the one the shell runs it in. The
 // `a-things-drawer-says-its-parts` check copies
-// modules/quickshell/launcher/Plate.js, Backlight.js, Numbers.js and
-// Order.js beside this file and runs `qml -platform offscreen plate.qml`.
-// A part's name is a fact's label and what it says the value, a level's
-// bar a stroke after it; an act or a choice isn't said; and a holder of
-// figures is opened in place. The machine daemon's backlight and light
-// sensor records are read as Backlight.js reads them: the panel's steps
-// and the lux the sensor hears, the room's light measured to three
-// digits. A screen's drawer, its settings, what its EDID says, its white
-// point and primaries among it, and what the : line types for them are
-// the windows daemon's (modules/windows: screens.rs and the files beside
-// it), so they're tested there.
+// modules/quickshell/launcher/Plate.js, Backlight.js and Order.js beside
+// this file and runs `qml -platform offscreen plate.qml`. A part's name
+// is a fact's label and what it says the value, a level's bar a stroke
+// after it; an act or a choice isn't said; and a holder of figures is
+// opened in place. The machine daemon's backlight and light sensor
+// records are read as Backlight.js reads them: the panel's steps and the
+// lux the sensor hears. A screen's drawer, its settings, its Room Light,
+// what its EDID says, its white point and primaries among it, and what
+// the : line types for them are the windows daemon's (modules/windows:
+// screens.rs and the files beside it), so they're tested there.
 import QtQuick
 import "Backlight.js" as Backlight
 import "Plate.js" as Plate
