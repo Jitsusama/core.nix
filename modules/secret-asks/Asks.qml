@@ -12,7 +12,9 @@
 // ran or refused, and a refusal is said in the daemon's words. A waiting
 // ask is also one of For You's things to do (`forYou`, which Now.qml
 // gathers with every source's), so home's On row leads with it and the
-// tray counts it.
+// tray counts it. A standing yes, which lets the same ask run for a week
+// (src/grant.rs), is a row too, never waiting, so it neither arms nor
+// counts in For You, and its Return does its one act, Revoke It.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell

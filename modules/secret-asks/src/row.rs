@@ -66,6 +66,12 @@ pub struct Held {
 /// was read: SHA-256 of one JSON array, its objects' keys sorted and
 /// every number whole, so it reads the same however it's made.
 pub fn digest(ask: &Ask, tree: &Tree) -> String {
+    digest_lasting(ask, tree, None)
+}
+
+/// The digest of an ask whose line says a yes lasts, as a grant, for
+/// any tree of the repository `lasts` names, so a yes is to that too.
+pub fn digest_lasting(ask: &Ask, tree: &Tree, lasts: Option<&str>) -> String {
     let quest = ask
         .quest
         .as_ref()
@@ -89,6 +95,16 @@ pub fn digest(ask: &Ask, tree: &Tree) -> String {
     // a tree that commits adds nothing, keeping the digests it had.
     if let (Some(kept), Value::Array(said)) = (uncommitting(&tree.checkout), &mut said) {
         said.push(json!(kept));
+    }
+    // So too what a yes lasts for, where the line says it lasts; a line
+    // that doesn't keeps the digests it had.
+    if let (Some(repository), Value::Array(said)) = (lasts, &mut said) {
+        said.push(json!({"lasts": repository}));
+    }
+    // And whether a standing yes would cover it but for its code being
+    // off main, where that was asked.
+    if let (Some(landed), Value::Array(said)) = (tree.landed, &mut said) {
+        said.push(json!({"landed": landed}));
     }
     let hash = Sha256::digest(said.to_string().as_bytes());
     hash.iter().fold(String::new(), |mut hex, byte| {
@@ -121,6 +137,14 @@ fn quoted(word: &str) -> String {
     } else {
         format!("'{}'", word.replace('\'', r"'\''"))
     }
+}
+
+/// A command as the line says it, each word quoted as a shell needs it.
+pub fn command(argv: &[String]) -> String {
+    argv.iter()
+        .map(|word| quoted(word))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// The tree's path as Joel reads it, his home folder as `~`.
@@ -167,8 +191,20 @@ fn outcome(held: &Held, words: &Words) -> Option<Value> {
 /// `says_commits` has it say where a release can't commit, for a releaser
 /// whose command writes a worktree's history alone.
 pub fn row(held: &Held, home: &str, words: &Words, says_commits: bool) -> Value {
+    row_lasting(held, home, words, says_commits, None)
+}
+
+/// The row for an ask whose yes lasts, as a grant, for any tree of the
+/// repository `lasts` names, the line saying so; as [`row`] where none.
+pub fn row_lasting(
+    held: &Held,
+    home: &str,
+    words: &Words,
+    says_commits: bool,
+    lasts: Option<&str>,
+) -> Value {
     let ask = &held.ask;
-    let digest = digest(ask, &held.tree);
+    let digest = digest_lasting(ask, &held.tree, lasts);
     let key = format!("row:{PLACE}:{}", ask.id);
     // An act names the ask alone, by its thing, never by its row's key
     // too, so a forged act has one form to match, not two.
@@ -177,7 +213,6 @@ pub fn row(held: &Held, home: &str, words: &Words, says_commits: bool) -> Value 
         Some((_, title)) => words.fill("from", &[("session", &ask.session), ("quest", title)]),
         None => ask.session.clone(),
     };
-    let command: Vec<String> = ask.argv.iter().map(|word| quoted(word)).collect();
     let path = homed(&ask.tree, home);
     let short = held
         .tree
@@ -192,7 +227,7 @@ pub fn row(held: &Held, home: &str, words: &Words, says_commits: bool) -> Value 
         // Each identifies what runs, so the drawer lays it whole, never cut.
         json!({
             "name": words.fill("fact:runs", &[]),
-            "said": command.join(" "),
+            "said": command(&ask.argv),
             "identifies": true,
         }),
         json!({"name": words.fill("fact:in", &[]), "said": place, "identifies": true}),
@@ -220,6 +255,19 @@ pub fn row(held: &Held, home: &str, words: &Words, says_commits: bool) -> Value 
         "name": words.fill("fact:given", &[]),
         "said": words.fill("given", &[("name", &ask.given), ("minutes", &minutes)]),
     }));
+    if let Some(repository) = lasts {
+        facts.push(json!({
+            "name": words.fill("fact:lasts", &[]),
+            "said": words.fill("lasts", &[("repository", repository)]),
+        }));
+    }
+    // A standing yes waits on code off main, and he's told why it asks.
+    if held.tree.landed == Some(false) {
+        facts.push(json!({
+            "name": words.fill("fact:standing", &[]),
+            "said": words.fill("unlanded", &[]),
+        }));
+    }
     if held.state == State::Waiting {
         facts.push(json!({
             "name": words.fill("fact:ends", &[]),
@@ -291,6 +339,7 @@ mod tests {
                 commit: Some("4f2a91c03b1d7e6a5b4c3d2e1f0a9b8c7d6e5f4a".to_owned()),
                 uncommitted,
                 checkout: Checkout::None,
+                landed: None,
             },
             state,
             since_ms: 1_794_458_400_000,

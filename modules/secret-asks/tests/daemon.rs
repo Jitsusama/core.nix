@@ -75,6 +75,7 @@ impl Setting {
         std::fs::write(folder.join("tree/README"), "a tree").expect("a file is written");
         git(&folder.join("tree"), &["add", "README"]);
         git(&folder.join("tree"), &["commit", "-q", "-m", "a commit"]);
+        on_main(&folder.join("tree"));
         let marks = folder.join("op-ran");
         script(
             &folder.join("op"),
@@ -165,11 +166,16 @@ impl Setting {
 /// Puts up an ask for `item` in the setting's folder, daemon or not, and
 /// answers its id.
 fn put_up(folder: &Path, item: &str) -> String {
+    put_up_in(folder, &folder.join("tree"), item)
+}
+
+/// Puts up an ask for `item` to run in `tree`, and answers its id.
+fn put_up_in(folder: &Path, tree: &Path, item: &str) -> String {
     let ran = Command::new(env!("CARGO_BIN_EXE_secret-asks"))
         .args(["ask", "--item", item, "--why", "To try the line.", "--asks"])
         .arg(folder.join("asks"))
         .arg("--tree")
-        .arg(folder.join("tree"))
+        .arg(tree)
         .output()
         .expect("the ask is put up");
     assert!(ran.status.success(), "the ask wasn't put up: {ran:?}");
@@ -179,6 +185,293 @@ fn put_up(folder: &Path, item: &str) -> String {
 /// The row of an ask, once a watch is told of it.
 fn row(client: &mut Client, id: &str) -> Value {
     client.changed(&format!("row:asks:{id}"))["row"].clone()
+}
+
+/// Says yes to an ask once its row is drawn, and waits for what it ran;
+/// answers the row the yes was to.
+fn said_yes(setting: &Setting, client: &mut Client, id: &str) -> Value {
+    let drawn = row(client, id);
+    assert_eq!(
+        act(client, &drawn, 0)["releasing"],
+        true,
+        "the yes wasn't taken"
+    );
+    assert_eq!(setting.answer(id)["state"], "ran", "the yes didn't run");
+    drawn
+}
+
+/// The grants Asks lists, as the daemon serves them now.
+fn grants(client: &mut Client) -> Vec<Value> {
+    let held = client.ask(&json!({"id": 1, "ask": "list", "kind": "row"}));
+    held["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|record| record["row"].clone())
+        .filter(|row| row["kind"] == "grant")
+        .collect()
+}
+
+/// Has origin's default branch hold the tree's commit, as a tree on main
+/// does once fetched.
+fn on_main(tree: &Path) {
+    git(tree, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    git(
+        tree,
+        &[
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/main",
+        ],
+    );
+}
+
+/// The fact a row says under `name`, if it says one.
+fn fact(row: &Value, name: &str) -> Option<Value> {
+    row["drawer"]["facts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|fact| fact["name"] == name)
+        .map(|fact| fact["said"].clone())
+}
+
+/// A repository of its own beside the setting's tree, one commit in.
+fn another_repository(folder: &Path) -> PathBuf {
+    let other = folder.join("other");
+    std::fs::create_dir_all(&other).expect("the other tree is made");
+    git(&other, &["init", "-q"]);
+    std::fs::write(other.join("README"), "another tree").expect("a file is written");
+    git(&other, &["add", "README"]);
+    git(&other, &["commit", "-q", "-m", "a commit"]);
+    on_main(&other);
+    other
+}
+
+#[test]
+fn a_yes_lets_the_same_ask_from_any_tree_of_its_repository_run_for_a_week() {
+    let setting = Setting::new("granted");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    let drawn = said_yes(&setting, &mut client, &first);
+    assert_eq!(
+        fact(&drawn, "Yes Lasts"),
+        Some(json!(
+            "a week, for this command from any tree of tree on main"
+        )),
+        "the line didn't say what a yes lets run: {drawn}"
+    );
+    assert!(
+        setting.reading().contains("ASK_OUTCOME=released\n"),
+        "the yes wasn't read"
+    );
+    let worktree = setting.folder.join("worktree");
+    git(
+        &setting.folder.join("tree"),
+        &["worktree", "add", "-q", &worktree.to_string_lossy()],
+    );
+    let again = put_up_in(&setting.folder, &worktree, ITEM);
+    let answer = setting.answer(&again);
+    assert_eq!(answer["state"], "ran", "the grant didn't run it: {answer}");
+    assert_eq!(
+        answer["granted"], true,
+        "the answer doesn't say so: {answer}"
+    );
+    let reading = setting.reading();
+    assert!(
+        reading.contains("ASK_OUTCOME=granted\n"),
+        "a release by grant isn't read as one: {reading}"
+    );
+    assert_eq!(setting.op_ran(), 2, "op didn't run for each");
+}
+
+#[test]
+fn a_yes_lets_the_same_ask_already_waiting_run_too() {
+    let setting = Setting::new("granted-waiting");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    row(&mut client, &first);
+    let waiting = setting.ask(ITEM);
+    assert_eq!(
+        row(&mut client, &waiting)["state"],
+        "waiting",
+        "the second ask didn't wait before any yes"
+    );
+    let drawn = client.ask(&json!({"id": 1, "ask": "list", "kind": "row"}))["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|record| record["row"].clone())
+        .find(|row| row["thing"] == format!("ask:{first}"))
+        .expect("the first ask's row is listed");
+    assert_eq!(
+        act(&mut client, &drawn, 0)["releasing"],
+        true,
+        "the yes wasn't taken"
+    );
+    let answer = setting.answer(&waiting);
+    assert_eq!(
+        answer["state"], "ran",
+        "the same ask already waiting still waited: {answer}"
+    );
+    assert_eq!(
+        answer["granted"], true,
+        "the answer doesn't say so: {answer}"
+    );
+}
+
+#[test]
+fn a_grant_covers_no_tree_whose_code_isnt_all_on_main() {
+    let setting = Setting::new("granted-unlanded");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    let tree = setting.folder.join("tree");
+    let (unmerged, changed) = (
+        setting.folder.join("unmerged"),
+        setting.folder.join("changed"),
+    );
+    for worktree in [&unmerged, &changed] {
+        git(
+            &tree,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "--detach",
+                &worktree.to_string_lossy(),
+            ],
+        );
+    }
+    // An agent's later edit Joel never saw: a commit main doesn't hold,
+    // and a change not yet committed.
+    std::fs::write(unmerged.join("release.sh"), "echo edited").expect("a file is written");
+    git(&unmerged, &["add", "release.sh"]);
+    git(&unmerged, &["commit", "-q", "-m", "an unmerged commit"]);
+    std::fs::write(changed.join("README"), "edited").expect("a file is written");
+    for worktree in [&unmerged, &changed] {
+        let id = put_up_in(&setting.folder, worktree, ITEM);
+        let drawn = row(&mut client, &id);
+        assert_eq!(
+            drawn["state"],
+            "waiting",
+            "a grant covered {} though its code isn't on main",
+            worktree.display()
+        );
+        assert_eq!(
+            fact(&drawn, "Standing Yes"),
+            Some(json!(
+                "doesn't cover this, since its code isn't all on main"
+            )),
+            "the row doesn't say why the standing yes waits: {drawn}"
+        );
+    }
+    assert_eq!(setting.op_ran(), 1, "op ran for code not on main");
+}
+
+#[test]
+fn a_grant_never_covers_another_repository() {
+    let setting = Setting::new("granted-elsewhere");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    let other = another_repository(&setting.folder);
+    let elsewhere = put_up_in(&setting.folder, &other, ITEM);
+    assert_eq!(
+        row(&mut client, &elsewhere)["state"],
+        "waiting",
+        "a grant covered another repository"
+    );
+    assert_eq!(setting.op_ran(), 1, "op ran for another repository");
+}
+
+#[test]
+fn a_no_grants_nothing() {
+    let setting = Setting::new("no-grant");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    let drawn = row(&mut client, &first);
+    assert_eq!(
+        act(&mut client, &drawn, 1)["refused"],
+        true,
+        "the no wasn't taken"
+    );
+    let again = setting.ask(ITEM);
+    assert_eq!(
+        row(&mut client, &again)["state"],
+        "waiting",
+        "a no let the same ask through"
+    );
+    assert!(grants(&mut client).is_empty(), "a no left a grant");
+}
+
+#[test]
+fn asks_lists_a_grant_and_revoking_it_has_the_same_ask_wait_again() {
+    let setting = Setting::new("revoked");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    let listed = grants(&mut client);
+    assert_eq!(listed.len(), 1, "the grant isn't listed once: {listed:?}");
+    let grant = &listed[0];
+    assert_eq!(
+        grant["name"], ITEM,
+        "the grant doesn't name its item: {grant}"
+    );
+    assert_eq!(
+        grant["note"], "secret-asks received, from tree",
+        "the grant doesn't say what it lets run where: {grant}"
+    );
+    assert_eq!(
+        grant["acts"][0]["key"], "verb:grant:forget",
+        "its one act isn't Forget It: {grant}"
+    );
+    assert_eq!(
+        grant["acts"][0]["costly"], false,
+        "forgetting a standing yes is asked to be sure of: {grant}"
+    );
+    // The row's going may be pushed before the revoke is answered, and an
+    // ask passes over pushes, so both are read here in whichever order.
+    let revoke = acting(grant, 0);
+    client.send(&revoke);
+    let (mut answer, mut gone) = (None, None);
+    while answer.is_none() || gone.is_none() {
+        let said = client.heard();
+        if let Some(keys) = said["gone"].as_array() {
+            gone = Some(keys.clone());
+        } else if said["id"] == revoke["id"] && said.get("changed").is_none() {
+            answer = Some(said);
+        }
+    }
+    let (answer, gone) = (answer.unwrap_or_default(), gone.unwrap_or_default());
+    assert_eq!(answer["revoked"], true, "the revoke wasn't taken: {answer}");
+    assert!(
+        gone.iter().any(|key| key.as_str() == grant["key"].as_str()),
+        "the grant's row didn't go: {gone:?}"
+    );
+    assert!(grants(&mut client).is_empty(), "the grant stayed");
+    let again = setting.ask(ITEM);
+    assert_eq!(
+        row(&mut client, &again)["state"],
+        "waiting",
+        "a revoked grant still let it through"
+    );
+    assert_eq!(setting.op_ran(), 1, "op ran under a revoked grant");
+}
+
+#[test]
+fn a_grant_runs_while_the_screen_is_locked_since_joel_said_yes_unlocked() {
+    let setting = Setting::new("granted-locked");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    std::fs::write(setting.folder.join("locked"), "yes").expect("the lock is written");
+    let again = setting.ask(ITEM);
+    assert_eq!(
+        setting.answer(&again)["state"],
+        "ran",
+        "a grant waited on the lock"
+    );
 }
 
 /// Asks the daemon what a row's act asks, as the launcher sends it.

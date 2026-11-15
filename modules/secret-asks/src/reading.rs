@@ -24,6 +24,9 @@ pub const JOURNAL: &str = "/run/systemd/journal/socket";
 pub enum Outcome {
     /// Joel said yes, and the value went to the command.
     Released,
+    /// A grant from Joel's yes to the same ask released it, with no row,
+    /// so the gain from grants is counted as the asks he wasn't shown.
+    Granted,
     /// Joel said no.
     Refused,
     /// The line changed after it was drawn, so it was drawn again.
@@ -42,6 +45,7 @@ impl Outcome {
     pub fn name(self) -> &'static str {
         match self {
             Outcome::Released => "released",
+            Outcome::Granted => "granted",
             Outcome::Refused => "refused",
             Outcome::Changed => "changed",
             Outcome::Locked => "locked",

@@ -41,6 +41,26 @@
       "name": "Outcome"
     },
     {
+      "id": "asks:fact:lasts",
+      "in": "asks",
+      "name": "Yes Lasts"
+    },
+    {
+      "id": "asks:fact:from",
+      "in": "asks",
+      "name": "From"
+    },
+    {
+      "id": "asks:fact:granted",
+      "in": "asks",
+      "name": "Said Yes"
+    },
+    {
+      "id": "asks:fact:standing",
+      "in": "asks",
+      "name": "Standing Yes"
+    },
+    {
       "id": "verb:release",
       "command": "release",
       "in": "asks",
@@ -60,6 +80,16 @@
       "verb": "refuse",
       "glyph": "passwords",
       "key": "r"
+    },
+    {
+      "id": "verb:grant:forget",
+      "command": "forget",
+      "in": "asks",
+      "name": "Forget It",
+      "verb": "forget",
+      "glyph": "dismiss",
+      "act": "ending",
+      "ends": "forget"
     }
   ]
 }
