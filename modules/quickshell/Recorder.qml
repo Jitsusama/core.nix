@@ -288,7 +288,11 @@ Singleton {
     // height. record-window says why it couldn't on its standard error, the
     // terminal kit's failed mark and a space before its words, which the
     // notice leaves to its own title, and exits 130 when it was stopped
-    // before it began, which needs no notice.
+    // before it began, which needs no notice. The mark is the theme's glyph,
+    // or on the console (TERM=linux, as niri's session may have) its
+    // one-letter stand-in, so a first word is a mark when it's one character
+    // or doesn't open with a letter or a digit; a line without one, such as
+    // a panic's, is said whole.
     readonly property string windowScript: [
         'folder=$1 window=$2 width=$3 height=$4',
         'mkdir -p "$folder" || exit',
@@ -298,7 +302,7 @@ Singleton {
         '    0) ;;',
         '    130) exit ;;',
         '    *) printf "%s\\n" "$why" >&2',
-        '       why=${why#* }',
+        '       case $why in [[:alnum:]][[:alnum:]]*) ;; *) why=${why#* } ;; esac',
         '       exec notify-send --app-name=Recorder "The window could not be recorded" "$why" ;;',
         'esac'
     ].concat(saved).join("\n")
