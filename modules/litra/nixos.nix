@@ -33,6 +33,8 @@ in
   systemd.user.services.litra-follows-cameras = {
     description = "Lights the Litra Glow while a camera streams";
     wantedBy = [ "default.target" ];
+    # A person's, so not a system account's lingering manager's.
+    unitConfig.ConditionUser = "!@system";
     serviceConfig = {
       ExecStart = lib.concatStringsSep " " [
         "${litra}/bin/litra follow /run/camera-holders %t/quickshell-locked"

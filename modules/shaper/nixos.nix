@@ -288,6 +288,8 @@ in
   # system journal for when the shaper ran.
   config.systemd.user.services.shaper-day = {
     description = "Write how today's connection did under load";
+    # A person's: a system account has no home to keep the day in.
+    unitConfig.ConditionUser = "!@system";
     path = [ pkgs.systemd ];
     serviceConfig = {
       Type = "oneshot";
@@ -302,6 +304,7 @@ in
   };
   config.systemd.user.timers.shaper-day = {
     wantedBy = [ "timers.target" ];
+    unitConfig.ConditionUser = "!@system";
     timerConfig = {
       OnCalendar = "hourly";
       Persistent = true;

@@ -613,6 +613,8 @@ in
     systemd.user.services.jobs = {
       description = "The place work Joel starts runs, behind what he uses";
       wantedBy = [ "default.target" ];
+      # A person's, so not a system account's lingering manager's.
+      unitConfig.ConditionUser = "!@system";
       serviceConfig = {
         Slice = "jobs.slice";
         Delegate = true;
@@ -642,6 +644,7 @@ in
     systemd.user.services.timed = {
       description = "The place timed work runs, ahead of other work";
       wantedBy = [ "default.target" ];
+      unitConfig.ConditionUser = "!@system";
       serviceConfig = {
         Slice = "jobs-timed.slice";
         Delegate = true;
@@ -665,6 +668,7 @@ in
     systemd.user.services.awaited = {
       description = "The place Joel's own work runs, ahead of agents' work";
       wantedBy = [ "default.target" ];
+      unitConfig.ConditionUser = "!@system";
       serviceConfig = {
         Slice = "jobs-awaited.slice";
         Delegate = true;
@@ -693,6 +697,7 @@ in
     systemd.user.services.jobs-sorter = {
       description = "Sorts work into jobs, each piece in a scope of its own";
       wantedBy = [ "default.target" ];
+      unitConfig.ConditionUser = "!@system";
       requires = [ "awaited.service" ];
       after = [ "awaited.service" ];
       # busctl starts each scope, and systemctl names each holder.

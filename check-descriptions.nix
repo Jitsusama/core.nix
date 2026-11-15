@@ -2730,6 +2730,10 @@
     swayimg keeps the picture it shows, read by its Recent's command as its process and whole path,
     and nothing once ZZ closes it, clearing what a killed one left
   '';
+  system-accounts-start-no-persons-services = ''
+    every user unit core starts by itself in every account's manager says whose it is, so a
+    system account's lingering manager starts none of a person's services
+  '';
   terminal-kit-gives-every-command-one-shape = ''
     the terminal kit takes the shared flags out of a command line and leaves the rest in order,
     inks by --color, NO_COLOR, FORCE_COLOR and the terminal in that order, lays rows out giving way

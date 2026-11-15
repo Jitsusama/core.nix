@@ -307,6 +307,8 @@ in
     systemd.user.sockets.nix-untrusted = {
       description = "The Nix daemon's door for sandboxes, which trusts no one";
       wantedBy = [ "sockets.target" ];
+      # A person's sandboxes', so not a system account's lingering manager's.
+      unitConfig.ConditionUser = "!@system";
       listenStreams = [ "%t/nix-untrusted.sock" ];
       socketConfig = {
         Accept = true;

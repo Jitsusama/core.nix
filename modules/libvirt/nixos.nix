@@ -93,6 +93,8 @@ in
   systemd.user.sockets.virtqemud = {
     description = "libvirt QEMU daemon socket, for session machines";
     wantedBy = [ "sockets.target" ];
+    # A person's, so not a system account's lingering manager's.
+    unitConfig.ConditionUser = "!@system";
     listenStreams = [ "%t/libvirt/virtqemud-sock" ];
     socketConfig = {
       SocketMode = "0600";

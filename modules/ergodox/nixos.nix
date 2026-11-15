@@ -26,6 +26,8 @@ in
   systemd.user.services.ergodox-watch = {
     description = "Says which layer the ErgoDox is on, for the shell";
     wantedBy = [ "default.target" ];
+    # A person's, so not a system account's lingering manager's.
+    unitConfig.ConditionUser = "!@system";
     serviceConfig = {
       ExecStart = lib.escapeShellArgs (
         [

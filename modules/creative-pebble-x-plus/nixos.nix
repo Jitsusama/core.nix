@@ -54,6 +54,8 @@ in
   systemd.user.services.pebble-lights = {
     description = "The Pebble X Plus's lighting, dark while nobody uses them";
     wantedBy = [ "default.target" ];
+    # A person's, so not a system account's lingering manager's.
+    unitConfig.ConditionUser = "!@system";
     serviceConfig = {
       ExecStart = "${lights}/bin/pebble-lights %t/quickshell-locked";
       Restart = "on-failure";
