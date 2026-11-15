@@ -417,7 +417,7 @@ fn a_grant_covers_no_tree_whose_code_isnt_all_on_main() {
     for (worktree, why) in [
         (
             &unmerged,
-            "doesn't cover this: its forge didn't say this tree is on main",
+            "doesn't cover this, since its forge hasn't said its code is on main",
         ),
         (
             &changed,

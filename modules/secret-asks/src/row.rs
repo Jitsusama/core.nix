@@ -407,7 +407,7 @@ mod tests {
             ),
             (
                 "unsaid",
-                "doesn't cover this: {forge} didn't say this tree is on main",
+                "doesn't cover this, since {forge} hasn't said its code is on main",
             ),
             ("side:released", "released"),
             ("side:refused", "refused"),
@@ -460,7 +460,7 @@ mod tests {
         assert_eq!(
             standing(&held),
             Some(json!(
-                "doesn't cover this: GitHub didn't say this tree is on main"
+                "doesn't cover this, since GitHub hasn't said its code is on main"
             )),
             "a commit GitHub didn't vouch for"
         );

@@ -18,6 +18,10 @@
 //! none of the account's environment, so no helper the account's git
 //! settings name runs; and a token gh were made to say would only ask
 //! GitHub as someone else, whose answer over TLS is still GitHub's.
+//! What this leans on: gh runs here, outside the fence, and reads its
+//! config.yml and hosts.yml, which the account can write. No setting
+//! there makes `gh auth token` run a program today, since it uses no
+//! pager, editor or browser; a gh that changed that would bite here.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -247,12 +251,15 @@ fn asking(git: &Path, prefix: &str, url: &str, credential: Option<&str>) -> Opti
         }
     }
     // In git's environment rather than its arguments, which any process
-    // may read, and scoped to the forge's own URL.
+    // may read, and scoped to the forge's own URL, with no redirect
+    // followed, which would carry it off the forge (ISXEG8, 15 November).
     if let Some(credential) = credential {
         command
-            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_COUNT", "2")
             .env("GIT_CONFIG_KEY_0", format!("http.{prefix}.extraHeader"))
-            .env("GIT_CONFIG_VALUE_0", credential);
+            .env("GIT_CONFIG_VALUE_0", credential)
+            .env("GIT_CONFIG_KEY_1", "http.followRedirects")
+            .env("GIT_CONFIG_VALUE_1", "false");
     }
     Some(command)
 }
@@ -396,6 +403,12 @@ mod tests {
             (envs.get("GIT_CONFIG_KEY_0"), envs.get("GIT_CONFIG_VALUE_0")),
             (Some(&"http.https://github.com/.extraHeader"), Some(&header)),
             "git wasn't given the header for GitHub alone: {envs:?}"
+        );
+        // A redirect would carry the header off GitHub (ISXEG8, 15 November).
+        assert_eq!(
+            (envs.get("GIT_CONFIG_KEY_1"), envs.get("GIT_CONFIG_VALUE_1")),
+            (Some(&"http.followRedirects"), Some(&"false")),
+            "git may follow a redirect with the header: {envs:?}"
         );
         assert!(
             command.get_args().all(|arg| arg.to_str() != Some(header)),
