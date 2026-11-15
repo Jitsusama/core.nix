@@ -1037,6 +1037,16 @@
       ]
     },
     {
+      "id": "code",
+      "name": "Code",
+      "noun": "repositories",
+      "what": "repository",
+      "glyph": "branch",
+      "ask": "which repository?",
+      "empty": "No repositories under the folders it reads.",
+      "none": "none found"
+    },
+    {
       "id": "tabs",
       "name": "Tabs",
       "noun": "tabs",

@@ -33,6 +33,11 @@ pub(crate) const SQM: &str = "eero:sqm";
 const SQM_ON: &str = "verb:eero:sqm-on";
 const SQM_OFF: &str = "verb:eero:sqm-off";
 
+/// Seeing the whole home network as a map, a page of its own in the
+/// browser drawn from net's record (modules/net) rather than a drawer
+/// here, since a map wants the room (VKCF3Z's ruling, 2026-11-14).
+pub(crate) const MAP: &str = "verb:eero:map";
+
 /// How the items a row's side or note gives way whole are joined, where
 /// one item holds several.
 pub(crate) const DOT: &str = " \u{b7} ";
@@ -73,9 +78,16 @@ pub fn key(id: &str) -> String {
 }
 
 /// Every row, in the order the place lists them, each without its
-/// `order`, which ready-rows' `Kept` gives it.
-pub fn rows(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Vec<Value> {
-    let mut rows = vec![internet_row(model, words, numbers)];
+/// `order`, which ready-rows' `Kept` gives it; the map of the network
+/// first, where the daemon is given the map's page.
+pub fn rows(
+    model: &HomeNetwork,
+    words: &Words,
+    numbers: &Numbers,
+    map: Option<&str>,
+) -> Vec<Value> {
+    let mut rows: Vec<Value> = map.map(|page| map_row(page, words)).into_iter().collect();
+    rows.push(internet_row(model, words, numbers));
     rows.extend(acts_inside(model, words));
     for (node, devices) in grouped(model) {
         if let Some(node) = node {
@@ -263,6 +275,17 @@ fn acts_inside(model: &HomeNetwork, words: &Words) -> Vec<Value> {
         rows.push(switch);
     }
     rows
+}
+
+/// The map of the network, whose Return opens its `page` in the browser,
+/// as any link opens.
+fn map_row(page: &str, words: &Words) -> Value {
+    json!({
+        "key": key("map"), "thing": MAP, "place": PLACE, "kind": "act", "depth": 0,
+        "name": words.name(MAP), "glyph": words.glyph(MAP), "hue": "action",
+        "side": [], "note": items([item(words.say(MAP, "note"))]),
+        "acts": [{"key": MAP, "open": page}],
+    })
 }
 
 /// The speed test, saying "testing" while one this daemon asked runs,

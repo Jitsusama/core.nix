@@ -755,4 +755,5 @@ fn the_launchers_vocabulary_has_every_screens_words() {
     assert!(lacked.is_empty(), "the launcher's words lack {lacked:?}");
 }
 
+mod answers;
 mod light;

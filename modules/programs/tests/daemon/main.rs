@@ -14,10 +14,12 @@
 //! (rows.rs), their search and what programs tell (search.rs), Capture's
 //! (taken.rs), what Chrome has open (chrome.rs), kitty's open list
 //! without the agents' panes (agents.rs), every open tab in one place
-//! (tabs.rs), and the tab in front of one of Chrome's windows (front.rs).
+//! (tabs.rs), the tab in front of one of Chrome's windows (front.rs), and
+//! every repository's row (code.rs).
 
 mod agents;
 mod chrome;
+mod code;
 mod front;
 mod kitty;
 mod repositories;

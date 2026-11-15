@@ -1,5 +1,7 @@
 // The Home Network, a place inside Network: the home network as the eero
-// daemon keeps it (Eero.qml). Its head is the internet, saying how it
+// daemon keeps it (Eero.qml). First is the map, whose Return opens the
+// network site's page of every device on it, drawn from net's record (the
+// eero daemon's unit names it). Its head is the internet, saying how it
 // stands, who carries it, the last speed test and when, whether it's
 // optimized for conferencing and gaming, its outages, the nodes by state
 // and the devices eero counts; then each node, the gateway node first and
@@ -111,10 +113,10 @@ Provider {
     // do (VKCF3Z, 2026-11-08).
     function madeFrom(row, key) {
         const kind = row.kind ?? "";
-        // What can be done to the home network, inside the internet, is
-        // drawn as ready-rows draws any served act. The switch reads by its
-        // words' state, as the command line does.
-        if ((row.parent ?? "") !== "")
+        // What can be done to the home network, inside the internet, and
+        // the map at the top, are drawn as ready-rows draws any served act.
+        // The switch reads by its words' state, as the command line does.
+        if (Home.asAct(row))
             return ready.thing(row, key, { wordState: row.held?.on === true ? "on" : "" });
         const said = () => provider.inside(row);
         const made = ready.thing(row, key, {
@@ -178,8 +180,8 @@ Provider {
         }
     })
 
-    // Every row as the daemon serves them, in its order: the internet,
-    // then each node with its devices under it, then the profiles. The
+    // Every row as the daemon serves them, in its order: the map, the
+    // internet, then each node with its devices under it, then the profiles. The
     // record itself is asked, not `present`, which follows it a binding
     // later, so a record let go draws no row whose drawer says nothing.
     readonly property var all: model === null || model === undefined ? [] : ready.rows()

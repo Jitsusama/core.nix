@@ -132,6 +132,28 @@ ShellRoot {
                 ask: { ask: "light", do: "night-light", on: true } }]
         } })
 
+    // A screen's Scale, as settings.rs serves it inside the screen, and
+    // the row screens/answers.rs serves for it behind "screen scale"'s
+    // answer, the monitor's first as though it were focused.
+    function scale(output, said, order) {
+        return { key: `row:displays:setting:${output}:scale`, kind: "row", row: {
+            key: `row:displays:setting:${output}:scale`, thing: `displays:${output}:scale`,
+            place: "displays", kind: "setting", order: order, name: "Scale", glyph: "",
+            hue: "machine", parent: `row:displays:display:${output}`, depth: 1,
+            side: [{ said: said }], note: "", acts: [{ key: "verb:copy", copy: said }]
+        } };
+    }
+    function answering(output, name, said, order) {
+        return { key: `row:displays:answer:scale:${output}`, kind: "row", row: {
+            key: `row:displays:answer:scale:${output}`, thing: `displays:answer:scale:${output}`,
+            place: "displays", kind: "fact", order: order, name: name, glyph: "",
+            hue: "machine", parent: "row:displays:answer:scale", depth: 1,
+            side: [{ said: said }], held: { output: output,
+                part: `row:displays:setting:${output}:scale` },
+            acts: [{ key: "verb:copy", copy: said }]
+        } };
+    }
+
     // How many screens there are, as screens.rs's summary serves it beside
     // the rows, worded unlike the shell would, so what's said is the served.
     readonly property var summary: ({ key: "summary:displays", kind: "summary",
@@ -171,7 +193,10 @@ ShellRoot {
                             root.screen("eDP-1", "Built-in Screen", 1024, true),
                             root.screen("DP-1", "Dell Inc. U2723QE", 2048, true), root.sleep,
                             root.brightness(50), root.level, root.room, root.warmth,
-                            root.nightLight] };
+                            root.nightLight, root.scale("eDP-1", "2\u00d7", 1030),
+                            root.scale("DP-1", "1.5\u00d7", 2050),
+                            root.answering("DP-1", "Dell Inc. U2723QE", "1.5\u00d7", 4000),
+                            root.answering("eDP-1", "Built-in Screen", "2\u00d7", 4001)] };
                     } else if (ask.ask === "screen") {
                         root.acted = root.acted.concat([ask]);
                         answer = { id: ask.id, done: true };
@@ -257,6 +282,17 @@ ShellRoot {
         Expect.expect("\"screen warmth\" says the Warmth beside the screens",
             displays.warmthAnswer()?.headline === "6,500 K",
             JSON.stringify(displays.warmthAnswer()?.headline));
+        // What a part answers is the first screen the daemon serves for it,
+        // the rest listed below, none placed among the screens.
+        const scaled = displays.answer("screen scale");
+        const below = (scaled?.rows ?? []).map(row => `${row.name} ${row.side}`).join();
+        Expect.expect("\"screen scale\" says the first served screen's, named, the rest below",
+            scaled?.headline === "1.5\u00d7" && scaled?.note === "Dell Inc. U2723QE"
+                && below === "Built-in Screen 2\u00d7",
+            JSON.stringify([scaled?.headline, scaled?.note, scaled?.rows.map(row => row.name)]));
+        Expect.expect("no answer's row stands among the place's",
+            displays.all.every(row => !String(row.key).includes("answer")),
+            displays.all.map(row => row.key).join(", "));
         waiting = "the monitor's change";
         tell([screen("DP-1", "Dell Inc. U2723QE", 2048, false)]);
     }

@@ -43,8 +43,13 @@ in
     Service = {
       Slice = "background.slice";
       ExecStart = "${lib.getExe eero} daemon";
-      # systemd-creds opens the sealed session.
-      Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];
+      Environment = [
+        # systemd-creds opens the sealed session.
+        "PATH=${lib.makeBinPath [ pkgs.systemd ]}"
+        # The network map local-sites serves from net's record
+        # (modules/local-sites), which the Home Network's rows open.
+        "EERO_MAP=http://sites.localhost:8484/network/"
+      ];
       Restart = "on-failure";
       RestartSec = 60;
       # Its ask that Joel sign in again goes with it, however it stops, so

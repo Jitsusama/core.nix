@@ -211,16 +211,18 @@ const SAID: &[(&str, &[&str])] = &[
     ),
     ("verb:eero:speedtest", &["note", "testing"]),
     ("eero:sqm", &["note"]),
+    (rows::MAP, &["note"]),
 ];
 
 /// The things whose glyph a row wears.
-const GLYPHS: [&str; 6] = [
+const GLYPHS: [&str; 7] = [
     "eero:internet",
     "eero:node",
     "eero:gateway",
     "eero:profile",
     rows::SPEED_TEST,
     rows::SQM,
+    rows::MAP,
 ];
 
 /// The words the Home Network's rows are said in, from the launcher's
@@ -266,7 +268,7 @@ impl Words {
             .chain(drawers::NODE_NAMES)
             .chain(drawers::DEVICE_NAMES)
             .chain(drawers::INTERNET_NAMES)
-            .chain([rows::SPEED_TEST, rows::SQM])
+            .chain([rows::SPEED_TEST, rows::SQM, rows::MAP])
         {
             words.names.insert(id, word(id, &["name"])?);
         }

@@ -185,14 +185,16 @@ fn every_row_names_the_drawer_served_beside_it() {
     let words = words();
     let numbers = Numbers::default();
 
-    let rows = crate::rows::rows(&model, &words, &numbers);
+    let page = Some("http://sites.localhost:8484/network/");
+    let rows = crate::rows::rows(&model, &words, &numbers, page);
     let drawers = records(&model, &words, &numbers);
 
     // A row inside another is something to do to it, as the internet's
-    // speed test is, said in that row's drawer rather than one of its own.
+    // speed test is, said in that row's drawer rather than one of its own;
+    // and the map is something to do with no more to say than its name.
     let mut named: Vec<&Value> = rows
         .iter()
-        .filter(|row| row.get("parent").is_none())
+        .filter(|row| row.get("parent").is_none() && row["kind"] != "act")
         .map(|row| &row["drawer"])
         .collect();
     let mut served: Vec<&Value> = drawers.iter().map(|record| &record["key"]).collect();

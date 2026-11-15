@@ -56,6 +56,7 @@ dependencies = [
  "daemon-serve",
  "libc",
  "ready-rows",
+ "repos",
  "serde",
  "serde_json",
  "terminal-kit",
@@ -75,6 +76,15 @@ name = "ready-rows"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+]
+
+[[package]]
+name = "repos"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "terminal-kit",
 ]
 
 [[package]]

@@ -19,8 +19,11 @@ pub(crate) fn words() -> Words {
 }
 
 fn made(model: &HomeNetwork) -> Vec<Value> {
-    rows(model, &words(), &Numbers::default())
+    rows(model, &words(), &Numbers::default(), None)
 }
+
+/// The map's page, as home.nix gives the daemon it.
+const PAGE: &str = "http://sites.localhost:8484/network/";
 
 /// Items as the shell joins them, a time said by its form in brackets.
 fn joined(items: &Value) -> String {
@@ -83,6 +86,44 @@ fn the_internet_comes_first_then_each_node_with_its_devices_then_the_profiles() 
         .filter(|row| row["kind"] == "device" && row["depth"] == 1)
         .count();
     assert_eq!(devices, 15, "every device on now is a row inside its node");
+}
+
+#[test]
+fn the_map_of_the_network_comes_first_and_opens_its_page() {
+    let rows = rows(&model(), &words(), &Numbers::default(), Some(PAGE));
+    let names: Vec<&str> = rows
+        .iter()
+        .filter(|row| row["depth"] == 0)
+        .filter_map(|row| row["name"].as_str())
+        .collect();
+    assert_eq!(
+        &names[..3],
+        ["Map", "Internet", "Hall"],
+        "the map heads the place (VKCF3Z, 2026-11-15)"
+    );
+    let map = named(&rows, "Map");
+    assert_eq!(
+        (&map["key"], &map["thing"], &map["glyph"], &map["acts"]),
+        (
+            &json!("row:eero:map"),
+            &json!("verb:eero:map"),
+            &json!("web"),
+            &json!([{"key": "verb:eero:map", "open": PAGE}])
+        ),
+        "Return opens the map's page"
+    );
+    assert_eq!(
+        joined(&map["note"]),
+        "every device on the home network, drawn"
+    );
+}
+
+#[test]
+fn no_map_is_offered_where_the_daemon_is_given_no_page() {
+    assert!(
+        made(&model()).iter().all(|row| row["thing"] != MAP),
+        "with no page to open, there's no row to open it"
+    );
 }
 
 #[test]
