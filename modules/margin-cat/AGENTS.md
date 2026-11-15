@@ -213,5 +213,13 @@ animals."
 - Held by `margin-cat-pets.qml`: "leaning either way, its base is on sitting's cells, and leaning
   left its tail too"
 - Held by `margin-cat-pets.qml`: "and only its head a cell toward the hand, eyes shut"
+- Held by `margin-cat-pets.qml`: "a pointer crossing it swats about one time in three"
+- Held by `margin-cat-pets.qml`: "never one that stopped on it, never twice within 20 s, never
+  asleep"
+- Held by `margin-cat-pets.qml`: "its paw is back down within 250 ms"
+- Held by `margin-cat-pets.qml`: "swatting either way, its base and tail are on sitting's cells"
+- Held by `margin-cat-pets.qml`: "a paw raised toward the side it left by, beside its head, the
+  rest unmoved"
+- Held by `margin-cat-pets.qml`: "either way, the same paw"
 
 [design]: ../../docs/design.md

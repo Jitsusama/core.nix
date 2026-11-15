@@ -47,19 +47,22 @@ onLinux {
         ];
       };
       # The theme's drawings of the yarn, which margin-cat-games.qml draws
-      # as the screen does, and of the cat sitting and leaning, whose cells
-      # margin-cat-pets.qml holds a lean either way to.
+      # as the screen does, and of the cat sitting, leaning and batting, whose
+      # cells margin-cat-pets.qml holds a lean and a swat either way to.
       glyphs = import ../theme/glyphs.nix { inherit (pkgs) lib; };
       drawings = pkgs.writeText "MarginCatDrawings.js" ''
         .pragma library
-        // The yarn's drawings and the lean's, from modules/theme/glyphs.nix.
+        // The yarn's drawings, the lean's and the swat's, from
+        // modules/theme/glyphs.nix.
         var pixels = ${
           builtins.toJSON (
             pkgs.lib.genAttrs [ "yarn" "yarnRollingA" "yarnRollingB" ] (name: glyphs.${name}.pixels)
           )
         };
         var poses = ${
-          builtins.toJSON (pkgs.lib.genAttrs [ "leaning" "nothingHere" ] (name: glyphs.${name}.pixels))
+          builtins.toJSON (
+            pkgs.lib.genAttrs [ "batting" "leaning" "nothingHere" ] (name: glyphs.${name}.pixels)
+          )
         };
       '';
     in
