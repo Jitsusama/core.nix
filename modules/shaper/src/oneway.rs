@@ -167,6 +167,57 @@ const PROBE_EVERY_S: f64 = 60.0;
 const PROBE_UP: f64 = 1.1;
 const PROBE_S: f64 = 3.0;
 
+/// How the upload tells a queue and finds its line, which a trial may set
+/// in place of the constants above to learn how near the line it may hold.
+/// Each is kept within bounds that leave Joel's delay short: past 30 ms a
+/// standing queue is one a call hears, and a hold at the plateau leaves
+/// CAKE no queue to order.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Tuning {
+    /// The delay, in ms, past which a queue stands.
+    pub late_ms: f64,
+    /// How long it must stand, in seconds, before a cut.
+    pub standing_s: f64,
+    /// What share of the plateau the upload is held to.
+    pub hold: f64,
+    /// How far over the plateau a probe looks.
+    pub probe_up: f64,
+}
+
+impl Default for Tuning {
+    fn default() -> Tuning {
+        Tuning {
+            late_ms: LATE_MS,
+            standing_s: STANDING_S,
+            hold: HOLD,
+            probe_up: PROBE_UP,
+        }
+    }
+}
+
+impl Tuning {
+    /// This, each value held within its bounds, and one that is no number
+    /// at all taken as its default.
+    #[must_use]
+    pub fn bounded(self) -> Tuning {
+        let today = Tuning::default();
+        let within = |value: f64, least: f64, most: f64, default: f64| {
+            if value.is_nan() {
+                default
+            } else {
+                value.clamp(least, most)
+            }
+        };
+        Tuning {
+            late_ms: within(self.late_ms, 10.0, 30.0, today.late_ms),
+            standing_s: within(self.standing_s, 1.0, 3.0, today.standing_s),
+            hold: within(self.hold, 0.9, 1.0, today.hold),
+            probe_up: within(self.probe_up, 1.02, 1.2, today.probe_up),
+        }
+    }
+}
+
 /// What each direction is held to, in kbit/s; None is no limit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Limits {
@@ -359,6 +410,8 @@ pub struct Way {
     /// Until when a download leaves a queue alone that its cut didn't
     /// drain.
     anothers_until: f64,
+    /// How it tells a queue and finds its line.
+    tuning: Tuning,
 }
 
 impl Way {
@@ -391,7 +444,26 @@ impl Way {
             download: false,
             draining: None,
             anothers_until: f64::NEG_INFINITY,
+            tuning: Tuning::default(),
         }
+    }
+
+    /// How it tells a queue and finds its line.
+    pub fn tuning(&self) -> Tuning {
+        self.tuning
+    }
+
+    /// Tell a queue and find the line as `tuning` says, within its bounds.
+    pub fn tune(&mut self, tuning: Tuning) {
+        let tuning = tuning.bounded();
+        // A hold lowered comes down at once, as a probe that met a queue
+        // does; one raised is climbed to gently, as after a cut.
+        if let Some(plateau) = self.plateau
+            && self.probing_until.is_none()
+        {
+            self.rate = self.rate.min((plateau * tuning.hold).max(LEAST_KBIT));
+        }
+        self.tuning = tuning;
     }
 
     /// A direction starting from what it learned before: at its base, and
@@ -513,7 +585,7 @@ impl Way {
                 let plateau = *sum / f64::from(*n);
                 self.elsewhere = None;
                 self.plateau = Some(plateau);
-                self.rate = (plateau * HOLD).max(LEAST_KBIT);
+                self.rate = (plateau * self.tuning.hold).max(LEAST_KBIT);
                 self.probing_until = None;
                 self.next_probe = at + PROBE_EVERY_S;
                 return true;
@@ -534,12 +606,12 @@ impl Way {
                     self.plateau = Some(through);
                     self.next_probe = at;
                 } else {
-                    self.rate = plateau * HOLD;
+                    self.rate = plateau * self.tuning.hold;
                     self.next_probe = at + PROBE_EVERY_S;
                 }
             }
             None if at >= self.next_probe && ours.waiting => {
-                self.rate = plateau * PROBE_UP / share;
+                self.rate = plateau * self.tuning.probe_up / share;
                 self.probing_until = Some(at + PROBE_S);
                 self.elsewhere = None;
             }
@@ -547,8 +619,8 @@ impl Way {
             // before it still stands for the line: climbing past it would
             // fill the router's hidden queue again, so it climbs back to
             // where it held, gently, as near a queue it met, and no further.
-            None if self.rate < plateau * HOLD => {
-                self.rate = (self.rate * CLIMB.powf(dt)).min(plateau * HOLD);
+            None if self.rate < plateau * self.tuning.hold => {
+                self.rate = (self.rate * CLIMB.powf(dt)).min(plateau * self.tuning.hold);
             }
             // A probe under way, or none due yet.
             Some(_) | None => {}
@@ -626,7 +698,8 @@ impl Way {
             .map_or(carried, |sent| carried.min(crate::rate::float(sent)));
         self.prove(at, delay_ms, line);
         self.reach(at, line);
-        let crowded = delay_ms > LATE_MS
+        let late = self.tuning.late_ms;
+        let crowded = delay_ms > late
             && self
                 .connection()
                 .is_some_and(|connection| carried < connection * SLIVER);
@@ -638,14 +711,14 @@ impl Way {
         {
             self.crowded.pop_front();
         }
-        if delay_ms > LATE_MS {
+        if delay_ms > late {
             self.late_since.get_or_insert(at);
         } else {
             self.late_since = None;
         }
         let standing = self
             .late_since
-            .is_some_and(|since| at - since >= STANDING_S);
+            .is_some_and(|since| at - since >= self.tuning.standing_s);
         let flowing = carried > FLOWING_KBIT;
         // A queue standing while nothing of ours waits to go, and the link
         // carries well under our rate, is the rest of the house's: cutting
@@ -654,15 +727,15 @@ impl Way {
         // is cut to as before.
         let theirs = ours.is_some_and(|ours| !ours.waiting) && carried < self.rate * FULL;
         let theirs =
-            theirs || self.download && self.anothers(at, delay_ms, carried, delay_ms > LATE_MS);
+            theirs || self.download && self.anothers(at, delay_ms, carried, delay_ms > late);
         if let (Some(_), Some(plateau)) = (self.probing_until, self.plateau)
-            && delay_ms > LATE_MS
+            && delay_ms > late
         {
             // A probe that raises a queue found no room past the hold, and
             // Joel's call waits in that queue: it goes back at once, rather
             // than once the queue has stood.
             self.probing_until = None;
-            self.rate = plateau * HOLD;
+            self.rate = plateau * self.tuning.hold;
             self.next_probe = at + PROBE_EVERY_S;
         } else if standing
             && flowing
@@ -703,7 +776,7 @@ impl Way {
                     .fold(carried, f64::max);
                 self.plateau = Some(
                     plateau
-                        .min(most / HOLD)
+                        .min(most / self.tuning.hold)
                         .max(self.reached(at) * UNSEEN_FLOOR),
                 );
             }
@@ -724,7 +797,7 @@ impl Way {
             && !standing
             && self.own(at, dt, ours, carried)
         {
-        } else if carried >= self.rate * FULL && delay_ms <= LATE_MS {
+        } else if carried >= self.rate * FULL && delay_ms <= late {
             // As TCP's slow start does: far from any queue it has met, a
             // rate climbs fast, since nothing says the connection is near,
             // and near the last one gently. A little delay short of a queue
@@ -2008,6 +2081,86 @@ mod tests {
         let mut c = Controller::new(None, None);
         let limits = run_flow_queued(&mut c, 0.0, 10.0, 12_000.0);
         assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    // At 20:48 on 14 November the upload, left unshaped, carried 11.26
+    // Mbit/s with its delay at most 16 ms over the floor, where the shaper
+    // held 8 to 9: a trial learns whether a queue counted later, longer or
+    // held nearer the plateau keeps Joel's delay short.
+    #[test]
+    fn a_trial_s_later_queue_leaves_a_delay_under_it_uncut() {
+        let mut today = Controller::new(None, None);
+        let cut = run(&mut today, 0.0, 1.5, queued_up(18.0, 10_000.0));
+        assert!(cut.up.is_some(), "today's 15 ms cuts it, so this shows nothing");
+        let mut trial = Controller::new(None, None);
+        trial.up.tune(Tuning {
+            late_ms: 22.0,
+            ..Tuning::default()
+        });
+        let limits = run(&mut trial, 0.0, 5.0, queued_up(18.0, 10_000.0));
+        assert_eq!(limits.up, None, "cut under the trial's 22 ms");
+        let limits = run(&mut trial, 5.0, 6.5, queued_up(25.0, 10_000.0));
+        assert!(limits.up.is_some(), "a queue past 22 ms is still cut");
+    }
+
+    #[test]
+    fn a_trial_s_longer_standing_leaves_a_short_queue_uncut() {
+        let mut trial = Controller::new(None, None);
+        trial.up.tune(Tuning {
+            standing_s: 2.0,
+            ..Tuning::default()
+        });
+        let limits = run(&mut trial, 0.0, 1.5, queued_up(18.0, 10_000.0));
+        assert_eq!(limits.up, None, "cut before 2 s stood");
+        let limits = run(&mut trial, 1.5, 2.5, queued_up(18.0, 10_000.0));
+        assert!(limits.up.is_some(), "a queue standing 2 s is still cut");
+    }
+
+    #[test]
+    fn a_trial_holds_the_upload_at_its_share_of_the_plateau() {
+        let mut c = Controller::new(None, None);
+        c.up.tune(Tuning {
+            hold: 0.98,
+            ..Tuning::default()
+        });
+        let limits = run_flow_queued(&mut c, 0.0, 10.0, 12_000.0);
+        assert!(near(limits, 11_760.0), "held under the router: {limits:?}");
+    }
+
+    #[test]
+    fn a_trial_s_probe_looks_as_far_over_the_plateau_as_it_says() {
+        let mut c = Controller::new(None, None);
+        c.up.tune(Tuning {
+            probe_up: 1.05,
+            ..Tuning::default()
+        });
+        run_flow_queued(&mut c, 0.0, 10.0, 12_000.0);
+        let plateau = c.up.plateau.expect("a plateau");
+        let held = flow_queued(&mut c, 10.0, 71.0, |_| 12_000.0);
+        let most = held.iter().filter_map(|&(_, limit)| limit).max();
+        assert!(near(most, plateau * 1.05), "probed at {most:?} over {plateau}");
+    }
+
+    #[test]
+    fn a_trial_is_held_within_its_bounds() {
+        let wild = Tuning {
+            late_ms: 100.0,
+            standing_s: 0.0,
+            hold: 2.0,
+            probe_up: f64::NAN,
+        };
+        assert_eq!(
+            wild.bounded(),
+            Tuning {
+                late_ms: 30.0,
+                standing_s: 1.0,
+                hold: 1.0,
+                probe_up: PROBE_UP,
+            }
+        );
+        let mut c = Controller::new(None, None);
+        c.up.tune(wild);
+        assert_eq!(c.up.tuning(), wild.bounded());
     }
 
     fn run_flow_queued(c: &mut Controller, from: f64, to: f64, line: f64) -> Option<u64> {
