@@ -17,6 +17,7 @@
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "launcher/Fading.js" as Fading
 import "launcher/Rank.js" as Rank
 
 Scope {
@@ -87,6 +88,12 @@ Scope {
                 out[thing] = (out[thing] ?? 0) + answers[thing].c;
         }
         return out;
+    }
+
+    // How much each thing's been picked lately, whatever for, each pick
+    // fading as weights() has it: key -> picks.
+    function lately() {
+        return learns ? Fading.lately(picks, Date.now(), halfLife * day) : {};
     }
 
     // query -> the row its latch was left on, as Rank.js's relatch keeps it.
