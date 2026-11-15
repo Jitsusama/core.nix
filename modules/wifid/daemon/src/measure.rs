@@ -292,7 +292,7 @@ fn known<'a>(
         lately.or_else(|| {
             learned
                 .of(point, hour, signal)
-                .map(|measured| (measured, Whence::Lately))
+                .map(|measured| (measured, Whence::Learned))
         })
     }
 }
@@ -350,14 +350,22 @@ async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String
 
 /// Why a card tries another access point: what the one it's on carried,
 /// and what was known of the other, and from where.
-fn tried(on: &Joined, measured: &Measured, to: &Other, _whence: Option<Whence>) -> String {
+fn tried(on: &Joined, measured: &Measured, to: &Other, whence: Option<Whence>) -> String {
+    let known = match (&to.measured, whence) {
+        (Some(known), Some(Whence::Learned)) => {
+            format!("carried {} at p95 at this hour before", ms(known.p95))
+        }
+        (Some(known), _) => format!("carried {} at p95 in the last two minutes", ms(known.p95)),
+        (None, _) => format!("is untried, heard at {} dBm", to.signal),
+    };
     format!(
-        "{} tries {}, as {} carried {} at p95 with {:.1}% lost",
+        "{} tries {}, as {} carried {} at p95 with {:.1}% lost, and {} {known}",
         on.card,
         to.point,
         on.point,
         ms(measured.p95),
-        measured.lost
+        measured.lost,
+        to.point
     )
 }
 
