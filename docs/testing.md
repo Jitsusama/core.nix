@@ -465,6 +465,17 @@ to a row's update path quotes that line before and after without a switch.
 Machine's spent 2 ms before the shell, 5 to 7 in it and 5 to 27 from its
 frame's start over eight rounds (2026-11-11).
 
+Changes under typed words are timed by the keys lab given `LAB_CHANGES`:
+each round it opens a window holding the first of `LAB_WORDS` in its
+title, opens home, types the word, has the window take that many new
+titles while the word is shown, and prints the shell's line for the
+changes in Windows as it closes. Each is a refresh of what's typed, which
+Joel's journal put at 17 to 35 ms in the shell before #4851 kept a row
+found alike as it was. After it, 8 titles under "meet" spent a median 6
+or 7 ms in the shell and 4 or 5 waiting on the pace, over four rounds
+(2026-11-15). A full match over his 423 choices is 3 to 7 ms of a first
+letter, so looking through fewer of them can save no more than that.
+
 A drawer is timed by `test_each_drawer_is_timed`, run alone with
 `PYTEST_ADDOPTS = "-k each_drawer"`: it steps into Machine and into
 `LAB_DRAWN` (Memory unless given), walks its rows down and up by letter,

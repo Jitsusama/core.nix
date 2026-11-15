@@ -10,8 +10,11 @@ Qt's profiler on the shell (QMLPROFILER, the shell started with `--debug`), and 
 bindings, handlers and functions took the most of their own time in the launcher's searches and
 each of their parts, as the key's line splits them. Given LAB_STEP, it steps into that place
 from home after each round's words, and given LAB_PROGRAMS, it installs that many programs
-first, so a step into Programs is profiled over as many rows as Joel's. It fails only when a
-key is never shown.
+first, so a step into Programs is profiled over as many rows as Joel's. Given LAB_CHANGES, it
+leaves the first word typed at home each round while a window holding it in its title takes that
+many new titles, and prints what the shell says of those changes, as Joel's daemons change rows
+under his typed words at 17 to 35 ms in the shell (2026-11-15). It fails only when a key is never
+shown.
 """
 
 from __future__ import annotations
@@ -60,6 +63,25 @@ SLOWEST = 6
 
 # How many of a span's costliest places are said.
 COSTLIEST = 25
+
+# How long a window LAB_CHANGES retitles keeps each title, in seconds, longer than the pace a
+# change waits on, so each is a refresh of its own.
+RETITLED = 0.5
+
+# What the shell says of the changes to windows as the launcher closes.
+CHANGES = re.compile(r"launcher: \d+ changes? in windows .*")
+
+# A window's shell, which waits for its go before retitling itself, each title holding the word.
+RETITLING = """\
+while [ ! -e {go} ]; do sleep 0.1; done
+i=0
+while [ $i -lt {count} ]; do
+  i=$((i + 1))
+  printf '\\033]2;{word} %s\\007' $i
+  sleep {span}
+done
+sleep 3600
+"""
 
 
 def part(line: str, name: str) -> int | None:
@@ -128,6 +150,45 @@ def stepped_from_home(shell: Shell, name: str) -> str | None:
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"])
     return said.get(step)
+
+
+def changed_under_words(shell: Shell, word: str, count: int, folder: Path) -> list[str]:
+    """Open home on the word typed while a window holding it is retitled, and give what's said.
+
+    The window opens before the launcher, as opening one takes the keys, and retitles itself
+    only once the word is shown, so every change is a refresh of what's typed.
+    """
+    go = folder / f"go-{word}"
+    go.unlink(missing_ok=True)
+    script = folder / f"retitling-{word}.sh"
+    script.write_text(RETITLING.format(go=go, count=count, word=word, span=RETITLED))
+    window = shell.opened(f"{word} 0", running=f"sh {script}")
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    since = shell.mark()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.send_chars(word)
+    shown_typed(shell, word)
+    go.touch()
+    deadline = time.monotonic() + count * RETITLED + SAYING
+    while time.monotonic() < deadline:
+        if any(one["title"] == f"{word} {count}" for one in shell.windows()):
+            break
+        time.sleep(launcher_on_niri.POLL)
+    # The last title's refresh is drawn before the launcher closes.
+    time.sleep(RETITLED)
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"])
+    shell.close(window)
+    deadline = time.monotonic() + SAYING
+    said: list[str] = []
+    while not said and time.monotonic() < deadline:
+        with shell.log.open("rb") as log:
+            log.seek(since)
+            written = log.read().decode(errors="replace")
+        said = [found.group(0) for found in CHANGES.finditer(written)]
+        time.sleep(launcher_on_niri.POLL)
+    return said
 
 
 def tallied(
@@ -368,6 +429,12 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
         # Typed once untimed first, as the openings' lab opens once, for what a fresh shell
         # pays only once: its first search compiles what Joel's has run since he logged in.
         typed_from_home(shell, words[0])
+        if changes := int(os.environ.get("LAB_CHANGES", "0")):
+            for round_ in range(rounds):
+                for line in changed_under_words(shell, words[0], changes, tmp_path) or ["none"]:
+                    with capsys.disabled():
+                        print(f"lab-changes {round_} {words[0]!r}: {line}", flush=True)
+            rounds = 0
         if step:
             stepped_from_home(shell, step)
         for round_ in range(rounds):
