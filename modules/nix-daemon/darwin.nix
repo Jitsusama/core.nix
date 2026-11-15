@@ -11,6 +11,11 @@
 #
 #   !include signing.conf
 #
+# Nix signs only what it builds itself, so what the Mac's Linux builder built
+# would come back unsigned; a post-build hook signs every path a build ends
+# with, with the same key (sign-what-came-back.sh). The hook is named by a
+# fixed path in /etc, so a new script never changes the line Nix reads.
+#
 # Nix reads its settings only as it starts, so the daemon is restarted when
 # the line changes, and only then, since a restart ends the builds it's
 # running. The key is made before /etc is written, so a daemon that reads the
@@ -33,6 +38,9 @@ let
       lib.getExe' config.nix.package "nix"
     else
       "/nix/var/nix/profiles/default/bin/nix";
+  hook = pkgs.writeShellScript "sign-what-came-back" ''
+    exec ${lib.getExe pkgs.bash} ${./sign-what-came-back.sh} ${nix}
+  '';
 in
 {
   options.jitsusama.nix-daemon = {
@@ -73,6 +81,9 @@ in
 
     environment.etc."nix/signing.conf".text = ''
       secret-key-files = /etc/nix/signing-key
+      post-build-hook = /etc/nix/sign-what-came-back
     '';
+
+    environment.etc."nix/sign-what-came-back".source = hook;
   };
 }

@@ -31,7 +31,11 @@
     holds "a-mac-signs-what-it-builds"
       "A Mac's Nix isn't told to sign with /etc/nix/signing-key, or the key isn't made under its name."
       (
-        config.environment.etc."nix/signing.conf".text == "secret-key-files = /etc/nix/signing-key\n"
+        config.environment.etc."nix/signing.conf".text == ''
+          secret-key-files = /etc/nix/signing-key
+          post-build-hook = /etc/nix/sign-what-came-back
+        ''
+        && config.environment.etc ? "nix/sign-what-came-back"
         && lib.hasInfix "-signing-key.sh " made
         && lib.hasInfix "scutil --get LocalHostName)-1" made
         && lib.hasInfix " mac-1 /etc/nix/signing-key /etc/nix/signing-key.pub" named
@@ -158,6 +162,18 @@
         $CXX ${./tests/a-stopped-kill-joins-its-timer.cpp} -o stops \
           $(pkg-config --cflags --libs nix-util)
         ./stops
+        touch $out
+      '';
+
+  # The hook a Mac's Nix runs after each build signs what came back with the
+  # Mac's key, so what its Linux builder built isn't refused elsewhere as
+  # unsigned, and a signing that fails never fails the build
+  # (tests/a-mac-signs-what-its-builder-built.sh).
+  a-mac-signs-what-its-builder-built =
+    pkgs.runCommandLocal "a-mac-signs-what-its-builder-built" { }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/a-mac-signs-what-its-builder-built.sh} \
+          ${lib.getExe pkgs.bash} ${./sign-what-came-back.sh}
         touch $out
       '';
 
