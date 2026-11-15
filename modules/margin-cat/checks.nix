@@ -37,13 +37,14 @@ onLinux {
           ./tests/margin-cat-floats.qml
           ./tests/margin-cat-games.qml
           ./tests/margin-cat-journeys.qml
+          ./tests/margin-cat-pets.qml
           ./tests/margin-cat-rides.qml
           ./tests/margin-cat-tiles.qml
         ];
       };
       # The theme's drawings of the yarn, which margin-cat-games.qml draws
       # as the screen does, and of the cat sitting and leaning, whose cells
-      # margin-cat.qml holds a lean either way to.
+      # margin-cat-pets.qml holds a lean either way to.
       glyphs = import ../theme/glyphs.nix { inherit (pkgs) lib; };
       drawings = pkgs.writeText "MarginCatDrawings.js" ''
         .pragma library
