@@ -510,7 +510,14 @@ mod tests {
         let ours = owned(&["modules/cadence/src/hour.rs", "modules/sun/src/main.rs"]);
         let touch = |_: &Gate| Some(shares(theirs.clone(), &ours, &crates));
         let gates = [gate(1, "/kit", 100)];
-        let held = ahead(&gates, &asking(200, "/cadence", &ours), NOW, &own, &everyone, &touch);
+        let held = ahead(
+            &gates,
+            &asking(200, "/cadence", &ours),
+            NOW,
+            &own,
+            &everyone,
+            &touch,
+        );
         assert_eq!(
             held.map(|held| held.shared),
             Some(owned(&["modules/cadence/src/hour.rs"])),
