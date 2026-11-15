@@ -38,11 +38,13 @@ const STRIDING = { goes: WALKS, climbs: WALKS };
 // The pose of each beat it holds still, or nearly: standing as it turns,
 // thinks or settles; crouched as it gathers itself, lands or perches on
 // a mark or shoved by a window; batting at the first mark before it hops
-// on; and shaking itself off after a fall. At play (MarginCatGames.js):
-// sitting as the yarn comes, as it watches it go and as it sends it off;
-// its ears up as it notices, its tail going as it eyes it, crouched as it
-// wiggles, a paw on the yarn, and its ears again as it looks about.
-const HOLDS = { turns: "walkingB", thinks: "walkingB", settles: "walkingB",
+// on; and shaking itself off after a fall. Hanging by its claws from a
+// top's corner it's caught, it holds its side as it climbs one. At play
+// (MarginCatGames.js): sitting as the yarn comes, as it watches it go and
+// as it sends it off; its ears up as it notices, its tail going as it
+// eyes it, crouched as it wiggles, a paw on the yarn, and its ears again
+// as it looks about.
+const HOLDS = { turns: "walkingB", thinks: "walkingB", settles: "walkingB", grabs: "walkingB",
     crouches: "pouncing", lands: "pouncing", perches: "pouncing", shoved: "pouncing",
     bats: "batting", shakes: "grooming", waits: "nothingHere", watches: "nothingHere",
     sends: "nothingHere", notices: "earFlick", eyes: "tailSwish", wiggles: "pouncing",
@@ -344,7 +346,10 @@ function strode(beat, spot) {
 // Where `beat` of `route` has it `t` ms in, drawn, its share `p` of the beat
 // and, in a leap, the pose its arc gives.
 function placed(route, beat, t) {
-    const p = (t - beat.begins) / (beat.ends - beat.begins);
+    // A beat cut short out of sight (MarginCatStacked.js) keeps the
+    // pace of all of it.
+    const whole = beat.lasts ?? beat.ends - beat.begins;
+    const p = (t - beat.begins) / whole;
     const { from, to } = beat;
     let s = p;
     if (beat.kind === "rides") {
@@ -372,7 +377,7 @@ function placed(route, beat, t) {
         const fall = Math.sqrt(Math.max(0, to.y - beat.apex));
         const peak = rise + fall === 0 ? 0.5 : rise / (rise + fall);
         y = beat.apex + (rise + fall) ** 2 * (p - peak) ** 2;
-        leaps = aloft(t - beat.begins, beat.ends - beat.begins, peak);
+        leaps = aloft(t - beat.begins, whole, peak);
     }
     // A window carrying or pushing it keeps the window's pixels.
     if (beat.kind === "rides" || beat.pushed) {

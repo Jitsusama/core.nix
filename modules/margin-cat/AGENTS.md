@@ -12,6 +12,7 @@ layout for it. The scripts work out everything it does, so the Qt cases in
 | `MarginCat.js`       | how lively it is, its plays, niri's spring, its drawings |
 | `MarginCatPaths.js`  | its way to a seat: a walk, or a move between workspaces  |
 | `MarginCatRoutes.js` | the stops a way goes by: tops, sides, gaps and the floor |
+| `MarginCatStacked.js` | a move down a workspace walked as one screen             |
 | `MarginCatWays.js`   | a way's legs as beats in time, and where it is at a time |
 | `MarginCatFalls.js`  | what it does as the window under it moves or goes        |
 | `MarginCatFloats.js` | floating windows' tops as stops                          |
@@ -75,8 +76,10 @@ walk to the right, climb down the right side, drop down and grab with its
 claws on the top of the window below, climb up, and then walk over."
 
 - Held by `margin-cat.qml`: "down a workspace to a window under another, never gliding"
-- Owed since 2026-11-14: one path through the workspaces stacked as one screen, down and up,
-  arriving where that path crosses the screen's edge.
+- Held by `margin-cat-one-screen.qml`: "the drop ends in a grab at a top's corner, never a landing"
+- Held by `margin-cat-one-screen.qml`: "it comes in at the top over the gap, mid-drop"
+- Owed since 2026-11-14: up, one path through the workspaces stacked as one screen,
+  arriving where that path crosses the screen's bottom edge.
 
 ### Climb, Path and Leap About the Windows
 

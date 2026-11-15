@@ -18,6 +18,7 @@ import "MarginCatFloats.js" as Floats
 import "MarginCatGames.js" as Games
 import "MarginCatPaths.js" as Paths
 import "MarginCatPlays.js" as Plays
+import "MarginCatStacked.js" as Stacked
 import "MarginCatTiles.js" as Tiles
 import "../Pixels.js" as Pixels
 
@@ -172,7 +173,10 @@ PanelWindow {
         return shows ? { id: shows.id, idx: shows.idx } : null;
     }
     property var spaceWas: null
-    // The move between workspaces under way (Paths.moves), the window
+    // The workspace a move between them left, whose windows it walks off
+    // going down (Stacked.moves).
+    property var spaceLeft: null
+    // The move between workspaces under way (Stacked.moves), the window
     // it goes to once niri says it, and its quarter turn as it climbs.
     property var moving: null
     property var movingTo: null
@@ -388,9 +392,9 @@ PanelWindow {
             window.FramePresentation.ask();
     }
 
-    // A move to the workspace `way` below (1) or above (-1): it holds where it sits the whole
-    // slide, and its way to its new seat comes once niri says the new workspace's column
-    // (steer).
+    // A move to the workspace `way` below (1) or above (-1): it rides the one it leaves off
+    // the top going down, or holds where it sits the whole slide going up, and its way to
+    // its new seat comes once niri says the new workspace's column (steer).
     function moveTo(way: int): void {
         halt();
         resting.stop();
@@ -408,11 +412,11 @@ PanelWindow {
     }
 
     // A move's plan from `from` to its seat `to` over the new workspace's
-    // windows, its floating ones too, or only its hold through the slide
-    // where `to` is null.
+    // windows, its floating ones too, and going down the old one's it
+    // walks off, or only the slide where `to` is null.
     function plan(way: int, from: var, to: var): var {
         const tiles = tilesOf(space?.id);
-        return Paths.moves(from, to, {
+        return Stacked.moves(from, to, {
             way,
             wide: size,
             tall: size,
@@ -427,6 +431,7 @@ PanelWindow {
             ahead: MarginCat.behind(frameMs, "slide"),
             frame: frameMs,
             now: tiles,
+            was: tilesOf(spaceLeft),
             floats: Floats.of(tiles, 0),
             marks: marksLit
         });
@@ -501,6 +506,7 @@ PanelWindow {
                 moving: moving !== null })}`);
         // A move begun on a move under way holds where it's got to,
         // rather than being put on its seat first.
+        spaceLeft = was.id;
         if (kept === "")
             moveTo(way);
         else if (moving !== null)
