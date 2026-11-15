@@ -576,10 +576,13 @@ ShellRoot {
         },
         {
             // As Tuple says them now, with the favourites changed here,
-            // which the stand-in never says, kept as they were asked.
+            // which the stand-in never says, kept as they were asked. Ada,
+            // whose favourite didn't change, is the daemon's row as she is
+            // when nothing is merged here, her Kolkata time and all.
             what: "a favourite gone into a call, as Tuple says it",
             holds: () => names(people.all) === "Ada Brook, Ben Carrow, Eli Fenwick, Cal Dunmore"
-                && sides(people.all) === "in a call, in a call, , offline",
+                && /^in a call \u00b7 Kolkata \u00b7 \d\d:\d\d, in a call, , offline$/u
+                    .test(sides(people.all)),
             check: () => {
                 expect("is joined", firstAct(people.all[0]).name === "Join Their Call",
                     firstAct(people.all[0]).name);
