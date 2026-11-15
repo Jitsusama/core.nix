@@ -66,6 +66,7 @@ fn help() -> Help {
             "where the launcher asks, unless systemd hands one",
         )
         .exit(Exit::Failed, "its socket couldn't be listened on")
+        .exit(Exit::Usage, "asked other than its unit asks")
         .exit(Exit::Config, "the launcher's words couldn't be read")
 }
 
