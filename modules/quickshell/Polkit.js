@@ -210,6 +210,71 @@ function asker(cmdline, actionId) {
     return command(words(cmdline)) || owner(actionId);
 }
 
+// A quest's id as the harness gives it.
+const questShape = /^QEST-\d{8}-[A-Z0-9]{6}$/u;
+// What the line says before the quest's title.
+const saidFor = "It says it's for ";
+// The small words a cut never ends on, so it reads as a cut, not as a
+// sentence missing its end (VKCF3Z, 2026-11-15).
+const small = new Set(["a", "an", "the", "of", "for", "with", "to", "in", "on", "and"]);
+// A title's code marks, which are markdown's, not words.
+const codeMarks = /`/gu;
+const spaces = /\s+/u;
+// What ends a title given way, joined to its last word kept.
+const titleLeftOut = "\u00a0\u2026";
+
+// The line naming a quest's title as one line, `fits` saying whether a line
+// does: past it, the title gives way at a whole word to one ellipsis, never
+// after a small word, its first word kept whatever, and a word past
+// `longestWord` inside itself.
+function titled(title, fits) {
+    const all = title
+        .replace(codeMarks, "")
+        .split(spaces)
+        .filter(word => word !== "")
+        .map(word => middleCut(word, longestWord));
+    const whole = `${saidFor}${all.join(" ")}.`;
+    if (fits(whole)) {
+        return whole;
+    }
+    const given = held => `${saidFor}${held.join(" ")}${titleLeftOut}`;
+    const kept = all.slice(0, 1);
+    for (const word of all.slice(1)) {
+        if (!fits(given([...kept, word]))) {
+            break;
+        }
+        kept.push(word);
+    }
+    // By its place, as Qt's engine has no Array's at.
+    while (kept.length > 1 && small.has(kept[kept.length - 1].toLowerCase())) {
+        kept.pop();
+    }
+    return given(kept);
+}
+
+// What the asking process says of itself, from asker-says's answer: the
+// quest it says it's for, by its title, as its own word, since any process
+// can say any quest, so it's never proof of who asks; the command above it
+// stays what's judged. Never the quest's id, which means nothing to Joel at
+// a password prompt (VKCF3Z, 2026-11-15). Nothing for no answer, one not
+// parsed, a process that says none, a quest not in the harness's shape,
+// which asker-says leaves out too, or one with no title (ISXEG8,
+// 2026-11-15). `fits` says whether a line fits on one, as the card
+// measures it.
+function says(answer, fits) {
+    let said = null;
+    try {
+        said = JSON.parse(answer);
+    } catch (_error) {
+        return "";
+    }
+    const title = typeof said?.title === "string" ? said.title.trim() : "";
+    if (!questShape.test(said?.quest ?? "") || title === "") {
+        return "";
+    }
+    return titled(title, fits);
+}
+
 // Text as rich text shows it, as written: a command is the asker's to
 // choose, so a tag in it would otherwise restyle the prompt or hide words.
 function plain(text) {

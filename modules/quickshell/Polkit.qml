@@ -8,7 +8,10 @@
 // Who asks is the command that called polkit, read from /proc by the pid
 // polkit gives with each ask, so an agent's run0 shows the command it would
 // run as root, never only "systemd" (Polkit.js says each). One gone before
-// it's read is named by the program owning the action.
+// it's read is named by the program owning the action. Under the command,
+// the quest the asking process says it runs under, as asker-says reads it,
+// so Joel sees which agent asks; the shell never reads the process's
+// environment itself, which holds secrets beside it (asker-says/src/main.rs).
 pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
@@ -41,6 +44,24 @@ Scope {
         blockLoading: true
     }
     readonly property string cmdline: asking.path === "" ? "" : asking.text()
+
+    // What the asking process says of itself, asker-says's answer, asked
+    // once per ask; empty until it answers. The card words it, as only it
+    // can measure the line.
+    property string saidOfItself: ""
+    Process {
+        id: sayer
+        readonly property string reader: Quickshell.env("POLKIT_ASKER_SAYS") ?? ""
+        command: [reader, "--json", asking.pid]
+        running: reader !== "" && asking.pid !== ""
+        onRunningChanged: {
+            if (running)
+                root.saidOfItself = "";
+        }
+        stdout: StdioCollector {
+            onStreamFinished: root.saidOfItself = text
+        }
+    }
 
     readonly property string asker: flow ? Said.asker(cmdline, flow.actionId) : "polkit"
     onAskerChanged: {
@@ -86,6 +107,7 @@ Scope {
             width: root.width
             asker: root.asker
             who: root.who
+            said: root.failed ? "" : root.saidOfItself
             reason: root.failed ? root.flow.supplementaryMessage : root.why
             failed: root.failed
             secret: !(root.flow && root.flow.responseVisible)

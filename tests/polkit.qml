@@ -174,6 +174,48 @@ QtObject {
                 failures.push(`${what} pid was ${got}, not ${wanted}`);
         }
 
+        // What the asking process says of itself, as asker-says answers it:
+        // the quest it's for by its title, as its own word, and nothing for
+        // a process that says none, a quest with no title, an answer not
+        // come, or one not in the harness's shape (ISXEG8, 2026-11-15). Never
+        // the quest's id, which means nothing to Joel there; a long title
+        // gives way at a whole word, so the line stays one (VKCF3Z,
+        // 2026-11-15).
+        const quest = "QEST-20261110-H6EDLC";
+        const answer = (id, title) => JSON.stringify({ schema: "asker-says.says/1", quest: id,
+            session: "0f3a9c2e-4b7d-4e1a-9c3f-a1b2c3d4e5f6", by: 42, title: title });
+        // A line's room, in letters, standing in for the card's measure.
+        const lineFits = 60;
+        const longTitle = "Reduce the Mirror's Push-Path Pre-Receive Latency: Batch Secret Diffs"
+            + " and Bound Unrelated-History Detection";
+        const sayings = [
+            ["a quest's", answer(quest, "Launcher Speed"), "It says it's for Launcher Speed."],
+            ["a long title's", answer(quest, longTitle),
+                "It says it's for Reduce the Mirror's Push-Path Pre-Receive\u00a0\u2026"],
+            // A cut never ends on a small word, so it reads as a cut, not
+            // as a sentence missing its end (VKCF3Z, 2026-11-15).
+            ["a title cut after a small word's",
+                answer(quest, "Make Window Management Work Well With Many Monitors"),
+                "It says it's for Make Window Management Work Well\u00a0\u2026"],
+            ["a title cut after small words'",
+                answer(quest, "Make Window Management Work Out of the Way of Monitors"),
+                "It says it's for Make Window Management Work Out\u00a0\u2026"],
+            ["a marked title's", answer(quest, "Read `OctokitClient`'s  <b>pages</b>"),
+                "It says it's for Read OctokitClient's <b>pages</b>."],
+            ["an untitled quest's", answer(quest, null), ""],
+            ["a blank title's", answer(quest, "  "), ""],
+            ["no quest's", answer(null, "Launcher Speed"), ""],
+            ["a misshapen quest's", answer("QEST-20261110-<b>JOEL</b>", "Launcher Speed"), ""],
+            ["no answer's", "", ""],
+            ["a broken answer's", "{\"quest\":", ""]
+        ];
+        for (const [what, said, wanted] of sayings) {
+            asked++;
+            const got = Polkit.says(said, line => line.length <= lineFits);
+            if (got !== wanted)
+                failures.push(`${what} saying was "${got}", not "${wanted}"`);
+        }
+
         // A command is shown as written, never read as rich text.
         const tagged = Polkit.plain("run0 echo '<b>a</b> & b'");
         asked++;

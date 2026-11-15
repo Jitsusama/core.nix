@@ -842,6 +842,10 @@ let
     "MALLOC_CONF=narenas:1"
     "QS_DISABLE_FILE_WATCHER=1"
     "QV4_PROFILE_WRITE_PERF_MAP=1"
+    # What polkit's prompt asks of the process asking for Joel's password:
+    # the quest it says it runs under, read by its name alone, so the shell
+    # never holds the secrets beside it (asker-says/src/main.rs).
+    "POLKIT_ASKER_SAYS=${lib.getExe (pkgs.callPackage ./asker-says/package.nix { })}"
   ];
 in
 {

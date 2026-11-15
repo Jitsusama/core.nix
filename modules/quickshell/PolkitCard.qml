@@ -12,6 +12,9 @@ Floating {
     // Who asks, as Polkit.js says it, and the account whose password it is.
     property string asker
     property string who
+    // What the asking process says of itself, as asker-says answers it;
+    // the card words it with Polkit.js's says, none when it says nothing.
+    property string said
     // Why, or what went wrong once it's failed, in the alert.
     property string reason
     property bool failed: false
@@ -24,6 +27,20 @@ Floating {
     keys: true
     urgent: failed
 
+    // The reason's face, to measure what the asker says as it's drawn.
+    TextMeasure {
+        id: saidMeasure
+        font.family: head.reasonLevel.family
+        font.pointSize: head.reasonLevel.pointSize
+        font.weight: head.reasonLevel.weight
+        font.variableAxes: head.reasonLevel.variableAxes
+        font.features: head.reasonLevel.features
+    }
+    FontMetrics {
+        id: saidFace
+        font: saidMeasure.font
+    }
+
     Column {
         width: parent.width
 
@@ -33,6 +50,7 @@ Floating {
         // with no-break spaces, so no word of it is left alone on a line
         // (VKCF3Z, 2026-11-15).
         PromptHead {
+            id: head
             width: parent.width
             readonly property string asker: `<span style="font-family:`
                 + `'${Theme.mono.family}'">${Said.plain(Said.joined(card.asker))}</span>`
@@ -41,7 +59,18 @@ Floating {
             asked: `${asker} needs\u00a0${owner}'s\u00a0password`
             askedOpens: card.asker.charAt(0)
             askedOpensIn: Theme.mono.family
-            reason: card.reason
+            // The room a line of the reason has, from the inset at each
+            // side and its first letter's bearing, as the head sets it.
+            readonly property real saidRoom: width - 2 * inset
+                - saidFace.tightBoundingRect("I").x
+            // What it says of itself comes first, under the command it's
+            // said of, then why, as lines of one saying; it gives way to
+            // stay one line, measured as it's drawn (VKCF3Z, 2026-11-15).
+            // It reads the face, so it's worded again when that changes, as
+            // TextMeasure.qml asks.
+            readonly property string saidLine: Said.says(card.said,
+                line => saidMeasure.font && saidMeasure.widthOf(line) <= saidRoom)
+            reason: [saidLine, card.reason].filter(line => line !== "").join("\n")
             reasonColour: card.failed ? Theme.alert : Theme.level.words.colour
         }
 

@@ -293,6 +293,15 @@
     YubiKey's touch alone, in a service other than polkit's or in polkit's without the check that
     the person is in, nor to a system the profile never held
   '';
+  asker-says-only-what-a-process-says = ''
+    asker-says reads only the quest and session a process names in its environment, in the
+    harness's shape, asking each parent up to the account's manager or one it can't read, and
+    never says a secret beside them, in its answer or its words; a process gone says neither
+  '';
+  asker-says-passes-clippy = ''
+    clippy finds nothing in asker-says, which says what a process asking for a password says of
+    itself, or its tests
+  '';
   backlight-passes-clippy = ''
     clippy finds nothing in the backlight daemon or its tests
   '';
