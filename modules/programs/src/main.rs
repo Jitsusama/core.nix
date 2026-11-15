@@ -234,7 +234,6 @@ fn serve(given: &[String]) -> Result<(), Failure> {
     let notify = Notify::new()
         .inspect_err(|why| eprintln!("<4>inotify isn't there, so changes aren't heard: {why}"))
         .ok();
-    let windows = rows::socket(&socket);
     let shared = Arc::new_cyclic(|this| Shared {
         daemon: Mutex::new(Daemon {
             held: BTreeMap::new(),
@@ -272,7 +271,7 @@ fn serve(given: &[String]) -> Result<(), Failure> {
         home: std::env::var("HOME").unwrap_or_default(),
         taken_words: taken::words(&vocabulary),
         tab_words: tab_rows::Words::read(&vocabulary),
-        windows,
+        windows: rows::socket(&socket),
         code: code::Code::new(&std::env::var("HOME").unwrap_or_default(), &vocabulary),
     });
     shared.served().fresh(Box::new({
