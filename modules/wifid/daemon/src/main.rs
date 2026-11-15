@@ -32,6 +32,7 @@ mod detail;
 mod echo;
 mod face;
 mod frequencies;
+mod learn;
 mod link;
 mod lookup;
 mod measure;
@@ -81,6 +82,7 @@ use check::{Checker, Settings, Verdict};
 use detail::Polled;
 use face::Face;
 use frequencies::Avoided;
+use learn::Learned;
 use link::Link;
 use network::{Account, Address, Inner, Method, Network, Security};
 use secret::{Credentials, Secrets};
@@ -263,11 +265,13 @@ async fn serve(
     };
     let (asks, taken) = mpsc::channel(1);
     // How well each access point carries, measured from where the machine
-    // is, and the card moved to one carrying better (measure.rs).
+    // is, and the card moved to one carrying better (measure.rs), with what
+    // each carried at each hour kept for a trusted network (learn.rs).
     tokio::spawn(measure::follow(
         state.subscribe(),
         calling.subscribe(),
         asks.clone(),
+        Learned::kept_in(&Path::new(STATE).join("carried")),
     ));
     let watching = watch::Sender::new(0);
     let wifi = Wifi {
