@@ -76,7 +76,9 @@ walk to the right, climb down the right side, drop down and grab with its
 claws on the top of the window below, climb up, and then walk over."
 
 - Held by `margin-cat.qml`: "down a workspace to a window under another, never gliding"
-- Held by `margin-cat-one-screen.qml`: "the drop ends in a grab at a top's corner, never a landing"
+- Held by `margin-cat-one-screen.qml`: "the drop ends in a grab at a top's corner in its reach"
+- Held by `margin-cat-one-screen.qml`: "with no corner in its reach, the drop lands on the top
+  under it, never the floor"
 - Held by `margin-cat-one-screen.qml`: "it comes in at the top over the gap, mid-drop"
 - Owed since 2026-11-14: up, one path through the workspaces stacked as one screen,
   arriving where that path crosses the screen's bottom edge.

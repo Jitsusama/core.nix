@@ -97,7 +97,7 @@ QtObject {
                 comes.t - (all[gone]?.t ?? 0) <= 700, true);
             const names = move.beats.map(beat => beat.name);
             const grab = move.beats[names.indexOf("drops") + 1];
-            expect(`down ${name}, the drop ends in a grab at a top's corner, never a landing`,
+            expect(`down ${name}, the drop ends in a grab at a top's corner in its reach`,
                 [grab?.name, grab?.to.y, grab?.to.x === 616 || grab?.to.x === 624],
                 ["grabs", 8, true]);
             expect(`down ${name}, then it climbs on and walks to its seat`,
@@ -139,6 +139,19 @@ QtObject {
         expect("its seat moved as it's out of sight, it finds its way again, till it drops in",
             [Paths.replans(again, drops - 10, true), Paths.replans(again, drops + 10, true)],
             [true, false]);
+
+        // A window alone below sits in the middle of the screen (niri's
+        // always-center-single-column), its corners far from either side
+        // above: it lands on the top under the side it dropped off, the
+        // one landing VKCF3Z allows (fcd95edd), never on the floor.
+        const alone = world({ now: [{ left: 324, top: 16, width: 600, height: 768, column: 0,
+            id: 9 }] });
+        const wide = Stacked.moves({ x: 900, y: 7 }, { x: 600, y: 7 }, alone);
+        const lands = wide.beats[wide.beats.findIndex(beat => beat.name === "drops") + 1];
+        expect("with no corner in its reach, the drop lands on the top under it, never the floor",
+            [lands?.name, lands?.to.y, lands?.to.x >= 324 - 8 && lands?.to.x <= 924,
+                Paths.frame(wide, wide.ends).beat],
+            ["lands", 7, true, "sits"]);
 
         // Told where it's going only after the slide's begun (the screen's
         // plan with no seat yet), it goes off the top with its window.
