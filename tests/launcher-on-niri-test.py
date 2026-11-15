@@ -3855,6 +3855,63 @@ def first_changed(before: bytes, deadline: float) -> tuple[float, float]:
     return -1.0, unchanged
 
 
+def prints(picture: bytes) -> list[int]:
+    """Give a picture of niri's screen as a hash a stretch, compared as `changed` compares."""
+    return [hash(picture[at : at + STRETCH]) for at in range(0, len(picture), STRETCH)]
+
+
+def apart(one: list[int], other: list[int]) -> float:
+    """Give how much of the screen differs between two pictures' hashes, from 0 to 1."""
+    if len(one) != len(other):
+        return 1.0
+    return sum(mine != theirs for mine, theirs in zip(one, other, strict=True)) / len(one)
+
+
+def settled_shown(
+    before: bytes, said: Callable[[], list[Json]], deadline: float
+) -> tuple[float, float, list[Json]]:
+    """Give when niri's screen first showed what a change left, and what the shell said presented.
+
+    Also when the screen last still showed `before`. Pictures are taken until the shell says the
+    change presented and two taken after agree, as `still_screen` judges, so the last is the
+    screen it left. The change was shown by the first picture showing that screen, rather than
+    the first differing from `before`: on a loaded builder a frame of the shell's, late to niri,
+    changed the screen 123 ms after a key's press and 245 before the key's own frame began, and
+    was taken for the key's (2026-11-15). The times are read as `first_changed` reads them, on
+    the monotonic clock in ms, -1 when there's none. The shell is asked in a thread of its own,
+    so asking doesn't space the pictures out, and each picture is kept as its hashes, so a slow
+    change costs little memory.
+    """
+    presented: list[Json] = []
+
+    def asked() -> None:
+        while not presented and time.monotonic() < deadline:
+            presented.extend(said())
+            time.sleep(launcher_on_niri.POLL)
+
+    asking = threading.Thread(target=asked, daemon=True)
+    asking.start()
+    was = prints(before)
+    # Each picture's start, when it was taken, its hashes, and whether the change had been said
+    # presented before it began, so only pictures that must show it are judged settled.
+    taken: list[tuple[float, float, list[int], bool]] = []
+    while time.monotonic() < deadline:
+        known = bool(presented)
+        began = time.monotonic() * 1000
+        now = prints(screen())
+        taken.append((began, time.monotonic() * 1000, now, known))
+        if known and len(taken) > 1 and taken[-2][3] and apart(taken[-2][2], now) <= CARD_SHARE:
+            break
+    asking.join()
+    left = taken[-1][2] if taken else was
+    shown = next((at for _, at, now, _ in taken if apart(now, left) <= CARD_SHARE), -1.0)
+    unchanged = max(
+        (began for began, at, now, _ in taken if 0 <= at < shown and apart(now, was) <= CARD_SHARE),
+        default=-1.0,
+    )
+    return shown, unchanged, presented
+
+
 def presented_after_unchanged(at: float, unchanged: float, what: str) -> None:
     """Fail when `what` is said presented at `at` before a picture still without it was taken.
 
@@ -3917,18 +3974,36 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
     the shell hears a swap only once it's free, which made Joel's "meet" say 77 ms drawing with
     3 rows new (2026-11-11).
     """
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
-    before = still_screen()
-    since = shell.mark()
-    shell.as_account("wtype w")
-    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    seen, unchanged = first_changed(before, deadline)
+    behind = shell.opened("Ruff Notes")
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        before = still_screen()
+        since = shell.mark()
+
+        def held() -> None:
+            # A change not the key's lands first, as a frame of the shell's late to niri did
+            # on a loaded builder 123 ms after the press and 245 before the key's own frame
+            # began (2026-11-15): a window behind the card is widened, which foot draws while
+            # the shell is held, and the hold outlasts the lead so the two can't be confused.
+            with shell.frozen():
+                shell.as_account("wtype w")
+                shell.as_account(f"niri msg action set-window-width --id {behind['id']} 100%")
+                time.sleep(2 * COPIED_BEFORE_PRESENTED.total_seconds())
+
+        # Held in a thread of its own, so the screen is pictured while the shell is held.
+        holding = threading.Thread(target=held, daemon=True)
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        holding.start()
+        seen, unchanged, presented = settled_shown(
+            before,
+            lambda: json.loads(shell.as_account(shell.ipc("keysPresented"))),
+            deadline,
+        )
+        holding.join()
+    finally:
+        shell.close(behind)
     assert seen >= 0, "niri's screen never showed what the key found"
-    presented: list[Json] = []
-    while not presented and time.monotonic() < deadline:
-        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
-        time.sleep(launcher_on_niri.POLL)
     assert presented, "the key was never said presented"
     key = presented[-1]
     lead = COPIED_BEFORE_PRESENTED.total_seconds() * 1000
@@ -4289,16 +4364,17 @@ def test_a_daemons_change_is_presented_as_niri_first_shows_it(
     Joel's 50 ms bar holds for updates as for keys (2026-11-10), so the launcher times each change
     a daemon tells from the line it came in to niri's presentation feedback for the frame drawing
     it (Y2YBTS, 2026-11-11): never from before the line was written, and niri's screen first shows
-    it no sooner than the frame before the time said (COPIED_BEFORE_PRESENTED), and no picture
-    after it lacks it.
+    what it left no sooner than the frame before the time said (COPIED_BEFORE_PRESENTED), and no
+    picture after it lacks it. Judged by the screen it left, as a key's is (settled_shown).
     """
     after = quests_shown(shell)
     before = still_screen()
     written = quests.told(added(), [])
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    seen, unchanged = first_changed(before, deadline)
+    seen, unchanged, presented = settled_shown(
+        before, lambda: updates_presented(shell, after, deadline), deadline
+    )
     assert seen >= 0, "niri's screen never showed the change"
-    presented = updates_presented(shell, after, deadline)
     shell.launcher_until(lambda shown: f"Kestrel {ADDED}" in shown["rows"])
     shell.close_launcher()
     quests.told([], [row["key"] for row in added()])
