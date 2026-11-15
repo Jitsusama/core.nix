@@ -3507,8 +3507,9 @@
   '';
   the-launchers-rows-keep-their-words-apart = ''
     a launcher row and field keep their words apart and inside them, however long, ending what
-    doesn't fit in an ellipsis, and the launcher's note, nothing typed, ends where a row's value
-    ends and says all it has room for
+    doesn't fit in an ellipsis, words that fit as Qt draws them said whole, hinted fully at 1
+    too, and the launcher's note, nothing typed, ends where a row's value ends and says all it
+    has room for
   '';
   the-lid-shuts-when-the-hinge-agrees = ''
     lid-hinge believes a shut switch once the hinge last read nearly shut, a light sensor lit at

@@ -95,7 +95,7 @@ Item {
         if (!wholeWords || over <= 0)
             return width;
         void face.font;
-        const wide = Measures.measurer(face);
+        const wide = Measures.drawnMeasurer(face);
         const cut = Reading.wholeWords(plain, width, wide);
         return cut === "" ? width : Math.min(width, Math.ceil(wide(cut)));
     }
@@ -111,8 +111,9 @@ Item {
     onRestAtChanged: if (!room.moving && !slideOut.running && !slideBack.running)
         words.x = room.restAt
 
-    // The words' face, to find where they give way.
-    FontMetrics {
+    // The words' face, to find where they give way, measured as they're
+    // drawn (TextMeasure.qml).
+    TextMeasure {
         id: face
         font: words.font
     }

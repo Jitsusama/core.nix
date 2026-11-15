@@ -9,6 +9,7 @@
   "Ground.qml"
   "Gutter.qml"
   "ReadsOn.qml"
+  "TextMeasure.qml"
   "Wash.qml"
   "Graph.qml"
   "Chord.qml"

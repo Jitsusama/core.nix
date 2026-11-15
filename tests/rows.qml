@@ -397,6 +397,10 @@ ShellRoot {
             Choice { id: notingLong; width: root.panel; name: root.long + root.long
                 side: "not answering"; sides: 60; note: "a password"; glyph: "$"
                 selected: true }
+            // A home row's names, its room set below to what Qt draws them
+            // in with a pixel to spare, as a row's are measured, and one more.
+            Choice { id: namesDrawn; width: root.panel; name: "Home"; glyph: "$"
+                names: true; count: "Wardrobe, Office, Garage" }
             // An agent's side of items, on the cursor row and off it: its
             // words in the row's ink, the dots between them muted.
             Choice { id: itemsChosen; width: root.panel; name: "A Quest"; glyph: "$"
@@ -1154,6 +1158,23 @@ ShellRoot {
             texts = apart(nameLong, nameLong.width);
             expect("a long name cut, its side whole", cut(texts).length === 1
                 && cut(texts)[0] === nameLong.name, said(texts));
+            // Names are measured as Qt draws them, so names that fit as
+            // drawn are said whole. Kept by a face without its axes, these
+            // measured 217 with their pixel spared where Qt drew 212.7, at
+            // 2; and a FontMetrics, which measures as native text is laid,
+            // read them 220 where Qt drew 212, hinted fully at 1.
+            inkProbe.font.family = Theme.level.words.family;
+            inkProbe.font.pointSize = Theme.level.words.pointSize;
+            inkProbe.font.variableAxes = Theme.level.words.variableAxes;
+            inkProbe.text = namesDrawn.count;
+            const namesWide = Math.ceil(inkProbe.advanceWidth) + 2;
+            const namesText = textItem(namesDrawn, namesDrawn.count);
+            namesDrawn.width += namesWide - (namesDrawn.ends - namesText.x
+                - Theme.space.rung.groups);
+            texts = apart(namesDrawn, namesDrawn.width);
+            expect("names that fit as Qt draws them are said whole",
+                texts.some(t => t.text === namesDrawn.count && !t.truncated),
+                `${namesWide} of room: ${said(texts)}`);
             texts = apart(sideFits, sideFits.width);
             expect("a side that fits beside its name is said whole", cut(texts).length === 0,
                 said(texts));
