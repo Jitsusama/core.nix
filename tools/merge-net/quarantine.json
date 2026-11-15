@@ -495,19 +495,9 @@
     "test": "the-launcher-answers-whats-typed-on-niri"
   },
   {
-    "at": 1794706203,
-    "commit": "c51fcc200e172b08a4e9705edeb9c397ebb75861",
-    "due": "2026-11-17",
-    "owner_pr": 3956,
-    "reason": "failed twice at a637004b052a, and at c51fcc200e17 after it",
-    "subtests": [
-      "test_a_second_move_holds_on_from_where_the_first_got_to"
-    ],
-    "test": "the-margin-cat-follows-the-keys-on-niri"
-  },
-  {
     "at": 1794707322,
     "commit": "f4ff17088982c04b151d13c7ff0062972c41af74",
+    "due": "2026-11-15",
     "owner_pr": 4364,
     "reason": "a loaded builder spaced foot's letters past the 160 ms rest in all three tries, in four gates between 18:00 and 20:45 on 14 Nov, on main's code too, BXNMUC's to make steady by 15 Nov 02:00",
     "subtests": [
@@ -517,20 +507,33 @@
     "test": "the-launcher-answers-whats-typed-on-niri"
   },
   {
-    "at": 1794709636,
-    "commit": "968627b69b715f69826460c9e5ab253e092d13f4",
-    "owner_pr": null,
-    "reason": "failed, then passed, at 968627b69b71",
+    "at": 1794709157,
+    "commit": "25e508c84df2ad15f66044c588f1529630a3b870",
+    "due": "2026-11-17",
+    "owner_pr": 4274,
+    "reason": "failed under loaded builders in the gates of 2 changes on 14 Nov, one that doesn't reach the launcher, and passed on rerun",
     "subtests": [
-      "test_the_cat_holds_its_ground_through_a_slide_between_workspaces"
+      "test_chords_said_through_a_handover_open_it_at_once"
     ],
-    "test": "the-margin-cat-follows-the-keys-on-niri"
+    "test": "the-launcher-opens-on-what-it-kept-on-niri"
   },
   {
     "at": 1794711310,
     "commit": "c51fcc200e172b08a4e9705edeb9c397ebb75861",
+    "due": "2026-11-17",
     "owner_pr": 4356,
     "reason": "failed, then passed, at c51fcc200e17",
     "test": "niri-tells-a-resize-at-once"
+  },
+  {
+    "at": 1794709157,
+    "commit": "25e508c84df2ad15f66044c588f1529630a3b870",
+    "due": "2026-11-17",
+    "owner_pr": 671,
+    "reason": "failed, then passed, at 1242616f and at e5dbb0d1 on 14 Nov",
+    "subtests": [
+      "test_swipes_on_the_touchscreen_move_through_the_workspaces_not_the_window"
+    ],
+    "test": "vm-desktop-starts-clean"
   }
 ]
