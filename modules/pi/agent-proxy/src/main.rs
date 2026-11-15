@@ -24,6 +24,7 @@
 //! binds one itself, as the tests do.
 
 mod bind;
+mod cli;
 mod lent;
 mod peer;
 mod said;
@@ -36,7 +37,7 @@ use std::io;
 use std::os::fd::FromRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::process;
+use std::process::{self, ExitCode};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -47,6 +48,7 @@ use lent::{ACCOUNT, Key, Lent};
 use said::{Refusal, Signer, Why, many_signs_line, signed_line};
 use signature::Signer as _;
 use ssh_key::Signature;
+use terminal_kit::{Exit, Failure, flags};
 use wire::{Fields, put_string, read_message, write_message};
 
 /// What an agent answers when it won't, or can't, do what it was asked.
@@ -148,30 +150,26 @@ struct Config {
     socket: Option<PathBuf>,
 }
 
-fn main() {
-    let config = match config(env::args().skip(1)) {
-        Ok(config) => config,
-        Err(why) => {
-            eprintln!("pi-agent-proxy: {why}");
-            eprintln!(
-                "usage: pi-agent-proxy --hosts FILE [--upstream SOCKET]... [--key FILE --lent FILE...] [--socket PATH]"
-            );
-            process::exit(2);
-        }
-    };
-    let listener = match listener(config.socket.as_deref()) {
-        Ok(listener) => listener,
-        Err(error) => {
-            eprintln!("pi-agent-proxy: nothing to listen on: {error}");
-            process::exit(1);
-        }
-    };
-    let shared = Arc::new(config.shared);
+fn main() -> ExitCode {
+    terminal_kit::main(&cli::help(), env!("CARGO_PKG_VERSION"), |context| {
+        let config = config(context.args.iter().cloned())?;
+        let listener = listener(config.socket.as_deref()).map_err(|error| {
+            Failure::new(Exit::Failed, "pi-agent-proxy has nothing to listen on")
+                .because(error.to_string())
+        })?;
+        answer(&Arc::new(config.shared), &listener);
+        Ok(())
+    })
+}
+
+/// Answer each client `listener` takes, on a thread of its own, while
+/// there's a place for it.
+fn answer(shared: &Arc<Shared>, listener: &UnixListener) {
     for client in listener.incoming() {
         match client {
             Ok(stream) => {
                 // Dropped at once, which closes it, when there's no place.
-                let Some(place) = Place::take(&shared) else {
+                let Some(place) = Place::take(shared) else {
                     let busy = format!("a client, since {MOST_CLIENTS} are answered already");
                     let claimed = peer::claimed_session(&stream);
                     eprintln!("{}", Refusal::new(Why::Busy, busy).line(&claimed));
@@ -185,34 +183,54 @@ fn main() {
 }
 
 /// The configuration `args` give.
-fn config(mut args: impl Iterator<Item = String>) -> Result<Config, String> {
+///
+/// # Errors
+///
+/// Asked wrongly, 64, for a flag it doesn't know or one short of what it
+/// needs; its configuration wrong, 78, for a hosts file it can't read.
+fn config(mut args: impl Iterator<Item = String>) -> Result<Config, Failure> {
     let mut hosts = None;
     let mut upstreams = Vec::new();
     let mut key = None;
     let mut lent = Vec::new();
     let mut socket = None;
     while let Some(arg) = args.next() {
-        let mut value = || args.next().ok_or_else(|| format!("{arg} takes a value"));
+        if !cli::FLAGS.contains(&arg.as_str()) {
+            return Err(flags::unknown("flag", &arg, &cli::FLAGS).try_this("pi-agent-proxy --help"));
+        }
+        let mut value = || {
+            args.next()
+                .ok_or_else(|| cli::wrongly(format!("{arg} takes a value")))
+        };
         match arg.as_str() {
             "--hosts" => {
                 let file = value()?;
-                let text = fs::read_to_string(&file)
-                    .map_err(|error| format!("{file} can't be read: {error}"))?;
-                hosts = Some(Hosts::read(&text).map_err(|why| format!("{file}: {why}"))?);
+                let unread = |why: String| {
+                    Failure::new(
+                        Exit::Config,
+                        format!("pi-agent-proxy couldn't read --hosts {file}"),
+                    )
+                    .because(why)
+                };
+                let text = fs::read_to_string(&file).map_err(|error| unread(error.to_string()))?;
+                hosts = Some(Hosts::read(&text).map_err(unread)?);
             }
             "--upstream" => upstreams.push(PathBuf::from(value()?)),
             "--key" => key = Some(PathBuf::from(value()?)),
             "--lent" => lent.push(PathBuf::from(value()?)),
-            "--socket" => socket = Some(PathBuf::from(value()?)),
-            _ => return Err(format!("{arg} isn't an option it takes")),
+            _ => socket = Some(PathBuf::from(value()?)),
         }
     }
-    let hosts = hosts.ok_or("--hosts is needed")?;
+    let hosts = hosts.ok_or_else(|| cli::wrongly("--hosts is needed"))?;
     if upstreams.is_empty() && key.is_none() {
-        return Err("at least one --upstream, or a --key, is needed".to_owned());
+        return Err(cli::wrongly(
+            "at least one --upstream, or a --key, is needed",
+        ));
     }
     if key.is_some() && lent.is_empty() {
-        return Err("--key needs at least one --lent, the builders it signs for".to_owned());
+        return Err(cli::wrongly(
+            "--key needs at least one --lent, the builders it signs for",
+        ));
     }
     Ok(Config {
         shared: Shared {
