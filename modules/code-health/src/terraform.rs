@@ -3,7 +3,8 @@
 //! in each workspace, its recommended set, as a workspace with no config
 //! of its own gets, and what trivy's checks find that would leave what
 //! it makes open to attack, from the checks it was built with, so it
-//! fetches nothing. Each runs only where a repository holds Terraform,
+//! fetches nothing, and what `tofu validate` refuses in each workspace
+//! (`terraform_validate.rs`). Each runs only where a repository holds Terraform,
 //! so one holding none has no figure rather than a nought.
 
 use std::env;
@@ -17,15 +18,17 @@ use std::thread;
 use serde::Deserialize;
 
 use crate::measure::{File, extension};
+use crate::terraform_validate;
 
 /// What a repository's Terraform was found to hold: each file named with
-/// why `tofu fmt` would write it otherwise, each tflint finding, and each
-/// of trivy's security findings.
+/// why `tofu fmt` would write it otherwise, each tflint finding, each of
+/// trivy's security findings, and each error `tofu validate` finds.
 #[derive(Debug, Default, PartialEq)]
 pub struct Read {
     pub unformatted: Vec<String>,
     pub findings: Vec<String>,
     pub insecure: Vec<String>,
+    pub invalid: Vec<String>,
 }
 
 /// Whether a path is Terraform: a `.tf` file or a `.tfvars` one.
@@ -53,13 +56,23 @@ fn read_all(terraform: &[&File]) -> Result<Read, String> {
         }
     }
     let folder = scratch();
-    let read = copied(&folder, terraform).and_then(|()| Ok((linted(&folder)?, scanned(&folder)?)));
+    // Validated last, since readying a workspace writes into the copy.
+    let read = copied(&folder, terraform).and_then(|()| {
+        let findings = linted(&folder)?;
+        let insecure = scanned(&folder)?;
+        Ok((
+            findings,
+            insecure,
+            terraform_validate::invalid(&folder, terraform)?,
+        ))
+    });
     let _ = fs::remove_dir_all(&folder);
-    let (findings, insecure) = read?;
+    let (findings, insecure, invalid) = read?;
     Ok(Read {
         unformatted,
         findings,
         insecure,
+        invalid,
     })
 }
 
@@ -244,9 +257,9 @@ fn copied(folder: &Path, terraform: &[&File]) -> Result<(), String> {
 }
 
 /// How a program ended, and all it said, its errors after its output.
-struct Ran {
-    code: i32,
-    said: String,
+pub struct Ran {
+    pub code: i32,
+    pub said: String,
 }
 
 fn run(
@@ -255,8 +268,20 @@ fn run(
     folder: Option<&Path>,
     input: Option<&[u8]>,
 ) -> Result<Ran, String> {
+    run_with(program, arguments, folder, input, &[])
+}
+
+/// A program run as `run` does, with `settings` added to its environment.
+pub fn run_with(
+    program: &str,
+    arguments: &[&str],
+    folder: Option<&Path>,
+    input: Option<&[u8]>,
+    settings: &[(&str, &Path)],
+) -> Result<Ran, String> {
     let mut command = Command::new(program);
     command
+        .envs(settings.iter().copied())
         .args(arguments)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

@@ -23,12 +23,7 @@ pub fn undocumented(files: &[File]) -> Option<Vec<String>> {
         .flat_map(|file| undescribed(&file.text).map(move |block| format!("{}:{block}", file.path)))
         .collect();
     let noted: BTreeSet<&str> = files.iter().map(|file| file.path.as_str()).collect();
-    let workspaces: BTreeSet<&str> = terraform
-        .iter()
-        .filter(|file| extension(&file.path) == "tf")
-        .map(|file| file.path.rsplit_once('/').map_or("", |(folder, _)| folder))
-        .collect();
-    for workspace in workspaces {
+    for workspace in workspaces(&terraform) {
         let readme = if workspace.is_empty() {
             "README.md".to_owned()
         } else {
@@ -40,6 +35,15 @@ pub fn undocumented(files: &[File]) -> Option<Vec<String>> {
         }
     }
     Some(named)
+}
+
+/// Each workspace: a folder holding a `.tf` file, the top as "".
+pub fn workspaces<'a>(terraform: &[&'a File]) -> BTreeSet<&'a str> {
+    terraform
+        .iter()
+        .filter(|file| extension(&file.path) == "tf")
+        .map(|file| file.path.rsplit_once('/').map_or("", |(folder, _)| folder))
+        .collect()
 }
 
 /// Each variable and output block in `text` with no description of its
@@ -100,8 +104,8 @@ fn sets_description(code: &str) -> bool {
 /// Where a scan stands between lines: how deep in braces, and whether in
 /// a block comment or a heredoc, whose end marker it holds.
 #[derive(Default)]
-struct Scan {
-    depth: usize,
+pub struct Scan {
+    pub depth: usize,
     comment: bool,
     heredoc: Option<String>,
 }
@@ -116,7 +120,7 @@ enum Within {
 impl Scan {
     /// A line's code with its comments, strings and heredoc text blanked,
     /// moving the depth by its braces.
-    fn code(&mut self, line: &str) -> String {
+    pub fn code(&mut self, line: &str) -> String {
         if let Some(marker) = &self.heredoc {
             if line.trim() == marker {
                 self.heredoc = None;

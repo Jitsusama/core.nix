@@ -8,8 +8,9 @@
 //! counted); the lints its configs turn off (lints.rs), its files nothing
 //! reaches (reached.rs) and its folders that don't say what they hold
 //! (notes.rs), as the quality standard has them; its Terraform's files
-//! not as `tofu fmt` writes them, what tflint finds and what trivy finds
-//! insecure (terraform.rs), and what of it says nothing of what it is
+//! not as `tofu fmt` writes them, what tflint finds, what trivy finds
+//! insecure (terraform.rs) and what `tofu validate` refuses
+//! (`terraform_validate.rs`), and what of it says nothing of what it is
 //! (`terraform_docs.rs`); and how long the changes it merged in the last
 //! day took from first edit to merge (merges.rs).
 //!
@@ -45,6 +46,7 @@ mod notes;
 mod reached;
 mod terraform;
 mod terraform_docs;
+mod terraform_validate;
 
 use std::collections::BTreeMap;
 use std::env;
@@ -66,7 +68,7 @@ const FLAGS: [&str; 6] = [
 ];
 
 /// Every measure it reads (measure.rs and merges.rs).
-const MEASURES: [&str; 17] = [
+const MEASURES: [&str; 18] = [
     "crowded-folders",
     "daemons-waiting",
     "duplicated-lines",
@@ -78,6 +80,7 @@ const MEASURES: [&str; 17] = [
     "quarantined-tests",
     "shared-files",
     "suppressions",
+    "tf-invalid",
     "tf-undocumented",
     "tf-unformatted",
     "tflint-findings",
@@ -171,6 +174,8 @@ fn run(context: &Context) -> Result<(), Failure> {
                         health.put("tflint-findings", read.findings, count);
                         let count = read.insecure.len();
                         health.put("trivy-findings", read.insecure, count);
+                        let count = read.invalid.len();
+                        health.put("tf-invalid", read.invalid, count);
                     }
                     Some(Err(error)) => {
                         let said = format!("{name}'s Terraform left out: {error}");

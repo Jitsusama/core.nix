@@ -1,10 +1,12 @@
 # code-health, built from this directory, its tests run as it builds, with
 # git for the one that times a repository's merges, and tofu, tflint and
 # trivy, which it runs over a repository's Terraform, found on its own
-# PATH wherever it runs (src/terraform.rs). It takes its shape
+# PATH wherever it runs (src/terraform.rs), and the providers tofu
+# validate readies a workspace with (providers.nix). It takes its shape
 # from the terminal kit (../terminal-kit), so the source is cut from the
 # folder holding both.
 {
+  callPackage,
   git,
   lib,
   makeWrapper,
@@ -13,6 +15,9 @@
   tflint,
   trivy,
 }:
+let
+  providers = callPackage ./providers.nix { };
+in
 rustPlatform.buildRustPackage rec {
   pname = "code-health";
   version = "0.1.0";
@@ -42,7 +47,7 @@ rustPlatform.buildRustPackage rec {
         tflint
         trivy
       ]
-    }
+    } --set-default CODE_HEALTH_TERRAFORM_PROVIDERS ${providers}
   '';
   meta = {
     description = "Writes the day's figures of how messy each repository it's given is";
