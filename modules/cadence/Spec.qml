@@ -14,6 +14,7 @@
 import qs
 import Quickshell
 import QtQuick
+import "ReadyRows.js" as Ready
 
 Provider {
     id: provider
@@ -34,10 +35,16 @@ Provider {
     readonly property alias served: ready
 
     // The head as the daemon says it, `{ said, glyph }`, or null before it
-    // has answered or where cadence-spec isn't running.
+    // has answered or where cadence-spec isn't running. The daemon names
+    // its glyph's role, "failed", so it's made the theme's mark here, as
+    // ReadyRows makes each row's (ReadyRows.js's glyphOf): Agents' row
+    // drew the name as a word.
     function head() {
         void ready.placings;
-        return ready.held["head:spec"]?.head ?? null;
+        const head = ready.held["head:spec"]?.head ?? null;
+        if (head === null)
+            return null;
+        return Object.assign({}, head, { glyph: Ready.glyphOf(head.glyph ?? "", Theme.glyph) });
     }
 
     // The axes, each a step in to its readings (ReadyRows.qml's rows).

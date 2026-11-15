@@ -6,6 +6,7 @@
 // Spec row shows; its axes in the order served, each a step in; and the
 // out axis stepped into, its reading. It exits 0 once every case holds,
 // and otherwise 1, saying which didn't.
+import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -70,8 +71,10 @@ ShellRoot {
             const head = spec.head();
             expect("the head as the daemon says it",
                 head.said === "1 reading out of spec", head.said);
-            expect("the head wears the alert glyph while any is out", head.glyph === "failed",
-                head.glyph);
+            // Drawn, as Agents' row draws it: the theme's mark, never its
+            // name, which drew as the word "failed" (Y2YBTS, 2026-11-15).
+            expect("the head wears the alert glyph while any is out",
+                head.glyph === Theme.glyph.failed, head.glyph);
             const axes = spec.axes();
             same("its axes, in the order served", axes.map(row => row.name),
                 ["Time to Done", "Quality"]);
