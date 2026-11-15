@@ -47,6 +47,9 @@ pub struct Help {
     /// What the code it passes through from its stand-in is, where it
     /// ends with another program's (`Failure::passed`).
     pub passes: Option<String>,
+    /// Whether it can end done; one kept only to refuse can't, so its
+    /// help lists no 0.
+    pub ends_done: bool,
 }
 
 /// The widest a name's column grows before a long name's words go on the
@@ -84,6 +87,7 @@ impl Help {
             aliases: Vec::new(),
             listed: true,
             passes: None,
+            ends_done: true,
         }
     }
 
@@ -125,6 +129,14 @@ impl Help {
     #[must_use]
     pub fn unlisted(mut self) -> Self {
         self.listed = false;
+        self
+    }
+
+    /// The same, never ending done: every run of it refuses, as an old
+    /// name kept only to say where its work went does.
+    #[must_use]
+    pub fn never_done(mut self) -> Self {
+        self.ends_done = false;
         self
     }
 
@@ -215,10 +227,16 @@ impl Help {
     }
 
     /// Every code it exits with: 0 and 64, which every command has, and
-    /// its own.
+    /// its own; 0 only where it can end done.
     pub fn every_exit(&self) -> Vec<(Exit, String)> {
         let mut exits = self.exits.clone();
-        for exit in [Exit::Done, Exit::Usage] {
+        let shared: &[Exit] = if self.ends_done {
+            &[Exit::Done, Exit::Usage]
+        } else {
+            exits.retain(|(exit, _)| *exit != Exit::Done);
+            &[Exit::Usage]
+        };
+        for &exit in shared {
             if !exits.iter().any(|(had, _)| *had == exit) {
                 exits.push((exit, exit.means().to_owned()));
             }
@@ -542,5 +560,21 @@ mod tests {
             (Some("the job's own code"), Some(2)),
             "the stand-in's code went among the table's: {value}"
         );
+    }
+
+    #[test]
+    fn one_that_never_ends_done_lists_no_0() {
+        let help = Help::new("show", "says where showing went")
+            .exit(Exit::Usage, "always: passwords get shows it")
+            .never_done();
+
+        let codes: Vec<u8> = help
+            .every_exit()
+            .iter()
+            .map(|(exit, _)| exit.code())
+            .collect();
+        assert_eq!(codes, [64], "{:?}", help.every_exit());
+        let text = help.text(&Pen::plain(), Room::Cells(80));
+        assert!(!text.contains("0 done"), "{text}");
     }
 }
