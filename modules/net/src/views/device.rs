@@ -62,7 +62,7 @@ pub fn device(network: &Network, device: &Device, now: u64, pen: &Pen, room: Roo
     }
     if let Some(printer) = &device.printer {
         let doing = (!printer.state.is_empty()).then(|| printer.state.join(", "));
-        let pages = printer.pages.map(|pages| pages.to_string());
+        let pages = printer.pages.map(count);
         // Each cartridge is a fact of its own, its state said only when it
         // isn't fine, so a page with nothing wrong reads as its figures.
         let ink: Vec<(String, Option<String>)> = printer
@@ -155,6 +155,12 @@ fn generic(device: &Device, now: u64, pen: &Pen, room: Room) -> Vec<String> {
 
 fn figure<T: ToString>(value: Option<T>) -> String {
     value.map(|value| value.to_string()).unwrap_or_default()
+}
+
+/// A count as net says one, its thousands set apart by commas so 1,900
+/// pages don't read as a year; `--json` keeps the bare figure.
+fn count(value: u64) -> String {
+    value.to_string()
 }
 
 const PORTS: [(&str, Align); 5] = [
@@ -359,8 +365,8 @@ fn channels(way: &str, channels: &[Channel], active: &str, pen: &Pen, room: Room
                 channel.modulation.clone().unwrap_or_default(),
                 tenths(channel.power_dbmv).unwrap_or_default(),
                 tenths(channel.snr_db).unwrap_or_default(),
-                figure(channel.corrected),
-                figure(channel.uncorrectable),
+                channel.corrected.map(count).unwrap_or_default(),
+                channel.uncorrectable.map(count).unwrap_or_default(),
                 if channel.active { "yes" } else { "no" }.to_owned(),
             ]
         })
@@ -694,6 +700,24 @@ mod tests {
             assert!(text.contains("411.0"), "{text}");
             assert!(text.contains("REG-RSP-MP"), "{text}");
         }
+        let text = device(&network, modem, now(), &Pen::plain(), Room::Unbounded);
+        assert!(
+            text.contains("1,488,060,867"),
+            "its corrected codewords aren't counted with commas: {text}"
+        );
+    }
+
+    #[test]
+    fn a_count_sets_its_thousands_apart() {
+        for (value, said) in [
+            (0, "0"),
+            (999, "999"),
+            (1_900, "1,900"),
+            (40_000, "40,000"),
+            (1_488_060_867, "1,488,060,867"),
+        ] {
+            assert_eq!(count(value), said, "{value} reads wrong");
+        }
     }
 
     #[test]
@@ -746,7 +770,7 @@ mod tests {
                 "its colour ink isn't shown: {text}"
             );
             assert!(
-                words.contains("pages printed 1900"),
+                words.contains("pages printed 1,900"),
                 "what it has printed isn't shown: {text}"
             );
             assert!(
