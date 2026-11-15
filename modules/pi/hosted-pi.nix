@@ -8,17 +8,17 @@
 { pkgs, folder }:
 pkgs.pi-coding-agent.overrideAttrs (old: {
   patches = (old.patches or [ ]) ++ [
-    ./pi-host-agent-interface.patch
-    ./pi-host-committed-turn.patch
-    ./pi-host-interactive-lifecycle.patch
-    ./pi-host-model-auth-context.patch
-    ./pi-host-extension-cache-per-folder.patch
-    ./pi-host-extension-cache-keyed-shared.patch
-    ./pi-host-mcp-headers-once-a-burst.patch
-    ./pi-host-models-cloned-once.patch
-    ./pi-host-tools-found-once.patch
-    ./pi-host-extension-aliases-sorted-once.patch
-    ./pi-host-boundary-context-when-read.patch
+    ./host-patches/pi-host-agent-interface.patch
+    ./host-patches/pi-host-committed-turn.patch
+    ./host-patches/pi-host-interactive-lifecycle.patch
+    ./host-patches/pi-host-model-auth-context.patch
+    ./host-patches/pi-host-extension-cache-per-folder.patch
+    ./host-patches/pi-host-extension-cache-keyed-shared.patch
+    ./host-patches/pi-host-mcp-headers-once-a-burst.patch
+    ./host-patches/pi-host-models-cloned-once.patch
+    ./host-patches/pi-host-tools-found-once.patch
+    ./host-patches/pi-host-extension-aliases-sorted-once.patch
+    ./host-patches/pi-host-boundary-context-when-read.patch
   ];
   patchFlags = [
     "-p1"
