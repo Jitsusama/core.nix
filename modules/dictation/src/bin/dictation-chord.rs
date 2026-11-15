@@ -2,7 +2,7 @@
 //! held, so holding it can mean "listen until I let go". The Copilot key is
 //! the chord too: a keyboard sends it as Super, Shift and F23 together.
 //! Its Shift changes nothing here, as it changes nothing in niri's bind,
-//! which matches F23 under Super whichever Shift is held. niri runs a
+//! which matches the key F23 types under Super whichever Shift is held. niri runs a
 //! chord's command as it's pressed and says nothing of its release, and the
 //! keys themselves are the input group's, which an account mustn't join, or
 //! anything it runs could read every key.

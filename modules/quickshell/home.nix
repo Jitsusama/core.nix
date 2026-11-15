@@ -203,9 +203,9 @@ let
   # How a chord's keys are drawn, the theme's (../theme/keys.nix).
   keyFaces = config.jitsusama.theme.keys;
   # Keys that send their modifiers themselves, as the Copilot key sends
-  # Shift and Super with F23, so a chord of them is drawn as the one key
-  # pressed.
-  wholeKeys = [ "f23" ];
+  # Shift and Super with F23, which types XF86TouchpadOff, so a chord of
+  # them is drawn as the one key pressed.
+  wholeKeys = [ "xf86touchpadoff" ];
   face' = key: { wide = false; } // (keyFaces.${key} or { text = key; });
   # Each key's face by the key map's spelling of it, its xkb name in lower
   # case, and the three it spells otherwise: the one table a chord's keys
