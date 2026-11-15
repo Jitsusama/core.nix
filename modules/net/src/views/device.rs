@@ -95,22 +95,18 @@ pub fn device(network: &Network, device: &Device, now: u64, pen: &Pen, room: Roo
             Value::Object(said) => {
                 for (key, value) in said {
                     if !SAID.contains(&key.as_str()) {
-                        flatten(&key.replace('_', " "), value, &mut fields);
+                        flatten(&[key.replace('_', " ")], value, &mut fields);
                     }
                 }
             }
-            said => flatten("", said, &mut fields),
+            said => flatten(&[], said, &mut fields),
         }
         fields.retain(|(_, value)| !shown.contains(value));
         if fields.is_empty() {
             continue;
         }
-        let facts: Vec<(&str, Option<&str>)> = fields
-            .iter()
-            .map(|(label, value)| (label.as_str(), Some(value.as_str())))
-            .collect();
         let mut block = vec![pen.label(&format!("from {source}"))];
-        block.extend(layout::facts(&facts, "unknown", pen, room));
+        block.extend(said_once(&fields, pen, room));
         blocks.push(block);
     }
     layout::joined(blocks)
@@ -443,6 +439,66 @@ const SAID: [&str; 18] = [
     "ProductUsageDyn",
 ];
 
+/// The fields, at any depth, that describe a source's own file rather
+/// than the device, as HP's pages say their version, schema and how often
+/// their alerts changed. `--json` gives them; the page leaves them out.
+const ABOUT_THE_FILE: [&str; 3] = ["Version", "schemaLocation", "AlertTable"];
+
+/// A source's facts, each path said once: a fact alone under its first
+/// part keeps its whole path as its label, and those come first, lined up
+/// together. Facts sharing a first part follow under a line of the path
+/// they all share, each named by the rest of its own, two cells in.
+fn said_once(fields: &[(Vec<String>, String)], pen: &Pen, room: Room) -> Vec<String> {
+    let mut groups: Vec<&[(Vec<String>, String)]> = Vec::new();
+    let mut start = 0;
+    for at in 1..=fields.len() {
+        if at == fields.len() || fields[at].0.first() != fields[start].0.first() {
+            groups.push(&fields[start..at]);
+            start = at;
+        }
+    }
+    let (alone, shared): (Vec<_>, Vec<_>) = groups
+        .into_iter()
+        .partition(|group| group.len() < 2 || group.iter().any(|(path, _)| path.len() < 2));
+    let labelled = |group: &[(Vec<String>, String)], from: usize| -> Vec<(String, String)> {
+        group
+            .iter()
+            .map(|(path, value)| (path[from..].join(" "), value.clone()))
+            .collect()
+    };
+    let laid = |facts: &[(String, String)], room: Room| {
+        let facts: Vec<(&str, Option<&str>)> = facts
+            .iter()
+            .map(|(label, value)| (label.as_str(), Some(value.as_str())))
+            .collect();
+        layout::facts(&facts, "unknown", pen, room)
+    };
+    let alone: Vec<(String, String)> = alone
+        .into_iter()
+        .flat_map(|group| labelled(group, 0))
+        .collect();
+    let mut lines = laid(&alone, room);
+    for group in shared {
+        let shortest = group.iter().map(|(path, _)| path.len()).min().unwrap_or(1);
+        let first = &group[0].0;
+        let common = (1..shortest)
+            .take_while(|&at| group.iter().all(|(path, _)| path[at] == first[at]))
+            .count()
+            + 1;
+        lines.push(pen.role("text", &first[..common].join(" ")));
+        let inset = " ".repeat(INSET);
+        lines.extend(
+            laid(&labelled(group, common), room.less(INSET))
+                .into_iter()
+                .map(|line| format!("{inset}{line}")),
+        );
+    }
+    lines
+}
+
+/// How far a fact sits in under the path it shares with those beside it.
+const INSET: usize = 2;
+
 /// The most items a list may hold and still be a fact on one line; a
 /// longer one is a series, such as a history of readings, which only
 /// `--json` gives whole.
@@ -455,23 +511,23 @@ const LIST_AT_MOST: usize = 4;
 const READ_BY_FIELD: [&str; 1] = ["Status"];
 
 /// A source's fields as labels and words, a nested field labelled by the
-/// path to it: `backhaul upstream`. A list of flat records named in
-/// `READ_BY_FIELD` reads as each field's values in turn. What a fact
-/// can't say on a line, any other list of records or a series, and what
-/// the source left empty, are left to `--json`.
-fn flatten(path: &str, value: &Value, out: &mut Vec<(String, String)>) {
+/// path to it, part by part: `backhaul`, `upstream`. A list of flat
+/// records named in `READ_BY_FIELD` reads as each field's values in turn.
+/// What a fact can't say on a line, any other list of records or a
+/// series, what describes the source's file, and what the source left
+/// empty, are left to `--json`.
+fn flatten(path: &[String], value: &Value, out: &mut Vec<(Vec<String>, String)>) {
     let label = |key: &str| {
-        let key = key.replace('_', " ");
-        if path.is_empty() {
-            key
-        } else {
-            format!("{path} {key}")
-        }
+        let mut path = path.to_vec();
+        path.push(key.replace('_', " "));
+        path
     };
     match value {
         Value::Object(fields) => {
             for (key, value) in fields {
-                flatten(&label(key), value, out);
+                if !ABOUT_THE_FILE.contains(&key.as_str()) {
+                    flatten(&label(key), value, out);
+                }
             }
         }
         Value::Array(items) => {
@@ -479,11 +535,10 @@ fn flatten(path: &str, value: &Value, out: &mut Vec<(String, String)>) {
             if items.is_empty() || items.len() > LIST_AT_MOST {
             } else if !records {
                 let words: Vec<String> = items.iter().map(scalar).collect();
-                out.push((path.to_owned(), words.join(", ")));
+                out.push((path.to_vec(), words.join(", ")));
             } else if let Some(fields) = flat_records(items).filter(|_| {
-                READ_BY_FIELD
-                    .iter()
-                    .any(|name| path == *name || path.ends_with(&format!(" {name}")))
+                path.last()
+                    .is_some_and(|last| READ_BY_FIELD.contains(&last.as_str()))
             }) {
                 for field in fields {
                     let words: Vec<String> = items
@@ -497,7 +552,7 @@ fn flatten(path: &str, value: &Value, out: &mut Vec<(String, String)>) {
         }
         Value::Null => {}
         Value::String(words) if words.is_empty() => {}
-        _ => out.push((path.to_owned(), scalar(value))),
+        _ => out.push((path.to_vec(), scalar(value))),
     }
 }
 
@@ -544,7 +599,10 @@ mod tests {
             assert!(text.starts_with("Study · access point"), "{text}");
             assert!(text.contains("firmware"), "{text}");
             assert!(text.contains("FROM EERO"), "{text}");
-            assert!(text.contains("backhaul upstream"), "{text}");
+            assert!(
+                text.contains("\nbackhaul\n") && text.contains("  upstream"),
+                "its backhaul's upstream isn't under its backhaul: {text}"
+            );
             assert!(text.contains("update available"), "{text}");
             // The source's id and location are the device's id and name,
             // already said.
@@ -560,13 +618,7 @@ mod tests {
         let text = device(&network, study, now(), &Pen::plain(), Room::Unbounded);
         let from = text.find("FROM EERO").expect("the eero's section");
         let section = &text[from..];
-        for left in [
-            "{",
-            "usage download hours",
-            "history at",
-            "up s",
-            "support ends",
-        ] {
+        for left in ["{", "download hours", "history at", "up s", "support ends"] {
             assert!(
                 !section.contains(left),
                 "{left:?} is in the section: {section}"
@@ -576,7 +628,10 @@ mod tests {
             section.contains("ipv6"),
             "a short list is a fact: {section}"
         );
-        assert!(section.contains("usage download total bytes"), "{section}");
+        assert!(
+            section.contains("\nusage\n") && section.contains("  download total bytes"),
+            "its usage's totals aren't under its usage: {section}"
+        );
     }
 
     #[test]
@@ -794,7 +849,9 @@ mod tests {
             let head = lines
                 .iter()
                 .position(|line| *line == "ConsumableConfigDyn ProductConsumableInfo")
-                .unwrap_or_else(|| panic!("the path its facts share isn't a line of its own: {text}"));
+                .unwrap_or_else(|| {
+                    panic!("the path its facts share isn't a line of its own: {text}")
+                });
             assert!(
                 lines[head + 1..]
                     .iter()
@@ -818,7 +875,12 @@ mod tests {
         let network = network();
         let printer = find(&network, "Printer").expect("the printer");
         let text = device(&network, printer, now(), &Pen::plain(), Room::Unbounded);
-        for about_the_file in ["schemaLocation", "Version", "Revision", "ModificationNumber"] {
+        for about_the_file in [
+            "schemaLocation",
+            "Version",
+            "Revision",
+            "ModificationNumber",
+        ] {
             assert!(
                 !text.contains(about_the_file),
                 "{about_the_file} describes HP's file, not the printer: {text}"
