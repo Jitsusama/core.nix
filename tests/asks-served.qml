@@ -9,7 +9,8 @@
 // Refuse It, the right arrow's verbs both: while the screen is locked
 // the yes is refused, said in the daemon's words, and op never runs;
 // unlocked, it releases the item to the checker once, and For You lets
-// that ask go. Refuse It on the other refuses it, op still having run
+// that ask go, Asks saying it changed, so a launcher open on it draws the
+// yes as ran. Refuse It on the other refuses it, op still having run
 // once, and For You holds none. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
 import Quickshell
@@ -30,6 +31,19 @@ ShellRoot {
 
     readonly property var expect: Expect.expect
     readonly property var same: Expect.same
+
+    // How many times Asks said its rows changed, which is what has the
+    // launcher search an open collection again (Launcher.qml's refreshed),
+    // and how many it had said as the yes went.
+    property int changes: 0
+    property int changesAtYes: 0
+    Connections {
+        target: asks
+
+        function onChanged() {
+            root.changes += 1;
+        }
+    }
 
     // The launcher as Asks asks it: open, and each refusal said, as its
     // row's key and why (Provider.qml's refused).
@@ -160,6 +174,7 @@ ShellRoot {
             [`ask:${root.yes} not while the screen is locked`]);
         same("op never ran for it", lines(opRan), 0);
         locked.setText("no");
+        root.changesAtYes = root.changes;
         rowOf(root.yes).run();
         waits.until("the yes answered", () => answerOf(ran)?.state === "ran"
             && asks.forYou.length === 1, released);
@@ -169,6 +184,8 @@ ShellRoot {
         same("the yes ran the checker", answerOf(ran).exit, 0);
         same("op ran once", lines(opRan), 1);
         same("an answered ask arms nothing", rowOf(root.yes).arms, "");
+        same("Asks says its rows changed as the yes ran, so an open launcher draws it",
+            root.changes > root.changesAtYes, true);
         same("For You holds only the ask still waiting",
             asks.forYou.map(one => one.row.key), [`ask:${root.no}`]);
         rowOf(root.no).verbs()[1].run();
