@@ -87,6 +87,10 @@ Scope {
         }
         password = text;
         said = "";
+        // Said for the desktop test, which sees only dots: the right
+        // password was refused twice running in three runs on 15 Nov, and
+        // nothing said whether letters were lost, doubled or capitals.
+        Report.say(`checking lock ${text.length} letters caps ${Lights.caps ? "on" : "off"}`);
         pam.start();
     }
 
