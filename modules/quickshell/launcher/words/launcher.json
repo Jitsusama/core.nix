@@ -103,6 +103,7 @@
         "grantNote": "{command}, from {repository}",
         "anyTree": "any tree of {repository} on main",
         "unlanded": "doesn't cover this, since its code isn't all on main",
+        "unsaid": "doesn't cover this: {forge} didn't say this tree is on main",
         "grantGone": "that yes has already ended",
         "none": "none waiting",
         "one": "1 waiting",

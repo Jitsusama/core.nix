@@ -258,12 +258,17 @@ pub fn row_lasting(
             "said": words.fill("lasts", &[("repository", repository)]),
         }));
     }
-    // A standing yes waits on code off main, and he's told why it asks.
+    // A standing yes waits on code off main, and he's told why it asks:
+    // changes not committed, or a commit whose forge didn't vouch for it,
+    // named, since its word is the one waited on (ISXEG8, 15 November).
     if held.tree.landed == Some(false) {
-        facts.push(json!({
-            "name": words.fill("fact:standing", &[]),
-            "said": words.fill("unlanded", &[]),
-        }));
+        let said = match (held.tree.uncommitted, held.tree.origin.as_deref()) {
+            (Some(0), Some(origin)) => {
+                words.fill("unsaid", &[("forge", &crate::forge::called(origin))])
+            }
+            _ => words.fill("unlanded", &[]),
+        };
+        facts.push(json!({"name": words.fill("fact:standing", &[]), "said": said}));
     }
     // A yes is for the command in its tree, so the tree's own code
     // runs with the secret too (ISXEG8, 14 November), and he's told.
@@ -395,6 +400,15 @@ mod tests {
             ("lasts", "a week, from any tree of {repository} on main"),
             ("fact:waits", "Waits Until"),
             ("fact:ends", "Ends"),
+            ("fact:standing", "Standing Yes"),
+            (
+                "unlanded",
+                "doesn't cover this, since its code isn't all on main",
+            ),
+            (
+                "unsaid",
+                "doesn't cover this: {forge} didn't say this tree is on main",
+            ),
             ("side:released", "released"),
             ("side:refused", "refused"),
         ])
@@ -426,6 +440,37 @@ mod tests {
                 "Waits Until"
             ],
             "the facts' order"
+        );
+    }
+
+    #[test]
+    fn a_standing_yes_that_doesnt_cover_says_why() {
+        let standing = |held: &Held| {
+            row(held, "", &words(), true)["drawer"]["facts"]
+                .as_array()
+                .expect("facts")
+                .iter()
+                .find(|fact| fact["name"] == "Standing Yes")
+                .map(|fact| fact["said"].clone())
+        };
+        let mut held = held(State::Waiting, Some(0));
+        held.tree.landed = Some(false);
+        held.tree.origin = Some("https://github.com/Shopify/world".to_owned());
+        // Joel's told whose word it waits on (ISXEG8, 15 November).
+        assert_eq!(
+            standing(&held),
+            Some(json!(
+                "doesn't cover this: GitHub didn't say this tree is on main"
+            )),
+            "a commit GitHub didn't vouch for"
+        );
+        held.tree.uncommitted = Some(2);
+        assert_eq!(
+            standing(&held),
+            Some(json!(
+                "doesn't cover this, since its code isn't all on main"
+            )),
+            "changes not committed"
         );
     }
 

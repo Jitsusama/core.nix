@@ -3,11 +3,11 @@
 //!
 //! - `secret-asks serve --socket SOCKET --asks DIR --vocabulary WORDS
 //!   --item REF --op OP --git GIT --loginctl LOGINCTL [--account ACCOUNT]
-//!   [--journal SOCKET] [--forge URL]...` serves each ask in DIR as a row
-//!   in Asks, and answers release and refuse (src/daemon.rs says how),
-//!   telling the journal at SOCKET, journald's own by default, how each
-//!   ended. A yes stands only for repositories whose origin is under a
-//!   forge URL given, on that forge's main.
+//!   [--journal SOCKET] [--forge URL]... [--gh GH]` serves each ask in DIR
+//!   as a row in Asks, and answers release and refuse (src/daemon.rs says
+//!   how), telling the journal at SOCKET, journald's own by default, how
+//!   each ended. A yes stands only for repositories whose origin is under
+//!   a forge URL given, on that forge's main, GitHub asked with GH's token.
 //! - `secret-asks ask --item REF --tree PATH --why WORDS [--asks DIR]
 //!   [--given NAME] [--session NAME] [--quest-id ID --quest-title TITLE]`
 //!   puts up one ask for the checker, as the harness will for an agent.
@@ -24,7 +24,7 @@ use secret_asks::words::Words;
 
 const USAGE: &str = "usage: secret-asks serve --socket SOCKET --asks DIR --vocabulary WORDS \
 --item REF --op OP --git GIT --loginctl LOGINCTL [--account ACCOUNT] [--journal SOCKET] \
-[--forge URL]...
+[--forge URL]... [--gh GH]
        secret-asks ask --item REF --tree PATH --why WORDS [--asks DIR] [--given NAME] \
 [--session NAME] [--quest-id ID --quest-title TITLE]
        secret-asks received";
@@ -93,6 +93,7 @@ fn serve(args: &[String]) -> ExitCode {
         words,
         journal: named(args, "--journal").map_or_else(|| reading::JOURNAL.into(), PathBuf::from),
         forges: all_named(args, "--forge"),
+        gh: named(args, "--gh").map(PathBuf::from),
     })
 }
 

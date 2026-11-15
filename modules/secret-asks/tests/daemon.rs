@@ -412,7 +412,18 @@ fn a_grant_covers_no_tree_whose_code_isnt_all_on_main() {
     git(&unmerged, &["add", "release.sh"]);
     git(&unmerged, &["commit", "-q", "-m", "an unmerged commit"]);
     std::fs::write(changed.join("README"), "edited").expect("a file is written");
-    for worktree in [&unmerged, &changed] {
+    // A commit the forge didn't vouch for is said as the forge's to say,
+    // and the stand-in's, at a file URL, has no name but that.
+    for (worktree, why) in [
+        (
+            &unmerged,
+            "doesn't cover this: its forge didn't say this tree is on main",
+        ),
+        (
+            &changed,
+            "doesn't cover this, since its code isn't all on main",
+        ),
+    ] {
         let id = put_up_in(&setting.folder, worktree, ITEM);
         let drawn = row(&mut client, &id);
         assert_eq!(
@@ -423,9 +434,7 @@ fn a_grant_covers_no_tree_whose_code_isnt_all_on_main() {
         );
         assert_eq!(
             fact(&drawn, "Standing Yes"),
-            Some(json!(
-                "doesn't cover this, since its code isn't all on main"
-            )),
+            Some(json!(why)),
             "the row doesn't say why the standing yes waits: {drawn}"
         );
     }

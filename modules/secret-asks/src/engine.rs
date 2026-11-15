@@ -161,6 +161,9 @@ pub struct Setting {
     /// serves is granted, and covered only where that forge says its
     /// default branch holds the tree's commit. None grants nothing.
     pub forges: Vec<String>,
+    /// The gh whose token GitHub is asked with, so a private repository's
+    /// main is said too; none, and GitHub is asked as nobody.
+    pub gh: Option<PathBuf>,
 }
 
 /// The asks held, by id, and what to tell when they change.
@@ -180,7 +183,11 @@ impl Engine {
     /// An engine holding no asks yet, which tells `changed` each time its
     /// rows may have moved.
     pub fn new(setting: Setting, releaser: Box<dyn Releaser>, changed: Sender<()>) -> Engine {
-        let forge = Forge::new(setting.git.clone(), setting.forges.clone());
+        let forge = Forge::new(
+            setting.git.clone(),
+            setting.forges.clone(),
+            setting.gh.clone(),
+        );
         Engine {
             setting,
             releaser,
