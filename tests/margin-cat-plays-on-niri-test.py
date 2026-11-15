@@ -154,21 +154,28 @@ def plays_out(shell: Shell, kind: str) -> tuple[list[Json], Json, Json]:
     """Sit over a column, ask for a play, leave the keys, and give it once it's done.
 
     It gives each place said while it played, how niri showed it, and where it sat before;
-    and it waits for the cat to sit still over the column again, where it sat.
+    and it waits for the cat to sit still over the column again, where it sat. A play already
+    under way when it asks plays out first, so it reads from the asked play's first step, and
+    only that play's steps (2026-11-15: a hop's beats were read as a pounce's).
     """
     sat, seat = sitting_over(shell, f"a column played beside, {kind}")
     ask(shell, kind)
     shell.send_key("F24")
     since = shell.mark()
-    shell.reported(
-        SITS, lambda said: (playing(placed(said)) or {}).get("play") == kind, since, STROLLS
-    )
-    shell.reported(PLAYED, lambda said: said.split(" ", 1)[1].startswith("{"), since, PLAYS)
+
+    def asked(said: str) -> bool:
+        return (playing(placed(said)) or {}).get("play") == kind
+
+    shell.reported(SITS, asked, since, STROLLS)
+    began = shell.mark()
+    shell.reported(PLAYED, lambda said: said.split(" ", 1)[1].startswith("{"), began, PLAYS)
     said, _ = shell.said_since(since)
-    done = next(at for at, line in enumerate(said) if line.startswith(PLAYED))
+    steps = [line[len(SITS) :] if line.startswith(SITS) else None for line in said]
+    start = next(at for at, step in enumerate(steps) if step is not None and asked(step))
+    done = next(at for at in range(start, len(said)) if said[at].startswith(PLAYED))
     told = json.loads(said[done][len(PLAYED) :].split(" ", 1)[1])
-    during = [placed(line[len(SITS) :]) for line in said[:done] if line.startswith(SITS)]
-    frames = [at for at in during if at is not None and playing(at)]
+    during = [placed(step) for step in steps[start:done] if step is not None]
+    frames = [at for at in during if at is not None and (playing(at) or {}).get("play") == kind]
     after = [placed(line[len(SITS) :]) for line in said[done:] if line.startswith(SITS)]
     if not any(home(at, sat, seat) for at in after):
         shell.reported(SITS, lambda said: home(placed(said), sat, seat), shell.mark(), HOME)

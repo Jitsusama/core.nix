@@ -348,17 +348,6 @@
     "test": "vm-the-connection-stays-quick"
   },
   {
-    "at": 1794749322,
-    "commit": "17657f52b9dcc7d440c3dcbad46a522bb7e41ec5",
-    "due": "2026-11-17",
-    "owner_pr": 4365,
-    "reason": "saw a hop's beats where it asked for a pounce at 17657f52b9dc, passing alone after, and in #4735's rerun at f8dee3ae419e, which touches only the reader",
-    "subtests": [
-      "test_away_it_pounces_on_nothing_and_walks_back"
-    ],
-    "test": "the-margin-cat-plays-more-the-less-he-types-on-niri"
-  },
-  {
     "at": 1794754896,
     "commit": "2762cfcd25fe0616d6aa7a12cda315132aad4ab0",
     "due": "2026-11-16",
