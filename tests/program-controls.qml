@@ -178,6 +178,18 @@ ShellRoot {
         }
     }
 
+    // A provider that joins the launcher's sources once the programs are
+    // read, giving Lone an act of its own.
+    QtObject {
+        id: joiner
+
+        function programActs(program) {
+            return program !== "lone" ? [] : [
+                { key: "lone:join", name: "Join Later", verb: "open" }
+            ];
+        }
+    }
+
     // Shortcuts as a program's row asks it: Quiet and Keyed have keys of
     // their own.
     QtObject {
@@ -903,6 +915,15 @@ ShellRoot {
             same("as does one with keys of its own", program("keyed").actsOnly, false);
             same("and neither makes its step to say so", applications.stepsCounted.made - made, 0);
             same("one with neither starts only", program("lone").actsOnly, true);
+            // Which providers hold each hook is found as the launcher's
+            // sources change, so one joining later is asked, and one gone
+            // isn't.
+            theLauncher.sources = theLauncher.sources.concat([joiner]);
+            same("a provider joining later gives a program its acts",
+                names(program("lone").verbs()), "New Window, New Window Below, Join Later");
+            same("so it no longer starts only", program("lone").actsOnly, false);
+            theLauncher.sources = theLauncher.sources.filter(source => source !== joiner);
+            same("and once it's gone, it starts only again", program("lone").actsOnly, true);
 
             const quiet = program("quiet").verbs();
             same("a program with keys of its own holds them, and only its new windows besides",
