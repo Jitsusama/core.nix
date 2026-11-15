@@ -26,6 +26,7 @@
 mod collect;
 mod commands;
 mod daemon;
+mod history;
 pub mod model;
 mod room;
 mod sources;

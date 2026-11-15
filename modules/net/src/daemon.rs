@@ -9,6 +9,9 @@
 //! printer's four status pages (src/sources/hp.rs). The switch
 //! it reads from its reader's report, never from the switch itself, since
 //! signing in to the switch takes a password this account never holds.
+//! Each minute's swinging figures are kept for a day in
+//! `$XDG_STATE_HOME/net/day.jsonl` (src/history.rs), so the record can say
+//! what a modem channel lost lately and when each radio was busiest.
 
 use std::fs;
 use std::io;
@@ -20,6 +23,8 @@ use serde_json::Value;
 use ureq::Agent;
 
 use crate::collect::{self, Said};
+use crate::history::{self, Moment};
+use crate::room;
 use crate::sources::{hp, modem, sony, switch};
 use crate::time;
 
@@ -39,6 +44,14 @@ pub fn run() -> Result<(), String> {
     let eero = runtime.join("eero/home-network.json");
     fs::create_dir_all(runtime.join("net"))
         .map_err(|error| format!("can't make net's folder: {error}"))?;
+    let state = std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
+        .ok_or("neither XDG_STATE_HOME nor HOME is set")?
+        .join("net");
+    fs::create_dir_all(&state)
+        .map_err(|error| format!("can't make net's state folder: {error}"))?;
+    let day = state.join("day.jsonl");
     let agent: Agent = Agent::config_builder()
         .timeout_global(Some(PAGE))
         .build()
@@ -75,7 +88,14 @@ pub fn run() -> Result<(), String> {
             receivers,
             printers,
         };
-        let network = collect::network(said, time::now());
+        let mut network = collect::network(said, time::now());
+        let earlier = history::read(&day, network.collected_at);
+        room::recall(&mut network, &earlier);
+        // A day that can't be kept costs what net says of the day, never
+        // the record itself.
+        if let Err(error) = history::keep(&day, &Moment::of(&network)) {
+            eprintln!("can't keep the minute's figures: {error}");
+        }
         let written = serde_json::to_string_pretty(&network).map_err(|error| error.to_string())?;
         write(&record, &(written + "\n"))
             .map_err(|error| format!("can't write the record: {error}"))?;

@@ -6710,7 +6710,7 @@
       "device": "mac:02:00:00:00:00:0e",
       "on": "5 GHz",
       "other": "eero:2002",
-      "says": "laptop computer 1 reaches Study at -75 dBm"
+      "says": "laptop computer 1 has a weak signal to Study: −75 dBm, and from −70 down its speed falls"
     },
     {
       "kind": "lost",
