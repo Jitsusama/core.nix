@@ -4,7 +4,8 @@
 //! whole. When the later gate's change merges first, the earlier one,
 //! which may be most of the way through, is the one that pays. So `ready`
 //! holds a change back while a gate that started before its own, and
-//! shares one of its files, still runs.
+//! shares one of its files, still runs, and for [`GRACE`] after it passes,
+//! while its change merges (`finished`).
 //!
 //! nix-offload says each gate going in `nix-offload/running` under XDG's
 //! state folder, and keeps when each passed gate started in its record of
@@ -45,6 +46,15 @@ pub const LONGEST: u64 = 3 * 60 * 60;
 /// pass was kept: about the time one gate takes, so an earlier gate nearly
 /// done still ends first, and one far from done doesn't hold a pass back.
 pub const PATIENCE: u64 = 15 * 60;
+
+/// How long a change whose gate passed keeps its turn, for its author to
+/// merge it. Holding back only while a gate ran let a change waiting on it
+/// go the moment it ended: on 14 November a change sharing Launcher.qml
+/// passed at 22:50:57, one placed after it merged 32 seconds later, and
+/// the first's pass went stale for the second time that evening. Ten
+/// minutes leaves room for its author's merge, while a pass nobody merges
+/// holds others back only so long.
+pub const GRACE: u64 = 10 * 60;
 
 /// A gate going now, as nix-offload said it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,6 +98,54 @@ pub fn started(record: &str) -> Option<u64> {
         .filter(|line| line["dir"].is_null() && line["run"].is_array())
         .filter_map(|line| line["started"].as_u64())
         .min()
+}
+
+/// The gates of `trees`, each a folder with its head, that ended with a
+/// pass at that head under [`GRACE`] before `now` and that main doesn't
+/// hold yet, as gates with no process (a `pid` of 0). `kept` says when a
+/// head's passing gate started and when its pass was kept; `merged`
+/// whether main holds a head, or nothing where that can't be told, which
+/// holds nothing back.
+pub fn finished(
+    trees: &[(PathBuf, String)],
+    now: u64,
+    kept: &dyn Fn(&str) -> Option<(u64, u64)>,
+    merged: &dyn Fn(&str) -> Option<bool>,
+) -> Vec<Gate> {
+    trees
+        .iter()
+        .filter_map(|(folder, head)| {
+            let (started, kept) = kept(head)?;
+            let fresh = now.saturating_sub(kept) < GRACE;
+            (fresh && merged(head) == Some(false)).then(|| Gate {
+                pid: 0,
+                ticks: 0,
+                commit: head.clone(),
+                folder: folder.clone(),
+                started,
+            })
+        })
+        .collect()
+}
+
+/// Whether origin's main holds `commit`, as git says in the asking tree,
+/// which shares its store with the others; nothing where git can't tell,
+/// as of a commit it hasn't got.
+fn on_main(commit: &str) -> Option<bool> {
+    let ran = Command::new("git")
+        .args([
+            "merge-base",
+            "--is-ancestor",
+            commit,
+            "refs/remotes/origin/main",
+        ])
+        .output()
+        .ok()?;
+    match ran.status.code() {
+        Some(0) => Some(true),
+        Some(1) => Some(false),
+        _ => None,
+    }
 }
 
 /// What a gate holding a change back shares with it.
@@ -193,10 +251,18 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
                 .collect(),
         )
     };
-    let held = ahead(&gates, &asking, now, &place, &alive, &touched)?;
+    let mut gates = gates;
+    gates.extend(finished(&heads(&places), now, &passed_at, &on_main));
+    let going = |gate: &Gate| gate.pid == 0 || alive(gate);
+    let held = ahead(&gates, &asking, now, &place, &going, &touched)?;
+    let state = if held.gate.pid == 0 {
+        "passed and keeps its turn while it merges"
+    } else {
+        "still runs"
+    };
     let said = format!(
         "merge-net: the gate in {} at {}, which counts as started {} minutes before this \
-         one's, as its tree's first gate did, still runs and changes {} too; merging first \
+         one's, as its tree's first gate did, {state} and changes {} too; merging first \
          would leave its pass stale, so merge again once it ends, which needs no new run \
          here unless it merges first and moves these; this one waits at most {} more \
          minutes, then goes first",
@@ -207,6 +273,24 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
         (PATIENCE.saturating_sub(now.saturating_sub(kept))).div_ceil(60)
     );
     Some((said, held.shared))
+}
+
+/// Each tree a place is kept for, with its head, where git can read it.
+fn heads(places: &Places) -> Vec<(PathBuf, String)> {
+    places
+        .trees()
+        .filter_map(|folder| {
+            let head = git_in(folder, &["rev-parse", "HEAD"])?;
+            Some((folder.to_path_buf(), head.trim().to_owned()))
+        })
+        .collect()
+}
+
+/// When the gate that passed at `commit` started, and when its pass was
+/// kept, from nix-offload's record of it.
+fn passed_at(commit: &str) -> Option<(u64, u64)> {
+    let started = started(&crate::ready::record(commit))?;
+    Some((started, kept_at(&[commit], &crate::ready::record)?))
 }
 
 /// Whether `gate`'s change and the one at `head` gave `file`, one of the
@@ -413,6 +497,49 @@ mod tests {
             ahead(&gates, &waiting, NOW, &own, &everyone, &touch),
             None,
             "a pass that waited its patience was still held back"
+        );
+    }
+
+    #[test]
+    fn a_change_whose_gate_passed_keeps_its_turn_while_its_author_merges() {
+        // On 14 November the tree at /a passed at 22:50:57, from a gate
+        // started at 22:38:15, and /b's change, placed after it, asked 32
+        // seconds later and merged first, leaving /a's pass stale again.
+        let started = 1_794_713_895;
+        let kept = 1_794_714_657;
+        let asked = kept + 32;
+        let trees = [(PathBuf::from("/a"), "9d0f6cb20".to_owned())];
+        let passes = |commit: &str| (commit == "9d0f6cb20").then_some((started, kept));
+        let unmerged = |_: &str| Some(false);
+        let ours = owned(&["modules/quickshell/Launcher.qml"]);
+        let touch = touching(&["modules/quickshell/Launcher.qml"]);
+        let mut later = asking(started + 60, "/b", &ours);
+        later.passed = asked - 60;
+        let gates = finished(&trees, asked, &passes, &unmerged);
+        let held = ahead(&gates, &later, asked, &own, &everyone, &touch);
+        assert_eq!(
+            held.map(|held| held.gate.folder.clone()),
+            Some(PathBuf::from("/a")),
+            "a change placed later merged ahead of one whose gate had just passed"
+        );
+        assert!(
+            finished(&trees, kept + GRACE, &passes, &unmerged).is_empty(),
+            "a pass left unmerged past its grace still held others back"
+        );
+        let merged = |_: &str| Some(true);
+        assert!(
+            finished(&trees, asked, &passes, &merged).is_empty(),
+            "a pass main already holds still held others back"
+        );
+        let untold = |_: &str| None;
+        assert!(
+            finished(&trees, asked, &passes, &untold).is_empty(),
+            "a pass main can't be told to hold or not held others back"
+        );
+        let never = |_: &str| None;
+        assert!(
+            finished(&trees, asked, &never, &unmerged).is_empty(),
+            "a head that never passed held others back"
         );
     }
 
