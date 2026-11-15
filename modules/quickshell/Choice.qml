@@ -476,9 +476,11 @@ Rectangle {
         readonly property string stands: itemised ? kept.join(" \u00b7 ") : row.side
         readonly property string said: Reading.rightSays(row.landed, row.kind, stands)
         // The items a side of them keeps in its room, the least needed
-        // given way first (Reading.js's keptItems).
-        readonly property var kept: itemised ? Reading.keptItems(row.sideItems, room,
-            row.sideMeasured) : []
+        // given way first (Reading.js's keptItems); a side of parts gives
+        // way from its last back, to none if it must (partsKept).
+        readonly property var kept: !itemised ? []
+            : parted ? Reading.partsKept(Reading.partsOf(row.side), room, row.sideMeasured)
+            : Reading.keptItems(row.sideItems, room, row.sideMeasured)
         // The colour each kept item is drawn in where it names a role of
         // its own (`hue`), as a count of what failed wears the alert's,
         // or "" for the side's.
@@ -493,7 +495,13 @@ Rectangle {
             && (row.selected || row.warns || inks.some(ink => ink !== ""))
         readonly property bool sided: !chorded && said !== ""
         readonly property bool itemised: row.landed === "" && row.kind === ""
-            && row.sideItems.length > 0
+            && (row.sideItems.length > 0 || parted)
+        // A side given as one string of parts between dots, as a window's
+        // "Foot · workspace 2": its parts give way whole before the note
+        // goes and the name is cut (VKCF3Z, 2026-11-14 [04792410]). A side
+        // of one fact keeps its share, and a need is said whole.
+        readonly property bool parted: row.sideItems.length === 0 && !row.sideWhole
+            && row.side.includes(" \u00b7 ")
         // The room the name leaves whole, its words after it too, which a
         // side of items is fitted to.
         readonly property real room: row.width - Theme.space.rung.inset - nameBox.x
@@ -502,7 +510,7 @@ Rectangle {
         // A side of items down to its last that still leaves the name no
         // room whole: the name is cut, so where it's cut holds still as
         // that item changes, by the column, as any side's does.
-        readonly property bool squeezed: itemised
+        readonly property bool squeezed: itemised && said !== ""
             && row.sideMeasured(said) > room
         // How a row stands never gives way: the name is cut first, at a
         // whole word, and "256 \u00d7 256 px" stays whole (docs/design.md,
