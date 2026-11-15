@@ -476,11 +476,14 @@ Provider {
             : Here.within(here.accuracy, hereSaid, hereTold);
         // How the clock is kept, in Time's word for it (Clocks.qml), and
         // how far off it was at the last poll, signed, as Time says it.
+        // Chrony is asked only while home shows, so until the reader
+        // answers it's left out; that nothing keeps the time is said only
+        // once the reader refused, as on a machine without chrony.
         const time = source("time");
         const kept = time?.kept ?? null;
         const offset = kept?.exchange ? time.millis(kept.exchange.offset, true) : "";
-        const step = !kept ? said("unkept") : kept.synchronised ? said("synchronised")
-            : said("unsynchronised");
+        const step = kept ? said(kept.synchronised ? "synchronised" : "unsynchronised")
+            : Timekeeping.refused ? said("unkept") : "";
         return {
             now: true,
             eyebrow: Moment.eyebrow(now, now),
