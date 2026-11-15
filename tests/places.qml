@@ -488,6 +488,49 @@ QtObject {
         expect("never seen asleep, it lapses in a day", Viewers.viewersDue(slept,
             [hosted("napper")], 2 * day, there), { open: [], kept: {} });
 
+        // Reopen Them All begins no session a pi runs here, wakes one
+        // parked here, and believes a hosted presence only while its host's
+        // own list names it (OSPHT4 [58d7fa8e], 15 November).
+        const owner = { pid: 4100, startedAt: 17, bootId: "b1", startTicks: 7,
+            host: "work-background", session: "s-a" };
+        const list = (fields, ids) => JSON.stringify(Object.assign({ v: 1,
+            key: "work-background", owner: { pid: 4100, startedAt: 17, bootId: "b1",
+                startTicks: 7 }, sessions: ids.map(id => ({ id, state: "idle" })) }, fields));
+        expect("a host's list named by its pid and start ticks", Places.hostListOf(owner),
+            "4100-7.json");
+        expect("by its start, without ticks", Places.hostListOf({ pid: 4100, startedAt: 17 }),
+            "4100-17.json");
+        expect("no host process, no list", Places.hostListOf({ host: "work-background" }), "");
+        expect("its host lists it", Places.hostSays(owner, list({}, ["s-b", "s-a"])),
+            "running");
+        expect("its host lists others", Places.hostSays(owner, list({}, ["s-b"])), "gone");
+        expect("no list says nothing", Places.hostSays(owner, ""), "unknown");
+        expect("another host's list says nothing", Places.hostSays(owner,
+            list({ key: "work-attended" }, [])), "unknown");
+        expect("another start's list says nothing", Places.hostSays(owner,
+            list({ owner: { pid: 4100, startedAt: 18, bootId: "b1", startTicks: 9 } }, [])),
+            "unknown");
+        const pi = (id, presence) => ({ here: true, address: id.toUpperCase(),
+            presence: Object.assign({ session: id }, presence) });
+        const hostedHere = pi("s-a", { hosted: { host: "work-background" }, owner });
+        const found = (id, running, parked, says) => {
+            const at = Places.foundHere(id, running, parked, () => says);
+            return [at.as, at.session?.address ?? null];
+        };
+        expect("one a pi runs here is found running", found("s-a", [pi("s-a")], [], "gone"),
+            ["running", "S-A"]);
+        expect("one parked here is found parked", found("s-a", [], [pi("s-a")], "gone"),
+            ["parked", "S-A"]);
+        expect("one elsewhere isn't here", found("s-a",
+            [Object.assign(pi("s-a"), { here: false })], [], "gone"), ["", null]);
+        expect("one hosted its host lists runs", found("s-a", [hostedHere], [], "running"),
+            ["running", "S-A"]);
+        expect("one hosted its host doesn't list is stale",
+            found("s-a", [hostedHere], [], "gone"), ["stale", "S-A"]);
+        expect("one hosted with its host's list unread runs",
+            found("s-a", [hostedHere], [], "unknown"), ["running", "S-A"]);
+        expect("none", found("s-a", [pi("s-b")], [pi("s-c")], "gone"), ["", null]);
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);

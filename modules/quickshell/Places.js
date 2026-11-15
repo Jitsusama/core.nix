@@ -338,6 +338,73 @@ function queuedOnce(queue, more, begun) {
     return queue.concat(more.filter(entry => !asked.has(entry.one.id)));
 }
 
+// The file a pi host keeps its own list of the sessions it runs in, in the
+// harness's hosts folder, for the host a hosted presence's `owner` names:
+// `<pid>-<start>.json`, its start the process's start ticks where the
+// owner says them, else its start in milliseconds, as the harness names
+// it (its lib/core/session/registry.ts, hostRegistryPath). "" for an
+// owner naming no host process.
+function hostListOf(owner) {
+    const pid = owner?.pid;
+    const start = owner?.startTicks ?? owner?.startedAt;
+    if (!Number.isInteger(pid) || pid <= 0 || !Number.isInteger(start)) {
+        return "";
+    }
+    return `${pid}-${start}.json`;
+}
+
+// What a pi host's own list says of the session a hosted presence's
+// `owner` names, as the harness judges it (hostedStanding there), from
+// `text`, the list read from hostListOf's file: "running" when the list
+// is that very host's and names the session, "gone" when it's that
+// host's and doesn't, and "unknown" for no list, an unreadable one, or
+// one of another host or another start of it, which can't say a session
+// closed.
+function hostSays(owner, text) {
+    let read = null;
+    try {
+        read = JSON.parse(text);
+    } catch (_error) {
+        return "unknown";
+    }
+    const same = ["pid", "startedAt", "bootId", "startTicks"]
+        .every(field => read?.owner?.[field] === owner?.[field]);
+    if (!same || typeof read?.key !== "string" || read.key !== owner?.host
+        || !Array.isArray(read?.sessions)) {
+        return "unknown";
+    }
+    return read.sessions.some(one => one?.id === owner.session) ? "running" : "gone";
+}
+
+// How Reopen Them All finds the session pi knows as `id` here already,
+// among `running` and `parked` as Sessions.qml lists them, as `{ as,
+// session }`. "running" for one a pi runs, which is never begun again,
+// since two pis on one log would each write over the other. "parked"
+// for one parked here, which is woken rather than left asleep. "stale"
+// for one whose presence says pi's host runs it while the host's own
+// list, `listed(owner)` as hostSays reads it, says it doesn't, which is
+// begun as any other; and "" for none. After the rollback drill of 15
+// November, XUBK2E's stale hosted presence and 2RCBOJ's parked hold
+// each kept it shut, said to run here (OSPHT4, [58d7fa8e]). A host's
+// list unread is believed, as the harness believes it.
+function foundHere(id, running, parked, listed) {
+    const ofId = session => session.here && session.presence?.session === id;
+    const asleep = parked.find(ofId);
+    if (asleep !== undefined) {
+        return { as: "parked", session: asleep };
+    }
+    const awake = running.find(ofId);
+    if (awake === undefined) {
+        return { as: "", session: null };
+    }
+    const owner = awake.presence.owner;
+    if (awake.presence.hosted && owner?.host
+        && listed(Object.assign({ session: id }, owner)) === "gone") {
+        return { as: "stale", session: awake };
+    }
+    return { as: "running", session: awake };
+}
+
 // Those of `pending` (each `{ id, wants, carried, leads }`, as reopened,
 // `wants` when it waits on Joel) to tell to carry on now, in the order
 // they're told: those waiting on Joel, then those carried in from another
