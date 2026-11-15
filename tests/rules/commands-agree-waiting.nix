@@ -31,7 +31,6 @@
   health = [
     "exits"
     "helps"
-    "tables"
   ];
   jobs-broker = [
     "kit"
