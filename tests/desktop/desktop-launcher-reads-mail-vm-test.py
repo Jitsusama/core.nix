@@ -274,19 +274,22 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
         )
     )
     desktop.shoot("launcher-for-you-slack-messages")
-    desktop.follow()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Open in Slack", "Copy the Link"])
-    # The link copied is the message's own, where Slack shows it, and
-    # copying closes the launcher, as everywhere.
-    closed = desktop.in_session(LAUNCHER_OPEN)
-    desktop.down_to("Copy the Link")
-    machine.send_key("ret")
+    # Its acts lie on its row, which holds nothing to step into, as a
+    # conversation's do.
+    acts = slack_row_does(desktop, "Ada Lovelace")
+    assert acts == ["Open in Slack", "Copy the Link"], f"Ada Lovelace's acts: {acts}"
+    # The link copied by y, from normal, is the message's own, where Slack
+    # shows it, and y keeps the launcher open, as everywhere.
+    desktop.normal()
+    since = desktop.mark()
+    machine.send_chars("yy")
+    desktop.reported("yanked 1", lambda rest: rest == "", since)
     link = "https://slack.example/archives/D1/p1730000002000100"
     machine.wait_until_succeeds(
         desktop.in_session(f'[ "$(wl-paste --no-newline)" = "{link}" ]'),
         timeout=dt.timedelta(seconds=30),
     )
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # Each message row is made by its one component, as a conversation's is.
     actless = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
     assert actless["uncomposed"] == [], "\n".join(actless["uncomposed"])
@@ -407,10 +410,13 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
                 and shown["selected"]["note"] == "a direct message"
             )
         )
-        # Its acts are the conversation's, Open in Slack first; with no link
-        # to share, there's nothing to copy.
-        desktop.follow()
-        desktop.launcher_until(lambda shown: shown["rows"] == ["Open in Slack"])
+        # Its acts are the conversation's, Open in Slack alone; with no link
+        # to share, there's nothing to copy. They lie on its row, which holds
+        # nothing to step into (Joel, 2026-11-11: "if they have nothing under
+        # them, we shouldn't open a submenu for them"), so they're read as a
+        # terminal is told them.
+        acts = slack_row_does(desktop, "Ada Lovelace")
+        assert acts == ["Open in Slack"], f"Ada Lovelace's acts: {acts}"
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
         # Every Slack conversation row is made by its one component.
@@ -450,6 +456,25 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
     desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def slack_row_does(desktop: Desktop, name: str) -> list[str]:
+    """Name what the first row so named in For You's Slack does, as `launcher show` says it."""
+    # Each step after the mark, since qs takes no empty argument, and after
+    # `--`, since `show` is also qs ipc's own command otherwise.
+    path = shlex.quote("".join(f"\u203a{step}" for step in ("now", "for you", "slack", name)))
+    ask = f"qs ipc call -- launcher show {path}"
+    # What a source still reads is said to the next ask, so the ask is made
+    # again while the shell says it's reading.
+    deadline = time.monotonic() + 30
+    said = cast("Json", json.loads(desktop.as_account(ask)))
+    while said.get("reading") is True and time.monotonic() < deadline:
+        time.sleep(0.5)
+        said = cast("Json", json.loads(desktop.as_account(ask)))
+    # Its verbs are said as its acts, or as its rows where it isn't taken for
+    # a thing; either way they're what it does.
+    told = cast("list[Json]", said["rows"]) + cast("list[Json]", said["acts"])
+    return [str(one["name"]) for one in told]
 
 
 def slack_program(desktop: Desktop) -> None:
@@ -1198,8 +1223,12 @@ def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
 
 # How long the shell's clients of a socket just gone take to try it again
 # and hear the file go, and how long after that a client still polling
-# every 2 s would be seen trying it four times.
-SOCKET_GOING_SETTLES = 4
+# every 2 s would be seen trying it four times. A socket not there is
+# tried 2, 4 and 8 s after it goes (Daemon.qml's missingTries), since a
+# daemon starting again makes it anew, so those 14 s pass first, with
+# room for a loaded guest's timers: counted from 4 s, each client's try
+# at 6 s and 14 s fell in the span, 6 in 8 s (2026-11-15).
+SOCKET_GOING_SETTLES = 18
 SOCKET_MISSING_WATCHED = 8
 
 
