@@ -3659,6 +3659,35 @@ mod tests {
     }
 
     #[test]
+    fn a_flaky_test_no_merge_owns_is_told_not_listed() {
+        // On 15 November five subtests of vm-desktop-launcher-finds-sessions
+        // were listed at 2c22e609 owned by nobody, since only merges moving
+        // the whole system had moved them, so nobody was told to mend them.
+        let state = state("flaky-unowned");
+        let world = Stand {
+            head: "bb".into(),
+            merges: names("bb"),
+            changed: changed("vm-desktop-a vm-install-b"),
+            still: vec![("a".into(), "vm-install-b".into())],
+            ..Stand::default()
+        }
+        .exits("bb", "vm-desktop-a", &[1, 0]);
+        round(&world, &state, "s").unwrap();
+        assert!(
+            world.put_in_quarantine.lock().unwrap().is_empty(),
+            "a flaky test with no owner was listed"
+        );
+        let found = findings(&state);
+        assert!(
+            found[0]["quarantine_error"]
+                .as_str()
+                .is_some_and(|why| why.contains("no owner")),
+            "the finding didn't say it went unlisted for want of an owner: {}",
+            found[0]
+        );
+    }
+
+    #[test]
     fn a_test_s_family_is_the_words_its_name_opens_with() {
         assert_eq!(family("vm-desktop-opens-and-sets"), "vm-desktop");
         assert_eq!(family("vm-install"), "vm-install");
