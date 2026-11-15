@@ -1548,6 +1548,15 @@
     Neovim opens a file with only what draws its first screen, every key's command standing in,
     loads the rest when used or once drawn, and lua_ls reads only its runtime
   '';
+  net-passes-clippy = ''
+    clippy finds nothing in net or its tests
+  '';
+  net-reads-the-home-network = ''
+    a real modem's pages and eero's golden record collect into net's golden record, the modem
+    first with every channel and its log placed in time by its own clock, the gateway eero one
+    device with the router and access point roles and its cable to the modem, and a source that
+    doesn't answer is said so while the others' devices are kept
+  '';
   network-revive-looks-once-the-network-settles = ''
     network-revive looks at the network once a burst of changes goes quiet, or anyway if it never
     does, and reads each unit's check and whether it reloads, refusing a setting it doesn't know
@@ -2542,14 +2551,6 @@
     is restarted when its watchdog hears nothing, is handed the launcher's vocabulary for its
     rows, and takes its ask in For You with it however it stops,
     while its socket, systemd's and held only once pi has signed in, stays
-  '';
-  slack-waits-in-its-place = ''
-    Slack's source in People asks about each address once a minute as Joel steps in, never one
-    known to be nobody, and ahead about those listed, in order, each once; Write in Slack stands
-    dimmed, looking in Slack, until it's answered, or not in Slack once a step-in found nobody,
-    and isn't listed for someone already known not to be there; answers that come together are
-    taken as one change, and those already known as none; their conversation is found by any of
-    their addresses, its drawer saying who said each message, newest last
   '';
   slack-reads-a-notice-read-there-once = ''
     Slack's own desktop notice of a message Joel read in Slack is read in Notices once, said as

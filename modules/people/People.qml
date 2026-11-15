@@ -21,12 +21,15 @@
 // drawer beside the row, which the daemon serves ready for anyone it
 // lists or finds (drawer.rs).
 //
-// A source the people daemon holds (`daemonHolds`, as Tuple's, Google's and Slack's) is read from
-// the daemon, never held whole here: only those it lists with nothing
-// typed, watched as they change, and those a search finds, asked of the
-// daemon as each text is typed. Holding Tuple's 7,731 contacts here made
-// 23,276 rows at each opening and held Joel's first key a second
-// (2026-10-31, 09:31).
+// A source the people daemon holds (`daemonHolds`, as Tuple's, Google's
+// and Slack's) is read from the daemon, never held whole here: only those
+// it lists with nothing typed, watched as they change, those a search
+// finds, asked of the daemon as each text is typed, and whoever Joel
+// steps into, asked of every source then. One the daemon serves whole, as
+// Slack's, has no file: its acts, what's between them and how they stand
+// are drawn as served, no row of its made here.
+// Holding Tuple's 7,731 contacts here made 23,276 rows at each opening
+// and held Joel's first key a second (2026-10-31, 09:31).
 //
 // Long because it still merges and ranks the people of a source the
 // daemon doesn't hold, as one a machine's own repository brings may be;
@@ -59,16 +62,106 @@ Provider {
     Component.onCompleted: {
         const made = [];
         for (const listed of settings.sources ?? []) {
-            const file = Qt.createComponent(`people/${listed.name}.qml`);
+            const file = listed.file === false ? servedSource
+                : Qt.createComponent(`people/${listed.name}.qml`);
             if (file.status !== Component.Ready) {
                 console.error(`People's ${listed.name} couldn't load: ${file.errorString()}`);
                 continue;
             }
-            // Given its place, so someone's acts learned later, as Slack's
-            // are, make the person Joel is inside again.
+            // Given its place, which draws what the daemon serves of a
+            // source with no file of its own.
             made.push(file.createObject(provider, { settings: listed, place: provider }));
         }
         sources = made;
+    }
+
+    // A source the daemon serves whole, its part of someone drawn by
+    // PersonSource's own acts, between and firsts from what it served.
+    Component {
+        id: servedSource
+
+        PersonSource {
+            daemonHolds: true
+        }
+    }
+
+    // What a source serves ready, an act or a thing between them, made a
+    // row as every place makes a served row, so its words and acts are
+    // the one form's. It watches nothing: the records are the people
+    // daemon's, read here.
+    ReadyRows {
+        id: servedRows
+
+        socket: ""
+        place: "people"
+        active: false
+        maker: provider
+    }
+
+    // Whoever Joel steps into, asked of every source through the daemon as
+    // he does, and watched while he's inside them, so what a source learns
+    // of them only once asked, as Slack's act, comes as it changes. Each
+    // address is asked at most once a minute.
+    Daemon {
+        id: stepper
+
+        socket: book.socket
+        kind: "person"
+        watching: ({ keys: [] })
+        ahead: provider.within
+        // Nothing heard with the launcher shut wakes the shell, as one told
+        // just after it shut would, since nobody's looking. It's its being open
+        // rather than People's being wanted, since a person lent to mail or
+        // a meeting is stepped into where People's own rows aren't.
+        onHeard: {
+            if (provider.launcher?.open)
+                provider.changed();
+        }
+    }
+    // The keys of whoever Joel's inside now, wherever they were lent: as he
+    // leaves them, or the launcher shuts, their watch goes, so the shell at
+    // rest hears nothing of those he looked at.
+    readonly property var within: {
+        const launcher = provider.launcher;
+        const steps = launcher?.open ? launcher.held ?? [] : [];
+        // Walked by hand, since what the launcher holds is a list QML
+        // lends, which has no flatMap.
+        const keys = [];
+        for (const step of steps) {
+            if (step.row?.component !== "person")
+                continue;
+            for (const email of step.row.person?.emails ?? []) {
+                const key = `person:${Person.address(email)}`;
+                if (!keys.includes(key))
+                    keys.push(key);
+            }
+        }
+        return keys;
+    }
+    // When each key was last asked as Joel stepped in, and those whose
+    // step-in the daemon hasn't answered yet. Plain, so keeping them
+    // notifies nothing.
+    readonly property var steps: ({ asked: {}, awaited: {} })
+    function stepIn(person) {
+        if (heldBy.length === 0)
+            return;
+        const now = Date.now();
+        const asked = steps.asked;
+        const keys = person.emails.map(email => `person:${Person.address(email)}`)
+            .filter(key => !(asked[key] > now - 60000));
+        if (keys.length === 0)
+            return;
+        for (const key of keys) {
+            asked[key] = now;
+            steps.awaited[key] = true;
+        }
+        // Answered, or given up on, a source's held place says what it
+        // said, or goes.
+        stepper.get(keys, 5000, () => {
+            for (const key of keys)
+                delete steps.awaited[key];
+            provider.changed();
+        });
     }
 
     // The people daemon, asked what a search finds, its answers given to
@@ -311,10 +404,15 @@ Provider {
 
     // The record read for a key, found without making anyone, for a
     // source keeping something of its own until the daemon says it
-    // (Tuple's favourites changed here).
+    // (Tuple's favourites changed here). What a step-in got is read first
+    // only while it's watched, as Joel's inside them; once he's left, what
+    // the lister watches is newer, and what the step-in got is kept for
+    // anyone nobody lists, till the next step-in asks again.
     function recordFor(key) {
-        return lister.held[key] ?? sought.records.find(record => record.key === key
-            && !record.gone) ?? null;
+        const stepped = stepper.held[key];
+        const watched = stepped !== undefined && within.includes(key);
+        return (watched ? stepped : null) ?? lister.held[key] ?? stepped
+            ?? sought.records.find(record => record.key === key && !record.gone) ?? null;
     }
 
     // A held source's people and stands, from the records read, as a
@@ -360,14 +458,122 @@ Provider {
 
     // What a held source told the daemon of someone, or null.
     function entryOf(person, name) {
+        return entriesOf(person, name)[0] ?? null;
+    }
+
+    // What a held source told the daemon of each of someone's addresses.
+    function entriesOf(person, name) {
         const keys = person.emails.length > 0 ? person.emails.map(email => `person:${email}`)
             : [`person:${person.key}`];
-        for (const key of keys) {
+        return keys.map(key => {
             const entry = recordFor(key)?.sources?.[name];
-            if (entry)
-                return Object.assign({ email: addressOf(key) }, entry);
+            return entry ? Object.assign({ email: addressOf(key) }, entry) : null;
+        }).filter(Boolean);
+    }
+
+    // What a source serves of someone, the entry of an address it knows
+    // them by over one it's still asked about, or null.
+    function servedEntry(person, name) {
+        const all = entriesOf(person, name);
+        return all.find(entry => entry.known !== false) ?? all[0] ?? null;
+    }
+
+    // A source's served acts for someone, each made as a served row's act
+    // is, `main` where it leads the ways to reach them. One with no form
+    // holds its place dimmed, saying why at its side, as Slack's Write in
+    // Slack does once Slack knows nobody by their address. A source that
+    // names the act it `holds` has it held dimmed, looking, from the first
+    // rows while it's asked and hasn't said, so the act leads from the
+    // start and lights there, since a row coming later goes below those
+    // drawn (Steady.js). One signed out is asked nothing, so holds none.
+    // The held act is a row made here, against every row being served: a
+    // stopgap for the moment before slack-people's own looking line, said
+    // at once as it's asked (its main.rs), reaches here, until the people
+    // daemon serves that act with each person ahead, by Wed 18 Nov, when
+    // `holds` goes.
+    function servedActs(person, name, holds) {
+        const key = `person:${person.key}`;
+        const served = servedEntry(person, name)?.acts ?? [];
+        const held = served.length === 0 && (holds ?? "") !== "" && asking(person, name)
+            ? [{ key: holds, side: Words.of(holds).said?.looking ?? "", main: true }] : [];
+        return (served.length > 0 ? served : held).map(one => {
+            if (Ready.actForm(one) === "")
+                return thing({
+                    key: one.key,
+                    name: Words.name(one.key),
+                    verb: Words.verb(one.key),
+                    glyph: Words.glyph(one.key),
+                    hue: "action",
+                    gone: true,
+                    side: String(one.side ?? ""),
+                    main: one.main === true,
+                    later: true,
+                    run: () => {}
+                });
+            const row = servedRows.actRow(key, one);
+            row.main = one.main === true;
+            return row;
+        });
+    }
+
+    // Whether a source is still to say what it knows of someone: it's
+    // answering, and has said nothing of them, or their step-in is awaited.
+    // Someone with no address is asked nothing, as a Tuple contact known
+    // by their id alone.
+    function asking(person, name) {
+        if (person.emails.length === 0 || lister.sources?.[name] !== "answering")
+            return false;
+        return entriesOf(person, name).length === 0 || person.emails.some(email =>
+            steps.awaited[`person:${Person.address(email)}`] === true);
+    }
+
+    // What a source serves between Joel and someone, by any address, each
+    // once by its key.
+    function servedThings(person, name) {
+        const by = {};
+        for (const entry of entriesOf(person, name)) {
+            for (const one of entry.between ?? []) {
+                if (one?.key && !(one.key in by))
+                    by[one.key] = one;
+            }
         }
-        return null;
+        return Object.values(by);
+    }
+
+    // Whether a served thing waits now: theirs on Joel however long ago,
+    // and his on them `until` then.
+    function waitsNow(one, now) {
+        return !!one.waits && (one.waits.until === undefined || one.waits.until > now);
+    }
+
+    // A source's served things with someone as their rows, as its `recent`
+    // gives them, or only those that wait, as its `unread` does.
+    function servedBetween(person, name, waiting) {
+        const now = Date.now();
+        return servedThings(person, name).filter(one => !waiting || waitsNow(one, now))
+            .map(one => ({
+                at: one.at, row: servedRows.thing(one.row, one.key), kind: one.kind,
+                mine: one.mine === true, one: one.one === true, what: one.what ?? ""
+            }));
+    }
+
+    // The first of a source's served things for their drawer, with no row
+    // made: the oldest that waits and the newest they met at.
+    function servedFirsts(person, name) {
+        const now = Date.now();
+        const all = servedThings(person, name);
+        const wait = all.filter(one => waitsNow(one, now))
+            .reduce((first, one) => first && first.at <= one.at ? first : one, null);
+        const met = all.filter(one => one.kind === "met")
+            .reduce((newest, one) => newest && newest.at >= one.at ? newest : one, null);
+        return {
+            wait: wait ? {
+                at: wait.at, name: wait.row?.name ?? "", what: wait.what ?? "",
+                mine: wait.mine === true,
+                opens: (wait.row?.acts ?? []).find(one => typeof one.open === "string")?.open
+            } : null,
+            met: met ? { at: met.at, name: met.row?.name ?? "", one: met.one === true } : null
+        };
     }
 
     // Asks the daemon for whoever the words find, once a text; the answer
@@ -712,7 +918,9 @@ Provider {
     // wanted, so those saying someone's time are made again (`clocked`);
     // while they aren't, nothing ticks and nothing is made.
     property int minute: Math.floor(Date.now() / 60000)
-    // Those found saying their time are made again as it turns.
+    // Those found saying their time are made again as it turns. It costs
+    // only a pass over everyone, since keptAlike keeps each row that says
+    // no time as it was.
     onMinuteChanged: rowsOfEveryone.stale = true
     Timer {
         running: provider.wanted
@@ -750,6 +958,7 @@ Provider {
     // its mark, though it's a figure, so the page's column of marks never
     // breaks on its last row (VKCF3Z, 2026-11-08).
     function inside(person) {
+        stepIn(person);
         const addresses = person.emails.map((email, at) => copyRow({
             key: `fact:person:email:${at}`,
             name: email,

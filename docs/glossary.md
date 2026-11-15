@@ -447,10 +447,19 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
 | home network | the network at home, the eero's, its nodes and the devices on them, and its place in the launcher | eero network, mesh network | `eero` |
-| node | one eero of the home network | satellite, router, extender | `eeros` |
+| node | one eero of the home network | satellite, extender | `eeros` |
 | gateway node | the node the internet comes in through | base station, primary node | `gateway` |
 | backhaul | how a node reaches the node before it, over Ethernet or Wi-Fi | mesh link, backbone | |
-| device | a thing on the home network, as eero lists it | client, station | `clients` |
+| device | one box on the home network, whatever it does, listed once with each role it plays | station | `clients`, net's `devices` |
+| role | what a device does on the home network: modem, router, access point, switch or client, one box playing several, as one eero is a router and an access point | | net's `roles` |
+| modem | the device that turns the internet provider's line into Ethernet, with its channels and event log | cable modem | net's `modem` |
+| router | the device that hands out the home network's addresses and carries its traffic out to the internet | | |
+| access point | the device whose radios devices join over Wi-Fi; each node is one | AP | `access-point` |
+| switch | the device that joins cables to the home network, port by port | | net's `switch` |
+| client | a device that only joins the home network, as a laptop or a printer does | | `client` |
+| port | a socket on a device that a cable plugs into, with its link and speed | | net's `ports` |
+| link | of the home network, a cable or a radio joining two devices, port to port or radio to radio; the home network's map is drawn from them | | net's `links` |
+| source | of the home network, a vendor's way of saying what its devices are: eero's record, the modem's status pages, the switch's web page; all it says is kept as its detail | | net's `sources`, `detail` |
 | internet | the home network's way out, through its gateway node | WAN, ISP connection | |
 | internet provider | who carries the internet to the home network, as eero names it | carrier | `isp` |
 | outage | a time the internet was down | downtime | |

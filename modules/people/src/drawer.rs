@@ -122,7 +122,8 @@ pub fn key(person: &Person) -> String {
 }
 
 /// A record as a search answers it, with the row it's found as, the one
-/// it's listed as, and the drawer the row names.
+/// it's listed as, the drawer the row names, and how each source has them
+/// stand (listing.rs's `sourced`).
 #[must_use]
 pub fn found(
     record: &Record,
@@ -131,6 +132,7 @@ pub fn found(
     standings: &BTreeMap<String, Standing>,
 ) -> Value {
     let mut said = record.json();
+    said["sources"] = listing::sourced(record, sources);
     let one = listing::person(record, sources);
     said["row"] = one.row();
     said["drawer"] = drawer(&one, record, sources, named, standings)["drawer"].take();

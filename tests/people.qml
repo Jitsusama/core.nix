@@ -16,10 +16,18 @@
 // lent it, as a mail its sender, is told to ask for it again. A guest
 // asked after before the daemon answers is named once it does, and one
 // Tuple comes to know after their name was typed is found without typing
-// it again. Someone Slack found once stepped into, whom nobody lists,
-// makes no row at the next first letter and is found as Slack says they
-// stand. It exits 0 once every case
+// it again. Slack's part of someone is drawn as the daemon serves it,
+// with no file of Slack's: stepped into, Slack is asked about them
+// through the daemon, Reply in Slack leads their ways while their message
+// waits on Joel, and that conversation is their Waiting; someone Slack
+// found once stepped into, whom nobody lists, makes no row at the next
+// first letter and is found as Slack says they stand, and one it knows
+// nobody by is no one. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
+//
+// Long because its cases are steps over the one shell, daemon and
+// stand-ins, each starting from what the steps before it left, so a
+// split would start them all again for each part.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -67,7 +75,8 @@ ShellRoot {
         launcher: launcher
         settings: ({
             name: "people",
-            sources: [{ name: "slack", order: 5 }, { name: "tuple", order: 10 },
+            sources: [{ name: "slack", order: 5, file: false, holds: "verb:person:slack" },
+                { name: "tuple", order: 10 },
                 { name: "pages", order: 20 }],
             zones: Quickshell.shellPath("zones.jsonl")
         })
@@ -145,7 +154,12 @@ ShellRoot {
     // What Return does first inside someone: call or join them, after what
     // waits on Joel, which comes before (the stand-in's Lunch on Friday).
     function firstAct(row) {
-        return row.verbs().find(one => one.key !== "mail:lunch");
+        return live(row).find(one => one.key !== "mail:lunch");
+    }
+    // Their rows past Write in Slack's place, which stands dimmed, looking,
+    // from a step-in until Slack answers.
+    function live(row) {
+        return row.verbs().filter(one => !(one.key === "verb:person:slack" && one.gone));
     }
     function reach(row) {
         firstAct(row).run();
@@ -371,14 +385,16 @@ ShellRoot {
                     && Niri.spawned.length === 0, Niri.spawned.join(" "));
                 expect("calling one who's available",
                     reach(open[0]) === "tuple call start ada@example.com", Niri.spawned.join(" "));
-                expect("one in a call is joined", open[1].verbs()[0].name === "Join Their Call",
-                    open[1].verbs()[0].name);
+                expect("one in a call is joined", live(open[1])[0].name === "Join Their Call",
+                    live(open[1])[0].name);
                 expect("joining one in a call",
                     reach(open[1]) === "tuple call join ben@example.com", Niri.spawned.join(" "));
                 expect("calling one who's offline",
                     reach(open[3]) === "tuple call start cal@example.com", Niri.spawned.join(" "));
 
-                const steps = open[0].verbs();
+                // Past Write in Slack's place, held while Slack is asked
+                // of her.
+                const steps = live(open[0]);
                 expect("their page: what waits first, then the ways to reach them, what's "
                     + "between them, the address last", names(steps) === "Lunch on Friday, "
                     + "Call Them, Open in Pages, Last Met, Messages, Favourite, ada@example.com",
@@ -419,7 +435,7 @@ ShellRoot {
                     === "xdg-open https://pages.example.com/ada", Niri.spawned.join(" "));
                 expect("one with no page has no row for it",
                     !names(open[1].verbs()).includes("Open in"), names(open[1].verbs()));
-                const calls = open[3].verbs();
+                const calls = live(open[3]);
                 const waiting = calls[1];
                 expect("a page still being found stands in its place, dimmed, saying so",
                     waiting?.name === "Open in Pages" && waiting.gone === true
@@ -624,8 +640,8 @@ ShellRoot {
         },
         {
             // Slack knows only those it's asked about, as Joel steps into
-            // them: Zoë, whom nobody lists, stepped into from a meeting's
-            // guests, as Calendar lends her row.
+            // them, through the daemon: Zoë, whom nobody lists, stepped
+            // into from a meeting's guests, as Calendar lends her row.
             what: "one Slack is asked about, stepped into",
             run: () => people.whoIs("zoe@example.com"),
             holds: () => people.whoIs("zoe@example.com") !== null,
@@ -645,7 +661,7 @@ ShellRoot {
             // neither listed nor found, as every one held was before
             // (his journal, 2026-11-13, 139 to 140 rows a first letter).
             what: "one Slack found makes no row at the first letter, open or shut",
-            holds: () => slack().known["zoe@example.com"]?.id === "U9",
+            holds: () => slackOf("zoe@example.com")?.id === "U9",
             check: () => {
                 expect("Slack's answer, heard shut, makes no row",
                     people.tally.rows === root.shutRows,
@@ -673,13 +689,74 @@ ShellRoot {
                 `${names(zoe)} ${zoe[0]?.side}`);
         }),
         {
-            // Slack answers an address it knows nobody by with no id, and
-            // the daemon holds that answer as any other.
+            // Inside her, what Slack served is drawn as served: her
+            // conversation, waiting on Joel, first, then Reply in Slack
+            // leading her ways, opening it, and Return on her answers it.
+            what: "one Slack found is drawn as Slack serves her",
+            check: () => {
+                const zoe = people.personOf("zoe@example.com");
+                const inside = zoe.verbs().map(row => row.name);
+                expect("her conversation waits, then Reply in Slack leads her ways",
+                    inside[0] === "Lunch on Friday?" && inside[1] === "Reply in Slack",
+                    inside.join(", "));
+                const reply = zoe.verbs()[1];
+                expect("lit, with no form held in its place", reply.gone !== true,
+                    String(reply.gone));
+            }
+        },
+        {
+            // Slack answers an address it knows nobody by with no id and
+            // `known` false, and the daemon holds that answer as any other.
             what: "one Slack knows nobody by is asked about",
-            run: () => slack().ask({ emails: ["noone@example.com"] }),
-            holds: () => slack().known["noone@example.com"] !== undefined,
-            check: () => expect("Slack knows nobody by it",
-                !slack().known["noone@example.com"].id, "")
+            run: () => people.stepIn({ key: "noone@example.com",
+                emails: ["noone@example.com"] }),
+            holds: () => slackOf("noone@example.com") !== null,
+            check: () => {
+                const said = slackOf("noone@example.com");
+                expect("Slack knows nobody by it", !said.id && said.known === false,
+                    JSON.stringify(said));
+                const held = people.servedActs({ key: "noone@example.com",
+                    emails: ["noone@example.com"] }, "slack");
+                expect("Write in Slack's place held dimmed, saying so",
+                    held.length === 1 && held[0].gone === true
+                    && held[0].name === "Write in Slack"
+                    && held[0].side === "no one at this address",
+                    held.map(row => `${row.name} ${row.side} ${row.gone}`).join(", "));
+            }
+        },
+        {
+            // Someone Slack hasn't said a word of yet, as Joel first steps
+            // in, has Write in Slack's place held, looking, leading the ways
+            // to reach them, so it lights there rather than coming in below.
+            what: "Write in Slack's place is held while Slack is asked",
+            check: () => {
+                const held = people.servedActs({ key: "unasked@example.com",
+                    emails: ["unasked@example.com"] }, "slack", "verb:person:slack");
+                expect("held dimmed, looking in Slack, and leading",
+                    held.length === 1 && held[0].name === "Write in Slack"
+                    && held[0].gone === true && held[0].main === true
+                    && held[0].side === "looking in Slack",
+                    held.map(row => `${row.name} ${row.side} ${row.gone} ${row.main}`)
+                        .join(", "));
+            }
+        },
+        {
+            // Whoever Joel's inside is watched, lent or not, and let go as
+            // he leaves them or the launcher shuts, so the shell at rest
+            // hears nothing of those he looked at.
+            what: "only whoever Joel's inside is watched",
+            check: () => {
+                const zoe = people.personOf("Zoe@example.com");
+                launcher.held = [{ row: { key: "calendar:meeting:standup" } },
+                    { row: zoe }];
+                expect("inside her, she's watched",
+                    people.within.join() === "person:zoe@example.com", people.within.join());
+                launcher.open = false;
+                expect("shut, nobody is", people.within.length === 0, people.within.join());
+                launcher.open = true;
+                launcher.held = [];
+                expect("left, nobody is", people.within.length === 0, people.within.join());
+            }
         },
         // Such a one is no one of Slack's, so the daemon's record of them
         // makes no person a search finds.
@@ -692,9 +769,10 @@ ShellRoot {
         })
     ]
 
-    // Slack's source, as People made it.
-    function slack() {
-        return people.sources.find(source => source.settings.name === "slack");
+    // What Slack told the daemon of an address, as People reads it, or
+    // null.
+    function slackOf(address) {
+        return people.recordFor(`person:${address}`)?.sources?.slack ?? null;
     }
     // How many rows People had made once Slack was asked, the launcher
     // shut.

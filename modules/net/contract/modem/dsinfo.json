@@ -1,0 +1,178 @@
+[
+  {
+    "portId": "1",
+    "frequency": "411000000",
+    "modulation": "2",
+    "signalStrength": "9.000",
+    "snr": "40.946",
+    "dsoctets": "8 * 2e32 + 2703600451",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "4"
+  },
+  {
+    "portId": "18",
+    "frequency": "393000000",
+    "modulation": "2",
+    "signalStrength": "9.100",
+    "snr": "40.366",
+    "dsoctets": "8 * 2e32 + 2700752478",
+    "correcteds": "6",
+    "uncorrect": "0",
+    "channelId": "1"
+  },
+  {
+    "portId": "19",
+    "frequency": "399000000",
+    "modulation": "2",
+    "signalStrength": "8.900",
+    "snr": "40.946",
+    "dsoctets": "8 * 2e32 + 2700761833",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "2"
+  },
+  {
+    "portId": "20",
+    "frequency": "405000000",
+    "modulation": "2",
+    "signalStrength": "8.800",
+    "snr": "40.946",
+    "dsoctets": "8 * 2e32 + 2700766498",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "3"
+  },
+  {
+    "portId": "21",
+    "frequency": "417000000",
+    "modulation": "2",
+    "signalStrength": "8.900",
+    "snr": "40.946",
+    "dsoctets": "8 * 2e32 + 2700771213",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "5"
+  },
+  {
+    "portId": "22",
+    "frequency": "423000000",
+    "modulation": "2",
+    "signalStrength": "8.800",
+    "snr": "40.946",
+    "dsoctets": "8 * 2e32 + 2700776283",
+    "correcteds": "5",
+    "uncorrect": "0",
+    "channelId": "6"
+  },
+  {
+    "portId": "23",
+    "frequency": "429000000",
+    "modulation": "2",
+    "signalStrength": "8.700",
+    "snr": "40.366",
+    "dsoctets": "8 * 2e32 + 2700757747",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "7"
+  },
+  {
+    "portId": "24",
+    "frequency": "435000000",
+    "modulation": "2",
+    "signalStrength": "8.800",
+    "snr": "40.366",
+    "dsoctets": "8 * 2e32 + 2700781152",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "8"
+  },
+  {
+    "portId": "25",
+    "frequency": "441000000",
+    "modulation": "2",
+    "signalStrength": "8.900",
+    "snr": "40.946",
+    "dsoctets": "8 * 2e32 + 2700785844",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "9"
+  },
+  {
+    "portId": "26",
+    "frequency": "447000000",
+    "modulation": "2",
+    "signalStrength": "8.900",
+    "snr": "40.946",
+    "dsoctets": "8 * 2e32 + 2700789681",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "10"
+  },
+  {
+    "portId": "27",
+    "frequency": "453000000",
+    "modulation": "2",
+    "signalStrength": "8.900",
+    "snr": "40.366",
+    "dsoctets": "8 * 2e32 + 2700809800",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "11"
+  },
+  {
+    "portId": "28",
+    "frequency": "459000000",
+    "modulation": "2",
+    "signalStrength": "8.900",
+    "snr": "40.946",
+    "dsoctets": "8 * 2e32 + 2700805348",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "12"
+  },
+  {
+    "portId": "29",
+    "frequency": "465000000",
+    "modulation": "2",
+    "signalStrength": "9.000",
+    "snr": "40.366",
+    "dsoctets": "8 * 2e32 + 2700814634",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "13"
+  },
+  {
+    "portId": "30",
+    "frequency": "471000000",
+    "modulation": "2",
+    "signalStrength": "9.000",
+    "snr": "40.946",
+    "dsoctets": "8 * 2e32 + 2700819292",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "14"
+  },
+  {
+    "portId": "31",
+    "frequency": "477000000",
+    "modulation": "2",
+    "signalStrength": "9.000",
+    "snr": "40.366",
+    "dsoctets": "8 * 2e32 + 2700801201",
+    "correcteds": "0",
+    "uncorrect": "0",
+    "channelId": "15"
+  },
+  {
+    "portId": "32",
+    "frequency": "483000000",
+    "modulation": "2",
+    "signalStrength": "9.100",
+    "snr": "40.946",
+    "dsoctets": "8 * 2e32 + 2700823042",
+    "correcteds": "208",
+    "uncorrect": "878",
+    "channelId": "16"
+  }
+]

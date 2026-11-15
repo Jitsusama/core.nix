@@ -47,6 +47,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../ProgramGlyphs.js" as ProgramGlyphs
 import "Asking.js" as Asking
+import "HeldWindows.js" as HeldWindows
 import "Member.js" as Member
 import "Numbers.js" as Numbers
 
@@ -795,16 +796,10 @@ Scope {
         return found === "" ? marks.program ?? "" : found;
     }
 
-    // A window's title without its program's name trailing it, as Chrome
-    // adds " - Google Chrome", since the glyph and the row already say
-    // whose window it is.
+    // A window's title without its program's name trailing it
+    // (HeldWindows.js), for every kind that names a window.
     function tidy(title, program) {
-        if (program === "")
-            return title;
-        for (const joint of [" - ", " \u2013 ", " \u2014 ", " | "])
-            if (title.endsWith(joint + program))
-                return title.slice(0, title.length - joint.length - program.length);
-        return title;
+        return HeldWindows.tidy(title, program);
     }
 
     // Where a window is, as its row says it: its workspace when that isn't

@@ -1,0 +1,4076 @@
+{
+  "schema": "net.network/1",
+  "collected_at": 1794702033,
+  "sources": [
+    {
+      "name": "eero",
+      "what": "eero's cloud, through the eero daemon's record",
+      "state": "answering",
+      "read_at": 1794092083,
+      "since": null,
+      "reason": null
+    },
+    {
+      "name": "modem",
+      "what": "the cable modem's status pages at 192.168.100.1",
+      "state": "answering",
+      "read_at": 1794702033,
+      "since": null,
+      "reason": null
+    }
+  ],
+  "devices": [
+    {
+      "id": "modem",
+      "name": "Modem",
+      "roles": ["modem"],
+      "source": "modem",
+      "read_at": 1794702033,
+      "vendor": null,
+      "model": null,
+      "hardware": "1A",
+      "firmware": "7.3.5.3.3b4",
+      "serial": "SERIAL0010",
+      "macs": ["02:00:00:00:10:01"],
+      "addresses": ["192.168.100.1"],
+      "up_s": 815619,
+      "ports": [
+        {
+          "name": "cable",
+          "kind": "coax",
+          "link": "up",
+          "speed_mbps": null,
+          "duplex": null
+        },
+        {
+          "name": "ethernet",
+          "kind": "ethernet",
+          "link": "up",
+          "speed_mbps": 1000,
+          "duplex": "full"
+        }
+      ],
+      "radios": [],
+      "modem": {
+        "docsis": "3.1",
+        "network_access": "permitted",
+        "config_file": "modem.cfg",
+        "address": "100.64.0.98/20",
+        "downstream": [
+          {
+            "channel": 4,
+            "kind": "sc-qam",
+            "frequency_hz": 411000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 9.0,
+            "snr_db": 40.946,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 1,
+            "kind": "sc-qam",
+            "frequency_hz": 393000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 9.1,
+            "snr_db": 40.366,
+            "corrected": 6,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 2,
+            "kind": "sc-qam",
+            "frequency_hz": 399000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 8.9,
+            "snr_db": 40.946,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 3,
+            "kind": "sc-qam",
+            "frequency_hz": 405000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 8.8,
+            "snr_db": 40.946,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 5,
+            "kind": "sc-qam",
+            "frequency_hz": 417000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 8.9,
+            "snr_db": 40.946,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 6,
+            "kind": "sc-qam",
+            "frequency_hz": 423000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 8.8,
+            "snr_db": 40.946,
+            "corrected": 5,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 7,
+            "kind": "sc-qam",
+            "frequency_hz": 429000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 8.7,
+            "snr_db": 40.366,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 8,
+            "kind": "sc-qam",
+            "frequency_hz": 435000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 8.8,
+            "snr_db": 40.366,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 9,
+            "kind": "sc-qam",
+            "frequency_hz": 441000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 8.9,
+            "snr_db": 40.946,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 10,
+            "kind": "sc-qam",
+            "frequency_hz": 447000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 8.9,
+            "snr_db": 40.946,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 11,
+            "kind": "sc-qam",
+            "frequency_hz": 453000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 8.9,
+            "snr_db": 40.366,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 12,
+            "kind": "sc-qam",
+            "frequency_hz": 459000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 8.9,
+            "snr_db": 40.946,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 13,
+            "kind": "sc-qam",
+            "frequency_hz": 465000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 9.0,
+            "snr_db": 40.366,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 14,
+            "kind": "sc-qam",
+            "frequency_hz": 471000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 9.0,
+            "snr_db": 40.946,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 15,
+            "kind": "sc-qam",
+            "frequency_hz": 477000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 9.0,
+            "snr_db": 40.366,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 16,
+            "kind": "sc-qam",
+            "frequency_hz": 483000000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 9.1,
+            "snr_db": 40.946,
+            "corrected": 208,
+            "uncorrectable": 878,
+            "active": true
+          },
+          {
+            "channel": null,
+            "kind": "ofdm",
+            "frequency_hz": 455600000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 9.0,
+            "snr_db": 43.0,
+            "corrected": 1488060867,
+            "uncorrectable": 18,
+            "active": true
+          },
+          {
+            "channel": null,
+            "kind": "ofdm",
+            "frequency_hz": 635600000,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": 8.400002,
+            "snr_db": 41.0,
+            "corrected": 4049179480,
+            "uncorrectable": 18,
+            "active": true
+          }
+        ],
+        "upstream": [
+          {
+            "channel": 1,
+            "kind": "atdma",
+            "frequency_hz": 18400000,
+            "width_hz": 3200000,
+            "modulation": "64qam",
+            "power_dbmv": 35.01,
+            "snr_db": null,
+            "corrected": null,
+            "uncorrectable": null,
+            "active": true
+          },
+          {
+            "channel": 4,
+            "kind": "atdma",
+            "frequency_hz": 36768000,
+            "width_hz": 6400000,
+            "modulation": "64qam",
+            "power_dbmv": 36.271,
+            "snr_db": null,
+            "corrected": null,
+            "uncorrectable": null,
+            "active": true
+          },
+          {
+            "channel": 3,
+            "kind": "atdma",
+            "frequency_hz": 30112000,
+            "width_hz": 6400000,
+            "modulation": "64qam",
+            "power_dbmv": 35.521,
+            "snr_db": null,
+            "corrected": null,
+            "uncorrectable": null,
+            "active": true
+          },
+          {
+            "channel": 2,
+            "kind": "atdma",
+            "frequency_hz": 23456000,
+            "width_hz": 6400000,
+            "modulation": "64qam",
+            "power_dbmv": 35.021,
+            "snr_db": null,
+            "corrected": null,
+            "uncorrectable": null,
+            "active": true
+          },
+          {
+            "channel": 0,
+            "kind": "ofdma",
+            "frequency_hz": null,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": null,
+            "snr_db": null,
+            "corrected": null,
+            "uncorrectable": null,
+            "active": false
+          },
+          {
+            "channel": 1,
+            "kind": "ofdma",
+            "frequency_hz": null,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": null,
+            "snr_db": null,
+            "corrected": null,
+            "uncorrectable": null,
+            "active": false
+          }
+        ],
+        "log": [
+          {
+            "at": 1794487245,
+            "clock": "11/12/26 12:40:45",
+            "priority": "notice",
+            "code": "74010100",
+            "message": "CM-STATUS message sent. Event Type Code: 5; Chan ID: 16; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: N/A."
+          },
+          {
+            "at": 1794327543,
+            "clock": "11/10/26 16:19:03",
+            "priority": "notice",
+            "code": "68010600",
+            "message": "DHCP Renew - lease parameters tftp file-modem.cfg modified"
+          },
+          {
+            "at": 1794327543,
+            "clock": "11/10/26 16:19:03",
+            "priority": "error",
+            "code": "68010300",
+            "message": "DHCP RENEW WARNING - Field invalid in response v4 option"
+          },
+          {
+            "at": 1793886551,
+            "clock": "11/05/26 13:49:11",
+            "priority": "warning",
+            "code": "73050400",
+            "message": "REG-RSP-MP Mismatch Between Calculated Value for P1.6hi Compared to CCAP Provided Value"
+          },
+          {
+            "at": 1793886548,
+            "clock": "11/05/26 13:49:08",
+            "priority": "warning",
+            "code": "90000000",
+            "message": "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1"
+          },
+          {
+            "at": 1793647108,
+            "clock": "11/02/26 19:18:28",
+            "priority": "warning",
+            "code": "73050400",
+            "message": "REG-RSP-MP Mismatch Between Calculated Value for P1.6hi Compared to CCAP Provided Value"
+          },
+          {
+            "at": 1793647105,
+            "clock": "11/02/26 19:18:25",
+            "priority": "warning",
+            "code": "90000000",
+            "message": "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1"
+          },
+          {
+            "at": 1793370783,
+            "clock": "10/30/26 14:33:03",
+            "priority": "notice",
+            "code": "68010600",
+            "message": "DHCP Renew - lease parameters tftp file-modem.cfg modified"
+          },
+          {
+            "at": 1793370783,
+            "clock": "10/30/26 14:33:03",
+            "priority": "error",
+            "code": "68010300",
+            "message": "DHCP RENEW WARNING - Field invalid in response v4 option"
+          },
+          {
+            "at": 1793269869,
+            "clock": "10/29/26 10:31:09",
+            "priority": "notice",
+            "code": "74010100",
+            "message": "CM-STATUS message sent. Event Type Code: 5; Chan ID: 16; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: N/A."
+          },
+          {
+            "at": 1792956368,
+            "clock": "10/25/26 19:26:08",
+            "priority": "warning",
+            "code": "73050400",
+            "message": "REG-RSP-MP Mismatch Between Calculated Value for P1.6hi Compared to CCAP Provided Value"
+          },
+          {
+            "at": 1792956365,
+            "clock": "10/25/26 19:26:05",
+            "priority": "warning",
+            "code": "90000000",
+            "message": "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1"
+          },
+          {
+            "at": 1792790974,
+            "clock": "10/23/26 21:29:34",
+            "priority": "notice",
+            "code": "68010600",
+            "message": "DHCP Renew - lease parameters tftp file-modem.cfg modified"
+          },
+          {
+            "at": 1792790974,
+            "clock": "10/23/26 21:29:34",
+            "priority": "error",
+            "code": "68010300",
+            "message": "DHCP RENEW WARNING - Field invalid in response v4 option"
+          },
+          {
+            "at": 1792386580,
+            "clock": "10/19/26 05:09:40",
+            "priority": "notice",
+            "code": "68010600",
+            "message": "DHCP Renew - lease parameters tftp file-modem.cfg modified"
+          },
+          {
+            "at": 1792386580,
+            "clock": "10/19/26 05:09:40",
+            "priority": "error",
+            "code": "68010300",
+            "message": "DHCP RENEW WARNING - Field invalid in response v4 option"
+          },
+          {
+            "at": 1792061477,
+            "clock": "10/15/26 10:51:17",
+            "priority": "notice",
+            "code": "74010100",
+            "message": "CM-STATUS message sent. Event Type Code: 24; Chan ID: 17; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: 1."
+          },
+          {
+            "at": 1791932747,
+            "clock": "10/13/26 23:05:47",
+            "priority": "notice",
+            "code": "68010600",
+            "message": "DHCP Renew - lease parameters tftp file-modem.cfg modified"
+          },
+          {
+            "at": 1791932747,
+            "clock": "10/13/26 23:05:47",
+            "priority": "error",
+            "code": "68010300",
+            "message": "DHCP RENEW WARNING - Field invalid in response v4 option"
+          },
+          {
+            "at": 1791483999,
+            "clock": "10/08/26 18:26:39",
+            "priority": "notice",
+            "code": "68010600",
+            "message": "DHCP Renew - lease parameters tftp file-modem.cfg modified"
+          }
+        ]
+      },
+      "detail": {
+        "modem": {
+          "dsinfo": [
+            {
+              "channelId": "4",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2703600451",
+              "frequency": "411000000",
+              "modulation": "2",
+              "portId": "1",
+              "signalStrength": "9.000",
+              "snr": "40.946",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "1",
+              "correcteds": "6",
+              "dsoctets": "8 * 2e32 + 2700752478",
+              "frequency": "393000000",
+              "modulation": "2",
+              "portId": "18",
+              "signalStrength": "9.100",
+              "snr": "40.366",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "2",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2700761833",
+              "frequency": "399000000",
+              "modulation": "2",
+              "portId": "19",
+              "signalStrength": "8.900",
+              "snr": "40.946",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "3",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2700766498",
+              "frequency": "405000000",
+              "modulation": "2",
+              "portId": "20",
+              "signalStrength": "8.800",
+              "snr": "40.946",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "5",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2700771213",
+              "frequency": "417000000",
+              "modulation": "2",
+              "portId": "21",
+              "signalStrength": "8.900",
+              "snr": "40.946",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "6",
+              "correcteds": "5",
+              "dsoctets": "8 * 2e32 + 2700776283",
+              "frequency": "423000000",
+              "modulation": "2",
+              "portId": "22",
+              "signalStrength": "8.800",
+              "snr": "40.946",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "7",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2700757747",
+              "frequency": "429000000",
+              "modulation": "2",
+              "portId": "23",
+              "signalStrength": "8.700",
+              "snr": "40.366",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "8",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2700781152",
+              "frequency": "435000000",
+              "modulation": "2",
+              "portId": "24",
+              "signalStrength": "8.800",
+              "snr": "40.366",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "9",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2700785844",
+              "frequency": "441000000",
+              "modulation": "2",
+              "portId": "25",
+              "signalStrength": "8.900",
+              "snr": "40.946",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "10",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2700789681",
+              "frequency": "447000000",
+              "modulation": "2",
+              "portId": "26",
+              "signalStrength": "8.900",
+              "snr": "40.946",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "11",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2700809800",
+              "frequency": "453000000",
+              "modulation": "2",
+              "portId": "27",
+              "signalStrength": "8.900",
+              "snr": "40.366",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "12",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2700805348",
+              "frequency": "459000000",
+              "modulation": "2",
+              "portId": "28",
+              "signalStrength": "8.900",
+              "snr": "40.946",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "13",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2700814634",
+              "frequency": "465000000",
+              "modulation": "2",
+              "portId": "29",
+              "signalStrength": "9.000",
+              "snr": "40.366",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "14",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2700819292",
+              "frequency": "471000000",
+              "modulation": "2",
+              "portId": "30",
+              "signalStrength": "9.000",
+              "snr": "40.946",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "15",
+              "correcteds": "0",
+              "dsoctets": "8 * 2e32 + 2700801201",
+              "frequency": "477000000",
+              "modulation": "2",
+              "portId": "31",
+              "signalStrength": "9.000",
+              "snr": "40.366",
+              "uncorrect": "0"
+            },
+            {
+              "channelId": "16",
+              "correcteds": "208",
+              "dsoctets": "8 * 2e32 + 2700823042",
+              "frequency": "483000000",
+              "modulation": "2",
+              "portId": "32",
+              "signalStrength": "9.100",
+              "snr": "40.946",
+              "uncorrect": "878"
+            }
+          ],
+          "dsofdminfo": [
+            {
+              "SNR": "43",
+              "Subcarr0freqFreq": " 455600000",
+              "correcteds": "1488060867",
+              "dsoctets": "2331128398",
+              "ffttype": "4K",
+              "mdc1lock": "YES",
+              "ncplock": "YES",
+              "plclock": "YES",
+              "plcpower": "9.000000",
+              "receive": "0",
+              "uncorrect": "18"
+            },
+            {
+              "SNR": "41",
+              "Subcarr0freqFreq": " 635600000",
+              "correcteds": "4049179480",
+              "dsoctets": "5373741004",
+              "ffttype": "4K",
+              "mdc1lock": "YES",
+              "ncplock": "YES",
+              "plclock": "YES",
+              "plcpower": "8.400002",
+              "receive": "1",
+              "uncorrect": "18"
+            }
+          ],
+          "getCMInit": [
+            {
+              "bpiStatus": "AUTH:authorized, TEK:operational",
+              "dhcp": "Success",
+              "downloadCfg": "Success",
+              "eaeStatus": "Disable",
+              "findDownstream": "Success",
+              "hwInit": "Success",
+              "networkAccess": "Permitted",
+              "ranging": "Success",
+              "registration": "Success",
+              "timeOfday": "Success",
+              "trafficStatus": "Enable"
+            }
+          ],
+          "getCmDocsisWan": [
+            {
+              "CmGateway": "100.64.0.1",
+              "CmIpAddress": "100.64.0.98",
+              "CmIpLeaseDuration": "D: 10 H: 00 M: 00 S: 00",
+              "CmNetMask": "255.255.240.0",
+              "Configname": "modem.cfg",
+              "ConfignameDisplay": "0",
+              "NetworkAccess": "Permitted"
+            }
+          ],
+          "getLinkStatus": [
+            {
+              "LinkDuplex": "Full",
+              "LinkSpeed": "1000Mbps",
+              "LinkStatus": "Up"
+            }
+          ],
+          "getSysInfo": [
+            {
+              "LRecPkt": "TODO",
+              "LSendPkt": "TODO",
+              "WRecPkt": "TODO",
+              "WSendPkt": "TODO",
+              "hwVersion": "1A",
+              "lanIp": "TODO",
+              "rfMac": "02:00:00:00:10:01",
+              "serialNumber": "SERIAL0010",
+              "swVersion": "7.3.5.3.3b4",
+              "systemTime": "Sun Nov 15, 2026, 00:20:28",
+              "systemUptime": "226h:33m:39s",
+              "timezone": "--",
+              "wanIp": "TODO"
+            }
+          ],
+          "status_log": [
+            {
+              "event": "CM-STATUS message sent.  Event Type Code: 5; Chan ID: 16; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: N/A.;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 1,
+              "priority": "notice",
+              "time": "11/12/26 12:40:45",
+              "type": "74010100"
+            },
+            {
+              "event": "DHCP Renew - lease parameters tftp file-modem.cfg modified;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 2,
+              "priority": "notice",
+              "time": "11/10/26 16:19:03",
+              "type": "68010600"
+            },
+            {
+              "event": "DHCP RENEW WARNING - Field invalid in response v4 option;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 3,
+              "priority": "error",
+              "time": "11/10/26 16:19:03",
+              "type": "68010300"
+            },
+            {
+              "event": "REG-RSP-MP Mismatch Between Calculated Value for P1.6hi Compared to CCAP Provided Value;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 4,
+              "priority": "warning",
+              "time": "11/05/26 13:49:11",
+              "type": "73050400"
+            },
+            {
+              "event": "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 5,
+              "priority": "warning",
+              "time": "11/05/26 13:49:08",
+              "type": "90000000"
+            },
+            {
+              "event": "REG-RSP-MP Mismatch Between Calculated Value for P1.6hi Compared to CCAP Provided Value;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 6,
+              "priority": "warning",
+              "time": "11/02/26 19:18:28",
+              "type": "73050400"
+            },
+            {
+              "event": "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 7,
+              "priority": "warning",
+              "time": "11/02/26 19:18:25",
+              "type": "90000000"
+            },
+            {
+              "event": "DHCP Renew - lease parameters tftp file-modem.cfg modified;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 8,
+              "priority": "notice",
+              "time": "10/30/26 14:33:03",
+              "type": "68010600"
+            },
+            {
+              "event": "DHCP RENEW WARNING - Field invalid in response v4 option;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 9,
+              "priority": "error",
+              "time": "10/30/26 14:33:03",
+              "type": "68010300"
+            },
+            {
+              "event": "CM-STATUS message sent.  Event Type Code: 5; Chan ID: 16; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: N/A.;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 10,
+              "priority": "notice",
+              "time": "10/29/26 10:31:09",
+              "type": "74010100"
+            },
+            {
+              "event": "REG-RSP-MP Mismatch Between Calculated Value for P1.6hi Compared to CCAP Provided Value;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 11,
+              "priority": "warning",
+              "time": "10/25/26 19:26:08",
+              "type": "73050400"
+            },
+            {
+              "event": "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 12,
+              "priority": "warning",
+              "time": "10/25/26 19:26:05",
+              "type": "90000000"
+            },
+            {
+              "event": "DHCP Renew - lease parameters tftp file-modem.cfg modified;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 13,
+              "priority": "notice",
+              "time": "10/23/26 21:29:34",
+              "type": "68010600"
+            },
+            {
+              "event": "DHCP RENEW WARNING - Field invalid in response v4 option;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 14,
+              "priority": "error",
+              "time": "10/23/26 21:29:34",
+              "type": "68010300"
+            },
+            {
+              "event": "DHCP Renew - lease parameters tftp file-modem.cfg modified;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 15,
+              "priority": "notice",
+              "time": "10/19/26 05:09:40",
+              "type": "68010600"
+            },
+            {
+              "event": "DHCP RENEW WARNING - Field invalid in response v4 option;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 16,
+              "priority": "error",
+              "time": "10/19/26 05:09:40",
+              "type": "68010300"
+            },
+            {
+              "event": "CM-STATUS message sent.  Event Type Code: 24; Chan ID: 17; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: 1.;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 17,
+              "priority": "notice",
+              "time": "10/15/26 10:51:17",
+              "type": "74010100"
+            },
+            {
+              "event": "DHCP Renew - lease parameters tftp file-modem.cfg modified;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 18,
+              "priority": "notice",
+              "time": "10/13/26 23:05:47",
+              "type": "68010600"
+            },
+            {
+              "event": "DHCP RENEW WARNING - Field invalid in response v4 option;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 19,
+              "priority": "error",
+              "time": "10/13/26 23:05:47",
+              "type": "68010300"
+            },
+            {
+              "event": "DHCP Renew - lease parameters tftp file-modem.cfg modified;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;",
+              "index": 20,
+              "priority": "notice",
+              "time": "10/08/26 18:26:39",
+              "type": "68010600"
+            }
+          ],
+          "usinfo": [
+            {
+              "bandwidth": "3200000",
+              "channelId": "1",
+              "frequency": "18400000",
+              "modtype": "64QAM",
+              "portId": "1",
+              "scdmaMode": "TDMA_AND_ATDMA",
+              "signalStrength": "35.010"
+            },
+            {
+              "bandwidth": "6400000",
+              "channelId": "4",
+              "frequency": "36768000",
+              "modtype": "64QAM",
+              "portId": "2",
+              "scdmaMode": "ATDMA",
+              "signalStrength": "36.271"
+            },
+            {
+              "bandwidth": "6400000",
+              "channelId": "3",
+              "frequency": "30112000",
+              "modtype": "64QAM",
+              "portId": "3",
+              "scdmaMode": "ATDMA",
+              "signalStrength": "35.521"
+            },
+            {
+              "bandwidth": "6400000",
+              "channelId": "2",
+              "frequency": "23456000",
+              "modtype": "64QAM",
+              "portId": "4",
+              "scdmaMode": "ATDMA",
+              "signalStrength": "35.021"
+            }
+          ],
+          "usofdminfo": [
+            {
+              "channelBw": "    0.0000",
+              "digAtten": "    0.0000",
+              "digAttenBo": "    0.0000",
+              "fftVal": "2K",
+              "frequency": "0",
+              "repPower": "    0.0000",
+              "repPower1_6": "    0.0000",
+              "state": "  DISABLED",
+              "uschindex": "0"
+            },
+            {
+              "channelBw": "    0.0000",
+              "digAtten": "    0.0000",
+              "digAttenBo": "    0.0000",
+              "fftVal": "2K",
+              "frequency": "0",
+              "repPower": "    0.0000",
+              "repPower1_6": "    0.0000",
+              "state": "  DISABLED",
+              "uschindex": "1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "eero:2003",
+      "name": "Hall",
+      "roles": ["router", "access-point"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "eero",
+      "model": "eero Pro 6",
+      "hardware": "K010011",
+      "firmware": "v7.17.4-5",
+      "serial": "SERIAL0003",
+      "macs": ["02:00:00:00:00:21"],
+      "addresses": ["10.0.0.1"],
+      "up_s": 55878,
+      "ports": [
+        {
+          "name": "1",
+          "kind": "ethernet",
+          "link": "up",
+          "speed_mbps": 1000,
+          "duplex": null
+        },
+        {
+          "name": "2",
+          "kind": "ethernet",
+          "link": "up",
+          "speed_mbps": 1000,
+          "duplex": null
+        }
+      ],
+      "radios": [
+        {
+          "name": "2.4 GHz",
+          "band": "2.4 GHz",
+          "channel": 6,
+          "width_mhz": 20,
+          "busy_pct": 8,
+          "power_dbm": 30
+        },
+        {
+          "name": "5 GHz low",
+          "band": "5 GHz low",
+          "channel": 52,
+          "width_mhz": 80,
+          "busy_pct": 5,
+          "power_dbm": 22
+        },
+        {
+          "name": "5 GHz high",
+          "band": "5 GHz high",
+          "channel": 149,
+          "width_mhz": 80,
+          "busy_pct": 41,
+          "power_dbm": 28
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.1",
+          "backhaul": {
+            "bars": 5,
+            "kind": "ethernet"
+          },
+          "cloud_s": 54413,
+          "devices": {
+            "all": 2,
+            "ethernet": 0,
+            "wifi": 2
+          },
+          "firmware": "v7.17.4-5",
+          "gateway": true,
+          "heartbeat_ok": true,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "bars": [5, 5, 5, 5, 5, 5]
+          },
+          "id": "2003",
+          "ipv6": ["fe80::7/64", "fe80::8/64"],
+          "joined": "2020-11-13T21:47:15Z",
+          "last_heartbeat": "2026-11-07T22:53:51.606Z",
+          "last_reboot": "2026-11-07T07:22:42.035551983Z",
+          "light": {
+            "brightness": 100,
+            "on": true
+          },
+          "location": "Hall",
+          "mac": "02:00:00:00:00:21",
+          "model": "eero Pro 6",
+          "model_number": "K010011",
+          "ports": [
+            {
+              "best_mbps": 1000,
+              "linked": true,
+              "mbps": 1000,
+              "name": "1",
+              "rx_bytes": 0,
+              "tx_bytes": 153124674,
+              "upstream": true,
+              "wan": true
+            },
+            {
+              "best_mbps": 1000,
+              "linked": true,
+              "mbps": 1000,
+              "name": "2",
+              "rx_bytes": 0,
+              "tx_bytes": 53741,
+              "upstream": false,
+              "wan": false
+            }
+          ],
+          "power": "USB",
+          "radios": [
+            {
+              "band": "2.4 GHz",
+              "bssid": "02:00:00:00:00:0c",
+              "busy_pct": 8,
+              "channel": 6,
+              "devices": 1,
+              "history": {
+                "at": [
+                  "2026-11-07T22:29:43Z",
+                  "2026-11-07T22:34:43Z",
+                  "2026-11-07T22:39:43Z",
+                  "2026-11-07T22:44:43Z",
+                  "2026-11-07T22:49:43Z",
+                  "2026-11-07T22:54:43Z"
+                ],
+                "busy_pct": [12, 5, 17, 10, 6, 8],
+                "channel": [6, 6, 6, 6, 6, 6],
+                "power_dbm": [30, 30, 30, 30, 30, 30]
+              },
+              "power_dbm": 30,
+              "width_mhz": 20
+            },
+            {
+              "band": "5 GHz low",
+              "bssid": "02:00:00:00:00:24",
+              "busy_pct": 5,
+              "channel": 52,
+              "devices": 0,
+              "history": {
+                "at": [
+                  "2026-11-07T22:29:43Z",
+                  "2026-11-07T22:34:43Z",
+                  "2026-11-07T22:39:43Z",
+                  "2026-11-07T22:44:43Z",
+                  "2026-11-07T22:49:43Z",
+                  "2026-11-07T22:54:43Z"
+                ],
+                "busy_pct": [9, 2, 14, 7, 3, 5],
+                "channel": [52, 52, 52, 52, 52, 52],
+                "power_dbm": [22, 22, 22, 22, 22, 22]
+              },
+              "power_dbm": 22,
+              "width_mhz": 80
+            },
+            {
+              "band": "5 GHz high",
+              "bssid": "02:00:00:00:00:06",
+              "busy_pct": 41,
+              "channel": 149,
+              "devices": 1,
+              "history": {
+                "at": [
+                  "2026-11-07T22:29:43Z",
+                  "2026-11-07T22:34:43Z",
+                  "2026-11-07T22:39:43Z",
+                  "2026-11-07T22:44:43Z",
+                  "2026-11-07T22:49:43Z",
+                  "2026-11-07T22:54:43Z"
+                ],
+                "busy_pct": [45, 38, 50, 43, 39, 41],
+                "channel": [149, 149, 149, 149, 149, 149],
+                "power_dbm": [28, 28, 28, 28, 28, 28]
+              },
+              "power_dbm": 28,
+              "width_mhz": 80
+            }
+          ],
+          "serial": "SERIAL0003",
+          "state": "ONLINE",
+          "support_ends": null,
+          "up_s": 55878,
+          "update_available": false,
+          "usage": {
+            "download": {
+              "hours": [
+                {
+                  "at": "2026-11-06T22:00:00Z",
+                  "bytes": 0
+                },
+                {
+                  "at": "2026-11-06T23:00:00Z",
+                  "bytes": 646721
+                },
+                {
+                  "at": "2026-11-07T00:00:00Z",
+                  "bytes": 790994
+                },
+                {
+                  "at": "2026-11-07T01:00:00Z",
+                  "bytes": 745819
+                },
+                {
+                  "at": "2026-11-07T02:00:00Z",
+                  "bytes": 697776
+                },
+                {
+                  "at": "2026-11-07T03:00:00Z",
+                  "bytes": 689165
+                },
+                {
+                  "at": "2026-11-07T04:00:00Z",
+                  "bytes": 681479
+                },
+                {
+                  "at": "2026-11-07T05:00:00Z",
+                  "bytes": 381860
+                },
+                {
+                  "at": "2026-11-07T06:00:00Z",
+                  "bytes": 424327
+                },
+                {
+                  "at": "2026-11-07T07:00:00Z",
+                  "bytes": 137142784
+                },
+                {
+                  "at": "2026-11-07T08:00:00Z",
+                  "bytes": 367578
+                },
+                {
+                  "at": "2026-11-07T09:00:00Z",
+                  "bytes": 350672
+                },
+                {
+                  "at": "2026-11-07T10:00:00Z",
+                  "bytes": 366083
+                },
+                {
+                  "at": "2026-11-07T11:00:00Z",
+                  "bytes": 357414
+                },
+                {
+                  "at": "2026-11-07T12:00:00Z",
+                  "bytes": 449281
+                },
+                {
+                  "at": "2026-11-07T13:00:00Z",
+                  "bytes": 591227
+                },
+                {
+                  "at": "2026-11-07T14:00:00Z",
+                  "bytes": 438093
+                },
+                {
+                  "at": "2026-11-07T15:00:00Z",
+                  "bytes": 752191
+                },
+                {
+                  "at": "2026-11-07T16:00:00Z",
+                  "bytes": 759182
+                },
+                {
+                  "at": "2026-11-07T17:00:00Z",
+                  "bytes": 681409
+                },
+                {
+                  "at": "2026-11-07T18:00:00Z",
+                  "bytes": 785339
+                },
+                {
+                  "at": "2026-11-07T19:00:00Z",
+                  "bytes": 659087
+                },
+                {
+                  "at": "2026-11-07T20:00:00Z",
+                  "bytes": 515546
+                },
+                {
+                  "at": "2026-11-07T21:00:00Z",
+                  "bytes": 461845
+                },
+                {
+                  "at": "2026-11-07T22:00:00Z",
+                  "bytes": 433834
+                }
+              ],
+              "total_bytes": 150169706
+            },
+            "upload": {
+              "hours": [
+                {
+                  "at": "2026-11-06T22:00:00Z",
+                  "bytes": 0
+                },
+                {
+                  "at": "2026-11-06T23:00:00Z",
+                  "bytes": 514030
+                },
+                {
+                  "at": "2026-11-07T00:00:00Z",
+                  "bytes": 603245
+                },
+                {
+                  "at": "2026-11-07T01:00:00Z",
+                  "bytes": 589893
+                },
+                {
+                  "at": "2026-11-07T02:00:00Z",
+                  "bytes": 548248
+                },
+                {
+                  "at": "2026-11-07T03:00:00Z",
+                  "bytes": 517548
+                },
+                {
+                  "at": "2026-11-07T04:00:00Z",
+                  "bytes": 538618
+                },
+                {
+                  "at": "2026-11-07T05:00:00Z",
+                  "bytes": 349593
+                },
+                {
+                  "at": "2026-11-07T06:00:00Z",
+                  "bytes": 377185
+                },
+                {
+                  "at": "2026-11-07T07:00:00Z",
+                  "bytes": 635392
+                },
+                {
+                  "at": "2026-11-07T08:00:00Z",
+                  "bytes": 261256
+                },
+                {
+                  "at": "2026-11-07T09:00:00Z",
+                  "bytes": 256747
+                },
+                {
+                  "at": "2026-11-07T10:00:00Z",
+                  "bytes": 257770
+                },
+                {
+                  "at": "2026-11-07T11:00:00Z",
+                  "bytes": 255445
+                },
+                {
+                  "at": "2026-11-07T12:00:00Z",
+                  "bytes": 317577
+                },
+                {
+                  "at": "2026-11-07T13:00:00Z",
+                  "bytes": 369081
+                },
+                {
+                  "at": "2026-11-07T14:00:00Z",
+                  "bytes": 290431
+                },
+                {
+                  "at": "2026-11-07T15:00:00Z",
+                  "bytes": 467153
+                },
+                {
+                  "at": "2026-11-07T16:00:00Z",
+                  "bytes": 482813
+                },
+                {
+                  "at": "2026-11-07T17:00:00Z",
+                  "bytes": 443763
+                },
+                {
+                  "at": "2026-11-07T18:00:00Z",
+                  "bytes": 487420
+                },
+                {
+                  "at": "2026-11-07T19:00:00Z",
+                  "bytes": 419298
+                },
+                {
+                  "at": "2026-11-07T20:00:00Z",
+                  "bytes": 340575
+                },
+                {
+                  "at": "2026-11-07T21:00:00Z",
+                  "bytes": 314150
+                },
+                {
+                  "at": "2026-11-07T22:00:00Z",
+                  "bytes": 446073
+                }
+              ],
+              "total_bytes": 10083304
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "eero:2002",
+      "name": "Study",
+      "roles": ["access-point"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "eero",
+      "model": "eero Pro 6",
+      "hardware": "K010011",
+      "firmware": "v7.17.4-5",
+      "serial": "SERIAL0002",
+      "macs": ["02:00:00:00:00:25"],
+      "addresses": ["10.0.0.88"],
+      "up_s": 55861,
+      "ports": [
+        {
+          "name": "1",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        },
+        {
+          "name": "2",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        }
+      ],
+      "radios": [
+        {
+          "name": "2.4 GHz",
+          "band": "2.4 GHz",
+          "channel": 6,
+          "width_mhz": 20,
+          "busy_pct": 18,
+          "power_dbm": 30
+        },
+        {
+          "name": "5 GHz low",
+          "band": "5 GHz low",
+          "channel": 52,
+          "width_mhz": 80,
+          "busy_pct": 5,
+          "power_dbm": 22
+        },
+        {
+          "name": "5 GHz high",
+          "band": "5 GHz high",
+          "channel": 149,
+          "width_mhz": 80,
+          "busy_pct": 39,
+          "power_dbm": 28
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.88",
+          "backhaul": {
+            "bars": 5,
+            "kind": "wi-fi",
+            "radio": "5.8GHz",
+            "upstream": "Hall"
+          },
+          "cloud_s": 1176,
+          "devices": {
+            "all": 9,
+            "ethernet": 0,
+            "wifi": 9
+          },
+          "firmware": "v7.17.4-5",
+          "gateway": false,
+          "heartbeat_ok": true,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "bars": [5, 4, 5, 5, 5, 5]
+          },
+          "id": "2002",
+          "ipv6": ["fe80::b/64"],
+          "joined": "2020-11-13T21:50:49Z",
+          "last_heartbeat": "2026-11-07T22:53:46.694Z",
+          "last_reboot": "2026-11-07T07:22:59.776783944Z",
+          "light": {
+            "brightness": 100,
+            "on": true
+          },
+          "location": "Study",
+          "mac": "02:00:00:00:00:25",
+          "model": "eero Pro 6",
+          "model_number": "K010011",
+          "ports": [
+            {
+              "best_mbps": 1000,
+              "linked": false,
+              "mbps": null,
+              "name": "1",
+              "rx_bytes": null,
+              "tx_bytes": null,
+              "upstream": false,
+              "wan": false
+            },
+            {
+              "best_mbps": 1000,
+              "linked": false,
+              "mbps": null,
+              "name": "2",
+              "rx_bytes": null,
+              "tx_bytes": null,
+              "upstream": false,
+              "wan": false
+            }
+          ],
+          "power": "USB",
+          "radios": [
+            {
+              "band": "2.4 GHz",
+              "bssid": "02:00:00:00:00:10",
+              "busy_pct": 18,
+              "channel": 6,
+              "devices": 2,
+              "history": {
+                "at": [
+                  "2026-11-07T22:29:43Z",
+                  "2026-11-07T22:34:43Z",
+                  "2026-11-07T22:39:43Z",
+                  "2026-11-07T22:44:43Z",
+                  "2026-11-07T22:49:43Z",
+                  "2026-11-07T22:54:43Z"
+                ],
+                "busy_pct": [22, 15, 27, 20, 16, 18],
+                "channel": [6, 6, 6, 6, 6, 6],
+                "power_dbm": [30, 30, 30, 30, 30, 30]
+              },
+              "power_dbm": 30,
+              "width_mhz": 20
+            },
+            {
+              "band": "5 GHz low",
+              "bssid": "02:00:00:00:00:04",
+              "busy_pct": 5,
+              "channel": 52,
+              "devices": 3,
+              "history": {
+                "at": [
+                  "2026-11-07T22:29:43Z",
+                  "2026-11-07T22:34:43Z",
+                  "2026-11-07T22:39:43Z",
+                  "2026-11-07T22:44:43Z",
+                  "2026-11-07T22:49:43Z",
+                  "2026-11-07T22:54:43Z"
+                ],
+                "busy_pct": [9, 2, 14, 7, 3, 5],
+                "channel": [52, 52, 52, 52, 52, 52],
+                "power_dbm": [22, 22, 22, 22, 22, 22]
+              },
+              "power_dbm": 22,
+              "width_mhz": 80
+            },
+            {
+              "band": "5 GHz high",
+              "bssid": "02:00:00:00:00:09",
+              "busy_pct": 39,
+              "channel": 149,
+              "devices": 4,
+              "history": {
+                "at": [
+                  "2026-11-07T22:29:43Z",
+                  "2026-11-07T22:34:43Z",
+                  "2026-11-07T22:39:43Z",
+                  "2026-11-07T22:44:43Z",
+                  "2026-11-07T22:49:43Z",
+                  "2026-11-07T22:54:43Z"
+                ],
+                "busy_pct": [43, 36, 48, 41, 37, 39],
+                "channel": [149, 149, 149, 149, 149, 149],
+                "power_dbm": [28, 28, 28, 28, 28, 28]
+              },
+              "power_dbm": 28,
+              "width_mhz": 80
+            }
+          ],
+          "serial": "SERIAL0002",
+          "state": "ONLINE",
+          "support_ends": null,
+          "up_s": 55861,
+          "update_available": false,
+          "usage": {
+            "download": {
+              "hours": [
+                {
+                  "at": "2026-11-06T22:00:00Z",
+                  "bytes": 0
+                },
+                {
+                  "at": "2026-11-06T23:00:00Z",
+                  "bytes": 126494
+                },
+                {
+                  "at": "2026-11-07T00:00:00Z",
+                  "bytes": 123983
+                },
+                {
+                  "at": "2026-11-07T01:00:00Z",
+                  "bytes": 128799
+                },
+                {
+                  "at": "2026-11-07T02:00:00Z",
+                  "bytes": 133407
+                },
+                {
+                  "at": "2026-11-07T03:00:00Z",
+                  "bytes": 125609
+                },
+                {
+                  "at": "2026-11-07T04:00:00Z",
+                  "bytes": 127239
+                },
+                {
+                  "at": "2026-11-07T05:00:00Z",
+                  "bytes": 127624
+                },
+                {
+                  "at": "2026-11-07T06:00:00Z",
+                  "bytes": 127514
+                },
+                {
+                  "at": "2026-11-07T07:00:00Z",
+                  "bytes": 139692320
+                },
+                {
+                  "at": "2026-11-07T08:00:00Z",
+                  "bytes": 89888
+                },
+                {
+                  "at": "2026-11-07T09:00:00Z",
+                  "bytes": 86438
+                },
+                {
+                  "at": "2026-11-07T10:00:00Z",
+                  "bytes": 103266
+                },
+                {
+                  "at": "2026-11-07T11:00:00Z",
+                  "bytes": 80295
+                },
+                {
+                  "at": "2026-11-07T12:00:00Z",
+                  "bytes": 93109
+                },
+                {
+                  "at": "2026-11-07T13:00:00Z",
+                  "bytes": 80293
+                },
+                {
+                  "at": "2026-11-07T14:00:00Z",
+                  "bytes": 80566
+                },
+                {
+                  "at": "2026-11-07T15:00:00Z",
+                  "bytes": 93429
+                },
+                {
+                  "at": "2026-11-07T16:00:00Z",
+                  "bytes": 79585
+                },
+                {
+                  "at": "2026-11-07T17:00:00Z",
+                  "bytes": 86466
+                },
+                {
+                  "at": "2026-11-07T18:00:00Z",
+                  "bytes": 95542
+                },
+                {
+                  "at": "2026-11-07T19:00:00Z",
+                  "bytes": 95042
+                },
+                {
+                  "at": "2026-11-07T20:00:00Z",
+                  "bytes": 81287
+                },
+                {
+                  "at": "2026-11-07T21:00:00Z",
+                  "bytes": 87486
+                },
+                {
+                  "at": "2026-11-07T22:00:00Z",
+                  "bytes": 101627
+                }
+              ],
+              "total_bytes": 142047308
+            },
+            "upload": {
+              "hours": [
+                {
+                  "at": "2026-11-06T22:00:00Z",
+                  "bytes": 0
+                },
+                {
+                  "at": "2026-11-06T23:00:00Z",
+                  "bytes": 196960
+                },
+                {
+                  "at": "2026-11-07T00:00:00Z",
+                  "bytes": 195240
+                },
+                {
+                  "at": "2026-11-07T01:00:00Z",
+                  "bytes": 196000
+                },
+                {
+                  "at": "2026-11-07T02:00:00Z",
+                  "bytes": 220184
+                },
+                {
+                  "at": "2026-11-07T03:00:00Z",
+                  "bytes": 192196
+                },
+                {
+                  "at": "2026-11-07T04:00:00Z",
+                  "bytes": 196638
+                },
+                {
+                  "at": "2026-11-07T05:00:00Z",
+                  "bytes": 250781
+                },
+                {
+                  "at": "2026-11-07T06:00:00Z",
+                  "bytes": 197605
+                },
+                {
+                  "at": "2026-11-07T07:00:00Z",
+                  "bytes": 478297
+                },
+                {
+                  "at": "2026-11-07T08:00:00Z",
+                  "bytes": 95969
+                },
+                {
+                  "at": "2026-11-07T09:00:00Z",
+                  "bytes": 90783
+                },
+                {
+                  "at": "2026-11-07T10:00:00Z",
+                  "bytes": 110841
+                },
+                {
+                  "at": "2026-11-07T11:00:00Z",
+                  "bytes": 89124
+                },
+                {
+                  "at": "2026-11-07T12:00:00Z",
+                  "bytes": 101604
+                },
+                {
+                  "at": "2026-11-07T13:00:00Z",
+                  "bytes": 91267
+                },
+                {
+                  "at": "2026-11-07T14:00:00Z",
+                  "bytes": 90099
+                },
+                {
+                  "at": "2026-11-07T15:00:00Z",
+                  "bytes": 179211
+                },
+                {
+                  "at": "2026-11-07T16:00:00Z",
+                  "bytes": 92653
+                },
+                {
+                  "at": "2026-11-07T17:00:00Z",
+                  "bytes": 97740
+                },
+                {
+                  "at": "2026-11-07T18:00:00Z",
+                  "bytes": 107332
+                },
+                {
+                  "at": "2026-11-07T19:00:00Z",
+                  "bytes": 105890
+                },
+                {
+                  "at": "2026-11-07T20:00:00Z",
+                  "bytes": 96067
+                },
+                {
+                  "at": "2026-11-07T21:00:00Z",
+                  "bytes": 97965
+                },
+                {
+                  "at": "2026-11-07T22:00:00Z",
+                  "bytes": 109613
+                }
+              ],
+              "total_bytes": 3680059
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "eero:2001",
+      "name": "Den",
+      "roles": ["access-point"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "eero",
+      "model": "eero Pro 6",
+      "hardware": "K010011",
+      "firmware": "v7.17.4-5",
+      "serial": "SERIAL0001",
+      "macs": ["02:00:00:00:00:28"],
+      "addresses": ["10.0.0.209"],
+      "up_s": 55861,
+      "ports": [
+        {
+          "name": "1",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        },
+        {
+          "name": "2",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        }
+      ],
+      "radios": [
+        {
+          "name": "2.4 GHz",
+          "band": "2.4 GHz",
+          "channel": 6,
+          "width_mhz": 20,
+          "busy_pct": 20,
+          "power_dbm": 30
+        },
+        {
+          "name": "5 GHz low",
+          "band": "5 GHz low",
+          "channel": 52,
+          "width_mhz": 80,
+          "busy_pct": 5,
+          "power_dbm": 22
+        },
+        {
+          "name": "5 GHz high",
+          "band": "5 GHz high",
+          "channel": 149,
+          "width_mhz": 80,
+          "busy_pct": 37,
+          "power_dbm": 28
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.209",
+          "backhaul": {
+            "bars": 5,
+            "kind": "wi-fi",
+            "radio": "5.8GHz",
+            "upstream": "Hall"
+          },
+          "cloud_s": 1959,
+          "devices": {
+            "all": 4,
+            "ethernet": 0,
+            "wifi": 4
+          },
+          "firmware": "v7.17.4-5",
+          "gateway": false,
+          "heartbeat_ok": true,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "bars": [5, 5, 5, 5, 5, 5]
+          },
+          "id": "2001",
+          "ipv6": ["fe80::d/64"],
+          "joined": "2020-11-13T21:54:36Z",
+          "last_heartbeat": "2026-11-07T22:54:00.584Z",
+          "last_reboot": "2026-11-07T07:22:59.605522859Z",
+          "light": {
+            "brightness": 100,
+            "on": false
+          },
+          "location": "Den",
+          "mac": "02:00:00:00:00:28",
+          "model": "eero Pro 6",
+          "model_number": "K010011",
+          "ports": [
+            {
+              "best_mbps": 1000,
+              "linked": false,
+              "mbps": null,
+              "name": "1",
+              "rx_bytes": null,
+              "tx_bytes": null,
+              "upstream": false,
+              "wan": false
+            },
+            {
+              "best_mbps": 1000,
+              "linked": false,
+              "mbps": null,
+              "name": "2",
+              "rx_bytes": null,
+              "tx_bytes": null,
+              "upstream": false,
+              "wan": false
+            }
+          ],
+          "power": "USB",
+          "radios": [
+            {
+              "band": "2.4 GHz",
+              "bssid": "02:00:00:00:00:14",
+              "busy_pct": 20,
+              "channel": 6,
+              "devices": 1,
+              "history": {
+                "at": [
+                  "2026-11-07T22:29:43Z",
+                  "2026-11-07T22:34:43Z",
+                  "2026-11-07T22:39:43Z",
+                  "2026-11-07T22:44:43Z",
+                  "2026-11-07T22:49:43Z",
+                  "2026-11-07T22:54:43Z"
+                ],
+                "busy_pct": [24, 17, 29, 22, 18, 20],
+                "channel": [6, 6, 6, 6, 6, 6],
+                "power_dbm": [30, 30, 30, 30, 30, 30]
+              },
+              "power_dbm": 30,
+              "width_mhz": 20
+            },
+            {
+              "band": "5 GHz low",
+              "bssid": "02:00:00:00:00:02",
+              "busy_pct": 5,
+              "channel": 52,
+              "devices": 2,
+              "history": {
+                "at": [
+                  "2026-11-07T22:29:43Z",
+                  "2026-11-07T22:34:43Z",
+                  "2026-11-07T22:39:43Z",
+                  "2026-11-07T22:44:43Z",
+                  "2026-11-07T22:49:43Z",
+                  "2026-11-07T22:54:43Z"
+                ],
+                "busy_pct": [9, 2, 14, 7, 3, 5],
+                "channel": [52, 52, 52, 52, 52, 52],
+                "power_dbm": [22, 22, 22, 22, 22, 22]
+              },
+              "power_dbm": 22,
+              "width_mhz": 80
+            },
+            {
+              "band": "5 GHz high",
+              "bssid": "02:00:00:00:00:12",
+              "busy_pct": 37,
+              "channel": 149,
+              "devices": 1,
+              "history": {
+                "at": [
+                  "2026-11-07T22:29:43Z",
+                  "2026-11-07T22:34:43Z",
+                  "2026-11-07T22:39:43Z",
+                  "2026-11-07T22:44:43Z",
+                  "2026-11-07T22:49:43Z",
+                  "2026-11-07T22:54:43Z"
+                ],
+                "busy_pct": [41, 34, 46, 39, 35, 37],
+                "channel": [149, 149, 149, 149, 149, 149],
+                "power_dbm": [28, 28, 28, 28, 28, 28]
+              },
+              "power_dbm": 28,
+              "width_mhz": 80
+            }
+          ],
+          "serial": "SERIAL0001",
+          "state": "ONLINE",
+          "support_ends": null,
+          "up_s": 55861,
+          "update_available": false,
+          "usage": {
+            "download": {
+              "hours": [
+                {
+                  "at": "2026-11-06T22:00:00Z",
+                  "bytes": 0
+                },
+                {
+                  "at": "2026-11-06T23:00:00Z",
+                  "bytes": 130867
+                },
+                {
+                  "at": "2026-11-07T00:00:00Z",
+                  "bytes": 133286
+                },
+                {
+                  "at": "2026-11-07T01:00:00Z",
+                  "bytes": 135619
+                },
+                {
+                  "at": "2026-11-07T02:00:00Z",
+                  "bytes": 144860
+                },
+                {
+                  "at": "2026-11-07T03:00:00Z",
+                  "bytes": 128684
+                },
+                {
+                  "at": "2026-11-07T04:00:00Z",
+                  "bytes": 132592
+                },
+                {
+                  "at": "2026-11-07T05:00:00Z",
+                  "bytes": 132486
+                },
+                {
+                  "at": "2026-11-07T06:00:00Z",
+                  "bytes": 135251
+                },
+                {
+                  "at": "2026-11-07T07:00:00Z",
+                  "bytes": 139684528
+                },
+                {
+                  "at": "2026-11-07T08:00:00Z",
+                  "bytes": 56892
+                },
+                {
+                  "at": "2026-11-07T09:00:00Z",
+                  "bytes": 94932
+                },
+                {
+                  "at": "2026-11-07T10:00:00Z",
+                  "bytes": 83279
+                },
+                {
+                  "at": "2026-11-07T11:00:00Z",
+                  "bytes": 85062
+                },
+                {
+                  "at": "2026-11-07T12:00:00Z",
+                  "bytes": 98675
+                },
+                {
+                  "at": "2026-11-07T13:00:00Z",
+                  "bytes": 87514
+                },
+                {
+                  "at": "2026-11-07T14:00:00Z",
+                  "bytes": 80171
+                },
+                {
+                  "at": "2026-11-07T15:00:00Z",
+                  "bytes": 88649
+                },
+                {
+                  "at": "2026-11-07T16:00:00Z",
+                  "bytes": 86960
+                },
+                {
+                  "at": "2026-11-07T17:00:00Z",
+                  "bytes": 85825
+                },
+                {
+                  "at": "2026-11-07T18:00:00Z",
+                  "bytes": 98967
+                },
+                {
+                  "at": "2026-11-07T19:00:00Z",
+                  "bytes": 79105
+                },
+                {
+                  "at": "2026-11-07T20:00:00Z",
+                  "bytes": 85479
+                },
+                {
+                  "at": "2026-11-07T21:00:00Z",
+                  "bytes": 87307
+                },
+                {
+                  "at": "2026-11-07T22:00:00Z",
+                  "bytes": 93803
+                }
+              ],
+              "total_bytes": 142050793
+            },
+            "upload": {
+              "hours": [
+                {
+                  "at": "2026-11-06T22:00:00Z",
+                  "bytes": 0
+                },
+                {
+                  "at": "2026-11-06T23:00:00Z",
+                  "bytes": 193850
+                },
+                {
+                  "at": "2026-11-07T00:00:00Z",
+                  "bytes": 197101
+                },
+                {
+                  "at": "2026-11-07T01:00:00Z",
+                  "bytes": 252229
+                },
+                {
+                  "at": "2026-11-07T02:00:00Z",
+                  "bytes": 219334
+                },
+                {
+                  "at": "2026-11-07T03:00:00Z",
+                  "bytes": 195774
+                },
+                {
+                  "at": "2026-11-07T04:00:00Z",
+                  "bytes": 208096
+                },
+                {
+                  "at": "2026-11-07T05:00:00Z",
+                  "bytes": 199786
+                },
+                {
+                  "at": "2026-11-07T06:00:00Z",
+                  "bytes": 194629
+                },
+                {
+                  "at": "2026-11-07T07:00:00Z",
+                  "bytes": 495613
+                },
+                {
+                  "at": "2026-11-07T08:00:00Z",
+                  "bytes": 60491
+                },
+                {
+                  "at": "2026-11-07T09:00:00Z",
+                  "bytes": 86526
+                },
+                {
+                  "at": "2026-11-07T10:00:00Z",
+                  "bytes": 90322
+                },
+                {
+                  "at": "2026-11-07T11:00:00Z",
+                  "bytes": 93285
+                },
+                {
+                  "at": "2026-11-07T12:00:00Z",
+                  "bytes": 186595
+                },
+                {
+                  "at": "2026-11-07T13:00:00Z",
+                  "bytes": 97486
+                },
+                {
+                  "at": "2026-11-07T14:00:00Z",
+                  "bytes": 89832
+                },
+                {
+                  "at": "2026-11-07T15:00:00Z",
+                  "bytes": 93189
+                },
+                {
+                  "at": "2026-11-07T16:00:00Z",
+                  "bytes": 100060
+                },
+                {
+                  "at": "2026-11-07T17:00:00Z",
+                  "bytes": 97001
+                },
+                {
+                  "at": "2026-11-07T18:00:00Z",
+                  "bytes": 105356
+                },
+                {
+                  "at": "2026-11-07T19:00:00Z",
+                  "bytes": 91797
+                },
+                {
+                  "at": "2026-11-07T20:00:00Z",
+                  "bytes": 96347
+                },
+                {
+                  "at": "2026-11-07T21:00:00Z",
+                  "bytes": 97533
+                },
+                {
+                  "at": "2026-11-07T22:00:00Z",
+                  "bytes": 102140
+                }
+              ],
+              "total_bytes": 3644372
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:0a",
+      "name": "generic 2",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": null,
+      "model": null,
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:0a"],
+      "addresses": ["10.0.0.45", "fe80::6"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "5 GHz",
+          "channel": 52,
+          "width_mhz": 80,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.45",
+          "addresses": ["10.0.0.45", "fe80::6"],
+          "auth": "wpa2",
+          "band": "5 GHz",
+          "bars": 5,
+          "blocked": null,
+          "bssid": "02:00:00:00:00:02",
+          "channel": 52,
+          "ethernet": false,
+          "first_active": "2026-11-07T12:43:06.426Z",
+          "first_seen": "2026-10-22T16:54:41.749Z",
+          "frequency_mhz": 5260,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "rx_mbps": [1200.9, 1080.8, 900.7, 1200.9, 1200.9, 1200.9],
+            "signal_dbm": [-40, -38, -41, -39, -36, -37],
+            "snr_db": [71, 71, 71, 71, 71, 71],
+            "tx_mbps": [1080.6, 1080.6, 1080.6, 1080.6, 1080.6, 1080.6],
+            "up_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          },
+          "hostname": "generic 2",
+          "idle_ms": 540,
+          "kind": "generic",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:0a",
+          "make": null,
+          "manufacturer": null,
+          "model": null,
+          "name": "generic 2",
+          "nickname": null,
+          "node": "2001",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 52846,
+            "total_packets": 147759,
+            "tx_fail_ppm": 5494,
+            "tx_packets": 94913,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 735
+          },
+          "paused": false,
+          "port": null,
+          "private": true,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": "Wi-Fi 6",
+            "guard_ns": 800,
+            "mbps": 1200.9,
+            "mcs": 11,
+            "streams": 2,
+            "width_mhz": 80
+          },
+          "score": 1,
+          "signal_dbm": -37,
+          "snr_db": 71,
+          "speed": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": {
+            "generation": "Wi-Fi 6",
+            "guard_ns": 800,
+            "mbps": 1080.6,
+            "mcs": 10,
+            "streams": 2,
+            "width_mhz": 80
+          }
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:11",
+      "name": "laptop computer 2",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Apple",
+      "model": "Mac",
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:11"],
+      "addresses": ["10.0.0.24", "fe80::c"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "5 GHz",
+          "channel": 149,
+          "width_mhz": 80,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.24",
+          "addresses": ["10.0.0.24", "fe80::c"],
+          "auth": "wpa2",
+          "band": "5 GHz",
+          "bars": 5,
+          "blocked": null,
+          "bssid": "02:00:00:00:00:12",
+          "channel": 149,
+          "ethernet": false,
+          "first_active": "2026-11-07T07:26:58.587Z",
+          "first_seen": "2026-08-19T12:24:08.685Z",
+          "frequency_mhz": 5745,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0872303, 0.2616908, 0.0436151, 0.1744606, 0.1308454, 0.1453838],
+            "rx_mbps": [1200.9, 1080.8, 900.7, 1200.9, 1200.9, 1200.9],
+            "signal_dbm": [-41, -39, -42, -40, -37, -38],
+            "snr_db": [70, 70, 70, 70, 70, 70],
+            "tx_mbps": [1200.9, 1200.9, 1200.9, 1200.9, 1200.9, 1200.9],
+            "up_mbps": [0.0585791, 0.1757374, 0.0292896, 0.1171583, 0.0878687, 0.0976319]
+          },
+          "hostname": "laptop computer 2",
+          "idle_ms": 40,
+          "kind": "laptop_computer",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:11",
+          "make": "Apple",
+          "manufacturer": null,
+          "model": "Mac",
+          "name": "laptop computer 2",
+          "nickname": null,
+          "node": "2001",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 2505633,
+            "total_packets": 6072645,
+            "tx_fail_ppm": 0,
+            "tx_packets": 3567012,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 45
+          },
+          "paused": false,
+          "port": null,
+          "private": true,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": "Wi-Fi 6",
+            "guard_ns": 800,
+            "mbps": 1200.9,
+            "mcs": 11,
+            "streams": 2,
+            "width_mhz": 80
+          },
+          "score": 1,
+          "signal_dbm": -38,
+          "snr_db": 70,
+          "speed": {
+            "down_mbps": 0.1453838,
+            "up_mbps": 0.0976319
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": {
+            "generation": "Wi-Fi 6",
+            "guard_ns": 800,
+            "mbps": 1200.9,
+            "mcs": 11,
+            "streams": 2,
+            "width_mhz": 80
+          }
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:13",
+      "name": "printer 1",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Hewlett Packard",
+      "model": null,
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:13"],
+      "addresses": ["10.0.0.31"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "2.4 GHz",
+          "channel": 6,
+          "width_mhz": 20,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.31",
+          "addresses": ["10.0.0.31"],
+          "auth": "wpa2",
+          "band": "2.4 GHz",
+          "bars": 5,
+          "blocked": false,
+          "bssid": "02:00:00:00:00:14",
+          "channel": 6,
+          "ethernet": false,
+          "first_active": "2026-11-07T07:26:58.587Z",
+          "first_seen": "2020-11-13T22:18:36.699159Z",
+          "frequency_mhz": 2437,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "rx_mbps": [72.2, 65.0, 54.2, 72.2, 72.2, 72.2],
+            "signal_dbm": [-52, -50, -53, -51, -48, -49],
+            "snr_db": [56, 56, 56, 56, 56, 56],
+            "tx_mbps": [null, null, null, null, null, null],
+            "up_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          },
+          "hostname": "printer 2",
+          "idle_ms": 37710,
+          "kind": "printer",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:13",
+          "make": "HP",
+          "manufacturer": "Hewlett Packard",
+          "model": null,
+          "name": "printer 1",
+          "nickname": "printer 1",
+          "node": "2001",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 2853,
+            "total_packets": 5196,
+            "tx_fail_ppm": 0,
+            "tx_packets": 2343,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 90
+          },
+          "paused": false,
+          "port": null,
+          "private": false,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": "Wi-Fi 4",
+            "guard_ns": 400,
+            "mbps": 72.2,
+            "mcs": 7,
+            "streams": 1,
+            "width_mhz": 20
+          },
+          "score": 1,
+          "signal_dbm": -49,
+          "snr_db": 56,
+          "speed": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": null
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:01",
+      "name": "tablet 1",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Apple",
+      "model": "iPad",
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:01"],
+      "addresses": ["10.0.0.29", "fe80::1"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "5 GHz",
+          "channel": 52,
+          "width_mhz": null,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.29",
+          "addresses": ["10.0.0.29", "fe80::1"],
+          "auth": "wpa2",
+          "band": "5 GHz",
+          "bars": 5,
+          "blocked": false,
+          "bssid": "02:00:00:00:00:02",
+          "channel": 52,
+          "ethernet": false,
+          "first_active": "2026-11-07T22:42:35.077Z",
+          "first_seen": "2026-02-09T20:08:06.564127Z",
+          "frequency_mhz": 5260,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.7343384, 2.2030151, 0.3671692, 1.4686768, 1.1015076, 1.2238973],
+            "rx_mbps": [48.0, 43.2, 36.0, 48.0, 48.0, 48.0],
+            "signal_dbm": [-62, -60, -63, -61, -58, -59],
+            "snr_db": [null, null, null, null, null, null],
+            "tx_mbps": [null, null, null, null, null, null],
+            "up_mbps": [0.0143762, 0.0431287, 0.0071881, 0.0287525, 0.0215644, 0.0239604]
+          },
+          "hostname": "tablet 1",
+          "idle_ms": 0,
+          "kind": "tablet",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:01",
+          "make": "Apple",
+          "manufacturer": null,
+          "model": "iPad",
+          "name": "tablet 1",
+          "nickname": null,
+          "node": "2001",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 6,
+            "total_packets": 12,
+            "tx_fail_ppm": 0,
+            "tx_packets": 6,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 30
+          },
+          "paused": false,
+          "port": null,
+          "private": true,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [
+            {
+              "at": "2026-11-07T22:44:43Z",
+              "band": "5 GHz",
+              "from_band": "2.4 GHz",
+              "from_node": "2002",
+              "node": "2001"
+            }
+          ],
+          "rx": {
+            "generation": null,
+            "guard_ns": null,
+            "mbps": 48.0,
+            "mcs": null,
+            "streams": null,
+            "width_mhz": null
+          },
+          "score": 1,
+          "signal_dbm": -59,
+          "snr_db": null,
+          "speed": {
+            "down_mbps": 1.2238973,
+            "up_mbps": 0.0239604
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": null
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:15",
+      "name": "generic 4",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Samsung Electronics Co.,Ltd",
+      "model": null,
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:15"],
+      "addresses": ["10.0.0.25", "fe80::e"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "5 GHz",
+          "channel": 149,
+          "width_mhz": 80,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.25",
+          "addresses": ["10.0.0.25", "fe80::e"],
+          "auth": "wpa2",
+          "band": "5 GHz",
+          "bars": 5,
+          "blocked": null,
+          "bssid": "02:00:00:00:00:09",
+          "channel": 149,
+          "ethernet": false,
+          "first_active": "2026-11-07T07:23:23.953Z",
+          "first_seen": "2026-07-27T01:43:45.488Z",
+          "frequency_mhz": 5745,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0013403, 0.004021, 0.0006702, 0.0026807, 0.0020105, 0.0022339],
+            "rx_mbps": [433.3, 390.0, 325.0, 433.3, 433.3, 433.3],
+            "signal_dbm": [-23, -21, -24, -22, -19, -20],
+            "snr_db": [88, 88, 88, 88, 88, 88],
+            "tx_mbps": [866.7, 866.7, 866.7, 866.7, 866.7, 866.7],
+            "up_mbps": [0.001984, 0.0059519, 0.000992, 0.0039679, 0.0029759, 0.0033066]
+          },
+          "hostname": "generic 4",
+          "idle_ms": 84840,
+          "kind": "generic",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:15",
+          "make": "Samsung",
+          "manufacturer": "Samsung Electronics Co.,Ltd",
+          "model": null,
+          "name": "generic 4",
+          "nickname": null,
+          "node": "2002",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 1,
+            "rx_packets": 30835,
+            "total_packets": 50626,
+            "tx_fail_ppm": 0,
+            "tx_packets": 19791,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 15
+          },
+          "paused": false,
+          "port": null,
+          "private": false,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": "Wi-Fi 5",
+            "guard_ns": 400,
+            "mbps": 433.3,
+            "mcs": 9,
+            "streams": 1,
+            "width_mhz": 80
+          },
+          "score": 1,
+          "signal_dbm": -20,
+          "snr_db": 88,
+          "speed": {
+            "down_mbps": 0.0022339,
+            "up_mbps": 0.0033066
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": {
+            "generation": "Wi-Fi 5",
+            "guard_ns": 400,
+            "mbps": 866.7,
+            "mcs": 9,
+            "streams": 2,
+            "width_mhz": 80
+          }
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:17",
+      "name": "audio 1",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Sony Corporation",
+      "model": null,
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:17"],
+      "addresses": ["10.0.0.112"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "2.4 GHz",
+          "channel": 6,
+          "width_mhz": null,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.112",
+          "addresses": ["10.0.0.112"],
+          "auth": "wpa2",
+          "band": "2.4 GHz",
+          "bars": 5,
+          "blocked": false,
+          "bssid": "02:00:00:00:00:10",
+          "channel": 6,
+          "ethernet": false,
+          "first_active": "2026-11-07T07:21:10.220Z",
+          "first_seen": "2020-11-13T22:01:43.629724Z",
+          "frequency_mhz": 2437,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "rx_mbps": [48.0, 43.2, 36.0, 48.0, 48.0, 48.0],
+            "signal_dbm": [-32, -30, -33, -31, -28, -29],
+            "snr_db": [78, 78, 78, 78, 78, 78],
+            "tx_mbps": [null, null, null, null, null, null],
+            "up_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          },
+          "hostname": "audio 2",
+          "idle_ms": 5580,
+          "kind": "audio",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:17",
+          "make": "Sony",
+          "manufacturer": "Sony Corporation",
+          "model": null,
+          "name": "audio 1",
+          "nickname": "audio 1",
+          "node": "2002",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 8590,
+            "total_packets": 11777,
+            "tx_fail_ppm": 0,
+            "tx_packets": 3187,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 15
+          },
+          "paused": false,
+          "port": null,
+          "private": false,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": null,
+            "guard_ns": null,
+            "mbps": 48.0,
+            "mcs": null,
+            "streams": null,
+            "width_mhz": null
+          },
+          "score": 1,
+          "signal_dbm": -29,
+          "snr_db": 78,
+          "speed": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": null
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:16",
+      "name": "media streamer 1",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Apple, Inc.",
+      "model": null,
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:16"],
+      "addresses": ["10.0.0.33", "fe80::f"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "5 GHz",
+          "channel": 149,
+          "width_mhz": 80,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.33",
+          "addresses": ["10.0.0.33", "fe80::f"],
+          "auth": "wpa2",
+          "band": "5 GHz",
+          "bars": 5,
+          "blocked": false,
+          "bssid": "02:00:00:00:00:09",
+          "channel": 149,
+          "ethernet": false,
+          "first_active": "2026-11-07T07:21:10.327Z",
+          "first_seen": "2020-11-13T23:56:50.651891Z",
+          "frequency_mhz": 5745,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "rx_mbps": [325.0, 292.5, 243.8, 325.0, 325.0, 325.0],
+            "signal_dbm": [-46, -44, -47, -45, -42, -43],
+            "snr_db": [65, 65, 65, 65, 65, 65],
+            "tx_mbps": [null, null, null, null, null, null],
+            "up_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          },
+          "hostname": "thermostat 1",
+          "idle_ms": 13120,
+          "kind": "media_streamer",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:16",
+          "make": "Apple",
+          "manufacturer": "Apple, Inc.",
+          "model": null,
+          "name": "media streamer 1",
+          "nickname": "media streamer 1",
+          "node": "2002",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 28350,
+            "total_packets": 56557,
+            "tx_fail_ppm": 0,
+            "tx_packets": 28207,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 105
+          },
+          "paused": false,
+          "port": null,
+          "private": false,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": "Wi-Fi 5",
+            "guard_ns": 400,
+            "mbps": 325,
+            "mcs": 7,
+            "streams": 1,
+            "width_mhz": 80
+          },
+          "score": 1,
+          "signal_dbm": -43,
+          "snr_db": 65,
+          "speed": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": null
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:08",
+      "name": "unknown computer 1",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Intel Corporate",
+      "model": null,
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:08"],
+      "addresses": ["10.0.0.20", "fe80::5"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "5 GHz",
+          "channel": 149,
+          "width_mhz": 80,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.20",
+          "addresses": ["10.0.0.20", "fe80::5"],
+          "auth": "wpa2",
+          "band": "5 GHz",
+          "bars": 5,
+          "blocked": null,
+          "bssid": "02:00:00:00:00:09",
+          "channel": 149,
+          "ethernet": false,
+          "first_active": "2026-11-07T15:31:31.505Z",
+          "first_seen": "2026-10-06T23:09:32.183Z",
+          "frequency_mhz": 5745,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [6.8713794, 20.6141382, 3.4356897, 13.7427588, 10.3070691, 11.452299],
+            "rx_mbps": [1200.9, 1080.8, 900.7, 1200.9, 1200.9, 1200.9],
+            "signal_dbm": [-60, -58, -61, -59, -56, -57],
+            "snr_db": [51, 51, 51, 51, 51, 51],
+            "tx_mbps": [1200.9, 1200.9, 1200.9, 1200.9, 1200.9, 1200.9],
+            "up_mbps": [5.9186609, 17.7559828, 2.9593305, 11.8373219, 8.8779914, 9.8644349]
+          },
+          "hostname": "unknown computer 1",
+          "idle_ms": 0,
+          "kind": "unknown_computer",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:08",
+          "make": null,
+          "manufacturer": "Intel Corporate",
+          "model": null,
+          "name": "unknown computer 1",
+          "nickname": null,
+          "node": "2002",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 31747180,
+            "total_packets": 84627124,
+            "tx_fail_ppm": 2967,
+            "tx_packets": 52879944,
+            "tx_retransmit_ppm": 32,
+            "tx_retries": 3315
+          },
+          "paused": false,
+          "port": null,
+          "private": false,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": "Wi-Fi 6",
+            "guard_ns": 800,
+            "mbps": 1200.9,
+            "mcs": 11,
+            "streams": 2,
+            "width_mhz": 80
+          },
+          "score": 1,
+          "signal_dbm": -57,
+          "snr_db": 51,
+          "speed": {
+            "down_mbps": 11.452299,
+            "up_mbps": 9.8644349
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": {
+            "generation": "Wi-Fi 6",
+            "guard_ns": 800,
+            "mbps": 1200.9,
+            "mcs": 11,
+            "streams": 2,
+            "width_mhz": 80
+          }
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:0d",
+      "name": "thermostat 1",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "ecobee inc",
+      "model": null,
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:0d"],
+      "addresses": ["10.0.0.30", "fe80::9"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "5 GHz",
+          "channel": 149,
+          "width_mhz": 80,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.30",
+          "addresses": ["10.0.0.30", "fe80::9"],
+          "auth": "wpa2",
+          "band": "5 GHz",
+          "bars": 5,
+          "blocked": null,
+          "bssid": "02:00:00:00:00:09",
+          "channel": 149,
+          "ethernet": false,
+          "first_active": "2026-11-07T07:32:16.968Z",
+          "first_seen": "2026-08-19T18:01:02.648Z",
+          "frequency_mhz": 5745,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0000794, 0.0002381, 0.0000397, 0.0001588, 0.0001191, 0.0001323],
+            "rx_mbps": [390.0, 351.0, 292.5, 390.0, 390.0, 390.0],
+            "signal_dbm": [-68, -66, -69, -67, -64, -65],
+            "snr_db": [43, 43, 43, 43, 43, 43],
+            "tx_mbps": [433.3, 433.3, 433.3, 433.3, 433.3, 433.3],
+            "up_mbps": [0.0000638, 0.0001915, 0.0000319, 0.0001277, 0.0000958, 0.0001064]
+          },
+          "hostname": "thermostat 1",
+          "idle_ms": 3400,
+          "kind": "thermostat",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:0d",
+          "make": "ecobee",
+          "manufacturer": "ecobee inc",
+          "model": null,
+          "name": "thermostat 1",
+          "nickname": null,
+          "node": "2002",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 42405,
+            "total_packets": 54777,
+            "tx_fail_ppm": 0,
+            "tx_packets": 12372,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 60
+          },
+          "paused": false,
+          "port": null,
+          "private": false,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": "Wi-Fi 5",
+            "guard_ns": 800,
+            "mbps": 390,
+            "mcs": 9,
+            "streams": 1,
+            "width_mhz": 80
+          },
+          "score": 1,
+          "signal_dbm": -65,
+          "snr_db": 43,
+          "speed": {
+            "down_mbps": 0.0001323,
+            "up_mbps": 0.0001064
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": {
+            "generation": "Wi-Fi 5",
+            "guard_ns": 400,
+            "mbps": 433.3,
+            "mcs": 9,
+            "streams": 1,
+            "width_mhz": 80
+          }
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:0f",
+      "name": "game console 1",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Nintendo Co.,Ltd",
+      "model": "Switch",
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:0f"],
+      "addresses": ["10.0.0.47"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "2.4 GHz",
+          "channel": 6,
+          "width_mhz": 20,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.47",
+          "addresses": ["10.0.0.47"],
+          "auth": "wpa2",
+          "band": "2.4 GHz",
+          "bars": 5,
+          "blocked": false,
+          "bssid": "02:00:00:00:00:10",
+          "channel": 6,
+          "ethernet": false,
+          "first_active": "2026-11-07T07:30:10.186Z",
+          "first_seen": "2021-04-17T14:38:08.105832Z",
+          "frequency_mhz": 2437,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "rx_mbps": [72.2, 65.0, 54.2, 72.2, 72.2, 72.2],
+            "signal_dbm": [-69, -67, -70, -68, -65, -66],
+            "snr_db": [41, 41, 41, 41, 41, 41],
+            "tx_mbps": [65.0, 65.0, 65.0, 65.0, 65.0, 65.0],
+            "up_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          },
+          "hostname": null,
+          "idle_ms": 11530,
+          "kind": "game_console",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:0f",
+          "make": "Nintendo",
+          "manufacturer": "Nintendo Co.,Ltd",
+          "model": "Switch",
+          "name": "game console 1",
+          "nickname": "game console 1",
+          "node": "2002",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 5557,
+            "total_packets": 11935,
+            "tx_fail_ppm": 6557,
+            "tx_packets": 6378,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 60
+          },
+          "paused": false,
+          "port": null,
+          "private": false,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": "Wi-Fi 4",
+            "guard_ns": 400,
+            "mbps": 72.2,
+            "mcs": 7,
+            "streams": 1,
+            "width_mhz": 20
+          },
+          "score": 1,
+          "signal_dbm": -66,
+          "snr_db": 41,
+          "speed": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": {
+            "generation": "Wi-Fi 4",
+            "guard_ns": 800,
+            "mbps": 65,
+            "mcs": 7,
+            "streams": 1,
+            "width_mhz": 20
+          }
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:07",
+      "name": "generic 1",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": null,
+      "model": null,
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:07"],
+      "addresses": ["10.0.0.28", "fe80::4"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "5 GHz",
+          "channel": 52,
+          "width_mhz": 80,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.28",
+          "addresses": ["10.0.0.28", "fe80::4"],
+          "auth": "wpa2",
+          "band": "5 GHz",
+          "bars": 5,
+          "blocked": null,
+          "bssid": "02:00:00:00:00:04",
+          "channel": 52,
+          "ethernet": false,
+          "first_active": "2026-11-07T18:22:10.992Z",
+          "first_seen": "2026-08-19T01:07:25.492Z",
+          "frequency_mhz": 5260,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "rx_mbps": [360.3, 324.3, 270.2, 360.3, 360.3, 360.3],
+            "signal_dbm": [-71, -69, -72, -70, -67, -68],
+            "snr_db": [40, 40, 40, 40, 40, 40],
+            "tx_mbps": [null, null, null, null, null, null],
+            "up_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          },
+          "hostname": "generic 1",
+          "idle_ms": 80250,
+          "kind": "generic",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:07",
+          "make": null,
+          "manufacturer": null,
+          "model": null,
+          "name": "generic 1",
+          "nickname": null,
+          "node": "2002",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 12665,
+            "total_packets": 24445,
+            "tx_fail_ppm": 2127,
+            "tx_packets": 11780,
+            "tx_retransmit_ppm": 10548,
+            "tx_retries": 75
+          },
+          "paused": false,
+          "port": null,
+          "private": true,
+          "profile": null,
+          "retry_pct": 1,
+          "roams": [],
+          "rx": {
+            "generation": "Wi-Fi 6",
+            "guard_ns": 800,
+            "mbps": 360.3,
+            "mcs": 7,
+            "streams": 1,
+            "width_mhz": 80
+          },
+          "score": 1,
+          "signal_dbm": -68,
+          "snr_db": 40,
+          "speed": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": null
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:03",
+      "name": "phone 1",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Apple",
+      "model": "iPhone",
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:03"],
+      "addresses": ["10.0.0.40", "fe80::2"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "5 GHz",
+          "channel": 52,
+          "width_mhz": null,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.40",
+          "addresses": ["10.0.0.40", "fe80::2"],
+          "auth": "wpa2",
+          "band": "5 GHz",
+          "bars": 5,
+          "blocked": null,
+          "bssid": "02:00:00:00:00:04",
+          "channel": 52,
+          "ethernet": false,
+          "first_active": "2026-11-07T22:31:41.994Z",
+          "first_seen": "2026-08-19T18:54:14.874Z",
+          "frequency_mhz": 5260,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "rx_mbps": [48.0, 43.2, 36.0, 48.0, 48.0, 48.0],
+            "signal_dbm": [-72, -70, -73, -71, -68, -69],
+            "snr_db": [null, null, null, null, null, null],
+            "tx_mbps": [null, null, null, null, null, null],
+            "up_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          },
+          "hostname": "phone 1",
+          "idle_ms": 0,
+          "kind": "phone",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:03",
+          "make": "Apple",
+          "manufacturer": null,
+          "model": "iPhone",
+          "name": "phone 1",
+          "nickname": null,
+          "node": "2002",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 4,
+            "total_packets": 9,
+            "tx_fail_ppm": 0,
+            "tx_packets": 5,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 15
+          },
+          "paused": false,
+          "port": null,
+          "private": true,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": null,
+            "guard_ns": null,
+            "mbps": 48.0,
+            "mcs": null,
+            "streams": null,
+            "width_mhz": null
+          },
+          "score": 1,
+          "signal_dbm": -69,
+          "snr_db": null,
+          "speed": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": null
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:0e",
+      "name": "laptop computer 1",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Apple",
+      "model": "MacBook Air",
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:0e"],
+      "addresses": ["10.0.0.26", "fe80::a"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "5 GHz",
+          "channel": 52,
+          "width_mhz": 80,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.26",
+          "addresses": ["10.0.0.26", "fe80::a"],
+          "auth": "wpa2",
+          "band": "5 GHz",
+          "bars": 5,
+          "blocked": null,
+          "bssid": "02:00:00:00:00:04",
+          "channel": 52,
+          "ethernet": false,
+          "first_active": "2026-11-07T07:32:16.968Z",
+          "first_seen": "2026-11-05T02:07:45.318Z",
+          "frequency_mhz": 5260,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0389014, 0.1556056, 0.1167042, 0.1296713],
+            "rx_mbps": [324.2, 432.3, 432.3, 432.3],
+            "signal_dbm": [-79, -77, -74, -75],
+            "snr_db": [33, 33, 33, 33],
+            "tx_mbps": [960.7, 960.7, 960.7, 960.7],
+            "up_mbps": [0.0043535, 0.017414, 0.0130605, 0.0145117]
+          },
+          "hostname": "laptop computer 1",
+          "idle_ms": 90,
+          "kind": "laptop_computer",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:0e",
+          "make": "Apple",
+          "manufacturer": null,
+          "model": "MacBook Air",
+          "name": "laptop computer 1",
+          "nickname": null,
+          "node": "2002",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 171741,
+            "total_packets": 389237,
+            "tx_fail_ppm": 0,
+            "tx_packets": 217496,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 75
+          },
+          "paused": false,
+          "port": null,
+          "private": true,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": "Wi-Fi 6",
+            "guard_ns": 800,
+            "mbps": 432.3,
+            "mcs": 4,
+            "streams": 2,
+            "width_mhz": 80
+          },
+          "score": 1,
+          "signal_dbm": -75,
+          "snr_db": 33,
+          "speed": {
+            "down_mbps": 0.1296713,
+            "up_mbps": 0.0145117
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": true,
+          "tx": {
+            "generation": "Wi-Fi 6",
+            "guard_ns": 800,
+            "mbps": 960.7,
+            "mcs": 9,
+            "streams": 2,
+            "width_mhz": 80
+          }
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:0b",
+      "name": "generic 3",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Espressif Inc.",
+      "model": null,
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:0b"],
+      "addresses": ["10.0.0.99"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "2.4 GHz",
+          "channel": 6,
+          "width_mhz": 20,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.99",
+          "addresses": ["10.0.0.99"],
+          "auth": "wpa2",
+          "band": "2.4 GHz",
+          "bars": 5,
+          "blocked": null,
+          "bssid": "02:00:00:00:00:0c",
+          "channel": 6,
+          "ethernet": false,
+          "first_active": "2026-11-07T07:49:40.023Z",
+          "first_seen": "2026-08-12T21:11:29.916Z",
+          "frequency_mhz": 2437,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0000589, 0.0001768, 0.0000295, 0.0001178, 0.0000884, 0.0000982],
+            "rx_mbps": [72.2, 65.0, 54.2, 72.2, 72.2, 72.2],
+            "signal_dbm": [-51, -49, -52, -50, -47, -48],
+            "snr_db": [59, 59, 59, 59, 59, 59],
+            "tx_mbps": [null, null, null, null, null, null],
+            "up_mbps": [0.0000922, 0.0002767, 0.0000461, 0.0001844, 0.0001383, 0.0001537]
+          },
+          "hostname": "generic 3",
+          "idle_ms": 700,
+          "kind": "generic",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:0b",
+          "make": null,
+          "manufacturer": "Espressif Inc.",
+          "model": null,
+          "name": "generic 3",
+          "nickname": null,
+          "node": "2003",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 24117,
+            "total_packets": 37122,
+            "tx_fail_ppm": 4950,
+            "tx_packets": 13005,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 0
+          },
+          "paused": false,
+          "port": null,
+          "private": false,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": "Wi-Fi 4",
+            "guard_ns": 400,
+            "mbps": 72.2,
+            "mcs": 7,
+            "streams": 1,
+            "width_mhz": 20
+          },
+          "score": 1,
+          "signal_dbm": -48,
+          "snr_db": 59,
+          "speed": {
+            "down_mbps": 0.0000982,
+            "up_mbps": 0.0001537
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": null
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:05",
+      "name": "phone 1",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Apple",
+      "model": "iPhone",
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:05"],
+      "addresses": ["10.0.0.23", "fe80::3"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "5 GHz",
+          "channel": 149,
+          "width_mhz": 80,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "detail": {
+        "eero": {
+          "address": "10.0.0.23",
+          "addresses": ["10.0.0.23", "fe80::3"],
+          "auth": "wpa2",
+          "band": "5 GHz",
+          "bars": 5,
+          "blocked": null,
+          "bssid": "02:00:00:00:00:06",
+          "channel": 149,
+          "ethernet": false,
+          "first_active": "2026-11-07T20:07:51.956Z",
+          "first_seen": "2026-08-19T14:08:04.420Z",
+          "frequency_mhz": 5745,
+          "guest": false,
+          "history": {
+            "at": [
+              "2026-11-07T22:29:43Z",
+              "2026-11-07T22:34:43Z",
+              "2026-11-07T22:39:43Z",
+              "2026-11-07T22:44:43Z",
+              "2026-11-07T22:49:43Z",
+              "2026-11-07T22:54:43Z"
+            ],
+            "down_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "rx_mbps": [313.4, 282.1, 235.1, 313.4, 313.4, 313.4],
+            "signal_dbm": [-55, -53, -56, -54, -51, -52],
+            "snr_db": [55, 55, 55, 55, 55, 55],
+            "tx_mbps": [720.6, 720.6, 720.6, 720.6, 720.6, 720.6],
+            "up_mbps": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          },
+          "hostname": "phone 1",
+          "idle_ms": 10280,
+          "kind": "phone",
+          "last_active": "2026-11-07T22:49:40.090Z",
+          "mac": "02:00:00:00:00:05",
+          "make": "Apple",
+          "manufacturer": null,
+          "model": "iPhone",
+          "name": "phone 1",
+          "nickname": null,
+          "node": "2003",
+          "packets": {
+            "rx_drop_ppm": 0,
+            "rx_drops": 0,
+            "rx_packets": 63489,
+            "total_packets": 487582,
+            "tx_fail_ppm": 1870,
+            "tx_packets": 424093,
+            "tx_retransmit_ppm": 0,
+            "tx_retries": 60
+          },
+          "paused": false,
+          "port": null,
+          "private": true,
+          "profile": null,
+          "retry_pct": 0,
+          "roams": [],
+          "rx": {
+            "generation": "Wi-Fi 6",
+            "guard_ns": 800,
+            "mbps": 313.4,
+            "mcs": 6,
+            "streams": 1,
+            "width_mhz": 80
+          },
+          "score": 0.778,
+          "signal_dbm": -52,
+          "snr_db": 55,
+          "speed": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "ssid": "home",
+          "subnet": "main",
+          "this_machine": false,
+          "tx": {
+            "generation": "Wi-Fi 6",
+            "guard_ns": 800,
+            "mbps": 720.6,
+            "mcs": 7,
+            "streams": 2,
+            "width_mhz": 80
+          }
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "a": {
+        "device": "eero:2002",
+        "radio": "5 GHz high"
+      },
+      "b": {
+        "device": "eero:2003",
+        "radio": "5 GHz high"
+      },
+      "medium": "wifi",
+      "speed_mbps": null,
+      "channel": 149,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "eero:2001",
+        "radio": "5 GHz high"
+      },
+      "b": {
+        "device": "eero:2003",
+        "radio": "5 GHz high"
+      },
+      "medium": "wifi",
+      "speed_mbps": null,
+      "channel": 149,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "modem",
+        "port": "ethernet"
+      },
+      "b": {
+        "device": "eero:2003",
+        "port": "1"
+      },
+      "medium": "ethernet",
+      "speed_mbps": 1000,
+      "channel": null,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:0a",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2001",
+        "radio": "5 GHz low"
+      },
+      "medium": "wifi",
+      "speed_mbps": 1201,
+      "channel": 52,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:11",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2001",
+        "radio": "5 GHz high"
+      },
+      "medium": "wifi",
+      "speed_mbps": 1201,
+      "channel": 149,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:13",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2001",
+        "radio": "2.4 GHz"
+      },
+      "medium": "wifi",
+      "speed_mbps": 72,
+      "channel": 6,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:01",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2001",
+        "radio": "5 GHz low"
+      },
+      "medium": "wifi",
+      "speed_mbps": 48,
+      "channel": 52,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:15",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2002",
+        "radio": "5 GHz high"
+      },
+      "medium": "wifi",
+      "speed_mbps": 433,
+      "channel": 149,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:17",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2002",
+        "radio": "2.4 GHz"
+      },
+      "medium": "wifi",
+      "speed_mbps": 48,
+      "channel": 6,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:16",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2002",
+        "radio": "5 GHz high"
+      },
+      "medium": "wifi",
+      "speed_mbps": 325,
+      "channel": 149,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:08",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2002",
+        "radio": "5 GHz high"
+      },
+      "medium": "wifi",
+      "speed_mbps": 1201,
+      "channel": 149,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:0d",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2002",
+        "radio": "5 GHz high"
+      },
+      "medium": "wifi",
+      "speed_mbps": 390,
+      "channel": 149,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:0f",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2002",
+        "radio": "2.4 GHz"
+      },
+      "medium": "wifi",
+      "speed_mbps": 72,
+      "channel": 6,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:07",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2002",
+        "radio": "5 GHz low"
+      },
+      "medium": "wifi",
+      "speed_mbps": 360,
+      "channel": 52,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:03",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2002",
+        "radio": "5 GHz low"
+      },
+      "medium": "wifi",
+      "speed_mbps": 48,
+      "channel": 52,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:0e",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2002",
+        "radio": "5 GHz low"
+      },
+      "medium": "wifi",
+      "speed_mbps": 432,
+      "channel": 52,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:0b",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2003",
+        "radio": "2.4 GHz"
+      },
+      "medium": "wifi",
+      "speed_mbps": 72,
+      "channel": 6,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:05",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2003",
+        "radio": "5 GHz high"
+      },
+      "medium": "wifi",
+      "speed_mbps": 313,
+      "channel": 149,
+      "source": "eero"
+    }
+  ]
+}

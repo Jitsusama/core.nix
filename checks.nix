@@ -694,6 +694,7 @@ gather {
     ./modules/mycelium/checks.nix
     ./modules/name-service/checks.nix
     ./modules/neovim/checks.nix
+    ./modules/net/checks.nix
     ./modules/network-revive/checks.nix
     ./modules/nftables/checks.nix
     ./modules/night-shift/checks.nix
