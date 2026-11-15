@@ -64,7 +64,10 @@ fn turn() -> Help {
         .argument("COMMAND...", "the job, after --")
         .option("--wait-at-most SECONDS", "gives up waiting after this")
         .exit(Exit::Failed, "its lock failed it, or the job didn't start")
-        .exit(Exit::TryAgain, "it waited as long as it was let, before the job")
+        .exit(
+            Exit::TryAgain,
+            "it waited as long as it was let, before the job",
+        )
         .passes("the job's own code once it runs, even 1 or 75")
 }
 
