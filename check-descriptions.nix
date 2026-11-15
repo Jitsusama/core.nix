@@ -3217,7 +3217,8 @@
   '';
   the-launcher-opens-on-what-it-kept-on-niri = ''
     on niri, an opening draws home as the closed launcher left it, each row saying what it said and
-    no row made before its frame; left with a word typed, home is kept all the same, and its rows
+    no row made before its frame; a viewer's command line opens with no source's rows made at
+    all; left with a word typed, home is kept all the same, and its rows
     stand where they stood once it settles; moved down as it opens, the cursor stays on that row;
     no frame from the first to the settled one empties a row and fills it again or puts a shown
     value back as being read; keys typed the moment it holds them are all found; and chords said
@@ -3255,8 +3256,8 @@
     least a frame and at most a quarter second, so one dear refresh holds the next change no longer
     and a storm of changes spends at most a third of the time refreshing; and a
     refresh taken another way takes the one waiting with it; and a source's rows are wanted only while it's held,
-    searched, named at home or has an act waiting, so a change nobody sees builds none; and a
-    key's act is said shown by the first frame begun after its refresh, which another act
+    searched, named at home or has an act waiting, and none over a viewer, so a change nobody
+    sees builds none; and a key's act is said shown by the first frame begun after its refresh, which another act
     refreshed while that frame is drawn never holds back; and an opening says what its own work
     went on slowest first, and weighs the foot's room for Return's verbs again only once the
     words file or the face has changed; and a daemon's changes are timed from the first line

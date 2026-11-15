@@ -3700,8 +3700,12 @@ Scope {
     // each source's own wanted asks.
     function wants(source) {
         return Wanted.wanted({ cataloguing: cataloguing, open: open, held: held,
-            becoming: Object.values(becoming), typing: typing, entering: entering }, source);
+            becoming: Object.values(becoming), typing: typing, entering: entering,
+            viewing: viewing }, source);
     }
+    // Whether the command line is over a viewer's, where no row is shown,
+    // so none is wanted (launcher/Wanted.js).
+    readonly property bool viewing: over !== null
     // The place into() opens, from before the launcher opens until its
     // step is held, so no source home names is wanted in between.
     property var entering: null
@@ -9417,8 +9421,9 @@ Scope {
             // place, so home isn't found only to be put away: Super+V's
             // openings made home's 51 and 60 rows first, in 124 and 138 ms
             // of settling (Joel's journal, 2026-11-10, 20:40). With no home
-            // kept yet it's found, since the card's height is home's.
-            const homeFound = !openingInto || homeKept.length === 0;
+            // kept yet it's found, since the card's height is home's. Over a
+            // viewer no row is shown at all (over), so neither is home.
+            const homeFound = !(openingInto || viewing) || homeKept.length === 0;
             if (homeFound) {
                 restart("");
                 homeKept = matches;

@@ -16,13 +16,20 @@
 // `asleep` while it waits its turn to wake as an opening fills in, and
 // `warming` while its home rows are made shut, so the first opening after
 // a start draws from what's kept. The source a chord opens into is
-// `entering` until its step is held.
+// `entering` until its step is held, and the launcher is `viewing` while
+// its command line is over a viewer's.
 function wanted(stands, source) {
     // Walked from outside, every row is read.
     if (stands.cataloguing) {
         return true;
     }
     if (!(stands.open || source.warming)) {
+        return false;
+    }
+    // Over a viewer, as : in swayimg opens it, the line hides every row, so
+    // none is made for it: Joel's two at 23:43 made 84 and 38 home rows, and
+    // took 110 and 75 ms to their frames (2026-11-14).
+    if (stands.viewing) {
         return false;
     }
     // Opened into a place, only that place is shown, from the opening's
@@ -59,7 +66,7 @@ function readAt(stands, readers) {
     if (stands.cataloguing) {
         return true;
     }
-    if (!stands.open) {
+    if (!stands.open || stands.viewing) {
         return false;
     }
     // Opening into a place, nothing is held yet but home isn't shown either.
