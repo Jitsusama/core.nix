@@ -351,7 +351,8 @@ impl Queue {
     ) -> Self {
         let owed = kit::Owed::read(&kit::file());
         let merged = |commit: &str| on_main(commit) == Some(true);
-        let owes = |patch: Option<&str>| patch.is_some_and(|patch| owed.owes(patch, now, &merged));
+        let is_owed =
+            |patch: Option<&str>| patch.is_some_and(|patch| owed.owes(patch, now, &merged));
         let going: Vec<Gate> = gates
             .iter()
             .filter(|gate| gate.folder != here && now.saturating_sub(gate.started) < LONGEST)
@@ -365,12 +366,12 @@ impl Queue {
                 let theirs = crate::waited::patch_of(&gate.commit);
                 (
                     gate.commit.clone(),
-                    kit::role(&files, crates, owes(theirs.as_deref())),
+                    kit::role(&files, crates, is_owed(theirs.as_deref())),
                 )
             })
             .collect();
         Self {
-            ours: kit::role(ours, crates, owes(patch)),
+            ours: kit::role(ours, crates, is_owed(patch)),
             going,
             roles,
         }
