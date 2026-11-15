@@ -10704,7 +10704,7 @@ Scope {
     function feltBegin(from, fromChord) {
         if (feltTicking.running)
             feltSaid();
-        feltTicks = Pacing.feltBegun(KeyTimes.now(), Heap.collected(), feltThread());
+        feltTicks = Pacing.feltBegun(KeyTimes.now(), feltClocks());
         feltCollectedFrom = feltTicks.collected;
         feltFrom = from;
         feltFromChord = fromChord;
@@ -10746,13 +10746,15 @@ Scope {
     function feltSynced() {
         feltFramed("synced", KeyTimes.now());
     }
-    // The shell thread's clocks now, as Pacing.feltBegun reads them.
-    function feltThread() {
-        return { ran: KeyTimes.ran(), waited: KeyTimes.waited() };
+    // The collector's and the shell thread's clocks now, as Pacing.feltBegun
+    // reads them.
+    function feltClocks() {
+        return { collected: Heap.collected(),
+            thread: { ran: KeyTimes.ran(), waited: KeyTimes.waited() } };
     }
     function feltTicked() {
         const now = KeyTimes.now();
-        feltTicks = Pacing.feltTicked(feltTicks, now, feltPace, Heap.collected(), feltThread());
+        feltTicks = Pacing.feltTicked(feltTicks, now, feltPace, feltClocks());
         if (feltTicks.usable >= 0 || !cardUp || now - feltFrom > feltGiveUp)
             feltSaid();
     }

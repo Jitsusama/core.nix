@@ -359,23 +359,27 @@ function openingParts(parts) {
 // the launcher about 7 s after his chord, when the thread came free (Joel,
 // 2026-11-10: "It takes 7 seconds for me to see the launcher window").
 // `stall` is the longest gap between ticks, begun at `stallAt`, and
-// `usable` is -1 until then. `collected` is the collector's own count of
-// its milliseconds at each tick (Heap.collected), so `stallCollected` is
+// `usable` is -1 until then. Each tick's `clocks` are read then, one left
+// out keeping the last: `collected`, the collector's own count of
+// its milliseconds (Heap.collected), so `stallCollected` is
 // how much of the longest stall was the collector's: profiles of Joel's
 // openings found 24 to 64 ms of collecting in each, which the stall's
-// named work didn't say (H6EDLC, 2026-11-14). `thread` is the shell
-// thread's clocks at each tick, `{ ran, waited }` (KeyTimes.ran and
-// waited), so `stallThread` is how much of the stall it ran and waited
-// for a CPU: the rest it slept.
-function feltBegun(now, collected = 0, thread = { ran: 0, waited: 0 }) {
-    return { last: now, calm: now, stall: 0, stallAt: now, usable: -1, collected,
-        stallCollected: 0, thread, stallThread: { ran: 0, waited: 0 } };
+// named work didn't say (H6EDLC, 2026-11-14); and `thread`, the shell
+// thread's `{ ran, waited }` (KeyTimes.ran and waited), so
+// `stallThread` is how much of the stall it ran and waited for a CPU:
+// the rest it slept.
+function feltBegun(now, clocks = {}) {
+    return { last: now, calm: now, stall: 0, stallAt: now, usable: -1,
+        collected: clocks.collected ?? 0, stallCollected: 0,
+        thread: clocks.thread ?? { ran: 0, waited: 0 }, stallThread: { ran: 0, waited: 0 } };
 }
 
-function feltTicked(felt, now, pace, collected = felt.collected, thread = felt.thread) {
+function feltTicked(felt, now, pace, clocks = {}) {
     if (felt.usable >= 0) {
         return felt;
     }
+    const collected = clocks.collected ?? felt.collected;
+    const thread = clocks.thread ?? felt.thread;
     const gap = now - felt.last;
     const calm = gap - pace.every > pace.within ? now : felt.calm;
     const longer = gap > felt.stall;
