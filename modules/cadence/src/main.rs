@@ -122,7 +122,7 @@ fn asked(context: &Context) -> Result<(), Failure> {
         "tick" => run(&ticking(rest)?).map_err(failed),
         "day" => day(rest),
         "units" => units_now(rest),
-        "axes" => axes::run(rest),
+        "axes" => axes::run(rest, &context.out),
         "review" => axes::review::run(rest),
         "owe" => owe::run(rest, now_ms() / 1000),
         "hour" => hour::run(rest),

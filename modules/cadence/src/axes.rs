@@ -35,21 +35,18 @@ mod spec;
 mod words;
 
 use std::fmt::Write;
-use std::fs;
-use std::io::IsTerminal;
-use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
-use serde_json::Value;
+use terminal_kit::ink::Pen;
 use terminal_kit::{Exit, Failure};
 
 use crate::{failed, folders, now_ms, wrongly};
 use readings::{gather, read};
 
 /// `cadence axes [AXIS | --served WORDS]`: prints the ten axes, or the one
-/// named, or Spec's rows (spec.rs).
-pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
+/// named, or Spec's rows (spec.rs), drawn with the kit's `pen`.
+pub fn run(mut args: impl Iterator<Item = String>, pen: &Pen) -> Result<(), Failure> {
     let asked = args.next();
     if asked.as_deref() == Some("--served") {
         return spec::run(args);
@@ -57,11 +54,10 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     if args.next().is_some() {
         return Err(wrongly("axes", "cadence axes takes one axis at most"));
     }
-    let (home, state_home, folder) = folders().map_err(failed)?;
+    let (_, state_home, folder) = folders().map_err(failed)?;
     let now = now_ms() / 1000;
     let mut axes = read(&gather(&folder, &state_home, now));
-    let ink = ink(&home);
-    let sep = format!(" {} ", ink.separator);
+    let sep = format!(" {} ", pen.mark("separator"));
     open::attach(
         &mut axes,
         &open::gather(&folder),
@@ -79,8 +75,8 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
             let day = zoned
                 .map(|z| z.strftime("%A %-d %B").to_string())
                 .unwrap_or_default();
-            let heading = format!("{day} {} {read_at}", ink.separator);
-            print!("{}", page(&axes, &heading, &ink));
+            let heading = format!("{day} {} {read_at}", pen.mark("separator"));
+            print!("{}", page(&axes, &heading, pen));
         }
         Some(asked) => {
             let Some(one) = find(&axes, &asked) else {
@@ -89,7 +85,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
                     .because(format!("the axes are {}", names.join(", ")))
                     .try_this("cadence axes"));
             };
-            print!("{}", axis_page(one, &read_at, &ink));
+            print!("{}", axis_page(one, &read_at, pen));
         }
     }
     Ok(())
@@ -336,111 +332,14 @@ pub fn shown(x: f64, unit: &str) -> String {
     }
 }
 
-/// What the page is drawn with: the theme's marks, and the SGR colour the
-/// failed mark takes, when it's drawn on a terminal.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Ink {
-    pub failed: String,
-    /// The mark of an axis not yet judged from his side.
-    pub pending: String,
-    pub separator: String,
-    pub alert: Option<String>,
-}
-
-impl Default for Ink {
-    /// The theme module's own marks (modules/theme/glyphs.nix), uncoloured.
-    fn default() -> Self {
-        Self {
-            failed: "✕".into(),
-            pending: "◇".into(),
-            separator: "·".into(),
-            alert: None,
-        }
-    }
-}
-
-impl Ink {
-    /// The marks and alert colour of a theme.json, for a terminal when
-    /// `colour` is set.
-    #[must_use]
-    pub fn of(theme: &Value, colour: bool) -> Self {
-        let defaults = Self::default();
-        let mark = |name: &str, fallback: String| {
-            theme["marks"][name]["glyph"]
-                .as_str()
-                .map_or(fallback, str::to_owned)
-        };
-        Self {
-            failed: mark("failed", defaults.failed),
-            pending: mark("pending", defaults.pending),
-            separator: mark("separator", defaults.separator),
-            alert: colour.then(|| alert(theme)).flatten(),
-        }
-    }
-
-    fn failed(&self) -> String {
-        match &self.alert {
-            Some(sgr) => format!("\x1b[{sgr}m{}\x1b[0m", self.failed),
-            None => self.failed.clone(),
-        }
-    }
-}
-
-/// The terminal's sixteen colour names, in their SGR order.
-const SIXTEEN: [&str; 16] = [
-    "black",
-    "red",
-    "green",
-    "yellow",
-    "blue",
-    "magenta",
-    "cyan",
-    "white",
-    "bright_black",
-    "bright_red",
-    "bright_green",
-    "bright_yellow",
-    "bright_blue",
-    "bright_magenta",
-    "bright_cyan",
-    "bright_white",
-];
-
-/// The SGR colour of the terminal slot holding the theme's alert pigment
-/// or nearest it, as eero's views find a role (modules/eero/src/views/
-/// theme.rs): a theme may put any pigment in any slot, so the slot named
-/// red is never assumed to be it.
-fn alert(theme: &Value) -> Option<String> {
-    let channels = |hex: &str| -> Option<[i64; 3]> {
-        let hex = hex.strip_prefix('#')?;
-        let at = |i: usize| i64::from_str_radix(hex.get(i..i + 2)?, 16).ok();
-        Some([at(0)?, at(2)?, at(4)?])
-    };
-    let want = channels(theme["colours"]["alert"].as_str()?)?;
-    let (at, apart) = SIXTEEN
-        .iter()
-        .enumerate()
-        .filter_map(|(at, name)| {
-            let have = channels(theme["terminal"][*name].as_str()?)?;
-            Some((at, (0..3).map(|i| (want[i] - have[i]).pow(2)).sum::<i64>()))
-        })
-        .min_by_key(|(_, apart)| *apart)?;
-    // Past this it's no longer the alert's hue, and the mark goes plain.
-    (apart <= 48 * 48).then(|| (if at < 8 { 30 + at } else { 82 + at }).to_string())
-}
-
-/// The ink for standard output: the account's theme on a terminal, unless
-/// `NO_COLOR` asks for none.
-fn ink(home: &Path) -> Ink {
-    let config =
-        std::env::var_os("XDG_CONFIG_HOME").map_or_else(|| home.join(".config"), PathBuf::from);
-    let theme: Value = fs::read_to_string(config.join("jitsusama/theme.json"))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default();
-    let colour = std::io::stdout().is_terminal()
-        && std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty());
-    Ink::of(&theme, colour)
+/// The marks a page draws: an axis out of spec takes the failed mark in
+/// the theme's alert, and one not yet judged from his side the pending
+/// mark, both as the kit's pen draws them on this terminal.
+fn marks(pen: &Pen) -> (String, String) {
+    (
+        pen.role("alert", pen.mark("failed")),
+        pen.mark("pending").to_owned(),
+    )
 }
 
 /// The axis `asked` names, by the start of its name: `time` is time to
@@ -456,8 +355,9 @@ pub fn find<'a>(axes: &'a [Axis], asked: &str) -> Option<&'a Axis> {
 /// saying its first reading out with its owner; marked pending when it's
 /// read only on stand-ins or in part, saying so; else its first reading.
 #[must_use]
-pub fn page(axes: &[Axis], heading: &str, ink: &Ink) -> String {
-    let sep = format!(" {} ", ink.separator);
+pub fn page(axes: &[Axis], heading: &str, pen: &Pen) -> String {
+    let sep = format!(" {} ", pen.mark("separator"));
+    let (failed, pending) = marks(pen);
     let width = axes.iter().map(|a| a.name.len()).max().unwrap_or(0);
     let mut out = format!("axes{sep}{heading}\n\n");
     for axis in axes {
@@ -470,7 +370,7 @@ pub fn page(axes: &[Axis], heading: &str, ink: &Ink) -> String {
                     n => format!("{sep}{} more out", n - 1),
                 };
                 (
-                    ink.failed(),
+                    failed.clone(),
                     format!("{}{sep}{}{more}", first.words(), first.owner),
                 )
             }
@@ -482,7 +382,7 @@ pub fn page(axes: &[Axis], heading: &str, ink: &Ink) -> String {
                 } else {
                     "read on a stand-in".to_owned()
                 };
-                (ink.pending.clone(), format!("{}{sep}{why}", first.words()))
+                (pending.clone(), format!("{}{sep}{why}", first.words()))
             }
             _ => {
                 let first = axis.readings.first();
@@ -491,7 +391,7 @@ pub fn page(axes: &[Axis], heading: &str, ink: &Ink) -> String {
                     None => "no reading yet",
                 };
                 let owner = first.map_or("", |r| r.owner);
-                (ink.pending.clone(), format!("{said}{sep}{owner}"))
+                (pending.clone(), format!("{said}{sep}{owner}"))
             }
         };
         let findings = match axis.findings.len() {
@@ -525,16 +425,17 @@ pub fn page(axes: &[Axis], heading: &str, ink: &Ink) -> String {
 /// One axis's page: every reading, marked when out of spec, with its
 /// owner, what more there is to say and where it's read from.
 #[must_use]
-pub fn axis_page(axis: &Axis, heading: &str, ink: &Ink) -> String {
-    let sep = format!(" {} ", ink.separator);
+pub fn axis_page(axis: &Axis, heading: &str, pen: &Pen) -> String {
+    let sep = format!(" {} ", pen.mark("separator"));
+    let (failed, pending) = marks(pen);
     let mut out = format!("{}{sep}{heading}\n\n", axis.name);
     for reading in &axis.readings {
         let mark = if reading.out() {
-            ink.failed()
+            failed.clone()
         } else if reading.judges() {
             " ".to_owned()
         } else {
-            ink.pending.clone()
+            pending.clone()
         };
         let _ = writeln!(out, "{mark} {}{sep}{}", reading.words(), reading.owner);
         // A held figure's detail says it too, so only why it's held shows.
@@ -557,9 +458,9 @@ pub fn axis_page(axis: &Axis, heading: &str, ink: &Ink) -> String {
     }
     for finding in &axis.findings {
         let mark = if finding.late {
-            ink.failed()
+            failed.clone()
         } else {
-            ink.pending.clone()
+            pending.clone()
         };
         let _ = writeln!(out, "{mark} {}", finding.said);
     }
@@ -570,6 +471,7 @@ pub fn axis_page(axis: &Axis, heading: &str, ink: &Ink) -> String {
 mod tests {
     use super::readings::Sources;
     use super::*;
+    use terminal_kit::ink::Ink;
 
     #[test]
     fn figures_are_said_plainly() {
@@ -707,11 +609,7 @@ mod tests {
 
     #[test]
     fn the_page_marks_each_axis_out_and_names_its_owner() {
-        let page = page(
-            &axes(),
-            "Wednesday 11 November · read 19:45",
-            &Ink::default(),
-        );
+        let page = page(&axes(), "Wednesday 11 November · read 19:45", &Pen::plain());
         assert_eq!(
             page,
             "axes · Wednesday 11 November · read 19:45
@@ -732,7 +630,7 @@ mod tests {
     fn an_axis_page_says_every_reading_and_where_it_comes_from() {
         let axes = axes();
         assert_eq!(
-            axis_page(&axes[0], "read 19:45", &Ink::default()),
+            axis_page(&axes[0], "read 19:45", &Pen::plain()),
             "scale · read 19:45
 
 ✕ 85 pi windows, at most 12 · OSPHT4
@@ -745,7 +643,7 @@ found worse and not yet fixed
 "
         );
         assert_eq!(
-            axis_page(&axes[5], "read 19:45", &Ink::default()),
+            axis_page(&axes[5], "read 19:45", &Pen::plain()),
             "resources · read 19:45
 
 ◇ a day: not agreed yet · QCXZEB
@@ -754,7 +652,7 @@ found worse and not yet fixed
             "a held figure showed on its axis's page"
         );
         assert_eq!(
-            axis_page(&axes[2], "read 19:45", &Ink::default()),
+            axis_page(&axes[2], "read 19:45", &Pen::plain()),
             "security · read 19:45
 
 ◇ musts past their date: no reading yet · ISXEG8
@@ -766,11 +664,27 @@ found worse and not yet fixed
     fn the_failed_mark_takes_the_slot_holding_the_alert_colour() {
         // The one theme cadence's tests name colours in, kept in a file of
         // its own since its colours are what's tested, not a look.
-        let theme: Value = serde_json::from_str(include_str!("../tests/theme.json")).unwrap();
-        let ink = Ink::of(&theme, true);
-        assert_eq!(ink.failed, "x");
+        let theme: serde_json::Value = serde_json::from_str(include_str!("../tests/theme.json"))
+            .expect("the test theme reads");
+        let axes = axes();
+        let inked = axis_page(
+            &axes[0],
+            "read 19:45",
+            &Pen::new(Ink::sixteen(), Some(&theme)),
+        );
         // Its alert is nearest bright red's pigment, not red's slot.
-        assert_eq!(ink.alert.as_deref(), Some("91"));
-        assert_eq!(Ink::of(&theme, false).alert, None);
+        assert!(
+            inked.starts_with("scale · read 19:45\n\n\u{1b}[91mx\u{1b}[0m 85 pi windows"),
+            "the failed mark isn't the theme's, in its alert's slot:\n{inked:?}"
+        );
+        let plain = axis_page(
+            &axes[0],
+            "read 19:45",
+            &Pen::new(Ink::plain(), Some(&theme)),
+        );
+        assert!(
+            plain.contains("\nx 85 pi windows"),
+            "a pipe's failed mark is inked:\n{plain:?}"
+        );
     }
 }
