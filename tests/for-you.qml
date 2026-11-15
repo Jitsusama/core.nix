@@ -138,6 +138,36 @@ QtObject {
             looked.try.length], [["f"], 0]);
         expect("no items, four empty bands", ForYou.banded(undefined, now),
             { now: [], look: [], try: [], read: [] });
+        // The next moment time alone lifts a row into what needs him now, as
+        // its due comes within the day, so For You bands again then: banded
+        // only as its items changed, a look due tomorrow stayed in To Look
+        // At past the hour it was due within the day (2026-11-14).
+        const lifting = (kind, thing) => ({ kind, thing, name: "it" });
+        const dueIn = hours => lifting("look", { kind: "look", due: now + hours * hour });
+        expect("a look due in three days lifts a day before", ForYou.liftsAt([dueIn(72)], now),
+            now + 48 * hour);
+        const bandAt = (item, at) => {
+            const bands = ForYou.banded([item], at);
+            return Object.keys(bands).filter(key => bands[key].length > 0);
+        };
+        expect("banded a moment before, it still waits", bandAt(dueIn(72), now + 48 * hour - 1),
+            ["look"]);
+        expect("banded then, it needs him now", bandAt(dueIn(72), now + 48 * hour), ["now"]);
+        expect("the soonest of several", ForYou.liftsAt([dueIn(72), lifting("try",
+            { kind: "look", due: now + 30 * hour })], now), now + 6 * hour);
+        expect("its due given as a time", ForYou.liftsAt([lifting("look", { kind: "look",
+            due: new Date(now + 72 * hour).toISOString() })], now), now + 48 * hour);
+        expect("one due within the day is lifted already", ForYou.liftsAt([dueIn(5)], now),
+            null);
+        expect("nothing due lifts nothing", ForYou.liftsAt([lifting("look",
+            { kind: "look", since: now - hour })], now), null);
+        expect("a to-do needs him now already", ForYou.liftsAt([lifting("do",
+            { kind: "todo", due: now + 72 * hour })], now), null);
+        expect("a look that asks nothing never lifts", ForYou.liftsAt([lifting("read",
+            { kind: "look", due: now + 72 * hour })], now), null);
+        expect("one that blocks a session is lifted already", ForYou.liftsAt([lifting("look",
+            { kind: "look", blocks: 1, due: now + 72 * hour })], now), null);
+        expect("no items, no lift", ForYou.liftsAt(undefined, now), null);
         // Each thing's times are read once in banding it, whatever its sort
         // weighs: read in the comparator, each ISO time was parsed again
         // for every pair, seconds of each opening on the laptop.
