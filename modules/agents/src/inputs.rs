@@ -1,6 +1,6 @@
 //! Everything Agents' rows are made from, as each source last told it:
-//! the node's sessions, its quests, what they landed and the machine's
-//! queue, what Joel read of those landings, the to-do daemon's to-dos,
+//! the node's sessions, its quests and teams, what they landed and the
+//! machine's queue, what Joel read of those landings, the to-do daemon's to-dos,
 //! the windows daemon's windows, spend-watch's collection and budgets,
 //! the harness's list of orchestrators and of sessions to reopen, what
 //! Joel said of those, and whether the shell says the screen is shared.
@@ -31,6 +31,7 @@ use crate::reopen::{self, Kept};
 use crate::row::{self, Known, Row, Shown, Words};
 use crate::served;
 use crate::session::{self, JoelCan, Lives, Session};
+use crate::shape;
 use crate::summary;
 use crate::talks::{self, Talk};
 use crate::top;
@@ -54,6 +55,9 @@ pub struct Inputs {
     pub read: Reading,
     /// The node's `talk` records, Joel's talks with each session.
     pub talks: Held,
+    /// The node's `team` records, each orchestration's, with the shape
+    /// it's drawn by.
+    pub teams: Held,
     /// The to-do daemon's `to-do` records.
     pub to_dos: Held,
     /// The windows daemon's `window` records.
@@ -448,6 +452,8 @@ impl Inputs {
         let listed = |address: &str| self.listed(address);
         let windowed = |session: Session| session.windowed();
         let to_dos = |quest: &str| self.needs(quest).len();
+        let by_lead = shape::by_lead(self.teams.records().map(|(_, team)| team));
+        let shaped = |id: &str| by_lead.get(id).copied();
         let known = Known {
             joel_can: &joel_can,
             jobs: &jobs,
@@ -457,6 +463,7 @@ impl Inputs {
             windowed: &windowed,
             sharing: self.sharing,
             needs: &to_dos,
+            shape: &shaped,
         };
         let mut reopens = self.reopens();
         let recent = self.recent(&reopens);
@@ -689,6 +696,33 @@ mod tests {
             (&record["window"], &record["kitty"]["id"]),
             (&json!("window:7"), &json!("2")),
             "the window opened with its app id, in its kitty's pane"
+        );
+    }
+
+    #[test]
+    fn an_orchestrators_rows_wear_its_teams_shape_once_the_node_says_it() {
+        let mut inputs = inputs();
+        let mut shown = served(&inputs);
+        inputs.teams.took(&json!({"records": [
+            {"key": "team:O", "lead": "s-o", "glyph": "hexagon"},
+            {"key": "team:P", "lead": "s-p", "glyph": "circle"}
+        ]}));
+        let moved = shown.take(inputs.made());
+        let keys: Vec<_> = moved.changed.iter().map(|one| one["key"].clone()).collect();
+        assert_eq!(
+            keys,
+            [json!("row:agents-top:O"), json!("row:agents:O")],
+            "the orchestrator's rows move, and no one else's"
+        );
+        let glyph = |key: &str| shown.get(key).expect("its row")["row"]["glyph"].clone();
+        assert_eq!(
+            [
+                glyph("row:agents-top:O"),
+                glyph("row:agents:O"),
+                glyph("row:agents:P")
+            ],
+            [json!("shapeHexagon"), json!("shapeHexagon"), json!("agent")],
+            "its team's shape on both its rows; one orchestrating no one keeps the agent's mark"
         );
     }
 

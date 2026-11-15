@@ -606,6 +606,42 @@ in
     console = "s";
     means = "a subagent: an agent another sent away to work for it, alone or in a fleet";
   };
+  # The shapes an orchestration's network is drawn by, the same on its row
+  # in Agents as on mycelium's map, so Joel knows one by its shape wherever
+  # it's drawn (VKCF3Z, 2026-11-14). Each is the icon font's solid shape at
+  # one weight. The star is the code font's rather than the favourite's,
+  # since a favourite is someone kept first and a network's star only says
+  # which network.
+  shapeSquare = {
+    glyph = nerd "f0764";
+    console = "#";
+    means = "an orchestration's network, drawn as a square";
+  };
+  shapeTriangle = {
+    glyph = nerd "f0536";
+    console = "^";
+    means = "an orchestration's network, drawn as a triangle";
+  };
+  shapePlus = {
+    glyph = nerd "f11ec";
+    console = "+";
+    means = "an orchestration's network, drawn as a plus";
+  };
+  shapeHexagon = {
+    glyph = nerd "f02d8";
+    console = "H";
+    means = "an orchestration's network, drawn as a hexagon";
+  };
+  shapeCircle = {
+    glyph = nerd "f0765";
+    console = "O";
+    means = "an orchestration's network, drawn as a circle";
+  };
+  shapeStar = {
+    glyph = nerd "eb59";
+    console = "*";
+    means = "an orchestration's network, drawn as a star";
+  };
   # A person with a clock: something the agents can't go on without until
   # Joel has done it.
   waitsOnJoel = {

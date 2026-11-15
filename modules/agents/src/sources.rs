@@ -35,6 +35,8 @@ pub enum Heard {
     Quests(Value),
     /// An answer to the node's watch of the talks Joel had with sessions.
     Talks(Value),
+    /// An answer to the node's watch of its teams, each orchestration's.
+    Teams(Value),
     /// An answer to the to-do daemon's watch of its to-dos.
     ToDos(Value),
     /// An answer to the windows daemon's watch of its windows.
@@ -207,6 +209,9 @@ impl Inputs {
             }
             Heard::Talks(answer) => {
                 self.talks.took(&answer);
+            }
+            Heard::Teams(answer) => {
+                self.teams.took(&answer);
             }
             Heard::ToDos(answer) => {
                 self.to_dos.took(&answer);
