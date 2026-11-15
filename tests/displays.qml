@@ -70,9 +70,17 @@ ShellRoot {
             held: { output: name, standing: lit ? "lit" : "off", lights: name === "eDP-1" && lit,
                 niri: root.niri(name, name === "eDP-1" ? "LG Display" : "Dell Inc.",
                     name === "eDP-1" ? "0x07C6" : "U2723QE", lit) },
+            drawer: name === "eDP-1" && lit ? root.panelDrawer : undefined,
             acts: [act]
         } };
     }
+
+    // The panel's drawer as light.rs serves it, each fact saying its part
+    // beside a name worded other than the vocabulary's, so only a part
+    // read by what it is is found.
+    readonly property var panelDrawer: ({ eyebrow: "Screen", title: "Built-in Screen",
+        facts: [{ name: "Lightness", part: "brightness", said: "50%" },
+            { name: "Around", part: "room", said: "312 lx" }] })
 
     readonly property var sleep: ({ key: "row:displays:sleep", kind: "row", row: {
             key: "row:displays:sleep", thing: "displays:sleep", place: "displays",
@@ -95,9 +103,9 @@ ShellRoot {
             acts: [{ key: "verb:more", step: "rows" }]
         } };
     }
-    readonly property var room: ({ key: "row:displays:setting:eDP-1:room", kind: "row",
+    readonly property var room: ({ key: "row:displays:room:eDP-1", kind: "row",
         row: {
-            key: "row:displays:setting:eDP-1:room", thing: "displays:eDP-1:room",
+            key: "row:displays:room:eDP-1", thing: "displays:eDP-1:room",
             place: "displays", kind: "fact", order: 1027, name: "Room Light",
             glyph: "room", hue: "machine", parent: "row:displays:display:eDP-1", depth: 1,
             side: [{ said: "312 lx" }], note: "", acts: []
@@ -325,6 +333,12 @@ ShellRoot {
             displays.backlitKey === "row:displays:display:eDP-1"
                 && displays.servedBrightness?.share === 50,
             JSON.stringify([displays.backlitKey, displays.servedBrightness]));
+        Expect.expect("its drawer's Brightness is found by its part, whatever it's worded",
+            displays.brightnessServed(displays.backlitKey) === "50%",
+            JSON.stringify(displays.brightnessServed(displays.backlitKey)));
+        Expect.expect("what the light says is its Brightness's and its Room Light's",
+            displays.lightSaid === JSON.stringify([["50%", ""], ["312 lx", ""]]),
+            displays.lightSaid);
         waiting = "the share moved";
         tell([brightness(80)]);
     }

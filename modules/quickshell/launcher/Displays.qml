@@ -268,8 +268,10 @@ Provider {
     // 2026-11-10).
     readonly property string lightSaid: {
         void ready.placings;
+        const output = ready.served(backlitKey)?.held?.output ?? "";
+        const parts = [`displays:${output}:brightness`, `displays:${output}:room`];
         return JSON.stringify(ready.inside(backlitKey)
-            .filter(row => [partName("brightness"), partName("room")].includes(row.name))
+            .filter(row => parts.includes(row.key))
             .map(row => [row.side, row.note]));
     }
     onLightSaidChanged: Qt.callLater(Hearing.putOff(provider.lightTold))
@@ -304,11 +306,12 @@ Provider {
     }
 
     // What the drawer the daemon serves on the row of `key` says of the
-    // Brightness, "" while it says none.
+    // Brightness, found by the part it says it is (light.rs's facts), ""
+    // while it says none.
     function brightnessServed(key) {
         void ready.placings;
-        const named = partName("brightness");
-        const fact = (ready.served(key)?.drawer?.facts ?? []).find(each => each.name === named);
+        const fact = (ready.served(key)?.drawer?.facts ?? [])
+            .find(each => each.part === "brightness");
         return fact?.said ?? "";
     }
 
@@ -516,11 +519,6 @@ Provider {
     // the daemon places them, which move with each change it tells, and
     // which screen holds the Brightness.
     property string spotsStamp: JSON.stringify([ready.placings, backlitKey])
-
-    // A part's name, as the vocabulary says it (Provider's partNamed).
-    function partName(id) {
-        return partNamed("displays", id);
-    }
 
     // A display's right arrow: what the daemon serves inside its row
     // (screens.rs), as a step in offers it: on the lit screen holding the
