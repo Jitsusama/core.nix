@@ -36,6 +36,11 @@
 //! who rang whom where a ring answered or Joel's room opened says, and
 //! in `tuple-call/recent.jsonl` in the state folder as it changes, read
 //! back as this starts, so Joel's last calls outlive a restart.
+//!
+//! Its help, refusals and exits are the terminal kit's (cli.rs says what
+//! it takes): asked wrongly ends 64, and a socket it can't listen on 1.
+
+mod cli;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
@@ -50,6 +55,7 @@ use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own};
 use inotify::{EventMask, Inotify, WatchMask};
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure};
 
 use tuple_call::Held;
 use tuple_call::ask::{self, Act, refused};
@@ -148,19 +154,27 @@ fn folder(variable: &str, default: &str) -> PathBuf {
         )
 }
 
-fn main() {
-    let mut args = std::env::args().skip(1);
-    let (Some(socket), Some(tuple)) = (args.next(), args.next()) else {
-        eprintln!("usage: tuple-call SOCKET TUPLE");
-        std::process::exit(64);
-    };
-    let listener = match serve::listen(Path::new(&socket)) {
-        Ok(listener) => listener,
-        Err(why) => {
-            eprintln!("<3>couldn't listen on {socket}: {why}");
-            std::process::exit(71);
-        }
-    };
+fn main() -> std::process::ExitCode {
+    terminal_kit::main(&cli::help(), env!("CARGO_PKG_VERSION"), |context| {
+        let asked = cli::asked(&context.args)?;
+        serve_calls(&asked.socket, &asked.tuple)
+    })
+}
+
+/// Follows Tuple and serves the shell for as long as it runs.
+///
+/// # Errors
+///
+/// Failed, 1, where its socket can't be listened on.
+fn serve_calls(socket: &Path, tuple: &str) -> Result<(), Failure> {
+    let listener = serve::listen(socket).map_err(|why| {
+        Failure::new(
+            Exit::Failed,
+            format!("tuple-call couldn't listen on {}", socket.display()),
+        )
+        .because(why.to_string())
+    })?;
+    let tuple = tuple.to_owned();
     let runtime = folder("XDG_RUNTIME_DIR", "");
     let tuples = runtime.join("tuple-0");
     let log = folder("XDG_DATA_HOME", ".local/share").join("tuple/0");
