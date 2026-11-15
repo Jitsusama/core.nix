@@ -406,17 +406,6 @@ function moves(from, to, at) {
     return Object.assign(Ways.timed(way), { way: at.way, ahead });
 }
 
-// Whether a move (moves()) `t` ms in, having `stepped` or not, finds its
-// way to its seat again as niri says the new workspace's columns, rather
-// than being cut short into a walk from where it's got to: while what it
-// shows is still its hold, or until it takes a step. One told of its
-// slide later than its hold lasts, on a screen drawing slowly, is still
-// where it began, and cut short there it would walk without ever having
-// moved (Y2YBTS, 2026-11-14, a0cd2ad5).
-function replans(route, t, stepped) {
-    return !stepped || t + (route.ahead ?? 0) < route.beats[0].ends;
-}
-
 // Where a way has it `t` ms in (MarginCatWays.js's frame), and a move as
 // far ahead as it was told of late.
 function frame(route, t) {
