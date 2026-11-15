@@ -599,7 +599,7 @@ mod tests {
                 "m4",
                 "21 More"
             ],
-            "under its heading, the pressing and the five busiest show, then one row holding the rest"
+            "under its heading, the pressing and the five busiest, then one row for the rest"
         );
         let fold = under.last().expect("a fold");
         assert_eq!(
