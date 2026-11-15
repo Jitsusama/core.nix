@@ -11,7 +11,33 @@
 # It reads the lock's word in the account's runtime folder, which the shell
 # writes (modules/quickshell/Lock.qml): "unlocked" once it's let go, and
 # "locked" from the moment every screen shows it.
+#
+# Its help takes the shape every command of ours does (docs/commands.md),
+# by hand; pam_exec gives it no words, so the help is never in its way.
 set -euo pipefail
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+yubikey-once-in  say whether polkit may ask for a touch
+
+  Yes only once the person is in: the account's desktop
+  session is in front, local and unlocked, and asked for
+  the prompt. pam_exec runs it for each polkit sign-in,
+  as root, reading the account from PAM_USER.
+
+EXAMPLES
+  PAM_USER=jitsusama yubikey-once-in
+                    whether that account's touch is asked
+
+EXIT
+  0     the touch is asked
+  else  the password is asked, as if no key were named
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 # pam_exec sets PAM_USER to the account signing in.
 # shellcheck disable=SC2154
