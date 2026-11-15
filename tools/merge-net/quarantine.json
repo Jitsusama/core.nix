@@ -14,18 +14,6 @@
     "test": "vm-desktop-launcher-goes-places"
   },
   {
-    "at": 1794346840,
-    "commit": "a693826b5ecfa6c0a2d7dfd66671cbe93dbd8ee7",
-    "due": "2026-11-16",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
-    "owner_pr": 4499,
-    "reason": "failed, then passed, at a693826b5ecf",
-    "subtests": [
-      "test_the_launcher_draws_each_key_soon_while_every_core_is_busy"
-    ],
-    "test": "vm-desktop-keeps-pace"
-  },
-  {
     "at": 1794346052,
     "commit": "0d7ca1f2a8b290d6eabe8d2affd24cd0d1905de5",
     "due": "2026-11-15",
