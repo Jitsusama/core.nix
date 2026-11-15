@@ -6,6 +6,7 @@
 //! (`gated.rs`) and asked of changed-checks otherwise.
 
 use std::env;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -125,12 +126,21 @@ fn said_owners(owning: &[String], base: &str, list: &serde_json::Value) -> Strin
     if owning.is_empty() {
         return String::new();
     }
+    // run-subtests with no words lists the subtests and runs none, so each
+    // test is given as the two commands that list them and run some: on
+    // 15 November a session ran each test as named and passed having run
+    // nothing.
     let mut said = format!(
-        "run the subtests that reach what it touched with run-subtests --there, in each VM \
-         test that owns one of its files and moved from {base}:\n"
+        "run the subtests that reach what it touched in each VM test that owns one of its \
+         files and moved from {base}: list them with the first command, then run those with \
+         the second, naming words from them, since with no words it runs nothing:\n"
     );
     for test in owning {
-        said.push_str(&format!("  {}\n", rules::named(test, list)));
+        let _ = writeln!(
+            said,
+            "  {}\n    run-subtests --there {test}\n    run-subtests --there {test} <words>",
+            rules::named(test, list)
+        );
     }
     said
 }

@@ -275,7 +275,7 @@ def test_a_run_without_words_lists_and_says_it_ran_none(
 
     said = capsys.readouterr()
     assert "ran none" in said.err, f"a listing didn't say it ran nothing: {said.err!r}"
-    assert "checks.x86_64-linux.vm-desktop-x" in said.err, (
+    assert "nix-offload there . checks." in said.err and ".vm-desktop-x" in said.err, (
         f"a listing didn't say how to run the whole test: {said.err!r}"
     )
     assert stand_in.ran() is None, "a run with no words ran the driver"
