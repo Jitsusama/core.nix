@@ -6,7 +6,8 @@
 # It hibernates with a fast compressor for its image. A paired Bluetooth
 # keyboard types at its disk prompt. Each account can read the home
 # network's eero, at home or away, and the whole home network, its modem
-# included, with net. Any of his laptops can revive or
+# included, with net; a machine that names the home's switch reads it too,
+# its password kept from every account. Any of his laptops can revive or
 # restore an Apple silicon Mac that won't start, over a USB-C cable.
 { nixosModules, homeModules }:
 {
@@ -18,6 +19,7 @@
     nixosModules.idle-sleep
     nixosModules.keyd
     nixosModules.lid
+    nixosModules.net
     nixosModules.network-revive
     nixosModules.power-profiles-daemon
     nixosModules.usb-wake

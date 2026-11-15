@@ -13,6 +13,8 @@ for the router, access point or server a VM lacks.
 | `clock.nix`, `-vm-test.py`             | the clock set past a network's time server that never answers |
 | `mdns.nix`, `-vm-test.py`              | machines finding each other by name, only on trusted networks |
 | `name-service.nix`, `-vm-test.py`      | an IPv4 address resolved even when IPv6 answers first         |
+| `net-switch.nix`, `-vm-test.py`        | net's switch reader, its password kept from every account     |
+| `switch-stand-in.py`                   | that test's stand-in switch, serving the real one's pages     |
 | `network-revive.nix`, `-vm-test.py`    | an account's services started again once the network comes   |
 | `network-revive-stand-in.sh`           | that test's stand-in service that needs the network           |
 | `shaper.nix`, `-vm-test.py`            | which of CAKE's tins each kind of traffic reaches             |
