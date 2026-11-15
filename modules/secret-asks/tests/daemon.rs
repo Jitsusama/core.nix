@@ -4,10 +4,11 @@
 //! a yes, a no, a grant or the forge, is one walk through the same daemon
 //! and the same stand-ins, which the file's helpers set up once.
 
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use daemon_client::{Client, Daemon, until};
 use serde_json::{Value, json};
@@ -40,16 +41,36 @@ fn on_path(program: &str) -> PathBuf {
         .unwrap_or_else(|| panic!("{program} isn't on the test's PATH"))
 }
 
-fn git(tree: &Path, args: &[&str]) {
-    let ran = Command::new("git")
+/// What git says, run in `tree`.
+fn git(tree: &Path, args: &[&str]) -> String {
+    git_fed(tree, args, "")
+}
+
+/// What git says, run in `tree` and given `input` to read.
+fn git_fed(tree: &Path, args: &[&str], input: &str) -> String {
+    let mut running = Command::new("git")
         .arg("-C")
         .arg(tree)
         .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
         .args(args)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .output()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .expect("git runs");
+    running
+        .stdin
+        .take()
+        .expect("git's input is open")
+        .write_all(input.as_bytes())
+        .expect("git is given its input");
+    let ran = running.wait_with_output().expect("git ends");
     assert!(ran.status.success(), "git {args:?} failed: {ran:?}");
+    String::from_utf8(ran.stdout)
+        .expect("git says text")
+        .trim()
+        .to_owned()
 }
 
 /// The daemon over a fresh folder: its asks, its socket, a committed
@@ -424,6 +445,149 @@ fn a_grant_covers_no_commit_only_the_trees_own_refs_say_is_on_main() {
         "a grant covered a commit only a forged ref says is on main"
     );
     assert_eq!(setting.op_ran(), 1, "op ran for a forged main");
+}
+
+/// A commit's name as the bytes git keeps it in.
+fn named(hex: &str) -> Vec<u8> {
+    (0..hex.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(&hex[at..at + 2], 16).expect("a name is hex"))
+        .collect()
+}
+
+/// A big-endian number of `N` bytes at `at` in `file`.
+fn number<const N: usize>(file: &[u8], at: usize) -> u64 {
+    file[at..at + N]
+        .iter()
+        .fold(0, |sum, byte| sum << 8 | u64::from(*byte))
+}
+
+/// Writes `bytes` over a file git wrote, which it leaves read-only.
+fn rewritten(path: &Path, bytes: &[u8]) {
+    std::fs::remove_file(path).expect("git's file is removed");
+    std::fs::write(path, bytes).expect("the forged file is written");
+}
+
+/// Has the commit-graph of `tree`'s objects say `unlanded` is `main`'s
+/// parent, as one any command that commits may write could: git reads
+/// parents from it without asking the commits themselves.
+fn graphed_as_parent(tree: &Path, main: &str, unlanded: &str) {
+    git(tree, &["branch", "graphed", unlanded]);
+    // Generation numbers of the first kind sit in each commit's own row,
+    // so rewriting the row rewrites what a walk cuts its search by.
+    git(
+        tree,
+        &[
+            "-c",
+            "commitGraph.generationVersion=1",
+            "commit-graph",
+            "write",
+            "--reachable",
+        ],
+    );
+    let path = tree.join(".git/objects/info/commit-graph");
+    let mut graph = std::fs::read(&path).expect("the commit-graph is written");
+    let chunks = usize::from(graph[6]);
+    let chunk = |id: &[u8; 4]| {
+        (0..chunks)
+            .map(|at| 8 + at * 12)
+            .find(|at| &graph[*at..at + 4] == id)
+            .map(|at| usize::try_from(number::<8>(&graph, at + 4)).expect("an offset fits"))
+            .expect("the commit-graph has the chunk")
+    };
+    let (fanout, names, rows) = (chunk(b"OIDF"), chunk(b"OIDL"), chunk(b"CDAT"));
+    let commits = usize::try_from(number::<4>(&graph, fanout + 255 * 4)).expect("a count fits");
+    let row = |commit: &str| {
+        (0..commits)
+            .find(|at| graph[names + at * 20..names + at * 20 + 20] == named(commit))
+            .expect("the commit-graph names the commit")
+    };
+    let (main_row, unlanded_row) = (row(main), row(unlanded));
+    let main_at = rows + main_row * 36;
+    let unlanded_level = number::<4>(&graph, rows + unlanded_row * 36 + 28) >> 2;
+    let parent = u32::try_from(unlanded_row).expect("a row fits");
+    graph[main_at + 20..main_at + 24].copy_from_slice(&parent.to_be_bytes());
+    // main a level above the commit it's said to come from, keeping the
+    // two high bits of its time that share the word.
+    let level = u32::try_from(unlanded_level + 1).expect("a level fits") << 2
+        | u32::from(graph[main_at + 31] & 0b11);
+    graph[main_at + 28..main_at + 32].copy_from_slice(&level.to_be_bytes());
+    rewritten(&path, &graph);
+}
+
+/// Plants a pack in `tree`'s objects holding a commit whose parent is
+/// `unlanded`, its index naming it `main`: git takes an index at its word
+/// for which bytes are which commit.
+fn packed_as(tree: &Path, worktree: &Path, main: &str) {
+    let forged = git(
+        worktree,
+        &[
+            "commit-tree",
+            "HEAD^{tree}",
+            "-p",
+            "HEAD",
+            "-m",
+            "main, as a forged pack says it",
+        ],
+    );
+    let prefix = tree.join(".git/objects/pack/pack");
+    let pack = git_fed(
+        tree,
+        &["pack-objects", &prefix.to_string_lossy()],
+        &format!("{forged}\n"),
+    );
+    let path = tree.join(format!(".git/objects/pack/pack-{pack}.idx"));
+    let mut index = std::fs::read(&path).expect("the pack's index is written");
+    let main = named(main);
+    // One object: each of the 256 counts says how many names start with
+    // that byte or less, then the one name.
+    for first in 0..=255_u8 {
+        let count = u32::from(first >= main[0]);
+        let at = 8 + usize::from(first) * 4;
+        index[at..at + 4].copy_from_slice(&count.to_be_bytes());
+    }
+    index[1032..1052].copy_from_slice(&main);
+    rewritten(&path, &index);
+}
+
+#[test]
+fn a_grant_covers_no_commit_a_forged_commit_graph_says_main_comes_from() {
+    let setting = Setting::new("granted-graphed");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    let tree = setting.folder.join("tree");
+    let worktree = unmerged(&setting, "graphed");
+    let (main, unlanded) = (
+        git(&tree, &["rev-parse", "HEAD"]),
+        git(&worktree, &["rev-parse", "HEAD"]),
+    );
+    graphed_as_parent(&tree, &main, &unlanded);
+    let id = put_up_in(&setting.folder, &worktree, ITEM);
+    assert_eq!(
+        row(&mut client, &id)["state"],
+        "waiting",
+        "a grant covered a commit only a forged commit-graph says main holds"
+    );
+    assert_eq!(setting.op_ran(), 1, "op ran for a forged commit-graph");
+}
+
+#[test]
+fn a_grant_covers_no_commit_a_forged_pack_says_main_comes_from() {
+    let setting = Setting::new("granted-packed");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    let tree = setting.folder.join("tree");
+    let worktree = unmerged(&setting, "packed");
+    packed_as(&tree, &worktree, &git(&tree, &["rev-parse", "HEAD"]));
+    let id = put_up_in(&setting.folder, &worktree, ITEM);
+    assert_eq!(
+        row(&mut client, &id)["state"],
+        "waiting",
+        "a grant covered a commit only a forged pack says main holds"
+    );
+    assert_eq!(setting.op_ran(), 1, "op ran for a forged pack");
 }
 
 #[test]
