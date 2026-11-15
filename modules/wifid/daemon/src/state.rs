@@ -62,6 +62,9 @@ pub struct Joined {
     /// The access point's address, as 02:00:00:00:01:00.
     pub point: String,
     pub gateway: Ipv4Addr,
+    /// The network's name, and whether it's saved as trusted.
+    pub network: String,
+    pub trusted: bool,
 }
 
 /// Every card, every saved network and the networks in the air, as the
@@ -481,13 +484,22 @@ impl State {
         joined
             .filter_map(|(index, card)| {
                 let path = self.at.get(&card.name)?;
+                let network = card.network.clone()?;
+                let saved = self.saved.iter().find(|saved| saved.name == network);
                 Some(Joined {
                     card: card.name.clone(),
                     point: self.heard.get(path)?.bssid.clone(),
                     gateway: *self.gateways.get(index)?,
+                    trusted: saved.is_some_and(|saved| saved.trusted),
+                    network,
                 })
             })
             .collect()
+    }
+
+    /// The saved networks' names.
+    pub fn saved_names(&self) -> Vec<String> {
+        self.saved.iter().map(|saved| saved.name.clone()).collect()
     }
 
     /// The cards on a network, by name, which are those worth polling.
@@ -1232,12 +1244,27 @@ mod tests {
             card: "wlan2".into(),
             point: "02:00:00:00:01:00".into(),
             gateway: Ipv4Addr::new(10, 43, 0, 1),
+            network: "Roadside Inn".into(),
+            trusted: false,
         };
         assert_eq!(
             state.joined(),
             [joined],
             "the access point it's on, not the other"
         );
+    }
+
+    #[test]
+    fn a_card_on_a_trusted_network_is_joined_as_trusted() {
+        let mut state = at_the_inn();
+        let mut inn = saved("Roadside Inn", false, 0);
+        inn.network.trusted = true;
+
+        state.saved(&[inn, saved("Lantern", false, 0)]);
+
+        let joined = state.joined();
+        assert!(joined[0].trusted, "joined: {joined:?}");
+        assert_eq!(state.saved_names(), ["Roadside Inn", "Lantern"]);
     }
 
     #[test]
