@@ -94,8 +94,9 @@ fn orchestrations(shown: &[Shown]) -> Vec<&[Shown]> {
 
 /// What an orchestration's row says at its right: how many of its
 /// sessions need Joel, how many of all of them work, and what it spent
-/// in all, "1 needs you · 3 of 5 working · about $604 in all". Each part
-/// is left out where it would say none.
+/// in all, "1 needs you · 3 of 5 working · about $604 in all", the spend
+/// as spend-watch says it, "about" first only where it's an estimate.
+/// Each part is left out where it would say none.
 fn side(all: &[&Row], spent: Option<&str>, said: &Said) -> Vec<Item> {
     let count = |state: &str| all.iter().filter(|row| row.state == state).count();
     let needing = count("needs");
@@ -116,9 +117,7 @@ fn side(all: &[&Row], spent: Option<&str>, said: &Said) -> Vec<Item> {
     } else {
         String::new()
     };
-    let spent = spent.map_or_else(String::new, |spent| {
-        said.fill("aboutAllOf", &[("spent", spent)])
-    });
+    let spent = spent.map_or_else(String::new, |spent| said.fill("allOf", &[("spent", spent)]));
     [(needs, 5), (works, 4), (spent, 3)]
         .into_iter()
         .filter(|(said, _)| !said.is_empty())
@@ -455,7 +454,9 @@ mod tests {
         closed: &[Value],
         talks: &HashMap<String, Vec<Talk>>,
     ) -> Vec<Value> {
-        let spent = |address: &str| (address == "O").then(|| "$604".to_owned());
+        // As spend-watch says an estimate, its own "about" first
+        // (money.rs's maybe_about), which the row says once.
+        let spent = |address: &str| (address == "O").then(|| "about $604".to_owned());
         let known = Known {
             spent: &spent,
             closed,
