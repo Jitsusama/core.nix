@@ -145,28 +145,6 @@
     "test": "vm-desktop-launcher-answers"
   },
   {
-    "at": 1794433532,
-    "commit": "5b1b2d0a9c9cf58e0e5885705ec2dcdd426c9fd7",
-    "due": "2026-11-16",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
-    "owner_pr": 3370,
-    "reason": "failed, then passed, at 5b1b2d0a9c9c",
-    "subtests": [
-      "test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what",
-      "test_a_usb_cameras_stream_shows_in_the_margin_too_and_leaves_with_the_camera",
-      "test_caps_lock_shows_in_the_margin_while_its_on",
-      "test_caps_lock_still_shows_after_its_watcher_restarts",
-      "test_keep_awake_shows_in_the_margin_and_now_says_it_and_lets_it_sleep",
-      "test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps",
-      "test_quickshell_warned_of_nothing_it_drew_all_along",
-      "test_the_copilot_key_starts_dictation",
-      "test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it",
-      "test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near",
-      "test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly"
-    ],
-    "test": "vm-desktop-minds-the-margin"
-  },
-  {
     "at": 1794437795,
     "commit": "461743399d56dac959e8e102cd6c137100886045",
     "due": "2026-11-16",
