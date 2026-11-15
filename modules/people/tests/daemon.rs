@@ -244,8 +244,14 @@ fn a_daemon_started_again_serves_the_same_record() {
             .clone()
     };
     let first = served("first");
+    // Past a millisecond, so a record stamped by the clock it was heard
+    // at, as each once was, would be served differently.
     std::thread::sleep(Duration::from_millis(5));
-    assert_eq!(served("again"), first);
+    assert_eq!(
+        served("again"),
+        first,
+        "served differently once started again"
+    );
 }
 
 #[test]

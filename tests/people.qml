@@ -604,6 +604,9 @@ ShellRoot {
                 // Said inside People too, on its head, as home's row says it.
                 expect("said on People's head", people.pressing === "not answering",
                     people.pressing);
+                // Shut while it's away and comes back, as a switch finds
+                // the launcher, so nothing is made until it opens again.
+                launcher.wanting = false;
                 root.goneRows = people.tally.rows;
             }
         },
@@ -612,7 +615,11 @@ ShellRoot {
             run: () => {
                 starting.running = true;
             },
-            holds: () => people.pressing === "",
+            // Back once Tuple has told it again how each stands, its first
+            // presence and then its last, as a daemon started again hears
+            // each source's part as it comes.
+            holds: () => people.pressing === "" && people.listedPersons()
+                .find(person => person.key === "ada@example.com")?.stood?.said === "in a call",
             check: () => {
                 expect("home counts again", people.homeSays() !== "not answering",
                     people.homeSays());
@@ -630,6 +637,7 @@ ShellRoot {
                     rows: [{ key: "calendar:meeting:standup:guest:gil@example.com",
                         lends: "person:gil@example.com", name: "gil@example.com" }] }];
                 guesting.told = 0;
+                launcher.wanting = true;
                 naming.running = true;
             },
             holds: () => names(people.all).includes("Gil Hart"),
