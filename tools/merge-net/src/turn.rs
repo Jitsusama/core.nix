@@ -18,7 +18,9 @@
 //! change adds a line to (`lists.rs`), which never make a pass stale, or
 //! lists of modules its change and the asking one gave lines apart, or a
 //! pytest file they gave cases apart (`apart.rs`), which `ready` will
-//! judge apart once it's rebased. A
+//! judge apart once it's rebased. A change in a crate the gate's crates
+//! are in, read or are read by shares with it too, as `ready` counts
+//! (`reach.rs`, `shares`). A
 //! gate counts as having started when its tree's first gate did
 //! (`places.rs`), so a change that runs again after a merge left its pass
 //! stale keeps its place rather than going behind every gate since.
@@ -36,6 +38,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use crate::places::Places;
+use crate::reach::Crates;
 
 /// The longest a gate is waited on. Gates have run past an hour on
 /// saturated lenders, so this leaves room, while a gate that hangs still
@@ -242,14 +245,14 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
         ours,
     };
     let place = |gate: &Gate| places.start(&gate.folder, gate.started, now);
+    let crates = Crates::at(commit);
     let touched = |gate: &Gate| {
         let files = files_of(gate)?;
-        Some(
-            files
-                .into_iter()
-                .filter(|file| !will_stand_apart(gate, commit, file))
-                .collect(),
-        )
+        let apart = files
+            .into_iter()
+            .filter(|file| !will_stand_apart(gate, commit, file))
+            .collect();
+        Some(shares(apart, ours, &crates))
     };
     let mut gates = gates;
     gates.extend(finished(&heads(&places), now, &passed_at, &on_main));
@@ -273,6 +276,15 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
         (PATIENCE.saturating_sub(now.saturating_sub(kept))).div_ceil(60)
     );
     Some((said, held.shared))
+}
+
+/// What a gate changing `theirs` shares with a change to `ours`: the files
+/// they both change, and those of ours in a crate one of theirs is in,
+/// reads or is read by, which `ready` counts as moved under the gate once
+/// ours merges, so its pass would go stale for them all the same.
+fn shares(theirs: Vec<String>, ours: &[String], crates: &Crates) -> Vec<String> {
+    let _ = (ours, crates);
+    theirs
 }
 
 /// Each tree a place is kept for, with its head, where git can read it.
@@ -479,6 +491,30 @@ mod tests {
             here: Path::new(here),
             ours,
         }
+    }
+
+    #[test]
+    fn a_change_to_a_crate_reading_an_earlier_gates_crate_waits_behind_it() {
+        // #4513 changed terminal-kit, which cadence and others read. From
+        // 23:44 on 14 November six of its passes went stale, each as a
+        // change to a crate reading the kit merged during its run, sharing
+        // no file with it, so nothing held that change back.
+        let crates = Crates::of(
+            "c:modules/terminal-kit/Cargo.toml:1:[package]\n\
+             c:modules/cadence/Cargo.toml:1:[package]\n\
+             c:modules/cadence/Cargo.toml:14:terminal-kit = { path = \"../terminal-kit\" }\n\
+             c:modules/sun/Cargo.toml:1:[package]\n",
+        );
+        let theirs = owned(&["modules/terminal-kit/src/lib.rs"]);
+        let ours = owned(&["modules/cadence/src/hour.rs", "modules/sun/src/main.rs"]);
+        let touch = |_: &Gate| Some(shares(theirs.clone(), &ours, &crates));
+        let gates = [gate(1, "/kit", 100)];
+        let held = ahead(&gates, &asking(200, "/cadence", &ours), NOW, &own, &everyone, &touch);
+        assert_eq!(
+            held.map(|held| held.shared),
+            Some(owned(&["modules/cadence/src/hour.rs"])),
+            "a change to a crate reading the kit merged ahead of the kit's earlier gate"
+        );
     }
 
     #[test]
