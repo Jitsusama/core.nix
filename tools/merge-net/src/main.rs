@@ -285,8 +285,9 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
         return by_change(&commit, &main, &on_main);
     }
     let files = lines(&git(&["diff", "--name-only", &main, &commit])?);
-    Ok(turn::passed(
+    Ok(may_merge(
         &commit,
+        &main,
         &[&commit],
         &files,
         &format!(
@@ -294,6 +295,64 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
             short(&commit)
         ),
     ))
+}
+
+/// Say `ready` of `commit`, whose checks passed at `passes`, once `needs`
+/// was asked of it, and refuse it until then.
+fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: &str) -> ExitCode {
+    if needs_heard(commit, main, passes, files) {
+        return turn::passed(commit, passes, files, said);
+    }
+    eprintln!(
+        "merge-net: merge-net needs wasn't asked at {}, nor at an earlier commit of the same \
+         change on a base holding main's rules for it (must-run.txt), so no one has heard \
+         which VM tests run before it merges; run merge-net needs there, run what it names, \
+         and merge again",
+        short(commit)
+    );
+    ExitCode::FAILURE
+}
+
+/// Whether `needs` was asked of `commit`'s change, at it, at one of
+/// `passes` or at an earlier commit of the same change, on a base holding
+/// main's newest `must-run.txt`. On 15 November #4653 merged at a rebase
+/// onto #4770, which added the rule that its initrd moved, after needs had
+/// been asked only at commits whose base lacked it.
+fn needs_heard(commit: &str, main: &str, passes: &[&str], files: &[String]) -> bool {
+    let rules = git(&["log", "-1", "--format=%H", main, "--", "tools/merge-net/must-run.txt"]);
+    let rules = rules.unwrap_or_default();
+    let knows_rules = |asked: &str| {
+        rules.is_empty()
+            || Command::new("git")
+                .args(["merge-base", "--is-ancestor", &rules, asked])
+                .status()
+                .is_ok_and(|status| status.success())
+    };
+    let mut asked: Vec<&str> = passes.to_vec();
+    asked.push(commit);
+    asked.retain(|at| knows_rules(at));
+    if gated::asked(&asked) {
+        return true;
+    }
+    let Some(change) = patch_id(Path::new("."), main, commit) else {
+        return false;
+    };
+    let earlier: Vec<String> = candidates(commit, main, files)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|candidate| knows_rules(candidate))
+        .filter(|candidate| {
+            ready::when_same(
+                candidate,
+                &change,
+                |at| git(&["merge-base", at, main]).ok(),
+                |base, at| patch_id(Path::new("."), base, at),
+                |_| Some(()),
+            )
+            .is_some()
+        })
+        .collect();
+    gated::asked(&earlier.iter().map(String::as_str).collect::<Vec<_>>())
 }
 
 /// What to do about `commit`, which must run again: wait for the run
@@ -394,7 +453,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
     if let ready::Before::Twice(newest, earlier, shared) = before {
         if names_gone(&newest).is_some_and(|naming| naming.is_empty()) {
             let said = twice(commit, &newest, &earlier, &shared);
-            return Ok(turn::passed(commit, &[&newest, &earlier], &files, &said));
+            return Ok(may_merge(commit, main, &[&newest, &earlier], &files, &said));
         }
         // Main renamed or deleted a path one side names, which neither
         // run saw, so it runs again as a change checked once would.
@@ -408,10 +467,10 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
                 short(commit),
                 short(&checked)
             );
-            return Ok(turn::passed(commit, &[&checked], &files, &said));
+            return Ok(may_merge(commit, main, &[&checked], &files, &said));
         }
         ready::Before::Shares(checked, shared) => {
-            let passes = |said: &str| turn::passed(commit, &[commit, &checked], &files, said);
+            let passes = |said: &str| may_merge(commit, main, &[commit, &checked], &files, said);
             let quarantine = git(&["show", &format!("{commit}:{}", world::QUARANTINE)]);
             let quarantine = quarantine.unwrap_or_default();
             if let Some(said) = lists::say(commit, &shared, &quarantine, &passes) {

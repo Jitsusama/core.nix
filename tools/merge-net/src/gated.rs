@@ -128,8 +128,9 @@ pub fn keep(head: &str, began: u64, asked: Asked) {
 /// passed but `needs` never asked, though it moved the laptop's initrd,
 /// which needs would have answered with the boot and hibernation tests.
 pub fn asked_at(kept: &str, commits: &[&str]) -> bool {
-    let _ = (kept, commits);
-    true
+    kept.lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .any(|line| line["head"].as_str().is_some_and(|head| commits.contains(&head)))
 }
 
 /// Whether `needs` was asked at any of `commits` on this machine.

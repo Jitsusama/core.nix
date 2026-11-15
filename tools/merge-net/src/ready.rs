@@ -1,6 +1,7 @@
 //! `merge-net ready COMMIT`: whether a branch's head may merge, asked
 //! before merging by whatever merges it. It may when it sits on origin's
-//! main as it is now, and changed-checks built what it named there.
+//! main as it is now, changed-checks built what it named there, and
+//! `needs` was asked of the change (`gated.rs`).
 //!
 //! On 8 November four checks were red on main by 11:00. changed-checks
 //! named each at its merge, but one branch was built before main gained
