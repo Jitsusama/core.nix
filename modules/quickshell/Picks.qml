@@ -37,7 +37,7 @@ Scope {
     readonly property real day: 24 * 60 * 60 * 1000
 
     function fade(entry, now) {
-        return entry.n * Math.pow(0.5, (now - entry.t) / (halfLife * day));
+        return Fading.fade(entry, now, halfLife * day);
     }
 
     // A query as it is kept: in lower case, its spaces collapsed.
