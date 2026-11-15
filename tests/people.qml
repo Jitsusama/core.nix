@@ -604,6 +604,7 @@ ShellRoot {
                 // Said inside People too, on its head, as home's row says it.
                 expect("said on People's head", people.pressing === "not answering",
                     people.pressing);
+                root.goneRows = people.tally.rows;
             }
         },
         {
@@ -633,6 +634,13 @@ ShellRoot {
             },
             holds: () => names(people.all).includes("Gil Hart"),
             check: () => {
+                // Its listing, told whole again once it was back, made
+                // none of those it listed before: told everyone anew, a
+                // daemon started again by a switch made 136 and 137 rows
+                // at Joel's next first letter (his journal, 2026-11-14).
+                expect("the daemon back made only Gil's row",
+                    people.tally.rows - root.goneRows === 1,
+                    `${people.tally.rows - root.goneRows} rows made`);
                 launcher.held = [];
                 expect("tells the place holding them, to ask for them again",
                     guesting.told > 0, `told ${guesting.told} times`);
@@ -778,8 +786,10 @@ ShellRoot {
     // shut.
     property int shutRows: 0
 
-    // When the people daemon was stopped.
+    // When the people daemon was stopped, and how many rows People had
+    // made once it was gone.
     property real stoppedAt: 0
+    property int goneRows: 0
 
     // How often People found more once asked, as the launcher hears it,
     // and how often before Tuple came to know Fay.
