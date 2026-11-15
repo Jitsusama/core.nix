@@ -153,6 +153,7 @@ closes or loses focus"
 - Held by `margin-cat-floats.qml`: "off it, it crouches and leaps straight up onto the ledge in reach"
 - Held by `margin-cat-floats.qml`: "its window closed, it leaps up at once, never thinking or
   walking first"
+- Held by `margin-cat-floats.qml`: "on a floating window it's drawn over the tiled ones"
 
 ### Never Skid
 

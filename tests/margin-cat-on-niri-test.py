@@ -331,14 +331,14 @@ def test_tapping_along_the_columns_never_sets_it_walking(shell: Shell) -> None:
 
 
 def test_the_cat_takes_no_keys_on_a_layer_of_its_own(shell: Shell) -> None:
-    """It's on the top layer, taking no keys, so typing goes where it went before.
+    """It's under the windows, taking no keys, so typing goes where it went before.
 
     The margin, the launcher and notices stay over it, on the overlay layer, so a mark's ink
     lies over its paws as it perches there, and it never hides one (VKCF3Z, 3d799798).
     """
     shell.opened("a column under the cat")
+    on_layer(shell, "Bottom")
     (layer,) = layered(shell, 1)
-    assert layer["layer"] == "Top", f"the cat is on the {layer['layer']} layer"
     over = json.loads(shell.as_account("niri msg --json layers"))
     under = [
         (one["namespace"], one["layer"])
@@ -349,6 +349,86 @@ def test_the_cat_takes_no_keys_on_a_layer_of_its_own(shell: Shell) -> None:
     assert layer["keyboard_interactivity"] == "None", (
         f"the cat takes keys: {layer['keyboard_interactivity']}"
     )
+
+
+def on_layer(shell: Shell, wanted: str) -> None:
+    """Wait until niri lists the cat's one layer surface on this layer."""
+    deadline = time.monotonic() + LAYERED
+    (layer,) = layered(shell, 1)
+    while layer["layer"] != wanted:
+        assert time.monotonic() < deadline, f"the cat is on the {layer['layer']} layer"
+        time.sleep(POLL)
+        (layer,) = layered(shell, 1)
+
+
+def seated(shell: Shell, since: int) -> tuple[Json, Json]:
+    """Give where the cat's newest report since the mark has it sit, and the column under it."""
+    said, _ = shell.said_since(since)
+    last = next(report for report in reversed(said) if report.startswith(SITS))
+    at = placed(last[len(SITS) :])
+    assert at is not None, f"the cat said it's nowhere: {last}"
+    return at, json.loads(last.split(" over ", 1)[1])
+
+
+def inks(shell: Shell, at: Json, wanted: Callable[[int], bool]) -> int:
+    """Wait until the cat's box holds as much of its ink as wanted, and give how much."""
+    scale = json.loads(shell.as_account("niri msg --json outputs"))["winit"]["logical"]["scale"]
+    deadline = time.monotonic() + LAYERED
+    drawn = inked(boxed(shell, at, scale), at["hue"])
+    while not wanted(drawn) and time.monotonic() < deadline:
+        time.sleep(POLL)
+        drawn = inked(boxed(shell, at, scale), at["hue"])
+    return drawn
+
+
+def test_windows_cover_it_but_a_floating_one_holds_it_over_them(shell: Shell) -> None:
+    """Under the windows, one passing in front of it covers it, never wearing it on its face.
+
+    That holds however late the shell hears niri, where on top a loaded machine showed it on
+    a sliding window's face (VKCF3Z, 3fe38ef5). Standing on a floating window, which sits in
+    front of the tiled ones, it's over them, or the tiled window behind would hide it (Joel,
+    2026-11-13 18:59), and back under them once it leaves.
+    """
+    # The lower of two rows, so it sits in the gap between them, with room above it for a
+    # floating window to cover it.
+    upper = shell.opened("a row over the one a floating window goes in front of")
+    since = shell.mark()
+    tiled = shell.opened("a row a floating window goes in front of")
+    shell.as_account("niri msg action consume-or-expel-window-left")
+    sits_over(shell, tiled, since)
+    on_layer(shell, "Bottom")
+    at, column = seated(shell, since)
+    whole = at["lit"] * at["cell"] ** 2
+    shown = inks(shell, at, lambda drawn: drawn == whole)
+    assert shown == whole, f"in a gap under the windows, {shown} of its {whole} pixels show"
+    since = shell.mark()
+    floated = shell.opened("a floating window in front of a tiled one")
+    shell.as_account(f"niri msg action toggle-window-floating --id {floated['id']}")
+    asked = (round(column["left"] + column["width"] / 4), round(column["top"] + 120))
+    shell.as_account(
+        f"niri msg action move-floating-window --id {floated['id']} -x {asked[0]} -y {asked[1]}"
+    )
+    sits_over(shell, floated, since)
+    on_layer(shell, "Top")
+    on, floating = seated(shell, since)
+    shown = inks(shell, on, lambda drawn: drawn == whole)
+    assert shown == whole, f"on a floating window over a tiled one, {shown} of {whole} show"
+    # Where niri put it against where it was asked to, since a floating window's place is
+    # the working area's, which the margin's layer may take some of.
+    off = (floating["left"] - asked[0], floating["top"] - asked[1])
+    since = shell.mark()
+    shell.as_account(f"niri msg action focus-window --id {tiled['id']}")
+    sits_over(shell, tiled, since)
+    on_layer(shell, "Bottom")
+    at, _ = seated(shell, since)
+    over = (round(at["x"] - 40 - off[0]), round(at["y"] - 40 - off[1]))
+    shell.as_account(
+        f"niri msg action move-floating-window --id {floated['id']} -x {over[0]} -y {over[1]}"
+    )
+    shown = inks(shell, at, lambda drawn: drawn == 0)
+    assert shown == 0, f"a floating window moved in front of it, {shown} of its pixels show"
+    for window in (floated, tiled, upper):
+        shell.close(window)
 
 
 def counting(shell: Shell) -> str:
