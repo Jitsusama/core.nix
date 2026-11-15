@@ -343,7 +343,7 @@ fn fills(network: &Network, internet: &Internet) -> Vec<Concern> {
                 concerns.push(Concern {
                     kind: ConcernKind::Fills,
                     device: device.id.clone(),
-                    on: None,
+                    on: Some(way.into()),
                     other: None,
                     says: format!(
                         "{} is using {share:.0}% of the internet's speed {way}: {:.1} of its \
@@ -590,15 +590,18 @@ pub(crate) mod tests {
             .expect("the record has the computer's speed");
         computer.down_mbps = Some(290.0);
         work_out(&mut network);
-        let fills: Vec<&str> = network
+        let fills: Vec<(Option<&str>, &str)> = network
             .concerns
             .iter()
             .filter(|concern| concern.kind == ConcernKind::Fills)
-            .map(|concern| concern.says.as_str())
+            .map(|concern| (concern.on.as_deref(), concern.says.as_str()))
             .collect();
         assert_eq!(
             fills,
-            ["unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s"],
+            [(
+                Some("up"),
+                "unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s"
+            )],
             "78% of the way down is under the line, and 83% up is over it"
         );
     }

@@ -6965,6 +6965,7 @@
     {
       "kind": "fills",
       "device": "mac:02:00:00:00:00:08",
+      "on": "up",
       "says": "unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s"
     },
     {
