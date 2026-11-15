@@ -55,7 +55,11 @@
 //! room (floors.rs). It switches zswap off too, and on again after, or
 //! what's swapped out for the image can stay in memory (zswap.rs). `fits`
 //! says whether the image would fit, by the kernel's sums, before anything
-//! is asked to hibernate (fits.rs), and exits 1 when it wouldn't.
+//! is asked to hibernate (fits.rs), and exits 1 when it wouldn't. When the
+//! machine starts another kernel, initrd or kernel parameters by default
+//! than the running system did, it sets the next start, once, to the boot
+//! entry this one came from, so the image is read back by the kernel that
+//! wrote it, and unsets it after (oneshot.rs).
 //!
 //! `restoring` runs in the initrd just before the image is read, keeping
 //! when in an EFI variable, so that once the machine is back the hook says
@@ -63,6 +67,7 @@
 
 mod fits;
 mod floors;
+mod oneshot;
 mod restored;
 mod zswap;
 
@@ -91,6 +96,9 @@ const CGROUPS: &str = "/sys/fs/cgroup";
 
 /// Kept while zswap is switched off for an image.
 const ZSWAP_OFF: &str = "/run/hibernate-unlock-zswap";
+
+/// Kept while the next start is held to this one's boot entry.
+const ONESHOT: &str = "/run/hibernate-unlock-oneshot";
 
 /// Kept while a rolled-back hibernation is tried again, so a second
 /// rollback powers off rather than trying forever.
@@ -492,6 +500,12 @@ fn said(program: &str, args: &[&str]) -> Option<String> {
         .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+/// Set the next start's boot entry, once, with `bootctl set-oneshot`, or
+/// unset it given nothing. Says whether it did.
+fn set_oneshot(entry: &str) -> bool {
+    said("bootctl", &["set-oneshot", entry]).is_some()
+}
+
 fn starts() -> Option<Starts> {
     Starts::parse(&said("tpm2_readclock", &[])?)
 }
@@ -525,6 +539,15 @@ fn before(action: &str) {
         Ok(false) => {}
         Ok(true) => eprintln!("hibernate-unlock: switched zswap off for the image"),
         Err(error) => eprintln!("hibernate-unlock: couldn't switch zswap off: {error}"),
+    }
+    let (booted, default) = (Path::new(oneshot::BOOTED), Path::new(oneshot::DEFAULT));
+    match oneshot::hold(booted, default, Path::new(ONESHOT), set_oneshot) {
+        Ok(false) => {}
+        Ok(true) => eprintln!(
+            "hibernate-unlock: the default system starts another kernel or initrd, so the \
+             next start takes this one's entry, once, to read the image back"
+        ),
+        Err(error) => eprintln!("hibernate-unlock: couldn't keep the held start: {error}"),
     }
     // What the graphics drivers hold as the image is sized: they copy it
     // out as they stop, and the reserve has to leave room for that.
@@ -576,6 +599,11 @@ fn after(action: &str, disks: &[String]) {
         Ok(false) => {}
         Ok(true) => eprintln!("hibernate-unlock: switched zswap on again"),
         Err(error) => eprintln!("hibernate-unlock: couldn't switch zswap on again: {error}"),
+    }
+    match oneshot::let_go(Path::new(ONESHOT), set_oneshot) {
+        Ok(false) => {}
+        Ok(true) => eprintln!("hibernate-unlock: the next start takes the default system again"),
+        Err(error) => eprintln!("hibernate-unlock: couldn't let the next start go: {error}"),
     }
     let logged = logged_since_before();
     let _ = fs::remove_file(LOGGED);
