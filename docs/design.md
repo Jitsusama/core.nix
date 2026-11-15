@@ -903,8 +903,11 @@ order, so every line still says one whole thing:
   never one word alone below, and past two ends at a whole word in an
   ellipsis, its whole kept in the nerd fold. A fact sits beside its label
   while it fits, else under it, whole, breaking between words or at an
-  identifier's marks; a label never wraps. Its why and its body wrap as
-  prose at the serif's measure, five lines at most, the rest in the fold.
+  identifier's marks; a label never wraps. A bit in the fold whose value
+  holds a word too wide to sit beside its name stands under the name at
+  the full measure, so a quest's id is never broken (VKCF3Z, bfdad751).
+  Its why and its body wrap as prose at the serif's measure, five lines
+  at most, the rest in the fold.
 - **Nothing that reads as one is split.** A figure and its unit, a date's
   parts, a chord's keys, a name and its count, and a time and its zone are
   joined so no break falls between them.

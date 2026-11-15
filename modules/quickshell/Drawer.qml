@@ -453,6 +453,20 @@ Floating {
             eyebrow: shown(eyebrowText),
             eyebrowMiddle: eyebrowText.visible ? contentTop + eyebrowText.y
                 + eyebrowText.height / 2 : null,
+            // The fold's line's and each open bit's first line's.
+            nerd: foldShown.visible ? [contentTop + flow.y + foldShown.y + foldName.y
+                + foldName.baselineOffset].concat(Array.from({ length: nerdRows.count },
+                (_, at) => {
+                    const bit = nerdRows.itemAt(at);
+                    return bit ? contentTop + flow.y + foldShown.y + bit.y
+                        + bit.valueWords.y + bit.valueWords.baselineOffset : null;
+                })) : [],
+            // Each open bit's last line's, so a bit cut at the foot is seen.
+            nerdLast: Array.from({ length: nerdRows.count }, (_, at) => {
+                const bit = nerdRows.itemAt(at);
+                return bit ? contentTop + flow.y + foldShown.y + bit.y + bit.height
+                    - drawer.pitch / 2 + drawer.dropped : null;
+            }),
             words: wordsBox.visible ? contentTop + flow.y + wordsBox.y + bodyText.y
                 + bodyText.baselineOffset : null,
             title: flowed(titleText),
@@ -906,7 +920,9 @@ Floating {
             : spans[at - 1].last === span.line ? " " : "\n")
             + (span.start === 0 ? span.text.marked : "")
             + span.words.getText(span.start, span.end).replace(/[\u2028\u2029]/g, "\n")
-                .replace(/\u200b/g, "")).join("");
+                // The joiners that hold a value whole go, so a quest's id
+                // pastes as typed.
+                .replace(/[\u200b\u2060]/g, "")).join("");
         flashedBy = lines || choosing === "lines" ? "lines" : "letters";
         flashing = took;
         flash.restart();
@@ -1308,6 +1324,14 @@ Floating {
         }
         return wrapped;
     }
+    // Each open nerdy bit's value as drawn, how many lines and whether it
+    // stands under its name, for the launcher to report.
+    function nerdDrawn() {
+        return Array.from({ length: nerdRows.count }, (_, at) => {
+            const bit = nerdRows.itemAt(at);
+            return bit ? { lines: bit.valueWords.lineCount, under: bit.under ?? false } : null;
+        });
+    }
     // How many of its values stand under their names rather than beside
     // them, for the launcher to report: a key list's never do.
     function factsUnder() {
@@ -1451,10 +1475,14 @@ Floating {
     // An identifier, as a supply's "ucsi-source-psy-USBC000:001" or a
     // desktop entry's "com.onepassword.OnePassword", breaks at its own
     // marks rather than draw past the frame (VKCF3Z, 2026-11-08 and 09), as
-    // DrawerValue.identifierLines lays it; a line that fits is held whole.
+    // DrawerValue.identifierLines lays it; a line that fits is held whole,
+    // at its hyphens too: "claude-opus-5-5" fit by the face's measure yet
+    // the text, a fraction short, broke it at a hyphen, onto a second line
+    // nothing had counted.
     function identifierKept(words, face, wide) {
         return Value.identifierLines(words, wide, widthIn(face))
-            .map(line => widthIn(face)(line) <= wide ? line.replace(/ /g, "\u00a0") : line)
+            .map(line => widthIn(face)(line) <= wide
+                ? line.replace(/ /g, "\u00a0").replace(/-/g, "-\u2060") : line)
             .join("\n");
     }
 
@@ -1509,11 +1537,66 @@ Floating {
     // its end its lines are still the card's.
     readonly property real viewEnd: view.natural <= viewTop + viewRoom ? viewTop
         : stops + Math.ceil((view.natural - viewRoom - stops) / pitch - rounding) * pitch
+    // How many of the words' lines it lays: all of them, but while the fold
+    // is open at rest, where the words give up whole lines from their end
+    // so the fold's line and bits stand above the more line rather than
+    // under the card, out of sight, and za changes what's seen (VKCF3Z,
+    // bfdad751). The rest is counted under the more line, and the keys,
+    // gone into, lay them all again to read on. All may go where the fold's
+    // line and first bit need it, since a line kept over a fold out of
+    // sight changes nothing za shows. Read off the things after the words,
+    // never the flow's height, which the words' own sets.
+    readonly property int wordsKept: {
+        const lines = bodyText.lineCount;
+        if (drawer.folded || drawer.keys || drawer.nerd.length === 0 || drawer.body === "")
+            return lines;
+        // Each thing after the words stands a pitch, the flow's spacing,
+        // after the one before.
+        const after = item => item.visible ? drawer.pitch + item.height : 0;
+        // The fold needs room for its line and its first bit alone; the
+        // bits under them are the more line's to count.
+        const ends = flow.y + wordsBox.y + lines * drawer.pitch + after(frame) + after(actsShown)
+            + (foldShown.visible ? (2 + drawer.nerdLines(drawer.nerd[0])) * drawer.pitch : 0);
+        // Where the last thing shown ends at rest, a thing's step over the
+        // more line, as shownAndHidden ends it.
+        const step = drawer.pitch + drawer.apartIn(drawer.anyWraps(factRows), false);
+        const room = drawer.moreBase - Theme.border - step + drawer.pitch / 2 - drawer.dropped;
+        const over = Math.ceil((ends - room) / drawer.pitch - drawer.rounding);
+        const kept = Math.min(lines, lines - over);
+        // None kept, the words stand no line and none of the flow's
+        // spacing above them, so the fold rises a pitch more; the title
+        // still says what it's about, and the more line counts the words.
+        return kept >= 1 ? kept : 0;
+    }
     // The top of every line's box it lays on the pitch past its title, down
-    // the content: the facts', the moment's, the preview's and the words'.
-    // Each a fact takes as { top, bottom }, all its lines, a heading held
-    // with the thing under it; and each line of the moment, the preview
-    // and the words, which run on as reading does.
+    // the content: the facts', the moment's, the preview's, the words' and
+    // the fold's. Each a fact takes as { top, bottom }, all its lines, a
+    // heading held with the thing under it; each line of the moment, the
+    // preview and the words, which run on as reading does, a word line it
+    // doesn't lay hidden at once; and the fold's line, held with its first
+    // bit, and each bit.
+    // How many lines a bit in the fold stands, worked out from its value
+    // as its value's text lays it, rather than read off the bit: the view
+    // read a bit before its value was laid on two lines and never again,
+    // so it ended through the second.
+    function nerdLines(bit) {
+        void nerdFace.font;
+        const under = drawer.nerdUnder(bit);
+        const wide = foldShown.width - (under ? 0 : drawer.nerdLabelsWide + drawer.labelsGap);
+        return (under ? 1 : 0) + Math.max(1, Value.identifierLines(String(bit?.value), wide,
+            widthIn(nerdFace)).length);
+    }
+    // Whether a bit in the fold stands its value under its name: where a
+    // word of the value, a quest's id of twenty letters in a 288 pixel
+    // drawer, is too wide for the column beside the name, so it is drawn
+    // whole at the full measure rather than broken at a mark, as a
+    // glance's fact is (VKCF3Z, bfdad751).
+    function nerdUnder(bit) {
+        void nerdFace.font;
+        const beside = foldShown.width - drawer.nerdLabelsWide - drawer.labelsGap;
+        return String(bit?.value ?? "").split(/\s+/).some(
+            word => widthIn(nerdFace)(word) > beside);
+    }
     function lineSpans() {
         const spans = [];
         // A line of the words says which it is, since they're counted by
@@ -1542,8 +1625,23 @@ Floating {
         }
         if (previewLines.visible)
             run(flow.y + previewBox.y, previewBox.lines.length);
-        if (wordsBox.visible)
-            run(flow.y + wordsBox.y, bodyText.lineCount, true);
+        if (drawer.body !== "") {
+            run(flow.y + wordsBox.y, drawer.wordsKept, true);
+            for (let at = drawer.wordsKept; at < bodyText.lineCount; at++)
+                spans.push({ top: Infinity, bottom: Infinity, line: at });
+        }
+        // Shut, the fold's line alone is cut wherever it falls, as before
+        // it had a span, so a drawer shut keeps its foot.
+        if (foldShown.visible && !drawer.folded) {
+            let top = flow.y + foldShown.y;
+            let bitTop = top + drawer.pitch;
+            for (const bit of drawer.nerd) {
+                const bottom = bitTop + drawer.nerdLines(bit) * drawer.pitch;
+                spans.push({ top: top ?? bitTop, bottom });
+                top = null;
+                bitTop = bottom;
+            }
+        }
         return spans;
     }
     // Where the view ends: at its room, or where a thing would run past it,
@@ -1674,6 +1772,18 @@ Floating {
         // pulls contentY back inside its bounds, which would leave the view
         // resting at the page's top rather than viewTop until the next key.
         contentHeight: drawer.viewTop + drawer.viewEnd + drawer.tall
+        // A Flickable sets its own contentY as it fixes its bounds, which
+        // leaves the binding's value behind until shownFrom next moves: za
+        // opening the fold left it at the page's top, the view drawn its
+        // rest's height lower than its cut, and the last bit kept whole
+        // across the foot. It's bound again once it's done.
+        onContentYChanged: {
+            if (Math.abs(contentY - drawer.shownFrom) <= 0.5)
+                return;
+            Qt.callLater(() => {
+                view.contentY = Qt.binding(() => drawer.shownFrom);
+            });
+        }
 
         Item {
             id: column
@@ -2409,8 +2519,11 @@ Floating {
                 Item {
                     id: wordsBox
                     width: parent.width
-                    height: bodyText.lineCount * drawer.pitch
-                    visible: drawer.body !== ""
+                    // Its lines laid, the rest given up for the fold
+                    // (wordsKept) clipped away whole.
+                    height: drawer.wordsKept * drawer.pitch
+                    clip: drawer.wordsKept < bodyText.lineCount
+                    visible: drawer.body !== "" && drawer.wordsKept > 0
 
                     PageText {
                         id: bodyText
@@ -2613,13 +2726,15 @@ Floating {
                             required property var modelData
                             readonly property Item labelWords: bitLabel
                             readonly property Item valueWords: bitValue
+                            readonly property bool under: drawer.nerdUnder(modelData)
                             width: parent.width
-                            height: Math.max(1, bitValue.lineCount) * drawer.pitch
+                            height: ((under ? 1 : 0) + Math.max(1, bitValue.lineCount))
+                                * drawer.pitch
 
                             PageText {
                                 id: bitLabel
                                 sought: drawer.washing
-                                width: drawer.nerdLabelsWide
+                                width: bit.under ? parent.width : drawer.nerdLabelsWide
                                 y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                                 plain: String(bit.modelData.label ?? "")
                                 leading: drawer.pitch
@@ -2630,9 +2745,10 @@ Floating {
                             PageText {
                                 id: bitValue
                                 sought: drawer.washing
-                                x: drawer.nerdLabelsWide + drawer.labelsGap
+                                x: bit.under ? 0 : drawer.nerdLabelsWide + drawer.labelsGap
                                 width: parent.width - x
-                                y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                                y: (bit.under ? drawer.pitch : 0) + drawer.pitch / 2
+                                    + drawer.dropped - baselineOffset
                                 plain: drawer.identifierKept(String(bit.modelData.value), nerdFace,
                                     width)
                                 leading: drawer.pitch
