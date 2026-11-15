@@ -853,8 +853,19 @@ PanelWindow {
     // hides a mark or a notice (VKCF3Z, 3d799798); and under the windows,
     // but on a floating one's top over them (MarginCat.above). It leaves
     // that seat on a walk to another window or a move between workspaces.
-    readonly property bool leaving: moving !== null || (going !== null && goingTo !== sat)
-    WlrLayershell.layer: MarginCat.above(under, leaving) ? WlrLayer.Top : WlrLayer.Bottom
+    // Its seat is read as niri has it now, not as it was when it set off:
+    // a window opened tiled and made floating as it walked there is a
+    // floating one by the time it sits (a nested niri, 2026-11-15). Not
+    // named `leaving`, the timer's id, which a bare name finds first.
+    readonly property bool departing: moving !== null || (going !== null && goingTo !== sat)
+    readonly property var seatedOn: {
+        void window.scene.settled;
+        void Niri.revision;
+        return window.scene.shared || Niri.overview ? null : tile(sat);
+    }
+    readonly property bool above: MarginCat.above(seatedOn, departing)
+    onAboveChanged: say()
+    WlrLayershell.layer: above ? WlrLayer.Top : WlrLayer.Bottom
     WlrLayershell.namespace: "cat"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     // Only its own cells take the pointer, to be petted, so the gap
@@ -924,6 +935,11 @@ PanelWindow {
             pose: window.scene.posed,
             strolling: handsBack || strolled !== null,
             window: sat,
+            // Whether it asks to be over the windows, which niri takes
+            // only once its surface is next drawn, and what that's from.
+            above: window.above,
+            seat: seatedOn,
+            departing: departing,
             asleep: window.scene.asleep,
             stretching: window.scene.stretching,
             leaning: window.leaning,

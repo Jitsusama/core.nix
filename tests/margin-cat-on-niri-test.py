@@ -352,11 +352,21 @@ def test_the_cat_takes_no_keys_on_a_layer_of_its_own(shell: Shell) -> None:
 
 
 def on_layer(shell: Shell, wanted: str) -> None:
-    """Wait until niri lists the cat's one layer surface on this layer."""
+    """Wait until niri lists the cat's one layer surface on this layer.
+
+    A failure gives the cat's last report, which says whether the shell asked for it over
+    the windows, and niri's word on the window it sits on, so the cat's rule and the
+    surface niri took tell themselves apart.
+    """
     deadline = time.monotonic() + LAYERED
     (layer,) = layered(shell, 1)
     while layer["layer"] != wanted:
-        assert time.monotonic() < deadline, f"the cat is on the {layer['layer']} layer"
+        if time.monotonic() >= deadline:
+            said, _ = shell.said_since(0)
+            last = next((one for one in reversed(said) if one.startswith(SITS)), "")
+            at = placed(last[len(SITS) :]) if last else None
+            seat = [one for one in shell.windows() if at and one["id"] == at.get("window")]
+            assert layer["layer"] == wanted, f"on {layer['layer']}: {last}; its seat {seat}"
         time.sleep(POLL)
         (layer,) = layered(shell, 1)
 
