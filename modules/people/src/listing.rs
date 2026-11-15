@@ -10,6 +10,10 @@
 //! address, or by a source's own id for one it knows by no address, as the
 //! shell's Person.js joins them, and no source says more than one address
 //! for anyone.
+//!
+//! Long because its cases sit beside what they prove, as the crate's other
+//! files keep theirs: the code alone is about 520 lines, one listing's
+//! making from record to row, which splitting would scatter.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
