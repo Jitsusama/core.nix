@@ -57,17 +57,6 @@ Item {
     // So the voice can be set on another face's baseline (anchors.baseline).
     baselineOffset: words.baselineOffset
     clip: scrolls
-    // While they move, the words fade out over a mark at each end of their
-    // room, rather than end cut through a letter there (VKCF3Z, 2026-11-14:
-    // a glyph clipped at both ends of a selected long name). The layer is
-    // made only then, so words at rest, and a shut launcher, cost nothing.
-    layer.enabled: moving && fadedBy !== null
-    layer.effect: MultiEffect {
-        maskEnabled: true
-        maskSource: room.fadedBy
-        // The mask's alpha read smoothly from none to whole, not as a cut.
-        maskSpreadAtMin: 1
-    }
 
     // How far past their room the words run, when they do.
     readonly property real over: Math.max(0, words.implicitWidth - width)
@@ -128,36 +117,62 @@ Item {
         font: words.font
     }
 
-    Text {
-        id: words
-        x: room.restAt
-        width: room.moving ? implicitWidth : room.restWidth
-        text: room.text
-        textFormat: room.format
-        elide: room.moving ? Text.ElideNone : Text.ElideRight
-        color: room.color
-        font.family: room.level.family
-        font.italic: room.level.italic
-        font.pointSize: room.level.pointSize
-        font.weight: room.level.weight
-        font.variableAxes: room.level.variableAxes
-        font.features: room.level.features
+    // The words as they're seen. While they move, they fade out over a mark
+    // at each end of their room, rather than end cut through a letter there
+    // (VKCF3Z, 2026-11-14: a glyph clipped at both ends of a selected long
+    // name). The layer is made only then, so words at rest, and a shut
+    // launcher, cost nothing. What they're seen through stands beside
+    // them, never inside, or it would be drawn into what it masks.
+    Item {
+        id: seen
+        width: room.width
+        height: room.height
+        layer.enabled: room.moving && room.fadedBy !== null
+        layer.effect: MultiEffect {
+            maskEnabled: true
+            maskSource: room.fadedBy
+            // The mask's alpha read smoothly from none to whole, not as a cut.
+            // Qt passes it through a smoothstep topped at the threshold times
+            // one more than the spread, its foot the spread below that
+            // (qquickmultieffect.cpp), so a threshold of a half and a spread
+            // of one run it from 0 to 1. At the default threshold of 0, any
+            // alpha at all passes whole, and the fade is a cut again.
+            maskThresholdMin: 0.5
+            maskSpreadAtMin: 1
+        }
 
-        // Made once there's a find to wash, beneath the letters, and kept
-        // while the words stand, washing nothing while nothing's found:
-        // a row's finds come and go with the keys typed, and making it
-        // again was 12 to 36 ms of a key's frame (prof6, 2026-11-11).
-        Loader {
-            id: wash
-            anchors.fill: parent
-            z: -1
-            active: room.washMade
-            sourceComponent: Wash {
-                text: room.plain
-                runs: room.finds
-                font: words.font
-                cut: words.truncated
-                selected: room.washedSelected
+        Text {
+            id: words
+            x: room.restAt
+            width: room.moving ? implicitWidth : room.restWidth
+            text: room.text
+            textFormat: room.format
+            elide: room.moving ? Text.ElideNone : Text.ElideRight
+            color: room.color
+            font.family: room.level.family
+            font.italic: room.level.italic
+            font.pointSize: room.level.pointSize
+            font.weight: room.level.weight
+            font.variableAxes: room.level.variableAxes
+            font.features: room.level.features
+
+            // Made once there's a find to wash, beneath the letters, and
+            // kept while the words stand, washing nothing while nothing's
+            // found: a row's finds come and go with the keys typed, and
+            // making it again was 12 to 36 ms of a key's frame (prof6,
+            // 2026-11-11).
+            Loader {
+                id: wash
+                anchors.fill: parent
+                z: -1
+                active: room.washMade
+                sourceComponent: Wash {
+                    text: room.plain
+                    runs: room.finds
+                    font: words.font
+                    cut: words.truncated
+                    selected: room.washedSelected
+                }
             }
         }
     }

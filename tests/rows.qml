@@ -562,6 +562,15 @@ ShellRoot {
         return null;
     }
 
+    // Whether an item stands within another, at any depth.
+    function within(item, outer) {
+        for (let up = item.parent; up !== null; up = up.parent) {
+            if (up === outer)
+                return true;
+        }
+        return false;
+    }
+
     // A row's texts keep inside it and clear of each other.
     function apart(row, edge) {
         const texts = drawn(row, []).sort((a, b) => a.from - b.from);
@@ -1671,10 +1680,19 @@ ShellRoot {
             const name = texts.find(t => t.text === taking.name);
             const side = texts.find(t => t.text === taking.side);
             const reads = root.readsOn(taking, taking.name);
-            const words = reads.children.find(child => child.text === reads.text);
+            // The words stand in what's seen of them, which is layered while
+            // they move, beside the mask rather than around it.
+            const seen = reads.children.find(child =>
+                child.children.some(grand => grand.text === reads.text)) ?? reads;
+            const words = seen.children.find(child => child.text === reads.text);
             const faded = reads.fadedBy;
             return { name: name.from, side: side.from, ended: name.truncated,
-                resting: reads.moving !== true, layered: reads.layer.enabled,
+                resting: reads.moving !== true,
+                layered: seen.layer.enabled || reads.layer.enabled,
+                // Whether the mask is drawn into what it masks, so masks none
+                // of it: the room layered around it, or it within the words.
+                maskWithin: reads.layer.enabled
+                    || (faded !== null && root.within(faded, seen)),
                 fade: reads.fade, whole: faded?.whole ?? null,
                 startCovered: faded?.cover.opacity ?? null,
                 endsAt: words.x + words.implicitWidth, room: reads.width };
@@ -1700,6 +1718,8 @@ ShellRoot {
                 failed = "a name at rest is drawn through a layer or a mask";
             else if (!now.resting && (!now.layered || Math.abs(now.whole - now.fade) > 0.5))
                 failed = "a name reading on isn't seen through a fade a mark wide at its ends";
+            else if (!now.resting && now.maskWithin)
+                failed = "a name's fade is drawn into the words it fades, so fades none";
             else if (nameMoved && now.endsAt > now.room - now.fade + 0.5)
                 failed = "a name read on to its end leaves its last letter in the fade";
             else if (atEnd && now.startCovered !== 0)
