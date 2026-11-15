@@ -53,7 +53,10 @@ pub fn machines(machines: &Answer, health: &Answer) -> Part {
         .filter(|thing| thing.health > Health::Good)
         .count()
     {
-        0 => format!("{} ready", count(things.len(), "machine", "machines")),
+        0 => format!(
+            "{} ready",
+            count(things.len() as u64, "machine", "machines")
+        ),
         _ => things
             .iter()
             .filter(|thing| thing.health > Health::Good)
@@ -154,8 +157,8 @@ fn sessions_said(sessions: &Value) -> String {
     let (busy, idle) = (of("busy"), of("idle"));
     match (busy, idle) {
         (0, 0) => "no session".to_owned(),
-        (busy, 0) => format!("{} busy", count(busy as usize, "session", "sessions")),
-        (0, idle) => format!("{} idle", count(idle as usize, "session", "sessions")),
+        (busy, 0) => format!("{} busy", count(busy, "session", "sessions")),
+        (0, idle) => format!("{} idle", count(idle, "session", "sessions")),
         (busy, idle) => format!("{busy} busy and {idle} idle sessions"),
     }
 }
@@ -195,7 +198,7 @@ pub fn mycelium(health: &Answer) -> Part {
     if dead > 0 {
         worst = worst.max(Health::Watch);
         words.push(count(
-            dead as usize,
+            dead,
             "session says it runs with its process gone",
             "sessions say they run with their processes gone",
         ));
@@ -213,10 +216,10 @@ pub fn mycelium(health: &Answer) -> Part {
     let across = machines.map_or(0, serde_json::Map::len);
     words.push(format!(
         "{busy} busy and {idle} idle sessions on {}",
-        count(across, "machine", "machines")
+        count(across as u64, "machine", "machines")
     ));
     if down.is_empty() && !links.is_empty() {
-        words.push(format!("{} up", count(links.len(), "link", "links")));
+        words.push(format!("{} up", count(links.len() as u64, "link", "links")));
     }
     Part {
         name: "mycelium",
@@ -280,7 +283,7 @@ pub fn network(net: &Answer) -> Part {
         .get("devices")
         .and_then(Value::as_array)
         .map_or(0, Vec::len);
-    words.push(count(devices, "device", "devices"));
+    words.push(count(devices as u64, "device", "devices"));
     Part {
         name: "network",
         health: worst,
@@ -321,15 +324,15 @@ pub fn code(repos: &Answer) -> Part {
     if gone > 0 {
         health = Health::Watch;
         words.push(count(
-            gone,
+            gone as u64,
             "tree is listed with its folder gone",
             "trees are listed with their folders gone",
         ));
     }
     words.push(format!(
         "{} with {}",
-        count(repositories.len(), "repository", "repositories"),
-        count(trees.len(), "tree", "trees")
+        count(repositories.len() as u64, "repository", "repositories"),
+        count(trees.len() as u64, "tree", "trees")
     ));
     Part {
         name: "code",
@@ -358,7 +361,7 @@ fn unread(name: &'static str, why: &str, deeper: Deeper) -> Part {
 }
 
 /// A count and its noun, in the singular for one.
-fn count(n: usize, one: &str, many: &str) -> String {
+fn count(n: u64, one: &str, many: &str) -> String {
     if n == 1 {
         format!("1 {one}")
     } else {
@@ -381,34 +384,36 @@ mod tests {
 
     use super::*;
 
-    fn optimus(over: &[&str], band: &str) -> Value {
-        json!({"name": "optimus", "state": "ready", "disk_free": 278_819_094_528_u64,
+    fn laptop(over: &[&str], band: &str) -> Value {
+        json!({"name": "laptop", "state": "ready", "disk_free": 278_819_094_528_u64,
                "disk_band": band, "room": {"over": over},
                "power": {"on_battery": false, "charge": 76}})
     }
 
-    fn realm(machines: Vec<Value>) -> Answer {
-        Ok(json!({"Ok": {"Machines": machines}}))
+    /// What `mycelium machines` answers for these machines.
+    fn realm(machines: &[Value]) -> Value {
+        json!({"Ok": {"Machines": machines}})
     }
 
-    fn health() -> Answer {
-        Ok(json!({"links": [{"machine": "equilibrius", "state": "up"}],
-                  "sessions": {"optimus": {"busy": 55, "idle": 33, "ended": 27},
-                               "equilibrius": {"busy": 2, "idle": 1, "ended": 0}},
-                  "deadPresences": 0}))
+    /// What `mycelium health` answers for a laptop linked to a studio.
+    fn said_health() -> Value {
+        json!({"links": [{"machine": "studio", "state": "up"}],
+               "sessions": {"laptop": {"busy": 55, "idle": 33, "ended": 27},
+                            "studio": {"busy": 2, "idle": 1, "ended": 0}},
+               "deadPresences": 0})
     }
 
     #[test]
     fn a_machine_short_of_room_leads_with_what_it_lacks() {
-        let equilibrius = json!({"name": "equilibrius", "state": "ready", "disk_band": "healthy",
-                                 "room": {"over": []}});
+        let studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy",
+                            "room": {"over": []}});
         let part = machines(
-            &realm(vec![equilibrius, optimus(&["memory", "cpu"], "filling")]),
-            &health(),
+            &Ok(realm(&[studio, laptop(&["memory", "cpu"], "filling")])),
+            &Ok(said_health()),
         );
         assert_eq!(part.health, Health::Watch);
         assert_eq!(
-            part.things[0].name, "optimus",
+            part.things[0].name, "laptop",
             "the worst machine comes first"
         );
         assert_eq!(
@@ -421,7 +426,7 @@ mod tests {
             "is ready, runs 2 busy and 1 idle sessions"
         );
         assert!(
-            part.says.starts_with("optimus is short of memory"),
+            part.says.starts_with("laptop is short of memory"),
             "the part says only the machines worth a look: {}",
             part.says
         );
@@ -430,7 +435,7 @@ mod tests {
     #[test]
     fn machines_all_well_are_counted() {
         let part = machines(
-            &realm(vec![optimus(&[], "healthy")]),
+            &Ok(realm(&[laptop(&[], "healthy")])),
             &Err("no node".into()),
         );
         assert_eq!(part.health, Health::Good);
@@ -443,31 +448,35 @@ mod tests {
 
     #[test]
     fn a_machine_out_of_reach_or_nearly_full_is_bad() {
-        let away = json!({"name": "penelope", "state": "unreachable"});
-        let part = machines(&realm(vec![away, optimus(&[], "nearly-full")]), &health());
-        assert_eq!(part.health, Health::Bad);
-        assert_eq!(
-            part.things[0].name, "optimus",
-            "two bad machines go by name"
+        let away = json!({"name": "spare", "state": "unreachable"});
+        let part = machines(
+            &Ok(realm(&[away, laptop(&[], "nearly-full")])),
+            &Ok(said_health()),
         );
-        assert!(part.things[0].says.starts_with("has a nearly full disk"));
+        assert_eq!(part.health, Health::Bad);
+        assert_eq!(part.things[0].name, "laptop", "two bad machines go by name");
+        assert!(
+            part.things[0].says.starts_with("has a nearly full disk"),
+            "the disk leads what the laptop says: {}",
+            part.things[0].says
+        );
         assert_eq!(part.things[1].says, "is out of reach");
     }
 
     #[test]
     fn a_low_battery_counts_only_off_the_charger() {
-        let mut low = optimus(&[], "healthy");
+        let mut low = laptop(&[], "healthy");
         low["power"] = json!({"on_battery": true, "charge": 12});
-        let part = machines(&realm(vec![low.clone()]), &Err(String::new()));
+        let part = machines(&Ok(realm(std::slice::from_ref(&low))), &Err(String::new()));
         assert_eq!(part.things[0].says, "is on battery at 12%");
         low["power"]["on_battery"] = json!(false);
-        let charging = machines(&realm(vec![low]), &Err(String::new()));
+        let charging = machines(&Ok(realm(&[low])), &Err(String::new()));
         assert_eq!(charging.health, Health::Good);
     }
 
     #[test]
     fn an_owner_that_fails_leaves_its_part_not_read_with_why() {
-        let part = machines(&Err("mycelium isn't installed".into()), &health());
+        let part = machines(&Err("mycelium isn't installed".into()), &Ok(said_health()));
         assert_eq!(part.health, Health::Unread);
         assert_eq!(part.says, "mycelium isn't installed");
         assert_eq!(
@@ -479,7 +488,7 @@ mod tests {
 
     #[test]
     fn the_mycelium_says_its_sessions_and_its_links() {
-        let part = mycelium(&health());
+        let part = mycelium(&Ok(said_health()));
         assert_eq!(part.health, Health::Good);
         assert_eq!(
             part.says,
@@ -489,7 +498,7 @@ mod tests {
 
     #[test]
     fn a_link_down_is_bad_and_a_dead_presence_worth_a_look() {
-        let mut said = health().unwrap();
+        let mut said = said_health();
         said["deadPresences"] = json!(7);
         assert_eq!(mycelium(&Ok(said.clone())).health, Health::Watch);
         said["links"][0]["state"] = json!("unreachable");
@@ -497,32 +506,32 @@ mod tests {
         assert_eq!(part.health, Health::Bad);
         assert!(
             part.says
-                .starts_with("the link to equilibrius is down; 7 sessions say"),
+                .starts_with("the link to studio is down; 7 sessions say"),
             "{}",
             part.says
         );
     }
 
-    fn net(states: &[(&str, &str)], concerns: &[(&str, &str)]) -> Answer {
-        Ok(json!({
+    fn net(states: &[(&str, &str)], concerns: &[(&str, &str)]) -> Value {
+        json!({
             "sources": states.iter().map(|(name, state)| json!({"name": name, "state": state}))
                 .collect::<Vec<_>>(),
             "concerns": concerns.iter().map(|(kind, says)| json!({"kind": kind, "says": says}))
                 .collect::<Vec<_>>(),
             "devices": [{}, {}, {}],
-        }))
+        })
     }
 
     #[test]
     fn the_network_says_nets_first_look_in_its_words() {
-        let part = network(&net(
+        let part = network(&Ok(net(
             &[("eero", "answering")],
             &[
                 ("ceiling", "The internet is the narrowest point"),
                 ("busy", "Main Floor's radio is busy"),
                 ("weak", "iphone has a weak signal"),
             ],
-        ));
+        )));
         assert_eq!(part.health, Health::Watch);
         assert_eq!(
             part.says, "Main Floor's radio is busy; and 1 more worth a look; 3 devices",
@@ -532,17 +541,17 @@ mod tests {
 
     #[test]
     fn a_source_not_answering_is_bad() {
-        let part = network(&net(
+        let part = network(&Ok(net(
             &[
                 ("eero", "answering"),
                 ("modem", "unreachable"),
                 ("hp", "signed-out"),
             ],
             &[],
-        ));
+        )));
         assert_eq!(part.health, Health::Bad);
         assert_eq!(part.says, "modem and hp aren't answering; 3 devices");
-        let calm = network(&net(&[("eero", "answering")], &[("ceiling", "")]));
+        let calm = network(&Ok(net(&[("eero", "answering")], &[("ceiling", "")])));
         assert_eq!(
             (calm.health, calm.says.as_str()),
             (Health::Good, "3 devices")

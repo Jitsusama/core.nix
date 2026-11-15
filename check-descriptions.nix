@@ -2792,6 +2792,14 @@
     every user unit core starts by itself in every account's manager says whose it is, so a
     system account's lingering manager starts none of a person's services
   '';
+  system-judges-each-part = ''
+    the whole system said from what each part's owner answers, mycelium, net and repos, each
+    part good, watch or bad by its own rules and the whole by its worst, an owner that fails
+    leaving its part not read with why, and every line fitting each width
+  '';
+  system-passes-clippy = ''
+    clippy finds nothing in system or its tests
+  '';
   talk-to-opens-only-on-whom-it-names = ''
     the launcher's talkTo opens a talk on the first word it's given alone: a session's address in
     either case, the void's on its line, a network told apart as having no one to talk to, and

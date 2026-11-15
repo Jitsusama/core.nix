@@ -182,7 +182,8 @@ mod tests {
         assert!(
             said["parts"][1]["things"]
                 .as_array()
-                .is_some_and(Vec::is_empty)
+                .is_some_and(Vec::is_empty),
+            "a part with nothing under it still says things, as none: {said}"
         );
     }
 }

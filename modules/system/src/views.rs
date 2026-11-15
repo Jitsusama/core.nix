@@ -176,11 +176,15 @@ mod tests {
             "a part not read wears no mark and says why: {said}"
         );
         assert!(
-            lines.contains(&"! machine laptop  watch  is short of memory, runs 3 busy sessions")
+            lines.contains(&"! machine laptop  watch  is short of memory, runs 3 busy sessions"),
+            "each machine has its own line: {said}"
         );
-        assert!(lines.iter().any(|line| line.starts_with("network")
-            && line.contains("http://sites.localhost:8484/network/")
-            && line.ends_with("Network")));
+        assert!(
+            lines.iter().any(|line| line.starts_with("network")
+                && line.contains("http://sites.localhost:8484/network/")
+                && line.ends_with("Network")),
+            "where to go deeper names the command, the site and the launcher: {said}"
+        );
     }
 
     #[test]
