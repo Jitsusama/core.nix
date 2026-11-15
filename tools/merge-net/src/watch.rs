@@ -266,8 +266,8 @@ pub trait World: Sync {
     fn keep_runs(&self, commit: &str, check: &str);
     /// Whether runs of `check` at `commit` are dropped now.
     fn dropped(&self, commit: &str, check: &str) -> bool;
-    /// Whether another build of the net is installed, so this one starts
-    /// no more runs and leaves what's left to that one.
+    /// Whether another build of the net is installed, so this one hands
+    /// over to it once its round ends.
     fn superseded(&self) -> bool;
 }
 
@@ -637,12 +637,13 @@ pub fn attempt_all(
                         break;
                     };
                     let check = &checks[index];
-                    // A net another build replaced starts nothing more, so
-                    // it ends once the runs under way have, and the new
-                    // build runs what's left. On 14 November #4402 was
-                    // installed at 13:34, but the net took it up at 15:00,
-                    // once a round begun at 13:27 had ended.
-                    if world.held().is_some() || world.superseded() {
+                    // A held net starts nothing more. A replaced one runs
+                    // on and hands over after its round (`rounds`): on 15
+                    // November stopping for a new build sent nothing at
+                    // 25cc40362bf1 from about 08:25 to 09:03, while core's
+                    // merges each took a new build. One that must take over
+                    // sooner than a round's end is a restart away.
+                    if world.held().is_some() {
                         continue;
                     }
                     let outcome = attempt(world, state, commit, check);
@@ -5353,7 +5354,13 @@ mod tests {
     }
 
     #[test]
-    fn a_net_another_build_replaced_starts_no_more_runs_and_leaves_its_head_to_that_one() {
+    fn a_net_another_build_replaced_finishes_its_round_and_hands_over_after_it() {
+        // On 15 November switch968 installed #4740's build at about 08:25
+        // and the net sent nothing more; switch970 put the same build back
+        // at 08:50, so it never handed over, and its round at 25cc40362bf1
+        // took up the tests it had skipped only at 09:03. A switch that
+        // brings a new build pauses the round no longer: the new build
+        // takes over between rounds (`rounds`).
         let state = state("superseded");
         let world = Stand {
             head: "h".into(),
@@ -5363,24 +5370,14 @@ mod tests {
         };
         assert_eq!(
             round(&world, &state, "s").unwrap(),
-            Round::Unfinished("h".into()),
-            "a replaced net's round should end unfinished, its tests unsent"
-        );
-        assert!(
-            world.built().is_empty(),
-            "a replaced net started runs the new build would start again: {:?}",
-            world.built()
-        );
-        assert_eq!(
-            state.under_way().as_deref(),
-            Some("h"),
-            "the new build should take up the head the round began on"
-        );
-        world.superseded.store(false, Ordering::Relaxed);
-        assert_eq!(
-            round(&world, &state, "s").unwrap(),
             Round::Passed("h".into()),
-            "the build that follows should run the round's tests at its head"
+            "a replaced net left the round it began unfinished"
+        );
+        assert_eq!(
+            world.built().len(),
+            2,
+            "a replaced net didn't run its round's tests: {:?}",
+            world.built()
         );
     }
 }
