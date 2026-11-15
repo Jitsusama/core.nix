@@ -495,18 +495,6 @@
     "test": "the-launcher-answers-whats-typed-on-niri"
   },
   {
-    "at": 1794707322,
-    "commit": "f4ff17088982c04b151d13c7ff0062972c41af74",
-    "due": "2026-11-15",
-    "owner_pr": 4364,
-    "reason": "a loaded builder spaced foot's letters past the 160 ms rest in all three tries, in four gates between 18:00 and 20:45 on 14 Nov, on main's code too, BXNMUC's to make steady by 15 Nov 02:00",
-    "subtests": [
-      "test_a_drawer_resting_for_the_letters_names_the_row_selected",
-      "test_letters_typed_quicker_than_the_rest_make_one_drawer"
-    ],
-    "test": "the-launcher-answers-whats-typed-on-niri"
-  },
-  {
     "at": 1794709157,
     "commit": "25e508c84df2ad15f66044c588f1529630a3b870",
     "due": "2026-11-17",
