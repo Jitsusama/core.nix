@@ -4,7 +4,7 @@
 //! value (VKCF3Z, 2026-11-09), the one it's at said chosen. A level's
 //! Return asks this daemon, which asks the machine daemon to set it as the
 //! brightness keys do (main.rs's `light_done`, modules/machine's
-//! screen_acts.rs), so the backlight program learns it as Joel's pick.
+//! `screen_acts.rs`), so the backlight program learns it as Joel's pick.
 //! Displays.qml built these rows from the machine daemon's backlight
 //! record (Backlight.js's lit) until 2026-11-14; they're served here now,
 //! so the shell only draws them (Y2YBTS's rule, 17a4dc7e).

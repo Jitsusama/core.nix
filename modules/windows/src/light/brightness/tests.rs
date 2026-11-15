@@ -5,16 +5,9 @@
 use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
 
-use super::super::tests::told;
+// The panel's backlight is at 57,600 of its 96,000 steps, 60%.
+use super::super::tests::{backlight, told};
 use super::*;
-
-/// The panel's backlight at 57,600 of its 96,000 steps, 60%, as light.rs
-/// says it.
-fn backlight() -> Value {
-    json!({"key": "backlight:intel_backlight", "kind": "backlight",
-        "device": "intel_backlight", "brightness": 57_600, "actual_brightness": 57_600,
-        "max_brightness": 96_000, "type": "raw", "scale": "non-linear", "connector": "eDP-1"})
-}
 
 /// The Brightness's rows inside eDP-1 from `records`, read as `read`
 /// says, in the room or not, its part named by its id.
