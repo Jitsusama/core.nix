@@ -183,6 +183,8 @@ fn a_night_job_told_to_wait_takes_the_turn_once_it_is_free() {
         .command("--wait-at-most 10", "echo ran > ran")
         .spawn()
         .unwrap();
+    // Long enough for the job to have started beside the held turn, were
+    // it going to.
     thread::sleep(Duration::from_millis(300));
     assert!(!machine.path("ran").exists(), "the job ran beside another");
     drop(held);
@@ -219,6 +221,8 @@ fn a_night_job_that_waited_still_starts_only_on_a_quiet_machine() {
         .command("--wait-at-most 10 --start-under 3", "echo ran > ran")
         .spawn()
         .unwrap();
+    // Long enough for the job to be waiting for the turn when the machine
+    // grows busy; it reads the machine only once it has the turn.
     thread::sleep(Duration::from_millis(300));
     machine.set("proc/pressure/memory", 0.0, 3.5);
     drop(held);
