@@ -126,7 +126,7 @@ ShellRoot {
         Expect.expect("its viewer opens by the node's words, held, without the focus",
             spawned[0].startsWith("env -u XDG_ACTIVATION_TOKEN -u DESKTOP_STARTUP_ID ")
             && spawned[0].includes("/pi-sessions/kitty.sock pi-hosted.s-viewed ")
-            && spawned[0].includes("mycelium --realm harbour hold -- "
+            && spawned[0].includes("mycelium --realm harbour holds add -- "
                 + viewing("s-viewed").join(" ")), spawned[0]);
         Expect.expect("niri is told where it opens: the monitor's empty workspace",
             JSON.stringify(opensOn("s-viewed")) === JSON.stringify([{

@@ -22,7 +22,9 @@
 # The shell, as an account of the machine's and no other, is told all of
 # it over varlink as it changes, and can have wifid check again, trust a
 # network or forget one, though never one Nix declares; on the launcher's
-# rows socket it can move the card to another access point of its network. The tests are in
+# rows socket it can move the card to another access point of its network,
+# and the card still knows its neighbours there, forgetting them only on a
+# network of another name. The tests are in
 # wifi/, an area to a file, each run in order through pytest on a machine
 # of its own, so the areas run side by side; wifid as they reach it is
 # wifi/wifi_session.py.
@@ -70,8 +72,12 @@ let
     wpa_passphrase=glowing in the dark
   '';
 
+  # Both of Lantern's access points join one bridge, where its router
+  # answers, as a home's do, so a card moving between them keeps the same
+  # router at the same hardware address.
   lantern = accessPoint "lantern" ''
     interface=wlan0
+    bridge=lantern
     channel=6
     ${lanternKey}
   '';
@@ -79,6 +85,7 @@ let
   # Lantern's second access point, heard only when a test starts it.
   lanternTwo = accessPoint "lantern-two" ''
     interface=wlan5
+    bridge=lantern
     channel=9
     ${lanternKey}
   '';
@@ -93,15 +100,15 @@ let
   networks = pkgs.writeText "networks.conf" ''
     bind-dynamic
     dhcp-leasefile=/run/networks.leases
-    interface=wlan0
+    interface=lantern
     interface=wlan1
     interface=wlan4
-    dhcp-range=wlan0,10.42.0.10,10.42.0.50,1h
+    dhcp-range=lantern,10.42.0.10,10.42.0.50,1h
     dhcp-range=wlan1,10.43.0.10,10.43.0.50,1h
     dhcp-range=wlan4,10.44.0.10,10.44.0.50,1h
     # Lantern says where to ask it about the session it gives, as RFC 8910
     # lets a network.
-    dhcp-option=tag:wlan0,114,"https://api.lantern/captive"
+    dhcp-option=tag:lantern,114,"https://api.lantern/captive"
     address=/router.lantern/10.42.0.1
     address=/api.lantern/10.42.0.1
     address=/front-desk.inn/10.43.0.1
@@ -225,7 +232,11 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
           ip netns add drawer
           iw phy "$(cat /sys/class/net/wlan3/phy80211/name)" set netns name drawer
           ip -n air link set lo up
-          ip -n air address add 10.42.0.1/24 dev wlan0
+          # A bridge left to itself takes the lowest address of its access
+          # points, so the router's would change as they come and go.
+          ip -n air link add lantern address 02:00:00:00:42:01 type bridge
+          ip -n air link set lantern up
+          ip -n air address add 10.42.0.1/24 dev lantern
           ip -n air address add 10.43.0.1/24 dev wlan1
           ip -n air address add 10.44.0.1/24 dev wlan4
         '';

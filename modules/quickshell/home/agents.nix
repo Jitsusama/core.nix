@@ -14,6 +14,7 @@
   "TalkLine.qml"
   "TalkLine.js"
   "TalkLineMark.qml"
+  "TalkNotes.js"
   "TalkSpoken.qml"
   "TalkThread.qml"
   "TalkThread.js"

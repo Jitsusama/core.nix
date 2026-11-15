@@ -43,7 +43,7 @@ Piece {
     // glyph alone while sessions sit idle.
     glance: needing !== "" ? needing : working
     title: "pi"
-    hint: !first ? value : `${first.title} ${Sessions.wanted(first.presence.wants)}`
+    hint: !first ? value : `${first.title} ${Sessions.wanted(first.presence.wants.kind)}`
     context: !first ? "" : wanting.length === 1 ? (first.presence.wants.said ?? "")
         : `and ${wanting.length - 1} more`
     // Each one's window, the oldest want first, in What's On.
@@ -75,6 +75,10 @@ Piece {
     arrives: ringing !== null
     withdraws: true
     telling: ringing === null ? "" : Sessions.key(ringing)
-    summary: ringing === null ? hint : `${ringing.title} ${Sessions.wanted(ringing.presence.wants)}`
-    message: ringing === null ? context : String(ringing.presence.wants.said ?? "")
+    // Said as the daemon serves the want, whose record rings a pace after
+    // the session's presence has let it go: a presence read then said
+    // nothing (the net, 14 November).
+    readonly property var rung: ringing === null ? null : Sessions.rang(ringing)
+    summary: rung === null ? hint : `${ringing.title} ${Sessions.wanted(rung.wants)}`
+    message: rung === null ? context : String(rung.said ?? "")
 }

@@ -549,6 +549,20 @@ def steps_said(desktop: Desktop, since: str) -> list[tuple[str, int, int, str]]:
     ]
 
 
+def makings_said(desktop: Desktop, since: str) -> list[str]:
+    """Give each making of a drawer or acts said by its parts since the mark (Program.js).
+
+    Programs' drawer made in 20 to 40 ms under load here, which is said, not judged, with
+    nothing saying which part (2026-11-14).
+    """
+    said = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)} | grep -a -F 'applications: '"
+        " | grep -a -F ' made in '; true"
+    )
+    return [line.strip() for line in said.splitlines() if line.strip()]
+
+
 def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]]) -> list[str]:
     """Say each place's drawers by turns, and give those the load slowed past their bound.
 
@@ -616,6 +630,7 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
     # Each place's drawer, made for the row moved onto, by turns: its time to its frame and
     # how much of it the launcher made it, waited for its frame and drew it.
     drawn: dict[bool, dict[str, list[Drawn]]] = {True: {}, False: {}}
+    made: dict[bool, list[str]] = {True: [], False: []}
     try:
         stepped_round(desktop)
         for turn in range(ROUNDS):
@@ -627,6 +642,7 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
             for place, drawer in stepped_round(desktop).items():
                 drawn[loaded].setdefault(place, []).append(drawer)
             early.extend(timed_early(framed(desktop), timed))
+            made[loaded].extend(makings_said(desktop, since))
             for place, took, search, line in steps_said(desktop, since):
                 (under if loaded else free).setdefault(place, []).append(took)
                 if loaded:
@@ -652,6 +668,7 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
         ):
             slowed.append(place)
     drawers_slowed = slowed_drawers(drawn)
+    print("under load, made by their parts:", *made[True], sep="\n  ")
     assert "Programs" in under, f"no step into Programs was timed: {sorted(under)}"
     assert "Programs" in drawn[True], f"no drawer in Programs was timed: {drawn}"
     assert not drawers_slowed, f"the load slowed the drawers of {drawers_slowed}: {drawn}"

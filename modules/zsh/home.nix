@@ -1,5 +1,6 @@
 # zsh in each account: its keys, options and completion (init.zsh and
-# completion.zsh), and the terminal's marks for each command (terminal.zsh).
+# completion.zsh), and the terminal's marks for each command and the
+# window's title (terminal.zsh).
 # The prompt is its own module (modules/prompt). It's zsh's own, with no
 # framework: a shell starts no program for any of it.
 {

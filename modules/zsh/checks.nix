@@ -17,6 +17,23 @@
   zsh-is-the-login-shell =
     holds "zsh-is-the-login-shell" "An account on NixOS doesn't log in to zsh."
       (lib.getName (bareNixos [ self.nixosModules.base ]).config.users.users.someone.shell == "zsh");
+
+  # A shell's window says where it is at its prompt and what it runs while
+  # a command does, so two terminals never both read "zsh" in the
+  # launcher's Windows. It runs zsh in a terminal with only terminal.zsh
+  # read, which is where the titles are given.
+  the-shell-titles-its-window =
+    pkgs.runCommandLocal "the-shell-titles-its-window"
+      {
+        nativeBuildInputs = [
+          pkgs.util-linux
+          pkgs.zsh
+        ];
+      }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/the-shell-titles-its-window.sh} ${./terminal.zsh}
+        touch $out
+      '';
 }
 # What a shell starts is traced with strace, which only Linux has, on the
 # NixOS workstation's own shell.

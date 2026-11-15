@@ -285,7 +285,7 @@ ShellRoot {
         const hostedAsk = asked(viewed);
         expect("a hosted one is viewed by its node's words, held, in a window named for it",
             hostedAsk !== null && hostedAsk.classed === "pi-hosted.s-hosted"
-            && hostedAsk.words === "mycelium --realm harbour hold -- "
+            && hostedAsk.words === "mycelium --realm harbour holds add -- "
                 + "mycelium --realm harbour attach --host harbour-attended --session s-hosted",
             viewed);
         Sessions.goTo(hosted);

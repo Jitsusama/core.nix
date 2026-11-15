@@ -7,7 +7,7 @@
 //! many windows are open and whose ([`open`]), and
 //! the launcher's Screens, served as rows ready to show ([`screens`]),
 //! their drawers saying the screen's light as the machine daemon serves
-//! it ([`light`]), and how long a program takes to open its first window
+//! it ([`light`]), the file each Reader window shows ([`shows`]), and how long a program takes to open its first window
 //! and to end after its last ([`timed`]).
 //!
 //! A record names every figure the shell draws a window's row from, as
@@ -24,4 +24,5 @@ pub mod marks;
 pub mod open;
 pub mod order;
 pub mod screens;
+pub mod shows;
 pub mod timed;

@@ -252,7 +252,7 @@ Singleton {
     // it starts would inherit, as a session it spawns would, and say as
     // its own window's; the holder keeps it from its program likewise.
     function held(command) {
-        return holds ? `exec mycelium --realm ${realm} hold -- ${command}`
+        return holds ? `exec mycelium --realm ${realm} holds add -- ${command}`
             : `exec env -u MYCELIUM_APP_ID ${command}`;
     }
     // What a hosted session's viewer runs: the node's words, kept by the
@@ -261,7 +261,8 @@ Singleton {
     // window rather than closing it (OSPHT4, 2026-11-11 [56e0fd87]). On a
     // machine in no realm they run as they are.
     function viewing(words) {
-        return holds ? ["mycelium", "--realm", realm, "hold", "--"].concat(words) : words;
+        return holds ? ["mycelium", "--realm", realm, "holds", "add", "--"].concat(words)
+            : words;
     }
 
     // Reopens a session that closed, where it left off: pi told the
@@ -2371,10 +2372,12 @@ Singleton {
     // What a want is, in words after the session's name: "needs you",
     // the one phrase for waiting on Joel everywhere, and a yes or a stuck
     // run said within it (VKCF3Z, 2026-11-06), as the vocabulary has them.
-    function wanted(wants) {
+    // `kind` is the want's kind, a question, a yes or a stuck run.
+    function wanted(kind) {
         const said = Words.of("agents:wants").said ?? {};
-        return String(said[wants.kind] ?? said.question ?? "");
+        return String(said[kind] ?? said.question ?? "");
     }
+
 
     // A session's quest's whole title and its folder's name, as its record
     // says them: `questInfo.title` and the last part of `cwd`, as the

@@ -9180,6 +9180,8 @@ Scope {
         // Opened from what it kept, it was shown already, holding the keys
         // since then; what follows fills it in.
         const filling = open && opening;
+        if (open && !filling && openAsked >= 0 && openChord === "" && openingsDrawn > 0)
+            openedWholeSaid();
         const began = lapped;
         opening = false;
         markOpen(open);
@@ -9513,6 +9515,16 @@ Scope {
         if (!homeHeld)
             console.warn(`launcher: home couldn't be held again: ${homeUnheld}`);
         return homeHeld;
+    }
+    // Home opened whole by a chord after the first says what opened it,
+    // and how home stood: Joel's at 17:11 took 114 ms to its frame with
+    // neither line homeRescued says, though only it opens one whole
+    // (2026-11-14). Its callers are read from the stack, by file and line.
+    function openedWholeSaid() {
+        const by = (new Error().stack ?? "").split("\n").slice(1, 7)
+            .map(frame => frame.replace(/@.*\//, "@")).join(" < ");
+        console.warn(`launcher: home opened whole, held ${homeHeld}, ${homeKept.length} rows`
+            + ` kept, last unheld as ${homeUnheld}, by ${by}`);
     }
 
     // An opening not kept opens with every source asleep (Provider.qml),

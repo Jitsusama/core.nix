@@ -8,6 +8,7 @@
 .pragma library
 
 .import "Told.js" as Told
+.import "TalkNotes.js" as Notes
 
 // The heading the void's Context reads what's attached under (QCXZEB's
 // slice C): a word of the protocol between the line and the void, so it's
@@ -22,6 +23,7 @@ const ATTACHED = "Attached:";
 const KINDS = {
     window: { named: "window", mark: "windows", hue: "program" },
     tab: { named: "tab", mark: "web", hue: "program" },
+    file: { named: "file", mark: "document", hue: "program" },
     session: { named: "pi session", mark: "agent", hue: "program" },
     selection: { named: "selection", mark: "lines", hue: "" },
     clipboard: { named: "clipboard", mark: "clipboard", hue: "" }
@@ -73,19 +75,10 @@ function row(kind, text, note, sent) {
     return { kind, mark: KINDS[kind].mark, hue: KINDS[kind].hue, text, note, sent };
 }
 
-// What an address begins and ends with that its note leaves out.
-const SCHEME = /^https?:\/\/(?:www\.)?/u;
-const TRAILING_SLASH = /\/$/u;
-
-// An address as a row's note says it, without the scheme every page has,
-// so the note gives way later; it's sent whole.
-function shortAddress(address) {
-    return String(address ?? "").replace(SCHEME, "").replace(TRAILING_SLASH, "");
-}
-
 // What goes with a line, a row each: the window it's said over, by its own
 // title and noted by its program, or by its program alone where it has no
-// title of its own; the tab in front, where it's a browser's (tabFrom); the
+// title of its own; the file it shows, where it's a document's (TalkNotes.js's
+// fileOf); the tab in front, where it's a browser's (tabFrom); the
 // pi session that window is, where it's one, by its name and noted as pi's,
 // sent with its address; and what he attached of the registers
 // (registered). A window with no title, or none focused, attaches nothing
@@ -101,8 +94,12 @@ function attached({ window, session, tab, registers }) {
     } else if (title !== "") {
         rows.push(row("window", ownTitle(window), program, `${program} \u00b7 ${title}`));
     }
+    const file = Notes.fileOf(window);
+    if (file) {
+        rows.push(row("file", file.text, file.note, file.sent));
+    }
     if (tab) {
-        rows.push(row("tab", tab.title, shortAddress(tab.address),
+        rows.push(row("tab", tab.title, Notes.shortAddress(tab.address),
             `${tab.title} \u00b7 ${tab.address}`));
     }
     if (session) {
@@ -160,10 +157,10 @@ function grouped(count) {
 }
 
 // The rows the line shows of what's attached: every one, but the window
-// where a row after it already names what it holds, as a browser's tab or a
-// pi session does, since its title says the same.
+// where a row after it already names what it holds, as a document's file, a
+// browser's tab or a pi session does, since its title says the same.
 function shownRows(rows) {
-    const named = (rows ?? []).some(one => one.kind === "tab" || one.kind === "session");
+    const named = (rows ?? []).some(one => ["file", "tab", "session"].includes(one.kind));
     return (rows ?? []).filter(one => !(named && one.kind === "window"));
 }
 

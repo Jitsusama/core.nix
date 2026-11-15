@@ -356,7 +356,7 @@ pub fn is_host(pid: u32) -> bool {
     })
 }
 
-/// What the machine's node holds, by `mycelium held`, or none when it
+/// What the machine's node holds, by `mycelium holds`, or none when it
 /// doesn't answer.
 fn node_holders(realm: Option<&str>) -> Option<Vec<Holder>> {
     let mut ask = Command::new("mycelium");
@@ -364,7 +364,7 @@ fn node_holders(realm: Option<&str>) -> Option<Vec<Holder>> {
         ask.args(["--realm", realm]);
     }
     let out = ask
-        .arg("held")
+        .arg("holds")
         .output()
         .ok()
         .filter(|o| o.status.success())?;
@@ -431,7 +431,7 @@ fn lives(pid: u32) -> bool {
 
 /// Whether a command line, its words split by NUL, is a hosted session's
 /// viewer: node running the harness's `scripts/host-join.ts`, or
-/// `mycelium attach`.
+/// `mycelium attach` (or `holds ID attach`, as mycelium spells it now).
 fn views(line: &[u8]) -> bool {
     let words: Vec<&[u8]> = line.split(|&b| b == 0).collect();
     let mycelium = words
@@ -575,6 +575,7 @@ mod tests {
         for viewer in [
             b"node\0/h/agentic-harness.pi/scripts/host-join.ts\0--session\0s\0".as_slice(),
             b"/nix/store/x-mycelium/bin/mycelium\0attach\0s\0",
+            b"/nix/store/x-mycelium/bin/mycelium\0holds\0s\0attach\0",
         ] {
             assert!(
                 views(viewer),
@@ -586,6 +587,7 @@ mod tests {
             b"node\0/h/agentic-harness.pi/scripts/pi-host.ts\0".as_slice(),
             b"zsh\0-c\0mycelium attach s\0",
             b"/bin/mycelium\0held\0",
+            b"/bin/mycelium\0holds\0",
         ] {
             assert!(
                 !views(other),

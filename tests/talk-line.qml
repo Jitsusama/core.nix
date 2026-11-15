@@ -47,6 +47,23 @@ QtObject {
                     untitled: true, program: "Foot" } }), []);
             Expect.same("none focused attaches nothing",
                 Said.attached({ window: null }), []);
+            // A document window's title can repeat, so the file it shows goes with it, as the
+            // windows daemon reads it from its command line (Joel, 2026-11-14 17:03: "we need
+            // the void to be more aware of what is on a window that i'm focused on").
+            const reader = { id: 154, app_id: "reader", title: "Reader", named: "Reader",
+                untitled: true, program: "Reader",
+                file: "/home/joel/notes/QEST-1/research/light.md" };
+            const read = Said.attached({ window: reader });
+            Expect.same("a document window sends the file it shows after its window row",
+                Said.said("do what's right", read), "do what's right\n\nAttached:\n"
+                    + "- window: Reader \u00b7 Reader\n"
+                    + "- file: /home/joel/notes/QEST-1/research/light.md");
+            Expect.same("its file is shown by its name, noted by its folder from home, in the "
+                    + "window's place", Said.shownRows(read).map(row =>
+                    [row.kind, row.mark, row.text, row.note]),
+                [["file", "document", "light.md", "~/notes/QEST-1/research"]]);
+            Expect.same("a window showing no file sends none",
+                Said.attached({ window: slack }).map(row => row.kind), ["window"]);
             Expect.same("his words go first, what's attached under the heading the void reads",
                 Said.said("  is this the right fix? ", rows),
                 "is this the right fix?\n\nAttached:\n- window: kitty · π - Tune the launcher\n"

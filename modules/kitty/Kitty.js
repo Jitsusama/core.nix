@@ -236,7 +236,8 @@ function base(word) {
 
 // What a command runs once what only starts it is taken away: env and its
 // settings, and a session's mycelium, which holds what follows its `--`
-// (Sessions.qml starts pi so).
+// (Sessions.qml starts pi so), spelt `holds add --`, or `hold --` in a
+// window started before mycelium took that.
 function unwrapped(words) {
     const name = base(words[0]);
     if (name === "env") {
@@ -244,7 +245,8 @@ function unwrapped(words) {
         return at < 0 ? words : unwrapped(words.slice(at));
     }
     const after = words.indexOf("--");
-    if (name === "mycelium" && words.includes("hold") && after > 0 && after < words.length - 1) {
+    const holds = words.includes("hold") || words.includes("holds");
+    if (name === "mycelium" && holds && after > 0 && after < words.length - 1) {
         return unwrapped(words.slice(after + 1));
     }
     return words;

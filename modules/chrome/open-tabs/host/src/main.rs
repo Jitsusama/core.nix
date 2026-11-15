@@ -602,11 +602,22 @@ mod tests {
             let socket = socket.clone();
             thread::spawn(move || host(host_in, host_out, &socket))
         };
-        while !socket.exists() {
+        // The host narrows the socket to its account just after binding
+        // it, so the test waits for the mode it settles at: a busy builder
+        // can otherwise read the bind's own, the umask's 0755, first.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let mut mode = None;
+        while mode != Some(0o600) && std::time::Instant::now() < deadline {
             thread::sleep(Duration::from_millis(10));
+            mode = fs::metadata(&socket)
+                .ok()
+                .map(|found| found.permissions().mode() & 0o777);
         }
-        let mode = fs::metadata(&socket).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
+        assert_eq!(
+            mode,
+            Some(0o600),
+            "the host leaves its socket to its own account"
+        );
 
         let asking = {
             let socket = socket.clone();

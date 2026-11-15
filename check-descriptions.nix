@@ -3764,6 +3764,10 @@
     talk line have been shut 30 s, or past its bound only as the open one shuts, and restarted
     only if the handover refuses, and a shell already on its files, or one stopped, is left be
   '';
+  the-shell-titles-its-window = ''
+    a shell titles its window with its folder at each prompt and with the command's first line
+    while one runs, any control character in it spaced out, so no two terminals read "zsh"
+  '';
   the-shell-starts-nothing = ''
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
@@ -3923,7 +3927,8 @@
   '';
   the-viewfinder-keeps-its-own-keys = ''
     ZZ closes the camera's viewfinder, and Escape and q leave it open, even where a script in
-    mpv's own folder binds Z, as the player's vi keys do, since the viewfinder loads none of them
+    mpv's own folder binds Z, as the player's vi keys do, since the viewfinder loads none of them;
+    and its window's title says what Return makes, Photo or Video, following Tab
   '';
   the-wallpaper-is-read-at-its-screens-pixels = ''
     the wallpaper's picture is read at its screen's own pixels, by niri's scale for the output

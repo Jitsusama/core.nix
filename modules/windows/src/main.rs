@@ -57,6 +57,7 @@ use windows::light::{Held, Seen};
 use windows::screens;
 use windows::screens::acts::{self, Act};
 use windows::screens::vocabulary::{numbered, worded};
+use windows::shows;
 use windows::timed::{self, Timed};
 use windows::{open, order};
 
@@ -384,6 +385,7 @@ fn refresh(served: &Served, daemon: &mut Daemon) {
         ..
     } = &mut *daemon;
     let mut records = desktop.records(entries, names);
+    shows::add(&mut records, shows::folder().as_deref());
     records.push(open::record(&records));
     records.sort_by_key(listed);
     if let Some(words) = words {
