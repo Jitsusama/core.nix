@@ -94,9 +94,17 @@ impl Options {
                     flags::unknown("option", option, &OPTIONS).try_this("shell-preview --help")
                 );
             }
+            // A value given as the next word mustn't be the next option,
+            // which `--type --check` would read as text to type; one
+            // attached with `=` is meant as written, but never empty.
             let value = attached
-                .or_else(|| words.next().map(String::as_str))
-                .filter(|value| !value.starts_with("--"))
+                .or_else(|| {
+                    words
+                        .next()
+                        .map(String::as_str)
+                        .filter(|value| !value.starts_with("--"))
+                })
+                .filter(|value| !value.is_empty())
                 .ok_or_else(|| {
                     Failure::new(Exit::Usage, format!("{option} needs a value"))
                         .try_this("shell-preview --help")
@@ -492,4 +500,42 @@ fn run(program: &str, arguments: &[&str]) -> Result<String, String> {
     String::from_utf8(ran.stdout)
         .map(|said| said.trim_end_matches('\n').to_owned())
         .map_err(|_| format!("{program} {} printed what isn't text", arguments.join(" ")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parsed(words: &[&str]) -> Result<Options, Failure> {
+        Options::parse(
+            &words
+                .iter()
+                .map(|&word| word.to_owned())
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    #[test]
+    fn a_value_attached_with_an_equals_is_taken_as_typed() {
+        let options = parsed(&["--type=--now"]).map_err(|failure| failure.what);
+
+        assert_eq!(
+            options.map(|options| options.typed),
+            Ok(Some("--now".to_owned())),
+            "an attached value can't be mistaken for the next option"
+        );
+    }
+
+    #[test]
+    fn an_equals_with_nothing_after_it_is_refused() {
+        let refused = parsed(&["--type="])
+            .err()
+            .map(|failure| (failure.exit, failure.what));
+
+        assert_eq!(
+            refused,
+            Some((Exit::Usage, "--type needs a value".to_owned())),
+            "an empty value typed nothing rather than being refused"
+        );
+    }
 }
