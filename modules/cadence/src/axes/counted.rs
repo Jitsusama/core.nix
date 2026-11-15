@@ -62,7 +62,7 @@ pub fn musts(s: &Sources, now: i64) -> Reading {
     });
     Reading::new("{} security musts past due", late.map(count), "", "ISXEG8")
         .bar(Bar::AtMost(0.0))
-        .from("the ledger's musts, as ISXEG8 files them")
+        .from("the ledger's security musts, as their owner files them")
 }
 
 /// The security holes known and not yet closed, as ISXEG8 files them with
@@ -82,7 +82,7 @@ pub fn holes(s: &Sources) -> Reading {
         "ISXEG8",
     )
     .bar(Bar::AtMost(0.0))
-    .from("the ledger's holes, as ISXEG8 files them")
+    .from("the ledger's security holes, as their owner files them")
 }
 
 /// The asks for a secret today, as health counts them from secret-asks:

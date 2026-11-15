@@ -485,6 +485,31 @@ mod tests {
     }
 
     #[test]
+    fn a_reading_says_what_it_is_and_where_from_naming_no_session() {
+        let axes = read(&Sources::default());
+        let readings: Vec<&Reading> = axes.iter().flat_map(|a| &a.readings).collect();
+        let owners: std::collections::BTreeSet<&str> = readings
+            .iter()
+            .map(|r| r.owner)
+            .filter(|o| !o.is_empty())
+            .collect();
+        let named: Vec<String> = readings
+            .iter()
+            .flat_map(|r| {
+                owners
+                    .iter()
+                    .filter(|o| r.says.contains(*o) || r.from.contains(*o))
+                    .map(|o| format!("{} names {o}", r.says))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert!(
+            named.is_empty(),
+            "a session's address is in Joel's words, where the owner's title belongs: {named:?}"
+        );
+    }
+
+    #[test]
     fn a_count_of_one_says_its_thing_once() {
         let said = |says, n: f64| Reading::new(says, Some(n), "", "WCJQSG").words();
         assert_eq!(
