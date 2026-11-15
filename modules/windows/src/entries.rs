@@ -162,13 +162,14 @@ pub fn chrome_owner<'a>(
 }
 
 /// A window's title without its program's name trailing it, as Chrome
-/// adds " - Google Chrome", since the row already says whose window it
-/// is, as the shell's Provider.qml tidied it.
+/// adds " - Google Chrome" and the reader " · Reader", since the row
+/// already says whose window it is, as the shell's HeldWindows.js tidies
+/// it, so a window's key there matches its row's.
 pub fn tidy<'a>(title: &'a str, program: &str) -> &'a str {
     if program.is_empty() {
         return title;
     }
-    for joint in [" - ", " \u{2013} ", " \u{2014} ", " | "] {
+    for joint in [" - ", " \u{2013} ", " \u{2014} ", " | ", " \u{b7} "] {
         if let Some(own) = title
             .strip_suffix(program)
             .and_then(|rest| rest.strip_suffix(joint))
@@ -400,6 +401,7 @@ mod tests {
         assert_eq!(tidy("Inbox - Google Chrome", "Google Chrome"), "Inbox");
         assert_eq!(tidy("Notes \u{2014} Obsidian", "Obsidian"), "Notes");
         assert_eq!(tidy("general | Slack", "Slack"), "general");
+        assert_eq!(tidy("Notes \u{b7} Reader", "Reader"), "Notes");
         assert_eq!(tidy("Slack", "Slack"), "Slack");
         assert_eq!(tidy("about kitty", "kitty"), "about kitty");
         assert_eq!(tidy("anything", ""), "anything");

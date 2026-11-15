@@ -232,6 +232,7 @@
     "Fuzzy.js"
     "ProgramGlyphs.js"
     "launcher/Asking.js"
+    "launcher/HeldWindows.js"
     "launcher/Member.js"
     "launcher/Numbers.js"
   ];
