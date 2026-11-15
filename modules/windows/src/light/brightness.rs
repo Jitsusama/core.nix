@@ -65,6 +65,14 @@ pub fn rows(
     } else {
         0.0
     };
+    // The share as read, which the : line's :set brightness says and
+    // the launcher's typed "brightness 40" says it's at now; none until
+    // it's read, so no old level is said as now.
+    let held = if heard {
+        json!({"share": share})
+    } else {
+        json!({})
+    };
     let named = (inside.named)("brightness");
     let setting = key(&format!("setting:{name}:brightness"));
     let mut rows = vec![json!({
@@ -81,6 +89,7 @@ pub fn rows(
         // However bright, it wants nothing, so it never warns.
         "graph": {"shape": "bar", "values": [bar], "warn": false},
         "note": note,
+        "held": held,
         "acts": [{"key": "verb:more", "step": "rows"}],
     })];
     rows.extend(LEVELS.iter().map(|each| {

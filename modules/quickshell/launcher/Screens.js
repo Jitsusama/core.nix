@@ -1,8 +1,10 @@
 .pragma library
 // How a screen stands from what niri says (`niri msg -j outputs`), which
 // of the acts the daemon serves the : line's :setl power and unplugged
-// ask, and what a share typed for the Brightness asks, in plain JavaScript so a check runs it in Qt's own
-// engine apart from drawing (tests/screens.qml), as the shell does. Its
+// ask, what a share typed for the Brightness asks and where the
+// Brightness served stands, in plain JavaScript so a check runs it in
+// Qt's own engine apart from drawing (tests/screens.qml), as the shell
+// does. Its
 // drawer, its settings, what its EDID says, the ways it turns off or on
 // and what the : line's :setl types for them are the windows daemon's to
 // say (modules/windows: screens.rs and the files beside it). niri says
@@ -77,6 +79,26 @@ function brightening(rows, share) {
         const level = (row?.acts ?? []).find(one => one.key === "displays:brightness:level");
         if (level?.ask) {
             return Object.assign({}, level.ask, { share: Math.max(1, share) });
+        }
+    }
+    return null;
+}
+
+// The Brightness served among `rows` (light/brightness.rs): the row's
+// key of the screen whose place holds it, the share it read, or null
+// while it's being read, so no old level is said as now, and what its
+// side says: the share, nothing in its first second, then that it isn't
+// read yet; or null while none is served.
+const BRIGHTNESS = /^displays:[^:]+:brightness$/;
+function brightnessOf(rows) {
+    for (const row of rows) {
+        if (row?.kind === "setting" && BRIGHTNESS.test(row.thing ?? "")) {
+            const share = row.held?.share;
+            return {
+                screen: row.parent,
+                share: typeof share === "number" ? share : null,
+                said: (row.side ?? []).map(each => each.said).join(" ")
+            };
         }
     }
     return null;

@@ -35,13 +35,12 @@
 // the backlight daemon, which follows the room while the lid is open,
 // learns it as Joel's pick; then, on the built-in screen, the Room light
 // its sensor hears. "brightness" asks it, and "brightness
-// 40" sets it on Return. The
-// backlight and the room's light are the machine daemon's (modules/machine,
-// light.rs), read once a second while they can be seen and told here as
-// they move, so the shell reads no file for them, and the sensor's slow
-// count is the daemon's to wait on, on a thread of its own. The screen the backlight's device
-// names as its connector holds Brightness, and is never said, since its
-// drawer's eyebrow already names it.
+// 40" sets it on Return. The backlight and the room's light are the
+// machine daemon's (modules/machine, light.rs), which the windows daemon
+// reads while a screen is watched ahead (modules/windows, light.rs), so
+// the shell reads neither the lights nor a file for them: which screen
+// holds the Brightness, and the share :set brightness and "brightness
+// 40" say, are its served row's (Screens.js's brightnessOf).
 //
 // The backlight daemon warms every screen at night from sunset to
 // sunrise, and toward the room's light where its sensor sees colour, and
@@ -61,7 +60,6 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Hearing.js" as Hearing
-import "Backlight.js" as Backlight
 import "Order.js" as Order
 import "ScreenAnswers.js" as ScreenAnswers
 import "Screens.js" as Screens
@@ -80,14 +78,16 @@ Provider {
     // shows is watched ahead, and the one holding the Brightness while the
     // lights can be seen, as by words asking the Room Light, or a terminal
     // looks, so the daemon reads its light from the machine daemon only
-    // then (modules/windows, light.rs).
+    // then (modules/windows, light.rs), and once as the shell starts, so
+    // :set brightness says the share before Screens is first opened.
     ReadyRows {
         id: ready
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
         place: "displays"
         ahead: [provider.drawerWanted,
-            provider.lightsSeen || provider.terminalLooks ? provider.backlitKey : ""]
+            provider.lightsSeen || provider.terminalLooks || !provider.lightReadOnce
+                ? provider.backlitKey : ""]
             .filter((key, at, keys) => key !== "" && keys.indexOf(key) === at)
         make: (row, key) => provider.madeFrom(row, key)
         maker: provider
@@ -109,7 +109,8 @@ Provider {
 
     // :set brightness=60 sets the screen as its Brightness levels do, asking
     // the windows daemon what they ask (brighten), on a machine with a
-    // backlight; :set nightlight and nonightlight turn the night light on
+    // backlight, while its Brightness is served; :set nightlight and
+    // nonightlight turn the night light on
     // and off, and :set nowarmth gives the screens their own white by day,
     // as the Warmth's switches do, while each is served. :set
     // noscreens turns every screen off, doing Turn Every Screen Off's act;
@@ -126,12 +127,12 @@ Provider {
                 return "";
             }
         }
-    }, light === null ? {} : {
+    }, servedBrightness === null ? {} : {
         brightness: {
             kind: "number",
             least: 0,
             most: 100,
-            now: () => provider.light?.share ?? 0,
+            now: () => provider.servedBrightness?.share ?? 0,
             set: (to, change, later) => {
                 provider.brighten(to, later);
                 return "";
@@ -143,6 +144,23 @@ Provider {
     // The rows served, placed or not, for what the : line asks of them.
     function servedRows() {
         return ready.keys.map(key => ready.served(key));
+    }
+
+    // The Brightness the windows daemon serves (Screens.js's
+    // brightnessOf): the row's key of the screen holding it and the share
+    // it read, or null while it's read; null while none is served.
+    readonly property var servedBrightness: {
+        void ready.placings;
+        return Screens.brightnessOf(servedRows());
+    }
+    // Whether a share has been read since the shell started, until when
+    // the screen holding the Brightness is watched ahead, as the shell's
+    // first look, so its levels are served for :set brightness and
+    // "brightness 40" before Screens is first opened.
+    property bool lightReadOnce: false
+    onServedBrightnessChanged: {
+        if (servedBrightness?.share !== null && servedBrightness?.share !== undefined)
+            lightReadOnce = true;
     }
 
     // The : line's option `name` for the served switch whose act is `act`,
@@ -184,11 +202,6 @@ Provider {
         }
     }
 
-    // The lights are read once as the shell starts too, though the
-    // launcher is closed, since what's inside a screen is made from what's
-    // held while it's closed (Daemon.qml's refresh).
-    Component.onCompleted: lights.refresh()
-
     function builtIn(output) {
         return output.name.startsWith("eDP");
     }
@@ -207,13 +220,15 @@ Provider {
         return builtIn(output) || shown.length === 1;
     }
 
-    // Whether this screen's place holds the Brightness: the built-in one
-    // while it's on, the only screen there is, or else the first lit
-    // monitor that follows the panel. Only one holds it, since every
-    // screen shows the same level.
+    // Whether this screen's place holds the Brightness: the one the
+    // windows daemon serves it inside, else, before it's served, the
+    // built-in one while it's on, the only screen there is, or the first
+    // lit monitor that follows the panel, as the daemon chooses
+    // (screens.rs's backlit). Only one holds it, since every screen shows
+    // the same level.
     function backlit(output) {
-        const named = light?.connector ?? null;
-        const home = lit.find(each => each.name === named)
+        const holding = servedBrightness?.screen ?? "";
+        const home = lit.find(each => screenKey(each) === holding)
             ?? lit.find(each => inTheRoom(each))
             ?? lit.find(each => follows(each)) ?? null;
         return home !== null && home.name === output.name;
@@ -250,10 +265,12 @@ Provider {
         });
     }
 
-    // Setting the screen to a share, Return doing it.
+    // Setting the screen to a share, Return doing it, its note the share
+    // now as the served Brightness says it, or what that says while it's
+    // read: nothing for its first second, then that it isn't read yet.
     function setTo(share) {
-        const light = provider.light;
-        if (light === null)
+        const brightness = servedBrightness;
+        if (brightness === null)
             return null;
         const kept = Math.max(1, share);
         return {
@@ -262,8 +279,8 @@ Provider {
             stays: true,
             run: () => provider.brighten(kept),
             rows: [],
-            note: lightRead ? partSaid("", "now").replace("{share}", light.share)
-                : unreadSaid()
+            note: brightness.share !== null
+                ? partSaid("", "now").replace("{share}", brightness.share) : brightness.said
         };
     }
 
@@ -273,98 +290,25 @@ Provider {
     readonly property bool lightShown: launcher !== null && launcher.open
         && (launcher.held ?? []).length === 0 && launcher.answer?.live === provider
 
-    // The machine daemon's backlights and light sensors, read once a second
-    // while they can be seen (lightsSeen); none is held while the daemon
-    // isn't answering, and what an earlier watch left is said as not read
-    // yet (lightRead), so no old level is said as now.
-    Daemon {
-        id: lights
-
-        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
-        kind: ["backlight", "light", "brightness"]
-        live: provider.lightsSeen
-        keptThroughGap: false
-        answersWhole: true
+    // What the light's rows inside the screen holding it say, the
+    // Brightness and the Room Light, which moves as the light does, so a
+    // light's answer showing is asked again as it moves. Asked as the turn
+    // ends, never at once: the rows move as lightsSeen changes, inside
+    // its own binding, and an answer asked there makes the rows
+    // lightsSeen reads again, a binding loop (the answers VM test,
+    // 2026-11-10).
+    readonly property string lightSaid: {
+        void ready.placings;
+        return JSON.stringify(ready.inside(backlitKey)
+            .filter(row => [partName("brightness"), partName("room")].includes(row.name))
+            .map(row => [row.side, row.note]));
     }
+    onLightSaidChanged: Qt.callLater(Hearing.putOff(provider.lightTold))
 
-    // The backlight and the room's sensor as last told (Backlight.js's lit
-    // and sensor), for a screen's drawer and the rows a step into it holds,
-    // each replaced only when what it says changed, so the room's light
-    // moving leaves the backlight be; and `room`, the lux the sensor hears,
-    // or null until it's said one.
-    property var light: null
-    onLightChanged: changed()
-    // Whether what's held of the lights was told for this watch, so says
-    // the level as it is now; until then the level held from an earlier
-    // watch is said as not read yet, in the same rows.
-    readonly property bool lightRead: lights.answeredThisWatch
-    // What a level not yet read says: nothing for its first second, which
-    // the daemon's answer nearly always beats, so no word flashes past,
-    // then that it's not read yet (VKCF3Z, 2026-11-10). The sensor's count
-    // is read on a thread of its own, so it can come after the backlight's.
-    function unreadSaid() {
-        return lightWaited ? partSaid("", "unread") : "";
-    }
-    property bool lightWaited: false
-    onLightWaitedChanged: changed()
-    readonly property bool lightsAllRead: lightRead && (roomSensor === null || room !== null)
-    // Fires a second into a watch that hasn't read everything, and each
-    // second after, which changes nothing; it repeats so that its running
-    // stays bound, since a timer that stops itself lets go of its binding.
-    Timer {
-        interval: 1000
-        repeat: true
-        running: lights.live && !provider.lightsAllRead
-        onTriggered: provider.lightWaited = true
-    }
-    property var roomSensor: null
-    onRoomSensorChanged: changed()
-    readonly property var room: roomSensor?.lux ?? null
-
-    Connections {
-        target: lights
-
-        function onRevisionChanged() {
-            provider.heard();
-        }
-
-        // A light's answer waits for the watch's first answer, so it's
-        // asked again once that's come, moved or not. Asked as the turn
-        // ends, never at once: a watch ending as lightsSeen changes says
-        // so here, inside lightsSeen's own binding, and an answer asked
-        // there makes the rows lightsSeen reads again, a binding loop
-        // whenever the watch was answered before the next key (the
-        // answers VM test, 2026-11-10).
-        function onAnsweredThisWatchChanged() {
-            Qt.callLater(Hearing.putOff(provider.lightTold));
-        }
-
-        function onLiveChanged() {
-            provider.lightWaited = false;
-        }
-    }
-
-    // Timed from the line that answered the watch (Hearing.js).
+    // Timed from the line that told the light (Hearing.js).
     readonly property var lightTold: Hearing.carried(() => provider.lightAnswered())
     function lightAnswered() {
         if (lightShown)
-            answered();
-    }
-
-    // Each of what the lights say is replaced only when it changed, so the
-    // room's light moving leaves the rest be.
-    function heard() {
-        const records = Object.values(lights.held);
-        const now = Backlight.lit(records);
-        const sensed = Backlight.sensor(records);
-        const moved = (was, is) => JSON.stringify(was) !== JSON.stringify(is);
-        const lit = moved(light, now);
-        const sensing = moved(roomSensor, sensed);
-        if (lit)
-            light = now;
-        if (sensing)
-            roomSensor = sensed;
-        if ((lit || sensing) && lightShown)
             answered();
     }
 
@@ -373,14 +317,13 @@ Provider {
     // with the launcher closed too.
     readonly property bool terminalLooks: (launcher?.terminalSees.walked ?? [])
         .some(row => row?.from === provider || String(row?.key ?? "").startsWith("display:"))
-    // A terminal's look waits for the daemon's whole answer to its watch,
-    // as the launcher shows the light once it opens (Provider.stillReading).
-    // Its drawer waits too, while a backlight is told, for the daemon to say
-    // its Brightness, read or not yet read, which it does within a second
-    // of its look (modules/windows, light.rs's WAITED).
-    stillReading: terminalLooks && !(launcher?.open ?? false) && lights.state !== "not answering"
-        && (!lights.answeredThisWatch || light !== null && backlitKey !== ""
-            && brightnessServed(backlitKey) === "")
+    // A terminal's look waits, as the launcher shows the light once it
+    // opens (Provider.stillReading), for the windows daemon to say the
+    // Brightness in the drawer of the screen holding it, read or not yet
+    // read, which it does within a second of its look (modules/windows,
+    // light.rs's WAITED); a machine with no backlight waits for nothing.
+    stillReading: terminalLooks && !(launcher?.open ?? false) && ready.state !== "not answering"
+        && servedBrightness !== null && brightnessServed(backlitKey) === ""
 
     // The row's key of the screen whose place holds the Brightness, or "".
     readonly property string backlitKey: {
@@ -613,7 +556,7 @@ Provider {
     // only its parts again as the launcher closes (Launcher.qml's
     // heldSpots): its served rows, those inside it among them, its EDID's
     // facts and its ways (ReadyRows.stampOf), and for a screen whether it
-    // holds the light and the sensor; never a level. Joel's closing
+    // holds the light; never a level. Joel's closing
     // at 14:36 on 2026-11-11 made all 87 of Displays' rows again.
     function spotsStampOf(thing) {
         const served = ready.stampOf(thing);
@@ -622,16 +565,13 @@ Provider {
         const output = name === undefined ? undefined : outputs[name];
         if (output === undefined)
             return served;
-        return JSON.stringify([served, backlit(output),
-            light === null ? false : light.connector ?? "", roomSensor !== null]);
+        return JSON.stringify([served, backlit(output)]);
     }
 
-    // What its spots are made of (Launcher.qml's spotsFrom): the screens
-    // as the daemon serves them, which one holds the Brightness, and
-    // whether the room's sensor is there; never a level or a lux, which
-    // move while nothing else does.
-    property string spotsStamp: JSON.stringify([ready.placings,
-        light === null ? false : light.connector ?? "", roomSensor !== null])
+    // What its spots are made of (Launcher.qml's spotsFrom): the rows as
+    // the daemon places them, which move with each change it tells, and
+    // which screen holds the Brightness.
+    property string spotsStamp: JSON.stringify([ready.placings, backlitKey])
 
     // A part's name, as the vocabulary says it (Provider's partNamed).
     function partName(id) {
@@ -684,10 +624,12 @@ Provider {
         const others = lit.filter(output => output !== focused && partOf(output) !== null);
         const light = id === "brightness" || id === "room";
         return {
-            // Until the daemon's first answer comes, a light's answer is
-            // still being asked, so Return waits for it; while it shows,
-            // it's asked again as the light moves.
-            asking: light && !lights.answeredThisWatch && lights.state !== "not answering",
+            // While the windows daemon reads the light, in its first
+            // second, a light's answer is still being asked, so Return
+            // waits for it; while it shows, it's asked again as the light
+            // moves (lightSaid).
+            asking: light && servedBrightness !== null && servedBrightness.share === null
+                && servedBrightness.said === "" && ready.state !== "not answering",
             live: light ? provider : null,
             // A switch says how it stands in full, as its note does.
             headline: part.said ?? part.side,

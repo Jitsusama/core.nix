@@ -151,6 +151,26 @@ fn while_its_read_it_says_only_its_steps_and_no_level_is_chosen() {
 }
 
 #[test]
+fn it_holds_its_share_once_read_for_the_lines_set_brightness() {
+    let read = rows_of(&[backlight()], true, Reading::Read);
+    assert_eq!(
+        read[0]["held"],
+        json!({"share": 60.0}),
+        "the share :set brightness? says isn't held: {}",
+        read[0]
+    );
+    for reading in [Reading::Waiting, Reading::Unread] {
+        let unread = rows_of(&[backlight()], true, reading);
+        assert_eq!(
+            unread[0]["held"],
+            json!({}),
+            "a share not yet read is held as if it were: {}",
+            unread[0]
+        );
+    }
+}
+
+#[test]
 fn a_monitor_following_the_panel_says_only_what_sets_it() {
     let made = rows_of(&[backlight()], false, Reading::Read);
     assert_eq!(

@@ -6,5 +6,4 @@
   "launcher/Plate.js"
   "launcher/Screens.js"
   "launcher/ScreenAnswers.js"
-  "launcher/Backlight.js"
 ]

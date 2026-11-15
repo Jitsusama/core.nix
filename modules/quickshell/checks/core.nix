@@ -442,11 +442,10 @@ in
     '';
 
   # A thing's drawer says each of its parts as a fact, leaving out its
-  # acts and opening a holder of figures in place, and a screen's light is
-  # read from the machine daemon's records, as tests/plate.qml holds
-  # launcher/Plate.js and Backlight.js to it in Qt's own engine, with the
-  # Order.js it lists devices by. A screen's drawer, its settings, its Room
-  # Light and what its EDID says are the windows daemon's, tested there.
+  # acts and opening a holder of figures in place, as tests/plate.qml
+  # holds launcher/Plate.js to it in Qt's own engine. A screen's drawer,
+  # its settings, its light and what its EDID says are the windows
+  # daemon's, tested there.
   a-things-drawer-says-its-parts =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -457,8 +456,6 @@ in
     pkgs.runCommandLocal "a-things-drawer-says-its-parts" { } ''
       cp ${../../../tests/plate.qml} plate.qml
       cp ${../launcher/Plate.js} Plate.js
-      cp ${../launcher/Backlight.js} Backlight.js
-      cp ${../launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
