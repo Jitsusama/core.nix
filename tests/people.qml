@@ -598,6 +598,7 @@ ShellRoot {
                 // remade them all.
                 tuple().favoured = ({});
                 void people.all;
+                root.stampsBefore = people.listedStamps();
                 root.stoppedAt = Date.now();
                 stopping.running = true;
             },
@@ -623,16 +624,22 @@ ShellRoot {
             run: () => {
                 starting.running = true;
             },
-            // Back once Tuple has told it again how each stands, its first
-            // presence and then its last, as a daemon started again hears
-            // each source's part as it comes. Read as People reads it: a
-            // person it merges here, beside a source saying how they stand,
-            // has no `stood` of the daemon's.
+            // Back once every source has told it again what it said of
+            // each listed before, as a daemon started again hears each
+            // source's part as it comes: Tuple's first, then Slack's.
+            // Waiting on Tuple's alone, Gil's step opened People between
+            // them, which made each listed row for Tuple's part and again
+            // for Slack's, 9 rows rather than Gil's one. Read as People
+            // reads it: a person it merges here, beside a source saying
+            // how they stand, has no `stood` of the daemon's.
             holds: () => {
                 const ada = people.listedPersons()
                     .find(person => person.key === "ada@example.com");
+                const stamps = people.listedStamps();
                 return people.pressing === "" && ada !== undefined
-                    && (ada.stood ?? people.standOf(ada))?.said === "in a call";
+                    && (ada.stood ?? people.standOf(ada))?.said === "in a call"
+                    && Object.keys(root.stampsBefore)
+                        .every(key => stamps[key] === root.stampsBefore[key]);
             },
             check: () => {
                 expect("home counts again", people.homeSays() !== "not answering",
@@ -815,6 +822,7 @@ ShellRoot {
     // When the people daemon was stopped, and how many rows People had
     // made once it was gone.
     property real stoppedAt: 0
+    property var stampsBefore: ({})
     property int goneRows: 0
 
     // How often People found more once asked, as the launcher hears it,

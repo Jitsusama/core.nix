@@ -1382,6 +1382,18 @@ Provider {
         }
         return kept.listed;
     }
+    // Each listed person's listing stamp, by the daemon's key, so a case
+    // can tell when a daemon started again has told every source's part
+    // as before: it tells each part as it comes, the first saying less.
+    function listedStamps() {
+        const stamps = {};
+        for (const key of placing.keys) {
+            const thing = rowsHeld[key]?.thing;
+            if (thing)
+                stamps[thing] = lister.held[thing]?.said ?? "";
+        }
+        return stamps;
+    }
     // Home says the people daemon isn't answering rather than a count of
     // whom it last listed, so a down daemon is never silent.
     function homeSays() {
