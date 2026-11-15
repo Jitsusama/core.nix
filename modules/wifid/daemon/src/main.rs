@@ -223,6 +223,7 @@ async fn serve(
         state: &state,
         picked: RefCell::default(),
         held: RefCell::default(),
+        astray: RefCell::default(),
     };
     wifid.add_cards().await;
 
@@ -240,6 +241,7 @@ async fn serve(
         seen,
         stalls: Stalls::default(),
         left: Vec::new(),
+        settled: Vec::new(),
     };
     air.hear_all(&bus, &supplicant).await;
 
@@ -361,6 +363,10 @@ async fn follow(
                         wifid.turn_on_networks(&card).await;
                     }
                     wifid.let_go(&card, free).await;
+                }
+                for card in std::mem::take(&mut air.settled) {
+                    let free = joining.as_ref().is_none_or(|joining| joining.card != card);
+                    wifid.settled(&card, free).await;
                 }
             }
             Some(event) = switched.recv() => {
@@ -654,6 +660,9 @@ struct Air<'a> {
     /// The cards that have just come off a network, by name, for their
     /// other networks to be turned on again.
     left: Vec<String>,
+    /// The cards that have just joined a network, by name, for one that
+    /// went astray as it was let go to look again.
+    settled: Vec<String>,
 }
 
 impl Air<'_> {
@@ -799,6 +808,7 @@ impl Air<'_> {
                 }
                 if step == "completed" && before != "completed" {
                     self.joined(bus, path).await;
+                    self.settled.push(card.clone());
                 }
                 // Each step said, so a join that dawdles shows where.
                 if step != before {
@@ -1243,6 +1253,9 @@ struct Wifid<'a> {
     /// The cards moved to an access point, each with the network it's
     /// held to that point on, until the card comes off it.
     held: RefCell<HashMap<String, OwnedObjectPath>>,
+    /// The cards that took another network as they were let go, each with
+    /// the network they were held on, to look again once joined.
+    astray: RefCell<HashMap<String, OwnedObjectPath>>,
 }
 
 impl Wifid<'_> {
@@ -2018,8 +2031,8 @@ impl Wifid<'_> {
     /// go, and with that network held to a point that's gone it takes
     /// another network, as it did 110 ms ahead of wifid in a test
     /// (2026-11-15). So a card that's free, not in a join from the
-    /// launcher, and on another network by then looks again, and lands
-    /// where it would have unheld.
+    /// launcher, and on its way to another network by then is marked to
+    /// look again once there, in `settled`.
     async fn let_go(&self, card: &str, free: bool) {
         let Some(network) = self.held.borrow_mut().remove(card) else {
             return;
@@ -2030,29 +2043,52 @@ impl Wifid<'_> {
             Ok(()) => println!("<7>{card} may join any access point of its network again"),
             Err(error) => println!("<7>{card}'s network wasn't let go: {error}"),
         }
-        if free {
-            self.look_again(card, &network).await;
+        if free && self.elsewhere(card, &network, true).await {
+            println!("<7>{card} took another network while held, and looks again once on it");
+            self.astray.borrow_mut().insert(card.to_owned(), network);
         }
     }
 
-    /// Has the card pick again if it holds another network than the one
-    /// it was held on.
-    async fn look_again(&self, card: &str, held: &OwnedObjectPath) {
+    /// Has a card that went astray as it was let go pick again, now it's
+    /// joined. Picking again partway into that join had wpa_supplicant's
+    /// next try refused, and the network it was held on ignored for ten
+    /// seconds (2026-11-15), so it waits until the join is done.
+    async fn settled(&self, card: &str, free: bool) {
+        let Some(held) = self.astray.borrow_mut().remove(card) else {
+            return;
+        };
+        if !free || !self.elsewhere(card, &held, false).await {
+            return;
+        }
         let looked = async {
-            let interface = interface(self.bus, self.supplicant.get_interface(card).await?).await?;
-            let step = interface.state().await?;
-            let elsewhere = interface.current_network().await? != *held;
-            if !(supplicant::holds_a_network(&step) && elsewhere) {
-                return zbus::Result::Ok(false);
-            }
-            interface.reassociate().await?;
-            Ok(true)
+            interface(self.bus, self.supplicant.get_interface(card).await?)
+                .await?
+                .reassociate()
+                .await
         };
         match looked.await {
-            Ok(true) => println!("<6>{card} took another network while held, so looks again"),
-            Ok(false) => {}
+            Ok(()) => println!("<6>{card} looks again, having taken another network while held"),
             Err(error) => eprintln!("<4>{card} can't look again once let go: {error}"),
         }
+    }
+
+    /// Whether the card is on, or on its way to, another network than
+    /// that one; only on it, unless `on_its_way` will do.
+    async fn elsewhere(&self, card: &str, network: &OwnedObjectPath, on_its_way: bool) -> bool {
+        let asked = async {
+            let interface = interface(self.bus, self.supplicant.get_interface(card).await?).await?;
+            let step = interface.state().await?;
+            let on = if on_its_way {
+                supplicant::holds_a_network(&step)
+            } else {
+                step == "completed"
+            };
+            zbus::Result::Ok(on && interface.current_network().await? != *network)
+        };
+        asked.await.unwrap_or_else(|error| {
+            eprintln!("<4>can't read which network {card} is on: {error}");
+            false
+        })
     }
 
     /// Has every card wpa_supplicant drives look for networks now.
