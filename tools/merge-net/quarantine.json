@@ -543,6 +543,8 @@
   {
     "at": 1794723405,
     "commit": "79d804bc87b2789f36216e9928e1351d54feba9b",
+    "due": "2026-11-17",
+    "due_why": "two days after its listing, the date the net gives; its owner reruns it on an idle builder by 2026-11-17 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 4577,
     "reason": "failed, then passed, at 79d804bc87b2",
     "subtests": [
