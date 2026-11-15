@@ -435,10 +435,10 @@ fn tell_standings(daemon: &mut Daemon, stood: &Value) {
     // And whoever's watched by key, a listing's watch having none, since
     // the places held for them come and go with how their sources stand.
     for watch in &mut daemon.watches {
-        for key in watch.keys.iter().flatten() {
-            let told = daemon.holds.told(&daemon.book, key);
-            watch.pending.insert(key.clone(), told);
-        }
+        let retold = daemon
+            .holds
+            .retold(&daemon.book, watch.keys.iter().flatten());
+        watch.pending.extend(retold);
     }
 }
 

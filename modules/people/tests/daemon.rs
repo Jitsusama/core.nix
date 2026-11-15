@@ -65,12 +65,17 @@ fn launchers() -> Value {
 }
 
 /// A source that answers, but has nothing to say of anyone yet, as Slack
-/// a while once asked, logging each line it's asked.
+/// a while once asked, logging each line it's asked; once `$log.out` is
+/// there, its sign-in is refused.
 const ASKED: &str = r#"
 log=$1
 while read -r line; do
   printf '%s\n' "$line" >> "$log"
-  echo '{"email":"'"${line#\?}"'","later":true}'
+  if [ -e "$log.out" ]; then
+    echo '{"signedOut":true}'
+  else
+    echo '{"email":"'"${line#\?}"'","later":true}'
+  fi
 done
 "#;
 
@@ -964,6 +969,47 @@ fn a_source_asked_holds_its_acts_place_until_it_says_anything() {
         Value::Null,
         "Gus: {said}"
     );
+}
+
+#[test]
+fn a_watch_loses_a_held_place_as_its_source_signs_out() {
+    let running = Running::holding(
+        "held-out",
+        &[("slack", ASKED)],
+        &[("slack", "verb:person:slack")],
+    );
+    let mut watching = running.client();
+    let zed = |said: &Value, list: &str| {
+        said[list]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|record| record["key"] == "person:zed@example.com")
+            .cloned()
+    };
+    // Zed, a guest nobody's said a word of, is held for once Slack's asked
+    // ahead of him and answers, if not in the watch's first answer, then
+    // as it's told how Slack stands.
+    let first = watching.ask(&json!({"id": 1, "ask": "watch", "keys": ["person:zed@example.com"]}));
+    let mut held = zed(&first, "records");
+    while held
+        .as_ref()
+        .is_none_or(|zed| zed["sources"]["slack"].is_null())
+    {
+        held = zed(&next_change(&mut watching), "changed");
+    }
+    // Slack's sign-in is refused as Joel steps into Eve, and Zed's place
+    // goes with it, though nothing was said of him.
+    std::fs::write(running.daemon.folder().join("slack.log.out"), "").unwrap();
+    running
+        .client()
+        .ask(&json!({"id": 2, "ask": "get", "keys": ["person:eve@example.com"], "patience": 1000}));
+    loop {
+        if let Some(zed) = zed(&next_change(&mut watching), "changed") {
+            assert_eq!(zed["gone"], true, "{zed}");
+            break;
+        }
+    }
 }
 
 #[test]

@@ -57,8 +57,7 @@ impl Holds {
         key: &str,
         said: &BTreeMap<String, Value>,
     ) -> Map<String, Value> {
-        let mailed = address(key).filter(|address| address.contains('@'));
-        if mailed.is_none_or(calendar) {
+        if !self.may_hold(key) {
             return Map::new();
         }
         self.0
@@ -80,21 +79,20 @@ impl Holds {
         served
     }
 
-    /// Adds the places held for someone to what's served of them, whose
-    /// `sources` say what each source said, and stamps it anew as
-    /// `Record::json` does, so the shell makes them again as a place comes
-    /// or goes, though no source said anything.
+    /// Adds the places held for someone to what's served of them (`put`).
     pub fn beside(&self, book: &Book, record: &Record, served: &mut Value) {
         let held = self.of_key(book, &record.key, &record.sources);
-        if held.is_empty() {
-            return;
+        if !held.is_empty() {
+            put(served, held);
         }
-        let mut all = record.sources.clone();
-        all.extend(held.clone());
-        served["stamp"] = Value::String(stamp(&all));
-        if let Some(sources) = served["sources"].as_object_mut() {
-            sources.extend(held);
-        }
+    }
+
+    /// Whether a place may ever be held for this key: some source holds
+    /// an act, and it's an address a source is asked of.
+    #[must_use]
+    pub fn may_hold(&self, key: &str) -> bool {
+        let mailed = address(key).filter(|address| address.contains('@'));
+        !self.0.is_empty() && mailed.is_some_and(|address| !calendar(address))
     }
 
     /// Those held for these keys, as served, with one made for an address
@@ -120,11 +118,45 @@ impl Holds {
         }
     }
 
+    /// What a watch of these keys is told again as a source's standing
+    /// changes, as `told`: only those a place may be held for, since the
+    /// rest read as they did.
+    #[must_use]
+    pub fn retold<'a>(
+        &self,
+        book: &Book,
+        keys: impl IntoIterator<Item = &'a String>,
+    ) -> Vec<(String, Value)> {
+        keys.into_iter()
+            .filter(|key| self.may_hold(key))
+            .map(|key| (key.clone(), self.told(book, key)))
+            .collect()
+    }
+
     /// Someone no source has said anything of, as served while a place is
     /// held for them, or nothing.
     fn unheard(&self, book: &Book, key: &str) -> Option<Value> {
         let held = self.of_key(book, key, &BTreeMap::new());
-        (!held.is_empty())
-            .then(|| json!({"key": key, "kind": KIND, "stamp": stamp(&held), "sources": held}))
+        (!held.is_empty()).then(|| {
+            let mut made = json!({"key": key, "kind": KIND, "sources": {}});
+            put(&mut made, held);
+            made
+        })
+    }
+}
+
+/// Puts the places held for someone beside what each source said of them,
+/// in what's served's `sources`, and stamps all it says anew (`stamp`), as
+/// a listing is stamped, so the shell makes them again as a place comes
+/// or goes though no source said anything. The one way every record,
+/// listing and made record is held and stamped, so none drifts apart.
+pub fn put(served: &mut Value, held: Map<String, Value>) {
+    if let Some(sources) = served["sources"].as_object_mut() {
+        sources.extend(held);
+    }
+    if let Some(served) = served.as_object_mut() {
+        served.remove("stamp");
+        let stamped = stamp(&*served);
+        served.insert("stamp".to_owned(), Value::String(stamped));
     }
 }

@@ -23,9 +23,9 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use crate::drawer::{self, Named};
-use crate::held::Holds;
+use crate::held::{self, Holds};
 use crate::name::{self, bare};
-use crate::{Book, LISTING, Record, address, stamp};
+use crate::{Book, LISTING, Record, address};
 
 /// How a source's entry says someone stands, as its module tells the
 /// daemon in the sources file: the entry's field that says it, which of
@@ -376,22 +376,20 @@ impl Person {
     /// by the record. Kept by the record, every listed row was made again
     /// at the first letter after a switch started the daemon again, 136
     /// and 137 of them (Joel's journal, 2026-11-14).
+    ///
     /// Each place a source holds for them while it's asked, `held`, is
-    /// beside what the others said (held.rs), and stamped with it.
+    /// beside what the others said, and stamped with it (held.rs's `put`).
     pub fn listing(
         &self,
         record: &Record,
         sources: &[(String, Option<Stands>)],
         held: Map<String, Value>,
     ) -> Value {
-        let mut said_of = sourced(record, sources);
-        if let Some(said_of) = said_of.as_object_mut() {
-            said_of.extend(held);
-        }
         let mut listing = json!({
-            "key": self.key, "kind": LISTING, "person": self.json(), "sources": said_of,
+            "key": self.key, "kind": LISTING, "person": self.json(),
+            "sources": sourced(record, sources),
         });
-        listing["stamp"] = Value::String(stamp(&listing));
+        held::put(&mut listing, held);
         listing
     }
 
