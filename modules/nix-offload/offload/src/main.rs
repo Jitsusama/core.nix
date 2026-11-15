@@ -1507,7 +1507,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         moves: false,
         own,
     };
-    let finished = sent.somewhere(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
+    let finished = sent.for_its_system(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
     forget();
     let Some(finished) = finished else {
         // While a lender runs, this machine is one that sends its work
@@ -1977,10 +1977,7 @@ impl Sent<'_> {
         vm_apart: bool,
     ) -> Option<Finished> {
         let Self {
-            source,
-            folder,
-            scratch,
-            ..
+            source, scratch, ..
         } = *self;
         let wanted = changed::wanted(arguments);
         let on_builder = |store: Option<String>| self.lent_to(arguments, vm_apart, store, false);
@@ -2070,32 +2067,85 @@ impl Sent<'_> {
                     continue;
                 }
             };
-            let targets = changed::to_build(&printed, wanted.vm);
-            if status != 0 || !wanted.build || targets.is_empty() {
-                return Some(Finished::of(status, Some(printed)));
-            }
-            let Some(system) = &wanted.system else {
-                eprintln!("nix-offload: changed-checks names its system when it builds elsewhere");
-                return Some(Finished::of(USAGE, None));
-            };
-            // What main holds in quarantine is built alone after the rest,
-            // as changed-checks builds it, so its failure blocks nothing
-            // but in a subtest its entry doesn't list.
-            let (blocking, held) = changed::apart(targets, &changed::held_on_main(folder));
-            let status = if blocking.is_empty() {
-                0
-            } else {
-                built_evaluated(folder, system, &blocking)
-            };
-            let alone =
-                changed::built_alone(&held, &mut |names| built_heard(folder, system, names));
-            let status = if status == 0 { alone } else { status };
-            return Some(Finished::of(status, Some(printed)));
+            return Some(self.built_named(&wanted, status, printed));
         }
         // Asked for and waited on, as any `there` waits, while a lender
         // runs, then the second once more, which may have stood meanwhile.
         on_builder(there::waited(dir, self.waiting)).or_else(|| on_builder(standing(more)))
     }
+
+    /// `somewhere`, but a run that builds for a system no lent builder
+    /// builds for and a machine nearby does only names what changed
+    /// there, and what it names builds as any `there` build does, on that
+    /// machine. The lent builders build for Intel Linux alone, so a
+    /// changed run for a Mac's system sent whole to one could only fail,
+    /// while a Mac nearby, which builds for it, stood idle.
+    fn for_its_system(
+        &self,
+        arguments: &[String],
+        lenders: [&Path; 2],
+        vm: &[PathBuf],
+        vm_apart: bool,
+    ) -> Option<Finished> {
+        let wanted = changed::wanted(arguments);
+        let Some(system) = wanted
+            .system
+            .as_deref()
+            .filter(|system| wanted.build && built_only_nearby(system, lenders[0]))
+        else {
+            return self.somewhere(arguments, lenders, vm, vm_apart);
+        };
+        eprintln!(
+            "nix-offload: no lent builder builds for {system} and a machine nearby does, so \
+             changed-checks only names what changed, and that builds nearby"
+        );
+        let mut naming: Vec<String> = arguments
+            .iter()
+            .filter(|word| *word != "--build")
+            .cloned()
+            .collect();
+        naming.push("--name-only".to_owned());
+        let named = self.somewhere(&naming, lenders, vm, false)?;
+        let printed = named.printed.unwrap_or_default();
+        Some(self.built_named(&wanted, named.status, printed))
+    }
+
+    /// What a run that only named, ending `status` with `printed`, named,
+    /// built as `wanted` asks, as any `there` build is.
+    fn built_named(&self, wanted: &changed::Wanted, status: i32, printed: String) -> Finished {
+        let folder = self.folder;
+        let targets = changed::to_build(&printed, wanted.vm);
+        if status != 0 || !wanted.build || targets.is_empty() {
+            return Finished::of(status, Some(printed));
+        }
+        let Some(system) = &wanted.system else {
+            eprintln!("nix-offload: changed-checks names its system when it builds elsewhere");
+            return Finished::of(USAGE, None);
+        };
+        // What main holds in quarantine is built alone after the rest,
+        // as changed-checks builds it, so its failure blocks nothing
+        // but in a subtest its entry doesn't list.
+        let (blocking, held) = changed::apart(targets, &changed::held_on_main(folder));
+        let status = if blocking.is_empty() {
+            0
+        } else {
+            built_evaluated(folder, system, &blocking)
+        };
+        let alone = changed::built_alone(&held, &mut |names| built_heard(folder, system, names));
+        let status = if status == 0 { alone } else { status };
+        Finished::of(status, Some(printed))
+    }
+}
+
+/// Whether no builder of `dir`'s lender builds for `system` and a machine
+/// nearby does. Never while what the lent builders build for isn't known.
+fn built_only_nearby(system: &str, dir: &Path) -> bool {
+    let lent = there::lent_systems(dir);
+    !lent.is_empty()
+        && !lent.iter().any(|lent| lent == system)
+        && nearby()
+            .iter()
+            .any(|machine| machine.systems.iter().any(|built| built == system))
 }
 
 /// A changed-checks run on the lent builder whose VM tests build apart. Run
