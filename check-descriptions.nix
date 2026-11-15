@@ -1668,7 +1668,11 @@
   '';
   a-mac-signs-what-it-builds = ''
     a Mac's Nix is given a line to sign with its own key, made before /etc under the name given
-    or the Mac's own
+    or the Mac's own, and a hook that signs what each build ends with
+  '';
+  a-mac-signs-what-its-builder-built = ''
+    the hook a Mac's Nix runs after each build signs every path it names with the Mac's key,
+    asks nothing of none, and fails no build when the signing fails
   '';
   a-stopped-kill-joins-its-timer = ''
     the machine's Nix lives through a stop that comes while it waits on a child it killed with a
