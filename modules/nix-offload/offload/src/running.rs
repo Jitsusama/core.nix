@@ -19,7 +19,9 @@
 //!
 //! A run that finds its twin going, one in the same folder at the same
 //! commit asked the same, waits for it to end rather than sending
-//! the same work again (`twin`). From 15 November merge-net's `ready`
+//! the same work again (`alone`). Each takes a lock named for its work in
+//! `nix-offload/twins`, so of two starting together exactly one goes,
+//! however their steps fall. From 15 November merge-net's `ready`
 //! starts a change's run again itself in its author's tree, and an
 //! author's loop that starts one too would otherwise double it on the
 //! builders. Runs match only when they send the same commit, and a run
@@ -27,9 +29,8 @@
 //! (`there.rs`), so those changes keep it apart from the run before.
 
 use std::fs;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::thread;
-use std::time::Duration;
 
 /// A run's file, removed when this is dropped.
 pub struct Running {
@@ -106,53 +107,95 @@ pub struct Going {
     pub started: u64,
 }
 
-/// The run going under `state` that started before process `me` and does
-/// the work `at` names, if one does. Each run says itself before it looks,
-/// so of two starting at once the later always finds the earlier, and the
-/// earlier never waits on the later. A `me` whose start can't be read
-/// counts as the latest.
+/// The run going under `state`, other than process `me`, that does the
+/// work `at` names, if one does.
 pub fn twin(state: &Path, me: u32, at: &Twin) -> Option<Going> {
     let folder = at.folder.to_string_lossy();
-    let mine = (ticks(me).unwrap_or(u64::MAX), me);
     fs::read_dir(state.join("nix-offload/running"))
         .ok()?
         .filter_map(|entry| fs::read_to_string(entry.ok()?.path()).ok())
         .filter_map(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
         .find_map(|said| {
             let pid = u32::try_from(said["pid"].as_u64()?).ok()?;
-            let theirs = said["ticks"].as_u64()?;
-            let same = said["commit"].as_str() == Some(at.commit)
+            let same = pid != me
+                && said["commit"].as_str() == Some(at.commit)
                 && said["folder"].as_str() == Some(&folder)
                 && said["asked"].as_str() == Some(&at.asked);
             // A process id comes back to another program, so the run is
             // there only while its process started when the file says.
-            let earlier = (theirs, pid) < mine && ticks(pid) == Some(theirs);
-            (same && earlier).then(|| Going {
+            (same && ticks(pid) == said["ticks"].as_u64()).then(|| Going {
                 pid,
                 started: said["started"].as_u64().unwrap_or_default(),
             })
         })
 }
 
-/// Wait while a twin of the run `at` goes, saying so once: whether one
-/// went, so the caller looks again at what it passed.
-pub fn waited_for_twin(state: &Path, me: u32, at: &Twin, now: impl Fn() -> u64) -> bool {
-    let Some(going) = twin(state, me, at) else {
-        return false;
-    };
-    eprintln!(
-        "nix-offload: run {} already runs these changed-checks in this tree at {}, for {} s so \
-         far, so this waits for it to end and then reads what it passed",
-        going.pid,
-        at.commit.get(..12).unwrap_or(at.commit),
-        now().saturating_sub(going.started)
-    );
-    while twin(state, me, at).is_some() {
-        // A run goes for minutes, so looking every two seconds costs
-        // nothing and loses at most two of them.
-        thread::sleep(Duration::from_secs(2));
+/// Whether a run does its work alone, from [`alone`].
+pub enum Alone {
+    /// None else does it, and none will while this is held.
+    Held(Held),
+    /// Another did it, and this waited for that one to end.
+    Waited,
+    /// The lock couldn't be had, so the run goes on as before it was.
+    Unheld,
+}
+
+/// The lock on a run's work, its file removed when this is dropped. A
+/// run waiting on the file as it goes wakes holding a lock no other sees,
+/// so it looks again (`Alone::Waited`) rather than going on with it.
+pub struct Held {
+    file: PathBuf,
+    _lock: fs::File,
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.file);
     }
-    true
+}
+
+/// Take the work `at` names for the run `me`, or wait for the run doing
+/// it to end, saying so with the one going's process and how long it has
+/// gone by `now`, in seconds since 1970.
+pub fn alone(state: &Path, me: u32, at: &Twin, now: impl Fn() -> u64) -> Alone {
+    let twins = state.join("nix-offload/twins");
+    let mut work = DefaultHasher::new();
+    (at.folder, &at.asked).hash(&mut work);
+    let file = twins.join(format!("{}-{:016x}.lock", at.commit, work.finish()));
+    let opened = fs::create_dir_all(&twins).and_then(|()| {
+        fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&file)
+    });
+    let Ok(lock) = opened else {
+        return Alone::Unheld;
+    };
+    match lock.try_lock() {
+        Ok(()) => return Alone::Held(Held { file, _lock: lock }),
+        Err(fs::TryLockError::WouldBlock) => {}
+        Err(fs::TryLockError::Error(_)) => return Alone::Unheld,
+    }
+    let going = twin(state, me, at).map_or_else(
+        || "another run".to_owned(),
+        |going| {
+            format!(
+                "run {}, going {} s so far,",
+                going.pid,
+                now().saturating_sub(going.started)
+            )
+        },
+    );
+    eprintln!(
+        "nix-offload: {going} already runs these changed-checks in this tree at {}, so this \
+         waits for it to end and then reads what it passed",
+        at.commit.get(..12).unwrap_or(at.commit),
+    );
+    match lock.lock() {
+        Ok(()) => Alone::Waited,
+        Err(_) => Alone::Unheld,
+    }
 }
 
 /// When process `pid` started, in clock ticks since boot: the 22nd field
@@ -216,36 +259,6 @@ mod tests {
     }
 
     #[test]
-    fn of_two_twins_only_the_later_waits() {
-        let state = tempfile::tempdir().unwrap();
-        let mut later = std::process::Command::new("sh")
-            .args(["-c", "sleep 5"])
-            .spawn()
-            .expect("a later run started");
-        let first = at("abc", "/t", ASKED);
-        let earlier = std::process::id();
-        let _said = Running::start(state.path(), earlier, &first, 7);
-        let _also = Running::start(state.path(), later.id(), &first, 8);
-        let found = (
-            twin(state.path(), later.id(), &first),
-            twin(state.path(), earlier, &first),
-        );
-        let _ = later.kill();
-        let _ = later.wait();
-        assert_eq!(
-            found,
-            (
-                Some(Going {
-                    pid: earlier,
-                    started: 7
-                }),
-                None
-            ),
-            "the later run didn't wait on the earlier alone"
-        );
-    }
-
-    #[test]
     fn a_twin_whose_process_is_gone_or_another_is_not_waited_for() {
         let state = tempfile::tempdir().unwrap();
         let running = state.path().join("nix-offload/running");
@@ -265,23 +278,29 @@ mod tests {
 
     #[test]
     fn a_second_run_waits_for_its_twin_to_end() {
+        use std::time::{Duration, Instant};
         let state = tempfile::tempdir().unwrap();
-        let mut child = std::process::Command::new("sh")
-            .args(["-c", "sleep 2"])
-            .spawn()
-            .expect("a stand-in run started");
         let first = at("abc", "/t", ASKED);
-        let going = Running::start(state.path(), child.id(), &first, 7);
-        assert!(going.is_some(), "the stand-in run wasn't said");
-        let reaper = thread::spawn(move || {
-            let _ = child.wait();
-            drop(going);
-        });
-        let begun = std::time::Instant::now();
-        // One whose start can't be read counts as the later.
-        let waited = waited_for_twin(state.path(), u32::MAX, &first, || 10);
+        let held = alone(state.path(), 1, &first, || 10);
         assert!(
-            waited,
+            matches!(held, Alone::Held(_)),
+            "the first run didn't hold its work"
+        );
+        assert!(
+            matches!(
+                alone(state.path(), 2, &at("abc", "/t", "--build"), || 10),
+                Alone::Held(_)
+            ),
+            "a run asked something else waited on the first"
+        );
+        let begun = Instant::now();
+        let ender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(1));
+            drop(held);
+        });
+        let waited = alone(state.path(), 2, &first, || 10);
+        assert!(
+            matches!(waited, Alone::Waited),
             "a second run in the same tree didn't wait for the first"
         );
         assert!(
@@ -289,9 +308,9 @@ mod tests {
             "the second run went on while the first still ran: {:?}",
             begun.elapsed()
         );
-        reaper.join().unwrap();
+        ender.join().unwrap();
         assert!(
-            !waited_for_twin(state.path(), u32::MAX, &first, || 10),
+            matches!(alone(state.path(), 2, &first, || 10), Alone::Held(_)),
             "a run waited where nothing else went"
         );
     }
