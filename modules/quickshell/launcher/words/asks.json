@@ -36,6 +36,11 @@
       "name": "Ends"
     },
     {
+      "id": "asks:fact:waits",
+      "in": "asks",
+      "name": "Waits Until"
+    },
+    {
       "id": "asks:fact:outcome",
       "in": "asks",
       "name": "Outcome"
