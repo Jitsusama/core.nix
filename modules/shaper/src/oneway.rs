@@ -245,6 +245,22 @@ pub struct Seen {
     pub vpn_ms: Option<f64>,
 }
 
+/// What the round trip through the VPN riding the link says of the
+/// upload's queue past our CAKE: it waits in the router's queue for the
+/// VPN's flow, which no probe meets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tunnel {
+    /// Not heard, or heard while nothing of ours queued for the VPN, so
+    /// it says nothing of the queue.
+    Unheard,
+    /// Heard within its margin of its least while the VPN's CAKE held a
+    /// queue: the VPN's flow waits nowhere past it.
+    Clear,
+    /// Heard waiting past CAKE longer than the probes did: the queue is
+    /// the router's, and only the VPN's flow meets it.
+    Past,
+}
+
 /// What the shaper sees of its own side of a direction: whether its CAKE
 /// holds a queue, whether connections on the link have data waiting to
 /// go, and what TCP sent again.
@@ -553,7 +569,7 @@ impl Way {
     /// looks a little higher now and then, and keeps what the link carries
     /// while CAKE still holds a queue, and cut for a queue the probes saw,
     /// climbs back to where it held. Answers whether it set the rate.
-    fn own(&mut self, at: f64, dt: f64, ours: Ours, carried: f64) -> bool {
+    fn own(&mut self, at: f64, dt: f64, ours: Ours, carried: f64, tunnel: Tunnel) -> bool {
         // What got through the router once: a router dropping what it
         // can't carry has our link carry more than its line. What TCP sent
         // again of what our CAKE dropped crossed the link once, and got
@@ -578,8 +594,16 @@ impl Way {
         } else {
             through < self.rate * UNDER
         };
+        // With only the VPN's CAKE holding a queue, the VPN's round trip
+        // waits in any queue the router keeps for its flow. Heard clear,
+        // the link carrying under the VPN's share is the tunnel's flows
+        // backing off after a loss, not the line: on 15 November that
+        // dip, taken for the line, held the upload at half of it for 20
+        // minutes, with the round trip within 6 ms of its least.
+        let backing_off = ours.in_vpn && tunnel == Tunnel::Clear;
         let elsewhere = ours.waiting
             && held_back
+            && !backing_off
             && through > FLOWING_KBIT
             && self.reached(at) > 0.0
             && through >= self.reached(at) * REACHED;
@@ -689,9 +713,18 @@ impl Way {
     /// Take in a moment: this direction's own delay, with the air and the
     /// other direction's path taken off, and what it carried.
     ///
-    /// `unseen` says the delay is the round trip through a VPN alone, a
+    /// `tunnel` says what the round trip through a VPN found; past the
+    /// probes', the delay is that round trip alone, a
     /// queue the link's probes don't meet.
-    pub fn step(&mut self, at: f64, delay_ms: f64, carried: f64, ours: Option<Ours>, unseen: bool) {
+    pub fn step(
+        &mut self,
+        at: f64,
+        delay_ms: f64,
+        carried: f64,
+        ours: Option<Ours>,
+        tunnel: Tunnel,
+    ) {
+        let unseen = tunnel == Tunnel::Past;
         // A gap, while the connection was left unlimited or asleep, is one
         // moment, not a climb all through it.
         let dt = self.last_at.map_or(0.0, |last| (at - last).clamp(0.0, 1.0));
@@ -801,7 +834,7 @@ impl Way {
             }
         } else if let Some(ours) = ours
             && !standing
-            && self.own(at, dt, ours, carried)
+            && self.own(at, dt, ours, carried, tunnel)
         {
         } else if carried >= self.rate * FULL && delay_ms <= late {
             // As TCP's slow start does: far from any queue it has met, a
@@ -1127,21 +1160,37 @@ impl Controller {
         if let Some(delay) = up {
             let beside = if idle_down { down.unwrap_or(0.0) } else { 0.0 };
             let seen_delay = (delay - beside).max(0.0);
-            let unseen = hidden > seen_delay;
+            let tunnel = if hidden > seen_delay {
+                Tunnel::Past
+            } else if hidden <= 0.0
+                && seen.vpn_ms.is_some()
+                && seen
+                    .up_ours
+                    .is_some_and(|ours| ours.in_vpn || ours.vpn_queued)
+            {
+                Tunnel::Clear
+            } else {
+                Tunnel::Unheard
+            };
             self.up.step(
                 at,
                 seen_delay.max(hidden),
                 seen.up_kbit,
                 seen.up_ours,
-                unseen,
+                tunnel,
             );
         }
         if let Some(delay) = down {
             let beside = if idle_up { up.unwrap_or(0.0) } else { 0.0 };
             // The download's queue at home is the cable's, first come,
             // first served, which the delay finds.
-            self.down
-                .step(at, (delay - beside).max(0.0), seen.down_kbit, None, false);
+            self.down.step(
+                at,
+                (delay - beside).max(0.0),
+                seen.down_kbit,
+                None,
+                Tunnel::Unheard,
+            );
         }
         for way in [&mut self.up, &mut self.down] {
             if way.misbehaving(at) {
@@ -1758,7 +1807,7 @@ mod tests {
         way.rate = 150_000.0;
         let mut at = 0.0;
         while at < 20.0 {
-            way.step(at, 1.0, 0.0, None, false);
+            way.step(at, 1.0, 0.0, None, Tunnel::Unheard);
             at += 0.1;
         }
         let rate = way.limit().expect("held");
@@ -1767,7 +1816,7 @@ mod tests {
             "1% a second toward base: {rate}"
         );
         while at < 60.0 {
-            way.step(at, 1.0, 0.0, None, false);
+            way.step(at, 1.0, 0.0, None, Tunnel::Unheard);
             at += 0.1;
         }
         assert_eq!(way.limit(), Some(100_000));
@@ -1970,7 +2019,13 @@ mod tests {
             ..Ours::default()
         };
         for i in 0..100_u32 {
-            way.step(f64::from(i) * 0.1, 0.0, 300_000.0, Some(ours), false);
+            way.step(
+                f64::from(i) * 0.1,
+                0.0,
+                300_000.0,
+                Some(ours),
+                Tunnel::Unheard,
+            );
         }
         let base = way.learned().base.expect("a base");
         assert!(base < 12_000.0, "proved {base} of a home transfer");
@@ -2619,6 +2674,56 @@ mod tests {
         );
         let plateau = c.up.plateau.expect("a plateau");
         assert!(plateau >= LINE * 0.5, "kept a plateau of {plateau}");
+    }
+
+    // As live on 15 November from 02:26: with only the VPN's CAKE holding
+    // a queue, what the tunnel's flows sent dipped for a few seconds
+    // after each loss, as TCP backs off, while the round trip through the
+    // VPN stayed within a few ms of its least. Each dip was taken for a
+    // router's queue past CAKE, and the plateau went from 11,129 to 8,218
+    // in two minutes, and from 9,946 to 5,190 in 75 s at 00:36.
+    #[test]
+    fn a_vpn_s_flows_backing_off_with_its_round_trip_clear_keep_the_plateau() {
+        const PLATEAU: f64 = 10_000.0;
+        const LINE: f64 = 10_500.0;
+        let mut c = Controller::from_learned(
+            Learned {
+                base: None,
+                plateau: Some(PLATEAU),
+            },
+            Learned::default(),
+        );
+        let (mut least, mut at) = (f64::INFINITY, 0.0);
+        while at < 180.0 {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let wanted = rate * crate::qdisc::VPN_SHARE;
+            // Past the line, the queue is the router's, and the VPN's
+            // round trip meets it.
+            let ours = wanted < LINE;
+            let backing_off = at % 20.0 >= 16.0;
+            let vpn = wanted.min(LINE) * if backing_off { 0.8 } else { 1.0 };
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: vpn,
+                up_ours: Some(Ours {
+                    queued: ours,
+                    in_vpn: ours,
+                    vpn_queued: ours,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                vpn_ms: Some(if ours { 30.0 } else { 60.0 }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            if at >= 10.0 {
+                least = least.min(c.up.plateau.unwrap_or(0.0));
+            }
+            at += 0.1;
+        }
+        assert!(
+            least >= PLATEAU * 0.95,
+            "backing off taught a plateau of {least} with the VPN's round trip clear"
+        );
     }
 
     /// A second over a router behind the VPN, its CAKE holding a queue or
