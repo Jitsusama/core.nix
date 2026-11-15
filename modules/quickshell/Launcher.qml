@@ -8604,6 +8604,8 @@ Scope {
             // headline, and the first and last rows wholly in view.
             current: root.current,
             inView: list.inView(),
+            // The rows drawn but cut by the view's edge, by their place.
+            cut: list.cut(),
             // How wide its caret is drawn, and whether it's drawn: not in
             // normal. How lit it is as it blinks isn't said, since this is
             // said on every change.
@@ -12193,6 +12195,13 @@ Scope {
                             // And the widest any row has said there.
                             readonly property int sides: root.sidesWidest
                             boundsBehavior: Flickable.StopAtBounds
+                            // Where the wheel or a flick leaves a list with
+                            // headings, it rests on a row's top, as a step
+                            // does (Headings.rested).
+                            onMovementEnded: {
+                                if (root.headingsAt.length > 0)
+                                    list.contentY = Headings.rested(list.contentY, list.headed());
+                            }
                             // A row built past the view each way, so the
                             // next an arrow reaches is drawn before it's
                             // shown. Qt's own cache, about seven rows, made
@@ -12500,17 +12509,41 @@ Scope {
                             // where it stands, moving as little as it can.
                             function showing(at, from) {
                                 if (root.headingsAt.length > 0)
-                                    return list.clamped(Headings.showing(at, from, {
-                                        height: list.height,
-                                        count: root.matches.length,
-                                        top: one => list.rowY(one),
-                                        tall: one => list.rowHeight(one),
-                                        heading: one => Headings.isHeading(root.matches[one])
-                                    }));
+                                    return Headings.rested(list.clamped(Headings.showing(at,
+                                        from, list.headed())), list.headed());
                                 const top = list.rowY(at);
                                 const bottom = top + list.rowHeight(at);
                                 return list.clamped(top < from ? top
                                     : bottom > from + list.height ? bottom - list.height : from);
+                            }
+
+                            // The list as Headings reads it, to place a
+                            // view among headings.
+                            function headed() {
+                                return {
+                                    height: list.height,
+                                    count: root.matches.length,
+                                    top: one => list.rowY(one),
+                                    tall: one => list.rowHeight(one),
+                                    heading: one => Headings.isHeading(root.matches[one])
+                                };
+                            }
+                            // The rows drawn but cut by the view, by their
+                            // place: none, where the list has headings.
+                            function cut() {
+                                const from = list.contentY;
+                                const cuts = [];
+                                for (let at = 0; at < root.matches.length; at += 1) {
+                                    const entry = list.itemAtIndex(at);
+                                    if (entry === null || entry.opacity === 0)
+                                        continue;
+                                    const top = entry.y;
+                                    const bottom = top + entry.height;
+                                    if (bottom > from + 0.5 && top < from + list.height - 0.5
+                                        && (top < from - 0.5 || bottom > from + list.height + 0.5))
+                                        cuts.push(at);
+                                }
+                                return cuts;
                             }
 
                             // Scrolls just far enough to show the row, as
@@ -12628,6 +12661,20 @@ Scope {
 
                                 width: list.width
                                 height: root.tallOf(modelData, entry.index)
+                                // Drawn only wholly in view where the list
+                                // has headings, and a heading only with its
+                                // first row, so the view never rests with a
+                                // row or a heading cut (VKCF3Z [c09d8222]).
+                                opacity: entry.whole ? 1 : 0
+                                readonly property bool whole: root.headingsAt.length === 0
+                                    || entry.aside || Headings.drawn({
+                                        top: entry.y,
+                                        tall: entry.height,
+                                        under: entry.index + 1 < root.matches.length
+                                            ? root.tallOf(root.matches[entry.index + 1],
+                                                entry.index + 1) : null,
+                                        heading: Headings.isHeading(entry.modelData)
+                                    }, { from: list.contentY, height: list.height })
 
                                 // Its name's baseline, down from its top.
                                 readonly property real nameBaseline: choice.y

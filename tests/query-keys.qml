@@ -576,8 +576,9 @@ QtObject {
         holds("a view rests on the top of the row it cut", Headings.rested(142, view), 160);
         holds("and stays where a row's top already is", Headings.rested(160, view), 160);
         holds("past the last row's top it stays", Headings.rested(340, view), 340);
-        const drawn = (each, from, under = talls[each + 1] ?? null) => Headings.drawn(tops[each],
-            talls[each], under, at.includes(each), from, 150);
+        const drawn = (each, from, under = talls[each + 1] ?? null) => Headings.drawn({
+            top: tops[each], tall: talls[each], under, heading: at.includes(each) },
+            { from, height: 150 });
         holds("a row wholly in view is drawn", drawn(5, 160), true);
         holds("one cut at the foot isn't", drawn(7, 160), false);
         holds("nor one cut at the top", drawn(3, 142), false);
