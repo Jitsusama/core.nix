@@ -3725,10 +3725,10 @@ def test_an_opening_is_usable_only_once_the_shell_is_free_after_its_chord(shell:
     the launcher window"). So a shell held stopped just after a chord says the opening wasn't
     usable until at least that long after it.
     """
-    with socket.socket(socket.AF_UNIX) as said:
-        said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
-        said.sendall(f"toggle @{time.time():.6f}\n".encode())
     with shell.frozen():
+        # Sent once the shell is stopped, so a quick shell can't answer it in the moment before
+        # it's held; the socket keeps it until it goes on, and the chord carries its own time.
+        chord_now(time.time())
         # How long the shell is held, as its thread was held after Joel's chords.
         time.sleep(HELD.total_seconds())
     shell.launcher_ready()
@@ -3740,6 +3740,13 @@ def test_an_opening_is_usable_only_once_the_shell_is_free_after_its_chord(shell:
         time.sleep(launcher_on_niri.POLL)
     held = HELD.total_seconds() * 1000
     assert usable >= held, f"the opening was usable {usable} ms after a shell held {held:.0f} ms"
+
+
+def chord_now(chord: float) -> None:
+    """Send the launcher's chord, said at `chord`, to its socket as niri's bind does."""
+    with socket.socket(socket.AF_UNIX) as said:
+        said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
+        said.sendall(f"toggle @{chord:.6f}\n".encode())
 
 
 def screen() -> bytes:
@@ -3828,10 +3835,10 @@ def test_an_opening_is_presented_when_niri_first_shows_the_card(shell: Shell) ->
     before = still_screen()
     chord = time.time()
     chord_at = time.monotonic() * 1000
-    with socket.socket(socket.AF_UNIX) as said:
-        said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
-        said.sendall(f"toggle @{chord:.6f}\n".encode())
     with shell.frozen():
+        # Sent once the shell is stopped, as above: sent before it, one gate's shell presented
+        # the card 107 ms after the chord, before the hold began (2026-11-14).
+        chord_now(chord)
         # How long the shell is held, as its thread was held after Joel's chords.
         time.sleep(HELD.total_seconds())
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
