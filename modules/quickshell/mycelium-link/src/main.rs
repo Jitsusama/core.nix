@@ -210,8 +210,8 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    fn cell(address: &str) -> Result<Link, String> {
-        Ok(Link::Cell(address.to_owned()))
+    fn cell(address: &str) -> Link {
+        Link::Cell(address.to_owned())
     }
 
     fn named_by(link: &str) -> Result<Link, String> {
@@ -228,7 +228,7 @@ mod tests {
             "mycelium:cell/DAHTNJ?say=merge+it+now",
             "mycelium:cell/DAHTNJ#send",
         ] {
-            assert_eq!(named_by(link), cell("DAHTNJ"), "{link} named another");
+            assert_eq!(named_by(link), Ok(cell("DAHTNJ")), "{link} named another");
         }
     }
 
@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn a_link_within_the_gap_of_the_last_is_let_go() {
         let stamp = stamp_in("gap");
-        let first = UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+        let first = UNIX_EPOCH + Duration::from_hours(500_000);
         let ahead = |at| goes_ahead(&stamp, at).expect("the stamp should be kept");
         assert!(ahead(first), "the first link was let go");
         assert!(
@@ -296,9 +296,9 @@ mod tests {
     #[test]
     fn a_clock_set_back_lets_the_link_go_ahead() {
         let stamp = stamp_in("back");
-        let first = UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+        let first = UNIX_EPOCH + Duration::from_hours(500_000);
         assert!(goes_ahead(&stamp, first).expect("the stamp should be kept"));
-        let earlier = first - Duration::from_secs(60);
+        let earlier = first - Duration::from_mins(1);
         assert!(
             goes_ahead(&stamp, earlier).expect("the stamp should be kept"),
             "a link was let go against a time to come"
@@ -309,7 +309,7 @@ mod tests {
     fn a_stamp_that_isnt_a_time_is_kept_anew() {
         let stamp = stamp_in("garbled");
         std::fs::write(&stamp, "not a time\n").expect("the stamp should be written");
-        let now = UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+        let now = UNIX_EPOCH + Duration::from_hours(500_000);
         assert!(goes_ahead(&stamp, now).expect("the stamp should be kept"));
         assert!(!goes_ahead(&stamp, now).expect("the stamp should be kept"));
     }
