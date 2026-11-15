@@ -78,6 +78,9 @@ pub struct Known<'a> {
     /// How many to-dos a quest waits on Joel for, which its session's
     /// Close says stay.
     pub needs: &'a dyn Fn(&str) -> usize,
+    /// The theme's mark for the shape a session's team is drawn by, by
+    /// pi's id for the session leading it (shape.rs).
+    pub shape: &'a dyn Fn(&str) -> Option<&'static str>,
 }
 
 /// Where a row is placed: how deep, and whether it orchestrates others.
@@ -304,6 +307,13 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
     };
     let items = figures::side(&doing(stands, session, known, words), &figure, &full);
     let windowed = (known.windowed)(session);
+    // An orchestrator's row wears the shape its network is drawn by in
+    // place of the agent's mark, so the row and the map agree.
+    let glyph = place
+        .orchestrates
+        .then(|| (known.shape)(session.id()))
+        .flatten()
+        .unwrap_or("agent");
     let ranked_items: Vec<Item> = std::iter::once(Item {
         said: under.clone(),
         keep: 1,
@@ -315,7 +325,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         key: format!("agent:{address}"),
         name: title,
         also: format!("{address} {folder} {quest}{known_as}"),
-        glyph: "agent",
+        glyph,
         hue: standing::hue(stands, !full.is_empty()),
         side: said_of(&items),
         side_items: items,
@@ -515,6 +525,7 @@ mod tests {
             windowed: &windowed,
             sharing: given.sharing,
             needs: &|quest| usize::from(quest == "QEST-B"),
+            shape: &|id| (id == "s-lead").then_some("shapeSquare"),
         };
         row(Session(record), place, &known, &words())
     }
@@ -580,6 +591,26 @@ mod tests {
         assert_eq!(row.side, "listening \u{b7} $9 in all");
         assert_eq!(row.also, "O  QEST-A kelp Kelp");
         assert_eq!(row.ranked.belongs, "", "an orchestrator is under nobody");
+    }
+
+    #[test]
+    fn an_orchestrator_wears_the_shape_its_team_is_drawn_by_and_no_one_else_does() {
+        let lead = json!({"presence": {"addresses": ["O"], "session": "s-lead"}});
+        let orchestrating = Place {
+            depth: 0,
+            orchestrates: true,
+        };
+        let glyphs = [
+            made(&lead, orchestrating, &given()).glyph,
+            made(&lead, Place::default(), &given()).glyph,
+            made(&working(), orchestrating, &given()).glyph,
+        ];
+        assert_eq!(
+            glyphs,
+            ["shapeSquare", "agent", "agent"],
+            "its team's shape as it orchestrates; the agent's mark once it doesn't, or for one \
+             leading no team"
+        );
     }
 
     #[test]
@@ -686,6 +717,7 @@ mod tests {
             windowed: &windowed,
             sharing: false,
             needs: &|_| 0,
+            shape: &|_| None,
         };
         let shown = rows(&sessions, &known, &words());
         let keys: Vec<_> = shown.iter().map(Shown::key).collect();
@@ -727,6 +759,7 @@ mod tests {
             windowed: &windowed,
             sharing: false,
             needs: &|_| 0,
+            shape: &|_| None,
         };
         let shown = rows(&sessions, &known, &words());
         let keys: Vec<_> = shown.iter().map(Shown::key).collect();
