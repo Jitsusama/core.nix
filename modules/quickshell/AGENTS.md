@@ -85,7 +85,9 @@ machine, one path through each connection.
   walks the same rows Return takes by `launcher/Catalogue.js`'s rules, so
   pi-ask acts by what the launcher holds and gains whatever it gains.
   What it shows is asked the same way, by `show`, walked by
-  `launcher/Showing.js`'s rules.
+  `launcher/Showing.js`'s rules. `talkTo` and a session's address opens
+  Agents' Talk to it, its field empty for Joel, as a cell on the realm's
+  map asks; whom it names is `launcher/TalkTo.js`'s.
 - [`in-a-terminal/`][terminal]: `launcher`, a Rust program printing any
   place, row or drawer the launcher holds, as text or as JSON, from the
   shell's `show`, so every integration has a command line at once; zsh
