@@ -8899,8 +8899,32 @@ Scope {
         return live(listedWhole(source));
     }
 
-    function intoWhole(name) {
+    function intoWhole(name, passing) {
         openInto = "";
+        // A name a source leads somewhere deeper, as Now leads "notices"
+        // to For You's Desktop (`leadsTo`), opens on its place and steps
+        // through those rows as Joel would, so - climbs back out the same
+        // way and Escape at rest closes there. Its place opens first and
+        // the steps are passed through, as a walk's are (walkTo), so only
+        // the last is searched and drawn: opened as home first, every
+        // source home names made its rows, and home, For You and the
+        // notices were each searched and laid out for a frame showing
+        // only the last. All 19 of Joel's Super+N openings were past 50
+        // ms, a median 204 (2026-11-11 to 14).
+        const { leading, rows } = leadingTo(name) ?? { leading: null, rows: [] };
+        if (leading !== null && leading.settings.name !== name) {
+            intoWhole(leading.settings.name, rows.length > 0);
+            for (const [depth, row] of rows.entries()) {
+                const stood = { typed: "", above: 0,
+                    at: Math.max(0, offered.findIndex(one => steadyId(one) === steadyId(row))) };
+                if (!enter(row, { passing: depth < rows.length - 1, stood: stood })) {
+                    listHeld();
+                    break;
+                }
+            }
+            openedHere();
+            return;
+        }
         const source = collections.find(s => s.settings.name === name) ?? null;
         // Unless home is to be found as it opens, with none kept yet, since
         // the card's height is home's.
@@ -8913,20 +8937,6 @@ Scope {
         open = true;
         openingInto = false;
         feltSpan("opening", opened);
-        // A name a source leads somewhere deeper, as Now leads "notices"
-        // to For You's Desktop (`leadsTo`), opens on its place and steps
-        // through those rows as Joel would, so - climbs back out the same
-        // way and Escape at rest closes there.
-        const { leading, rows } = leadingTo(name) ?? { leading: null, rows: [] };
-        if (leading !== null && leading.settings.name !== name) {
-            into(leading.settings.name);
-            for (const row of rows) {
-                if (!enter(row))
-                    break;
-            }
-            openedHere();
-            return;
-        }
         if (!source)
             return;
         held = [placeStep(source)];
@@ -8934,6 +8944,10 @@ Scope {
         const placed = KeyTimes.now();
         source.opened();
         feltSpan("the place opening", placed);
+        // Opened only to be passed through, it isn't searched: the step
+        // after it is.
+        if (passing === true)
+            return;
         const searched = KeyTimes.now();
         restart("");
         // Every place opens on its first row, the same each time, so Joel
