@@ -331,12 +331,6 @@ Provider {
     // built-in first, as it's always there, then by connector.
     readonly property var lit: Object.values(outputs).filter(output => output.logical !== null)
 
-    readonly property string focusedOutput: {
-        void Niri.revision;
-        const workspace = Niri.workspace();
-        return workspace ? workspace.output : "";
-    }
-
     // What a served row is made into: a screen's, by the niri record it
     // holds, Turn Every Screen Off, or what's inside a screen's row: a lit
     // one's settings, their choices and its Variable Refresh
@@ -559,19 +553,21 @@ Provider {
         if (set)
             return setTo(Math.min(100, Number(set[1])));
         const id = partsAsked[asks(typed)];
-        if (id === undefined || lit.length === 0)
+        if (id === undefined)
             return null;
         if (id === "warmth")
             return warmthAnswer();
-        const partOf = output => verbs(output).find(row => row.name === partName(id)) ?? null;
-        // The focused screen's, or the first that has it: only one has a
-        // Brightness.
-        const focused = lit.find(output => output.name === focusedOutput && partOf(output))
-            ?? lit.find(output => partOf(output) !== null);
-        if (focused === undefined)
+        // The windows daemon serves a row for each lit screen with the
+        // part, the focused one's first (modules/windows,
+        // screens/answers.rs): the first's part says how it stands, and
+        // the rest are listed below it.
+        const answering = `row:displays:answer:${id}`;
+        const answers = ready.keys.filter(key => ready.served(key)?.parent === answering);
+        const first = answers.length > 0 ? ready.served(answers[0]) : null;
+        const part = first !== null ? ready.rowAt(first.held.part) : null;
+        if (part === null)
             return null;
-        const part = partOf(focused);
-        const others = lit.filter(output => output !== focused && partOf(output) !== null);
+        const others = answers.slice(1).map(key => ready.rowAt(key)).filter(row => row !== null);
         const light = id === "brightness" || id === "room";
         return {
             // While the windows daemon reads the light, in its first
@@ -584,15 +580,8 @@ Provider {
             // A switch says how it stands in full, as its note does.
             headline: part.said ?? part.side,
             glyph: Theme.glyph.display,
-            note: named(focused),
-            rows: others.length === 0 ? (part.verbs ? part.verbs() : [])
-                : others.map(output => copyRow({
-                    key: `displays:${output.name}:${id}:said`,
-                    name: named(output),
-                    side: partOf(output).side,
-                    copy: "",
-                    glyph: ""
-                }))
+            note: first.name,
+            rows: others.length === 0 ? (part.verbs ? part.verbs() : []) : others
         };
     }
 
