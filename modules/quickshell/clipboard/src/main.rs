@@ -70,13 +70,14 @@
 //! since the clipboard emptied, which the compositor has taken, is then
 //! known, and kept rather than replaced.
 //!
-//! Usage: clipboard-history --socket PATH --vocabulary WORDS [--keep N]
-//!        [--largest BYTES] [--pictures DIR] [--largest-picture BYTES]
-//!        [--room BYTES] [--emoji LIST]
+//! It takes its words as the terminal kit does: `clipboard-history --help`
+//! says them (src/commands.rs), and a failure is the kit's, said once as
+//! it ends.
 //!
 //! WORDS is the launcher's words.json. Its numbers are grouped and pointed
 //! as the launcher's counts are, with the comma and the full stop.
 
+mod commands;
 mod emoji;
 mod rows;
 
@@ -88,9 +89,13 @@ use std::os::fd::AsFd;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use std::{env, process, thread};
+use std::{env, thread};
+
+use commands::Settings;
+use terminal_kit::{Exit, Failure};
 
 use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Read as Reading, Shared};
@@ -890,6 +895,8 @@ struct State {
     held: Option<ExtDataControlSourceV1>,
     // The clipboard emptied, and nothing has been copied since.
     emptied: bool,
+    // The compositor took the clipboard away, which ends the program.
+    taken: bool,
     keyboard: Option<ZwpVirtualKeyboardV1>,
     niri: Option<PathBuf>,
     pressing: mpsc::Sender<Asked>,
@@ -1253,8 +1260,7 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
                 state.primary_at = now();
             }
             ext_data_control_device_v1::Event::Finished => {
-                eprintln!("The compositor took the clipboard away.");
-                process::exit(1);
+                state.taken = true;
             }
             _ => {}
         }
@@ -1365,66 +1371,6 @@ fn worded(vocabulary: &Path) -> Result<Words, String> {
         .map_err(|e| format!("{} isn't JSON: {e}", vocabulary.display()))
 }
 
-struct Settings {
-    socket: PathBuf,
-    vocabulary: PathBuf,
-    keep: usize,
-    largest: usize,
-    pictures: Option<PathBuf>,
-    largest_picture: usize,
-    room: usize,
-    emoji: Option<PathBuf>,
-}
-
-fn settings() -> Result<Settings, String> {
-    let (mut socket, mut vocabulary) = (None, None);
-    let mut keep = 200;
-    let mut largest = 1 << 20;
-    let mut pictures = None;
-    let mut largest_picture = 64 << 20;
-    let mut room = 256 << 20;
-    let mut emoji = None;
-    let mut arguments = env::args().skip(1);
-    while let Some(argument) = arguments.next() {
-        let mut value = || {
-            arguments
-                .next()
-                .ok_or_else(|| format!("{argument} needs a value"))
-        };
-        let bytes = |value: String, name: &str| {
-            value
-                .parse::<usize>()
-                .map_err(|_| format!("{name} takes bytes"))
-        };
-        match argument.as_str() {
-            "--socket" => socket = Some(PathBuf::from(value()?)),
-            "--vocabulary" => vocabulary = Some(PathBuf::from(value()?)),
-            "--keep" => keep = value()?.parse().map_err(|_| "--keep takes a count")?,
-            "--largest" => largest = bytes(value()?, "--largest")?,
-            "--pictures" => pictures = Some(PathBuf::from(value()?)),
-            "--largest-picture" => largest_picture = bytes(value()?, "--largest-picture")?,
-            "--room" => room = bytes(value()?, "--room")?,
-            "--emoji" => emoji = Some(PathBuf::from(value()?)),
-            other => return Err(format!("{other} isn't something this understands")),
-        }
-    }
-    let socket = socket.ok_or("--socket names where the shell connects")?;
-    let vocabulary = vocabulary.ok_or("--vocabulary names the launcher's words")?;
-    if largest_picture > room {
-        return Err("--largest-picture can't be more than --room".to_string());
-    }
-    Ok(Settings {
-        socket,
-        vocabulary,
-        keep,
-        largest,
-        pictures,
-        largest_picture,
-        room,
-        emoji,
-    })
-}
-
 /// Emoji's rows, from the list `--emoji` names, or none without one,
 /// their drawers worded from the launcher's vocabulary.
 fn emoji_rows(list: Option<&Path>, words: &Words) -> Result<Vec<Value>, String> {
@@ -1442,10 +1388,7 @@ fn lost(error: impl std::fmt::Display) -> String {
     format!("lost Wayland: {error}")
 }
 
-fn run() -> Result<(), String> {
-    let settings = settings()?;
-    let words = worded(&settings.vocabulary)?;
-    let emoji = emoji_rows(settings.emoji.as_deref(), &words)?;
+fn run(settings: &Settings, words: Words, emoji: Vec<Value>) -> Result<(), String> {
     if let Some(dir) = &settings.pictures {
         prepared(dir).map_err(|e| format!("can't keep pictures in {}: {e}", dir.display()))?;
     }
@@ -1502,6 +1445,7 @@ fn run() -> Result<(), String> {
         device,
         held: None,
         emptied: false,
+        taken: false,
         keyboard,
         niri: env::var_os("NIRI_SOCKET").map(PathBuf::from),
         pressing,
@@ -1512,6 +1456,9 @@ fn run() -> Result<(), String> {
         queue.dispatch_pending(&mut state).map_err(lost)?;
         if state.emptied {
             queue.roundtrip(&mut state).map_err(lost)?;
+        }
+        if state.taken {
+            return Err("the compositor took the clipboard away".to_owned());
         }
         // Emptied, the clipboard holds the copy given back, or nothing.
         if std::mem::take(&mut state.emptied) {
@@ -1561,11 +1508,22 @@ fn waited(wayland: &impl AsFd, woken: &PipeReader) -> Result<(bool, bool), Strin
     Ok((!fds[0].revents().is_empty(), !fds[1].revents().is_empty()))
 }
 
-fn main() {
-    if let Err(error) = run() {
-        eprintln!("clipboard-history: {error}");
-        process::exit(1);
-    }
+fn main() -> ExitCode {
+    terminal_kit::main(&commands::help(), env!("CARGO_PKG_VERSION"), |context| {
+        let settings = commands::settings(&context.args)?;
+        let unread = |why: String| {
+            Failure::new(Exit::Config, "clipboard-history can't read what it says").because(why)
+        };
+        let words = worded(&settings.vocabulary).map_err(unread)?;
+        let emoji = emoji_rows(settings.emoji.as_deref(), &words).map_err(unread)?;
+        run(&settings, words, emoji).map_err(|why| {
+            Failure::new(
+                Exit::Failed,
+                "clipboard-history stopped hearing the clipboard",
+            )
+            .because(why)
+        })
+    })
 }
 
 #[cfg(test)]
@@ -1653,7 +1611,7 @@ mod tests {
 
     /// A directory of its own for one test's pictures.
     fn directory(name: &str) -> PathBuf {
-        let dir = env::temp_dir().join(format!("clipboard-history-{}-{name}", process::id()));
+        let dir = env::temp_dir().join(format!("clipboard-history-{}-{name}", std::process::id()));
         prepared(&dir).unwrap();
         dir
     }
