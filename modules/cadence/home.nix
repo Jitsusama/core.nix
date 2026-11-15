@@ -53,7 +53,8 @@
 # asking `cadence axes --served` for the rows at most every five minutes
 # and only while Spec is watched, so the launcher rereads no file (Joel,
 # 2026-11-10: "the daemons need to be the data layer"). Spec.qml is that
-# place, a row on the launcher's home saying how many axes are out.
+# place, inside the launcher's Agents after Budgets, saying how many axes
+# are out.
 { quickshell }:
 {
   config,
@@ -303,8 +304,9 @@ in
       };
       Install.WantedBy = [ "default.target" ];
     };
-    # Spec in the launcher, on its home after Agents: the axes the daemon
-    # serves, its head saying how many are out.
+    # Spec in the launcher, inside Agents after Budgets, with no row on
+    # home (VKCF3Z): the axes the daemon serves, its head saying how many
+    # are out.
     jitsusama.quickshell.launcher.providers.spec = {
       order = 54;
       source = ./Spec.qml;
