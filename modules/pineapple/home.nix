@@ -1,8 +1,11 @@
 # The safe word that stops Joel's agents, read where it's said: Slack and
-# GitHub, through Joel's own sign-ins, only read, and in shadow, so
-# its stops are written down and nothing acts on them yet (src/lib.rs says
-# how the pieces fit). A machine signed in to Slack as Joel imports it.
+# GitHub, and any site speaking GitHub's API that a machine names in
+# jitsusama.pineapple.sites, through Joel's own sign-ins, only read, and in
+# shadow, so its stops are written down and nothing acts on them yet
+# (src/lib.rs says how the pieces fit). A machine signed in to Slack as Joel
+# imports it.
 {
+  config,
   lib,
   pkgs,
   ...
@@ -23,113 +26,203 @@ let
   githubSignIn = pkgs.writeShellScript "pineapple-github-sign-in" ''
     exec ${lib.getExe pkgs.gh} auth token --hostname github.com
   '';
+  # The GitHub reader again for each other site, finding what changed by
+  # the pull requests Joel opened in the repositories named, since such a
+  # site has no notifications to read (src/bin/pineapple-github.rs).
+  siteReader =
+    name: site:
+    lib.nameValuePair "pineapple-${name}" {
+      Unit = {
+        Description = "Reads ${name} for the safe word that stops Joel's agents, in shadow";
+        X-SwitchMethod = "restart";
+      };
+      Service = {
+        Slice = "background.slice";
+        ExecStart = lib.escapeShellArgs (
+          [
+            "@${pineapple}/bin/pineapple-github"
+            "pineapple-${name}"
+            "run"
+            "--origin"
+            site.origin
+            "--site"
+            name
+            "--authored-by"
+            site.authoredBy
+            "--login"
+            site.login
+          ]
+          ++ lib.concatMap (repo: [
+            "--repo"
+            repo
+          ]) site.repos
+        );
+        Environment = [ "SIGN_IN_KEYRING=${site.signIn}" ];
+        Restart = "on-failure";
+        RestartSec = 30;
+      };
+      Install.WantedBy = [ "default.target" ];
+    };
+  inherit (config.jitsusama.pineapple) sites;
 in
 {
   imports = [ ../quickshell/providers.nix ];
 
-  home.packages = [ pineapple ];
-
-  # Its rows in For You (SafeWord.qml), read from `pineapple serve` below;
-  # on a machine without the shell nothing reads it. Beside Sound's, since
-  # both only give For You what to do.
-  jitsusama.quickshell.launcher.providers.pineapple = {
-    order = 46;
-    source = ./SafeWord.qml;
+  options.jitsusama.pineapple.sites = lib.mkOption {
+    description = ''
+      Other sites speaking GitHub's API to read for the safe word, by a name
+      of lowercase letters, digits and dashes, each read as pineapple-NAME.
+    '';
+    default = { };
+    type = lib.types.attrsOf (
+      lib.types.submodule {
+        options = {
+          origin = lib.mkOption {
+            description = "Where the site's API answers, such as https://code.example.com/api/v3.";
+            type = lib.types.str;
+          };
+          authoredBy = lib.mkOption {
+            description = "Joel's address there, whose pull requests are read.";
+            type = lib.types.str;
+          };
+          login = lib.mkOption {
+            description = "Joel's login there, as a tag of him reads.";
+            type = lib.types.str;
+          };
+          repos = lib.mkOption {
+            description = "Each repository read, as OWNER/NAME, since such a site searches one at a time.";
+            type = lib.types.nonEmptyListOf lib.types.str;
+          };
+          signIn = lib.mkOption {
+            description = "A program printing Joel's sign-in there, run each round.";
+            type = lib.types.path;
+          };
+        };
+      }
+    );
   };
 
-  systemd.user.services.pineapple-slack = {
-    Unit = {
-      Description = "Reads Slack for the safe word that stops Joel's agents, in shadow";
-      # Restarted after a switch reloads the units, it comes back as the
-      # new one.
-      X-SwitchMethod = "restart";
-    };
-    Service = {
-      Slice = "background.slice";
-      # Shown in ps by its name, not its store path (docs/daemons.md).
-      ExecStart = "@${lib.getExe pineapple} pineapple-slack run";
-      # The keyring's reader, run each round, so a sign-in made or renewed
-      # while it runs is read without a restart. With none, it says so in
-      # the journal and reads nothing until there is one.
-      Environment = [ "SIGN_IN_KEYRING=${keyring}" ];
-      Restart = "on-failure";
-      RestartSec = 30;
-    };
-    # Started at login rather than once a sign-in file appears, since pi
-    # keeps its sign-in in the keyring now and the file may never come.
-    Install.WantedBy = [ "default.target" ];
-  };
+  config = lib.mkMerge [
+    {
+      # A name is a unit's and a file's, and GitHub's and Slack's are taken.
+      assertions = lib.mapAttrsToList (name: _: {
+        assertion =
+          builtins.match "[a-z0-9-]+" name != null
+          && !lib.elem name [
+            "github"
+            "slack"
+          ];
+        message = "jitsusama.pineapple.sites.${name}: a site's name is lowercase letters, digits and dashes, and neither github nor slack.";
+      }) sites;
+      systemd.user.services = lib.mapAttrs' siteReader sites;
+    }
+    {
 
-  # The same reader for GitHub (src/bin/pineapple-github.rs): every minute,
-  # the pull requests and issues Joel takes part in that changed, and
-  # what was said on them, only asked, in shadow. Its stops go where the
-  # Slack reader's do, so the launcher, the harness and his phone take
-  # them alike; it answers nobody on GitHub.
-  systemd.user.services.pineapple-github = {
-    Unit = {
-      Description = "Reads GitHub for the safe word that stops Joel's agents, in shadow";
-      X-SwitchMethod = "restart";
-    };
-    Service = {
-      Slice = "background.slice";
-      ExecStart = "@${pineapple}/bin/pineapple-github pineapple-github run";
-      # Run each round, so a sign-in renewed while it runs is read without
-      # a restart; with none, it says so and reads nothing.
-      Environment = [ "SIGN_IN_KEYRING=${githubSignIn}" ];
-      Restart = "on-failure";
-      RestartSec = 30;
-    };
-    Install.WantedBy = [ "default.target" ];
-  };
+      home.packages = [ pineapple ];
 
-  # The safe word's daemon for the launcher (src/serve.rs): it serves the
-  # stops, alerts and resume requests as Needs You's rows over
-  # %t/daemons/pineapple.sock, takes Joel's presses only from his shell,
-  # and knocks as each first appears. In shadow it serves nothing and only
-  # writes down what it would have told. It only reads what pineapple-slack
-  # writes, and writes only under ~/.local/state/pineapple.
-  systemd.user.services.pineapple = {
-    Unit = {
-      Description = "Shows Joel the safe word's stops in the launcher";
-      X-SwitchMethod = "restart";
-      # Its socket is systemd's, handed to it as it starts.
-      Requires = [ "pineapple.socket" ];
-      After = [ "pineapple.socket" ];
-    };
-    Service = {
-      Slice = "background.slice";
-      # Started as @<program> pineapple, so ps reads its name rather than a
-      # store path (docs/daemons.md).
-      ExecStart = lib.escapeShellArgs [
-        "@${pineapple}/bin/pineapple"
-        "pineapple"
-        "serve"
-        "--socket"
-        "%t/daemons/pineapple.sock"
-        "--vocabulary"
-        "${(import ../quickshell/launcher/words.nix).file}"
-        "--notify-send"
-        (lib.getExe' pkgs.libnotify "notify-send")
-        # A notice is closed once its stop no longer stands, so the alarm
-        # goes with what it was about.
-        "--busctl"
-        (lib.getExe' pkgs.systemd "busctl")
-      ];
-      Restart = "on-failure";
-      RestartSec = 5;
-    };
-    # Started at login rather than when the launcher first asks, so a stop
-    # knocks even before Joel opens it.
-    Install.WantedBy = [ "default.target" ];
-  };
+      # Its rows in For You (SafeWord.qml), read from `pineapple serve` below;
+      # on a machine without the shell nothing reads it. Beside Sound's, since
+      # both only give For You what to do.
+      jitsusama.quickshell.launcher.providers.pineapple = {
+        order = 46;
+        source = ./SafeWord.qml;
+      };
 
-  systemd.user.sockets.pineapple = {
-    Unit.Description = "Where the launcher asks for the safe word's rows";
-    Socket = {
-      ListenStream = "%t/daemons/pineapple.sock";
-      SocketMode = "0600";
-      DirectoryMode = "0700";
-    };
-    Install.WantedBy = [ "sockets.target" ];
-  };
+      systemd.user.services.pineapple-slack = {
+        Unit = {
+          Description = "Reads Slack for the safe word that stops Joel's agents, in shadow";
+          # Restarted after a switch reloads the units, it comes back as the
+          # new one.
+          X-SwitchMethod = "restart";
+        };
+        Service = {
+          Slice = "background.slice";
+          # Shown in ps by its name, not its store path (docs/daemons.md).
+          ExecStart = "@${lib.getExe pineapple} pineapple-slack run";
+          # The keyring's reader, run each round, so a sign-in made or renewed
+          # while it runs is read without a restart. With none, it says so in
+          # the journal and reads nothing until there is one.
+          Environment = [ "SIGN_IN_KEYRING=${keyring}" ];
+          Restart = "on-failure";
+          RestartSec = 30;
+        };
+        # Started at login rather than once a sign-in file appears, since pi
+        # keeps its sign-in in the keyring now and the file may never come.
+        Install.WantedBy = [ "default.target" ];
+      };
+
+      # The same reader for GitHub (src/bin/pineapple-github.rs): every minute,
+      # the pull requests and issues Joel takes part in that changed, and
+      # what was said on them, only asked, in shadow. Its stops go where the
+      # Slack reader's do, so the launcher, the harness and his phone take
+      # them alike; it answers nobody on GitHub.
+      systemd.user.services.pineapple-github = {
+        Unit = {
+          Description = "Reads GitHub for the safe word that stops Joel's agents, in shadow";
+          X-SwitchMethod = "restart";
+        };
+        Service = {
+          Slice = "background.slice";
+          ExecStart = "@${pineapple}/bin/pineapple-github pineapple-github run";
+          # Run each round, so a sign-in renewed while it runs is read without
+          # a restart; with none, it says so and reads nothing.
+          Environment = [ "SIGN_IN_KEYRING=${githubSignIn}" ];
+          Restart = "on-failure";
+          RestartSec = 30;
+        };
+        Install.WantedBy = [ "default.target" ];
+      };
+
+      # The safe word's daemon for the launcher (src/serve.rs): it serves the
+      # stops, alerts and resume requests as Needs You's rows over
+      # %t/daemons/pineapple.sock, takes Joel's presses only from his shell,
+      # and knocks as each first appears. In shadow it serves nothing and only
+      # writes down what it would have told. It only reads what pineapple-slack
+      # writes, and writes only under ~/.local/state/pineapple.
+      systemd.user.services.pineapple = {
+        Unit = {
+          Description = "Shows Joel the safe word's stops in the launcher";
+          X-SwitchMethod = "restart";
+          # Its socket is systemd's, handed to it as it starts.
+          Requires = [ "pineapple.socket" ];
+          After = [ "pineapple.socket" ];
+        };
+        Service = {
+          Slice = "background.slice";
+          # Started as @<program> pineapple, so ps reads its name rather than a
+          # store path (docs/daemons.md).
+          ExecStart = lib.escapeShellArgs [
+            "@${pineapple}/bin/pineapple"
+            "pineapple"
+            "serve"
+            "--socket"
+            "%t/daemons/pineapple.sock"
+            "--vocabulary"
+            "${(import ../quickshell/launcher/words.nix).file}"
+            "--notify-send"
+            (lib.getExe' pkgs.libnotify "notify-send")
+            # A notice is closed once its stop no longer stands, so the alarm
+            # goes with what it was about.
+            "--busctl"
+            (lib.getExe' pkgs.systemd "busctl")
+          ];
+          Restart = "on-failure";
+          RestartSec = 5;
+        };
+        # Started at login rather than when the launcher first asks, so a stop
+        # knocks even before Joel opens it.
+        Install.WantedBy = [ "default.target" ];
+      };
+
+      systemd.user.sockets.pineapple = {
+        Unit.Description = "Where the launcher asks for the safe word's rows";
+        Socket = {
+          ListenStream = "%t/daemons/pineapple.sock";
+          SocketMode = "0600";
+          DirectoryMode = "0700";
+        };
+        Install.WantedBy = [ "sockets.target" ];
+      };
+    }
+  ];
 }

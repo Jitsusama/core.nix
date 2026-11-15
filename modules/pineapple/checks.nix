@@ -72,6 +72,61 @@ onLinux {
           lib.toList unit.Service.ExecStart
         )
       );
+  # Each other site a machine names is read by its own pineapple-NAME,
+  # the GitHub reader searching the repositories named for what Joel
+  # opened, with that site's sign-in, started as GitHub's is; none is read
+  # unless named, and a name GitHub's or Slack's reader has is refused.
+  pineapple-reads-each-site-named =
+    let
+      withSites =
+        sites:
+        account (bareNixos [
+          {
+            home-manager.sharedModules = [
+              self.homeModules.pineapple
+              { jitsusama.pineapple.sites = sites; }
+            ];
+          }
+        ]);
+      code = {
+        origin = "https://code.example.com/api/v3";
+        authoredBy = "joel@example.com";
+        login = "joel.example";
+        repos = [
+          "example/shop"
+          "example/other"
+        ];
+        signIn = pkgs.writeShellScript "stand-in-sign-in" "echo stand-in-token";
+      };
+      home = withSites { inherit code; };
+      unit = home.systemd.user.services.pineapple-code;
+      command = lib.concatStringsSep " " (lib.toList unit.Service.ExecStart);
+      readers = home: lib.filter (lib.hasPrefix "pineapple-") (lib.attrNames home.systemd.user.services);
+      refused = home: lib.any (check: !check.assertion) home.assertions;
+    in
+    holds "pineapple-reads-each-site-named"
+      "A named site lacks its reader, search, sign-in or start, one is read unnamed, or a taken name passes."
+      (
+        lib.hasSuffix (
+          "/bin/pineapple-github pineapple-code run --origin https://code.example.com/api/v3"
+          + " --site code --authored-by joel@example.com --login joel.example"
+          + " --repo example/shop --repo example/other"
+        ) command
+        && lib.elem "SIGN_IN_KEYRING=${code.signIn}" (lib.toList unit.Service.Environment)
+        && lib.elem "default.target" unit.Install.WantedBy
+        && unit.Unit.X-SwitchMethod == "restart"
+        && unit.Service.Restart == "on-failure"
+        && unit.Service.Slice == "background.slice"
+        && !(refused home)
+        &&
+          readers (withSites { }) == [
+            "pineapple-github"
+            "pineapple-slack"
+          ]
+        && refused (withSites {
+          github = code;
+        })
+      );
   # pineapple, the daemon showing stops in the launcher, is started at
   # login for its socket, which systemd holds where the launcher looks,
   # knocks with notify-send, and reads its words from the launcher's
