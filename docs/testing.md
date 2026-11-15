@@ -472,6 +472,14 @@ round after round, and prints each drawer's presented time from its key and
 how it came, then the median and p90, how many were never said, and how many
 keys showed another row's drawer first. So a change to how a drawer reaches
 the shell, as one served apart from its row does, quotes it on both sides.
+`LAB_DRAWN_IN` names the place stepped into instead of Machine, and an empty
+`LAB_DRAWN` walks that place's own rows: Programs' with `LAB_PROGRAMS = "21"`
+times each program's drawer, as Joel's downs onto Slack and mpv waited on.
+Each line splits its time as the shell said it. Over 76 drawers, 58 came in
+the key's own frame in a median 14 ms: 6 until its frame began, 1 to its swap
+and 6 after it. The 18 that came the frame after took a median 32, 18 ms of it
+after the swap, niri's part. Another run on another builder presented a median 40,
+all the frame after (2026-11-15).
 
 A key is timed by the `keys-lab` beside it
 (`tests/launcher-keys-lab-on-niri.py`). It opens home round after round and

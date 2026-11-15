@@ -275,9 +275,14 @@ def test_each_step_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) ->
 # otherwise: Memory's parts, whose drawers say kernel counts that move on every read.
 DRAWN = "Memory"
 
+# The place stepped into from home for the drawer walk, by its name, unless the run says
+# otherwise (LAB_DRAWN_IN). With LAB_DRAWN empty, the walk steps between the place's own rows,
+# as Programs' (with LAB_PROGRAMS), whose drawers Joel's downs waited on (2026-11-13).
+DRAWN_IN = "Machine"
+
 # A drawer's line as the shell says it once niri presented it (launcher/Presented.js).
 DRAWER_PRESENTED = re.compile(
-    r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: .*, ([^,]+)$'
+    r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: (.*), ([^,]+)$'
 )
 
 
@@ -294,20 +299,25 @@ def drawer_said(shell: Shell, mark: int) -> re.Match[str] | None:
 
 
 def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
-    """Walk the rows inside one of Machine's by letter, down and up, and print each drawer's line.
+    """Walk a place's rows by letter, down and up, and print each drawer's line.
+
+    The place is a row of Machine's unless the run names another (LAB_DRAWN_IN, LAB_DRAWN), and
+    each line splits the drawer's time as the shell said it.
 
     A drawer served apart once came a round trip after its row, the row before's out meanwhile
     and never timed (VKCF3Z, 2026-11-12, bcbe9a24). So each key's drawer is said from the key,
     with how it came, and whether the drawer seen first once the selection moved was another
     row's: on both sides, as the frame before a drawer follows shows the last one on either.
     """
-    within = os.environ.get("LAB_DRAWN", DRAWN)
+    place = os.environ.get("LAB_DRAWN_IN", DRAWN_IN)
+    within = os.environ.get("LAB_DRAWN", DRAWN) or place
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
     opened(shell, "home")
     shell.close_launcher()
-    stepped(shell, "Machine")
-    shell.down_to(within)
-    shell.step_in()
+    stepped(shell, place)
+    if within != place:
+        shell.down_to(within)
+        shell.step_in()
     shell.normal()
     # Its own rows, each with a drawer, not the acts that follow them, as Copy, which have none.
     things = cast("list[Json]", shell.showing()["things"])
@@ -347,11 +357,13 @@ def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) 
                         print(f"lab-drawer-unsaid {line.split('qml: ', 1)[-1]}", flush=True)
             else:
                 timed.append(int(found.group(2)))
-                came[found.group(3)] = came.get(found.group(3), 0) + 1
+                came[found.group(4)] = came.get(found.group(4), 0) + 1
+            # Its time with where it went, as the shell split it, and how it came.
+            spent = f"{found.group(2)} ms ({found.group(3)}), {found.group(4)}" if found else ""
             with capsys.disabled():
                 print(
                     f"lab-drawer {within} round {round_}: {name}, "
-                    f"{found.group(2) + ' ms, ' + found.group(3) if found else 'never said'}"
+                    f"{spent or 'never said'}"
                     f"{', first showing ' + repr(first[0]) if other else ''}",
                     flush=True,
                 )
