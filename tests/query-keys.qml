@@ -546,6 +546,16 @@ QtObject {
             [Headings.off(rows, 4, 3), Headings.off(rows, 4, 5), Headings.off(rows, 0, 0)],
             [5, 3, 1]);
         holds("and stays on a row", Headings.off(rows, 2, 0), 2);
+        const takes = (count, motion, from) => Headings.taken(rows,
+            Headings.spanned(count, motion, place(from), at), null).map(one => one.row.name);
+        holds("3dd takes three rows, the heading it passes left out", takes(3, null, 2),
+            ["harness", "mycelium", "Networks"]);
+        holds("d2j too", takes(0, { act: "next", count: 2 }, 3),
+            ["mycelium", "Networks", "Shapes"]);
+        holds("dG takes every row to the last and no heading", takes(0,
+            { act: "last", count: 0 }, 5), ["Networks", "Shapes", "optimus"]);
+        holds("a list with none spans as it always has", Headings.spanned(3, null, place(2),
+            []), Operators.spanned(3, null, place(2)));
         holds("a search shows no heading", Headings.without(rows).map(one => one.name),
             ["core", "harness", "mycelium", "Networks", "Shapes", "optimus"]);
         const plain = [row("core"), row("harness")];
