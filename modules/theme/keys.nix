@@ -84,7 +84,7 @@
     text = mark "quietKey";
     wide = true;
   };
-  # The Copilot key, by what it prints, though xkb names it F23, the key it
-  # sends under its own Shift and Super.
-  F23.text = "Copilot";
+  # The Copilot key, by what it prints, though xkb names it XF86TouchpadOff,
+  # what the F23 it sends under its own Shift and Super types.
+  XF86TouchpadOff.text = "Copilot";
 }

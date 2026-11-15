@@ -5,7 +5,8 @@
 //! refused by that setting, and once it's turned on, only that 1Password
 //! asks to let it in, by itself, with nothing asked (2026-11-10, Joel
 //! found the refusal kept after he turned it on). While the app
-//! is closed it says so, and Joel's own ask opens it first.
+//! is closed it says so, and Joel's own ask opens it first. No other
+//! process of the account's can open its pipes or read its memory.
 
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -333,6 +334,29 @@ fn the_shells_own_list_never_opens_the_app() {
         stands(&answer),
         ("signed-out", CLOSED),
         "it says the app is closed: {answer}"
+    );
+}
+
+#[test]
+fn the_account_cant_open_the_managers_pipes_through_proc() {
+    let home = Home::new("undumpable", ON);
+    let manager = home.start();
+    // Said once it has hardened, since it hardens before it says anything.
+    let _ = manager.heard();
+    let proc = PathBuf::from(format!("/proc/{}", manager.child.id()));
+    for each in ["environ", "mem", "fd/0", "fd/1"] {
+        assert!(
+            fs::File::open(proc.join(each)).is_err(),
+            "/proc's {each} of the manager could be opened"
+        );
+    }
+    let limits = fs::read_to_string(proc.join("limits")).unwrap_or_default();
+    assert!(
+        limits
+            .lines()
+            .any(|line| line.starts_with("Max core file size")
+                && line.split_whitespace().nth(4) == Some("0")),
+        "the manager could write a core dump: {limits}"
     );
 }
 

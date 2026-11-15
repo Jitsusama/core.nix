@@ -135,7 +135,7 @@ ShellRoot {
             // The Copilot key, which sends its own Shift and Super, is said
             // as the one key pressed.
             const copilot = Shortcuts.layers[0].binds.find(bind => bind.keys
-                === "super+shift+f23");
+                === "super+shift+xf86touchpadoff");
             const pressed = map.spelled(copilot?.chord);
             expect("the Copilot key as one key", pressed === "Copilot", pressed);
             // And no two rows read alike: one act in one place is one row.

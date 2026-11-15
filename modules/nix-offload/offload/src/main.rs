@@ -509,6 +509,7 @@ fn main() -> ExitCode {
             within: Duration::from_secs(25),
             pause: Duration::from_millis(250),
             gives_up: Duration::from_secs(180),
+            moved: relay::Moved::named(),
         }
         .serve_all(listeners, &LEAVING);
         return if gave_up {
@@ -2448,12 +2449,14 @@ fn kept(
         ssh.to_owned(),
         nix.to_owned(),
     );
+    let (name, moving) = (builder.name.clone(), moving_to(settings, &builder.name));
     let was = keeper.health.state();
     let heard = keeper.keep(at, now(), move || {
         store.map_or_else(proof::Proven::default, |store| {
             let built = proof::over_ssh(&store, &scratch, &ssh, proof::WITHIN);
             proof::carrying(built, || {
                 proof::carries(&store, &scratch, &nix, proof::CARRYING)
+                    || proof::busy(&name, &moving)
             })
         })
     });
@@ -3024,7 +3027,7 @@ fn ask(
         eprintln!("nix-offload: journalling the ask: {error}; none is asked for");
         return None;
     }
-    let (mut helper, said, place) = hear(settings, &["up", &name, &left.to_string()])?;
+    let (mut helper, said, place) = hear(settings, &name, &["up", &name, &left.to_string()])?;
     let Heard {
         rate, store, line, ..
     } = said;
@@ -3134,7 +3137,18 @@ fn warm(settings: &Settings, name: &str, store: &str) {
 /// Run the helper with `arguments`, and hear what it says until its
 /// machines line, for as long as a builder may take to be ready, then
 /// where its builder is for as long as it runs, into the place given.
-fn hear(settings: &Settings, arguments: &[&str]) -> Option<(Child, Heard, Arc<Mutex<Place>>)> {
+/// The file the relay to builder `name` says what went up to it in.
+fn moving_to(settings: &Settings, name: &str) -> PathBuf {
+    settings.dir.join("moving.d").join(name)
+}
+
+/// The helper, run with `arguments` for builder `name`, and what it said
+/// once its builder was made; none when it couldn't be run.
+fn hear(
+    settings: &Settings,
+    name: &str,
+    arguments: &[&str],
+) -> Option<(Child, Heard, Arc<Mutex<Place>>)> {
     let mut helper = match &settings.outlasting {
         Some(outlasting) => {
             let mut through = Command::new(outlasting);
@@ -3145,6 +3159,8 @@ fn hear(settings: &Settings, arguments: &[&str]) -> Option<(Child, Heard, Arc<Mu
     };
     let mut helper = helper
         .args(arguments)
+        // Its relay inherits it, so says there what goes up to its builder.
+        .env(relay::MOVED_UP, moving_to(settings, name))
         .stdout(Stdio::piped())
         .process_group(0)
         .spawn()
@@ -3225,7 +3241,7 @@ fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<
     let name = left.name;
     eprintln!("nix-offload: taking back {name}, which the last stop left");
     machines.asking(Some(&name));
-    let Some((mut helper, said, place)) = hear(settings, &["hold", &name]) else {
+    let Some((mut helper, said, place)) = hear(settings, &name, &["hold", &name]) else {
         machines.asking(None);
         return None;
     };

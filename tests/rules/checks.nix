@@ -200,6 +200,11 @@
         shots-changed = script "shots-changed" ../../tools/shots-changed/shots-changed.sh { };
         sign = script "sign" ../../modules/signing/sign.sh { before = "export name=sign"; };
         ssh-askpass = script "ssh-askpass" ../../modules/quickshell/askpass.sh { };
+        # Its help is its own, so it runs neither of what it's given.
+        sudo-by-touch = pkgs.callPackage ../../modules/sudo/by-touch.nix {
+          run0 = "run0";
+          sudo = "sudo";
+        };
         swap-file-grows = script "swap-file-grows" ../../modules/disko/swap-file-grows.sh { };
         swayidle-away = script "swayidle-away" ../../modules/swayidle/away.sh { };
         swayimg-command = script "swayimg-command" ../../modules/swayimg/command.sh { };

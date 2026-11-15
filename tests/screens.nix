@@ -276,6 +276,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # A caret that holds still, so a still launcher draws nothing.
         jitsusama.quickshell.caret.fade = 0;
         systemd.user.services.dictation.Service.ExecStart = lib.mkForce "${standInDictation}";
+        # The screen never locks, or goes dark, for want of a key: these
+        # subtests press none, and on 2026-11-15 the lock fell 352 s and
+        # 361 s into two runs, inside the subtest checking Joel's focus. The
+        # lock and stepping away are the desktop's tests' to prove.
+        systemd.user.services.swayidle-away.Install.WantedBy = lib.mkForce [ ];
       };
       # As in the greeter test: debug lines copied to the serial console make
       # journald fall behind, and PID 1 drops lines it won't take.

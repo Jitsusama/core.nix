@@ -124,11 +124,12 @@ in
   }
   # The Copilot key dictates too (Joel, 2026-10-25), in Super+D's row of
   # the shortcuts, as a second way. It sends Shift, Super and F23, and niri
-  # matches a key by what it types unshifted, which the keymap xkb builds
-  # names F23: its symbols file says XF86TouchpadOff, but a later part of
-  # the keymap puts F23 there, with XF86Assistant under Shift and Super.
+  # matches a key by what it types unshifted, which in the keymap xkb builds
+  # is XF86TouchpadOff, with XF86Assistant under Shift and Super. Until
+  # xkeyboard-config 2.49 a later part of the keymap put F23 there, and a
+  # bind on F23 has matched nothing since.
   {
-    chord = "Super+Shift+F23";
+    chord = "Super+Shift+XF86TouchpadOff";
     does = "Dictate into the focused window, or stop and type it";
     also = "copilot assistant speak voice talk transcribe speech";
     action = ''spawn "dictation" "hold";'';

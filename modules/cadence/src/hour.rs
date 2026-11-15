@@ -203,6 +203,37 @@ fn line(m: &Measure) -> String {
     }
 }
 
+/// A class's lines on the card. Clean zones read some sixty measures, so
+/// only those past their target are listed, and the rest are counted in a
+/// line of their own; every other class lists each of its measures.
+fn shown_lines(class: Class, of_class: &[&Measure]) -> Vec<String> {
+    if class != Class::Clean {
+        return of_class.iter().map(|m| line(m)).collect();
+    }
+    let mut lines: Vec<String> = of_class
+        .iter()
+        .filter(|m| m.past().is_some())
+        .map(|m| line(m))
+        .collect();
+    let unjudged = of_class.iter().filter(|m| m.target.is_none()).count();
+    let within = of_class.len() - lines.len() - unjudged;
+    let mut rest = Vec::new();
+    if within > 0 {
+        rest.push(if lines.is_empty() {
+            format!("all {within} in")
+        } else {
+            format!("{within} more in")
+        });
+    }
+    if unjudged > 0 {
+        rest.push(format!("{unjudged} unjudged"));
+    }
+    if !rest.is_empty() {
+        lines.push(rest.join(", "));
+    }
+    lines
+}
+
 /// The hour's card, at `at` and with the drag due at `due`, and what the
 /// next hour is to remember.
 #[must_use]
@@ -215,16 +246,12 @@ pub fn compose(at: &str, measures: &[Measure], kept: &Kept, due: &str) -> (Strin
         Class::Functional,
         Class::Clean,
     ] {
-        let lines: Vec<String> = measures
-            .iter()
-            .filter(|m| m.class == class)
-            .map(line)
-            .collect();
+        let of_class: Vec<&Measure> = measures.iter().filter(|m| m.class == class).collect();
         let _ = writeln!(card, "{}:", capitalised(class.name()));
-        if lines.is_empty() {
+        if of_class.is_empty() {
             let _ = writeln!(card, "  not read yet");
         }
-        for l in lines {
+        for l in shown_lines(class, &of_class) {
             let _ = writeln!(card, "  {l}");
         }
     }
@@ -547,6 +574,26 @@ mod tests {
             }),
             open: Vec::new(),
         }
+    }
+
+    #[test]
+    fn clean_zones_show_only_what_is_past_and_count_the_rest() {
+        let measures = [
+            measure("long", Class::Clean, 12.0, Some(10.0)),
+            measure("crowded", Class::Clean, 2.0, Some(2.0)),
+            measure("notes", Class::Clean, 87.0, None),
+            measure("lints", Class::Clean, 9.0, None),
+        ];
+        let (card, _) = compose("18:10", &measures, &Kept::default(), "18:10 tomorrow");
+        assert!(
+            card.contains("Clean zones:\n  ✕ long said: 12, at most 10\n  1 more in, 2 unjudged\n"),
+            "a clean measure in or unjudged was listed, or the rest weren't counted: {card}"
+        );
+        let (all_in, _) = compose("18:10", &measures[1..2], &Kept::default(), "18:10 tomorrow");
+        assert!(
+            all_in.contains("Clean zones:\n  all 1 in\n"),
+            "a clean zone with nothing past didn't say so: {all_in}"
+        );
     }
 
     #[test]

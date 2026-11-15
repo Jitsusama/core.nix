@@ -23,6 +23,9 @@ if TYPE_CHECKING:
 # How long polkit and the key may take to answer one run0.
 ANSWERING = timedelta(seconds=30)
 
+# Far longer than canokey takes to answer a touch, which is under a second.
+TOUCHING = timedelta(seconds=5)
+
 # What pam_exec logs each time the gate keeps the touch from being asked.
 REFUSED = "journalctl --boot --output=cat | grep -c 'yubikey-once-in failed' || true"
 
@@ -48,12 +51,15 @@ class Seat:
         """How many times the gate has kept the touch from being asked."""
         return int(self.machine.succeed(REFUSED).strip())
 
-    def run0(self) -> tuple[str, int]:
-        """Ask run0 in whatever has the keys, giving the file it makes and the refusals before."""
+    def run0(self, asking: str = "run0") -> tuple[str, int]:
+        """Ask run0, or what goes through it, in whatever has the keys.
+
+        Gives the file it makes and the refusals before.
+        """
         self.asked += 1
         made = f"/run/let-in-{self.asked}"
         before = self.refusals()
-        self.machine.send_chars(f"run0 touch {made}\n")
+        self.machine.send_chars(f"{asking} touch {made}\n")
         return made, before
 
     def let_in(self, made: str) -> None:
@@ -66,6 +72,20 @@ class Seat:
             f"test $({REFUSED}) -gt {before}", timeout=ANSWERING.seconds
         )
         self.machine.fail(f"test -e {made}")
+
+    def not_let_in(self, made: str) -> None:
+        """See polkit's prompt open and, past the second a touch takes, nothing let in.
+
+        The helper is a oneshot, so it's activating for as long as its prompt is open.
+        """
+        self.machine.wait_until_succeeds(
+            "systemctl list-units --state=activating --no-legend 'polkit-agent-helper@*'"
+            " | grep -q .",
+            timeout=ANSWERING.seconds,
+        )
+        self.machine.fail(
+            f"timeout {TOUCHING.seconds} sh -c 'until test -e {made}; do sleep 0.2; done'"
+        )
 
     def types_the_password(self, made: str) -> None:
         """Type the password to the prompt waiting, and see it let run0 in."""
@@ -98,6 +118,13 @@ def test_a_touch_answers_at_the_unlocked_desktop(seat: Seat) -> None:
     """From the desktop's terminal with the lock let go, the touch alone lets run0 in."""
     seat.lock_says("unlocked")
     made, _ = seat.run0()
+    seat.let_in(made)
+
+
+def test_a_terminals_sudo_takes_the_touch(seat: Seat) -> None:
+    """The terminal's sudo goes through run0, so at the unlocked desktop the touch lets it in."""
+    seat.lock_says("unlocked")
+    made, _ = seat.run0("sudo-by-touch")
     seat.let_in(made)
 
 
@@ -152,3 +179,17 @@ def test_an_ssh_login_is_asked_for_the_password(seat: Seat) -> None:
     )
     assert status != 0, said
     assert "Password" in said, said
+
+
+def test_with_no_key_the_password_lets_sudo_in(seat: Seat) -> None:
+    """With the key pulled out at the unlocked desktop, sudo waits for the password, which works.
+
+    Last, since the key isn't put back.
+    """
+    machine = seat.machine
+    seat.lock_says("unlocked")
+    machine.send_monitor_command("device_del key")
+    machine.wait_until_fails("fido2-token -L | grep -q ^/dev/hidraw", timeout=ANSWERING.seconds)
+    made, _ = seat.run0("sudo-by-touch")
+    seat.not_let_in(made)
+    seat.types_the_password(made)

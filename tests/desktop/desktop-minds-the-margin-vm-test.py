@@ -652,7 +652,7 @@ def test_dictation_says_what_its_doing_and_when_it_heard_nothing(desktop: Deskto
 
 
 # The laptop's Copilot key sends Super, Shift and F23 together, which the
-# keyboard's layout reads as F23, and niri's bind for it starts
+# keyboard's layout reads as XF86TouchpadOff, and niri's bind for it starts
 # dictation. A stand-in key sends the same, through the kernel as the
 # laptop's does, since QEMU's keyboard has no F23.
 

@@ -156,7 +156,7 @@ QtObject {
         const dictating = (rowsOf.desktop ?? []).filter(row => row.does
             === "Dictate into the focused window, or stop and type it");
         expect("the Copilot key in Super+D's row", dictating.map(row => [row.chord, row.also]),
-            [["Super+D", ["Super+Shift+F23"]]]);
+            [["Super+D", ["Super+Shift+XF86TouchpadOff"]]]);
         expect("elsewhere, a row of its own", KeyGroups.merged("neovim", [
             { chord: "Space g c Return", does: "Commit", keys: "space g c return", when: "" },
             { chord: "c c", does: "Commit", keys: "c c", when: "in git's status" }

@@ -51,6 +51,7 @@ name = "onepassword-manager"
 version = "0.1.0"
 dependencies = [
  "inotify",
+ "libc",
  "serde_json",
 ]
 

@@ -18,10 +18,18 @@
 //! A tunnel can go on running while every connection it opens fails. Once
 //! the far side has answered no caller for a while, the relay ends with
 //! its connections, so the helper's hold on the builder ends with it.
+//!
+//! A relay counts what goes up through it, and writes how much went up
+//! in the last minute to the file [`MOVED_UP`] names, at most once a
+//! second while bytes go up, so the lender can tell a way busy with its
+//! builds' copies from a stalled one (`proof::busy`).
 
+use std::env;
+use std::fs;
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::os::fd::{AsRawFd, FromRawFd};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -45,6 +53,93 @@ pub struct Relay {
     /// reaching it, for half an hour. Ending ends the helper's hold, so
     /// the builder is given back and another lent.
     pub gives_up: Duration,
+    /// Where it says what went up.
+    pub moved: Moved,
+}
+
+/// What names the file a relay writes what went up in, set by the lender
+/// for the helper it starts, whose relay inherits it.
+pub const MOVED_UP: &str = "NIX_OFFLOAD_MOVED_UP";
+
+/// What went up through a relay in the last minute, shared by the threads
+/// passing its connections; nothing is kept where no file was named.
+#[derive(Clone, Default)]
+pub struct Moved(Option<Arc<Mutex<Window>>>);
+
+impl Moved {
+    /// Writing to `file`.
+    pub fn to(file: PathBuf) -> Self {
+        Self(Some(Arc::new(Mutex::new(Window {
+            file,
+            started: Instant::now(),
+            seconds: [0; 60],
+            at: 0,
+            written: None,
+        }))))
+    }
+
+    /// Writing to the file [`MOVED_UP`] names, if it names one.
+    pub fn named() -> Self {
+        env::var_os(MOVED_UP).map_or_else(Self::default, |file| Self::to(file.into()))
+    }
+
+    /// Counts `bytes` gone up now, writing the minute's sum when a second
+    /// has passed since it last did.
+    fn went(&self, bytes: usize) {
+        let Some(window) = &self.0 else {
+            return;
+        };
+        let Ok(mut window) = window.lock() else {
+            return;
+        };
+        let second = window.started.elapsed().as_secs();
+        let bytes = u64::try_from(bytes).unwrap_or(u64::MAX);
+        if let Some(sum) = window.went(second, bytes) {
+            // Written whole and renamed into place, so the lender never
+            // reads half a number; a failure only leaves the last word,
+            // which grows old and stops counting.
+            let new = window.file.with_extension("new");
+            if let Some(folder) = window.file.parent() {
+                let _ = fs::create_dir_all(folder);
+            }
+            if fs::write(&new, format!("{sum}\n")).is_ok() {
+                let _ = fs::rename(&new, &window.file);
+            }
+        }
+    }
+}
+
+/// A minute of bytes, by the second.
+struct Window {
+    file: PathBuf,
+    started: Instant,
+    seconds: [u64; 60],
+    /// The latest second counted, since `started`.
+    at: u64,
+    /// The second the sum was last written in.
+    written: Option<u64>,
+}
+
+impl Window {
+    /// Counts `bytes` in `second`, forgetting what's now a minute old;
+    /// the minute's sum when it's due to be written, once in each second.
+    fn went(&mut self, second: u64, bytes: u64) -> Option<u64> {
+        let length = u64::try_from(self.seconds.len()).unwrap_or(u64::MAX);
+        let slot_of = |second: u64| usize::try_from(second % length).unwrap_or_default();
+        if second > self.at {
+            for gone in (self.at + 1)..=second.min(self.at + length) {
+                self.seconds[slot_of(gone)] = 0;
+            }
+            self.at = second;
+        }
+        let slot = &mut self.seconds[slot_of(self.at)];
+        *slot = slot.saturating_add(bytes);
+        if self.written == Some(self.at) {
+            return None;
+        }
+        self.written = Some(self.at);
+        Some(self.seconds.iter().sum())
+    }
 }
 
 /// The longest first line waited for; ssh's is at most 255 bytes.
@@ -249,8 +344,22 @@ impl Relay {
         let (Ok(mut far_in), Ok(mut caller_in)) = (far.try_clone(), caller.try_clone()) else {
             return;
         };
+        let moved = self.moved.clone();
         let up = thread::spawn(move || {
-            let _ = io::copy(&mut caller_in, &mut far_in);
+            let mut buffer = vec![0; 64 * 1024];
+            loop {
+                match caller_in.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(read) => {
+                        if far_in.write_all(&buffer[..read]).is_err() {
+                            break;
+                        }
+                        moved.went(read);
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                    Err(_) => break,
+                }
+            }
             let _ = far_in.shutdown(Shutdown::Write);
         });
         let mut far = far;
@@ -388,6 +497,67 @@ mod tests {
             within,
             pause: Duration::from_millis(10),
             gives_up: Duration::from_secs(60),
+            moved: Moved::default(),
+        }
+    }
+
+    #[test]
+    fn a_minute_of_bytes_is_summed_once_a_second_and_forgets_what_is_older() {
+        let mut window = Window {
+            file: PathBuf::new(),
+            started: Instant::now(),
+            seconds: [0; 60],
+            at: 0,
+            written: None,
+        };
+        assert_eq!(window.went(0, 10), Some(10), "the first is written");
+        assert_eq!(window.went(0, 5), None, "once a second");
+        assert_eq!(window.went(30, 1), Some(16));
+        assert_eq!(window.went(60, 100), Some(101), "second 0 is a minute old");
+        assert_eq!(window.went(200, 7), Some(7), "a long quiet forgets it all");
+    }
+
+    // From 22:25 to 23:03 on 14 November every builder's proof failed to
+    // carry while the way up was full of their own builds' copies.
+    #[test]
+    fn what_goes_up_through_a_relay_is_written_for_the_lender() {
+        static NEVER: AtomicBool = AtomicBool::new(false);
+        let dir = tempfile::tempdir().expect("a folder");
+        let file = dir.path().join("moving.d").join("lend-9");
+        let far = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let listeners = listening("127.0.0.1:0");
+        let at = listeners[0].local_addr().expect("its address");
+        let relay = Relay {
+            moved: Moved::to(file.clone()),
+            ..relay_to(&far, Duration::from_secs(5))
+        };
+        thread::spawn(move || relay.serve_all(listeners, &NEVER));
+        let mut caller = TcpStream::connect(at).expect("the relay");
+        let mut builder = dialled(&far);
+        builder.write_all(b"SSH-2.0-far\r\n").expect("its line");
+        let mut line = [0; 13];
+        caller.read_exact(&mut line).expect("the line");
+        let sent = vec![7; 100 * 1024];
+        caller.write_all(&sent).expect("a copy up");
+        let mut heard = vec![0; sent.len()];
+        builder.read_exact(&mut heard).expect("the copy");
+        // The sum is written once a second, so the last byte goes in the
+        // next one.
+        thread::sleep(Duration::from_millis(1100));
+        caller.write_all(b"!").expect("one more");
+        let mut last = [0];
+        builder.read_exact(&mut last).expect("the last");
+        let ending = Instant::now() + Duration::from_secs(5);
+        let mut said = String::new();
+        while said.trim() != (sent.len() + 1).to_string() {
+            assert!(
+                Instant::now() < ending,
+                "the relay wrote {said:?} for {} bytes up",
+                sent.len() + 1
+            );
+            // Polled, since the relay writes from its own thread.
+            thread::sleep(Duration::from_millis(10));
+            said = fs::read_to_string(&file).unwrap_or_default();
         }
     }
 
@@ -512,6 +682,7 @@ mod tests {
             within: Duration::from_millis(50),
             pause: Duration::from_millis(10),
             gives_up,
+            moved: Moved::default(),
         };
         let listeners = listening("127.0.0.1:0");
         let at = listeners[0].local_addr().expect("its address");

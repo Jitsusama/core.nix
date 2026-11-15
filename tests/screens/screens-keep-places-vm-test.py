@@ -108,6 +108,22 @@ def test_typing_through_the_virtual_keyboard_keeps_the_session_awake(booted: Scr
         booted.machine.execute(booted.in_niri("systemctl --user stop idle-watch"))
 
 
+def test_the_screen_never_locks_or_goes_dark_by_itself_while_the_test_runs(
+    booted: Screens,
+) -> None:
+    """Nothing locks the screen or turns it off for want of a key, however long the run takes.
+
+    swayidle-away locks 300 s after the last key and turns the screens off at 600, and these
+    subtests press none: on 2026-11-15 the lock fell 352 s into a run, inside the one that
+    checks Joel's focus, so no window had it. As in the desktop's tests, the lock is tested
+    elsewhere by its key and by stepping away with short times.
+    """
+    away = booted.machine.succeed(
+        booted.in_niri("systemctl --user is-active swayidle-away || true")
+    ).strip()
+    assert away == "inactive", f"swayidle-away locks the screen by itself: {away}"
+
+
 def test_sessions_reopened_while_their_screen_is_gone_go_to_it_once_its_back(
     booted: Screens,
 ) -> None:
