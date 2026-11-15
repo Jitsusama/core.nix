@@ -3,8 +3,11 @@
 //! the days before it and a repository getting messier is named the day it
 //! does: its long files with no reason, its suppressions, its crowded
 //! folders with no reason, its lines of code repeated from elsewhere, the
-//! tests its merge net keeps in quarantine and the points its daemons wait
-//! on to agree (measure.rs says how each is counted), and how long the
+//! tests its merge net keeps in quarantine, the points its daemons wait
+//! on to agree and the lines of its VM tests (measure.rs says how each is
+//! counted); the lints its configs turn off (lints.rs), its files nothing
+//! reaches (reached.rs) and its folders that don't say what they hold
+//! (notes.rs), as the quality standard has them; and how long the
 //! changes it merged in the last day took from first edit to merge
 //! (merges.rs).
 //!
@@ -31,8 +34,11 @@
 
 mod git;
 mod hour;
+mod lints;
 mod measure;
 mod merges;
+mod notes;
+mod reached;
 
 use std::collections::BTreeMap;
 use std::env;
@@ -54,16 +60,20 @@ const FLAGS: [&str; 6] = [
 ];
 
 /// Every measure it reads (measure.rs and merges.rs).
-const MEASURES: [&str; 9] = [
+const MEASURES: [&str; 13] = [
     "crowded-folders",
     "daemons-waiting",
     "duplicated-lines",
     "edit-to-merge",
     "files-per-change",
+    "folders-without-notes",
+    "lints-off",
     "long-files",
     "quarantined-tests",
     "shared-files",
     "suppressions",
+    "unreached-files",
+    "vm-test-lines",
 ];
 
 /// How a figure is said to a person, by its measure: those of the day's

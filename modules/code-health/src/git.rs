@@ -10,7 +10,7 @@ use crate::measure::{self, File};
 use crate::merges::Merged;
 
 /// Every file's path at `reference` under `under`, from the folder read,
-/// and the text of each that's code or a folder's note.
+/// and the text of each a measure reads (`measure::is_read`).
 pub fn files(
     checkout: &str,
     reference: &str,
@@ -42,7 +42,7 @@ pub fn files(
             continue;
         };
         paths.push(inside.to_owned());
-        if measure::is_code(inside) || measure::is_note(inside) || measure::is_quarantine(inside) {
+        if measure::is_read(inside) {
             let object = about.rsplit(' ').next().unwrap_or_default();
             read.push((inside.to_owned(), object.to_owned()));
         }

@@ -6,6 +6,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
+use crate::{lints, notes, reached};
+
 /// A file of the repository: its path from the folder read, and its text.
 pub struct File {
     pub path: String,
@@ -48,12 +50,29 @@ impl Health {
     }
 }
 
+/// A path's extension, past its last dot, or `""` where it has none.
+pub fn extension(path: &str) -> &str {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    name.rsplit_once('.').map_or("", |(_, extension)| extension)
+}
+
 /// Whether a path is a code file this reads.
 pub fn is_code(path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path);
     let generated = name.ends_with(".min.js") || path.split('/').any(|part| part == "node_modules");
     let extension = name.rsplit_once('.').map(|(_, extension)| extension);
     !generated && extension.is_some_and(|extension| CODE.contains(&extension))
+}
+
+/// Whether a path's text is read by a measure: code, a folder's note, a
+/// quarantine, a lint config, or any file of words or settings that can
+/// name another file and so reach it (reached.rs).
+pub fn is_read(path: &str) -> bool {
+    let mentions = matches!(
+        extension(path),
+        "md" | "json" | "jsonc" | "toml" | "yaml" | "yml"
+    ) && !path.split('/').any(|part| part == "node_modules");
+    is_code(path) || is_note(path) || is_quarantine(path) || lints::is_config(path) || mentions
 }
 
 /// Whether a path is a folder's note, which says why it's crowded.
@@ -117,6 +136,22 @@ pub fn measure(paths: &[String], files: &[File]) -> Health {
         health.put("quarantined-tests", quarantined, count);
     }
 
+    let turned_off = lints::turned_off(files);
+    let count = turned_off.len();
+    health.put("lints-off", turned_off, count);
+
+    let unreached = reached::unreached(paths, files);
+    let count = unreached.len();
+    health.put("unreached-files", unreached, count);
+
+    let bare = notes::without_notes(paths, files);
+    let count = bare.len();
+    health.put("folders-without-notes", bare, count);
+
+    if let Some((named, lines)) = vm_test_lines(&code) {
+        health.put("vm-test-lines", named, lines);
+    }
+
     // Likewise a repository holding no daemons to docs/daemons.md.
     if let Some(list) = files.iter().find(|file| file.path == DAEMONS_WAITING) {
         let points = waiting_points(&list.text);
@@ -124,6 +159,37 @@ pub fn measure(paths: &[String], files: &[File]) -> Health {
         health.put("daemons-waiting", points, count);
     }
     health
+}
+
+/// The lines of a repository's VM tests, less blanks and comments, and each
+/// test by its lines, most first; none when it keeps no VM tests, rather
+/// than a nought that would say it keeps them cheap. A VM test is the
+/// dearest level a test can be at, so a case moved down to a unit test, as
+/// the quality standard's rule 6 has it, shows here as fewer lines.
+fn vm_test_lines(code: &[&File]) -> Option<(Vec<String>, usize)> {
+    let mut tests: Vec<(usize, &str)> = code
+        .iter()
+        .filter(|file| file.path.ends_with("vm-test.py"))
+        .map(|file| {
+            let lines = file
+                .text
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                .count();
+            (lines, file.path.as_str())
+        })
+        .collect();
+    if tests.is_empty() {
+        return None;
+    }
+    tests.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(b.1)));
+    let total = tests.iter().map(|(lines, _)| lines).sum();
+    let named = tests
+        .into_iter()
+        .map(|(lines, path)| format!("{path}: {lines} lines"))
+        .collect();
+    Some((named, total))
 }
 
 /// The points each daemon waits on, as `daemon: point`, from a list of
@@ -490,6 +556,62 @@ mod tests {
             !health.figures.contains_key("daemons-waiting"),
             "a daemons list nobody keeps was counted as empty: {health:?}"
         );
+    }
+
+    #[test]
+    fn a_vm_tests_lines_are_counted_less_blanks_and_comments() {
+        let files = [
+            file(
+                "tests/a-vm-test.py",
+                "# Proves a.\nstart_all()\n\nmachine.succeed('a')\n",
+            ),
+            file("tests/b-vm-test.py", &"machine.succeed('b')\n".repeat(3)),
+            file("tests/c_session.py", "x = 1\n"),
+        ];
+        let health = measure(&paths(&files), &files);
+        assert_eq!(
+            health.named["vm-test-lines"],
+            ["tests/b-vm-test.py: 3 lines", "tests/a-vm-test.py: 2 lines"],
+            "a VM test was missed, misread or out of order"
+        );
+        assert!(
+            (health.figures["vm-test-lines"] - 5.0).abs() < f64::EPSILON,
+            "the figure didn't add the lines named: {health:?}"
+        );
+        let none = [file("a.rs", "fn a() {}\n")];
+        assert!(
+            !measure(&paths(&none), &none)
+                .figures
+                .contains_key("vm-test-lines"),
+            "a repository with no VM tests was counted as keeping them cheap"
+        );
+    }
+
+    #[test]
+    fn the_standards_measures_are_each_read() {
+        let files = [
+            file("README.md", "# A repository\n"),
+            file(
+                "biome.json",
+                "{ \"linter\": { \"rules\": { \"preset\": \"all\", \"noVoid\": \"off\" } } }\n",
+            ),
+            file("src/main.rs", "//! The program.\n"),
+            file("src/orphan.rs", "\n"),
+            file("docs/a.md", "# A\n"),
+            file("docs/b.md", "# B\n"),
+        ];
+        let health = measure(&paths(&files), &files);
+        for (measure, named) in [
+            ("lints-off", "biome.json: noVoid"),
+            ("unreached-files", "src/orphan.rs"),
+            ("folders-without-notes", "docs"),
+        ] {
+            assert_eq!(health.named[measure], [named], "{measure} misread");
+            assert!(
+                (health.figures[measure] - 1.0).abs() < f64::EPSILON,
+                "{measure}'s figure didn't match what it named: {health:?}"
+            );
+        }
     }
 
     #[test]
