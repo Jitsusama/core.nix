@@ -256,9 +256,7 @@ fn a_yes_lets_the_same_ask_from_any_tree_of_its_repository_run_for_a_week() {
     let drawn = said_yes(&setting, &mut client, &first);
     assert_eq!(
         fact(&drawn, "Yes Lasts"),
-        Some(json!(
-            "a week, for this command from any tree of tree on main"
-        )),
+        Some(json!("a week, from any tree of tree on main")),
         "the line didn't say what a yes lets run: {drawn}"
     );
     assert!(

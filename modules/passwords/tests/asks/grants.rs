@@ -1,7 +1,7 @@
 //! A yes that stands, as the shell's Passwords child answers it: Joel's
 //! yes to an ask lets the same ask from a clean tree of that repository
 //! on origin's main run without him, the twin already waiting included;
-//! Asks lists the standing yes, and its Revoke It has the ask wait again.
+//! Asks lists the standing yes, and its Forget It has the ask wait again.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
