@@ -24,7 +24,9 @@ onLinux {
 
   # A declared job is tried only at night, never caught up on by day, runs
   # behind everything the account runs, with the limits it names on its own
-  # cgroup rather than its watcher's, and stops by the slices' bars; an
+  # cgroup rather than its watcher's, and stops by the slices' bars; it
+  # waits for the turn only when told to, and a wait it was let isn't a
+  # failed unit; an
   # account declaring none gets no unit, but still night-shift on its path,
   # for the turn every heavy job by day takes.
   night-shift-runs-only-at-night =
@@ -43,6 +45,11 @@ onLinux {
             memoryHigh = "12G";
             readsAtMost."/dev/nvme0n1" = "50M";
           };
+          home-manager.users.someone.jitsusama.night-shift.jobs.waits = {
+            description = "Waits for the turn";
+            command = [ "true" ];
+            waitsAtMost = 1800;
+          };
         }
       ]);
       none = account (bareNixos [ self.nixosModules.workstation ]);
@@ -50,9 +57,10 @@ onLinux {
       unit = declared.systemd.user.services.night-shift-repack.Unit;
       timer = declared.systemd.user.timers.night-shift-repack.Timer;
       says = text: pkgs.lib.hasInfix text (toString service.ExecStart);
+      waits = declared.systemd.user.services.night-shift-waits.Service;
     in
     holds "night-shift-runs-only-at-night"
-      "A night job is tried by day or caught up on after a night slept through, runs outside background.slice or ahead of the account's work, drops a limit it names or puts it on its watcher too, is restarted by a switch, doesn't stop for the apps', the desktop's or agents' slices, passes its command's % to systemd unescaped, or an account declaring no job gets one."
+      "A night job is tried by day or caught up on after a night slept through, runs outside background.slice or ahead of the account's work, drops a limit it names or puts it on its watcher too, is restarted by a switch, doesn't stop for the apps', the desktop's or agents' slices, passes its command's % to systemd unescaped, waits for the turn unasked, fails its unit for a wait it was let, or an account declaring no job gets one."
       (
         timer.OnCalendar == [
           "*-*-* 01:30/15"
@@ -75,6 +83,10 @@ onLinux {
         && says "--stop agents.slice=10"
         && says "--stop-machine 25"
         && says "-- git maintenance run --task=50%%"
+        && !(says "--wait-at-most")
+        && !(service ? SuccessExitStatus)
+        && pkgs.lib.hasInfix "--wait-at-most 1800 " (toString waits.ExecStart)
+        && waits.SuccessExitStatus == 75
         && !(none.systemd.user.services ? night-shift-repack)
         && !(none.systemd.user.timers ? night-shift-repack)
         && pkgs.lib.any (package: package.pname or "" == "night-shift") none.home.packages
