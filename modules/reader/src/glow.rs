@@ -154,6 +154,19 @@ impl Glow {
         if t.is_nan() { 0.0 } else { t.clamp(0.0, 1.0) }
     }
 
+    /// Whether a point of the rect lies past the gradient's reach, where
+    /// `t` gives its last stop: told by squares alone, since most of the
+    /// rect is past it and the roots there cost the most of its painting.
+    fn past_reach(&self, x: f64, y: f64) -> bool {
+        let r = &self.radial;
+        let (cx, cy) = (r.center.x.get(), r.center.y.get());
+        let (qx, qy) = (r.focal_center.x.get(), r.focal_center.y.get());
+        let (cr, fr) = (r.radius.get(), r.focal_radius.get());
+        let zp = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+        let zq = (x - qx) * (x - qx) + (y - qy) * (y - qy);
+        zq >= fr * fr && zp > cr * cr
+    }
+
     /// The glow's colour at a point along it, premultiplied in 8 bits as
     /// the canvas holds it.
     #[expect(
@@ -204,12 +217,17 @@ impl Glow {
             ((d as f32 + 0.5 - o).floor() as i64).clamp(0, i64::from(n) - 1) as f32 / n as f32
         };
         let xs: Vec<f64> = cols.clone().map(|c| f64::from(nearest(c, ox, w))).collect();
+        let end = self.color(1.0);
         let pixels = canvas.pixels_mut();
         for row in rows {
             let y = f64::from(nearest(row, oy, h));
             let start = (row * cw + cols.start) as usize;
             for (pixel, &x) in pixels[start..start + xs.len()].iter_mut().zip(&xs) {
-                *pixel = self.color(self.t(x, y));
+                *pixel = if self.past_reach(x, y) {
+                    end
+                } else {
+                    self.color(self.t(x, y))
+                };
             }
         }
     }
