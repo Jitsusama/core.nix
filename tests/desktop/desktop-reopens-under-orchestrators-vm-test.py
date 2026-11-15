@@ -418,6 +418,14 @@ def test_a_session_started_for_another_tree_opens_with_it_in_title_order(
             desktop.in_session("niri msg --json windows | grep -q 'pi --session 01d2-alpha'"),
             timeout=dt.timedelta(seconds=300),
         )
+        # The shell's lines can reach the journal after the window, on a busy machine.
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                "journalctl --user --unit=quickshell --no-pager --output=cat"
+                f" --after-cursor={shlex.quote(since)} | grep -qF 'sessions: reopening settled'"
+            ),
+            timeout=dt.timedelta(seconds=BACK),
+        )
         said = desktop.as_account(
             "journalctl --user --unit=quickshell --no-pager --output=cat"
             f" --after-cursor={shlex.quote(since)}"
