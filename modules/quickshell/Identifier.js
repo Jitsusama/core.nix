@@ -22,7 +22,16 @@ const WEAK_MARKS = "-";
 // no words to keep whole, so it's read letter by letter and may break at
 // any of them, once the marks around it can't make it fit
 // (VKCF3Z, 2026-11-09). No name in the launcher runs that long unbroken.
-const HASH = /^(?=[0-9a-z]*\d)[0-9a-z]{20,}$/u;
+// The run and its digit are two tests, not one with a lookahead: Qt's
+// engine answered that lookahead wrongly from its third use on, once it
+// compiled it, for a hash whose first digit comes late (80ECO2,
+// 2026-11-15).
+const HASH_RUN = /^[0-9a-z]{20,}$/u;
+
+// Whether `letters` is a hash, as HASH_RUN and DIGIT together say.
+function hash(letters) {
+    return HASH_RUN.test(letters) && DIGIT.test(letters);
+}
 // The mark a piece ends on, which stays with its last letter.
 const ENDING_MARK = /[-=/,:.]$/u;
 // A last item this short never stands alone on its line: "--".
@@ -261,7 +270,7 @@ function wordsOf(said) {
 function lettersOf(piece) {
     const mark = ENDING_MARK.test(piece) ? piece.slice(-1) : "";
     const letters = [...piece.slice(0, piece.length - mark.length)];
-    if (!HASH.test(letters.join(""))) {
+    if (!hash(letters.join(""))) {
         return [piece];
     }
     letters[letters.length - 1] += mark;
