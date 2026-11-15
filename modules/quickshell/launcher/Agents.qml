@@ -230,7 +230,8 @@ Provider {
             return opened();
         return Wanted.readAt({ cataloguing: launcher.cataloguing, open: launcher.open,
             held: launcher.held, becoming: Object.values(launcher.becoming ?? {}),
-            typing: launcher.typing, entering: launcher.entering ?? null },
+            typing: launcher.typing, entering: launcher.entering ?? null,
+            viewing: launcher.viewing ?? false },
             [provider, source("now")]);
     }
     // Held as a bool, so a step made again while it stays readable remakes

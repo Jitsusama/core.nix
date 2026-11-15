@@ -282,7 +282,7 @@ QtObject {
         const agents = { saysAtHome: true };
         const people = { saysAtHome: false };
         const at = fields => Object.assign({ cataloguing: false, open: true, held: [],
-            becoming: [], typing: false, entering: null }, fields);
+            becoming: [], typing: false, entering: null, viewing: false }, fields);
         const wanted = (fields, source) => Wanted.wanted(at(fields), source);
         check(failures, "closed, no source's rows are wanted", wanted({ open: false }, people),
             false);
@@ -332,6 +332,16 @@ QtObject {
         check(failures, "and the place's own are", wanted({ entering: agents }, agents), true);
         check(failures, "nor while it's shut",
             wanted({ open: false, entering: agents }, agents), false);
+        // Over a viewer, its command line hides every row, so none is made
+        // for it: Joel's two at 23:43 made 84 and 38 home rows, and took
+        // 110 and 75 ms to their frames (2026-11-14).
+        check(failures, "over a viewer, no place home names is",
+            wanted({ viewing: true }, people), false);
+        check(failures, "nor one warming for home", wanted({ viewing: true }, warming), false);
+        check(failures, "walked from outside over one, every source's still are",
+            wanted({ viewing: true, cataloguing: true }, people), true);
+        check(failures, "and rows home shows aren't read over one",
+            read({ viewing: true }), false);
     }
 
     // A kept opening's sources wake in the order home's rows read them,
