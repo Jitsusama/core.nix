@@ -470,7 +470,44 @@ QtObject {
             Math.min(...flight.map(at => at.y)) < 7 - 1, true);
         expect("as high as the room above has, never off the screen",
             flight.every(at => at.y >= 0), true);
-        expect("long enough to be seen", leaps.ends - leaps.begins >= 160, true);
+        expect("seen in at least 7 frames at 60 Hz, and quick as a leap",
+            [leaps.ends - leaps.begins >= 120, leaps.ends - leaps.begins <= 160], [true, true]);
+        // It rises a third of what it crosses, at least 2 cells, held to
+        // the screen; its pose and its height go by thirds: up as it
+        // stretches, held at the top tucked, down as it reaches (VKCF3Z,
+        // 69bb37d0).
+        expect("a third of the 24 it crosses is 8, held to the screen's edge",
+            Math.min(...flight.map(at => at.y)), 0);
+        const arc = (from, to, ceiling) => {
+            const hop = Ways.begun({ cell: 1, wide: 8, tall: 8, height: 800 }, from);
+            Ways.across(hop, to, undefined, ceiling);
+            const route = Ways.timed(hop);
+            const frames = [];
+            for (let t = 0; t < route.ends; t += 1000 / 120)
+                frames.push(Ways.frame(route, t));
+            return frames;
+        };
+        const thirds = frames => ["leaping", "tucked", "falling"].map(pose =>
+            frames.filter(at => at.pose === pose));
+        const open = arc({ x: 100, y: 400 }, { x: 124, y: 400 });
+        expect("with room above, it rises 8 over 24", Math.min(...open.map(at => at.y)), 392);
+        const [rising, topped, coming] = thirds(open);
+        expect("a third of its frames in each pose, a frame either way",
+            [rising, topped, coming].every(one => Math.abs(one.length - open.length / 3) <= 1),
+            true);
+        expect("rising as it stretches, held at the top tucked, falling as it reaches",
+            [rising.every((at, i) => i === 0 || at.y <= rising[i - 1].y),
+                topped.every(at => at.y === 392),
+                coming.every((at, i) => i === 0 || at.y >= coming[i - 1].y),
+                rising[0].y, coming[coming.length - 1].y > 392], [true, true, true, 400, true]);
+        const high = arc({ x: 100, y: 2 }, { x: 118, y: 2 });
+        expect("on the top row it still rises 2, to the screen's edge and no further",
+            [Math.min(...high.map(at => at.y)), thirds(high)[1].every(at => at.y === 0)],
+            [0, true]);
+        expect("on a ledge under a row, no higher than the row's bottom",
+            Math.min(...arc({ x: 100, y: 400 }, { x: 124, y: 400 }, 397).map(at => at.y)), 397);
+        expect("a short gap still rises 2",
+            Math.min(...arc({ x: 100, y: 400 }, { x: 103, y: 400 }).map(at => at.y)), 398);
         // Each pose a beat of the route shows, in order, and for how many ms.
         const posed = (route, name) => {
             const beat = route.beats.find(one => one.name === name);
