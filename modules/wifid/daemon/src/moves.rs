@@ -166,6 +166,7 @@ mod tests {
     use super::*;
     use crate::learn::Here;
     use crate::measure::Echo;
+    use crate::measure::tests::joined;
     use crate::radio::Radio;
     use crate::state::Security;
 
@@ -174,16 +175,6 @@ mod tests {
 
     fn ms(millis: u64) -> Duration {
         Duration::from_millis(millis)
-    }
-
-    fn joined(point: &str) -> Joined {
-        Joined {
-            card: "wlan2".into(),
-            point: point.into(),
-            gateway: std::net::Ipv4Addr::new(10, 43, 0, 1),
-            network: "Lantern".into(),
-            trusted: true,
-        }
     }
 
     fn heard(bssid: &str, signal: i16) -> Heard {

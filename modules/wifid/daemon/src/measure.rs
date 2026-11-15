@@ -354,7 +354,7 @@ fn per_hundred(part: usize, whole: usize) -> f64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
@@ -518,7 +518,9 @@ mod tests {
         );
     }
 
-    fn joined(point: &str) -> Joined {
+    /// A card joined to Lantern through the access point given, which
+    /// moves.rs's tests join through too.
+    pub(crate) fn joined(point: &str) -> Joined {
         Joined {
             card: "wlan2".into(),
             point: point.into(),
