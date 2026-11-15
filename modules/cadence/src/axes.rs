@@ -284,9 +284,6 @@ impl Axis {
     }
 }
 
-/// A figure as a line says it: whole from ten, else to one place, with
-/// thousands set apart.
-#[must_use]
 /// A count's words for one of it: the first plural among the three words
 /// after its figure goes singular, so "{} core changes" says "1 core
 /// change" and "{} crashes" says "1 crash". Words with no plural there,
@@ -315,6 +312,9 @@ fn one(says: &str) -> String {
     format!("{before}{{}}{}", words.join(" "))
 }
 
+/// A figure as a line says it: whole from ten, else to one place, with
+/// thousands set apart.
+#[must_use]
 pub fn shown(x: f64, unit: &str) -> String {
     let number = if x.abs() >= 10.0 || x.fract() == 0.0 {
         let whole = format!("{:.0}", x.abs());

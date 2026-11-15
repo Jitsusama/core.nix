@@ -61,6 +61,9 @@ pub struct Sources {
     pub ledger: String,
     /// Each of cadence's kept days' figures, by its date.
     pub dated: kept::Dated,
+    /// How often health counted each launcher latency on the newest kept
+    /// day, what a held fix's saving is counted over.
+    pub often: kept::Often,
     /// What health's day file says the logs said went wrong.
     pub faults: faults::Faults,
     /// The network's two day files, the eero's and the shaper's.
@@ -265,7 +268,7 @@ fn quality(s: &Sources) -> Axis {
     ];
     // What the logs said went wrong, as Joel listed it on 11 November.
     readings.extend(faults::quality(&s.faults));
-    readings.push(kept::came_back(&s.ledger, &s.dated, s.now));
+    readings.push(kept::came_back(&s.ledger, &s.dated, &s.often, s.now));
     axis("quality", readings)
 }
 
@@ -517,6 +520,17 @@ fn kept_days(folder: &Path) -> Vec<Day> {
         .collect()
 }
 
+/// How often health counted each launcher latency on the newest kept day,
+/// so a fix's saving is counted over the same day as its figures.
+fn often_on(state_home: &Path, days: &[Day]) -> kept::Often {
+    days.iter()
+        .max_by_key(|d| d.to)
+        .map_or_else(kept::Often::new, |d| {
+            let health = state_home.join(format!("health/{}.json", d.date));
+            kept::often(&fs::read_to_string(health).unwrap_or_default())
+        })
+}
+
 /// What a source's thread read, its panic carried on as this thread's, so
 /// reading side by side fails as reading in a row would.
 fn joined<T>(thread: std::thread::ScopedJoinHandle<'_, T>) -> T {
@@ -608,6 +622,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
     });
     let days = kept_days(folder);
     Sources {
+        often: often_on(state_home, &days),
         measures,
         card: text(folder.join("card.txt")),
         dated: days
