@@ -2,6 +2,9 @@
 # build together (package.nix).
 [workspace]
 members = ["daemon", "sign-in"]
+# What tells wifid of calls builds alone, so wifid never builds what
+# counts a call (calls/Cargo.toml).
+exclude = ["calls"]
 resolver = "3"
 
 [workspace.package]

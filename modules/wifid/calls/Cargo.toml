@@ -1,0 +1,18 @@
+# wifid-calls tells wifid when Joel's on a call, as modules/calls counts
+# one, so wifid keeps the card on its access point through it
+# (src/main.rs says how). It's a crate of its own rather than one of
+# wifid's workspace, so wifid's daemon never builds what counts a call.
+[package]
+name = "wifid-calls"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# What counts as a call, kept in one place for everything that asks.
+calls = { path = "../../calls" }
+serde_json = "1.0"
+
+[dev-dependencies]
+tempfile = "3.27"

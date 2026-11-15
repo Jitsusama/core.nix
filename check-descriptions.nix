@@ -4809,6 +4809,13 @@
     terminal's show walked into it; never open on another place, at home or on another's find,
     and at once on stepping in
   '';
+  wifid-calls-passes-clippy = ''
+    clippy finds nothing in what tells wifid of calls, or its tests
+  '';
+  wifid-calls-tells-wifid = ''
+    what tells wifid of calls says nothing is on at its start, then a change or a call still on a
+    minute later, as exactly a calling act wifid's rows socket takes, and says a refusal as it is
+  '';
   wifid-passes-clippy = ''
     clippy finds nothing in wifid, its sign-in window or their tests
   '';
