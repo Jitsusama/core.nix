@@ -61,9 +61,24 @@ pub fn choose(
     call: bool,
 ) {
     let known = known(lately, learned, now, hour);
-    if let Some(to) = chosen(chooser, now, (on, measured), around, &known, call) {
-        tokio::spawn(roam(asks.clone(), air.clone(), on.card.clone(), to));
+    match chosen(chooser, now, (on, measured), around, &known, call) {
+        Some(Next::Move(to)) => {
+            tokio::spawn(roam(asks.clone(), air.clone(), on.card.clone(), to));
+        }
+        Some(Next::Look) => {
+            tokio::spawn(look(asks.clone(), on.card.clone()));
+        }
+        None => {}
     }
+}
+
+/// What a card does next, where it doesn't stay as it is.
+#[derive(Debug, PartialEq)]
+enum Next {
+    /// Moves to this access point.
+    Move(String),
+    /// Looks for another of its network.
+    Look,
 }
 
 /// Asks a card's chooser where it should be, from what it's on carried and
@@ -75,7 +90,7 @@ fn chosen(
     around: &[Heard],
     known: &Known<'_>,
     call: bool,
-) -> Option<String> {
+) -> Option<Next> {
     let here = around.iter().find(|heard| heard.bssid == on.point)?;
     let (others, whence): (Vec<Other>, Vec<Option<Whence>>) = around
         .iter()
@@ -100,15 +115,37 @@ fn chosen(
             let at = others.iter().position(|other| other.point == to)?;
             let why = tried(on, (measured, here.frequency), &others[at], whence[at]);
             println!("<6>{why}");
-            Some(to)
+            Some(Next::Move(to))
         }
         Choice::Back(to) => {
             println!(
                 "<6>{} goes back to {to}, as {} carried worse",
                 on.card, on.point
             );
-            Some(to)
+            Some(Next::Move(to))
         }
+        Choice::Look => {
+            println!(
+                "<6>{} looks for another access point, as {} carried {} at p95 with {:.1}% \
+                 lost, and it hears no other of its network",
+                on.card,
+                on.point,
+                measure::ms(measured.p95),
+                measured.lost
+            );
+            Some(Next::Look)
+        }
+    }
+}
+
+/// Has every card look, for the chooser to choose from what it hears on
+/// the minute after. wpa_supplicant forgets an access point it hasn't
+/// heard for 3 minutes, and nothing else looks while a card is on its
+/// network, so on 15 Nov 2026 a card on one carrying 44 to 52 ms at p95
+/// heard no other, though one 15 minutes before had carried 15.
+async fn look(asks: mpsc::Sender<Ask>, card: String) {
+    if let Err(refused) = acts::look(&asks).await {
+        eprintln!("<4>{card} couldn't look for another access point: {refused:?}");
     }
 }
 
@@ -331,7 +368,11 @@ mod tests {
             false,
         );
 
-        assert_eq!(to.as_deref(), Some(HALL), "the hall's 5 GHz is heard well");
+        assert_eq!(
+            to,
+            Some(Next::Move(HALL.into())),
+            "the hall's 5 GHz is heard well"
+        );
     }
 
     #[test]
@@ -351,7 +392,31 @@ mod tests {
             false,
         );
 
-        assert_eq!(to.as_deref(), Some(HALL), "10 ms learned beats 30 ms now");
+        assert_eq!(
+            to,
+            Some(Next::Move(HALL.into())),
+            "10 ms learned beats 30 ms now"
+        );
+    }
+
+    #[test]
+    fn a_card_carrying_badly_and_hearing_no_other_looks() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = Learned::kept_in(&dir.path().join("carried"));
+        let (lately, now) = (Measures::default(), Instant::now());
+        let around = [heard(DESK, -50)];
+        let known = known(&lately, &learned, now, 20);
+
+        let next = chosen(
+            &mut Chooser::default(),
+            now,
+            (&joined(DESK), &carried(52)),
+            &around,
+            &known,
+            false,
+        );
+
+        assert_eq!(next, Some(Next::Look), "52 ms with nothing else heard");
     }
 
     #[test]
