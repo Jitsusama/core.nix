@@ -80,8 +80,48 @@ pub struct Crowded {
 /// another has room; none when the answer doesn't parse.
 #[must_use]
 pub fn crowded(answer: &str) -> Vec<Crowded> {
-    let _ = answer;
-    Vec::new()
+    let Ok(said) = serde_json::from_str::<serde_json::Value>(answer) else {
+        return Vec::new();
+    };
+    let machines = said["Ok"]["Machines"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let words = |list: &serde_json::Value| -> Vec<String> {
+        list.as_array()
+            .map(|list| {
+                list.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let takes = |room: &serde_json::Value| {
+        ["builds", "vm_tests"]
+            .iter()
+            .any(|work| room["takes"][work].as_u64().is_some_and(|n| n > 0))
+    };
+    let roomy: Vec<String> = machines
+        .iter()
+        .filter(|m| m["room"]["over"].is_array() && words(&m["room"]["over"]).is_empty())
+        .filter(|m| takes(&m["room"]))
+        .filter_map(|m| m["name"].as_str().map(str::to_owned))
+        .collect();
+    if roomy.is_empty() {
+        return Vec::new();
+    }
+    machines
+        .iter()
+        .filter_map(|m| {
+            let over = words(&m["room"]["over"]);
+            (!over.is_empty()).then(|| Crowded {
+                machine: m["name"].as_str().unwrap_or_default().to_owned(),
+                over,
+                roomy: roomy.clone(),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -135,7 +175,11 @@ mod tests {
             [],
             "a machine was named crowded with no other machine having room"
         );
-        assert_eq!(crowded("not json"), [], "an answer that doesn't parse named one");
+        assert_eq!(
+            crowded("not json"),
+            [],
+            "an answer that doesn't parse named one"
+        );
     }
 
     #[test]
