@@ -368,5 +368,16 @@
       "test_sessions_reopened_while_their_screen_is_gone_go_to_it_once_its_back"
     ],
     "test": "vm-screens-keep-places"
+  },
+  {
+    "at": 1794778737,
+    "commit": "ad0c40d729464a572cf020fd38e3594708a626dc",
+    "due": "2026-11-17",
+    "owner_pr": 4839,
+    "reason": "failed, then passed, at ad0c40d72946",
+    "subtests": [
+      "test_a_closed_launcher_makes_nothing_of_the_machine_queue"
+    ],
+    "test": "vm-desktop-launcher-draws-still"
   }
 ]
