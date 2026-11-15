@@ -144,7 +144,6 @@
     "exits"
     "helps"
   ];
-  shaper = [ "tables" ];
   shell-preview = [
     "kit"
     "exits"
