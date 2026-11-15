@@ -4,6 +4,7 @@
 # copy of; a machine's own build, handed none, runs none, as
 # passwords-holds-no-secret runs them.
 {
+  git,
   lib,
   openssh,
   rustPlatform,
@@ -35,6 +36,9 @@ rustPlatform.buildRustPackage {
   sourceRoot = "source/passwords";
   cargoLock.lockFile = ./Cargo.lock;
   doCheck = words != null;
+  # The asks' tests make git trees to ask from, and hand the daemon the
+  # store's git by its whole path, as a machine hands it.
+  nativeCheckInputs = [ git ];
   # `passwords keys` lists 1Password's SSH agent's keys with these, named
   # as it's built so it never runs whichever an account's PATH finds first.
   env = {
