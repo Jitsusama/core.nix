@@ -172,6 +172,17 @@ in
         its `main`. Nothing is fetched; the main is read as it stands.
       '';
     };
+    path = lib.mkOption {
+      type = lib.types.listOf (lib.types.either lib.types.package lib.types.str);
+      default = [ ];
+      description = ''
+        Programs the hour finds first on its PATH, ahead of the git core
+        gives it, for a checkout only a machine's own git reads, such as
+        one whose repository needs an extension stock git refuses: packages,
+        or the folders of profiles kept outside the store, each of whose
+        bin is searched.
+      '';
+    };
     revive = {
       restart = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
@@ -358,13 +369,17 @@ in
           )
         );
         # git for the three mains, and journalctl for update-to-main's
-        # looks at them, as the axes read them.
+        # looks at them, as the axes read them. A machine's own git comes
+        # first, for a checkout stock git refuses to open.
         Environment = [
           "PATH=${
-            lib.makeBinPath [
-              pkgs.git
-              pkgs.systemd
-            ]
+            lib.makeBinPath (
+              cfg.path
+              ++ [
+                pkgs.git
+                pkgs.systemd
+              ]
+            )
           }"
         ];
         Slice = "background.slice";
