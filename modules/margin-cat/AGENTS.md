@@ -103,7 +103,14 @@ Joel, 2026-11-13, by WCJQSG: "the cat should always be moving from where it
 is to where my focus shifts, in a believable and adorable way. the windows
 are the walls and roofs it is climbing or jumping off of"
 
+A gap's leap is an arc that reads at 60 Hz: a cat in flight holds each pose for a third
+of the way, and the arc is what moves (VKCF3Z, 2026-11-15, 5f8bf9e9 and 69bb37d0).
+
 - Held by `margin-cat.qml`: "across a gap between columns it crouches, leaps and lands"
+- Held by `margin-cat.qml`: "seen in at least 7 frames at 60 Hz, and quick as a leap"
+- Held by `margin-cat.qml`: "rising as it stretches, held at the top tucked, falling as it
+  reaches"
+- Held by `margin-cat.qml`: "on a ledge under a row, no higher than the row's bottom"
 - Held by `margin-cat.qml`: "to a window under another it goes down a side and leaps the gap to it"
 - Held by `margin-cat.qml`: "windows come, it climbs to its seat by an edge, never up a face"
 - Held by `margin-cat-journeys.qml`: "each ends on its seat, every frame of it a cat's"

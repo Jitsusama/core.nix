@@ -14,6 +14,10 @@ const GRAVITY = 400;
 const FALLS_AT_MOST = 54;
 // The shortest a leap may last, so even a small one is seen.
 const LEAPS_AT_LEAST = 160;
+// A leap across a gap: the fewest cells it rises, and the least and most
+// it lasts in ms, so it shows in seven frames at 60 Hz and still reads as
+// a leap (VKCF3Z, 69bb37d0).
+const ACROSS = { rises: 2, ms: [120, 160] };
 // The shortest a pose may show, in ms: two frames at 60 Hz, so no drawing
 // flashes for one.
 const SHOWN = 33;
@@ -89,6 +93,23 @@ function leap(way, to, rises, name) {
     const top = highest - rises * way.at.cell;
     const apex = highest >= 0 ? Math.max(0, top) : top;
     leg(way, "leaps", to, { name: name ?? "leaps", apex, pose: "leaping" });
+}
+
+// A leap across a gap to `to`, a beat named `name` or leaps: as high as a
+// third of the ground it crosses and never under ACROSS.rises cells, held
+// to the screen as every leap is and to the `ceiling`, the bottom of any
+// window over it, so on a ledge under a row it never rises into the row
+// above; and quick, ACROSS.ms long. It goes by
+// thirds, as a cat in flight holds its pose and only its arc moves: up
+// in its stretched drawing, slowing; held at the top tucked; and down
+// reaching, gathering speed (VKCF3Z, 69bb37d0: "a cat in flight holds
+// its pose ... what has to read is the arc").
+function across(way, to, name, ceiling) {
+    const crossed = Math.abs(to.x - way.x) / way.at.cell;
+    leap(way, to, Math.max(ACROSS.rises, crossed / 3), name);
+    const one = way.legs[way.legs.length - 1];
+    one.apex = Math.min(Math.max(one.apex, ceiling ?? -Infinity), Math.min(one.from.y, to.y));
+    one.thirds = true;
 }
 
 // Straight down to `to`, gathering speed as a thing dropped does, up to
@@ -214,6 +235,11 @@ function lasts(one, pace, at) {
     const ground = Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y);
     if (one.kind === "falls") {
         return one.ms;
+    }
+    if (one.kind === "leaps" && one.thirds) {
+        const fall = from => Math.sqrt((2 * Math.max(0, from - one.apex)) / at.cell / GRAVITY);
+        const ms = (fall(one.from.y) + fall(one.to.y)) * MarginCat.MS;
+        return Math.min(ACROSS.ms[1], Math.max(ACROSS.ms[0], ms));
     }
     if (one.kind === "leaps") {
         const fall = from => Math.sqrt((2 * Math.max(0, from - one.apex)) / at.cell / GRAVITY);
@@ -418,7 +444,15 @@ function placed(route, beat, t) {
     const x = from.x + (to.x - from.x) * s;
     let y = from.y + (to.y - from.y) * s;
     let leaps = null;
-    if (beat.kind === "leaps") {
+    if (beat.kind === "leaps" && beat.thirds) {
+        // Up to its apex over the first third, slowing as a thing thrown
+        // does, held there through the second, and down over the last.
+        const third = Math.min(2, Math.floor(p * 3));
+        const q = p * 3 - third;
+        y = third === 0 ? from.y - (from.y - beat.apex) * (1 - (1 - q) * (1 - q))
+            : third === 1 ? beat.apex : beat.apex + (to.y - beat.apex) * q * q;
+        leaps = ["leaping", "tucked", "falling"][third];
+    } else if (beat.kind === "leaps") {
         // A parabola through both ends and its apex, as a thing thrown.
         const rise = Math.sqrt(Math.max(0, from.y - beat.apex));
         const fall = Math.sqrt(Math.max(0, to.y - beat.apex));

@@ -19,10 +19,8 @@
 .import "MarginCatFalls.js" as Falls
 .import "MarginCatFloats.js" as Floats
 
-// How high it hops over a gap between columns, in its cells, where the
-// margin above has room; and how far above the higher end any other leap
-// rises.
-const HOPS = 1.5;
+// How far above the higher end a leap rises, in its cells, but one across
+// a gap between columns (Ways.across).
 const RISES = 1;
 // At the marks: how long it bats the first before it hops on, and how
 // long it perches crouched on each, about PERCHES and never the same
@@ -128,6 +126,26 @@ function perches(way, dir, onto, from) {
     }
 }
 
+// The bottom of the lowest window of `cols` over a leap from `from` to
+// `to`, `wide` across, which its arc mustn't rise into; or none.
+function ceiling(cols, from, to, wide) {
+    const low = Math.min(from.x, to.x);
+    const high = Math.max(from.x, to.x) + wide;
+    const under = Math.min(from.y, to.y);
+    let bottom = -Infinity;
+    for (const column of cols ?? []) {
+        if (column.right <= low || column.left >= high) {
+            continue;
+        }
+        for (const row of column.rows) {
+            if (row.bottom <= under + 1e-6) {
+                bottom = Math.max(bottom, row.bottom);
+            }
+        }
+    }
+    return bottom;
+}
+
 // Along the tops of `cols` from where it is to `x`: each gap between two
 // columns it passes is leapt, a crouch before and after, and the `lit`
 // marks (marks()) are hopped across (perches()).
@@ -183,7 +201,7 @@ function along(way, x, cols, lit) {
         Ways.goes(way, stop.at, ground(stop.at));
         if (stop.kind === "leaps") {
             holds(way, "crouches", MarginCat.CROUCHES);
-            Ways.leap(way, stop.to, HOPS);
+            Ways.across(way, stop.to, undefined, ceiling(cols, way, stop.to, at.wide));
             holds(way, "lands", MarginCat.LANDS);
         } else {
             perches(way, dir, past => ({ x: past, y: ground(past) }));
@@ -258,8 +276,11 @@ function follows(way, stops, now, lit) {
                 holds(way, "crouches", MarginCat.CROUCHES);
             }
             way.turn = 0;
-            Ways.leap(way, onto, stop.how === "leaps" ? HOPS : RISES / (stop.how === "hops" ? 2 : 1),
-                stop.how);
+            if (stop.how === "leaps") {
+                Ways.across(way, onto, stop.how, ceiling(now, way, onto, way.at.wide));
+            } else {
+                Ways.leap(way, onto, RISES / (stop.how === "hops" ? 2 : 1), stop.how);
+            }
             holds(way, "lands", MarginCat.LANDS);
         }
         was = stop;
