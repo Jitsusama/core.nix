@@ -2,7 +2,9 @@
 // it says it on, as a QML singleton, so the launcher can time a key from
 // its press to its frame. QML's KeyEvent carries no time, and QML's
 // JavaScript has only the realtime clock, so neither is reachable from the
-// shell's own code. keytimes.cpp says how the times are read.
+// shell's own code. Beside them, how long the shell's thread has run and
+// waited for a CPU, which neither reaches either. keytimes.cpp says how the
+// times are read.
 #pragma once
 
 #include <QObject>

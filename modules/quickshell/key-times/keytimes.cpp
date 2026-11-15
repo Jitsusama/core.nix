@@ -29,7 +29,10 @@
 #include <QInputEvent>
 #include <QMetaObject>
 #include <cstdint>
+#include <cstdio>
 #include <ctime>
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace {
 
@@ -49,9 +52,32 @@ double KeyTimes::pressed() const { return handling; }
 
 double KeyTimes::now() const { return monotonicNow(); }
 
-double KeyTimes::ran() const { return 0; }
+double KeyTimes::ran() const {
+    timespec ran{};
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ran);
+    return static_cast<double>(ran.tv_sec) * 1000.0 + static_cast<double>(ran.tv_nsec) / 1e6;
+}
 
-double KeyTimes::waited() const { return 0; }
+// The kernel's schedstat for the thread reading it: nanoseconds run,
+// nanoseconds waited on a run queue, and slices run. It's read afresh
+// each time, a few microseconds, since a file kept open would answer for
+// the thread that opened it.
+double KeyTimes::waited() const {
+    const int file = open("/proc/thread-self/schedstat", O_RDONLY | O_CLOEXEC);
+    if (file < 0)
+        return 0;
+    char text[96];
+    const ssize_t got = read(file, text, sizeof text - 1);
+    close(file);
+    if (got <= 0)
+        return 0;
+    text[got] = '\0';
+    unsigned long long ran = 0;
+    unsigned long long waited = 0;
+    if (std::sscanf(text, "%llu %llu", &ran, &waited) != 2)
+        return 0;
+    return static_cast<double>(waited) / 1e6;
+}
 
 bool KeyTimes::eventFilter(QObject *watched, QEvent *event) {
     const auto type = event->type();
