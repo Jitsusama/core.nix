@@ -153,7 +153,7 @@ fn pages(agent: &Agent, address: &str) -> Result<Pages, String> {
                 }
             })
             .map(|text| ((*page).to_owned(), text))
-            .map_err(|why| format!("its {page} page didn't answer: {why}"))
+            .map_err(|why| format!("its {} page didn't answer: {why}", switch::plainly(page)))
         })
         .collect()
 }
@@ -419,7 +419,7 @@ mod tests {
         assert_eq!(report.state, SourceState::Unreachable);
         assert_eq!(
             report.reason.as_deref(),
-            Some("its SystemInfoRpm page didn't answer: it refused the connection")
+            Some("its System Info page didn't answer: it refused the connection")
         );
         let written = serde_json::to_string(&report).expect("it writes");
         assert!(
