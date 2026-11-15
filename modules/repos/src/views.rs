@@ -12,7 +12,7 @@ use terminal_kit::layout::{self, Align, ITEMS, Room};
 use terminal_kit::{Exit, Failure, Pen, flags, time};
 
 use repos::github::Seen;
-use repos::model::{Change, ChecksState, Head, Record, Repository, Review, Tree};
+use repos::model::{Change, ChecksState, Head, Record, Repository, Review, Through, Tree};
 use repos::read;
 use repos::when::Clock;
 
@@ -129,6 +129,16 @@ fn change_census(changes: &[Change]) -> String {
         }
     }
     said.join(ITEMS)
+}
+
+/// A repository's changes as a page counts them, and the way they were
+/// read where it isn't the App's, as most are: `3 open · through gh's
+/// sign-in`.
+fn with_way(census: String, repository: &Repository) -> String {
+    match repository.read_through {
+        Some(Through::Gh) => format!("{census}{ITEMS}through gh's sign-in"),
+        Some(Through::App) | None => census,
+    }
 }
 
 /// Why GitHub couldn't read a repository, where it couldn't.
@@ -387,7 +397,7 @@ pub fn repository(
     let checkouts = repository.checkouts.len().to_string();
     let census = tree_census(&trees);
     let changes = match (repository.changes.is_empty(), unread(record, repository)) {
-        (false, _) => Some(change_census(&repository.changes)),
+        (false, _) => Some(with_way(change_census(&repository.changes), repository)),
         (true, Some(why)) => Some(why.to_owned()),
         (true, None) => None,
     };
@@ -475,10 +485,10 @@ pub fn changes(
     room: Room,
 ) -> String {
     let census = match (repository.changes.is_empty(), unread(record, repository)) {
-        (false, _) => change_census(&repository.changes),
+        (false, _) => with_way(change_census(&repository.changes), repository),
         (true, Some(why)) => why.to_owned(),
         (true, None) if record.sources.iter().any(|source| source.name == "github") => {
-            "none open".to_owned()
+            with_way("none open".to_owned(), repository)
         }
         (true, None) => "no source has read its changes: repos refresh".to_owned(),
     };
@@ -627,6 +637,7 @@ pub fn changes_json(record: &Record, repository: &Repository) -> Value {
         "read_at": github.and_then(|github| github.read_at),
         "machine": record.machine,
         "key": repository.key,
+        "read_through": repository.read_through,
         "unread": unread(record, repository),
         "changes": repository.changes,
     }))

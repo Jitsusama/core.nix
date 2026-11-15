@@ -13,9 +13,12 @@
 //! Git's own files are read each time. GitHub, read for each repository's
 //! open changes and their checks, is a source beside them, asked by a
 //! refresh on a timer and merged in (github.rs), keeping its own words in
-//! a section of its own, as net's sources do.
+//! a section of its own, as net's sources do. It's asked through the
+//! machine's GitHub App, and through gh's sign-in for the few repositories
+//! a machine lists that the App can't see (gh.rs).
 
 pub mod broker;
+pub mod gh;
 pub mod github;
 pub mod keys;
 pub mod model;

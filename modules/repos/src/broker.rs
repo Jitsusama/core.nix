@@ -9,12 +9,14 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::Duration;
 
+use crate::github::Token;
+
 /// How long the broker has to answer: minting asks GitHub, which can take
 /// a few seconds, and a refresh on a timer can wait for it.
 const PATIENCE: Duration = Duration::from_secs(40);
 
 /// A token from the broker at `socket`, or why there's none.
-pub fn token(socket: &Path) -> Result<String, String> {
+pub fn token(socket: &Path) -> Result<Token, String> {
     let caller = UnixStream::connect(socket)
         .map_err(|why| format!("no GitHub broker answers at {}: {why}", socket.display()))?;
     caller
@@ -30,7 +32,7 @@ pub fn token(socket: &Path) -> Result<String, String> {
     let said = said.trim_end();
     match said.split_once(' ') {
         Some(("ok", rest)) => match rest.split_once(' ') {
-            Some((token, _lapses)) if !token.is_empty() => Ok(token.to_owned()),
+            Some((token, _lapses)) if !token.is_empty() => Ok(Token::new(token.to_owned())),
             _ => Err(format!("the GitHub broker answered half a token: {rest}")),
         },
         Some(("no", why)) => Err(format!("the GitHub broker gave no token: {why}")),
@@ -68,7 +70,10 @@ mod tests {
     #[test]
     fn the_broker_s_token_is_taken_without_when_it_lapses() {
         let (socket, asked) = broker("ok", "ok ghs_stand-in 2026-11-15T16:00:00Z\n");
-        assert_eq!(token(&socket), Ok("ghs_stand-in".to_owned()));
+        assert_eq!(
+            token(&socket).map(|token| token.header()),
+            Ok("bearer ghs_stand-in".to_owned())
+        );
         assert_eq!(asked.join().expect("the stand-in ends"), "token\n");
     }
 
@@ -76,8 +81,8 @@ mod tests {
     fn a_broker_refusing_says_why() {
         let (socket, _) = broker("no", "no the App isn't installed\n");
         assert_eq!(
-            token(&socket),
-            Err("the GitHub broker gave no token: the App isn't installed".to_owned())
+            token(&socket).err(),
+            Some("the GitHub broker gave no token: the App isn't installed".to_owned())
         );
     }
 

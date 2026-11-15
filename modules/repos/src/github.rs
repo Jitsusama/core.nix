@@ -5,17 +5,23 @@
 //! so a reading stays as quick as the disk and says how old GitHub's part
 //! is rather than waiting on it.
 //!
-//! GitHub is asked only through the machine's GitHub App, whose token can
-//! read and do nothing else. A repository it isn't installed on answers as
-//! one that isn't there, and is said to be unread rather than asked again
-//! another way.
+//! GitHub is asked through the machine's GitHub App, whose token can read
+//! and do nothing else. A repository it isn't installed on answers as one
+//! that isn't there, and is said to be not readable here rather than asked
+//! again another way, unless the machine lists it to be read through gh's
+//! sign-in (gh.rs). That token reads all its person can, so whichever way
+//! is asked, only `GRAPHQL` is, with a query and nothing that writes,
+//! following no redirect, and the token leaves only in a header.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::{self, Write};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::model::{Change, Checks, ChecksState, GitHubChange, Record, Review, Source};
+use crate::model::{Change, Checks, ChecksState, GitHubChange, Record, Review, Source, Through};
 use crate::when;
 
 /// The schema of what a refresh saw, which a reading checks before
@@ -47,6 +53,8 @@ pub struct Seen {
     /// each opening with the repository's key where it's one.
     #[serde(default)]
     pub unread: Vec<String>,
+    #[serde(default)]
+    pub through: BTreeMap<String, Through>,
 }
 
 /// A repository to ask GitHub after: its key on the disk, and the owner
@@ -119,7 +127,11 @@ fn quoted(text: &str) -> String {
 
 /// What GitHub's answer to `query(asked)` says: each repository's open
 /// changes by its key on the disk, and why any couldn't be read.
-pub fn parse(answer: &Value, asked: &[Asked]) -> (BTreeMap<String, Vec<Change>>, Vec<String>) {
+pub fn parse(
+    answer: &Value,
+    asked: &[Asked],
+    through: Through,
+) -> (BTreeMap<String, Vec<Change>>, Vec<String>) {
     let mut changes = BTreeMap::new();
     let mut unread = Vec::new();
     let mut said = BTreeSet::new();
@@ -132,7 +144,7 @@ pub fn parse(answer: &Value, asked: &[Asked]) -> (BTreeMap<String, Vec<Change>>,
             .and_then(|at| asked.get(at));
         match one {
             Some(one) if said.insert(one.key.clone()) => {
-                unread.push(format!("{}: {}", one.key, unseen(error, why)));
+                unread.push(format!("{}: {}", one.key, unseen(error, why, through)));
             }
             Some(_) => {}
             None => unread.push(format!("GitHub: {why}")),
@@ -160,12 +172,17 @@ pub fn parse(answer: &Value, asked: &[Asked]) -> (BTreeMap<String, Vec<Change>>,
 }
 
 /// Why GitHub couldn't see a repository, said for a person: one the App
-/// isn't installed on answers as one that isn't there.
-fn unseen(error: &Value, why: &str) -> String {
+/// isn't installed on, or a sign-in can't read, answers as one that isn't
+/// there.
+fn unseen(error: &Value, why: &str, through: Through) -> String {
+    let asker = match through {
+        Through::App => "GitHub's App",
+        Through::Gh => "gh's sign-in",
+    };
     if error["type"].as_str() == Some("NOT_FOUND") {
-        "GitHub's App can't see it, or it's gone".to_owned()
+        format!("{UNREADABLE}: {asker} can't see it, or it's gone")
     } else {
-        why.to_owned()
+        format!("{UNREADABLE}: {why}")
     }
 }
 
@@ -276,57 +293,273 @@ pub fn refresh(
     now: u64,
     mut ask: impl FnMut(&str) -> Result<Value, String>,
 ) -> Result<Seen, String> {
-    let mut seen = Seen {
-        schema: SCHEMA.to_owned(),
-        read_at: now,
-        changes: BTreeMap::new(),
-        unread: Vec::new(),
-    };
+    let mut seen = Seen::new(now);
     for some in asked.chunks(PER_QUERY) {
-        let answer = ask(&query(some))?;
-        if !answer["data"].is_object() {
-            let why = answer["errors"][0]["message"].as_str();
-            return Err(format!(
-                "GitHub answered no data: {}",
-                why.unwrap_or("no reason given")
-            ));
-        }
-        let (changes, unread) = parse(&answer, some);
-        seen.changes.extend(changes);
-        seen.unread.extend(unread);
+        let answer = data(ask(&query(some))?)?;
+        seen.read(&answer, some, Through::App);
     }
     Ok(seen)
 }
 
-/// GitHub's answer to `query`, asked with `token`. Only the command asks,
-/// so a crate reading repositories through the library leaves the HTTP
-/// side out with the `github` feature.
+/// How many repositories one query through gh's sign-in asks after: one,
+/// since those it's listed for are few and some are busy enough that
+/// GitHub gives up on several of them in one query.
+const GH_PER_QUERY: usize = 1;
+
+/// What GitHub says of each of `asked` through gh's sign-in, which only a
+/// machine's own list sends this way. A sign-in gh lacks, or one GitHub
+/// refuses, is said for each of them as not readable here, and nothing
+/// more is asked: not again, since a refusal stays one until a person
+/// signs in, and not another way, since the App already can't see them.
+/// Any other failure is said for the one it was asked after alone.
+pub fn refresh_through_gh(
+    asked: &[Asked],
+    now: u64,
+    token: impl FnOnce() -> Result<Token, String>,
+    mut ask: impl FnMut(&Token, &str) -> Result<Value, Failed>,
+) -> Seen {
+    let mut seen = Seen::new(now);
+    if asked.is_empty() {
+        return seen;
+    }
+    let token = match token() {
+        Ok(token) => token,
+        Err(why) => {
+            seen.unreadable(asked, &why);
+            return seen;
+        }
+    };
+    for (at, some) in asked.chunks(GH_PER_QUERY).enumerate() {
+        match ask(&token, &query(some)).and_then(|answer| Ok(data(answer)?)) {
+            Ok(answer) => seen.read(&answer, some, Through::Gh),
+            Err(failed) if failed.refused => {
+                seen.unreadable(&asked[at * GH_PER_QUERY..], &failed.why);
+                break;
+            }
+            Err(failed) => seen.unreadable(some, &failed.why),
+        }
+    }
+    seen
+}
+
+/// Why asking GitHub gave nothing: refused where the asking itself was
+/// turned away, as a token GitHub won't take, which asking again can't
+/// mend until a person does something.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Failed {
+    pub why: String,
+    pub refused: bool,
+}
+
+impl Failed {
+    fn refused(why: String) -> Self {
+        Self { why, refused: true }
+    }
+}
+
+impl From<String> for Failed {
+    fn from(why: String) -> Self {
+        Self {
+            why,
+            refused: false,
+        }
+    }
+}
+
+/// An answer holding data, or why GitHub gave none.
+fn data(answer: Value) -> Result<Value, String> {
+    if answer["data"].is_object() {
+        return Ok(answer);
+    }
+    let why = answer["errors"][0]["message"].as_str();
+    Err(format!(
+        "GitHub answered no data: {}",
+        why.unwrap_or("no reason given")
+    ))
+}
+
+impl Seen {
+    /// Nothing seen yet, by a refresh asking at `now`.
+    pub fn new(now: u64) -> Self {
+        Self {
+            schema: SCHEMA.to_owned(),
+            read_at: now,
+            changes: BTreeMap::new(),
+            unread: Vec::new(),
+            through: BTreeMap::new(),
+        }
+    }
+
+    /// What another way of asking saw, beside this one's.
+    pub fn add(&mut self, other: Seen) {
+        self.changes.extend(other.changes);
+        self.unread.extend(other.unread);
+        self.through.extend(other.through);
+    }
+
+    fn read(&mut self, answer: &Value, asked: &[Asked], through: Through) {
+        let (changes, unread) = parse(answer, asked, through);
+        self.through
+            .extend(changes.keys().map(|key| (key.clone(), through)));
+        self.changes.extend(changes);
+        self.unread.extend(unread);
+    }
+
+    fn unreadable(&mut self, asked: &[Asked], why: &str) {
+        self.unread.extend(
+            asked
+                .iter()
+                .map(|one| format!("{}: {UNREADABLE}: {why}", one.key)),
+        );
+    }
+}
+
+/// How a repository no way could read is said, wherever it's shown.
+pub const UNREADABLE: &str = "not readable here";
+
+/// A token GitHub is asked with, from the broker or gh. It says nothing
+/// of itself where it's printed, and leaves only as a request's header.
+pub struct Token(String);
+
+impl Token {
+    pub(crate) fn new(secret: String) -> Self {
+        Self(secret)
+    }
+
+    /// The header a request carries it in, built only where it's sent.
+    pub fn header(&self) -> String {
+        format!("bearer {}", self.0)
+    }
+}
+
+impl std::fmt::Debug for Token {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("Token(not shown)")
+    }
+}
+
+/// Where GitHub is asked, and the only place a token is sent.
+pub const GRAPHQL: &str = "https://api.github.com/graphql";
+
+/// Whether `document` only reads: one query, holding no mutation or
+/// subscription anywhere outside its strings and comments, so a name a
+/// repository goes by can't make it write.
+pub fn reads_only(document: &str) -> Result<(), String> {
+    let mut words: Vec<String> = vec![String::new()];
+    let mut chars = document.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                let mut escaped = false;
+                for c in chars.by_ref() {
+                    if c == '"' && !escaped {
+                        break;
+                    }
+                    escaped = c == '\\' && !escaped;
+                }
+                words.push(String::new());
+            }
+            '#' => {
+                chars.by_ref().find(|&c| c == '\n');
+                words.push(String::new());
+            }
+            c if c.is_alphanumeric() || c == '_' => words.last_mut().into_iter().for_each(|w| {
+                w.push(c);
+            }),
+            _ => words.push(String::new()),
+        }
+    }
+    let words: Vec<&str> = words
+        .iter()
+        .map(String::as_str)
+        .filter(|word| !word.is_empty())
+        .collect();
+    let writes = |word: &&str| matches!(*word, "mutation" | "subscription");
+    if words.first() == Some(&"query") && !words.iter().any(writes) {
+        Ok(())
+    } else {
+        Err("repos sends GitHub one query, nothing that writes or listens".to_owned())
+    }
+}
+
+/// GitHub's answer to `query`, asked with `token`, once `endpoint` is
+/// GitHub's and `query` only reads; anything else is refused before the
+/// token's header is built. Only the command asks, so a crate reading
+/// repositories through the library leaves the HTTP side out with the
+/// `github` feature.
 #[cfg(feature = "github")]
-pub fn post(token: &str, query: &str) -> Result<Value, String> {
+pub fn post(endpoint: &str, token: &Token, query: &str) -> Result<Value, Failed> {
+    if endpoint != GRAPHQL {
+        return Err(Failed::refused(format!(
+            "repos asks only {GRAPHQL}, not {endpoint}"
+        )));
+    }
+    reads_only(query).map_err(Failed::refused)?;
+    send(endpoint, token, query)
+}
+
+/// The keeping of what a refresh saw at `file`, written whole through a
+/// file beside it and renamed over it, so a reading never finds half of
+/// one, and readable by its owner alone, since it names private changes.
+pub fn keep(file: &Path, seen: &Seen) -> io::Result<()> {
+    if let Some(folder) = file.parent() {
+        std::fs::create_dir_all(folder)?;
+    }
+    let beside = file.with_extension(format!("json.{}", std::process::id()));
+    let mut written = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&beside)?;
+    written.write_all(&serde_json::to_vec(seen).map_err(io::Error::other)?)?;
+    written.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    std::fs::rename(&beside, file)
+}
+
+/// GitHub's answer to `query` at `endpoint`, asked with `token`. A
+/// redirect is answered, never followed, so the token goes nowhere else.
+#[cfg(feature = "github")]
+fn send(endpoint: &str, token: &Token, query: &str) -> Result<Value, Failed> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .http_status_as_error(false)
+        .max_redirects(0)
         .timeout_global(Some(std::time::Duration::from_secs(60)))
         .user_agent("repos")
         .build()
         .into();
     let body = serde_json::json!({ "query": query }).to_string();
     let mut answer = agent
-        .post("https://api.github.com/graphql")
-        .header("Authorization", format!("bearer {token}"))
+        .post(endpoint)
+        .header("Authorization", token.header())
         .content_type("application/json")
         .send(body)
         .map_err(|why| format!("can't reach GitHub: {why}"))?;
     let status = answer.status();
+    if status.is_redirection() {
+        return Err(Failed::refused(format!(
+            "GitHub answered with a redirect ({}), which repos doesn't follow",
+            status.as_u16()
+        )));
+    }
     let text = answer
         .body_mut()
         .read_to_string()
         .map_err(|why| format!("GitHub's answer didn't arrive whole: {why}"))?;
     let said: Value = serde_json::from_str(&text).unwrap_or_default();
-    if status.as_u16() != 200 {
-        let why = said["message"].as_str().unwrap_or("no reason given");
-        return Err(format!("GitHub refused the query ({status}): {why}"));
+    let why = said["message"]
+        .as_str()
+        .map_or_else(String::new, |why| format!(": {why}"));
+    match status.as_u16() {
+        200 => Ok(said),
+        401 | 403 => Err(Failed::refused(format!(
+            "GitHub refused the sign-in ({status}){why}"
+        ))),
+        _ if status.is_server_error() => {
+            Err(format!("GitHub gave up on the query ({status}){why}").into())
+        }
+        _ => Err(format!("GitHub refused the query ({status}){why}").into()),
     }
-    Ok(said)
 }
 
 /// The record with what a refresh saw of GitHub: each repository's open
@@ -337,15 +570,35 @@ pub fn merge(record: &mut Record, seen: &Seen) {
     for repository in &mut record.repositories {
         if let Some(changes) = seen.changes.get(&repository.key) {
             repository.changes.clone_from(changes);
+            // A refresh from before gh's sign-in was a way read through
+            // the App alone.
+            repository.read_through = Some(
+                seen.through
+                    .get(&repository.key)
+                    .copied()
+                    .unwrap_or(Through::App),
+            );
         }
     }
+    let by_gh = seen
+        .through
+        .values()
+        .filter(|&&way| way == Through::Gh)
+        .count();
+    let what = "each repository's open changes and their checks, through GitHub's App";
     record.sources.push(Source {
         name: "github".to_owned(),
-        what: "each repository's open changes and their checks, through GitHub's App".to_owned(),
+        what: match by_gh {
+            0 => what.to_owned(),
+            1 => format!("{what}, and gh's sign-in for one"),
+            many => format!("{what}, and gh's sign-in for {many}"),
+        },
         read_at: Some(seen.read_at),
         unread: seen.unread.clone(),
     });
 }
 
+#[cfg(test)]
+mod gh_tests;
 #[cfg(test)]
 mod tests;
