@@ -69,11 +69,6 @@
     "exits"
     "helps"
   ];
-  pi-agent-proxy = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   pi-carry = [ "helps" ];
   pi-keys = [
     "kit"

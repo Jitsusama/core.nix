@@ -1,19 +1,24 @@
 # The SSH agent a fenced pi command reaches, built from this folder, its
 # tests run as it builds (tests/agent_proxy.rs). It signs only logins to
-# the hosts it's told of, each proved by the session's own binding.
+# the hosts it's told of, each proved by the session's own binding. Its
+# command line takes its shape from the terminal kit, so the source is
+# cut from modules, holding both, and the build runs in this folder.
 { lib, rustPlatform }:
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "pi-agent-proxy";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../..;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
       ./tests
+      ../../terminal-kit/Cargo.toml
+      ../../terminal-kit/src
     ];
   };
+  sourceRoot = "${src.name}/pi/agent-proxy";
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
     description = "An SSH agent for pi's fenced commands that signs only logins to the hosts it's told of";

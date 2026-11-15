@@ -284,6 +284,7 @@
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
         passwords = pkgs.callPackage ../../modules/passwords/package.nix { };
         pause-for-calls = pkgs.callPackage ../../modules/spotify/pause-for-calls/package.nix { };
+        pi-agent-proxy = pkgs.callPackage ../../modules/pi/agent-proxy/package.nix { };
         pi-clipboard-door = clipboardDoor;
         pi-clipboard-shim = clipboardDoor;
         pi-fence-display = pkgs.callPackage ../../modules/pi/fence-display/package.nix { };

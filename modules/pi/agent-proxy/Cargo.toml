@@ -25,3 +25,5 @@ signature = "2"
 # The process on a client's end of the socket, for the session it
 # claims (src/peer.rs).
 libc = "0.2"
+# The shape every command of ours takes: its flags, help, errors and exits.
+terminal-kit = { path = "../../terminal-kit" }
