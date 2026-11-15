@@ -17,10 +17,10 @@ use crate::figures::{self, Side};
 use crate::memory;
 
 /// A head and a table, set apart by an empty line; a table with no rows
-/// says so instead.
-fn headed(head: String, table: Vec<String>, rows: usize) -> String {
+/// says instead, in its view's own words, what it found none of.
+fn headed(head: String, table: Vec<String>, rows: usize, none: &str) -> String {
     if rows == 0 {
-        return format!("{head}\nnothing said a warning\n");
+        return format!("{head}\n{none}\n");
     }
     layout::joined(vec![vec![head], table])
 }
@@ -60,7 +60,7 @@ fn the_dead_by_name(day: &Day, pen: &Pen, room: Room) -> String {
         })
         .collect();
     let table = layout::table_in(&DEAD, &rows, pen, room, &[3, 2]);
-    headed(head, table, rows.len())
+    headed(head, table, rows.len(), "no agent went without parking")
 }
 
 /// A moment's time, and its day when it isn't `date`.
@@ -163,7 +163,7 @@ pub fn asked(day: &Day, words: &str, pen: &Pen, room: Room) -> String {
             .map(|(name, thing)| vec![name.clone(), counted(&thing.badness(), 0)])
             .collect();
         let table = layout::table_in(&THINGS, &rows, pen, room, &[]);
-        return headed(head, table, rows.len());
+        return headed(head, table, rows.len(), "nothing said a warning");
     }
     let mut things: Vec<(&String, &Thing)> = day
         .things
@@ -256,11 +256,14 @@ fn figures_by_side(day: &Day, pen: &Pen, room: Room) -> String {
         })
         .collect();
     let table = layout::table_in(&FIGURES, &rows, pen, room, &[]);
-    headed(head, table, rows.len())
+    headed(head, table, rows.len(), "nothing measured")
 }
 
-/// A figure, whole when it is and to a tenth when not.
+/// A figure, whole when it is and to a tenth when not. Adding zero
+/// turns a negative zero, as minutes lost on a day with none come to,
+/// into zero, so it never reads as -0.
 fn figure(value: f64) -> String {
+    let value = value + 0.0;
     if value.fract().abs() < f64::EPSILON {
         format!("{value:.0}")
     } else {

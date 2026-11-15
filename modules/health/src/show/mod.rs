@@ -619,6 +619,28 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_view_says_what_it_found_none_of() {
+        let quiet = Day::new("2026-11-12");
+        for (words, none) in [
+            ("services", "nothing said a warning"),
+            ("died", "no agent went without parking"),
+            ("launches", "nothing timed"),
+        ] {
+            let shown = asked(&quiet, words);
+            assert_eq!(
+                shown.lines().nth(1),
+                Some(none),
+                "{words} on a quiet day doesn't say it found none: {shown}"
+            );
+        }
+        let figures = asked(&quiet, "figures");
+        assert!(
+            !figures.contains("-0"),
+            "a figure of nothing reads as negative: {figures}"
+        );
+    }
+
+    #[test]
     fn counts_are_grouped_by_thousands() {
         assert_eq!(grouped(18_216), "18,216", "thousands");
         assert_eq!(grouped(999), "999", "no group under a thousand");
