@@ -18,6 +18,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// How long a change's first hold is kept: as long as a tree keeps its
 /// place, past which no gate it waited on still holds it.
@@ -46,10 +47,19 @@ impl Waited {
         *first = (*first).min(now);
     }
 
-    /// When the change `patch`, whose pass was `kept`, waits from by `now`.
+    /// When the change `patch`, whose pass was `kept`, waits from by `now`:
+    /// its first hold kept within [`KEPT`], or now, as it is held for the
+    /// first time. A change whose patch couldn't be read waits from its
+    /// pass, as before holds were kept.
     pub fn since(&self, patch: Option<&str>, kept: Option<u64>, now: u64) -> u64 {
-        let _ = patch;
-        kept.unwrap_or(now)
+        let Some(patch) = patch else {
+            return kept.unwrap_or(now);
+        };
+        self.0
+            .get(patch)
+            .copied()
+            .filter(|first| now.saturating_sub(*first) < KEPT)
+            .map_or(now, |first| first.min(now))
     }
 
     /// Give up the holds kept past [`KEPT`] by `now`.
@@ -65,6 +75,18 @@ impl Waited {
             .and_then(|()| fs::rename(&partial, path))
             .map_err(|error| format!("writing {}: {error}", path.display()))
     }
+}
+
+/// The patch id of the change at `commit`, from where it leaves origin's
+/// main, as git says in the asking tree.
+pub fn patch_of(commit: &str) -> Option<String> {
+    let base = Command::new("git")
+        .args(["merge-base", "refs/remotes/origin/main", commit])
+        .output()
+        .ok()
+        .filter(|ran| ran.status.success())?;
+    let base = String::from_utf8_lossy(&base.stdout).trim().to_owned();
+    crate::patch_id(Path::new("."), &base, commit)
 }
 
 /// Where the holds are kept: beside the rest of the net's state.
