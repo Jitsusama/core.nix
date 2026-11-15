@@ -452,7 +452,7 @@ fn set_table(columns: &[(&str, Align)], rows: &[Vec<String>], pen: &Pen) -> Vec<
     };
     let head = columns
         .iter()
-        .map(|(label, _)| (label.to_uppercase(), pen.label(label)))
+        .map(|(label, _)| (crate::ink::capitals(label), pen.label(label)))
         .collect();
     let mut lines = vec![set(head)];
     for row in rows {

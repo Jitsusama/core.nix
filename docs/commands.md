@@ -182,7 +182,7 @@ was the first command set this way, and this generalises it.
 | Figure | text, right-aligned in its column | a fact's value, a count, a time                        |
 | Words  | muted, after its name             | what a row holds, what a flag does                     |
 | Note   | muted                             | a row's side, units, a hint, a time beside a line      |
-| Label  | muted capitals                    | a group's heading: USAGE, EXAMPLES, OPTIONS            |
+| Label  | muted capitals, a unit's own case | a heading: USAGE, EXAMPLES; a column's: POWER dBm      |
 | Voice  | italic, muted                     | what the command says of itself: nothing found, a tip  |
 
 - **Only the title is bold.** Weight is a level's alone, so bold never

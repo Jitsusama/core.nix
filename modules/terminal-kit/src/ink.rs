@@ -188,6 +188,31 @@ struct Mark {
     console: String,
 }
 
+/// Units written in lower case alone, which capitals would misread:
+/// MS is a different unit from ms, and DBM or MBIT/S reads as shouting.
+const LOWER_UNITS: [&str; 6] = ["ms", "µs", "ns", "s", "bit/s", "kbit/s"];
+
+/// A label's words in capitals, but for a unit after its first word,
+/// which keeps its case: a word holding a capital (dBm, Mbit/s, MHz) is
+/// already written as its unit is, and the few lower-case units are
+/// named. The first word is always the label's name, so it always goes
+/// up, and a group's heading such as Examples still reads EXAMPLES.
+pub(crate) fn capitals(words: &str) -> String {
+    words
+        .split(' ')
+        .enumerate()
+        .map(|(at, word)| {
+            let a_unit = word.chars().any(char::is_uppercase) || LOWER_UNITS.contains(&word);
+            if at > 0 && a_unit {
+                word.to_owned()
+            } else {
+                word.to_uppercase()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Where the account's theme is: `$XDG_CONFIG_HOME/jitsusama/theme.json`,
 /// else under `~/.config`.
 pub fn theme_file(environment: &Environment) -> Option<PathBuf> {
@@ -343,9 +368,10 @@ impl Pen {
         self.escaped(&["1", self.colour("strong")], words)
     }
 
-    /// A label over a group or a column: muted capitals.
+    /// A label over a group or a column: muted capitals, but for a unit
+    /// after its first word, which keeps its case (`capitals` says why).
     pub fn label(&self, words: &str) -> String {
-        self.role("muted", &words.to_uppercase())
+        self.role("muted", &capitals(words))
     }
 
     /// What the command says of itself: italic, muted.
@@ -473,6 +499,11 @@ mod tests {
         let pen = Pen::new(Ink::plain(), Some(&osaka_jade()));
         assert_eq!(pen.title("Disk"), "Disk");
         assert_eq!(pen.label("Examples"), "EXAMPLES");
+        assert_eq!(
+            ["power dBm", "speed Mbit/s", "took ms", "linked to"].map(|words| pen.label(words)),
+            ["POWER dBm", "SPEED Mbit/s", "TOOK ms", "LINKED TO"],
+            "a unit after a label's first word didn't keep its case"
+        );
         assert_eq!(pen.marked("done", "success"), "\u{2713} ");
         assert_eq!(pen.link("https://example.com", "page"), "page");
     }
