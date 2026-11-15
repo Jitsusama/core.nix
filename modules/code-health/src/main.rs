@@ -9,8 +9,8 @@
 //! reaches (reached.rs) and its folders that don't say what they hold
 //! (notes.rs), as the quality standard has them; its Terraform's files
 //! not as `tofu fmt` writes them, what tflint finds, what trivy finds
-//! insecure (terraform.rs) and what `tofu validate` refuses
-//! (`terraform_validate.rs`), what of it says nothing of what it is
+//! insecure (terraform.rs) and what `tofu validate` refuses or warns
+//! of (`terraform_validate.rs`), what of it says nothing of what it is
 //! (`terraform_docs.rs`) and what of it nothing tests
 //! (`terraform_tests.rs`); and how long the changes it merged in the last
 //! day took from first edit to merge (merges.rs).
@@ -70,7 +70,7 @@ const FLAGS: [&str; 6] = [
 ];
 
 /// Every measure it reads (measure.rs and merges.rs).
-const MEASURES: [&str; 19] = [
+const MEASURES: [&str; 20] = [
     "crowded-folders",
     "daemons-waiting",
     "duplicated-lines",
@@ -86,6 +86,7 @@ const MEASURES: [&str; 19] = [
     "tf-undocumented",
     "tf-unformatted",
     "tf-untested",
+    "tf-warnings",
     "tflint-findings",
     "trivy-findings",
     "unreached-files",
@@ -262,6 +263,8 @@ fn put_terraform(
         health.put("trivy-findings", read.insecure, count);
         let count = read.invalid.len();
         health.put("tf-invalid", read.invalid, count);
+        let count = read.warned.len();
+        health.put("tf-warnings", read.warned, count);
     }
     Ok(())
 }

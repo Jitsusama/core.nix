@@ -310,6 +310,12 @@ fn suppresses(path: &str, line: &str) -> bool {
             ],
         ),
         "nix" => comment("#", &["deadnix: skip"]),
+        // Terraform comments start with either mark, and trivy still reads
+        // tfsec's older form.
+        "tf" => {
+            let markers = ["tflint-ignore", "trivy:ignore", "tfsec:ignore"];
+            comment("#", &markers) || comment("//", &markers)
+        }
         _ => false,
     }
 }
@@ -470,6 +476,26 @@ mod tests {
             health.named["suppressions"],
             ["a.py:1", "b.sh:1", "c.rs:1", "d.ts:1"],
             "a suppression was missed, or a string naming one was counted"
+        );
+    }
+
+    #[test]
+    fn a_terraform_suppression_is_read_in_each_tools_way() {
+        let files = [file(
+            "main.tf",
+            concat!(
+                "# tflint-ignore: terraform_unused_declarations\n",
+                "// tflint-ignore: all\n",
+                "#trivy:ignore:GCP-0072 hosts reach each other\n",
+                "# tfsec:ignore:google-compute-no-public-ip\n",
+                "description = \"# tflint-ignore: x\"\n",
+            ),
+        )];
+        let health = measure(&paths(&files), &files);
+        assert_eq!(
+            health.named["suppressions"],
+            ["main.tf:1", "main.tf:2", "main.tf:3", "main.tf:4"],
+            "a Terraform suppression was missed, or a string naming one was counted"
         );
     }
 

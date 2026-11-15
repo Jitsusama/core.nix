@@ -7,7 +7,7 @@
 # in quarantine and the points of docs/daemons.md daemons still break;
 # lint rules turned off, files nothing reaches, folders with no note and
 # VM test lines; and Terraform not as tofu fmt writes it, what tflint
-# finds held to all its own rules and Google's, what trivy finds insecure, what tofu validate refuses, what
+# finds held to all its own rules and Google's, what trivy finds insecure, what tofu validate refuses or warns of, what
 # says nothing of what it is and what no tofu test tests.
 # It writes hour.json beside them, each figure against the target and
 # owner a repository's `targets`, `owner` and `owners` give it, and the
