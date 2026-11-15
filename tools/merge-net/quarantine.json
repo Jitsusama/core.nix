@@ -553,5 +553,15 @@
       "test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is"
     ],
     "test": "vm-desktop-minds-the-margin"
+  },
+  {
+    "at": 1794727050,
+    "commit": "4b0d0f83295c0c04e545cf29d89491a3c7c282f1",
+    "owner_pr": null,
+    "reason": "failed, then passed, at 4b0d0f83295c",
+    "subtests": [
+      "test_two_orchestrations_come_back_each_where_it_sat"
+    ],
+    "test": "vm-desktop-reopens-under-orchestrators"
   }
 ]
