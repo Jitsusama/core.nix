@@ -202,7 +202,7 @@ fn network(
     let name = network["name"].as_str().unwrap_or("");
     let key = key_of(&format!("network:{name}"));
     let called = if network["shape"] == "machines" {
-        words.names.word("machines").to_owned()
+        words.names.word("every-machine").to_owned()
     } else {
         network["title"]
             .as_str()
@@ -440,8 +440,8 @@ mod tests {
             "a repository's network wears its mark"
         );
         assert_eq!(
-            made[6]["name"], "Machines",
-            "the machines' network is named as they are"
+            made[6]["name"], "Every Machine",
+            "the machines' network is named apart from its heading"
         );
     }
 
