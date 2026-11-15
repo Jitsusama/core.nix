@@ -62,6 +62,11 @@ QtObject {
         Expect.expect("the watch is told each window's name, whether it has one, and whose",
             ["named", "untitled", "program"].every(field =>
                 NiriRecords.WINDOW_FIELDS.includes(field)), "it isn't");
+        Expect.expect("the watch is told the file a document window shows",
+            NiriRecords.WINDOW_FIELDS.includes("file"), "it isn't");
+        Expect.same("a window keeps the file it shows, and one showing none has none",
+            NiriRecords.take(NiriRecords.held(), [window(5, { file: "/home/joel/a.md" }),
+                window(6)], []).opened.map(w => w.file ?? null), ["/home/joel/a.md", null]);
         Expect.same("a window with no title of its own says so",
             NiriRecords.take(NiriRecords.held(), [window(4, { title: "Foot", named: "Foot",
                 untitled: true })], []).opened.map(w => [w.named, w.untitled]),
