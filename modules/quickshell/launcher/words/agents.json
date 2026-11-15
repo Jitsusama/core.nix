@@ -389,7 +389,11 @@
       "term": "Agents/talk",
       "verb": "talk",
       "glyph": "reply",
-      "ask": "what to talk about?"
+      "ask": "what to talk about?",
+      "said": {
+        "didNot": "didn't talk",
+        "leadless": "a network has no one lead"
+      }
     },
     {
       "id": "verb:agent:take-back",

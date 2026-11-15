@@ -70,6 +70,24 @@
       touch $out
     '';
 
+  # The launcher's talkTo, as a cell on the realm's map asks it, opens a
+  # talk only on whom its first word names, a network told apart, as
+  # tests/talk-to.qml holds launcher/TalkTo.js to it in Qt's own engine.
+  talk-to-opens-only-on-whom-it-names =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "talk-to-opens-only-on-whom-it-names" { } ''
+      cp ${../../../tests/talk-to.qml} talk-to.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/TalkTo.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml talk-to.qml
+      touch $out
+    '';
+
   # pi's sessions, as many and as large as Joel's, each changing its step
   # with the launcher shut and then showing them, sorted and lived again as
   # Sessions.qml does, start a garbage collection in well under one change

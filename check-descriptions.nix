@@ -2781,6 +2781,11 @@
     every user unit core starts by itself in every account's manager says whose it is, so a
     system account's lingering manager starts none of a person's services
   '';
+  talk-to-opens-only-on-whom-it-names = ''
+    the launcher's talkTo opens a talk on the first word it's given alone: a session's address in
+    either case, the void's on its line, a network told apart as having no one to talk to, and
+    anything else as nobody
+  '';
   terminal-kit-gives-every-command-one-shape = ''
     the terminal kit takes the shared flags out of a command line and leaves the rest in order,
     inks by --color, NO_COLOR, FORCE_COLOR and the terminal in that order, lays rows out giving way

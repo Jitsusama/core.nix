@@ -1453,6 +1453,39 @@ Scope {
         }
     }
 
+    // Opens Agents' talk to whom `said` names, as `qs ipc call launcher talkTo`
+    // asks, the way a cell on the realm's map does (XUBK2E, 2026-11-15
+    // [2b5c927a]): a session's own Talk, its field asking as Return on its
+    // row leaves it, so nothing goes until Joel types and presses Return; the
+    // void's line, as its Talk opens it; and for a network, which serves no
+    // Talk, Agents, its foot saying once that it didn't talk and why. Only the
+    // first word said names anyone (TalkTo.js), so nothing else said is ever
+    // typed into the field. Says what it did as JSON, as run does, nobody
+    // here as an id the catalogue hasn't.
+    function talkTo(said) {
+        const agents = collections.find(one => one.settings.name === "agents") ?? null;
+        const talk = agents ? agents.talkFor(said) : null;
+        const whom = talk?.whom ?? { to: "none", said: String(said ?? "") };
+        console.info(`launcher: asked from outside to talk to ${JSON.stringify(whom)}`);
+        if (whom.to === "none")
+            return { error: `the launcher has nothing called ${whom.said}` };
+        if (whom.to === "void") {
+            const shown = open;
+            open = false;
+            runOnceGone(talk.act, shown);
+            return { done: true, said: talk.act.name };
+        }
+        if (whom.to === "network") {
+            const leadless = agents.leadless();
+            toldThat(leadless.what, leadless.why);
+            into("agents");
+            return { done: false, said: `${leadless.what}: ${leadless.why}` };
+        }
+        into("agents");
+        ask(talk.act);
+        return { done: true, said: `${talk.act.name} \u203a ${talk.act.chip}` };
+    }
+
     function catalogueRunWalked(id, words) {
         freshen();
         const path = catalogued(id);
@@ -5344,12 +5377,16 @@ Scope {
     function toldNot(name, act, why) {
         const words = Words.field.becoming ?? {};
         const what = (why === "" ? words.late : words.refused) ?? "";
-        tellOnOpen(Becoming.told({
-            mark: Theme.glyph.failed,
-            what: what.replace("{object}", name)
-                .replace("{did}", Becoming.did(words.did, act, words.done ?? "")),
-            why: why === "" ? words.noAnswer ?? "" : why
-        }, { what: Theme.alert, why: Theme.muted }), true);
+        toldThat(what.replace("{object}", name)
+            .replace("{did}", Becoming.did(words.did, act, words.done ?? "")),
+            why === "" ? words.noAnswer ?? "" : why);
+    }
+
+    // That `what` wasn't done, and `why`, said as toldNot says it: the failed
+    // mark beside it in the alert, why muted.
+    function toldThat(what, why) {
+        tellOnOpen(Becoming.told({ mark: Theme.glyph.failed, what, why },
+            { what: Theme.alert, why: Theme.muted }), true);
     }
 
     function letGo(keys) {
@@ -7473,6 +7510,13 @@ Scope {
         // The same, for an action that takes words, such as Talk.
         function runWith(id: string, words: string): string {
             return JSON.stringify(root.catalogueRun(id, words));
+        }
+
+        // Opens Agents' talk to a session by its address, its field empty
+        // for Joel's words, as Talk on its row does (root's talkTo). The
+        // opening is timed as a collection's is, by into.
+        function talkTo(address: string): string {
+            return JSON.stringify(root.talkTo(address));
         }
 
         // What a place or a row shows, its drawer and the rows inside it,
