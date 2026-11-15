@@ -556,11 +556,19 @@ pub fn run(
     // What the flake's lock takes from this machine alone: store paths go
     // ahead of it, and a failure there for want of the rest comes back to
     // be made here (`kept.rs`).
-    let inputs = folder_of(&asked.flake)
+    let mut inputs = folder_of(&asked.flake)
         .filter(|_| !asked.derivations)
         .and_then(|folder| fs::read_to_string(folder.join("flake.lock")).ok())
         .map(|lock| kept::inputs_of(&lock))
         .unwrap_or_default();
+    // A repository elsewhere that only this machine may fetch goes ahead as
+    // the copy it holds, but never under --lent-only, which sends nothing
+    // of this machine's store.
+    if !lent_only() {
+        inputs.sent.extend(held_here(&inputs.fetched, nix));
+        inputs.sent.sort();
+        inputs.sent.dedup();
+    }
     let reached = sending_of(asked, scratch).map(|mut sending| {
         sending.command = kept::wrapped(&sending.command, &inputs.kept);
         sending
@@ -679,6 +687,37 @@ fn all_up(
             copied => Ok(copied),
         },
     }
+}
+
+/// The store copies this machine holds of the repositories elsewhere that
+/// `fetched` names by what they hold, found where Nix stores a fetched
+/// repository. One it doesn't hold goes unnamed, for the builder to fetch
+/// itself as before.
+fn held_here(fetched: &[(String, String)], nix: &str) -> Vec<String> {
+    let nix_store = Path::new(nix).with_file_name("nix-store");
+    let asked = |args: &[&str]| {
+        Command::new(&nix_store)
+            .args(args)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .filter(|said| said.status.success())
+    };
+    fetched
+        .iter()
+        .filter_map(|(_, held)| {
+            let printed = asked(&[
+                "--print-fixed-path",
+                "--recursive",
+                "sha256",
+                held,
+                "source",
+            ])?;
+            let path = String::from_utf8(printed.stdout).ok()?.trim().to_owned();
+            asked(&["--check-validity", &path]).map(|_| path)
+        })
+        .collect()
 }
 
 /// Sends `lent` the store paths the flake takes from this machine alone,
@@ -1008,6 +1047,26 @@ pub fn lent_systems(dir: &Path) -> Vec<String> {
             Vec::new()
         }
     })
+}
+
+/// What of `part`, which a machine nearby couldn't take, may go to `dir`'s
+/// lent builder instead, and the attributes that may not: those naming a
+/// system it doesn't build for, which could only fail there. On 15
+/// November a gate's checks for a Mac went to the lent builder when the
+/// folder couldn't be sent to the Mac, and 22 failed for want of one.
+/// Asked to build here, all of it goes, as asked, since Nix here may
+/// have builders of its own.
+pub fn lent_builds(part: &Asked, dir: &Path) -> (Option<Asked>, Vec<String>) {
+    let lent = lent_systems(dir);
+    let (goes, stays): (Vec<String>, Vec<String>) =
+        part.attributes.iter().cloned().partition(|attribute| {
+            part.builds_here()
+                || lent.is_empty()
+                || system_of(attribute)
+                    .is_none_or(|system| lent.iter().any(|built| built == system))
+        });
+    let goes = (!goes.is_empty()).then(|| part.with(&part.flake, goes));
+    (goes, stays)
 }
 
 /// For a run of derivations, the first that no lent builder builds for,
@@ -4173,10 +4232,20 @@ fn send(
     let packing = packing
         .wait()
         .map_err(|error| format!("couldn't run {tar}: {error}"))?;
+    let status = status.code().unwrap_or(UNREACHED);
+    // ssh refused, or lost, ends first, and tar is left writing to a
+    // closed pipe: on 15 November a Mac that refused a gate's key was
+    // said to be a tree tar couldn't pack.
+    if status == UNREACHED {
+        return Err(format!(
+            "{ssh} couldn't reach {host} to send it {}",
+            folder.display()
+        ));
+    }
     if !packing.success() {
         return Err(format!("{tar} couldn't pack {}", folder.display()));
     }
-    Ok(status.code().unwrap_or(UNREACHED))
+    Ok(status)
 }
 
 /// Copies to `host` the store paths `folder`'s lock pins inputs to. One

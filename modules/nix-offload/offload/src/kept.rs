@@ -24,6 +24,7 @@ pub const KEPT: i32 = 65;
 pub struct Inputs {
     pub sent: Vec<String>,
     pub kept: Vec<(String, String)>,
+    pub fetched: Vec<(String, String)>,
 }
 
 impl Inputs {
@@ -53,19 +54,15 @@ pub fn inputs_of(lock: &str) -> Inputs {
     for (name, node) in nodes {
         let locked = &node["locked"];
         let locked_path = locked["path"].as_str().unwrap_or_default();
+        let original = &node["original"];
         let here = locked["type"] == "path" || file_url(&locked["url"]);
         if !here {
+            if let Some(held) = fetched_with_git(name, locked, original) {
+                inputs.fetched.push((name.clone(), held));
+            }
             continue;
         }
-        let original = &node["original"];
-        // Named so, a store copy of secrets can say nothing else of it: its
-        // path and original are a bare `/nix/store/<hash>-source`.
-        let secret = name.contains("secrets")
-            || [locked, original]
-                .iter()
-                .flat_map(|said| [&said["path"], &said["url"]])
-                .filter_map(serde_json::Value::as_str)
-                .any(|text| text.contains(".secrets"));
+        let secret = secret(name, locked, original);
         let from_store =
             original["type"] == "path" && is_store(original["path"].as_str().unwrap_or_default());
         // Only a forge's own kind names nowhere here: a git, tarball or
@@ -83,6 +80,35 @@ pub fn inputs_of(lock: &str) -> Inputs {
     inputs.sent.dedup();
     inputs.kept.sort();
     inputs
+}
+
+/// What a repository elsewhere that a lock takes with git holds, its
+/// `narHash`, unless it's secrets. Nix fetches one with git and so with the
+/// credentials of whoever fetches it, which a builder hasn't: on 15
+/// November a flake's checks failed so there on a private repository,
+/// though this machine held it. A forge's own kinds come as tarballs
+/// anyone may fetch, so they go as they are.
+fn fetched_with_git(
+    name: &str,
+    locked: &serde_json::Value,
+    original: &serde_json::Value,
+) -> Option<String> {
+    if locked["type"] != "git" || secret(name, locked, original) {
+        return None;
+    }
+    locked["narHash"].as_str().map(str::to_owned)
+}
+
+/// Whether input `name` is secrets, as it or where it comes from says.
+/// Named so, a store copy of secrets can say nothing else of it: its path
+/// and original are a bare `/nix/store/<hash>-source`.
+fn secret(name: &str, locked: &serde_json::Value, original: &serde_json::Value) -> bool {
+    name.contains("secrets")
+        || [locked, original]
+            .iter()
+            .flat_map(|said| [&said["path"], &said["url"]])
+            .filter_map(serde_json::Value::as_str)
+            .any(|text| text.contains(".secrets"))
 }
 
 /// The kinds of flake reference that always name a forge elsewhere.
@@ -201,6 +227,38 @@ mod tests {
         }}"#;
         assert_eq!(sent(lock), ["/nix/store/pqr-fetched"]);
         assert_eq!(kept(lock), ["bare", "near"]);
+    }
+
+    #[test]
+    fn a_repository_elsewhere_is_named_by_what_it_holds_for_its_copy_here_to_go() {
+        let lock = r#"{"nodes": {
+            "private": {"locked": {"type": "git", "url": "https://github.com/o/private",
+                                   "narHash": "sha256-abc=", "rev": "e2c8"},
+                        "original": {"type": "git", "url": "https://github.com/o/private"}},
+            "public": {"locked": {"type": "github", "owner": "o", "repo": "r",
+                                  "narHash": "sha256-def="},
+                       "original": {"type": "github", "owner": "o", "repo": "r"}},
+            "secrets": {"locked": {"type": "git", "url": "https://example.com/.secrets",
+                                   "narHash": "sha256-ghi="},
+                        "original": {"type": "git", "url": "https://example.com/.secrets"}},
+            "unhashed": {"locked": {"type": "git", "url": "https://github.com/o/u"},
+                         "original": {"type": "git", "url": "https://github.com/o/u"}}
+        }}"#;
+        assert_eq!(
+            inputs_of(lock).fetched,
+            [("private".to_owned(), "sha256-abc=".to_owned())],
+            "only a git repository elsewhere, locked to what it holds, was named"
+        );
+        assert_eq!(
+            sent(lock),
+            Vec::<String>::new(),
+            "a repository elsewhere went as a store path"
+        );
+        assert_eq!(
+            kept(lock),
+            Vec::<String>::new(),
+            "a repository elsewhere was kept here"
+        );
     }
 
     #[test]
