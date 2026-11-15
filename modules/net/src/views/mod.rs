@@ -217,7 +217,7 @@ fn carried(network: &Network, pen: &Pen, room: Room) -> Vec<String> {
     };
     let way = |bytes: u64, line: Option<f64>, mbps: fn(&crate::model::Hour) -> f64| {
         let hours: Vec<f64> = carried.hours.iter().map(mbps).collect();
-        #[allow(clippy::cast_precision_loss)]
+        #[expect(clippy::cast_precision_loss, reason = "a day holds a few dozen hours")]
         let average = hours.iter().sum::<f64>() / hours.len() as f64;
         let busiest = hours.iter().copied().fold(0.0, f64::max);
         let share = line
@@ -248,7 +248,10 @@ fn carried(network: &Network, pen: &Pen, room: Room) -> Vec<String> {
 
 /// Bytes as a person reads them, in decimal units as a provider bills:
 /// whole gigabytes from a hundred, a tenth below, megabytes under one.
-#[allow(clippy::cast_precision_loss)]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a day's bytes stay far below 2^52"
+)]
 fn gigabytes(bytes: u64) -> String {
     let gb = bytes as f64 / 1e9;
     if gb >= 100.0 {

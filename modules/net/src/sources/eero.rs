@@ -125,7 +125,10 @@ fn carried(block: &Value) -> Option<Carried> {
 
 /// An hour's bytes as the average speed that carries them, in Mbit/s to
 /// the hundredth, so the record stays readable.
-#[allow(clippy::cast_precision_loss)]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "an hour's bytes stay far below 2^52"
+)]
 fn average_mbps(bytes: u64) -> f64 {
     // An hour's bytes stay far below 2^52, where f64 starts to round.
     (bytes as f64 * 8.0 / 3600.0 / 1e4).round() / 100.0
