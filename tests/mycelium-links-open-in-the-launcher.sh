@@ -46,7 +46,8 @@ fi
 # checked by name; the stand-in's build below is the same program.
 command=$(sed -n 's|^Exec=\(/nix/store/[^ ]*/bin/mycelium-link\) %u$|\1|p' "$entry")
 if [ -z "$command" ] || [ ! -x "$command" ]; then
-  echo "the entry runs '$(sed -n 's|^Exec=||p' "$entry")', not mycelium-link"
+  runs=$(sed -n 's|^Exec=||p' "$entry")
+  echo "the entry runs '$runs', not mycelium-link"
   exit 1
 fi
 
@@ -57,9 +58,12 @@ failed=0
 # what it asked of qs: nothing, where it's refused.
 opening() {
   rm -f asked runtime/mycelium-link.last
+  # A refused link exits as it should, so its exit isn't what's checked.
+  # shellcheck disable=SC2310
   desktop "$asking_stand_in" "$1" 2> /dev/null || true
-  if [ "$(cat asked 2> /dev/null)" != "$2" ]; then
-    echo "'$1' asked '$(cat asked 2> /dev/null)', not '$2'"
+  said=$(cat asked 2> /dev/null) || said=
+  if [ "$said" != "$2" ]; then
+    echo "'$1' asked '$said', not '$2'"
     failed=1
   fi
 }
@@ -76,8 +80,9 @@ opening 'https://example.com/mycelium:cell/DAHTNJ' ''
 rm -f asked runtime/mycelium-link.last
 desktop "$asking_stand_in" 'mycelium:cell/DAHTNJ'
 desktop "$asking_stand_in" 'mycelium:network/repo.core-nix' 2> /dev/null
-if [ "$(cat asked)" != 'ipc call launcher talkTo DAHTNJ' ]; then
-  echo "two links at once asked: $(cat asked)"
+said=$(cat asked)
+if [ "$said" != 'ipc call launcher talkTo DAHTNJ' ]; then
+  echo "two links at once asked: $said"
   failed=1
 fi
 [ "$failed" = 0 ]

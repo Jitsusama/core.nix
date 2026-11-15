@@ -297,7 +297,10 @@ mod tests {
     fn a_clock_set_back_lets_the_link_go_ahead() {
         let stamp = stamp_in("back");
         let first = UNIX_EPOCH + Duration::from_hours(500_000);
-        assert!(goes_ahead(&stamp, first).expect("the stamp should be kept"));
+        assert!(
+            goes_ahead(&stamp, first).expect("the stamp should be kept"),
+            "the first link was let go"
+        );
         let earlier = first - Duration::from_mins(1);
         assert!(
             goes_ahead(&stamp, earlier).expect("the stamp should be kept"),
@@ -310,7 +313,13 @@ mod tests {
         let stamp = stamp_in("garbled");
         std::fs::write(&stamp, "not a time\n").expect("the stamp should be written");
         let now = UNIX_EPOCH + Duration::from_hours(500_000);
-        assert!(goes_ahead(&stamp, now).expect("the stamp should be kept"));
-        assert!(!goes_ahead(&stamp, now).expect("the stamp should be kept"));
+        assert!(
+            goes_ahead(&stamp, now).expect("the stamp should be kept"),
+            "a link was let go over a stamp that isn't a time"
+        );
+        assert!(
+            !goes_ahead(&stamp, now).expect("the stamp should be kept"),
+            "the stamp wasn't kept anew, so a second link at once went ahead"
+        );
     }
 }

@@ -1723,7 +1723,8 @@ def test_what_a_link_opens_drops_keys_at_first_and_takes_no_return_before_a_key(
         return sorted(set(inbox.glob("*.json")) - steered)
 
     try:
-        assert followed(shell, "talkTo", "LISTEN", quiet=False)["done"]
+        did = followed(shell, "talkTo", "LISTEN", quiet=False)
+        assert did["done"], did
         shell.launcher_until(
             lambda shown: (
                 shown["open"]
@@ -1738,6 +1739,7 @@ def test_what_a_link_opens_drops_keys_at_first_and_takes_no_return_before_a_key(
         shown = shell.showing()
         assert (shown["typed"], shown["asking"]) == ("", True), shown
         shell.send_key("ret")
+        # A Return taken would send at once; this gives it the time to.
         time.sleep(0.3)
         assert shell.showing()["asking"], shell.showing()
         assert sent() == [], sent()
@@ -2641,11 +2643,13 @@ def test_a_link_to_the_void_opens_nothing_over_the_launcher_and_its_line_drops_k
     assert did == {"done": False, "said": "the launcher is in use, so the link opened nothing"}
     assert not shell.showing()["line"]["up"], shell.showing()
     shell.close_launcher()
-    assert followed(shell, "talkTo", "void", quiet=False)["done"]
+    did = followed(shell, "talkTo", "void", quiet=False)
+    assert did["done"], did
     shell.launcher_until(lambda shown: shown["line"]["up"] and shown["line"]["keys"])
     try:
         was = shell.showing()["line"]["typed"]
         shell.send_chars("hi")
+        # Keys taken would show in the line at once; this gives them the time to.
         time.sleep(0.3)
         assert shell.showing()["line"]["typed"] == was, shell.showing()
     finally:

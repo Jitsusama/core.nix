@@ -277,6 +277,7 @@
         machine = pkgs.callPackage ../../modules/machine/package.nix { };
         meaning = dictation;
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
+        mycelium-link = pkgs.callPackage ../../modules/quickshell/mycelium-link/package.nix { };
         net = pkgs.callPackage ../../modules/net/package.nix { };
         network-revive = pkgs.callPackage ../../modules/network-revive/package.nix { };
         night-shift = pkgs.callPackage ../../modules/night-shift/package.nix { };
