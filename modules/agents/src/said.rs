@@ -1,7 +1,7 @@
 //! The agents' words, as the launcher's vocabulary says them
-//! (modules/quickshell/launcher/words.json, a thing's `said`: `agents`'s,
-//! and `agents:machine`'s and `agents:wants`' for a session elsewhere and
-//! what it wants),
+//! (modules/quickshell/launcher/words/, a thing's `said`: `agents`'s in
+//! launcher.json, and `agents:machine`'s and `agents:wants`' in agents.json
+//! for a session elsewhere and what it wants),
 //! read rather than written again here, so a row says what the launcher
 //! would and one word changes in one place.
 

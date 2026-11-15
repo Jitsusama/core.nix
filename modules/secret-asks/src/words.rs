@@ -1,5 +1,5 @@
 //! Asks' words, as the launcher's vocabulary says them
-//! (modules/quickshell/launcher/words.json, the `asks` thing's `said`,
+//! (modules/quickshell/launcher/words/launcher.json, the `asks` thing's `said`,
 //! and its `tells`, the sentences a drawer reads as its own),
 //! read rather than written again here, so a word changes in one place,
 //! as the quests daemon reads Quests' (modules/quests/src/words.rs). A

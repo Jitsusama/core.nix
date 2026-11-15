@@ -1,5 +1,5 @@
 //! The notices' words, as the launcher's vocabulary says them
-//! (modules/quickshell/launcher/words.json), read rather than written
+//! (modules/quickshell/launcher/words/, joined by words.nix), read rather than written
 //! again here, so a row says what the launcher would and a word changes in
 //! one place: each thing's name and glyph, and what it says, in each of
 //! its states, as the shell's `Words.name`, `Words.glyph` and `Words.of`

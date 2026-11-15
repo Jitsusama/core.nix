@@ -1,5 +1,5 @@
 //! The words a to-do is said in, from the launcher's vocabulary
-//! (modules/quickshell/launcher/words.json), handed to the daemon by
+//! (modules/quickshell/launcher/words/, joined by words.nix), handed to the daemon by
 //! store path, so each to-do reaches For You already worded and the shell
 //! words none of it (Joel, 2026-11-10: "the daemons need to be the data
 //! layer, and they need to serve the launcher"). For You's own words are
