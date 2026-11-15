@@ -1,8 +1,9 @@
 //! What networkd says of a Wi-Fi card's link, from its Describe JSON: the
-//! network it's on, whether it can reach beyond it, and the network's own
-//! DNS servers, which the check asks rather than whatever resolved would.
+//! network it's on, whether it can reach beyond it, the network's own
+//! DNS servers, which the check asks rather than whatever resolved would,
+//! and its gateway, whose echoes say how well an access point carries.
 
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 
 use serde_json::Value;
 
@@ -19,6 +20,8 @@ pub struct Link {
     pub dns: Vec<IpAddr>,
     /// The sign-in API the network advertises, under RFC 8910.
     pub portal: Option<String>,
+    /// The router the card's default route goes through, on its network.
+    pub gateway: Option<Ipv4Addr>,
 }
 
 /// What a check of how far a network reaches is a check of: the network,
@@ -59,6 +62,7 @@ impl Link {
             routable: link["OperationalState"] == "routable",
             dns: dns(link),
             portal: text(&link["CaptivePortal"]),
+            gateway: gateway(link),
         })
     }
 }
@@ -96,6 +100,21 @@ fn dns(link: &Value) -> Vec<IpAddr> {
         .filter(|server| server["ConfigSource"] != "runtime")
         .filter_map(|server| server["AddressString"].as_str()?.parse().ok())
         .collect()
+}
+
+/// The gateway of the link's default IPv4 route.
+fn gateway(link: &Value) -> Option<Ipv4Addr> {
+    let routes = link["Routes"].as_array()?;
+    let default = routes
+        .iter()
+        .find(|route| route["Family"] == 2 && route["DestinationPrefixLength"] == 0)?;
+    let octets: Option<Vec<u8>> = default["Gateway"]
+        .as_array()?
+        .iter()
+        .map(|octet| u8::try_from(octet.as_u64()?).ok())
+        .collect();
+    let octets: [u8; 4] = octets?.try_into().ok()?;
+    Some(Ipv4Addr::from(octets))
 }
 
 /// DHCP's option for DNS servers: IPv4 addresses, four bytes each.
@@ -161,6 +180,15 @@ mod tests {
                 "ConfigProviderString": "10.43.0.1",
             }],
             "CaptivePortal": "https://front-desk.inn/api",
+            "Routes": [
+                {"Family": 2, "Destination": [10, 43, 0, 0], "DestinationPrefixLength": 24},
+                {
+                    "Family": 2,
+                    "Destination": [0, 0, 0, 0],
+                    "DestinationPrefixLength": 0,
+                    "Gateway": [10, 43, 0, 1],
+                },
+            ],
             "DHCPv4Client": {
                 "Lease": {
                     "Message": {
@@ -187,7 +215,25 @@ mod tests {
                 routable: true,
                 dns: vec!["10.43.0.1".parse().unwrap()],
                 portal: Some("https://front-desk.inn/api".to_string()),
+                gateway: Some(Ipv4Addr::new(10, 43, 0, 1)),
             })
+        );
+    }
+
+    #[test]
+    fn a_card_without_a_default_route_has_no_gateway() {
+        let mut described = card();
+        described["Routes"] = json!([
+            {"Family": 2, "Destination": [10, 43, 0, 0], "DestinationPrefixLength": 24,
+                "Gateway": [10, 43, 0, 9]},
+            {"Family": 10, "DestinationPrefixLength": 0, "Gateway": [254, 128, 0, 0]},
+        ]);
+
+        let link = Link::described(&described).unwrap();
+
+        assert_eq!(
+            link.gateway, None,
+            "neither a narrower route nor IPv6's is the default"
         );
     }
 
@@ -225,6 +271,7 @@ mod tests {
         assert!(!link.routable);
         assert_eq!(link.dns, Vec::<IpAddr>::new());
         assert_eq!(link.portal, None);
+        assert_eq!(link.gateway, None);
     }
 
     #[test]

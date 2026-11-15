@@ -672,6 +672,7 @@ mod tests {
             routable: true,
             dns: Vec::new(),
             portal: None,
+            gateway: None,
         });
         let (sending, state) = watch::channel(state);
         let root = store.path().canonicalize().expect("the store is there");
