@@ -147,26 +147,6 @@ function keptItems(items, room, width) {
     return pathsFitted(kept, room, width);
 }
 
-// A side said as one string of parts between dots, as a window's "Foot
-// · workspace 2", as items, each `{ said, keep }`, its last part kept
-// least (VKCF3Z, 2026-11-14 [04792410]).
-function partsOf(side) {
-    const parts = side.split(ITEMS_APART);
-    return parts.map((said, at) => ({ said, keep: parts.length - at }));
-}
-
-// The parts a side keeps in `room`, given way whole from its last back,
-// to none where not even its first fits, before the note goes and the name
-// is cut; what's dropped is still in the drawer (VKCF3Z, 2026-11-14
-// [04792410]: "workspace 2" first, then "Foot").
-function partsKept(parts, room, width) {
-    const kept = parts.filter(part => part.said !== "").map(part => part.said);
-    while (kept.length > 0 && width(kept.join(ITEMS_APART)) > room) {
-        kept.pop();
-    }
-    return kept;
-}
-
 // The items kept, as said: one naming its `path`, where they still don't
 // fit, gives that way from its middle as a path does (pathTries: "in
 // ~/\u2026/Screenshots"), its last folder whole, so a folder kept is never

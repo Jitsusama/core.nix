@@ -74,47 +74,12 @@ ShellRoot {
                 glyph: "$"
                 selected: true
             }
-            // A window's side, its program and its place, a little past the
-            // 45% of the row a side may take.
+            // Words at a row's right a little past the 45% of it a side may
+            // take.
             Choice {
                 id: titled
                 name: "\u03c0 - Launcher - agentic-harness.pi"
                 side: "Kitty · workspace 2, 3rd column, 2nd down"
-                glyph: "$"
-            }
-            // A window's side in rows narrowing round it, as an urgent window
-            // reads in Windows at 2x: its parts give way from the last back,
-            // "workspace 2" first, then "Foot", and only then would the name
-            // be cut (VKCF3Z, 2026-11-14 [04792410]).
-            Choice {
-                id: partsWhole
-                width: 440
-                name: "Sanderling Notes"
-                side: "Foot \u00b7 workspace 2"
-                glyph: "$"
-            }
-            Choice {
-                id: partsSome
-                width: 360
-                name: "Sanderling Notes"
-                side: "Foot \u00b7 workspace 2"
-                glyph: "$"
-            }
-            Choice {
-                id: partsNone
-                width: 280
-                name: "Sanderling Notes"
-                side: "Foot \u00b7 workspace 2"
-                glyph: "$"
-            }
-            // A title too long to be whole even alone: dropping the side
-            // would gain it nothing, so the side keeps the whole parts its
-            // share holds (VKCF3Z, 2026-11-14 [65e08e6f]).
-            Choice {
-                id: partsShared
-                width: 440
-                name: "\u03c0 - Launcher - agentic-harness.pi"
-                side: "Kitty \u00b7 workspace 2, 3rd column, 2nd down"
                 glyph: "$"
             }
             // A side that fits beside its name, as Inkscape's copied picture's
@@ -1137,27 +1102,11 @@ ShellRoot {
             texts = apart(sideFits, sideFits.width);
             expect("a side that fits beside its name is said whole", cut(texts).length === 0,
                 said(texts));
-            // A side of parts past 45% of the row gives way by whole parts
-            // from its last, never cut through one, and the name stays whole.
+            // Words at the right past 45% of the row are a sentence's, not
+            // how a row stands, so they give way, and the name fitting stays.
             texts = apart(titled, titled.width);
-            expect("a side of parts gives way whole from its last, its name whole",
-                cut(texts).length === 0 && texts.map(t => t.text).join(" | ")
-                    === `$ | ${titled.name} | Kitty`, said(texts));
-            const partsSaid = row => apart(row, row.width).map(t => t.text).join(" | ");
-            const partsCut = row => cut(apart(row, row.width)).length;
-            expect("a window's side whole where it fits",
-                partsSaid(partsWhole) === "$ | Sanderling Notes | Foot \u00b7 workspace 2"
-                    && partsCut(partsWhole) === 0, partsSaid(partsWhole));
-            expect("its place goes first, its program kept",
-                partsSaid(partsSome) === "$ | Sanderling Notes | Foot"
-                    && partsCut(partsSome) === 0, partsSaid(partsSome));
-            expect("then its program, before its name gives a letter",
-                partsSaid(partsNone) === "$ | Sanderling Notes" && partsCut(partsNone) === 0,
-                partsSaid(partsNone));
-            texts = apart(partsShared, partsShared.width);
-            expect("a name too long even alone keeps its program whole beside it",
-                JSON.stringify(cut(texts)) === JSON.stringify([partsShared.name])
-                    && texts.some(t => t.text === "Kitty" && !t.truncated), said(texts));
+            expect("a side past its guard cut, its name whole",
+                cut(texts).length === 1 && cut(texts)[0] === titled.side, said(texts));
             texts = apart(sideWins, sideWins.width);
             const nameCut = texts.find(t => t.text === sideWins.name);
             const nameWide = nameCut === undefined ? 0 : nameCut.to - nameCut.from;
