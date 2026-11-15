@@ -135,29 +135,17 @@ fn gather(folder: &Path, state_home: &Path, now: i64) -> Vec<Measure> {
         measures::broken(&text(&state_home.join("net/results.jsonl")), now, NET),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
-    for (key, label, says) in [
-        (
-            "merge-to-on",
-            "Merge to on",
-            "median minutes from merge to on his machine",
-        ),
-        (
-            "commit-to-merge",
-            "Last commit to merge",
-            "median minutes from last commit to merge",
-        ),
-    ] {
-        if let Some((median, target)) = measures::card_median(&card_text, label) {
-            all.push(Measure {
-                key: key.to_owned(),
-                class: Class::Ship,
-                says: says.to_owned(),
-                now: median,
-                target: Some(target),
-                owner: NET_RULES.to_owned(),
-                behind: Vec::new(),
-            });
-        }
+    all.extend(measures::merge_to_on(&card_text, NET_RULES));
+    if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {
+        all.push(Measure {
+            key: "commit-to-merge".to_owned(),
+            class: Class::Ship,
+            says: "median minutes from last commit to merge".to_owned(),
+            now: median,
+            target: Some(target),
+            owner: NET_RULES.to_owned(),
+            behind: Vec::new(),
+        });
     }
     all.extend(measures::clean(&text(
         &state_home.join("code-health/hour.json"),
