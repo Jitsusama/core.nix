@@ -950,6 +950,28 @@ def seat(shell: Shell, window: Json, since: int) -> Json:
     return at
 
 
+def settled(shell: Shell, window: Json, away_from: float, since: int) -> Json:
+    """Wait until the cat sits still on this window but not at `away_from` across; give where."""
+
+    def still_elsewhere(said: str) -> bool:
+        at = placed(said)
+        return bool(
+            at is not None
+            and at.get("window") == window["id"]
+            and at["x"] != away_from
+            and at.get("walk") is None
+            and at.get("move") is None
+        )
+
+    heard(shell, still_elsewhere, since)
+    said, _ = shell.said_since(since)
+    sat = next(report for report in reversed(said) if report.startswith(SITS))[len(SITS) :]
+    assert still_elsewhere(sat), f"the cat sat still and went on: {sat}"
+    at = placed(sat)
+    assert at is not None
+    return at
+
+
 def test_a_pointer_resting_on_the_cat_leans_it_in_and_a_click_beside_it_reaches_the_window(
     shell: Shell,
 ) -> None:
@@ -974,7 +996,9 @@ def test_a_pointer_resting_on_the_cat_leans_it_in_and_a_click_beside_it_reaches_
         since = shell.mark()
         point(shell, TO_THE_CORNER, TO_THE_CORNER)
         heard(shell, lambda said: leaning(said) == 0, since)
-    place = beside["layout"]["tile_pos_in_workspace_view"]
+    # Where the window beside is now, since niri scrolled the view as the cat's column opened.
+    now = next(window for window in shell.windows() if window["id"] == beside["id"])
+    place = now["layout"]["tile_pos_in_workspace_view"]
     point(shell, place[0] + NEAR, place[1] + NEAR)
     shell.as_account(f"{os.environ['WLRCTL']} pointer click left")
     deadline = time.monotonic() + LAYERED
@@ -986,22 +1010,25 @@ def test_a_pointer_resting_on_the_cat_leans_it_in_and_a_click_beside_it_reaches_
 def test_the_cat_never_leans_on_a_pointer_it_came_to_under(shell: Shell) -> None:
     """A pointer at rest where the cat sits down leaves it sitting, until the pointer moves.
 
-    Only a pointer that moved onto it pets it (VKCF3Z, b8fc852e). The pointer waits where the
-    cat sat over one column while it sits over another; once it walks back under it, it sits
-    there a pet's time and its hold's, unleaning, and a step of the pointer then leans it,
-    so the pointer was over it all along.
+    Only a pointer that moved onto it pets it (VKCF3Z, b8fc852e). Its column narrows, so it
+    sits over its new middle, and widens again; the pointer waits at that middle, and the
+    column narrows once more. Never a focus change, which would warp the pointer to the
+    window's middle (warp-mouse-to-focus). Under it, the cat sits a pet's time and its hold's,
+    unleaning, and a step of the pointer then leans it, so the pointer was over it all along.
     """
     since = shell.mark()
-    walked_from = shell.opened("a column the cat walks from to the pointer")
-    under = shell.opened("a column the cat walks back to under the pointer")
-    there = seat(shell, under, since)
+    under = shell.opened("a column the cat comes to sit under the pointer on")
+    wide = seat(shell, under, since)
     since = shell.mark()
-    shell.as_account("niri msg action focus-column-left")
-    seat(shell, walked_from, since)
+    shell.as_account("niri msg action set-column-width -10%")
+    there = settled(shell, under, wide["x"], since)
+    since = shell.mark()
+    shell.as_account("niri msg action set-column-width +10%")
+    settled(shell, under, there["x"], since)
     point(shell, there["x"] + there["size"] / 2, there["y"] + there["size"] / 2)
     since = shell.mark()
-    shell.as_account("niri msg action focus-column-right")
-    back = seat(shell, under, since)
+    shell.as_account("niri msg action set-column-width -10%")
+    back = settled(shell, under, wide["x"], since)
     assert (back["x"], back["y"]) == (there["x"], there["y"]), (
         f"the cat came back to sit at {back}, not under the pointer at {there}"
     )
