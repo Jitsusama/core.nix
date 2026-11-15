@@ -381,7 +381,7 @@ PanelWindow {
     function steer(): void {
         if (there === null)
             return;
-        const holding = mover.elapsedTime * 1000 + moving.ahead < moving.beats[0].ends;
+        const holding = Paths.replans(moving, mover.elapsedTime * 1000, steps > 0);
         const same = Math.round(there.x * ratio) === Math.round(moving.to.x * ratio)
             && Math.round(there.y * ratio) === Math.round(moving.to.y * ratio);
         if (holding) {
