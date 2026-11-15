@@ -50,6 +50,19 @@ pub struct Entry {
     /// not yet closed; none for a finding of cadence's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    /// How often a day found it again after it closed, so a fix that
+    /// didn't hold counts against it rather than opening a second line.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub reopened: u32,
+}
+
+/// Whether a count is nought, so a line never reopened stays as it was.
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if passes a reference"
+)]
+fn is_zero(count: &u32) -> bool {
+    *count == 0
 }
 
 /// The ledger kept at `path`, a line each; a line that isn't an entry is
@@ -97,7 +110,18 @@ pub fn update(
     owners: &BTreeMap<String, String>,
 ) {
     for finding in worse {
-        if let Some(entry) = ledger.iter_mut().find(|e| e.open && e.key == finding.key) {
+        // A fix of cadence's own that comes back reopens its line, counted,
+        // so the loop reads how many fixes didn't hold; a must its owner
+        // closed stays closed, and the finding opens a line of its own.
+        let newest = ledger.iter_mut().rev().find(|e| e.key == finding.key);
+        if let Some(entry) = newest.filter(|e| e.open || e.kind.is_none()) {
+            if !entry.open {
+                entry.open = true;
+                entry.reopened += 1;
+                entry.due = day.to + DAY;
+                entry.told = None;
+                entry.late = false;
+            }
             entry.last.clone_from(&day.date);
             entry.last_to = day.to;
             entry.words.clone_from(&finding.words);
@@ -118,6 +142,7 @@ pub fn update(
                 told: None,
                 late: false,
                 kind: None,
+                reopened: 0,
             });
         }
     }
@@ -269,6 +294,70 @@ pub(crate) mod tests {
         assert!(
             !ledger[0].open,
             "a finding two days back stayed open: {ledger:?}"
+        );
+    }
+
+    #[test]
+    fn a_fix_that_comes_back_reopens_its_line_and_counts_it() {
+        let mut ledger = Vec::new();
+        update(
+            &mut ledger,
+            &day("d1", DAY),
+            &[found("crashes:tec")],
+            &owners(),
+        );
+        tell(&mut ledger, "d1", None);
+        update(&mut ledger, &day("d3", 3 * DAY), &[], &owners());
+        assert!(!ledger[0].open, "the finding didn't close: {ledger:?}");
+        update(
+            &mut ledger,
+            &day("d5", 5 * DAY),
+            &[found("crashes:tec")],
+            &owners(),
+        );
+        assert_eq!(
+            ledger.len(),
+            1,
+            "a fix that came back opened a second line: {ledger:?}"
+        );
+        let entry = &ledger[0];
+        assert_eq!(
+            (
+                entry.open,
+                entry.reopened,
+                entry.first.as_str(),
+                entry.last.as_str()
+            ),
+            (true, 1, "d1", "d5"),
+            "a fix that came back wasn't reopened and counted: {entry:?}"
+        );
+        assert_eq!(
+            (entry.due, entry.told.as_deref(), entry.late),
+            (6 * DAY, None, false),
+            "a reopened finding wasn't due a day on and told afresh: {entry:?}"
+        );
+    }
+
+    #[test]
+    fn a_closed_must_is_never_reopened_by_a_day() {
+        let mut ledger = Vec::new();
+        update(
+            &mut ledger,
+            &day("d1", DAY),
+            &[found("hole:ssh")],
+            &owners(),
+        );
+        ledger[0].kind = Some("hole".to_owned());
+        ledger[0].open = false;
+        update(
+            &mut ledger,
+            &day("d2", 2 * DAY),
+            &[found("hole:ssh")],
+            &owners(),
+        );
+        assert!(
+            !ledger[0].open && ledger[0].reopened == 0,
+            "a day reopened a must only its owner closes: {ledger:?}"
         );
     }
 
