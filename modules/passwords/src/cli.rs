@@ -118,6 +118,7 @@ fn gone_help(command: &str) -> Help {
     )
     .exit(Exit::Usage, "always, since every agent runs as Joel")
     .unlisted()
+    .never_done()
 }
 
 /// The command line asked wrongly: what was wrong, and where to read how.
@@ -345,5 +346,28 @@ mod tests {
             brief.contains("passwords keys") && brief.contains("passwords --help"),
             "a bare run doesn't say what to type: {brief}"
         );
+    }
+
+    #[test]
+    fn a_command_that_reads_no_entry_lists_only_its_refusal() {
+        // Each always ends 64, so a 0 among its exits would be untrue.
+        let help = help();
+        for command in GONE {
+            let gone = help
+                .subs
+                .iter()
+                .find(|sub| sub.name == *command)
+                .unwrap_or_else(|| panic!("{command} has no help"));
+            let exits: Vec<u8> = gone
+                .every_exit()
+                .iter()
+                .map(|(exit, _)| exit.code())
+                .collect();
+            assert_eq!(
+                exits,
+                [64],
+                "{command}'s help lists an exit it never ends with"
+            );
+        }
     }
 }
