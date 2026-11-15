@@ -157,7 +157,9 @@ let
           seconds, rather than leaving at once; it starts once the turn is
           free and the machine quiet. A try that waits this long leaves
           with 75, which its unit counts a success, and the next try comes
-          as the timer says. The wait counts toward `longest`.
+          as the timer says. The wait counts toward `longest`, so keep it
+          well under that: at or past it, systemd stops the try as a
+          failed unit before it gives up.
         '';
         type = lib.types.nullOr lib.types.ints.positive;
         default = null;
