@@ -173,7 +173,7 @@ pub fn lost(trial: &Trial, usable: Option<f64>, usual: &Usual) -> Lost {
     // dwell on a page is, and isn't counted against him.
     if trial.picked_one() && trial.keys.letters > 0 {
         let past = float(trial.ms) - usual.ms(&trial.trying()) - it.waiting();
-        it.hunting = past.max(0.0);
+        it.hunting = past.clamp(0.0, HUNTING_MOST_MS);
     } else if trial.missed && trial.keys.letters > trial.keys.erased {
         // A search he cleared before leaving was set aside for reading the
         // lists, as he did at 13:36 on 12 Nov, so only one still typed
