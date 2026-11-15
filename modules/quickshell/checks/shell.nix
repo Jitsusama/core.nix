@@ -395,6 +395,21 @@
     touch $out
   '';
 
+  # JSON.parse holds each string value at its own length, in the shell's own
+  # Qt (qtdeclarative-json-strings-at-their-length.patch): Qt 6.12.0 grew each
+  # one a character at a time and kept the room it grew to, up to twice what it
+  # needs, for every string the daemons' answers hold.
+  json-strings-at-their-length = pkgs.runCommandLocal "json-strings-at-their-length" { } ''
+    mkdir runtime && chmod 700 runtime
+    cp ${../../../tests/json-strings-at-their-length.qml} shell.qml
+    cp ${../../../tests/lib/Memory.js} Memory.js
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    export QML_XHR_ALLOW_FILE_READ=1
+    ${shellFolderLint}
+    timeout 60 ${qs} -p shell.qml
+    touch $out
+  '';
+
   # One long call keeps the heap near what it keeps, in the shell's own Qt
   # (qtdeclarative-collector-keeps-up.patch): Qt 6.12.0 stepped a collection
   # only from the event loop, so the shell's hearing of its Emoji at the start

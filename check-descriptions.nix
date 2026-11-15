@@ -1146,6 +1146,11 @@
   joels-work-goes-before-agents = ''
     the sorter moves a terminal's work inside jobs, above pi's work and below timed work
   '';
+  json-strings-at-their-length = ''
+    in the shell's own Qt, 20,000 distinct string values of 248 characters parsed grow its memory
+    by under 17 MB, where grown a character at a time they took about 21, and what's parsed reads
+    as before, escapes, escaped quotes and empty values alike, an unterminated value refused
+  '';
   json-strings-kept-once = ''
     in the shell's own Qt, 20,000 equal string values parsed grow its memory by under 1 MB, where
     a string apiece took about 7, and what's parsed reads as before, a value dropped by a repeated
