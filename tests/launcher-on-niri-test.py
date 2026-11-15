@@ -2207,6 +2207,28 @@ def test_a_step_into_programs_asks_no_rows_acts_twice_as_it_weighs_their_keys(
     assert read == rows, f"weighing the rows' keys read {read} rows' acts for {rows} rows"
 
 
+def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) -> None:
+    """A key's frame is timed as it's swapped, before the drawer waiting on that frame is made.
+
+    What waits for a frame runs on its swap, and it ran first when it began waiting before the
+    key did, so a program's drawer was made before the key was timed and its making was said as
+    the key's: Joel's down onto Slack took 28 ms before the shell heard its frame swapped,
+    beside Slack's drawer made in 28, and onto mpv 39 beside 39 (2026-11-13, 20:05).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    stepped_into_programs(shell)
+    shell.held_still()
+    since = shell.mark()
+    shell.send_key("down")
+    shell.reported("drawer follows ", lambda _: True, since)
+    shell.held_still()
+    said, _ = shell.said_since(since)
+    shell.close_launcher()
+    order = [one for one in said if one.startswith(("drawer follows ", "key framed "))]
+    assert order[:1] == ["key framed ↓"], f"the key was timed after its drawer: {order}"
+
+
 def drawer_moved(was: str, shown: Json) -> bool:
     """Say whether the drawer is out on the selected row, titled otherwise than it was."""
     return drawer_on_selected(shown) and cast("Json", shown["drawer"])["title"] != was
