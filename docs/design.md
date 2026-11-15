@@ -834,8 +834,12 @@ ends or starts on one. An identifier wraps at its own marks, each dot
 kept with the part before it ("com.onepassword." over "OnePassword"),
 and a run of 20 or more letters and digits with no mark, a hash, may
 break at any letter once no slash or hyphen fits (VKCF3Z, 2026-11-09).
-How it stands never gives way: short of room the
-note goes first, then the name ends as a long name does. Two rows that
+Short of room, a side of several parts gives way first, by whole parts
+from its last back, as a window's "Foot · workspace 2" loses "workspace
+2" and then "Foot"; then the note goes, and only then does the name end
+as a long name does. What's dropped is still in the drawer (VKCF3Z,
+2026-11-14). A side of one fact ("256 × 256 px") keeps its share, and a
+need (a player's "paused · 0:00 of 1:00") is said whole. Two rows that
 would read alike (one track in two players) each say in their note what
 tells them apart, and a file's name kept there gives way from its middle,
 keeping its start and its ending ("second-…take.mp3"), as a path does;
