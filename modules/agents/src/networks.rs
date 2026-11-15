@@ -23,7 +23,8 @@ use crate::top::PLACE;
 /// so none is here.
 const HEADINGS: [(&str, &str, &str); 4] = [
     ("repository", "repositories", "repository"),
-    ("project", "quests", "quest"),
+    // A quest's network wears the mark quests already wear (VKCF3Z, 692362f1).
+    ("project", "quests", "agent"),
     ("group", "groups", "group"),
     ("machines", "machines", "computer"),
 ];
@@ -201,15 +202,16 @@ fn network(
 ) -> Vec<Value> {
     let name = network["name"].as_str().unwrap_or("");
     let key = key_of(&format!("network:{name}"));
-    let called = if network["shape"] == "machines" {
-        words.names.word("every-machine").to_owned()
-    } else {
-        network["title"]
-            .as_str()
-            .or_else(|| network["short"].as_str())
-            .unwrap_or(name)
-            .to_owned()
-    };
+    // Each row shows its network's own name, as the mesh names it, the
+    // machines' too, whose title is a sentence for its drawer (VKCF3Z,
+    // 692362f1).
+    let title = network["title"]
+        .as_str()
+        .filter(|_| network["shape"] != "machines");
+    let called = title
+        .or_else(|| network["short"].as_str())
+        .unwrap_or(name)
+        .to_owned();
     let inside = cells(network, &key, depth + 1, rows, words);
     let acts = if inside.is_empty() {
         json!([])
@@ -399,7 +401,8 @@ mod tests {
     #[test]
     fn the_networks_row_steps_into_a_heading_for_each_kind_it_holds() {
         let repo = record("repo.world", "repository", &[], &quiet(), 1);
-        let machines = record("machines", "machines", &["optimus"], &quiet(), 1);
+        let mut machines = record("machines", "machines", &["optimus"], &quiet(), 1);
+        machines["title"] = json!("the realm's machines");
         let group = record("hub.tide", "group", &[], &quiet(), 1);
         let made = rows(&[&machines, &repo, &group], &[], &words());
         assert_eq!(
@@ -440,8 +443,8 @@ mod tests {
             "a repository's network wears its mark"
         );
         assert_eq!(
-            made[6]["name"], "Every Machine",
-            "the machines' network is named apart from its heading"
+            made[6]["name"], "machines",
+            "the machines' network is named as the mesh names it"
         );
     }
 

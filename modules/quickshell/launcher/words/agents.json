@@ -310,11 +310,6 @@
       "name": "Machines"
     },
     {
-      "id": "agents:every-machine",
-      "in": "agents",
-      "name": "Every Machine"
-    },
-    {
       "id": "agents:works",
       "in": "agents",
       "name": "Working On",
