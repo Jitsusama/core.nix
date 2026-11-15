@@ -4,11 +4,11 @@
 # cage with a terminal in it standing in for niri, and run0 is asked from
 # that terminal with the shell's lock let go, up, or saying nothing, from a
 # text console signed in beside it, and from an ssh login. sudo as the
-# terminal types it (modules/sudo/by-touch.sh) is asked too, and run0 once
-# the key is pulled out, last, which the password still answers. canokey
-# says yes to every touch, so a prompt that takes the touch needs nothing
-# typed. The
-# tests are yubikey-touch-vm-test.py, which pytest runs inside the driver
+# terminal types it (modules/sudo/by-touch.sh) is asked each of those ways
+# too, and once the key is pulled out, last; everywhere but the unlocked
+# desktop the password answers it. canokey says yes to every touch, so a
+# prompt that takes the touch needs nothing typed. The tests are
+# yubikey-touch-vm-test.py, which pytest runs inside the driver
 # (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let

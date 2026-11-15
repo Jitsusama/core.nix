@@ -2,8 +2,8 @@
 
 yubikey-touch.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what the test proves. Each test says what the shell's lock last
-wrote before it asks, so any runs alone. run0 is asked by typing into the desktop's terminal or
-the text console, and from an ssh login through ssh's own terminal.
+wrote before it asks, so any runs alone. run0, and sudo as the terminal types it, is asked by
+typing into the desktop's terminal or a text console, and from an ssh login made at a console.
 
 The desktop's terminal can't be read as a console can, so a prompt that skipped the touch shows
 as the gate's refusal in the journal, polkit then waiting for a password with nothing let in; a
@@ -28,6 +28,23 @@ TOUCHING = timedelta(seconds=5)
 
 # What pam_exec logs each time the gate keeps the touch from being asked.
 REFUSED = "journalctl --boot --output=cat | grep -c 'yubikey-once-in failed' || true"
+
+# run0 itself, and sudo as the person's terminal has it, which goes through run0.
+ASKINGS = [
+    pytest.param("run0", id="run0"),
+    pytest.param("sudo-by-touch", id="sudo"),
+]
+
+# Each asked from a text console of its own, since a console signed out of isn't asking for a
+# login again by the time the next would sign in.
+AT_CONSOLES = [
+    pytest.param("run0", "2", id="run0"),
+    pytest.param("sudo-by-touch", "4", id="sudo"),
+]
+OVER_SSH = [
+    pytest.param("run0", "3", id="run0"),
+    pytest.param("sudo-by-touch", "5", id="sudo"),
+]
 
 
 class Seat:
@@ -92,6 +109,21 @@ class Seat:
         self.machine.send_chars("typed\n")
         self.let_in(made)
 
+    def signs_in_at(self, tty: str) -> None:
+        """Sign in at that text console, beside the desktop, and have it take the keys."""
+        machine = self.machine
+        machine.succeed(f"chvt {tty}")
+        machine.wait_until_tty_matches(tty, r"login:\s*\Z", timeout=ANSWERING.seconds)
+        machine.send_chars("someone\n")
+        machine.wait_until_tty_matches(tty, r"Password:\s*\Z", timeout=ANSWERING.seconds)
+        machine.send_chars("typed\n")
+        machine.wait_until_tty_matches(tty, r"\$\s*\Z", timeout=ANSWERING.seconds)
+
+    def signs_out(self) -> None:
+        """Leave the text console, and give the desktop the keys back."""
+        self.machine.send_chars("exit\n")
+        self.machine.succeed("chvt 1")
+
 
 @pytest.fixture(scope="module")
 def seat(machine: BaseMachine) -> Seat:
@@ -128,6 +160,7 @@ def test_a_terminals_sudo_takes_the_touch(seat: Seat) -> None:
     seat.let_in(made)
 
 
+@pytest.mark.parametrize("asking", ASKINGS)
 @pytest.mark.parametrize(
     "word",
     [
@@ -135,50 +168,48 @@ def test_a_terminals_sudo_takes_the_touch(seat: Seat) -> None:
         pytest.param(None, id="no word from the lock"),
     ],
 )
-def test_the_password_is_asked_unless_unlocked(seat: Seat, word: str | None) -> None:
+def test_the_password_is_asked_unless_unlocked(seat: Seat, word: str | None, asking: str) -> None:
     """With the lock up or saying nothing, the desktop is asked for the password, and it works."""
     seat.lock_says(word)
-    made, before = seat.run0()
+    made, before = seat.run0(asking)
     seat.asked_for_the_password(made, before)
     seat.types_the_password(made)
 
 
-def test_a_text_console_is_asked_for_the_password(seat: Seat) -> None:
-    """From a text console signed in beside the unlocked desktop, the touch never lets run0 in."""
-    machine = seat.machine
+@pytest.mark.parametrize(("asking", "tty"), AT_CONSOLES)
+def test_a_text_console_is_asked_for_the_password(seat: Seat, asking: str, tty: str) -> None:
+    """From a text console signed in beside the unlocked desktop, only the password lets in."""
     seat.lock_says("unlocked")
-    machine.succeed("chvt 2")
-    machine.wait_until_tty_matches("2", r"login:\s*\Z", timeout=ANSWERING.seconds)
-    machine.send_chars("someone\n")
-    machine.wait_until_tty_matches("2", r"Password:\s*\Z", timeout=ANSWERING.seconds)
-    machine.send_chars("typed\n")
-    machine.wait_until_tty_matches("2", r"\$\s*\Z", timeout=ANSWERING.seconds)
-    made, before = seat.run0()
+    seat.signs_in_at(tty)
+    made, before = seat.run0(asking)
     seat.asked_for_the_password(made, before)
     seat.types_the_password(made)
-    machine.send_chars("exit\n")
-    machine.succeed("chvt 1")
+    seat.signs_out()
 
 
-def test_an_ssh_login_is_asked_for_the_password(seat: Seat) -> None:
-    """From an ssh login, with the desktop unlocked, the touch never lets run0 in.
+@pytest.mark.parametrize(("asking", "tty"), OVER_SSH)
+def test_an_ssh_login_is_asked_for_the_password(seat: Seat, asking: str, tty: str) -> None:
+    """From an ssh login, with the desktop unlocked, only the password lets in.
 
-    Nothing is typed, since polkit's prompt throws away what was typed ahead: a touch taken would
-    let run0 in before the prompt reads the end of what ssh was given.
+    ssh is made from a text console, whose screen shows polkit's prompt, so the password is
+    typed only once the prompt is there: polkit throws away what was typed ahead.
     """
     machine = seat.machine
     seat.lock_says("unlocked")
     machine.succeed(
-        "test -e /root/key || ssh-keygen -q -t ed25519 -N '' -f /root/key",
-        "install -d -o someone -m 0700 /home/someone/.ssh",
-        "install -o someone -m 0600 /root/key.pub /home/someone/.ssh/authorized_keys",
+        "su someone -c 'mkdir -p -m 0700 ~/.ssh'",
+        "su someone -c 'test -e ~/.ssh/id_ed25519"
+        ' || ssh-keygen -q -t ed25519 -N "" -f ~/.ssh/id_ed25519\'',
+        "su someone -c 'cp ~/.ssh/id_ed25519.pub ~/.ssh/authorized_keys'",
     )
-    status, said = machine.execute(
-        f"timeout {ANSWERING.seconds} ssh -tt -i /root/key -o StrictHostKeyChecking=no"
-        " -o BatchMode=yes someone@localhost run0 true < /dev/null 2>&1"
+    seat.signs_in_at(tty)
+    made, before = seat.run0(
+        f"ssh -t -o StrictHostKeyChecking=no -o BatchMode=yes localhost {asking}"
     )
-    assert status != 0, said
-    assert "Password" in said, said
+    seat.asked_for_the_password(made, before)
+    machine.wait_until_tty_matches(tty, r"Password:\s*\Z", timeout=ANSWERING.seconds)
+    seat.types_the_password(made)
+    seat.signs_out()
 
 
 def test_with_no_key_the_password_lets_sudo_in(seat: Seat) -> None:
