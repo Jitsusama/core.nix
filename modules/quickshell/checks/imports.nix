@@ -41,6 +41,7 @@
     "MarkSize.js"
     "Pixels.js"
   ];
+  "PolkitCard.qml" = [ "Polkit.js" ];
   "Prompt.qml" = [
     "Bands.js"
     "Confirm.js"

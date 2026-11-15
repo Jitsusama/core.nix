@@ -8,6 +8,10 @@
 // The longest command said whole. Past it, its middle gives way, keeping
 // its start and its end, as a path does (docs/design.md, Space Available).
 const longest = 120;
+// The longest word said whole, a path most often: a line of the prompt's
+// mono holds about 45 letters at its width, and a word breaks only at its
+// spaces, so one longer gives way at its middle too (VKCF3Z, 2026-11-15).
+const longestWord = 40;
 // What a store path's hash and dash take, so a program is named by its
 // package rather than its hash.
 const storeHash = /\/nix\/store\/[0-9a-z]{32}-/gu;
@@ -18,6 +22,17 @@ const programAt = 2;
 const version = /\d+$/u;
 // A word a space would split, said between quotes.
 const spaced = /\s/u;
+// A word's letters, each but its last, which a word joiner holds to the
+// next so Qt breaks a line only at a space, never after a path's slash or
+// a flag's dash, nor beside the ellipsis a long command gives way at
+// (VKCF3Z, 2026-11-15).
+const letterInWord = /(?<letter>\S)(?=\S)/gu;
+// The joiner itself, U+2060, which draws nothing.
+const joiner = "\u2060";
+// The spaces a cut's start ends with and its end starts with, taken off by
+// hand, as Qt's engine has no trimEnd or trimStart.
+const spacesAfter = /\s+$/u;
+const spacesBefore = /^\s+/u;
 // run0's account given in the same word as its option.
 const accountJoined = /^(?:--user=|-u)(?<account>.+)$/u;
 // polkit's words for asking, which the prompt's own reason drops.
@@ -56,12 +71,69 @@ function command(argv) {
     if (argv.length === 0) {
         return "";
     }
-    const said = [program(argv[0])].concat(argv.slice(1).map(shown)).join(" ");
+    return wordsCut([program(argv[0])].concat(argv.slice(1).map(shown))
+        .map(word => middleCut(word, longestWord)));
+}
+
+// The ellipsis that stands for words left out, held to the words either
+// side by no-break spaces, so a line never starts or ends with it.
+const wordsLeftOut = "\u00a0\u2026\u00a0";
+
+// Words said with spaces, those past `longest` letters given way from the
+// middle. Each word is said whole or not at all, since a piece of one
+// joined to a piece of another reads as a flag that isn't there
+// (VKCF3Z, 2026-11-15). Words are kept from each end in turn, the
+// program first, while they fit.
+function wordsCut(parts) {
+    const said = parts.join(" ");
     if (said.length <= longest) {
         return said;
     }
-    const kept = (longest - 1) / 2;
-    return `${said.slice(0, Math.ceil(kept))}\u2026${said.slice(said.length - Math.floor(kept))}`;
+    const front = parts.slice(0, 1);
+    const back = [];
+    const fits = (start, end) => start.join(" ").length + wordsLeftOut.length
+        + end.join(" ").length <= longest;
+    let first = 1;
+    let last = parts.length - 1;
+    let frontFits = true;
+    let backFits = true;
+    let fromBack = true;
+    while (first <= last && (frontFits || backFits)) {
+        fromBack = backFits && (fromBack || !frontFits);
+        if (fromBack && fits(front, [parts[last]].concat(back))) {
+            back.unshift(parts[last]);
+            last -= 1;
+        } else if (!fromBack && fits(front.concat([parts[first]]), back)) {
+            front.push(parts[first]);
+            first += 1;
+        } else if (fromBack) {
+            backFits = false;
+        } else {
+            frontFits = false;
+        }
+        fromBack = !fromBack;
+    }
+    return `${front.join(" ")}${wordsLeftOut}${back.join(" ")}`;
+}
+
+// A word past `most` letters, its middle given way to an ellipsis, its start
+// and end kept. The ellipsis joins what it keeps either side, so a line
+// never starts or ends with it.
+function middleCut(text, most) {
+    if (text.length <= most) {
+        return text;
+    }
+    const kept = (most - 1) / 2;
+    const start = text.slice(0, Math.ceil(kept)).replace(spacesAfter, "");
+    const end = text.slice(text.length - Math.floor(kept)).replace(spacesBefore, "");
+    return `${start}\u2026${end}`;
+}
+
+// Text whose lines break only at its spaces: each word's letters held
+// together by a joiner.
+function joined(text) {
+    // By its place, as Qt's engine fills no named group (accountJoined).
+    return text.replace(letterInWord, `$1${joiner}`);
 }
 
 // The program owning an action, for an ask whose asker can't be read: its
@@ -110,9 +182,9 @@ function run0As(argv) {
             return null;
         }
         // Qt's engine names no groups, so the account is read by its place.
-        const joined = accountJoined.exec(word);
-        if (joined !== null) {
-            return joined[1];
+        const account = accountJoined.exec(word);
+        if (account !== null) {
+            return account[1];
         }
         if (word === "-u" || word === "--user") {
             return argv[at + 1] ?? "root";

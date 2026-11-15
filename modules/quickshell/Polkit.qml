@@ -81,66 +81,16 @@ Scope {
             color: Qt.alpha(Theme.deepest, Theme.floating.scrim)
         }
 
-        Floating {
+        PolkitCard {
             anchors.centerIn: parent
             width: root.width
-            keys: true
-            urgent: root.failed
-
-            Column {
-                width: parent.width
-
-                // Who asks in the mono, as a program is named, and whose
-                // password a strong span; then why, or what went wrong.
-                PromptHead {
-                    width: parent.width
-                    readonly property string asker: `<span style="font-family:`
-                        + `'${Theme.mono.family}'">${Said.plain(root.asker)}</span>`
-                    readonly property string owner: `<span style="color:${Theme.strong};`
-                        + `font-weight:${Theme.level.words.spans.strong}">${root.who}</span>`
-                    asked: `${asker} needs ${owner}'s password`
-                    askedOpens: root.asker.charAt(0)
-                    askedOpensIn: Theme.mono.family
-                    reason: root.failed ? root.flow.supplementaryMessage : root.why
-                    reasonColour: root.failed ? Theme.alert : Theme.level.words.colour
-                }
-
-                Hairline {
-                    width: parent.width
-                }
-
-                // The field, one row, its mark on the head's column.
-                Item {
-                    width: parent.width
-                    height: prompt.height
-
-                    Prompt {
-                        id: prompt
-                        x: Theme.space.rung.inset - markAt
-                        width: parent.width - 2 * x
-                        glyph: Theme.glyph.secret
-                        hue: Theme.machine
-                        secret: !(root.flow && root.flow.responseVisible)
-                        onAccepted: {
-                            root.flow.submit(text);
-                            clear();
-                        }
-                        onCancelled: {
-                            root.flow.cancelAuthenticationRequest();
-                            clear();
-                        }
-                    }
-                }
-
-                Hairline {
-                    width: parent.width
-                }
-
-                PromptFoot {
-                    width: parent.width
-                    keys: [["\u21b5", "allow"], ["Esc", "refuse"]]
-                }
-            }
+            asker: root.asker
+            who: root.who
+            reason: root.failed ? root.flow.supplementaryMessage : root.why
+            failed: root.failed
+            secret: !(root.flow && root.flow.responseVisible)
+            onSubmitted: text => root.flow.submit(text)
+            onRefused: root.flow.cancelAuthenticationRequest()
         }
     }
 }

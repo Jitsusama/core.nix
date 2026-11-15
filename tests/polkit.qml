@@ -98,12 +98,47 @@ QtObject {
         expect("an action of no maker", { cmdline: "", action: "thing", message: "z" },
             "polkit | Z.");
 
-        // A long command gives way at its middle, its start and its end kept.
-        const long = Polkit.asker(line("run0", "echo", "a".repeat(200), "end"), units);
+        // A long command gives way at its middle, its start and its end kept,
+        // and whole words left out rather than pieces of them: a piece of one
+        // joined to a piece of another reads as a flag that isn't there. The
+        // ellipsis holds to the words beside it, so no line can start or end
+        // with it.
+        const hash = "0123456789abcdfghijklmnpqrsvwxyz";
+        const longs = [
+            ["run0", "echo", ...Array(40).fill("abcdefg"), "end"],
+            ["run0", "--setenv", "NIX_PATH=nixpkgs=flake:nixpkgs", "nix", "build", "--no-link",
+                "--print-out-paths", "--rebuild", `/nix/store/${hash}-quickshell-0.3.2.drv^out`,
+                `/nix/store/${hash}-qtdeclarative-6.12.0.drv^out`, "--keep-going"]];
+        for (const words of longs) {
+            const long = Polkit.asker(line(...words), units);
+            const said = long.split(/[ \u00a0]/u);
+            const whole = words.map(word => word.replace(`/nix/store/${hash}-`, ""));
+            asked++;
+            if (long.length > 120 || long.length < 100 || said[0] !== "run0"
+                || said[said.length - 1] !== whole[whole.length - 1]
+                || !long.includes("\u00a0\u2026\u00a0")
+                || said.some(word => word !== "\u2026" && !whole.includes(word)))
+                failures.push(`a long command said ${long}`);
+        }
+        // A word longer than a line gives way at its own middle, as it breaks
+        // only at a space.
+        const path = `/home/joel/${"d".repeat(60)}/end.qml`;
+        const pathed = Polkit.asker(line("run0", "cat", path), units);
         asked++;
-        if (long.length !== 120 || !long.startsWith("run0 echo aaa") || !long.endsWith("aa end")
-            || !long.includes("\u2026"))
-            failures.push(`a long command said ${long}`);
+        if (pathed !== `run0 cat /home/joel/ddddddddd\u2026ddddddddddd/end.qml`)
+            failures.push(`a command with a long word said ${pathed}`);
+
+        // Lines break only at a command's spaces: its words' letters held
+        // together, a path's slashes, a flag's dash and the ellipsis among them.
+        const held = word => word.split("").join("\u2060");
+        const joined = ["run0 /a/b -d", "tlp\u2026end x"];
+        const wanted = [`${held("run0")} ${held("/a/b")} ${held("-d")}`,
+            `${held("tlp\u2026end")} x`];
+        for (const [at, text] of joined.entries()) {
+            asked++;
+            if (Polkit.joined(text) !== wanted[at])
+                failures.push(`${text} was joined as ${escape(Polkit.joined(text))}`);
+        }
 
         // The process shown: the subject a service asks for, pkexec itself for pkexec.
         const pids = [
