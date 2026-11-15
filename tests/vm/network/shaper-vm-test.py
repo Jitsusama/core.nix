@@ -443,7 +443,7 @@ def test_pi_sessions(connection: Connection) -> None:
     def send_again() -> None:
         """Send once more on the connection opened while nobody typed."""
         client.succeed("touch /tmp/typed-go")
-        client.wait_for_file("/tmp/typed-sent")
+        client.wait_until_succeeds("test -e /tmp/typed-sent", timeout=STILLING)
 
     connection.still("eth1")
     client.succeed(f"mkdir -p /run/user/1000/pi/typed && touch /run/user/1000/pi/typed/{pid}")
