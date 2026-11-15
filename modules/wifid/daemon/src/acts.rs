@@ -205,6 +205,12 @@ const LOOKING: Duration = Duration::from_secs(15);
 /// A look that doesn't end by then holds up no move.
 const READYING: Duration = Duration::from_secs(2);
 
+/// How long a move waits once its look has ended, for what the look held
+/// up to reach the card before it leaves: a tenth of a second is one of
+/// the gaps between the pings that measure a move, so this leaves one or
+/// two answered between the look and the move.
+const CATCHING_UP: Duration = Duration::from_millis(200);
+
 /// Moves the card to the access point at `bssid`, looking for it first
 /// where it isn't heard. wpa_supplicant forgets an access point 180 s
 /// after it last heard it, and with nothing looking more than hourly most
@@ -214,8 +220,8 @@ const READYING: Duration = Duration::from_secs(2);
 /// card this way too (moves.rs).
 ///
 /// One that's heard is readied first, its channel alone looked over for
-/// the kernel, which forgets a point sooner, and moved to once that look
-/// ends or `READYING` passes.
+/// the kernel, which forgets a point sooner, and moved to `CATCHING_UP`
+/// after that look ends, or once `READYING` passes.
 pub(crate) async fn roam(
     asks: &mpsc::Sender<Ask>,
     mut air: watch::Receiver<State>,
@@ -232,8 +238,10 @@ pub(crate) async fn roam(
     let before = air.borrow_and_update().looks();
     match once(asks, readying).await {
         Ok(()) => {
-            if looked(&mut air, before, READYING).await == Ok(false) {
-                return Err(stopping());
+            match looked(&mut air, before, READYING).await {
+                Ok(true) => tokio::time::sleep(CATCHING_UP).await,
+                Ok(false) => return Err(stopping()),
+                Err(_) => {}
             }
             return once(asks, roaming).await;
         }
@@ -390,14 +398,19 @@ mod tests {
 
     /// Roams to an access point the main loop hears only once it's looked
     /// everywhere `near_after` times, if ever, each look it's asked for
-    /// ending where `ending`, and says what the connection was told and
-    /// what the main loop was asked, in turn.
-    async fn roamed(near_after: Option<u32>, ending: bool) -> (Vec<Value>, Vec<&'static str>) {
+    /// ending where `ending`, and says what the connection was told, what
+    /// the main loop was asked, in turn, and how long after the readying
+    /// look ended the move was asked.
+    async fn roamed(
+        near_after: Option<u32>,
+        ending: bool,
+    ) -> (Vec<Value>, Vec<&'static str>, Option<Duration>) {
         let (asks, mut taken) = mpsc::channel(1);
         let (told, mut telling) = mpsc::channel(16);
         let (state, watching) = watch::channel(State::default());
         let main_loop = tokio::spawn(async move {
             let mut asked = Vec::new();
+            let (mut ended, mut waited) = (None, None);
             let mut looks = 0;
             let near = |looks| {
                 if near_after.is_some_and(|after| looks >= after) {
@@ -419,11 +432,13 @@ mod tests {
                         // loop hears it.
                         if heard && ending {
                             state.send_modify(State::look_ended);
+                            ended = Some(tokio::time::Instant::now());
                         }
                     }
                     Ask::Roam { bssid, done } => {
                         assert_eq!(bssid, address, "written as wpa_supplicant writes it");
                         asked.push("roam");
+                        waited = ended.map(|ended| ended.elapsed());
                         done.send(near(looks)).expect("answered");
                     }
                     Ask::Scan { done } => {
@@ -437,35 +452,45 @@ mod tests {
                     other => panic!("asked {other:?}, not to roam or look"),
                 }
             }
-            asked
+            (asked, waited)
         });
         let asked = json!({"act": "roam", "bssid": "6C:AE:F6:C1:84:26"});
         act(asks, watching, json!(7), asked, told, None).await;
-        let asked = main_loop.await.expect("the main loop answered");
+        let (asked, waited) = main_loop.await.expect("the main loop answered");
         let mut heard = Vec::new();
         while let Ok(line) = telling.try_recv() {
             heard.push(serde_json::from_str(&line).expect("JSON"));
         }
-        (heard, asked)
+        (heard, asked, waited)
     }
 
     #[tokio::test]
     async fn roaming_readies_the_access_point_and_moves_once_its_channel_is_looked_over() {
-        let (heard, asked) = roamed(Some(0), true).await;
+        let (heard, asked, _) = roamed(Some(0), true).await;
         assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
         assert_eq!(asked, ["ready", "roam"], "readied, then moved");
     }
 
     #[tokio::test(start_paused = true)]
+    async fn a_move_waits_for_what_its_look_held_up_to_reach_the_card() {
+        let (_, asked, waited) = roamed(Some(0), true).await;
+        assert_eq!(asked, ["ready", "roam"], "readied, then moved");
+        assert!(
+            waited.is_some_and(|waited| waited >= CATCHING_UP),
+            "moved {waited:?} after the look ended, not {CATCHING_UP:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn roaming_moves_anyway_once_its_look_is_waited_for_long_enough() {
-        let (heard, asked) = roamed(Some(0), false).await;
+        let (heard, asked, _) = roamed(Some(0), false).await;
         assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
         assert_eq!(asked, ["ready", "roam"], "readied, then moved");
     }
 
     #[tokio::test]
     async fn roaming_to_an_access_point_forgotten_looks_for_it_first() {
-        let (heard, asked) = roamed(Some(1), true).await;
+        let (heard, asked, _) = roamed(Some(1), true).await;
         assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
         assert_eq!(
             asked,
@@ -477,7 +502,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn an_access_point_unheard_after_one_look_is_refused() {
         for ending in [true, false] {
-            let (heard, asked) = roamed(None, ending).await;
+            let (heard, asked, _) = roamed(None, ending).await;
             assert_eq!(
                 heard[0]["error"]["refused"], "NotNearby",
                 "the look ending: {ending}"

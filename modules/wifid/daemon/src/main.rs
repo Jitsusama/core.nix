@@ -2046,9 +2046,9 @@ impl Wifid<'_> {
     /// what the card hears meanwhile can't take it back, and let go if
     /// the move fails.
     ///
-    /// Held, wpa_supplicant can take the card there itself on what the
-    /// look `ready` asked for hears, and a card on its way or there already
-    /// isn't asked again, which would join it over.
+    /// Held, wpa_supplicant can take the card there itself on what it
+    /// hears, and a card on its way or there already isn't asked again,
+    /// which would join it over.
     async fn roam(&self, bssid: &str) -> Result<(), Refused> {
         let card = self.state.borrow().roamer(bssid)?;
         let roamed = async {
@@ -2088,13 +2088,18 @@ impl Wifid<'_> {
         supplicant::holds_a_network(step) && (step != "completed" || there)
     }
 
-    /// Holds the card's network to the access point it's about to move to,
-    /// then has it look over that point's channel alone. The kernel keeps
-    /// what it hears 30 s, and looks for a point it's forgotten as the
-    /// move begins: 145 ms of the 401 ms one move went silent (2026-11-15),
-    /// the replies held for the card meanwhile lost as it left straight
-    /// after. Looked for beforehand, they're given it as it comes back.
-    /// Held first, so what the look hears can't take the card elsewhere.
+    /// Holds the card's network to the access point it's on, then has it
+    /// look over the channel alone of the one it's about to move to. The
+    /// kernel keeps what it hears 30 s, and looks for a point it's
+    /// forgotten as the move begins: 145 ms of the 401 ms one move went
+    /// silent (2026-11-15), the replies held for the card meanwhile lost
+    /// as it left straight after. Looked for beforehand, they're given it
+    /// as it comes back.
+    ///
+    /// Held where it is, what the look hears can't take the card anywhere,
+    /// so the look is apart from the move. Held to the next point instead,
+    /// wpa_supplicant moved on what the look heard, and the two went
+    /// silent as one, 253 ms with 57 of them the look's (2026-11-15).
     async fn ready(&self, bssid: &str) -> Result<(), Refused> {
         let card = self.state.borrow().roamer(bssid)?;
         let frequency = self
@@ -2109,16 +2114,21 @@ impl Wifid<'_> {
             let interface =
                 interface(self.bus, self.supplicant.get_interface(&card).await?).await?;
             let network = interface.current_network().await?;
-            self.hold(&network, bssid).await?;
-            self.held.borrow_mut().insert(card.clone(), network);
-            zbus::Result::Ok(interface)
+            let point = interface.current_access_point().await?;
+            let on = AccessPoint::new(described(self.bus, &point).await?).heard();
+            let on = on.map(|heard| heard.bssid);
+            if let Some(on) = &on {
+                self.hold(&network, on).await?;
+                self.held.borrow_mut().insert(card.clone(), network);
+            }
+            zbus::Result::Ok((interface, on))
         };
-        let interface = match held.await {
-            Ok(interface) => interface,
+        let (interface, on) = match held.await {
+            Ok(held) => held,
             Err(error) => {
                 self.let_go(&card, false).await;
                 return Err(Refused::Failed {
-                    reason: format!("{card} couldn't be held to {bssid}: {error}"),
+                    reason: format!("{card} couldn't be held where it is: {error}"),
                 });
             }
         };
@@ -2132,7 +2142,8 @@ impl Wifid<'_> {
             ("Type", zvariant::Value::from("active")),
             ("Channels", zvariant::Value::from(vec![(frequency, 20_u32)])),
         ]);
-        println!("<7>{card} looks over {frequency} MHz for {bssid} before moving to it");
+        let kept = on.map_or_else(|| "held nowhere".to_owned(), |on| format!("kept to {on}"));
+        println!("<7>{card} looks over {frequency} MHz for {bssid}, {kept} until it moves");
         // A card already looking is refused, and the move waits for that
         // look instead.
         if let Err(error) = interface.scan(looking).await {

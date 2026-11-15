@@ -347,7 +347,11 @@ def test_a_card_whose_access_point_carries_slowly_moves_to_another_of_its_networ
     wifid.says("wlan2 moved to 02:00:00:00:05:00, as asked", timeout=timedelta(seconds=150))
     # Having looked over its channel first, so the kernel needn't look for it as the card
     # leaves the first: that look cost 145 ms of the 401 one move went silent (2026-11-15).
-    wifid.says("wlan2 looks over 2452 MHz for 02:00:00:00:05:00 before moving to it")
+    # It's kept to the first meanwhile, so the look isn't part of the move: held to the second,
+    # wpa_supplicant moved on what the look heard, 253 ms silent, 57 of them the look's.
+    wifid.says(
+        "wlan2 looks over 2452 MHz for 02:00:00:00:05:00, kept to 02:00:00:00:00:00 until it moves"
+    )
     machine.succeed(
         "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
         " | grep -qE '^wlan2 tries 02:00:00:00:05:00, as [0-9a-f:]+ carried [0-9.]+ ms at p95'"
