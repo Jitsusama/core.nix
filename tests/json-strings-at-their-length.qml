@@ -26,12 +26,17 @@ ShellRoot {
         const values = Array.from({ length: 20000 },
             (_, at) => String(at).padStart(6, "0") + "x".repeat(length - 6));
         const said = JSON.stringify(values);
+        // Stringifying grew its text by doubling and freed the smaller copies,
+        // which a first parse reuses without growing the process, so a first
+        // parse is held and the second is weighed.
+        const first = JSON.parse(said);
         gc();
         const before = Memory.anonymous();
         const parsed = JSON.parse(said);
         gc();
         const grew = Memory.anonymous() - before;
         expect("every value", parsed.every((value, at) => value === values[at]), true);
+        expect("the first parse", first.length, values.length);
         if (grew >= 17 * 1024 * 1024)
             wrong.push(`20,000 values of ${length} characters grew memory by `
                 + `${Math.round(grew / 1024)} KB`);
