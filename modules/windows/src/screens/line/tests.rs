@@ -61,7 +61,7 @@ fn values(output: &Value, option: &str) -> Vec<String> {
 fn each_setting_completes_from_its_own_choices_their_words_beside() {
     let monitor = monitor();
     let line = of(&monitor, &words());
-    let options: Vec<&String> = line.as_object().expect("no options").keys().collect();
+    let options: Vec<&String> = line.keys().collect();
     assert_eq!(
         options,
         [
@@ -248,7 +248,7 @@ fn a_screen_running_no_mode_takes_only_its_scale_and_turn() {
     let mut monitor = monitor();
     monitor["current_mode"] = Value::Null;
     let line = of(&monitor, &words());
-    let options: Vec<&String> = line.as_object().expect("no options").keys().collect();
+    let options: Vec<&String> = line.keys().collect();
     assert_eq!(
         options,
         ["rotation", "scale"],
@@ -276,5 +276,84 @@ fn a_screen_gone_says_its_unplugged_and_any_other_ask_is_its_rows_act() {
         sleep.ok(),
         Some(Act::Sleep),
         "a row's act wasn't asked as it is"
+    );
+}
+
+/// What :setl power and :setl unplugged do on DP-2 standing `stands`,
+/// its row's acts served as acts.rs serves them, `last` whether no
+/// other screen is lit and `each` whether niri darkens one by name: each
+/// option's [now, on's way, off's way], a way the key of the act it asks
+/// or the words said in its place.
+fn ways_of(stands: &str, last: bool, each: bool) -> Value {
+    let words = words();
+    let served = crate::screens::acts::of("DP-2", stands, last, each, &words);
+    let line = ways(stands, &served, "HP", &words);
+    let way = |way: &Value| {
+        if way["act"].is_null() {
+            way["said"].clone()
+        } else {
+            way["act"].clone()
+        }
+    };
+    let option = |option: &str| {
+        let served = &line[option];
+        assert!(served["kind"] == "switch", "{option} isn't a switch");
+        json!([
+            served["now"],
+            way(&served["ways"]["on"]),
+            way(&served["ways"]["off"])
+        ])
+    };
+    json!({"power": option("power"), "unplugged": option("unplugged")})
+}
+
+#[test]
+fn power_and_unplugged_do_a_way_the_row_serves_or_say_why_not() {
+    assert_eq!(
+        ways_of("lit", false, true),
+        json!({
+            "power": [true, "HP is on", "verb:display-off"],
+            "unplugged": [false, "verb:display-unplug", "HP is plugged in"],
+        }),
+        "a lit screen beside another darkens and unplugs"
+    );
+    assert_eq!(
+        ways_of("lit", true, true),
+        json!({
+            "power": [true, "HP is on", "verb:display-off"],
+            "unplugged": [false, "HP not unplugged \u{b7} the last lit screen",
+                "HP is plugged in"],
+        }),
+        "the last lit screen darkens but is never unplugged"
+    );
+    assert_eq!(
+        ways_of("lit", false, false),
+        json!({
+            "power": [true, "HP is on", "verb:display-off"],
+            "unplugged": [false, "verb:display-off", "HP is plugged in"],
+        }),
+        "an older niri unplugs as its Turn It Off"
+    );
+    assert_eq!(
+        ways_of("lit", true, false)["power"][2],
+        json!("HP not turned off \u{b7} the last lit screen"),
+        "an older niri's last lit screen isn't turned off"
+    );
+    assert_eq!(
+        ways_of("dark", false, true),
+        json!({
+            "power": [false, "verb:display-on", "HP is dark"],
+            "unplugged": [false, "HP not unplugged \u{b7} the last lit screen",
+                "HP is plugged in"],
+        }),
+        "a dark screen lights, and putting it back never does"
+    );
+    assert_eq!(
+        ways_of("off", false, true),
+        json!({
+            "power": [false, "verb:display-on", "HP is unplugged"],
+            "unplugged": [true, "HP is unplugged", "verb:display-on"],
+        }),
+        "an unplugged screen is put back"
     );
 }

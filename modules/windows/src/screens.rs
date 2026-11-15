@@ -105,6 +105,8 @@ pub struct Words {
     offers_range: String,
     /// A screen gone before niri came to it: "{name} is unplugged".
     is_unplugged: String,
+    /// What the : line says of a screen already standing as it's asked.
+    stood: line::Stood,
     /// Beside the last lit screen's Turn It Off: a key wakes it.
     wakes: String,
     /// Beside Unplug It: its windows move to the other screens.
@@ -167,120 +169,6 @@ struct Sleep {
     name: String,
     glyph: String,
     note: String,
-}
-
-impl Words {
-    /// The words a screen's row is said in, and what the vocabulary
-    /// lacks. A word it lacks is said as its id, and a glyph it lacks is
-    /// none, so Screens keeps its rows and what they do rather than
-    /// showing none for want of a word, as the sound daemon does.
-    pub fn read(vocabulary: &Value) -> (Words, Vec<String>) {
-        let things: BTreeMap<&str, &Value> = vocabulary["things"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|thing| Some((thing["id"].as_str()?, thing)))
-            .collect();
-        let lacked = std::cell::RefCell::new(Vec::new());
-        let found = |id: &str, path: &[&str]| -> Option<String> {
-            let mut at = *things.get(id)?;
-            for step in path {
-                at = &at[*step];
-            }
-            at.as_str().map(str::to_owned)
-        };
-        let word = |id: &str, path: &[&str], unsaid: &str| {
-            found(id, path).unwrap_or_else(|| {
-                lacked.borrow_mut().push(format!("{id} {}", path.join(".")));
-                unsaid.to_owned()
-            })
-        };
-        let said = |key: &str| word("displays", &["said", key], key);
-        let words = Words {
-            built_in: word("displays:built-in", &["name"], "displays:built-in"),
-            dark: said("dark"),
-            off: said("off"),
-            focused: said("focused"),
-            hub_on: said("hubOn"),
-            scale_at: said("scaleAt"),
-            not_on: said("not-on"),
-            not_off: said("not-off"),
-            not_unplugged: said("not-unplugged"),
-            not_set: said("not-set"),
-            chosen: said("chosen"),
-            not_offered: said("not-offered"),
-            none_given: said("none-given"),
-            offers_range: said("offers-range"),
-            is_unplugged: said("isUnplugged"),
-            wakes: word("verb:display-off", &["said", "wakes"], "wakes"),
-            moves: word("verb:display-unplug", &["said", "moves"], "moves"),
-            ways: acts::Way::read(&word),
-            tells: tells::Tells::read(&word),
-            sleep: Sleep {
-                name: word("displays:sleep", &["name"], "displays:sleep"),
-                glyph: word("displays:sleep", &["glyph"], ""),
-                note: word("displays:sleep", &["said", "note"], "note"),
-            },
-            told: Told {
-                named: FACTS
-                    .iter()
-                    .map(|id| {
-                        let part = format!("displays:{id}");
-                        (*id, word(&part, &["name"], &part))
-                    })
-                    .collect(),
-                turned: TRANSFORMS
-                    .iter()
-                    .map(|turn| (*turn, word("displays:rotation", &["said", turn], turn)))
-                    .collect(),
-                built_in: said("built-in"),
-                screen: said("screen"),
-                preferred: word("displays:modes", &["said", "preferred"], "preferred"),
-                custom: word("displays:modes", &["said", "custom"], "custom"),
-                preferred_mode: word(
-                    "displays:modes",
-                    &["said", "preferred-mode"],
-                    "preferred-mode",
-                ),
-                at: word("displays:modes", &["said", "at"], "at"),
-                unsupported: word("displays:variable", &["said", "unsupported"], "unsupported"),
-                variable_on: word("displays:variable", &["said", "on"], "on"),
-                variable_off: word("displays:variable", &["said", "off"], "off"),
-                typed: TRANSFORMS
-                    .iter()
-                    .map(|turn| {
-                        let typed = format!("typed-{turn}");
-                        (*turn, word("displays:rotation", &["said", &typed], &typed))
-                    })
-                    .collect(),
-                parts: things
-                    .iter()
-                    .filter_map(|(id, thing)| {
-                        let part = id.strip_prefix("displays:")?;
-                        Some((part.to_owned(), thing["name"].as_str()?.to_owned()))
-                    })
-                    .collect(),
-                white: word("displays:white", &["said", "point"], "point"),
-                primaries: PRIMARIES
-                    .map(|colour| word("displays:primaries", &["said", colour], colour)),
-            },
-            light: light::Words::read(
-                &word,
-                things
-                    .get("displays")
-                    .map_or(&Value::Null, |screens| &screens["said"]),
-            ),
-            numbers: Numbers::default(),
-        };
-        (words, lacked.into_inner())
-    }
-
-    /// The words with the account's number settings, which a screen's
-    /// density is said in.
-    #[must_use]
-    pub fn numbered(self, numbers: Numbers) -> Words {
-        Words { numbers, ..self }
-    }
 }
 
 /// niri's outputs as it says them now, by connector, or none where it
@@ -717,18 +605,22 @@ pub fn rows(
             } else {
                 described(output, words)
             };
-            // What the : line's :setl takes, on a lit screen alone.
-            let line = if stands == "lit" && output["logical"].is_object() {
+            // What the : line's :setl takes: a lit screen's settings, and
+            // on every screen its power and whether it's unplugged.
+            let acts = acts::of(name, stands, lit == 1, each, words);
+            let named = named(name, output, words);
+            let mut line = if stands == "lit" && output["logical"].is_object() {
                 line::of(output, words)
             } else {
-                json!({})
+                serde_json::Map::new()
             };
+            line.extend(line::ways(stands, &acts, &named, words));
             json!({
                 "key": key(&format!("display:{name}")),
                 "thing": format!("display:{name}"),
                 "place": PLACE,
                 "kind": "screen",
-                "name": named(name, output, words),
+                "name": named,
                 // A screen, built in or not, wears the screen's mark, its
                 // drawer saying it's built in (VKCF3Z, 2026-11-08).
                 "glyph": "display",
@@ -741,7 +633,7 @@ pub fn rows(
                 "held": {"output": name, "standing": stands, "builtIn": built_in(name),
                     "niri": output, "line": line,
                     "follows": desk.get(name.as_str()).is_some_and(facts::follows)},
-                "acts": acts::of(name, stands, lit == 1, each, words),
+                "acts": acts,
             })
         })
         .collect();

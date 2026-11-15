@@ -24,12 +24,42 @@ const MULTIPLE_UNITS: [char; 3] = ['x', 'X', '\u{d7}'];
 /// Two multiples closer than this are one.
 const SAME_MULTIPLE: f64 = 0.001;
 
+/// The : line's options for a screen's light and whether it's
+/// unplugged, as Turn It On, Turn It Off and Unplug It type them in the
+/// vocabulary (`argument`, "power", "nopower" and "unplugged").
+const POWER: &str = "power";
+const UNPLUGGED: &str = "unplugged";
+
+/// How a screen already stands where the : line asks it to stand so,
+/// "{name} is on", "{name} is dark" and "{name} is plugged in", and
+/// why the last lit screen isn't turned off or unplugged.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Stood {
+    on: String,
+    dark: String,
+    plugged_in: String,
+    the_last_lit: String,
+}
+
+impl Stood {
+    /// The words, as `word` reads a thing's from the vocabulary.
+    pub fn read(word: &dyn Fn(&str, &[&str], &str) -> String) -> Stood {
+        let said = |key: &str| word("displays", &["said", key], key);
+        Stood {
+            on: said("isOn"),
+            dark: said("isDark"),
+            plugged_in: said("isPluggedIn"),
+            the_last_lit: said("the-last-lit"),
+        }
+    }
+}
+
 /// The settings the : line takes on the lit screen `output`, by their
 /// options: each choice's where it stands, as it's typed, and the values
 /// it completes from, each with its choice's words beside; Variable
 /// Refresh's whether it's on.
 #[must_use]
-pub fn of(output: &Value, words: &Words) -> Value {
+pub fn of(output: &Value, words: &Words) -> Map<String, Value> {
     let mut line = Map::new();
     for setting in settings::settings(output, words) {
         line.insert(
@@ -43,7 +73,68 @@ pub fn of(output: &Value, words: &Words) -> Value {
             json!({"kind": "switch", "now": output["vrr_enabled"] == true}),
         );
     }
-    Value::Object(line)
+    line
+}
+
+/// The : line's :setl power and :setl unplugged on a screen standing
+/// `stands` ("lit", "dark" or "off"), each a switch saying how it
+/// stands, with what each way does, as Screens.js's wayTo and toldOf
+/// said until 15 November 2026. A way is the act its row serves for it,
+/// by its key, so the launcher asks it as Return does and the last lit
+/// screen's darkening still closes the launcher first; or, where it
+/// does nothing, what the line says in its place: how the screen
+/// already stands, as Vim's :set does, or that the last lit screen
+/// isn't turned off or unplugged (VKCF3Z, 2026-11-08). `acts` are its
+/// row's (acts.rs), `named` its row's name.
+///
+/// Unplugging takes it out of niri's outputs, by Unplug It where niri
+/// darkens each screen by name and an older niri's Turn It Off where it
+/// doesn't; putting it back lights only one unplugged, never a dark one.
+#[must_use]
+pub fn ways(stands: &str, acts: &[Value], named: &str, words: &Words) -> Map<String, Value> {
+    let served = |found: &dyn Fn(&Value) -> bool| {
+        acts.iter()
+            .find(|act| found(act))
+            .map(|act| json!({"act": act["key"]}))
+    };
+    let keyed = |key: &'static str| move |act: &Value| act["key"] == key;
+    let already = |said: &str| json!({"said": said.replace("{name}", named)});
+    let refused = |said: &str| json!({"said": said.replace("{thing}", named).replace("{why}", &words.stood.the_last_lit)});
+    let stood = match stands {
+        "dark" => &words.stood.dark,
+        "off" => &words.is_unplugged,
+        _ => &words.stood.on,
+    };
+    let lit = stands == "lit";
+    let off = stands == "off";
+    let power = json!({
+        "kind": "switch",
+        "now": lit,
+        "ways": {
+            "on": if lit { None } else { served(&keyed("verb:display-on")) }
+                .unwrap_or_else(|| already(stood)),
+            "off": if lit {
+                served(&keyed("verb:display-off")).unwrap_or_else(|| refused(&words.not_off))
+            } else {
+                already(stood)
+            },
+        },
+    });
+    let unplugs = |act: &Value| act["ask"]["do"] == "unplug" || act["ask"]["do"] == "off";
+    let unplugged = json!({
+        "kind": "switch",
+        "now": off,
+        "ways": {
+            "on": if off {
+                already(&words.is_unplugged)
+            } else {
+                served(&unplugs).unwrap_or_else(|| refused(&words.not_unplugged))
+            },
+            "off": if off { served(&keyed("verb:display-on")) } else { None }
+                .unwrap_or_else(|| already(&words.stood.plugged_in)),
+        },
+    });
+    Map::from_iter([(POWER.to_owned(), power), (UNPLUGGED.to_owned(), unplugged)])
 }
 
 /// A setting's values as the line completes them, two modes of one size
