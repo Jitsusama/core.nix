@@ -1,0 +1,15 @@
+# system says how the whole system stands, the machines, the mycelium, the
+# network and the code at once, from each part's own command (src/lib.rs
+# says how).
+[package]
+name = "system"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde_json = "1"
+# The shape every command of ours takes: help, the answer's form, the
+# terminal's colours and the shared exits (../terminal-kit).
+terminal-kit = { path = "../terminal-kit" }
