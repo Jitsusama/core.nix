@@ -1157,11 +1157,18 @@ Provider {
     // A done item's row in History: its title, how it went and when at its
     // side, and its drawer as it had, with when it was resolved. Return
     // goes where it was done, while that's open.
+    // Kept while the item, its side and its note read the same, as
+    // History's other done rows are (doneKept).
     function doneRow(one) {
         const each = one.item;
         const say = forYouSaid(Date.now());
         const side = ForYou.historySide({ how: say.doneByYou, resolved: one.resolved,
             since: null }, say);
+        const note = noteOf(each);
+        return keptAlike(doneKept, `done:${WaitingOnYou.identity(each)}`,
+            [JSON.stringify(each), side, note], () => madeDone(each, side, note));
+    }
+    function madeDone(each, side, note) {
         return member({
             thing: true,
             key: `on:waiting:done:${WaitingOnYou.identity(each)}`,
@@ -1170,7 +1177,7 @@ Provider {
             glyph: Theme.glyph.waitsOnJoel,
             hue: "muted",
             side: side,
-            note: noteOf(each),
+            note: note,
             later: true,
             drawer: () => {
                 const drawn = provider.drawerOf(each);
@@ -1208,6 +1215,13 @@ Provider {
     // them with the rest is a stopgap until For You's rows are served
     // whole.
     readonly property var historyKept: keeper()
+    // Each done row History holds, kept while what it's made of is the
+    // same, since History is made again at any change it hears, a notice's
+    // or a to-do's, and each made every done row anew: 10 to-dos' rows
+    // about every 4 minutes on Joel's shell with the launcher shut
+    // (RCTRF8, 2026-11-15). Made here only until the notices daemon
+    // serves them, as it serves the notices' and the looks' (row.rs).
+    readonly property var doneKept: keeper()
     function historyRows(from) {
         const now = Date.now();
         const served = source("notices")?.pastRows(pastOf(from)) ?? [];
@@ -1215,7 +1229,15 @@ Provider {
         const looked = ours ? lookedRows() : null;
         return keptAlike(historyKept, from ?? "", [served, looked, cameDone,
             ours ? looks.history : null, ours ? doneItems : null, ours ? given.done : null,
-            new Date(now).toDateString()], () => madeHistory(from, served, looked, now));
+            new Date(now).toDateString()], () => ours ? madeWhole(served, looked, now)
+            : madeHistory(from, served, looked, now));
+    }
+    // The whole History, keeping only the done rows it still holds.
+    function madeWhole(served, looked, now) {
+        keepingBegun(doneKept);
+        const made = madeHistory(undefined, served, looked, now);
+        keptOnly(doneKept);
+        return made;
     }
     function madeHistory(from, served, looked, now) {
         const came = from === undefined ? cameDone
@@ -1359,8 +1381,10 @@ Provider {
     // saying at its side how it went and when, "read 14:02", as every row
     // there does.
     function givenDone(one, say) {
-        return Object.assign({}, one.row, { side: ForYou.historySide({ how: one.done.how,
-            resolved: one.done.at, since: null }, say), later: true });
+        const side = ForYou.historySide({ how: one.done.how, resolved: one.done.at,
+            since: null }, say);
+        return keptAlike(doneKept, `given:${one.row.key}`, [one.row, side],
+            () => Object.assign({}, one.row, { side: side, later: true }));
     }
     readonly property int resolvedCount: looks.history.length + doneItems.length
         + cameDone.length + given.done.length + pastKept()
@@ -2164,7 +2188,12 @@ Provider {
     function cameDoneRow(one) {
         const side = ForYou.historySide({ how: one.how, resolved: one.at, since: null },
             forYouSaid(Date.now()));
-        const given = typeof one.of.row === "function" ? one.of.row(thing) : null;
+        const own = typeof one.of.row === "function";
+        return keptAlike(doneKept, `came:${one.source}:${one.at}`,
+            [own ? one.of : null, one.title, side], () => madeCameDone(one, side, own));
+    }
+    function madeCameDone(one, side, own) {
+        const given = own ? one.of.row(thing) : null;
         const row = given ?? member({
             key: `on:waiting:came:${one.source}:${one.at}`,
             name: one.title,

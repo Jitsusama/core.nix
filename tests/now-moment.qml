@@ -27,6 +27,7 @@
 // History lists the looks done with as the to-do daemon serves them,
 // making none itself, among the notices by when each was done, and has
 // its rows made while the launcher is shut, so a step finds them made.
+// Its done rows are kept while each reads the same, made again or not.
 // Long because its cases run in turn on one Now, its stand-ins and its
 // stand-in notices and to-do daemons, which each file split from it would
 // build again.
@@ -122,6 +123,8 @@ ShellRoot {
         property var wants: ({})
         property var answered: []
         property bool puts: true
+        // What it gives For You, as a source's `forYou` (ForYou.js's given).
+        property var forYou: []
 
         function wantOf(address) {
             return wants[address] ?? null;
@@ -1038,8 +1041,62 @@ ShellRoot {
         Sessions.wanting = [];
         now.lookTexts = {};
         answersInPlace(forYou);
+        doneKept(toDo);
         shut(piece, toDo);
         remakesWhatChanged(toDo);
+    }
+
+    // History's done rows, the to-dos Joel said were done, what a piece
+    // finished and what a source gave that's done, are each kept while
+    // what it's made of is the same: any change History heard made every
+    // one anew, 10 to-dos' rows about every 4 minutes on Joel's shell
+    // with the launcher shut (RCTRF8, 2026-11-15).
+    function doneKept(toDo) {
+        const hour = 3600000;
+        const at = Date.now();
+        // Each said as the node keeps it, so said anew it reads the same:
+        // toDo stamps when it was raised by the clock as it's called.
+        const signed = toDo("Signed In");
+        const yes = toDo("Said Yes");
+        const anew = one => Object.assign({}, one);
+        WaitingOnYou.asked = [signed, yes];
+        WaitingOnYou.settled = { done: { "Signed In": at - hour, "Said Yes": at - 2 * hour } };
+        const mail = finished => ({ entry: { mark: "mail" }, piece: { present: true,
+            active: true, group: "on", title: "mail", value: "", lately: "mail", came: [],
+            actions: [], finished: finished } });
+        const lunch = { subject: "Lunch", done: { how: "read", at: at - hour / 2 } };
+        Facts.all = [mail([lunch])];
+        agents.forYou = [{ row: { key: "agent:merged", name: "Merged" },
+            done: { how: "merged", at: at - 3 * hour } }];
+        const done = () => now.historyRows().filter(row => row.key.startsWith("on:waiting:done:")
+            || row.key.startsWith("on:waiting:came:") || row.key === "agent:merged");
+        const first = done();
+        expect("History holds the to-dos done, what Mail finished and what Agents gave done",
+            JSON.stringify(first.map(row => row.key)) === JSON.stringify([
+                `on:waiting:came:mail:${at - hour / 2}`, "on:waiting:done:Signed In",
+                "on:waiting:done:Said Yes", "agent:merged"]),
+            JSON.stringify(first.map(row => row.key)));
+        // The node says its to-dos anew at each revision, and one more
+        // waits now, so History is made again, but none of its done rows.
+        let before = now.tally.rows;
+        WaitingOnYou.asked = [anew(signed), anew(yes), toDo("Sign Up")];
+        const again = done();
+        const remade = again.filter(row => !first.includes(row)).map(row => row.key);
+        expect("History made again keeps every done row that reads the same",
+            remade.length === 0 && again.length === first.length && now.tally.rows === before,
+            JSON.stringify([now.tally.rows - before, remade]));
+        // One said done at another time makes only its own row again.
+        before = now.tally.rows;
+        WaitingOnYou.settled = { done: { "Signed In": at - hour, "Said Yes": at - 4 * hour } };
+        const moved = done().filter(row => !first.includes(row)).map(row => row.key);
+        expect("a to-do said done at another time makes only its row again",
+            JSON.stringify(moved) === JSON.stringify(["on:waiting:done:Said Yes"])
+                && now.tally.rows - before === 1,
+            JSON.stringify([now.tally.rows - before, moved]));
+        WaitingOnYou.asked = [];
+        WaitingOnYou.settled = {};
+        Facts.all = [];
+        agents.forYou = [];
     }
 
     // With the launcher shut, a piece moving, a to-do coming, one for
