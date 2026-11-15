@@ -47,7 +47,10 @@ fn run() -> Help {
             Exit::Failed,
             "its folders, lock or cgroup failed it, or the job didn't start",
         )
-        .exit(Exit::TryAgain, "it waited for the turn as long as it was let")
+        .exit(
+            Exit::TryAgain,
+            "it waited for the turn as long as it was let",
+        )
         .passes("the job's own code, when it fails")
 }
 
