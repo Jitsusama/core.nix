@@ -347,6 +347,34 @@ pub fn broken(text: &str, now: i64, owner: &str) -> Measure {
     }
 }
 
+/// The machines over their room while another of their realm has room,
+/// from each realm's `mycelium machines` answer (`elsewhere.rs`): work
+/// that could go elsewhere waits on the one machine instead.
+#[must_use]
+pub fn crowded(answers: &[String], owner: &str) -> Measure {
+    let crowded: Vec<String> = answers
+        .iter()
+        .flat_map(|answer| crate::elsewhere::crowded(answer))
+        .map(|m| {
+            format!(
+                "{} is over its room ({}) while {} has room",
+                m.machine,
+                m.over.join(", "),
+                m.roomy.join(", ")
+            )
+        })
+        .collect();
+    Measure {
+        key: "crowded".to_owned(),
+        class: Class::Ship,
+        says: "machines over their room while another has room".to_owned(),
+        now: count(crowded.len()),
+        target: Some(0.0),
+        owner: owner.to_owned(),
+        behind: crowded,
+    }
+}
+
 /// The median the tick's card gives on the line opening with `label`,
 /// such as `Merge to on (target median 18): median 37.9, ...`, and the
 /// target it names.
@@ -482,6 +510,24 @@ mod tests {
     use super::*;
 
     const NOW: i64 = 1_794_700_000;
+
+    #[test]
+    fn a_machine_crowded_beside_one_with_room_is_past_its_target() {
+        let answer = r#"{"Ok":{"Machines":[
+            {"name":"laptop","room":{"over":["memory","cpu"],"takes":{"builds":0}}},
+            {"name":"mac","room":{"over":[],"takes":{"builds":10,"vm_tests":6}}}
+        ]}}"#;
+        let m = crowded(&[answer.to_owned()], "OWNER");
+        assert_eq!(
+            (m.now, m.target, m.behind),
+            (
+                1.0,
+                Some(0.0),
+                vec!["laptop is over its room (memory, cpu) while mac has room".to_owned()]
+            ),
+            "a machine over its room beside one with room wasn't counted and named"
+        );
+    }
 
     fn at(seconds: i64) -> String {
         Timestamp::from_second(seconds)

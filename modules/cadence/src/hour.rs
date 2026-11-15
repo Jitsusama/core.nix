@@ -61,17 +61,20 @@ pub struct Held {
     pub unmoved: u32,
 }
 
-/// `cadence hour [--to ADDRESS] [--checkout NAME=PATH]...`: prints the
-/// hour's card, and sends it to the address given, the orchestrator's.
-/// Each checkout is another repository whose main says which of the
-/// misses' checks merged, beside core's and the harness's.
+/// `cadence hour [--to ADDRESS] [--checkout NAME=PATH]... [--realm NAME]...`:
+/// prints the hour's card, and sends it to the address given, the
+/// orchestrator's. Each checkout is another repository whose main says
+/// which of the misses' checks merged, beside core's and the harness's;
+/// each realm's node says whether a machine is crowded beside one with room.
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let mut to = None;
     let mut checkouts = Vec::new();
+    let mut realms = Vec::new();
     while let Some(flag) = args.next() {
         match (flag.as_str(), args.next()) {
             ("--to", Some(address)) => to = Some(address),
             ("--checkout", Some(named)) if named.contains('=') => checkouts.push(named),
+            ("--realm", Some(realm)) => realms.push(realm),
             _ => {
                 return Err(wrongly(
                     "hour",
@@ -80,13 +83,21 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
             }
         }
     }
-    hour(to.as_deref(), &checkouts).map_err(failed)
+    hour(to.as_deref(), &checkouts, &realms).map_err(failed)
 }
 
-fn hour(to: Option<&str>, checkouts: &[String]) -> io::Result<()> {
+fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result<()> {
     let (_, state_home, folder) = folders()?;
     let now = now_ms() / 1000;
-    let measures = gather(&folder, &state_home, now, checkouts)?;
+    let mut measures = gather(&folder, &state_home, now, checkouts)?;
+    // A realm whose node doesn't answer says nothing of its machines.
+    if !realms.is_empty() {
+        let answers: Vec<String> = realms
+            .iter()
+            .filter_map(|realm| command("mycelium", &["--realm", realm, "machines"]).ok())
+            .collect();
+        measures.push(measures::crowded(&answers, NET_RULES));
+    }
     let kept_at = folder.join("hour.json");
     let kept: Kept = fs::read_to_string(&kept_at)
         .ok()

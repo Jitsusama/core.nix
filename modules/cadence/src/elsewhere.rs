@@ -2,6 +2,12 @@
 //! (`mycelium machines`), so cadence says one failing elsewhere as it
 //! says its own. On 15 November the work Mac's updates failed on one test
 //! for hours and nothing said so, since cadence watched only this machine.
+//!
+//! Each machine's node also says its room: the pressure on it, what it's
+//! over, and what work it takes. At 14:01 the same day Joel asked why the
+//! other machines weren't used more, with this laptop over its room on
+//! processor and memory under 115 sessions while the Mac had none of
+//! either and 46 GB free, so the hour names a machine crowded so.
 
 /// Another machine of the realm whose newest update failed, as its node
 /// says in `mycelium machines`.
@@ -59,9 +65,122 @@ pub fn failing_elsewhere(answer: &str, this: &str) -> Vec<Failing> {
         .collect()
 }
 
+/// A machine over its room while another of its realm has room to take
+/// work, as their nodes say in `mycelium machines`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Crowded {
+    pub machine: String,
+    /// What it's over, as its node says: `cpu`, `memory`, `io`.
+    pub over: Vec<String>,
+    /// The machines of its realm over nothing that take builds or VM tests.
+    pub roomy: Vec<String>,
+}
+
+/// The machines in a `mycelium machines` answer over their room while
+/// another has room; none when the answer doesn't parse.
+#[must_use]
+pub fn crowded(answer: &str) -> Vec<Crowded> {
+    let Ok(said) = serde_json::from_str::<serde_json::Value>(answer) else {
+        return Vec::new();
+    };
+    let machines = said["Ok"]["Machines"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let words = |list: &serde_json::Value| -> Vec<String> {
+        list.as_array()
+            .map(|list| {
+                list.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let takes = |room: &serde_json::Value| {
+        ["builds", "vm_tests"]
+            .iter()
+            .any(|work| room["takes"][work].as_u64().is_some_and(|n| n > 0))
+    };
+    let roomy: Vec<String> = machines
+        .iter()
+        .filter(|m| m["room"]["over"].is_array() && words(&m["room"]["over"]).is_empty())
+        .filter(|m| takes(&m["room"]))
+        .filter_map(|m| m["name"].as_str().map(str::to_owned))
+        .collect();
+    if roomy.is_empty() {
+        return Vec::new();
+    }
+    machines
+        .iter()
+        .filter_map(|m| {
+            let over = words(&m["room"]["over"]);
+            (!over.is_empty()).then(|| Crowded {
+                machine: m["name"].as_str().unwrap_or_default().to_owned(),
+                over,
+                roomy: roomy.clone(),
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn machine(name: &str, over: &str, builds: u32) -> String {
+        format!(
+            r#"{{"name":"{name}","room":{{"over":[{over}],
+               "takes":{{"builds":{builds},"vm_tests":0}}}}}}"#
+        )
+    }
+
+    #[test]
+    fn a_machine_over_its_room_while_another_has_room_is_crowded() {
+        let answer = format!(
+            r#"{{"Ok":{{"Machines":[{},{},{},{}]}}}}"#,
+            machine("laptop", r#""memory","cpu""#, 0),
+            machine("mac", "", 10),
+            machine("takes-nothing", "", 0),
+            machine("also-over", r#""io""#, 4),
+        );
+        assert_eq!(
+            crowded(&answer),
+            [
+                Crowded {
+                    machine: "laptop".into(),
+                    over: vec!["memory".into(), "cpu".into()],
+                    roomy: vec!["mac".into()],
+                },
+                Crowded {
+                    machine: "also-over".into(),
+                    over: vec!["io".into()],
+                    roomy: vec!["mac".into()],
+                },
+            ],
+            "a machine over its room beside one with room wasn't named, or one that takes \
+             no work was counted as room"
+        );
+    }
+
+    #[test]
+    fn a_machine_over_its_room_with_nowhere_else_to_go_is_not_crowded() {
+        let answer = format!(
+            r#"{{"Ok":{{"Machines":[{},{}]}}}}"#,
+            machine("laptop", r#""cpu""#, 0),
+            machine("busy", r#""memory""#, 10),
+        );
+        assert_eq!(
+            crowded(&answer),
+            [],
+            "a machine was named crowded with no other machine having room"
+        );
+        assert_eq!(
+            crowded("not json"),
+            [],
+            "an answer that doesn't parse named one"
+        );
+    }
 
     #[test]
     fn another_machines_failed_update_is_read_from_its_node() {
