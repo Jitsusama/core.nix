@@ -55,6 +55,15 @@ pub struct Heard {
     pub trial: Option<Tuning>,
 }
 
+/// What a link joining `network` starts its upload at, in kbit/s: the
+/// hold of the plateau the one-way controller learned there and kept in
+/// `kept`, or none where it learned none.
+pub fn starting_up(kept: &Path, network: &str) -> Option<u64> {
+    let known: Known = serde_json::from_str(&fs::read_to_string(kept).ok()?).ok()?;
+    let plateau = known.get(network)?.0.plateau?;
+    Some(crate::rate::whole(plateau * Tuning::default().hold))
+}
+
 /// The trial written at `path`, held within its bounds: none while there
 /// is no file, and today's tuning for whatever it doesn't say. A file
 /// that can't be read as one is no trial, so a slip in writing it leaves
@@ -706,6 +715,29 @@ mod tests {
             up.is_some_and(|up| (11_000.0..13_000.0).contains(&up)),
             "kept {learned:?}"
         );
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_link_starts_its_upload_at_the_hold_of_what_its_network_learned() {
+        let folder = std::env::temp_dir().join(format!("shaper-start-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let kept = folder.join("learned.json");
+        assert_eq!(starting_up(&kept, "home"), None, "with nothing kept");
+        fs::write(
+            &kept,
+            r#"{"home": [{"line": 6750.9, "held": 10090.0}, {"line": null, "held": null}],
+                "cafe": [{"line": null, "held": null}, {"line": null, "held": null}]}"#,
+        )
+        .expect("what was learned");
+        assert_eq!(starting_up(&kept, "home"), Some(9_586));
+        assert_eq!(
+            starting_up(&kept, "cafe"),
+            None,
+            "a network with no plateau"
+        );
+        assert_eq!(starting_up(&kept, "park"), None, "a network never met");
         let _ = fs::remove_dir_all(&folder);
     }
 }

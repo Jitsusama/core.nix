@@ -419,7 +419,7 @@ fn ceiling(link: &str) -> links::Ceiling {
 
 fn start(
     uplink: links::Uplink,
-    memory: &Memory,
+    (memory, learned): (&Memory, Option<&Path>),
     hosts: &[String],
     echoes: &std::sync::mpsc::Sender<Echo>,
 ) -> Option<Shaped> {
@@ -431,7 +431,14 @@ fn start(
     .ok()?;
     let ifb = qdisc::ifb(index);
     let network = network_of(&uplink);
-    let held = memory.get(&network).unwrap_or(FIRST);
+    let mut held = memory.get(&network).unwrap_or(FIRST);
+    // The one-way controller keeps what each network's upload learned, and
+    // this memory only what the older controller did: on 14 November a
+    // boot started at 15.4 Mbit/s, kept on 3 November, over a learned 10.1,
+    // and queued at the modem until a cut 2 s later.
+    if let Some(up) = learned.and_then(|kept| live::starting_up(kept, &network)) {
+        held.up = up;
+    }
     let max = ceiling(&uplink.name);
     // The kernel gives a Wi-Fi link a wireless folder of its own.
     let wireless = Path::new("/sys/class/net")
@@ -1002,7 +1009,8 @@ fn look(
         match shaped.get_mut(&uplink.name) {
             None => {
                 let name = uplink.name.clone();
-                if let Some(s) = start(uplink, memory, &options.hosts, send) {
+                let learned = options.one_way.then(|| options.state.join("learned.json"));
+                if let Some(s) = start(uplink, (memory, learned.as_deref()), &options.hosts, send) {
                     shaped.insert(name, s);
                 }
             }
