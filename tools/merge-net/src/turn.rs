@@ -46,6 +46,15 @@ pub const LONGEST: u64 = 3 * 60 * 60;
 /// done still ends first, and one far from done doesn't hold a pass back.
 pub const PATIENCE: u64 = 15 * 60;
 
+/// How long a change whose gate passed keeps its turn, for its author to
+/// merge it. Holding back only while a gate ran let a change waiting on it
+/// go the moment it ended: on 14 November a change sharing Launcher.qml
+/// passed at 22:50:57, one placed after it merged 32 seconds later, and
+/// the first's pass went stale for the second time that evening. Ten
+/// minutes leaves room for its author's merge, while a pass nobody merges
+/// holds others back only so long.
+pub const GRACE: u64 = 10 * 60;
+
 /// A gate going now, as nix-offload said it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Gate {
@@ -88,6 +97,22 @@ pub fn started(record: &str) -> Option<u64> {
         .filter(|line| line["dir"].is_null() && line["run"].is_array())
         .filter_map(|line| line["started"].as_u64())
         .min()
+}
+
+/// The gates of `trees`, each a folder with its head, that ended with a
+/// pass at that head under [`GRACE`] before `now` and that main doesn't
+/// hold yet, as gates with no process (a `pid` of 0). `kept` says when a
+/// head's passing gate started and when its pass was kept; `merged`
+/// whether main holds a head, or nothing where that can't be told, which
+/// holds nothing back.
+pub fn finished(
+    trees: &[(PathBuf, String)],
+    now: u64,
+    kept: &dyn Fn(&str) -> Option<(u64, u64)>,
+    merged: &dyn Fn(&str) -> Option<bool>,
+) -> Vec<Gate> {
+    let _ = (trees, now, kept, merged);
+    Vec::new()
 }
 
 /// What a gate holding a change back shares with it.
@@ -413,6 +438,49 @@ mod tests {
             ahead(&gates, &waiting, NOW, &own, &everyone, &touch),
             None,
             "a pass that waited its patience was still held back"
+        );
+    }
+
+    #[test]
+    fn a_change_whose_gate_passed_keeps_its_turn_while_its_author_merges() {
+        // On 14 November the tree at /a passed at 22:50:57, from a gate
+        // started at 22:38:15, and /b's change, placed after it, asked 32
+        // seconds later and merged first, leaving /a's pass stale again.
+        let started = 1_794_713_895;
+        let kept = 1_794_714_657;
+        let asked = kept + 32;
+        let trees = [(PathBuf::from("/a"), "9d0f6cb20".to_owned())];
+        let passes = |commit: &str| (commit == "9d0f6cb20").then_some((started, kept));
+        let unmerged = |_: &str| Some(false);
+        let ours = owned(&["modules/quickshell/Launcher.qml"]);
+        let touch = touching(&["modules/quickshell/Launcher.qml"]);
+        let mut later = asking(started + 60, "/b", &ours);
+        later.passed = asked - 60;
+        let gates = finished(&trees, asked, &passes, &unmerged);
+        let held = ahead(&gates, &later, asked, &own, &everyone, &touch);
+        assert_eq!(
+            held.map(|held| held.gate.folder.clone()),
+            Some(PathBuf::from("/a")),
+            "a change placed later merged ahead of one whose gate had just passed"
+        );
+        assert!(
+            finished(&trees, kept + GRACE, &passes, &unmerged).is_empty(),
+            "a pass left unmerged past its grace still held others back"
+        );
+        let merged = |_: &str| Some(true);
+        assert!(
+            finished(&trees, asked, &passes, &merged).is_empty(),
+            "a pass main already holds still held others back"
+        );
+        let untold = |_: &str| None;
+        assert!(
+            finished(&trees, asked, &passes, &untold).is_empty(),
+            "a pass main can't be told to hold or not held others back"
+        );
+        let never = |_: &str| None;
+        assert!(
+            finished(&trees, asked, &never, &unmerged).is_empty(),
+            "a head that never passed held others back"
         );
     }
 
