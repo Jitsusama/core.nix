@@ -1737,13 +1737,25 @@ fn stalled(state: &State, head: &str, test: &str, owner: Option<u64>) -> Result<
 /// listed, came off the list still failing, and its search took four runs
 /// of 25 minutes each. A merge that broke it again after another fixed it
 /// in the same round goes unblamed, which costs less than such a search.
-fn failed_at_base(state: &State, base: &str, test: &str) -> bool {
-    state
-        .runs(base, test)
-        .iter()
-        .filter(|&&ran| ran == Ran::Failed)
-        .count()
-        >= FAILURES
+///
+/// A run there that failed only in subtests main listed then counted as a
+/// pass, so it is judged again by main's list as it is now, and one the
+/// list no longer excuses failed there. On 15 November
+/// vm-screens-keep-the-launcher's base 93b1a9bc was excused so, #4658 took
+/// the entry off, and the search blamed #4615 for what failed before it.
+fn failed_at_base(world: &dyn World, state: &State, base: &str, test: &str) -> bool {
+    let listed = listed_subtests_of(world, test);
+    let excused_no_longer = state.excused_logs(base, test).iter().any(|log| {
+        let failing = subtests::failed_in(crate::world::lines_of(log));
+        log.exists() && !crate::quarantine::excuses(&listed, &failing)
+    });
+    excused_no_longer
+        || state
+            .runs(base, test)
+            .iter()
+            .filter(|&&ran| ran == Ran::Failed)
+            .count()
+            >= FAILURES
 }
 
 /// List `test`, which failed twice at the round's `base` and fails at its
@@ -1763,7 +1775,7 @@ fn list_still_red(
     let failing = failing_at(state, head, test);
     let owner = world.unlisted_by(test, &failing, head);
     let reason = format!(
-        "failed twice at {}, and at {} after it",
+        "failed at {}, and at {} after it",
         short(base),
         short(head)
     );
@@ -1787,7 +1799,7 @@ fn list_still_red(
         None => "main lists it as quarantined now".to_owned(),
     };
     state.say(&format!(
-        "{test} fails at {}, and failed twice at {} before it, so no merge since broke it: \
+        "{test} fails at {}, and failed at {} before it, so no merge since broke it: \
          nothing is reverted or held, and it's {after}",
         short(head),
         short(base)
@@ -1826,7 +1838,7 @@ fn search(
     if state.found("fixed-forward", test, head) {
         return Ok(None);
     }
-    if failed_at_base(state, base, test) {
+    if failed_at_base(world, state, base, test) {
         return Ok(Some(Found::Before {
             test: test.to_owned(),
             log: state.log(head, test, 2).display().to_string(),
