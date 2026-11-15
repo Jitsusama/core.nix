@@ -101,6 +101,9 @@ pub enum Choice {
     Back(String),
     /// Look for another access point of the network, none being heard.
     Look,
+    /// Look for an access point of the network on a wider band, none being
+    /// heard there.
+    LookWider,
 }
 
 /// What's been chosen lately, to keep the card from hunting.
@@ -425,6 +428,38 @@ pub(crate) mod tests {
         );
         assert_eq!(calling, Choice::Stay, "no look in a call, as no move");
         assert_eq!(looking, Choice::Look, "52 ms at p95 is worth a look");
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_carrying_well_and_hearing_no_5_ghz_looks_for_it() {
+        let mut chooser = Chooser::default();
+        let well = carried(17, 0.0);
+        let now = Instant::now();
+
+        let calling = chooser.choose(now, (NEAR, &well, -43, CH6), &[], true);
+        let looking = chooser.choose(now, (NEAR, &well, -43, CH6), &[], false);
+        let soon = now + Duration::from_secs(60);
+        let soon = chooser.choose(soon, (NEAR, &well, -43, CH6), &[], false);
+        let later = chooser.choose(now + SETTLE, (NEAR, &well, -43, CH6), &[], false);
+
+        assert_eq!(calling, Choice::Stay, "no look in a call");
+        assert_eq!(looking, Choice::LookWider, "5 GHz is worth a look");
+        assert_eq!(soon, Choice::Stay, "a minute on, it isn't asked again");
+        assert_eq!(later, Choice::LookWider, "once settled, it is");
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_hearing_only_2_4_ghz_looks_for_5_ghz() {
+        let mut chooser = Chooser::default();
+        let well = carried(17, 0.0);
+        let other = Other {
+            point: HALL.into(),
+            ..near_at(-45, None)
+        };
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &well, -43, CH6), &[other], false);
+
+        assert_eq!(choice, Choice::LookWider, "2.4 GHz is no wider");
     }
 
     #[test]
