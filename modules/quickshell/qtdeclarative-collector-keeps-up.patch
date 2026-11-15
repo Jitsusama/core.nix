@@ -1,0 +1,64 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Step a running collection on at each miss
+
+Qt 6.12.0's incremental collector steps a cycle on only from the event
+loop, in slices of a few milliseconds, and runGC() returns at once while
+one is running. So through one long call, every allocation that misses
+takes a new chunk, and a chunk is freed only once wholly empty: each
+stays held by the few objects the call kept in it. A shell hearing a
+1.4 MB answer in one call of about a second grew its heap from 34 to
+93 MB, and held all of it for the rest of its run. A miss while a cycle
+runs now steps it on by one slice, as the event loop would, so a long
+call paces its own collection and reuses what it frees.
+
+---
+diff --git a/src/qml/memory/qv4mm.cpp b/src/qml/memory/qv4mm.cpp
+index 4f3644b..9bcca7a 100644
+--- a/src/qml/memory/qv4mm.cpp
++++ b/src/qml/memory/qv4mm.cpp
+@@ -1349,6 +1349,20 @@ bool MemoryManager::tryForceGCCompletion()
+     return true;
+ }
+ 
++void MemoryManager::stepRunningGC()
++{
++    if (gcBlocked == InCriticalSection || !gcStateMachine->inProgress())
++        return;
++
++    if (collectorStatistics) {
++        collectorStatistics->step(this);
++        if (!gcStateMachine->inProgress())
++            collectorStatistics->end(this);
++    } else {
++        gcStateMachine->step();
++    }
++}
++
+ void MemoryManager::runFullGC()
+ {
+     runGC();
+diff --git a/src/qml/memory/qv4mm_p.h b/src/qml/memory/qv4mm_p.h
+index 17c2e4d..d34230c 100644
+--- a/src/qml/memory/qv4mm_p.h
++++ b/src/qml/memory/qv4mm_p.h
+@@ -394,6 +394,7 @@ public:
+ 
+     void runGC();
+     bool tryForceGCCompletion();
++    void stepRunningGC();
+     void runFullGC();
+ 
+     void dumpStats() const;
+@@ -476,8 +477,11 @@ private:
+         if (HeapItem *m = allocator->allocate(size))
+             return m;
+ 
++        // A cycle steps on from the event loop alone, so through one long call every miss took
++        // a new chunk, each left holding a few of what the call kept. A miss while one runs
++        // steps it on instead, as the event loop would, so the call paces its own collection.
+         if (!didGCRun && shouldRunGC())
+-            runGC();
++            incrementalGCIsAlreadyRunning ? stepRunningGC() : runGC();
+ 
+         return allocator->allocate(size, true);
+     }
