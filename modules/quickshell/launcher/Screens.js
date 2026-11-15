@@ -1,7 +1,7 @@
 .pragma library
-// How a screen stands from what niri says (`niri msg -j outputs`), and
-// which of the acts the daemon serves the : line's :setl power and
-// unplugged ask, in plain JavaScript so a check runs it in Qt's own
+// How a screen stands from what niri says (`niri msg -j outputs`), which
+// of the acts the daemon serves the : line's :setl power and unplugged
+// ask, and what a share typed for the Brightness asks, in plain JavaScript so a check runs it in Qt's own
 // engine apart from drawing (tests/screens.qml), as the shell does. Its
 // drawer, its settings, what its EDID says, the ways it turns off or on
 // and what the : line's :setl types for them are the windows daemon's to
@@ -65,4 +65,19 @@ function toldOf(output, acts, asked) {
 // while out of niri's outputs.
 function optionNow(output, option) {
     return option === "power" ? standing(output) === "lit" : standing(output) === "off";
+}
+
+// What the : line's :set brightness= and a typed "brightness 40" ask of
+// the windows daemon: what a Brightness level it serves asks
+// (light/brightness.rs), at the share typed, the first step kept lit,
+// since none at all leaves the screen black; or null with no level
+// served, so nothing is asked. `rows` are the rows served.
+function brightening(rows, share) {
+    for (const row of rows) {
+        const level = (row?.acts ?? []).find(one => one.key === "displays:brightness:level");
+        if (level?.ask) {
+            return Object.assign({}, level.ask, { share: Math.max(1, share) });
+        }
+    }
+    return null;
 }

@@ -5,8 +5,9 @@ pragma ComponentBehavior: Bound
 // of its screen, as modules/windows' screens.rs does. Screens draws each
 // row as it's served; a change to the monitor's row makes its row again
 // and keeps the panel's; a screen's Return asks the daemon the act it
-// serves, and niri nothing; and what its spots are made of holds while a
-// level or a lux moves.
+// serves, and niri nothing; what its spots are made of holds while a
+// level or a lux moves; and a share typed asks the daemon as a Brightness
+// level does.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -79,10 +80,24 @@ ShellRoot {
             acts: [{ key: "displays:sleep", ask: { ask: "screen", do: "sleep" } }]
         } })
 
+    // A Brightness level inside the panel, as light/brightness.rs serves
+    // each, ordered as the ready-rows crate's Kept orders every row.
+    readonly property var level: ({ key: "row:displays:choice:eDP-1:brightness-50",
+        kind: "row", row: {
+            key: "row:displays:choice:eDP-1:brightness-50",
+            thing: "verb:display-brightness-50", place: "displays", kind: "choice",
+            order: 1025, name: "50%", glyph: "brightness", hue: "action",
+            parent: "row:displays:display:eDP-1", depth: 1, side: [], note: "",
+            held: { fill: { n: 50 } },
+            acts: [{ key: "displays:brightness:level",
+                ask: { ask: "light", do: "brightness", share: 50 } }]
+        } })
+
     // The shell's watch, so the stand-in can tell it more, and the acts it
-    // was asked.
+    // was asked of a screen and of its light.
     property var watch: null
     property var acted: []
+    property var lit: []
 
     function tell(records) {
         root.watch.socket.write(`${JSON.stringify({ id: root.watch.id, changed: records })}\n`);
@@ -108,9 +123,13 @@ ShellRoot {
                         root.watch = { socket: asked, id: ask.id };
                         answer = { id: ask.id, records: [
                             root.screen("eDP-1", "Built-in Screen", 1024, true),
-                            root.screen("DP-1", "Dell Inc. U2723QE", 2048, true), root.sleep] };
+                            root.screen("DP-1", "Dell Inc. U2723QE", 2048, true), root.sleep,
+                            root.level] };
                     } else if (ask.ask === "screen") {
                         root.acted = root.acted.concat([ask]);
+                        answer = { id: ask.id, done: true };
+                    } else if (ask.ask === "light") {
+                        root.lit = root.lit.concat([ask]);
                         answer = { id: ask.id, done: true };
                     } else {
                         answer = { id: ask.id, ok: true };
@@ -160,10 +179,10 @@ ShellRoot {
             changedHere();
         else if (waiting === "the act" && acted.length === 1)
             done();
-        else if (waiting === "the monitor lit again" && displays.spotsStamp !== made) {
-            waiting = "done";
-            Qt.exit(0);
-        }
+        else if (waiting === "the monitor lit again" && displays.spotsStamp !== made)
+            brightened();
+        else if (waiting === "the shares asked" && lit.length === 2)
+            asked();
     }
 
     // Each row is drawn as it's served, the panel first, and Turn Every
@@ -226,5 +245,22 @@ ShellRoot {
         Expect.expect("and coming back puts it back", displays.spotsStamp === made, "");
         waiting = "the monitor lit again";
         tell([screen("DP-1", "Dell Inc. U2723QE", 2048, true)]);
+    }
+
+    // "brightness 40" typed and :set brightness=45 each ask the windows
+    // daemon what a Brightness level asks, at the share typed.
+    function brightened() {
+        waiting = "the shares asked";
+        displays.setTo(40).run();
+        displays.setOptions.brightness.set(45);
+    }
+
+    function asked() {
+        Expect.expect("each share typed asked the daemon as a level does",
+            JSON.stringify(lit.map(ask => [ask.do, ask.share])) === '[["brightness",40],'
+                + '["brightness",45]]', JSON.stringify(lit));
+        Expect.expect("and no level was drawn asking", acted.length === 1, JSON.stringify(acted));
+        waiting = "done";
+        Qt.exit(0);
     }
 }

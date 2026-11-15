@@ -111,6 +111,23 @@ QtObject {
         check(failures, 'and a way offered says nothing',
             told(hp, besideLit, "power", false), "");
 
+        // The : line's :set brightness= and a typed "brightness 40" ask
+        // what a Brightness level asks, at the share typed, the first step
+        // kept lit; with no level served they ask nothing.
+        const level = share => ({ key: "row:displays:choice:eDP-1:brightness-" + share,
+            acts: [{ key: "displays:brightness:level",
+                ask: { ask: "light", do: "brightness", share: share } }] });
+        const rows = [{ key: "row:displays:display:eDP-1", acts: lastLit }, level(100),
+            level(90)];
+        check(failures, 'a share typed asks as a level does',
+            Screens.brightening(rows, 45), { ask: "light", do: "brightness", share: 45 });
+        check(failures, 'and none at all keeps the first step',
+            Screens.brightening(rows, 0)?.share, 1);
+        check(failures, 'but asks nothing with no level served',
+            Screens.brightening(rows.slice(0, 1), 45), null);
+        check(failures, 'and leaves the level\'s own ask as it was',
+            rows[1].acts[0].ask.share, 100);
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
