@@ -14,7 +14,7 @@ const FLAGS: [&str; 6] = [
 ];
 
 /// Every measure it reads (measure.rs and merges.rs).
-pub const MEASURES: [&str; 20] = [
+pub const MEASURES: [&str; 21] = [
     "crowded-folders",
     "daemons-waiting",
     "duplicated-lines",
@@ -25,6 +25,7 @@ pub const MEASURES: [&str; 20] = [
     "long-files",
     "quarantined-tests",
     "shared-files",
+    "stale-paths",
     "suppressions",
     "tf-invalid",
     "tf-undocumented",
