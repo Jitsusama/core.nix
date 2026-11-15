@@ -52,8 +52,15 @@ pub enum Role {
 /// that has since merged.
 #[must_use]
 pub fn role(files: &[String], crates: &Crates, owed: bool) -> Role {
-    let _ = (files, crates, owed);
-    Role::Apart
+    if files.iter().any(|file| file.starts_with(KIT)) {
+        return Role::Kit;
+    }
+    let kit = [format!("{KIT}Cargo.toml")];
+    if crates.beside(&kit, files).is_empty() {
+        Role::Apart
+    } else {
+        Role::Reader { owed }
+    }
 }
 
 /// The gate among `going`, each going now or keeping its turn after a
@@ -66,8 +73,15 @@ pub fn behind<'a>(
     going: &'a [Gate],
     role_of: &dyn Fn(&Gate) -> Role,
 ) -> Option<&'a Gate> {
-    let _ = (asking, going, role_of);
-    None
+    let waits_for = match asking {
+        Role::Reader { owed: false } => Role::Kit,
+        Role::Kit => Role::Reader { owed: true },
+        Role::Reader { owed: true } | Role::Apart => return None,
+    };
+    going
+        .iter()
+        .filter(|gate| role_of(gate) == waits_for)
+        .min_by_key(|gate| gate.started)
 }
 
 /// Whether a gate of role `theirs` holds back a change of role `ours` by
@@ -75,8 +89,10 @@ pub fn behind<'a>(
 /// reader, which the queue orders instead.
 #[must_use]
 pub fn by_start(ours: Role, theirs: Role) -> bool {
-    let _ = (ours, theirs);
-    true
+    !matches!(
+        (ours, theirs),
+        (Role::Kit, Role::Reader { .. }) | (Role::Reader { .. }, Role::Kit)
+    )
 }
 
 /// Which reader waited for which change to the kit, and when, by the
@@ -99,15 +115,19 @@ impl Owed {
     /// `kit` by `now`, unless a change it waited for before has merged, as
     /// `merged` says, since it's owed its turn then.
     pub fn waits(&mut self, patch: &str, kit: &str, now: u64, merged: &dyn Fn(&str) -> bool) {
-        let _ = (patch, kit, now, merged);
+        if self.owes(patch, now, merged) {
+            return;
+        }
+        self.0.insert(patch.to_owned(), (kit.to_owned(), now));
     }
 
     /// Whether the reader `patch` is owed its turn by `now`: it waited for
     /// a change to the kit, within [`KEPT`], that `merged` says has merged.
     #[must_use]
     pub fn owes(&self, patch: &str, now: u64, merged: &dyn Fn(&str) -> bool) -> bool {
-        let _ = (patch, now, merged);
-        false
+        self.0
+            .get(patch)
+            .is_some_and(|(kit, at)| now.saturating_sub(*at) < KEPT && merged(kit))
     }
 
     /// Give up the waits kept past [`KEPT`] by `now`.

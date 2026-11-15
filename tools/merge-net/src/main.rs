@@ -367,8 +367,12 @@ fn needs_heard(commit: &str, main: &str, passes: &[&str], files: &[String]) -> b
 
 /// What to do about `commit`, which must run again: wait for the run
 /// `ready` started for it in this tree, or run it, where it was left to
-/// its author (`rerun.rs`).
+/// its author (`rerun.rs`), once no reader of the kit owed its turn goes
+/// first (`kit.rs`).
 fn run_again(commit: &str) -> String {
+    if let Some(said) = turn::waits_to_run(commit) {
+        return said.trim_start_matches("merge-net: ").to_owned();
+    }
     let gates = turn::folder()
         .map(|folder| turn::gates(&folder))
         .unwrap_or_default();

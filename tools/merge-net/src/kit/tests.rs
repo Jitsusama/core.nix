@@ -43,13 +43,28 @@ fn crates() -> Crates {
 #[test]
 fn a_change_is_to_the_kit_a_reader_or_apart_by_its_files() {
     let crates = crates();
-    let kit = owned(&["modules/terminal-kit/src/lib.rs", "modules/cadence/src/hour.rs"]);
-    assert_eq!(role(&kit, &crates, false), KIT_CHANGE, "a change to the kit wasn't one");
+    let kit = owned(&[
+        "modules/terminal-kit/src/lib.rs",
+        "modules/cadence/src/hour.rs",
+    ]);
+    assert_eq!(
+        role(&kit, &crates, false),
+        KIT_CHANGE,
+        "a change to the kit wasn't one"
+    );
     let reader = owned(&["modules/cadence/src/hour.rs", "docs/commands.md"]);
     assert_eq!(role(&reader, &crates, false), READER, "a reader wasn't one");
-    assert_eq!(role(&reader, &crates, true), OWED, "an owed reader wasn't owed");
+    assert_eq!(
+        role(&reader, &crates, true),
+        OWED,
+        "an owed reader wasn't owed"
+    );
     let apart = owned(&["modules/sun/src/main.rs", "modules/terminal-kit.md"]);
-    assert_eq!(role(&apart, &crates, false), Role::Apart, "a change apart was in the queue");
+    assert_eq!(
+        role(&apart, &crates, false),
+        Role::Apart,
+        "a change apart was in the queue"
+    );
 }
 
 #[test]

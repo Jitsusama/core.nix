@@ -32,12 +32,16 @@
 //! change that passed at 22:40 and again at 23:14 was refused six times in
 //! an hour, each for another tree's gate placed before it on words.json,
 //! since trees that run again keep their places for good.
+//!
+//! Between a change to the terminal kit and a reader of it, the kit's
+//! queue decides rather than when their gates started (`kit.rs`).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+use crate::kit;
 use crate::places::Places;
 use crate::reach::Crates;
 use crate::waited::Waited;
@@ -279,7 +283,16 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     };
     let place = |gate: &Gate| places.start(&gate.folder, gate.started, now);
     let crates = Crates::at(commit);
+    let mut gates = gates;
+    gates.extend(finished(&heads(&places), now, &passed_at, &on_main));
+    let queue = Queue::of(&here, patch.as_deref(), ours, &gates, &crates, now);
+    if let Some(held) = queue.holds(patch.as_deref(), ours, &crates, now) {
+        return Some(held);
+    }
     let touched = |gate: &Gate| {
+        if !kit::by_start(queue.ours, queue.role_of(gate)) {
+            return Some(Vec::new());
+        }
         let files = files_of(gate)?;
         let apart = files
             .into_iter()
@@ -287,8 +300,6 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
             .collect();
         Some(shares(apart, ours, &crates))
     };
-    let mut gates = gates;
-    gates.extend(finished(&heads(&places), now, &passed_at, &on_main));
     let going = |gate: &Gate| gate.pid == 0 || alive(gate);
     let held = ahead(&gates, &asking, now, &place, &going, &touched)?;
     if let Some(patch) = &patch {
@@ -317,6 +328,142 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
         (PATIENCE.saturating_sub(now.saturating_sub(waits_from))).div_ceil(60)
     );
     Some((said, held.shared))
+}
+
+/// The gates going, or keeping their turn after a pass, as the kit's queue
+/// sees them (`kit.rs`), and the role of the change asking.
+struct Queue {
+    ours: kit::Role,
+    going: Vec<Gate>,
+    roles: BTreeMap<String, kit::Role>,
+}
+
+impl Queue {
+    /// The queue for the change `patch` changing `ours`, in the tree at
+    /// `here`, among the other trees' `gates`.
+    fn of(
+        here: &Path,
+        patch: Option<&str>,
+        ours: &[String],
+        gates: &[Gate],
+        crates: &Crates,
+        now: u64,
+    ) -> Self {
+        let owed = kit::Owed::read(&kit::file());
+        let merged = |commit: &str| on_main(commit) == Some(true);
+        let owes = |patch: Option<&str>| patch.is_some_and(|patch| owed.owes(patch, now, &merged));
+        let going: Vec<Gate> = gates
+            .iter()
+            .filter(|gate| gate.folder != here && now.saturating_sub(gate.started) < LONGEST)
+            .filter(|gate| gate.pid == 0 || alive(gate))
+            .cloned()
+            .collect();
+        let roles = going
+            .iter()
+            .map(|gate| {
+                let files = files_of(gate).unwrap_or_default();
+                let theirs = crate::waited::patch_of(&gate.commit);
+                (
+                    gate.commit.clone(),
+                    kit::role(&files, crates, owes(theirs.as_deref())),
+                )
+            })
+            .collect();
+        Self {
+            ours: kit::role(ours, crates, owes(patch)),
+            going,
+            roles,
+        }
+    }
+
+    /// The role of `gate`, apart where it isn't going.
+    fn role_of(&self, gate: &Gate) -> kit::Role {
+        self.roles
+            .get(&gate.commit)
+            .copied()
+            .unwrap_or(kit::Role::Apart)
+    }
+
+    /// Why the change `patch` changing `ours` waits in the kit's queue,
+    /// and the files of ours that read or change the kit, or nothing when
+    /// it needn't. A reader held so keeps which change it waits for, so
+    /// it's owed its turn once that one merges.
+    fn holds(
+        &self,
+        patch: Option<&str>,
+        ours: &[String],
+        crates: &Crates,
+        now: u64,
+    ) -> Option<(String, Vec<String>)> {
+        let held = kit::behind(self.ours, &self.going, &|gate| self.role_of(gate))?;
+        let kit_files = [format!("{}Cargo.toml", kit::KIT)];
+        let shared = if self.ours == kit::Role::Kit {
+            ours.iter()
+                .filter(|file| file.starts_with(kit::KIT))
+                .cloned()
+                .collect()
+        } else {
+            crates.beside(&kit_files, ours)
+        };
+        let said = if self.ours == kit::Role::Kit {
+            format!(
+                "merge-net: the change in {} at {} reads the terminal kit and waited for a \
+                 change to it that has since merged, so it's owed its turn before this \
+                 change to the kit merges or runs again; merge again once it has merged",
+                held.folder.display(),
+                crate::state::short(&held.commit)
+            )
+        } else {
+            if let Some(patch) = patch {
+                let file = kit::file();
+                let mut owed = kit::Owed::read(&file);
+                owed.waits(patch, &held.commit, now, &|kit| on_main(kit) == Some(true));
+                owed.tidy(now);
+                if let Err(error) = owed.write(&file) {
+                    eprintln!("merge-net: this wait for the kit wasn't kept: {error}");
+                }
+            }
+            format!(
+                "merge-net: the change to the terminal kit in {} at {} goes first, since \
+                 this one reads the kit ({}), and merging first would send that one round \
+                 again; merge again once it has merged, after which no change to the kit \
+                 holds this one",
+                held.folder.display(),
+                crate::state::short(&held.commit),
+                shared.join(", ")
+            )
+        };
+        Some((said, shared))
+    }
+}
+
+/// Why the change at `commit`, which must run again, waits before that
+/// run starts: a change to the terminal kit waits for a reader owed its
+/// turn (`kit.rs`), whose pass its run would leave stale once it merges.
+pub fn waits_to_run(commit: &str) -> Option<String> {
+    let base = git_in(
+        Path::new("."),
+        &["merge-base", commit, "refs/remotes/origin/main"],
+    )?;
+    let listed = git_in(
+        Path::new("."),
+        &["diff", "--name-only", base.trim(), commit],
+    )?;
+    let ours: Vec<String> = listed.lines().map(str::to_owned).collect();
+    let crates = Crates::at(commit);
+    let now = crate::state::now();
+    let mut gates = gates(&folder()?);
+    let places = crate::places::Places::read(&crate::places::file());
+    gates.extend(finished(&heads(&places), now, &passed_at, &on_main));
+    let patch = crate::waited::patch_of(commit);
+    let here = std::env::current_dir().ok()?;
+    let queue = Queue::of(&here, patch.as_deref(), &ours, &gates, &crates, now);
+    if queue.ours != kit::Role::Kit {
+        return None;
+    }
+    queue
+        .holds(patch.as_deref(), &ours, &crates, now)
+        .map(|(said, _)| said)
 }
 
 /// What a gate changing `theirs` shares with a change to `ours`: the files
