@@ -36,6 +36,7 @@ fn held(id: &str, asked_ms: i64, state: State, uncommitted: u64) -> Held {
             commit: Some("4f2a91c03b1d7e6a5b4c3d2e1f0a9b8c7d6e5f4a".to_owned()),
             uncommitted: Some(uncommitted),
             checkout: Checkout::None,
+            landed: None,
         },
         state,
         since_ms: asked_ms + 60_000,

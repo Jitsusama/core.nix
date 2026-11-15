@@ -101,6 +101,11 @@ pub fn digest_lasting(ask: &Ask, tree: &Tree, lasts: Option<&str>) -> String {
     if let (Some(repository), Value::Array(said)) = (lasts, &mut said) {
         said.push(json!({"lasts": repository}));
     }
+    // And whether a standing yes would cover it but for its code being
+    // off main, where that was asked.
+    if let (Some(landed), Value::Array(said)) = (tree.landed, &mut said) {
+        said.push(json!({"landed": landed}));
+    }
     let hash = Sha256::digest(said.to_string().as_bytes());
     hash.iter().fold(String::new(), |mut hex, byte| {
         let _ = write!(hex, "{byte:02x}");
@@ -256,6 +261,13 @@ pub fn row_lasting(
             "said": words.fill("lasts", &[("repository", repository)]),
         }));
     }
+    // A standing yes waits on code off main, and he's told why it asks.
+    if held.tree.landed == Some(false) {
+        facts.push(json!({
+            "name": words.fill("fact:standing", &[]),
+            "said": words.fill("unlanded", &[]),
+        }));
+    }
     if held.state == State::Waiting {
         facts.push(json!({
             "name": words.fill("fact:ends", &[]),
@@ -327,6 +339,7 @@ mod tests {
                 commit: Some("4f2a91c03b1d7e6a5b4c3d2e1f0a9b8c7d6e5f4a".to_owned()),
                 uncommitted,
                 checkout: Checkout::None,
+                landed: None,
             },
             state,
             since_ms: 1_794_458_400_000,

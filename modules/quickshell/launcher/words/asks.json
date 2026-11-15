@@ -56,6 +56,11 @@
       "name": "Said Yes"
     },
     {
+      "id": "asks:fact:standing",
+      "in": "asks",
+      "name": "Standing Yes"
+    },
+    {
       "id": "verb:release",
       "command": "release",
       "in": "asks",

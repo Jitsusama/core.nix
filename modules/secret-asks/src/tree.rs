@@ -32,6 +32,10 @@ pub struct Tree {
     /// Where its history is kept, which says how much of it a release
     /// may write.
     pub checkout: Checkout,
+    /// Whether its code is all on its origin's default branch, nothing
+    /// uncommitted, asked only where a standing yes would otherwise
+    /// cover its ask; none where it wasn't asked.
+    pub landed: Option<bool>,
 }
 
 /// Where a tree's history is kept, as its `.git` says, read from files
@@ -219,6 +223,51 @@ fn uncommitted(git: &Path, path: &Path, commit: &str) -> Option<u64> {
     Some(status.lines().count() as u64)
 }
 
+/// The names origin's default branch goes by, the one origin says first.
+const DEFAULT_BRANCHES: [&str; 3] = [
+    "refs/remotes/origin/HEAD",
+    "refs/remotes/origin/main",
+    "refs/remotes/origin/master",
+];
+
+/// Whether the tree `tree` read at `path` has its code all on its
+/// origin's default branch: nothing uncommitted, and its commit one that
+/// branch holds. The branch is named by rev-parse, which runs no program
+/// of the tree's; whether it holds the commit is asked over a git folder
+/// made for the read, as status is.
+///
+/// What origin's branch holds is read from the repository's own refs,
+/// which a command of Joel's account can write, so this stops an edit an
+/// agent made and never had merged, not one that rewrites origin's refs
+/// to claim it was.
+pub fn landed(git: &Path, path: &Path, tree: &Tree) -> bool {
+    let (Some(commit), Some(0)) = (tree.commit.as_deref(), tree.uncommitted) else {
+        return false;
+    };
+    let Some(main) = DEFAULT_BRANCHES.iter().find_map(|name| {
+        said(
+            git_command(git)
+                .arg("-C")
+                .arg(path)
+                .args(["rev-parse", "--verify", "--quiet"])
+                .arg(format!("{name}^{{commit}}")),
+        )
+        .map(|said| said.trim().to_owned())
+    }) else {
+        return false;
+    };
+    let (Some(places), Some(made)) = (places(git, path), Made::new(commit)) else {
+        return false;
+    };
+    git_command(git)
+        .env("GIT_DIR", &made.0)
+        .env("GIT_OBJECT_DIRECTORY", &places.objects)
+        .args(["merge-base", "--is-ancestor", commit, &main])
+        .stdout(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
 /// The tree at `path`, asked of the git at `git`.
 pub fn read(git: &Path, path: &Path) -> Tree {
     let commit = said(
@@ -235,12 +284,14 @@ pub fn read(git: &Path, path: &Path) -> Tree {
             // A `.git` with no commit yet still says what a release may
             // write of it.
             checkout: checkout(path),
+            landed: None,
         };
     };
     Tree {
         uncommitted: uncommitted(git, path, &commit),
         commit: Some(commit),
         checkout: checkout(path),
+        landed: None,
     }
 }
 

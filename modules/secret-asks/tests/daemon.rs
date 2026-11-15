@@ -75,6 +75,7 @@ impl Setting {
         std::fs::write(folder.join("tree/README"), "a tree").expect("a file is written");
         git(&folder.join("tree"), &["add", "README"]);
         git(&folder.join("tree"), &["commit", "-q", "-m", "a commit"]);
+        on_main(&folder.join("tree"));
         let marks = folder.join("op-ran");
         script(
             &folder.join("op"),
@@ -211,6 +212,30 @@ fn grants(client: &mut Client) -> Vec<Value> {
         .collect()
 }
 
+/// Has origin's default branch hold the tree's commit, as a tree on main
+/// does once fetched.
+fn on_main(tree: &Path) {
+    git(tree, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    git(
+        tree,
+        &[
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/main",
+        ],
+    );
+}
+
+/// The fact a row says under `name`, if it says one.
+fn fact(row: &Value, name: &str) -> Option<Value> {
+    row["drawer"]["facts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|fact| fact["name"] == name)
+        .map(|fact| fact["said"].clone())
+}
+
 /// A repository of its own beside the setting's tree, one commit in.
 fn another_repository(folder: &Path) -> PathBuf {
     let other = folder.join("other");
@@ -219,6 +244,7 @@ fn another_repository(folder: &Path) -> PathBuf {
     std::fs::write(other.join("README"), "another tree").expect("a file is written");
     git(&other, &["add", "README"]);
     git(&other, &["commit", "-q", "-m", "a commit"]);
+    on_main(&other);
     other
 }
 
@@ -228,14 +254,11 @@ fn a_yes_lets_the_same_ask_from_any_tree_of_its_repository_run_for_a_week() {
     let mut client = setting.watching();
     let first = setting.ask(ITEM);
     let drawn = said_yes(&setting, &mut client, &first);
-    let lasts = drawn["drawer"]["facts"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|fact| fact["name"] == "Yes Lasts");
     assert_eq!(
-        lasts.map(|fact| fact["said"].clone()),
-        Some(json!("a week, for this command from any tree of tree")),
+        fact(&drawn, "Yes Lasts"),
+        Some(json!(
+            "a week, for this command from any tree of tree on main"
+        )),
         "the line didn't say what a yes lets run: {drawn}"
     );
     assert!(
@@ -260,6 +283,55 @@ fn a_yes_lets_the_same_ask_from_any_tree_of_its_repository_run_for_a_week() {
         "a release by grant isn't read as one: {reading}"
     );
     assert_eq!(setting.op_ran(), 2, "op didn't run for each");
+}
+
+#[test]
+fn a_grant_covers_no_tree_whose_code_isnt_all_on_main() {
+    let setting = Setting::new("granted-unlanded");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    let tree = setting.folder.join("tree");
+    let (unmerged, changed) = (
+        setting.folder.join("unmerged"),
+        setting.folder.join("changed"),
+    );
+    for worktree in [&unmerged, &changed] {
+        git(
+            &tree,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "--detach",
+                &worktree.to_string_lossy(),
+            ],
+        );
+    }
+    // An agent's later edit Joel never saw: a commit main doesn't hold,
+    // and a change not yet committed.
+    std::fs::write(unmerged.join("release.sh"), "echo edited").expect("a file is written");
+    git(&unmerged, &["add", "release.sh"]);
+    git(&unmerged, &["commit", "-q", "-m", "an unmerged commit"]);
+    std::fs::write(changed.join("README"), "edited").expect("a file is written");
+    for worktree in [&unmerged, &changed] {
+        let id = put_up_in(&setting.folder, worktree, ITEM);
+        let drawn = row(&mut client, &id);
+        assert_eq!(
+            drawn["state"],
+            "waiting",
+            "a grant covered {} though its code isn't on main",
+            worktree.display()
+        );
+        assert_eq!(
+            fact(&drawn, "Standing Yes"),
+            Some(json!(
+                "doesn't cover this, since its code isn't all on main"
+            )),
+            "the row doesn't say why the standing yes waits: {drawn}"
+        );
+    }
+    assert_eq!(setting.op_ran(), 1, "op ran for code not on main");
 }
 
 #[test]

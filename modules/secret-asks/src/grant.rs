@@ -5,6 +5,13 @@
 //! covers another item, another command or another repository, and Asks
 //! lists each with a key that revokes it.
 //!
+//! A command is its words and the program they come to, as the releaser
+//! resolves it, so the same words come to another program later are no
+//! command he said yes to. And since a single yes is to the tree's code
+//! as he saw it, a grant covers a tree only where its code is all on its
+//! origin's default branch (ISXEG8, 15 November): an agent's later edit,
+//! unseen and unmerged, waits for him as any ask does.
+//!
 //! Grants are held in the daemon alone, never written to a file: any
 //! process of Joel's account could write one, and so grant itself what he
 //! never said yes to. A restart forgets them, which costs him one yes
@@ -62,6 +69,8 @@ pub struct Grant {
     pub id: String,
     pub item: String,
     pub argv: Vec<String>,
+    /// The program the command's first word came to.
+    pub program: PathBuf,
     pub repository: PathBuf,
     pub granted_ms: i64,
 }
@@ -73,19 +82,27 @@ impl Grant {
         self.granted_ms.saturating_add(LASTS_MS)
     }
 
-    /// Whether it covers an ask from a tree of `repository` at `now`: the
-    /// same item, every word of the same command, the same repository.
-    fn covers(&self, ask: &Ask, repository: &Path, now: i64) -> bool {
+    /// Whether it covers an ask from a tree of `repository` at `now`,
+    /// its command come to `program`: the same item, every word of the
+    /// same command, the same program, the same repository.
+    fn covers(&self, ask: &Ask, repository: &Path, program: &Path, now: i64) -> bool {
         now < self.ends_ms()
             && self.item == ask.item
             && self.argv == ask.argv
+            && self.program == program
             && self.repository == repository
     }
 }
 
 /// The id of a grant for what it covers.
-fn id_of(item: &str, argv: &[String], repository: &Path) -> String {
-    let said = json!([item, argv, repository.to_string_lossy()]).to_string();
+fn id_of(item: &str, argv: &[String], program: &Path, repository: &Path) -> String {
+    let said = json!([
+        item,
+        argv,
+        program.to_string_lossy(),
+        repository.to_string_lossy()
+    ])
+    .to_string();
     Sha256::digest(said.as_bytes())
         .iter()
         .take(16)
@@ -100,17 +117,25 @@ fn id_of(item: &str, argv: &[String], repository: &Path) -> String {
 pub struct Grants(Vec<Grant>);
 
 impl Grants {
-    /// Grants what a yes to `ask` from a tree kept as `checkout` covers,
-    /// from `now`, renewing a grant for the same; nothing where the tree
-    /// is in no repository a grant can name.
-    pub fn grant(&mut self, ask: &Ask, checkout: &Checkout, now: i64) -> Option<Grant> {
+    /// Grants what a yes to `ask` from a tree kept as `checkout`, its
+    /// command come to `program`, covers, from `now`, renewing a grant
+    /// for the same; nothing where the tree is in no repository a grant
+    /// can name.
+    pub fn grant(
+        &mut self,
+        ask: &Ask,
+        checkout: &Checkout,
+        program: &Path,
+        now: i64,
+    ) -> Option<Grant> {
         let repository = repository(checkout)?;
-        let id = id_of(&ask.item, &ask.argv, &repository);
+        let id = id_of(&ask.item, &ask.argv, program, &repository);
         self.0.retain(|one| one.id != id);
         let grant = Grant {
             id,
             item: ask.item.clone(),
             argv: ask.argv.clone(),
+            program: program.to_owned(),
             repository,
             granted_ms: now,
         };
@@ -119,11 +144,20 @@ impl Grants {
     }
 
     /// The grant covering an ask from a tree kept as `checkout` at `now`,
-    /// if one does.
+    /// its command come to `program`, if one does. Whether the tree's
+    /// code is on main is the engine's to ask, since only git can say.
     #[must_use]
-    pub fn covering(&self, ask: &Ask, checkout: &Checkout, now: i64) -> Option<&Grant> {
+    pub fn covering(
+        &self,
+        ask: &Ask,
+        checkout: &Checkout,
+        program: &Path,
+        now: i64,
+    ) -> Option<&Grant> {
         let repository = repository(checkout)?;
-        self.0.iter().find(|one| one.covers(ask, &repository, now))
+        self.0
+            .iter()
+            .find(|one| one.covers(ask, &repository, program, now))
     }
 
     /// Ends the grant with this id; whether there was one.
@@ -211,11 +245,17 @@ mod tests {
 
     const ITEM: &str = "op://Private/Token/credential";
     const PUBLISH: &[&str] = &["npm", "publish"];
+    /// The program `npm` comes to, as the releaser resolves it.
+    const NPM: &str = "/nix/store/aaaa-nodejs/bin/npm";
+
+    fn npm() -> &'static Path {
+        Path::new(NPM)
+    }
 
     fn granted() -> Grants {
         let mut grants = Grants::default();
         grants
-            .grant(&ask(ITEM, PUBLISH), &worktree_of("/src/a/.git"), 0)
+            .grant(&ask(ITEM, PUBLISH), &worktree_of("/src/a/.git"), npm(), 0)
             .expect("a worktree's repository is granted");
         grants
     }
@@ -226,13 +266,13 @@ mod tests {
         let same = ask(ITEM, PUBLISH);
         assert!(
             grants
-                .covering(&same, &worktree_of("/src/a/.git"), LASTS_MS - 1)
+                .covering(&same, &worktree_of("/src/a/.git"), npm(), LASTS_MS - 1)
                 .is_some(),
             "the same ask, a moment before the week ends, isn't covered"
         );
         assert!(
             grants
-                .covering(&same, &worktree_of("/src/a/.git"), LASTS_MS)
+                .covering(&same, &worktree_of("/src/a/.git"), npm(), LASTS_MS)
                 .is_none(),
             "a grant outlasted its week"
         );
@@ -252,10 +292,26 @@ mod tests {
             (ask(ITEM, PUBLISH), worktree_of("/src/b/.git")),
         ] {
             assert!(
-                grants.covering(&other, &kept, 0).is_none(),
+                grants.covering(&other, &kept, npm(), 0).is_none(),
                 "a grant covered {other:?} from {kept:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_grant_never_covers_the_same_words_come_to_another_program() {
+        let grants = granted();
+        assert!(
+            grants
+                .covering(
+                    &ask(ITEM, PUBLISH),
+                    &worktree_of("/src/a/.git"),
+                    Path::new("/nix/store/bbbb-nodejs/bin/npm"),
+                    0,
+                )
+                .is_none(),
+            "a grant covered npm come to another program than the yes was to"
+        );
     }
 
     #[test]
@@ -269,11 +325,11 @@ mod tests {
             },
         ] {
             assert!(
-                grants.grant(&one, &kept, 0).is_none(),
+                grants.grant(&one, &kept, npm(), 0).is_none(),
                 "{kept:?} was granted"
             );
             assert!(
-                grants.covering(&one, &kept, 0).is_none(),
+                grants.covering(&one, &kept, npm(), 0).is_none(),
                 "{kept:?} was covered"
             );
         }
@@ -283,7 +339,7 @@ mod tests {
     #[test]
     fn a_second_yes_renews_its_grant_rather_than_adding_one() {
         let mut grants = granted();
-        grants.grant(&ask(ITEM, PUBLISH), &worktree_of("/src/a/.git"), 5);
+        grants.grant(&ask(ITEM, PUBLISH), &worktree_of("/src/a/.git"), npm(), 5);
         let held: Vec<&Grant> = grants.iter().collect();
         assert_eq!(held.len(), 1, "the same grant was held twice: {held:?}");
         assert_eq!(held[0].granted_ms, 5, "the grant wasn't renewed");
@@ -292,7 +348,7 @@ mod tests {
     #[test]
     fn revoking_ends_one_grant_alone() {
         let mut grants = granted();
-        grants.grant(&ask(ITEM, PUBLISH), &worktree_of("/src/b/.git"), 0);
+        grants.grant(&ask(ITEM, PUBLISH), &worktree_of("/src/b/.git"), npm(), 0);
         let id = grants.iter().next().map(|one| one.id.clone());
         assert!(
             grants.revoke(&id.expect("a grant is held")),
@@ -306,7 +362,7 @@ mod tests {
     #[test]
     fn tidying_lets_go_of_ended_grants_and_says_when_the_next_ends() {
         let mut grants = granted();
-        grants.grant(&ask(ITEM, PUBLISH), &worktree_of("/src/b/.git"), 10);
+        grants.grant(&ask(ITEM, PUBLISH), &worktree_of("/src/b/.git"), npm(), 10);
         assert_eq!(grants.tidy(0), Some(LASTS_MS), "the next end is wrong");
         assert_eq!(
             grants.tidy(LASTS_MS),

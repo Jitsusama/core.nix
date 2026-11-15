@@ -176,6 +176,13 @@ pub trait Releaser: Send + Sync {
     ///
     /// Where it can't be made, saying why.
     fn command(&self, ask: &Ask, value: &Secret) -> Result<Command, String>;
+    /// The program an ask's command comes to, as this releaser resolves
+    /// it, which a standing yes is to as much as the command's words;
+    /// none by default, so a releaser that resolves none makes no grant.
+    fn program(&self, ask: &Ask) -> Option<PathBuf> {
+        let _ = ask;
+        None
+    }
     /// What to tell the agent of what the releaser did once a release was
     /// answered, its command run or not, a sentence each; nothing by
     /// default.
@@ -243,11 +250,32 @@ impl Engine {
             .map(|grants| grants.lock().unwrap_or_else(PoisonError::into_inner))
     }
 
-    /// The repository a yes to an ask from `tree` lasts for, by name,
-    /// where this engine makes grants and the tree is in one.
-    fn lasts(&self, tree: &Tree) -> Option<String> {
+    /// The repository a yes to `ask` from `tree` lasts for, by name,
+    /// where this engine makes grants, the releaser says what program
+    /// the command comes to, and the tree is in a repository.
+    fn lasts(&self, ask: &Ask, tree: &Tree) -> Option<String> {
         self.grants.as_ref()?;
+        self.releaser.program(ask)?;
         grant::repository(&tree.checkout).map(|repository| grant::named(&repository))
+    }
+
+    /// The tree `ask` runs in, as read now; where a standing yes would
+    /// cover the ask, whether its code is all on main too, which alone
+    /// has it covered, since git is run for that only where it's needed.
+    fn tree_of(&self, ask: &Ask, now: i64) -> Tree {
+        let path = Path::new(&ask.tree);
+        let mut tree = tree::read(&self.setting.git, path);
+        let would = self.releaser.program(ask).is_some_and(|program| {
+            self.grants().is_some_and(|grants| {
+                grants
+                    .covering(ask, &tree.checkout, &program, now)
+                    .is_some()
+            })
+        });
+        if would {
+            tree.landed = Some(tree::landed(&self.setting.git, path, &tree));
+        }
+        tree
     }
 
     /// Makes the asks folder its owner's alone, ends every ask a restart
@@ -400,13 +428,10 @@ impl Engine {
                         self.reading(&ask, Outcome::Expired, &Value::Null);
                         self.answered(&id, "ended", "ended unanswered");
                     } else {
-                        let tree = tree::read(&self.setting.git, Path::new(&ask.tree));
-                        let covered = self.grants().is_some_and(|grants| {
-                            grants.covering(&ask, &tree.checkout, now).is_some()
-                        });
+                        let tree = self.tree_of(&ask, now);
                         // A grant releases without the lock's say, since
                         // Joel's yes that made it was given unlocked.
-                        if covered && self.mark(&id) {
+                        if tree.landed == Some(true) && self.mark(&id) {
                             eprintln!(
                                 "<6>secret-asks: {id} released by grant to {} for {} \
                                  to run {:?} in {}",
@@ -517,8 +542,8 @@ impl Engine {
             Ok(ask) if self.releaser.refused(&ask).is_none() => ask,
             _ => return self.refusal("refused", "the ask is gone", "gone"),
         };
-        let tree = tree::read(&self.setting.git, Path::new(&now.tree));
-        let digest = row::digest_lasting(&now, &tree, self.lasts(&tree).as_deref());
+        let tree = self.tree_of(&now, now_ms());
+        let digest = row::digest_lasting(&now, &tree, self.lasts(&now, &tree).as_deref());
         if Some(digest.as_str()) != said["digest"].as_str() {
             self.reading(&one.ask, Outcome::Changed, said);
             one.ask = now;
@@ -552,8 +577,8 @@ impl Engine {
         one.state = State::Releasing;
         one.since_ms = now_ms();
         let ask = one.ask.clone();
-        if let Some(mut grants) = self.grants() {
-            grants.grant(&ask, &tree.checkout, now_ms());
+        if let (Some(program), Some(mut grants)) = (self.releaser.program(&ask), self.grants()) {
+            grants.grant(&ask, &tree.checkout, &program, now_ms());
         }
         drop(held);
         self.reading(&ask, Outcome::Released, said);
@@ -723,7 +748,7 @@ impl Engine {
                 // Only a waiting ask's line says what a yes would last
                 // for, since only it can be said yes to.
                 let lasts = (one.state == State::Waiting)
-                    .then(|| self.lasts(&one.tree))
+                    .then(|| self.lasts(&one.ask, &one.tree))
                     .flatten();
                 row::row_lasting(
                     one,

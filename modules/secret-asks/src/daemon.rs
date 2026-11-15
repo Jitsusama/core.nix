@@ -124,6 +124,11 @@ impl Releaser for Experiment {
             .env(&ask.given, value.reveal());
         Ok(checker)
     }
+
+    /// The checker, the one program the experiment runs.
+    fn program(&self, _: &Ask) -> Option<PathBuf> {
+        Some(self.checker.clone())
+    }
 }
 
 /// Runs the daemon for as long as it may.
