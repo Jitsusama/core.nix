@@ -28,7 +28,6 @@
     "inks"
   ];
   health = [
-    "kit"
     "exits"
     "helps"
   ];
