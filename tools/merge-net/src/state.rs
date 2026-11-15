@@ -205,6 +205,22 @@ impl State {
         runs_in(&text, commit, check)
     }
 
+    /// The logs of `check`'s runs at `commit` that failed but counted as
+    /// passed, since main's list as it was then excused what failed.
+    pub fn excused_logs(&self, commit: &str, check: &str) -> Vec<PathBuf> {
+        let Ok(text) = fs::read_to_string(self.root.join("results.jsonl")) else {
+            return Vec::new();
+        };
+        text.lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|line| line["commit"] == commit && line["check"] == check)
+            .filter(|line| {
+                line["passed"] == true && line["code"].as_i64().is_some_and(|code| code != 0)
+            })
+            .filter_map(|line| line["log"].as_str().map(PathBuf::from))
+            .collect()
+    }
+
     pub fn record(
         &self,
         commit: &str,

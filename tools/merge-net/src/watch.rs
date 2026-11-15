@@ -1737,13 +1737,25 @@ fn stalled(state: &State, head: &str, test: &str, owner: Option<u64>) -> Result<
 /// listed, came off the list still failing, and its search took four runs
 /// of 25 minutes each. A merge that broke it again after another fixed it
 /// in the same round goes unblamed, which costs less than such a search.
-fn failed_at_base(state: &State, base: &str, test: &str) -> bool {
-    state
-        .runs(base, test)
-        .iter()
-        .filter(|&&ran| ran == Ran::Failed)
-        .count()
-        >= FAILURES
+///
+/// A run there that failed only in subtests main listed then counted as a
+/// pass, so it is judged again by main's list as it is now, and one the
+/// list no longer excuses failed there. On 15 November
+/// vm-screens-keep-the-launcher's base 93b1a9bc was excused so, #4658 took
+/// the entry off, and the search blamed #4615 for what failed before it.
+fn failed_at_base(world: &dyn World, state: &State, base: &str, test: &str) -> bool {
+    let listed = listed_subtests_of(world, test);
+    let excused_no_longer = state.excused_logs(base, test).iter().any(|log| {
+        let failing = subtests::failed_in(crate::world::lines_of(log));
+        log.exists() && !crate::quarantine::excuses(&listed, &failing)
+    });
+    excused_no_longer
+        || state
+            .runs(base, test)
+            .iter()
+            .filter(|&&ran| ran == Ran::Failed)
+            .count()
+            >= FAILURES
 }
 
 /// List `test`, which failed twice at the round's `base` and fails at its
@@ -1762,11 +1774,7 @@ fn list_still_red(
 ) -> Result<(), String> {
     let failing = failing_at(state, head, test);
     let owner = world.unlisted_by(test, &failing, head);
-    let reason = format!(
-        "failed twice at {}, and at {} after it",
-        short(base),
-        short(head)
-    );
+    let reason = format!("failed at {}, and at {} after it", short(base), short(head));
     let by_subtests = listed_by_subtests_on_main(world, test, &failing);
     let listed = (!by_subtests && !listed_on_main(world, head, test))
         .then(|| quarantine_owned(world, test, &failing, owner, head, &reason));
@@ -1787,7 +1795,7 @@ fn list_still_red(
         None => "main lists it as quarantined now".to_owned(),
     };
     state.say(&format!(
-        "{test} fails at {}, and failed twice at {} before it, so no merge since broke it: \
+        "{test} fails at {}, and failed at {} before it, so no merge since broke it: \
          nothing is reverted or held, and it's {after}",
         short(head),
         short(base)
@@ -1826,7 +1834,7 @@ fn search(
     if state.found("fixed-forward", test, head) {
         return Ok(None);
     }
-    if failed_at_base(state, base, test) {
+    if failed_at_base(world, state, base, test) {
         return Ok(Some(Found::Before {
             test: test.to_owned(),
             log: state.log(head, test, 2).display().to_string(),
@@ -4828,6 +4836,47 @@ mod tests {
         let found = findings(&state);
         assert_eq!(found[0]["kind"], "failed-before");
         assert_eq!(found[0]["since"], "s");
+    }
+
+    #[test]
+    fn a_base_excused_by_an_entry_since_taken_off_failed_there() {
+        // On 15 November vm-screens-keep-the-launcher failed at the base
+        // 93b1a9bc only in a subtest main listed, so it counted as passed;
+        // #4658 took the entry off, the head failed in it, and the search
+        // blamed #4615 for what failed before it. An excused run is the
+        // only one a round makes there, as a pass is.
+        let state = state("base-excused");
+        let log = state.log("s", "vm-a", 1);
+        fs::write(
+            &log,
+            "vm-test-run> FAILED vm-pytest-ab/t.py::test_b - Error\n\
+             vm-test-run> ======= 1 failed, 9 passed in 1.00s =======\n",
+        )
+        .unwrap();
+        state
+            .record("s", "vm-a", Ran::Passed, Some(1), &log, 0)
+            .unwrap();
+        let world = Stand {
+            head: "m2".into(),
+            merges: names("m1 m2"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            unlisted_by: Some(4658),
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1, 1]);
+        round(&world, &state, "s").unwrap();
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a merge was blamed for what failed at the base"
+        );
+        let found = findings(&state);
+        assert_eq!(
+            found[0]["kind"], "failed-before",
+            "a base excused only by an entry since taken off was taken as passing: {}",
+            found[0]
+        );
+        assert_eq!(found[0]["owner_pr"], 4658, "not owned by who took it off");
     }
 
     #[test]
