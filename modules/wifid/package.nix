@@ -1,8 +1,9 @@
 # wifid, built from this directory's workspace without its sign-in window,
 # which is a package of its own (sign-in/package.nix). Its tests run as it
 # builds.
-# Its rows take the form every daemon's do (../ready-rows), so the source is
-# cut from the modules folder holding both, and built from this one.
+# Its rows take the form every daemon's do (../ready-rows), and its shape
+# comes from the terminal kit (../terminal-kit), so the source is cut from
+# the modules folder holding all three, and built from this one.
 {
   lib,
   rustPlatform,
@@ -21,6 +22,8 @@ rustPlatform.buildRustPackage rec {
       ./sign-in/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/wifid";

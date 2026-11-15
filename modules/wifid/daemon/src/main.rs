@@ -28,6 +28,7 @@ mod calling;
 mod card;
 mod check;
 mod choose;
+mod cli;
 mod detail;
 mod echo;
 mod face;
@@ -128,15 +129,24 @@ trait Login {
     fn prepare_for_sleep(&self, start: bool) -> zbus::Result<()>;
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> ExitCode {
-    match run().await {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("<3>{error}");
-            ExitCode::FAILURE
-        }
-    }
+fn main() -> ExitCode {
+    terminal_kit::main(&cli::help(), env!("CARGO_PKG_VERSION"), |context| {
+        cli::words(&context.args)?;
+        // The runtime #[tokio::main(flavor = "current_thread")] builds,
+        // which the work main.rs spawns leans on.
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| stopped(&error))?
+            .block_on(run())
+            .map_err(|error| stopped(&*error))
+    })
+}
+
+/// How a run that stopped ends: 1, saying why.
+fn stopped(error: &dyn std::error::Error) -> terminal_kit::Failure {
+    terminal_kit::Failure::new(terminal_kit::Exit::Failed, "wifid stopped")
+        .because(error.to_string())
 }
 
 /// A stream read on a task of its own, so zbus always has room for what it

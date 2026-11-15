@@ -89,10 +89,6 @@
   switch-system-as-root = [ "helps" ];
   switch-system-known = [ "helps" ];
   systemd-run = [ "helps" ];
-  wifid = [
-    "kit"
-    "helps"
-  ];
   wifid-sign-in = [
     "kit"
     "helps"
