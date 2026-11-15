@@ -94,9 +94,9 @@ QtObject {
         expect("swatting either way, its base and tail are on sitting's cells",
             [toLeft.slice(5), toRight.slice(5)], [sitting.slice(5), sitting.slice(5)]);
         // Its paw is what's lit that sitting doesn't light, by columns.
-        const paw = drawing => drawing.slice(0, 5).map((row, r) => row.split("")
-            .map((cell, c) => cell === "#" && sitting[r][c] !== "#" ? c : -1)
-            .filter(c => c >= 0)).flat();
+        const paw = drawing => drawing.slice(0, 5).reduce((lit, row, r) => lit.concat(row
+            .split("").map((cell, c) => cell === "#" && sitting[r][c] !== "#" ? c : -1)
+            .filter(c => c >= 0)), []);
         const head = sitting.slice(0, 5).map(row => [row.indexOf("#"), row.lastIndexOf("#")]);
         const left = Math.min(...head.map(ends => ends[0]).filter(c => c >= 0));
         const right = Math.max(...head.map(ends => ends[1]));
