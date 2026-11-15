@@ -1517,11 +1517,37 @@ Floating {
     // its end its lines are still the card's.
     readonly property real viewEnd: view.natural <= viewTop + viewRoom ? viewTop
         : stops + Math.ceil((view.natural - viewRoom - stops) / pitch - rounding) * pitch
+    // How many of the words' lines it lays: all of them, but while the fold
+    // is open at rest, where the words give up whole lines from their end
+    // so the fold's line and bits stand above the more line rather than
+    // under the card, out of sight, and za changes what's seen (VKCF3Z,
+    // bfdad751). The rest is counted under the more line, and the keys,
+    // gone into, lay them all again to read on. A line is kept at least,
+    // so the drawer still says what it's about. Read off the things after
+    // the words, never the flow's height, which the words' own sets.
+    readonly property int wordsKept: {
+        const lines = bodyText.lineCount;
+        if (drawer.folded || drawer.keys || drawer.nerd.length === 0 || drawer.body === "")
+            return lines;
+        // Each thing after the words stands a pitch, the flow's spacing,
+        // after the one before.
+        const after = item => item.visible ? drawer.pitch + item.height : 0;
+        const ends = flow.y + wordsBox.y + lines * drawer.pitch + after(frame) + after(actsShown)
+            + after(foldShown);
+        // Where the last thing shown ends at rest, a thing's step over the
+        // more line, as shownAndHidden ends it.
+        const step = drawer.pitch + drawer.apartIn(drawer.anyWraps(factRows), false);
+        const room = drawer.moreBase - Theme.border - step + drawer.pitch / 2 - drawer.dropped;
+        const over = Math.ceil((ends - room) / drawer.pitch - drawer.rounding);
+        return Math.max(1, Math.min(lines, lines - over));
+    }
     // The top of every line's box it lays on the pitch past its title, down
-    // the content: the facts', the moment's, the preview's and the words'.
-    // Each a fact takes as { top, bottom }, all its lines, a heading held
-    // with the thing under it; and each line of the moment, the preview
-    // and the words, which run on as reading does.
+    // the content: the facts', the moment's, the preview's, the words' and
+    // the fold's. Each a fact takes as { top, bottom }, all its lines, a
+    // heading held with the thing under it; each line of the moment, the
+    // preview and the words, which run on as reading does, a word line it
+    // doesn't lay hidden at once; and the fold's line, held with its first
+    // bit, and each bit.
     function lineSpans() {
         const spans = [];
         // A line of the words says which it is, since they're counted by
@@ -1550,8 +1576,24 @@ Floating {
         }
         if (previewLines.visible)
             run(flow.y + previewBox.y, previewBox.lines.length);
-        if (wordsBox.visible)
-            run(flow.y + wordsBox.y, bodyText.lineCount, true);
+        if (wordsBox.visible) {
+            run(flow.y + wordsBox.y, drawer.wordsKept, true);
+            for (let at = drawer.wordsKept; at < bodyText.lineCount; at++)
+                spans.push({ top: Infinity, bottom: Infinity, line: at });
+        }
+        // Shut, the fold's line alone is cut wherever it falls, as before
+        // it had a span, so a drawer shut keeps its foot.
+        if (foldShown.visible && !drawer.folded) {
+            let top = flow.y + foldShown.y;
+            for (let at = 0; at < nerdRows.count; at++) {
+                const bit = nerdRows.itemAt(at);
+                if (!bit)
+                    continue;
+                const bitTop = flow.y + foldShown.y + bit.y;
+                spans.push({ top: top ?? bitTop, bottom: bitTop + bit.height });
+                top = null;
+            }
+        }
         return spans;
     }
     // Where the view ends: at its room, or where a thing would run past it,
@@ -2417,7 +2459,10 @@ Floating {
                 Item {
                     id: wordsBox
                     width: parent.width
-                    height: bodyText.lineCount * drawer.pitch
+                    // Its lines laid, the rest given up for the fold
+                    // (wordsKept) clipped away whole.
+                    height: drawer.wordsKept * drawer.pitch
+                    clip: drawer.wordsKept < bodyText.lineCount
                     visible: drawer.body !== ""
 
                     PageText {
