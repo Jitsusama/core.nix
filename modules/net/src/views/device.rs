@@ -782,4 +782,52 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn a_path_its_facts_share_is_said_once_above_them() {
+        let network = network();
+        let printer = find(&network, "Printer").expect("the printer");
+        for room in ROOMS {
+            let text = device(&network, printer, now(), &Pen::plain(), room);
+            fits(&text, room);
+            let lines: Vec<&str> = text.lines().collect();
+            let head = lines
+                .iter()
+                .position(|line| *line == "ConsumableConfigDyn ProductConsumableInfo")
+                .unwrap_or_else(|| panic!("the path its facts share isn't a line of its own: {text}"));
+            assert!(
+                lines[head + 1..]
+                    .iter()
+                    .any(|line| line.starts_with("  RewardsRegistrationStatus PromptAutoSendData")),
+                "a fact under it isn't named by the rest of its path: {text}"
+            );
+            assert!(
+                !text.contains("ConsumableConfigDyn ProductConsumableInfo AlignmentMode"),
+                "the shared path is said again on a fact: {text}"
+            );
+            assert!(
+                lines.contains(&"ProductStatusDyn Status"),
+                "HP's statuses don't share their path: {text}"
+            );
+            assert!(!text.contains('\u{2026}'), "a label is cut: {text}");
+        }
+    }
+
+    #[test]
+    fn what_describes_a_makers_file_is_left_to_json() {
+        let network = network();
+        let printer = find(&network, "Printer").expect("the printer");
+        let text = device(&network, printer, now(), &Pen::plain(), Room::Unbounded);
+        for about_the_file in ["schemaLocation", "Version", "Revision", "ModificationNumber"] {
+            assert!(
+                !text.contains(about_the_file),
+                "{about_the_file} describes HP's file, not the printer: {text}"
+            );
+        }
+        let json = serde_json::to_string(&printer.detail).expect("its detail as JSON");
+        assert!(
+            json.contains("schemaLocation"),
+            "--json lost what describes HP's file: {json}"
+        );
+    }
 }
