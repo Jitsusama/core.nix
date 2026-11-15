@@ -316,6 +316,36 @@
       touch $out
     '';
 
+  # A glyph the theme turns is drawn a half turn about its ink's middle, so
+  # the down triangle is the triangle turned and its ink keeps the upright
+  # one's box, on lines between pixels too, at his laptop's scale and at 1,
+  # as modules/quickshell/tests/turned-mark.py reads tests/turned-mark.qml's
+  # pictures back.
+  a-turned-mark-keeps-its-ink =
+    let
+      machine = graphical.config;
+      measure = lib.getExe (pkgs.python3.withPackages (python: [ python.pillow ]));
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # case, or runs the case with what Nix built; the measuring is Python.
+    pkgs.runCommandLocal "a-turned-mark-keeps-its-ink" { } ''
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      for scale in 2 1; do
+        mkdir at-$scale
+        cd at-$scale
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        ${copied [ "Mark.qml" ]}
+        cp ${../../../tests/turned-mark.qml} shell.qml
+        ${shellFolderLint}
+        QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
+        ${measure} ${../tests/turned-mark.py} . said
+        cd ..
+      done
+      touch $out
+    '';
+
   # Shape is a language (docs/design.md, Shape and Kinds): a border's width
   # says "this is a thing" and a radius says whole or part, so no surface
   # picks either for itself. Every corner is the theme's radius, or a part's

@@ -100,7 +100,21 @@ Text {
     // scale, so a small one drawn large, as Later's ◦ is, stood its
     // bearing right of the column the others' ink kept (Joel, 2026-11-11).
     readonly property real drawnBack: ink.x / fine * markScale
-    transform: Translate { x: -mark.drawnBack }
+    // A glyph the theme turns (Theme.turned) is drawn a half turn about its
+    // ink's middle, not its cell's, so its ink keeps the box the upright
+    // glyph's had and stands on the same middle line beside the others
+    // (VKCF3Z, 2026-11-14). Its measures are the upright glyph's, which a
+    // half turn about their middle leaves where they were.
+    readonly property bool turned: Theme.turned[text] === true
+    transform: [
+        Rotation {
+            angle: mark.turned ? 180 : 0
+            origin.x: (mark.ink.x + mark.ink.width / 2) / mark.fine * mark.markScale
+            origin.y: mark.baselineOffset
+                + (mark.ink.y + mark.ink.height / 2) / mark.fine * mark.markScale
+        },
+        Translate { x: -mark.drawnBack }
+    ]
     // Where the mark's ink centres: on the capitals' middle, the baseline
     // less half their height as drawn on this screen, whose pixels round
     // them: measured at its own scale.

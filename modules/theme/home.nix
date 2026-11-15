@@ -57,6 +57,15 @@ let
         default = "";
         description = "What the mark means, wherever it's drawn.";
       };
+      turned = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Whether the glyph is drawn turned a half turn about its ink's middle,
+          for a shape the face draws only one way up. Its glyph then differs
+          from the upright one's by a character that draws nothing.
+        '';
+      };
       drawn = lib.mkOption {
         type = lib.types.str;
         default = "";
