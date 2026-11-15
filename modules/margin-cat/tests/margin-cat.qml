@@ -350,23 +350,23 @@ QtObject {
             { begun: 7, stepped: 6 });
         expect("a walk's frames as niri showed them, the gaps between them sorted",
             shown.said, {
-                frames: 5, median: 16.7, p99: 50, slowest: 50, drawn: 3, unseen: 1, begun: 7,
-                stepped: 6
+                frames: 5, median: 16.7, p99: 50, slowest: 50, typical: 0.8, drawn: 3, unseen: 1,
+                begun: 7, stepped: 6
             });
         // Its steps beside its frames say whether it moved on each, or
         // was drawn again standing still (2026-11-13: Qt paced a 120 Hz
         // screen's steps at 60 where niri said 60 Hz).
         expect("as the journal says them", shown.line, "cat: a walk presented 5 of its 7 frames "
-            + "a median 16.7 ms apart, the p99 50 ms, the slowest 50 ms, each drawn within 3 ms, "
-            + "1 never shown, stepped 6 times");
+            + "a median 16.7 ms apart, the p99 50 ms, the slowest 50 ms, each drawn in 0.8 ms "
+            + "typically and within 3 ms, 1 never shown, stepped 6 times");
         expect("a hop's frames are said as a walk's",
             MarginCat.walked([100, 116.7], [1], 0, { begun: 2, what: "hop" }).line
                 .split(" of its")[0],
             "cat: a hop presented 2");
         expect("a walk nothing showed says so", MarginCat.walked([], [], 0, { begun: 0 }).said,
             {
-                frames: 0, median: 0, p99: 0, slowest: 0, drawn: 0, unseen: 0, begun: 0,
-                stepped: 0
+                frames: 0, median: 0, p99: 0, slowest: 0, typical: 0, drawn: 0, unseen: 0,
+                begun: 0, stepped: 0
             });
 
         // niri's own spring, as Joel's niri rides it between workspaces.
