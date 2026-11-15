@@ -46,11 +46,6 @@ impl Room {
         Self::of(1)
     }
 
-    /// The width failures are set to: stderr's terminal's, as stdout's is.
-    pub fn of_stderr() -> Self {
-        Self::of(2)
-    }
-
     fn of(fd: i32) -> Self {
         let columns = env::var("COLUMNS")
             .ok()
@@ -426,14 +421,6 @@ fn cut(name: &str, room: usize) -> String {
     format!("{kept}{CUT}")
 }
 
-/// Words set after something `lead` cells wide, as a failure's are after
-/// its mark: wrapped at whole words to the room, each further line under
-/// the first's words, so a name is never cut where the terminal ends.
-pub fn hung(words: &str, lead: usize, room: Room) -> String {
-    let measure = room.0.saturating_sub(lead).max(1);
-    wrapped(words, measure).join(&format!("\n{}", " ".repeat(lead)))
-}
-
 /// The mark parting a run's items on a line, which goes with a break.
 const APART: &str = " \u{b7} ";
 
@@ -723,15 +710,5 @@ mod tests {
             vec!["one \u{b7} two", "three four", "five six"]
         );
         assert_eq!(wrapped("", 4), vec![""]);
-    }
-
-    #[test]
-    fn a_failure_wraps_under_its_own_words() {
-        let said = "nothing called mahcine \u{b7} did you mean Machine?";
-        assert_eq!(
-            hung(said, 2, Room(42)),
-            "nothing called mahcine\n  did you mean Machine?"
-        );
-        assert_eq!(hung(said, 2, Room(80)), said);
     }
 }

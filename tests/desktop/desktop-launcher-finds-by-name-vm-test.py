@@ -1668,12 +1668,14 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
     drawn = json.loads(desktop.as_account("launcher show --drawers --json desktop screens"))
     held = {row["name"]: "drawer" in row for row in drawn["rows"]}
     assert any(held.values()), f"--drawers gave no row of Screens its drawer: {held}"
+    # A step naming nothing is the convention's not-found.
+    not_found = 66
     status, said = machine.execute(desktop.in_session("launcher show mahcine 2>&1 >/dev/null"))
-    assert status == 1, (status, said)
+    assert status == not_found, (status, said)
     assert "did you mean Machine?" in said, said
     # An act that ends something, with no terminal to ask on, is refused unasked, and says so
-    # by its own status.
-    not_sure = 3
+    # by the convention's refused, 77.
+    not_sure = 77
     status, said = machine.execute(
         desktop.in_session("launcher do machine power reboot </dev/null 2>&1 >/dev/null")
     )
