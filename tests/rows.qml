@@ -1693,6 +1693,11 @@ ShellRoot {
                 // of it: the room layered around it, or it within the words.
                 maskWithin: reads.layer.enabled
                     || (faded !== null && root.within(faded, seen)),
+                // Whether what holds the words says their plain words and
+                // clips as the room does, as the launcher reads a word's
+                // parent for both (Launcher.qml's wordsIn).
+                heldAsRoom: words.parent.plain === reads.plain
+                    && words.parent.clip === reads.clip,
                 fade: reads.fade, whole: faded?.whole ?? null,
                 startCovered: faded?.cover.opacity ?? null,
                 endsAt: words.x + words.implicitWidth, room: reads.width };
@@ -1714,6 +1719,8 @@ ShellRoot {
                 failed = "a row's name and what it is both moved at once";
             else if (now.resting && !now.ended)
                 failed = "a selected name at rest cut through a letter, not in its ellipsis";
+            else if (!now.heldAsRoom)
+                failed = "a name's words are held by what doesn't say how they read or clip";
             else if (now.resting && (now.layered || now.whole !== null))
                 failed = "a name at rest is drawn through a layer or a mask";
             else if (!now.resting && (!now.layered || Math.abs(now.whole - now.fade) > 0.5))

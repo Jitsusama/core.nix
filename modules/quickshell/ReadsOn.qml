@@ -122,11 +122,16 @@ Item {
     // (VKCF3Z, 2026-11-14: a glyph clipped at both ends of a selected long
     // name). The layer is made only then, so words at rest, and a shut
     // launcher, cost nothing. What they're seen through stands beside
-    // them, never inside, or it would be drawn into what it masks.
+    // them, never inside, or it would be drawn into what it masks. It holds
+    // the room's plain words and clips as the room does, since the launcher
+    // reads both from a word's parent to say how a word reads and where it
+    // is cut (Launcher.qml's wordsIn).
     Item {
         id: seen
+        readonly property string plain: room.plain
         width: room.width
         height: room.height
+        clip: room.clip
         layer.enabled: room.moving && room.fadedBy !== null
         layer.effect: MultiEffect {
             maskEnabled: true
