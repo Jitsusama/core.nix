@@ -113,6 +113,16 @@ fn flag_names(name: &str) -> impl Iterator<Item = &str> {
         .filter_map(|variant| variant.split(' ').next())
 }
 
+/// Whether a level's only argument is any number of words that may be
+/// left out, which its subcommands' names answer before. Taken as names
+/// first, those words would leave every subcommand beside them unreached.
+fn searches(help: &Help) -> bool {
+    matches!(
+        help.arguments.as_slice(),
+        [only] if only.name.starts_with('[') && only.name.trim_end_matches(']').ends_with("...")
+    ) && !help.subs.is_empty()
+}
+
 /// Whether a level takes another word as a name, having taken `filled`.
 /// A last argument takes any number when its name ends in `...`, inside
 /// its optional brackets or outside them (`[why...]` or `[why]...`).
@@ -162,9 +172,15 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
         // `findings expect KEY` before `findings KEY expect`, still
         // answers: an unlisted subcommand is the only kind matched
         // before the name, so a name never meets a listed word.
-        let old = (filled == 0)
-            .then(|| here.subs.iter().find(|sub| !sub.listed && answers(sub)))
-            .flatten();
+        // Words that may be left out beside subcommands, as health's
+        // `[words]...`, are what's looked for only where no subcommand
+        // answers, so a listed one is matched first there too.
+        let first = if searches(here) {
+            here.subs.iter().find(answers)
+        } else {
+            here.subs.iter().find(|sub| !sub.listed && answers(sub))
+        };
+        let old = (filled == 0).then_some(first).flatten();
         if old.is_none() && takes_name(here, filled) {
             filled += 1;
             typed.push(quoted(word));
@@ -414,6 +430,45 @@ mod tests {
                 "{name} took only one word"
             );
         }
+    }
+
+    #[test]
+    fn words_that_may_be_left_out_beside_subcommands_are_asked_for_by_what_they_say() {
+        // health's own views answer to their names; any other words are
+        // looked for in the names of the things that day.
+        let help = Help::new("health", "what the journals said")
+            .argument("[words]...", "what to look for in the things' names")
+            .subcommand(Help::new("boot", "each boot's stages"))
+            .subcommand(Help::new("memory", "what each copy holds"));
+        let path = |line: &str| {
+            walk(&help, &words(line)).map_or_else(
+                |failure| format!("refused: {}", failure.what),
+                |walked| walked.path(),
+            )
+        };
+        assert_eq!(path("boot"), "health boot", "a view was looked for");
+        assert_eq!(
+            walk(&help, &words("boot"))
+                .map(|walked| walked.shown().name)
+                .ok(),
+            Some("health boot".to_owned()),
+            "a view's help was titled as if it came after the words"
+        );
+        assert_eq!(path("wifid"), "health", "words were refused");
+        assert_eq!(path("wifid calls"), "health", "a second word was refused");
+        assert_eq!(
+            path("boot again"),
+            "refused: health boot takes no more words",
+            "a view took words it doesn't read"
+        );
+        let one = Help::new("axes", "each axis")
+            .argument("[axis]", "the one to step into")
+            .subcommand(Help::new("speed", "how fast"));
+        assert_eq!(
+            walk(&one, &words("speed")).map(|walked| walked.path()).ok(),
+            Some("axes".to_owned()),
+            "a single name that may be left out was taken for a subcommand"
+        );
     }
 
     #[test]
