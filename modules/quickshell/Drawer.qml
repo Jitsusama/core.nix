@@ -55,6 +55,7 @@ import "DrawerPage.js" as Page
 import "DrawerProse.js" as Prose
 import "DrawerValue.js" as Value
 import "Identifier.js" as Identifier
+import "Measures.js" as Measures
 import "Pictures.js" as Pictures
 import "Search.js" as Search
 import "Reading.js" as Reading
@@ -1189,11 +1190,18 @@ Floating {
     function letGoOf(face) {
         widths?.held.delete(face);
     }
+    // Each width is measured once in its face and kept (Measures.js), since
+    // a program's drawer asked about 160 each time it was given, under one
+    // in a hundred of them words it hadn't measured: 2 ms of the 5 a
+    // Chrome drawer took to show offscreen (2026-11-14).
     function measurerOf(face) {
-        return words => {
-            widths.asked += 1;
+        const measure = Measures.measurer({ font: face.font, advanceWidth: words => {
             widths.made += 1;
             return face.advanceWidth(words);
+        } });
+        return words => {
+            widths.asked += 1;
+            return measure(words);
         };
     }
     // The face a fact's value is measured and drawn in (DrawerPage.js's
