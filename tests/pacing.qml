@@ -600,23 +600,22 @@ QtObject {
             + "the p99 300 ms, 1 within 50 ms: a median 10 ms before the shell heard it, "
             + "20 in the shell and 20 from its frame's start (2 to its swap and 18 after it)");
 
-        // Joel's openings spent a median 20 ms from their swap to the screen,
-        // 40% of them 3 to 9 frames at 120 Hz, and nothing said whether the
-        // shell's GPU or niri held them (2026-11-15). Presentation times lie
-        // on the vblanks, so the frames from the GPU's end are counted back
-        // from the one niri showed it at.
-        const frame = { swapped: 1000, gpuDone: 1006.2, refresh: 8.333 };
-        check(failures, "an opening says when its GPU work ended and the frames after",
+        // Joel's openings waited a median 6 frames at 120 Hz for niri after
+        // their GPU work was done (2026-11-15). Presentation times lie on the
+        // vblanks, so the frames from the swap are counted back from the one
+        // niri showed it at.
+        const frame = { swapped: 1000, refresh: 8.333 };
+        check(failures, "an opening says the frames from its swap to the screen",
             Presented.shownSaid(frame, 1022.6),
-            "; the shell's GPU done 6 ms after its swap, then 2 frames at 120 Hz to the screen");
+            "; 3 frames at 120 Hz from its swap to the screen");
         check(failures, "niri at the next vblank says one frame",
             Presented.shownSaid(frame, 1008.3),
-            "; the shell's GPU done 6 ms after its swap, then 1 frame at 120 Hz to the screen");
-        check(failures, "without its GPU's end, the frames from its swap",
+            "; 1 frame at 120 Hz from its swap to the screen");
+        check(failures, "and counts at its own refresh",
             Presented.shownSaid({ swapped: 1000, refresh: 16.667 }, 1040),
             "; 3 frames at 60 Hz from its swap to the screen");
         check(failures, "and nothing where niri gave no refresh",
-            Presented.shownSaid({ swapped: 1000, gpuDone: 1004 }, 1030), "");
+            Presented.shownSaid({ swapped: 1000 }, 1030), "");
         check(failures, "nor where the frame's swap wasn't timed",
             Presented.shownSaid({ refresh: 8.333 }, 1030), "");
     }

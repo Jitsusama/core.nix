@@ -90,32 +90,23 @@ function partsSwapped(times, parts) {
     return `${said} (${toSwap} to its swap and ${after} after it)`;
 }
 
-// Where an opening's frame went after its swap (frame-presentation.patch's
-// timesOf): when the shell's own GPU work for it ended, `gpuDone`, then
-// how many of niri's frames of `refresh` ms passed until `at`, the vblank
-// niri showed it at, counted back along the vblanks from it; with no
-// `gpuDone`, from the swap. Joel's openings spent a median 20 ms from
-// their swap to the screen, 40% of them 3 to 9 frames at 120 Hz, and
-// nothing said whether the shell's GPU or niri held them (2026-11-15).
-// "" where niri gave no refresh or the swap wasn't timed.
+// How many of niri's frames of `refresh` ms (frame-presentation.patch's
+// timesOf) passed from an opening's swap until `at`, the vblank niri showed
+// it at, counted back along the vblanks from it. Joel's openings had their
+// GPU work done a median 1 ms after their swap, then waited a median 6
+// frames at 120 Hz for niri (2026-11-15), so the count is what a fix in
+// niri moves. "" where niri gave no refresh or the swap wasn't timed.
 function shownSaid(times, at) {
     const refresh = times.refresh ?? 0;
     if (!(refresh > 0) || !(times.swapped > 0)) {
         return "";
     }
     const hz = Math.round(1000 / refresh);
-    const frames = since => {
-        // A hundredth of a frame's slack, for a time read a little apart
-        // from the vblank it lies on.
-        const count = Math.max(1, Math.ceil((at - since) / refresh - 0.01));
-        return `${count} ${count === 1 ? "frame" : "frames"} at ${hz} Hz`;
-    };
-    if (times.gpuDone > 0) {
-        const done = Math.max(0, Math.round(times.gpuDone - times.swapped));
-        return `; the shell's GPU done ${done} ms after its swap, then `
-            + `${frames(times.gpuDone)} to the screen`;
-    }
-    return `; ${frames(times.swapped)} from its swap to the screen`;
+    // A hundredth of a frame's slack, for a time read a little apart from
+    // the vblank it lies on.
+    const count = Math.max(1, Math.ceil((at - times.swapped) / refresh - 0.01));
+    const frames = `${count} ${count === 1 ? "frame" : "frames"} at ${hz} Hz`;
+    return `; ${frames} from its swap to the screen`;
 }
 
 // Each part's median, `[from, to, words]`, over those stamped with every

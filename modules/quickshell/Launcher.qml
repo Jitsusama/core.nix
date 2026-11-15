@@ -10612,8 +10612,8 @@ Scope {
     // timed and its record made, since a frame drawn at the card's size
     // can be presented before the fill's second frame times it.
     property real presentedAt: -1
-    // And which frame that was, whose times say where it went after its
-    // swap: the shell's GPU work, then niri's frames (Presented.shownSaid).
+    // And which frame that was, whose times say how many of niri's frames
+    // it waited after its swap (Presented.shownSaid).
     property int presentedShown: -1
     property bool presentedTimed: false
     // Whether the journal has said niri gives no presentation times, said
