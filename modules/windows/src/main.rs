@@ -15,7 +15,8 @@
 //! window resizing tells nothing. Each window's program is looked up once
 //! by its app id, and again only once inotify says the desktop entries
 //! changed. Nothing runs on a timer: with niri gone, it tries niri again
-//! every two seconds until it's back.
+//! every two seconds until it's back, and started before niri, it waits
+//! the same way for niri to name its socket (`niri_socket`).
 //!
 //! Handed the launcher's words (`--words`, its words.json), it serves
 //! the launcher's Screens too, as rows of kind `row` in place `displays`
@@ -62,6 +63,7 @@ use windows::screens;
 use windows::screens::acts::{self, Act};
 use windows::screens::vocabulary::{numbered, worded};
 use windows::shows;
+use windows::socket;
 use windows::timed::{self, Timed};
 use windows::unasked::{self, Watched};
 use windows::{open, order};
@@ -132,7 +134,6 @@ fn help() -> Help {
             "the machine daemon, for a screen's light",
         )
         .exit(Exit::Failed, "its socket couldn't be listened on")
-        .exit(Exit::Config, "NIRI_SOCKET isn't set")
 }
 
 /// What its unit hands it.
@@ -183,14 +184,7 @@ fn hold(asked: Asked) -> Result<(), Failure> {
     } = asked;
     let numbers = numbered(numbers.as_deref().map(Path::new));
     let words = words.map(|path| worded(Path::new(&path)).numbered(numbers));
-    let niri = std::env::var_os("NIRI_SOCKET")
-        .map(PathBuf::from)
-        .ok_or_else(|| {
-            Failure::new(
-                Exit::Config,
-                "NIRI_SOCKET isn't set, so there's no niri to hear",
-            )
-        })?;
+    let niri = niri_socket();
     let listener = serve::listen(&socket).map_err(|why| {
         Failure::new(
             Exit::Failed,
@@ -260,6 +254,23 @@ fn hold(asked: Asked) -> Result<(), Failure> {
     serve::accept(served, listener);
     follow(&shared, &niri);
     Ok(())
+}
+
+/// niri's socket, from its own environment, or, started before niri as a
+/// boot's first ask can start it, from the user manager's once niri names
+/// it there (socket.rs). The socket's asks wait in systemd's queue till
+/// then, and nothing is shown before niri anyway.
+fn niri_socket() -> PathBuf {
+    if let Some(socket) = std::env::var_os("NIRI_SOCKET") {
+        return PathBuf::from(socket);
+    }
+    eprintln!("<5>niri hasn't named its socket yet, so its windows wait for it");
+    loop {
+        if let Some(socket) = socket::managed() {
+            return socket;
+        }
+        std::thread::sleep(NIRI_AGAIN);
+    }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {

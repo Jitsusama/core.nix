@@ -1,7 +1,9 @@
-//! The daemon asked in a way its unit never would: with no socket, or
-//! with no niri to hear, it ends at once in the terminal kit's words,
-//! saying nothing on stdout and leaving no socket behind.
+//! The daemon asked in a way its unit never would: with no socket, it
+//! ends at once in the terminal kit's words, saying nothing on stdout and
+//! leaving no socket behind. Started before niri, as a boot's first ask
+//! can start it, it waits for niri rather than ending.
 
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::Mutex;
@@ -55,22 +57,69 @@ fn ran(args: &[&Path], niri: Option<&Path>) -> Output {
 }
 
 #[test]
-fn a_run_its_unit_wouldnt_make_ends_at_once_in_the_kits_words() {
+fn a_run_with_no_socket_ends_at_once_in_the_kits_words() {
     let folder = std::env::temp_dir().join(format!("windows-asked-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).expect("a folder");
-    let socket = folder.join("windows.sock");
     let niri = folder.join("niri.sock");
-    for (args, niri, code, names) in [
-        (vec![], Some(niri.as_path()), 64, "windows --help"),
-        (vec![socket.as_path()], None, 78, "NIRI_SOCKET"),
-    ] {
-        let told = ran(&args, niri);
-        let said = String::from_utf8_lossy(&told.stderr);
-        assert_eq!(told.status.code(), Some(code), "{args:?} ended so: {said}");
-        assert!(told.stdout.is_empty(), "{args:?} said on stdout: {told:?}");
-        assert!(said.contains(names), "{args:?} didn't name {names}: {said}");
-        assert!(!socket.exists(), "{args:?} left a socket behind");
-    }
+
+    let told = ran(&[], Some(&niri));
+
+    let said = String::from_utf8_lossy(&told.stderr);
+    assert_eq!(told.status.code(), Some(64), "it ended so: {said}");
+    assert!(told.stdout.is_empty(), "it said on stdout: {told:?}");
+    assert!(
+        said.contains("windows --help"),
+        "it didn't name its help: {said}"
+    );
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn started_before_niri_it_waits_for_niri_rather_than_ending() {
+    let folder = std::env::temp_dir().join(format!("windows-before-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("a folder");
+    let socket = folder.join("windows.sock");
+    // No PATH, so no user manager is asked and none names a niri: the
+    // daemon must go on waiting, and never reach the niri of the machine
+    // the test runs on.
+    let child = Command::new(env!("CARGO_BIN_EXE_windows"))
+        .arg(&socket)
+        .env_remove("JOURNAL_STREAM")
+        .env_remove("LISTEN_FDS")
+        .env_remove("NIRI_SOCKET")
+        .env("PATH", "")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("windows ran");
+    let running = Running(Mutex::new(Some(child)));
+    let said = running
+        .0
+        .lock()
+        .expect("the daemon")
+        .as_mut()
+        .and_then(|child| child.stderr.take())
+        .expect("its stderr");
+    let mut first = String::new();
+    BufReader::new(said)
+        .read_line(&mut first)
+        .expect("its first line");
+
+    assert!(
+        first.starts_with("<5>niri hasn't named its socket yet"),
+        "it said: {first}"
+    );
+    let ended = running
+        .0
+        .lock()
+        .expect("the daemon")
+        .as_mut()
+        .and_then(|child| child.try_wait().ok().flatten());
+    assert_eq!(ended, None, "it ended rather than waiting for niri");
+    assert!(!socket.exists(), "it listened before niri was there");
+    drop(running);
     let _ = std::fs::remove_dir_all(&folder);
 }
