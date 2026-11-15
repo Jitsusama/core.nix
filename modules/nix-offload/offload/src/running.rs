@@ -30,6 +30,11 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+/// How often a run waiting on its twin says it still waits, so one that
+/// hangs behind a hung first shows it rather than going quiet.
+const SAY_EVERY: Duration = Duration::from_secs(300);
 
 /// A run's file, removed when this is dropped.
 pub struct Running {
@@ -174,6 +179,20 @@ pub fn stable_digest(parts: &[&[u8]]) -> u64 {
 /// it to end, saying so with the one going's process and how long it has
 /// gone by `now`, in seconds since 1970.
 pub fn alone(state: &Path, me: u32, at: &Twin, now: impl Fn() -> u64) -> Alone {
+    alone_saying(state, me, at, now, SAY_EVERY, &mut |said| eprintln!("{said}"))
+}
+
+/// [`alone`], saying through `say` that it waits, and again every `every`
+/// while it still does.
+fn alone_saying(
+    state: &Path,
+    me: u32,
+    at: &Twin,
+    now: impl Fn() -> u64,
+    every: Duration,
+    say: &mut dyn FnMut(String),
+) -> Alone {
+    let _ = every;
     let twins = state.join("nix-offload/twins");
     let work = stable_digest(&[at.folder.as_os_str().as_encoded_bytes(), at.asked.as_bytes()]);
     let file = twins.join(format!("{}-{work:016x}.lock", at.commit));
@@ -202,11 +221,11 @@ pub fn alone(state: &Path, me: u32, at: &Twin, now: impl Fn() -> u64) -> Alone {
             )
         },
     );
-    eprintln!(
+    say(format!(
         "nix-offload: {going} already runs these changed-checks in this tree at {}, so this \
          waits for it to end and then reads what it passed",
         at.commit.get(..12).unwrap_or(at.commit),
-    );
+    ));
     match lock.lock() {
         Ok(()) => Alone::Waited,
         Err(_) => Alone::Unheld,
@@ -341,6 +360,35 @@ mod tests {
         assert!(
             matches!(alone(state.path(), 2, &first, || 10), Alone::Held(_)),
             "a run waited where nothing else went"
+        );
+    }
+
+    #[test]
+    fn a_run_waiting_on_its_twin_says_it_still_waits() {
+        let state = tempfile::tempdir().unwrap();
+        let first = at("abc", "/t", ASKED);
+        let held = alone(state.path(), 1, &first, || 10);
+        let ender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(1100));
+            drop(held);
+        });
+        let mut said = Vec::new();
+        let waited = alone_saying(
+            state.path(),
+            2,
+            &first,
+            || 10,
+            Duration::from_millis(300),
+            &mut |line| said.push(line),
+        );
+        ender.join().unwrap();
+        assert!(
+            matches!(waited, Alone::Waited),
+            "a second run didn't wait for the first"
+        );
+        assert!(
+            said.iter().filter(|line| line.contains("still waits")).count() >= 2,
+            "a run waiting on a twin went quiet while it waited: {said:?}"
         );
     }
 
