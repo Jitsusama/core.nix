@@ -280,10 +280,24 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
 }
 
 /// What a gate changing `theirs` shares with the change asking, `shared`
-/// among that change's files, in words.
+/// among that change's files, in words: those it changes too, and those
+/// held only for a crate of the gate's they're in, read or are read by
+/// (`shares`), which it doesn't change.
 fn what_it_shares(theirs: &[String], shared: &[String]) -> String {
-    let _ = theirs;
-    format!("changes {} too", shared.join(", "))
+    let (both, near): (Vec<&str>, Vec<&str>) = shared
+        .iter()
+        .map(String::as_str)
+        .partition(|file| theirs.iter().any(|theirs| theirs == file));
+    let near = (!near.is_empty()).then(|| {
+        let reads = if near.len() == 1 { "reads or is" } else { "read or are" };
+        format!("a crate this one's {} {reads} read by", near.join(", "))
+    });
+    match (both.is_empty(), near) {
+        (false, None) => format!("changes {} too", both.join(", ")),
+        (false, Some(near)) => format!("changes {} too, and {near}", both.join(", ")),
+        (true, Some(near)) => format!("changes {near}"),
+        (true, None) => "changes nothing this one does".to_owned(),
+    }
 }
 
 /// What a gate changing `theirs` shares with a change to `ours`: the files
