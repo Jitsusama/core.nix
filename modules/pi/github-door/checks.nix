@@ -5,6 +5,7 @@
   holds,
   lib,
   macWorkstation,
+  onLinux,
   passesClippy,
   pkgs,
   workstation,
@@ -37,7 +38,9 @@
         && !(mac.systemd.user.services ? pi-github-door)
         && !(mac.systemd.user.sockets ? pi-github-door)
       );
-
+}
+# The door is built for Linux alone, so a Mac can't evaluate its build.
+// onLinux {
   # pi-github-door builds with its tests run (tests/door.rs, and the
   # judge's own): a read sent on with the person's token in the
   # placeholder's place, and every refused call never reaching GitHub,

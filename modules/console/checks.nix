@@ -13,26 +13,6 @@
   ...
 }:
 {
-  # A failed boot's shell says what stopped it, as tests/boot-stopped.sh
-  # says, with stand-ins for systemctl and journalctl. The boot test shows it
-  # on a real console, in minutes; this holds what it says, in seconds.
-  a-failed-boot-says-what-stopped-it =
-    let
-      machine = bareNixos [
-        self.nixosModules.workstation
-        self.nixosModules.graphical
-        { jitsusama.login.account = "someone"; }
-      ];
-      stopped = lib.removePrefix "-" (
-        lib.findFirst (lib.hasInfix "boot-stopped") (throw "the emergency shell runs no boot-stopped")
-          machine.config.systemd.services.emergency.serviceConfig.ExecStartPre
-      );
-    in
-    pkgs.runCommandLocal "a-failed-boot-says-what-stopped-it" { } ''
-      ${lib.getExe pkgs.bash} ${./tests/boot-stopped.sh} ${stopped}
-      touch $out
-    '';
-
   # The console wears the theme of the account the machine signs in, in the
   # console's order, and follows it when the theme changes. A machine that
   # names no account keeps the kernel's colours.
@@ -101,6 +81,39 @@
         && graphical.config.environment.etc.issue.text == null
       );
 
+  # The font's build takes only the face asked for at Medium, as
+  # tests/console-font.sh says, with stand-ins for fontconfig and the
+  # converter: the machine's real fonts show only the face that's there,
+  # never what a missing one would do.
+  the-console-font-refuses-a-stand-in =
+    pkgs.runCommandLocal "the-console-font-refuses-a-stand-in" { }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/console-font.sh} ${./font.sh}
+        touch $out
+      '';
+}
+# What follows needs Linux to build or to run, so a Mac leaves it out.
+// onLinux {
+  # A failed boot's shell says what stopped it, as tests/boot-stopped.sh
+  # says, with stand-ins for systemctl and journalctl. The boot test shows it
+  # on a real console, in minutes; this holds what it says, in seconds.
+  a-failed-boot-says-what-stopped-it =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        { jitsusama.login.account = "someone"; }
+      ];
+      stopped = lib.removePrefix "-" (
+        lib.findFirst (lib.hasInfix "boot-stopped") (throw "the emergency shell runs no boot-stopped")
+          machine.config.systemd.services.emergency.serviceConfig.ExecStartPre
+      );
+    in
+    pkgs.runCommandLocal "a-failed-boot-says-what-stopped-it" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/boot-stopped.sh} ${stopped}
+      touch $out
+    '';
+
   # The console's font is the account's monospace face at Medium, drawn into
   # the kernel's 16 by 32 cell: a PSF 2 font of at most 256 glyphs, so the
   # console keeps its bright colours, naming what each glyph stands for, with
@@ -151,18 +164,6 @@
       touch $out
     '';
 
-  # The font's build takes only the face asked for at Medium, as
-  # tests/console-font.sh says, with stand-ins for fontconfig and the
-  # converter: the machine's real fonts show only the face that's there,
-  # never what a missing one would do.
-  the-console-font-refuses-a-stand-in =
-    pkgs.runCommandLocal "the-console-font-refuses-a-stand-in" { }
-      ''
-        ${lib.getExe pkgs.bash} ${./tests/console-font.sh} ${./font.sh}
-        touch $out
-      '';
-}
-// onLinux {
   # clippy finds nothing in the console's font tool, its tests included.
   console-font-passes-clippy = passesClippy "console-font-passes-clippy" (
     pkgs.callPackage ./font/package.nix { }

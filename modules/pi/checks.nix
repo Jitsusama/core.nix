@@ -6,6 +6,7 @@ args@{
   holds,
   lib,
   macWorkstation,
+  onLinux,
   passesClippy,
   pkgs,
   self,
@@ -44,75 +45,6 @@ import ./host-checks.nix args
     holds "pi-carry-is-on-the-path"
       "pi-carry, which mycelium carry runs, isn't on the path of an account with pi."
       (carries (account workstation) && carries (account macWorkstation));
-
-  # The harness's measure runs each morning in the background, catching up
-  # on a morning slept through, with the store's node, and only where the
-  # harness is installed; a Mac, with no systemd, gets none.
-  pi-measures-each-day-in-the-background =
-    let
-      home = account workstation;
-      mac = account macWorkstation;
-      service = home.systemd.user.services.pi-measure;
-      timer = home.systemd.user.timers.pi-measure.Timer;
-      # home-manager keeps a unit's settings as lists.
-      first = value: lib.head (lib.toList value);
-    in
-    holds "pi-measures-each-day-in-the-background"
-      "pi's measure runs outside background.slice, not every day, misses a morning slept through, runs a node off the PATH, fails where the harness isn't installed, or reaches a Mac."
-      (
-        service.Service.Slice == "background.slice"
-        && timer.Persistent
-        && lib.hasPrefix "*-*-* " (first timer.OnCalendar)
-        && lib.hasPrefix "${lib.getExe pkgs.nodejs} " (first service.Service.ExecStart)
-        && lib.hasSuffix "/scripts/measure.ts" (first service.Unit.ConditionPathExists)
-        && !(mac.systemd.user.services ? pi-measure)
-      );
-
-  # The launcher's list of what the last boot's end took away is written as
-  # the account's session starts, with the store's node, only where the
-  # harness is installed; a Mac, with no systemd, gets none.
-  pi-writes-what-the-last-boot-left =
-    let
-      home = account workstation;
-      mac = account macWorkstation;
-      service = home.systemd.user.services.pi-restore-file;
-      first = value: lib.head (lib.toList value);
-    in
-    holds "pi-writes-what-the-last-boot-left"
-      "pi's list of the sessions the last boot's end took away isn't written as the session starts, runs outside background.slice or a node off the PATH, logs node's module-type warning, fails where the harness isn't installed, or reaches a Mac."
-      (
-        lib.elem "default.target" service.Install.WantedBy
-        && service.Service.Slice == "background.slice"
-        && lib.hasPrefix "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON " (
-          first service.Service.ExecStart
-        )
-        && lib.hasSuffix "/scripts/restore-file.ts" (first service.Unit.ConditionPathExists)
-        && !(mac.systemd.user.services ? pi-restore-file)
-      );
-
-  # The windows here joined to another machine's session are noted every
-  # five minutes, quietly in the background, only where the harness is installed,
-  # so the next boot can offer them back; a Mac gets none.
-  pi-notes-windows-on-sessions-elsewhere =
-    let
-      home = account workstation;
-      mac = account macWorkstation;
-      service = home.systemd.user.services.pi-windows-elsewhere;
-      timer = home.systemd.user.timers.pi-windows-elsewhere;
-      first = value: lib.head (lib.toList value);
-    in
-    holds "pi-notes-windows-on-sessions-elsewhere"
-      "pi doesn't note every five minutes the windows joined to sessions other machines hold, runs outside background.slice or a node off the PATH, logs node's module-type warning, fails where the harness isn't installed, or reaches a Mac."
-      (
-        lib.elem "timers.target" timer.Install.WantedBy
-        && first timer.Timer.OnCalendar == "*:0/5"
-        && service.Service.Slice == "background.slice"
-        && lib.hasPrefix "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON " (
-          first service.Service.ExecStart
-        )
-        && lib.hasSuffix "/scripts/windows-elsewhere.ts" (first service.Unit.ConditionPathExists)
-        && !(mac.systemd.user.timers ? pi-windows-elsewhere)
-      );
 
   # The launcher's AI actions are served on a socket systemd holds beside
   # the other daemons', named as daemons are, restarted by a switch, left
@@ -160,60 +92,6 @@ import ./host-checks.nix args
       && lib.all (colour: builtins.match "#[0-9a-fA-F]{6}" colour != null) colours
     );
 
-  # pi's status line tells a folder and git as the prompt does: by the
-  # prompt's root markers, the prompt's git-engine, and the theme's marks,
-  # each by the name the harness reads it under.
-  pi-tells-where-as-the-prompt-does =
-    let
-      home = account workstation;
-      where = builtins.fromJSON (
-        builtins.unsafeDiscardStringContext
-          home.xdg.configFile."pi/agentic-harness.pi/status-line/where.json".text
-      );
-      inherit (home.jitsusama.theme) marks;
-      engine = lib.getExe (pkgs.callPackage ../git-engine/package.nix { });
-    in
-    holds "pi-tells-where-as-the-prompt-does"
-      "pi's status line tells the folder or git by something other than the prompt's roots, engine and marks."
-      (
-        where.roots == home.jitsusama.prompt.roots
-        && where.engine == builtins.unsafeDiscardStringContext engine
-        &&
-          where.marks == {
-            branch = marks.branch.glyph;
-            more = marks.more.glyph;
-            complete = marks.complete.glyph;
-            active = marks.active.glyph;
-            pending = marks.pending.glyph;
-            thinking = marks.thinking.glyph;
-          }
-      );
-
-  # A run Joel typed rings with what chime.nix names, in the file the
-  # harness's done-chime-widget reads, on Linux alone: the store's pw-play
-  # and a ding, and no voice, since Joel kept only the bell on 9 November.
-  # It names the shell's Do Not Disturb file, under the runtime folder,
-  # which holds the ring while it's on. A Mac rings with its own sound, so
-  # it gets no file.
-  pi-rings-when-a-run-is-done =
-    let
-      home = account workstation;
-      mac = account macWorkstation;
-      file = "pi/agentic-harness.pi/done-chime-widget/sound.json";
-      sound = builtins.fromJSON (builtins.unsafeDiscardStringContext home.xdg.configFile.${file}.text);
-      store = path: builtins.unsafeDiscardStringContext path;
-    in
-    holds "pi-rings-when-a-run-is-done"
-      "pi's ring names no ding or quiet file, another player, a voice, or reaches a Mac."
-      (
-        lib.hasPrefix builtins.storeDir sound.ding
-        && sound.player == store (lib.getExe' pkgs.pipewire "pw-play")
-        && (sound.quiet or null) == "quiet"
-        && !(sound ? voice)
-        && !(sound ? want)
-        && !(mac.xdg.configFile ? ${file})
-      );
-
   # A session wanting Joel rings pi's low bell, struck twice, in the shell
   # of a machine with pi, rather than the theme's high message. pi comes
   # with a workstation and the shell with a screen, so the machine is both.
@@ -227,27 +105,6 @@ import ./host-checks.nix args
     holds "a-want-rings-low"
       "The shell of a machine with pi plays something other than pi's want sound when a session wants Joel."
       (toString home.jitsusama.quickshell.sounds.wants == home.jitsusama.pi.chime.want);
-
-  # The account's ding rings for seconds, loud, as the harness plays it,
-  # and the shell's want sound rings loud, both low.
-  pi-rings-low =
-    let
-      home = account workstation;
-      sound =
-        pkgs.writeText "sound.json"
-          home.xdg.configFile."pi/agentic-harness.pi/done-chime-widget/sound.json".text;
-    in
-    pkgs.runCommand "pi-rings-low"
-      {
-        nativeBuildInputs = [
-          pkgs.jq
-          pkgs.sox
-        ];
-      }
-      ''
-        ${lib.getExe pkgs.bash} ${./tests/pi-rings-low.sh} ${sound} ${home.jitsusama.pi.chime.want}
-        touch $out
-      '';
 
   # pi's settings file gets the settings declared for it at every switch,
   # core's and a machine's own, and keeps every key pi wrote there; a file
@@ -515,50 +372,6 @@ import ./host-checks.nix args
         touch $out
       '';
 
-  # A machine on the Claude plan has one pi, on it: the provider is an
-  # extension pi finds by itself, pi starts on it and on Sonnet, Claude Code
-  # is the one it drives, and there is no pi-claude beside it. The Ask row
-  # follows, on the machine's own login. A work machine has none of this.
-  # The plan's model is said once, so naming another moves both pis to it.
-  pi-runs-on-the-machines-plan =
-    let
-      onClaude = account (
-        workstation.extendModules {
-          modules = [ { home-manager.users.someone.jitsusama.pi.plan = "claude"; } ];
-        }
-      );
-      onPi = account workstation;
-      onAnother = account (
-        workstation.extendModules {
-          modules = [
-            {
-              home-manager.users.someone.jitsusama.pi = {
-                plan = "claude";
-                claude.model = "a-model";
-              };
-            }
-          ];
-        }
-      );
-      names = home: map lib.getName home.home.packages;
-      provider = onClaude.home.file.".pi/agent/extensions/claude-code".source;
-    in
-    holds "pi-runs-on-the-machines-plan"
-      "A machine's pi isn't on the plan it names, or a work machine's pi changed."
-      (
-        builtins.pathExists "${provider}/index.ts"
-        && onClaude.jitsusama.pi.settings.defaultProvider == "claude-code"
-        && onClaude.jitsusama.pi.settings.defaultModel == "claude-sonnet-5"
-        && onAnother.jitsusama.pi.settings.defaultModel == "a-model"
-        && onClaude.home.sessionVariables ? PI_CLAUDE_CODE_COMMAND
-        && !(lib.elem "pi-claude" (names onClaude))
-        && onClaude.jitsusama.pi.ask.plan == "claude"
-        && !(onPi.home.file ? ".pi/agent/extensions/claude-code")
-        && onPi.jitsusama.pi.settings.defaultProvider != "claude-code"
-        && lib.elem "pi-claude" (names onPi)
-        && onPi.jitsusama.pi.ask.plan == "pi"
-      );
-
   # Off the Claude plan pi starts on Opus 5.5 at high thinking, on Linux and
   # on a Mac: the settings every switch writes into pi's file say so.
   pi-starts-on-opus =
@@ -649,6 +462,140 @@ import ./host-checks.nix args
         && lib.elem (lib.head (linked added [ own ])) added.jitsusama.pi.settings.packages
       );
 
+  # pi-spawner builds with its tests run (spawner/tests/spawner.rs): what a
+  # command says and how it ends passed on, its folder and variables kept,
+  # a group of its own, a failure to start said, a drop honoured, every
+  # group killed once pi goes but a kept one, and `keeps` answered.
+  pi-spawner-starts-commands-for-pi = pkgs.callPackage ./spawner/package.nix { };
+
+  # clippy finds nothing in pi-spawner, its tests included.
+  pi-spawner-passes-clippy = passesClippy "pi-spawner-passes-clippy" (
+    pkgs.callPackage ./spawner/package.nix { }
+  );
+}
+# Checks a Mac can't evaluate or build: they run the Linux workstation's own
+# programs and units, read pipewire, which a Mac has none of, or read a file
+# of a source built for Linux while they evaluate.
+// onLinux {
+  # The harness's measure runs each morning in the background, catching up
+  # on a morning slept through, with the store's node, and only where the
+  # harness is installed; a Mac, with no systemd, gets none.
+  pi-measures-each-day-in-the-background =
+    let
+      home = account workstation;
+      mac = account macWorkstation;
+      service = home.systemd.user.services.pi-measure;
+      timer = home.systemd.user.timers.pi-measure.Timer;
+      # home-manager keeps a unit's settings as lists.
+      first = value: lib.head (lib.toList value);
+    in
+    holds "pi-measures-each-day-in-the-background"
+      "pi's measure runs outside background.slice, not every day, misses a morning slept through, runs a node off the PATH, fails where the harness isn't installed, or reaches a Mac."
+      (
+        service.Service.Slice == "background.slice"
+        && timer.Persistent
+        && lib.hasPrefix "*-*-* " (first timer.OnCalendar)
+        && lib.hasPrefix "${lib.getExe pkgs.nodejs} " (first service.Service.ExecStart)
+        && lib.hasSuffix "/scripts/measure.ts" (first service.Unit.ConditionPathExists)
+        && !(mac.systemd.user.services ? pi-measure)
+      );
+
+  # The launcher's list of what the last boot's end took away is written as
+  # the account's session starts, with the store's node, only where the
+  # harness is installed; a Mac, with no systemd, gets none.
+  pi-writes-what-the-last-boot-left =
+    let
+      home = account workstation;
+      mac = account macWorkstation;
+      service = home.systemd.user.services.pi-restore-file;
+      first = value: lib.head (lib.toList value);
+    in
+    holds "pi-writes-what-the-last-boot-left"
+      "pi's list of the sessions the last boot's end took away isn't written as the session starts, runs outside background.slice or a node off the PATH, logs node's module-type warning, fails where the harness isn't installed, or reaches a Mac."
+      (
+        lib.elem "default.target" service.Install.WantedBy
+        && service.Service.Slice == "background.slice"
+        && lib.hasPrefix "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON " (
+          first service.Service.ExecStart
+        )
+        && lib.hasSuffix "/scripts/restore-file.ts" (first service.Unit.ConditionPathExists)
+        && !(mac.systemd.user.services ? pi-restore-file)
+      );
+
+  # The windows here joined to another machine's session are noted every
+  # five minutes, quietly in the background, only where the harness is installed,
+  # so the next boot can offer them back; a Mac gets none.
+  pi-notes-windows-on-sessions-elsewhere =
+    let
+      home = account workstation;
+      mac = account macWorkstation;
+      service = home.systemd.user.services.pi-windows-elsewhere;
+      timer = home.systemd.user.timers.pi-windows-elsewhere;
+      first = value: lib.head (lib.toList value);
+    in
+    holds "pi-notes-windows-on-sessions-elsewhere"
+      "pi doesn't note every five minutes the windows joined to sessions other machines hold, runs outside background.slice or a node off the PATH, logs node's module-type warning, fails where the harness isn't installed, or reaches a Mac."
+      (
+        lib.elem "timers.target" timer.Install.WantedBy
+        && first timer.Timer.OnCalendar == "*:0/5"
+        && service.Service.Slice == "background.slice"
+        && lib.hasPrefix "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON " (
+          first service.Service.ExecStart
+        )
+        && lib.hasSuffix "/scripts/windows-elsewhere.ts" (first service.Unit.ConditionPathExists)
+        && !(mac.systemd.user.timers ? pi-windows-elsewhere)
+      );
+
+  # pi's status line tells a folder and git as the prompt does: by the
+  # prompt's root markers, the prompt's git-engine, and the theme's marks,
+  # each by the name the harness reads it under.
+  pi-tells-where-as-the-prompt-does =
+    let
+      home = account workstation;
+      where = builtins.fromJSON (
+        builtins.unsafeDiscardStringContext
+          home.xdg.configFile."pi/agentic-harness.pi/status-line/where.json".text
+      );
+      inherit (home.jitsusama.theme) marks;
+      engine = lib.getExe (pkgs.callPackage ../git-engine/package.nix { });
+    in
+    holds "pi-tells-where-as-the-prompt-does"
+      "pi's status line tells the folder or git by something other than the prompt's roots, engine and marks."
+      (
+        where.roots == home.jitsusama.prompt.roots
+        && where.engine == builtins.unsafeDiscardStringContext engine
+        &&
+          where.marks == {
+            branch = marks.branch.glyph;
+            more = marks.more.glyph;
+            complete = marks.complete.glyph;
+            active = marks.active.glyph;
+            pending = marks.pending.glyph;
+            thinking = marks.thinking.glyph;
+          }
+      );
+
+  # The account's ding rings for seconds, loud, as the harness plays it,
+  # and the shell's want sound rings loud, both low.
+  pi-rings-low =
+    let
+      home = account workstation;
+      sound =
+        pkgs.writeText "sound.json"
+          home.xdg.configFile."pi/agentic-harness.pi/done-chime-widget/sound.json".text;
+    in
+    pkgs.runCommand "pi-rings-low"
+      {
+        nativeBuildInputs = [
+          pkgs.jq
+          pkgs.sox
+        ];
+      }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/pi-rings-low.sh} ${sound} ${home.jitsusama.pi.chime.want}
+        touch $out
+      '';
+
   # pi-ask starts pi for the Ask row with nothing loaded but the machine's
   # extensions, on the machine's plan and model: pi's own by default, with
   # its quick model, or pi-claude's; started as a user service starts it, it
@@ -706,14 +653,72 @@ import ./host-checks.nix args
       touch $out
     '';
 
-  # pi-spawner builds with its tests run (spawner/tests/spawner.rs): what a
-  # command says and how it ends passed on, its folder and variables kept,
-  # a group of its own, a failure to start said, a drop honoured, every
-  # group killed once pi goes but a kept one, and `keeps` answered.
-  pi-spawner-starts-commands-for-pi = pkgs.callPackage ./spawner/package.nix { };
+  # A run Joel typed rings with what chime.nix names, in the file the
+  # harness's done-chime-widget reads, on Linux alone: the store's pw-play
+  # and a ding, and no voice, since Joel kept only the bell on 9 November.
+  # It names the shell's Do Not Disturb file, under the runtime folder,
+  # which holds the ring while it's on. A Mac rings with its own sound, so
+  # it gets no file.
+  pi-rings-when-a-run-is-done =
+    let
+      home = account workstation;
+      mac = account macWorkstation;
+      file = "pi/agentic-harness.pi/done-chime-widget/sound.json";
+      sound = builtins.fromJSON (builtins.unsafeDiscardStringContext home.xdg.configFile.${file}.text);
+      store = path: builtins.unsafeDiscardStringContext path;
+    in
+    holds "pi-rings-when-a-run-is-done"
+      "pi's ring names no ding or quiet file, another player, a voice, or reaches a Mac."
+      (
+        lib.hasPrefix builtins.storeDir sound.ding
+        && sound.player == store (lib.getExe' pkgs.pipewire "pw-play")
+        && (sound.quiet or null) == "quiet"
+        && !(sound ? voice)
+        && !(sound ? want)
+        && !(mac.xdg.configFile ? ${file})
+      );
 
-  # clippy finds nothing in pi-spawner, its tests included.
-  pi-spawner-passes-clippy = passesClippy "pi-spawner-passes-clippy" (
-    pkgs.callPackage ./spawner/package.nix { }
-  );
+  # A machine on the Claude plan has one pi, on it: the provider is an
+  # extension pi finds by itself, pi starts on it and on Sonnet, Claude Code
+  # is the one it drives, and there is no pi-claude beside it. The Ask row
+  # follows, on the machine's own login. A work machine has none of this.
+  # The plan's model is said once, so naming another moves both pis to it.
+  pi-runs-on-the-machines-plan =
+    let
+      onClaude = account (
+        workstation.extendModules {
+          modules = [ { home-manager.users.someone.jitsusama.pi.plan = "claude"; } ];
+        }
+      );
+      onPi = account workstation;
+      onAnother = account (
+        workstation.extendModules {
+          modules = [
+            {
+              home-manager.users.someone.jitsusama.pi = {
+                plan = "claude";
+                claude.model = "a-model";
+              };
+            }
+          ];
+        }
+      );
+      names = home: map lib.getName home.home.packages;
+      provider = onClaude.home.file.".pi/agent/extensions/claude-code".source;
+    in
+    holds "pi-runs-on-the-machines-plan"
+      "A machine's pi isn't on the plan it names, or a work machine's pi changed."
+      (
+        builtins.pathExists "${provider}/index.ts"
+        && onClaude.jitsusama.pi.settings.defaultProvider == "claude-code"
+        && onClaude.jitsusama.pi.settings.defaultModel == "claude-sonnet-5"
+        && onAnother.jitsusama.pi.settings.defaultModel == "a-model"
+        && onClaude.home.sessionVariables ? PI_CLAUDE_CODE_COMMAND
+        && !(lib.elem "pi-claude" (names onClaude))
+        && onClaude.jitsusama.pi.ask.plan == "claude"
+        && !(onPi.home.file ? ".pi/agent/extensions/claude-code")
+        && onPi.jitsusama.pi.settings.defaultProvider != "claude-code"
+        && lib.elem "pi-claude" (names onPi)
+        && onPi.jitsusama.pi.ask.plan == "pi"
+      );
 }

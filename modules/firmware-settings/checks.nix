@@ -7,7 +7,8 @@
   pkgs,
   ...
 }:
-{
+# What follows needs Linux to build or to run, so a Mac leaves it out.
+onLinux {
   # firmware-settings names every setting the firmware holds apart from the
   # declared ones, writes them with the admin password from its input, and
   # wipes that password from the kernel whether the writes worked or not,
@@ -22,8 +23,7 @@
         ${lib.getExe pkgs.bash} ${./tests/the-firmware-takes-what-is-declared.sh}
         touch $out
       '';
-}
-// onLinux {
+
   # clippy finds nothing in firmware-settings, its tests included.
   firmware-settings-passes-clippy = passesClippy "firmware-settings-passes-clippy" (
     pkgs.callPackage ./package.nix { }

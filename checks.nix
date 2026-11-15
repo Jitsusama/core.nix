@@ -574,9 +574,10 @@ let
 in
 gather {
   these = [
+    # The linters type-check modules against Linux's Python, so a Mac's
+    # formatting would fail on what only Linux has.
+    (onLinux { inherit formatting; })
     {
-      inherit formatting;
-
       # Roles import the roles beneath them, so a machine importing two roles
       # imports the shared ones twice. That has to count once.
       nixos-role-twice-is-once =

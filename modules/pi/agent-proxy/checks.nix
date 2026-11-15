@@ -6,6 +6,7 @@
   holds,
   lib,
   macWorkstation,
+  onLinux,
   passesClippy,
   pkgs,
   self,
@@ -75,7 +76,9 @@
         && !(plain.systemd.user.sockets ? pi-agent-proxy)
         && !(mac.systemd.user.services ? pi-agent-proxy)
       );
-
+}
+# The proxy knows its caller by SO_PEERCRED, which only Linux has.
+// onLinux {
   # pi-agent-proxy builds with its tests run (tests/agent_proxy.rs):
   # the keys behind it listed, a login signed once its allowed host signed
   # the session, and nothing else reaching the agent behind it: no session,

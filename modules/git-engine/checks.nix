@@ -7,7 +7,8 @@
   pkgs,
   ...
 }:
-{
+# What follows needs Linux to build or to run, so a Mac leaves it out.
+onLinux {
   # git-engine answers as gitstatusd does across the states a prompt meets,
   # counting everything and stopping at one, some of them watched by git's
   # file system monitor, and as git does where gitstatusd can't read the
@@ -34,8 +35,7 @@
         tr -d '\r' < agrees.log | grep checked
         touch $out
       '';
-}
-// onLinux {
+
   # clippy finds nothing in git-engine, its tests included.
   git-engine-passes-clippy = passesClippy "git-engine-passes-clippy" (
     pkgs.callPackage ./package.nix { }

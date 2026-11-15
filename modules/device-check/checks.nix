@@ -10,6 +10,25 @@
   ...
 }:
 {
+  # A workstation hears from its disks before they fail: smartd reads each
+  # disk's own warnings and hands them to device-check, which names them to
+  # whoever is signed in, rather than writing to every terminal.
+  disks-say-when-they-fail =
+    let
+      inherit (workstation.config.services) smartd;
+    in
+    holds "disks-say-when-they-fail"
+      "A workstation doesn't watch its disks, or doesn't hand what they report to device-check."
+      (
+        smartd.enable
+        && smartd.autodetect
+        && !smartd.notifications.wall.enable
+        && lib.hasInfix "-H -f -l error " smartd.defaults.autodetected
+        && lib.hasSuffix "/bin/device-check-disk" smartd.defaults.autodetected
+      );
+}
+# What follows needs Linux to build or to run, so a Mac leaves it out.
+// onLinux {
   # device-check names a device whose power change failed, one the machine
   # expects that's gone and a disk smartd heard a fault from, each once, as a
   # warning and a notification, and again when it's fixed, and exits 0
@@ -40,23 +59,6 @@
         touch $out
       '';
 
-  # A workstation hears from its disks before they fail: smartd reads each
-  # disk's own warnings and hands them to device-check, which names them to
-  # whoever is signed in, rather than writing to every terminal.
-  disks-say-when-they-fail =
-    let
-      inherit (workstation.config.services) smartd;
-    in
-    holds "disks-say-when-they-fail"
-      "A workstation doesn't watch its disks, or doesn't hand what they report to device-check."
-      (
-        smartd.enable
-        && smartd.autodetect
-        && !smartd.notifications.wall.enable
-        && lib.hasInfix "-H -f -l error " smartd.defaults.autodetected
-        && lib.hasSuffix "/bin/device-check-disk" smartd.defaults.autodetected
-      );
-
   # A machine with no disk that speaks SMART, as a virtual machine or a USB
   # stick can be, runs smartd without it failing: it finds nothing to watch
   # and stops cleanly. The build's sandbox has no disks, so the workstation's
@@ -75,8 +77,7 @@
         [ "$status" = 0 ] || fail "smartd failed with no disks to watch, exiting $status"
         touch $out
       '';
-}
-// onLinux {
+
   # clippy finds nothing in device-check or device-check-disk, their tests
   # included.
   device-check-passes-clippy = passesClippy "device-check-passes-clippy" (

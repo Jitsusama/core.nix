@@ -7,6 +7,7 @@
   bareNixos,
   holds,
   lib,
+  onLinux,
   pkgs,
   self,
   workstation,
@@ -32,6 +33,57 @@ let
     );
 in
 {
+  # A realm's pi reaches its hosts only with a proof that pnpm test:host passed
+  # on the runtime it is in: a proof of another runtime, of one whose name
+  # merely starts the same, or not a proof at all fails evaluation, naming the
+  # realm and how to prove it.
+  pi-hosts-refuse-an-unproven-runtime =
+    let
+      runtime = "/nix/store/00000000000000000000000000000000-pi-host-runtime-1.5.0";
+      pi = "${runtime}/lib/node_modules/pi";
+      node = "${pkgs.emptyDirectory}/node";
+      realm = proof: { inherit pi node proof; };
+      refusals = lib.concatMapStrings (check: check.message + "\n") (
+        lib.filter (check: !check.assertion)
+          (account (bareNixos [
+            self.nixosModules.workstation
+            {
+              home-manager.users.someone.jitsusama.pi.hosts = {
+                proven = realm (proofOf {
+                  inherit runtime;
+                });
+                elsewhere = realm (proofOf {
+                  runtime = "/nix/store/11111111111111111111111111111111-pi-host-runtime-1.5.1";
+                });
+                prefixed = realm (proofOf {
+                  runtime = lib.removeSuffix "-1.5.0" runtime;
+                });
+                stranger = realm (proofOf {
+                  inherit runtime;
+                  kind = "something-else";
+                });
+                later = realm (proofOf {
+                  inherit runtime;
+                  version = 2;
+                });
+              };
+            }
+          ])).assertions
+      );
+    in
+    holds "pi-hosts-refuse-an-unproven-runtime"
+      "A realm's pi was taken without a proof of its own runtime, or the refusal didn't name the realm and how to prove it."
+      (
+        !lib.hasInfix "hosts.proven." refusals
+        && lib.hasInfix "hosts.elsewhere.proof proves /nix/store/1111" refusals
+        && lib.hasInfix "node scripts/host-prove.ts" refusals
+        && lib.hasInfix "hosts.prefixed.proof proves" refusals
+        && lib.hasInfix "hosts.stranger.proof isn't a pi-host-runtime-proof" refusals
+        && lib.hasInfix "hosts.later.proof is version 2, not 1" refusals
+      );
+}
+# The hosts run as Linux's systemd user units, in slices a Mac has none of.
+// onLinux {
   # A realm a machine names gets two hosts, attended and background, started
   # with the account's session once the harness is installed, run by the
   # host's own pi and node, said ready by the host, among the agents'
@@ -138,54 +190,5 @@ in
         && hostsIn (account workstation).systemd.user.services == [ ]
         && hostsIn mac.systemd.user.services == [ ]
         && lib.all (check: check.assertion) (naming bareNixos self.nixosModules.workstation).assertions
-      );
-
-  # A realm's pi reaches its hosts only with a proof that pnpm test:host passed
-  # on the runtime it is in: a proof of another runtime, of one whose name
-  # merely starts the same, or not a proof at all fails evaluation, naming the
-  # realm and how to prove it.
-  pi-hosts-refuse-an-unproven-runtime =
-    let
-      runtime = "/nix/store/00000000000000000000000000000000-pi-host-runtime-1.5.0";
-      pi = "${runtime}/lib/node_modules/pi";
-      node = "${pkgs.emptyDirectory}/node";
-      realm = proof: { inherit pi node proof; };
-      refusals = lib.concatMapStrings (check: check.message + "\n") (
-        lib.filter (check: !check.assertion)
-          (account (bareNixos [
-            self.nixosModules.workstation
-            {
-              home-manager.users.someone.jitsusama.pi.hosts = {
-                proven = realm (proofOf {
-                  inherit runtime;
-                });
-                elsewhere = realm (proofOf {
-                  runtime = "/nix/store/11111111111111111111111111111111-pi-host-runtime-1.5.1";
-                });
-                prefixed = realm (proofOf {
-                  runtime = lib.removeSuffix "-1.5.0" runtime;
-                });
-                stranger = realm (proofOf {
-                  inherit runtime;
-                  kind = "something-else";
-                });
-                later = realm (proofOf {
-                  inherit runtime;
-                  version = 2;
-                });
-              };
-            }
-          ])).assertions
-      );
-    in
-    holds "pi-hosts-refuse-an-unproven-runtime"
-      "A realm's pi was taken without a proof of its own runtime, or the refusal didn't name the realm and how to prove it."
-      (
-        !lib.hasInfix "hosts.proven." refusals
-        && lib.hasInfix "hosts.elsewhere.proof proves /nix/store/1111" refusals
-        && lib.hasInfix "node scripts/host-prove.ts" refusals
-        && lib.hasInfix "hosts.prefixed.proof proves" refusals
-        && lib.hasInfix "hosts.stranger.proof isn't a pi-host-runtime-proof" refusals
-        && lib.hasInfix "hosts.later.proof is version 2, not 1" refusals
       );
 }

@@ -59,11 +59,6 @@
           < (systemd.slices.user.sliceConfig.CPUWeight or 100)
       );
 
-  # vm-first's tests run as it builds: it reads a thread's nice and policy
-  # past any name, knows qemu wrapped or not and nothing else, and counts a
-  # thread behind until it is both normal and at the nice asked for.
-  vm-first-finds-the-vms = pkgs.callPackage ./vm-first/package.nix { };
-
   # Nix collects garbage during a build once free space falls under min-free,
   # and stops at max-free. A max-free at or under min-free stops it before it
   # starts, and nothing says so. It's the last resort beneath the disk guard,
@@ -80,7 +75,13 @@
       "The Nix daemon never collects garbage during a build, or does before the disk guard: min-free is ${toString min-free}, max-free ${toString max-free}."
       (min-free > 0 && max-free > min-free && min-free < urgent);
 }
+# What follows needs Linux to build or to run, so a Mac leaves it out.
 // onLinux {
+  # vm-first's tests run as it builds: it reads a thread's nice and policy
+  # past any name, knows qemu wrapped or not and nothing else, and counts a
+  # thread behind until it is both normal and at the nice asked for.
+  vm-first-finds-the-vms = pkgs.callPackage ./vm-first/package.nix { };
+
   # clippy finds nothing in vm-first, its tests included.
   vm-first-passes-clippy = passesClippy "vm-first-passes-clippy" (
     pkgs.callPackage ./vm-first/package.nix { }

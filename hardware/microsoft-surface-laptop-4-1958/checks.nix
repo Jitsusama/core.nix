@@ -4,6 +4,7 @@
   bareNixos,
   holds,
   lib,
+  onLinux,
   passesClippy,
   pkgs,
   self,
@@ -65,54 +66,6 @@
         && lib.hasInfix "evdev:name:MSHW0231 Touchscreen:*" services.udev.extraHwdb
         && lib.hasInfix "EVDEV_ABS_36=::173" services.udev.extraHwdb
       );
-
-  # The touchscreen's driver, patched as it's built, queues its work on
-  # system_percpu_wq, never system_wq, which Linux 7.3 says it will remove
-  # and warns of once a boot. Only the source is read, so no kernel builds.
-  the-surface-touchscreen-keeps-off-a-removed-workqueue =
-    let
-      surface = bareNixos [
-        self.nixosModules.laptop
-        self.nixosModules.microsoft-surface-laptop-4-1958
-      ];
-      driver = lib.findFirst (
-        package: lib.hasPrefix "sl4a-touchscreen-" package.name
-      ) (throw "no touchscreen driver") surface.config.boot.extraModulePackages;
-    in
-    driver.overrideAttrs {
-      pname = "the-surface-touchscreen-keeps-off-a-removed-workqueue";
-      nativeBuildInputs = [ ];
-      makeFlags = [ ];
-      installFlags = [ ];
-      buildPhase = ''
-        if grep -nw system_wq -- *.c *.h; then
-          echo "The touchscreen's driver queues work on system_wq, which Linux is removing."
-          exit 1
-        fi
-      '';
-      installPhase = "touch $out";
-    };
-
-  # fwupd, run against this model's ESRT with the UEFI and the TPM behind,
-  # offers the UEFI's update from the remote the module writes and nothing
-  # for the TPM (firmware/tests/offers-its-firmware.sh). Building the remote's
-  # cabinet checks the capsule is the UEFI's at the version it's offered as.
-  the-surface-offers-its-firmware-through-fwupd =
-    let
-      surface = bareNixos [
-        self.nixosModules.laptop
-        self.nixosModules.microsoft-surface-laptop-4-1958
-      ];
-      inherit (surface.config) environment services;
-      remote =
-        pkgs.writeText "surface-laptop-4-amd.conf"
-          environment.etc."fwupd/remotes.d/surface-laptop-4-amd.conf".text;
-    in
-    pkgs.runCommandLocal "the-surface-offers-its-firmware-through-fwupd" { } ''
-      ${lib.getExe pkgs.bash} ${./firmware/tests/offers-its-firmware.sh} ${remote} \
-        ${services.fwupd.package} ${lib.getExe pkgs.jq}
-      touch $out
-    '';
 
   # The Surface Laptop 4's keyboard is behind Surface's embedded controller,
   # so its disk can be unlocked from it only when the initrd has every driver
@@ -199,6 +152,56 @@
     holds "the-surface-reserves-memory-to-hibernate"
       "The Surface Laptop 4 doesn't have the kernel leave 1 GiB free for its drivers as a hibernation stops them."
       ((rule.w.argument or null) == toString (1024 * 1024 * 1024));
+}
+# What follows builds the Surface's Linux, so a Mac can't.
+// onLinux {
+  # The touchscreen's driver, patched as it's built, queues its work on
+  # system_percpu_wq, never system_wq, which Linux 7.3 says it will remove
+  # and warns of once a boot. Only the source is read, so no kernel builds.
+  the-surface-touchscreen-keeps-off-a-removed-workqueue =
+    let
+      surface = bareNixos [
+        self.nixosModules.laptop
+        self.nixosModules.microsoft-surface-laptop-4-1958
+      ];
+      driver = lib.findFirst (
+        package: lib.hasPrefix "sl4a-touchscreen-" package.name
+      ) (throw "no touchscreen driver") surface.config.boot.extraModulePackages;
+    in
+    driver.overrideAttrs {
+      pname = "the-surface-touchscreen-keeps-off-a-removed-workqueue";
+      nativeBuildInputs = [ ];
+      makeFlags = [ ];
+      installFlags = [ ];
+      buildPhase = ''
+        if grep -nw system_wq -- *.c *.h; then
+          echo "The touchscreen's driver queues work on system_wq, which Linux is removing."
+          exit 1
+        fi
+      '';
+      installPhase = "touch $out";
+    };
+
+  # fwupd, run against this model's ESRT with the UEFI and the TPM behind,
+  # offers the UEFI's update from the remote the module writes and nothing
+  # for the TPM (firmware/tests/offers-its-firmware.sh). Building the remote's
+  # cabinet checks the capsule is the UEFI's at the version it's offered as.
+  the-surface-offers-its-firmware-through-fwupd =
+    let
+      surface = bareNixos [
+        self.nixosModules.laptop
+        self.nixosModules.microsoft-surface-laptop-4-1958
+      ];
+      inherit (surface.config) environment services;
+      remote =
+        pkgs.writeText "surface-laptop-4-amd.conf"
+          environment.etc."fwupd/remotes.d/surface-laptop-4-amd.conf".text;
+    in
+    pkgs.runCommandLocal "the-surface-offers-its-firmware-through-fwupd" { } ''
+      ${lib.getExe pkgs.bash} ${./firmware/tests/offers-its-firmware.sh} ${remote} \
+        ${services.fwupd.package} ${lib.getExe pkgs.jq}
+      touch $out
+    '';
 
   # A sleep stops the chipset's watchdog counting, so the hook stops
   # systemd's runtime watchdog before each sleep and starts it after, at the
