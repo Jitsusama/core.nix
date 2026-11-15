@@ -13,7 +13,10 @@
 //! folder, looked for every five seconds and as soon as Tuple's log says
 //! its daemon started; a stopped Tuple stays stopped. A follow that keeps
 //! ending at once, as it does while nobody is signed in, is tried less
-//! and less often, up to once a minute.
+//! and less often, up to once a minute. A stream that says nobody is
+//! signed in is followed afresh once the log says Tuple reached its
+//! servers: started before the network was up, as at boot, Tuple signs
+//! in only then, and its stream never says so.
 //!
 //! A ring and a missed call come from Tuple's log, `tuple/0/log.txt` in
 //! the data folder, where the XDG spec puts it (log.rs). It's followed as
@@ -38,7 +41,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
@@ -108,6 +111,11 @@ struct Daemon {
     /// Recent as its file last kept it, and the file.
     saved: Recent,
     recent: PathBuf,
+    /// Tuple's stream followed now, if one is, held here so the log's
+    /// follow can cut it short.
+    following: Option<Child>,
+    /// Whether the stream followed was cut short to be followed afresh.
+    cut: bool,
 }
 
 /// Everything the threads share: the call, woken as it changes, and
@@ -176,6 +184,8 @@ fn main() {
             heard: began,
             saved,
             recent,
+            following: None,
+            cut: false,
         }),
         moved: Condvar::new(),
         serving: OnceLock::new(),
@@ -285,6 +295,14 @@ fn follow_tuple(shared: &Shared, tuple: &str, socket: &Path, woken: &Receiver<()
         if UnixStream::connect(socket).is_ok() {
             let began = Instant::now();
             let why = follow(shared, tuple);
+            let mut daemon = lock(shared);
+            if std::mem::take(&mut daemon.cut) {
+                // Cut short to be followed afresh, so it stands as it
+                // did until the new stream says otherwise.
+                wait = LOOKS_AGAIN;
+                continue;
+            }
+            drop(daemon);
             // A stream that ends as Tuple stops is Tuple stopped, not
             // its stream refused.
             let standing = if UnixStream::connect(socket).is_ok() {
@@ -333,6 +351,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
         let _ = child.wait();
         return "Tuple's stream had no output".to_owned();
     };
+    lock(shared).following = Some(child);
     // The first line holds every contact, over two megabytes.
     let mut input = BufReader::with_capacity(1 << 20, stdout);
     let mut line = Vec::new();
@@ -377,6 +396,9 @@ fn follow(shared: &Shared, tuple: &str) -> String {
         }
     }
     drop(input);
+    let Some(mut child) = lock(shared).following.take() else {
+        return "Tuple's stream ended".to_owned();
+    };
     let _ = child.kill();
     match child.wait() {
         Ok(status) => format!("Tuple's stream ended: {status}"),
@@ -412,7 +434,8 @@ fn end_rings(shared: &Shared) {
 }
 
 /// Takes lines the log said, waking the stream's follow when one says
-/// Tuple's daemon started.
+/// Tuple's daemon started, and cutting a stream that says nobody is
+/// signed in short when one says Tuple reached its servers.
 fn took(shared: &Shared, lines: &[String], wake: &Sender<()>) {
     if lines.is_empty() {
         return;
@@ -426,8 +449,18 @@ fn took(shared: &Shared, lines: &[String], wake: &Sender<()>) {
         if heard.started {
             let _ = wake.send(());
         }
+        if heard.connected && daemon.standing == Standing::SignedOut {
+            cut(&mut daemon);
+        }
     }
     changed(shared, &mut daemon);
+}
+
+/// Ends the stream followed now, so its follow starts it again at once.
+fn cut(daemon: &mut Daemon) {
+    if let Some(following) = daemon.following.as_mut() {
+        daemon.cut = following.kill().is_ok();
+    }
 }
 
 /// Tuple's log as it's written: complete lines from where it was last

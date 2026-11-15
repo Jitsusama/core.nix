@@ -24,6 +24,11 @@ const DAY: i64 = 86_400_000;
 /// followed.
 const STARTED: &str = "daemon loop started, waiting for events...";
 
+/// What Tuple writes once it has reached its servers and synchronized,
+/// begun and ended: its realtime link connecting alone says less.
+const CONNECTING: &str = "signaler state changed: ";
+const CONNECTED: &str = "-> connected";
+
 /// What a call's end sounds like: Tuple ending it, the other side ending
 /// it, or the daemon starting or stopping, which ends any call it had.
 const ENDING: [&str; 4] = [
@@ -76,6 +81,9 @@ pub struct Heard {
     pub missed: Option<Missed>,
     /// Whether Tuple's daemon has just started.
     pub started: bool,
+    /// Whether Tuple has just reached its servers, after which its stream
+    /// says who's signed in, though it sends no new state to say so.
+    pub connected: bool,
 }
 
 /// The ring the log says is going, if any.
@@ -110,6 +118,7 @@ impl Log {
         let at = written(line, now);
         let mut heard = Heard {
             started: said == STARTED,
+            connected: said.starts_with(CONNECTING) && said.ends_with(CONNECTED),
             ..Heard::default()
         };
         if let Some(who) = said.strip_prefix(RINGING) {
@@ -360,6 +369,26 @@ mod tests {
         assert!(heard.started);
         assert!(heard.rang);
         assert_eq!(log.ringing(), None);
+    }
+
+    #[test]
+    fn tuple_reaching_its_servers_is_said() {
+        let mut log = Log::new(NOON);
+        let reached = "11:59:51.683|4030|4044|info|Signaler.cpp:172|signaler state changed: \
+                       synchronizing -> connected";
+        assert!(
+            log.heard(reached, NOON).connected,
+            "Tuple reaching its servers wasn't heard"
+        );
+        for not_yet in [
+            "signaler state changed: connecting -> synchronizing",
+            "signaler realtime connection state: connecting -> connected",
+        ] {
+            assert!(
+                !log.heard(&line("11:59:50.000", not_yet), NOON).connected,
+                "{not_yet} was heard as Tuple reaching its servers"
+            );
+        }
     }
 
     #[test]
