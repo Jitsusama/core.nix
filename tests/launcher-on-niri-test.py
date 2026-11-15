@@ -1576,10 +1576,13 @@ def test_the_command_line_draws_no_line_chosen_until_tab_chooses_one(shell: Shel
     assert command["drawnChosen"] == -1, f"a line was drawn chosen before Tab: {command}"
     shell.send_key("tab")
     shell.launcher_until(
-        lambda shown: (shown["command"] or {}).get("chosen") == 0
-        and shown["command"].get("drawnChosen") == 0
+        lambda shown: (
+            (shown["command"] or {}).get("chosen") == 0 and shown["command"].get("drawnChosen") == 0
+        )
     )
-    shell.send_key("ctrl-e")
+    # Up steps back past the first line to none, and a letter typed then narrows the menu,
+    # a new model, which a list given one sets its own current row on.
+    shell.send_key("up")
     shell.launcher_until(lambda shown: (shown["command"] or {}).get("chosen") == -1)
     shell.send_chars("l")
     shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "l")
