@@ -8,6 +8,10 @@
 //!
 //! Like a session's, it's a record of its own, watched by key only while
 //! it's shown, and its time goes out as `{at, as}` for the shell to word.
+//! Unlike a session's, it's served in ready-rows.md's own drawer shape,
+//! facts as names and what they say, so the launcher draws it as any
+//! ready-rows drawer, since a network has no session for its session
+//! drawer to read.
 
 use std::collections::{HashMap, HashSet};
 
@@ -58,7 +62,7 @@ fn drawer(
     spent: Spent,
 ) -> Value {
     let name = network["name"].as_str().unwrap_or("");
-    let fact = |id: &str, value: String| json!({"label": words.names.word(id), "value": value});
+    let fact = |id: &str, value: String| json!({"name": words.names.word(id), "said": value});
     let cells = cells(network);
     let standing: Vec<String> = networks::standings(network, &words.agents)
         .into_iter()
@@ -87,30 +91,41 @@ fn drawer(
     .map(|(id, value)| fact(id, value))
     .collect();
     if let Some(heard) = network["heard"].as_i64().filter(|heard| *heard > 0) {
-        let mut changed = fact("last-changed", String::new());
-        changed["at"] = at(heard, Form::Moment);
+        let mut changed = at(heard, Form::Moment);
+        changed["name"] = json!(words.names.word("last-changed"));
         facts.push(changed);
     }
-    let mut eyebrow = vec![json!({"said": name, "keep": 3})];
+    let mut eyebrow = vec![name];
     // The machines' title is a sentence for its drawer, its row saying its
     // name (VKCF3Z, 692362f1).
     if network["shape"] == "machines"
         && let Some(title) = network["title"].as_str()
     {
-        eyebrow.push(json!({"said": title, "keep": 2}));
+        eyebrow.push(title);
     }
+    // Its parts too, so the drawer gives way by whole parts, its name the
+    // last to go; and set as written, since a network's name is the mesh's,
+    // never re-cased.
+    let items: Vec<Value> = eyebrow
+        .iter()
+        .enumerate()
+        .map(|(at, said)| json!({"said": said, "keep": eyebrow.len() - at}))
+        .collect();
     let mut drawn = json!({
         "key": key(name),
         "kind": "drawer",
         "drawer": {
+            "eyebrow": eyebrow.join(DOT),
+            "eyebrowItems": items,
+            "eyebrowNames": true,
             "title": networks::called(network),
-            "eyebrow": eyebrow,
             "facts": facts,
             "body": ""
         }
     });
     if let Some(short) = network["short"].as_str().filter(|short| !short.is_empty()) {
-        drawn["drawer"]["nerd"] = json!([fact("short", short.to_owned())]);
+        let label = words.names.word("short");
+        drawn["drawer"]["nerd"] = json!([{"label": label, "value": short}]);
     }
     drawn
 }
@@ -188,12 +203,12 @@ mod tests {
             .expect("facts")
             .iter()
             .map(|fact| {
-                let label = fact["label"].as_str().unwrap_or("").to_owned();
-                let value = fact
-                    .get("at")
-                    .cloned()
-                    .unwrap_or_else(|| fact["value"].clone());
-                (label, value)
+                let name = fact["name"].as_str().unwrap_or("").to_owned();
+                let said = fact.get("at").map_or_else(
+                    || fact["said"].clone(),
+                    |at| json!({"at": at, "as": fact["as"]}),
+                );
+                (name, said)
             })
             .collect()
     }
@@ -253,9 +268,17 @@ mod tests {
             "its short name is folded"
         );
         assert_eq!(
-            drawn[0]["drawer"]["eyebrow"],
-            json!([{"said": "repo.world", "keep": 3}]),
-            "its name as the mesh names it is its eyebrow"
+            [
+                &drawn[0]["drawer"]["eyebrow"],
+                &drawn[0]["drawer"]["eyebrowItems"],
+                &drawn[0]["drawer"]["eyebrowNames"],
+            ],
+            [
+                &json!("repo.world"),
+                &json!([{"said": "repo.world", "keep": 1}]),
+                &json!(true),
+            ],
+            "its name as the mesh names it is its eyebrow, set as written"
         );
     }
 
@@ -306,8 +329,13 @@ mod tests {
             "titled by its name"
         );
         assert_eq!(
-            drawn[0]["drawer"]["eyebrow"][1]["said"], "the realm's machines",
+            drawn[0]["drawer"]["eyebrow"], "machines \u{b7} the realm's machines",
             "its title a sentence above its facts"
+        );
+        assert_eq!(
+            drawn[0]["drawer"]["eyebrowItems"][0],
+            json!({"said": "machines", "keep": 2}),
+            "its name the last part to give way"
         );
     }
 }

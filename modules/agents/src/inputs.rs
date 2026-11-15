@@ -1107,8 +1107,8 @@ mod tests {
                 .as_array()
                 .expect("its facts")
                 .iter()
-                .find(|fact| fact["label"] == "Spent Today")
-                .map(|fact| fact["value"].clone())
+                .find(|fact| fact["name"] == "Spent Today")
+                .map(|fact| fact["said"].clone())
         };
         assert_eq!(
             spent(&inputs),
