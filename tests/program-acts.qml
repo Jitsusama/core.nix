@@ -503,6 +503,12 @@ ShellRoot {
                     names(files) === "main.rs, .env, notes.md, .gitignore", names(files));
                 expect("each beside its folder in the repository", files.map(row => row.side)
                     .join(",") === ",,docs,", files.map(row => row.side).join(","));
+                // Weighing the keys of core.nix's 3,560 new rows as Joel stepped
+                // into its files took 853 ms of 1,176 (2026-11-15), though every
+                // one says Open alike.
+                const alike = [...new Set(files.map(row => row.keysAlike ?? ""))];
+                expect("each file says its keys are alike, so the foot weighs one for all",
+                    alike.length === 1 && alike[0] !== "", alike);
                 expect("Copy the Path last", inside[inside.length - 1].name === "Copy the Path",
                     names(inside));
                 Niri.windows = ({ "5": { id: 5, app_id: "kitty", pid: 41,
