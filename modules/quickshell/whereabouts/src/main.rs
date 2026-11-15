@@ -38,13 +38,12 @@
 //! worded and ready to draw (rows.rs), so the launcher holds none of it.
 //!
 //! Its program goes by its domain's name, location, as its socket and
-//! units do (docs/daemons.md):
-//!
-//!     location SOCKET ROOT [KEPT PIN MOVED] [--words WORDS]
-//!     location set PIN WORDS
-//!     location again PIN
+//! units do (docs/daemons.md), and takes its words as the terminal kit
+//! does: `location --help` says them (commands.rs), and a failure is the
+//! kit's, while the journal's own lines stay as they are.
 
 mod clock;
+mod commands;
 mod figures;
 mod fix;
 mod geoclue;
@@ -66,9 +65,11 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use serde_json::json;
+use terminal_kit::{Exit, Failure};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use zbus::Connection;
 
+use commands::Start;
 use fix::{Fix, moved};
 use notify::Notify;
 use pin::Unpinned;
@@ -85,26 +86,6 @@ const TRIES: u32 = 12;
 /// again, so a machine without one isn't kept busy asking.
 const GEOCLUE_AGAIN: Duration = Duration::from_mins(1);
 
-/// What `set` exits with when the place named couldn't be found, as
-/// sysexits.h numbers it: no such place, and no network to ask.
-const NOWHERE: u8 = 65;
-const UNASKED: u8 = 69;
-/// What the daemon exits with when it can't listen, as sysexits.h says
-/// of a system error.
-const UNLISTENED: u8 = 71;
-
-/// Arguments it doesn't know, told from every other failure by its type.
-#[derive(Debug)]
-struct Usage;
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("usage")
-    }
-}
-
-impl Error for Usage {}
-
 /// Where a following daemon keeps what it says.
 struct Files {
     kept: PathBuf,
@@ -112,70 +93,58 @@ struct Files {
     moved: PathBuf,
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> ExitCode {
-    let mut args: Vec<String> = std::env::args().skip(1).collect();
-    // The launcher's words, given last, for Location's rows.
-    let words = match args.iter().position(|arg| arg == "--words") {
-        Some(at) if at + 2 == args.len() => {
-            let path = args.pop().map(PathBuf::from);
-            args.pop();
-            path.as_deref().and_then(Words::in_file)
+fn main() -> ExitCode {
+    terminal_kit::main(&commands::help(), env!("CARGO_PKG_VERSION"), |context| {
+        match commands::start(&context.args)? {
+            Start::Set { pin, town } => set(&pin, &town),
+            Start::Again { pin } => pin::again(&pin)
+                .map(|()| println!("<6>here to be found again"))
+                .map_err(|error| {
+                    Failure::new(Exit::Failed, "location couldn't take the pin away")
+                        .because(error.to_string())
+                }),
+            Start::Serve {
+                socket,
+                root,
+                following,
+                words,
+            } => {
+                // An unreadable words file leaves Location's rows unserved,
+                // and the clock's zone still answered.
+                let words = words.as_deref().and_then(Words::in_file);
+                let files = following.map(|[kept, pin, moved]| Files { kept, pin, moved });
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|error| {
+                        Failure::new(Exit::Failed, "location couldn't start")
+                            .because(error.to_string())
+                    })?
+                    .block_on(serve(&socket, &root, files, words))
+            }
         }
-        _ => None,
-    };
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    let done = match args.as_slice() {
-        ["set", pin, words @ ..] if !words.is_empty() => {
-            return set(Path::new(pin), &words.join(" "));
-        }
-        ["again", pin] => pin::again(Path::new(pin))
-            .map(|()| println!("<6>here to be found again"))
-            .map_err(Into::into),
-        ["set" | "again", ..] => Err("set and again each need a pin".into()),
-        [socket, root] => serve(Path::new(socket), Path::new(root), None, words).await,
-        [socket, root, kept, pin, moved] => {
-            let files = Files {
-                kept: PathBuf::from(kept),
-                pin: PathBuf::from(pin),
-                moved: PathBuf::from(moved),
-            };
-            serve(Path::new(socket), Path::new(root), Some(files), words).await
-        }
-        _ => Err(Usage.into()),
-    };
-    match done {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) if error.is::<Usage>() => {
-            eprintln!("<3>usage: location SOCKET ROOT [KEPT PIN MOVED] [--words WORDS]");
-            eprintln!("<3>       location set PIN WORDS | again PIN");
-            ExitCode::from(64)
-        }
-        Err(error) => {
-            eprintln!("<3>{error}");
-            ExitCode::FAILURE
-        }
-    }
+    })
 }
 
 /// Finds the place Joel named and pins it, which the daemon says at once.
-fn set(pin: &Path, words: &str) -> ExitCode {
-    match pin::set(pin, words) {
+/// A refusal never says the place, as the journal keeps it.
+fn set(pin: &Path, town: &str) -> Result<(), Failure> {
+    match pin::set(pin, town) {
         Ok(()) => {
             println!("<6>here set by hand");
-            ExitCode::SUCCESS
+            Ok(())
         }
-        Err(Unpinned::Nowhere) => {
-            eprintln!("<4>no place is called what was typed");
-            ExitCode::from(NOWHERE)
-        }
-        Err(Unpinned::Unasked) => {
-            eprintln!("<4>the place named couldn't be asked about");
-            ExitCode::from(UNASKED)
-        }
+        Err(Unpinned::Nowhere) => Err(Failure::new(
+            Exit::NotFound,
+            "no place is called what was typed",
+        )),
+        Err(Unpinned::Unasked) => Err(Failure::new(
+            Exit::Unavailable,
+            "the place named couldn't be asked about",
+        )
+        .because("neither service answered, as with no network")),
         Err(Unpinned::Unkept(why)) => {
-            eprintln!("<3>{why}");
-            ExitCode::FAILURE
+            Err(Failure::new(Exit::Failed, "location couldn't keep the pin").because(why))
         }
     }
 }
@@ -190,7 +159,7 @@ async fn serve(
     root: &Path,
     files: Option<Files>,
     words: Option<Words>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Failure> {
     let localtime = root.join("etc/localtime");
     // Heard before anything's first read and before the socket answers,
     // so nothing changed as it starts is missed between the two.
@@ -199,13 +168,13 @@ async fn serve(
         pin: files.as_ref().map(|files| files.pin.clone()),
         moved: files.as_ref().map(|files| files.moved.clone()),
     });
-    let listener = match daemon_serve::serve::listen(socket) {
-        Ok(listener) => listener,
-        Err(why) => {
-            eprintln!("<3>couldn't listen on {}: {why}", socket.display());
-            std::process::exit(i32::from(UNLISTENED));
-        }
-    };
+    let listener = daemon_serve::serve::listen(socket).map_err(|why| {
+        Failure::new(
+            Exit::Failed,
+            format!("location couldn't listen on {}", socket.display()),
+        )
+        .because(why.to_string())
+    })?;
     let following = files.is_some();
     let known = Known {
         clock_zone: clock::zone(&localtime),
@@ -234,7 +203,10 @@ async fn serve(
         });
     }
     if let Some(files) = files {
-        follow(&shared, &files, pinned).await
+        follow(&shared, &files, pinned).await.map_err(|why| {
+            Failure::new(Exit::Failed, "location stopped following the laptop")
+                .because(why.to_string())
+        })
     } else {
         std::future::pending::<()>().await;
         Ok(())

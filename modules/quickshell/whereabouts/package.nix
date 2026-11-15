@@ -3,7 +3,8 @@
 # socket's among them (tests/daemon.rs). Those tests start it and ask it
 # with a crate every daemon's tests share (../../daemon-client), it speaks
 # the interface every daemon does (../../daemon-serve), and its rows take
-# the form every daemon's do (../../ready-rows), so the source is cut from
+# the form every daemon's do (../../ready-rows), and its words take the
+# shape every command's do (../../terminal-kit), so the source is cut from
 # the modules folder holding them, and built from this one.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage rec {
@@ -22,6 +23,8 @@ rustPlatform.buildRustPackage rec {
       ../../daemon-serve/src
       ../../ready-rows/Cargo.toml
       ../../ready-rows/src
+      ../../terminal-kit/Cargo.toml
+      ../../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/quickshell/whereabouts";

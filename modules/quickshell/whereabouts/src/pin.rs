@@ -2,7 +2,7 @@
 //! folder, which the daemon says in place of anything GeoClue says until
 //! he asks it to find the laptop again. Each is asked over the socket, as
 //! Location's Set It by Hand and Find It Again do, or run by hand
-//! (`whereabouts set PIN WORDS`, `whereabouts again PIN`); the daemon
+//! (`location set PIN WORDS`, `location again PIN`); the daemon
 //! hears the pin change either way, by inotify, and says it at once.
 
 use std::fs;
