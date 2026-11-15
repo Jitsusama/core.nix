@@ -751,6 +751,7 @@ gather {
     ./modules/swayidle/checks.nix
     ./modules/swayimg/checks.nix
     ./modules/switch-system/checks.nix
+    ./modules/system/checks.nix
     ./modules/systemd/checks.nix
     ./modules/systemd-networkd/checks.nix
     ./modules/tcp/checks.nix

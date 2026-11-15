@@ -321,6 +321,7 @@
         surface-clock =
           pkgs.callPackage ../../hardware/microsoft-surface-laptop-4-1958/clock/package.nix
             { };
+        system = pkgs.callPackage ../../modules/system/package.nix { };
         timekeeping = pkgs.callPackage ../../modules/quickshell/timekeeping/package.nix { };
         timers = pkgs.callPackage ../../modules/quickshell/timers/package.nix { };
         to-do = pkgs.callPackage ../../modules/to-do/package.nix { };
