@@ -597,6 +597,25 @@ def searched(shell: Shell) -> int:
     return int(shell.as_account(shell.ipc("searched")).strip())
 
 
+# What the shell says once it has warmed every source and kept home and each chord's place
+# (Launcher.qml's warmNext), and how long a case waits for it.
+WARMED_SAID = "places kept as the shell started"
+WARMED = timedelta(seconds=30)
+
+
+def warmed(shell: Shell) -> None:
+    """Wait until the shell has warmed its sources and kept each chord's place, as it starts.
+
+    Warming is put off by each opening until the launcher has been shut a second and a half,
+    so after the openings before it, it runs inside a shut case's own counts: each place it
+    keeps is a search, and a row of every source is made.
+    """
+    deadline = time.monotonic() + WARMED.total_seconds()
+    while WARMED_SAID.encode() not in shell.log.read_bytes()[shell.launched :]:
+        assert time.monotonic() < deadline, f"the shell never finished warming:\n{shell.tail()}"
+        time.sleep(POLL)
+
+
 def placed(said: str) -> Json | None:
     """Give where a margin cat's report says it sits, or None where it says nowhere.
 

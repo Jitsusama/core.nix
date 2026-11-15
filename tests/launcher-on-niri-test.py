@@ -2520,7 +2520,10 @@ def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts
             stdin=subprocess.DEVNULL,
             text=True,
         )
-    # Home kept first, as it is by the time Joel presses it, so opening finds no home anew.
+    # Home kept first, as it is by the time Joel presses it, so opening finds no home anew, and
+    # warming done: each place it keeps is a search, and two kept within the moment before
+    # Super+N counted 3 for its opening (a gate, 2026-11-15).
+    launcher_on_niri.warmed(shell)
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     searches = launcher_on_niri.searched(shell)
     since = shell.mark()
