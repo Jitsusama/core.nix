@@ -564,7 +564,8 @@ destroyed by it" (2026-11-11).
     keys, and ? lists them all. An arrow lands on the nearest thing on the
     level being walked within 45 degrees of it, or stays and says so, and
     the opposite arrow comes back; Tab leaves the map from any depth; no
-    name sits over a line or another name. `map.js` measures each. The
+    name sits over a line or another name, or runs past the map's edge.
+    `map.js` measures each. The
     arrows on the mycelium map once jumped to whatever lay nearest at any
     level, and he said they "seem to pick at random" (2026-11-14).
   - **A screen reader gets the same structure**, as a tree, grid or list
