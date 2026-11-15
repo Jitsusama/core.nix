@@ -168,7 +168,8 @@ that is awesome" (2026-11-11).
   built from `sites.json` at the root, a row per site: its path, name, what
   it is in a sentence, what it asks of him (or nothing), its date, its kind
   (mock, record, explainer, test or app), its status (growing, settled or
-  withdrawn) and the quest it came from. A new site adds its row there and
+  withdrawn), the quest it came from, and the kinds of thing it's home to,
+  if any (One Home for Every Thing, below). A new site adds its row there and
   rebuilds the home with the builder beside it; a turned-down or settled
   one moves to the home's Kept for Reference, below the rest.
 - **Every page has a way home.** Each page opens with one quiet strip,
@@ -178,6 +179,66 @@ that is awesome" (2026-11-11).
   access something, i don't use it" (2026-11-11).
 - **Nothing is a one-off.** A site for him is never put anywhere else, and a
   shared one that's done with is taken down rather than left to drift.
+
+## One Home for Every Thing
+
+The sites are one place, not a shelf of separate ones. Every thing they
+show has one home: one view, on one site, at one address, that is about it.
+Every other mention of it, on any site, links to that home, and every home
+links down to what the thing holds. So Joel can start anywhere and follow a
+thing to what it's made of and what it touches. He asked for it twice on 15
+Nov: Code reaching the mycelium, a machine reaching its cells and what it's
+using, a repository reaching the cells at work in it, and the network
+reaching its machines. Without one convention, each site would invent its
+own links, and none would meet.
+
+- **One site is home to each kind.** A new kind gets its row here before any
+  site shows it, and moving a kind's home is a change to this table:
+
+  | Kind       | Home        | Its address, for example           |
+  | ---------- | ----------- | ---------------------------------- |
+  | machine    | `mycelium/` | `mycelium/#machine=studio`         |
+  | cell       | `mycelium/` | `mycelium/#cell=E2ZIAQ`            |
+  | network    | `mycelium/` | `mycelium/#net=repo.world`         |
+  | repository | `code/`     | `code/#repo=Jitsusama%2Fcore.nix`  |
+  | tree       | `code/`     | `code/#tree=<its path, encoded>`   |
+  | device     | `network/`  | `network/#device=kitchen-printer`  |
+
+- **An address is `<site>/#<kind>=<key>`**, the key URI-encoded. It's a
+  fragment rather than a query, since the server is static and a fragment
+  lands without a reload. The key is the thing's steady name: a node's
+  name, a cell's address, a repository's owner and name, a tree's path, a
+  device's slug. An id may sit in an address, and never on the page.
+  Landing on one puts focus and the ring on the thing and opens its view,
+  as stepping into it would, and Back returns to where he was. An address
+  that was once a home keeps landing, so an old link never breaks.
+- **A home site says what it holds.** It writes `homes.json` beside its
+  index, every thing it's home to as `{"kind", "key", "name", "names",
+  "address"}`, where `names` holds any other name a page may call it by
+  (a repository's short name, a device's) and `address` is from the
+  sites' root. A live site writes it with its data, so it's never stale.
+  Its row in `sites.json` names its kinds, `"homes": ["machine", "cell",
+  "network"]`. A kind two rows claim is a fault in both.
+- **A mention links home.** Wherever a page names a thing that has a home,
+  its first mention in each row, item, paragraph and heading is a link to
+  that home, its address taken from `homes.json`, never built by hand.
+  The link is the kit's link, with the name in its own face (a cell's
+  address and a machine's name in Monaspace). On its own home, the thing's
+  name needn't link. A name drawn on a walked map is the map's mark,
+  reached by its keys, and the drawer it opens is where the links are. A
+  link out (GitHub, eero's app) is a second act beside the home's link,
+  never instead of it.
+- **Each home drills one level down.** A home lists what the thing holds,
+  each a mention linked to its own home:
+  - a machine, its cells, its networks and what it's using;
+  - a network, its cells;
+  - a repository, its checkouts and trees, and each tree the cells at work
+    in it;
+  - a device, the machine it is, when it is one.
+
+  A thing that is two kinds (a laptop is a machine and, on the home
+  network, a device) links once from each home to the other. Up is the
+  trail at the top, every crumb a link.
 
 ## The Kit
 
