@@ -72,6 +72,9 @@ let
       # from 0.10), which the caches of tools that write in place take.
       overlays = lib.versionAtLeast pkgs.bubblewrap.version "0.10.0";
       loginctl = "${pkgs.systemd}/bin/loginctl";
+      # The forge a yes may stand for: a clean tree whose origin is a
+      # repository on it, at a commit its main holds, as GitHub says.
+      forges = [ "https://github.com/" ];
       # The programs an ask may run, and its PATH: the system's and the
       # account's own, as home-manager puts them in /etc/profiles. Never
       # `~/.nix-profile`, a link the account owns, which an agent could

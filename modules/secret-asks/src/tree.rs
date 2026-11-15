@@ -36,6 +36,9 @@ pub struct Tree {
     /// uncommitted, asked only where a standing yes would otherwise
     /// cover its ask; none where it wasn't asked.
     pub landed: Option<bool>,
+    /// Its origin's URL, where a forge the engine names serves it, which
+    /// a standing yes is pinned to; none elsewhere, or where unread.
+    pub origin: Option<String>,
 }
 
 /// Where a tree's history is kept, as its `.git` says, read from files
@@ -223,37 +226,27 @@ fn uncommitted(git: &Path, path: &Path, commit: &str) -> Option<u64> {
     Some(status.lines().count() as u64)
 }
 
-/// The names origin's default branch goes by, the one origin says first.
-const DEFAULT_BRANCHES: [&str; 3] = [
-    "refs/remotes/origin/HEAD",
-    "refs/remotes/origin/main",
-    "refs/remotes/origin/master",
-];
+/// The URL the tree at `path` names as its origin, as its own settings
+/// say it, which `config --get` reads without running anything.
+pub fn origin(git: &Path, path: &Path) -> Option<String> {
+    said(
+        git_command(git)
+            .arg("-C")
+            .arg(path)
+            .args(["config", "--get", "remote.origin.url"]),
+    )
+    .map(|said| said.trim().to_owned())
+    .filter(|url| !url.is_empty())
+}
 
 /// Whether the tree `tree` read at `path` has its code all on its
 /// origin's default branch: nothing uncommitted, and its commit one that
-/// branch holds. The branch is named by rev-parse, which runs no program
-/// of the tree's; whether it holds the commit is asked over a git folder
-/// made for the read, as status is.
-///
-/// What origin's branch holds is read from the repository's own refs,
-/// which a command of Joel's account can write, so this stops an edit an
-/// agent made and never had merged, not one that rewrites origin's refs
-/// to claim it was.
-pub fn landed(git: &Path, path: &Path, tree: &Tree) -> bool {
+/// `main`, the commit the forge says the branch is, holds. Whether it
+/// does is asked over a git folder made for the read, as status is, of
+/// the tree's own objects: a forge's commit the tree hasn't fetched
+/// holds nothing it can say, and the ask waits on Joel.
+pub fn landed(git: &Path, path: &Path, tree: &Tree, main: &str) -> bool {
     let (Some(commit), Some(0)) = (tree.commit.as_deref(), tree.uncommitted) else {
-        return false;
-    };
-    let Some(main) = DEFAULT_BRANCHES.iter().find_map(|name| {
-        said(
-            git_command(git)
-                .arg("-C")
-                .arg(path)
-                .args(["rev-parse", "--verify", "--quiet"])
-                .arg(format!("{name}^{{commit}}")),
-        )
-        .map(|said| said.trim().to_owned())
-    }) else {
         return false;
     };
     let (Some(places), Some(made)) = (places(git, path), Made::new(commit)) else {
@@ -262,7 +255,7 @@ pub fn landed(git: &Path, path: &Path, tree: &Tree) -> bool {
     git_command(git)
         .env("GIT_DIR", &made.0)
         .env("GIT_OBJECT_DIRECTORY", &places.objects)
-        .args(["merge-base", "--is-ancestor", commit, &main])
+        .args(["merge-base", "--is-ancestor", commit, main])
         .stdout(Stdio::null())
         .status()
         .is_ok_and(|status| status.success())
@@ -285,6 +278,7 @@ pub fn read(git: &Path, path: &Path) -> Tree {
             // write of it.
             checkout: checkout(path),
             landed: None,
+            origin: None,
         };
     };
     Tree {
@@ -292,6 +286,7 @@ pub fn read(git: &Path, path: &Path) -> Tree {
         commit: Some(commit),
         checkout: checkout(path),
         landed: None,
+        origin: None,
     }
 }
 

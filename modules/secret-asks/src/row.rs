@@ -364,6 +364,7 @@ mod tests {
                 uncommitted,
                 checkout: Checkout::None,
                 landed: None,
+                origin: None,
             },
             state,
             since_ms: 1_794_458_400_000,

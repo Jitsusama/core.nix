@@ -62,6 +62,9 @@ pub struct Config {
     pub words: Words,
     /// Where journald takes the readings' lines.
     pub journal: PathBuf,
+    /// The forges a yes may stand for, each a URL its repositories' origins
+    /// start with; none, and a yes stands for nothing past its ask.
+    pub forges: Vec<String>,
 }
 
 /// What the experiment releases, and how: its one item, read by op, into
@@ -143,6 +146,7 @@ pub fn run(config: Config) -> ExitCode {
                 home: config.home,
                 words: config.words,
                 journal: config.journal,
+                forges: config.forges,
                 least_shown_ms: None,
                 says_commits: false,
             },

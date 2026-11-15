@@ -12,6 +12,11 @@
 //! origin's default branch (ISXEG8, 15 November): an agent's later edit,
 //! unseen and unmerged, waits for him as any ask does.
 //!
+//! A grant is pinned to the URL of the tree's origin too, which only a
+//! forge the engine names may serve, since that forge says what main is:
+//! a tree of the same repository whose origin is pointed at a fork is no
+//! tree the yes was to.
+//!
 //! Grants are held in the daemon alone, never written to a file: any
 //! process of Joel's account could write one, and so grant itself what he
 //! never said yes to. A restart forgets them, which costs him one yes
@@ -26,7 +31,7 @@ use sha2::{Digest, Sha256};
 
 use crate::ask::Ask;
 use crate::row::PLACE;
-use crate::tree::Checkout;
+use crate::tree::{Checkout, Tree};
 use crate::words::Words;
 
 /// How long a grant lasts from the yes that made it, in milliseconds.
@@ -61,6 +66,11 @@ pub fn named(repository: &Path) -> String {
     )
 }
 
+/// What a grant to `tree` is pinned to: its repository and its origin.
+fn pinned(tree: &Tree) -> Option<(PathBuf, &str)> {
+    Some((repository(&tree.checkout)?, tree.origin.as_deref()?))
+}
+
 /// One grant: what it lets run, from where, and until when.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Grant {
@@ -72,6 +82,8 @@ pub struct Grant {
     /// The program the command's first word came to.
     pub program: PathBuf,
     pub repository: PathBuf,
+    /// The URL of the tree's origin, on a forge the engine names.
+    pub origin: String,
     pub granted_ms: i64,
 }
 
@@ -82,25 +94,34 @@ impl Grant {
         self.granted_ms.saturating_add(LASTS_MS)
     }
 
-    /// Whether it covers an ask from a tree of `repository` at `now`,
-    /// its command come to `program`: the same item, every word of the
-    /// same command, the same program, the same repository.
-    fn covers(&self, ask: &Ask, repository: &Path, program: &Path, now: i64) -> bool {
+    /// Whether it covers an ask from a tree of `repository` whose origin
+    /// is `origin` at `now`, its command come to `program`: the same item,
+    /// every word of the same command, the same program, the same
+    /// repository and the same origin.
+    fn covers(
+        &self,
+        ask: &Ask,
+        (repository, origin): (&Path, &str),
+        program: &Path,
+        now: i64,
+    ) -> bool {
         now < self.ends_ms()
             && self.item == ask.item
             && self.argv == ask.argv
             && self.program == program
             && self.repository == repository
+            && self.origin == origin
     }
 }
 
 /// The id of a grant for what it covers.
-fn id_of(item: &str, argv: &[String], program: &Path, repository: &Path) -> String {
+fn id_of(item: &str, argv: &[String], program: &Path, repository: &Path, origin: &str) -> String {
     let said = json!([
         item,
         argv,
         program.to_string_lossy(),
-        repository.to_string_lossy()
+        repository.to_string_lossy(),
+        origin
     ])
     .to_string();
     Sha256::digest(said.as_bytes())
@@ -117,19 +138,13 @@ fn id_of(item: &str, argv: &[String], program: &Path, repository: &Path) -> Stri
 pub struct Grants(Vec<Grant>);
 
 impl Grants {
-    /// Grants what a yes to `ask` from a tree kept as `checkout`, its
-    /// command come to `program`, covers, from `now`, renewing a grant
-    /// for the same; nothing where the tree is in no repository a grant
-    /// can name.
-    pub fn grant(
-        &mut self,
-        ask: &Ask,
-        checkout: &Checkout,
-        program: &Path,
-        now: i64,
-    ) -> Option<Grant> {
-        let repository = repository(checkout)?;
-        let id = id_of(&ask.item, &ask.argv, program, &repository);
+    /// Grants what a yes to `ask` from `tree`, its command come to
+    /// `program`, covers, from `now`, renewing a grant for the same;
+    /// nothing where the tree is in no repository a grant can name, or
+    /// its origin is on no forge the engine names.
+    pub fn grant(&mut self, ask: &Ask, tree: &Tree, program: &Path, now: i64) -> Option<Grant> {
+        let (repository, origin) = pinned(tree)?;
+        let id = id_of(&ask.item, &ask.argv, program, &repository, origin);
         self.0.retain(|one| one.id != id);
         let grant = Grant {
             id,
@@ -137,27 +152,22 @@ impl Grants {
             argv: ask.argv.clone(),
             program: program.to_owned(),
             repository,
+            origin: origin.to_owned(),
             granted_ms: now,
         };
         self.0.push(grant.clone());
         Some(grant)
     }
 
-    /// The grant covering an ask from a tree kept as `checkout` at `now`,
-    /// its command come to `program`, if one does. Whether the tree's
-    /// code is on main is the engine's to ask, since only git can say.
+    /// The grant covering an ask from `tree` at `now`, its command come
+    /// to `program`, if one does. Whether the tree's code is on main is
+    /// the engine's to ask, since only the forge and git can say.
     #[must_use]
-    pub fn covering(
-        &self,
-        ask: &Ask,
-        checkout: &Checkout,
-        program: &Path,
-        now: i64,
-    ) -> Option<&Grant> {
-        let repository = repository(checkout)?;
+    pub fn covering(&self, ask: &Ask, tree: &Tree, program: &Path, now: i64) -> Option<&Grant> {
+        let (repository, origin) = pinned(tree)?;
         self.0
             .iter()
-            .find(|one| one.covers(ask, &repository, program, now))
+            .find(|one| one.covers(ask, (&repository, origin), program, now))
     }
 
     /// Ends the grant with this id; whether there was one.
@@ -243,13 +253,31 @@ mod tests {
         }
     }
 
-    /// A worktree of the repository at `common`, as tree.rs reads one.
-    fn worktree_of(common: &str) -> Checkout {
-        Checkout::Worktree {
-            dot_git: PathBuf::from("/wt/.git"),
-            common: PathBuf::from(common),
-            own: PathBuf::from(format!("{common}/worktrees/wt")),
+    /// The forge's URL of the repository every tree here comes from.
+    const ORIGIN: &str = "https://forge.example/joel/a";
+
+    /// A tree kept as `checkout`, its origin `origin`, as the engine reads one.
+    fn kept(checkout: Checkout, origin: Option<&str>) -> Tree {
+        Tree {
+            commit: None,
+            uncommitted: None,
+            checkout,
+            landed: None,
+            origin: origin.map(str::to_owned),
         }
+    }
+
+    /// A worktree of the repository at `common`, as tree.rs reads one,
+    /// its origin on the forge.
+    fn worktree_of(common: &str) -> Tree {
+        kept(
+            Checkout::Worktree {
+                dot_git: PathBuf::from("/wt/.git"),
+                common: PathBuf::from(common),
+                own: PathBuf::from(format!("{common}/worktrees/wt")),
+            },
+            Some(ORIGIN),
+        )
     }
 
     const ITEM: &str = "op://Private/Token/credential";
@@ -328,10 +356,13 @@ mod tests {
         let mut grants = Grants::default();
         let one = ask(ITEM, PUBLISH);
         for kept in [
-            Checkout::None,
-            Checkout::Unvouched {
-                dot_git: PathBuf::from("/x/.git"),
-            },
+            kept(Checkout::None, Some(ORIGIN)),
+            kept(
+                Checkout::Unvouched {
+                    dot_git: PathBuf::from("/x/.git"),
+                },
+                Some(ORIGIN),
+            ),
         ] {
             assert!(
                 grants.grant(&one, &kept, npm(), 0).is_none(),
@@ -343,6 +374,33 @@ mod tests {
             );
         }
         assert_eq!(grants.iter().count(), 0, "a grant was held");
+    }
+
+    #[test]
+    fn a_grant_is_pinned_to_its_trees_origin_on_a_forge() {
+        let grants = granted();
+        let mut forked = worktree_of("/src/a/.git");
+        forked.origin = Some("https://forge.example/someone/a".to_owned());
+        assert!(
+            grants
+                .covering(&ask(ITEM, PUBLISH), &forked, npm(), 0)
+                .is_none(),
+            "a tree of the repository pointed at a fork was covered"
+        );
+        let mut nowhere = worktree_of("/src/a/.git");
+        nowhere.origin = None;
+        assert!(
+            grants
+                .covering(&ask(ITEM, PUBLISH), &nowhere, npm(), 0)
+                .is_none(),
+            "a tree with no origin on a forge was covered"
+        );
+        assert!(
+            Grants::default()
+                .grant(&ask(ITEM, PUBLISH), &nowhere, npm(), 0)
+                .is_none(),
+            "a tree with no origin on a forge was granted"
+        );
     }
 
     #[test]
