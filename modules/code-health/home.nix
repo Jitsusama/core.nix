@@ -11,8 +11,10 @@
 # says nothing of what it is and what no tofu test tests.
 # It writes hour.json beside them, each figure against the target and
 # owner a repository's `targets`, `owner` and `owners` give it, and the
-# figure the hour before, which `cadence hour` reads at ten past. A read
-# takes about half a minute, so hourly costs little. It runs before
+# figure the hour before, with the first files counted, those of a file
+# holding more than the day before first; `cadence hour` reads it at ten
+# past. A read takes about half a minute, so hourly costs little. It runs
+# before
 # `cadence day`, which holds each figure against the days before it, so a
 # repository getting messier is named the day it does.
 # jitsusama.code-health.path puts a machine's own programs ahead of core's

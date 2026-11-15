@@ -220,7 +220,15 @@ fn run(context: &Context) -> Result<(), Failure> {
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok());
     let at = now.timestamp().to_string();
-    let hour = hour::hour(&at, &figures, &named, &judged, before.as_ref());
+    let earlier = earlier_named(&into, &date);
+    let hour = hour::hour(
+        &at,
+        &figures,
+        &named,
+        &judged,
+        before.as_ref(),
+        earlier.as_ref(),
+    );
     write_whole(&into, "hour.json", &hour).map_err(|what| Failure::new(Exit::Failed, what))?;
     let day = Day {
         date: &date,
@@ -492,6 +500,21 @@ fn write_whole(into: &Path, file: &str, value: &impl serde::Serialize) -> Result
     written(into, file, &text)
 }
 
+/// The newest day's named record in `into` from before `date`, if one
+/// is there and reads as JSON.
+fn earlier_named(into: &Path, date: &str) -> Option<serde_json::Value> {
+    let newest = fs::read_dir(into)
+        .ok()?
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .filter(|file| {
+            file.strip_suffix("-named.json")
+                .is_some_and(|day| day < date)
+        })
+        .max()?;
+    let text = fs::read_to_string(into.join(newest)).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
 /// Put `text` in `file` of `into` at once, so no reader sees half of it.
 fn written(into: &Path, file: &str, text: &str) -> Result<(), String> {
     let failed = |error: &dyn std::fmt::Display| format!("{}: {error}", into.display());
@@ -636,6 +659,41 @@ mod tests {
         assert!(
             folder.path().join("2026-11-12-named.json").exists(),
             "the names weren't written beside the figures"
+        );
+    }
+
+    #[test]
+    fn the_day_before_is_the_newest_named_record_before_today() {
+        let folder = tempfile::tempdir().expect("no folder to write in");
+        let into = folder.path();
+        assert_eq!(
+            earlier_named(into, "2026-11-15"),
+            None,
+            "an empty folder gave a day before"
+        );
+        for (date, said) in [
+            ("2026-11-12", "12"),
+            ("2026-11-14", "14"),
+            ("2026-11-15", "15"),
+        ] {
+            fs::write(
+                into.join(format!("{date}-named.json")),
+                format!("{{\"d\": {said}}}"),
+            )
+            .expect("a day's names weren't written");
+        }
+        fs::write(into.join("2026-11-13.json"), "{\"d\": 13}").expect("figures weren't written");
+        fs::write(into.join("hour.json"), "{}").expect("the hour wasn't written");
+        assert_eq!(
+            earlier_named(into, "2026-11-15"),
+            Some(json!({"d": 14})),
+            "the day before wasn't the newest named record before today"
+        );
+        fs::write(into.join("2026-11-14-named.json"), "half").expect("it wasn't written");
+        assert_eq!(
+            earlier_named(into, "2026-11-15"),
+            None,
+            "a day before that isn't JSON was read as one"
         );
     }
 }
