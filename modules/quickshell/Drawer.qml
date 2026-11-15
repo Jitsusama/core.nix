@@ -1595,6 +1595,44 @@ Floating {
         // still says what it's about, and the more line counts the words.
         return kept >= 1 ? kept : 0;
     }
+    // Where the last line the words keep fades out, while the fold has taken
+    // the rest: over a mark to the end of its ink, as a long name's end
+    // fades as it reads on (ReadsOn.qml), so it says more follows rather
+    // than read as a broken sentence (VKCF3Z, 448f6cc6). `line` is its
+    // number, `from` and `to` across the words, and it's null while every
+    // line stands.
+    readonly property var wordsFade: {
+        const line = wordsKept - 1;
+        const ink = fadedInk.text;
+        if (line < 0 || wordsKept >= bodyText.lineCount || ink === "")
+            return null;
+        const to = Math.min(wordsBox.width, Math.ceil(fadedInk.implicitWidth));
+        return { line, from: Math.max(0, to - Theme.space.rung.mark), to };
+    }
+    // Whether that fade is drawn, as it is wherever effects draw.
+    readonly property bool fadeDrawn: wordsFaded.item !== null
+    // The letters of the line that fades, without the space a laid line
+    // ends on, or the fade would fall past its last letter.
+    readonly property string fadedLetters: {
+        const line = wordsKept - 1;
+        if (line < 0 || wordsKept >= bodyText.lineCount)
+            return "";
+        void bodyFace.font;
+        const plain = shown?.styled === true ? Prose.lettersOf(bodySaid).plain : bodySaid;
+        const laid = Prose.laid(plain, wordsBox.width, widthIn(bodyFace))[line];
+        return laid === undefined ? "" : plain.slice(laid.start, laid.end).replace(/\s+$/, "");
+    }
+    // Those letters laid out as the words are drawn, to say where their
+    // ink ends: the face's metrics put a line of the serif some 3% wider
+    // than Qt draws it (236 against 229 pixels at Words), which left the
+    // fade past the last letter.
+    Text {
+        id: fadedInk
+        visible: false
+        text: drawer.fadedLetters
+        textFormat: Text.PlainText
+        font: bodyText.font
+    }
     // The top of every line's box it lays on the pitch past its title, down
     // the content: the facts', the moment's, the preview's, the words' and
     // the fold's. Each a fact takes as { top, bottom }, all its lines, a
@@ -2082,6 +2120,55 @@ Floating {
                 }
             }
 
+            // What the words are seen through while their last line fades:
+            // whole over the lines above it and that line up to its fade,
+            // then none by its ink's end. It stands outside the flow, never
+            // in it, where it would take a place, nor inside the words, where
+            // it would be drawn into what it masks; nor is its Loader hidden,
+            // which leaves its layer unmade and the words wholly masked.
+            // Qt drawing in software draws no effect at all, so the words
+            // would go with it; there they stand cut, unfaded.
+            Loader {
+                id: wordsFaded
+                active: drawer.wordsFade !== null
+                    && wordsBox.GraphicsInfo.api !== GraphicsInfo.Software
+                sourceComponent: Item {
+                    width: wordsBox.width
+                    height: wordsBox.height
+                    visible: false
+                    layer.enabled: true
+
+                    Rectangle {
+                        width: parent.width
+                        height: (drawer.wordsFade?.line ?? 0) * drawer.pitch
+                        color: "white"
+                    }
+                    Rectangle {
+                        y: (drawer.wordsFade?.line ?? 0) * drawer.pitch
+                        width: drawer.wordsFade?.from ?? 0
+                        height: drawer.pitch
+                        color: "white"
+                    }
+                    Rectangle {
+                        x: drawer.wordsFade?.from ?? 0
+                        y: (drawer.wordsFade?.line ?? 0) * drawer.pitch
+                        width: (drawer.wordsFade?.to ?? 0) - x
+                        height: drawer.pitch
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop {
+                                position: 0
+                                color: "white"
+                            }
+                            GradientStop {
+                                position: 1
+                                color: "transparent"
+                            }
+                        }
+                    }
+                }
+            }
+
             // The title, then its facts, words and picture, each a group
             // of whole lines one empty line apart, from the title's line
             // on, or the body's where there's no title.
@@ -2551,6 +2638,18 @@ Floating {
                     height: drawer.wordsKept * drawer.pitch
                     clip: drawer.wordsKept < bodyText.lineCount
                     visible: drawer.body !== "" && drawer.wordsKept > 0
+                    // Seen through its fade while its last line fades
+                    // (wordsFade), as a name reading on is (ReadsOn.qml),
+                    // the mask read smoothly rather than as a cut. The layer
+                    // is made only then, so words standing whole cost
+                    // nothing.
+                    layer.enabled: wordsFaded.item !== null
+                    layer.effect: MultiEffect {
+                        maskEnabled: true
+                        maskSource: wordsFaded.item
+                        maskThresholdMin: 0.5
+                        maskSpreadAtMin: 1
+                    }
 
                     PageText {
                         id: bodyText

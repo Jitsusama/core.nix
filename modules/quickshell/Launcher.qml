@@ -8641,6 +8641,7 @@ Scope {
                 // fold has taken the rest (its wordsFade).
                 actsLaid: drawerCard.actsLaid,
                 wordsFade: drawerCard.wordsFade ?? null,
+                fadeDrawn: drawerCard.fadeDrawn ?? false,
                 nerd: drawerCard.nerd.map(bit => String(bit.label ?? "")),
                 folded: drawerCard.folded,
                 // Each open bit's value: how many lines it's drawn on and
