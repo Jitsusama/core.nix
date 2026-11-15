@@ -2442,7 +2442,8 @@ def opening_said(shell: Shell, since: int) -> str:
             time.sleep(LATE_LANDS_S)
             return shell.log.read_bytes()[since:].decode(errors="replace")
         time.sleep(launcher_on_niri.POLL)
-    raise AssertionError(f"no opening was timed: {said[-2000:]}")
+    unsaid = f"no opening was timed: {said[-2000:]}"
+    raise AssertionError(unsaid)
 
 
 def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts(
