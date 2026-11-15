@@ -117,14 +117,10 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
             )
         )
     )
-    # The fleet's own row says more than its share, so what it says reads on while selected, as
-    # a long name does (docs/design.md). That a fleet at work draws nothing while it's only
-    # looked at is held among its members, where the member at work shows below the way to
-    # the fleet's session, whose row isn't cut.
-    reads_on_beside(desktop, "paint-crew", "fleet \u00b7")
-    # Shot once it has read on twice and rests at its start, which takes longer than the
-    # screen's usual settling.
-    desktop.shoot("launcher-runs", READ_ON_TWICE)
+    # The fleet's side is parts between dots, which take all the room its short name leaves
+    # rather than a share, so it's said whole and never cut or read on (docs/design.md).
+    side_said_whole(desktop, "fleet \u00b7", desktop.showing()["selected"]["side"])
+    desktop.shoot("launcher-runs")
     # Gone into by Ctrl+], as Return goes to its session, its members after the way there.
     desktop.follow()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
@@ -1304,27 +1300,13 @@ def test_a_session_wants_joel_only_while_it_is_true(desktop: Desktop) -> None:
         desktop.as_account(f"niri msg action close-window --id {window}")
 
 
-def reads_on_beside(desktop: Desktop, name: str, said: str) -> None:
-    """Hold that what the selected row says, cut to its share, moves while its name holds."""
-
-    def words() -> list[Json]:
-        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
-        return next(row["words"] for row in laid["rows"] if row["selected"])
-
-    def at(drawn: list[Json], starting: str) -> float:
-        return float(next(word["x"] for word in drawn if word["text"].startswith(starting)))
-
-    first = words()
-    named = at(first, name)
-    seen = {at(first, said)}
-
-    def moved(_: bool) -> bool:
-        drawn = words()
-        assert at(drawn, name) == named, f"{name} moved while what it says read on: {drawn}"
-        seen.add(at(drawn, said))
-        return len(seen) > 1
-
-    retry(moved, timeout=dt.timedelta(seconds=30))
+def side_said_whole(desktop: Desktop, said: str, side: str) -> None:
+    """Hold that the selected row's side of parts is drawn whole, none of it cut."""
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    drawn = next(row["words"] for row in laid["rows"] if row["selected"])
+    kept = next(word for word in drawn if word["text"].startswith(said))
+    assert not kept["cut"], f"the side was cut: {drawn}"
+    assert kept["text"] == side, f"the side drew {kept['text']!r}, not all of {side!r}"
 
 
 def draws_nothing_held_still(desktop: Desktop, who: str, on: str) -> None:

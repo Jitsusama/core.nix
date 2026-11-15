@@ -297,13 +297,13 @@ Rectangle {
         row.readsDone = 0;
     }
 
-    // The name's room, which it's cut to.
+    // The name's room, which it's cut to: all there is to the side, since
+    // the words after it give way first, by whole items from their last,
+    // and only then is the name cut (VKCF3Z, 2026-11-14 [04792410]).
     ReadsOn {
         id: nameBox
         x: Theme.space.rung.inset + row.glyphColumn + row.indent
-        width: Math.max(0, Math.min(implicitWidth, row.ends - x - Theme.space.rung.groups
-            - (!row.detailed ? 0 : Math.min(row.detailWide, row.width * 0.3)
-                + Theme.space.rung.apart)))
+        width: Math.max(0, Math.min(implicitWidth, row.ends - x - Theme.space.rung.groups))
         // On the mono's line, so the voice sits where the mono's name
         // would, the faces' line boxes differing.
         anchors.baseline: monoLine.baseline
@@ -349,10 +349,8 @@ Rectangle {
     Text {
         id: countText
         x: nameBox.x + nameBox.width + Theme.space.rung.apart
-        // As much as the name leaves, and never less than its share, so a
-        // short name's detail (what a category holds) says all it can.
-        readonly property real room: Math.max(row.width * 0.3,
-            row.ends - x - Theme.space.rung.groups)
+        // As much as the name leaves whole, which may be none.
+        readonly property real room: Math.max(0, row.ends - x - Theme.space.rung.groups)
         // A row naming what it holds (`names`, as a home network's rows
         // do) gives way by whole names from its end, ending on the last
         // that fits, never an ellipsis (VKCF3Z, 2026-11-08); a place's row
@@ -476,9 +474,19 @@ Rectangle {
         readonly property string stands: itemised ? kept.join(" \u00b7 ") : row.side
         readonly property string said: Reading.rightSays(row.landed, row.kind, stands)
         // The items a side of them keeps in its room, the least needed
-        // given way first (Reading.js's keptItems).
-        readonly property var kept: itemised ? Reading.keptItems(row.sideItems, room,
-            row.sideMeasured) : []
+        // given way first (Reading.js's keptItems); a side of parts gives
+        // way from its last back, to none if it must (partsKept), but only
+        // while that leaves the name whole: a name too long to be whole
+        // even alone keeps the whole parts the side's share holds, so the
+        // row still says what it is (VKCF3Z, 2026-11-14 [65e08e6f]).
+        readonly property var kept: !itemised ? []
+            : parted ? Reading.partsKept(Reading.partsOf(row.side),
+                room >= 0 || nameRoom >= 0 ? room : partsShare, row.sideMeasured)
+            : Reading.keptItems(row.sideItems, room, row.sideMeasured)
+        // A side of parts' share beside a name cut whatever it says, as a
+        // plain side's, reckoned without what it says so it can't loop.
+        readonly property real partsShare: Math.min(row.width * 0.45,
+            Math.max(row.width * 0.2, room + row.indent))
         // The colour each kept item is drawn in where it names a role of
         // its own (`hue`), as a count of what failed wears the alert's,
         // or "" for the side's.
@@ -493,16 +501,25 @@ Rectangle {
             && (row.selected || row.warns || inks.some(ink => ink !== ""))
         readonly property bool sided: !chorded && said !== ""
         readonly property bool itemised: row.landed === "" && row.kind === ""
-            && row.sideItems.length > 0
-        // The room the name leaves whole, its words after it too, which a
-        // side of items is fitted to.
-        readonly property real room: row.width - Theme.space.rung.inset - nameBox.x
-            - nameBox.implicitWidth - Theme.space.rung.groups - (!row.detailed ? 0
-                : Math.min(row.detailWide, row.width * 0.3) + Theme.space.rung.apart)
+            && (row.sideItems.length > 0 || parted)
+        // A side given as one string of parts between dots, as a window's
+        // "Foot · workspace 2": its parts give way whole before the note
+        // goes and the name is cut (VKCF3Z, 2026-11-14 [04792410]). A side
+        // of one fact keeps its share, and a need is said whole.
+        readonly property bool parted: row.sideItems.length === 0 && !row.sideWhole
+            && row.side.includes(" \u00b7 ")
+        // The room the name leaves whole, its words after it whole too,
+        // which a side of items is fitted to, since the side gives way
+        // before them; and the room the name alone leaves, which says
+        // whether its giving way all would leave the name whole.
+        readonly property real nameRoom: row.width - Theme.space.rung.inset - nameBox.x
+            - nameBox.implicitWidth - Theme.space.rung.groups
+        readonly property real room: nameRoom
+            - (!row.detailed ? 0 : row.detailWide + Theme.space.rung.apart)
         // A side of items down to its last that still leaves the name no
         // room whole: the name is cut, so where it's cut holds still as
         // that item changes, by the column, as any side's does.
-        readonly property bool squeezed: itemised
+        readonly property bool squeezed: itemised && said !== ""
             && row.sideMeasured(said) > room
         // How a row stands never gives way: the name is cut first, at a
         // whole word, and "256 \u00d7 256 px" stays whole (docs/design.md,

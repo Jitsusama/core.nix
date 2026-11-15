@@ -7,9 +7,12 @@
 // Tested as it is by tests/reading.qml.
 .pragma library
 
-// What a cut leaves dangling at its end, a separator or a pause, which
-// goes before the ellipsis does.
-const DANGLING = /[\s\u00b7,;:]+$/u;
+// What a cut leaves dangling at its end, a separator or a pause, or a
+// title's joint, a dash or a bar standing between spaces, which goes
+// before the ellipsis does: "\u03c0 - Launcher\u2026", never "\u03c0 -
+// Launcher -\u2026" (VKCF3Z, 2026-11-14 [65e08e6f]). A word's own hyphen,
+// with no space before it, stays.
+const DANGLING = /(?:[\s\u00b7,;:]|\s[-|\u2013])+$/u;
 
 // Words as `fitting` fits them, kept by `key` where `width` is a
 // measurer's (Measures.js), whose face is all else the fit depends on;
@@ -145,6 +148,26 @@ function keptItems(items, room, width) {
         kept.splice(kept.indexOf(least), 1);
     }
     return pathsFitted(kept, room, width);
+}
+
+// A side said as one string of parts between dots, as a window's "Foot
+// · workspace 2", as items, each `{ said, keep }`, its last part kept
+// least (VKCF3Z, 2026-11-14 [04792410]).
+function partsOf(side) {
+    const parts = side.split(ITEMS_APART);
+    return parts.map((said, at) => ({ said, keep: parts.length - at }));
+}
+
+// The parts a side keeps in `room`, given way whole from its last back,
+// to none where not even its first fits, before the note goes and the name
+// is cut; what's dropped is still in the drawer (VKCF3Z, 2026-11-14
+// [04792410]: "workspace 2" first, then "Foot").
+function partsKept(parts, room, width) {
+    const kept = parts.filter(part => part.said !== "").map(part => part.said);
+    while (kept.length > 0 && width(kept.join(ITEMS_APART)) > room) {
+        kept.pop();
+    }
+    return kept;
 }
 
 // The items kept, as said: one naming its `path`, where they still don't
