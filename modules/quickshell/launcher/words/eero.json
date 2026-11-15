@@ -295,6 +295,17 @@
       }
     },
     {
+      "id": "verb:eero:map",
+      "command": "open",
+      "in": "eero",
+      "name": "Map",
+      "verb": "open",
+      "glyph": "web",
+      "said": {
+        "note": "every device on the home network, drawn"
+      }
+    },
+    {
       "id": "eero:internet:state",
       "in": "eero:internet",
       "name": "State"

@@ -117,9 +117,9 @@ struct Listener {
 impl Listeners {
     /// Listens at `path`, replacing a socket an earlier daemon left, and
     /// tells `wake` whenever a listener joins, leaves, looks or asks for a
-    /// read.
-    pub fn listen(path: &Path, wake: Sender<Call>) -> io::Result<Listeners> {
-        Listeners::listen_within(path, wake, Vocabularies::default())
+    /// read. Its rows offer the network map's page, `map`, if any.
+    pub fn listen(path: &Path, wake: Sender<Call>, map: Option<String>) -> io::Result<Listeners> {
+        Listeners::listen_within(path, wake, Vocabularies::default().mapped(map))
     }
 
     /// Listens as `listen` does, reading vocabularies as `vocabularies`
@@ -449,7 +449,7 @@ mod tests {
     fn listening(name: &str) -> (Listeners, mpsc::Receiver<Call>, std::path::PathBuf) {
         let path = folder(name).join("socket");
         let (wake, woken) = mpsc::channel();
-        let listeners = Listeners::listen(&path, wake).expect("the socket listens");
+        let listeners = Listeners::listen(&path, wake, None).expect("the socket listens");
         (listeners, woken, path)
     }
 

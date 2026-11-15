@@ -39,11 +39,12 @@ struct Vocabulary {
 impl Vocabulary {
     /// Makes its rows again from the network, each keeping its spaced
     /// order where it can, and the place's own drawer beside them; none
-    /// while there's no network yet.
-    fn make(&mut self, network: Option<&HomeNetwork>) {
+    /// while there's no network yet. The map is offered where there's a
+    /// `map` page to open.
+    fn make(&mut self, network: Option<&HomeNetwork>, map: Option<&str>) {
         let (rows, beside) = network.map_or_else(Default::default, |network| {
             (
-                rows::rows(network, &self.words, &self.numbers),
+                rows::rows(network, &self.words, &self.numbers, map),
                 std::iter::once(place::record(network, &self.words, &self.numbers))
                     .chain(drawers::records(network, &self.words, &self.numbers))
                     .collect(),
@@ -58,9 +59,11 @@ impl Vocabulary {
     }
 }
 
-/// Every vocabulary asked for, and where they may be read from.
+/// Every vocabulary asked for, where they may be read from, and the map
+/// of the network's page, if there's one to open.
 pub struct Vocabularies {
     store: PathBuf,
+    map: Option<String>,
     held: HashMap<Said, Vocabulary>,
 }
 
@@ -76,8 +79,14 @@ impl Vocabularies {
     pub fn within(store: PathBuf) -> Vocabularies {
         Vocabularies {
             store,
+            map: None,
             held: HashMap::new(),
         }
+    }
+
+    /// The same, its rows offering the map of the network at `map`.
+    pub fn mapped(self, map: Option<String>) -> Vocabularies {
+        Vocabularies { map, ..self }
     }
 
     /// The vocabulary at `words`, said in the number settings at
@@ -106,7 +115,7 @@ impl Vocabularies {
             kept: Kept::default(),
             made: Made::new(),
         };
-        vocabulary.make(network);
+        vocabulary.make(network, self.map.as_deref());
         self.held.insert(said.clone(), vocabulary);
         Ok(said)
     }
@@ -119,11 +128,12 @@ impl Vocabularies {
     /// Makes every vocabulary's rows again from the network, answering
     /// with what each held before.
     pub fn make(&mut self, network: &HomeNetwork) -> HashMap<Said, Made> {
+        let map = self.map.as_deref();
         self.held
             .iter_mut()
             .map(|(said, vocabulary)| {
                 let before = std::mem::take(&mut vocabulary.made);
-                vocabulary.make(Some(network));
+                vocabulary.make(Some(network), map);
                 (said.clone(), before)
             })
             .collect()

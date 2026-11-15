@@ -54,6 +54,17 @@ QtObject {
         // The place's holding, as its row says it at home.
         expect("the place's holding", Home.holding(model), "3 nodes \u00b7 15 devices");
 
+        // What the daemon serves as something to do is drawn as a served act,
+        // with no drawer or step of its own: the map at the top, and what's
+        // inside the internet; every other row is a thing.
+        expect("the map", Home.asAct({ kind: "act", depth: 0 }), true);
+        expect("the speed test", Home.asAct({ kind: "act", parent: "row:eero:internet" }),
+            true);
+        expect("the switch", Home.asAct({ kind: "switch", parent: "row:eero:internet" }),
+            true);
+        expect("the internet", Home.asAct({ kind: "internet" }), false);
+        expect("a node", Home.asAct({ kind: "node" }), false);
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
             console.warn(failure);

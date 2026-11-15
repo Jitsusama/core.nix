@@ -17,7 +17,8 @@
 //! desktop notices (notices.rs, desktop.rs): the internet out and back, a
 //! node offline and back, a device new to the home network, firmware, and
 //! eero's own events. When eero's session ages out, it asks Joel to sign
-//! in again in For You (waiting.rs).
+//! in again in For You (waiting.rs). Where its unit names the network
+//! map's page in `EERO_MAP` (home.nix), the rows offer to open it.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -45,13 +46,17 @@ use crate::session;
 use crate::time;
 use crate::waiting;
 
+/// What names the network map's page, which the rows open.
+const MAP: &str = "EERO_MAP";
+
 /// Keeps the home network until it's stopped.
 pub fn run() -> Result<(), String> {
     let folder = runtime()?.join("eero");
     fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     let file = folder.join("home-network.json");
     let (wake, woken) = mpsc::channel();
-    let listeners = Listeners::listen(&folder.join("socket"), wake).map_err(|e| {
+    let map = std::env::var(MAP).ok().filter(|page| !page.is_empty());
+    let listeners = Listeners::listen(&folder.join("socket"), wake, map).map_err(|e| {
         format!(
             "couldn't listen at {}: {e}",
             folder.join("socket").display()
