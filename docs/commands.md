@@ -450,7 +450,9 @@ command passes through from a program it runs:
   `Failure::passed(code, what)`, whose exit stays the table's 1, and its
   help's `passes` adds `N the job's own code` to the EXIT group.
 - **Each lists its own.** A command lists the codes it uses in its help's
-  EXIT group, and the kind is the `kind` of its JSON error.
+  EXIT group, and the kind is the `kind` of its JSON error. One kept only
+  to refuse, as an old name saying where its work went, never ends done,
+  so it lists no 0 (the kit's `never_done`).
 
 ## Waiting
 
