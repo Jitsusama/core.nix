@@ -76,6 +76,16 @@ const MOVING = ["hop", "wander", "yarn", "pounce"];
 const THINKS = [150, 450];
 const WANDERS = [16, 40];
 const WANDER_SITS = 1500;
+// The yarn, the longest of its plays and the costliest, rests between 15
+// and 30 minutes after it plays, drawn each time (VKCF3Z 63b08065: "at
+// most one per 15 minutes idle, randomly spaced").
+const YARN_RESTS = [15 * 60_000, 30 * 60_000];
+
+// How long the yarn rests once it's played, in ms, `chance` (0 to 1)
+// choosing where in YARN_RESTS.
+function yarnRests(chance) {
+    return Math.round(YARN_RESTS[0] + (YARN_RESTS[1] - YARN_RESTS[0]) * chance);
+}
 
 // One of `list`, `chance` (0 to 1) choosing which.
 function pick(list, chance) {
@@ -90,10 +100,14 @@ function pick(list, chance) {
 // hop, the yarn or a pounce is a beat with `play`, its kind, and how long
 // it thinks (`pause`), the last two then walking back; a wander's
 // walks are beats with `walk`, `to` "wander", its `cells` and `way`, or
-// "column", back. Asleep or still, none. A play `asked` for by name, as a
-// test asks for the one it watches, comes in place of the one drawn where
-// the level has it, the draws taken as ever.
-function scene(lively, draw, last, asked) {
+// "column", back. Asleep or still, none. The yarn is drawn only once its
+// rest is over (`more.yarnIn` ms from now, none where it's 0 or less).
+// A play `more.asked` for by name, as a test asks for the one it watches,
+// comes in place of the one drawn where the level has it, the draws taken
+// as ever.
+function scene(lively, draw, last, more) {
+    const asked = more?.asked ?? "";
+    const yarned = (more?.yarnIn ?? 0) > 0;
     const held = (pose, ms) => ({
         pose,
         ms: Math.max(QUICKEST, Math.round(ms * (1 - VARIES + 2 * VARIES * draw())))
@@ -106,7 +120,8 @@ function scene(lively, draw, last, asked) {
         return { name: "", beats: [] };
     }
     const moving = lively === "idle" && draw() >= 1 - MOVES;
-    const names = (moving ? MOVING : Object.keys(IN_PLACE)).filter(play => play !== last);
+    const names = (moving ? MOVING : Object.keys(IN_PLACE))
+        .filter(play => play !== last && !(yarned && play === "yarn"));
     const drawn = pick(names, draw());
     const allowed = lively === "idle" ? [...Object.keys(IN_PLACE), ...MOVING]
         : Object.keys(IN_PLACE);
@@ -129,12 +144,12 @@ function scene(lively, draw, last, asked) {
 
 // What comes next at a level (`lively`): the rest before it, `after` ms,
 // and the `scene` it plays then, drawn from `draw` never as `last`; null
-// where nothing comes, asleep or still, so no timer runs at all; a play
-// `asked` for comes as scene() says. MarginCat.qml waits `after` and plays
-// it, and a change of level draws afresh.
-function next(lively, draw, last, asked) {
+// where nothing comes, asleep or still, so no timer runs at all; the yarn
+// and a play asked for come as scene() says of `more`. MarginCat.qml waits
+// `after` and plays it, and a change of level draws afresh.
+function next(lively, draw, last, more) {
     const after = rest(lively, draw());
-    return after === null ? null : { after, scene: scene(lively, draw, last, asked) };
+    return after === null ? null : { after, scene: scene(lively, draw, last, more) };
 }
 
 // Where a short wander goes, from `at` as sits takes it with the `seat` it

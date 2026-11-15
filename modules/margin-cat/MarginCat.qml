@@ -86,6 +86,9 @@ Scope {
     property string posed: ""
     // The play under way or last played, so none comes twice running.
     property string played: ""
+    // When the yarn may next be drawn, by the wall clock, so it comes
+    // rarely (Plays.yarnRests); read only as a scene is drawn, so no timer.
+    property real yarnFrom: 0
     // What's left of the scene under way, each beat as Plays.scene says,
     // and the scene waiting comes to, or null where none comes.
     property var beats: []
@@ -111,8 +114,15 @@ Scope {
         function next(play: string): void {
             root.asked = play;
             if (root.coming !== null)
-                root.coming = Plays.scene(root.lively, Math.random, root.played, play);
+                root.coming = Plays.scene(root.lively, Math.random, root.played,
+                    root.drawsWith(play));
         }
+    }
+
+    // What a scene is drawn with besides its level and last play: the play
+    // `asked` for, and how long the yarn rests yet.
+    function drawsWith(asked: string): var {
+        return { asked, yarnIn: yarnFrom - Date.now() };
     }
 
     // Each level a fresh rest, so a key ends whatever scene was under way,
@@ -124,7 +134,7 @@ Scope {
         beats = [];
         posed = "";
         strollTo = "";
-        const next = Plays.next(lively, Math.random, played, asked);
+        const next = Plays.next(lively, Math.random, played, drawsWith(asked));
         coming = next?.scene ?? null;
         if (next === null) {
             waiting.stop();
@@ -152,6 +162,8 @@ Scope {
                 wandering = { cells: next.cells, way: next.way };
             if (next.play !== undefined)
                 playing = { kind: next.play, pause: next.pause };
+            if (next.play === "yarn")
+                yarnFrom = Date.now() + Plays.yarnRests(Math.random());
             strollTo = next.play !== undefined ? "play" : next.to;
             if (!strollTaken)
                 beat();
