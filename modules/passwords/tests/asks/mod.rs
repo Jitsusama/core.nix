@@ -15,6 +15,8 @@ use std::time::Duration;
 use crate::common::{Client, RELEASED_VALUE, Running, stored_folder, until};
 use serde_json::{Value, json};
 
+mod history;
+
 /// The one reference listed, and one that isn't.
 const LISTED: &str = "op://Test/Throwaway/password";
 const UNLISTED: &str = "op://Private/Something Real/password";
@@ -149,6 +151,10 @@ fn with_nothing_listed_an_ask_draws_no_row_and_a_yes_releases_nothing() {
     assert!(
         !keys.iter().any(|key| key.starts_with("row:asks:")),
         "an ask drew a row with nothing listed: {keys:?}"
+    );
+    assert!(
+        !running.asks().join("answering").exists(),
+        "a sign says asks are answered with nothing listed"
     );
     let refused = client.ask(
         &json!({"id": 7, "ask": "release", "key": format!("ask:{id}"),
@@ -287,10 +293,7 @@ fn a_program_named_through_a_profile_the_account_may_repoint_is_refused() {
     put_up(&running, id, LISTED, &[&planted_name()]);
     let answer = answer(&running, id);
     assert_eq!(answer["state"], "refused", "the answer: {answer}");
-    assert_eq!(
-        answer["why"], "not a root-owned program",
-        "the answer: {answer}"
-    );
+    assert_eq!(answer["why"], NOT_IN_A_PROFILE, "the answer: {answer}");
     assert!(!released(&running), "the manager was asked to release");
 }
 
@@ -308,6 +311,12 @@ fn a_program_whose_path_goes_through_a_link_the_account_owns_is_refused() {
     );
     assert!(!released(&running), "the manager was asked to release");
 }
+
+/// Why an ask naming what no profile holds is refused, saying how to ask
+/// for a project's own tools instead: through its dev shell, which
+/// direnv, a profile's program, opens.
+const NOT_IN_A_PROFILE: &str =
+    "not in a profile; ask for direnv exec . <cmd> to use the project's own tools";
 
 /// A program in the store but in none of the profiles: an agent can
 /// build one, or add it to the store, itself.
@@ -328,10 +337,7 @@ fn a_program_named_by_a_store_path_outside_the_profiles_is_refused() {
     put_up(&running, id, LISTED, &[elsewhere.to_str().unwrap()]);
     let answer = answer(&running, id);
     assert_eq!(answer["state"], "refused", "the answer: {answer}");
-    assert_eq!(
-        answer["why"], "not a root-owned program",
-        "the answer: {answer}"
-    );
+    assert_eq!(answer["why"], NOT_IN_A_PROFILE, "the answer: {answer}");
     assert!(!released(&running), "the manager was asked to release");
 }
 
@@ -420,5 +426,267 @@ fn a_yes_for_what_changed_since_it_was_drawn_releases_nothing() {
     assert!(
         row_keys(&mut client).contains(&format!("row:asks:{id}")),
         "the ask's row went"
+    );
+}
+
+/// What a listed ask running `argv` showed and was answered, once Joel
+/// said yes and its command ran, with bubblewrap's arguments.
+struct Release {
+    row: Value,
+    answer: Value,
+    args: Vec<String>,
+}
+
+/// Releases a listed ask running `argv`, once Joel says yes.
+fn release(running: &Running, id: &str, argv: &[String]) -> Release {
+    put_up(
+        running,
+        id,
+        LISTED,
+        &argv.iter().map(String::as_str).collect::<Vec<_>>(),
+    );
+    let mut client = running.client();
+    let row = row_of(&mut client, id);
+    client.ask(&yes(&row, 812));
+    let answer = answer(running, id);
+    assert_eq!(answer["state"], "ran", "the answer: {answer}");
+    let bwrapped = running.bwrapped().lines().map(str::to_owned).collect();
+    Release {
+        row,
+        answer,
+        args: bwrapped,
+    }
+}
+
+/// Releases a listed ask whose command says its value.
+fn releasing_saying(running: &Running, id: &str) -> Release {
+    release(running, id, &saying(&stored_bash()))
+}
+
+/// Bubblewrap's arguments for a listed ask Joel said yes to, once its
+/// command ran.
+fn released_with(running: &Running, id: &str) -> Vec<String> {
+    releasing_saying(running, id).args
+}
+
+/// Where in `args` these come together, in this order.
+fn found(args: &[String], run: &[&Path]) -> Option<usize> {
+    args.windows(run.len()).position(|window| {
+        window
+            .iter()
+            .zip(run)
+            .all(|(arg, wanted)| Path::new(arg) == *wanted)
+    })
+}
+
+/// Says `args` hold these together, in this order, and where.
+fn holds(args: &[String], run: &[&Path]) -> usize {
+    found(args, run).unwrap_or_else(|| panic!("bubblewrap wasn't given {run:?}: {args:?}"))
+}
+
+#[test]
+fn a_released_command_is_kept_from_what_the_fence_hides() {
+    let running = Running::releasing("asks-hidden", &[LISTED]);
+    let args = released_with(&running, "a123456789abcdef0123456789abcdef");
+    let home = running.folder.join("home");
+    let null = Path::new("/dev/null");
+    let ro = Path::new("--ro-bind");
+    let first = holds(&args, &[ro, null, &home.join(".secret-file")]);
+    let folder = home.join(".secret-folder");
+    holds(
+        &args,
+        &[
+            Path::new("--tmpfs"),
+            &folder,
+            Path::new("--remount-ro"),
+            &folder,
+        ],
+    );
+    holds(&args, &[ro, null, &running.folder.join("outside-secret")]);
+    assert!(
+        !args.iter().any(|arg| arg.contains(".absent-file")),
+        "bubblewrap was given what isn't there: {args:?}"
+    );
+    let ssh = home.join(".ssh");
+    let emptied = holds(&args, &[Path::new("--tmpfs"), &ssh]);
+    for kept in ["config", "id_ed25519.pub"] {
+        let kept = ssh.join(kept);
+        assert!(
+            holds(&args, &[ro, &kept, &kept]) > emptied,
+            "{} was bound back before ~/.ssh was emptied: {args:?}",
+            kept.display()
+        );
+    }
+    assert!(
+        !args
+            .iter()
+            .any(|arg| Path::new(arg) == ssh.join("id_ed25519")),
+        "the private key was bound back: {args:?}"
+    );
+    assert!(
+        holds(&args, &[Path::new("--remount-ro"), &ssh]) > emptied,
+        "~/.ssh wasn't made read-only: {args:?}"
+    );
+    let npmrc = home.join(".npmrc");
+    let copy = args
+        .windows(3)
+        .find(|window| window[0] == "--ro-bind" && Path::new(&window[2]) == npmrc)
+        .map_or_else(
+            || panic!("no copy of ~/.npmrc was bound over it: {args:?}"),
+            |window| window[1].clone(),
+        );
+    let copied = std::fs::read_to_string(&copy).unwrap();
+    assert!(
+        copied.contains("registry=https://registry.example/")
+            && !copied.contains("npm-made-up-token"),
+        "the copy of ~/.npmrc: {copied}"
+    );
+    let tree = &running.folder;
+    assert!(
+        holds(&args, &[Path::new("--bind"), tree, tree]) < first,
+        "what the fence hides was hidden before the tree was bound writable: {args:?}"
+    );
+}
+
+/// The folders `args` let the command write.
+fn writable(args: &[String]) -> Vec<&String> {
+    args.windows(2)
+        .filter(|window| window[0] == "--bind")
+        .map(|window| &window[1])
+        .collect()
+}
+
+#[test]
+fn a_released_command_writes_its_tree_and_caches_alone() {
+    let running = Running::releasing("asks-writes", &[LISTED]);
+    let git = running.folder.join(".git");
+    for folder in ["objects", "refs", "hooks"] {
+        std::fs::create_dir_all(git.join(folder)).unwrap();
+    }
+    std::fs::write(git.join("config"), "").unwrap();
+    let home = running.folder.join("home");
+    caches(&home);
+    let args = released_with(&running, "b123456789abcdef0123456789abcdef");
+    let bind = Path::new("--bind");
+    let ro = Path::new("--ro-bind");
+    let tree = &running.folder;
+    holds(&args, &[bind, tree, tree]);
+    let kept = holds(&args, &[ro, &git, &git]);
+    for written in ["objects", "refs"] {
+        let written = git.join(written);
+        assert!(
+            holds(&args, &[bind, &written, &written]) > kept,
+            "{} wasn't bound back writable: {args:?}",
+            written.display()
+        );
+    }
+    let cache = home.join(".cache");
+    let nix = cache.join("nix");
+    assert!(
+        holds(&args, &[ro, &nix, &nix]) > holds(&args, &[bind, &cache, &cache]),
+        "Nix's fetcher cache, which later unfenced runs trust, was left writable: {args:?}"
+    );
+    let npm = home.join(".npm/_cacache");
+    holds(&args, &[bind, &npm, &npm]);
+    for layered in OVERLAID {
+        let layered = home.join(layered);
+        holds(
+            &args,
+            &[
+                Path::new("--overlay-src"),
+                &layered,
+                Path::new("--tmp-overlay"),
+                &layered,
+            ],
+        );
+    }
+    let writable = writable(&args);
+    assert_eq!(
+        writable.len(),
+        5,
+        "the command may write more than its tree, git's objects and refs, and the caches \
+         that check what they hold: {writable:?}"
+    );
+}
+
+/// The tools' caches that take a throwaway layer, since what they hold
+/// is unpacked and run unchecked by later runs outside the fence.
+const OVERLAID: [&str; 2] = [".cargo/registry", ".gem"];
+
+/// Lays out the tools' caches in `home`, beside some they don't write.
+fn caches(home: &Path) {
+    for folder in [
+        ".cache/nix",
+        ".npm/_cacache",
+        ".npm/_npx",
+        ".cargo/registry",
+        ".cargo/bin",
+        ".gem",
+    ] {
+        std::fs::create_dir_all(home.join(folder)).unwrap();
+    }
+}
+
+#[test]
+fn a_released_command_without_throwaway_layers_reads_the_caches_that_take_them() {
+    let running = Running::releasing_as("asks-unlayered", &[LISTED], false);
+    let home = running.folder.join("home");
+    caches(&home);
+    let args = released_with(&running, "1223456789abcdef0123456789abcdef");
+    for layered in OVERLAID {
+        let layered = home.join(layered);
+        assert!(
+            !args.iter().any(|arg| Path::new(arg) == layered),
+            "{} was bound, where it stays read-only: {args:?}",
+            layered.display()
+        );
+    }
+    assert!(
+        !args.iter().any(|arg| arg.contains("overlay")),
+        "a bubblewrap without layers was asked for one: {args:?}"
+    );
+}
+
+#[test]
+fn an_ask_is_refused_unseen_without_the_fences_list_or_with_one_it_cant_read() {
+    let running = Running::releasing("asks-unfenced", &[LISTED]);
+    let bash = stored_bash();
+    let argv = saying(&bash);
+    let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+    std::fs::remove_file(running.fence_list()).unwrap();
+    let missing = "c123456789abcdef0123456789abcdef";
+    put_up(&running, missing, LISTED, &argv);
+    let answered = answer(&running, missing);
+    assert_eq!(answered["state"], "refused", "the answer: {answered}");
+    assert_eq!(
+        answered["why"], "no fence list to hide by",
+        "the answer: {answered}"
+    );
+    std::fs::write(
+        running.fence_list(),
+        crate::common::FENCE_LIST.replace("\"version\": 1", "\"version\": 2"),
+    )
+    .unwrap();
+    let unknown = "d123456789abcdef0123456789abcdef";
+    put_up(&running, unknown, LISTED, &argv);
+    let answered = answer(&running, unknown);
+    assert_eq!(
+        answered["why"], "no fence list to hide by",
+        "the answer: {answered}"
+    );
+    assert!(!released(&running), "the manager was asked to release");
+}
+
+#[test]
+fn a_sign_says_asks_are_answered_while_the_daemon_answers_them() {
+    // The daemon serves its socket until it's stopped, so its sign names
+    // it by pid: one left by a stopped daemon names none that runs.
+    let running = Running::releasing("asks-sign", &[LISTED]);
+    let sign = running.asks().join("answering");
+    until("the sign", || sign.exists());
+    assert_eq!(
+        std::fs::read_to_string(&sign).unwrap().trim(),
+        running.pid().to_string(),
+        "the sign doesn't name the daemon"
     );
 }

@@ -138,6 +138,7 @@ pub fn run(config: Config) -> ExitCode {
             words: config.words,
             journal: config.journal,
             least_shown_ms: None,
+            says_commits: false,
         },
         Box::new(Experiment {
             item: config.item,

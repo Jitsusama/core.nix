@@ -17,6 +17,10 @@ publish = false
 # The ready-row form every daemon shares: rows kept as last told with their
 # spaced order, and figures said as the launcher says them.
 ready-rows = { path = "../ready-rows" }
+# The agent fence's patterns for what in ~/.ssh is kept and which of npm's
+# settings are credentials, which an ask's command is kept from as a fenced
+# agent is (src/asks.rs).
+regex-lite = "0.1"
 ring = "0.17"
 # Secret asks' engine, which watches their folder, holds each as a row and
 # answers the shell's yes (src/asks.rs says what the daemon adds).

@@ -112,6 +112,13 @@ struct ManagersFile {
     /// program must be found in and its PATH holds; none runs nothing.
     #[serde(default)]
     profiles: Vec<PathBuf>,
+    /// The agent fence's list of what it hides, which an ask's command is
+    /// kept from too; none refuses every ask.
+    hidden: Option<PathBuf>,
+    /// Whether bubblewrap lays a throwaway layer over a folder, as 0.10
+    /// and later do; without, the caches that take one are read-only.
+    #[serde(default)]
+    overlays: bool,
 }
 
 /// The managers as rows name them, from the same file.
@@ -262,13 +269,26 @@ fn daemon(socket: &std::path::Path, managers: &str, words: Option<&str>) {
         }),
         Condvar::new(),
     ));
-    if !given.releases.is_empty() {
-        answer_asks(&shared, given, words);
+    // A sign left by a daemon that ended without taking it away says
+    // nothing now.
+    let sign = answering_sign();
+    if let Some(sign) = &sign {
+        let _ = std::fs::remove_file(sign);
+    }
+    if !given.releases.is_empty()
+        && answer_asks(&shared, given, words)
+        && let Some(sign) = &sign
+        && let Err(why) = std::fs::write(sign, format!("{}\n", std::process::id()))
+    {
+        eprintln!("<4>couldn't say asks are answered: {why}");
     }
     for manager in managers {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || run(&shared, &manager));
     }
+    // It serves until it's stopped, so its sign is never taken away here:
+    // the pid in it says a stopped daemon's sign for what it is, and the
+    // next start takes it away.
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
         let Ok(stream) = stream else { continue };
         let shared = Arc::clone(&shared);
@@ -276,12 +296,23 @@ fn daemon(socket: &std::path::Path, managers: &str, words: Option<&str>) {
     }
 }
 
+/// The sign that secret asks are answered, beside them in the runtime
+/// folder's `secret-asks`, which the harness reads before it puts an
+/// agent's ask up. It holds the daemon's pid, so a sign outliving a
+/// daemon that was killed is known for what it is.
+fn answering_sign() -> Option<PathBuf> {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .map(|runtime| runtime.join("secret-asks/answering"))
+}
+
 /// Starts answering secret asks for the references listed: the engine
 /// over the runtime folder's `secret-asks`, and a thread that takes in
 /// each ask as it comes and tells the rows' watches. Where something it
 /// needs is missing, it says why and answers none, so a release is
-/// refused as not listed.
-fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) {
+/// refused as not listed. Whether it answers them, it says.
+fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) -> bool {
     let absolute = |name: &str| {
         std::env::var_os(name)
             .map(PathBuf::from)
@@ -304,7 +335,7 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) {
             "<3>answering no secret asks: it needs the runtime folder, a home, git, \
              bubblewrap and the launcher's words"
         );
-        return;
+        return false;
     };
     let references = given
         .managers
@@ -321,6 +352,7 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) {
             words: said,
             journal: PathBuf::from(secret_asks::reading::JOURNAL),
             least_shown_ms: Some(secret_asks::engine::LEAST_SHOWN_MS),
+            says_commits: true,
         },
         Box::new(asks::Passwords {
             shared: Arc::clone(shared),
@@ -331,6 +363,9 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) {
             runtime,
             home,
             profiles: given.profiles,
+            hidden: given.hidden,
+            overlays: given.overlays,
+            seen: std::sync::Mutex::default(),
         }),
         changed,
     ));
@@ -339,7 +374,7 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) {
             "<3>answering no secret asks: can't keep {}: {why}",
             folder.display()
         );
-        return;
+        return false;
     }
     lock(shared).asks = Some(Arc::clone(&engine));
     let shared = Arc::clone(shared);
@@ -364,6 +399,7 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) {
             while heard.try_recv().is_ok() {}
         }
     });
+    true
 }
 
 /// The words rows are said in, from the launcher's vocabulary at `path`,

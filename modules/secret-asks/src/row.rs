@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::ask::{Ask, VERSION};
-use crate::tree::Tree;
+use crate::tree::{Checkout, Tree};
 use crate::words::Words;
 
 /// The place the rows are in.
@@ -70,7 +70,7 @@ pub fn digest(ask: &Ask, tree: &Tree) -> String {
         .quest
         .as_ref()
         .map(|(id, title)| json!({"id": id, "title": title}));
-    let said = json!([
+    let mut said = json!([
         VERSION,
         ask.id,
         ask.asked_ms,
@@ -85,11 +85,28 @@ pub fn digest(ask: &Ask, tree: &Tree) -> String {
         ask.given,
         ask.minutes
     ]);
+    // Where a release can't commit is said in the row, so a yes is to it;
+    // a tree that commits adds nothing, keeping the digests it had.
+    if let (Some(kept), Value::Array(said)) = (uncommitting(&tree.checkout), &mut said) {
+        said.push(json!(kept));
+    }
     let hash = Sha256::digest(said.to_string().as_bytes());
     hash.iter().fold(String::new(), |mut hex, byte| {
         let _ = write!(hex, "{byte:02x}");
         hex
     })
+}
+
+/// The word saying a release in a tree kept as `checkout` can't commit,
+/// or none where it can or there's no history to write.
+fn uncommitting(checkout: &Checkout) -> Option<&'static str> {
+    match checkout {
+        // Its packed refs and the top beside its settings stay read-only
+        // (ISXEG8, 14 November), so it tags but can't commit.
+        Checkout::Own { .. } => Some("tagsOnly"),
+        Checkout::Unvouched { .. } => Some("noHistory"),
+        Checkout::None | Checkout::Worktree { .. } => None,
+    }
 }
 
 /// A word of the command, quoted as a POSIX shell would need it, so a
@@ -147,7 +164,9 @@ fn outcome(held: &Held, words: &Words) -> Option<Value> {
 }
 
 /// The row for an ask, without its order, which the kept rows give it.
-pub fn row(held: &Held, home: &str, words: &Words) -> Value {
+/// `says_commits` has it say where a release can't commit, for a releaser
+/// whose command writes a worktree's history alone.
+pub fn row(held: &Held, home: &str, words: &Words, says_commits: bool) -> Value {
     let ask = &held.ask;
     let digest = digest(ask, &held.tree);
     let key = format!("row:{PLACE}:{}", ask.id);
@@ -184,6 +203,9 @@ pub fn row(held: &Held, home: &str, words: &Words) -> Value {
             "said": words.fill("trusts", &[("tree", &tree_name(&ask.tree))]),
         }),
     ];
+    if let Some(kept) = uncommitting(&held.tree.checkout).filter(|_| says_commits) {
+        facts.push(json!({"name": words.fill("fact:commits", &[]), "said": words.fill(kept, &[])}));
+    }
     let changes = match held.tree.uncommitted {
         Some(0) => None,
         Some(count) => Some(words.fill("uncommitted", &[("count", &count.to_string())])),
@@ -249,6 +271,7 @@ pub fn summary(held: &[&Held], words: &Words) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn held(state: State, uncommitted: Option<u64>) -> Held {
         Held {
@@ -267,6 +290,7 @@ mod tests {
             tree: Tree {
                 commit: Some("4f2a91c03b1d7e6a5b4c3d2e1f0a9b8c7d6e5f4a".to_owned()),
                 uncommitted,
+                checkout: Checkout::None,
             },
             state,
             since_ms: 1_794_458_400_000,
@@ -290,12 +314,91 @@ mod tests {
                 "trusts",
                 "{tree}'s own code, so its hooks and scripts get the secret too",
             ),
+            ("fact:commits", "Commits"),
+            ("tagsOnly", "can't from here, only tags"),
+            ("noHistory", "can't from here, nor tags"),
         ])
+    }
+
+    /// An ask whose tree's history is kept as `checkout` says.
+    fn kept_in(checkout: Checkout) -> Held {
+        let mut held = held(State::Waiting, Some(0));
+        held.tree.checkout = checkout;
+        held
+    }
+
+    /// What the row's Commits fact says, if it has one, and where.
+    fn commits(row: &Value) -> Option<(usize, Value)> {
+        let facts = row["drawer"]["facts"].as_array().expect("facts");
+        let at = facts.iter().position(|fact| fact["name"] == "Commits")?;
+        Some((at, facts[at]["said"].clone()))
+    }
+
+    #[test]
+    fn an_ask_from_a_repositorys_own_checkout_says_it_can_tag_but_not_commit() {
+        let dot_git = PathBuf::from("/home/joel/src/tree/.git");
+        let own = kept_in(Checkout::Own { dot_git });
+        let said = row(&own, "", &words(), true);
+        let (at, commits) = commits(&said).expect("no fact says it can't commit");
+        assert_eq!(commits, "can't from here, only tags", "the fact's words");
+        let facts = said["drawer"]["facts"].as_array().expect("facts");
+        assert_eq!(
+            facts[at - 1]["name"],
+            "Also Runs",
+            "it doesn't follow the fact saying what else runs"
+        );
+        let elsewhere = row(&held(State::Waiting, Some(0)), "", &words(), true);
+        assert_eq!(
+            commits_of(&elsewhere),
+            None,
+            "a tree that commits said it can't"
+        );
+        assert_ne!(
+            said["digest"], elsewhere["digest"],
+            "the digest missed where its history is kept"
+        );
+        let unsaid = row(&own, "", &words(), false);
+        assert_eq!(
+            commits_of(&unsaid),
+            None,
+            "a releaser that writes no history said where it can't commit"
+        );
+    }
+
+    /// The Commits fact's words alone.
+    fn commits_of(row: &Value) -> Option<Value> {
+        commits(row).map(|(_, said)| said)
+    }
+
+    #[test]
+    fn an_ask_whose_git_file_no_worktree_vouches_for_says_it_writes_no_history() {
+        let dot_git = PathBuf::from("/home/joel/src/tree/.git");
+        let unvouched = row(
+            &kept_in(Checkout::Unvouched { dot_git }),
+            "",
+            &words(),
+            true,
+        );
+        assert_eq!(
+            commits_of(&unvouched),
+            Some(json!("can't from here, nor tags")),
+            "the fact's words"
+        );
+        let worktree = kept_in(Checkout::Worktree {
+            dot_git: PathBuf::from("/home/joel/src/tree/.git"),
+            common: PathBuf::from("/home/joel/src/repo/.git"),
+            own: PathBuf::from("/home/joel/src/repo/.git/worktrees/tree"),
+        });
+        assert_eq!(
+            commits_of(&row(&worktree, "", &words(), true)),
+            None,
+            "a worktree git vouches for said it can't commit"
+        );
     }
 
     #[test]
     fn an_ask_says_its_trees_own_code_gets_the_secret_too() {
-        let row = row(&held(State::Waiting, Some(0)), "/home/joel", &words());
+        let row = row(&held(State::Waiting, Some(0)), "/home/joel", &words(), true);
         let facts = row["drawer"]["facts"].as_array().expect("facts");
         let trusts = facts
             .iter()
@@ -314,7 +417,7 @@ mod tests {
 
     #[test]
     fn a_waiting_ask_offers_both_acts_with_its_digest() {
-        let row = row(&held(State::Waiting, Some(0)), "/home/joel", &words());
+        let row = row(&held(State::Waiting, Some(0)), "/home/joel", &words(), true);
         let digest = row["digest"].as_str().expect("a digest");
         assert_eq!(digest.len(), 64, "the digest isn't SHA-256 in hex");
         assert_eq!(
@@ -333,8 +436,8 @@ mod tests {
 
     #[test]
     fn uncommitted_changes_are_warned_of_and_change_the_digest() {
-        let clean = row(&held(State::Waiting, Some(0)), "", &words());
-        let dirty = row(&held(State::Waiting, Some(2)), "", &words());
+        let clean = row(&held(State::Waiting, Some(0)), "", &words(), true);
+        let dirty = row(&held(State::Waiting, Some(2)), "", &words(), true);
         assert_ne!(
             clean["digest"], dirty["digest"],
             "the digest missed the changes"
@@ -355,7 +458,12 @@ mod tests {
 
     #[test]
     fn an_answered_ask_offers_nothing_and_says_what_came_of_it() {
-        let row = row(&held(State::Ran { exit: Some(0) }, Some(0)), "", &words());
+        let row = row(
+            &held(State::Ran { exit: Some(0) }, Some(0)),
+            "",
+            &words(),
+            true,
+        );
         assert_eq!(row["acts"], json!([]), "an answered ask still offered acts");
         let facts = row["drawer"]["facts"].as_array().expect("facts");
         assert_eq!(facts.last().expect("a fact")["said"], "ran, exit 0");

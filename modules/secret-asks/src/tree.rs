@@ -12,6 +12,9 @@
 //! which starts nothing; then status runs over a git folder made for the
 //! read, holding only that commit, with the tree's index and objects named
 //! outright and no config, attributes or hooks of the tree's at all.
+//!
+//! Where its history is kept is read from files alone, git never run: its
+//! own checkout, a worktree git vouches for, or a `.git` it wouldn't.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -26,6 +29,74 @@ pub struct Tree {
     /// included, or none where git couldn't say, which the line warns of
     /// as it would of changes rather than calling the tree clean.
     pub uncommitted: Option<u64>,
+    /// Where its history is kept, which says how much of it a release
+    /// may write.
+    pub checkout: Checkout,
+}
+
+/// Where a tree's history is kept, as its `.git` says, read from files
+/// alone so nothing of the tree's runs: the nearest `.git` at or above it.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Checkout {
+    /// In no repository.
+    None,
+    /// A repository's own checkout, its `.git` the repository's folder.
+    Own { dot_git: PathBuf },
+    /// A worktree git vouches for: its `.git` file names a worktree's own
+    /// folder among `common`'s, and that folder names this `.git` back.
+    Worktree {
+        dot_git: PathBuf,
+        common: PathBuf,
+        own: PathBuf,
+    },
+    /// A `.git` git wouldn't vouch for: a file naming a worktree that
+    /// doesn't name it back, or a link, so its history is never opened.
+    Unvouched { dot_git: PathBuf },
+}
+
+/// Where the history of the tree at `path` is kept.
+pub fn checkout(path: &Path) -> Checkout {
+    let Some((dot_git, meta)) = path.ancestors().find_map(|folder| {
+        let dot_git = folder.join(".git");
+        std::fs::symlink_metadata(&dot_git)
+            .ok()
+            .map(|meta| (dot_git, meta))
+    }) else {
+        return Checkout::None;
+    };
+    // A link is never vouched for: one to another worktree's `.git` file
+    // would resolve to where that worktree's folder names it back.
+    if meta.is_dir() {
+        return Checkout::Own { dot_git };
+    }
+    match meta.is_file().then(|| worktree(&dot_git)).flatten() {
+        Some((common, own)) => Checkout::Worktree {
+            dot_git,
+            common,
+            own,
+        },
+        None => Checkout::Unvouched { dot_git },
+    }
+}
+
+/// The repository and the worktree's own git folder a worktree's `.git`
+/// file names, where git's own record agrees: the folder is one of the
+/// repository's worktrees and says it is this one, so a `.git` file a
+/// command wrote can't open another's history.
+fn worktree(dot_git: &Path) -> Option<(PathBuf, PathBuf)> {
+    let read = |path: &Path| std::fs::read_to_string(path).ok();
+    let resolved = |path: &Path| std::fs::canonicalize(path).ok();
+    let text = read(dot_git)?;
+    let named = text.strip_prefix("gitdir:")?.trim();
+    let own = resolved(&dot_git.parent()?.join(named))?;
+    let common = resolved(&own.join(read(&own.join("commondir"))?.trim()))?;
+    let back = resolved(&own.join(read(&own.join("gitdir"))?.trim()))?;
+    let folder = |path: &Path| std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir());
+    let belongs = own.parent() == Some(common.join("worktrees").as_path())
+        && Some(back) == resolved(dot_git)
+        && folder(&own)
+        && folder(&common.join("objects"));
+    belongs.then_some((common, own))
 }
 
 /// git's empty tree, given as where attributes come from so none apply.
@@ -161,10 +232,105 @@ pub fn read(git: &Path, path: &Path) -> Tree {
         return Tree {
             commit: None,
             uncommitted: None,
+            // A `.git` with no commit yet still says what a release may
+            // write of it.
+            checkout: checkout(path),
         };
     };
     Tree {
         uncommitted: uncommitted(git, path, &commit),
         commit: Some(commit),
+        checkout: checkout(path),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A folder of the test's own, emptied first.
+    fn folder(test: &str) -> PathBuf {
+        let folder =
+            std::env::temp_dir().join(format!("secret-asks-{test}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::canonicalize(folder).unwrap()
+    }
+
+    /// A repository at `top/repo` with a worktree named `name`, whose own
+    /// folder names `back` as its tree's `.git`.
+    fn repository(top: &Path, name: &str, back: &Path) -> (PathBuf, PathBuf) {
+        let common = top.join("repo/.git");
+        let own = common.join("worktrees").join(name);
+        std::fs::create_dir_all(common.join("objects")).unwrap();
+        std::fs::create_dir_all(&own).unwrap();
+        std::fs::write(own.join("commondir"), "../..\n").unwrap();
+        std::fs::write(own.join("gitdir"), format!("{}\n", back.display())).unwrap();
+        (common, own)
+    }
+
+    #[test]
+    fn a_repositorys_own_checkout_is_found_from_a_folder_within_it() {
+        let top = folder("own");
+        std::fs::create_dir_all(top.join(".git")).unwrap();
+        std::fs::create_dir_all(top.join("deep/within")).unwrap();
+        let own = Checkout::Own {
+            dot_git: top.join(".git"),
+        };
+        assert_eq!(checkout(&top), own, "the checkout wasn't found");
+        assert_eq!(
+            checkout(&top.join("deep/within")),
+            own,
+            "a folder within it wasn't"
+        );
+    }
+
+    #[test]
+    fn a_worktree_is_vouched_for_only_where_its_folder_names_it_back() {
+        let top = folder("worktree");
+        let tree = top.join("tree");
+        std::fs::create_dir_all(&tree).unwrap();
+        let dot_git = tree.join(".git");
+        let (common, own) = repository(&top, "tree", &dot_git);
+        std::fs::write(&dot_git, format!("gitdir: {}\n", own.display())).unwrap();
+        assert_eq!(
+            checkout(&tree),
+            Checkout::Worktree {
+                dot_git: dot_git.clone(),
+                common,
+                own: own.clone()
+            },
+            "the worktree wasn't vouched for"
+        );
+        std::fs::write(own.join("gitdir"), "/elsewhere/.git\n").unwrap();
+        assert_eq!(
+            checkout(&tree),
+            Checkout::Unvouched { dot_git },
+            "a worktree naming another tree was vouched for"
+        );
+    }
+
+    #[test]
+    fn a_linked_git_folder_is_never_vouched_for() {
+        let top = folder("linked");
+        std::fs::create_dir_all(top.join("repo/.git")).unwrap();
+        std::fs::create_dir_all(top.join("tree")).unwrap();
+        let dot_git = top.join("tree/.git");
+        std::os::unix::fs::symlink(top.join("repo/.git"), &dot_git).unwrap();
+        assert_eq!(
+            checkout(&top.join("tree")),
+            Checkout::Unvouched { dot_git },
+            "a link to another's history was taken as the tree's own"
+        );
+    }
+
+    #[test]
+    fn a_folder_in_no_repository_is_none() {
+        let top = folder("none");
+        assert_eq!(
+            checkout(&top),
+            Checkout::None,
+            "a .git was found where none is"
+        );
     }
 }

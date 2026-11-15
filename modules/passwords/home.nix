@@ -67,6 +67,9 @@ let
       inherit (config.jitsusama.passwords) releases;
       git = lib.getExe pkgs.git;
       bwrap = lib.getExe pkgs.bubblewrap;
+      # Whether it lays a throwaway layer over a folder (--tmp-overlay,
+      # from 0.10), which the caches of tools that write in place take.
+      overlays = lib.versionAtLeast pkgs.bubblewrap.version "0.10.0";
       loginctl = "${pkgs.systemd}/bin/loginctl";
       # The programs an ask may run, and its PATH: the system's and the
       # account's own, as home-manager puts them in /etc/profiles. Never
@@ -76,6 +79,12 @@ let
         "/run/current-system/sw/bin"
         "/etc/profiles/per-user/${config.home.username}/bin"
       ];
+      # The agent fence's list of what it hides, which an ask's command is
+      # kept from too, read from the harness's install at every ask so its
+      # own update reaches it; where it isn't there, every ask is refused.
+      hidden =
+        "${config.xdg.dataHome}/pi-packages/github.com/Jitsusama/agentic-harness.pi"
+        + "/current/data/fence-hidden.json";
     }
   );
   # The launcher's vocabulary, which the daemon says its rows in.
