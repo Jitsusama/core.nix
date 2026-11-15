@@ -411,7 +411,6 @@ def test_a_viewers_command_line_makes_no_rows(shell: Shell) -> None:
     else:
         pytest.fail(f"a closing's spots were made as each of {REOPENINGS_TRIED} tries opened")
     opening = each[-1]
-    print(f"a viewer's line opened in {opening.get('took')} ms: {opening}", flush=True)
     made = {name: rows - before.get(name, 0) for name, rows in after.items()
             if rows > before.get(name, 0)}
     assert not made, f"opening a viewer's command line, sources made rows: {made}: {opening}"
