@@ -13,7 +13,7 @@ use serde_json::Value;
 use super::messages::{self, Note};
 use super::{Axis, Bar, Reading, shown};
 use super::{
-    asks, counted, faults, landings, launcher, measure, network, plans, repository, responds,
+    asks, counted, faults, kept, landings, launcher, measure, network, plans, repository, responds,
 };
 use crate::day::Day;
 use crate::mesh::{self, Mesh};
@@ -57,6 +57,8 @@ pub struct Sources {
     pub plans: plans::Sources,
     /// What code-health and health have already counted.
     pub counted: counted::Sources,
+    /// cadence day's findings ledger whole, closed entries too.
+    pub ledger: String,
     /// What health's day file says the logs said went wrong.
     pub faults: faults::Faults,
     /// The network's two day files, the eero's and the shaper's.
@@ -261,6 +263,7 @@ fn quality(s: &Sources) -> Axis {
     ];
     // What the logs said went wrong, as Joel listed it on 11 November.
     readings.extend(faults::quality(&s.faults));
+    readings.push(kept::came_back(&s.ledger, s.now));
     axis("quality", readings)
 }
 
@@ -624,6 +627,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         machine,
         plans,
         counted,
+        ledger: text(folder.join("findings.jsonl")),
         faults: faults::gather(state_home, now),
         network: network::gather(
             state_home,
