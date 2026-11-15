@@ -199,7 +199,9 @@ impl Running {
         let home = folder.join("home");
         let also = json!({
             "releases": releases,
-            "git": "git",
+            // The daemon runs git with no PATH of its own, as a machine
+            // hands it git's whole path, so a bare name would read no tree.
+            "git": stored_folder("git").join("git"),
             "bwrap": bwrap,
             "references": {"1password": "op://"},
             "profiles": [stored_folder("bash"), folder.join("home/.nix-profile/bin")],
