@@ -1566,14 +1566,17 @@ def test_networks_never_rests_with_a_row_or_a_heading_cut(shell: Shell) -> None:
     shell.step_in()
     shell.launcher_until(lambda shown: shown["selected"]["name"] == "core.nix")
     shell.normal()
-    for key, name in [("j", "harbour"), ("j", "machines"), ("k", "harbour"), ("k", "core.nix")]:
+    steps = [("j", "harbour"), ("j", "machines"), ("k", "harbour"), ("k", "core.nix")]
+    for key, name in [*steps, ("G", "machines"), ("gg", "core.nix")]:
 
         def rested(shown: Json, name: str = name) -> bool:
-            return bool(shown["selected"]["name"] == name and shown["cut"] == [])
+            return bool(
+                shown["selected"]["name"] == name and shown["cut"] == [] and shown["restsOnARow"]
+            )
 
         shell.send_chars(key)
         shell.launcher_until(rested)
-        assert shell.showing()["cut"] == [], shell.showing()
+        assert rested(shell.showing()), shell.showing()
     shell.close_launcher()
 
 

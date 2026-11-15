@@ -8604,8 +8604,10 @@ Scope {
             // headline, and the first and last rows wholly in view.
             current: root.current,
             inView: list.inView(),
-            // The rows drawn but cut by the view's edge, by their place.
+            // The rows drawn but cut by the view's edge, by their place, and
+            // whether the view starts where a row does.
             cut: list.cut(),
+            restsOnARow: list.restsOnARow(),
             // How wide its caret is drawn, and whether it's drawn: not in
             // normal. How lit it is as it blinks isn't said, since this is
             // said on every change.
@@ -12429,8 +12431,27 @@ Scope {
                                 const last = root.matches.length - 1;
                                 const least = list.rowY(0);
                                 const most = last < 0 ? least : Math.max(least,
-                                    list.rowY(last) + list.rowHeight(last) - list.height);
+                                    list.rowY(last) + list.rowHeight(last) - list.height
+                                        + list.bottomMargin);
                                 return Math.max(least, Math.min(to, most));
+                            }
+
+                            // Room under the last row where the list has
+                            // headings, so at its end too its view rests on
+                            // a row's top (Headings.rested), the list's own
+                            // bounds holding it there: less than a row's,
+                            // and never drawn on.
+                            bottomMargin: root.headingsAt.length > 0 ? list.restRoom() : 0
+                            function restRoom() {
+                                const last = root.matches.length - 1;
+                                const most = last < 0 ? 0
+                                    : list.rowTop(last) + list.rowHeight(last) - list.height;
+                                if (most <= 0)
+                                    return 0;
+                                return Math.max(0, Headings.rested(most, {
+                                    count: root.matches.length,
+                                    top: one => list.rowTop(one)
+                                }) - most);
                             }
 
                             function pick() {
@@ -12544,6 +12565,14 @@ Scope {
                                         cuts.push(at);
                                 }
                                 return cuts;
+                            }
+
+                            // Whether the view starts where a row does, with
+                            // none cut above it.
+                            function restsOnARow() {
+                                const at = list.indexAt(list.width / 2, list.contentY + 0.5);
+                                const entry = at < 0 ? null : list.itemAtIndex(at);
+                                return entry !== null && Math.abs(entry.y - list.contentY) <= 0.5;
                             }
 
                             // Scrolls just far enough to show the row, as
