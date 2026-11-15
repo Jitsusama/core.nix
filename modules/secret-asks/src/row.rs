@@ -455,7 +455,7 @@ mod tests {
         };
         let mut held = held(State::Waiting, Some(0));
         held.tree.landed = Some(false);
-        held.tree.origin = Some("https://github.com/Shopify/world".to_owned());
+        held.tree.origin = Some("https://github.com/someone/tree".to_owned());
         // Joel's told whose word it waits on (ISXEG8, 15 November).
         assert_eq!(
             standing(&held),

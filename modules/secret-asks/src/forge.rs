@@ -432,7 +432,7 @@ mod tests {
 
     #[test]
     fn a_forge_is_called_by_its_name() {
-        assert_eq!(called("https://github.com/Shopify/world"), "GitHub");
+        assert_eq!(called("https://github.com/someone/tree"), "GitHub");
         assert_eq!(called("https://forge.example/a/b"), "forge.example");
         assert_eq!(called("file:///srv/forge/a.git"), "its forge");
     }

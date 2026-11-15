@@ -15,6 +15,10 @@
 //! without a row. A yes taken leaves a mark
 //! beside the ask until it's answered, so an ask a restart cut off while
 //! it ran is ended rather than released twice.
+//!
+//! Long because what's read before the asks lock is taken, what's done
+//! under it, and what's checked again once it's let go are one ordering,
+//! which reads true only when it's seen whole.
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
