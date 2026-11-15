@@ -136,7 +136,13 @@ fn merged(wanted: &[(Named, i64)], repos: &Checkouts, known: &BTreeSet<Named>) -
                 main,
             ],
         )
-        .unwrap_or_default();
+        // An unread main leaves its misses open, which is safe, but says
+        // why: at 10:10 on 15 November World's merge went unfound and
+        // nothing told which step failed.
+        .unwrap_or_else(|error| {
+            eprintln!("cadence: couldn't read {repo}'s {main} at {path}: {error}");
+            String::new()
+        });
         let numbers = merged_numbers(&subjects);
         found.extend(
             wanted

@@ -9,6 +9,7 @@
 //! found himself outranks every figure, and stays open until a check
 //! that would have caught it merges.
 
+mod lines;
 mod measures;
 
 use std::collections::BTreeMap;
@@ -26,6 +27,7 @@ use crate::findings::{self, Entry};
 use crate::mesh::Mesh;
 use crate::owe::{self, Owed};
 use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, write_whole, wrongly};
+use lines::{figure, shown_lines};
 use measures::{Class, Measure, drag};
 
 /// Who moves the measures no file names an owner for: the merge net's
@@ -187,62 +189,6 @@ fn landed(core: &str, harness: &str, machine: &str, now: i64) -> Measure {
         owner: String::new(),
         behind: Vec::new(),
     }
-}
-
-/// A figure as the card prints it: whole when it is, else to a tenth.
-fn figure(x: f64) -> String {
-    if (x - x.round()).abs() < 0.05 {
-        format!("{x:.0}")
-    } else {
-        format!("{x:.1}")
-    }
-}
-
-/// One measure's line: its mark, what it says, its figure and target.
-fn line(m: &Measure) -> String {
-    match m.target {
-        None => format!("· {}: {}, unjudged", m.says, figure(m.now)),
-        Some(target) => {
-            let mark = if m.past().is_some() { "✕" } else { "✓" };
-            format!(
-                "{mark} {}: {}, at most {}",
-                m.says,
-                figure(m.now),
-                figure(target)
-            )
-        }
-    }
-}
-
-/// A class's lines on the card. Clean zones read some sixty measures, so
-/// only those past their target are listed, and the rest are counted in a
-/// line of their own; every other class lists each of its measures.
-fn shown_lines(class: Class, of_class: &[&Measure]) -> Vec<String> {
-    if class != Class::Clean {
-        return of_class.iter().map(|m| line(m)).collect();
-    }
-    let mut lines: Vec<String> = of_class
-        .iter()
-        .filter(|m| m.past().is_some())
-        .map(|m| line(m))
-        .collect();
-    let unjudged = of_class.iter().filter(|m| m.target.is_none()).count();
-    let within = of_class.len() - lines.len() - unjudged;
-    let mut rest = Vec::new();
-    if within > 0 {
-        rest.push(if lines.is_empty() {
-            format!("all {within} in")
-        } else {
-            format!("{within} more in")
-        });
-    }
-    if unjudged > 0 {
-        rest.push(format!("{unjudged} unjudged"));
-    }
-    if !rest.is_empty() {
-        lines.push(rest.join(", "));
-    }
-    lines
 }
 
 /// The hour's card, at `at` and with the drag due at `due`, and what the
