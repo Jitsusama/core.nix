@@ -229,6 +229,17 @@ mod tests {
     const ASKED: &str = "--system x86_64-linux";
 
     #[test]
+    fn a_twins_lock_is_named_the_same_by_every_build() {
+        let state = tempfile::tempdir().unwrap();
+        let _held = alone(state.path(), 1, &at("abc", "/t", ASKED), || 10);
+        let named = state.path().join("nix-offload/twins/abc-806d23c24afc7eb5.lock");
+        assert!(
+            named.exists(),
+            "the lock wasn't named by FNV-1a of its tree and ask, which every build agrees on"
+        );
+    }
+
+    #[test]
     fn a_run_finds_its_twin_going_and_nothing_else() {
         let state = tempfile::tempdir().unwrap();
         let pid = std::process::id();
