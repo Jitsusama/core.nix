@@ -70,11 +70,6 @@
     "helps"
   ];
   pi-carry = [ "helps" ];
-  pi-keys = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   pi-verbs = [ "helps" ];
   secret-asks = [
     "kit"

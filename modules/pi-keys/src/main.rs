@@ -15,15 +15,17 @@
 //! It reads only /proc, /sys and niri's answers, never touches a window,
 //! and stops the moment a call starts.
 //!
-//! Usage: pi-keys sample [--minutes N] [--wait N] [--call-check PROGRAM]
+//! Its timer runs `pi-keys sample`, as `pi-keys --help` says (src/cli.rs).
 
 mod burst;
+mod cli;
 mod context;
 mod model;
 mod path;
 mod split;
 
 use burst::{Bursts, Reading};
+use cli::Settings;
 use path::Window;
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
@@ -34,6 +36,7 @@ use std::path::{Path as FsPath, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use terminal_kit::{Exit, Failure};
 
 /// How often each thread is read. A key's wait is told from bursts, and a
 /// frame at 60 Hz is 16.7 ms, so 2 ms sees each frame's work in eight.
@@ -51,31 +54,20 @@ const KEYS: usize = 10_000;
 /// The frame when niri doesn't say, in milliseconds.
 const SIXTY: f64 = 1000.0 / 60.0;
 
-struct Settings {
-    minutes: f64,
-    wait: f64,
-    call_check: Option<PathBuf>,
-}
-
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let value = |name: &str| {
-        args.iter()
-            .position(|a| a == name)
-            .and_then(|i| args.get(i + 1))
-    };
-    let number =
-        |name: &str, default: f64| value(name).and_then(|v| v.parse().ok()).unwrap_or(default);
-    if args.first().map(String::as_str) == Some("sample") {
-        sample(&Settings {
-            minutes: number("--minutes", 10.0),
-            wait: number("--wait", 60.0),
-            call_check: value("--call-check").map(PathBuf::from),
-        })
-    } else {
-        eprintln!("usage: pi-keys sample [--minutes N] [--wait N] [--call-check PROGRAM]");
-        ExitCode::from(2)
-    }
+    let help = cli::help();
+    terminal_kit::main(
+        &help,
+        env!("CARGO_PKG_VERSION"),
+        |context| match cli::asked(&context.args)? {
+            Some(settings) => sample(&settings),
+            None => context
+                .say(&help.brief(&context.out, context.room))
+                .map_err(|why| {
+                    Failure::new(Exit::Failed, "it couldn't say its help").because(why.to_string())
+                }),
+        },
+    )
 }
 
 /// A thread read every tick, by files held open and read again from
@@ -397,21 +389,24 @@ impl Sampler {
     }
 }
 
-fn sample(settings: &Settings) -> ExitCode {
+/// Samples the keys once and keeps the line. Each reason there's no
+/// sample is said on stderr, its log, and ends it as done, since the
+/// next run of its timer tries again.
+fn sample(settings: &Settings) -> Result<(), Failure> {
     let Some(socket) = niri_socket() else {
         eprintln!("pi-keys: no niri to ask, so no sample");
-        return ExitCode::SUCCESS;
+        return Ok(());
     };
     let Some(niri) = socket_pid(&socket).and_then(Watched::open) else {
         eprintln!("pi-keys: niri's thread can't be read, so no sample");
-        return ExitCode::SUCCESS;
+        return Ok(());
     };
     if !wait_for_pi(&socket, settings) {
         eprintln!(
             "pi-keys: no pi window held the focus for {} minutes, so no sample",
             settings.wait
         );
-        return ExitCode::SUCCESS;
+        return Ok(());
     }
     let frame = ask(&socket, "FocusedOutput")
         .as_deref()
@@ -469,16 +464,12 @@ fn sample(settings: &Settings) -> ExitCode {
     let ended = seconds_now();
     let Some(line) = sampler.line(ended, call, cpu_waited.min(1.0)) else {
         eprintln!("pi-keys: no time at a pi window was sampled, so no sample");
-        return ExitCode::SUCCESS;
+        return Ok(());
     };
     eprintln!("pi-keys: {line}");
-    match keep(ended, &line.to_string()) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("pi-keys: couldn't keep the sample: {error}");
-            ExitCode::FAILURE
-        }
-    }
+    keep(ended, &line.to_string()).map_err(|error| {
+        Failure::new(Exit::Failed, "pi-keys couldn't keep the sample").because(error.to_string())
+    })
 }
 
 /// Waits up to the settings' minutes for a pi window, whose session is
