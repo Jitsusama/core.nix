@@ -30,6 +30,14 @@
 //! shown are made and told. Without it, or with a word it lacks, it
 //! serves no rows or drawers and says why in the journal.
 //!
+//! Given references to release, `releases` in MANAGERS, it answers secret
+//! asks too (asks.rs): each put up in `$XDG_RUNTIME_DIR/secret-asks` for
+//! an item listed is a row among its own, keyed `row:asks:<id>`, and only
+//! a `release` or `refuse` on SOCKET, by the act's key `ask:<id>`, answers
+//! it. Any client of SOCKET may send one, so nothing may be listed until
+//! the shell alone is answered. With none listed it watches no folder,
+//! draws no row, and refuses a release as not listed.
+//!
 //! An audit is the one ask that reads every password: asked by Joel alone
 //! (`asked`), never at start, on a timer or with a list, it asks each
 //! manager for its passwords (`audit`, answered `{"passwords": [{"entry",
@@ -63,11 +71,14 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+mod asks;
+
 use passwords::{
     Ask, Changes, DOMAIN, DRAWER, Held, KIND, Of, PATIENCE, Said, Standing, VERSION, ask, audit,
     cli, error, key, named, now, rows, said, standing,
 };
 use ready_rows::kept::Kept;
+use secret_asks::engine::{self, Engine, Setting};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
@@ -83,9 +94,24 @@ const AGAIN_AT_MOST: Duration = Duration::from_secs(60);
 /// How many of the last asks' times health says.
 const TIMES: usize = 32;
 
+/// The managers file: each manager, and what secret asks are answered with.
 #[derive(Deserialize)]
-struct Managers {
+struct ManagersFile {
     managers: Vec<Manager>,
+    /// The references a secret ask may have released; none turns asks
+    /// off.
+    #[serde(default)]
+    releases: Vec<String>,
+    /// The programs asks are answered with: git to read an ask's tree,
+    /// bubblewrap to run its command in, and loginctl to say whether the
+    /// session is locked, which none says it never is.
+    git: Option<PathBuf>,
+    bwrap: Option<PathBuf>,
+    loginctl: Option<PathBuf>,
+    /// The folders of programs root chose, in order, which an ask's
+    /// program must be found in and its PATH holds; none runs nothing.
+    #[serde(default)]
+    profiles: Vec<PathBuf>,
 }
 
 /// The managers as rows name them, from the same file.
@@ -98,6 +124,8 @@ struct Shown {
 struct Manager {
     name: String,
     command: Vec<String>,
+    /// What the references it releases start with, as `op://`.
+    references: Option<String>,
 }
 
 /// One watch a client holds.
@@ -131,6 +159,9 @@ struct Rows {
     shown: Vec<rows::Shown>,
     words: Option<rows::Words>,
     kept: Kept,
+    /// The asks' rows as last told, kept apart since their order is
+    /// weighed against their own place's.
+    asks: Kept,
 }
 
 /// Everything the threads share.
@@ -152,6 +183,8 @@ struct Daemon {
     /// names no state folder.
     kept: Option<PathBuf>,
     rows: Rows,
+    /// What answers secret asks, where any references are listed.
+    asks: Option<Arc<Engine>>,
 }
 
 /// The daemon's state, and what wakes an ask waiting on a manager to start.
@@ -178,10 +211,11 @@ fn main() {
 
 fn daemon(socket: &std::path::Path, managers: &str, words: Option<&str>) {
     let read = std::fs::read_to_string(managers).map_err(|error| error.to_string());
-    let (managers, shown): (Vec<Manager>, Vec<rows::Shown>) = match read.and_then(|text| {
-        let managers = serde_json::from_str::<Managers>(&text).map_err(|error| error.to_string());
+    let (given, shown): (ManagersFile, Vec<rows::Shown>) = match read.and_then(|text| {
+        let managers =
+            serde_json::from_str::<ManagersFile>(&text).map_err(|error| error.to_string());
         let shown = serde_json::from_str::<Shown>(&text).map_err(|error| error.to_string());
-        Ok((managers?.managers, shown?.managers))
+        Ok((managers?, shown?.managers))
     }) {
         Ok(read) => read,
         Err(why) => {
@@ -196,6 +230,7 @@ fn daemon(socket: &std::path::Path, managers: &str, words: Option<&str>) {
             std::process::exit(71);
         }
     };
+    let managers = given.managers.clone();
     let names: Vec<String> = managers
         .iter()
         .map(|manager| manager.name.clone())
@@ -221,10 +256,15 @@ fn daemon(socket: &std::path::Path, managers: &str, words: Option<&str>) {
                 shown,
                 words: words.and_then(vocabulary),
                 kept: Kept::default(),
+                asks: Kept::default(),
             },
+            asks: None,
         }),
         Condvar::new(),
     ));
+    if !given.releases.is_empty() {
+        answer_asks(&shared, given, words);
+    }
     for manager in managers {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || run(&shared, &manager));
@@ -234,6 +274,96 @@ fn daemon(socket: &std::path::Path, managers: &str, words: Option<&str>) {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
     }
+}
+
+/// Starts answering secret asks for the references listed: the engine
+/// over the runtime folder's `secret-asks`, and a thread that takes in
+/// each ask as it comes and tells the rows' watches. Where something it
+/// needs is missing, it says why and answers none, so a release is
+/// refused as not listed.
+fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) {
+    let absolute = |name: &str| {
+        std::env::var_os(name)
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+    };
+    let said = words
+        .ok_or_else(|| "no vocabulary was given".to_owned())
+        .and_then(|path| std::fs::read_to_string(path).map_err(|error| error.to_string()))
+        .and_then(|text| {
+            secret_asks::words::Words::from_vocabulary(&text).map_err(|error| error.to_string())
+        });
+    let (Some(runtime), Some(home), Some(git), Some(bwrap), Ok(said)) = (
+        absolute("XDG_RUNTIME_DIR"),
+        absolute("HOME"),
+        given.git,
+        given.bwrap,
+        said,
+    ) else {
+        eprintln!(
+            "<3>answering no secret asks: it needs the runtime folder, a home, git, \
+             bubblewrap and the launcher's words"
+        );
+        return;
+    };
+    let references = given
+        .managers
+        .iter()
+        .filter_map(|manager| Some((manager.name.clone(), manager.references.clone()?)))
+        .collect();
+    let (changed, heard) = mpsc::channel();
+    let folder = runtime.join("secret-asks");
+    let engine = Arc::new(Engine::new(
+        Setting {
+            asks: folder.clone(),
+            git,
+            home: home.to_string_lossy().into_owned(),
+            words: said,
+            journal: PathBuf::from(secret_asks::reading::JOURNAL),
+            least_shown_ms: Some(secret_asks::engine::LEAST_SHOWN_MS),
+        },
+        Box::new(asks::Passwords {
+            shared: Arc::clone(shared),
+            releases: given.releases,
+            references,
+            bwrap,
+            loginctl: given.loginctl,
+            runtime,
+            home,
+            profiles: given.profiles,
+        }),
+        changed,
+    ));
+    if let Err(why) = engine.start() {
+        eprintln!(
+            "<3>answering no secret asks: can't keep {}: {why}",
+            folder.display()
+        );
+        return;
+    }
+    lock(shared).asks = Some(Arc::clone(&engine));
+    let shared = Arc::clone(shared);
+    std::thread::spawn(move || {
+        loop {
+            engine.look();
+            let next = engine.tidy();
+            tell_rows(&mut lock(&shared), None);
+            let wait = next
+                .map(|at| Duration::from_millis(u64::try_from(at - engine::now_ms()).unwrap_or(0)));
+            let woke = match wait {
+                Some(wait) => heard.recv_timeout(wait),
+                None => heard
+                    .recv()
+                    .map_err(|_| mpsc::RecvTimeoutError::Disconnected),
+            };
+            if woke == Err(mpsc::RecvTimeoutError::Disconnected) {
+                return;
+            }
+            // Everything said meanwhile is taken before the rows are made
+            // again.
+            while heard.try_recv().is_ok() {}
+        }
+    });
 }
 
 /// The words rows are said in, from the launcher's vocabulary at `path`,
@@ -291,6 +421,7 @@ fn made_of(daemon: &mut Daemon, of: &Of) -> Vec<Value> {
         .rows
         .kept
         .all()
+        .chain(daemon.rows.asks.all())
         .filter(|record| hears(of, record["key"].as_str().unwrap_or_default()))
         .cloned()
         .collect();
@@ -324,11 +455,19 @@ fn tell_rows(daemon: &mut Daemon, also: Option<&Of>) {
     if !rowing && drawing.is_empty() {
         // Nobody is told against it, so the next watch starts it afresh.
         daemon.rows.kept.let_go();
+        daemon.rows.asks.let_go();
         return;
     }
     let made = if rowing { rows_of(daemon) } else { Vec::new() };
     let beside = drawers_of(daemon, &drawing);
-    let moved = daemon.rows.kept.take(made, beside);
+    let mut moved = daemon.rows.kept.take(made, beside);
+    let asked = match (&daemon.asks, rowing) {
+        (Some(engine), true) => engine.rows().0,
+        _ => Vec::new(),
+    };
+    let asks_moved = daemon.rows.asks.take(asked, Vec::new());
+    moved.changed.extend(asks_moved.changed);
+    moved.gone.extend(asks_moved.gone);
     for watch in &daemon.watches {
         let heard: Vec<&Value> = moved
             .changed
@@ -800,6 +939,8 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
                 Err((code, message)) => error(&id, code, &message),
             }
         }
+        Ask::Release { id, said } => answer_ask(shared, &id, |engine| engine.release(&said)),
+        Ask::Refuse { id, said } => answer_ask(shared, &id, |engine| engine.refuse(&said)),
         Ask::UnknownKind { id, kind } => error(
             &id,
             "unknown-kind",
@@ -807,6 +948,18 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
         ),
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("can't answer {ask:?}")),
     }
+}
+
+/// The shell's yes or no to a secret ask, answered by the engine with
+/// the ask's id, or refused as not listed where asks are off.
+fn answer_ask(shared: &Shared, id: &Value, answered: impl Fn(&Arc<Engine>) -> Value) -> Value {
+    let engine = lock(shared).asks.clone();
+    let Some(engine) = engine else {
+        return error(id, "refused", "not listed");
+    };
+    let mut answer = answered(&engine);
+    answer["id"] = id.clone();
+    answer
 }
 
 /// Starts a watch: what's held now, the entries or their rows, then each

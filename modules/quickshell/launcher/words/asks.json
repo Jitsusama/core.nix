@@ -11,6 +11,11 @@
       "name": "In"
     },
     {
+      "id": "asks:fact:trusts",
+      "in": "asks",
+      "name": "Also Runs"
+    },
+    {
       "id": "asks:fact:changes",
       "in": "asks",
       "name": "Changes"

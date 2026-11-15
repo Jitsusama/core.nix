@@ -6,6 +6,10 @@
 //! answered from what's held, never asking the manager anything, and an
 //! audit a row an entry with a problem, saying no secret.
 
+#[expect(
+    dead_code,
+    reason = "the daemon's own stand-ins, secret asks' among them, are its tests' alone"
+)]
 mod common;
 
 use std::process::{Command, Output};

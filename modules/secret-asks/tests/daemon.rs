@@ -61,6 +61,12 @@ struct Setting {
 
 impl Setting {
     fn new(name: &str) -> Setting {
+        Setting::after(name, |_| ())
+    }
+
+    /// The daemon over a fresh folder, started once `before` has done
+    /// what it would find there.
+    fn after(name: &str, before: impl FnOnce(&Path)) -> Setting {
         let folder =
             std::env::temp_dir().join(format!("secret-asks-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
@@ -85,6 +91,7 @@ impl Setting {
                 folder.join("locked").display()
             ),
         );
+        before(&folder);
         let socket = folder.join("secret-asks.sock");
         let journal =
             UnixDatagram::bind(folder.join("journal.sock")).expect("the journal stand-in binds");
@@ -131,15 +138,7 @@ impl Setting {
 
     /// Puts up an ask for `item` and answers its id.
     fn ask(&self, item: &str) -> String {
-        let ran = Command::new(env!("CARGO_BIN_EXE_secret-asks"))
-            .args(["ask", "--item", item, "--why", "To try the line.", "--asks"])
-            .arg(self.folder.join("asks"))
-            .arg("--tree")
-            .arg(self.folder.join("tree"))
-            .output()
-            .expect("the ask is put up");
-        assert!(ran.status.success(), "the ask wasn't put up: {ran:?}");
-        String::from_utf8_lossy(&ran.stdout).trim().to_owned()
+        put_up(&self.folder, item)
     }
 
     /// A client watching Asks' rows.
@@ -163,6 +162,20 @@ impl Setting {
     }
 }
 
+/// Puts up an ask for `item` in the setting's folder, daemon or not, and
+/// answers its id.
+fn put_up(folder: &Path, item: &str) -> String {
+    let ran = Command::new(env!("CARGO_BIN_EXE_secret-asks"))
+        .args(["ask", "--item", item, "--why", "To try the line.", "--asks"])
+        .arg(folder.join("asks"))
+        .arg("--tree")
+        .arg(folder.join("tree"))
+        .output()
+        .expect("the ask is put up");
+    assert!(ran.status.success(), "the ask wasn't put up: {ran:?}");
+    String::from_utf8_lossy(&ran.stdout).trim().to_owned()
+}
+
 /// The row of an ask, once a watch is told of it.
 fn row(client: &mut Client, id: &str) -> Value {
     client.changed(&format!("row:asks:{id}"))["row"].clone()
@@ -173,10 +186,12 @@ fn act(client: &mut Client, row: &Value, at: usize) -> Value {
     client.ask(&acting(row, at))
 }
 
-/// The ask a row's act sends.
+/// The ask a row's act sends, as the launcher sends it once the line has
+/// been on screen long enough to read.
 fn acting(row: &Value, at: usize) -> Value {
     let mut asked = row["acts"][at]["ask"].clone();
     asked["id"] = json!(7);
+    asked["shown"] = json!(812);
     asked
 }
 
@@ -335,6 +350,75 @@ fn a_yes_while_locked_reads_nothing() {
         reading.contains("ASK_OUTCOME=locked\n"),
         "a locked yes isn't read: {reading}"
     );
+}
+
+#[test]
+fn an_act_names_the_ask_alone_and_a_yes_keyed_by_its_row_reads_nothing() {
+    let setting = Setting::new("row-keyed");
+    let mut client = setting.watching();
+    let id = setting.ask(ITEM);
+    let drawn = row(&mut client, &id);
+    let thing = format!("ask:{id}");
+    for at in [0, 1] {
+        assert_eq!(
+            drawn["acts"][at]["ask"]["key"], thing,
+            "an act names more than its ask: {drawn}"
+        );
+    }
+    // A second form of key would widen what a forged act could match, so
+    // the row's own is refused.
+    let mut yes = acting(&drawn, 0);
+    yes["key"] = json!(format!("row:asks:{id}"));
+    yes["shown"] = json!(812);
+    let said = client.ask(&yes);
+    assert_eq!(said["error"]["code"], "refused", "a row-keyed yes: {said}");
+    assert_eq!(setting.op_ran(), 0, "op ran for a row-keyed yes");
+}
+
+#[test]
+fn the_experiments_yes_needs_no_time_shown_since_its_asks_says_none() {
+    let setting = Setting::new("untimed");
+    let mut client = setting.watching();
+    let id = setting.ask(ITEM);
+    let drawn = row(&mut client, &id);
+    // The experiment's Asks (Asks.qml) sends no `shown`; the half-second
+    // floor is the passwords child's, whose launcher counts it
+    // (modules/passwords/tests/asks).
+    let mut yes = acting(&drawn, 0);
+    yes["shown"] = Value::Null;
+    let said = client.ask(&yes);
+    assert_eq!(said["releasing"], true, "an untimed yes: {said}");
+    assert_eq!(
+        setting.answer(&id)["state"],
+        "ran",
+        "the untimed yes didn't run"
+    );
+}
+
+#[test]
+fn an_ask_a_restart_cut_off_while_releasing_is_ended_not_released_again() {
+    let id = std::cell::RefCell::new(String::new());
+    let setting = Setting::after("restarted", |folder| {
+        let asked = put_up(folder, ITEM);
+        // What the daemon leaves beside an ask as it releases it.
+        std::fs::write(folder.join("asks").join(format!("{asked}.releasing")), "")
+            .expect("the mark is left");
+        *id.borrow_mut() = asked;
+    });
+    let id = id.into_inner();
+    let answer = setting.answer(&id);
+    assert_eq!(answer["state"], "ended", "a cut-off ask: {answer}");
+    assert_eq!(
+        answer["why"], "ended by a restart",
+        "it ended for: {answer}"
+    );
+    let asks = setting.folder.join("asks");
+    assert!(
+        !asks.join(format!("{id}.ask.json")).exists()
+            && !asks.join(format!("{id}.releasing")).exists(),
+        "the ask or its mark stayed"
+    );
+    assert_eq!(setting.op_ran(), 0, "op ran for a cut-off ask");
 }
 
 #[test]
