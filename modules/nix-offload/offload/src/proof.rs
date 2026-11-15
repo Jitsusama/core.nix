@@ -9,7 +9,9 @@
 //! builder that evaluates, builds and answers passes. A lent builder is
 //! proven over the ssh its `there` builds take, with its store's key and
 //! host key, and then carries a fresh 256 KiB up over its store as a
-//! copy goes, so a way to it that can't carry a copy fails it too; a
+//! copy goes, so a way to it that can't carry a copy fails it too, unless
+//! its relay says others' copies went up it in the last minute, which is
+//! a busy way, not a stalled one ([`busy`]); a
 //! builder beside, reached only by root's ssh, through the
 //! daemon's build hook, as every build sent to it is, passing once its
 //! output comes back. The daemon takes a builder line only from an account
@@ -507,6 +509,48 @@ pub fn carries(store: &str, scratch: &Path, nix: &str, within: Duration) -> bool
     carried
 }
 
+/// How many bytes must have gone up to a builder in the last minute for a
+/// proof that couldn't carry to read its way as busy rather than stalled:
+/// four times what a proof carries, so a proof's own copy, sent part way,
+/// never counts. From 22:25 to 23:03 on 14 November every builder failed
+/// its proof while the uplink was full of their own builds' copies, each
+/// was taken out of root's lines, and root's builds waited on a way that
+/// was carrying all it could.
+pub const MOVED: u64 = 4 * CARRIED as u64;
+
+/// How old the relay's word of what went up may be and still count: it
+/// writes it at most once a second while bytes go up, and not at all once
+/// they stop.
+pub const MOVING: Duration = Duration::from_secs(60);
+
+/// How many bytes went up to a builder in the last minute, as its relay
+/// wrote in `file` (`relay::Moved`), when that's at least [`MOVED`] and
+/// was written within [`MOVING`] of `now`.
+pub fn moving(file: &Path, now: SystemTime) -> Option<u64> {
+    let written = fs::metadata(file).and_then(|meta| meta.modified()).ok()?;
+    // A word written after `now`, by a clock a little ahead, is fresh.
+    if now.duration_since(written).unwrap_or_default() > MOVING {
+        return None;
+    }
+    let moved = fs::read_to_string(file).ok()?.trim().parse::<u64>().ok()?;
+    (moved >= MOVED).then_some(moved)
+}
+
+/// Whether the way to `host`, which couldn't carry a proof's copy up, is
+/// busy with others rather than stalled, by what its relay wrote in
+/// `file`, saying so when it is.
+pub fn busy(host: &str, file: &Path) -> bool {
+    let Some(moved) = moving(file, SystemTime::now()) else {
+        return false;
+    };
+    eprintln!(
+        "nix-offload: but {} KiB went up to {host} in the last minute, so the way to it is \
+         busy rather than stalled, and builds still go there",
+        moved / 1024
+    );
+    true
+}
+
 /// A fresh path of [`CARRIED`] random bytes in this store, added with
 /// `nix` from a file in `scratch`, which goes once it's added.
 fn added(scratch: &Path, nix: &str) -> Option<String> {
@@ -940,6 +984,39 @@ mod tests {
         health.heard(stalled, 250);
         health.heard(built, 310);
         assert!(!health.stalled && !health.dropped(), "carried again");
+    }
+
+    // From 22:25 to 23:03 on 14 November every builder's proof failed to
+    // carry while their own builds' copies filled the uplink.
+    #[test]
+    fn a_way_that_copies_went_up_in_the_last_minute_reads_busy_not_stalled() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("lend-8");
+        fs::write(&file, format!("{}\n", 2 * MOVED)).unwrap();
+        let written = fs::metadata(&file).unwrap().modified().unwrap();
+        assert_eq!(
+            moving(&file, written + Duration::from_secs(5)),
+            Some(2 * MOVED),
+            "copies moving up a minute ago make its way busy"
+        );
+        assert_eq!(
+            moving(&file, written + MOVING + Duration::from_secs(1)),
+            None,
+            "a word older than a minute says nothing moves now"
+        );
+        fs::write(&file, format!("{}\n", MOVED - 1)).unwrap();
+        assert_eq!(
+            moving(&file, SystemTime::now()),
+            None,
+            "a proof's own copy, part sent, isn't others' copies"
+        );
+        fs::write(&file, "lots\n").unwrap();
+        assert_eq!(moving(&file, SystemTime::now()), None, "an unread word");
+        assert_eq!(
+            moving(&dir.path().join("none"), SystemTime::now()),
+            None,
+            "a builder whose relay wrote nothing"
+        );
     }
 
     #[test]
