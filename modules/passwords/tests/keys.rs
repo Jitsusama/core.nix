@@ -141,25 +141,38 @@ fn each_key_the_agent_holds_is_a_row() {
         "{}",
         String::from_utf8_lossy(&listed.stderr)
     );
-    let rows: Vec<Vec<String>> = said(&listed)
-        .lines()
-        .map(|line| line.split('\t').map(str::to_owned).collect())
-        .collect();
-    assert_eq!(rows.len(), 2, "{rows:?}");
-    let first = &rows[0];
-    assert_eq!(first[0], "ED25519");
-    assert_eq!(first[1], "256");
-    assert_eq!(first[2], fingerprint(&agent.home, "stand-in signing key"));
-    assert_eq!(first[3], "stand-in signing key");
-    assert_eq!(first[4], agent.public("stand-in signing key"));
-    assert_eq!(rows[1][3], "stand-in");
+    // Read through a pipe, nothing gives way: a head counting the keys,
+    // the table's head, then a row a key with every column.
+    let said = said(&listed);
+    let lines: Vec<&str> = said.lines().collect();
+    assert_eq!(lines.len(), 5, "{said}");
+    assert_eq!(lines[0], "1Password's SSH agent \u{b7} 2 keys");
+    assert!(
+        lines[2].starts_with("TYPE ") && lines[2].ends_with(" PUBLIC"),
+        "{said}"
+    );
+    let first = lines[3];
+    assert!(first.starts_with("ED25519   256  "), "{said}");
+    for part in [
+        fingerprint(&agent.home, "stand-in signing key"),
+        "stand-in signing key".to_owned(),
+        agent.public("stand-in signing key"),
+    ] {
+        assert!(
+            first.contains(&part),
+            "the first key's row lacks {part}: {said}"
+        );
+    }
+    assert!(lines[4].contains("  stand-in  "), "{said}");
 }
 
 #[test]
 #[ignore = "needs OpenSSH, which passwords-lists-1passwords-ssh-keys gives"]
 fn json_gives_each_key_and_its_public_half() {
     let agent = Agent::listening("json").holding("stand-in signing key");
-    let keys: Value = serde_json::from_str(&said(&agent.keys(&["--json"]))).unwrap();
+    let said: Value = serde_json::from_str(&said(&agent.keys(&["--json"]))).unwrap();
+    assert_eq!(said["schema"], "passwords.keys/1");
+    let keys = &said["keys"];
     assert_eq!(keys[0]["type"], "ED25519");
     assert_eq!(keys[0]["bits"], 256);
     assert_eq!(keys[0]["comment"], "stand-in signing key");
@@ -180,8 +193,9 @@ fn an_agent_holding_nothing_lists_nothing() {
     let agent = Agent::listening("empty");
     let listed = agent.keys(&[]);
     assert_eq!(listed.status.code(), Some(0));
-    assert_eq!(said(&listed), "");
-    assert_eq!(said(&agent.keys(&["--json"])).trim(), "[]");
+    assert_eq!(said(&listed), "1Password's SSH agent \u{b7} 0 keys\n");
+    let keys: Value = serde_json::from_str(&said(&agent.keys(&["--json"]))).unwrap();
+    assert_eq!(keys["keys"], serde_json::json!([]));
 }
 
 /// Nothing listens, so nothing is run, and this needs no OpenSSH.
