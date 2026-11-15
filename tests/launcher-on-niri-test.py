@@ -3561,48 +3561,51 @@ def drawer_trace(said: list[str]) -> list[str]:
 
 LETTER_TYPED = re.compile(r"letter typed (\d+) ms after the one before, resting (\d+)")
 
-# How many times a word is typed again when a loaded builder spaced its letters past the rest.
-TYPING_TRIES = 3
 
+def drawers_under_the_rest(said: list[str]) -> list[str]:
+    """Give each drawer followed before a letter the shell heard quicker than its rest.
 
-def letters_over_the_rest(said: list[str]) -> list[int]:
-    """Give each gap the shell heard between letters typed since the mark that passed its rest.
-
-    The first letter's gap is from whatever was typed before the mark, so it's left out.
+    wtype's letters are 50 ms apart, but a loaded builder spaced them 175 to 395 ms apart as
+    the shell heard them, past the 160 ms rest, and a drawer made between them then is right
+    (Y2YBTS, 2026-11-14, ed99cdc6 and 5dc9f833; typing again three times still failed in four
+    gates). So a drawer is judged by the gap before the letter after it: one followed before
+    a letter under the rest didn't wait for the letters. Those before the first letter count
+    too, since home's drawer was out before it.
     """
-    gaps = [LETTER_TYPED.fullmatch(one) for one in said if one.startswith("letter typed ")]
-    return [int(gap[1]) for gap in gaps[1:] if gap and int(gap[1]) >= int(gap[2])]
+    wrong: list[str] = []
+    waiting: list[str] = []
+    first = True
+    for one in said:
+        if one.startswith("drawer follows "):
+            waiting.append(one)
+        elif typed := LETTER_TYPED.fullmatch(one):
+            # The first letter's gap is from whatever was typed before the mark.
+            if first or int(typed[1]) < int(typed[2]):
+                wrong.extend(waiting)
+            waiting = []
+            first = False
+    return wrong
 
 
-def typed_under_the_rest(shell: Shell, text: str, until: Callable[[int], None]) -> list[str]:
-    """Type the text from home until its letters all came quicker than the rest, and say what.
+def typed_from_home(shell: Shell, text: str, until: Callable[[int], None]) -> list[str]:
+    """Type the text from home, its first row's drawer followed, and say what came of it.
 
-    Each try opens the launcher on home, its first row's drawer followed, and types the text,
-    then `until` waits from the mark for what the try should end on. wtype's letters are 50 ms
-    apart, but a loaded builder spaced them past the 160 ms rest, and a drawer rightly made
-    between them failed the cases judging typing quicker than it (Y2YBTS, 2026-11-14,
-    ed99cdc6 and 5dc9f833), so a try whose letters the shell heard over it is typed again.
+    `until` waits from the mark for what the typing should end on.
     """
-    over: list[int] = []
-    for _ in range(TYPING_TRIES):
-        shell.as_account(shell.ipc("toggle"))
-        shell.launcher_ready()
-        try:
-            shell.on_find()
-            # Home's first row's drawer follows as it opens, before any letter.
-            shell.launcher_until(lambda shown: shown["drawer"]["out"] and selecting("Now", shown))
-            shell.held_still()
-            since = shell.mark()
-            shell.send_chars(text)
-            until(since)
-            said, _ = shell.said_since(since)
-        finally:
-            shell.close_launcher()
-        over = letters_over_the_rest(said)
-        if not over:
-            return said
-    overrun = f"{text!r}'s letters came over the rest in every try, last {over} ms"
-    raise AssertionError(overrun)
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    try:
+        shell.on_find()
+        # Home's first row's drawer follows as it opens, before any letter.
+        shell.launcher_until(lambda shown: shown["drawer"]["out"] and selecting("Now", shown))
+        shell.held_still()
+        since = shell.mark()
+        shell.send_chars(text)
+        until(since)
+        said, _ = shell.said_since(since)
+    finally:
+        shell.close_launcher()
+    return said
 
 
 def test_letters_typed_quicker_than_the_rest_make_one_drawer(shell: Shell) -> None:
@@ -3623,11 +3626,12 @@ def test_letters_typed_quicker_than_the_rest_make_one_drawer(shell: Shell) -> No
         shell.reported("drawer follows program:foot", lambda _: True, since)
         shell.held_still()
 
-    said = typed_under_the_rest(shell, "foot", footed)
+    said = typed_from_home(shell, "foot", footed)
     last = max(at for at, report in enumerate(said) if report.startswith("letter typed "))
-    between = [report for report in said[:last] if report.startswith("drawer follows ")]
+    between = drawers_under_the_rest(said)
     after = [report for report in said[last:] if report.startswith("drawer follows ")]
-    assert between == [], f"a drawer was made between letters: {drawer_trace(said)}"
+    gaps = [one for one in said if one.startswith("letter typed ")]
+    assert between == [], f"a drawer was made between letters: {drawer_trace(said)}, {gaps}"
     assert after[:1] == ["drawer follows program:foot"], (
         f"Foot's drawer never followed the letters: {drawer_trace(said)}"
     )
@@ -3646,7 +3650,7 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(shell: Shell) -
     def footed(since: int) -> None:
         shell.reported("drawer follows program:foot", lambda _: True, since)
 
-    said = typed_under_the_rest(shell, "foot", footed)
+    said = typed_from_home(shell, "foot", footed)
     before = said[: said.index("drawer follows program:foot")]
     shown = [json.loads(one[len("showing ") :]) for one in before if one.startswith("showing ")]
     on_foot = [one for one in shown if one["drawer"]["out"] and selecting("Foot", one)]
