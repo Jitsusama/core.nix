@@ -3,4 +3,5 @@
 
 pub mod eero;
 pub mod modem;
+pub mod sony;
 pub mod switch;

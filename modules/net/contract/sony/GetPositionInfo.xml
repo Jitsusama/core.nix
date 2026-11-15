@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope
+		xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+		s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+	<s:Body>
+		<u:GetPositionInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+			<Track>0</Track>
+			<TrackDuration>0:00:00</TrackDuration>
+			<TrackMetaData></TrackMetaData>
+			<TrackURI></TrackURI>
+			<RelTime>0:00:00</RelTime>
+			<AbsTime>0:00:00</AbsTime>
+			<RelCount>0</RelCount>
+			<AbsCount>0</AbsCount>
+		</u:GetPositionInfoResponse>
+	</s:Body>
+</s:Envelope>
+
+

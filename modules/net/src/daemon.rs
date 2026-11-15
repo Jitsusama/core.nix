@@ -1,8 +1,11 @@
 //! The collector: every minute it reads eero's record from the eero
-//! daemon's file and the modem's status pages, and writes the home
-//! network's record whole to `$XDG_RUNTIME_DIR/net/network.json`, so a view
-//! never reads half of one. It listens on nothing and sends nothing but
-//! plain reads of the modem's pages, each given two seconds. The switch
+//! daemon's file, the modem's status pages and what each receiver eero
+//! lists says, and writes the home network's record whole to
+//! `$XDG_RUNTIME_DIR/net/network.json`, so a view never reads half of one.
+//! It listens on nothing and sends nothing but reads, one at a time and
+//! each given two seconds: the modem's pages, and a receiver's description
+//! and the SOAP actions that only ask (src/sources/sony.rs), each only at
+//! the receiver's own address and never following a redirect. The switch
 //! it reads from its reader's report, never from the switch itself, since
 //! signing in to the switch takes a password this account never holds.
 
@@ -16,7 +19,7 @@ use serde_json::Value;
 use ureq::Agent;
 
 use crate::collect::{self, Said};
-use crate::sources::{modem, switch};
+use crate::sources::{modem, sony, switch};
 use crate::time;
 
 /// How often the sources are read: the eero daemon's own pace, so each
@@ -39,11 +42,28 @@ pub fn run() -> Result<(), String> {
         .timeout_global(Some(PAGE))
         .build()
         .into();
+    // A receiver's answers name where it's asked next; sony.rs keeps only
+    // those on the receiver itself, and this agent never follows a
+    // redirect, so no answer can send a request elsewhere.
+    let at_home: Agent = Agent::config_builder()
+        .timeout_global(Some(PAGE))
+        .max_redirects(0)
+        .build()
+        .into();
     loop {
+        let heard = read_eero(&eero);
+        let receivers = heard
+            .as_ref()
+            .map(sony::listed)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(mac, address)| (mac, read_receiver(&at_home, &address)))
+            .collect();
         let said = Said {
-            eero: read_eero(&eero),
+            eero: heard,
             modem: read_modem(&agent),
             switch: read_switch(Path::new(switch::REPORT)),
+            receivers,
         };
         let network = collect::network(said, time::now());
         let written = serde_json::to_string_pretty(&network).map_err(|error| error.to_string())?;
@@ -103,6 +123,46 @@ fn read_modem(agent: &Agent) -> Result<modem::Pages, String> {
         return Err(failed.unwrap_or_else(|| "it didn't answer".into()));
     }
     Ok(pages)
+}
+
+/// What a receiver answers: its description first, since it names where
+/// each service is asked, then each read, then Sony's system information
+/// from where its action list says. A read that fails after the
+/// description is left out, since the rest still say something.
+fn read_receiver(agent: &Agent, address: &str) -> Result<sony::Answers, String> {
+    let get = |url: &str| {
+        agent
+            .get(url)
+            .call()
+            .and_then(|mut answer| answer.body_mut().read_to_string())
+    };
+    let url = format!("http://{address}:{}/description.xml", sony::PORT);
+    let description =
+        get(&url).map_err(|error| format!("its description didn't answer: {error}"))?;
+    let mut answers = sony::Answers::new();
+    for ask in sony::asks(&description, address) {
+        let answer = match &ask.soap {
+            Some(soap) => agent
+                .post(&ask.url)
+                .header("Content-Type", "text/xml; charset=\"utf-8\"")
+                .header("SOAPACTION", &soap.action)
+                .send(&soap.body)
+                .and_then(|mut answer| answer.body_mut().read_to_string()),
+            None => get(&ask.url),
+        };
+        if let Ok(answer) = answer {
+            answers.insert(ask.name, answer);
+        }
+    }
+    if let Some(url) = answers
+        .get("ActionList")
+        .and_then(|list| sony::system(list, address))
+        && let Ok(answer) = get(&url)
+    {
+        answers.insert("getSystemInformation".into(), answer);
+    }
+    answers.insert("description".into(), description);
+    Ok(answers)
 }
 
 /// Writes a file whole, so a view never reads half of one.

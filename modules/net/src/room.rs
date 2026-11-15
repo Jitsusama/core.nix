@@ -469,8 +469,8 @@ mod tests {
         assert_eq!(
             ceilings,
             [
-                "The internet comes in at 369.9 Mbit/s down, the least room on 7 devices' way",
-                "The internet comes in at 11.9 Mbit/s up, the least room on 18 devices' way",
+                "The internet comes in at 369.9 Mbit/s down, the least room on 8 devices' way",
+                "The internet comes in at 11.9 Mbit/s up, the least room on 19 devices' way",
             ]
         );
     }

@@ -32,6 +32,7 @@ mod sources;
 mod switch_reader;
 mod time;
 mod views;
+mod xml;
 
 use std::io;
 use std::path::PathBuf;
