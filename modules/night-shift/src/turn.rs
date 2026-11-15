@@ -20,13 +20,10 @@ use std::fs::{self, File, TryLockError};
 use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::{Command, ExitCode};
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
-
-/// A run that waited as long as it was let, as sysexits.h names a failure
-/// worth trying again.
-pub const WAITED_TOO_LONG: u8 = 75;
+use terminal_kit::{Exit, Failure};
 
 /// How often a waiting job looks whether the turn is free: a heavy job
 /// runs minutes, so a second's lateness taking it costs nothing.
@@ -43,12 +40,12 @@ pub struct Turn {
 /// Reads `turn NAME [--wait-at-most SECONDS] -- COMMAND [ARG]...`.
 pub fn parse(args: &[String]) -> Result<Turn, String> {
     let Some(name) = args.get(1) else {
-        return Err("`turn` takes the job's name".into());
+        return Err("night-shift turn takes the job's name".into());
     };
     let split = args
         .iter()
         .position(|arg| arg == "--")
-        .ok_or("it takes `--` and the job's command")?;
+        .ok_or("night-shift turn takes the job's command after --")?;
     let command = args[split + 1..].to_vec();
     if command.is_empty() {
         return Err("the job's command is empty".into());
@@ -66,7 +63,7 @@ pub fn parse(args: &[String]) -> Result<Turn, String> {
                     .ok_or_else(|| format!("--wait-at-most takes seconds, not {value}"))?;
                 wait_at_most = Some(Duration::from_secs_f64(seconds));
             }
-            _ => return Err(format!("{option} isn't an option of `turn`")),
+            _ => return Err(format!("{option} isn't an option of turn")),
         }
     }
     Ok(Turn {
@@ -111,20 +108,18 @@ unsafe extern "C" {
 }
 
 /// Waits for the turn in `runtime`, then becomes the job's command, which
-/// keeps it. Returns only when the job doesn't start.
-pub fn take(turn: &Turn, runtime: &Path) -> ExitCode {
+/// keeps it. Returns only when the job doesn't start, with why: waiting
+/// as long as it was let is worth trying again, 75.
+pub fn take(turn: &Turn, runtime: &Path) -> Result<(), Failure> {
     let say = |what: &str| eprintln!("night-shift {}: {what}", turn.name);
-    if let Err(error) = fs::create_dir_all(runtime) {
-        say(&format!("can't make {}: {error}", runtime.display()));
-        return ExitCode::FAILURE;
-    }
-    let lock = match File::create(runtime.join("lock")) {
-        Ok(lock) => lock,
-        Err(error) => {
-            say(&format!("can't open the lock: {error}"));
-            return ExitCode::FAILURE;
-        }
+    let failed = |what: &str, error: &dyn std::fmt::Display| {
+        Failure::new(Exit::Failed, format!("night-shift {}: {what}", turn.name))
+            .because(error.to_string())
     };
+    fs::create_dir_all(runtime)
+        .map_err(|error| failed(&format!("can't make {}", runtime.display()), &error))?;
+    let lock = File::create(runtime.join("lock"))
+        .map_err(|error| failed("can't open the lock", &error))?;
     let began = Instant::now();
     let mut told: Option<String> = None;
     loop {
@@ -140,14 +135,19 @@ pub fn take(turn: &Turn, runtime: &Path) -> ExitCode {
                     .wait_at_most
                     .is_some_and(|most| began.elapsed() >= most)
                 {
-                    say("not started: it waited as long as it was let; try again later");
-                    return ExitCode::from(WAITED_TOO_LONG);
+                    return Err(Failure::new(
+                        Exit::TryAgain,
+                        format!(
+                            "night-shift {}: not started, having waited as long as it was let",
+                            turn.name
+                        ),
+                    )
+                    .because("another heavy job still has the turn; try again later"));
                 }
                 thread::sleep(LOOK_EVERY);
             }
             Err(TryLockError::Error(error)) => {
-                say(&format!("can't take the lock: {error}"));
-                return ExitCode::FAILURE;
+                return Err(failed("can't take the lock", &error));
             }
         }
     }
@@ -163,15 +163,13 @@ pub fn take(turn: &Turn, runtime: &Path) -> ExitCode {
     // until it and whatever it leaves running have ended.
     // SAFETY: dup takes any descriptor and only reports errors.
     if unsafe { dup(lock.as_raw_fd()) } < 0 {
-        say(&format!(
-            "can't hand the lock on: {}",
-            std::io::Error::last_os_error()
+        return Err(failed(
+            "can't hand the lock on",
+            &std::io::Error::last_os_error(),
         ));
-        return ExitCode::FAILURE;
     }
     let error = Command::new(&turn.command[0])
         .args(&turn.command[1..])
         .exec();
-    say(&format!("can't start {}: {error}", turn.command[0]));
-    ExitCode::FAILURE
+    Err(failed(&format!("can't start {}", turn.command[0]), &error))
 }

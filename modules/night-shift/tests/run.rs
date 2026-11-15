@@ -88,8 +88,12 @@ fn raise(machine: &Machine, file: &str, avg10: f64) -> String {
     )
 }
 
+/// What a run said: its log's lines on stdout, then a failure on stderr,
+/// where the terminal kit says one.
 fn said(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stdout).into_owned()
+    [&output.stdout, &output.stderr]
+        .map(|stream| String::from_utf8_lossy(stream).into_owned())
+        .concat()
 }
 
 #[test]
