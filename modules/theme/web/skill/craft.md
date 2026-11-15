@@ -391,7 +391,10 @@ addEventListener("keydown", (e) => {
   a hover card, a question it answers "no" to) and returns focus to what
   opened it; with nothing open it does nothing. A native `<dialog>` closes on
   Escape by itself, so one holding work cancels its `cancel` event. A drawer
-  closes with its own control or :q.
+  holding work closes with its own control or :q. A sheet of evidence, a
+  drawer of a chosen thing's details with no field in it, closes on Escape
+  too, with the choice, and focus stays on what was chosen, so Return opens
+  it again; the moment it gains a field, Escape stops closing it.
 - **Keycaps follow the platform**, and chords are drawn as keys in Monaspace,
   joined by + with `--tie` either side:
 
