@@ -410,8 +410,9 @@ Rectangle {
         font: countText.font
     }
 
-    // The note's face, to fit a note of items, or of names, to its room.
-    FontMetrics {
+    // The note's face, to fit a note of items, or of names, to its room,
+    // each measured as it's drawn (TextMeasure.qml).
+    TextMeasure {
         id: wordsFace
         font: countText.font
     }
@@ -420,10 +421,10 @@ Rectangle {
     // changes, which a binding reading one follows. One made at every fit
     // read its font's eleven properties again to name its face, about 7 ms
     // of a key's frame on home (prof6, 2026-11-11).
-    readonly property var wordsMeasured: Measures.measurer(wordsFace, true)
-    readonly property var wordsAdvanced: Measures.measurer(wordsFace)
-    readonly property var sideMeasured: Measures.measurer(sideFace, true)
-    readonly property var sayMeasured: Measures.measurer(sayFace, true)
+    readonly property var wordsMeasured: Measures.drawnMeasurer(wordsFace, true)
+    readonly property var wordsAdvanced: Measures.drawnMeasurer(wordsFace)
+    readonly property var sideMeasured: Measures.drawnMeasurer(sideFace, true)
+    readonly property var sayMeasured: Measures.drawnMeasurer(sayFace, true)
 
     Graph {
         id: drawing
@@ -435,7 +436,7 @@ Rectangle {
 
     // The face what the row is in, at Note, to fit a side of items to its
     // room.
-    FontMetrics {
+    TextMeasure {
         id: sideFace
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize
@@ -696,7 +697,7 @@ Rectangle {
         return !cut.endsWith("\u2026") || cut.includes(" ") ? cut : "";
     }
 
-    FontMetrics {
+    TextMeasure {
         id: sayFace
         font: sayText.font
     }

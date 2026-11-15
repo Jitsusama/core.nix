@@ -214,6 +214,7 @@
         "Ground.qml"
         "Mark.qml"
         "ReadsOn.qml"
+        "TextMeasure.qml"
         "Wash.qml"
       ]}
       cp ${../../../tests/graphs.qml} shell.qml
@@ -267,6 +268,17 @@
   the-launchers-rows-keep-their-words-apart =
     let
       machine = graphical.config;
+      hintedFully = pkgs.writeText "fonts.conf" ''
+        <?xml version="1.0"?>
+        <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+        <fontconfig>
+          <include>${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}</include>
+          <match target="font">
+            <edit name="hinting" mode="assign"><bool>true</bool></edit>
+            <edit name="hintstyle" mode="assign"><const>hintfull</const></edit>
+          </match>
+        </fontconfig>
+      '';
       lights = pkgs.writeText "Lights.qml" ''
         pragma Singleton
         import Quickshell
@@ -290,6 +302,7 @@
         "PromptHead.qml"
         "ReadsOn.qml"
         "StatusLine.qml"
+        "TextMeasure.qml"
         "Wash.qml"
       ]}
       cp ${lights} Lights.qml
@@ -305,6 +318,12 @@
         QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > at 2>&1 || { cat at; exit 1; }
         tee -a said < at
       done
+      # And at 1 with its letters hinted fully, as a screen at 1 may set
+      # them, where a face's metrics measure the serif some 3% wider than
+      # Qt draws it, so a row's words are held to being measured as drawn.
+      FONTCONFIG_FILE=${hintedFully} QT_SCALE_FACTOR=1 timeout 60 ${qs} -p shell.qml > at 2>&1 \
+        || { cat at; exit 1; }
+      tee -a said < at
       # A row reused for another lays itself out again, and a binding loop
       # in a row's parts is warned of on Joel's desktop on every step that
       # meets it, so one warned of here fails, as the desktop's own warnings

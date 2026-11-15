@@ -63,8 +63,8 @@ function faceOf(font) {
         font.features ?? null]);
 }
 
-// A face as a Text draws it, its variable axes included, which a
-// FontMetrics' measure leaves out, and how the Text reads its words.
+// A face as a Text draws it, its variable axes included, which faceOf
+// leaves out, and how the Text reads its words.
 function drawnFace(font, format) {
     return `${faceOf(font)}${JSON.stringify(font.variableAxes ?? null)}${format}\u241d`;
 }
@@ -89,14 +89,30 @@ function drew(face, words, wide) {
 
 // How wide words are in a FontMetrics' face, as its advanceWidth says,
 // or with a pixel to spare, rounded up, where `spared`, as Qt elides; each
-// measured once and kept. The face is read as the measurer is made, so a
+// measured once and kept by the face, its variable axes included: kept by
+// a face without them, a width measured without the axes was read for the
+// face with them, and a home row's names, which Qt draws 212.7 pixels
+// wide, measured 217 with their pixel spared, and lost their last name
+// (2026-11-15). The face is read as the measurer is made, so a
 // binding that makes one is made again when its face changes. Its `kept`
 // keeps what Reading.js fits in its face by a key naming the fit, the room
 // and the words, made by `fitting` the first time.
 function measurer(metrics, spared = false) {
-    const face = `${faceOf(metrics.font)}${spared ? "+1" : ""}\u241f`;
+    return measuring(`${drawnFace(metrics.font, "metrics")}${spared ? "+1" : ""}\u241f`,
+        words => metrics.advanceWidth(words), spared);
+}
+
+// The same, measured as a Text draws the words, by a TextMeasure, where a
+// FontMetrics measures as native text is laid: hinted fully at 1, it read
+// those names 220 pixels wide where Qt drew them 212 (TextMeasure.qml).
+function drawnMeasurer(measure, spared = false) {
+    return measuring(`${drawnFace(measure.font, "measured")}${spared ? "+1" : ""}\u241f`,
+        words => measure.widthOf(words), spared);
+}
+
+function measuring(face, advance, spared) {
     const width = words => remembered(face + words, () => {
-        const wide = metrics.advanceWidth(words);
+        const wide = advance(words);
         return spared ? Math.ceil(wide) + 1 : wide;
     });
     width.kept = (key, fitting) => remembered(`${face}\u241e${key}`, fitting);

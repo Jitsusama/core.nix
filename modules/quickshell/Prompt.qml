@@ -1019,6 +1019,13 @@ Item {
         font.variableAxes: Theme.level.title.variableAxes
         font.letterSpacing: Theme.level.title.letterSpacing
     }
+    // The Title's words as they're drawn (TextMeasure.qml), where its
+    // metrics measure as native text is laid: the mono's measure as they're
+    // drawn either way, the serif's don't where hinting is full at 1.
+    TextMeasure {
+        id: titleMeasure
+        font: titleFace.font
+    }
     // How tall the Title's and the Figure's capitals and small letters
     // stand, which centre the line: TextMetrics rather than a FontMetrics'
     // call, which a binding asks once, before the face has loaded, and
@@ -1115,7 +1122,7 @@ Item {
         void crumbsMade;
         const line = end - Theme.space.rung.inset - ledWidth - pathGap;
         const width = text => Math.ceil(Measures.drawnWidth(crumbsFace, text)
-            ?? titleFace.advanceWidth(text)) + 1;
+            ?? titleMeasure.widthOf(text)) + 1;
         const steps = crumbSteps;
         const least = Reading.crumbsLeast(steps, width, betweenWide);
         const room = Math.max(0, line - typingRoom, Math.min(least, line));
@@ -1156,14 +1163,13 @@ Item {
         }
     }
 
-    // Each step's words' width, whole, as a Text draws them: a face's
-    // metrics leave out the title's axes, which change its letters'
-    // widths, so measured by them a step came out a hair short and was cut.
-    // Until a step's Text is made for its words, the face's measure stands.
+    // Each step's words' width, whole, as a Text draws them, since a step
+    // measured a hair short of that was cut. Until a step's Text is made
+    // for its words, the Title's measure as drawn stands.
     readonly property string stepsFace: Measures.drawnFace(titleFace.font, "auto")
     readonly property var chipsWanted: stepsMade >= 0 ? chips.map(chip =>
         Math.ceil(Measures.drawnWidth(stepsFace, chip.text)
-            ?? titleFace.advanceWidth(chip.text)) + 1) : []
+            ?? titleMeasure.widthOf(chip.text)) + 1) : []
 
     Repeater {
         id: stepsDrawn
