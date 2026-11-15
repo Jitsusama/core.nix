@@ -550,9 +550,9 @@
     suppressions in each language's own way, its lines repeated from elsewhere and its tests in
     quarantine, the lint rules its configs turn off, its files nothing reaches, its folders with
     no note, its VM test lines, and its Terraform not as tofu fmt writes it, what tflint finds,
-    what trivy finds insecure, what tofu validate refuses and what has no description or README,
-    from a ref's files, and writes the day's figures as cadence reads them, and the hour's
-    against each target, the hour before and the owner
+    what trivy finds insecure, what tofu validate refuses, what has no description or README and
+    what no tofu test tests, from a ref's files, and writes the day's figures as cadence reads
+    them, and the hour's against each target, the hour before and the owner
   '';
   code-health-finds-a-machines-programs-first = ''
     code-health finds a machine's own programs first on its PATH, such as a git that reads a

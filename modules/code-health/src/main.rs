@@ -10,8 +10,9 @@
 //! (notes.rs), as the quality standard has them; its Terraform's files
 //! not as `tofu fmt` writes them, what tflint finds, what trivy finds
 //! insecure (terraform.rs) and what `tofu validate` refuses
-//! (`terraform_validate.rs`), and what of it says nothing of what it is
-//! (`terraform_docs.rs`); and how long the changes it merged in the last
+//! (`terraform_validate.rs`), what of it says nothing of what it is
+//! (`terraform_docs.rs`) and what of it nothing tests
+//! (`terraform_tests.rs`); and how long the changes it merged in the last
 //! day took from first edit to merge (merges.rs).
 //!
 //! It writes `<date>.json` in its folder as `{repo: {measure: figure}}`,
@@ -46,6 +47,7 @@ mod notes;
 mod reached;
 mod terraform;
 mod terraform_docs;
+mod terraform_tests;
 mod terraform_validate;
 
 use std::collections::BTreeMap;
@@ -68,7 +70,7 @@ const FLAGS: [&str; 6] = [
 ];
 
 /// Every measure it reads (measure.rs and merges.rs).
-const MEASURES: [&str; 18] = [
+const MEASURES: [&str; 19] = [
     "crowded-folders",
     "daemons-waiting",
     "duplicated-lines",
@@ -83,6 +85,7 @@ const MEASURES: [&str; 18] = [
     "tf-invalid",
     "tf-undocumented",
     "tf-unformatted",
+    "tf-untested",
     "tflint-findings",
     "trivy-findings",
     "unreached-files",
@@ -162,27 +165,10 @@ fn run(context: &Context) -> Result<(), Failure> {
         match git::files_in(&repo.checkout, &repo.reference, &repo.under) {
             Ok((paths, files)) => {
                 let mut health = measure::measure(&paths, &files);
-                if let Some(undocumented) = terraform_docs::undocumented(&files) {
-                    let count = undocumented.len();
-                    health.put("tf-undocumented", undocumented, count);
-                }
-                match terraform::read(&files) {
-                    Some(Ok(read)) => {
-                        let count = read.unformatted.len();
-                        health.put("tf-unformatted", read.unformatted, count);
-                        let count = read.findings.len();
-                        health.put("tflint-findings", read.findings, count);
-                        let count = read.insecure.len();
-                        health.put("trivy-findings", read.insecure, count);
-                        let count = read.invalid.len();
-                        health.put("tf-invalid", read.invalid, count);
-                    }
-                    Some(Err(error)) => {
-                        let said = format!("{name}'s Terraform left out: {error}");
-                        let _ = context.tell("caution", "warning", &said);
-                    }
-                    None => {}
-                }
+                put_terraform(&mut health, &paths, &files).unwrap_or_else(|error| {
+                    let said = format!("{name}'s Terraform left out: {error}");
+                    let _ = context.tell("caution", "warning", &said);
+                });
                 if repo.under.is_empty() {
                     let since = Timestamp::now().as_second() - DAY;
                     match git::merged(&repo.checkout, &repo.reference, since) {
@@ -249,6 +235,35 @@ fn run(context: &Context) -> Result<(), Failure> {
     .map_err(|error| {
         Failure::new(Exit::Failed, "the answer couldn't be said").because(error.to_string())
     })
+}
+
+/// Each Terraform measure of a repository's files, where it holds any;
+/// the tools' reads are left out whole when one of them can't run.
+fn put_terraform(
+    health: &mut measure::Health,
+    paths: &[String],
+    files: &[measure::File],
+) -> Result<(), String> {
+    if let Some(undocumented) = terraform_docs::undocumented(files) {
+        let count = undocumented.len();
+        health.put("tf-undocumented", undocumented, count);
+    }
+    if let Some(untested) = terraform_tests::untested(paths) {
+        let count = untested.len();
+        health.put("tf-untested", untested, count);
+    }
+    if let Some(read) = terraform::read(files) {
+        let read = read?;
+        let count = read.unformatted.len();
+        health.put("tf-unformatted", read.unformatted, count);
+        let count = read.findings.len();
+        health.put("tflint-findings", read.findings, count);
+        let count = read.insecure.len();
+        health.put("trivy-findings", read.insecure, count);
+        let count = read.invalid.len();
+        health.put("tf-invalid", read.invalid, count);
+    }
+    Ok(())
 }
 
 /// What a day's read found, as it's answered.
