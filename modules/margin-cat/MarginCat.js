@@ -182,6 +182,18 @@ function behind(frame, kind) {
     return Math.round(HEARS + frame + (kind === "resize" ? RESIZES : 0));
 }
 
+// How far a walk's clock goes on in a frame that took `took` ms, on a
+// screen drawn every `frame` ms: as far as it took, but after a stall
+// past STALLS, a frame only, so the cat goes on from where it was last
+// drawn rather than leaping over what the shell never drew (the GPU
+// rig's off-edge take, 2026-11-14: a walk's clock skipped 970 and 936
+// ms in a frame each, drawn as jumps of 100 px). `riding` niri's spring,
+// it keeps niri's clock, since the window it rides went on without it.
+const STALLS = 100;
+function ticks(took, frame, riding) {
+    return riding || took <= STALLS ? took : frame;
+}
+
 // A drawing given a quarter turn, clockwise for `turn` 1 and back for -1,
 // cell for cell, so a climbing cat stays as sharp as a walking one.
 function quartered(drawing, turn) {

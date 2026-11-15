@@ -123,6 +123,10 @@ PanelWindow {
     // The window it waits on the keys to rest in.
     property var waitingOn: null
     property var stepped: null
+    // The walk's own clock, which a stall moves on by a frame only
+    // (MarginCat.ticks), and where the walker's was at its last step.
+    property real walkMs: 0
+    property real walkedTo: 0
     // Its pose and the way it faces, set only as they change, so
     // its cells are laid again a few times a walk rather than on
     // every frame, which dropped five of a walk's frames on a
@@ -365,6 +369,8 @@ PanelWindow {
             begunAt = window.FramePresentation.framesBegun;
         }
         going = plan;
+        walkMs = 0;
+        walkedTo = 0;
         walker.restart();
         if (window.FramePresentation.available)
             window.FramePresentation.ask();
@@ -662,6 +668,8 @@ PanelWindow {
         goingTo = wanted;
         under = column;
         going = playing;
+        walkMs = 0;
+        walkedTo = 0;
         walker.restart();
         // Set once it's going, so the seat moving under it is its
         // own walk's end, and sets no walk off.
@@ -735,7 +743,11 @@ PanelWindow {
     FrameAnimation {
         id: walker
         onTriggered: {
-            const t = walker.elapsedTime * 1000;
+            const at = walker.elapsedTime * 1000;
+            window.walkMs += MarginCat.ticks(at - window.walkedTo, window.frameMs,
+                window.stepped?.beat === "rides");
+            window.walkedTo = at;
+            const t = window.walkMs;
             const kind = window.going.kind;
             const now = kind === undefined ? Paths.frame(window.going, t)
                 : Games.frame(window.going, t);
@@ -863,7 +875,7 @@ PanelWindow {
             asleep: window.scene.asleep,
             stretching: window.scene.stretching,
             walk: going === null || stepped === null ? null : {
-                t: Math.round(walker.elapsedTime * 10000) / 10,
+                t: Math.round(walkMs * 10) / 10,
                 beat: stepped.beat,
                 pose: stepped.pose,
                 facing: stepped.facing,

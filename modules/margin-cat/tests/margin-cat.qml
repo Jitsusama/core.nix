@@ -343,6 +343,19 @@ QtObject {
         expect("a walk begun on the way neither turns nor thinks nor crouches",
             hurried.beats.map(beat => beat.name), ["goes", "lands"]);
         expect("and sets off from where it is", Paths.frame(hurried, 0).x, 150);
+        // The shell held a second between two frames (an off-edge take,
+        // 2026-11-14): the cat goes on a frame from where it was drawn,
+        // never a hundred pixels at once; riding, it keeps niri's clock.
+        const stalled = [16.7, 16.7, 1000, 16.7, 16.7];
+        const clock = stalled.reduce((times, took) => times.concat([times[times.length - 1]
+            + MarginCat.ticks(took, 16.7, false)]), [0]);
+        const jumps = clock.slice(1).map((t, i) => Math.abs(Paths.frame(hurried, t).x
+            - Paths.frame(hurried, clock[i]).x));
+        expect("a stall moves its walk on by a frame, not by what the shell held",
+            [clock.map(t => Math.round(t * 10) / 10), Math.max(...jumps) <= hurried.stride],
+            [[0, 16.7, 33.4, 50.1, 66.8, 83.5], true]);
+        expect("a frame within a stall's bound goes on as it took, and a ride keeps niri's clock",
+            [MarginCat.ticks(40, 16.7, false), MarginCat.ticks(1000, 16.7, true)], [40, 1000]);
         const turned = Paths.walk(on(150), on(50), cat({ hurried: true, facing: 1 }));
         expect("one going back the way it came turns first", turned.beats[0].name, "turns");
         const slowed = Paths.walk(on(100), on(200), cat({ pause: 200, slowdown: 2 }));
