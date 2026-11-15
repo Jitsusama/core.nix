@@ -1317,6 +1317,14 @@ setup again for the new console, and `loadkeys` ran as the driver took it,
 failing with an I/O error, so `systemd-vconsole-setup` was left failed. The
 module loads it in the initrd, as the XPS 14's does with its GPU.
 
+Even there, its start came about 7 s into the boot, so a monitor on the dock
+stayed dark until the disk prompt. Kernel probes on each step of a module's
+load, in November 2026, put 5.1 s between amdgpu's module forming and its
+first notifier, while btintel's load waited 4.7 s on the same lock. That's
+ftrace checking each of the module's records against its whole symbol
+table, which Lawrence Lin's series fixes upstream by sorting the symbols
+once; the laptop carries it until the kernel takes it.
+
 The GPU's video engine (VCN 2.0) decodes H.264, HEVC Main and Main 10, VP9
 profiles 0 and 2, MPEG-2, VC-1 and JPEG through VA-API, and encodes H.264
 and HEVC. It has no AV1. mpv, with core's settings, and Chrome, with no
