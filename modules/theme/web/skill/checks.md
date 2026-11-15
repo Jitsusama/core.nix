@@ -31,7 +31,15 @@ through axe-core and its own console.
    Then run `layout.js`, beside it, the same way: things side by side
    ending level with their parts in line and none under 256 px, and every
    fold opening without moving anything beside or above it. It opens each
-   fold, so run it on a page nobody is reading. Run both at 320, 390, 768,
+   fold, so run it on a page nobody is reading. A page with a walked map
+   or graph runs `map.js` too, the same way, once the map marks itself as
+   the file's opening comment says: each arrow lands on the nearest mark
+   of its level within 45 degrees of it, or stays and says so, and the
+   opposite arrow comes back; Escape moves neither the view nor the
+   level, and - steps out; Tab and Shift+Tab leave the map; no drawn
+   name, halo included, crosses another name or a line or runs past the
+   map's edge. It presses keys on the map, so run it on a page nobody is
+   reading. Run them at 320, 390, 768,
    1024, 1440 and 1920 px, in both looks, since a row that holds at one
    width breaks at another. Each passes on an empty list at every one. A
    part with nothing to picture gets
@@ -246,6 +254,16 @@ the aesthetic skill's questions:
   fixed in the shared component. Then walk it as a reader who wasn't there,
   first screen to last: does each part come where they'd need it?
 - Would it hang in a museum, and could he work in it all day?
+
+**Against his words, before a look.** A page that answers something he
+asked for goes on his look list only after each of his own words for it is
+written down with a pass or a fail and a shot that shows it. Each answer to
+the questions above names which of his words it meets, so a look never goes
+up on "keys moved" when he asked for a map he can follow. The mycelium map
+went up on 14 November walked for keys that moved, and he answered at 22:54
+that the arrows seem to pick at random, names lie over lines, and it "feels
+very early 2000s": that's taste, judged here by eye, and the walk is
+`map.js`'s.
 
 When a judge's or his complaint names a fault, measure it before calling it
 fixed, add the measurement here or to the site's checks, and judge the whole
