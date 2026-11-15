@@ -14,7 +14,11 @@ pub fn said(theirs: &[String], shared: &[String]) -> String {
         .map(String::as_str)
         .partition(|file| theirs.iter().any(|theirs| theirs == file));
     let near = (!near.is_empty()).then(|| {
-        let reads = if near.len() == 1 { "reads or is" } else { "read or are" };
+        let reads = if near.len() == 1 {
+            "reads or is"
+        } else {
+            "read or are"
+        };
         format!("a crate this one's {} {reads} read by", near.join(", "))
     });
     match (both.is_empty(), near) {
@@ -38,7 +42,10 @@ mod tests {
         // On 15 November a gate changing terminal-kit was said to change
         // code-health's files, which read it, so its owner went looking
         // for a wrong merge base.
-        let theirs = owned(&["modules/terminal-kit/src/lib.rs", "modules/cadence/src/day.rs"]);
+        let theirs = owned(&[
+            "modules/terminal-kit/src/lib.rs",
+            "modules/cadence/src/day.rs",
+        ]);
         for (shared, words) in [
             (
                 owned(&["modules/cadence/src/day.rs"]),
@@ -49,7 +56,10 @@ mod tests {
                 "changes a crate this one's modules/code-health/src/hour.rs reads or is read by",
             ),
             (
-                owned(&["modules/cadence/src/day.rs", "modules/code-health/src/hour.rs"]),
+                owned(&[
+                    "modules/cadence/src/day.rs",
+                    "modules/code-health/src/hour.rs",
+                ]),
                 "changes modules/cadence/src/day.rs too, and a crate this one's \
                  modules/code-health/src/hour.rs reads or is read by",
             ),
