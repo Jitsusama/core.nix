@@ -383,6 +383,37 @@ mod tests {
     }
 
     #[test]
+    fn a_lock_a_killed_run_left_a_day_ago_is_taken_away() {
+        use std::time::SystemTime;
+        let state = tempfile::tempdir().unwrap();
+        let twins = state.path().join("nix-offload/twins");
+        fs::create_dir_all(&twins).unwrap();
+        let two_days_ago = SystemTime::now() - Duration::from_secs(2 * 24 * 3600);
+        let left = |name: &str, when: SystemTime| {
+            let file = fs::File::create(twins.join(name)).unwrap();
+            file.set_modified(when).unwrap();
+            file
+        };
+        drop(left("old-0000000000000000.lock", two_days_ago));
+        drop(left("new-0000000000000000.lock", SystemTime::now()));
+        let going = left("going-0000000000000000.lock", two_days_ago);
+        going.lock().unwrap();
+        let _held = alone(state.path(), 1, &at("abc", "/t", ASKED), || 10);
+        assert!(
+            !twins.join("old-0000000000000000.lock").exists(),
+            "a lock no run has held for a day was left to gather"
+        );
+        assert!(
+            twins.join("new-0000000000000000.lock").exists(),
+            "a lock left within the day was taken away"
+        );
+        assert!(
+            twins.join("going-0000000000000000.lock").exists(),
+            "a lock a run still holds was taken away"
+        );
+    }
+
+    #[test]
     fn a_run_waiting_on_its_twin_says_it_still_waits() {
         let state = tempfile::tempdir().unwrap();
         let first = at("abc", "/t", ASKED);
