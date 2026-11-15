@@ -8,10 +8,9 @@ the harness, 28 to 34% of the longest stretch that held the host's one
 thread.
 
 Sort the map once, in the order jiti's own sort gives, and mark it with
-pathe's global symbol so every loader takes it as it is. Make one loader
-for the process rather than one per extension: a loader's state never
-changes, and with moduleCache off each import starts from an empty module
-cache, so each extension's modules are still evaluated afresh.
+pathe's global symbol, so every loader takes it as it is. The loader each
+extension gets is otherwise unchanged, so each extension's modules are
+still evaluated afresh, and the lines that make it stay as pi has them.
 
 Apply only to the host's private pi build; ordinary interactive pi stays
 unchanged.
@@ -67,54 +66,3 @@ unchanged.
  
  	return _aliases;
  }
-@@ -667,14 +691,20 @@ function isCurrentCacheToken(cacheToken: ExtensionCacheToken | undefined): cache
- 	);
- }
- 
--async function loadExtensionModule(extensionPath: string, cacheToken?: ExtensionCacheToken) {
--	if (isCurrentCacheToken(cacheToken)) {
--		const cachedFactory = cachedFactoryOf(extensionPath, cacheToken);
--		if (cachedFactory) {
--			return cachedFactory;
--		}
--	}
-+// pi-host: one loader for the process rather than one per extension. A loader's state never
-+// changes once made, and with moduleCache off each import starts from an empty module cache, so
-+// every extension's modules are still evaluated afresh, as with a loader of their own.
-+let jitiPromise: Promise<ReturnType<typeof createJiti>> | undefined;
- 
-+function getJiti(): Promise<ReturnType<typeof createJiti>> {
-+	jitiPromise ??= makeJiti().catch((error: unknown) => {
-+		jitiPromise = undefined;
-+		throw error;
-+	});
-+	return jitiPromise;
-+}
-+
-+async function makeJiti(): Promise<ReturnType<typeof createJiti>> {
- 	const createJitiImpl = await getCreateJiti();
- 	// Compiled binaries and the bundled Node distribution use embedded modules.
- 	// Source TypeScript reuses host modules and root tsconfig paths. Unbundled
-@@ -684,11 +714,21 @@ async function loadExtensionModule(extensionPath: string, cacheToken?: Extension
- 		: isTypeScriptSourceRuntime
- 			? { virtualModules: await getVirtualModules(), tsconfigPaths: true }
- 			: { alias: getAliases() };
--	const jiti = createJitiImpl(import.meta.url, {
-+	return createJitiImpl(import.meta.url, {
- 		moduleCache: false,
- 		...resolutionOptions,
- 	});
-+}
- 
-+async function loadExtensionModule(extensionPath: string, cacheToken?: ExtensionCacheToken) {
-+	if (isCurrentCacheToken(cacheToken)) {
-+		const cachedFactory = cachedFactoryOf(extensionPath, cacheToken);
-+		if (cachedFactory) {
-+			return cachedFactory;
-+		}
-+	}
-+
-+	const jiti = await getJiti();
- 	const module = await jiti.import(canonicalizePath(extensionPath), { default: true });
- 	const factory = module as ExtensionFactory;
- 	if (typeof factory !== "function") {
