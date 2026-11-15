@@ -442,12 +442,9 @@
     "due": "2026-11-16",
     "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 3380,
-    "reason": "failed, then passed, at 0d36a13a4b65",
+    "reason": "failed 3 of 3 on idle builders on 2026-11-15: sessions reopened while their screen is gone are asked onto the wrong screen, a race in the session restore",
     "subtests": [
-      "test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window",
-      "test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they_sat",
-      "test_workspaces_go_back_in_the_order_joel_set_as_screens_come_and_go",
-      "test_workspaces_moved_from_a_screen_turned_off_stay_where_joel_puts_them"
+      "test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they_sat"
     ],
     "test": "vm-screens-keep-places"
   },
