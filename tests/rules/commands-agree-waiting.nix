@@ -79,7 +79,6 @@
     "exits"
     "helps"
   ];
-  pi-ask = [ "helps" ];
   pi-carry = [ "helps" ];
   pi-keys = [
     "kit"
