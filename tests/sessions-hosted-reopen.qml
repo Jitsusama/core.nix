@@ -11,7 +11,9 @@ pragma ComponentBehavior: Bound
 // one its host's own list names, it begins none; one whose hosted presence
 // outlived its host's list is begun; and one parked in its holder here is
 // woken, told to carry on, its place kept for its window to open there as it
-// wakes. It exits 0 once that holds, and otherwise 1, saying what didn't.
+// wakes. One whose folder is gone starts its quest afresh, under an id of its
+// own, in the folder the harness's quest index says a new one starts in. It
+// exits 0 once that holds, and otherwise 1, saying what didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -114,6 +116,8 @@ ShellRoot {
                 told();
             else if (stage === "asked")
                 asked();
+            else if (stage === "adrift")
+                adrift();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -299,6 +303,34 @@ ShellRoot {
         Expect.expect("its place kept for its window as it wakes", place?.slept === true
             && place?.asleep === true && typeof place?.workspace === "number",
             JSON.stringify(Sessions.keptPlaces));
+        // The one begun opens, so the walk goes on to the next asked.
+        const classed = /\/pi-sessions\/kitty\.sock (pi-session\.\d+) /u
+            .exec(piFor("s-stale")[0])?.[1] ?? "";
+        const window = { id: 51, pid: 510, workspace_id: 41, session: true, opened: classed,
+            layout: { pos_in_scrolling_layout: [2, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "51": window });
+        Niri.revision += 1;
+        windowsTell({ changed: [windowRecord(51, classed, 41)] });
+        stage = "adrift";
+        Niri.windowOpenedOrChanged(window);
+        Sessions.reopenAll([{ id: "s-adrift", cwd: "/given-back", quest: "QEST-ADRIFT" }],
+            (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone, and nothing started afresh`),
+            kept({}), Sessions.carryOn);
+    }
+
+    // Its folder given back, its quest starts afresh where the harness says,
+    // under an id of its own, since pi resumes a session only in its own
+    // folder; the one it stands in for is never begun.
+    function adrift() {
+        const started = Niri.spawns.filter(command =>
+            command.includes(" env QUEST_WORKFLOW_AUTOLOAD_ID=QEST-ADRIFT "));
+        if (started.length === 0)
+            return;
+        const start = `${Quickshell.env("XDG_STATE_HOME")}/trees/keel`;
+        Expect.expect("its quest started afresh in its start, under an id of its own",
+            started.length === 1 && started[0].includes(`--directory ${start} env `)
+            && /pi --session-id [0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab]/u.test(started[0])
+            && !Niri.spawns.some(command => command.includes("s-adrift")), Niri.spawns.join("\n"));
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
     }

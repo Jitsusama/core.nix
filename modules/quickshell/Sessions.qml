@@ -1321,8 +1321,10 @@ Singleton {
     // waits for niri to open the one before, or half a minute if it never
     // does, and for two seconds after it began (reopenPace). One with
     // nowhere kept opens beside where Joel was, after the rest, and Joel
-    // is taken back there at the end. `gone(one, cwd)` is
-    // told of one whose folder is gone, which isn't opened. `keptAt(id)`
+    // is taken back there at the end. One whose folder is gone starts its
+    // quest afresh where a new session on it starts (reopenAfresh), and
+    // `gone(one, cwd)` is told of one with no quest or no such folder,
+    // which isn't opened. `keptAt(id)`
     // says where one sat: by default its place this boot while it has one,
     // else the restored boot's (Places.keptFor), so one pi's host gave back
     // this boot opens where its viewer sat, not where the boot before left
@@ -1661,8 +1663,7 @@ Singleton {
         lookFor([next.one.cwd], there => {
             reopening.looking = false;
             if (!there[0]) {
-                next.gone?.(next.one, next.one.cwd);
-                reopenNext();
+                root.reopenAfresh(next);
                 return;
             }
             // Placed by its connector and the number it's given now, so it
@@ -1817,6 +1818,49 @@ Singleton {
         if (name === "")
             return "";
         const file = hostListing.createObject(root, { path: `${state}/hosts/${name}` }) as FileView;
+        const text = file.text();
+        file.destroy();
+        return text;
+    }
+
+    // One whose folder is gone starts its quest afresh in the folder the
+    // harness says a new session on it starts in, and is walked again as
+    // that, so it lands where the one it stands in for sat; only with no
+    // quest, or no start there, is `gone` told and it left shut (OSPHT4's
+    // rollback drill, 2026-11-15 [58d7fa8e], where two stayed shut so).
+    // pi resumes a session only in its own folder, asking first in any
+    // other, so it starts under an id of its own (Places.afresh).
+    function reopenAfresh(next) {
+        const quest = next.one.quest ?? "";
+        const start = quest === "" || next.one.afreshFor !== undefined ? ""
+            : Places.questStart(root.questIndex(), quest);
+        if (start === "" || start === next.one.cwd) {
+            next.gone?.(next.one, next.one.cwd);
+            reopenNext();
+            return;
+        }
+        reopening.looking = true;
+        lookFor([start], there => {
+            reopening.looking = false;
+            if (!there[0]) {
+                next.gone?.(next.one, next.one.cwd);
+                reopenNext();
+                return;
+            }
+            const id = Places.freshId(Date.now(), Math.random);
+            console.info(`sessions: ${next.one.id}'s folder, ${next.one.cwd}, is gone, so `
+                + `${quest} starts afresh in ${start}, as ${id}`);
+            reopening.queue = [Object.assign({}, next, { one: Places.afresh(next.one, start, id) })]
+                .concat(reopening.queue);
+            reopenNext();
+        });
+    }
+    // The harness's index of quests, read as it is now, or "" for none.
+    // It's big and rewritten often, so it's read, as a host's list is, only
+    // as a folder is found gone, never on a timer or a frame.
+    function questIndex() {
+        const file = hostListing.createObject(root, {
+            path: `${state}/quest-workflow/quests.json` }) as FileView;
         const text = file.text();
         file.destroy();
         return text;

@@ -405,6 +405,36 @@ function foundHere(id, running, parked, listed) {
     return { as: "running", session: awake };
 }
 
+// The folder a new session on `quest` starts in, as `text`, the harness's
+// quest index, says its quest spawn chooses it, or "" for no index, no
+// such quest, or a start that isn't a whole path.
+function questStart(text, quest) {
+    try {
+        const start = (JSON.parse(text)?.quests ?? []).find(one => one?.id === quest)?.start;
+        return typeof start === "string" && start.startsWith("/") ? start : "";
+    } catch (_error) {
+        return "";
+    }
+}
+
+// A new session's id for pi, as the harness mints one: a UUID version 7,
+// of `now` in milliseconds, then `random`'s answers, each in [0, 1).
+function freshId(now, random) {
+    const hex = (count) => Array.from({ length: count },
+        () => Math.floor(random() * 16).toString(16)).join("");
+    const time = Math.floor(now).toString(16).padStart(12, "0").slice(-12);
+    const variant = (8 + Math.floor(random() * 4)).toString(16);
+    return `${time.slice(0, 8)}-${time.slice(8)}-7${hex(3)}-${variant}${hex(3)}-${hex(12)}`;
+}
+
+// What Reopen Them All begins as `id` in `start` for `one`, whose folder
+// is gone: a session afresh on its quest, as the harness's own reopen
+// does (sessionToReopen), since pi resumes one only in its own folder;
+// `afreshFor` names the session it stands in for.
+function afresh(one, start, id) {
+    return Object.assign({}, one, { id, cwd: start, fresh: true, afreshFor: one.id });
+}
+
 // Those of `pending` (each `{ id, wants, carried, leads }`, as reopened,
 // `wants` when it waits on Joel) to tell to carry on now, in the order
 // they're told: those waiting on Joel, then those carried in from another
