@@ -18,7 +18,7 @@ const READ_IN_MS: i64 = 1_000;
 /// One answered ask, as its line says it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ask {
-    /// released, refused, changed, locked, expired or unseen.
+    /// released, granted, refused, changed, locked, expired or unseen.
     pub outcome: String,
     /// How long it was on screen when he answered, where the launcher said.
     pub shown_ms: Option<i64>,
@@ -55,6 +55,9 @@ pub struct Asks {
     pub again: u64,
     /// Asks the asking tool says a minted token would have spared.
     pub avoidable: u64,
+    /// Asks a standing yes let through, Joel not asked: the asks the
+    /// grants he made spared him.
+    pub granted: u64,
     /// Each item and command asked for in the day, by their hashes.
     pub asked: BTreeSet<(String, String)>,
 }
@@ -63,6 +66,12 @@ impl Asks {
     /// Count one answered ask.
     pub fn took(&mut self, ask: &Ask) {
         if ask.outcome == "unseen" {
+            return;
+        }
+        // A standing yes let it through without a row, so Joel wasn't
+        // asked again; what grants spare him shows as `again` falling.
+        if ask.outcome == "granted" {
+            self.granted += 1;
             return;
         }
         self.shown += 1;
@@ -92,10 +101,14 @@ impl Asks {
     #[must_use]
     pub fn said(&self) -> Option<String> {
         (self.shown > 0).then(|| {
-            format!(
+            let said = format!(
                 "{} shown, {} said yes to before it could be read, {} asked again",
                 self.shown, self.unread_yeses, self.again
-            )
+            );
+            match self.granted {
+                0 => said,
+                granted => format!("{said}, {granted} let through by a standing yes"),
+            }
         })
     }
 }
@@ -136,6 +149,27 @@ mod tests {
         assert_eq!(
             asks.said().as_deref(),
             Some("3 shown, 1 said yes to before it could be read, 1 asked again"),
+            "the day's asks in words"
+        );
+    }
+
+    #[test]
+    fn an_ask_a_standing_yes_let_through_is_neither_shown_nor_asked_again() {
+        let mut asks = Asks::default();
+        asks.took(&ask("released", Some(2_500), "a", "unknown"));
+        asks.took(&ask("granted", None, "a", "unknown"));
+        asks.took(&ask("granted", None, "a", "unknown"));
+        assert_eq!(
+            (asks.shown, asks.again, asks.granted),
+            (1, 0, 2),
+            "an ask a standing yes let through was counted as one Joel saw"
+        );
+        assert_eq!(
+            asks.said().as_deref(),
+            Some(
+                "1 shown, 0 said yes to before it could be read, 0 asked again, \
+                 2 let through by a standing yes"
+            ),
             "the day's asks in words"
         );
     }
