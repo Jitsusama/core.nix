@@ -114,6 +114,18 @@ onLinux {
         && lib.any (lib.hasSuffix "/op") home.jitsusama.passwords.managers."1password".command
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
       );
+  # While the place is off, the shell's own config names no passwords
+  # daemon, so an unfenced process that rewrites the off setting finds
+  # nothing for the shell to run. It closes that one setting, not Joel's
+  # session: such a process can still start the daemon itself, as it can
+  # today, until the agent fence covers every session.
+  the-passwords-place-off-gives-the-shell-no-daemon =
+    let
+      shellConfig = (account graphical).xdg.configFile."quickshell/Providers.qml".text;
+    in
+    holds "the-passwords-place-off-gives-the-shell-no-daemon"
+      "The shell's config names the passwords daemon while the Passwords place is off."
+      (!lib.hasInfix "/bin/passwords" shellConfig);
   # Nothing of the Passwords place, nor the daemon interface it asks its
   # daemon through, answers the shell's IPC, so no `qs ipc call` another
   # process makes reaches a secret or lets a manager in, now or once
