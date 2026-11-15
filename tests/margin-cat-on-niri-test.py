@@ -863,5 +863,7 @@ def test_a_row_closed_under_it_has_it_fall_at_once(shell: Shell) -> None:
     walked = steps(shell, since)
     way = walked[0]["walk"]["beats"]
     assert set_off < RESTS / 2, f"the cat hung {set_off:.2f} s where its row was, then went"
-    assert way[:3] == ["rides", "lands", "shakes"], f"the cat's way off was {way}"
+    said, _ = shell.said_since(since)
+    told = [report[len(SITS) :][:400] for report in said if report.startswith(SITS)][:6]
+    assert way[:3] == ["rides", "lands", "shakes"], f"the cat's way off was {way}: {told}"
     assert "shoved" not in way, f"the cat was shoved across a window: {way}"

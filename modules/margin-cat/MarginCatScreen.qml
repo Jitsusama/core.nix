@@ -220,14 +220,16 @@ PanelWindow {
             roams = null;
             resting.stop();
             walkFrom(hurried, saw);
-        } else if (place !== null && going === null && sat !== wanted
-            && Niri.windows[sat] === undefined) {
-            // The window it sat on closed under it, which niri takes
-            // away at once: it gets off now, never waiting for the keys
-            // to rest (VKCF3Z 26038726), and a row of a column falls
+        } else if (place !== null && standsOn() !== wanted && standsOn() !== null
+            && Niri.windows[standsOn()] === undefined) {
+            // The window it sat on, or rode, closed under it, which niri
+            // takes away at once: it gets off now, never waiting for the
+            // keys to rest (VKCF3Z 26038726), and a row of a column falls
             // ahead of the window grown down over it (Joel, 2026-11-14
             // 17:24: "it seems to hang out in the middle then walk
-            // across, that is not believable").
+            // across, that is not believable"). niri moves a closing
+            // window's tile before it says the window's gone, which sets
+            // a ride going first (a nested niri, 2026-11-14).
             resting.stop();
             walkFrom(true, saw);
         } else if (place === null || (going === null && wanted === sat)) {
@@ -263,6 +265,12 @@ PanelWindow {
     // the windows it `saw` (MarginCatFalls.js's rides).
     function walkFrom(hurried: bool, saw: var): void {
         walkTo(hurried, saw, there);
+    }
+
+    // The window it stands on: the one its walk goes to, walking, or
+    // the one it sat on.
+    function standsOn(): var {
+        return going === null ? sat : goingTo;
     }
 
     // Its workspace emptied, it falls from where it is to the floor
@@ -307,8 +315,8 @@ PanelWindow {
             floats: Floats.of(tiles, 0),
             floated: saw ? Floats.of(saw, 0) : [],
             spring: Theme.motion.spring,
-            // The window it sat on gone, until it sits again.
-            closed: sat !== null && Niri.windows[sat] === undefined,
+            // The window it stands on gone, until it sits again.
+            closed: standsOn() !== null && Niri.windows[standsOn()] === undefined,
             ahead: MarginCat.behind(frameMs, "resize"),
             frame: frameMs,
             marks: marksLit
