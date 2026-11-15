@@ -45,7 +45,8 @@ switch, the receiver and the printer are net's alone, and `eero` keeps only what
   with no figure (eero gives Wi-Fi backhaul only as bars) is counted in
   `unmeasured`, never guessed. A concern is a radio busy 50% or more (the
   map's gold), a Wi-Fi link at -70 dBm or weaker, a cable under a gigabit,
-  or the internet as a chokepoint, said once each way.
+  the internet as a chokepoint, said once each way, or a modem channel that
+  lost 100 or more it couldn't repair and ten times any other's.
 
 A figure keeps its unit in its key (`speed_mbps`, `power_dbmv`, `up_s`),
 and one a source doesn't give is `null`, never a guess. `src/model.rs`

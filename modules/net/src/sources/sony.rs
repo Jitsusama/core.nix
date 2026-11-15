@@ -215,7 +215,7 @@ pub fn read(
     let answering = !found.is_empty();
     let source = Source {
         name: NAME.into(),
-        what: "the Sony receivers eero lists, asked only to read".into(),
+        what: "the Sony receivers eero lists, read and never changed".into(),
         state: if answering {
             SourceState::Answering
         } else {

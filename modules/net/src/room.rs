@@ -27,6 +27,16 @@ const WEAK_DBM: i32 = -70;
 /// does a gigabit, so less is a bad cable or a port that fell back.
 const GIGABIT: u32 = 1000;
 
+/// A downstream channel that has lost at least this many pieces of data
+/// it couldn't repair, and this many times more than any other channel,
+/// is a concern. Losses on every channel alike are the line or the modem;
+/// one channel far above the rest is noise on its frequency, which the
+/// provider can find. Ten times keeps a little spread from counting, and
+/// a hundred keeps a modem that has just started from flagging its first
+/// few. On 15 Nov channel 16 had lost 878 and no other more than 18.
+const LOST_MANY: u64 = 100;
+const LOST_TIMES: u64 = 10;
+
 /// Fills in each device's path and the network's concerns, replacing any
 /// worked out before, so the same record gives the same answer.
 pub fn work_out(network: &mut Network) {
@@ -196,6 +206,7 @@ fn concerns(network: &Network) -> Vec<Concern> {
             });
         }
     }
+    concerns.extend(lost(network));
     if let Some(internet) = &network.internet {
         concerns.extend(ceiling(network, internet, "down", |path| {
             path.down.as_ref()
@@ -203,6 +214,52 @@ fn concerns(network: &Network) -> Vec<Concern> {
         concerns.extend(ceiling(network, internet, "up", |path| path.up.as_ref()));
     }
     concerns
+}
+
+/// The modem's downstream channel that lost far more than every other, if
+/// one did.
+fn lost(network: &Network) -> Option<Concern> {
+    let device = network
+        .devices
+        .iter()
+        .find(|device| device.id == modem::ID)?;
+    let channels = &device.modem.as_ref()?.downstream;
+    let (worst, most) = channels
+        .iter()
+        .enumerate()
+        .filter_map(|(at, channel)| channel.uncorrectable.map(|count| (at, count)))
+        .max_by_key(|(_, count)| *count)?;
+    let others = channels
+        .iter()
+        .enumerate()
+        .filter(|(at, _)| *at != worst)
+        .filter_map(|(_, channel)| channel.uncorrectable)
+        .max()
+        .unwrap_or(0);
+    if most < LOST_MANY || most < others.saturating_mul(LOST_TIMES) {
+        return None;
+    }
+    let channel = &channels[worst];
+    let which = channel.channel.map_or_else(
+        || format!("downstream {} channel", channel.kind),
+        |number| format!("downstream channel {number}"),
+    );
+    let provider = network
+        .internet
+        .as_ref()
+        .and_then(|internet| internet.provider.as_deref())
+        .unwrap_or("the provider");
+    Some(Concern {
+        kind: ConcernKind::Lost,
+        device: device.id.clone(),
+        on: Some(which.clone()),
+        other: None,
+        says: format!(
+            "The modem's {which} has lost {most} pieces of data it couldn't repair since the \
+             modem started, against at most {others} on any other; if that keeps climbing, \
+             {provider} can check the line"
+        ),
+    })
 }
 
 /// The internet as the narrowest hop one way, said once for every device
@@ -391,6 +448,21 @@ mod tests {
     }
 
     /// Sets a node's 5 GHz high radio busy this share of the time.
+    fn lost(network: &mut Network, channel: u32, count: u64) {
+        let modem = network
+            .devices
+            .iter_mut()
+            .find(|device| device.id == "modem")
+            .and_then(|device| device.modem.as_mut())
+            .expect("the record has the modem's channels");
+        let channel = modem
+            .downstream
+            .iter_mut()
+            .find(|each| each.channel == Some(channel))
+            .expect("the modem has the channel");
+        channel.uncorrectable = Some(count);
+    }
+
     fn busy(network: &mut Network, node: &str, pct: u32) {
         let radio = network
             .devices
@@ -444,6 +516,55 @@ mod tests {
             .filter(|concern| concern.kind == ConcernKind::Busy)
             .collect();
         assert!(busy.is_empty(), "radios 37% to 41% busy: {busy:?}");
+    }
+
+    #[test]
+    fn a_channel_losing_far_more_than_the_rest_is_a_concern() {
+        // The recorded modem's channel 16 lost 878 it couldn't repair; no
+        // other channel lost more than 18.
+        let mut network = network();
+        work_out(&mut network);
+        let lost: Vec<_> = network
+            .concerns
+            .iter()
+            .filter(|concern| concern.kind == ConcernKind::Lost)
+            .collect();
+        assert_eq!(lost.len(), 1, "one channel stands out: {lost:?}");
+        assert_eq!(lost[0].device, "modem");
+        assert_eq!(lost[0].on.as_deref(), Some("downstream channel 16"));
+        assert_eq!(
+            lost[0].says,
+            "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair \
+             since the modem started, against at most 18 on any other; if that keeps climbing, \
+             Example ISP can check the line"
+        );
+    }
+
+    #[test]
+    fn channels_losing_alike_are_no_concern() {
+        // 878 against 100 is under ten times, so it's the line, not one
+        // frequency; and a channel that's lost few is never a concern.
+        let mut alike = network();
+        lost(&mut alike, 3, 100);
+        work_out(&mut alike);
+        assert!(
+            !alike
+                .concerns
+                .iter()
+                .any(|concern| concern.kind == ConcernKind::Lost),
+            "878 against 100 is no lone channel: {:?}",
+            alike.concerns
+        );
+        let mut few = network();
+        lost(&mut few, 16, 90);
+        work_out(&mut few);
+        assert!(
+            !few.concerns
+                .iter()
+                .any(|concern| concern.kind == ConcernKind::Lost),
+            "90 lost is few: {:?}",
+            few.concerns
+        );
     }
 
     #[test]

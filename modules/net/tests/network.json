@@ -28,7 +28,7 @@
     },
     {
       "name": "sony",
-      "what": "the Sony receivers eero lists, asked only to read",
+      "what": "the Sony receivers eero lists, read and never changed",
       "state": "answering",
       "read_at": 1794702033,
       "since": null,
@@ -36,7 +36,7 @@
     },
     {
       "name": "hp",
-      "what": "the HP printers eero lists, asked only to read",
+      "what": "the HP printers eero lists, read and never changed",
       "state": "answering",
       "read_at": 1794702033,
       "since": null,
@@ -6711,6 +6711,12 @@
       "on": "5 GHz",
       "other": "eero:2002",
       "says": "laptop computer 1 reaches Study at -75 dBm"
+    },
+    {
+      "kind": "lost",
+      "device": "modem",
+      "on": "downstream channel 16",
+      "says": "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair since the modem started, against at most 18 on any other; if that keeps climbing, Example ISP can check the line"
     },
     {
       "kind": "ceiling",
