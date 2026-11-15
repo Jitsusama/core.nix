@@ -133,6 +133,10 @@ let
   # Emoji take a new chunk for every miss, each held by the few rows it
   # kept, 30 MB for the rest of the run
   # (qtdeclarative-collector-keeps-up.patch).
+  # Each of those string values is held at its own length, since grown a
+  # character at a time it kept up to twice the room it needed, the largest
+  # holder of the shell's malloc memory
+  # (qtdeclarative-json-strings-at-their-length.patch).
   # Its Wayland client focuses the window a sync asks for even while an
   # earlier change is still queued, since a leave and an enter close
   # together left the launcher holding the keys yet never active
@@ -162,6 +166,7 @@ let
             ./qtdeclarative-dates-without-digits-refused.patch
             ./qtdeclarative-json-strings-kept-once.patch
             ./qtdeclarative-collector-keeps-up.patch
+            ./qtdeclarative-json-strings-at-their-length.patch
           ];
         });
       }
