@@ -256,6 +256,7 @@
         load-proof = pkgs.callPackage ../../modules/load-proof/package.nix { };
         meaning = dictation;
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
+        net = pkgs.callPackage ../../modules/net/package.nix { };
         noise-cancelled = dictation;
         open-now = recentFiles;
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
