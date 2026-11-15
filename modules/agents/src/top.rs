@@ -455,7 +455,9 @@ mod tests {
         closed: &[Value],
         talks: &HashMap<String, Vec<Talk>>,
     ) -> Vec<Value> {
-        let spent = |address: &str| (address == "O").then(|| "$604".to_owned());
+        // As spend-watch says an estimate, its own "about" first
+        // (money.rs's maybe_about), which the row says once.
+        let spent = |address: &str| (address == "O").then(|| "about $604".to_owned());
         let known = Known {
             spent: &spent,
             closed,
