@@ -263,19 +263,27 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     } else {
         "still runs"
     };
+    let theirs = files_of(held.gate).unwrap_or_default();
     let said = format!(
         "merge-net: the gate in {} at {}, which counts as started {} minutes before this \
-         one's, as its tree's first gate did, {state} and changes {} too; merging first \
+         one's, as its tree's first gate did, {state} and {}; merging first \
          would leave its pass stale, so merge again once it ends, which needs no new run \
          here unless it merges first and moves these; this one waits at most {} more \
          minutes, then goes first",
         held.gate.folder.display(),
         crate::state::short(&held.gate.commit),
         (asking.started - held.started) / 60,
-        held.shared.join(", "),
+        what_it_shares(&theirs, &held.shared),
         (PATIENCE.saturating_sub(now.saturating_sub(kept))).div_ceil(60)
     );
     Some((said, held.shared))
+}
+
+/// What a gate changing `theirs` shares with the change asking, `shared`
+/// among that change's files, in words.
+fn what_it_shares(theirs: &[String], shared: &[String]) -> String {
+    let _ = theirs;
+    format!("changes {} too", shared.join(", "))
 }
 
 /// What a gate changing `theirs` shares with a change to `ours`: the files
@@ -469,6 +477,35 @@ mod tests {
 
     fn owned(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_gate_is_said_to_change_a_file_only_when_it_does() {
+        // On 15 November a gate changing terminal-kit was said to change
+        // code-health's files, which read it, so its owner went looking
+        // for a wrong merge base.
+        let theirs = owned(&["modules/terminal-kit/src/lib.rs", "modules/cadence/src/day.rs"]);
+        for (shared, said) in [
+            (
+                owned(&["modules/cadence/src/day.rs"]),
+                "changes modules/cadence/src/day.rs too",
+            ),
+            (
+                owned(&["modules/code-health/src/hour.rs"]),
+                "changes a crate this one's modules/code-health/src/hour.rs reads or is read by",
+            ),
+            (
+                owned(&["modules/cadence/src/day.rs", "modules/code-health/src/hour.rs"]),
+                "changes modules/cadence/src/day.rs too, and a crate this one's \
+                 modules/code-health/src/hour.rs reads or is read by",
+            ),
+        ] {
+            assert_eq!(
+                what_it_shares(&theirs, &shared),
+                said,
+                "what a gate shares with {shared:?} was said wrongly"
+            );
+        }
     }
 
     fn everyone(_: &Gate) -> bool {
