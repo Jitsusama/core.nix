@@ -1424,7 +1424,7 @@ def presented_after(shell: Shell, key: str) -> int:
         assert time.monotonic() < deadline, f"{key} was never presented: {presented}"
         presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
         time.sleep(launcher_on_niri.POLL)
-    return round(presented[before]["at"] - presented[before]["from"])
+    return round(cast("float", presented[before]["at"]) - cast("float", presented[before]["from"]))
 
 
 @pytest.mark.usefixtures("at_shots_scale")
@@ -1466,9 +1466,7 @@ def test_networks_is_one_row_after_the_tree_its_kinds_under_headings_never_selec
     shell.launcher_until(lambda shown: shown["selected"]["name"] == "core.nix")
     # Return on a network steps into its cells, each its session's own row.
     shell.step_in()
-    shell.launcher_until(
-        lambda shown: sorted(shown["rows"]) == ["Listening Quest", "Paused Quest"]
-    )
+    shell.launcher_until(lambda shown: sorted(shown["rows"]) == ["Listening Quest", "Paused Quest"])
     shell.close_launcher()
 
 
