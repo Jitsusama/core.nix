@@ -327,14 +327,19 @@ Floating {
     // rest of the drawer, and the rest is the fold's, opened by za as the
     // nerdy bits are (VKCF3Z's wrap rule 4, 76ba12d0).
     readonly property int proseMost: 5
-    // Its prose laid in its face at its width, and where it's cut, which a
-    // binding sees only by reading the face, as nerdLabelsWide does; words
-    // in the mono that another program wrote are never cut.
-    readonly property var proseLaid: {
-        void bodyFace.font;
-        return prose && !runs && !whole && body !== ""
+    // Its prose laid at its width as Qt draws it, and where it's cut; words
+    // in the mono that another program wrote are never cut. It's laid by
+    // layProse as anything it reads changes, never bound: it's measured
+    // by giving proseInk each cut of the words in turn, which a binding
+    // reading proseInk would be told of while it read, as a loop.
+    property var proseLaid: null
+    readonly property var proseAsked: [prose, runs, whole, body, shown?.styled === true,
+        wordsBox.width, bodyText.font]
+    onProseAskedChanged: layProse()
+    function layProse() {
+        proseLaid = prose && !runs && !whole && body !== ""
             ? Prose.lines({ text: body, styled: shown?.styled === true }, wordsBox.width,
-                proseMost, text => bodyFace.advanceWidth(text))
+                proseMost, drawnWidthOf(Measures.drawnFace(bodyText.font, "plain")))
             : null;
     }
     // Whether its prose runs past its lines, so the fold holds the rest.
@@ -1612,16 +1617,41 @@ Floating {
     // Whether that fade is drawn, as it is wherever effects draw.
     readonly property bool fadeDrawn: wordsFaded.item !== null
     // Its words as drawn, laid in lines as Qt wraps them, each its letters,
-    // without the space a laid line ends on, and how wide they are, for
-    // the launcher to report.
-    readonly property var proseLines: {
-        void bodyFace.font;
+    // without the space a laid line ends on, and how wide Qt draws them,
+    // for the launcher to report. Laid by layLines, as proseLaid is.
+    property var proseLines: []
+    readonly property var linesAsked: [bodySaid, shown?.styled === true, wordsBox.width,
+        bodyText.font]
+    onLinesAskedChanged: layLines()
+    function layLines() {
         const plain = shown?.styled === true ? Prose.lettersOf(bodySaid).plain : bodySaid;
-        const width = widthIn(bodyFace);
-        return Prose.laid(plain, wordsBox.width, width).map(line => {
+        const width = drawnWidthOf(Measures.drawnFace(bodyText.font, "plain"));
+        proseLines = Prose.laid(plain, wordsBox.width, width).map(line => {
             const letters = plain.slice(line.start, line.end).replace(/\s+$/, "");
             return { letters, width: width(letters) };
         });
+    }
+    // How wide Qt draws words in the words' face (`face`, Measures.js's
+    // drawnFace), each measured once and kept with what Texts drew: the
+    // face's metrics put a line of the serif some 3% wider than Qt draws
+    // it (236 against 229 pixels at Words), which broke lines where Qt's
+    // don't. Only a handler asks it, never a binding.
+    function drawnWidthOf(face) {
+        return words => {
+            const held = Measures.drawnWidth(face, words);
+            if (held !== undefined)
+                return held;
+            proseInk.text = words;
+            const wide = proseInk.advanceWidth;
+            Measures.drew(face, words, wide);
+            return wide;
+        };
+    }
+    // The measure itself, laid out as the words are drawn.
+    TextMetrics {
+        id: proseInk
+        font: bodyText.font
+        renderType: bodyText.renderType
     }
     // The letters of the line that fades, or the fade would fall past its
     // last letter.
@@ -1783,6 +1813,8 @@ Floating {
     readonly property bool wordsCut: shownAndHidden.wordsFrom >= 0
     onWordsCutChanged: Qt.callLater(drawer.countWords)
     Component.onCompleted: {
+        drawer.layProse();
+        drawer.layLines();
         drawer.countWords();
         drawer.keptTo(factsKept, facts.length);
     }
