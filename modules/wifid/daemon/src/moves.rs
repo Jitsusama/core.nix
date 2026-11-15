@@ -408,7 +408,7 @@ mod tests {
         let known = known(&lately, &learned, now, 20);
 
         let next = chosen(
-            &mut Chooser::default(),
+            &mut choose::tests::after_a_bad_minute(DESK),
             now,
             (&joined(DESK), &carried(52)),
             &around,
