@@ -452,5 +452,15 @@
       "test_workspaces_moved_from_a_screen_turned_off_stay_where_joel_puts_them"
     ],
     "test": "vm-screens-keep-places"
+  },
+  {
+    "at": 1794702911,
+    "commit": "a52af4357be29c48580dbc6ecc5cc07e1ad3e61d",
+    "owner_pr": null,
+    "reason": "failed, then passed, at a52af4357be2",
+    "subtests": [
+      "test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts"
+    ],
+    "test": "the-launcher-answers-whats-typed-on-niri"
   }
 ]
