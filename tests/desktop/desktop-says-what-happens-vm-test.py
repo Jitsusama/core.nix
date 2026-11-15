@@ -48,7 +48,7 @@ CALL_GLYPH = "\U000f03f2"
 UNBLURRED = 0.5
 
 # What a search says going round an end, and with nothing sought before, as Vim's do
-# (modules/quickshell/launcher/words.json, field.hints).
+# (modules/quickshell/launcher/words/frame.json, field.hints).
 WRAPPED_BOTTOM = "search hit BOTTOM, continuing at TOP"
 WRAPPED_TOP = "search hit TOP, continuing at BOTTOM"
 E35 = "E35: No previous regular expression"

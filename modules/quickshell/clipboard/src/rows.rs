@@ -29,9 +29,9 @@ const ROUNDS_UP: f64 = 999.5;
 const BYTES: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
 
 /// The clipboard's words, as the launcher's vocabulary says them
-/// (modules/quickshell/launcher/words.json, the `clipboard` thing's
-/// `said`), the names of what Emoji's drawers say (its things under
-/// `emoji:`), and how the account writes numbers.
+/// (modules/quickshell/launcher/words/launcher.json, the `clipboard`
+/// thing's `said`), the names of what Emoji's drawers say (its things under
+/// `emoji:`, in emoji.json), and how the account writes numbers.
 #[derive(Debug, Default)]
 pub struct Words {
     said: BTreeMap<String, String>,

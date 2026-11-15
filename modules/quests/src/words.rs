@@ -1,5 +1,6 @@
 //! Quests' words, as the launcher's vocabulary says them
-//! (modules/quickshell/launcher/words.json, the `quests` thing's `said`),
+//! (modules/quickshell/launcher/words/launcher.json, the `quests` thing's
+//! `said`),
 //! read rather than written again here, so the summary says what the
 //! launcher would and a word changes in one place (Y2YBTS, 2026-11-11).
 
