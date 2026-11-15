@@ -776,6 +776,7 @@ pub fn building(folder: &Path, system: &str, checks: &[String]) -> Command {
 }
 
 pub mod runs;
+pub mod turns;
 
 #[cfg(test)]
 mod tests;
