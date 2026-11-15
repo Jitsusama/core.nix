@@ -167,9 +167,21 @@ function tier(name, typed, byWord) {
 }
 
 // The tier a row's name puts it in, for what it is, from its key and
-// `often` (key -> picks).
+// `often` (key -> picks). A program Joel's opened LEAD times is known by
+// each word of its name, so Google Chrome at "chro" is a name's start,
+// before a person whose name only starts so. A notice's words say
+// something about a thing rather than name it, so they never take a
+// name's tiers, and the thing comes first: at 22:27 "ch" and "chr" led
+// with a person, and "chro" and "chrome" with Camera's "chrome has MX
+// Brio 705 for Business open" (VKCF3Z, 2026-11-15).
 function rowTier(row, typed, often) {
-    return tier(row.name, typed, false);
+    const found = tier(row.name, typed, false);
+    const kind = kindOf(row.key);
+    if (kind === "notice") {
+        return Math.max(1, found);
+    }
+    const opened = (often?.[row.key] ?? 0) >= LEAD;
+    return kind === "program" && opened && found > NAME_START && found <= 1 ? NAME_START : found;
 }
 
 // The tier of a row found by its other words (`known`, as one string): by
@@ -191,10 +203,10 @@ function startsEvery(name, typed) {
     return query !== "" && query.split(" ").every(word => words.some(one => one.startsWith(word)));
 }
 
-// The tier of a collection's best match gathered at the top: the name's,
-// found `byName`, else what it holds, after every name.
+// The tier of a collection's best match gathered at the top: its name's,
+// as rowTier has it, found `byName`, else what it holds, after every name.
 function gatheredTier(best, typed, byName) {
-    return byName ? tier(best.name, typed, false) : CONTENT;
+    return byName ? rowTier(best, typed, {}) : CONTENT;
 }
 
 // Whether each word typed is one of a string's words whole.
