@@ -412,6 +412,36 @@ fn run_paced(
     (offered, outcome, started.elapsed())
 }
 
+// On 14 November a switch stopped the guard while a pass ran a command,
+// and the pass left an error line saying 1 of the 2 it tried failed, the
+// last "stopped with the guard": a stop asked for isn't the guard
+// failing. The stop is this thread's alone, and taken back before it ends.
+#[test]
+fn a_command_cut_short_by_the_guards_stop_is_kept_not_failed() {
+    let outcome = std::thread::spawn(|| {
+        // SAFETY: set is a valid sigset_t; the signal goes to this thread,
+        // which blocks it, and is taken back before the thread ends.
+        unsafe {
+            let mut set = std::mem::zeroed::<libc::sigset_t>();
+            libc::sigemptyset(&raw mut set);
+            libc::sigaddset(&raw mut set, libc::SIGTERM);
+            libc::pthread_sigmask(libc::SIG_BLOCK, &raw const set, std::ptr::null_mut());
+            libc::pthread_kill(libc::pthread_self(), libc::SIGTERM);
+            // A command that would outlast the test, so only the stop ends it.
+            let (_, outcome, _) = run(&["/bin/sh", "-c", "exec sleep 30"], Duration::from_secs(60));
+            let mut taken = 0;
+            libc::sigwait(&raw const set, &raw mut taken);
+            outcome
+        }
+    })
+    .join()
+    .unwrap();
+    assert!(
+        matches!(&outcome, Outcome::Kept(why) if why.contains("stopped with the guard")),
+        "a stop asked for was told as {outcome:?}"
+    );
+}
+
 #[test]
 fn a_producer_is_run_and_its_failure_told() {
     let second = Duration::from_secs(1);
