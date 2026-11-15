@@ -2511,6 +2511,8 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
     )
     sent = steered(words)
     assert sent["text"] == f"reply {key}\n{words}", sent
+    # Said now, so the void reads it into the run under way rather than after it.
+    assert sent.get("now") is True, sent
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 

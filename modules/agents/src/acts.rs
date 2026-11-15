@@ -32,7 +32,16 @@ pub fn steer_of(said: &Value, now_ms: u128) -> Option<Result<Value, String>> {
     } else if ask == "talk" {
         match said["text"].as_str() {
             Some(text) if !text.trim().is_empty() => {
-                json!({"text": text, "id": format!("talk-{now_ms}"), "from": "joel"})
+                let mut talk =
+                    json!({"text": text, "id": format!("talk-{now_ms}"), "from": "joel"});
+                // Said now, the words go into the run under way after its
+                // tool, as Super+S says them to the void, whose run only
+                // routes his last line; any other talk waits for the turn
+                // to end, as Joel asked (12 November, lib/mesh/steer.ts).
+                if said["now"] == Value::Bool(true) {
+                    talk["now"] = Value::Bool(true);
+                }
+                talk
             }
             _ => return Some(Err("a talk has words to say".to_owned())),
         }
@@ -120,6 +129,37 @@ mod tests {
             Some(Ok(json!({"ask": "steer", "address": "P9R1KI",
                 "steer": {"text": "what now?", "id": "talk-7", "from": "joel"}}))),
             "a talk says its words under an id of its own"
+        );
+    }
+
+    #[test]
+    fn a_talk_said_now_goes_into_the_turn_and_nothing_else_does() {
+        let talk = |now: Value| {
+            let mut said = json!({"ask": "talk", "address": "VOID01", "text": "and this"});
+            if !now.is_null() {
+                said["now"] = now;
+            }
+            steer_of(&said, 7)
+                .and_then(Result::ok)
+                .map(|asked| asked["steer"].clone())
+        };
+        assert_eq!(
+            talk(json!(true)),
+            Some(json!({"text": "and this", "id": "talk-7", "from": "joel", "now": true})),
+            "a talk said now goes into the run under way"
+        );
+        for unsaid in [json!(false), json!("true"), json!(1), Value::Null] {
+            assert_eq!(
+                talk(unsaid.clone()),
+                Some(json!({"text": "and this", "id": "talk-7", "from": "joel"})),
+                "a talk with now as {unsaid} waits for the turn to end"
+            );
+        }
+        assert_eq!(
+            steer_of(&json!({"ask": "pause", "address": "P", "now": true}), 7),
+            Some(Ok(json!({"ask": "steer", "address": "P",
+                "steer": {"act": "pause", "from": "joel"}}))),
+            "only words are said now, never an act"
         );
     }
 
