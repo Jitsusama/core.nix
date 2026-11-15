@@ -95,8 +95,11 @@ QtObject {
             ["pi", ""]);
         check("the lowest, knowing nothing more", runs([[7, ["less"]], [3, ["git", "log"]]]),
             ["git", ""]);
-        check("a session mycelium holds", runs([[5, ["mycelium", "--realm", "work", "hold", "--",
-            "pi", "--session", "01a1"]]]), ["pi", ""]);
+        check("a session mycelium holds", runs([[5, ["mycelium", "--realm", "work", "holds", "add",
+            "--", "pi", "--session", "01a1"]]]), ["pi", ""]);
+        // A window started before mycelium's holds took `add` still runs it as it was spelt.
+        check("a session mycelium holds, as it was spelt before", runs([[5, ["mycelium",
+            "--realm", "work", "hold", "--", "pi", "--session", "01a1"]]]), ["pi", ""]);
         check("a script by its name", runs([[5, ["node", "--max-old-space-size=4096",
             "/nix/store/x/bin/pi"]]]), ["pi", ""]);
         check("a shell's command by its first word", runs([[5, ["sh", "-c", "make test"]]]),

@@ -305,7 +305,7 @@ pub fn quest(readme: &str) -> Quest {
 }
 
 /// A holder the machine's node keeps a session in, as a line of
-/// `mycelium held` says: the command it holds, the pi it runs (0 while
+/// `mycelium holds` says: the command it holds, the pi it runs (0 while
 /// parked or gone), and the windows it shows in.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Holder {
@@ -341,7 +341,7 @@ pub enum Held {
     Not,
 }
 
-/// The holders in `mycelium held`'s output, a JSON line each, skipping
+/// The holders in `mycelium holds`' output, a JSON line each, skipping
 /// lines that aren't one.
 #[must_use]
 pub fn holders(said: &str) -> Vec<Holder> {
@@ -555,8 +555,12 @@ mod tests {
 
     #[test]
     fn the_realm_is_read_from_the_restart_words() {
+        assert_eq!(
+            realm_of("mycelium --realm work holds add -- pi"),
+            Some("work")
+        );
         assert_eq!(realm_of("mycelium --realm work hold -- pi"), Some("work"));
-        assert_eq!(realm_of("mycelium hold -- pi"), None);
+        assert_eq!(realm_of("mycelium holds add -- pi"), None);
     }
 
     #[test]
