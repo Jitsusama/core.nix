@@ -348,11 +348,11 @@ fn fact(span: &Span) -> Value {
 /// more than half the room.
 const INSET: usize = 4;
 
-/// A span as a person reads it: when, how long (ending `column` cells in),
-/// its name indented by how deep it sits, its service and trace, then its status and attributes.
-/// In a terminal the words after its head wrap beside it, under the name,
-/// or below it when the head takes more than half the room; into a pipe
-/// it's one line.
+/// A span as a person reads it: when, how long (its figure `column`
+/// cells wide), its name indented by how deep it sits, its service and
+/// trace, then its status and attributes. In a terminal the words after
+/// its head wrap beside it, under the name, or below it when the head
+/// takes more than half the room; into a pipe it's one line.
 fn row(span: &Span, depth: usize, zone: &TimeZone, room: Room, column: usize) -> String {
     let took = took(span);
     let head = format!(
