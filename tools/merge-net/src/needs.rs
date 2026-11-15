@@ -34,8 +34,22 @@ pub fn needs(base: &str) -> Result<ExitCode, String> {
         println!("(checks.nix or flake.nix didn't read, so no VM test is named for its files)");
         Vec::new()
     });
+    let clean = git(&["status", "--porcelain"]).is_ok_and(|status| status.is_empty());
+    let came_before = |commit: &str| {
+        Command::new("git")
+            .args(["merge-base", "--is-ancestor", commit, &merge_base])
+            .status()
+            .is_ok_and(|status| status.success())
+    };
+    // What a gate that passed here says moved is read before deciding
+    // nothing runs, since it costs no evaluation and a change can move a
+    // machine's initrd from a file no area names.
+    let record = ready::record(&head);
+    let kept = clean
+        .then(|| gated::named(&record, &merge_base, SYSTEM, &came_before))
+        .flatten();
     if owning.is_empty()
-        && rules::needs(&areas, &files, known.as_deref())
+        && rules::first(&areas, &files, kept.as_deref(), known.as_deref())
             .touched
             .is_empty()
     {
@@ -47,20 +61,9 @@ pub fn needs(base: &str) -> Result<ExitCode, String> {
     // hasn't, so changed-checks is asked which moved; it costs an
     // evaluation, which only a change touching an area or a VM test's
     // files pays, and none whose gate already passed at its head.
-    let clean = git(&["status", "--porcelain"]).is_ok_and(|status| status.is_empty());
-    let came_before = |commit: &str| {
-        Command::new("git")
-            .args(["merge-base", "--is-ancestor", commit, &merge_base])
-            .status()
-            .is_ok_and(|status| status.success())
-    };
-    let (said, asked) = gated::moved(
-        &ready::record(&head),
-        clean,
-        &merge_base,
-        &came_before,
-        || moved_from(base),
-    );
+    let (said, asked) = gated::moved(&record, clean, &merge_base, &came_before, || {
+        moved_from(base)
+    });
     gated::keep(&head, began, asked);
     if asked == gated::Asked::Gate {
         println!(

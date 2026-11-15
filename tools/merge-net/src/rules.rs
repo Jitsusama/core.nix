@@ -108,16 +108,31 @@ pub fn needs(areas: &[Area], files: &[String], known: Option<&[String]>) -> Need
 /// What a change touching `files` runs first, given `said`, what
 /// `changed-checks --name-only` printed for it, when it could compare: the
 /// VM tests the areas name whose derivation moved from main, or broke.
-/// Without it, every VM test in `known` the areas name runs.
+/// Without it, every VM test in `known` the areas name runs. Each other
+/// check that moved touches the areas as `check:` and its name, as the
+/// example laptop's initrd does.
 pub fn first(
     areas: &[Area],
     files: &[String],
     said: Option<&str>,
     known: Option<&[String]>,
 ) -> Needs {
+    let mut touching = files.to_vec();
+    if let Some(said) = said {
+        touching.extend(
+            Changed::parse(said)
+                .moved
+                .into_iter()
+                .filter(|name| !name.starts_with("vm-"))
+                .map(|name| format!("{CHECK}{name}")),
+        );
+    }
     let moved = said.map(moved);
-    needs(areas, files, moved.as_deref().or(known))
+    needs(areas, &touching, moved.as_deref().or(known))
 }
+
+/// How an area's path names a check that moved rather than a file.
+const CHECK: &str = "check:";
 
 /// What `changed-checks` is asked to say moved from `base`. Sent to a
 /// builder, as `nix-offload there --run` sets `elsewhere`, it compares
@@ -316,6 +331,33 @@ mod tests {
         assert!(found.tests.is_empty(), "none moved, so none runs");
         let found = first(&areas, &files, None, Some(&known));
         assert_eq!(found.tests, known, "with nothing compared, all run");
+    }
+
+    #[test]
+    fn a_change_that_moves_a_machines_initrd_names_the_tests_that_boot_it() {
+        // #4513, at a6b6ca22: the kit moved, which hibernate-unlock reads in
+        // the initrd, and needs named only the tests owning its daemons.
+        let files = words(
+            "modules/terminal-kit/src/lib.rs modules/night-shift/src/main.rs \
+             modules/network-revive/src/main.rs modules/v4l2loopback/holders/src/main.rs",
+        );
+        let said = "changed  example-laptop\nchanged  example-laptop-initrd\n\
+                    changed  vm-hibernation-comes-back\n\
+                    changed  vm-boot-says-it-wakes-from-hibernation\n\
+                    changed  vm-loopback-says-who-holds-it\nchanged  vm-desktop-looks\n";
+        let found = first(&areas(), &files, Some(said), None);
+        assert_eq!(
+            found.tests,
+            words("vm-boot-says-it-wakes-from-hibernation vm-hibernation-comes-back"),
+            "a change that moved the example laptop's initrd didn't name the tests that boot it"
+        );
+        let said = "changed  example-laptop\nchanged  vm-hibernation-comes-back\n";
+        let found = first(&areas(), &files, Some(said), None);
+        assert!(
+            found.tests.is_empty(),
+            "a change that left the initrd as it was named boot tests: {:?}",
+            found.tests
+        );
     }
 
     #[test]

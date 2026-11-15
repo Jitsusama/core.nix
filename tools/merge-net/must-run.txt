@@ -6,8 +6,11 @@
 # Only those whose derivation moved from main run, since the rest would
 # give main's result. A `there` among the tests marks what runs VM tests,
 # whose change moves none of them: it asks for one VM test sent through
-# the change itself, end to end.
+# the change itself, end to end. A path opening `check:` is a check whose
+# derivation moved, rather than a file: what moves a machine's initrd can
+# be anything it builds from, as the kit was for #4513.
 boot: modules/plymouth/* modules/console/* modules/kmscon/* modules/systemd/* tests/vm/boot/plymouth* tests/vm/boot/shutdown* => vm-boot-* vm-reboot-cannot-hang
+a machine's initrd: check:example-*-initrd => vm-boot-* vm-hibernation-comes-back
 initrd: modules/bluetooth-disk-prompt/* tests/vm/boot/bluetooth-disk-prompt* => vm-boot-* vm-bluetooth-types-at-the-disk-prompt
 kernel: modules/kernel/* hardware/* => vm-boot-* vm-reboot-cannot-hang vm-hibernation-comes-back
 disk: modules/disko/* modules/btrfs/* modules/disk-guard/* modules/disk-loss-panic/* modules/hibernate/* tests/vm/disks/disk-* tests/vm/disks/hibernate* => vm-disk-* vm-boot-asks-* vm-hibernation-comes-back

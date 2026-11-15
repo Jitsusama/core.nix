@@ -1,13 +1,14 @@
 """Check that every path pattern a tool reads still names a file.
 
-    every-pattern-names-a-file MUST_RUN RUFF UNREAD PATHS
+    every-pattern-names-a-file MUST_RUN RUFF UNREAD PATHS CHECKS
 
 MUST_RUN is tools/merge-net/must-run.txt, whose lines each name an area, the
 path patterns that are it, and after `=>` the VM tests it runs. RUFF is
 ruff.toml, whose per-file ignores are keyed by path patterns. UNREAD lists the
 patterns treefmt.nix tells the linters to leave unread, a pattern a line.
 PATHS lists every file the repository holds, a path a line, relative to its
-root.
+root. CHECKS lists the flake's checks, a name a line, which a must-run.txt
+pattern opening `check:` names rather than a file.
 
 None of the tools says when a pattern matches nothing. After a file moves, the
 net would quietly stop running a VM test before a merge, ruff would quietly
@@ -22,9 +23,12 @@ import tomllib
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
+# An area's path opening so names a check that moved, not a file.
+CHECK = "check:"
+
 
 def must_run_patterns(must_run: Path) -> list[str]:
-    """Give the path patterns of each of must-run.txt's areas."""
+    """Give the path patterns of each of must-run.txt's areas, a check's with its `check:`."""
     patterns = []
     for line in must_run.read_text().splitlines():
         if not line.strip() or line.startswith("#"):
@@ -51,14 +55,23 @@ def names_one(pattern: str, paths: list[str], *, by_name: bool) -> bool:
     )
 
 
-def faults(must_run: list[str], ruff: list[str], unread: list[str], paths: list[str]) -> list[str]:
-    """Say each pattern that names no file, a sentence each."""
+def faults(
+    must_run: list[str], ruff: list[str], unread: list[str], paths: list[str], checks: list[str]
+) -> list[str]:
+    """Say each pattern that names no file, or no check, a sentence each."""
     said = [
         f"tools/merge-net/must-run.txt names {pattern}, which matches no file: "
         "point it at where the area's files are now, or the net stops running its VM tests."
         for pattern in must_run
-        if not names_one(pattern, paths, by_name=False)
+        if not pattern.startswith(CHECK) and not names_one(pattern, paths, by_name=False)
     ]
+    said.extend(
+        f"tools/merge-net/must-run.txt names {pattern}, which matches no check: "
+        "point it at the check's name now, or the net stops running its VM tests."
+        for pattern in must_run
+        if pattern.startswith(CHECK)
+        and not names_one(pattern.removeprefix(CHECK), checks, by_name=False)
+    )
     # ruff reads a pattern with no slash against each file's name alone.
     said.extend(
         f"ruff.toml ignores rules for {pattern}, which matches no file: "
@@ -79,10 +92,11 @@ def faults(must_run: list[str], ruff: list[str], unread: list[str], paths: list[
 
 def main() -> None:
     """Read each tool's patterns and the repository's files, and say each fault."""
-    must_run, ruff, unread, listing = (Path(argument) for argument in sys.argv[1:5])
+    must_run, ruff, unread, listing, named = (Path(argument) for argument in sys.argv[1:6])
     paths = listing.read_text().splitlines()
+    checks = named.read_text().splitlines()
     patterns = [line for line in unread.read_text().splitlines() if line]
-    said = faults(must_run_patterns(must_run), ruff_patterns(ruff), patterns, paths)
+    said = faults(must_run_patterns(must_run), ruff_patterns(ruff), patterns, paths, checks)
     for fault in said:
         print(fault, file=sys.stderr)
     if said:
