@@ -909,5 +909,8 @@ def test_a_middle_row_closed_under_it_has_it_fall_onto_the_row_below(shell: Shel
     said, _ = shell.said_since(since)
     told = [report[len(SITS) :][:400] for report in said if report.startswith(SITS)][:6]
     assert way[:3] == ["rides", "lands", "shakes"], f"the cat's way off was {way}: {told}"
+    # Onto the row below, never through its face to the floor and back up (the GPU rig,
+    # 2026-11-15).
+    assert "climbs" not in way, f"the cat fell past the row below, its way {way}: {told}"
     falling = {step["walk"]["pose"] for step in walked if step["walk"]["beat"] == "rides"}
     assert falling == {"falling"}, f"the cat fell as {falling}: {told}"

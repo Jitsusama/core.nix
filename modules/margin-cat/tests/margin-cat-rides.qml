@@ -193,6 +193,23 @@ QtObject {
             [aloneBeats[0], aloneBeats.includes("rides")
                 ? posed(aloneFirst, "rides").map(one => one.pose) : aloneBeats,
                 aloneBeats.includes("shoved")], ["rides", ["falling"], false]);
+        // The middle of three rows closed, niri moves the row below up
+        // before the one over it grows (the GPU rig, 2026-11-15: it fell
+        // through the row below's face to the floor, and climbed back):
+        // it rides down onto the row below where it now stands.
+        const rows = [
+            { id: 6, left: 432, top: 16, width: 400, height: 234, column: 1 },
+            { id: 7, left: 432, top: 266, width: 400, height: 234, column: 1 },
+            { id: 8, left: 432, top: 516, width: 400, height: 268, column: 1 }
+        ];
+        const movedUp = [rows[0], Object.assign({}, rows[2], { top: 408, height: 376 })];
+        const ontoBelow = Paths.walk({ x: 532, y: 257 }, { x: 532, y: 399 }, among({
+            hurried: true, closed: true, on: 7, cols: Paths.columns(movedUp, 0),
+            before: Paths.columns(rows, 0), ahead: 72, frame: 1000 / 60 }));
+        const belowBeats = ontoBelow.beats.map(beat => beat.name);
+        expect("the middle row closed, the row below moved up first, it rides down onto that row",
+            [belowBeats.slice(0, 3), ontoBelow.beats[0].to?.y, belowBeats.includes("climbs"),
+                ends(ontoBelow)], [["rides", "lands", "shakes"], 399, false, [532, 399]]);
         const opened = ided.concat([{ id: 9, left: 432, top: 500, width: 400, height: 284,
             column: 1 }]);
         const staysOn = Paths.walk({ x: 532, y: 307 }, { x: 532, y: 7 }, among({

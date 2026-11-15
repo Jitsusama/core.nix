@@ -214,7 +214,11 @@ function drops(way, cols, at) {
     if (bottom === null || (inWindow !== null && inWindow.row.top > way.y)) {
         return false;
     }
-    const lands = under({ x: way.x, y: bottom + at.air }, cols, at);
+    // Not yet grown over it, it lands on what's under it now: niri may
+    // have moved the row below up into the closed one's place first (the
+    // GPU rig, 2026-11-15: from the closed row's old bottom it fell
+    // through that row's face to the floor).
+    const lands = under({ x: way.x, y: inWindow === null ? way.y : bottom + at.air }, cols, at);
     const spring = Object.assign({}, at.spring, { slowdown: at.slowdown ?? 1 });
     const ms = MarginCat.slides(spring);
     const ahead = Math.min(at.ahead ?? 0, ms - 1);
