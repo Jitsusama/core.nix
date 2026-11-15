@@ -1,0 +1,68 @@
+A host loads extensions without sorting pi's alias map for every module.
+
+jiti makes a loader for every module it evaluates, and each sorts the
+alias map it is given unless the map is marked as sorted. jiti marks only
+the sorted copy it keeps, never pi's own map, so the map was sorted again
+for each module: hundreds when a host restarts and its conversations load
+the harness, 28 to 34% of the longest stretch that held the host's one
+thread.
+
+Sort the map once, in the order jiti's own sort gives, and mark it with
+pathe's global symbol, so every loader takes it as it is. The loader each
+extension gets is otherwise unchanged, so each extension's modules are
+still evaluated afresh, and the lines that make it stay as pi has them.
+
+Apply only to the host's private pi build; ordinary interactive pi stays
+unchanged.
+
+--- a/packages/coding-agent/src/core/extensions/loader.ts
++++ b/packages/coding-agent/src/core/extensions/loader.ts
+@@ -69,6 +69,30 @@ function getVirtualModules(): Promise<Record<string, unknown>> {
+  */
+ let _aliases: Record<string, string> | null = null;
+ 
++// pi-host: jiti makes a loader for every module it evaluates, and each sorts the alias map it is
++// given unless the map is marked as sorted; jiti marks only the copy it keeps, so pi's map was
++// sorted again for each module, hundreds in a host's restart. Sort it once here, as jiti's own
++// normalizeAliases does (pathe's: most path segments first, then aliases resolved through each
++// other), and mark it with pathe's global symbol, so every loader takes it as it is.
++const NORMALIZED_ALIAS = Symbol.for("pathe:normalizedAlias");
++const ALIAS_BOUNDARIES = new Set(["/", "\\", undefined]);
++
++function sortedForJiti(aliases: Record<string, string>): Record<string, string> {
++	const segments = (specifier: string) => specifier.split("/").length;
++	const sorted = Object.fromEntries(Object.entries(aliases).sort(([a], [b]) => segments(b) - segments(a)));
++	for (const key in sorted) {
++		for (const prefix in sorted) {
++			if (prefix === key || key.startsWith(prefix)) continue;
++			const target = sorted[key];
++			if (target?.startsWith(prefix) && ALIAS_BOUNDARIES.has(target[prefix.length])) {
++				sorted[key] = sorted[prefix] + target.slice(prefix.length);
++			}
++		}
++	}
++	Object.defineProperty(sorted, NORMALIZED_ALIAS, { value: true, enumerable: false });
++	return sorted;
++}
++
+ function getAliases(): Record<string, string> {
+ 	if (_aliases) return _aliases;
+ 
+@@ -103,7 +127,7 @@ function getAliases(): Record<string, string> {
+ 		"@earendil-works/pi-ai/providers/all",
+ 	);
+ 
+-	_aliases = {
++	_aliases = sortedForJiti({
+ 		"@earendil-works/pi-coding-agent": piCodingAgentEntry,
+ 		"@earendil-works/pi-agent-core": piAgentCoreEntry,
+ 		"@earendil-works/pi-tui": piTuiEntry,
+@@ -126,7 +150,7 @@ function getAliases(): Record<string, string> {
+ 		"@sinclair/typebox": typeboxEntry,
+ 		"@sinclair/typebox/compile": typeboxCompileEntry,
+ 		"@sinclair/typebox/value": typeboxValueEntry,
+-	};
++	});
+ 
+ 	return _aliases;
+ }

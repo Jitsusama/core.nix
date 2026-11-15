@@ -2114,6 +2114,12 @@
     again and once its cache is cleared, finds a tool on the path once and looks again for one
     missing, and hands a provider the store's own copy of its catalogue without a second clone
   '';
+  pi-hosted-loads-extensions-lightly = ''
+    pi built with the host's patches, applied exactly, sorts its alias map at most once however
+    many modules two folders' extensions load, resolves pi-ai's longer and shorter specifiers as
+    jiti's own order does, and evaluates each extension's modules afresh for each folder and after
+    a reload
+  '';
   pi-hosted-screen-reaches-its-viewers = ''
     pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
     through a hosted screen's viewers' terminals, sends a viewer who joins late the images
