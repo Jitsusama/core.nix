@@ -25,11 +25,6 @@
     "exits"
     "helps"
   ];
-  jobs-broker = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   jobs-sorter = [
     "kit"
     "helps"
