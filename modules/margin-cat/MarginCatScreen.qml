@@ -102,9 +102,11 @@ PanelWindow {
     property var place: null
     // The column it last sat over or set off for, so its window grown,
     // shrunk or moved up or down under it walks it rather than carries
-    // it (follow), and the windows as follow() last saw them.
+    // it (follow), the windows as follow() last saw them, and as they
+    // last held the window it stands on (Tiles.before).
     property var under: null
     property var seen: []
+    property var seenOn: []
     // The walk under way, the window it walks to, and the step it's
     // on: its pose, by the theme's name, and the way it faces.
     property var going: null
@@ -199,8 +201,10 @@ PanelWindow {
     // layout again for any window's change, a title's too, so the same
     // seat neither sets a walk off again nor restarts its rest.
     function follow(): void {
-        const saw = seen;
+        const saw = Tiles.before(seen, seenOn, standsOn());
         seen = tilesOf(space?.id);
+        if (seen.some(one => one.id === standsOn()))
+            seenOn = seen;
         if (moving !== null) {
             steer();
             return;

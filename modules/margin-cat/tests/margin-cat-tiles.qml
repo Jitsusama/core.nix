@@ -76,5 +76,15 @@ QtObject {
             Tiles.empty(unlaid, 9), false);
         expect("a workspace no window is on is empty", Tiles.empty(windows, 9), true);
         expect("a workspace with windows isn't empty", Tiles.empty(windows, 8), false);
+        // niri says the window it sat on closed before it lays the column
+        // out again, and sitting, the shell hears no other tile: the walk
+        // off rides from the tiles that still held its seat.
+        const sat = Tiles.of(windows, 7);
+        const shut = sat.filter(one => one.id !== 2);
+        expect("its seat closed, the walk off rides from the tiles that held it",
+            Tiles.before(shut, sat, 2), sat);
+        expect("its seat still there, from the tiles last seen",
+            Tiles.before(shut, sat, 1), shut);
+        expect("sitting nowhere, from the tiles last seen", Tiles.before(shut, sat, null), shut);
     }
 }

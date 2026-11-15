@@ -31,6 +31,17 @@ function empty(windows, workspaceId) {
     return !Object.values(windows).some(one => one.workspace_id === workspaceId);
 }
 
+// What a walk off its seat rides from (MarginCatFalls.js's rides and
+// drops): the tiles `saw` as last seen, or, where the window `seat` it
+// stands on is gone from them, `held`, as they last held it. niri says a
+// window closed before it lays its column out again, and sitting, the
+// shell hears no other tile, so the walk off would know no row it sat on
+// and fall rather than ride (a nested niri, 2026-11-14).
+function before(saw, held, seat) {
+    return seat === null || seat === undefined || saw.some(one => one.id === seat)
+        ? saw : held;
+}
+
 // The tiles of a workspace's windows, each with its column and its row in
 // niri's scrolling layout, both null for a floating one, and its window's id.
 function of(windows, workspaceId) {
