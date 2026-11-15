@@ -1,14 +1,15 @@
 //! One record of the home network from what each source said: the modem,
 //! the switch, then eero's devices and links, in that order, so a reader
-//! always finds the same device in the same place, each receiver's own
-//! figures on eero's device for it; then where it runs out of room
+//! always finds the same device in the same place, each receiver's and
+//! printer's own figures on eero's device for it; then where it runs out
+//! of room
 //! (src/room.rs).
 
 use serde_json::Value;
 
 use crate::model::{Device, LinkState, Medium, Network, SCHEMA};
 use crate::room;
-use crate::sources::{eero, modem, sony, switch};
+use crate::sources::{eero, hp, modem, sony, switch};
 
 /// What each source said in one round of reads.
 pub struct Said {
@@ -17,6 +18,8 @@ pub struct Said {
     pub switch: Result<switch::Report, String>,
     /// What each receiver eero lists answered, by its hardware address.
     pub receivers: Vec<(String, Result<sony::Answers, String>)>,
+    /// What each printer eero lists answered, by its hardware address.
+    pub printers: Vec<(String, Result<hp::Answers, String>)>,
 }
 
 pub fn network(said: Said, now: u64) -> Network {
@@ -26,6 +29,10 @@ pub fn network(said: Said, now: u64) -> Network {
     let (receiver_source, receivers) = sony::read(said.receivers, now);
     for found in receivers {
         hear_the_receiver(&mut eero.devices, found);
+    }
+    let (printer_source, printers) = hp::read(said.printers, now);
+    for found in printers {
+        hear_the_printer(&mut eero.devices, found);
     }
     if let Some(switch) = &switch {
         // eero lists the switch as a wired client by the same hardware
@@ -40,6 +47,7 @@ pub fn network(said: Said, now: u64) -> Network {
         sources: [eero.source, modem_source, switch_source]
             .into_iter()
             .chain(receiver_source)
+            .chain(printer_source)
             .collect(),
         devices: modem
             .into_iter()
@@ -67,6 +75,22 @@ fn hear_the_receiver(devices: &mut [Device], found: sony::Found) {
     device.model = found.model.or(device.model.take());
     device.receiver = Some(found.receiver);
     device.detail.insert(sony::NAME.into(), found.detail);
+}
+
+/// Puts what a printer said on eero's device for it, as a receiver's is:
+/// it's a printer rather than a client, its model, firmware and serial are
+/// its own, and its pages sit beside eero's.
+fn hear_the_printer(devices: &mut [Device], found: hp::Found) {
+    let id = format!("mac:{}", found.mac);
+    let Some(device) = devices.iter_mut().find(|device| device.id == id) else {
+        return;
+    };
+    device.roles = vec![crate::model::Role::Printer];
+    device.model = found.model.or(device.model.take());
+    device.firmware = found.firmware.or(device.firmware.take());
+    device.serial = found.serial.or(device.serial.take());
+    device.printer = Some(found.printer);
+    device.detail.insert(hp::NAME.into(), found.detail);
 }
 
 /// Gives eero's cable to the switch the switch's end: when one port alone
@@ -111,6 +135,7 @@ mod tests {
             .expect("eero's golden record reads");
         if let Some(Value::Array(devices)) = eero.get_mut("devices") {
             devices.push(sony::tests::listing());
+            devices.push(hp::tests::listing());
         }
         let pages = modem::PAGES
             .iter()
@@ -145,6 +170,7 @@ mod tests {
                 status: Some(status),
             }),
             receivers: vec![(sony::tests::MAC.into(), Ok(sony::tests::answers()))],
+            printers: vec![(hp::tests::MAC.into(), Ok(hp::tests::answers()))],
         }
     }
 
@@ -328,6 +354,43 @@ mod tests {
                 .iter()
                 .any(|link| link.a.device == stereo.id || link.b.device == stereo.id),
             "eero's link to it was lost"
+        );
+    }
+
+    #[test]
+    fn the_printer_is_eeros_device_for_it_heard_as_a_printer() {
+        let network = network(contract(), NOW);
+        let named: Vec<_> = network
+            .devices
+            .iter()
+            .filter(|device| device.id == "mac:02:00:00:00:00:70")
+            .collect();
+        let [printer] = named.as_slice() else {
+            panic!("the printer should be one device: {named:?}");
+        };
+        assert_eq!(printer.roles, [Role::Printer], "it isn't a printer");
+        assert_eq!(printer.name, "Printer", "eero's name for it was lost");
+        assert_eq!(
+            printer.serial.as_deref(),
+            Some("SERIAL00000070"),
+            "its serial wasn't heard"
+        );
+        assert_eq!(
+            printer.printer.as_ref().map(|said| said.ink.len()),
+            Some(2),
+            "its ink wasn't heard"
+        );
+        assert!(
+            printer.detail.contains_key("eero") && printer.detail.contains_key("hp"),
+            "a source's words were lost: {:?}",
+            printer.detail.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            network
+                .sources
+                .iter()
+                .any(|source| source.name == hp::NAME && source.state == SourceState::Answering),
+            "the printers aren't said as a source"
         );
     }
 

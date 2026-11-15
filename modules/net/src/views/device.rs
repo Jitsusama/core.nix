@@ -653,4 +653,36 @@ mod tests {
             assert!(text.contains("STR-DN1050"), "its model isn't shown: {text}");
         }
     }
+
+    #[test]
+    fn a_printer_shows_its_ink_and_what_its_doing() {
+        let network = network();
+        let printer = find(&network, "Printer").expect("the printer");
+        for room in ROOMS {
+            let text = device(&network, printer, now(), &Pen::plain(), room);
+            fits(&text, room);
+            let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            assert!(text.contains("PRINTER"), "its block has no label: {text}");
+            assert!(
+                words.contains("doing out of paper, saving power"),
+                "what it's doing isn't shown: {text}"
+            );
+            assert!(
+                words.contains("black ink 50%"),
+                "its black ink isn't shown: {text}"
+            );
+            assert!(
+                words.contains("colour ink 60%"),
+                "its colour ink isn't shown: {text}"
+            );
+            assert!(
+                words.contains("pages printed 1900"),
+                "what it has printed isn't shown: {text}"
+            );
+            assert!(
+                text.contains("SERIAL00000070") && text.contains("SPP5FN2223AR"),
+                "its serial and firmware aren't shown: {text}"
+            );
+        }
+    }
 }

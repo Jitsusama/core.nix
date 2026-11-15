@@ -2,6 +2,7 @@
 //! into net's words (model.rs) and kept whole beside them.
 
 pub mod eero;
+pub mod hp;
 pub mod modem;
 pub mod sony;
 pub mod switch;

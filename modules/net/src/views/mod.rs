@@ -29,6 +29,7 @@ fn role_words(role: Role) -> &'static str {
         Role::AccessPoint => "access point",
         Role::Switch => "switch",
         Role::Receiver => "receiver",
+        Role::Printer => "printer",
         Role::Client => "client",
     }
 }
@@ -406,8 +407,8 @@ mod tests {
             let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
             assert!(
                 words.contains(
-                    "21 devices: a modem, a router, 3 access points, a switch, a receiver and 15 \
-                     clients"
+                    "22 devices: a modem, a router, 3 access points, a switch, a receiver, a \
+                     printer and 15 clients"
                 ),
                 "{text}"
             );

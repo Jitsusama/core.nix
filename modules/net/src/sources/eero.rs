@@ -154,6 +154,7 @@ fn node_device(node: &Value, read_at: Option<u64>) -> Device {
         radios: list(node, "radios").into_iter().map(radio).collect(),
         modem: None,
         receiver: None,
+        printer: None,
         path: None,
         detail: detail(node),
     }
@@ -315,6 +316,7 @@ fn client_device(client: &Value, read_at: Option<u64>) -> Device {
         },
         modem: None,
         receiver: None,
+        printer: None,
         path: None,
         detail: detail(client),
     }

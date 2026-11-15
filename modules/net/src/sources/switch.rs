@@ -420,6 +420,7 @@ fn device(status: &Status, read_at: u64) -> Device {
         radios: Vec::new(),
         modem: None,
         receiver: None,
+        printer: None,
         path: None,
         detail,
     }
