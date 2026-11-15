@@ -286,6 +286,7 @@
         reader = pkgs.callPackage ../../modules/reader/package.nix { };
         recent-files = recentFiles;
         record-window = pkgs.callPackage ../../modules/quickshell/record-window/package.nix { };
+        repos = pkgs.callPackage ../../modules/repos/package.nix { };
         rhythm = pkgs.callPackage ../../modules/rhythm/package.nix { };
         screen-text = dictation;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };

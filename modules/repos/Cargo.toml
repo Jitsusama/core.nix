@@ -1,0 +1,16 @@
+# repos lists every repository Joel has, each once however many copies of
+# it lie on the disk, read from each checkout's and tree's own git files
+# (src/lib.rs says how).
+[package]
+name = "repos"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1"
+# The shape every command of ours takes: help, the answer's form, the
+# terminal's colours and the shared exits (../terminal-kit).
+terminal-kit = { path = "../terminal-kit" }

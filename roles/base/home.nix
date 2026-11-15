@@ -7,6 +7,7 @@
     homeModules.zsh
     homeModules.prompt
     homeModules.git
+    homeModules.repos
     homeModules.bat
     homeModules.delta
     homeModules.broot
