@@ -194,8 +194,9 @@ pub fn devices(network: &Network, now: u64, pen: &Pen, room: Room) -> String {
 }
 
 /// One of several devices sharing a name, told apart as a person would:
-/// its id, then its first address and what it reaches the network
-/// through, where the record says them.
+/// its first address and what it reaches the network through, where the
+/// record says them, then its id only where no address of its own picks
+/// it out.
 fn told_apart(network: &Network, device: &Device) -> String {
     let through = touching(network, device).find_map(|link| {
         let other = if link.a.device == device.id {
@@ -205,24 +206,53 @@ fn told_apart(network: &Network, device: &Device) -> String {
         };
         network.devices.iter().find(|each| each.id == other.device)
     });
-    let at = device
+    let place: Vec<String> = device
         .addresses
         .first()
-        .map(|address| format!(" at {address}"));
-    let on = through.map(|through| format!(" on {}", through.name));
-    format!(
-        "{}{}{}",
-        device.id,
-        at.unwrap_or_default(),
-        on.unwrap_or_default()
-    )
+        .cloned()
+        .into_iter()
+        .chain(through.map(|through| format!("on {}", through.name)))
+        .collect();
+    let id = (picking(network, device) == device.id).then(|| format!("id {}", device.id));
+    match (place.as_slice(), id) {
+        ([], id) => id.unwrap_or_default(),
+        (place, None) => place.join(" "),
+        (place, Some(id)) => format!("{}, {id}", place.join(" ")),
+    }
 }
 
-/// The device a word names: its id, or its name in any case. Two devices
-/// can share a name, as eero gives two phones the same one, and then the
-/// word is refused with each one's id to choose by, beside where it is.
+/// The word that picks out one device of several: its first address, as
+/// a person reads and types it, unless another device answers there too,
+/// and then its id.
+fn picking(network: &Network, device: &Device) -> String {
+    device
+        .addresses
+        .first()
+        .filter(|address| {
+            network
+                .devices
+                .iter()
+                .filter(|each| each.addresses.contains(address))
+                .count()
+                == 1
+        })
+        .unwrap_or(&device.id)
+        .clone()
+}
+
+/// The device a word names: its id, any of its addresses, or its name in
+/// any case. Two devices can share a name, as eero gives two phones the
+/// same one, and then the word is refused with where each one is and its
+/// id, offering the first one's address to choose by.
 pub fn find<'a>(network: &'a Network, word: &str) -> Result<&'a Device, Failure> {
     if let Some(device) = network.devices.iter().find(|device| device.id == word) {
+        return Ok(device);
+    }
+    if let Some(device) = network
+        .devices
+        .iter()
+        .find(|device| device.addresses.iter().any(|address| address == word))
+    {
         return Ok(device);
     }
     let sharing: Vec<&Device> = network
@@ -242,7 +272,7 @@ pub fn find<'a>(network: &'a Network, word: &str) -> Result<&'a Device, Failure>
                 format!("{} devices are called {word}", sharing.len()),
             )
             .because(each.join(ITEMS))
-            .try_this(format!("net devices {}", first.id)));
+            .try_this(format!("net devices {}", picking(network, first))));
         }
         [] => {}
     }
@@ -452,26 +482,67 @@ mod tests {
     }
 
     #[test]
+    fn a_device_is_found_by_any_of_its_addresses() {
+        let network = network();
+        assert_eq!(
+            find(&network, "10.0.0.88").map(|d| &d.name),
+            Ok(&"Study".to_owned())
+        );
+        assert_eq!(
+            find(&network, "fe80::3").map(|d| &d.id),
+            Ok(&"mac:02:00:00:00:00:05".to_owned()),
+            "a second address doesn't find its device"
+        );
+    }
+
+    #[test]
     fn a_name_two_devices_share_is_refused_with_where_each_is() {
         let network = network();
         let failure = find(&network, "phone 1").expect_err("two phones are called phone 1");
         assert_eq!(failure.exit, Exit::Usage, "{failure:?}");
         assert_eq!(
             failure.why.as_deref(),
+            Some(&*format!("10.0.0.40 on Study{ITEMS}10.0.0.23 on Hall")),
+            "each isn't told by where it is alone: {failure:?}"
+        );
+        assert_eq!(
+            failure.then.as_deref(),
+            Some("net devices 10.0.0.40"),
+            "the try-line isn't an address a person types: {failure:?}"
+        );
+        assert_eq!(
+            find(&network, "mac:02:00:00:00:00:05").map(|d| &d.name),
+            Ok(&"phone 1".to_owned())
+        );
+    }
+
+    #[test]
+    fn devices_sharing_an_address_too_are_told_apart_by_their_ids() {
+        let mut network = network();
+        let first = network
+            .devices
+            .iter()
+            .position(|device| device.id == "mac:02:00:00:00:00:03")
+            .expect("the first phone");
+        let second = network
+            .devices
+            .iter()
+            .position(|device| device.id == "mac:02:00:00:00:00:05")
+            .expect("the second phone");
+        network.devices[second].addresses = network.devices[first].addresses.clone();
+        let failure = find(&network, "phone 1").expect_err("two phones are called phone 1");
+        assert_eq!(
+            failure.why.as_deref(),
             Some(&*format!(
-                "mac:02:00:00:00:00:03 at 10.0.0.40 on Study{ITEMS}\
-                 mac:02:00:00:00:00:05 at 10.0.0.23 on Hall"
+                "10.0.0.40 on Study, id mac:02:00:00:00:00:03{ITEMS}\
+                 10.0.0.40 on Hall, id mac:02:00:00:00:00:05"
             )),
-            "each id doesn't say its address and access point: {failure:?}"
+            "a shared address doesn't add each one's id: {failure:?}"
         );
         assert_eq!(
             failure.then.as_deref(),
             Some("net devices mac:02:00:00:00:00:03"),
             "{failure:?}"
-        );
-        assert_eq!(
-            find(&network, "mac:02:00:00:00:00:05").map(|d| &d.name),
-            Ok(&"phone 1".to_owned())
         );
     }
 

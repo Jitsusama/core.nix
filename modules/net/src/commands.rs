@@ -39,7 +39,10 @@ pub fn help() -> Help {
 fn devices() -> Help {
     Help::new("devices", "every device, or one in full")
         .alias("device")
-        .argument("<name>", "a device's name, in any case, or its id")
+        .argument(
+            "<name>",
+            "a device's name, in any case, one of its addresses, or its id",
+        )
         .example(
             "net devices",
             "each device as a line: its roles, address and model",
@@ -48,8 +51,9 @@ fn devices() -> Help {
             "net devices Study",
             "the study's eero: its fields, ports, radios and links",
         )
+        .example("net devices 10.0.0.40", "the device at that address")
         .example("net devices Modem --json", "the same as net.device/1")
-        .exit(Exit::NotFound, "no device goes by that name")
+        .exit(Exit::NotFound, "no device goes by that name or address")
         .exit(
             Exit::Unavailable,
             "there's no record of the home network yet",
