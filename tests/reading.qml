@@ -84,6 +84,14 @@ QtObject {
         expect("no separator dangling", cut(where, 200) === "Gullhaven, Velmora\u2026",
             cut(where, 200));
         expect("no comma dangling", cut(where, 120) === "Gullhaven\u2026", cut(where, 120));
+        // Nor a title's joint, a dash or a bar between spaces, so a cut
+        // reads "\u03c0 - Launcher\u2026" (VKCF3Z, 2026-11-14 [65e08e6f]); a
+        // word's own hyphen stays.
+        const titled = "\u03c0 - Launcher - agentic-harness.pi";
+        expect("no joint dangling", cut(titled, 150) === "\u03c0 - Launcher\u2026",
+            cut(titled, 150));
+        expect("no bar dangling", cut("Inbox | Mail | Work", 140) === "Inbox | Mail\u2026",
+            cut("Inbox | Mail | Work", 140));
         // A note gives way by whole words from its end with no ellipsis,
         // a separator left at its end going too.
         const line = "line 7 of the deploy, went by";

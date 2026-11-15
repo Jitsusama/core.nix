@@ -7,9 +7,12 @@
 // Tested as it is by tests/reading.qml.
 .pragma library
 
-// What a cut leaves dangling at its end, a separator or a pause, which
-// goes before the ellipsis does.
-const DANGLING = /[\s\u00b7,;:]+$/u;
+// What a cut leaves dangling at its end, a separator or a pause, or a
+// title's joint, a dash or a bar standing between spaces, which goes
+// before the ellipsis does: "\u03c0 - Launcher\u2026", never "\u03c0 -
+// Launcher -\u2026" (VKCF3Z, 2026-11-14 [65e08e6f]). A word's own hyphen,
+// with no space before it, stays.
+const DANGLING = /(?:[\s\u00b7,;:]|\s[-|\u2013])+$/u;
 
 // Words as `fitting` fits them, kept by `key` where `width` is a
 // measurer's (Measures.js), whose face is all else the fit depends on;
