@@ -1560,6 +1560,38 @@ def test_ctrl_r_puts_the_clipboard_on_the_command_line(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_the_command_line_draws_no_line_chosen_until_tab_chooses_one(shell: Shell) -> None:
+    """The : line's menu stands with no line on the selection's ground until Tab chooses one.
+
+    Its rows read their chosen line from the list's own, which a list sets to its first row as
+    a model comes, so the first line stood chosen before any key chose it.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.normal()
+    shell.send_chars(":")
+    shell.launcher_until(lambda shown: bool((shown["command"] or {}).get("menu")))
+    command = shell.showing()["command"]
+    assert command["chosen"] == -1, command
+    assert command["drawnChosen"] == -1, f"a line was drawn chosen before Tab: {command}"
+    shell.send_key("tab")
+    shell.launcher_until(
+        lambda shown: (
+            (shown["command"] or {}).get("chosen") == 0 and shown["command"].get("drawnChosen") == 0
+        )
+    )
+    # Up steps back past the first line to none, and a letter typed then narrows the menu,
+    # a new model, which a list given one sets its own current row on.
+    shell.send_key("up")
+    shell.launcher_until(lambda shown: (shown["command"] or {}).get("chosen") == -1)
+    shell.send_chars("l")
+    shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "l")
+    command = shell.showing()["command"]
+    assert command["drawnChosen"] == -1, f"a line was drawn chosen once typed: {command}"
+    shell.send_key("esc")
+    shell.close_launcher()
+
+
 def head_title(shell: Shell) -> tuple[int, int]:
     """Give where the head's Title starts and where the word before it, its cell's, starts."""
     field = laid_out(shell)["field"]
@@ -3697,10 +3729,10 @@ def test_an_opening_is_usable_only_once_the_shell_is_free_after_its_chord(shell:
     the launcher window"). So a shell held stopped just after a chord says the opening wasn't
     usable until at least that long after it.
     """
-    with socket.socket(socket.AF_UNIX) as said:
-        said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
-        said.sendall(f"toggle @{time.time():.6f}\n".encode())
     with shell.frozen():
+        # Sent once the shell is stopped, so a quick shell can't answer it in the moment before
+        # it's held; the socket keeps it until it goes on, and the chord carries its own time.
+        chord_now(time.time())
         # How long the shell is held, as its thread was held after Joel's chords.
         time.sleep(HELD.total_seconds())
     shell.launcher_ready()
@@ -3712,6 +3744,13 @@ def test_an_opening_is_usable_only_once_the_shell_is_free_after_its_chord(shell:
         time.sleep(launcher_on_niri.POLL)
     held = HELD.total_seconds() * 1000
     assert usable >= held, f"the opening was usable {usable} ms after a shell held {held:.0f} ms"
+
+
+def chord_now(chord: float) -> None:
+    """Send the launcher's chord, said at `chord`, to its socket as niri's bind does."""
+    with socket.socket(socket.AF_UNIX) as said:
+        said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
+        said.sendall(f"toggle @{chord:.6f}\n".encode())
 
 
 def screen() -> bytes:
@@ -3800,10 +3839,10 @@ def test_an_opening_is_presented_when_niri_first_shows_the_card(shell: Shell) ->
     before = still_screen()
     chord = time.time()
     chord_at = time.monotonic() * 1000
-    with socket.socket(socket.AF_UNIX) as said:
-        said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
-        said.sendall(f"toggle @{chord:.6f}\n".encode())
     with shell.frozen():
+        # Sent once the shell is stopped, as above: sent before it, one gate's shell presented
+        # the card 107 ms after the chord, before the hold began (2026-11-14).
+        chord_now(chord)
         # How long the shell is held, as its thread was held after Joel's chords.
         time.sleep(HELD.total_seconds())
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
