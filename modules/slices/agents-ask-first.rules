@@ -4,7 +4,9 @@
 // agent's root step that has to become a line he types himself stops him
 // getting things done, which is a bug, not a safeguard. Whatever else
 // would have asked him is refused outright, so the agent hears a plain
-// "not authorized" and he never sees a box he didn't call up. An agent's
+// "not authorized" and he never sees a box he didn't call up. A root step
+// he named in jitsusama.slices.agentsMayRepeat, a unit's verb, is granted
+// without asking him again (agentRepeats). An agent's
 // process is one in agents.slice, where every pi session runs, in
 // jobs.service, where pi starts each command, in jobs-work.slice, where
 // the jobs sorter moves them, in jobs-timed.slice, where pi's queue gives
@@ -112,9 +114,43 @@ function agentAsks(action, subject, place) {
   return polkit.Result.AUTH_ADMIN;
 }
 
-// An agent's answer: its one ask put to Joel, or a refusal.
+// The root steps Joel said an agent may take again without asking him,
+// from jitsusama.slices.agentsMayRepeat: each unit's name, with the verbs
+// it may have done to it.
+var agentsMayRepeat = @agentsMayRepeat@;
+
+// An agent's step Joel named, granted and written to the journal, or null.
+// It goes only by the unit and verb systemd itself gives polkit, which an
+// agent can't word; a command's words, as run0 and pkexec ask, an agent's
+// own client could fake, so no command is ever granted here. A grant puts
+// nothing on a screen, so it holds whether or not Joel is in front, but
+// never for a session elsewhere.
+function agentRepeats(action, subject, place) {
+  if (action.id !== "org.freedesktop.systemd1.manage-units") {
+    return null;
+  }
+  var unit = action.lookup("unit");
+  var verb = action.lookup("verb");
+  if (!agentsMayRepeat.hasOwnProperty(unit) || agentsMayRepeat[unit].indexOf(verb) < 0) {
+    return null;
+  }
+  if (place === null || !subject.local) {
+    return null;
+  }
+  record(
+    "grants " + action.id + " " + verb + " of " + unit + " to pid " + subject.pid + " in " + place
+  );
+  return polkit.Result.YES;
+}
+
+// An agent's answer: a step Joel named, its one ask put to Joel, or a
+// refusal.
 function forAgent(action, subject, place) {
-  return agentAsks(action, subject, place) || refused(action, subject, place);
+  return (
+    agentRepeats(action, subject, place) ||
+    agentAsks(action, subject, place) ||
+    refused(action, subject, place)
+  );
 }
 
 // Every rule added from here on has its asking turned into a refusal for

@@ -2,7 +2,9 @@
 // duktape, polkit's own engine, after agents-ask-polkit.rules, polkit's
 // init.js and a workstation's 10-nixos.rules as polkitd reads it, with
 // the first rules, one that asks (firmware-asks.rules), one that grants
-// (work-slices.rules) and the last rules (modules/slices/checks.nix).
+// (work-slices.rules) and the last rules, and after catalogued, which says
+// whether the machine names a root step agents may repeat
+// (modules/slices/checks.nix).
 var account = "/user.slice/user-1000.slice/user@1000.service/";
 var where = {
   session: account + "agents.slice/kitty-3272-33.scope",
@@ -168,6 +170,45 @@ delete commands[pids.held];
 expect("run0 for a command gone", run0, "held", "no");
 commands[pids.held] = addsAnAddress;
 
+// A root step Joel named in agentsMayRepeat is granted an agent without
+// asking him, from wherever agents work and whether or not he's in front,
+// since a grant puts nothing on a screen; checks.nix runs these cases on
+// a machine naming nix-daemon.service's restart (catalogued) and on one
+// naming nothing. Another verb, another unit, or a session elsewhere is
+// answered as before, and Joel's own terminal is left to ask.
+var restarting = asking("org.freedesktop.systemd1.manage-units", {
+  verb: "restart",
+  unit: "nix-daemon.service",
+});
+var restartingAnother = asking("org.freedesktop.systemd1.manage-units", {
+  verb: "restart",
+  unit: "sshd.service",
+});
+var restartingNoUnit = asking("org.freedesktop.systemd1.manage-units", {
+  verb: "restart",
+  unit: "hasOwnProperty",
+});
+for (var k = 0; k < agentsPlaces.length; k++) {
+  expect("restarting a named unit", restarting, agentsPlaces[k], catalogued ? "yes" : "no");
+  expect("restarting another unit", restartingAnother, agentsPlaces[k], "no");
+  expect("restarting a name no unit has", restartingNoUnit, agentsPlaces[k], "no");
+  expect("stopping a named unit", stopping, agentsPlaces[k], "no");
+}
+expect("restarting a named unit", restarting, "terminal", null);
+expect("restarting a named unit", restarting, "gone", "no");
+var asleep = joels(pids.session);
+asleep.active = false;
+if (polkit._runRules(restarting, asleep) !== (catalogued ? "yes" : "no")) {
+  failed += 1;
+  print("FAIL restarting a named unit while Joel isn't in front");
+}
+var afar = joels(pids.session);
+afar.local = false;
+if (polkit._runRules(restarting, afar) !== "no") {
+  failed += 1;
+  print("FAIL restarting a named unit from a session elsewhere was granted");
+}
+
 // A process gone before it's read is refused, since nobody's there to ask.
 expect("libvirt's system connection", libvirt, "gone", "no");
 
@@ -209,6 +250,15 @@ says(
     " running " +
     addsAnAddress
 );
+if (catalogued) {
+  says(
+    "restarting a named unit",
+    restarting,
+    "session",
+    "grants org.freedesktop.systemd1.manage-units restart of nix-daemon.service to pid 10 in " +
+      where.session
+  );
+}
 says(
   "libvirt's system connection",
   libvirt,

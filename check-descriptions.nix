@@ -254,7 +254,9 @@
     a workstation's polkit rules refuse a process where agents' work runs (agents.slice,
     jobs.service, jobs-work.slice, jobs-timed.slice, shared.slice or a pi-jobs scope), or one gone,
     whatever would ask Joel for a password but run0 or pkexec, which asks him once for its command
-    while his local session is in front, leave his terminal and apps to ask, and keep a grant
+    while his local session is in front, and a unit's verb named in agentsMayRepeat, which is
+    granted, leave his terminal and apps to ask, keep a grant, and take only a system unit's whole
+    name, never one run0 makes
   '';
   an-agents-run-stays-in-its-slice = ''
     systemd-run puts an agent's --user unit in the agent's own slice, and leaves Joel's own calls,
