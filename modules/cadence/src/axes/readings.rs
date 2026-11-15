@@ -59,6 +59,8 @@ pub struct Sources {
     pub counted: counted::Sources,
     /// cadence day's findings ledger whole, closed entries too.
     pub ledger: String,
+    /// Each of cadence's kept days' figures, by its date.
+    pub dated: kept::Dated,
     /// What health's day file says the logs said went wrong.
     pub faults: faults::Faults,
     /// The network's two day files, the eero's and the shaper's.
@@ -263,7 +265,7 @@ fn quality(s: &Sources) -> Axis {
     ];
     // What the logs said went wrong, as Joel listed it on 11 November.
     readings.extend(faults::quality(&s.faults));
-    readings.push(kept::came_back(&s.ledger, s.now));
+    readings.push(kept::came_back(&s.ledger, &s.dated, s.now));
     axis("quality", readings)
 }
 
@@ -504,14 +506,15 @@ fn ghosts(mesh: &Mesh) -> usize {
         .count()
 }
 
-/// The newest of cadence's kept days.
-fn newest_day(folder: &Path) -> Option<Day> {
+/// cadence's kept days, in no order.
+fn kept_days(folder: &Path) -> Vec<Day> {
     fs::read_dir(folder.join("day"))
-        .ok()?
+        .into_iter()
+        .flatten()
         .flatten()
         .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
         .filter_map(|e| serde_json::from_slice::<Day>(&fs::read(e.path()).ok()?).ok())
-        .max_by_key(|d| d.to)
+        .collect()
 }
 
 /// What a source's thread read, its panic carried on as this thread's, so
@@ -603,10 +606,15 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
             joined(counted),
         )
     });
+    let days = kept_days(folder);
     Sources {
         measures,
         card: text(folder.join("card.txt")),
-        day: newest_day(folder),
+        dated: days
+            .iter()
+            .map(|d| (d.date.clone(), d.figures.clone()))
+            .collect(),
+        day: days.into_iter().max_by_key(|d| d.to),
         failed,
         messages,
         ghosts: Some(ghosts(&mesh)),
