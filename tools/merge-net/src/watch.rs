@@ -4831,6 +4831,48 @@ mod tests {
     }
 
     #[test]
+    fn a_base_excused_by_an_entry_since_taken_off_failed_there() {
+        // On 15 November vm-screens-keep-the-launcher failed at the base
+        // 93b1a9bc only in a subtest main listed, so it counted as passed;
+        // #4658 took the entry off, the head failed in it, and the search
+        // blamed #4615 for what failed before it.
+        let state = state("base-excused");
+        for run in 1..=2 {
+            let log = state.log("s", "vm-a", run);
+            fs::write(
+                &log,
+                "vm-test-run> FAILED vm-pytest-ab/t.py::test_b - Error\n\
+                 vm-test-run> ======= 1 failed, 9 passed in 1.00s =======\n",
+            )
+            .unwrap();
+            state
+                .record("s", "vm-a", Ran::Passed, Some(1), &log, 0)
+                .unwrap();
+        }
+        let world = Stand {
+            head: "m2".into(),
+            merges: names("m1 m2"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            unlisted_by: Some(4658),
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1, 1]);
+        round(&world, &state, "s").unwrap();
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a merge was blamed for what failed at the base"
+        );
+        let found = findings(&state);
+        assert_eq!(
+            found[0]["kind"], "failed-before",
+            "a base excused only by an entry since taken off was taken as passing: {}",
+            found[0]
+        );
+        assert_eq!(found[0]["owner_pr"], 4658, "not owned by who took it off");
+    }
+
+    #[test]
     fn a_test_the_base_failed_twice_is_listed_owned_by_the_pr_that_took_it_off() {
         let state = state("still-red");
         let log = state.log("s", "vm-a", 1);
