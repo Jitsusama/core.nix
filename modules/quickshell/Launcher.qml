@@ -4844,7 +4844,14 @@ Scope {
         // restart() left.
         searchParts = trials.stepped(searchParts, { began, made, pushed, opened,
             ended: Date.now(), making: spent });
-        keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
+        // A step taken while an opening is still timed is its opening's, as
+        // Super+N steps through For You onto the notices on screen, and
+        // timed in the opening's line: open is already true by then, so only
+        // the ask held until its frame tells them apart. Timed again, each of
+        // Joel's "→ On Screen" took its opening's frame, a median 110 ms,
+        // the slowest place in his journal (2026-11-14).
+        if (openAsked < 0)
+            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
         return went();
     }
 
