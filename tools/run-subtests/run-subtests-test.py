@@ -14,6 +14,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -262,6 +263,22 @@ def test_a_pytest_check_runs_whole_with_its_tests_picked(
     ran = stand_in.ran()
     assert ran is not None
     assert ran["pytest"] == "-x -k terminal"
+
+
+def test_a_run_without_words_lists_and_says_it_ran_none(
+    tool: Tool, stand_in: StandIn, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # On 15 November merge-net needs told a session to run fifteen tests'
+    # subtests with no words, and each listed, ran nothing and passed.
+    stand_in.script.write_text(SCRIPT)
+
+    assert tool.main(["vm-desktop-x"]) == 0
+
+    said = capsys.readouterr()
+    assert "ran none" in said.err, f"a listing didn't say it ran nothing: {said.err!r}"
+    whole = re.search(r"nix-offload there \. checks\.\S+\.vm-desktop-x", said.err)
+    assert whole, f"a listing didn't say how to run the whole test: {said.err!r}"
+    assert stand_in.ran() is None, "a run with no words ran the driver"
 
 
 def test_a_pytest_checks_tests_are_listed_without_words(tool: Tool, stand_in: StandIn) -> None:

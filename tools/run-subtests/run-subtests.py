@@ -9,7 +9,8 @@ runs at once don't share the driver's network switch or machine state.
     run-subtests [options] <check> [<words>...]
 
 Each subtest whose name holds any of the words runs, in the script's order;
-with none, the subtests are listed. Each subtest makes what it needs when an
+with none, the subtests are listed and it says it ran none, since it still
+exits 0. Each subtest makes what it needs when an
 earlier one hasn't, so any runs alone. The pictures are kept
 in the folder it prints at the end.
 
@@ -35,6 +36,7 @@ import ast
 import contextlib
 import json
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -518,6 +520,27 @@ def blocking(options: Options, status: int, failed: frozenset[str]) -> int:
 def main(argv: Sequence[str]) -> int:
     """List a check's subtests, or run those the words name."""
     options = arguments(argv)
+    status = listed_or_ran(options)
+    # A listing exits 0 having run nothing, so one asked for as a run would
+    # pass unseen: on 15 November a session ran fifteen tests so. The build
+    # a --there run makes lists with a driver given, and says nothing.
+    if not options.words and status == 0 and options.driver is None:
+        print(ran_none(options.check), file=sys.stderr)
+    return status
+
+
+def ran_none(check: str) -> str:
+    """Say that a listing ran no subtest, and how to run some or all."""
+    machine = {"arm64": "aarch64"}.get(platform.machine(), platform.machine())
+    system = f"{machine}-{platform.system().lower()}"
+    return (
+        f"run-subtests: listed {check}'s subtests and ran none; name words from them to run "
+        f"those, or build the whole test with nix-offload there . checks.{system}.{check}"
+    )
+
+
+def listed_or_ran(options: Options) -> int:
+    """List a check's subtests, or run those the words name, here or elsewhere."""
     if options.there:
         built = there(options)
         if built is not None:
