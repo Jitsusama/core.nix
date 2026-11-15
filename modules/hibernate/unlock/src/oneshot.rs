@@ -56,15 +56,21 @@ pub fn differs(booted: &Path, default: &Path) -> bool {
 
 /// Before an image is made, when `differs` says so, set the next start to
 /// this one's entry with `set` (`bootctl set-oneshot`), keeping in `kept`
-/// that it did. Says whether it set it.
+/// that it did. Says whether it set it, and is an error when `set` was
+/// refused, since the image may then be read by another kernel and lost.
 pub fn hold(
     booted: &Path,
     default: &Path,
     kept: &Path,
     set: impl FnOnce(&str) -> bool,
 ) -> io::Result<bool> {
-    if !differs(booted, default) || !set("@current") {
+    if !differs(booted, default) {
         return Ok(false);
+    }
+    if !set("@current") {
+        return Err(io::Error::other(
+            "bootctl set-oneshot @current failed, so the image may be read back by another kernel",
+        ));
     }
     fs::write(kept, "@current\n")?;
     Ok(true)
@@ -157,10 +163,7 @@ mod tests {
             "a default like this start's held the next one"
         );
         let let_go = let_go(&kept, |_| panic!("an unheld start was let go"));
-        assert!(
-            !let_go.unwrap(),
-            "a start never held was said to be let go"
-        );
+        assert!(!let_go.unwrap(), "a start never held was said to be let go");
         fs::remove_dir_all(folder).unwrap();
     }
 
@@ -186,12 +189,12 @@ mod tests {
     }
 
     #[test]
-    fn a_next_start_bootctl_refuses_is_not_kept() {
+    fn a_next_start_bootctl_refuses_is_an_error_and_not_kept() {
         let (booted, default, folder) = systems("refused", "initrd-a", "initrd-b");
         let kept = folder.join("kept");
         assert!(
-            !hold(&booted, &default, &kept, |_| false).unwrap(),
-            "a next start bootctl refused was said to be held"
+            hold(&booted, &default, &kept, |_| false).is_err(),
+            "a next start bootctl refused went unsaid"
         );
         assert!(
             !kept.exists(),

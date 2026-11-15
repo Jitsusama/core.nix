@@ -547,7 +547,9 @@ fn before(action: &str) {
             "hibernate-unlock: the default system starts another kernel or initrd, so the \
              next start takes this one's entry, once, to read the image back"
         ),
-        Err(error) => eprintln!("hibernate-unlock: couldn't keep the held start: {error}"),
+        Err(error) => {
+            eprintln!("hibernate-unlock: couldn't hold the next start to this one's entry: {error}")
+        }
     }
     // What the graphics drivers hold as the image is sized: they copy it
     // out as they stop, and the reserve has to leave room for that.
