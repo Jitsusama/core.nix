@@ -379,7 +379,9 @@ The kit walks the words down the tree the command declares
   types is a subcommand left out of help, so it keeps working and the help
   reads one way. One is matched even where its collection takes a name,
   so `spend-watch findings expect KEY` still answers beside
-  `spend-watch findings KEY expect`; no listed word is.
+  `spend-watch findings KEY expect`; no listed word is. Its help is
+  titled as it was typed, with no name before it, so a daemon started
+  with its names first, as `location SOCKET ROOT`, keeps `location set`.
 - **Actions sit on their resource**, as `eero internet sqm on` and
   `eero speeds run`, rather than as verbs at the top, because a verb at
   the top has to name its resource again.
