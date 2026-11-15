@@ -272,7 +272,7 @@ impl Sorter {
                 if total * MS_PER_TICK >= busy_after && self.streak(&key, settings) {
                     let name = leader.map_or("a group", |leader| leader.comm.as_str());
                     moves.push(Move {
-                        pids: members.iter().map(|proc| proc.pid).collect(),
+                        pids: whole(members, procs),
                         says: format!(
                             "Moved {name} (process group {pgrp}, {} processes) from {scope} \
                              to jobs: {} ms of CPU in {span_ms} ms.",
@@ -347,6 +347,21 @@ impl Sorter {
         self.seen.retain(|pid, _| alive.contains(pid));
         self.last = now;
     }
+}
+
+/// A group's processes and every process under them in the scope, so
+/// what one started in a group of its own, as Nix's ssh to a builder is,
+/// goes with it.
+fn whole(members: &[&Sample], procs: &[Sample]) -> Vec<u32> {
+    let mut found: Vec<u32> = Vec::new();
+    for member in members {
+        for pid in descendants(member.pid, procs) {
+            if !found.contains(&pid) {
+                found.push(pid);
+            }
+        }
+    }
+    found
 }
 
 /// A process and every process under it in the scope.
@@ -2102,6 +2117,7 @@ mod tests {
                 proc(21, 20, 20, "tee", 0),
                 proc(22, 20, 20, "bash", 0),
                 proc(23, 22, 20, "nix", cpu),
+                proc(24, 23, 24, "ssh", 0),
             ]
         };
         let mut sorter = Sorter::default();
@@ -2111,8 +2127,9 @@ mod tests {
         pids.sort_unstable();
         assert_eq!(
             pids,
-            [21, 22, 23],
-            "the command goes whole, the host and its busy git engine stay"
+            [21, 22, 23, 24],
+            "the command goes whole, what it started in a group of its own with it, \
+             and the host and its busy git engine stay"
         );
     }
 

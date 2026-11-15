@@ -4167,6 +4167,11 @@
     unranked one; a quest whose parent changes tier is said to move and its next work follows;
     and the first tier's work runs about four times the third's on one CPU
   '';
+  vm-a-pis-busy-work-goes-to-jobs = ''
+    a busy command a pi host's unit in agents.slice started goes to a scope of its own in
+    jobs-work.slice, with what it started in a session of its own, first for the OOM killer, while
+    the host stays in its unit and a session beside it in agents.slice wakes within 100 ms
+  '';
   vm-a-measured-disk-shares-by-its-model = ''
     with a disk named with a model, io.cost holds its model and qos, no slice holds a latency
     target, one left from before is cleared as io.cost turns on, and stopping its

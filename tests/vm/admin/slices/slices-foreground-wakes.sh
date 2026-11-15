@@ -1,5 +1,6 @@
 # shellcheck shell=bash
-# A foreground program for slices-vm-test.py, run with bash in app.slice: it
+# A foreground program for slices-vm-test.py, run with bash in app.slice, and
+# a stand-in session for hosts-vm-test.py, in agents.slice: it
 # waits a tenth of a second, the given number of times, and writes to the
 # given file how late its worst wake was, in microseconds. Every wait is a
 # builtin read on a pipe nothing writes to, so no process it starts adds to
