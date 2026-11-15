@@ -11072,7 +11072,16 @@ Scope {
                 root.afterFrames = [];
             }
 
+            // The keys and acts the frame drew are timed first, as it's
+            // swapped, since what waited on it may take a while: Qt calls
+            // a handler enabled later after the others, and a drawer that
+            // began waiting before its key was made first, its making
+            // said as the key's (Joel's down onto Slack, 28 ms before the
+            // shell heard its frame swapped, as the drawer made in 28,
+            // 2026-11-13). Their own handlers then find nothing to time.
             function onFrameSwapped() {
+                root.keysFrameSwapped();
+                root.actsFrameSwapped();
                 const due = root.afterFramesDrawing;
                 root.afterFramesDrawing = [];
                 for (const then of due)
