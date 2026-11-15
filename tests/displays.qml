@@ -132,9 +132,15 @@ ShellRoot {
                 ask: { ask: "light", do: "night-light", on: true } }]
         } })
 
-    // The shell's watch, so the stand-in can tell it more, and the acts it
-    // was asked of a screen and of its light.
+    // How many screens there are, as screens.rs's summary serves it beside
+    // the rows, worded unlike the shell would, so what's said is the served.
+    readonly property var summary: ({ key: "summary:displays", kind: "summary",
+        summary: { place: "displays", count: 2, on: 2, said: "both screens" } })
+
+    // The shell's watch, so the stand-in can tell it more, the kinds it
+    // watched, and the acts it was asked of a screen and of its light.
     property var watch: null
+    property var watched: []
     property var acted: []
     property var lit: []
 
@@ -160,7 +166,8 @@ ShellRoot {
                             state: "answering" };
                     } else if (ask.ask === "watch") {
                         root.watch = { socket: asked, id: ask.id };
-                        answer = { id: ask.id, records: [
+                        root.watched = [].concat(ask.kind ?? []);
+                        answer = { id: ask.id, records: [root.summary,
                             root.screen("eDP-1", "Built-in Screen", 1024, true),
                             root.screen("DP-1", "Dell Inc. U2723QE", 2048, true), root.sleep,
                             root.brightness(50), root.level, root.room, root.warmth,
@@ -243,6 +250,10 @@ ShellRoot {
         Expect.expect("the Warmth stands beside them, Turn Every Screen Off after it",
             displays.all[2]?.key === "displays:warmth" && displays.all[3]?.key === "displays:sleep",
             displays.all.map(row => row.key).join(", "));
+        Expect.expect("the screens' summary is watched beside their rows",
+            watched.includes("summary"), JSON.stringify(watched));
+        Expect.expect("Screens counts its screens as the summary says",
+            displays.counted() === "both screens", displays.counted());
         Expect.expect("\"screen warmth\" says the Warmth beside the screens",
             displays.warmthAnswer()?.headline === "6,500 K",
             JSON.stringify(displays.warmthAnswer()?.headline));
