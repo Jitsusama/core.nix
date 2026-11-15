@@ -5,6 +5,9 @@
 //! 2026: "fixating on one could hurt me"), so none is fixed: the one the
 //! card is on is kept while it carries well, and another is tried only
 //! when it carries badly, or when one measured lately carried far better.
+//! A wider band, 5 or 6 GHz, is kept to while it carries well and tried
+//! from 2.4 GHz whenever one is heard well enough: 2.4 GHz can be quicker
+//! to the gateway but carries far less.
 //! wpa_supplicant still roams on its own when the signal fades; this
 //! moves the card only between access points it can already hear.
 //!
@@ -43,6 +46,17 @@ const FAINTER: i16 = 6;
 /// How busy an untried access point's channel may say it is and still be
 /// tried.
 const BUSIEST: u8 = 70;
+
+/// From this frequency in MHz a radio is on 5 or 6 GHz, whose channels are
+/// wider than 2.4 GHz's: on 15 Nov 2026 the card's link rate fell from
+/// about 1200 to 258 Mbit/s moving to the same access point's 2.4 GHz
+/// radio, below what the internet brings down.
+const WIDE: u32 = 5000;
+
+/// How faint a radio on a wider band may be heard and still be tried for
+/// it: the same access point is heard about 10 dB fainter on 5 GHz than
+/// on 2.4, so the margin of `FAINTER` would never let one be tried.
+const FAINTEST: i16 = -67;
 
 /// How much quicker one measured lately must have been to be moved to:
 /// both, so neither a small figure's ratio nor a large one's few
@@ -89,6 +103,9 @@ pub struct Chooser {
 struct Trial {
     from: String,
     before: Measured,
+    /// Whether the move was for a wider band, kept unless it carries badly
+    /// rather than unless it carries worse than the narrower one left.
+    banded: bool,
 }
 
 impl Chooser {
@@ -101,7 +118,7 @@ impl Chooser {
         others: &[Other],
         calling: bool,
     ) -> Choice {
-        let (point, measured, signal, _frequency) = on;
+        let (point, measured, signal, frequency) = on;
         let failing = measured.lost > FAILING;
         if calling && !failing {
             return Choice::Stay;
@@ -114,7 +131,12 @@ impl Chooser {
                 self.trial = Some(trial);
                 return Choice::Stay;
             }
-            if worse(measured, &trial.before) {
+            let back = if trial.banded {
+                badly(measured)
+            } else {
+                worse(measured, &trial.before)
+            };
+            if back {
                 self.spurned.insert(point.to_owned(), now);
                 self.moved = Some(now);
                 return Choice::Back(trial.from);
@@ -128,23 +150,36 @@ impl Chooser {
         }
         self.spurned
             .retain(|_, spurned| now.duration_since(*spurned) < SPURNED);
-        let bad = failing || slowness(measured) > SLOW || measured.lost > LOSSY;
-        let untried = others
-            .iter()
-            .filter(|other| other.point != point && !self.spurned.contains_key(&other.point));
+        let bad = badly(measured);
+        // A card on a wider band carrying well keeps off a narrower one,
+        // however quick, since quickness isn't room to bring things down.
+        let untried = others.iter().filter(|other| {
+            other.point != point
+                && !self.spurned.contains_key(&other.point)
+                && (bad || wide(other.frequency) || !wide(frequency))
+        });
+        let narrow = frequency != 0 && !wide(frequency);
+        let banded = if narrow && !bad {
+            for_the_band(untried.clone())
+        } else {
+            None
+        };
         let faster = untried.clone().filter_map(|other| {
             let theirs = other.measured.as_ref()?;
             quicker(theirs, measured).then_some((slowness(theirs), other))
         });
         let near = untried.filter(|other| {
             bad && other.measured.is_none()
-                && other.signal >= signal - FAINTER
+                && (other.signal >= signal - FAINTER
+                    || (wide(other.frequency) && other.signal >= FAINTEST))
                 && other.busy.is_none_or(|busy| busy <= BUSIEST)
         });
-        let chosen = faster
-            .min_by_key(|(slowness, _)| *slowness)
-            .map(|(_, other)| other)
-            .or_else(|| near.max_by_key(|other| other.signal));
+        let chosen = banded.or_else(|| {
+            faster
+                .min_by_key(|(slowness, _)| *slowness)
+                .map(|(_, other)| other)
+                .or_else(|| near.max_by_key(|other| (wide(other.frequency), other.signal)))
+        });
         let Some(chosen) = chosen else {
             return Choice::Stay;
         };
@@ -152,14 +187,46 @@ impl Chooser {
         self.trial = Some(Trial {
             from: point.to_owned(),
             before: measured.clone(),
+            banded: banded.is_some(),
         });
         Choice::Try(chosen.point.clone())
     }
 }
 
-/// Whether a channel is on a wider band than another's.
-pub fn wider(_to: u32, _from: u32) -> bool {
-    false
+/// Where a card on a narrower band carrying well goes for a wider one:
+/// the quickest known to carry well from here, else the loudest untried
+/// heard well enough and not too busy.
+fn for_the_band<'a>(untried: impl Iterator<Item = &'a Other> + Clone) -> Option<&'a Other> {
+    let on_it = untried.filter(|other| wide(other.frequency));
+    let known = on_it.clone().filter_map(|other| {
+        let theirs = other.measured.as_ref()?;
+        (!badly(theirs)).then_some((slowness(theirs), other))
+    });
+    let heard = on_it.filter(|other| {
+        other.measured.is_none()
+            && other.signal >= FAINTEST
+            && other.busy.is_none_or(|busy| busy <= BUSIEST)
+    });
+    known
+        .min_by_key(|(slowness, _)| *slowness)
+        .map(|(_, other)| other)
+        .or_else(|| heard.max_by_key(|other| other.signal))
+}
+
+/// Whether a channel is on 5 or 6 GHz.
+fn wide(frequency: u32) -> bool {
+    frequency >= WIDE
+}
+
+/// Whether a channel is on a wider band than another's, where both are
+/// known.
+pub fn wider(to: u32, from: u32) -> bool {
+    from != 0 && wide(to) && !wide(from)
+}
+
+/// Whether an access point carries badly enough to try another.
+fn badly(measured: &Measured) -> bool {
+    slowness(measured) > SLOW || measured.lost > LOSSY
 }
 
 /// An access point's p95, where nothing answered as slow as can be.
