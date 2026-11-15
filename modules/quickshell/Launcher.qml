@@ -8636,6 +8636,12 @@ Scope {
                 // Its acts as drawn, each its key and name, and its nerdy
                 // bits' names, with whether they're folded.
                 acts: drawerCard.acts.map(act => `${act.key ?? ""} ${act.name}`.trim()),
+                // How many acts stand on each line (Drawer.qml's actsLaid),
+                // and where the last line its words keep fades while the
+                // fold has taken the rest (its wordsFade).
+                actsLaid: drawerCard.actsLaid,
+                wordsFade: drawerCard.wordsFade ?? null,
+                fadeDrawn: drawerCard.fadeDrawn ?? false,
                 nerd: drawerCard.nerd.map(bit => String(bit.label ?? "")),
                 folded: drawerCard.folded,
                 // Each open bit's value: how many lines it's drawn on and

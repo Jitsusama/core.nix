@@ -912,7 +912,13 @@ order, so every line still says one whole thing:
   holds a word too wide to sit beside its name stands under the name at
   the full measure, so a quest's id is never broken (VKCF3Z, bfdad751).
   Its why and its body wrap as prose at the serif's measure, five lines
-  at most, the rest in the fold.
+  at most, the rest in the fold. With the fold open, the prose keeps the
+  whole lines that leave it room, and the last one's end fades over a
+  mark, as a long name's does as it reads on, so cut text looks the same
+  everywhere; shut, the prose comes back whole (VKCF3Z, 448f6cc6). Acts
+  too wide for one line split evenly by width, the longer line first,
+  never inside an act and never one alone on a line where another split
+  has none: "↵Talk Go To Pause" over "Stop Close".
 - **Nothing that reads as one is split.** A figure and its unit, a date's
   parts, a chord's keys, a name and its count, and a time and its zone are
   joined so no break falls between them.

@@ -1238,6 +1238,27 @@ QtObject {
         ];
         for (const [what, said, want] of read)
             holds(`an identifier's words: ${what}`, Value.identifierWords(said), want);
+        // How many of a drawer's acts stand on each line: as few lines as
+        // hold them, split evenly by width, none broken inside and none alone
+        // on a line, "Close" under "↵Talk Go To Pause Stop" being a gross
+        // wrap (VKCF3Z, 448f6cc6). The widths are the orchestrator's five at
+        // 288 pixels, their measure 238 and their rung 12.
+        const acts = [
+            ["acts that fit stand on one line", [49, 44, 44], 238, 12, [3]],
+            ["five split evenly, the first line the longer", [49, 44, 44, 35, 44], 238, 12,
+                [3, 2]],
+            ["two lines as even as can be", [40, 40, 40, 40, 40, 40], 200, 10, [3, 3]],
+            ["three on two lines leave one alone, as nothing else can", [100, 100, 100], 238,
+                12, [2, 1]],
+            ["one wider than the line stands alone", [300], 238, 12, [1]],
+            // An orchestrator's, its step into its sessions too wide to
+            // share a line with Close, as measured on niri.
+            ["one sharing with neither stands alone, the rest still even",
+                [49, 45, 45, 36, 45, 189], 238, 12, [3, 2, 1]],
+            ["no acts, no lines", [], 238, 12, []]
+        ];
+        for (const [what, widths, wide, apart, want] of acts)
+            holds(`a drawer's acts: ${what}`, Value.actLines(widths, wide, apart), want);
         // A title breaks at its spaces, and inside a word only where the word
         // is too wide for a line alone: "10.12.03.svg" stood split at a dot
         // beside a space at 2 (RTOIMQ, 2026-11-09).
