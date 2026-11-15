@@ -1,7 +1,7 @@
 # code-health, built from this directory, its tests run as it builds, with
-# git for the one that times a repository's merges, and tofu and tflint,
-# which it runs over a repository's Terraform, found on its own PATH
-# wherever it runs (src/terraform.rs). It takes its shape
+# git for the one that times a repository's merges, and tofu, tflint and
+# trivy, which it runs over a repository's Terraform, found on its own
+# PATH wherever it runs (src/terraform.rs). It takes its shape
 # from the terminal kit (../terminal-kit), so the source is cut from the
 # folder holding both.
 {
@@ -11,6 +11,7 @@
   opentofu,
   rustPlatform,
   tflint,
+  trivy,
 }:
 rustPlatform.buildRustPackage rec {
   pname = "code-health";
@@ -32,12 +33,14 @@ rustPlatform.buildRustPackage rec {
     git
     opentofu
     tflint
+    trivy
   ];
   postInstall = ''
     wrapProgram $out/bin/code-health --suffix PATH : ${
       lib.makeBinPath [
         opentofu
         tflint
+        trivy
       ]
     }
   '';

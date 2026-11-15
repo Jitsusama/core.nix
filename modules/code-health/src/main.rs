@@ -8,10 +8,9 @@
 //! counted); the lints its configs turn off (lints.rs), its files nothing
 //! reaches (reached.rs) and its folders that don't say what they hold
 //! (notes.rs), as the quality standard has them; its Terraform's files
-//! not as `tofu fmt` writes them and what tflint finds (terraform.rs);
-//! and how long the
-//! changes it merged in the last day took from first edit to merge
-//! (merges.rs).
+//! not as `tofu fmt` writes them, what tflint finds and what trivy finds
+//! insecure (terraform.rs); and how long the changes it merged in the
+//! last day took from first edit to merge (merges.rs).
 //!
 //! It writes `<date>.json` in its folder as `{repo: {measure: figure}}`,
 //! the form cadence reads, and `<date>-named.json` beside it naming what
@@ -65,7 +64,7 @@ const FLAGS: [&str; 6] = [
 ];
 
 /// Every measure it reads (measure.rs and merges.rs).
-const MEASURES: [&str; 15] = [
+const MEASURES: [&str; 16] = [
     "crowded-folders",
     "daemons-waiting",
     "duplicated-lines",
@@ -79,6 +78,7 @@ const MEASURES: [&str; 15] = [
     "suppressions",
     "tf-unformatted",
     "tflint-findings",
+    "trivy-findings",
     "unreached-files",
     "vm-test-lines",
 ];
@@ -162,6 +162,8 @@ fn run(context: &Context) -> Result<(), Failure> {
                         health.put("tf-unformatted", read.unformatted, count);
                         let count = read.findings.len();
                         health.put("tflint-findings", read.findings, count);
+                        let count = read.insecure.len();
+                        health.put("trivy-findings", read.insecure, count);
                     }
                     Some(Err(error)) => {
                         let said = format!("{name}'s Terraform left out: {error}");

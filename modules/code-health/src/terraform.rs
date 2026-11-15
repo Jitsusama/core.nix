@@ -1,8 +1,10 @@
 //! Terraform held as other code is, as the quality standard asks: the
-//! files `tofu fmt` would write otherwise, and what tflint's own rules
-//! find in each workspace, its recommended set, as a workspace with no
-//! config of its own gets. Both run only where a repository holds
-//! Terraform, so one holding none has no figure rather than a nought.
+//! files `tofu fmt` would write otherwise, what tflint's own rules find
+//! in each workspace, its recommended set, as a workspace with no config
+//! of its own gets, and what trivy's checks find that would leave what
+//! it makes open to attack, from the checks it was built with, so it
+//! fetches nothing. Each runs only where a repository holds Terraform,
+//! so one holding none has no figure rather than a nought.
 
 use std::env;
 use std::fs;
@@ -12,14 +14,18 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
+use serde::Deserialize;
+
 use crate::measure::{File, extension};
 
 /// What a repository's Terraform was found to hold: each file named with
-/// why `tofu fmt` would write it otherwise, and each tflint finding.
+/// why `tofu fmt` would write it otherwise, each tflint finding, and each
+/// of trivy's security findings.
 #[derive(Debug, Default, PartialEq)]
 pub struct Read {
     pub unformatted: Vec<String>,
     pub findings: Vec<String>,
+    pub insecure: Vec<String>,
 }
 
 /// Whether a path is Terraform: a `.tf` file or a `.tfvars` one.
@@ -46,10 +52,14 @@ fn read_all(terraform: &[&File]) -> Result<Read, String> {
             unformatted.push(format!("{}: {why}", file.path));
         }
     }
-    let findings = linted(terraform)?;
+    let folder = scratch();
+    let read = copied(&folder, terraform).and_then(|()| Ok((linted(&folder)?, scanned(&folder)?)));
+    let _ = fs::remove_dir_all(&folder);
+    let (findings, insecure) = read?;
     Ok(Read {
         unformatted,
         findings,
+        insecure,
     })
 }
 
@@ -73,20 +83,15 @@ fn formatting(file: &File) -> Result<Option<&'static str>, String> {
     }
 }
 
-/// What tflint finds in every workspace of a copy of the Terraform, made
-/// in a folder of its own and removed once read.
-fn linted(terraform: &[&File]) -> Result<Vec<String>, String> {
-    let folder = scratch();
-    let found = copied(&folder, terraform).and_then(|()| {
-        run(
-            "tflint",
-            &["--recursive", "--format=compact", "--no-color", "--force"],
-            Some(&folder),
-            None,
-        )
-    });
-    let _ = fs::remove_dir_all(&folder);
-    let found = found?;
+/// What tflint finds in every workspace of the copy of the Terraform in
+/// `folder`.
+fn linted(folder: &Path) -> Result<Vec<String>, String> {
+    let found = run(
+        "tflint",
+        &["--recursive", "--format=compact", "--no-color", "--force"],
+        Some(folder),
+        None,
+    )?;
     let mark = folder
         .file_name()
         .map(|name| format!("{}/", name.to_string_lossy()))
@@ -99,6 +104,94 @@ fn linted(terraform: &[&File]) -> Result<Vec<String>, String> {
     } else {
         Err(format!("tflint ended {}: {}", found.code, found.said))
     }
+}
+
+/// What trivy's checks find in the copy of the Terraform in `folder`,
+/// with a cache beside it, removed once read, so nothing is kept.
+fn scanned(folder: &Path) -> Result<Vec<String>, String> {
+    let cache = PathBuf::from(format!("{}-cache", folder.display()));
+    let cache_dir = cache.to_string_lossy().into_owned();
+    let found = run(
+        "trivy",
+        &[
+            "config",
+            "--skip-check-update",
+            "--skip-version-check",
+            "--quiet",
+            "--format=json",
+            "--cache-dir",
+            &cache_dir,
+            ".",
+        ],
+        Some(folder),
+        None,
+    );
+    let _ = fs::remove_dir_all(&cache);
+    let found = found?;
+    if found.code != 0 {
+        return Err(format!("trivy ended {}: {}", found.code, found.said));
+    }
+    insecure(&found.said)
+}
+
+/// trivy's JSON answer, as far as it's read: each file's checks.
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct Scan {
+    #[serde(default)]
+    results: Vec<Scanned>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct Scanned {
+    target: String,
+    #[serde(default)]
+    misconfigurations: Vec<Check>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct Check {
+    #[serde(rename = "ID")]
+    id: String,
+    severity: String,
+    status: String,
+    title: String,
+    #[serde(default)]
+    cause_metadata: Cause,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct Cause {
+    start_line: Option<u64>,
+}
+
+/// Each failed check in trivy's JSON answer, named at its file and line.
+fn insecure(said: &str) -> Result<Vec<String>, String> {
+    let scan: Scan = serde_json::from_str(said)
+        .map_err(|error| format!("trivy's answer couldn't be read: {error}"))?;
+    let named = scan.results.iter().flat_map(|scanned| {
+        scanned
+            .misconfigurations
+            .iter()
+            .filter(|check| check.status == "FAIL")
+            .map(|check| {
+                let at = check
+                    .cause_metadata
+                    .start_line
+                    .map_or(String::new(), |line| format!(":{line}"));
+                let Check {
+                    id,
+                    severity,
+                    title,
+                    ..
+                } = check;
+                format!("{}{at}: {severity} {id} - {title}", scanned.target)
+            })
+    });
+    Ok(named.collect())
 }
 
 /// What a workspace tflint couldn't load is named with.
@@ -232,6 +325,36 @@ mod tests {
     }
 
     #[test]
+    fn each_failed_check_is_named_at_its_file_and_line() {
+        let said = r#"{"Results": [
+            {"Target": "ws", "Class": "config"},
+            {"Target": "ws/compute.tf", "Misconfigurations": [
+                {"ID": "GCP-0030", "Severity": "MEDIUM", "Status": "FAIL",
+                 "Title": "Disable project-wide SSH keys for all instances",
+                 "CauseMetadata": {"StartLine": 57}},
+                {"ID": "GCP-0041", "Severity": "LOW", "Status": "PASS",
+                 "Title": "Passed", "CauseMetadata": {"StartLine": 19}},
+                {"ID": "GCP-0033", "Severity": "LOW", "Status": "FAIL",
+                 "Title": "Encrypt disks", "CauseMetadata": {}}
+            ]}
+        ]}"#;
+        assert_eq!(
+            insecure(said).expect("trivy's answer wasn't read"),
+            [
+                "ws/compute.tf:57: MEDIUM GCP-0030 - \
+                 Disable project-wide SSH keys for all instances",
+                "ws/compute.tf: LOW GCP-0033 - Encrypt disks",
+            ]
+        );
+    }
+
+    #[test]
+    fn an_answer_trivy_garbled_is_refused() {
+        let refused = insecure("{\"Results\": 3}");
+        assert!(refused.is_err(), "a garbled answer read as {refused:?}");
+    }
+
+    #[test]
     fn each_read_has_a_folder_of_its_own() {
         assert_ne!(scratch(), scratch(), "two reads shared one folder");
     }
@@ -263,6 +386,29 @@ mod tests {
                 .starts_with("ws/main.tf:2:3: Warning - local.zone is declared but not used")),
             "the unused local went unnamed: {:?}",
             read.findings
+        );
+    }
+
+    #[test]
+    fn a_workspaces_security_findings_are_named() {
+        let files = [file(
+            "ws/compute.tf",
+            concat!(
+                "resource \"google_compute_instance\" \"vm\" {\n",
+                "  name         = \"vm\"\n",
+                "  machine_type = \"e2-small\"\n",
+                "  zone         = \"us-central1-a\"\n",
+                "}\n",
+            ),
+        )];
+        let read = read(&files).expect("Terraform was read as none");
+        let read = read.expect("the tools couldn't read it");
+        assert!(
+            read.insecure
+                .iter()
+                .any(|finding| finding.starts_with("ws/compute.tf:1: MEDIUM GCP-0067 - ")),
+            "the instance without secure boot went unnamed: {:?}",
+            read.insecure
         );
     }
 }

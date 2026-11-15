@@ -57,8 +57,9 @@
   # quality standard has them, it names each lint rule a config turns off,
   # each file nothing reaches, each folder that says nothing of what it
   # holds and each VM test's lines; and of its Terraform, each file not as
-  # tofu fmt writes it and each finding of tflint's, a workspace it can't
-  # load among them, with the real tools.
+  # tofu fmt writes it, each finding of tflint's, a workspace it can't
+  # load among them, and each of trivy's security findings, with the real
+  # tools.
   code-health-counts-what-got-messier = pkgs.callPackage ./package.nix { };
   # A repository can be several folders of a larger one, such as one
   # team's Terraform kept in a few places of a monorepo; each is handed
