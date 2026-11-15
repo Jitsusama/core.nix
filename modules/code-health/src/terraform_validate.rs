@@ -5,6 +5,7 @@
 //! elsewhere can't be readied without fetching it, so it's named as not
 //! validated rather than fetched; so is one no provider at hand allows.
 
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -55,12 +56,7 @@ fn validated(
     settings: &Path,
 ) -> Result<Vec<String>, String> {
     let shown = if workspace.is_empty() { "." } else { workspace };
-    let elsewhere = terraform
-        .iter()
-        .filter(|file| file.path.rsplit_once('/').map_or("", |(at, _)| at) == workspace)
-        .flat_map(|file| sources(&file.text))
-        .any(|source| !source.starts_with("./") && !source.starts_with("../"));
-    if elsewhere {
+    if reaches_elsewhere(workspace, terraform, &mut BTreeSet::new()) {
         return Ok(vec![format!(
             "{shown}: uses a module from elsewhere, so it isn't validated"
         )]);
@@ -86,6 +82,44 @@ fn validated(
         ));
     }
     errors(&checked.said, workspace)
+}
+
+/// Whether a workspace, or a module it takes from a folder of the copy,
+/// takes a module from elsewhere, which readying it would fetch.
+fn reaches_elsewhere(workspace: &str, terraform: &[&File], seen: &mut BTreeSet<String>) -> bool {
+    if !seen.insert(workspace.to_owned()) {
+        return false;
+    }
+    let sources: Vec<String> = terraform
+        .iter()
+        .filter(|file| file.path.rsplit_once('/').map_or("", |(at, _)| at) == workspace)
+        .flat_map(|file| sources(&file.text))
+        .collect();
+    sources.iter().any(|source| {
+        local(workspace, source).is_none_or(|folder| reaches_elsewhere(&folder, terraform, seen))
+    })
+}
+
+/// The folder of the copy a module source beside `workspace` names, or
+/// `None` for one from elsewhere, above the copy's top among them.
+fn local(workspace: &str, source: &str) -> Option<String> {
+    if !source.starts_with("./") && !source.starts_with("../") {
+        return None;
+    }
+    let mut parts: Vec<&str> = workspace
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect();
+    for part in source.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            folder => parts.push(folder),
+        }
+    }
+    Some(parts.join("/"))
 }
 
 /// Where each module block in `text` takes its module from.
@@ -212,6 +246,14 @@ mod tests {
                 ),
             ),
             file("fine/main.tf", "output \"o\" {\n  value = 1\n}\n"),
+            file(
+                "near/main.tf",
+                "module \"m\" {\n  source = \"../shared/far\"\n}\n",
+            ),
+            file(
+                "shared/far/main.tf",
+                "module \"m\" {\n  source = \"git::https://example.invalid/m.git\"\n}\n",
+            ),
         ];
         let read = read(&files).expect("Terraform was read as none");
         let read = read.expect("the tools couldn't read it");
@@ -219,7 +261,9 @@ mod tests {
             read.invalid,
             [
                 "far: uses a module from elsewhere, so it isn't validated",
+                "near: uses a module from elsewhere, so it isn't validated",
                 "needs: tofu init can't ready it: Failed to query available provider packages",
+                "shared/far: uses a module from elsewhere, so it isn't validated",
                 "ws/main.tf:6: Reference to undeclared input variable",
             ]
         );
