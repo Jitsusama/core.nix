@@ -178,6 +178,10 @@ animals."
 - Held by `margin-cat.qml`: "a pointer moved onto it as it sits strokes it"
 - Held by `margin-cat.qml`: "never one it came to under, still where it was"
 - Held by `margin-cat.qml`: "resting on it 300 ms, and leaning 600 ms after it goes"
-- Held by `margin-cat.qml`: "it leans toward the pointer's side, the one drawing mirrored"
+- Held by `margin-cat.qml`: "it leans toward the pointer's side, a lean left drawn from a cell
+  out"
+- Held by `margin-cat.qml`: "leaning either way, its base is on sitting's cells, and leaning left
+  its tail too"
+- Held by `margin-cat.qml`: "and only its head a cell toward the hand, eyes shut"
 
 [design]: ../../docs/design.md

@@ -254,10 +254,26 @@ function leansTo(across, size) {
     return across < size / 2 ? -1 : 1;
 }
 
+// The rows of the cat's head and neck, which a lean moves; below them it
+// sits on the seat's cells, whichever way it leans.
+const HEAD_ROWS = 5;
+
 // The cat leaning `way` (leansTo), in the theme's `pixels`: the pose leans
-// to its right, toward its tail, so it's mirrored to lean left.
+// to its right, toward its tail. To its left, the same head and neck a
+// cell left of sitting's, over sitting's own body and tail, unmoved, so
+// it never hops away from the hand (VKCF3Z, 10bacc58). Sitting's head is
+// at its drawing's left edge, so that one starts a cell out (leansOut).
 function leaning(way, pixels) {
-    return turned(pixels.leaning, -way);
+    if (way > 0) {
+        return pixels.leaning;
+    }
+    const head = row => `${row.slice(1)}..`;
+    return pixels.nothingHere.map((row, r) => r < HEAD_ROWS ? head(pixels.leaning[r]) : `.${row}`);
+}
+
+// How many cells left of where it sits its drawing leaning `way` begins.
+function leansOut(way) {
+    return way < 0 ? 1 : 0;
 }
 
 // How the yarn at `yarn` (MarginCatGames.js's frame) looks, as a word that

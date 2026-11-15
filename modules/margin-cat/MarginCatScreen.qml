@@ -1005,7 +1005,8 @@ PanelWindow {
             Rectangle {
                 required property var modelData
 
-                x: modelData.x * window.cell
+                // A lean to its left starts a cell out (MarginCat.leansOut).
+                x: (modelData.x - MarginCat.leansOut(window.leaning)) * window.cell
                 y: modelData.y * window.cell
                 width: modelData.across * window.cell
                 height: window.cell
