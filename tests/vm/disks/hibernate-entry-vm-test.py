@@ -30,14 +30,14 @@ GOES_OFF = dt.timedelta(minutes=3)
 
 
 def entry_kept_in(machine: QemuMachine, variable: str) -> str:
-    """The entry an EFI variable of systemd-boot's names: UTF-16 after four bytes of flags."""
+    """Read the entry an EFI variable of systemd-boot's names: UTF-16 after four bytes of flags."""
     raw = bytes(int(byte, 16) for byte in machine.succeed(f"od -An -tx1 -v {variable}").split())
     return raw[4:].decode("utf-16-le").rstrip("\0")
 
 
 @pytest.fixture(scope="module")
 def other(machine: BaseMachine) -> str:
-    """The entry of the specialisation, whose initrd isn't the default's."""
+    """Find the entry of the specialisation, whose initrd isn't the default's."""
     machine.wait_for_unit("default.target")
     path = machine.succeed(
         "grep --files-with-matches --line-regexp --fixed-strings 'title NixOS (other)'"
@@ -50,12 +50,14 @@ def other(machine: BaseMachine) -> str:
 def started_from_other(machine: BaseMachine, other: str) -> QemuMachine:
     """Start the machine once from the other entry, as a switch's next reboot hasn't come."""
     # Only a machine QEMU runs can be stopped and started again.
-    assert isinstance(machine, QemuMachine)
+    assert isinstance(machine, QemuMachine), "the machine isn't one QEMU runs"
     machine.succeed(f"bootctl set-oneshot {other}")
     machine.shutdown()
     machine.start()
     machine.wait_for_unit("default.target")
-    assert entry_kept_in(machine, SELECTED) == other, "the machine didn't start from the other entry"
+    assert entry_kept_in(machine, SELECTED) == other, (
+        "the machine didn't start from the other entry"
+    )
     booted = machine.succeed("readlink -f /run/booted-system/initrd")
     default = machine.succeed("readlink -f /nix/var/nix/profiles/system/initrd")
     assert booted != default, "the other entry starts the default's initrd, so nothing differs"

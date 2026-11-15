@@ -548,7 +548,7 @@ fn before(action: &str) {
              next start takes this one's entry, once, to read the image back"
         ),
         Err(error) => {
-            eprintln!("hibernate-unlock: couldn't hold the next start to this one's entry: {error}")
+            eprintln!("hibernate-unlock: couldn't hold the next start to its entry: {error}");
         }
     }
     // What the graphics drivers hold as the image is sized: they copy it
