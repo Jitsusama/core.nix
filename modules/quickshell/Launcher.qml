@@ -9003,8 +9003,25 @@ Scope {
     // once, as they did through the held notices (Joel, 2026-11-14), and /
     // finds; the opening took the keys already, so normal holds.
     property var landOn: null
+    // Closed, it draws the place as it kept it, as a chord does
+    // (intoKept), landing there and again once the fill has stepped into
+    // it anew (filled): Super+N into the notices on screen opened whole
+    // every time, 146 ms to its frame and presented 167 ms from the ask
+    // (Joel, 2026-11-15, 09:14).
+    property var landsOnFill: null
     function intoOn(name, wanted, normal) {
-        into(name);
+        const asked = !open && !opening && openAsked < 0;
+        if (asked)
+            askedToOpen();
+        if (!open && !opening && intoKept(name, true))
+            landsOnFill = { wanted: wanted, normal: normal };
+        else
+            into(name);
+        landingOn(wanted, normal);
+        if (asked)
+            askDone();
+    }
+    function landingOn(wanted, normal) {
         if (normal === true)
             prompt.toNormal();
         landOn = wanted;
@@ -9064,13 +9081,16 @@ Scope {
     // Draws a place as it was kept, while the closed card holds home and
     // what its rows follow of the window under it is as it was kept. It's
     // filled in after its frame by opening it whole (filled), which lands
-    // its rows where the kept ones stood.
-    function intoKept(name) {
+    // its rows where the kept ones stood. Asked to list its rows now
+    // (`listedNow`), a place a source leads to is listed as it stands
+    // (ledListing) rather than drawn as kept.
+    function intoKept(name, listedNow) {
         const kept = placesKept[name];
         if (!kept || !homeHeld || parting !== "" || kept.under !== keptUnder(name))
             return false;
         const source = collections.find(one => one.settings.name === name) ?? null;
-        const listed = source?.keptListed === true ? keptListing(source) : kept.matches;
+        const listed = source?.keptListed === true ? keptListing(source)
+            : listedNow === true ? ledListing(name) : kept.matches;
         if (listed === null)
             return false;
         keeping = true;
@@ -9119,6 +9139,18 @@ Scope {
         if (source.waiting === true)
             return null;
         return live(listedWhole(source));
+    }
+    // A kept place no collection is, which a source leads to (leadingTo),
+    // as Super+N leads to the notices on screen: the rows its last step
+    // holds, listed as they stand now, since what's on screen comes and
+    // goes between openings, or null where that step doesn't list them,
+    // when it opens whole.
+    function ledListing(name) {
+        const led = leadingTo(name)?.rows ?? [];
+        const last = led[led.length - 1];
+        if (typeof last?.targets !== "function")
+            return null;
+        return live(last.targets());
     }
 
     function intoWhole(name, passing) {
@@ -10146,6 +10178,10 @@ Scope {
         const place = openInto;
         if (place !== "") {
             into(place);
+            const lands = landsOnFill;
+            landsOnFill = null;
+            if (lands !== null)
+                landingOn(lands.wanted, lands.normal);
         } else {
             const opened = KeyTimes.now();
             open = true;
@@ -10282,6 +10318,7 @@ Scope {
     function unopened() {
         opening = false;
         openInto = "";
+        landsOnFill = null;
         spotsLater.restart();
         if (unlooked.length > 0 || unready.length > 0)
             readying.start();
