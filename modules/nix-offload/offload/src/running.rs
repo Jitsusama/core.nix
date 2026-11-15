@@ -243,7 +243,10 @@ mod tests {
             (at("abd", "/t", ASKED), "another commit"),
             (at("abc", "/u", ASKED), "another tree"),
             (at("abc", "/t", "--system aarch64-darwin"), "another system"),
-            (at("abc", "/t", "--build --system x86_64-linux"), "another ask"),
+            (
+                at("abc", "/t", "--build --system x86_64-linux"),
+                "another ask",
+            ),
         ] {
             assert_eq!(
                 twin(state.path(), u32::MAX, &other),

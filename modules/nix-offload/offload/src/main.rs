@@ -1369,6 +1369,42 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     }
 }
 
+/// A run said as going and holding its work alone, both let go when this
+/// is dropped (`running.rs`).
+struct Going {
+    _said: Option<running::Running>,
+    _alone: Option<running::Held>,
+}
+
+/// This run, said as going from `started`, so a merge sharing its files
+/// waits for it, and holding alone the work that the tree at `folder`'s
+/// commit `at` and `arguments` name; or nothing once it waited for a twin
+/// doing that work to end.
+fn going_alone(
+    at: Option<&passed::At>,
+    folder: &Path,
+    arguments: &[String],
+    started: u64,
+) -> Option<Going> {
+    let Some(at) = at else {
+        return Some(Going {
+            _said: None,
+            _alone: None,
+        });
+    };
+    let twin = running::Twin::new(&at.commit, folder, arguments);
+    let me = std::process::id();
+    let alone = match running::alone(&state(), me, &twin, now) {
+        running::Alone::Held(held) => Some(held),
+        running::Alone::Waited => return None,
+        running::Alone::Unheld => None,
+    };
+    Some(Going {
+        _said: running::Running::start(&state(), me, &twin, started),
+        _alone: alone,
+    })
+}
+
 /// The checks a pass at `at` already told of for `system`, by their names
 /// under it, so a run there need not build them again.
 fn told(passed: &passed::Passed, at: Option<&passed::At>, system: Option<&str>) -> Vec<String> {
@@ -1449,25 +1485,13 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         return ExitCode::SUCCESS;
     }
     let wanted = changed::wanted(arguments);
-    let twin = at
-        .as_ref()
-        .map(|at| running::Twin::new(&at.commit, &folder, arguments));
     // The same run already going in this tree ends in what this one would
-    // find, so this one waits for it and looks again at what passed
-    // (`running.rs`).
-    let me = std::process::id();
-    let alone = twin
-        .as_ref()
-        .map(|twin| running::alone(&state(), me, twin, now));
-    if matches!(alone, Some(running::Alone::Waited)) {
+    // find, so this one waits for it and looks again at what passed.
+    let started = now();
+    let Some(going) = going_alone(at.as_ref(), &folder, arguments, started) else {
         forget();
         return changed_there(given, waiting, replays);
-    }
-    // Said while it runs, so a merge sharing its files waits for it.
-    let started = now();
-    let said_running = twin
-        .as_ref()
-        .and_then(|twin| running::Running::start(&state(), me, twin, started));
+    };
     let told = told(&passed, at.as_ref(), wanted.system.as_deref());
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
@@ -1503,7 +1527,8 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         kept_passing(&passed, at, arguments, printed, started);
     }
     if runs_again(replayed.as_deref(), finished.status) {
-        drop(said_running); // The replay ended, so it goes unsaid first.
+        // The replay ended, so it goes unsaid and lets its work go first.
+        drop(going);
         return changed_there(given, waiting, false);
     }
     ExitCode::from(u8::try_from(finished.status).unwrap_or(1))
