@@ -30,6 +30,11 @@ onLinux {
   # Whether polkit lets an account switch the machine shows only with
   # polkit, systemd and a system to switch to.
   vm-admins-switch-unasked = import ./switch-system.nix { inherit self pkgs; };
+  # Whether a switch starts again what it stopped while an account's setup
+  # hangs shows only with systemd, a real switch and home-manager.
+  vm-a-switch-outruns-home-manager = import ./switch-outruns-home-manager.nix {
+    inherit self pkgs;
+  };
   # Whether a machine updates itself to signed main, and goes back when it
   # isn't whole, shows only with systemd, a real switch and Nix building.
   vm-updates-itself-to-signed-main = import ./update-to-main.nix {

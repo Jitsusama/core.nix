@@ -4114,6 +4114,11 @@
     to one it never ran only by authenticating; one outside wheel, and what isn't a NixOS system in
     the store, is refused; and with a YubiKey named but not there, polkit takes the password alone
   '';
+  vm-a-switch-outruns-home-manager = ''
+    a switch that changes a system service and gives an account a user unit whose start never ends
+    has that service running again within 45 s, while home-manager's setup of the account still
+    waits on the unit
+  '';
   vm-a-focused-window-reads-its-swap-back = ''
     an administrator's memory-swap-in@ reads back what swap holds of a pid's scope when it belongs to
     the session window niri says has the focus, once a window in 30 s; never another window's, a
@@ -4835,7 +4840,7 @@
   '';
   wifid-reads-the-air = ''
     wifid's tests pass: what it hears and offers, how each network is joined, the addresses it
-    shows, what it keeps, and sign-ins
+    shows, what it keeps, sign-ins, and what each access point carried by the hour
   '';
   wifid-sign-in-reads-its-network = ''
     the sign-in window's tests pass: its proxy lets on only the window, and it follows which card

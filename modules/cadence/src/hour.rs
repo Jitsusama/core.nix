@@ -267,7 +267,10 @@ pub fn compose(at: &str, measures: &[Measure], kept: &Kept, due: &str) -> (Strin
         }
     }
     for closed in kept.open.iter().filter(|miss| !open.contains(miss)) {
-        let what = closed.split(" · ").next().unwrap_or(closed);
+        // Only the owner follows the last mark; a miss's words may hold one.
+        let what = closed
+            .rsplit_once(" · ")
+            .map_or(closed.as_str(), |(what, _)| what);
         let _ = writeln!(card, "For Joel: fixed, and a check now catches it: {what}.");
     }
     let next = Kept {
@@ -552,13 +555,13 @@ mod tests {
             drag: None,
             open: vec![
                 "the map had no network · KNURBN".to_owned(),
-                "History paused · RCTRF8".to_owned(),
+                "History · Reader paused · RCTRF8".to_owned(),
             ],
         };
         let (card, next) = compose("19:10", &[open], &kept, "");
         assert!(
-            card.contains("For Joel: fixed, and a check now catches it: History paused."),
-            "{card}"
+            card.contains("For Joel: fixed, and a check now catches it: History · Reader paused."),
+            "a miss's own words are said whole, only its owner cut: {card}"
         );
         assert!(
             !card.contains("For Joel: fixed, and a check now catches it: the map"),
