@@ -218,6 +218,12 @@ impl Kept {
             .map(|kept| &kept.found)
     }
 
+    /// Who `email` is, as `held` while running says, over what's kept.
+    #[must_use]
+    pub fn over(&self, held: Option<&Found>, email: &str, now: u64) -> Option<Found> {
+        held.cloned().or_else(|| self.get(email, now).cloned())
+    }
+
     /// Keeps who someone was found to be, writing the file anew whole, so
     /// it's never read half written.
     pub fn keep(&mut self, found: &Found, now: u64) {
@@ -960,6 +966,44 @@ mod tests {
         let mut held = Kept::at(None);
         held.keep(&ada, 1000);
         assert_eq!(held.get("ada@example.com", 1000), Some(&ada.who()));
+    }
+
+    #[test]
+    fn nobody_known_while_running_lapses_after_a_day_as_kept() {
+        let nobody = found(&nobody(), "x@example.com", "T1").unwrap();
+        let ada = Found {
+            email: "ada@example.com".into(),
+            id: Some("U1".into()),
+            team: "T1".into(),
+            name: "Ada Lovelace".into(),
+            ..nobody.clone()
+        };
+        let mut kept = Kept::at(None);
+        kept.keep(&nobody, 1000);
+        kept.keep(&ada, 1000);
+        let day = 24 * 60 * 60;
+        assert_eq!(
+            kept.over(Some(&nobody), "x@example.com", 1000 + day - 1),
+            Some(nobody.clone()),
+            "nobody, within the day"
+        );
+        assert_eq!(
+            kept.over(Some(&nobody), "x@example.com", 1000 + day),
+            None,
+            "asked again a day on, though it's held while running"
+        );
+        assert_eq!(
+            kept.over(Some(&ada), "ada@example.com", u64::MAX),
+            Some(ada.clone()),
+            "someone found holds"
+        );
+        // Found to be nobody again, it holds a day from then.
+        kept.keep(&nobody, 1000 + day);
+        assert_eq!(
+            kept.over(Some(&nobody), "x@example.com", 1000 + 2 * day - 1),
+            Some(nobody),
+            "nobody again, held from when it was found"
+        );
     }
 
     #[test]
