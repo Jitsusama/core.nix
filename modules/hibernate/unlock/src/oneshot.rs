@@ -152,8 +152,15 @@ mod tests {
         let held = hold(&booted, &default, &kept, |_| {
             panic!("the next start was set though nothing differs")
         });
-        assert!(!held.unwrap(), "a default like this start's held the next one");
-        assert!(!let_go(&kept, |_| panic!("an unheld start was let go")).unwrap());
+        assert!(
+            !held.unwrap(),
+            "a default like this start's held the next one"
+        );
+        let let_go = let_go(&kept, |_| panic!("an unheld start was let go"));
+        assert!(
+            !let_go.unwrap(),
+            "a start never held was said to be let go"
+        );
         fs::remove_dir_all(folder).unwrap();
     }
 
@@ -186,7 +193,10 @@ mod tests {
             !hold(&booted, &default, &kept, |_| false).unwrap(),
             "a next start bootctl refused was said to be held"
         );
-        assert!(!kept.exists(), "a refused hold was kept, to be let go later");
+        assert!(
+            !kept.exists(),
+            "a refused hold was kept, to be let go later"
+        );
         fs::remove_dir_all(folder).unwrap();
     }
 }
