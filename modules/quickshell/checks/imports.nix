@@ -174,6 +174,11 @@
     "launcher/Order.js"
     "launcher/SessionRow.js"
   ];
+  "launcher/Machines.qml" = [
+    "Fuzzy.js"
+    "When.js"
+    "launcher/RealmMachines.js"
+  ];
   "launcher/Media.js" = [ "Music.js" ];
   "launcher/Moment.js" = [ "launcher/Numbers.js" ];
   "launcher/Nearby.js" = [ "launcher/Order.js" ];

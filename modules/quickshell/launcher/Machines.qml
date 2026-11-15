@@ -80,13 +80,26 @@ Provider {
 
     // Every record the nodes hold, each with the realm that said it. A
     // node too old to list this machine leaves it out, so it's said from
-    // what the shell knows of itself, its name, until one does.
+    // what the shell knows of itself, its name, until one does. Each is
+    // kept as the same object while its node keeps its record, as a
+    // Daemon keeps one a change didn't touch, so `all` can tell which
+    // machines a change named. Kept in a plain object, so keeping
+    // notifies nothing.
+    readonly property var tagged: ({ held: {} })
     readonly property var records: {
         const all = [];
+        const next = {};
         for (const realm of Object.keys(heldBy)) {
-            for (const record of Object.values(heldBy[realm]))
-                all.push(Object.assign({}, record, { realm }));
+            for (const record of Object.values(heldBy[realm])) {
+                const at = `${realm}\u0000${record.key ?? record.name}`;
+                const before = provider.tagged.held[at];
+                const copy = before !== undefined && before.record === record ? before.copy
+                    : Object.assign({}, record, { realm });
+                next[at] = { record: record, copy: copy };
+                all.push(copy);
+            }
         }
+        provider.tagged.held = next;
         if (Sessions.machine !== "" && !all.some(record => record.here === true))
             all.push({ name: Sessions.machine, here: true, state: "ready",
                 realm: Sessions.realm, measured_at: new Date().toISOString() });
@@ -115,12 +128,32 @@ Provider {
         };
     }
 
-    readonly property var all: {
-        const listed = Listed.ordered(records);
-        const place = placeNow(listed);
-        return listed.map(record => (record.here === true ? hereRow(record, place)
-            : made(record, place)));
-    }
+    // Each machine's row, made only while the launcher wants them, and
+    // then again only for a machine whose records a change named, or as
+    // this machine's core, the realms, the day or the words move, which
+    // every row reads. Shut on Joel's shell, every node change made all
+    // four rows again: 100 rows in four minutes, for nobody (2026-11-15).
+    // A node too old to list this machine leaves its row made each time.
+    readonly property var rowsKept: keeper()
+    readonly property var all: whileWanted("all", () => {
+        const listed = Listed.ordered(provider.records);
+        const place = provider.placeNow(listed);
+        const byName = {};
+        for (const record of provider.records) {
+            if (byName[record.name] === undefined)
+                byName[record.name] = [];
+            byName[record.name].push(record);
+        }
+        const shared = [place.core, place.realms, new Date(place.now).toDateString(),
+            place.said];
+        provider.keepingBegun(provider.rowsKept);
+        const rows = listed.map(record => provider.keptAlike(provider.rowsKept, record.name,
+            shared.concat([record.here === true], byName[record.name]),
+            () => (record.here === true ? provider.hereRow(record, place)
+                : provider.made(record, place))));
+        provider.keptOnly(provider.rowsKept);
+        return rows;
+    })
     onAllChanged: changedTo(all)
 
     // This machine: Return opens the Machine place, one place per thing,
@@ -267,7 +300,7 @@ Provider {
     }
 
     function everything() {
-        return all.slice();
+        return standing("all", all).slice();
     }
 
     // "2 reached, 1 out of reach", this machine not among them.
