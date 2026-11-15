@@ -351,6 +351,10 @@ pub trait Interface {
     /// The access point the card is with, or `/` for none.
     #[zbus(property, name = "CurrentBSS")]
     fn current_access_point(&self) -> zbus::Result<OwnedObjectPath>;
+
+    /// The network the card is on, or `/` for none.
+    #[zbus(property)]
+    fn current_network(&self) -> zbus::Result<OwnedObjectPath>;
 }
 
 /// A network wpa_supplicant has been given for one card.
@@ -365,6 +369,11 @@ pub trait Joinable {
     /// Every field but the keys, each as text.
     #[zbus(property)]
     fn properties(&self) -> zbus::Result<HashMap<String, OwnedValue>>;
+
+    /// Sets the fields named, each as wpa_supplicant's own config file
+    /// would say it, leaving the others as they are.
+    #[zbus(property)]
+    fn set_properties(&self, fields: HashMap<&str, zvariant::Value<'_>>) -> zbus::Result<()>;
 }
 
 #[cfg(test)]

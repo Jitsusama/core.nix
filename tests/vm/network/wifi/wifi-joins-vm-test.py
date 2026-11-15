@@ -355,3 +355,45 @@ def test_a_card_whose_access_point_carries_slowly_moves_to_another_of_its_networ
     )
     wifid.holds_address("10.42.0.")
     machine.succeed("ip netns exec air tc qdisc del dev wlan0 root")
+
+
+def test_and_wpa_supplicant_picking_again_keeps_it_there_though_the_first_is_louder(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """And wpa_supplicant picking again keeps it there, though the first is heard louder."""
+    # On 15 Nov 2026 wpa_supplicant took the card back off the access point wifid chose three
+    # times, within a minute of the move. Having it pick again, with the first heard far louder,
+    # stands in for whatever it picked by then.
+    machine.succeed("ip netns exec air iw dev wlan5 set txpower fixed 500")
+    machine.wait_until_succeeds(
+        "wpa_cli -i wlan2 scan >/dev/null;"
+        " wpa_cli -i wlan2 scan_results | awk -F'\\t'"
+        ' \'$1 == "02:00:00:00:00:00" {a = $3} $1 == "02:00:00:00:05:00" {b = $3}'
+        ' END {exit !(a != "" && b != "" && a > b + 10)}\'',
+        timeout=timedelta(seconds=30),
+    )
+    since = wifid.journal_now()
+    machine.succeed("wpa_cli -i wlan2 reassociate")
+    machine.wait_until_succeeds(
+        f"journalctl -o cat -u wpa_supplicant --after-cursor='{since}'"
+        " | grep -q 'wlan2: CTRL-EVENT-CONNECTED'",
+        timeout=timedelta(seconds=30),
+    )
+    status = machine.succeed("wpa_cli -i wlan2 status")
+    assert "bssid=02:00:00:00:05:00" in status.splitlines(), (
+        f"wpa_supplicant moved the card off the access point wifid chose:\n{status}"
+    )
+
+
+def test_and_once_that_one_goes_wpa_supplicant_takes_it_to_the_first_again(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """And once that one goes, wpa_supplicant takes the card to the first again."""
+    machine.succeed("systemctl stop lantern-two")
+    machine.wait_until_succeeds(
+        "s=$(wpa_cli -i wlan2 status)"
+        ' && echo "$s" | grep -qx wpa_state=COMPLETED'
+        ' && echo "$s" | grep -qx bssid=02:00:00:00:00:00',
+        timeout=timedelta(seconds=60),
+    )
+    wifid.holds_address("10.42.0.")
