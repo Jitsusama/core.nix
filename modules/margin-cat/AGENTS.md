@@ -80,8 +80,13 @@ claws on the top of the window below, climb up, and then walk over."
 - Held by `margin-cat-one-screen.qml`: "with no corner in its reach, the drop lands on the top
   under it, never the floor"
 - Held by `margin-cat-one-screen.qml`: "it comes in at the top over the gap, mid-drop"
-- Owed since 2026-11-14: up, one path through the workspaces stacked as one screen,
-  arriving where that path crosses the screen's bottom edge.
+- Held by `margin-cat-one-screen.qml`: "it comes in at the bottom beside a side, mid-leap"
+- Held by `margin-cat-one-screen.qml`: "the leap up ends hanging on a side's foot, never its
+  underside"
+- Held by `margin-cat-one-screen.qml`: "up from a top under the crack above, it leaps from there
+  straight up it"
+- Held by `margin-cat-one-screen.qml`: "up with no side over any top, it comes in at the nearest
+  side's foot, unmoved"
 
 ### Climb, Path and Leap About the Windows
 
@@ -118,7 +123,7 @@ are held to an insanely high quality"
 Joel, 2026-11-13 17:22: "Going up the side of a window should be at the same
 speed roughly as walking on top, it seems accelerated in the video"
 
-- Held by `margin-cat-journeys.qml`: "} climbs at ${Math.round("
+- Held by `margin-cat-journeys.qml`: "it climbs a side at about its walking pace, within a fifth"
 
 ### Believable Routes
 
@@ -161,10 +166,23 @@ closes or loses focus"
 
 - Held by `margin-cat-floats.qml`: "onto a floating window it drops straight down from the top
   over it"
-- Held by `margin-cat-floats.qml`: "off it, it crouches and leaps straight up onto the ledge in reach"
+- Held by `margin-cat-floats.qml`: "off it, it crouches and leaps straight up onto the ledge
+  in reach"
 - Held by `margin-cat-floats.qml`: "its window closed, it leaps up at once, never thinking or
   walking first"
 - Held by `margin-cat-floats.qml`: "on a floating window it's drawn over the tiled ones"
+
+- Owed since 2026-11-13: its floating window's focus gone, it waits two seconds, then leaps up
+  off it; the wait is the screen's, which no Qt case reaches yet.
+
+### Unobtrusive and Cute
+
+Joel, 2026-11-11 22:55, by P9R1KI: "i think having something crawl around
+my screen in a way that is unobtrusive and cute is fun. i think making sure
+the way things look on screen is joyful but not distracting is fun."
+
+- Held by `margin-cat.qml`: "while he types it's mild"
+- Held by `margin-cat.qml`: "each play short, under two and a half seconds"
 
 ### Never Skid
 

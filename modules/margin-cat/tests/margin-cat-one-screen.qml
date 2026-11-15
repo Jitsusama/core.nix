@@ -25,7 +25,10 @@ QtObject {
             if (JSON.stringify(got) !== JSON.stringify(want))
                 failures.push(`${name}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
         };
+        for (const way of [1, -1])
+            crosses(expect, way);
         down(expect);
+        up(expect);
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
@@ -61,60 +64,80 @@ QtObject {
         return all;
     }
 
-    function down(expect) {
-        const at = world({});
+    // A move down (`way` 1) or up (-1) between two workspaces alike, from
+    // the top of one's left window to the other's right, and back.
+    function crosses(expect, way) {
+        const at = world({ way });
         const slides = MarginCat.slides(at.spring);
         const seen = one => one.y + 8 > 0 && one.y < 800 && one.x + 8 > 0 && one.x < 1248;
         const walks = ["walkingA", "walkingB", "walkingC", "walkingD"];
+        // How far above the workspace it goes to its old one's ground is.
+        const lift = 880 * way;
+        const dir = way > 0 ? "down" : "up";
         // Joel, Sat 14 17:30: "when going up or down it should appear on
         // the screen from the position that would make sense for how it
         // would have to path if they were all on one screen. so the top of
         // the left would have to walk to the right, climb down the right
         // side, drop down and grab with its claws on the top of the window
         // below, climb up, and then walk over" (VKCF3Z fcd95edd).
-        for (const [from, to, name] of [[100, 900, "left to right"],
+        for (const [from, to, side] of [[100, 900, "left to right"],
             [1100, 100, "right to left"]]) {
+            const name = `${dir} ${side}`;
             const move = Stacked.moves({ x: from, y: 7 }, { x: to, y: 7 }, at);
             const all = frames(move, 1000 / 120);
-            // niri's slide takes the old tops off the screen in a frame
-            // or two, and all it shows till then is its walk, or its turn,
-            // on the top it stood on as the slide carries it.
+            // niri's slide takes the old tops off the screen, and all it
+            // shows till then is its walk, or its turn, on the top it
+            // stood on as the slide carries it.
             const sliding = all.filter(one => one.t < slides && seen(one));
-            const carried = one => one.y + 880 * MarginCat.slid(one.t, at.spring);
-            expect(`down ${name}, it walks its top as niri slides it up, paws moving`,
+            const carried = one => one.y + lift * MarginCat.slid(one.t, at.spring);
+            expect(`${name}, it walks its top as niri slides it, paws moving`,
                 sliding.filter(one => !(walks.includes(one.pose) || one.beat === "turns")
                     || Math.abs(carried(one) - 7) > 1e-6)
                     .map(one => [Math.round(one.t), one.pose, one.beat, carried(one)]), []);
-            expect(`down ${name}, it goes off the top with the workspace it left`,
-                all.some(one => one.t < slides && one.y + 8 <= 0), true);
+            expect(`${name}, it goes off the screen with the workspace it left`,
+                all.some(one => one.t < slides && (way > 0 ? one.y + 8 <= 0 : one.y >= 800)),
+                true);
             const gone = all.findIndex(one => !seen(one));
             const back = all.findIndex((one, i) => i > gone && seen(one));
             const comes = all[back] ?? { t: Infinity };
-            expect(`down ${name}, it comes in at the top over the gap, mid-drop`,
-                [comes.x >= 616 && comes.x <= 624, comes.y < 0, comes.pose, comes.beat],
-                [true, true, "falling", "drops"]);
-            expect(`down ${name}, out of sight no more than about two thirds of a second`,
+            const beside = comes.x >= 616 && comes.x <= 624;
+            if (way > 0)
+                expect(`${name}, it comes in at the top over the gap, mid-drop`,
+                    [beside, comes.y < 0, comes.pose, comes.beat],
+                    [true, true, "falling", "drops"]);
+            else
+                expect(`${name}, it comes in at the bottom beside a side, mid-leap`,
+                    [beside, comes.y >= 776, comes.pose, comes.beat],
+                    [true, true, "leaping", "springs"]);
+            expect(`${name}, out of sight no more than about two thirds of a second`,
                 comes.t - (all[gone]?.t ?? 0) <= 700, true);
             const names = move.beats.map(beat => beat.name);
-            const grab = move.beats[names.indexOf("drops") + 1];
-            expect(`down ${name}, the drop ends in a grab at a top's corner in its reach`,
-                [grab?.name, grab?.to.y, grab?.to.x === 616 || grab?.to.x === 624],
-                ["grabs", 8, true]);
-            expect(`down ${name}, then it climbs on and walks to its seat`,
+            const grab = move.beats[names.indexOf(way > 0 ? "drops" : "springs") + 1];
+            const caught = [grab?.name, grab?.to.y, grab?.to.x === 616 || grab?.to.x === 624];
+            if (way > 0)
+                expect(`${name}, the drop ends in a grab at a top's corner in its reach`,
+                    caught, ["grabs", 8, true]);
+            else
+                expect(`${name}, the leap up ends hanging on a side's foot, never its underside`,
+                    caught, ["grabs", 776, true]);
+            expect(`${name}, then it climbs on and walks to its seat`,
                 Paths.frame(move, move.ends), { x: to, y: 7, pose: null, turn: 0,
                     facing: Math.sign(to - from), beat: "sits", done: true });
             // Its own ground, the slide taken out, never jumps: no more
             // than half its body between two frames at 120 Hz.
             const shown = all.filter(seen);
-            expect(`down ${name}, all it shows is smooth on its own ground`,
+            expect(`${name}, all it shows is smooth on its own ground`,
                 shown.filter((one, i) => i > 0 && one.t - shown[i - 1].t < 9
                     && Math.hypot(one.x - shown[i - 1].x, one.ground - shown[i - 1].ground) > 4)
                     .map(one => [Math.round(one.t), one.beat]), []);
-            const inFace = (one, tiles) => tiles.some(tile => one.x < tile.left + tile.width - 0.5
-                && one.x + 8 > tile.left + 0.5 && one.ground < tile.top + tile.height - 0.5
-                && one.ground + 8 > tile.top + 0.5);
-            expect(`down ${name}, in no window's face, old or new`,
-                shown.filter(one => inFace(one, one.t < slides ? at.was : at.now))
+            // Its ground is laid over the new workspace's, the old one's
+            // `lift` above it.
+            const inFace = (one, tiles, dy) => tiles.some(tile =>
+                one.x < tile.left + tile.width - 0.5 && one.x + 8 > tile.left + 0.5
+                && one.ground < tile.top - dy + tile.height - 0.5
+                && one.ground + 8 > tile.top - dy + 0.5);
+            expect(`${name}, in no window's face, old or new`,
+                shown.filter(one => inFace(one, at.was, lift) || inFace(one, at.now, 0))
                     .map(one => [Math.round(one.t), one.beat]), []);
             // Each pose it shows held two frames at 60 Hz, as it goes off
             // and comes in too.
@@ -126,22 +149,28 @@ QtObject {
                 else
                     runs.push({ pose: one.pose, from: one.t, until: one.t, beat: one.beat });
             }
-            expect(`down ${name}, every pose it shows held two frames at 60 Hz`,
+            expect(`${name}, every pose it shows held two frames at 60 Hz`,
                 runs.filter((one, i) => i > 0 && i < runs.length - 1
                     && one.until + 1 - one.from < 33 && runs[i + 1].from === one.until + 1)
                     .map(one => [one.pose, one.beat, Math.round(one.from)]), []);
         }
-
-        // Its seat below at the same spot on the screen as the one it
-        // leaves, as with the same windows on both, it's still a way down
-        // the one screen, never a hold in place as the windows slide by.
+        // Its seat at the same spot on the screen as the one it leaves,
+        // as with the same windows on both, it's still a way across the
+        // gap, never a hold in place as the windows slide by.
         const same = Stacked.moves({ x: 900, y: 7 }, { x: 900, y: 7 }, at);
-        expect("its seat at the same spot below, it still goes off the top and drops in",
-            [same.beats.some(beat => beat.name === "drops"),
-                frames(same, 1000 / 120).some(one => one.t < slides && one.y + 8 <= 0),
+        expect(`${dir}, its seat at the same spot, it still goes off the screen and comes in`,
+            [same.beats.some(beat => beat.name === (way > 0 ? "drops" : "springs")),
+                frames(same, 1000 / 120).some(one => one.t < slides
+                    && (way > 0 ? one.y + 8 <= 0 : one.y >= 800)),
                 Paths.frame(same, same.ends).beat],
             [true, true, "sits"]);
+    }
 
+    // What only a move down does: its seat said again out of sight, and
+    // told of it late or not at all.
+    function down(expect) {
+        const at = world({});
+        const slides = MarginCat.slides(at.spring);
         // Its seat said again while it's out of sight, it finds its way
         // from where it set off, never walking on from above the screen.
         const again = Stacked.moves({ x: 100, y: 7 }, { x: 900, y: 7 }, at);
@@ -178,9 +207,60 @@ QtObject {
             [Stacked.dropsFrom(Paths.frame(blind, blind.ends), at),
                 Stacked.dropsFrom({ x: 100, y: 7 }, at)],
             [{ x: 100, y: -24 }, { x: 100, y: 7 }]);
+        // Up with nowhere yet, it rides its window off the bottom, never
+        // held on the glass as its ground slides away.
+        const held = world({ way: -1 });
+        const rides = Stacked.moves({ x: 100, y: 7 }, null, held);
+        const halfway = Paths.frame(rides, slides / 2);
+        expect("up with nowhere yet, it rides its window off the bottom on niri's spring",
+            [rides.beats.map(beat => beat.name), halfway.x, Math.round(halfway.y * 100),
+                Math.round(Paths.frame(rides, rides.ends).y)],
+            [["rides"], 100, Math.round((7 + 880 * MarginCat.slid(slides / 2, at.spring)) * 100),
+                887]);
+        // Ridden off the bottom over an empty workspace, it springs in at
+        // the bottom edge onto the floor and lands, three heights at most.
+        const floor = Stacked.risesOnto(Stacked.risesFrom({ x: 100, y: 887 }, at), at);
+        expect("off the bottom with nowhere to sit, it springs in at the bottom onto the floor",
+            [floor.beats.map(beat => beat.name), floor.from.y, floor.to.y,
+                Paths.frame(floor, floor.ends).beat],
+            [["springs", "lands"], 816, 792, "sits"]);
         const late = Stacked.moves({ x: 100, y: 7 }, { x: 900, y: 7 }, world({ ahead: 50 }));
         expect("told of the slide 50 ms late, it's as far up as niri's slide has gone",
             Math.round(Paths.frame(late, 0).y * 100),
             Math.round((7 - 880 * MarginCat.slid(50, at.spring)) * 100));
+    }
+
+    // Up from a window alone, which niri sets in the middle of the screen,
+    // to two half columns: no head below is under a side above, so it walks
+    // its top to under the crack between them and leaps straight up it
+    // (VKCF3Z c9474cef). With no side over any top, it comes in on the
+    // nearest side's foot, never shifted sideways where it's seen.
+    function up(expect) {
+        const alone = [{ left: 324, top: 16, width: 600, height: 768, column: 0, id: 9 }];
+        const halves = world({ way: -1, was: alone });
+        const crack = Stacked.moves({ x: 400, y: 7 }, { x: 900, y: 7 }, halves);
+        const names = crack.beats.map(beat => beat.name);
+        const springs = crack.beats[names.indexOf("springs")];
+        const grab = crack.beats[names.indexOf("springs") + 1];
+        expect("up from a top under the crack above, it leaps from there straight up it",
+            [springs?.from.x, [616, 624].includes(springs?.to.x), grab?.name, grab?.to.y],
+            [springs?.to.x, true, "grabs", 776]);
+        expect("up from a top under the crack above, then it climbs on and walks to its seat",
+            Paths.frame(crack, crack.ends).beat, "sits");
+
+        const narrow = [{ left: 100, top: 16, width: 200, height: 768, column: 0, id: 9 }];
+        const apart = [
+            { left: 400, top: 16, width: 400, height: 768, column: 0, id: 10 },
+            { left: 900, top: 16, width: 300, height: 768, column: 1, id: 11 }
+        ];
+        const none = world({ way: -1, was: narrow, now: apart });
+        const far = Stacked.moves({ x: 200, y: 7 }, { x: 1000, y: 7 }, none);
+        const fars = far.beats.map(beat => beat.name);
+        const comes = far.beats[fars.indexOf("springs")];
+        expect("up with no side over any top, it comes in at the nearest side's foot, unmoved",
+            [fars.slice(0, fars.indexOf("unseen")).filter(name => name !== "turns"),
+                comes?.to.x, comes?.to.y, far.beats[fars.indexOf("springs") + 1]?.name,
+                Paths.frame(far, far.ends).beat],
+            [[], 392, 776, "grabs", "sits"]);
     }
 }

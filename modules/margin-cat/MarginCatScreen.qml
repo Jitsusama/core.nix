@@ -381,6 +381,11 @@ PanelWindow {
             sits();
             return;
         }
+        walks(plan);
+    }
+
+    // A walk's `plan` played from where it is, from its first step.
+    function walks(plan: var): void {
         if (going === null) {
             shown = [];
             costs = [];
@@ -395,8 +400,8 @@ PanelWindow {
     }
 
     // A move to the workspace `way` below (1) or above (-1): it rides the one it leaves off
-    // the top going down, or holds where it sits the whole slide going up, and its way to
-    // its new seat comes once niri says the new workspace's column (steer).
+    // the top going down, or off the bottom going up, and its way to its new seat comes
+    // once niri says the new workspace's column (steer).
     function moveTo(way: int): void {
         halt();
         resting.stop();
@@ -484,9 +489,23 @@ PanelWindow {
         turn = 0;
         halt();
         sat = wanted;
-        // Its hold done over an empty workspace, it falls to the floor,
-        // from just over the screen where it rode the old one off the top.
-        if (there === null && emptied && place !== null) {
+        // Its ride done over an empty workspace, it falls to the floor
+        // from just over the screen where it rode the old one off the
+        // top, or springs up onto it from just under the screen where it
+        // rode the old one off the bottom.
+        if (there === null && emptied && place !== null && place.y >= modelData.height) {
+            place = Stacked.risesFrom(place, { height: modelData.height, tall: size });
+            goingTo = wanted;
+            walks(Stacked.risesOnto(place, {
+                cell,
+                wide: size,
+                tall: size,
+                air: cell,
+                height: modelData.height,
+                facing: facing,
+                slowdown: Theme.motion.slowdown
+            }));
+        } else if (there === null && emptied && place !== null) {
             place = Stacked.dropsFrom(place, { tall: size });
             floors();
         }
