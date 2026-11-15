@@ -133,7 +133,12 @@ pub fn finished(
 /// as of a commit it hasn't got.
 fn on_main(commit: &str) -> Option<bool> {
     let ran = Command::new("git")
-        .args(["merge-base", "--is-ancestor", commit, "refs/remotes/origin/main"])
+        .args([
+            "merge-base",
+            "--is-ancestor",
+            commit,
+            "refs/remotes/origin/main",
+        ])
         .output()
         .ok()?;
     match ran.status.code() {
