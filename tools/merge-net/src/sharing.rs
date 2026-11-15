@@ -7,7 +7,8 @@
 /// What a gate changing `theirs` shares with the change asking, `shared`
 /// among that change's files, in words: those it changes too, and those
 /// held only for a crate of the gate's they're in, read or are read by,
-/// which it doesn't change.
+/// which it doesn't change. Most often the crate is the one they're in, so
+/// that comes first.
 pub fn said(theirs: &[String], shared: &[String]) -> String {
     let (both, near): (Vec<&str>, Vec<&str>) = shared
         .iter()
@@ -15,9 +16,9 @@ pub fn said(theirs: &[String], shared: &[String]) -> String {
         .partition(|file| theirs.iter().any(|theirs| theirs == file));
     let near = (!near.is_empty()).then(|| {
         let reads = if near.len() == 1 {
-            "reads or is"
+            "is in, reads or is"
         } else {
-            "read or are"
+            "are in, read or are"
         };
         format!("a crate this one's {} {reads} read by", near.join(", "))
     });
@@ -53,7 +54,8 @@ mod tests {
             ),
             (
                 owned(&["modules/code-health/src/hour.rs"]),
-                "changes a crate this one's modules/code-health/src/hour.rs reads or is read by",
+                "changes a crate this one's modules/code-health/src/hour.rs is in, reads or is \
+                 read by",
             ),
             (
                 owned(&[
@@ -61,7 +63,14 @@ mod tests {
                     "modules/code-health/src/hour.rs",
                 ]),
                 "changes modules/cadence/src/day.rs too, and a crate this one's \
-                 modules/code-health/src/hour.rs reads or is read by",
+                 modules/code-health/src/hour.rs is in, reads or is read by",
+            ),
+            // Held behind a gate changing the same crate's views, also on
+            // 15 November, and said as changing them.
+            (
+                owned(&["modules/net/src/sources/hp.rs", "modules/net/src/model.rs"]),
+                "changes a crate this one's modules/net/src/sources/hp.rs, \
+                 modules/net/src/model.rs are in, read or are read by",
             ),
         ] {
             assert_eq!(
