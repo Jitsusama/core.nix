@@ -39,12 +39,13 @@ mod room;
 #[cfg(test)]
 mod sim;
 mod stamp;
+mod status;
 mod vpndelay;
 mod waiting;
 
 use memory::{Held, Memory};
 use probe::{Echo, Probes};
-use rate::{Bounds, Controller, Direction, Settings, State, float, whole};
+use rate::{Bounds, Controller, Direction, Settings, State, float};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -162,7 +163,7 @@ fn asked(context: &Context) -> Result<(), Failure> {
     };
     match command.as_str() {
         "run" => run(&options("run", rest)?),
-        "status" => status(&options("status", rest)?.runtime),
+        "status" => status::status(&options("status", rest)?.runtime, context),
         "stop" => {
             // The kit refuses a stray word; a stray flag is refused here.
             if let Some(flag) = rest.first() {
@@ -1353,162 +1354,6 @@ fn bytes_kbit(bytes: u64, seconds: f64) -> u64 {
 
 fn mbit(kbit: u64) -> String {
     format!("{:.1} Mbit/s", float(kbit) / 1000.0)
-}
-
-const TINS: [&str; 4] = ["bulk", "best effort", "video", "voice"];
-
-/// What the shaper holds each uplink to, and what each tin carried.
-fn status(runtime: &Path) -> Result<(), Failure> {
-    use std::fmt::Write as _;
-    let Ok(text) = fs::read_to_string(runtime.join("status.json")) else {
-        return Err(Failure::new(Exit::Unavailable, "the shaper isn't running")
-            .because(format!("{} holds no status", runtime.display())));
-    };
-    // Written whole at the end, so a reader that stops early, as
-    // `grep -q` or `head` does, ends the report rather than panicking it.
-    let mut out = String::new();
-    let first = Spent::now();
-    let all: Vec<LinkStatus> = serde_json::from_str(&text).unwrap_or_default();
-    if all.is_empty() {
-        let _ = writeln!(out, "nothing to shape: no link has a default route");
-    }
-    for link in all {
-        let _ = writeln!(out, "{}  on {}", link.name, link.network);
-        let _ = writeln!(out, "  up {}, down {}", mbit(link.up), mbit(link.down));
-        if let Some(leader) = &link.follows {
-            let _ = writeln!(out, "  at {leader}'s rate: both reach the same router");
-        }
-        // Said only while it holds: a quiet connection needs no line saying so.
-        if link.building && link.follows.is_none() {
-            let _ = writeln!(
-                out,
-                "  the connection's queue is building, so the shaper is slowing"
-            );
-        }
-        if link.live {
-            let _ = writeln!(
-                out,
-                "  real-time traffic flows, so the connection's queue is kept here"
-            );
-        }
-        // The one-way controller sets the rate where it runs, and the older
-        // one's held rates stay where it started, so on 14 November the
-        // status said 15.4 Mbit/s was held up while 9.9 was the line found.
-        let found = link.heard.as_ref().and_then(|h| h.plateau);
-        if let Some(plateau) = found {
-            let _ = writeln!(
-                out,
-                "  the upload's line, found under load: {}",
-                mbit(whole(plateau))
-            );
-        } else if link.follows.is_none() {
-            let _ = writeln!(
-                out,
-                "  held under load: up {}, down {}",
-                mbit(link.held_up),
-                mbit(link.held_down)
-            );
-        }
-        let pings: Vec<String> = link
-            .baselines
-            .iter()
-            .map(|(h, ms)| format!("{h} {ms:.0} ms"))
-            .collect();
-        let _ = writeln!(out, "  quiet round trips: {}", pings.join(", "));
-        for (way, dev) in [("sent", &link.name), ("received", &link.ifb)] {
-            let json = sh(&words(&format!("tc -s -j qdisc show dev {dev}"))).unwrap_or_default();
-            let _ = writeln!(
-                out,
-                "  {way:<9} {:>12} {:>8} {:>8} {:>16}",
-                "packets", "dropped", "marked", "delay (av, peak)"
-            );
-            for (name, tin) in TINS.iter().zip(qdisc::tins(&json)) {
-                let _ = writeln!(
-                    out,
-                    "    {name:<11} {:>10} {:>8} {:>8} {:>8.1} {:>6.1} ms",
-                    tin.packets,
-                    tin.drops,
-                    tin.marks,
-                    float(tin.average_us) / 1000.0,
-                    float(tin.peak_us) / 1000.0
-                );
-            }
-        }
-    }
-    // A share of time needs an interval: a second is long enough to hold
-    // hundreds of the shaper's wakes and short enough to wait for.
-    if let Some(left) = Duration::from_secs(1).checked_sub(first.at.elapsed()) {
-        std::thread::sleep(left);
-    }
-    first.say(&Spent::now(), &mut out);
-    let _ = std::io::stdout().write_all(out.as_bytes());
-    Ok(())
-}
-
-/// The services whose CPU status shows, by their cgroups.
-const SPENDERS: [(&str, &str); 2] = [
-    (
-        "the shaper",
-        "/sys/fs/cgroup/system.slice/shaper.service/cpu.stat",
-    ),
-    (
-        "its recorder",
-        "/sys/fs/cgroup/system.slice/shaper-record.service/cpu.stat",
-    ),
-];
-
-/// What the processor had spent at one moment, for `shaper status`.
-struct Spent {
-    at: Instant,
-    cores: Vec<cpu::Ticks>,
-    services: Vec<Option<u64>>,
-}
-
-impl Spent {
-    fn now() -> Self {
-        let stat = fs::read_to_string("/proc/stat").unwrap_or_default();
-        let services = SPENDERS
-            .iter()
-            .map(|(_, path)| cpu::used_usec(&fs::read_to_string(path).unwrap_or_default()))
-            .collect();
-        Self {
-            at: Instant::now(),
-            cores: cpu::ticks(&stat),
-            services,
-        }
-    }
-
-    /// What was spent between this and `later`, as lines of status.
-    fn say(&self, later: &Self, out: &mut String) {
-        use std::fmt::Write as _;
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "a second or two, far under u64's microseconds"
-        )]
-        let elapsed = (later.at - self.at).as_micros() as u64;
-        let spent: Vec<String> = SPENDERS
-            .iter()
-            .zip(self.services.iter().zip(&later.services))
-            .filter_map(|((name, _), pair)| match pair {
-                (Some(b), Some(a)) => Some(format!(
-                    "{name} {:.1}%",
-                    cpu::of_a_core(*b, *a, elapsed) * 100.0
-                )),
-                _ => None,
-            })
-            .collect();
-        if !spent.is_empty() {
-            let _ = writeln!(out, "cpu: {} of a core", spent.join(", "));
-        }
-        if let Some((all, busiest)) = cpu::softirq(&self.cores, &later.cores) {
-            let _ = writeln!(
-                out,
-                "softirq, where CAKE runs: {:.1}% of the machine, {:.1}% of its busiest core",
-                all * 100.0,
-                busiest * 100.0
-            );
-        }
-    }
 }
 
 /// Takes every queue the shaper made away, for when it stops.
