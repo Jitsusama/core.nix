@@ -130,25 +130,28 @@ impl Releaser for Experiment {
 pub fn run(config: Config) -> ExitCode {
     let (to, heard) = mpsc::channel();
     let asks = config.asks.clone();
-    let engine = Arc::new(Engine::new(
-        Setting {
-            asks: config.asks,
-            git: config.git,
-            home: config.home,
-            words: config.words,
-            journal: config.journal,
-            least_shown_ms: None,
-            says_commits: false,
-        },
-        Box::new(Experiment {
-            item: config.item,
-            account: config.account,
-            op: config.op,
-            loginctl: config.loginctl,
-            checker: config.checker,
-        }),
-        to,
-    ));
+    let engine = Arc::new(
+        Engine::new(
+            Setting {
+                asks: config.asks,
+                git: config.git,
+                home: config.home,
+                words: config.words,
+                journal: config.journal,
+                least_shown_ms: None,
+                says_commits: false,
+            },
+            Box::new(Experiment {
+                item: config.item,
+                account: config.account,
+                op: config.op,
+                loginctl: config.loginctl,
+                checker: config.checker,
+            }),
+            to,
+        )
+        .with_grants(),
+    );
     if let Err(why) = engine.start() {
         eprintln!("secret-asks: can't keep {}: {why}", asks.display());
         return ExitCode::FAILURE;
@@ -158,6 +161,7 @@ pub fn run(config: Config) -> ExitCode {
         Box::new(move |said| match said["ask"].as_str() {
             Some("release") => Some(engine.release(said)),
             Some("refuse") => Some(engine.refuse(said)),
+            Some("revoke") => Some(engine.revoke(said)),
             _ => None,
         })
     };

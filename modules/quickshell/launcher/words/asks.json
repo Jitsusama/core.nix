@@ -41,6 +41,21 @@
       "name": "Outcome"
     },
     {
+      "id": "asks:fact:lasts",
+      "in": "asks",
+      "name": "Yes Lasts"
+    },
+    {
+      "id": "asks:fact:from",
+      "in": "asks",
+      "name": "From"
+    },
+    {
+      "id": "asks:fact:granted",
+      "in": "asks",
+      "name": "Said Yes"
+    },
+    {
       "id": "verb:release",
       "command": "release",
       "in": "asks",
@@ -60,6 +75,14 @@
       "verb": "refuse",
       "glyph": "passwords",
       "key": "r"
+    },
+    {
+      "id": "verb:revoke",
+      "command": "revoke",
+      "in": "asks",
+      "name": "Revoke It",
+      "verb": "revoke",
+      "glyph": "passwords"
     }
   ]
 }

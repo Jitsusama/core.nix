@@ -82,6 +82,12 @@
         "locked": "not while the screen is locked",
         "changed": "it changed since it was shown; read it again",
         "unread": "read it before you release it",
+        "lasts": "a week, for this command from any tree of {repository}",
+        "granted": "standing yes",
+        "grantNote": "{command}, from {repository}",
+        "grantBody": "Your yes lets this command have this secret again, from any tree of this repository, without asking you until it ends. Revoke it to be asked again.",
+        "anyTree": "any tree of {repository}",
+        "grantGone": "that yes has already ended",
         "none": "none waiting",
         "one": "1 waiting",
         "waiting": "{count} waiting"

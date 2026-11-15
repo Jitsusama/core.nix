@@ -9,7 +9,10 @@
 //!
 //! A yes is refused unless the ask still waits, the session is unlocked,
 //! the ask and its tree read as the digest the yes carries says, and the
-//! line was on screen long enough to read. A yes taken leaves a mark
+//! line was on screen long enough to read. Where grants are made
+//! ([`Engine::with_grants`]), a yes also lets the same ask from any tree
+//! of its repository run for a week (grant.rs), each released at once,
+//! without a row. A yes taken leaves a mark
 //! beside the ask until it's answered, so an ask a restart cut off while
 //! it ran is ended rather than released twice.
 
@@ -27,10 +30,11 @@ use inotify::{Inotify, WatchMask};
 use serde_json::{Value, json};
 
 use crate::ask::{self, Ask};
+use crate::grant::{self, Grants};
 use crate::mask::{MOST_BYTES, masked};
 use crate::reading::{self, Outcome};
 use crate::row::{self, Held, STAYS_MS, State};
-use crate::tree::{self, Checkout};
+use crate::tree::{self, Checkout, Tree};
 use crate::words::Words;
 
 /// The most an ask's file may hold, so a huge one is no ask.
@@ -60,6 +64,9 @@ fn uncommitting(checkout: &Checkout) -> Option<&'static str> {
         Checkout::None | Checkout::Worktree { .. } => None,
     }
 }
+/// What an agent is told of a release a grant made, with no row.
+const GRANTED: &str = "Released by a standing grant from Joel's yes to this same ask, without \
+     asking him again; he can revoke it in Asks.";
 /// The most of a command's output kept to be masked: twice what an answer
 /// carries, so a value printed where the answer is cut is still masked.
 const MOST_READ_BYTES: usize = 2 * MOST_BYTES;
@@ -203,6 +210,9 @@ pub struct Engine {
     setting: Setting,
     releaser: Box<dyn Releaser>,
     asks: Mutex<BTreeMap<String, Held>>,
+    /// The grants Joel's yeses made, where this engine makes them; each
+    /// lock of them is taken after the asks', never before.
+    grants: Option<Mutex<Grants>>,
     changed: Mutex<Sender<()>>,
 }
 
@@ -214,8 +224,30 @@ impl Engine {
             setting,
             releaser,
             asks: Mutex::new(BTreeMap::new()),
+            grants: None,
             changed: Mutex::new(changed),
         }
+    }
+
+    /// The engine making a grant of each yes, which lets the same ask from
+    /// any tree of its repository run for a week without a row.
+    #[must_use]
+    pub fn with_grants(mut self) -> Engine {
+        self.grants = Some(Mutex::new(Grants::default()));
+        self
+    }
+
+    fn grants(&self) -> Option<MutexGuard<'_, Grants>> {
+        self.grants
+            .as_ref()
+            .map(|grants| grants.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    /// The repository a yes to an ask from `tree` lasts for, by name,
+    /// where this engine makes grants and the tree is in one.
+    fn lasts(&self, tree: &Tree) -> Option<String> {
+        self.grants.as_ref()?;
+        grant::repository(&tree.checkout).map(|repository| grant::named(&repository))
     }
 
     /// Makes the asks folder its owner's alone, ends every ask a restart
@@ -284,6 +316,14 @@ impl Engine {
             .unwrap_or_default()
     }
 
+    /// Leaves the mark beside an ask that it's being released; whether
+    /// it was left.
+    fn mark(&self, id: &str) -> bool {
+        std::fs::write(self.mark_path(id), "")
+            .inspect_err(|why| eprintln!("<3>secret-asks: can't mark {id} as releasing: {why}"))
+            .is_ok()
+    }
+
     /// Takes an ask's file and its mark away.
     fn forget(&self, id: &str) {
         let _ = std::fs::remove_file(self.ask_path(id));
@@ -329,9 +369,10 @@ impl Engine {
         Ask::read(id, &text)
     }
 
-    /// Takes in every ask file not yet held, and lets go of each waiting
-    /// ask whose file was taken away.
-    pub fn look(&self) {
+    /// Takes in every ask file not yet held, releasing at once each a
+    /// grant covers, and lets go of each waiting ask whose file was taken
+    /// away.
+    pub fn look(self: &Arc<Self>) {
         let ids: Vec<String> = std::fs::read_dir(&self.setting.asks)
             .map(|entries| {
                 entries
@@ -360,6 +401,34 @@ impl Engine {
                         self.answered(&id, "ended", "ended unanswered");
                     } else {
                         let tree = tree::read(&self.setting.git, Path::new(&ask.tree));
+                        let covered = self.grants().is_some_and(|grants| {
+                            grants.covering(&ask, &tree.checkout, now).is_some()
+                        });
+                        // A grant releases without the lock's say, since
+                        // Joel's yes that made it was given unlocked.
+                        if covered && self.mark(&id) {
+                            eprintln!(
+                                "<6>secret-asks: {id} released by grant to {} for {} \
+                                 to run {:?} in {}",
+                                ask.session, ask.item, ask.argv, ask.tree
+                            );
+                            self.reading(&ask, Outcome::Granted, &Value::Null);
+                            let (released, kept) = (ask.clone(), tree.checkout.clone());
+                            held.insert(
+                                id,
+                                Held {
+                                    ask,
+                                    tree,
+                                    state: State::Releasing,
+                                    since_ms: now,
+                                },
+                            );
+                            let engine = Arc::clone(self);
+                            std::thread::spawn(move || {
+                                engine.run_released(&released, &kept, true);
+                            });
+                            continue;
+                        }
                         eprintln!(
                             "<6>secret-asks: {id} asked by {} for {} to run {:?} in {}",
                             ask.session, ask.item, ask.argv, ask.tree
@@ -400,12 +469,14 @@ impl Engine {
         held.retain(|_, one| {
             matches!(one.state, State::Waiting | State::Releasing) || now < one.since_ms + STAYS_MS
         });
+        let grant_ends = self.grants().and_then(|mut grants| grants.tidy(now));
         held.values()
             .filter_map(|one| match one.state {
                 State::Waiting => Some(one.ask.ends_ms()),
                 State::Releasing => None,
                 _ => Some(one.since_ms + STAYS_MS),
             })
+            .chain(grant_ends)
             .min()
     }
 
@@ -447,7 +518,8 @@ impl Engine {
             _ => return self.refusal("refused", "the ask is gone", "gone"),
         };
         let tree = tree::read(&self.setting.git, Path::new(&now.tree));
-        if Some(row::digest(&now, &tree).as_str()) != said["digest"].as_str() {
+        let digest = row::digest_lasting(&now, &tree, self.lasts(&tree).as_deref());
+        if Some(digest.as_str()) != said["digest"].as_str() {
             self.reading(&one.ask, Outcome::Changed, said);
             one.ask = now;
             one.tree = tree;
@@ -468,8 +540,7 @@ impl Engine {
         {
             return self.refusal("refused", "the line wasn't shown long enough", "unread");
         }
-        if let Err(why) = std::fs::write(self.mark_path(&id), "") {
-            eprintln!("<3>secret-asks: can't mark {id} as releasing: {why}");
+        if !self.mark(&id) {
             let mut refused = error(&Value::Null, "failed", "its mark can't be left");
             refused["error"]["said"] = Value::String(
                 self.setting
@@ -481,17 +552,21 @@ impl Engine {
         one.state = State::Releasing;
         one.since_ms = now_ms();
         let ask = one.ask.clone();
+        if let Some(mut grants) = self.grants() {
+            grants.grant(&ask, &tree.checkout, now_ms());
+        }
         drop(held);
         self.reading(&ask, Outcome::Released, said);
         self.changed();
         let engine = Arc::clone(self);
-        std::thread::spawn(move || engine.run_released(&ask, &tree.checkout));
+        std::thread::spawn(move || engine.run_released(&ask, &tree.checkout, false));
         json!({"releasing": true})
     }
 
     /// Reads the value and runs the command with it, then says what came
-    /// of it, and what it can't have done where its tree is `kept`.
-    fn run_released(&self, ask: &Ask, kept: &Checkout) {
+    /// of it, whether a grant released it rather than a yes of its own,
+    /// and what it can't have done where its tree is `kept`.
+    fn run_released(&self, ask: &Ask, kept: &Checkout, granted: bool) {
         let started = now_ms();
         let ran = self
             .releaser
@@ -508,14 +583,17 @@ impl Engine {
                        "why": if exit.is_none() { "stopped at the time limit" } else { "" }}),
             ),
         };
-        let mut notes: Vec<String> = self
-            .setting
-            .says_commits
-            .then(|| uncommitting(kept))
-            .flatten()
-            .map(str::to_owned)
-            .into_iter()
-            .collect();
+        let mut notes: Vec<String> = granted.then(|| GRANTED.to_owned()).into_iter().collect();
+        notes.extend(
+            self.setting
+                .says_commits
+                .then(|| uncommitting(kept))
+                .flatten()
+                .map(str::to_owned),
+        );
+        if granted {
+            said["granted"] = json!(true);
+        }
         notes.extend(self.releaser.after(ask));
         if !notes.is_empty() {
             said["note"] = json!(notes.join(" "));
@@ -615,22 +693,54 @@ impl Engine {
         json!({"refused": true})
     }
 
-    /// Every row as it stands, newest ask first, and the summary.
+    /// Asks' revoke: the grant the act names ended, so the same ask waits
+    /// for Joel again.
+    pub fn revoke(&self, said: &Value) -> Value {
+        let id = said["key"]
+            .as_str()
+            .and_then(|key| key.strip_prefix("grant:"));
+        let revoked = match (id, self.grants()) {
+            (Some(id), Some(mut grants)) => grants.revoke(id),
+            _ => false,
+        };
+        if !revoked {
+            return self.refusal("refused", "no such grant", "grantGone");
+        }
+        eprintln!("<6>secret-asks: grant {} revoked", id.unwrap_or_default());
+        self.changed();
+        json!({"revoked": true})
+    }
+
+    /// Every row as it stands, newest ask first, then each grant, and the
+    /// summary.
     pub fn rows(&self) -> (Vec<Value>, Value) {
         let held = self.held();
         let mut asks: Vec<&Held> = held.values().collect();
         asks.sort_by_key(|one| std::cmp::Reverse(one.ask.asked_ms));
-        let rows = asks
+        let mut rows: Vec<Value> = asks
             .iter()
             .map(|one| {
-                row::row(
+                // Only a waiting ask's line says what a yes would last
+                // for, since only it can be said yes to.
+                let lasts = (one.state == State::Waiting)
+                    .then(|| self.lasts(&one.tree))
+                    .flatten();
+                row::row_lasting(
                     one,
                     &self.setting.home,
                     &self.setting.words,
                     self.setting.says_commits,
+                    lasts.as_deref(),
                 )
             })
             .collect();
+        if let Some(grants) = self.grants() {
+            rows.extend(
+                grants
+                    .iter()
+                    .map(|one| grant::row(one, &self.setting.words)),
+            );
+        }
         (rows, row::summary(&asks, &self.setting.words))
     }
 }
