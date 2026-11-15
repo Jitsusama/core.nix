@@ -221,6 +221,24 @@ def walking(said: str) -> bool:
     return at is not None and bool(at.get("walk"))
 
 
+def flush_on_a_lower_row(window: Json) -> Callable[[str], bool]:
+    """Say whether a report has the cat sat still, flush on the top of `window` below a row."""
+
+    def flush(said: str) -> bool:
+        at = placed(said)
+        column = json.loads(said.split(" over ", 1)[1])
+        return bool(
+            at is not None
+            and not at.get("walk")
+            and at.get("window") == window["id"]
+            and column is not None
+            and column["top"] > at["size"] * 4
+            and abs(at["y"] + at["size"] + at["air"] - column["top"]) < FLUSH
+        )
+
+    return flush
+
+
 def test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest(shell: Shell) -> None:
     """Two seconds after the keys move to another column, it walks there, a step each frame.
 
@@ -847,19 +865,7 @@ def test_a_row_closed_under_it_has_it_fall_at_once(shell: Shell) -> None:
     # Sat flush on the lower row's top, so the move into the column has settled and the
     # first walk after the close is the close's (a loaded builder, 2026-11-14: a ride
     # of the move's last pixel came first).
-    def in_the_lower_row(said: str) -> bool:
-        at = placed(said)
-        column = json.loads(said.split(" over ", 1)[1])
-        return bool(
-            at is not None
-            and not at.get("walk")
-            and at.get("window") == closed["id"]
-            and column is not None
-            and column["top"] > at["size"] * 4
-            and abs(at["y"] + at["size"] + at["air"] - column["top"]) < FLUSH
-        )
-
-    heard(shell, in_the_lower_row, since)
+    heard(shell, flush_on_a_lower_row(closed), since)
     since = shell.mark()
     gone = time.monotonic()
     shell.close(closed)
@@ -889,9 +895,11 @@ def test_a_middle_row_closed_under_it_has_it_fall_onto_the_row_below(shell: Shel
     shell.as_account("niri msg action consume-or-expel-window-left")
     below = shell.opened("a row left under the middle")
     shell.as_account("niri msg action consume-or-expel-window-left")
+    # Sat flush on the middle row once the keys come back to it, so the first walk after the
+    # close is the close's.
+    since = shell.mark()
     shell.as_account(f"niri msg action focus-window --id {closed['id']}")
-    sits_over(shell, closed, since)
-    time.sleep(1)
+    heard(shell, flush_on_a_lower_row(closed), since)
     since = shell.mark()
     shell.close(closed)
     heard(shell, walking, since)
