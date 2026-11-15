@@ -40,8 +40,8 @@ SAID_SO = "hibernate-unlock: the lid is open, so it says so"
 # What the rescue logs as it puts its notice in each session.
 SAYS = "hibernate-unlock: it says: "
 # What a start says once it finds an image was written and never read back, with nothing in
-# its log to say why.
-NEVER_BACK = "hibernate-unlock: the last hibernation's image never came back: unsaid"
+# its log to say why. Its apostrophe is any character, since the pattern goes in shell quotes.
+NEVER_BACK = "hibernate-unlock: the last hibernation.s image never came back: unsaid"
 # The reserve hibernate.nix sets, in bytes.
 RESERVE = 128 * 1024 * 1024
 # While there, a hibernation keeps the driver's shell, and the swap file is taken away
