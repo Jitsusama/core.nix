@@ -1388,7 +1388,8 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
         spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
         space = next(one for one in spaces if one["id"] == pi["workspace_id"])
         at = pi["layout"]["pos_in_scrolling_layout"]
-        held = json.loads(desktop.as_account(f"cat {arranged}"))["boots"][boot]["01a1face-test"]
+        boots = json.loads(desktop.as_account(f"cat {arranged}"))["boots"]
+        held: dict[str, Any] = boots[boot]["01a1face-test"]
         # Its screen is kept by what it is as well as its connector, as
         # niri's config names one, since a dock or a boot can move it to
         # another, and whether it leads others, which this one doesn't, so
