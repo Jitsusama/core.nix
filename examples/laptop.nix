@@ -61,6 +61,7 @@ nixpkgs.lib.nixosSystem {
           core.homeModules.secret-asks
           core.homeModules.session-backup
           core.homeModules.slack
+          core.homeModules.sudo
           core.homeModules.wifid
           core.homeModules.zoom
         ];
