@@ -50,8 +50,11 @@ const FAILING: f64 = 10.0;
 const FAINTER: i16 = 6;
 
 /// How busy an untried access point's channel may say it is and still be
-/// tried.
-const BUSIEST: u8 = 70;
+/// tried. On 15 Nov 2026 every eero's ch149 radio averaged 42 to 46% busy,
+/// and the one the card tried four times that afternoon carried badly in
+/// about 20 of its 35 minutes; their ch52 radios averaged 15 to 21%, and
+/// were past 40% in 1% of the eero's samples.
+const BUSIEST: u8 = 40;
 
 /// From this frequency in MHz a radio is on 5 or 6 GHz, whose channels are
 /// wider than 2.4 GHz's: on 15 Nov 2026 the card's link rate fell from
