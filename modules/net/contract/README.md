@@ -11,3 +11,9 @@ golden copy is `../../eero/home-network.json`.
   public address are stand-ins (`02:00:00:00:10:01` for its own,
   `02:00:00:00:10:02` for the provider's, `SERIAL0010`, `100.64.0.98`);
   every figure is as the modem gave it, in its own strings.
+- `switch/`: an 8-port TP-Link Easy Smart switch's four status pages, as
+  `http://<switch>/<page>.htm` answered them on 2026-11-14 once signed
+  in, one file per page, byte for byte apart from its name, hardware
+  address and addresses (`Closet`, `02:00:00:00:00:30`, `10.0.0.x`). Its
+  cable page holds no test, since none had run; the cases in
+  `src/sources/switch.rs` give it one.

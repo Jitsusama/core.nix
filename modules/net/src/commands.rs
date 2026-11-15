@@ -23,7 +23,7 @@ pub fn help() -> Help {
         "one device in full, from each of its sources",
     )
     .example("net --json", "the whole record, as net.network/1");
-    [devices(), daemon()]
+    [devices(), daemon(), switch_reader()]
         .into_iter()
         .fold(root, Help::subcommand)
         .exit(Exit::Failed, "the daemon stopped")
@@ -55,6 +55,21 @@ fn devices() -> Help {
             "there's no record of the home network yet",
         )
         .exit(Exit::Config, "XDG_RUNTIME_DIR isn't set")
+}
+
+/// The switch's reader: what the switch's system service runs, holding
+/// the password the daemon never sees.
+fn switch_reader() -> Help {
+    Help::new(
+        "switch-reader",
+        "read the switch's status pages and report them for the daemon",
+    )
+    .argument("<address>", "where the switch answers, as 10.0.0.30")
+    .example(
+        "net switch-reader 10.0.0.30",
+        "what net-switch.service runs",
+    )
+    .exit(Exit::Failed, "the report can't be written")
 }
 
 /// The collector: what `net-daemon.service` runs.
