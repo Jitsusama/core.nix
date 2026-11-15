@@ -473,13 +473,15 @@ impl App {
         }
         self.looks_again = true;
         let timer = Timer::from_duration(LOOKS_AGAIN_AFTER);
-        let looked = self.loop_handle.insert_source(timer, |_, (), app: &mut App| {
-            app.looks_again = false;
-            if !app.frame_pending {
-                app.draw();
-            }
-            TimeoutAction::Drop
-        });
+        let looked = self
+            .loop_handle
+            .insert_source(timer, |_, (), app: &mut App| {
+                app.looks_again = false;
+                if !app.frame_pending {
+                    app.draw();
+                }
+                TimeoutAction::Drop
+            });
         if let Err(error) = looked {
             self.looks_again = false;
             eprintln!("reader: can't look at the textures again: {error}");
