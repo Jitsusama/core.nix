@@ -36,12 +36,23 @@
 // left outside the heap too, until the next collection sets the limit
 // again.
 //
+// What jemalloc holds is read because the shell's memory outside its heap
+// and files was 165 to 200 MB on Joel's shell, against 126 in the lab,
+// where jemalloc's own counts split it: 80 MB in use, 7 MB of its own
+// bookkeeping, and 12 to 55 MB of freed pages it kept for up to 10 s after
+// each closing's collection (jm1, 2026-11-15). Only the process can read
+// them, through jemalloc's mallctl, found by name so the module needs no
+// link to it and says nothing in a process that doesn't allocate through
+// it.
+//
 // heap_test.cpp holds it to what it says.
 
 #include "heap.h"
 
 #include <QJSEngine>
 #include <algorithm>
+#include <cstdint>
+#include <dlfcn.h>
 #include <private/qv4engine_p.h>
 #include <private/qv4mm_p.h>
 #include <sys/mman.h>
@@ -122,6 +133,30 @@ void Heap::leaveRoom(double megabytes) {
         std::max(manager->usedSlotsAfterLastFullSweep, (held + room) / OVERALLOCATION);
     manager->unmanagedHeapSizeGCLimit =
         std::max(manager->unmanagedHeapSizeGCLimit, manager->unmanagedHeapSize + bytes);
+}
+
+QVariantMap Heap::allocator() const {
+    using Mallctl = int (*)(const char *, void *, std::size_t *, void *, std::size_t);
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+    auto *mallctl = reinterpret_cast<Mallctl>(dlsym(RTLD_DEFAULT, "mallctl"));
+    if (mallctl == nullptr)
+        return {};
+    // jemalloc's counts are a snapshot it takes when its epoch moves on.
+    std::uint64_t epoch = 1;
+    std::size_t epochSize = sizeof(epoch);
+    if (mallctl("epoch", &epoch, &epochSize, &epoch, epochSize) != 0)
+        return {};
+    const auto read = [mallctl](const char *name) {
+        std::size_t value = 0;
+        std::size_t size = sizeof(value);
+        return mallctl(name, &value, &size, nullptr, 0) == 0 ? value : 0;
+    };
+    // Freed pages are counted in pages, every arena's at once (4096 is
+    // MALLCTL_ARENAS_ALL).
+    const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    return {{QStringLiteral("used"), megabytes(read("stats.allocated"))},
+            {QStringLiteral("resident"), megabytes(read("stats.resident"))},
+            {QStringLiteral("kept"), megabytes(read("stats.arenas.4096.pdirty") * page)}};
 }
 
 double Heap::collected() const {

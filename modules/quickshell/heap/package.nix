@@ -8,6 +8,7 @@
   cmake,
   ninja,
   qt6,
+  jemalloc,
 }:
 stdenv.mkDerivation {
   pname = "quickshell-heap";
@@ -28,6 +29,8 @@ stdenv.mkDerivation {
   buildInputs = [
     qt6.qtbase
     qt6.qtdeclarative
+    # Only its test links it, to allocate as Quickshell does.
+    jemalloc
   ];
   # A library, not a program, so there's nothing for Qt to wrap.
   dontWrapQtApps = true;

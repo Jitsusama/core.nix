@@ -7,13 +7,18 @@
 // has spent grows with each collection; and a heap holding far more than is
 // live, as one does after the launcher's closing, starts the collector as
 // it makes more unless it's left room, and doesn't once it is, nor as it
-// makes strings whose text is held outside the heap. It exits 0 once all of
-// it holds, and otherwise 1, saying what didn't.
+// makes strings whose text is held outside the heap. And what it says of
+// jemalloc, which the test is linked with as Quickshell is: what's in use
+// grows by a block kept, and what's freed and kept by one let go, and
+// neither is more than what's resident. It exits 0 once all of it holds,
+// and otherwise 1, saying what didn't.
 #include "heap.h"
 
 #include <QCoreApplication>
 #include <QJSEngine>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 namespace {
 
@@ -74,6 +79,63 @@ bool collectsWhileMaking(double room, const Making &made) {
             .arg(made.count)
             .arg(QLatin1StringView(made.each)));
     return heap.collected() > before;
+}
+
+// Blocks as large as the shell's answers' pieces, 32 MB in all, and how
+// much of it the allocator's counts must move by at least. jemalloc hands a
+// block past 8 MB back to the kernel as it's freed, and keeps the pages of
+// smaller ones for a while, which is what the shell frees.
+constexpr std::size_t BLOCKS = 512;
+constexpr std::size_t BLOCK_BYTES = 64 * 1024;
+constexpr double BLOCKS_MB = 32;
+constexpr double BLOCKS_MOVE_MB = 16;
+
+// Held where the compiler can't see them go unused, so the blocks are
+// really made and written.
+char *volatile blocks[BLOCKS] = {};
+
+struct Allocated {
+    double used;
+    double resident;
+    double kept;
+};
+
+Allocated allocated(const Heap &heap) {
+    const QVariantMap said = heap.allocator();
+    return {said.value(QStringLiteral("used"), -1).toDouble(),
+            said.value(QStringLiteral("resident"), -1).toDouble(),
+            said.value(QStringLiteral("kept"), -1).toDouble()};
+}
+
+// Whether the allocator's counts follow a block kept and then let go.
+bool allocatorFollows(const Heap &heap) {
+    const Allocated before = allocated(heap);
+    for (auto &block : blocks) {
+        block = static_cast<char *>(std::malloc(BLOCK_BYTES));
+        std::memset(block, 1, BLOCK_BYTES);
+    }
+    const Allocated keeping = allocated(heap);
+    for (auto &block : blocks) {
+        std::free(block);
+        block = nullptr;
+    }
+    const Allocated letGo = allocated(heap);
+    const auto withinResident = [](const Allocated &each) {
+        return each.used >= 0 && each.kept >= 0 && each.used <= each.resident &&
+               each.kept <= each.resident;
+    };
+    const bool said = withinResident(before) && withinResident(keeping) &&
+                      withinResident(letGo);
+    const bool grows = keeping.used - before.used > BLOCKS_MOVE_MB;
+    const bool kept = letGo.kept - keeping.kept > BLOCKS_MOVE_MB;
+    if (!said || !grows || !kept)
+        std::fprintf(stderr,
+                     "FAIL jemalloc's counts follow %.0f MB of blocks kept and let go: in use "
+                     "%.1f, %.1f, %.1f MB; resident %.1f, %.1f, %.1f MB; freed and kept %.1f, "
+                     "%.1f, %.1f MB\n",
+                     BLOCKS_MB, before.used, keeping.used, letGo.used, before.resident,
+                     keeping.resident, letGo.resident, before.kept, keeping.kept, letGo.kept);
+    return said && grows && kept;
 }
 
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
@@ -151,8 +213,9 @@ int main(int argc, char **argv) {
     if (!roomyOutside)
         std::fprintf(stderr, "FAIL a heap left %.0f MB of room doesn't start the collector as "
                      "it makes strings held outside it\n", ROOM_MB);
+    const bool follows = allocatorFollows(heap);
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
-                   roomyOutside
+                   roomyOutside && follows
                ? 0
                : 1;
 }

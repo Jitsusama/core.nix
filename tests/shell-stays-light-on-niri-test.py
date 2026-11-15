@@ -9,6 +9,9 @@ and this is where it's caught.
 
 Live is what Qt's collector says is left after the collection each closing runs (Launcher.qml's
 collectClosed), from its allocatorStats, which only the detailed log keeps at debug.
+
+Each closing's line also says what jemalloc holds, found by name in Quickshell's process, so a
+Quickshell whose jemalloc stopped answering to that name is caught here, where it really runs.
 """
 
 from __future__ import annotations
@@ -89,6 +92,9 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
     with launcher_on_niri.running() as shell:
         shell.launcher_until(lambda shown: shown.get("kept"))
         rounds = rounds_kept(shell)
+        said = shell.log.read_text(errors="replace")
+        jemalloc = re.search(r"collected after closing.*; jemalloc \d+ MB in use", said)
+        assert jemalloc, f"no closing said what jemalloc holds:\n{shell.tail()}"
     medians = [round(statistics.median(each) / 1024) for each in rounds]
     # Said whether it passes, so a change's cost is read from its run.
     with capsys.disabled():
