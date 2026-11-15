@@ -138,6 +138,14 @@ QtObject {
         deeper = Trials.picked(deeper, 30, { key: "wifi:home" }, { typed: "", depth: 1 });
         expect("the last pick kept", deeper.picked === "wifi:home" && deeper.depth === 1
             && deeper.ms === 30, JSON.stringify(deeper));
+        // Yet the first pick's time and how many there were are kept beside
+        // it, since an opening kept open through 15 picks read as one 212 s
+        // finding (7QEY1S, 2026-11-15, of Joel's 09:38 on 14 Nov).
+        expect("the first pick's time kept, and the picks counted", deeper.firstMs === 10
+            && deeper.picks === 2, JSON.stringify(deeper));
+        const unpicked = Trials.begun(0, "today");
+        expect("nothing picked yet", unpicked.firstMs === -1 && unpicked.picks === 0,
+            JSON.stringify(unpicked));
 
         // Each key's search and frame are summed and their worst kept, and a
         // key slow enough to feel is kept with what took its time.
