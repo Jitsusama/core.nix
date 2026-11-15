@@ -4142,7 +4142,7 @@ Scope {
                 break;
             // A heading, or a row the view's edge would cut and so isn't
             // drawn, has no number.
-            if (headings.length > 0 && (Headings.isHeading(matches[at]) || !entry.whole))
+            if (headings.length > 0 && (Headings.isHeading(matches[at]) || !list.draws(entry)))
                 continue;
             placed.push({ at: headings.length > 0 ? Headings.rank(headings, at) : at,
                 base: shown.y + entry.y - from + entry.nameBaseline });
@@ -12543,6 +12543,23 @@ Scope {
 
                             // The list as Headings reads it, to place a
                             // view among headings.
+                            // Whether the list draws `entry` where the view
+                            // stands: always without headings, and with them
+                            // only whole, a heading only with its first row.
+                            // The gutter asks it too, as the view moves and
+                            // before the rows' own bindings have caught up.
+                            function draws(entry) {
+                                return root.headingsAt.length === 0 || entry.aside
+                                    || Headings.drawn({
+                                        top: entry.y,
+                                        tall: entry.height,
+                                        under: entry.index + 1 < root.matches.length
+                                            ? root.tallOf(root.matches[entry.index + 1],
+                                                entry.index + 1) : null,
+                                        heading: Headings.isHeading(entry.modelData)
+                                    }, { from: list.contentY, height: list.height });
+                            }
+
                             function headed() {
                                 return {
                                     height: list.height,
@@ -12577,7 +12594,7 @@ Scope {
                                 let drawn = 0;
                                 for (let at = 0; at < root.matches.length; at += 1) {
                                     const entry = list.itemAtIndex(at);
-                                    if (entry === null || entry.opacity === 0
+                                    if (entry === null || !list.draws(entry)
                                         || Headings.isHeading(root.matches[at]))
                                         continue;
                                     if (entry.y + entry.height > from + 0.5
@@ -12715,15 +12732,7 @@ Scope {
                                 // first row, so the view never rests with a
                                 // row or a heading cut (VKCF3Z [c09d8222]).
                                 opacity: entry.whole ? 1 : 0
-                                readonly property bool whole: root.headingsAt.length === 0
-                                    || entry.aside || Headings.drawn({
-                                        top: entry.y,
-                                        tall: entry.height,
-                                        under: entry.index + 1 < root.matches.length
-                                            ? root.tallOf(root.matches[entry.index + 1],
-                                                entry.index + 1) : null,
-                                        heading: Headings.isHeading(entry.modelData)
-                                    }, { from: list.contentY, height: list.height })
+                                readonly property bool whole: list.draws(entry)
 
                                 // Its name's baseline, down from its top.
                                 readonly property real nameBaseline: choice.y
