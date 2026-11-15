@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use terminal_kit::{Exit, Failure, Help};
+use terminal_kit::{Exit, Failure, Help, flags};
 
 /// What location and its two commands say they are, do and end with, as
 /// `--help` shows it.
@@ -76,15 +76,30 @@ pub enum Start {
 ///
 /// # Errors
 ///
-/// Asked wrongly, 64, naming the help of the command the words name.
+/// Asked wrongly, 64, naming the help of the command the words name: a
+/// flag it doesn't take is named with the nearest it does.
 pub fn start(args: &[String]) -> Result<Start, Failure> {
-    let mut args = args.to_vec();
-    // The launcher's words come last, as the unit gives them.
+    // `--words=FILE` is read as `--words FILE`.
+    let mut args: Vec<String> = args
+        .iter()
+        .flat_map(|arg| match arg.split_once('=') {
+            Some(("--words", file)) => vec!["--words".to_owned(), file.to_owned()],
+            _ => vec![arg.clone()],
+        })
+        .collect();
+    // The launcher's words come last, as the unit gives them. The file
+    // mustn't be a flag, which `--words --fast` would take as one, nor
+    // empty, as `--words=` leaves it.
     let words = match args.iter().position(|arg| arg == "--words") {
         Some(at) if at + 2 == args.len() => {
-            let path = args.pop().map(PathBuf::from);
+            let path = args
+                .pop()
+                .filter(|file| !file.is_empty() && !file.starts_with("--"));
             args.pop();
-            path
+            Some(
+                path.map(PathBuf::from)
+                    .ok_or_else(|| wrongly(&args, "--words needs a value".to_owned()))?,
+            )
         }
         Some(_) => {
             return Err(wrongly(
@@ -95,7 +110,7 @@ pub fn start(args: &[String]) -> Result<Start, Failure> {
         None => None,
     };
     if let Some(flag) = args.iter().find(|arg| arg.starts_with('-')) {
-        return Err(wrongly(&args, format!("{flag} isn't a flag it takes")));
+        return Err(flags::unknown("option", flag, &["--words"]).try_this(help_for(&args)));
     }
     let path = PathBuf::from;
     match args.as_slice() {
@@ -137,17 +152,21 @@ pub fn start(args: &[String]) -> Result<Start, Failure> {
 /// A start asked wrongly, pointing at the help of the command the words
 /// name.
 fn wrongly(args: &[String], problem: String) -> Failure {
-    let named = match args.first().map(String::as_str) {
+    Failure::new(Exit::Usage, problem).try_this(help_for(args))
+}
+
+/// The help of the command the words name.
+fn help_for(args: &[String]) -> String {
+    match args.first().map(String::as_str) {
         Some(command @ ("set" | "again")) => format!("location {command} --help"),
         _ => "location --help".to_owned(),
-    };
-    Failure::new(Exit::Usage, problem).try_this(named)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{Start, help, start};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use terminal_kit::{Ending, Environment, Exit};
 
     /// How the kit ends location given `words`, its body reading them as
@@ -242,6 +261,23 @@ mod tests {
     }
 
     #[test]
+    fn the_launchers_words_may_be_joined_to_their_flag() {
+        let (ending, asked) = started(&["location.sock", "/", "--words=/nix/w.json"]);
+
+        assert_eq!(
+            ending.exit,
+            Exit::Done,
+            "the joined words were refused: {}",
+            ending.stderr
+        );
+        assert!(
+            matches!(asked, Some(Start::Serve { words: Some(words), .. })
+                if words == Path::new("/nix/w.json")),
+            "the joined words weren't read as written"
+        );
+    }
+
+    #[test]
     fn a_start_asked_wrongly_ends_64_with_the_help_its_words_name() {
         for (words, named) in [
             (&["set", "pin.json"][..], "location set --help"),
@@ -254,6 +290,18 @@ mod tests {
             (&["location.sock", "/", "kept.json"][..], "location --help"),
             (&["location.sock", "/", "--words"][..], "location --help"),
             (&["location.sock", "/", "--fast"][..], "location --help"),
+            (
+                &["location.sock", "/", "--words", "--fast"][..],
+                "--words needs a value",
+            ),
+            (
+                &["location.sock", "/", "--words="][..],
+                "--words needs a value",
+            ),
+            (
+                &["location.sock", "/", "--wrods", "w.json"][..],
+                "did you mean --words?",
+            ),
         ] {
             let (ending, asked) = started(words);
             assert_eq!(ending.exit, Exit::Usage, "{words:?} wasn't refused with 64");
