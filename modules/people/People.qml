@@ -502,6 +502,11 @@ Provider {
     // addresses, each once by its key and the oldest first. The people
     // daemon serves each address's so (its between.rs), so here they're
     // only taken together; one address's alone is already in order.
+    // Taking several together is a stopgap that orders rows here: no
+    // source the daemon holds says one person goes by several addresses
+    // today, so only the tests reach it. The first source that does has
+    // the people daemon join that person's addresses and serve what's
+    // between them per person, and this sort goes in that change.
     function servedThings(person, name) {
         const entries = entriesOf(person, name);
         if (entries.length === 1)
