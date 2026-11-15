@@ -8,7 +8,9 @@
 //! to show its first session, from its own "pi: ready in 889 ms". And how
 //! long each service a switch restarted was gone: from systemd stopping it
 //! to its ready line, or to its start where it says none, leaving out a
-//! oneshot, whose run serves nothing while it lasts.
+//! oneshot, whose run serves nothing while it lasts, and a restart that
+//! followed a reload something other than a switch asked for
+//! (`reloads.rs`).
 //!
 //! Both are our side's figures, stand-ins for what Joel waits on: an
 //! opening is timed from the process's start, not from the key that asked
@@ -20,6 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::journal::{Entry, Job};
+use crate::reloads::{self, Asker};
 use crate::launcher::percent;
 
 /// What the windows daemon writes its journal as.
@@ -58,6 +61,11 @@ pub const RESTARTED_MS: u64 = 5_000;
 /// microseconds: a stop systemd gives up on takes 90 s.
 const RESTART_WITHIN: i64 = 120_000_000;
 
+/// How long after a reload something other than a switch asked for a
+/// service stopping is its restart: a second, on 14 November, for the
+/// tool that updates itself.
+const RELOADED_WITHIN: i64 = 10_000_000;
+
 /// How long after its start a ready line is still its restart's.
 const READY_WITHIN: i64 = 60_000_000;
 
@@ -88,6 +96,9 @@ pub struct Launches {
     /// Each service that said it was ready soon after a restart.
     #[serde(skip)]
     stamped: BTreeSet<String>,
+    /// When systemd last reloaded for a switch, and for anything else.
+    #[serde(skip)]
+    reloaded: BTreeMap<bool, i64>,
 }
 
 /// How one of the two went over the day.
@@ -123,6 +134,7 @@ impl Launches {
     pub fn heard(&mut self, entry: &Entry) -> bool {
         let unit = &entry.thing;
         match entry.job {
+            Some(Job::Stopping) if self.restarts_itself(entry.at) => {}
             Some(Job::Stopping) => {
                 self.stopping.insert(unit.clone(), entry.at);
             }
@@ -141,10 +153,29 @@ impl Launches {
                     self.restarting.insert(unit.clone(), (stopped, entry.at));
                 }
             }
-            None if self.took(unit, &entry.message) => self.served(entry),
-            None => return false,
+            None => {
+                if let Some(asker) = reloads::asker(&entry.message) {
+                    self.reloaded.insert(asker == Asker::Switch, entry.at);
+                } else if self.took(unit, &entry.message) {
+                    self.served(entry);
+                } else {
+                    return false;
+                }
+            }
         }
         true
+    }
+
+    /// Whether a service stopping `at` is one something other than a
+    /// switch restarts: it had systemd reload within [`RELOADED_WITHIN`],
+    /// and no switch did within [`RESTART_WITHIN`].
+    fn restarts_itself(&self, at: i64) -> bool {
+        let within = |switch: bool, longest: i64| {
+            self.reloaded
+                .get(&switch)
+                .is_some_and(|reloaded| at.saturating_sub(*reloaded) <= longest)
+        };
+        within(false, RELOADED_WITHIN) && !within(true, RESTART_WITHIN)
     }
 
     /// A service saying it's ready soon after a restart started it: that
