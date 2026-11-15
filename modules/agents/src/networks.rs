@@ -101,7 +101,7 @@ fn side(network: &Value, words: &Words) -> Vec<Value> {
 
 /// `networks` in the one order: needing Joel first, then stuck, then the
 /// most moving, then the one heard from last.
-fn ordered<'a>(mut networks: Vec<&'a Value>) -> Vec<&'a Value> {
+fn ordered(mut networks: Vec<&Value>) -> Vec<&Value> {
     networks.sort_by_key(|network| {
         (
             worst(network),
