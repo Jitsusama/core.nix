@@ -1443,12 +1443,15 @@ def test_networks_is_one_row_after_the_tree_its_kinds_under_headings_never_selec
     shell.launcher_until(
         lambda shown: shown["rows"][:4] == ["Repositories", "core.nix", "Groups", "harbour"]
     )
-    shown = shell.showing()
-    assert shown["selected"]["name"] == "core.nix", shown
+    assert shell.showing()["selected"]["name"] == "core.nix", shell.showing()
+    # The gutter follows the rows in view, which settle a frame after the rows come.
+    shell.launcher_until(
+        lambda shown: (
+            len([number for number in shown["gutter"]["numbers"] if number != ""])
+            == len([row for row in shown["rows"] if row not in HEADINGS])
+        )
+    )
     shoot("agents-networks")
-    numbered = [number for number in shown["gutter"]["numbers"] if number != ""]
-    rows = [row for row in shown["rows"] if row not in HEADINGS]
-    assert len(numbered) == len(rows), shown["gutter"]
     shell.normal()
     shell.send_chars("j")
     shell.launcher_until(lambda shown: shown["selected"]["name"] == "harbour")
