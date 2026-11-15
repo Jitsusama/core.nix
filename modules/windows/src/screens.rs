@@ -596,18 +596,26 @@ fn backlit<'a>(
         .map(|name| name.as_str())
 }
 
-/// The Warmth's rows inside `screen`, the row of the screen `name` that
-/// holds the light (light/warmth.rs).
-fn warmth(name: &str, screen: &str, seen: &Seen, words: &Words) -> Vec<Value> {
+/// The light's rows inside `screen`, the row of the screen `name` that
+/// holds it: the Warmth's (light/warmth.rs), then the Room Light
+/// (light/room.rs).
+fn light_rows(name: &str, screen: &str, seen: &Seen, words: &Words) -> Vec<Value> {
     let part = |id: &str| words.told.part(id);
-    let inside = light::warmth::Inside {
+    let inside = light::Inside {
         name,
         screen,
         named: &part,
         numbers: &words.numbers,
         now: seen.now,
     };
-    light::warmth::rows(seen.light, &inside, &words.light)
+    let mut rows = light::warmth::rows(seen.light, &inside, &words.light);
+    rows.extend(light::room::row(
+        seen.light,
+        &inside,
+        seen.reading,
+        &words.light,
+    ));
+    rows
 }
 
 /// A row's key in the place.
@@ -705,16 +713,16 @@ pub fn rows(
             })
         })
         .collect();
-    // What a step into each screen offers, inside its row: the Warmth,
-    // where a lit screen holds the light and the room's sensor, then a lit
-    // one's settings, then the ways it turns off or on, then what its
+    // What a step into each screen offers, inside its row: the Warmth and
+    // the Room Light, where a lit screen holds the light and the room's
+    // sensor, then a lit one's settings, then the ways it turns off or on, then what its
     // EDID says.
     for (name, output) in &shown {
         let stands = standing(output);
         let screen = key(&format!("display:{name}"));
         let warmed = holds == Some(name.as_str()) && in_the_room(name, shown.len());
         if stands == "lit" && warmed {
-            rows.extend(warmth(name, &screen, seen, words));
+            rows.extend(light_rows(name, &screen, seen, words));
         }
         if stands == "lit" && output["logical"].is_object() {
             rows.extend(settings::rows(name, output, words));

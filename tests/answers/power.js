@@ -129,10 +129,5 @@ function run(failures) {
         Power.endingSaid(null, "session:Reboot:ends", endWords, true),
         { lead: "Reboots the machine.", facts: [
             { id: "session:Reboot:ends", value: "not answering" }] });
-    // How bright a room is, from the light sensor's lux.
-    machine("a dark room", Power.roomLevel(0), 0);
-    machine("daylight", Power.roomLevel(10000), 1);
-    machine("a room a hundredth of daylight", Math.round(Power.roomLevel(100) * 100) / 100,
-        0.5);
     return asked;
 }

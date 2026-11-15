@@ -258,14 +258,3 @@ function sleepSaid(sleep, said, lasted, errors) {
     };
 }
 
-// The brightest a room is drawn as: daylight at a window.
-const DAYLIGHT = 10_000;
-
-// How bright a room is, as a bar from dark to daylight, on the scale an
-// eye sees it: each tenfold step of lux the same way along.
-function roomLevel(seen) {
-    if (seen === null || seen <= 0) {
-        return 0;
-    }
-    return Math.min(1, Math.log10(seen + 1) / Math.log10(DAYLIGHT + 1));
-}

@@ -62,7 +62,6 @@ import "../Hearing.js" as Hearing
 import "Backlight.js" as Backlight
 import "Numbers.js" as Numbers
 import "Order.js" as Order
-import "Power.js" as Power
 import "ScreenAnswers.js" as ScreenAnswers
 import "Screens.js" as Screens
 import "Seen.js" as Seen
@@ -78,15 +77,17 @@ Provider {
     // The screens' rows as the windows daemon serves them, each holding
     // niri's record of its screen and its drawer; Turn Every Screen Off is
     // the daemon's row too, while one is lit. The screen whose drawer
-    // shows is watched ahead, and the one holding the Brightness while a
-    // terminal looks, so the daemon reads its light from the machine
-    // daemon only then (modules/windows, light.rs).
+    // shows is watched ahead, and the one holding the Brightness while the
+    // lights can be seen, as by words asking the Room Light, or a terminal
+    // looks, so the daemon reads its light from the machine daemon only
+    // then (modules/windows, light.rs).
     ReadyRows {
         id: ready
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
         place: "displays"
-        ahead: [provider.drawerWanted, provider.terminalLooks ? provider.backlitKey : ""]
+        ahead: [provider.drawerWanted,
+            provider.lightsSeen || provider.terminalLooks ? provider.backlitKey : ""]
             .filter((key, at, keys) => key !== "" && keys.indexOf(key) === at)
         make: (row, key) => provider.madeFrom(row, key)
         maker: provider
@@ -229,13 +230,8 @@ Provider {
             warn: false };
     }
 
-    // The room's light as it's measured, Room Light's row and fact alike.
-    function lux(value) {
-        return Backlight.reading(value, settings.group, settings.point);
-    }
-
-    // The Brightness and, where the room is heard, the Room light, or
-    // nothing for a screen whose place doesn't hold them.
+    // The Brightness, or nothing for a screen whose place doesn't hold it.
+    // The Room Light is the windows daemon's (light/room.rs).
     function lightRows(output) {
         const light = backlit(output) ? provider.light : null;
         if (light === null)
@@ -261,25 +257,6 @@ Provider {
                     .replace("{now}", grouped(light.now)).replace("{most}", grouped(light.most))
                 : partSaid("brightness", "everyFollows")
         })];
-        // The row stands from the sensor while what it hears is still being
-        // read, so it keeps its place, and from what it heard once read.
-        // Until then it says it's being read, as every figure still read
-        // does (Catalogue.acts), and copies nothing: "not read yet" pasted
-        // is no use anywhere, so Return only closes. Said as nothing, it
-        // was a row whose Return did nothing (goes-places, 2026-11-10).
-        const heard = lightRead ? room : null;
-        if (inTheRoom(output) && roomSensor !== null)
-            rows.push(copyRow({
-                key: `displays:${output.name}:room`,
-                name: partName("room"),
-                side: heard === null ? unreadSaid() || "\u2026" : lux(heard),
-                copy: heard === null ? "" : lux(heard),
-                copiesNothing: heard === null,
-                glyph: "",
-                hue: "machine",
-                graph: level(heard === null ? 0 : Power.roomLevel(heard), 1),
-                note: partSaid("room", "hears")
-            }));
         return rows;
     }
 
@@ -734,21 +711,17 @@ Provider {
     // a lit one's settings, each saying how it's set and stepping into its
     // choices (which what's typed finds from here, so "scale 1.5" is
     // Scale's 1.5\u00d7), then the ways it turns off or on, then what its
-    // EDID says, Return copying one. The Warmth the daemon serves first
-    // inside the screen holding the light sits right after Brightness,
-    // found by its key, while Brightness is still made here.
+    // EDID says, Return copying one. The Warmth and the Room Light the
+    // daemon serves first inside the screen holding the light sit right
+    // after Brightness, found by their keys, while Brightness is still
+    // made here.
     function verbs(output) {
         const inside = ready.inside(screenKey(output));
         if (Screens.standing(output) !== "lit")
             return inside;
-        const rows = lightRows(output);
-        const warmed = inside.findIndex(row => row.key === `displays:${output.name}:warmth`);
-        if (warmed >= 0) {
-            const brightness = `displays:${output.name}:brightness`;
-            rows.splice(rows.findIndex(row => row.key === brightness) + 1, 0,
-                inside.splice(warmed, 1)[0]);
-        }
-        return rows.concat(inside);
+        const light = [`displays:${output.name}:warmth`, `displays:${output.name}:room`];
+        const served = inside.filter(row => light.includes(row.key));
+        return lightRows(output).concat(served, inside.filter(row => !served.includes(row)));
     }
 
     // A setting as a part: its name, how it's set, and the choices a step

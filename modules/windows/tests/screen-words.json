@@ -163,7 +163,11 @@
     { "id": "displays:warmth:sunset", "name": "Sunset" },
     { "id": "displays:warmth:sunrise", "name": "Sunrise" },
     { "id": "displays:warmth:night", "name": "Night White" },
-    { "id": "displays:room", "name": "Room Light" },
+    {
+      "id": "displays:room",
+      "name": "Room Light",
+      "said": { "hears": "as the screen's sensor hears it, from dark to daylight" }
+    },
     { "id": "displays:reads", "name": "Reads" },
     { "id": "displays:stepping", "name": "Stepping" },
     { "id": "displays:driven-by", "name": "Driven By" },
