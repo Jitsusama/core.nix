@@ -203,7 +203,7 @@ in
   # The launcher lands where it did: a thing is one row, the same letters
   # keep their row, and one slip teaches nothing, as tests/ranking.qml holds
   # launcher/Rank.js to it in Qt's own engine, with launcher/Member.js
-  # making what a search found.
+  # making what a search found and launcher/Fading.js what picks still count.
   the-launcher-lands-where-it-did =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -212,6 +212,7 @@ in
       cp ${../../../tests/ranking.qml} ranking.qml
       cp ${../launcher/Rank.js} Rank.js
       cp ${../launcher/Member.js} Member.js
+      cp ${../launcher/Fading.js} Fading.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

@@ -48,6 +48,7 @@
   "launcher/Asking.js"
   "launcher/Catalogue.js"
   "launcher/Rank.js"
+  "launcher/Fading.js"
   "launcher/Showing.js"
   "launcher/Seen.js"
   "launcher/Pacing.js"

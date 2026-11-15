@@ -5,6 +5,7 @@
 // same letters land on the same row, a thing is one row, and one slip
 // teaches nothing.
 import QtQuick
+import "Fading.js" as Fading
 import "Member.js" as Member
 import "Rank.js" as Rank
 
@@ -317,6 +318,26 @@ QtObject {
         expect("a notice after its thing", Rank.rowTier(camera, "chrome", {}), 1);
         expect("a person by the name's start", Rank.rowTier(christa, "ch", opened),
             Rank.tier("Christa Chung", "ch", false));
+
+        // A program is known by its later words only while Joel opens it:
+        // "opened twice" counts picks halved every 14 days, as Picks.qml
+        // weighs them, so ten picks two months back count as half of one
+        // (VKCF3Z, 2026-11-15: every pick ever made would hold a program
+        // over a person for good). Picks for any query add up, and picks
+        // inside a step don't count, as Picks.qml's counts() has it.
+        const today = 100 * day;
+        const lately = (table, daysAgo) => Fading.lately(picks(table, today - daysAgo * day),
+            today, 14 * day);
+        expect("a program opened long ago by its later word", Rank.rowTier(chrome, "chro",
+            lately({ chrome: { [chrome.key]: 10 } }, 60)), 1);
+        expect("a program opened lately by its name's start", Rank.rowTier(chrome, "chro",
+            lately({ chrome: { [chrome.key]: 2 }, gc: { [chrome.key]: 1 } }, 2)),
+            Rank.tier("Chrome", "chro", false));
+        expect("a pick inside a step not counted", lately({
+            [Rank.stepped("program:kitty", "n")]: { [chrome.key]: 3 }
+        }, 0), {});
+        expect("a pick a half-life back counts half", lately({ chrome: { [chrome.key]: 4 } }, 14),
+            { [chrome.key]: 2 });
 
         // Later rows go after their tier, never above it, but for the latched.
         const ordered = [f("program:a", "A", 0), f("program:b", "B", 1), f("program:c", "C", 2)]

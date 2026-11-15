@@ -3534,6 +3534,10 @@ Scope {
     // How often each thing's been picked, taken as the launcher opens, so
     // what it orders holds still while it's open.
     property var often: ({})
+    // How much each thing's been picked lately, faded as Picks.qml weighs
+    // picks and taken with `often`, so a program known by its later words
+    // (Rank.js's rowTier) is one Joel opens now, not one he once did.
+    property var lately: ({})
 
     // With nothing typed, home is the same rows every time, each in its
     // one place, as the approved proposal sets them
@@ -6034,7 +6038,7 @@ Scope {
                         item: choice.prepared,
                         score: byName.score * choice.weight,
                         grade: byName.grade,
-                        tier: Rank.rowTier(choice, letters, often),
+                        tier: Rank.rowTier(choice, letters, lately),
                         choice: choice
                     });
                     continue;
@@ -9329,6 +9333,7 @@ Scope {
             leaveSteps();
             lap("forgetting");
             often = picks.counts();
+            lately = picks.lately();
             lap("counting");
             spotsLater.stop();
             spotsFreshened.stop();
