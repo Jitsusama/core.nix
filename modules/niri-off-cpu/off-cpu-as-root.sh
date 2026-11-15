@@ -4,8 +4,37 @@
 # /run/niri-off-cpu named for the account, which only the account and root
 # can read. Beside it, the graphics buffers reclaim backed up and read back
 # meanwhile (restores.bt), into a second file.
-#
-# usage: niri-off-cpu-as-root <account>
+# Its help and failures take the shape every command of ours does
+# (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+niri-off-cpu-as-root  trace an account's niri off the CPU
+
+  niri-off-cpu@<account>.service runs it as root until
+  it's stopped, writing to /run/niri-off-cpu/<account>.txt.
+  People run niri-off-cpu, which starts and stops it.
+
+EXAMPLES
+  niri-off-cpu-as-root jitsusama
+
+EXIT
+  0   traced until stopped
+  1   no niri session runs as the account, or the trace
+      couldn't start
+  64  asked wrongly
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
+
+if [ "$#" -ne 1 ] || [ -z "$1" ]; then
+  printf '%s\n' "niri-off-cpu-as-root takes the account whose niri to trace" \
+    "  try  niri-off-cpu-as-root --help" >&2
+  exit 64
+fi
 
 account=$1
 id -u "$account" > /dev/null

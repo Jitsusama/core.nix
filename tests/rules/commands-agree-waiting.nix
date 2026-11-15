@@ -50,8 +50,6 @@
     "helps"
   ];
   mypy = [ "helps" ];
-  niri-off-cpu-as-root = [ "helps" ];
-  niri-off-cpu-begun = [ "helps" ];
   nix-offload = [
     "kit"
     "exits"

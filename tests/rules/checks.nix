@@ -187,10 +187,15 @@
         mpv-stopped = script "mpv-stopped" ../../modules/mpv/stopped.sh { };
         niri-deadline = script "niri-deadline" ../../modules/niri/niri-deadline.sh { };
         niri-off-cpu = script "niri-off-cpu" ../../modules/niri-off-cpu/niri-off-cpu.sh { };
+        niri-off-cpu-as-root =
+          script "niri-off-cpu-as-root" ../../modules/niri-off-cpu/off-cpu-as-root.sh
+            { };
+        niri-off-cpu-begun = script "niri-off-cpu-begun" ../../modules/niri-off-cpu/off-cpu-begun.sh { };
         option-rom-check = script "option-rom-check" ../../modules/lanzaboote/option-rom-check.sh { };
         pi-claude = script "pi-claude" ../../modules/pi/claude.sh { };
         pi-host-down = script "pi-host-down" ../../modules/pi/host-down.sh { };
         pi-settings = script "pi-settings" ../../modules/pi/settings.sh { };
+        qt-javascript-lint = script "qt-javascript-lint" ../../modules/treefmt/qt-javascript-lint.sh { };
         quickshell-starts-warm =
           script "quickshell-starts-warm" ../../modules/quickshell/starts-warm.sh
             { };
