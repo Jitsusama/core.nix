@@ -2466,4 +2466,48 @@ mod tests {
             "nothing is going"
         );
     }
+
+    fn given(line: &str) -> Vec<String> {
+        line.split_whitespace().map(str::to_owned).collect()
+    }
+
+    /// What `args` refuses `line` with, as its exit's code and its words.
+    fn refused(line: &str) -> (u8, String) {
+        let failure = args(&given(line)).err().expect("it's refused");
+        let code = failure.code();
+        let words = format!("{} {}", failure.what, failure.why.unwrap_or_default());
+        (code, words)
+    }
+
+    #[test]
+    fn a_flag_it_doesnt_know_is_refused_as_asked_wrongly_naming_the_nearest() {
+        let (code, words) = refused("--word words.json machine.sock");
+        assert_eq!(code, 64, "a mistyped flag: {words}");
+        assert!(words.contains("--word"), "names the flag: {words}");
+        assert!(words.contains("--words"), "names the nearest: {words}");
+    }
+
+    #[test]
+    fn a_flag_without_its_value_is_refused_as_asked_wrongly() {
+        let (code, words) = refused("machine.sock --numbers");
+        assert_eq!(code, 64, "a flag with no value: {words}");
+        assert!(words.contains("--numbers"), "names the flag: {words}");
+    }
+
+    #[test]
+    fn a_third_word_is_refused_as_asked_wrongly() {
+        let (code, words) = refused("machine.sock / extra");
+        assert_eq!(code, 64, "a word past the root: {words}");
+        assert!(words.contains("extra"), "names the word: {words}");
+    }
+
+    #[test]
+    fn its_units_line_is_taken_as_it_was() {
+        let taken = args(&given("machine.sock --words w.json --numbers n.json")).unwrap();
+        assert_eq!(taken.socket, PathBuf::from("machine.sock"));
+        assert_eq!(
+            (taken.words.as_deref(), taken.numbers.as_deref()),
+            (Some("w.json"), Some("n.json"))
+        );
+    }
 }
