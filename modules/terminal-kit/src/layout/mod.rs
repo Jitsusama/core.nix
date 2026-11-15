@@ -603,6 +603,22 @@ mod tests {
     }
 
     #[test]
+    fn a_word_too_long_beside_its_label_goes_under_it_whole() {
+        let urn = "urn:schemas-upnp-org:device:MediaRenderer:1";
+        let facts_ = [("Kind", Some(urn)), ("Name", Some("Stereo"))];
+        assert_eq!(
+            facts(&facts_, "", &Pen::plain(), Room::Cells(46)),
+            ["Kind", &format!("  {urn}"), "Name", "  Stereo"],
+            "an identifier was cut beside its label when it fits whole under it"
+        );
+        assert_eq!(
+            facts(&facts_, "", &Pen::plain(), Room::Cells(80))[0],
+            format!("Kind  {urn}"),
+            "an identifier that fits beside its label left it"
+        );
+    }
+
+    #[test]
     fn a_long_value_wraps_under_itself() {
         let facts_ = [("Note", Some("one two three four"))];
         assert_eq!(
