@@ -189,8 +189,9 @@ the way things look on screen is joyful but not distracting is fun."
 Joel, 2026-11-14 17:19: "i never want the kitty to skid into place, i always
 want to see its paws moving when it is walking or running."
 
-- Owed since 2026-11-14: a walk onto its seat, never past it, at most two cells a drawing
-  walking and three at a run, each drawing held two 60 Hz frames, in every journey.
+- Held by `margin-cat.qml`: "it walks onto its seat, never past it"
+- Held by `margin-cat.qml`: "at a run, at most three cells a drawing"
+- Held by `margin-cat-journeys.qml`: "each ends on its seat, every frame of it a cat's"
 
 ### Paws Moving Up and Across Edges
 
