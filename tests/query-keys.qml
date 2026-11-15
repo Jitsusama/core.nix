@@ -522,8 +522,8 @@ QtObject {
         const row = name => ({ name });
         const rows = [heading("Repositories"), row("core"), row("harness"), row("mycelium"),
             heading("Projects"), row("Networks"), row("Shapes"), heading("Machines"),
-            row("optimus")];
-        const at = Headings.at(rows);
+            row("kestrel")];
+        const at = Headings.placesOf(rows);
         holds("each heading is found where it stands", at, [0, 4, 7]);
         const place = (from, top = 0, bottom = 8) => ({ at: from, highest: 0, last: 8, top,
             bottom, screen: 8 });
@@ -553,11 +553,11 @@ QtObject {
         holds("d2j too", takes(0, { act: "next", count: 2 }, 3),
             ["mycelium", "Networks", "Shapes"]);
         holds("dG takes every row to the last and no heading", takes(0,
-            { act: "last", count: 0 }, 5), ["Networks", "Shapes", "optimus"]);
+            { act: "last", count: 0 }, 5), ["Networks", "Shapes", "kestrel"]);
         holds("a list with none spans as it always has", Headings.spanned(3, null, place(2),
             []), Operators.spanned(3, null, place(2)));
         holds("a search shows no heading", Headings.without(rows).map(one => one.name),
-            ["core", "harness", "mycelium", "Networks", "Shapes", "optimus"]);
+            ["core", "harness", "mycelium", "Networks", "Shapes", "kestrel"]);
         const plain = [row("core"), row("harness")];
         holds("and a list with none is the same list", Headings.without(plain) === plain, true);
         // Headings shorter than a row, the first with no rung above it.

@@ -20,7 +20,7 @@ function isHeading(row) {
 
 // Where each heading stands among the rows, in order: none, for nearly
 // every list, which every reader here answers as it always has.
-function at(rows) {
+function placesOf(rows) {
     const found = [];
     for (let each = 0; each < rows.length; each += 1) {
         if (isHeading(rows[each])) {
