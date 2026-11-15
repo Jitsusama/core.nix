@@ -529,17 +529,5 @@
       "test_two_orchestrations_come_back_each_where_it_sat"
     ],
     "test": "vm-desktop-reopens-under-orchestrators"
-  },
-  {
-    "at": 1794729780,
-    "commit": "9fc4463e89575422ffb39a115a948ed57b121e59",
-    "due": "2026-11-17",
-    "due_why": "two days after its listing, the date the net gives; its owner fixes the order a program drawer made in its key's frame is said in, red first from one of the four failing gates, or shows it steady on an idle builder, by 2026-11-17 23:59 UTC, then takes it off",
-    "owner_pr": 4530,
-    "reason": "failed in the gates of 4 changes on 14 and 15 Nov that don't reach the launcher, each time with footclient's drawer said before its key's frame, and passed on rerun",
-    "subtests": [
-      "test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings"
-    ],
-    "test": "the-launcher-answers-whats-typed-on-niri"
   }
 ]
