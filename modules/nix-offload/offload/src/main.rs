@@ -1376,6 +1376,25 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
 /// change whose base no lent builder keeps evaluated runs replayed onto a
 /// main one does (`replay.rs`), and again on its own base should that fail,
 /// so a replay never fails a run that would have passed.
+/// Whether a twin of the run `twin` went, waited for to its end.
+fn twin_ended(twin: &running::Twin) -> bool {
+    running::waited_for_twin(&state(), std::process::id(), twin, now)
+}
+
+/// The checks a pass at `at` already told of for `system`, by their names
+/// under it, so a run there need not build them again.
+fn told(passed: &passed::Passed, at: Option<&passed::At>, system: Option<&str>) -> Vec<String> {
+    let (Some(at), Some(system)) = (at, system) else {
+        return Vec::new();
+    };
+    let under = format!("checks.{system}.");
+    passed
+        .checks(at)
+        .iter()
+        .filter_map(|check| check.strip_prefix(&under).map(str::to_owned))
+        .collect()
+}
+
 fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -> ExitCode {
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let scratch = scratch();
@@ -1435,29 +1454,22 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         return ExitCode::SUCCESS;
     }
     let wanted = changed::wanted(arguments);
-    let twin = at.as_ref().map(|at| running::Twin {
-        commit: &at.commit,
-        folder: &folder,
-        system: wanted.system.as_deref(),
-    });
+    let twin = at.as_ref().map(|at| running::Twin::new(&at.commit, &folder, arguments));
+    // Said while it runs, so a merge sharing its files waits for it, and
+    // said before it looks for its twin, so one starting with it finds it.
     // The same run already going in this tree ends in what this one would
     // find, so this one waits for it and looks again at what passed
     // (`running.rs`).
-    if let Some(twin) = &twin
-        && running::waited_for_twin(&state(), std::process::id(), twin, now)
-    {
+    let started = now();
+    let said_running = twin
+        .as_ref()
+        .and_then(|twin| running::Running::start(&state(), std::process::id(), twin, started));
+    if twin.as_ref().is_some_and(twin_ended) {
+        drop(said_running);
         forget();
         return changed_there(given, waiting, replays);
     }
-    let checks_of = |system: &str| format!("checks.{system}.");
-    let told: Vec<String> = match (&at, &wanted.system) {
-        (Some(at), Some(system)) => passed
-            .checks(at)
-            .iter()
-            .filter_map(|check| check.strip_prefix(&checks_of(system)).map(str::to_owned))
-            .collect(),
-        _ => Vec::new(),
-    };
+    let told = told(&passed, at.as_ref(), wanted.system.as_deref());
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     // Decided only while the VM lender ran, a run sent as a switch
@@ -1472,12 +1484,6 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         moves: false,
         own,
     };
-    // Said while it runs, so a merge sharing its files waits for it
-    // (`running.rs`).
-    let started = now();
-    let said_running = twin
-        .as_ref()
-        .and_then(|twin| running::Running::start(&state(), std::process::id(), twin, started));
     let finished = sent.somewhere(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
     forget();
     let Some(finished) = finished else {

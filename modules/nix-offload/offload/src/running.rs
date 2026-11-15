@@ -18,7 +18,7 @@
 //! all day on a machine that lends, so its name alone would be fooled.
 //!
 //! A run that finds its twin going, one in the same folder at the same
-//! commit for the same system, waits for it to end rather than sending
+//! commit asked the same, waits for it to end rather than sending
 //! the same work again (`twin`). From 15 November merge-net's `ready`
 //! starts a change's run again itself in its author's tree, and an
 //! author's loop that starts one too would otherwise double it on the
@@ -42,16 +42,11 @@ impl Running {
     /// when its process's start can't be read or the file can't be
     /// written; the run goes on without it, and a merge waits on nothing
     /// for it.
-    pub fn start(
-        state: &Path,
-        pid: u32,
-        at: &Twin,
-        started: u64,
-    ) -> Option<Self> {
+    pub fn start(state: &Path, pid: u32, at: &Twin, started: u64) -> Option<Self> {
         let Twin {
             commit,
             folder,
-            system,
+            asked,
         } = at;
         let running = state.join("nix-offload/running");
         let file = running.join(format!("{pid}.json"));
@@ -65,7 +60,7 @@ impl Running {
             "commit": commit,
             "folder": folder.to_string_lossy(),
             "started": started,
-            "system": system,
+            "asked": asked,
         });
         let partial = running.join(format!("{pid}.json.new"));
         let written = fs::create_dir_all(&running)
@@ -85,12 +80,22 @@ impl Running {
 }
 
 /// What makes two runs the same work: the commit sent, the tree it was
-/// sent from, and the system its checks are for.
+/// sent from, and what changed-checks was asked, its system included.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Twin<'a> {
     pub commit: &'a str,
     pub folder: &'a Path,
-    pub system: Option<&'a str>,
+    pub asked: String,
+}
+
+impl<'a> Twin<'a> {
+    pub fn new(commit: &'a str, folder: &'a Path, arguments: &[String]) -> Self {
+        Self {
+            commit,
+            folder,
+            asked: arguments.join(" "),
+        }
+    }
 }
 
 /// A run going now that does the same work as another would: its
@@ -101,23 +106,28 @@ pub struct Going {
     pub started: u64,
 }
 
-/// The run going under `state`, other than process `me`, that does the
-/// work `at` names, if one does.
+/// The run going under `state` that started before process `me` and does
+/// the work `at` names, if one does. Each run says itself before it looks,
+/// so of two starting at once the later always finds the earlier, and the
+/// earlier never waits on the later. A `me` whose start can't be read
+/// counts as the latest.
 pub fn twin(state: &Path, me: u32, at: &Twin) -> Option<Going> {
     let folder = at.folder.to_string_lossy();
+    let mine = (ticks(me).unwrap_or(u64::MAX), me);
     fs::read_dir(state.join("nix-offload/running"))
         .ok()?
         .filter_map(|entry| fs::read_to_string(entry.ok()?.path()).ok())
         .filter_map(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
         .find_map(|said| {
             let pid = u32::try_from(said["pid"].as_u64()?).ok()?;
-            let same = pid != me
-                && said["commit"].as_str() == Some(at.commit)
+            let theirs = said["ticks"].as_u64()?;
+            let same = said["commit"].as_str() == Some(at.commit)
                 && said["folder"].as_str() == Some(&folder)
-                && said["system"].as_str() == at.system;
+                && said["asked"].as_str() == Some(&at.asked);
             // A process id comes back to another program, so the run is
             // there only while its process started when the file says.
-            (same && ticks(pid) == said["ticks"].as_u64()).then(|| Going {
+            let earlier = (theirs, pid) < mine && ticks(pid) == Some(theirs);
+            (same && earlier).then(|| Going {
                 pid,
                 started: said["started"].as_u64().unwrap_or_default(),
             })
@@ -165,32 +175,35 @@ impl Drop for Running {
 mod tests {
     use super::*;
 
-    fn at<'a>(commit: &'a str, folder: &'a str, system: &'a str) -> Twin<'a> {
+    fn at<'a>(commit: &'a str, folder: &'a str, asked: &str) -> Twin<'a> {
         Twin {
             commit,
             folder: Path::new(folder),
-            system: Some(system),
+            asked: asked.to_owned(),
         }
     }
+
+    const ASKED: &str = "--system x86_64-linux";
 
     #[test]
     fn a_run_finds_its_twin_going_and_nothing_else() {
         let state = tempfile::tempdir().unwrap();
         let pid = std::process::id();
-        let first = at("abc", "/t", "x86_64-linux");
+        let first = at("abc", "/t", ASKED);
         let _going = Running::start(state.path(), pid, &first, 7).expect("the run was said");
         assert_eq!(
-            twin(state.path(), pid + 1, &first),
+            twin(state.path(), u32::MAX, &first),
             Some(Going { pid, started: 7 }),
             "a run in the same tree at the same commit wasn't found"
         );
         for (other, why) in [
-            (at("abd", "/t", "x86_64-linux"), "another commit"),
-            (at("abc", "/u", "x86_64-linux"), "another tree"),
-            (at("abc", "/t", "aarch64-darwin"), "another system"),
+            (at("abd", "/t", ASKED), "another commit"),
+            (at("abc", "/u", ASKED), "another tree"),
+            (at("abc", "/t", "--system aarch64-darwin"), "another system"),
+            (at("abc", "/t", "--build --system x86_64-linux"), "another ask"),
         ] {
             assert_eq!(
-                twin(state.path(), pid + 1, &other),
+                twin(state.path(), u32::MAX, &other),
                 None,
                 "a run for {why} was taken for a twin"
             );
@@ -203,6 +216,36 @@ mod tests {
     }
 
     #[test]
+    fn of_two_twins_only_the_later_waits() {
+        let state = tempfile::tempdir().unwrap();
+        let mut later = std::process::Command::new("sh")
+            .args(["-c", "sleep 5"])
+            .spawn()
+            .expect("a later run started");
+        let first = at("abc", "/t", ASKED);
+        let earlier = std::process::id();
+        let _said = Running::start(state.path(), earlier, &first, 7);
+        let _also = Running::start(state.path(), later.id(), &first, 8);
+        let found = (
+            twin(state.path(), later.id(), &first),
+            twin(state.path(), earlier, &first),
+        );
+        let _ = later.kill();
+        let _ = later.wait();
+        assert_eq!(
+            found,
+            (
+                Some(Going {
+                    pid: earlier,
+                    started: 7
+                }),
+                None
+            ),
+            "the later run didn't wait on the earlier alone"
+        );
+    }
+
+    #[test]
     fn a_twin_whose_process_is_gone_or_another_is_not_waited_for() {
         let state = tempfile::tempdir().unwrap();
         let running = state.path().join("nix-offload/running");
@@ -210,11 +253,11 @@ mod tests {
         let pid = std::process::id();
         let line = serde_json::json!({
             "pid": pid, "ticks": 0, "commit": "abc", "folder": "/t", "started": 7,
-            "system": "x86_64-linux"
+            "asked": ASKED
         });
         fs::write(running.join(format!("{pid}.json")), line.to_string()).unwrap();
         assert_eq!(
-            twin(state.path(), pid + 1, &at("abc", "/t", "x86_64-linux")),
+            twin(state.path(), u32::MAX, &at("abc", "/t", ASKED)),
             None,
             "a run left behind by a process since reused was waited for"
         );
@@ -227,7 +270,7 @@ mod tests {
             .args(["-c", "sleep 2"])
             .spawn()
             .expect("a stand-in run started");
-        let first = at("abc", "/t", "x86_64-linux");
+        let first = at("abc", "/t", ASKED);
         let going = Running::start(state.path(), child.id(), &first, 7);
         assert!(going.is_some(), "the stand-in run wasn't said");
         let reaper = thread::spawn(move || {
@@ -235,8 +278,12 @@ mod tests {
             drop(going);
         });
         let begun = std::time::Instant::now();
-        let waited = waited_for_twin(state.path(), std::process::id(), &first, || 10);
-        assert!(waited, "a second run in the same tree didn't wait for the first");
+        // One whose start can't be read counts as the later.
+        let waited = waited_for_twin(state.path(), u32::MAX, &first, || 10);
+        assert!(
+            waited,
+            "a second run in the same tree didn't wait for the first"
+        );
         assert!(
             begun.elapsed() >= Duration::from_secs(1),
             "the second run went on while the first still ran: {:?}",
@@ -244,7 +291,7 @@ mod tests {
         );
         reaper.join().unwrap();
         assert!(
-            !waited_for_twin(state.path(), std::process::id(), &first, || 10),
+            !waited_for_twin(state.path(), u32::MAX, &first, || 10),
             "a run waited where nothing else went"
         );
     }
@@ -264,7 +311,7 @@ mod tests {
                 said,
                 serde_json::json!({
                     "pid": pid, "ticks": ticks, "commit": "abc", "folder": "/t", "started": 7,
-                    "system": "x"
+                    "asked": "x"
                 }),
                 "the run was said wrongly"
             );

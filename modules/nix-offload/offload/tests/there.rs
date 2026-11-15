@@ -3106,9 +3106,11 @@ fn an_evaluator_evaluates_one_run_at_a_time() {
     .unwrap();
     fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
     fs::write(changed.bin.join("evaluates-for"), "2").unwrap();
+    // Asked differently, so neither is the other's twin (`running.rs`).
     let ran: Vec<Output> = std::thread::scope(|scope| {
-        let runs: Vec<_> = (0..2)
-            .map(|_| scope.spawn(|| changed.run(&["--name-only"]).0))
+        let runs: Vec<_> = [&["--name-only"][..], &["--name-only", "--no-vm"]]
+            .into_iter()
+            .map(|asked| scope.spawn(move || changed.run(asked).0))
             .collect();
         runs.into_iter().map(|run| run.join().unwrap()).collect()
     });
@@ -3124,6 +3126,44 @@ fn an_evaluator_evaluates_one_run_at_a_time() {
     assert!(
         ran.iter()
             .any(|run| String::from_utf8_lossy(&run.stderr).contains("waits its turn")),
+        "the one waiting says so: {ran:?}"
+    );
+}
+
+#[test]
+fn the_same_run_twice_in_one_tree_is_evaluated_once() {
+    // On 15 November merge-net's ready began starting a change's run
+    // again in its author's tree, beside the author's own loop.
+    let changed = Changed::new();
+    fs::remove_file(changed.offload.join("store")).unwrap();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = answering.local_addr().unwrap();
+    fs::create_dir_all(changed.folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        changed.folder.path().join("nix-offload/evaluators"),
+        format!("{address} far o\n"),
+    )
+    .unwrap();
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("evaluates-for"), "2").unwrap();
+    let ran: Vec<Output> = std::thread::scope(|scope| {
+        let runs: Vec<_> = (0..2)
+            .map(|_| scope.spawn(|| changed.run(&["--name-only"]).0))
+            .collect();
+        runs.into_iter().map(|run| run.join().unwrap()).collect()
+    });
+    for run in &ran {
+        assert_eq!(run.status.code(), Some(0), "{run:?}");
+        assert!(
+            String::from_utf8_lossy(&run.stdout).contains("changed  a"),
+            "each says what changed: {run:?}"
+        );
+    }
+    let at_once = fs::read_to_string(changed.bin.join("evaluating-at-once-far")).unwrap();
+    assert_eq!(at_once, "1\n", "the same run was evaluated twice");
+    assert!(
+        ran.iter().any(|run| String::from_utf8_lossy(&run.stderr)
+            .contains("already runs these changed-checks in this tree")),
         "the one waiting says so: {ran:?}"
     );
 }
