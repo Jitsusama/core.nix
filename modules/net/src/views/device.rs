@@ -852,12 +852,32 @@ mod tests {
                 .unwrap_or_else(|| {
                     panic!("the path its facts share isn't a line of its own: {text}")
                 });
+            let deeper = lines[head + 1..]
+                .iter()
+                .position(|line| *line == "  RewardsRegistrationStatus")
+                .unwrap_or_else(|| {
+                    panic!("a path shared deeper in isn't a line of its own: {text}")
+                })
+                + head
+                + 1;
             assert!(
-                lines[head + 1..]
+                lines[deeper + 1..deeper + 4]
                     .iter()
-                    .any(|line| line.starts_with("  RewardsRegistrationStatus PromptAutoSendData")),
+                    .all(|line| line.starts_with("    ")),
+                "the facts sharing a deeper path aren't two cells further in: {text}"
+            );
+            assert!(
+                lines[deeper + 1..]
+                    .iter()
+                    .any(|line| line.trim_start().starts_with("PromptAutoSendData")),
                 "a fact under it isn't named by the rest of its path: {text}"
             );
+            if room == Room::Cells(80) {
+                assert!(
+                    lines.contains(&"  AlignmentMode                       semiAutomatic"),
+                    "a short fact that fits beside its label went under it: {text}"
+                );
+            }
             assert!(
                 !text.contains("ConsumableConfigDyn ProductConsumableInfo AlignmentMode"),
                 "the shared path is said again on a fact: {text}"

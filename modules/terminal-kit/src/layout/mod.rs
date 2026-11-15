@@ -609,8 +609,14 @@ mod tests {
             ["Size         1 TB", "Temperature  \u{2026}"]
         );
         assert_eq!(
-            facts(&facts_, "\u{2026}", &Pen::plain(), Room::Cells(20)),
-            ["Size", "  1 TB", "Temperature", "  \u{2026}"]
+            facts(&facts_, "\u{2026}", &Pen::plain(), Room::Cells(14)),
+            ["Size         1 TB", "Temperature  \u{2026}"],
+            "facts that fit beside their labels went under them"
+        );
+        assert_eq!(
+            facts(&facts_, "\u{2026}", &Pen::plain(), Room::Cells(12)),
+            ["Size  1 TB", "Temperature", "  \u{2026}"],
+            "only the fact that can't fit beside should go under its label"
         );
     }
 
@@ -620,7 +626,7 @@ mod tests {
         let facts_ = [("Kind", Some(urn)), ("Name", Some("Stereo"))];
         assert_eq!(
             facts(&facts_, "", &Pen::plain(), Room::Cells(46)),
-            ["Kind", &format!("  {urn}"), "Name", "  Stereo"],
+            ["Kind", &format!("  {urn}"), "Name  Stereo"],
             "an identifier was cut beside its label when it fits whole under it"
         );
         assert_eq!(
