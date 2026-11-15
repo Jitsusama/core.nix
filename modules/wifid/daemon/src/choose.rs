@@ -4,7 +4,8 @@
 //! The best access point changes with the hour and the room (Joel, 14 Nov
 //! 2026: "fixating on one could hurt me"), so none is fixed: the one the
 //! card is on is kept while it carries well, and another is tried only
-//! when it carries badly, or when one measured lately carried far better.
+//! when it carries badly two minutes running, or fails, or when one
+//! measured lately carried far better.
 //! A wider band, 5 or 6 GHz, is kept to while it carries well and tried
 //! from 2.4 GHz whenever one is heard well enough: 2.4 GHz can be quicker
 //! to the gateway but carries far less.
@@ -102,6 +103,11 @@ pub struct Chooser {
     /// When it last had the card look for another access point, which it
     /// does no more often than it moves.
     looked: Option<Instant>,
+    /// The access point the card carried badly on at the last choice. One
+    /// minute's figure alone moves nothing: on 15 Nov 2026 one point read
+    /// 45 ms at p95 for a minute between 11 and 18, and the one tried for
+    /// it carried 32 to 64 for the next 14.
+    badly_on: Option<String>,
     trial: Option<Trial>,
     spurned: HashMap<String, Instant>,
 }
@@ -126,6 +132,11 @@ impl Chooser {
     ) -> Choice {
         let (point, measured, signal, frequency) = on;
         let failing = measured.lost > FAILING;
+        let carried_badly = badly(measured);
+        // A failing link is left on its first minute, a merely bad one on
+        // its second.
+        let lately = std::mem::replace(&mut self.badly_on, carried_badly.then(|| point.to_owned()));
+        let bad = carried_badly && (failing || lately.as_deref() == Some(point));
         if calling && !failing {
             return Choice::Stay;
         }
@@ -156,7 +167,6 @@ impl Chooser {
         }
         self.spurned
             .retain(|_, spurned| now.duration_since(*spurned) < SPURNED);
-        let bad = badly(measured);
         // A card on a wider band carrying well keeps off a narrower one,
         // however quick, since quickness isn't room to bring things down.
         let untried = others.iter().filter(|other| {
@@ -270,8 +280,17 @@ fn worse(trial: &Measured, before: &Measured) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// A chooser that has seen this access point carry badly a minute
+    /// before, so a second bad minute is acted on.
+    pub(crate) fn after_a_bad_minute(point: &str) -> Chooser {
+        Chooser {
+            badly_on: Some(point.to_owned()),
+            ..Chooser::default()
+        }
+    }
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
     const HALL: &str = "6c:ae:f6:c1:84:28";
@@ -318,8 +337,51 @@ mod tests {
     }
 
     #[test]
-    fn one_carrying_badly_tries_another_heard_about_as_well() {
+    fn one_minute_carrying_badly_moves_nothing_but_two_running_do() {
         let mut chooser = Chooser::default();
+        let (badly, well) = (carried(45, 0.0), carried(15, 0.0));
+        let near = [hall(-41, Some(20), None)];
+        let (start, minute) = (Instant::now(), Duration::from_secs(60));
+
+        let first = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        let eased = chooser.choose(start + minute, (DESK, &well, -50, CH52), &near, false);
+        let again = chooser.choose(start + minute * 2, (DESK, &badly, -50, CH52), &near, false);
+        let still = chooser.choose(start + minute * 3, (DESK, &badly, -50, CH52), &near, false);
+
+        assert_eq!(first, Choice::Stay, "one minute at 45 ms moves nothing");
+        assert_eq!(eased, Choice::Stay, "15 ms carries well");
+        assert_eq!(again, Choice::Stay, "a bad minute after a good one is new");
+        assert_eq!(still, Choice::Try(HALL.into()), "two running are");
+    }
+
+    #[test]
+    fn one_minute_carrying_badly_asks_no_look_but_two_running_do() {
+        let mut chooser = Chooser::default();
+        let badly = carried(52, 0.0);
+        let start = Instant::now();
+
+        let first = chooser.choose(start, (DESK, &badly, -50, CH52), &[], false);
+        let minute = start + Duration::from_secs(60);
+        let second = chooser.choose(minute, (DESK, &badly, -50, CH52), &[], false);
+
+        assert_eq!(first, Choice::Stay, "one minute at 52 ms asks no look");
+        assert_eq!(second, Choice::Look, "two running do");
+    }
+
+    #[test]
+    fn a_failing_link_is_left_on_its_first_minute() {
+        let mut chooser = Chooser::default();
+        let failing = carried(400, 15.0);
+        let near = hall(-53, Some(20), None);
+
+        let choice = chooser.choose(Instant::now(), (DESK, &failing, -50, CH52), &[near], false);
+
+        assert_eq!(choice, Choice::Try(HALL.into()), "15% lost is left at once");
+    }
+
+    #[test]
+    fn one_carrying_badly_tries_another_heard_about_as_well() {
+        let mut chooser = after_a_bad_minute(DESK);
         let badly = carried(119, 0.5);
         let near = hall(-53, Some(20), None);
 
@@ -353,7 +415,7 @@ mod tests {
 
     #[test]
     fn a_look_for_another_is_asked_again_only_once_settled() {
-        let mut chooser = Chooser::default();
+        let mut chooser = after_a_bad_minute(DESK);
         let badly = carried(52, 0.0);
         let start = Instant::now();
         let first = chooser.choose(start, (DESK, &badly, -50, CH52), &[], false);
@@ -436,7 +498,7 @@ mod tests {
 
     #[test]
     fn a_card_just_moved_stays_put_a_while() {
-        let mut chooser = Chooser::default();
+        let mut chooser = after_a_bad_minute(DESK);
         let badly = carried(119, 0.5);
         let start = Instant::now();
         let near = hall(-53, Some(20), None);
@@ -464,7 +526,7 @@ mod tests {
 
     #[test]
     fn a_move_that_carries_worse_goes_back_and_is_not_tried_again_soon() {
-        let mut chooser = Chooser::default();
+        let mut chooser = after_a_bad_minute(DESK);
         let start = Instant::now();
         let near = hall(-53, Some(20), None);
         let badly = carried(119, 0.5);
@@ -594,7 +656,7 @@ mod tests {
 
     #[test]
     fn one_carrying_badly_tries_5_ghz_before_a_louder_2_4_ghz() {
-        let mut chooser = Chooser::default();
+        let mut chooser = after_a_bad_minute(HALL);
         let badly = carried(119, 0.0);
         let others = [near_at(-34, None), desk_at(-44, None)];
 

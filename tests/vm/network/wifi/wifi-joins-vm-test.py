@@ -343,8 +343,9 @@ def test_a_card_whose_access_point_carries_slowly_moves_to_another_of_its_networ
     assert wifid.hears("Lantern"), "wifid should hear Lantern with its second access point up"
     # Each answer from the first comes 200 ms late, five times the slowness worth a try.
     machine.succeed("ip netns exec air tc qdisc add dev wlan0 root netem delay 200ms")
-    # The choice is made with the figures, once a minute, so this waits up to two.
-    wifid.says("wlan2 moved to 02:00:00:00:05:00, as asked", timeout=timedelta(seconds=150))
+    # The choice is made with the figures, once a minute, on the second bad minute running, so
+    # this waits up to three.
+    wifid.says("wlan2 moved to 02:00:00:00:05:00, as asked", timeout=timedelta(seconds=210))
     # Having looked over its channel first, so the kernel needn't look for it as the card
     # leaves the first: that look cost 145 ms of the 401 one move went silent (2026-11-15).
     # It's kept to the first meanwhile, so the look isn't part of the move: held to the second,
