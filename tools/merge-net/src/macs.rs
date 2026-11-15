@@ -24,8 +24,39 @@ pub struct Skipped {
 /// Each comparison `record` keeps as skipped that no run with its
 /// arguments has passed since, the newest reason for each, oldest first.
 pub fn skipped(record: &str) -> Vec<Skipped> {
-    let _ = record;
-    Vec::new()
+    let words = |line: &serde_json::Value, key: &str| -> Option<Vec<String>> {
+        let words = line[key].as_array()?;
+        Some(
+            words
+                .iter()
+                .filter_map(|word| word.as_str().map(str::to_owned))
+                .collect(),
+        )
+    };
+    let lines: Vec<serde_json::Value> = record
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .filter(|line: &serde_json::Value| line["dir"].is_null())
+        .collect();
+    let ran: Vec<Vec<String>> = lines.iter().filter_map(|line| words(line, "run")).collect();
+    let mut skipped: Vec<Skipped> = Vec::new();
+    for line in &lines {
+        let Some(arguments) = words(line, "skipped") else {
+            continue;
+        };
+        if ran.contains(&arguments) {
+            continue;
+        }
+        let because = line["because"]
+            .as_str()
+            .unwrap_or("nothing said why")
+            .to_owned();
+        match skipped.iter_mut().find(|kept| kept.arguments == arguments) {
+            Some(kept) => kept.because = because,
+            None => skipped.push(Skipped { arguments, because }),
+        }
+    }
+    skipped
 }
 
 /// What `needs` says of the comparisons skipped at `head`, or nothing.
@@ -62,7 +93,11 @@ mod tests {
 
     #[test]
     fn a_skipped_comparison_is_named_with_why_and_how_to_run_it() {
-        let record = [run(LINUX), skip(MAC, "equilibrius nearby doesn't answer", 2)].concat();
+        let record = [
+            run(LINUX),
+            skip(MAC, "equilibrius nearby doesn't answer", 2),
+        ]
+        .concat();
         assert_eq!(
             said(&record, "abcd1234"),
             "a Mac's checks weren't compared at abcd1234, since equilibrius nearby doesn't \
