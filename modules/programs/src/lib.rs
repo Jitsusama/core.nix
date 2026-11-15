@@ -19,6 +19,7 @@
 
 pub mod agent_panes;
 pub mod bookmark_rows;
+#[cfg(feature = "daemon")]
 pub mod code_rows;
 pub mod command;
 pub mod entry;

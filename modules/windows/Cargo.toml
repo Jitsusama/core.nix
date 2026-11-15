@@ -15,7 +15,7 @@ publish = false
 daemon-serve = { path = "../daemon-serve" }
 # Where the desktop entries are, how one reads, and inotify, which says
 # when they change, as the programs daemon reads them.
-programs = { path = "../programs" }
+programs = { path = "../programs", default-features = false }
 # The one form the launcher's rows are served in, and the rows kept so
 # each keeps its order, as every daemon serving rows shares them.
 ready-rows = { path = "../ready-rows" }

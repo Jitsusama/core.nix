@@ -20,7 +20,7 @@ serde_json = "1.0"
 # names a window's program by, and the mark it wears, as a notice's
 # sender wears it (../windows); the entries are found where the programs
 # daemon finds them (../programs).
-programs = { path = "../programs" }
+programs = { path = "../programs", default-features = false }
 # The shape every command of ours takes: its flags, help, errors and exits.
 terminal-kit = { path = "../terminal-kit" }
 windows = { path = "../windows" }

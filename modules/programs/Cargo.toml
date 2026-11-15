@@ -27,7 +27,19 @@ ready-rows = { path = "../ready-rows" }
 chrome-session = { path = "../chrome/session", default-features = false }
 # Every repository on the machine, read from git's own files as Code's
 # rows are made, the library alone: no process is started for a read.
-repos = { path = "../repos" }
+repos = { path = "../repos", optional = true }
+
+[features]
+default = ["daemon"]
+# The programs daemon and Code's rows, which a crate naming the library
+# for its folders and entries leaves out with `default-features = false`,
+# so it needn't carry the repos library.
+daemon = ["dep:repos"]
+
+[[bin]]
+name = "programs"
+path = "src/main.rs"
+required-features = ["daemon"]
 
 [dev-dependencies]
 # The daemon started for a test, and its client, as every daemon's tests
