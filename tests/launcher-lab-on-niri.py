@@ -57,6 +57,9 @@ ROUNDS = 10
 # How many windows are open as it runs, so Windows has rows to make.
 WINDOWS = 4
 
+# How many notices are on screen as it runs, when it times Super+N's opening ("notices").
+NOTICES = 3
+
 # The places stepped into from home, by the name home lists each by: Capture, whose step
 # showed in 138 ms on Joel's shell (2026-11-11), and the two with most rows beside it.
 STEPS = ("Capture", "Windows", "Emoji")
@@ -94,8 +97,11 @@ def opened(shell: Shell, place: str) -> Json:
     """
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     before = latest(openings(shell))
-    words = ("toggle",) if place == "home" else ("collection", place)
-    shell.as_account(shell.ipc(*words))
+    if place == "notices":
+        shell.take_notices()
+    else:
+        words = ("toggle",) if place == "home" else ("collection", place)
+        shell.as_account(shell.ipc(*words))
     each: list[Json] = []
 
     def presented(_: Json) -> bool:
@@ -131,6 +137,10 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
     places = os.environ.get("LAB_PLACES", " ".join(PLACES)).split()
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
     windows = [shell.opened(f"Lab {nth}", app="foot") for nth in range(WINDOWS)]
+    # Super+N opens the notices on screen, so a run timing it has some there all along.
+    if "notices" in places:
+        for nth in range(NOTICES):
+            shell.as_account(f"notify-send --expire-time=3600000 'Lab notice {nth}' 'to open on'")
     # Opened once untimed first: a fresh niri blurs behind its first surface only as that
     # shows, which held the first opening of every run 368 to 902 ms from its ask though it was
     # drawn in 11, against 38 and 42 with the blur off (H6EDLC, 2026-11-11). Joel's niri has
@@ -155,7 +165,7 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
                 "rows": opening.get("rows"),
             }
             with capsys.disabled():
-                print("lab-opening " + json.dumps(said), flush=True)
+                print(f"lab-opening {os.environ.get('LAB_RUN', '')} {json.dumps(said)}", flush=True)
             if opening["presented"] < 0:
                 pytest.fail(f"{place}'s opening closed unpresented: {opening}")
             timed[place].append(opening["presented"])
@@ -166,7 +176,7 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
         shell.close(window)
     for place, spans in timed.items():
         with capsys.disabled():
-            print(said_of(place, spans, took[place]), flush=True)
+            print(os.environ.get("LAB_RUN", ""), said_of(place, spans, took[place]), flush=True)
 
 
 def said_after(shell: Shell, mark: int, *wanted: str) -> list[str]:

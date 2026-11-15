@@ -2435,7 +2435,8 @@ def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts
     Notices are the launcher's rows, so its keys, acts and drawer take the held stack's place.
     The one in front is the oldest, never the row first in Desktop, so the cursor landing on it
     shows the landing chose it. One rested off the screen is Desktop's alone, never among those
-    on screen, which come in the order the line takes them. Again, Super+N closes.
+    on screen, which come in the order the line takes them. It searches only there, and - climbs
+    back onto For You. Again, Super+N closes.
     """
     with shell.told("rests Plover"):
         shell.as_account("notify-send --expire-time=1000 'Plover' 'rested off the screen'")
@@ -2450,6 +2451,9 @@ def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts
             stdin=subprocess.DEVNULL,
             text=True,
         )
+    # Home kept first, as it is by the time Joel presses it, so opening finds no home anew.
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    searches = launcher_on_niri.searched(shell)
     shell.take_notices()
     shell.launcher_ready()
     on_screen = ["Kestrel", "Lapwing", "Merlin"]
@@ -2460,6 +2464,16 @@ def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts
             and shown["mode"] == "normal"
         )
     )
+    # It passes through For You on the way, as a walk does, searching only where it lands:
+    # searching home and For You first held all of Joel's Super+N openings past 50 ms.
+    searched = launcher_on_niri.searched(shell) - searches
+    assert searched == 1, f"Super+N searched {searched} times to open on the notices"
+    # Passed through, For You is listed as - climbs back onto it.
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: shown["held"][-1:] == ["For You"] and bool(shown["rows"]))
+    shell.close_launcher()
+    shell.take_notices()
+    shell.launcher_ready()
     shell.take_notices()
     shell.launcher_closed()
     shell.take_notices()
