@@ -5353,7 +5353,13 @@ mod tests {
     }
 
     #[test]
-    fn a_net_another_build_replaced_starts_no_more_runs_and_leaves_its_head_to_that_one() {
+    fn a_net_another_build_replaced_finishes_its_round_and_hands_over_after_it() {
+        // On 15 November switch968 installed #4740's build at about 08:25
+        // and the net sent nothing more; switch970 put the same build back
+        // at 08:50, so it never handed over, and its round at 25cc40362bf1
+        // took up the tests it had skipped only at 09:03. A switch that
+        // brings a new build pauses the round no longer: the new build
+        // takes over between rounds (`rounds`).
         let state = state("superseded");
         let world = Stand {
             head: "h".into(),
@@ -5363,24 +5369,14 @@ mod tests {
         };
         assert_eq!(
             round(&world, &state, "s").unwrap(),
-            Round::Unfinished("h".into()),
-            "a replaced net's round should end unfinished, its tests unsent"
-        );
-        assert!(
-            world.built().is_empty(),
-            "a replaced net started runs the new build would start again: {:?}",
-            world.built()
-        );
-        assert_eq!(
-            state.under_way().as_deref(),
-            Some("h"),
-            "the new build should take up the head the round began on"
-        );
-        world.superseded.store(false, Ordering::Relaxed);
-        assert_eq!(
-            round(&world, &state, "s").unwrap(),
             Round::Passed("h".into()),
-            "the build that follows should run the round's tests at its head"
+            "a replaced net left the round it began unfinished"
+        );
+        assert_eq!(
+            world.built().len(),
+            2,
+            "a replaced net didn't run its round's tests: {:?}",
+            world.built()
         );
     }
 }
