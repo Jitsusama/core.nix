@@ -20,6 +20,7 @@ rg --line-number --no-heading --hidden --glob '!modules/theme/**' \
   --glob '!modules/quickshell/launcher/Colours.js' --glob '!tests/colour-cases.js' \
   --glob '!modules/eero/tests/osaka-jade.json' --glob '!modules/cadence/tests/theme.json' \
   --glob '!modules/terminal-kit/tests/osaka-jade.json' \
+  --glob '!modules/quickshell/in-a-terminal/tests/theme.json' \
   --glob '!tests/repository/checks.nix' \
   -e "${pattern}" modules roles hardware tests examples flake.nix ||
   status=$?

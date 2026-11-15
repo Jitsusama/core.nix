@@ -1,0 +1,5 @@
+{
+  "colours": { "strong": "#F7E8B2" },
+  "terminal": { "bright_white": "#F7E8B2" },
+  "marks": { "active": { "glyph": "\u25c6", "console": "*" } }
+}

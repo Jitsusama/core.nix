@@ -63,13 +63,10 @@ mod tests {
     use super::*;
     use terminal_kit::ink::{Colours, Ink};
 
+    /// The one theme the launcher's tests name colours in, kept in a file
+    /// of its own since its colours are what's tested, not a look.
     fn theme() -> Value {
-        serde_json::from_str(
-            r##"{"colours":{"strong":"#F7E8B2"},
-                "terminal":{"bright_white":"#F7E8B2"},
-                "marks":{"active":{"glyph":"\u25c6","console":"*"}}}"##,
-        )
-        .expect("the theme parses")
+        serde_json::from_str(include_str!("../tests/theme.json")).expect("the theme parses")
     }
 
     fn look(ink: Ink) -> Look {
