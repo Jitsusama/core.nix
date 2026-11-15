@@ -19,15 +19,15 @@ pub fn help() -> Help {
     )
     .example("location location.sock /", "serves only the clock's zone")
     .example(
-        "location set pin.json Halifax",
-        "pins here to Halifax, by hand",
+        "location set pin.json Bergen",
+        "pins here to Bergen, by hand",
     )
     .argument("SOCKET", "where it answers, which systemd holds")
     .argument("ROOT", "the root whose etc/localtime is the zone")
     .argument("[KEPT]", "where here is kept through a restart")
     .argument("[PIN]", "where Joel's pin is kept")
     .argument("[MOVED]", "where clock-follows says it moved")
-    .option("--words WORDS", "the launcher's words, for its rows")
+    .option("--words FILE", "the launcher's words, for its rows")
     .command("set PIN WORDS...", "pins here to the town named")
     .command("again PIN", "takes the pin away")
     .subcommand(set().unlisted())
@@ -38,8 +38,8 @@ pub fn help() -> Help {
 fn set() -> Help {
     Help::new("set", "pins here to the town named, found by the web")
         .example(
-            "location set pin.json Lunenburg, Nova Scotia",
-            "a town and its province",
+            "location set pin.json Bergen, Norway",
+            "a town and its country",
         )
         .argument("PIN", "the pin's file, in the state folder")
         .argument("WORDS...", "the town, as typed")
@@ -222,12 +222,12 @@ mod tests {
                 ending.stdout
             );
         }
-        let (_, asked) = started(&["set", "pin.json", "Lunenburg,", "Nova", "Scotia"]);
+        let (_, asked) = started(&["set", "pin.json", "Bergen,", "Norway"]);
         assert_eq!(
             asked,
             Some(Start::Set {
                 pin: PathBuf::from("pin.json"),
-                town: "Lunenburg, Nova Scotia".to_owned()
+                town: "Bergen, Norway".to_owned()
             }),
             "set's town didn't reach it whole"
         );

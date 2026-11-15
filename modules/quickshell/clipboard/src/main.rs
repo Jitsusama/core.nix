@@ -74,7 +74,7 @@
 //! says them (src/commands.rs), and a failure is the kit's, said once as
 //! it ends.
 //!
-//! WORDS is the launcher's words.json. Its numbers are grouped and pointed
+//! `--vocabulary` is the launcher's words.json. Its numbers are grouped and pointed
 //! as the launcher's counts are, with the comma and the full stop.
 
 mod commands;
