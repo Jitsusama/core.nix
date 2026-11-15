@@ -208,6 +208,7 @@ QtObject {
         check(failures, "once usable, a later stall changes nothing",
             tick(freed, [5000]).usable, 1500);
         collector(failures, pace);
+        threaded(failures, pace);
         stalled(failures);
         framed(failures);
     }
@@ -230,6 +231,32 @@ QtObject {
             Pacing.collectorSaid(0, 0.4), "");
         check(failures, "a tick without a count keeps the last",
             Pacing.feltTicked(Pacing.feltBegun(0, 5), 16, pace).collected, 5);
+    }
+
+    // What the shell's thread did in an opening's longest stall, from its
+    // clocks at each tick: run, wait for a CPU or, for the rest, sleep.
+    // Joel's journal called a mean 39 ms of each stall unnamed, and the lab
+    // couldn't show it (2026-11-15).
+    function threaded(failures, pace) {
+        const ticks = [[16, { ran: 5, waited: 1 }], [32, { ran: 10, waited: 2 }],
+            [132, { ran: 50.4, waited: 40 }], [148, { ran: 60, waited: 41 }]];
+        const felt = ticks.reduce((was, [at, thread]) => Pacing.feltTicked(was, at, pace,
+            undefined, thread), Pacing.feltBegun(0, 0, { ran: 0, waited: 0 }));
+        check(failures, "the thread's part of the longest stall is its clocks across it",
+            JSON.stringify(felt.stallThread), JSON.stringify({ ran: 40.4, waited: 38 }));
+        check(failures, "a shorter gap's isn't the stall's",
+            Pacing.feltTicked(felt, 164, pace, undefined, { ran: 70, waited: 50 }).stallThread
+                .ran, 40.4);
+        check(failures, "a tick without its clocks keeps the last",
+            Pacing.feltTicked(felt, 164, pace).thread.ran, 60);
+        check(failures, "it's said after the stall's parts, sleeping what neither took",
+            Pacing.threadSaid(felt.stall, felt.stallThread),
+            "; its thread ran 40 ms of the stall, waited 38 for a CPU and slept 22");
+        check(failures, "clocks read past the stall leave no sleep below nothing",
+            Pacing.threadSaid(20, { ran: 15, waited: 9 }),
+            "; its thread ran 15 ms of the stall, waited 9 for a CPU and slept 0");
+        check(failures, "an opening that never stalled says nothing of it",
+            Pacing.threadSaid(0, { ran: 0, waited: 0 }), "");
     }
 
     // What held an opening's longest stall, by the work it ran into: Joel's
