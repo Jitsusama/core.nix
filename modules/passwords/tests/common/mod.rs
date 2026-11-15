@@ -227,6 +227,10 @@ impl Running {
             "profiles": [stored_folder("bash"), folder.join("home/.nix-profile/bin")],
             "hidden": folder.join("fence-hidden.json"),
             "overlays": overlays,
+            // The stand-in forge a yes stands for, the folder of bare
+            // repositories a test's tree takes as origin, as a machine
+            // names GitHub.
+            "forges": [format!("file://{}/", folder.join("forge").display())],
         });
         let running = Running::started_with(
             test,

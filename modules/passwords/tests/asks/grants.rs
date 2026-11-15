@@ -11,24 +11,27 @@ use super::{LISTED, answer, put_up_in, row_of, saying, stored_bash, yes};
 use crate::common::{Client, Running, git_in as git};
 
 /// A repository inside the running folder, one commit in and nothing
-/// uncommitted, whose commit origin's default branch holds, as a tree on
-/// main does once fetched.
+/// uncommitted, whose origin is a bare repository on the daemon's
+/// stand-in forge, whose main holds that commit, fetched, as a tree on
+/// main is.
 fn on_main(running: &Running) -> PathBuf {
     let tree = running.folder.join("repo");
+    let origin = running.folder.join("forge").join("repo.git");
     std::fs::create_dir_all(&tree).unwrap();
-    git(&tree, &["init", "-q"]);
+    git(&tree, &["init", "-q", "--initial-branch=main"]);
     std::fs::write(tree.join("README"), "a tree").unwrap();
     git(&tree, &["add", "README"]);
     git(&tree, &["commit", "-q", "-m", "a commit"]);
-    git(&tree, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    let bare = origin.to_string_lossy();
     git(
         &tree,
-        &[
-            "symbolic-ref",
-            "refs/remotes/origin/HEAD",
-            "refs/remotes/origin/main",
-        ],
+        &["init", "-q", "--bare", "--initial-branch=main", &bare],
     );
+    let url = format!("file://{bare}");
+    git(&tree, &["remote", "add", "origin", &url]);
+    git(&tree, &["push", "-q", "origin", "main"]);
+    git(&tree, &["fetch", "-q", "origin"]);
+    git(&tree, &["remote", "set-head", "origin", "main"]);
     tree
 }
 

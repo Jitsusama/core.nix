@@ -75,7 +75,7 @@ impl Setting {
         std::fs::write(folder.join("tree/README"), "a tree").expect("a file is written");
         git(&folder.join("tree"), &["add", "README"]);
         git(&folder.join("tree"), &["commit", "-q", "-m", "a commit"]);
-        on_main(&folder.join("tree"));
+        on_main(&folder, &folder.join("tree"), "tree");
         let marks = folder.join("op-ran");
         script(
             &folder.join("op"),
@@ -115,6 +115,8 @@ impl Setting {
             .arg(folder.join("op"))
             .arg("--git")
             .arg(on_path("git"))
+            .arg("--forge")
+            .arg(format!("file://{}/", folder.join("forge").display()))
             .arg("--loginctl")
             .arg(folder.join("loginctl"))
             .arg("--journal")
@@ -212,18 +214,50 @@ fn grants(client: &mut Client) -> Vec<Value> {
         .collect()
 }
 
-/// Has origin's default branch hold the tree's commit, as a tree on main
-/// does once fetched.
-fn on_main(tree: &Path) {
-    git(tree, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+/// A bare repository named `name` on the setting's stand-in forge.
+fn forged(folder: &Path, name: &str) -> String {
+    let forge = folder.join("forge").join(format!("{name}.git"));
     git(
-        tree,
+        folder,
         &[
-            "symbolic-ref",
-            "refs/remotes/origin/HEAD",
-            "refs/remotes/origin/main",
+            "init",
+            "-q",
+            "--bare",
+            "--initial-branch=main",
+            &forge.to_string_lossy(),
         ],
     );
+    format!("file://{}", forge.display())
+}
+
+/// Has the tree's origin be a repository on the stand-in forge whose
+/// main holds the tree's commit, fetched, as a tree on main is.
+fn on_main(folder: &Path, tree: &Path, name: &str) {
+    let origin = forged(folder, name);
+    git(tree, &["remote", "add", "origin", &origin]);
+    git(tree, &["push", "-q", "origin", "HEAD:refs/heads/main"]);
+    git(tree, &["fetch", "-q", "origin"]);
+    git(tree, &["remote", "set-head", "origin", "main"]);
+}
+
+/// A worktree of the setting's tree holding a commit the forge's main
+/// doesn't, an agent's later edit Joel never saw.
+fn unmerged(setting: &Setting, name: &str) -> PathBuf {
+    let worktree = setting.folder.join(name);
+    git(
+        &setting.folder.join("tree"),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            &worktree.to_string_lossy(),
+        ],
+    );
+    std::fs::write(worktree.join("release.sh"), "echo edited").expect("a file is written");
+    git(&worktree, &["add", "release.sh"]);
+    git(&worktree, &["commit", "-q", "-m", "an unmerged commit"]);
+    worktree
 }
 
 /// The fact a row says under `name`, if it says one.
@@ -244,7 +278,7 @@ fn another_repository(folder: &Path) -> PathBuf {
     std::fs::write(other.join("README"), "another tree").expect("a file is written");
     git(&other, &["add", "README"]);
     git(&other, &["commit", "-q", "-m", "a commit"]);
-    on_main(&other);
+    on_main(folder, &other, "other");
     other
 }
 
@@ -365,6 +399,51 @@ fn a_grant_covers_no_tree_whose_code_isnt_all_on_main() {
         );
     }
     assert_eq!(setting.op_ran(), 1, "op ran for code not on main");
+}
+
+#[test]
+fn a_grant_covers_no_commit_only_the_trees_own_refs_say_is_on_main() {
+    let setting = Setting::new("granted-forged");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    let worktree = unmerged(&setting, "forged");
+    // What any command of the account can write: origin's refs as last
+    // fetched, claiming the commit is on main though the forge never
+    // took it.
+    git(
+        &worktree,
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+    let id = put_up_in(&setting.folder, &worktree, ITEM);
+    assert_eq!(
+        row(&mut client, &id)["state"],
+        "waiting",
+        "a grant covered a commit only a forged ref says is on main"
+    );
+    assert_eq!(setting.op_ran(), 1, "op ran for a forged main");
+}
+
+#[test]
+fn a_grant_covers_no_tree_whose_origin_was_pointed_elsewhere() {
+    let setting = Setting::new("granted-repointed");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    let worktree = unmerged(&setting, "repointed");
+    // A repository of the agent's own on the same forge, whose main does
+    // hold its commit, named as origin and fetched from.
+    let fork = forged(&setting.folder, "fork");
+    git(&worktree, &["push", "-q", &fork, "HEAD:refs/heads/main"]);
+    git(&worktree, &["remote", "set-url", "origin", &fork]);
+    git(&worktree, &["fetch", "-q", "origin"]);
+    let id = put_up_in(&setting.folder, &worktree, ITEM);
+    assert_eq!(
+        row(&mut client, &id)["state"],
+        "waiting",
+        "a grant covered a tree whose origin isn't the one Joel's yes was for"
+    );
+    assert_eq!(setting.op_ran(), 1, "op ran for another origin's main");
 }
 
 #[test]
@@ -566,8 +645,9 @@ fn a_yes_releases_the_item_to_the_checker_alone() {
         "the value reached the answer"
     );
     assert_eq!(setting.op_ran(), 1, "op didn't run once");
+    // The answer is written before the ask's file goes, so it's waited for.
     let ask = setting.folder.join("asks").join(format!("{id}.ask.json"));
-    assert!(!ask.exists(), "the ask's file stayed");
+    until("the ask's file stayed", || !ask.exists());
 }
 
 #[test]
