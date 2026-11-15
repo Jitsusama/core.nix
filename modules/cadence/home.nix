@@ -158,6 +158,20 @@ in
         orchestrator.
       '';
     };
+    checkouts = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      example = {
+        mycelium = "/home/me/src/mycelium";
+      };
+      description = ''
+        The checkouts whose mains say which of the misses' checks merged,
+        by the name a check calls each by, beside the core and harness
+        mirrors cadence keeps itself: a miss naming `mycelium #177` closes
+        once that pull request merged on the checkout's `origin/main`, or
+        its `main`. Nothing is fetched; the main is read as it stands.
+      '';
+    };
     revive = {
       restart = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
@@ -336,6 +350,12 @@ in
             "--to"
             cfg.orchestrator
           ]
+          ++ lib.concatLists (
+            lib.mapAttrsToList (name: path: [
+              "--checkout"
+              "${name}=${path}"
+            ]) cfg.checkouts
+          )
         );
         # git for the three mains, and journalctl for update-to-main's
         # looks at them, as the axes read them.
