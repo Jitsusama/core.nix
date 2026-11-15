@@ -486,6 +486,7 @@
   {
     "at": 1794702911,
     "commit": "a52af4357be29c48580dbc6ecc5cc07e1ad3e61d",
+    "due": "2026-11-17",
     "owner_pr": null,
     "reason": "failed, then passed, at a52af4357be2",
     "subtests": [
@@ -496,6 +497,7 @@
   {
     "at": 1794706203,
     "commit": "c51fcc200e172b08a4e9705edeb9c397ebb75861",
+    "due": "2026-11-17",
     "owner_pr": 3956,
     "reason": "failed twice at a637004b052a, and at c51fcc200e17 after it",
     "subtests": [
