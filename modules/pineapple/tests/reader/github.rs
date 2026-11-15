@@ -6,7 +6,9 @@
 //! resume said there ends only shadow stops, even let go live. A round
 //! GitHub's rate limit refuses is read again rather than skipped, and a
 //! list's later pages are read too. A site with no notifications is read
-//! by searching for what Joel opened, its keys its own.
+//! by searching for what Joel opened, its keys its own, from far enough
+//! back that a search's lagging index misses nothing, and never for more
+//! repositories than its searches allow.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -355,6 +357,81 @@ fn github_a_site_with_no_notifications_is_read_by_what_joel_opened() {
         "it says when the site was read: {read}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_site_is_searched_from_ten_minutes_before_its_last_round() {
+    let (origin, asked) = answering(by_address);
+    let home = home();
+    let last = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("after 1970")
+        .as_secs()
+        - 3600;
+    let state = home.join("state/pineapple");
+    std::fs::create_dir_all(&state).expect("the state folder");
+    let judged = json!({"since": last, "keys": []});
+    std::fs::write(state.join("judged-code.json"), judged.to_string()).expect("the mark");
+    let site = [
+        "--site",
+        "code",
+        "--authored-by",
+        "joel@example.com",
+        "--login",
+        LOGIN,
+        "--repo",
+        "example/shop",
+    ];
+    let mut reading = github_reader(&home, &origin, &site);
+    until_asked(&asked, 0, 1);
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let from = format!("updated%3A%3E%3D{}", stamp(last - 600).replace(':', "%3A"));
+    let first = asked.lock().expect("what was asked")[0].clone();
+    assert!(
+        first.contains(&from),
+        "a search's index lags, so it asks from ten minutes before: {first}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_more_repositories_than_a_sites_searches_allow_are_refused() {
+    let (origin, _) = answering(by_address);
+    let home = home();
+    let mut site = vec![
+        "--site".to_owned(),
+        "code".to_owned(),
+        "--authored-by".to_owned(),
+        "joel@example.com".to_owned(),
+        "--login".to_owned(),
+        LOGIN.to_owned(),
+    ];
+    for n in 0..21 {
+        site.extend(["--repo".to_owned(), format!("example/repo{n}")]);
+    }
+    let site: Vec<&str> = site.iter().map(String::as_str).collect();
+    // A reader that took them would run on, so it is waited on only so long.
+    let mut reading = github_reader(&home, &origin, &site);
+    let began = Instant::now();
+    let status = loop {
+        if let Some(status) = reading.try_wait().expect("the reader is asked") {
+            break Some(status);
+        }
+        if began.elapsed() > PATIENCE {
+            reading.kill().expect("the reader stops");
+            reading.wait().expect("the reader is gone");
+            break None;
+        }
+        thread::sleep(Duration::from_millis(50));
+    };
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+    assert_eq!(
+        status.and_then(|status| status.code()),
+        Some(64),
+        "more repositories than its searches allow are a usage error"
+    );
 }
 
 /// The one stop's record, whatever its file is named.

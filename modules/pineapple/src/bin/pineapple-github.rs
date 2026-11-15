@@ -68,6 +68,18 @@ const LOOK_BACK: u64 = 10 * 60;
 /// that finds twice is known by its key.
 const OVERLAP: u64 = 60;
 
+/// How far before the last round a search asks from, in seconds: a
+/// search's index can lag an update by more than a minute, and a pull
+/// request it indexed late would otherwise never be read. What that
+/// finds again is known by its key.
+const INDEX_LAG: u64 = 10 * 60;
+
+/// The most repositories one reader searches. A site allows a signed-in
+/// reader 30 searches a minute, and each round spends one a repository,
+/// and one more for each page past the first; past that, every round
+/// would be refused and the reader would never move on.
+const SEARCHED: usize = 20;
+
 /// How long one request may take before the round gives up on it.
 const PATIENCE: Duration = Duration::from_secs(20);
 
@@ -149,7 +161,7 @@ fn help() -> Help {
             )
             .option(
                 "--repo OWNER/NAME",
-                "a repository searched by author, given once for each",
+                "a repository searched by author, given once for each, at most 20",
             )
             .option("--every MS", "how often it asks, a minute unless given"),
     )
@@ -275,6 +287,13 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
                      --repo example/shop",
                 ),
         );
+    }
+    if how.repos.len() > SEARCHED {
+        return Err(Failure::new(
+            Exit::Usage,
+            format!("--repo is given at most {SEARCHED} times"),
+        )
+        .because("a site allows 30 searches a minute, and each round spends one a repository"));
     }
     Ok(how)
 }
@@ -580,7 +599,12 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
     let Some(login) = who(github, how) else {
         return;
     };
-    let from = judged.since.saturating_sub(OVERLAP);
+    let back = if how.authored_by.is_some() {
+        INDEX_LAG
+    } else {
+        OVERLAP
+    };
+    let from = judged.since.saturating_sub(back);
     let since = github::stamp(from);
     let threads = match changed(github, how, &since) {
         Ok(threads) => threads,
