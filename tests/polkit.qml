@@ -184,6 +184,8 @@ QtObject {
         const quest = "QEST-20261110-H6EDLC";
         const answer = (id, title) => JSON.stringify({ schema: "asker-says.says/1", quest: id,
             session: "0f3a9c2e-4b7d-4e1a-9c3f-a1b2c3d4e5f6", by: 42, title: title });
+        // A line's room, in letters, standing in for the card's measure.
+        const lineFits = 60;
         const longTitle = "Reduce Gitstream Push-Path Pre-Receive Latency: Batch Secret Diffs"
             + " and Bound Unrelated-History Detection";
         const sayings = [
@@ -201,7 +203,7 @@ QtObject {
         ];
         for (const [what, said, wanted] of sayings) {
             asked++;
-            const got = Polkit.says(said);
+            const got = Polkit.says(said, line => line.length <= lineFits);
             if (got !== wanted)
                 failures.push(`${what} saying was "${got}", not "${wanted}"`);
         }

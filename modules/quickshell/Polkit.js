@@ -212,33 +212,36 @@ function asker(cmdline, actionId) {
 
 // A quest's id as the harness gives it.
 const questShape = /^QEST-\d{8}-[A-Z0-9]{6}$/u;
-// The most of a quest's title its line holds, so the line stays one.
-const titleLongest = 48;
+// What the line says before the quest's title.
+const saidFor = "It says it's for ";
 // A title's code marks, which are markdown's, not words.
 const codeMarks = /`/gu;
 const spaces = /\s+/u;
 // What ends a title given way, joined to its last word kept.
 const titleLeftOut = "\u00a0\u2026";
 
-// A quest's title as one line: its words, past `titleLongest` given way at a
-// whole word to one ellipsis, and a word past `longestWord` inside itself.
-function titled(title) {
+// The line naming a quest's title as one line, `fits` saying whether a line
+// does: past it, the title gives way at a whole word to one ellipsis, its
+// first word kept whatever, and a word past `longestWord` inside itself.
+function titled(title, fits) {
     const all = title
         .replace(codeMarks, "")
         .split(spaces)
         .filter(word => word !== "")
         .map(word => middleCut(word, longestWord));
-    if (all.join(" ").length <= titleLongest) {
-        return `${all.join(" ")}.`;
+    const whole = `${saidFor}${all.join(" ")}.`;
+    if (fits(whole)) {
+        return whole;
     }
-    const kept = [];
-    for (const word of all) {
-        if ([...kept, word].join(" ").length + titleLeftOut.length > titleLongest) {
+    const given = held => `${saidFor}${held.join(" ")}${titleLeftOut}`;
+    const kept = all.slice(0, 1);
+    for (const word of all.slice(1)) {
+        if (!fits(given([...kept, word]))) {
             break;
         }
         kept.push(word);
     }
-    return `${kept.join(" ")}${titleLeftOut}`;
+    return given(kept);
 }
 
 // What the asking process says of itself, from asker-says's answer: the
@@ -248,8 +251,9 @@ function titled(title) {
 // a password prompt (VKCF3Z, 2026-11-15). Nothing for no answer, one not
 // parsed, a process that says none, a quest not in the harness's shape,
 // which asker-says leaves out too, or one with no title (ISXEG8,
-// 2026-11-15).
-function says(answer) {
+// 2026-11-15). `fits` says whether a line fits on one, as the card
+// measures it.
+function says(answer, fits) {
     let said = null;
     try {
         said = JSON.parse(answer);
@@ -260,7 +264,7 @@ function says(answer) {
     if (!questShape.test(said?.quest ?? "") || title === "") {
         return "";
     }
-    return `It says it's for ${titled(title)}`;
+    return titled(title, fits);
 }
 
 // Text as rich text shows it, as written: a command is the asker's to

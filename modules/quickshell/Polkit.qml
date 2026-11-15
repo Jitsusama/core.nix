@@ -45,8 +45,9 @@ Scope {
     }
     readonly property string cmdline: asking.path === "" ? "" : asking.text()
 
-    // What the asking process says of itself, asked of asker-says once per
-    // ask; empty until it answers, and for a process that says nothing.
+    // What the asking process says of itself, asker-says's answer, asked
+    // once per ask; empty until it answers. The card words it, as only it
+    // can measure the line.
     property string saidOfItself: ""
     Process {
         id: sayer
@@ -58,7 +59,7 @@ Scope {
                 root.saidOfItself = "";
         }
         stdout: StdioCollector {
-            onStreamFinished: root.saidOfItself = Said.says(text)
+            onStreamFinished: root.saidOfItself = text
         }
     }
 
