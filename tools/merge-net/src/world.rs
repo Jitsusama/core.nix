@@ -860,7 +860,7 @@ impl World for Real {
         &self,
         test: &str,
         subtests: &BTreeSet<String>,
-        owner: Option<u64>,
+        owner: u64,
         commit: &str,
         reason: &str,
     ) -> Result<Merged, String> {
@@ -986,11 +986,8 @@ pub fn revert_body(bad: &Bad, log: &str) -> String {
 }
 
 /// A quarantine's description, in the four sections every PR has.
-pub fn quarantine_body(test: &str, owner: Option<u64>, commit: &str, reason: &str) -> String {
-    let owner = owner.map_or_else(
-        || "its owner".to_owned(),
-        |pr| format!("the owner of #{pr}"),
-    );
+pub fn quarantine_body(test: &str, owner: u64, commit: &str, reason: &str) -> String {
+    let owner = format!("the owner of #{owner}");
     format!(
         "### 💡 TL;DR\n\n{test} goes on the net's quarantine list, since it {reason}. The net still runs it, \
          but reverts nothing when it fails.\n\n\
@@ -1581,7 +1578,7 @@ mod tests {
     fn a_quarantine_of_a_broken_test_says_it_broke_rather_than_that_it_passed() {
         let body = quarantine_body(
             "vm-a",
-            Some(2900),
+            2900,
             "e38290ad",
             "has been broken since #2900, whose revert won't apply",
         );

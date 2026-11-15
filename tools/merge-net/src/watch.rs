@@ -74,6 +74,27 @@ pub const DROPPED: &str = "main's newest head passes its test, so it was dropped
 /// too, so it lands nothing.
 const MENDS_NOTHING: &str = "the revert mends nothing";
 
+/// Why a test went unlisted: every quarantined test has an owner who mends
+/// it and takes it off, and on 15 November the net listed five subtests
+/// owned by nobody, so nobody was told.
+const NO_OWNER: &str = "it has no owner to mend it and take it off, since no merge since the \
+                        round's base moved it alone and no PR took it off the list, so the \
+                        net lists nothing; the watcher names one and lists it";
+
+/// Put `test` on the quarantine list owned by `owner`, or refuse with
+/// `NO_OWNER` where there is none.
+fn quarantine_owned(
+    world: &dyn World,
+    test: &str,
+    subtests: &BTreeSet<String>,
+    owner: Option<u64>,
+    head: &str,
+    reason: &str,
+) -> Result<Merged, String> {
+    let owner = owner.ok_or_else(|| NO_OWNER.to_owned())?;
+    world.quarantine(test, subtests, owner, head, reason)
+}
+
 /// How many times a run the builder never took is sent again, two minutes
 /// apart, before the round leaves it for the next.
 const SENDS: u32 = 15;
@@ -226,7 +247,7 @@ pub trait World: Sync {
         &self,
         test: &str,
         subtests: &BTreeSet<String>,
-        owner: Option<u64>,
+        owner: u64,
         commit: &str,
         reason: &str,
     ) -> Result<Merged, String>;
@@ -974,7 +995,7 @@ fn told_fixed(
         }
         state.say(&format!(
             "{test} {} at {}, and fails one of two runs at main's newest head {}, so it is \
-             listed there: nothing is searched for, reverted or held",
+             flaky there, not broken: nothing is searched for, reverted or held",
             if commit.is_some() { "broke" } else { "fails" },
             short(commit.unwrap_or(head)),
             short(newest)
@@ -1655,14 +1676,14 @@ fn list_flaky(
     let reason = format!("failed, then passed, at {}", short(head));
     let failing = failing_at(state, head, test);
     let made = (!listed_by_subtests_on_main(world, test, &failing))
-        .then(|| world.quarantine(test, &failing, owner, head, &reason));
+        .then(|| quarantine_owned(world, test, &failing, owner, head, &reason));
     // On 10 November a refused merge was kept only in the finding, and the
     // list it would have landed sat unmerged for an hour and a half.
     match &made {
         Some(Ok(landed)) => {
             state.say(&format!("listed {test} as quarantined in #{}", landed.pr));
         }
-        Some(Err(why)) => state.say(&format!("listing {test} as quarantined failed: {why}")),
+        Some(Err(why)) => state.say(&format!("{test} isn't listed as quarantined: {why}")),
         None => state.say(&format!(
             "{test} failed, then passed, at {}, and main lists it by subtests already, so \
              its list stays as it is",
@@ -1748,7 +1769,7 @@ fn list_still_red(
     );
     let by_subtests = listed_by_subtests_on_main(world, test, &failing);
     let listed = (!by_subtests && !listed_on_main(world, head, test))
-        .then(|| world.quarantine(test, &failing, owner, head, &reason));
+        .then(|| quarantine_owned(world, test, &failing, owner, head, &reason));
     state.find(&json!({
         "kind": "failed-before", "test": test, "commit": head, "since": base,
         "owner_pr": owner, "log": log,
@@ -2299,7 +2320,7 @@ fn list_broken(
         )
     };
     let subtests = failing_at(state, head, &found.test);
-    let made = world.quarantine(&found.test, &subtests, found.pr, head, &reason)?;
+    let made = quarantine_owned(world, &found.test, &subtests, found.pr, head, &reason)?;
     state.clear_hold()?;
     state.say(&format!(
         "listed {} as quarantined in #{}, owned by {what}, so the hold is cleared",
@@ -2385,7 +2406,7 @@ mod tests {
         /// The reason each test put in quarantine was listed for.
         quarantine_reasons: Mutex<Vec<String>>,
         /// The owner each test put in quarantine was listed with.
-        quarantine_owners: Mutex<Vec<Option<u64>>>,
+        quarantine_owners: Mutex<Vec<u64>>,
         /// The PR that last took a test off the list.
         unlisted_by: Option<u64>,
         /// The failing subtests each owner was asked for by.
@@ -2667,7 +2688,7 @@ mod tests {
             &self,
             test: &str,
             subtests: &BTreeSet<String>,
-            owner: Option<u64>,
+            owner: u64,
             _: &str,
             reason: &str,
         ) -> Result<Merged, String> {
@@ -3452,7 +3473,9 @@ mod tests {
     }
 
     #[test]
-    fn a_test_failing_one_run_at_mains_newest_head_is_listed_there() {
+    fn a_test_failing_one_run_at_mains_newest_head_is_found_flaky_there() {
+        // Before a search no merge is known to own it, so it goes to the
+        // watcher unlisted rather than onto the list with nobody to mend it.
         let state = state("flaky-at-newest");
         state.set_heads("s", "s").unwrap();
         state.begin("h").unwrap();
@@ -3468,13 +3491,23 @@ mod tests {
             round(&world, &state, "s").unwrap(),
             Round::Failed("h".into())
         );
-        assert_eq!(*world.put_in_quarantine.lock().unwrap(), names("vm-a"));
+        assert!(
+            world.put_in_quarantine.lock().unwrap().is_empty(),
+            "a test no merge owns was listed"
+        );
         assert!(world.reverted.lock().unwrap().is_empty());
         assert_eq!(state.hold(), None);
         let found = findings(&state);
         assert_eq!(
             (&found[0]["kind"], &found[0]["commit"]),
             (&json!("flaky"), &json!("n"))
+        );
+        assert!(
+            found[0]["quarantine_error"]
+                .as_str()
+                .is_some_and(|why| why.contains("no owner")),
+            "the finding didn't say why it went unlisted: {}",
+            found[0]
         );
     }
 
@@ -3655,6 +3688,35 @@ mod tests {
             round_of("bb", "whole-system-alone"),
             Value::Null,
             "no merge moved it alone"
+        );
+    }
+
+    #[test]
+    fn a_flaky_test_no_merge_owns_is_told_not_listed() {
+        // On 15 November five subtests of vm-desktop-launcher-finds-sessions
+        // were listed at 2c22e609 owned by nobody, since only merges moving
+        // the whole system had moved them, so nobody was told to mend them.
+        let state = state("flaky-unowned");
+        let world = Stand {
+            head: "bb".into(),
+            merges: names("bb"),
+            changed: changed("vm-desktop-a vm-install-b"),
+            still: vec![("a".into(), "vm-install-b".into())],
+            ..Stand::default()
+        }
+        .exits("bb", "vm-desktop-a", &[1, 0]);
+        round(&world, &state, "s").unwrap();
+        assert!(
+            world.put_in_quarantine.lock().unwrap().is_empty(),
+            "a flaky test with no owner was listed"
+        );
+        let found = findings(&state);
+        assert!(
+            found[0]["quarantine_error"]
+                .as_str()
+                .is_some_and(|why| why.contains("no owner")),
+            "the finding didn't say it went unlisted for want of an owner: {}",
+            found[0]
         );
     }
 
@@ -4798,7 +4860,7 @@ mod tests {
             names("vm-a"),
             "a test red at its base and its head was left off the list, owned by nobody"
         );
-        assert_eq!(*world.quarantine_owners.lock().unwrap(), vec![Some(2603)]);
+        assert_eq!(*world.quarantine_owners.lock().unwrap(), vec![2603]);
         let found = findings(&state);
         assert_eq!(found[0]["owner_pr"], 2603);
         assert_eq!(found[0]["quarantine_pr"], 8);
