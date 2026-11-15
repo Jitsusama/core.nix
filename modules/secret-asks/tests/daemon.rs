@@ -1,6 +1,8 @@
 //! The daemon run over a folder of its own, with stand-ins for 1Password's
 //! op and logind's loginctl, a git tree for asks to run in, and asked
-//! over its socket as the launcher asks it.
+//! over its socket as the launcher asks it. Long because every case,
+//! a yes, a no, a grant or the forge, is one walk through the same daemon
+//! and the same stand-ins, which the file's helpers set up once.
 
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixDatagram;

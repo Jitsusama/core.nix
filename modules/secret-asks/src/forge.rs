@@ -178,7 +178,8 @@ mod tests {
         assert!(
             forge
                 .prefix_of("https://github.com/Jitsusama/core.nix.git")
-                .is_some()
+                .is_some(),
+            "a repository on the named forge wasn't asked"
         );
         for elsewhere in [
             "https://github.com.evil/x",
@@ -194,6 +195,9 @@ mod tests {
             );
         }
         let none = Forge::new(PathBuf::from("git"), Vec::new());
-        assert!(none.prefix_of("https://github.com/a/b").is_none());
+        assert!(
+            none.prefix_of("https://github.com/a/b").is_none(),
+            "a forge was asked though none is named"
+        );
     }
 }
