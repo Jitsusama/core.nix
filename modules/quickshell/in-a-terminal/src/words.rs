@@ -57,22 +57,6 @@ impl Words {
         said
     }
 
-    /// How the program is used, kept in words.json as its lines.
-    pub fn usage(&self) -> String {
-        let mut usage = match self.said.get("usage").and_then(Value::as_array) {
-            Some(lines) => lines
-                .iter()
-                .filter_map(Value::as_str)
-                .collect::<Vec<_>>()
-                .join("\n"),
-            None => self.word("usage", &[]),
-        };
-        if !usage.ends_with('\n') {
-            usage.push('\n');
-        }
-        usage
-    }
-
     /// What a command does, as zsh's completion describes it.
     pub fn offered(&self, command: &str) -> String {
         self.said
@@ -110,6 +94,11 @@ impl Words {
         self.word("unsure", &[("question", question)])
     }
 
+    /// An act not done, since its question was answered no.
+    pub fn answered_no(&self, question: &str) -> String {
+        self.word("answeredNo", &[("question", question)])
+    }
+
     /// The launcher's question put on the terminal, with the keys that
     /// answer it there: the launcher's own is answered by a second Return,
     /// which a terminal's line can't tell from the first.
@@ -130,6 +119,11 @@ impl Words {
     /// `do` given no steps.
     pub fn nothing_to_do(&self) -> String {
         self.word("nothingToDo", &[])
+    }
+
+    /// `completion` given no shell to write it for.
+    pub fn no_shell(&self) -> String {
+        self.word("noShell", &[])
     }
 
     /// `do` given a blank step, which names no row.
@@ -176,7 +170,8 @@ mod tests {
                 r#"{"terminal":{"missing":"nothing called {step}",
                     "missingIn":"nothing called {step} in {place}",
                     "meant":"did you mean {names}?","or":"or","apart":"\u00b7",
-                    "silent":"the shell isn't answering","usage":"launcher show",
+                    "silent":"the shell isn't answering",
+                    "answeredNo":"{question} \u00b7 not done, as answered",
                     "takes":"{name} takes words \u00b7 {ask} \u00b7 give them after --",
                     "takesWords":"{name} not done \u00b7 give its words after --",
                     "asks":"{question} (y/n)",
@@ -243,14 +238,14 @@ mod tests {
     fn a_word_missing_from_the_file_is_said_as_its_key() {
         assert_eq!(Words::from_value(&Value::Null).silent(), "silent");
         assert_eq!(Words::from_value(&Value::Null).home(), "home");
-        assert_eq!(words().usage(), "launcher show\n");
     }
 
     #[test]
-    fn usage_kept_as_lines_is_said_as_them() {
-        let lined = Words::from_value(&serde_json::json!({
-            "terminal": { "usage": ["launcher show", "", "Shows a place."] }
-        }));
-        assert_eq!(lined.usage(), "launcher show\n\nShows a place.\n");
+    fn a_no_names_the_question_it_answered() {
+        assert_eq!(
+            words().answered_no("Reboot?"),
+            "Reboot? \u{b7} not done, as answered",
+            "a no should say which act it left undone"
+        );
     }
 }

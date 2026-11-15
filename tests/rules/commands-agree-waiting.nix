@@ -41,12 +41,7 @@
     "kit"
     "helps"
   ];
-  launcher = [
-    "kit"
-    "exits"
-    "inks"
-    "helps"
-  ];
+  launcher = [ "inks" ];
   launcher-say = [
     "kit"
     "helps"

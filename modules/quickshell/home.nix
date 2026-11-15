@@ -800,9 +800,6 @@ let
           sixteen = slot role;
         });
         marks = lib.mapAttrsToList (_: mark: { inherit (mark) glyph console; }) marks;
-        failed = {
-          inherit (marks.failed) glyph console;
-        };
       }
     );
 
