@@ -149,6 +149,30 @@ QtObject {
         if (Steady.selection([], { row: "a", at: 0, lowest: 0 }, id) !== 0)
             failures.push("an empty list leaves the selection at the top");
 
+        // [what, what came in turn, where each landed, whether it waits after]
+        const wantsB = row => row.key === "b";
+        const landings = [
+            ["rows holding the row it wants land on it", ["a b c"], [1], false],
+            ["rows without it wait for it", ["a c"], [-1], true],
+            ["and land once it comes", ["a c", "a b c"], [-1, 1], false],
+            ["landed, it never lands again", ["a b c", "b a c"], [1, -1], false],
+            ["a key lets it go, so the row coming after never moves the cursor",
+                ["a c", "key", "a b c"], [-1, -1, -1], false]
+        ];
+        for (const [what, came, want, waits] of landings) {
+            let waiting = wantsB;
+            const got = came.map(one => {
+                const next = Steady.landing(waiting,
+                    one === "key" ? { key: true } : { rows: rows(one) });
+                waiting = next.waiting;
+                return next.at;
+            });
+            if (JSON.stringify(got) !== JSON.stringify(want) || (waiting !== null) !== waits)
+                failures.push(`${what}: landed ${JSON.stringify(got)}, waiting ${waiting !== null}`);
+        }
+        if (Steady.landing(null, { rows: rows("b") }).at !== -1)
+            failures.push("with no landing asked, rows land nowhere");
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

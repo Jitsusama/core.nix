@@ -86,3 +86,19 @@ function selection(rows, was, id) {
     }
     return Math.max(was.lowest, Math.min(was.at, rows.length - 1));
 }
+
+// A landing asked for, as Super+N's on the notice in front (Launcher.qml's
+// intoOn), taking what came: `waiting`, the row it wants (a test of a row)
+// or null, and `came`, the rows listed now ({ rows }) or a key pressed
+// ({ key: true }). It lands on the first row it wants once one is listed,
+// and goes: { at, waiting }, `at` -1 where it lands nowhere. A key pressed
+// first lets it go, since the cursor is Joel's from then: landing after his
+// j, it put him back on the row he'd left, so j j stood on the second row
+// (a gate under load, 2026-11-15).
+function landing(waiting, came) {
+    if (waiting === null || came.key === true) {
+        return { at: -1, waiting: null };
+    }
+    const at = came.rows.findIndex(row => waiting(row));
+    return { at, waiting: at < 0 ? waiting : null };
+}
