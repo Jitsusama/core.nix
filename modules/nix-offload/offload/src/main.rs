@@ -656,6 +656,60 @@ fn foreign(asked: &there::Asked, dir: &Path) -> Option<ExitCode> {
     Some(ExitCode::from(64))
 }
 
+/// Builds each machine nearby's part of `near`, journalled, saying the
+/// first status that failed. What a machine that can't fetch the flake,
+/// or that ssh can't reach, takes goes with the rest in `left`, to the
+/// builders, rather than failing there, when a lent builder in `dir`
+/// builds for it; the rest waits, ending the run unsent.
+fn built_nearby(
+    near: &[(&there::Nearby, there::Asked)],
+    mut left: Option<there::Asked>,
+    dir: &Path,
+    scratch: &Path,
+    journal: &Path,
+) -> (i32, Option<there::Asked>) {
+    let mut status = 0;
+    for (machine, part) in near {
+        let began = now();
+        let ran = there::fetches(machine, part, scratch, "ssh")
+            .then(|| there::nearby_run(machine, part, scratch, ["ssh", "tar", "nix"]))
+            .flatten();
+        let Some(ran) = ran else {
+            let (goes, stays) = there::lent_builds(part, dir);
+            if !stays.is_empty() {
+                eprintln!(
+                    "nix-offload: no lent builder builds {} of what {} nearby was to take, so it \
+                     waits for {}",
+                    stays.len(),
+                    machine.host,
+                    machine.host
+                );
+                if status == 0 {
+                    status = there::UNSENT;
+                }
+            }
+            if let Some(goes) = goes {
+                left = Some(there::rejoined(left.take(), &goes));
+            }
+            continue;
+        };
+        let ended = now();
+        there::note(
+            journal,
+            ended,
+            ended.saturating_sub(began),
+            None,
+            part,
+            &ran,
+        );
+        // The first that failed says how the whole did.
+        if status == 0 {
+            status = ran.status;
+        }
+    }
+    (status, left)
+}
+
 /// Refuses `--here` and `--here-when-idle` under `--lent-only`, which
 /// builds on a lent builder alone.
 fn here_refused(asked: &there::Asked) -> Option<ExitCode> {
@@ -729,34 +783,8 @@ fn there(arguments: &[String]) -> ExitCode {
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     let nearby = nearby();
-    let (near, mut left) = there::shared(&asked, &nearby, machines::answers);
-    let mut status = 0;
-    for (machine, part) in &near {
-        // What a machine that can't fetch the flake, or that ssh can't
-        // reach, takes goes with the rest, to the builders, rather than
-        // failing there.
-        let began = now();
-        let ran = there::fetches(machine, part, &scratch, "ssh")
-            .then(|| there::nearby_run(machine, part, &scratch, ["ssh", "tar", "nix"]))
-            .flatten();
-        let Some(ran) = ran else {
-            left = Some(there::rejoined(left.take(), part));
-            continue;
-        };
-        let ended = now();
-        there::note(
-            &journal,
-            ended,
-            ended.saturating_sub(began),
-            None,
-            part,
-            &ran,
-        );
-        // The first that failed says how the whole did.
-        if status == 0 {
-            status = ran.status;
-        }
-    }
+    let (near, left) = there::shared(&asked, &nearby, machines::answers);
+    let (mut status, left) = built_nearby(&near, left, &dir, &scratch, &journal);
     let (vm_dirs, vm_parts, left) = vm_apart_from(left, &vm_dir);
     // The rest goes to a second builder while the first is full, when a
     // lender runs to make one.

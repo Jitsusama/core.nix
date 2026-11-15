@@ -1564,6 +1564,72 @@ fn a_folder_taking_a_store_path_sends_it_first_and_never_its_secrets() {
     assert!(given.contains("nix-offload-kept"), "{given}");
 }
 
+/// This machine's `nix-store`, holding the copy of what it's asked whose
+/// hash names `framework`, and nothing else.
+const HOLDING_FRAMEWORK: &str = r#"#!/bin/sh
+echo "$@" >> "$(dirname "$0")/nix-store-was-given"
+case "$1" in
+--print-fixed-path) echo "/nix/store/$4-source" ;;
+--check-validity) case "$2" in *framework*) exit 0 ;; *) exit 1 ;; esac ;;
+esac
+"#;
+
+/// A lock may take a private repository with git, which the lent
+/// builder can't fetch: on 15 November a flake's checks failed so there,
+/// though this machine held the copy.
+#[test]
+fn a_private_repository_this_machine_holds_goes_ahead_as_its_copy() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [
+        ("ssh", NEARBY_SSH),
+        ("nix", NEARBY_NIX),
+        ("nix-store", HOLDING_FRAMEWORK),
+    ] {
+        executable(&bin.join(name), script);
+    }
+    fs::write(bin.join("status"), "0").unwrap();
+    let copy = folder.path().join("copy");
+    fs::create_dir(&copy).unwrap();
+    fs::write(copy.join("flake.nix"), "{ }").unwrap();
+    fs::write(
+        copy.join("flake.lock"),
+        r#"{"nodes": {
+            "framework": {"locked": {"type": "git", "narHash": "sha256-framework=",
+                                      "url": "https://example.com/framework"},
+                          "original": {"type": "git", "url": "https://example.com/framework"}},
+            "unheld": {"locked": {"type": "git", "narHash": "sha256-unheld=",
+                                   "url": "https://example.com/unheld"},
+                       "original": {"type": "git", "url": "https://example.com/unheld"}}}}"#,
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    let flake = format!("path:{}", copy.display());
+    let ran = there_command(&bin, &offload, folder.path())
+        .args(["-L", flake.as_str(), "packages.x.guide"])
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(ran.status.code(), Some(0), "{said}");
+    assert!(
+        said.contains("sending /nix/store/sha256-framework=-source the flake takes"),
+        "the held copy wasn't said to go: {said}"
+    );
+    let copied = fs::read_to_string(bin.join("nix-was-given")).unwrap();
+    assert!(
+        copied.contains("copy --to ssh-ng://nix-offload")
+            && copied.contains("/nix/store/sha256-framework=-source"),
+        "the held copy wasn't sent: {copied}"
+    );
+    assert!(
+        !copied.contains("unheld"),
+        "a copy this machine doesn't hold went: {copied}"
+    );
+}
+
 #[test]
 fn a_build_whose_builder_was_lost_is_sent_again_once_one_stands() {
     let folder = tempfile::tempdir().unwrap();
@@ -1824,6 +1890,119 @@ fn a_nearby_machine_that_cant_fetch_the_flake_builds_none_of_it() {
     assert!(
         said.contains("couldn't fetch github:owner/repo/abc"),
         "{said}"
+    );
+}
+
+/// What only the Mac builds waits for it rather than failing elsewhere:
+/// on 15 November a gate's checks for a Mac went to the lent builder when
+/// the Mac couldn't be sent them, and 22 failed there for want of one.
+#[test]
+fn what_only_a_nearby_machine_builds_waits_for_it_rather_than_go_to_the_lent_builder() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", BLIND_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{} mac aarch64-darwin\n", listening.local_addr().unwrap()),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    let ran = there_command(&bin, &offload, folder.path())
+        .args([
+            "github:owner/repo/abc",
+            "checks.aarch64-darwin.a",
+            "checks.x86_64-linux.b",
+        ])
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(
+        ran.status.code(),
+        Some(75),
+        "what waits for the Mac wasn't said to: {said}"
+    );
+    assert!(
+        said.contains("no lent builder builds 1 of what mac nearby was to take, so it waits"),
+        "it didn't say what waits: {said}"
+    );
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap();
+    assert!(
+        given.contains("checks.x86_64-linux.b") && !given.contains("checks.aarch64-darwin.a"),
+        "the Mac's check went to the lent builder, or Linux's didn't: {given}"
+    );
+}
+
+/// ssh to a machine nearby that refuses this machine's key: it answers
+/// what it's asked, but a folder sent it is refused unread, as ssh is
+/// refused before any command runs.
+const REFUSING_SSH: &str = r#"#!/bin/sh
+while [ "$#" -gt 2 ]; do shift; done
+case "$2" in
+  *"tar -xzf"*)
+    echo "joel@mac: Permission denied (publickey)." >&2
+    exit 255 ;;
+esac
+exit 0
+"#;
+
+#[test]
+fn a_folder_ssh_is_refused_names_ssh_rather_than_tar() {
+    // On 15 November a Mac refused a gate's key, and what was said was
+    // that tar couldn't pack the tree, since its pipe had closed.
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", REFUSING_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    let zone = folder.path().join("zone");
+    fs::create_dir(&zone).unwrap();
+    fs::write(zone.join("flake.nix"), "{ }").unwrap();
+    fs::write(zone.join("flake.lock"), r#"{"nodes": {}}"#).unwrap();
+    // Past what a pipe holds, even packed, so tar is left writing to
+    // nobody once ssh is refused.
+    let mut noise = Vec::with_capacity(1 << 20);
+    let mut seed: u32 = 1;
+    for _ in 0..(1 << 20) {
+        seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+        noise.push(seed.to_be_bytes()[0]);
+    }
+    fs::write(zone.join("noise"), noise).unwrap();
+    let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{} mac aarch64-darwin\n", listening.local_addr().unwrap()),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let ran = there_command(&bin, &offload, folder.path())
+        .args([
+            &format!("path:{}", zone.display()),
+            "checks.aarch64-darwin.a",
+        ])
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("ssh couldn't reach mac to send it"),
+        "ssh's refusal wasn't named: {said}"
+    );
+    assert!(
+        !said.contains("couldn't pack"),
+        "tar was blamed for ssh's refusal: {said}"
     );
 }
 
