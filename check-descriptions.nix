@@ -3257,8 +3257,8 @@
     and a storm of changes spends at most a third of the time refreshing; and a
     refresh taken another way takes the one waiting with it; and a source's rows are wanted only while it's held,
     searched, named at home or has an act waiting, and none over a viewer, so a change nobody
-    sees builds none; and a key's act is said shown by the first frame begun after its refresh, which another act
-    refreshed while that frame is drawn never holds back; and an opening says what its own work
+    sees builds none; and a key's act is said shown by the first frame begun after its refresh,
+    which another act refreshed while that frame is drawn never holds back; and an opening says what its own work
     went on slowest first, and weighs the foot's room for Return's verbs again only once the
     words file or the face has changed; and a daemon's changes are timed from the first line
     its draw shows, and said a place a line, with where their time went as a key's is

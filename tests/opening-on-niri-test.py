@@ -381,6 +381,19 @@ def test_a_chord_into_a_place_makes_only_its_rows(shell: Shell) -> None:
     assert not made, f"opening into Windows, other sources made rows: {made}"
 
 
+def viewers_line_opened(shell: Shell, timed: int) -> Json:
+    """Say a viewer's command line down the socket, as : in swayimg does, and give its opening."""
+    told("command-line swayimg 1 picture.png")
+    seen: list[Json] = []
+
+    def timed_after(_: Json) -> bool:
+        seen[:] = openings(shell)
+        return latest(seen) > timed
+
+    shell.launcher_until(timed_after)
+    return seen[-1]
+
+
 def test_a_viewers_command_line_makes_no_rows(shell: Shell) -> None:
     """A viewer's command line, as : in swayimg opens it, makes no source's rows as it opens.
 
@@ -393,14 +406,7 @@ def test_a_viewers_command_line_makes_no_rows(shell: Shell) -> None:
         began = shell.mark()
         timed = latest(openings(shell))
         before = json.loads(shell.as_account(shell.ipc("made")))["rows"]
-        told("command-line swayimg 1 picture.png")
-        each: list[Json] = []
-
-        def timed_after(_: Json) -> bool:
-            each[:] = openings(shell)
-            return latest(each) > timed
-
-        shell.launcher_until(timed_after)
+        opening = viewers_line_opened(shell, timed)
         after = json.loads(shell.as_account(shell.ipc("made")))["rows"]
         said, _ = shell.said_since(began)
         if not any(line.startswith(SPOTS_MADE_SHUT) for line in said):
@@ -410,9 +416,11 @@ def test_a_viewers_command_line_makes_no_rows(shell: Shell) -> None:
         shell.reported(SPOTS_MADE_SHUT[0], lambda _: True, closing)
     else:
         pytest.fail(f"a closing's spots were made as each of {REOPENINGS_TRIED} tries opened")
-    opening = each[-1]
-    made = {name: rows - before.get(name, 0) for name, rows in after.items()
-            if rows > before.get(name, 0)}
+    made = {
+        name: rows - before.get(name, 0)
+        for name, rows in after.items()
+        if rows > before.get(name, 0)
+    }
     assert not made, f"opening a viewer's command line, sources made rows: {made}: {opening}"
     assert opening["rows"] == 0, f"a viewer's command line made rows before its frame: {opening}"
 
