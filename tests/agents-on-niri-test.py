@@ -409,6 +409,35 @@ def test_a_listening_sessions_return_asks_what_to_say_and_its_acts_stay_inside(
     assert not shell.showing()["asking"], shell.showing()
 
 
+def test_talk_to_opens_a_sessions_talk_empty_and_sends_nothing_until_joel_does(
+    shell: Shell,
+) -> None:
+    """TalkTo and an address opens the launcher on that session's Talk, its field empty.
+
+    A cell on the realm's map asks it (XUBK2E, 2026-11-15 [2b5c927a]): it lands where Return
+    on the session's row does, and words after the address are never typed in, so a page can't
+    say anything for Joel. An address no session has is said as one the launcher hasn't, and
+    opens nothing. Whom each word names is tests/talk-to.qml's.
+    """
+    inbox = STEER / "LISTEN"
+    steered = set(inbox.glob("*.json"))
+    for said in ("LISTEN", "listen send this now"):
+        did = json.loads(shell.as_account(shell.ipc("talkTo", shlex.quote(said))))
+        assert did["done"], did
+        shell.launcher_until(
+            lambda shown: (
+                shown["open"] and shown["asking"] and shown["held"] == ["agents", "Listening Quest"]
+            )
+        )
+        shown = shell.showing()
+        assert (shown["typed"], shown["mode"]) == ("", "insert"), shown
+        shell.close_launcher()
+    assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
+    did = json.loads(shell.as_account(shell.ipc("talkTo", "GONE42")))
+    assert did == {"error": "the launcher has nothing called GONE42"}, did
+    assert not shell.showing()["open"], shell.showing()
+
+
 def test_a_talks_words_come_back_after_the_shell_starts_again(shell: Shell) -> None:
     """What Joel was typing to a session is in its field again once a switch restarts the shell.
 
@@ -2326,6 +2355,18 @@ def test_return_on_the_void_in_agents_opens_super_s_line_over_the_window_left(
     # Its talks kept: the case before's newest answer.
     standing = shell.showing()["line"]["standing"]
     assert standing == "The cat's clips, and the void.", shell.showing()["line"]
+    shell.as_account(shell.ipc("line"))
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+@pytest.mark.usefixtures("said_over")
+def test_talk_to_the_voids_address_opens_super_s_line_as_its_talk_does(shell: Shell) -> None:
+    """TalkTo and the void's address opens Super+S's line, the void's one place, as Talk does."""
+    did = json.loads(shell.as_account(shell.ipc("talkTo", "void")))
+    assert did["done"], did
+    shell.launcher_until(
+        lambda shown: not shown["open"] and shown["line"]["up"] and shown["line"]["keys"]
+    )
     shell.as_account(shell.ipc("line"))
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 

@@ -49,6 +49,7 @@ import "Order.js" as Order
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
+import "TalkTo.js" as TalkTo
 import "Wanted.js" as Wanted
 
 Provider {
@@ -958,6 +959,29 @@ Provider {
     // Says `text` to the session at `address` as Talk does: what Take It Back tells the void.
     function talkTo(address, text) {
         provider.actOn({ address }, "talk", { text });
+    }
+
+    // Talk to It for whom `said` names, as `qs ipc call launcher talkTo` asks it (Launcher.qml's
+    // talkTo): `whom`, as TalkTo.js finds it, and `act`, the session's own Talk, as its row's
+    // is, or the void's line; none for a network, which serves no Talk, or for nobody here.
+    function talkFor(said) {
+        const held = address => Sessions.running.concat(Sessions.parked)
+            .find(one => String(one.address).toUpperCase() === address) ?? null;
+        const whom = TalkTo.whom(said, {
+            isVoid: address => provider.isVoid(address),
+            session: address => held(address) !== null,
+            network: name => `row:${top.place}:network:${name}` in (top.held ?? {})
+        });
+        const act = whom.to === "session" ? sessionAct(held(whom.address), "talk")
+            : whom.to === "void" ? lineOpened("verb:agent:talk") : null;
+        return { whom, act };
+    }
+
+    // What the foot says when talkTo names a network: that it didn't talk, and why, since a
+    // network has no one lead to say anything to (VKCF3Z, [e1eb0ebe]).
+    function leadless() {
+        const said = Words.of("verb:agent:talk").said ?? {};
+        return { what: said.didNot ?? "", why: said.leadless ?? "" };
     }
 
     // Words a talk delivered, or anything after, are let go of the field's
