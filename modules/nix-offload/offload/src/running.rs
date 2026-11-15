@@ -142,6 +142,8 @@ pub enum Alone {
     Waited,
     /// The lock couldn't be had, so the run goes on as before it was.
     Unheld,
+    /// Another does it, and this was told to wait for nothing.
+    Busy,
 }
 
 /// The lock on a run's work, its file removed when this is dropped. A
@@ -175,11 +177,11 @@ pub fn stable_digest(parts: &[&[u8]]) -> u64 {
     digest
 }
 
-/// Take the work `at` names for the run `me`, or wait for the run doing
-/// it to end, saying so with the one going's process and how long it has
-/// gone by `now`, in seconds since 1970.
-pub fn alone(state: &Path, me: u32, at: &Twin, now: impl Fn() -> u64) -> Alone {
-    alone_saying(state, me, at, now, SAY_EVERY, &mut |said| {
+/// Take the work `at` names for the run `me`, or, where it `waits`, wait
+/// for the run doing it to end, saying so with the one going's process
+/// and how long it has gone by `now`, in seconds since 1970.
+pub fn alone(state: &Path, me: u32, at: &Twin, now: impl Fn() -> u64, waits: bool) -> Alone {
+    alone_saying(state, me, at, now, waits, SAY_EVERY, &mut |said| {
         eprintln!("{said}");
     })
 }
@@ -191,6 +193,7 @@ fn alone_saying(
     me: u32,
     at: &Twin,
     now: impl Fn() -> u64,
+    waits: bool,
     every: Duration,
     say: &mut dyn FnMut(String),
 ) -> Alone {
@@ -231,6 +234,14 @@ fn alone_saying(
         )
     };
     let commit = at.commit.get(..12).unwrap_or(at.commit);
+    if !waits {
+        say(format!(
+            "nix-offload: {} already runs these changed-checks in this tree at {commit}, and \
+             --never-ask waits for nothing, so this ends; stop that one to go on",
+            going()
+        ));
+        return Alone::Busy;
+    }
     say(format!(
         "nix-offload: {} already runs these changed-checks in this tree at {commit}, so this \
          waits for it to end and then reads what it passed",
@@ -320,7 +331,7 @@ mod tests {
     #[test]
     fn a_twins_lock_is_named_the_same_by_every_build() {
         let state = tempfile::tempdir().unwrap();
-        let _held = alone(state.path(), 1, &at("abc", "/t", ASKED), || 10);
+        let _held = alone(state.path(), 1, &at("abc", "/t", ASKED), || 10, true);
         let named = state
             .path()
             .join("nix-offload/twins/abc-806d23c24afc7eb5.lock");
@@ -386,14 +397,14 @@ mod tests {
         use std::time::{Duration, Instant};
         let state = tempfile::tempdir().unwrap();
         let first = at("abc", "/t", ASKED);
-        let held = alone(state.path(), 1, &first, || 10);
+        let held = alone(state.path(), 1, &first, || 10, true);
         assert!(
             matches!(held, Alone::Held(_)),
             "the first run didn't hold its work"
         );
         assert!(
             matches!(
-                alone(state.path(), 2, &at("abc", "/t", "--build"), || 10),
+                alone(state.path(), 2, &at("abc", "/t", "--build"), || 10, true),
                 Alone::Held(_)
             ),
             "a run asked something else waited on the first"
@@ -403,7 +414,7 @@ mod tests {
             std::thread::sleep(Duration::from_secs(1));
             drop(held);
         });
-        let waited = alone(state.path(), 2, &first, || 10);
+        let waited = alone(state.path(), 2, &first, || 10, true);
         assert!(
             matches!(waited, Alone::Waited),
             "a second run in the same tree didn't wait for the first"
@@ -415,7 +426,7 @@ mod tests {
         );
         ender.join().unwrap();
         assert!(
-            matches!(alone(state.path(), 2, &first, || 10), Alone::Held(_)),
+            matches!(alone(state.path(), 2, &first, || 10, true), Alone::Held(_)),
             "a run waited where nothing else went"
         );
     }
@@ -436,7 +447,7 @@ mod tests {
         drop(left("new-0000000000000000.lock", SystemTime::now()));
         let going = left("going-0000000000000000.lock", two_days_ago);
         going.lock().unwrap();
-        let _held = alone(state.path(), 1, &at("abc", "/t", ASKED), || 10);
+        let _held = alone(state.path(), 1, &at("abc", "/t", ASKED), || 10, true);
         assert!(
             !twins.join("old-0000000000000000.lock").exists(),
             "a lock no run has held for a day was left to gather"
@@ -455,7 +466,7 @@ mod tests {
     fn a_run_waiting_on_its_twin_says_it_still_waits() {
         let state = tempfile::tempdir().unwrap();
         let first = at("abc", "/t", ASKED);
-        let held = alone(state.path(), 1, &first, || 10);
+        let held = alone(state.path(), 1, &first, || 10, true);
         let ender = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(1100));
             drop(held);
@@ -466,6 +477,7 @@ mod tests {
             2,
             &first,
             || 10,
+            true,
             Duration::from_millis(300),
             &mut |line| said.push(line),
         );
@@ -480,6 +492,40 @@ mod tests {
                 .count()
                 >= 2,
             "a run waiting on a twin went quiet while it waited: {said:?}"
+        );
+    }
+
+    #[test]
+    fn a_run_that_never_asks_leaves_its_twin_at_once() {
+        use std::time::Instant;
+        let state = tempfile::tempdir().unwrap();
+        let first = at("abc", "/t", ASKED);
+        let held = alone(state.path(), 1, &first, || 10, true);
+        let ender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(2));
+            drop(held);
+        });
+        let begun = Instant::now();
+        let mut said = Vec::new();
+        let left = alone_saying(
+            state.path(),
+            2,
+            &first,
+            || 10,
+            false,
+            Duration::from_millis(300),
+            &mut |line| said.push(line),
+        );
+        let took = begun.elapsed();
+        ender.join().unwrap();
+        assert!(
+            matches!(left, Alone::Busy) && took < Duration::from_secs(1),
+            "a run told to wait for nothing waited {took:?} on its twin"
+        );
+        assert!(
+            said.iter()
+                .any(|line| line.contains("--never-ask") && line.contains("stop that one")),
+            "a run leaving its twin be didn't say why: {said:?}"
         );
     }
 

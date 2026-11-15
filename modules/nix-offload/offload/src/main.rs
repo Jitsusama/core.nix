@@ -1376,30 +1376,42 @@ struct Going {
     _alone: Option<running::Held>,
 }
 
+/// What a run found of a twin doing its work in its tree.
+enum Twinned {
+    /// None, so it goes, said as going.
+    Not(Going),
+    /// One that has ended, so it looks again at what passed.
+    Ended,
+    /// One still going, which a run that `waits` for nothing leaves be.
+    Busy,
+}
+
 /// This run, said as going from `started`, so a merge sharing its files
 /// waits for it, and holding alone the work that the tree at `folder`'s
-/// commit `at` and `arguments` name; or nothing once it waited for a twin
-/// doing that work to end.
+/// commit `at` and `arguments` name; or, once it waited for a twin doing
+/// that work to end, or where it `waits` for nothing and one goes, that.
 fn going_alone(
     at: Option<&passed::At>,
     folder: &Path,
     arguments: &[String],
     started: u64,
-) -> Option<Going> {
+    waits: bool,
+) -> Twinned {
     let Some(at) = at else {
-        return Some(Going {
+        return Twinned::Not(Going {
             _said: None,
             _alone: None,
         });
     };
     let twin = running::Twin::new(&at.commit, folder, arguments);
     let me = std::process::id();
-    let alone = match running::alone(&state(), me, &twin, now) {
+    let alone = match running::alone(&state(), me, &twin, now, waits) {
         running::Alone::Held(held) => Some(held),
-        running::Alone::Waited => return None,
+        running::Alone::Waited => return Twinned::Ended,
+        running::Alone::Busy => return Twinned::Busy,
         running::Alone::Unheld => None,
     };
-    Some(Going {
+    Twinned::Not(Going {
         _said: running::Running::start(&state(), me, &twin, started),
         _alone: alone,
     })
@@ -1486,11 +1498,20 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
     }
     let wanted = changed::wanted(arguments);
     // The same run already going in this tree ends in what this one would
-    // find, so this one waits for it and looks again at what passed.
+    // find, so this one waits for it and looks again at what passed; one
+    // given `--never-ask` wants an answer at once, so it ends as one no
+    // builder took, which its caller already backs off from.
     let started = now();
-    let Some(going) = going_alone(at.as_ref(), &folder, arguments, started) else {
-        forget();
-        return changed_there(given, waiting, replays);
+    let going = match going_alone(at.as_ref(), &folder, arguments, started, waiting.asks) {
+        Twinned::Not(going) => going,
+        Twinned::Ended => {
+            forget();
+            return changed_there(given, waiting, replays);
+        }
+        Twinned::Busy => {
+            forget();
+            return ExitCode::from(changed::NOT_TAKEN);
+        }
     };
     let told = told(&passed, at.as_ref(), wanted.system.as_deref());
     let vm_dir =
