@@ -25,7 +25,8 @@
   # asks Joel to remember which of two meanings it has here (Joel, 2026-11-07:
   # "icon pairs: we need them to be obvious and not require memory"). Heat
   # and temperature both say how hot, so they share the thermometer, and the
-  # margin's cat's own poses are all the margin's cat, so they share the paw.
+  # margin's cat's own poses are all the margin's cat, so they share the paw,
+  # as its yarn's drawings, lying and rolling, are all its yarn.
   each-mark-means-one-thing =
     let
       glyphs = import ./glyphs.nix { inherit lib; };
@@ -52,6 +53,11 @@
           "heat"
           "temperature"
         ]
+        [
+          "yarn"
+          "yarnRollingA"
+          "yarnRollingB"
+        ]
       ];
       sharing = lib.filter (names: lib.length names > 1) (
         lib.attrValues (lib.groupBy (name: glyphs.${name}.glyph) (lib.attrNames glyphs))
@@ -66,8 +72,11 @@
   # glyph does (docs/design.md, Marks one height): square, its ink touching
   # its top and bottom rows, and centred across to within a cell, so each
   # pose of the cat stands on the same middle line at the same height. The
-  # three empty places' marks, the margin's cat's own poses and its yarn
-  # are drawn, so it can't pass on none.
+  # cat's yarn is a thing on the ground beside it, not a mark, so it's held
+  # to that instead: drawn in the sitting cat's own square of cells, and
+  # standing on their bottom row, the cat's ground line, however low it
+  # lies. The three empty places' marks, the margin's cat's own poses and
+  # its yarn are drawn, so it can't pass on none.
   every-pixel-mark-stands-level =
     let
       glyphs = import ./glyphs.nix { inherit lib; };
@@ -87,7 +96,16 @@
         && inked (lib.head rows) != [ ]
         && inked (lib.last rows) != [ ]
         && lib.max left right - lib.min left right <= 1;
-      crooked = lib.attrNames (lib.filterAttrs (_: mark: !level mark.pixels) drawn);
+      grounded =
+        rows:
+        let
+          cells = lib.length glyphs.nothingHere.pixels;
+        in
+        lib.length rows == cells
+        && lib.all (row: lib.stringLength row == cells) rows
+        && inked (lib.last rows) != [ ];
+      stands = name: if lib.hasPrefix "yarn" name then grounded else level;
+      crooked = lib.attrNames (lib.filterAttrs (name: mark: !stands name mark.pixels) drawn);
       missing = lib.filter (name: !(drawn ? ${name})) [
         "batting"
         "blinking"
@@ -107,6 +125,8 @@
         "walkingC"
         "walkingD"
         "yarn"
+        "yarnRollingA"
+        "yarnRollingB"
       ];
       said = "crooked ${builtins.toJSON crooked}, undrawn ${builtins.toJSON missing}";
     in

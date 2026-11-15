@@ -15,6 +15,7 @@ import Quickshell.Wayland
 import QtQuick
 import "MarginCat.js" as MarginCat
 import "MarginCatFloats.js" as Floats
+import "MarginCatGames.js" as Games
 import "MarginCatPaths.js" as Paths
 import "MarginCatPlays.js" as Plays
 import "MarginCatTiles.js" as Tiles
@@ -445,9 +446,9 @@ PanelWindow {
             arrive();
     }
 
-    // How its walk or hop (`what`) reached the screen, in the
-    // journal, so one on Joel's screen says whether it kept to its
-    // rate.
+    // How its walk, move or play (`what`, its kind) reached the
+    // screen, in the journal, so one on Joel's screen says whether it
+    // kept to its rate.
     function tell(what: string): void {
         if (!window.FramePresentation.available)
             return;
@@ -457,28 +458,8 @@ PanelWindow {
         if (told.said.frames > 10)
             frameMs = told.said.median;
         if (Options.reports)
-            Report.say(`${what === "hop" ? "hopped" : "walked"} cat `
+            Report.say(`${what === "walk" || what === "move" ? "walked" : "played"} cat `
                 + `${modelData?.name ?? ""} ${JSON.stringify(told.said)}`);
-    }
-
-    // A hop drawn here, its frames counted as a walk's are; and how
-    // far up it has the cat, in logical pixels: its height in cells,
-    // or what room the gap leaves above it, if less.
-    readonly property bool hopping: window.scene.hop !== null && !!place
-    readonly property real lifted: !place || window.scene.hop === null ? 0
-        : window.scene.lift * Math.min(window.scene.hop.cells, Math.max(0, place.y / cell)) * cell
-    onHoppingChanged: {
-        if (hopping) {
-            shown = [];
-            costs = [];
-            unseen = 0;
-            steps = 0;
-            begunAt = window.FramePresentation.framesBegun;
-            if (window.FramePresentation.available)
-                window.FramePresentation.ask();
-        } else if (going === null) {
-            tell("hop");
-        }
     }
     // Counted among the screens that draw it, so a cat drawn on none
     // keeps still.
@@ -499,7 +480,7 @@ PanelWindow {
     // hop's lift), before its frame is drawn. Asked only there, a GPU at 120 Hz drew every
     // other frame, so both stay.
     FramePresentation.onPresented: (frame, at) => {
-        if (going === null && moving === null && !hopping)
+        if (going === null && moving === null)
             return;
         shown.push(at);
         const times = window.FramePresentation.timesOf(frame);
@@ -508,7 +489,7 @@ PanelWindow {
         window.FramePresentation.ask();
     }
     FramePresentation.onDiscarded: () => {
-        if (going === null && moving === null && !hopping)
+        if (going === null && moving === null)
             return;
         unseen += 1;
         window.FramePresentation.ask();
@@ -574,6 +555,10 @@ PanelWindow {
         if (place === null || column === null || going !== null || resting.running
             || wanted !== sat)
             return;
+        if (to === "play") {
+            play(window.scene.playing);
+            return;
+        }
         if (to === "column") {
             if (strolled === null)
                 return;
@@ -600,6 +585,69 @@ PanelWindow {
         handsBack = true;
         roams = false;
         strolled = spot;
+    }
+
+    // A play that moves it (MarginCatGames.js), `asked` by the scene,
+    // its kind and how long it thinks, from where it sits: run on the
+    // walker as a walk is, its seat for the walk back where it lands.
+    function play(asked: var): void {
+        if (asked === null)
+            return;
+        const playing = Games.play(asked.kind, {
+            seat: { x: place.x, y: place.y },
+            column,
+            across: modelData.width,
+            height: modelData.height,
+            marks: MarginMarks.drawn,
+            gap: Theme.gap,
+            cell,
+            wide: size,
+            tall: size,
+            pause: asked.pause,
+            slowdown: Theme.motion.slowdown
+        });
+        if (playing === null)
+            return;
+        window.scene.strollTaken = true;
+        handsBack = true;
+        roams = null;
+        shown = [];
+        costs = [];
+        unseen = 0;
+        steps = 0;
+        begunAt = window.FramePresentation.framesBegun;
+        goingTo = wanted;
+        under = column;
+        going = playing;
+        walker.restart();
+        // Set once it's going, so the seat moving under it is its
+        // own walk's end, and sets no walk off.
+        if (playing.to.x !== place.x || playing.to.y !== place.y)
+            strolled = playing.to;
+        if (window.FramePresentation.available)
+            window.FramePresentation.ask();
+    }
+
+    // Its yarn where a play has it, or null; and, a key cutting the
+    // play short, how much of it is left as it fades where it lay,
+    // rather than vanishing.
+    property var yarnAt: null
+    property real yarnLeft: 1
+    onGoingChanged: {
+        if (yarnAt !== null && going?.kind === undefined)
+            yarnFades.restart();
+    }
+    NumberAnimation {
+        id: yarnFades
+        target: window
+        property: "yarnLeft"
+        from: 1
+        to: 0
+        duration: Theme.motion.short
+        onFinished: {
+            window.yarnAt = null;
+            window.yarnLeft = 1;
+        }
     }
 
     Connections {
@@ -644,9 +692,14 @@ PanelWindow {
     FrameAnimation {
         id: walker
         onTriggered: {
-            const now = Paths.frame(window.going, walker.elapsedTime * 1000);
+            const t = walker.elapsedTime * 1000;
+            const kind = window.going.kind;
+            const now = kind === undefined ? Paths.frame(window.going, t)
+                : Games.frame(window.going, t);
+            if (kind !== undefined && !yarnFades.running)
+                window.yarnAt = now.yarn;
             if (now.done) {
-                window.tell("walk");
+                window.tell(kind ?? "walk");
                 window.halt();
                 window.sat = window.goingTo;
                 // Where its walk took it, which is its seat unless the keys
@@ -757,7 +810,6 @@ PanelWindow {
             hue: `${Theme.voice}`,
             pose: window.scene.posed,
             strolling: handsBack || strolled !== null,
-            lift: Math.round(window.lifted * window.ratio),
             window: sat,
             asleep: window.scene.asleep,
             stretching: window.scene.stretching,
@@ -768,7 +820,9 @@ PanelWindow {
                 facing: stepped.facing,
                 stride: going.stride,
                 to: going.to.x,
-                beats: going.beats.map(beat => beat.name)
+                beats: going.beats.map(beat => beat.name),
+                play: going.kind ?? null,
+                yarn: yarnAt
             },
             move: moving === null || stepped === null ? null : {
                 t: Math.round(mover.elapsedTime * 10000) / 10,
@@ -797,15 +851,6 @@ PanelWindow {
     // A scene's pose changes nothing of its place, so it says so too.
     readonly property string posed: window.scene.posed
     onPosedChanged: say()
-    // Nor does a hop's height, which says each frame of it, and asks
-    // niri of the frame it moves, as a walk's step does.
-    onLiftedChanged: {
-        say();
-        if (hopping)
-            steps += 1;
-        if (hopping && window.FramePresentation.available)
-            window.FramePresentation.ask();
-    }
     Component.onCompleted: {
         follow();
         say();
@@ -817,13 +862,13 @@ PanelWindow {
         // On the screen's own pixels, so every cell's edge is sharp,
         // a hop's height too.
         x: window.place ? Math.round(window.place.x * window.ratio) / window.ratio : 0
-        // Held inside the margin, lifted by a hop, but on a move down,
-        // carried up off it and climbing back.
+        // Held inside the margin, but on a move down, carried up off it
+        // and climbing back.
         y: !window.place ? 0
             : window.moving !== null
             ? Math.round(window.place.y * window.ratio) / window.ratio
-            : Math.max(0, Math.round((Math.min(window.place.y, window.height - window.size)
-                - window.lifted) * window.ratio) / window.ratio)
+            : Math.max(0, Math.round(Math.min(window.place.y, window.height - window.size)
+                * window.ratio) / window.ratio)
         width: window.size
         height: window.size
 
@@ -841,5 +886,54 @@ PanelWindow {
                 color: Theme.voice
             }
         }
+    }
+
+    // Its ball of yarn, where a play has it, in the cat's own cells and
+    // hue, on the screen's own pixels as the cat is, and drawn only within
+    // its room, so it rolls out from behind the room's edge and back
+    // behind it.
+    Item {
+        x: window.yarnAt ? window.snapped(window.yarnAt.within.left) : 0
+        width: window.yarnAt
+            ? window.snapped(window.yarnAt.within.right) - window.snapped(window.yarnAt.within.left)
+            : 0
+        height: parent.height
+        clip: true
+        opacity: window.yarnLeft
+        visible: window.yarnAt !== null
+
+        Item {
+            x: window.yarnAt ? window.snapped(window.yarnAt.x) - parent.x : 0
+            y: window.yarnAt ? window.snapped(window.yarnAt.y) : 0
+            width: window.size
+            height: window.size
+
+            Repeater {
+                model: Pixels.runs(window.yarnDrawn)
+
+                Rectangle {
+                    required property var modelData
+
+                    x: modelData.x * window.cell
+                    y: modelData.y * window.cell
+                    width: modelData.across * window.cell
+                    height: window.cell
+                    antialiasing: false
+                    color: Theme.voice
+                }
+            }
+        }
+    }
+
+    // The yarn's drawing, built again only as its pose or facing changes,
+    // never each frame it rolls: a new drawing each frame had its cells
+    // made again each frame, and a play cost the shell 4 to 7% of a core
+    // (the GPU rig, 2026-11-14).
+    readonly property string yarnLooks: MarginCat.yarnLooks(yarnAt)
+    readonly property var yarnDrawn: MarginCat.yarnDrawn(yarnLooks, Theme.pixels)
+
+    // Where `at` logical pixels falls on one of the screen's own.
+    function snapped(at: real): real {
+        return Math.round(at * ratio) / ratio;
     }
 }

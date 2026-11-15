@@ -64,13 +64,28 @@ const IN_PLACE = {
 
 // Its moves, for once he's left the keys, a quarter of its plays then so
 // it stays gentle: a hop a cell straight up from a crouch, landing
-// crouched, no higher so it never reads as the leap its walks leave out
-// (VKCF3Z, 5e211585); and a wander of 16 to 40 cells along the margin, a sit, and
-// back over its column, on the walk's own steps.
+// crouched; a wander of 16 to 40 cells along the margin, a sit, and back
+// over its column, on the walk's own steps; its ball of yarn rolling up
+// to it, batted, pounced on and sent off; and a pounce at nothing it's
+// sure of (Joel, 2026-11-12: "bat balls of yarn and stuff"), each of the
+// last two walking it back over its column from where it lands. How a hop,
+// the yarn and a pounce move is MarginCatGames.js's; how long it thinks
+// before the last two, in ms, is drawn from between THINKS.
 const MOVES = 0.25;
-const HOP = { crouches: 220, rises: 380, lands: 160 };
+const MOVING = ["hop", "wander", "yarn", "pounce"];
+const THINKS = [150, 450];
 const WANDERS = [16, 40];
 const WANDER_SITS = 1500;
+// The yarn, the longest of its plays and the costliest, rests between 15
+// and 30 minutes after it plays, drawn each time (VKCF3Z 63b08065: "at
+// most one per 15 minutes idle, randomly spaced").
+const YARN_RESTS = [15 * 60_000, 30 * 60_000];
+
+// How long the yarn rests once it's played, in ms, `chance` (0 to 1)
+// choosing where in YARN_RESTS.
+function yarnRests(chance) {
+    return Math.round(YARN_RESTS[0] + (YARN_RESTS[1] - YARN_RESTS[0]) * chance);
+}
 
 // One of `list`, `chance` (0 to 1) choosing which.
 function pick(list, chance) {
@@ -82,12 +97,17 @@ function pick(list, chance) {
 // beats, each a pose held `ms`, after which it sits again. While he types
 // it's a single pose, an ear flick, a tail swish or a blink; paused, one of
 // the plays in place; idle, those three times in four, else a move. A
-// hop's rise is a beat with `hop` and how many `cells` up; a wander's
+// hop, the yarn or a pounce is a beat with `play`, its kind, and how long
+// it thinks (`pause`), the last two then walking back; a wander's
 // walks are beats with `walk`, `to` "wander", its `cells` and `way`, or
-// "column", back. Asleep or still, none. A play `asked` for by name, as a
-// test asks for the one it watches, comes in place of the one drawn where
-// the level has it, the draws taken as ever.
-function scene(lively, draw, last, asked) {
+// "column", back. Asleep or still, none. The yarn is drawn only once its
+// rest is over (`more.yarnIn` ms from now, none where it's 0 or less).
+// A play `more.asked` for by name, as a test asks for the one it watches,
+// comes in place of the one drawn where the level has it, the draws taken
+// as ever.
+function scene(lively, draw, last, more) {
+    const asked = more?.asked ?? "";
+    const yarned = (more?.yarnIn ?? 0) > 0;
     const held = (pose, ms) => ({
         pose,
         ms: Math.max(QUICKEST, Math.round(ms * (1 - VARIES + 2 * VARIES * draw())))
@@ -100,15 +120,18 @@ function scene(lively, draw, last, asked) {
         return { name: "", beats: [] };
     }
     const moving = lively === "idle" && draw() >= 1 - MOVES;
-    const names = (moving ? ["hop", "wander"] : Object.keys(IN_PLACE)).filter(play => play !== last);
+    const names = (moving ? MOVING : Object.keys(IN_PLACE))
+        .filter(play => play !== last && !(yarned && play === "yarn"));
     const drawn = pick(names, draw());
-    const allowed = lively === "idle" ? [...Object.keys(IN_PLACE), "hop", "wander"]
+    const allowed = lively === "idle" ? [...Object.keys(IN_PLACE), ...MOVING]
         : Object.keys(IN_PLACE);
     const name = allowed.includes(asked) ? asked : drawn;
     if (name === "hop") {
-        const rises = Object.assign(held("pouncing", HOP.rises), { hop: true, cells: 1 });
-        const crouched = held("pouncing", HOP.crouches);
-        return { name, beats: [crouched, rises, held("pouncing", HOP.lands)] };
+        return { name, beats: [{ play: name, pause: 0 }] };
+    }
+    if (name === "yarn" || name === "pounce") {
+        const pause = Math.round(THINKS[0] + (THINKS[1] - THINKS[0]) * draw());
+        return { name, beats: [{ play: name, pause }, { walk: true, to: "column" }] };
     }
     if (name === "wander") {
         const cells = Math.round(WANDERS[0] + (WANDERS[1] - WANDERS[0]) * draw());
@@ -121,12 +144,12 @@ function scene(lively, draw, last, asked) {
 
 // What comes next at a level (`lively`): the rest before it, `after` ms,
 // and the `scene` it plays then, drawn from `draw` never as `last`; null
-// where nothing comes, asleep or still, so no timer runs at all; a play
-// `asked` for comes as scene() says. MarginCat.qml waits `after` and plays
-// it, and a change of level draws afresh.
-function next(lively, draw, last, asked) {
+// where nothing comes, asleep or still, so no timer runs at all; the yarn
+// and a play asked for come as scene() says of `more`. MarginCat.qml waits
+// `after` and plays it, and a change of level draws afresh.
+function next(lively, draw, last, more) {
     const after = rest(lively, draw());
-    return after === null ? null : { after, scene: scene(lively, draw, last, asked) };
+    return after === null ? null : { after, scene: scene(lively, draw, last, more) };
 }
 
 // Where a short wander goes, from `at` as sits takes it with the `seat` it
@@ -151,10 +174,3 @@ function wander(at) {
     return x === undefined ? null : { x, y: seat.y };
 }
 
-// How high a hop has it `t` ms into its rise of `lasts`, in its cells: a
-// thing thrown up and falling, none as it leaves and lands, `cells`
-// midway.
-function hopped(t, lasts, cells) {
-    const p = Math.min(Math.max(t / lasts, 0), 1);
-    return cells * 4 * p * (1 - p);
-}

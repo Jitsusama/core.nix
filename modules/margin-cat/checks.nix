@@ -13,8 +13,9 @@ onLinux {
   # it's drawn, and its ways about the windows, as tests/margin-cat.qml holds
   # them, its ways on and off floating windows, as
   # tests/margin-cat-floats.qml holds them, the rules its journeys over
-  # generated layouts keep, as tests/margin-cat-journeys.qml holds them, and
-  # how it reads niri's layout, as tests/margin-cat-tiles.qml holds it, in
+  # generated layouts keep, as tests/margin-cat-journeys.qml holds them,
+  # how it reads niri's layout, as tests/margin-cat-tiles.qml holds it, and
+  # the plays that move it, as tests/margin-cat-games.qml holds them, in
   # Qt's own engine.
   the-margin-cat-sits-above-its-column =
     let
@@ -25,6 +26,7 @@ onLinux {
           ./MarginCat.js
           ./MarginCatFalls.js
           ./MarginCatFloats.js
+          ./MarginCatGames.js
           ./MarginCatPaths.js
           ./MarginCatPlays.js
           ./MarginCatRoutes.js
@@ -32,13 +34,27 @@ onLinux {
           ./MarginCatWays.js
           ./tests/margin-cat.qml
           ./tests/margin-cat-floats.qml
+          ./tests/margin-cat-games.qml
           ./tests/margin-cat-journeys.qml
           ./tests/margin-cat-tiles.qml
         ];
       };
+      # The theme's drawings of the yarn, which margin-cat-games.qml draws
+      # as the screen does.
+      glyphs = import ../theme/glyphs.nix { inherit (pkgs) lib; };
+      drawings = pkgs.writeText "MarginCatDrawings.js" ''
+        .pragma library
+        // The yarn's drawings, from modules/theme/glyphs.nix.
+        var pixels = ${
+          builtins.toJSON (
+            pkgs.lib.genAttrs [ "yarn" "yarnRollingA" "yarnRollingB" ] (name: glyphs.${name}.pixels)
+          )
+        };
+      '';
     in
     pkgs.runCommandLocal "the-margin-cat-sits-above-its-column" { } ''
       cp ${sources}/*.js ${sources}/tests/*.qml .
+      cp ${drawings} MarginCatDrawings.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}
