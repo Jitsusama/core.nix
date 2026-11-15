@@ -1,0 +1,96 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] polkit: say what the asker said of itself
+
+polkit hands an agent the details of each ask: the command pkexec runs,
+the unit and verb systemd was asked for, and the pids of the process
+asking and the one calling polkit for it. Quickshell's listener dropped
+them, so a prompt could say only which action was asked for, never which
+program asked or what it would run. AuthFlow now carries them as
+`details`, each value a string by its key, as polkit gave it.
+
+---
+diff --git a/src/services/polkit/flow.hpp b/src/services/polkit/flow.hpp
+index d6d7bd4..71ff59d 100644
+--- a/src/services/polkit/flow.hpp
++++ b/src/services/polkit/flow.hpp
+@@ -35,6 +35,12 @@ class AuthFlow
+ 	/// This is a machine-readable identifier.
+ 	Q_PROPERTY(QString actionId READ actionId CONSTANT);
+ 
++	/// What the program asking said of itself, each by its key.
++	///
++	/// pkexec says the program it would run as `program` and its whole command line as
++	/// `command_line`; other askers may say nothing.
++	Q_PROPERTY(QVariantMap details READ details CONSTANT);
++
+ 	/// A cookie that identifies this authentication request.
+ 	///
+ 	/// This is an internal identifier and not recommended to show to users.
+@@ -99,6 +105,7 @@ public:
+ 	[[nodiscard]] const QString& message() const { return this->mRequest->message; };
+ 	[[nodiscard]] const QString& iconName() const { return this->mRequest->iconName; };
+ 	[[nodiscard]] const QString& actionId() const { return this->mRequest->actionId; };
++	[[nodiscard]] const QVariantMap& details() const { return this->mRequest->details; };
+ 	[[nodiscard]] const QString& cookie() const { return this->mRequest->cookie; };
+ 	[[nodiscard]] const QList<Identity*>& identities() const { return this->mIdentities; };
+ 
+diff --git a/src/services/polkit/listener.cpp b/src/services/polkit/listener.cpp
+index e4bca4c..fb792c8 100644
+--- a/src/services/polkit/listener.cpp
++++ b/src/services/polkit/listener.cpp
+@@ -149,7 +149,7 @@ static void initiate_authentication(
+     const gchar* actionId,
+     const gchar* message,
+     const gchar* iconName,
+-    PolkitDetails* /*unused*/,
++    PolkitDetails* details,
+     const gchar* cookie,
+     GList* identities,
+     GCancellable* cancellable,
+@@ -174,12 +174,24 @@ static void initiate_authentication(
+ 		identityVector.emplace_back(identity);
+ 	}
+ 
++	// The details are the caller's too, so each is copied as a QString.
++	QVariantMap detailMap;
++	if (details != nullptr) {
++		gchar** keys = polkit_details_get_keys(details);
++		for (auto** key = keys; key != nullptr && *key != nullptr; key++) {
++			const gchar* value = polkit_details_lookup(details, *key);
++			if (value != nullptr) detailMap.insert(QString::fromUtf8(*key), QString::fromUtf8(value));
++		}
++		g_strfreev(keys);
++	}
++
+ 	// The original strings are freed by the caller after we return, so we
+ 	// copy them into QStrings.
+ 	auto* request = new qs::service::polkit::AuthRequest {
+ 	    .actionId = QString::fromUtf8(actionId),
+ 	    .message = QString::fromUtf8(message),
+ 	    .iconName = QString::fromUtf8(iconName),
++	    .details = std::move(detailMap),
+ 	    .cookie = QString::fromUtf8(cookie),
+ 	    .identities = std::move(identityVector),
+ 
+diff --git a/src/services/polkit/listener.hpp b/src/services/polkit/listener.hpp
+index 996fa23..20c5063 100644
+--- a/src/services/polkit/listener.hpp
++++ b/src/services/polkit/listener.hpp
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <qstring.h>
++#include <qvariant.h>
+ 
+ #define POLKIT_AGENT_I_KNOW_API_IS_SUBJECT_TO_CHANGE
+ // This causes a problem with variables of the name.
+@@ -23,7 +24,8 @@ struct AuthRequest {
+ 	QString message;
+ 	//! Icon name according to the FreeDesktop specification. May be empty.
+ 	QString iconName;
+-	// Details intentionally omitted because nothing seems to use them.
++	//! What the asker said of itself, as pkexec says the program it runs and its command line.
++	QVariantMap details;
+ 	QString cookie;
+ 	//! List of users/groups that can be used for authentication.
+ 	std::vector<GObjectRef<PolkitIdentity>> identities;

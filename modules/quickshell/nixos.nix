@@ -39,8 +39,11 @@
 # node said neither what pipewire says it's doing nor the format it moves
 # audio in, which a device's drawer shows, so
 # pipewire-node-state-and-format.patch reads both from the node's info and
-# its Format param, which opens no stream. A frame Qt drew isn't one niri
-# showed, and Qt binds no presentation-time to say when niri did, so
+# its Format param, which opens no stream. polkit tells its agent who asked
+# and what for, the asking process's pid and pkexec's command among it, but
+# Quickshell dropped it, so a prompt for run0 said only "systemd";
+# polkit-flow-says-its-details.patch hands it to the prompt (Polkit.qml).
+# A frame Qt drew isn't one niri showed, and Qt binds no presentation-time to say when niri did, so
 # frame-presentation.patch adds FramePresentation, which asks niri for each
 # frame's presentation feedback and says when it was shown: the launcher
 # times Joel's every opening to it (Launcher.qml). It times each frame's
@@ -204,6 +207,7 @@ in
             ./frame-presentation.patch
             ./ipc-replies-whole.patch
             ./pipewire-node-state-and-format.patch
+            ./polkit-flow-says-its-details.patch
             ./scanner-reads-headers.patch
             ./shell-held-until-released.patch
           ];

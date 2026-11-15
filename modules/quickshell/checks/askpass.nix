@@ -28,6 +28,23 @@
       touch $out
     '';
 
+  # Polkit's prompt names the command asking and the account it would run
+  # as, for run0, pkexec and the rest, as tests/polkit.qml says, in Qt's own
+  # engine.
+  polkits-prompt-says-what-runs =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "polkits-prompt-says-what-runs" { } ''
+      cp ${../../../tests/polkit.qml} polkit.qml
+      ${copied [ "Polkit.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml polkit.qml
+      touch $out
+    '';
+
   # The askpass asks a shell that restarted mid-prompt again, and refuses
   # once none has answered for a while, rather than holding ssh-tpm-agent
   # and every key behind it forever, as

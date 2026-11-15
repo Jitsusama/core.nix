@@ -2,6 +2,7 @@
 # every place's list; README.md says which list a file goes in.
 [
   "Polkit.qml"
+  "Polkit.js"
   "Askpass.qml"
   "Askpass.js"
 ]

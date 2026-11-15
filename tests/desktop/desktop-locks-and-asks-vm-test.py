@@ -218,9 +218,14 @@ def test_keep_awake_keeps_the_screen_unlocked_as_joel_steps_away(desktop: Deskto
 
 
 def test_polkits_prompt_lets_the_account_start_a_system_service(desktop: Desktop) -> None:
-    """Polkit's prompt lets the account start a system service."""
+    """Polkit's prompt names the command asking, and lets the account start a system service.
+
+    Its words come from the asking process, read by the pid polkit gives, where without them it
+    could say only that systemd asked, as it did for every agent's run0.
+    """
     machine = desktop.machine
-    with desktop.told("keys polkit"):
+    asked = "polkit asked by systemctl start polkit-allowed.service"
+    with desktop.told("keys polkit"), desktop.told(asked):
         desktop.as_account("niri msg action spawn -- systemctl start polkit-allowed.service")
     desktop.shoot("polkit")
     machine.send_chars(f"{desktop.values['secret']}\n")
