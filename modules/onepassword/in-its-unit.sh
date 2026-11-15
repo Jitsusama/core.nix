@@ -9,6 +9,31 @@
 # without one, so the hand-off dies with it and the opening shows nothing.
 # So where the unit started again under the hand-off, the app it started
 # is asked for its window once more, and only once.
+#
+# Its help takes the shape every command of ours does (docs/commands.md),
+# by hand; every other word goes to 1Password.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+1password-in-its-unit  open 1Password's window in its unit
+
+  Starts onepassword.service, then hands the app there
+  its window, asking once more if the unit restarted
+  under it. 1Password's desktop entry runs it, and its
+  words go to 1Password.
+
+EXAMPLES
+  1password-in-its-unit  open 1Password's window
+
+EXIT
+  0     the window was handed over
+  else  1Password's own code for the hand-off
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 invocation() {
   systemctl --user show --property=InvocationID --value onepassword.service || true

@@ -3,7 +3,6 @@
 # to agree. The check fails on a command breaking a point it doesn't wait on,
 # and on one waiting on a point it keeps, so the list only shrinks.
 {
-  "1password-in-its-unit" = [ "helps" ];
   backlight = [
     "kit"
     "helps"
@@ -132,5 +131,4 @@
     "kit"
     "helps"
   ];
-  yubikey-once-in = [ "helps" ];
 }

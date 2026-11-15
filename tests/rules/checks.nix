@@ -147,6 +147,9 @@
           '';
       in
       {
+        "1password-in-its-unit" =
+          script "1password-in-its-unit" ../../modules/onepassword/in-its-unit.sh
+            { };
         bluetooth-pairing-seal =
           script "bluetooth-pairing-seal" ../../modules/bluetooth-disk-prompt/seal.sh
             { };
@@ -218,6 +221,7 @@
         wifi-power-save = script "wifi-power-save" ../../modules/wpa_supplicant/power-save.sh { };
         xdg-open = script "xdg-open" ../../modules/open-with/xdg-open.sh { };
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
+        yubikey-once-in = script "yubikey-once-in" ../../modules/yubikey/once-in.sh { };
         zoom-opens = script "zoom-opens" ../../modules/zoom/opens.sh { words = "a-window"; };
         a-call-is-on = pkgs.callPackage ../../modules/calls/package.nix { };
         agents = pkgs.callPackage ../../modules/agents/package.nix { };
