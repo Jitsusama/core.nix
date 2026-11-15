@@ -25,7 +25,7 @@ use ureq::Agent;
 use crate::collect::{self, Said};
 use crate::history::{self, Moment};
 use crate::room;
-use crate::sources::{hp, modem, sony, switch};
+use crate::sources::{airplay, hp, modem, sony, switch};
 use crate::time;
 
 /// How often the sources are read: the eero daemon's own pace, so each
@@ -59,7 +59,8 @@ pub fn run() -> Result<(), String> {
     // A receiver's answers name where it's asked next; sony.rs keeps only
     // those on the receiver itself, and this agent never follows a
     // redirect, so no answer can send a request elsewhere. A printer's
-    // pages are asked with it too, so a redirect can't lead one away.
+    // pages and an Apple TV's answer are asked with it too, so a redirect
+    // can't lead one away.
     let at_home: Agent = Agent::config_builder()
         .timeout_global(Some(PAGE))
         .max_redirects(0)
@@ -81,12 +82,20 @@ pub fn run() -> Result<(), String> {
             .into_iter()
             .map(|(mac, address)| (mac, read_printer(&at_home, &address)))
             .collect();
+        let apple_tvs = heard
+            .as_ref()
+            .map(airplay::listed)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(mac, address)| (mac, read_apple_tv(&at_home, &address)))
+            .collect();
         let said = Said {
             eero: heard,
             modem: read_modem(&agent),
             switch: read_switch(Path::new(switch::REPORT)),
             receivers,
             printers,
+            apple_tvs,
         };
         let mut network = collect::network(said, time::now());
         let earlier = history::read(&day, network.collected_at);
@@ -180,6 +189,16 @@ fn read_printer(agent: &Agent, address: &str) -> Result<hp::Answers, String> {
         return Err(failed.unwrap_or_else(|| "it didn't answer".into()));
     }
     Ok(answers)
+}
+
+/// What an Apple TV says of itself, as its bytes: a property list, which
+/// airplay.rs reads.
+fn read_apple_tv(agent: &Agent, address: &str) -> Result<airplay::Answer, String> {
+    agent
+        .get(&airplay::url(address))
+        .call()
+        .and_then(|mut answer| answer.body_mut().read_to_vec())
+        .map_err(|error| format!("it didn't answer: {error}"))
 }
 
 /// What a receiver answers: its description first, since it names where

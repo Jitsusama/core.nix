@@ -405,13 +405,14 @@ mod tests {
             let text = home(&network, now(), &Pen::plain(), room);
             assert_eq!(layout::overrun(&text, room), None);
             assert!(text.starts_with("home network · read 4 s ago"), "{text}");
-            assert!(text.contains("modem   answering"), "{text}");
-            // Read as words, since a narrow room wraps the line.
+            // Read as words, since a narrow room wraps the line and the
+            // longest source's name sets the column.
             let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            assert!(words.contains("modem answering"), "{text}");
             assert!(
                 words.contains(
-                    "22 devices: a modem, a router, 3 access points, a switch, a receiver, a \
-                     printer and 15 clients"
+                    "23 devices: a modem, a router, 3 access points, a switch, a receiver, a \
+                     printer and 16 clients"
                 ),
                 "{text}"
             );

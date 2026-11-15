@@ -706,7 +706,7 @@ pub(crate) mod tests {
         assert_eq!(
             ceilings,
             [
-                "The internet is the narrowest point down for 6 of the 17 devices on the eeros: \
+                "The internet is the narrowest point down for 7 of the 18 devices on the eeros: \
                  369.9 Mbit/s, as eero last measured it",
                 "The internet is the narrowest point up for every device on the eeros: 11.9 \
                  Mbit/s, as eero last measured it",

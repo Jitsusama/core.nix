@@ -55,6 +55,9 @@ in
     # JSON Lines, a record a line, which biome doesn't read, and a login
     # file broken on purpose for the test that reads it.
     "*.jsonl"
+    # Binary property lists, as an Apple TV answers net, which no linter
+    # reads; net's tests read the recorded one.
+    "*.plist"
     "modules/spend-watch/feeds/claude/tests/logins/garbled.json"
     # What programs and devices answered, recorded for the tests to compare
     # byte for byte, and the stand-in keys and signatures they sign with.

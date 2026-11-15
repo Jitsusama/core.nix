@@ -15,9 +15,10 @@ access point, switch, receiver, printer or client (docs/glossary.md's Network
 words). One eero is one device with the router and access point roles,
 listed once. Each vendor is a source behind those roles: eero's record
 (the eero daemon's), the cable modem's status pages, the switch's web
-page, a Sony receiver's UPnP answers and an HP printer's status pages.
-No vendor's command reads another vendor's equipment, so the modem, the
-switch, the receiver and the printer are net's alone, and `eero` keeps only what's eero's.
+page, a Sony receiver's UPnP answers, an HP printer's status pages and
+an Apple TV's AirPlay answer. No vendor's command reads another vendor's
+equipment, so the modem, the switch, the receiver, the printer and the
+Apple TV are net's alone, and `eero` keeps only what's eero's.
 
 ## The Record
 
@@ -111,6 +112,17 @@ what net says of the day.
   firmware and serial, and every page stays whole as `detail.hp`.
   Printing, scanning, changing a setting or clearing an alert waits on
   Joel's yes, so none is asked.
+- An Apple TV: each device eero lists with Apple as its maker and
+  media streamer as its kind, at the address eero gives. It asks
+  `:7000/info` once, two seconds at most, following no redirect: what
+  the AirPlay receiver says of itself to anyone, as a binary property
+  list. `src/sources/airplay.rs` gives eero's device for it its model by
+  the name Apple sells it under (`AppleTV6,2` is an Apple TV 4K, 1st
+  generation) and its build as firmware; it stays a client, since no
+  role names a box that plays to a screen. The answer stays as
+  `detail.airplay`, but for the keys it pairs with and the address it
+  was asked from. What it's playing and its volume are said only to a
+  paired device, and pairing waits on Joel's yes, so none is asked.
 
 It listens on nothing and asks nothing outside the home network. Away
 from home the modem doesn't answer, and the record says so while eero's
