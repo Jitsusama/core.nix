@@ -266,8 +266,8 @@ pub trait World: Sync {
     fn keep_runs(&self, commit: &str, check: &str);
     /// Whether runs of `check` at `commit` are dropped now.
     fn dropped(&self, commit: &str, check: &str) -> bool;
-    /// Whether another build of the net is installed, so this one starts
-    /// no more runs and leaves what's left to that one.
+    /// Whether another build of the net is installed, so this one hands
+    /// over to it once its round ends.
     fn superseded(&self) -> bool;
 }
 
@@ -637,12 +637,13 @@ pub fn attempt_all(
                         break;
                     };
                     let check = &checks[index];
-                    // A net another build replaced starts nothing more, so
-                    // it ends once the runs under way have, and the new
-                    // build runs what's left. On 14 November #4402 was
-                    // installed at 13:34, but the net took it up at 15:00,
-                    // once a round begun at 13:27 had ended.
-                    if world.held().is_some() || world.superseded() {
+                    // A held net starts nothing more. A replaced one runs
+                    // on and hands over after its round (`rounds`): on 15
+                    // November stopping for a new build sent nothing at
+                    // 25cc40362bf1 from about 08:25 to 09:03, while core's
+                    // merges each took a new build. One that must take over
+                    // sooner than a round's end is a restart away.
+                    if world.held().is_some() {
                         continue;
                     }
                     let outcome = attempt(world, state, commit, check);

@@ -42,10 +42,10 @@
 //! names a state folder of its own, so its hold stops no switch.
 //!
 //! `watch --follow PATH` names the installed merge-net: once that is
-//! another build than the one running, the watch starts no more runs, and
-//! ends once those under way have, for its unit to start the new one, which
-//! takes up the round's head from what was recorded, rather than a switch
-//! stopping it and losing every run in flight.
+//! another build than the one running, the watch finishes its round and
+//! ends, for its unit to start the new one, which takes up what the searches
+//! left from what was recorded, rather than a switch stopping it and losing
+//! every run in flight.
 //!
 //! Usage: `merge-net watch [--from COMMIT] [--branch NAME] [--once] [--follow PATH]
 //! | merge-net needs [--base REF] | merge-net ready COMMIT | merge-net status`
@@ -204,13 +204,12 @@ fn rounds(
 ) -> Result<ExitCode, String> {
     loop {
         let round = watch::round_beside(world, state, start, settler);
-        // A round another build replaced starts no more runs, so it ends
-        // as soon as those under way have, and what's left of its head is
-        // the new build's, taken up from what was recorded.
+        // A round another build replaced runs to its end, and what it
+        // settles is the new build's, taken up from what was recorded.
         if !once && watch::World::superseded(world) {
             state.say(
-                "another merge-net is installed, so this one ends once its runs under way \
-                 have, leaving the rest of its round and what it settles to that one",
+                "another merge-net is installed, so this one ends with its round, leaving \
+                 what it settles to that one",
             );
             // An exit, since the scope would wait for the searches under way,
             // which the new build takes up from disk.
