@@ -182,6 +182,17 @@ in
     # The experiment watches the same asks folder, and would answer what
     # this daemon serves, so the two never run together.
     assertions = [
+      # Any of the account's processes can reach the daemon's socket, an
+      # agent's among them, and say yes to its own ask there, so nothing is
+      # listed until the shell alone is answered.
+      {
+        assertion = config.jitsusama.passwords.releases == [ ];
+        message = ''
+          jitsusama.passwords.releases must stay empty while the passwords
+          daemon answers any process on its socket: an agent could say yes to
+          its own secret ask there.
+        '';
+      }
       {
         assertion = config.jitsusama.passwords.releases == [ ] || !(options.jitsusama ? secret-asks);
         message = ''
