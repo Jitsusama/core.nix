@@ -22,7 +22,7 @@ pub fn help() -> Help {
         "keeps none, saying only what the clipboard holds",
     )
     .option("--socket PATH", "where the shell connects")
-    .option("--vocabulary WORDS", "the launcher's words.json")
+    .option("--vocabulary FILE", "the launcher's words.json")
     .option("--keep N", "how many copies it keeps; 200")
     .option("--largest BYTES", "the largest text kept; 1 MiB")
     .option("--pictures DIR", "where pictures are kept; none without")

@@ -34,7 +34,7 @@
 //! asks on the socket, which the launcher makes, and commands run by
 //! hand. The daemon hears either at once, by inotify.
 //!
-//! Given WORDS, the launcher's words.json, it serves Location's rows too,
+//! Given `--words`, the launcher's words.json, it serves Location's rows too,
 //! worded and ready to draw (rows.rs), so the launcher holds none of it.
 //!
 //! Its program goes by its domain's name, location, as its socket and
