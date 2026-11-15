@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn a_second_run_waits_for_its_twin_to_end() {
         let state = tempfile::tempdir().unwrap();
-        let mut child = std::process::Command::new(env!("BASH"))
+        let mut child = std::process::Command::new("sh")
             .args(["-c", "read -t 2 _ || true"])
             .stdin(std::process::Stdio::piped())
             .spawn()
