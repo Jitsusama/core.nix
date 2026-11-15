@@ -87,6 +87,24 @@ in
     # Nothing here asks it.
     environment.systemPackages = [ unlock ];
 
+    # A start that finds the mark of an image written and never read back
+    # says so in its journal at once, and tells whoever signs in once their
+    # graphical session is up: their work is gone, rather than left to be
+    # found from the windows.
+    systemd.services.hibernate-unlock-lost = {
+      description = "Tells whoever signs in of a hibernation's image that never came back";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "systemd-user-sessions.service" ];
+      unitConfig.ConditionPathExists = "/var/lib/hibernate-unlock/writing";
+      path = [
+        pkgs.libnotify
+        pkgs.systemd
+      ];
+      # A switch mid-wait would only start it waiting again.
+      restartIfChanged = false;
+      serviceConfig.ExecStart = "${lib.getExe unlock} lost";
+    };
+
     # systemd-sleep runs each program here before a sleep and after it, with
     # "pre" or "post" and the sleep's name.
     environment.etc."systemd/system-sleep/hibernate-unlock".source =
