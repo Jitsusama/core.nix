@@ -654,9 +654,10 @@ Provider {
                     return row;
                 // One only the daemon's sources know comes with the row a
                 // search finds them as, and its drawer, kept while their record says the
-                // same, which the daemon stamps `heard` anew when a source
-                // says anything new of them, so each search's answer remakes
-                // none it found before; and let go once no answer holds it.
+                // same, which the daemon stamps `said` anew only when a source
+                // says anything new of them, a restart of it included, so each
+                // search's answer remakes none it found before; and let go once
+                // no answer holds it.
                 // The rest are merged here from what a source the daemon
                 // doesn't hold gives: Slack's are the daemon's, so someone
                 // Slack found once is held only while listed or found, and
@@ -665,7 +666,7 @@ Provider {
                 // listed is.
                 const record = readyFor(person);
                 return record ? keptAlike(made.keeping, person.key,
-                    [record.key, record.heard, clocked(record.row) ? provider.minute : 0],
+                    [record.key, record.said, clocked(record.row) ? provider.minute : 0],
                     () => provider.made(person, Person.standing(person, []), record.row,
                         () => record.drawer))
                     : keptOr(made.keeping, person.key, JSON.stringify(person),
@@ -724,7 +725,9 @@ Provider {
         const rows = listed.map(person => {
             // One the daemon listed comes with their row ready, kept while
             // their record is the one it last told, which it tells anew
-            // only when they changed: so nothing about them is written out
+            // only when they changed, even once it's started again, since a
+            // record told alike is the one held (Daemon.qml's took): so
+            // nothing about them is written out
             // again to find it the same, and nothing of the row is worded
             // here.
             // Their row reads only what their record says, but for its

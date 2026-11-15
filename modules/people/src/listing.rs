@@ -584,7 +584,7 @@ pub(crate) mod tests {
     /// A person's record holding each source's entry, as drawer.rs's
     /// tests take it too.
     pub(crate) fn record(key: &str, entries: &[(&str, Value)]) -> Record {
-        let mut record = Record::of(key.to_owned(), 0);
+        let mut record = Record::of(key.to_owned());
         for (source, entry) in entries {
             record.sources.insert((*source).to_owned(), entry.clone());
         }

@@ -277,13 +277,23 @@ impl Standing {
     }
 }
 
+/// A stamp of what every source says of someone: FNV-1a over their
+/// sources as JSON, whose fields `serde_json` keeps sorted, so it's the
+/// same in every run and every build, as std's hashers aren't promised
+/// to be. Said as hex, since 64 bits are past what a JavaScript number
+/// holds whole.
+fn said(sources: &BTreeMap<String, Value>) -> String {
+    let text = serde_json::to_string(sources).unwrap_or_default();
+    let stamp = text.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |stamp, byte| {
+        (stamp ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    });
+    format!("{stamp:016x}")
+}
+
 /// A person, as every source said of them last.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
     pub key: String,
-    /// When a source last said something new of them, in milliseconds
-    /// since the epoch.
-    pub heard: u64,
     pub sources: BTreeMap<String, Value>,
     /// Each name a source gives them and their address, made ready to
     /// search as they're heard, since a search reads everyone.
@@ -293,11 +303,10 @@ pub struct Record {
 }
 
 impl Record {
-    fn of(key: String, now: u64) -> Record {
+    fn of(key: String) -> Record {
         let mailed = address(&key).map(Text::of);
         Record {
             key,
-            heard: now,
             sources: BTreeMap::new(),
             names: Vec::new(),
             mailed,
@@ -320,8 +329,15 @@ impl Record {
         });
     }
 
+    /// Served with a stamp of what its sources say, `said`, which moves
+    /// only when that does, so the shell keeps what it made of them while
+    /// it's the same (People.qml). Stamped with the moment they were
+    /// heard instead, a daemon started again told everyone as changed,
+    /// and Joel's next first letter made 136 and 137 people's rows again
+    /// (his journal, 2026-11-14 09:38 and 17:07).
     pub fn json(&self) -> Value {
-        json!({"key": self.key, "kind": KIND, "heard": self.heard, "sources": self.sources})
+        json!({"key": self.key, "kind": KIND, "said": said(&self.sources),
+               "sources": self.sources})
     }
 
     /// The answer for a key no source knows any more.
@@ -483,7 +499,7 @@ impl Book {
 
     /// Takes what a source said, and gives the key of a person whose
     /// record changed.
-    pub fn take(&mut self, source: &str, heard: Heard, now: u64) -> Option<String> {
+    pub fn take(&mut self, source: &str, heard: Heard) -> Option<String> {
         match heard {
             Heard::Person { address, entry } => {
                 self.stand(source, Standing::Answering);
@@ -498,7 +514,7 @@ impl Book {
                 let record = self
                     .records
                     .entry(key.clone())
-                    .or_insert_with(|| Record::of(key.clone(), now));
+                    .or_insert_with(|| Record::of(key.clone()));
                 if record.sources.get(source) == Some(&entry) {
                     return None;
                 }
@@ -507,7 +523,6 @@ impl Book {
                 }
                 record.sources.insert(source.to_owned(), entry);
                 record.indexed();
-                record.heard = now;
                 Some(key)
             }
             Heard::Later { .. } => {
@@ -519,7 +534,6 @@ impl Book {
                 let record = self.records.get_mut(&key)?;
                 record.sources.remove(source)?;
                 record.indexed();
-                record.heard = now;
                 if record.sources.is_empty() {
                     self.records.remove(&key);
                     self.order.retain(|kept| kept != &key);
@@ -742,20 +756,21 @@ mod tests {
             entry: json!({"name": name}),
         };
         assert_eq!(
-            book.take("slack", ada("Ada"), 5),
+            book.take("slack", ada("Ada")),
             Some("person:ada@example.com".to_owned())
         );
-        assert_eq!(book.take("slack", ada("Ada"), 6), None);
+        assert_eq!(book.take("slack", ada("Ada")), None);
         assert!(!book.ready("person:ada@example.com"));
         assert_eq!(
-            book.take("vault", ada("Ada L"), 7),
+            book.take("vault", ada("Ada L")),
             Some("person:ada@example.com".to_owned())
         );
         assert!(book.ready("person:ada@example.com"));
         let record = book.record("person:ada@example.com").unwrap();
+        let served = record.json();
         assert_eq!(
-            record.json(),
-            json!({"key": "person:ada@example.com", "kind": "person", "heard": 7,
+            served,
+            json!({"key": "person:ada@example.com", "kind": "person", "said": served["said"],
                    "sources": {"slack": {"name": "Ada"}, "vault": {"name": "Ada L"}}})
         );
         assert_eq!(book.everyone().count(), 1);
@@ -773,15 +788,21 @@ mod tests {
             address: "ada@example.com".to_owned(),
             entry: json!({"name": name}),
         };
-        let served = |name: &str, now| {
+        let served = |names: &[&str]| {
             let mut book = Book::of(&["slack".to_owned()]);
-            book.take("slack", ada(name), now);
+            for name in names {
+                book.take("slack", ada(name));
+            }
             book.record("person:ada@example.com").unwrap().json()
         };
-        assert_eq!(served("Ada", 9), served("Ada", 5), "heard again, as before");
+        assert_eq!(
+            served(&["Ada L", "Ada"]),
+            served(&["Ada"]),
+            "heard again, whatever came between, as before"
+        );
         assert_ne!(
-            served("Ada L", 5)["said"],
-            served("Ada", 5)["said"],
+            served(&["Ada L"])["said"],
+            served(&["Ada"])["said"],
             "what's said moved, so its stamp does"
         );
     }
@@ -794,7 +815,7 @@ mod tests {
             address: dates.to_owned(),
             entry: json!({"name": "Important Dates"}),
         };
-        assert_eq!(book.take("google", heard, 1), None);
+        assert_eq!(book.take("google", heard), None);
         assert_eq!(book.everyone().count(), 0, "a calendar is held as no one");
         assert!(
             book.ready(&key(dates)),
@@ -811,9 +832,8 @@ mod tests {
                 address: "ada@example.com".to_owned(),
                 entry: json!({}),
             },
-            1,
         );
-        book.take("vault", Heard::SignedOut, 2);
+        book.take("vault", Heard::SignedOut);
         assert!(book.ready("person:ada@example.com"));
         assert_eq!(book.standings()["vault"].word(), "signed-out");
         assert_eq!(
@@ -836,8 +856,8 @@ mod tests {
     #[test]
     fn a_roster_is_never_waited_on_and_knows_some_by_its_own_id() {
         let mut book = Book::of(&["slack".to_owned(), "tuple".to_owned()]);
-        book.take("tuple", Heard::Roster, 1);
-        book.take("tuple", tuple("", 7, "Gus", false), 1);
+        book.take("tuple", Heard::Roster);
+        book.take("tuple", tuple("", 7, "Gus", false));
         assert!(book.record("person:tuple:7").is_some());
         // Only Slack, which is asked, is waited on.
         assert!(!book.ready("person:ada@example.com"));
@@ -846,7 +866,6 @@ mod tests {
             Heard::Later {
                 address: "ada@example.com".to_owned(),
             },
-            2,
         );
         book.take(
             "slack",
@@ -854,7 +873,6 @@ mod tests {
                 address: "ada@example.com".to_owned(),
                 entry: json!({}),
             },
-            2,
         );
         assert!(book.ready("person:ada@example.com"));
         book.restarted("tuple");
@@ -864,22 +882,21 @@ mod tests {
     #[test]
     fn someone_a_source_forgets_keeps_what_the_others_say_or_goes() {
         let mut book = Book::of(&["slack".to_owned(), "tuple".to_owned()]);
-        book.take("tuple", tuple("ada@example.com", 1, "Ada", false), 1);
-        book.take("tuple", tuple("eli@example.com", 2, "Eli", false), 1);
+        book.take("tuple", tuple("ada@example.com", 1, "Ada", false));
+        book.take("tuple", tuple("eli@example.com", 2, "Eli", false));
         book.take(
             "slack",
             Heard::Person {
                 address: "ada@example.com".to_owned(),
                 entry: json!({}),
             },
-            1,
         );
         let gone = |address: &str| Heard::Gone {
             address: address.to_owned(),
             id: None,
         };
         assert_eq!(
-            book.take("tuple", gone("ada@example.com"), 2),
+            book.take("tuple", gone("ada@example.com")),
             Some("person:ada@example.com".to_owned())
         );
         assert_eq!(
@@ -891,12 +908,12 @@ mod tests {
             ["slack"]
         );
         assert_eq!(
-            book.take("tuple", gone("eli@example.com"), 3),
+            book.take("tuple", gone("eli@example.com")),
             Some("person:eli@example.com".to_owned())
         );
         assert!(book.record("person:eli@example.com").is_none());
         assert_eq!(book.everyone().count(), 1);
-        assert_eq!(book.take("tuple", gone("eli@example.com"), 4), None);
+        assert_eq!(book.take("tuple", gone("eli@example.com")), None);
     }
 
     #[test]
@@ -917,15 +934,11 @@ mod tests {
     #[test]
     fn a_search_lists_the_listed_first_then_names_then_addresses() {
         let mut book = Book::of(&["tuple".to_owned()]);
-        book.take(
-            "tuple",
-            tuple("dale@example.com", 1, "Ada's Friend", false),
-            1,
-        );
-        book.take("tuple", tuple("ada.k@example.com", 2, "Kim", false), 1);
-        book.take("tuple", tuple("eli@example.com", 3, "Ada Eli", false), 1);
-        book.take("tuple", tuple("x@example.com", 4, "Adams Ray", true), 1);
-        book.take("tuple", tuple("gus@example.com", 5, "Gus", false), 1);
+        book.take("tuple", tuple("dale@example.com", 1, "Ada's Friend", false));
+        book.take("tuple", tuple("ada.k@example.com", 2, "Kim", false));
+        book.take("tuple", tuple("eli@example.com", 3, "Ada Eli", false));
+        book.take("tuple", tuple("x@example.com", 4, "Adams Ray", true));
+        book.take("tuple", tuple("gus@example.com", 5, "Gus", false));
         let keys = |limit| {
             book.search("ada", limit)
                 .iter()
