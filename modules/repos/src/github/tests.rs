@@ -6,11 +6,11 @@
 use super::*;
 use crate::model::{Repository, SCHEMA as RECORD};
 
-fn answer() -> Value {
+pub(super) fn answer() -> Value {
     serde_json::from_str(include_str!("answer.json")).expect("the answer is JSON")
 }
 
-fn one(key: &str) -> Asked {
+pub(super) fn one(key: &str) -> Asked {
     let (owner, name) = key.split_once('/').expect("an owner and a name");
     Asked {
         key: format!("github:{key}"),

@@ -7,18 +7,10 @@ use std::net::TcpListener;
 use std::os::unix::fs::PermissionsExt;
 use std::thread;
 
+use super::tests::{answer, one};
 use super::*;
 use crate::gh::tests::{PLANTED, gh};
 use crate::gh::token;
-
-fn one(key: &str) -> Asked {
-    let (owner, name) = key.split_once('/').expect("an owner and a name");
-    Asked {
-        key: format!("github:{key}"),
-        owner: owner.to_owned(),
-        name: name.to_owned(),
-    }
-}
 
 fn planted() -> Result<Token, String> {
     token(gh(&format!("printf '{PLANTED}\\n'")))
@@ -155,8 +147,7 @@ fn a_refused_sign_in_stops_at_the_first_query_and_says_why_for_each() {
 
 #[test]
 fn a_query_github_gives_up_on_marks_that_one_alone_and_goes_on() {
-    let answer: Value =
-        serde_json::from_str(include_str!("answer.json")).expect("the answer is JSON");
+    let answer = answer();
     let mut asked_github = 0;
     let seen = refresh_through_gh(
         &[one("someone/busy"), one("Jitsusama/core.nix")],
@@ -184,8 +175,7 @@ fn a_query_github_gives_up_on_marks_that_one_alone_and_goes_on() {
 #[test]
 fn what_gh_s_sign_in_read_is_kept_unreadable_by_others_and_without_its_token() {
     let asked = [one("Jitsusama/core.nix")];
-    let answer: Value =
-        serde_json::from_str(include_str!("answer.json")).expect("the answer is JSON");
+    let answer = answer();
     let mut sent = Vec::new();
     let seen = refresh_through_gh(&asked, 7, planted, |token, query| {
         sent.push(token.header());
