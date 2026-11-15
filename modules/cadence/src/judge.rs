@@ -403,6 +403,25 @@ mod tests {
     }
 
     #[test]
+    fn a_file_new_to_the_queue_is_worse_only_from_its_floor() {
+        // Y9XISP counted 139 such findings by 01:40 on 15 November, 127
+        // of them a file that held a change back once or twice.
+        let before: Vec<Day> = (0..3).map(|_| queued(&[])).collect();
+        let once = judge(&queued(&[("modules/sun/src/main.rs", 2)]), &before);
+        assert!(
+            once.worse.is_empty(),
+            "a file new to the queue, under its floor of three, was worse: {once:?}"
+        );
+        let often = judge(&queued(&[("modules/sun/src/main.rs", 3)]), &before);
+        let words: Vec<&str> = often.worse.iter().map(|f| f.words.as_str()).collect();
+        assert_eq!(
+            words,
+            ["changes held back or run again on modules/sun/src/main.rs, new, 3 times"],
+            "a file new to the queue, at its floor, wasn't said worse"
+        );
+    }
+
+    #[test]
     fn better_figures_are_said_as_better() {
         let before: Vec<Day> = (0..3)
             .map(|_| day(&[("switch.minutes.median", 30.0)], &[]))
