@@ -102,8 +102,8 @@ are the walls and roofs it is climbing or jumping off of"
 Joel, 2026-11-13 17:15: "insanely high quality pixel art and the animations
 are held to an insanely high quality"
 
-- Held by `margin-cat.qml`: "each frame of its own a whole number of cells from where its beat
-  starts or ends"
+- Held by `margin-cat-rides.qml`: "each frame of its own a whole number of cells from where its
+  beat starts or ends"
 - Held by `margin-cat.qml`: "each seen two frames at 60 Hz"
 - Held by `margin-cat.qml`: "up and down again in an arc, never a glide"
 - Held by `margin-cat.qml`: "never a jump between two frames"
@@ -128,18 +128,19 @@ of a window below. we need it to be very believable"
 Joel, 2026-11-13, by WCJQSG: "the kitten also needs to handle resizing
 windows"
 
-- Held by `margin-cat.qml`: "told of the resize late, it rides as far into niri's spring as the
-  edge has gone"
-- Held by `margin-cat.qml`: "its column narrowed out from under it, it falls"
+- Held by `margin-cat-rides.qml`: "told of the resize late, it rides as far into niri's spring
+  as the edge has gone"
+- Held by `margin-cat-rides.qml`: "its column narrowed out from under it, it falls"
 
 ### Closed Rows
 
 Joel, 2026-11-14 17:24: "when a row in a column is deleted, it seems to hang
 out in the middle then walk across, that is not believable"
 
-- Owed since 2026-11-14: a drop at once in the falling drawing when its row closes, in either
-  of niri's orders, then paws moving to its seat by an edge, in no face; #4568 holds it, due
-  merged by 2026-11-15 03:30.
+- Held by `margin-cat-rides.qml`: "a row closed under it, it falls at once onto the floor, never
+  shoved or thinking"
+- Held by `margin-cat-rides.qml`: "and from the floor to its seat by an edge, in no face, never
+  gliding"
 
 ### Floating Windows
 
