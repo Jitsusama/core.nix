@@ -381,31 +381,36 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) -> boo
         .collect();
     let (changed, heard) = mpsc::channel();
     let folder = runtime.join("secret-asks");
-    let engine = Arc::new(Engine::new(
-        Setting {
-            asks: folder.clone(),
-            git,
-            home: home.to_string_lossy().into_owned(),
-            words: said,
-            journal: PathBuf::from(secret_asks::reading::JOURNAL),
-            least_shown_ms: Some(secret_asks::engine::LEAST_SHOWN_MS),
-            says_commits: true,
-        },
-        Box::new(asks::Passwords {
-            shared: Arc::clone(shared),
-            releases: given.releases,
-            references,
-            bwrap,
-            loginctl: given.loginctl,
-            runtime,
-            home,
-            profiles: given.profiles,
-            hidden: given.hidden,
-            overlays: given.overlays,
-            seen: std::sync::Mutex::default(),
-        }),
-        changed,
-    ));
+    let engine = Arc::new(
+        Engine::new(
+            Setting {
+                asks: folder.clone(),
+                git,
+                home: home.to_string_lossy().into_owned(),
+                words: said,
+                journal: PathBuf::from(secret_asks::reading::JOURNAL),
+                least_shown_ms: Some(secret_asks::engine::LEAST_SHOWN_MS),
+                says_commits: true,
+            },
+            Box::new(asks::Passwords {
+                shared: Arc::clone(shared),
+                releases: given.releases,
+                references,
+                bwrap,
+                loginctl: given.loginctl,
+                runtime,
+                home,
+                profiles: given.profiles,
+                hidden: given.hidden,
+                overlays: given.overlays,
+                seen: std::sync::Mutex::default(),
+            }),
+            changed,
+        )
+        // Joel's yes stands a week for the same ask from a clean tree on main,
+        // held in this child's memory alone, so a restart asks him again.
+        .with_grants(),
+    );
     if let Err(why) = engine.start() {
         eprintln!(
             "<3>answering no secret asks: can't keep {}: {why}",
@@ -992,6 +997,7 @@ fn answer(shared: &Shared, asked: Ask, told: &Sender<String>) -> Value {
         }
         Ask::Release { id, said } => answer_ask(shared, &id, |engine| engine.release(&said)),
         Ask::Refuse { id, said } => answer_ask(shared, &id, |engine| engine.refuse(&said)),
+        Ask::Revoke { id, said } => answer_ask(shared, &id, |engine| engine.revoke(&said)),
         Ask::UnknownKind { id, kind } => error(
             &id,
             "unknown-kind",
