@@ -185,7 +185,7 @@ mod tests {
             "key": format!("network:{name}"), "kind": "network", "heard": 1_762_790_400_000_i64,
             "name": name, "shape": shape, "short": name.rsplit('.').next(),
             "title": name.rsplit('.').next(), "glyph": null, "within": null,
-            "cells": cells, "machines": ["optimus", "skiff"],
+            "cells": cells, "machines": ["kestrel", "skiff"],
             "counts": {"needs-you": 1, "stuck": 0, "moving": 2, "quiet": 0, "dormant": 0},
         })
     }
@@ -253,7 +253,7 @@ mod tests {
                     "Busiest".to_owned(),
                     json!("KELP01's Quest \u{b7} TIDE03's Quest")
                 ),
-                ("Machines".to_owned(), json!("optimus, skiff")),
+                ("Machines".to_owned(), json!("kestrel, skiff")),
                 ("Branched From".to_owned(), json!("tide")),
                 (
                     "Last Changed".to_owned(),
@@ -315,7 +315,7 @@ mod tests {
 
     #[test]
     fn the_machines_drawer_says_its_title_and_an_orchestration_has_none() {
-        let mut machines = record("machines", "machines", &["optimus"]);
+        let mut machines = record("machines", "machines", &["kestrel"]);
         machines["title"] = json!("the realm's machines");
         let teams = record("orchestration.kelp01", "orchestration", &["KELP01"]);
         let drawn = drawers(&[&machines, &teams], &[], &words(), &nothing_spent);
