@@ -4817,6 +4817,10 @@
     what tells wifid of calls says nothing is on at its start, then a change or a call still on a
     minute later, as exactly a calling act wifid's rows socket takes, and says a refusal as it is
   '';
+  wifid-comes-back-from-a-stalled-switch = ''
+    a switch restarts wifid and wpa_supplicant in place, never stopping them first, so a switch
+    that hangs later still leaves the card on its network
+  '';
   wifid-passes-clippy = ''
     clippy finds nothing in wifid, its sign-in window or their tests
   '';

@@ -128,6 +128,11 @@ in
       # little longer each time up to a minute, and is never given up on.
       # Starting again leaves every card on its network.
       startLimitIntervalSec = 0;
+      # A switch restarts it in place rather than stopping it before it
+      # activates, as wpa_supplicant is, so a switch that hangs later still
+      # brings it back: on 14 Nov 2026 one hung starting the account's
+      # home-manager unit, and wifid stayed down until a reboot.
+      stopIfChanged = false;
       serviceConfig = {
         ExecStart = lib.getExe wifid;
         # Both sockets, varlink's first, each by its name.
