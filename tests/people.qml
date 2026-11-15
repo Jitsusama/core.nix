@@ -617,9 +617,15 @@ ShellRoot {
             },
             // Back once Tuple has told it again how each stands, its first
             // presence and then its last, as a daemon started again hears
-            // each source's part as it comes.
-            holds: () => people.pressing === "" && people.listedPersons()
-                .find(person => person.key === "ada@example.com")?.stood?.said === "in a call",
+            // each source's part as it comes. Read as People reads it: a
+            // person it merges here, beside a source saying how they stand,
+            // has no `stood` of the daemon's.
+            holds: () => {
+                const ada = people.listedPersons()
+                    .find(person => person.key === "ada@example.com");
+                return people.pressing === "" && ada !== undefined
+                    && (ada.stood ?? people.standOf(ada))?.said === "in a call";
+            },
             check: () => {
                 expect("home counts again", people.homeSays() !== "not answering",
                     people.homeSays());
@@ -863,7 +869,8 @@ ShellRoot {
                     // Those listed too, with how each stands, since a
                     // shut launcher's home lists no one.
                     const listed = people.listedPersons()
-                        .map(person => `${person.key} ${person.stood?.said ?? "?"}`);
+                        .map(person => `${person.key} `
+                            + `${(person.stood ?? people.standOf(person))?.said ?? "?"}`);
                     root.fail(`never came: ${now.what}: home ${root.names(people.all)}`
                         + ` (${root.sides(people.all)}), sought ${people.sought.words}`
                         + `, pressing "${people.pressing}", listed ${listed.join(", ")}`);
