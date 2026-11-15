@@ -3,12 +3,13 @@
 //! the far ones go.
 
 use super::{
-    ASKED_AT_ONCE, FIRST_FRAME_AT_MOST, LOADING_AT_ONCE, Loading, RESIZE_UNTIL, STAND_IN,
-    STAND_INS_AT_ONCE, covers, memory, phase,
+    ASKED_AT_ONCE, FIRST_FRAME_AT_MOST, LOADING_AT_ONCE, LOOKS_AGAIN_AFTER, Loading, RESIZE_UNTIL,
+    STAND_IN, STAND_INS_AT_ONCE, covers, memory, phase,
 };
 use crate::painter::{BAND_PX, Key};
 use crate::{App, Feedback, motion, page, prompt};
 use smithay_client_toolkit::compositor::FrameCallbackData;
+use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::time::Instant;
 
@@ -447,6 +448,7 @@ impl App {
             if !self.drawn_at(self.offset) && (!late || !self.covered()) {
                 self.log_first();
                 self.ask_for_bands();
+                self.look_again();
                 return false;
             }
             self.shown = true;
@@ -460,6 +462,28 @@ impl App {
             }
         }
         true
+    }
+
+    /// Looks at the loader's textures again in a moment while one waits on
+    /// the GPU: before the window shows, no frame comes to, and the first
+    /// frame waited for whatever came next, a second and more when busy.
+    fn look_again(&mut self) {
+        if self.made.is_empty() || self.looks_again {
+            return;
+        }
+        self.looks_again = true;
+        let timer = Timer::from_duration(LOOKS_AGAIN_AFTER);
+        let looked = self.loop_handle.insert_source(timer, |_, (), app: &mut App| {
+            app.looks_again = false;
+            if !app.frame_pending {
+                app.draw();
+            }
+            TimeoutAction::Drop
+        });
+        if let Err(error) = looked {
+            self.looks_again = false;
+            eprintln!("reader: can't look at the textures again: {error}");
+        }
     }
 
     /// With `READER_FIRST_LOG`, says why the first frame waits.
@@ -483,8 +507,9 @@ impl App {
     }
 
     /// Asks for the next frame while something moves or waits to be drawn,
-    /// saying whether it did, and, measuring, when this one reaches the
-    /// screen.
+    /// a texture the GPU is still filling included, since only a later
+    /// frame takes it, saying whether it did, and, measuring, when this one
+    /// reaches the screen.
     pub(crate) fn ask_next_frame(&self) -> bool {
         let surface = self.window.wl_surface();
         let asks = self.measure.is_some()
@@ -495,6 +520,7 @@ impl App {
                 .is_some_and(|on| on.reading.at(Instant::now()).resting_until.is_none())
             || !self.arrived.is_empty()
             || !self.loading.is_empty()
+            || !self.made.is_empty()
             || !self.asked.is_empty();
         if asks {
             surface.frame(&self.qh, FrameCallbackData(surface.clone()));

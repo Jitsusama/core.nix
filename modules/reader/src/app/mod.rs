@@ -75,6 +75,10 @@ const REFERENCE_SCALE: f64 = 2.0;
 /// first frame is complete, within the 250 ms the first screen is allowed.
 const FIRST_FRAME_AT_MOST: Duration = Duration::from_millis(250);
 
+/// How soon a texture the GPU is still filling is looked at again before
+/// the first frame: uploading a band takes about a millisecond.
+const LOOKS_AGAIN_AFTER: Duration = Duration::from_millis(1);
+
 /// The file as last saved, set and drawing while the page before it still
 /// shows. It takes the page's place at once, whole, when its bands cover
 /// the view where it will show, so a save never shows half a page.
