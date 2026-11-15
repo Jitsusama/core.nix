@@ -186,12 +186,12 @@ QtObject {
             session: "0f3a9c2e-4b7d-4e1a-9c3f-a1b2c3d4e5f6", by: 42, title: title });
         // A line's room, in letters, standing in for the card's measure.
         const lineFits = 60;
-        const longTitle = "Reduce Gitstream Push-Path Pre-Receive Latency: Batch Secret Diffs"
+        const longTitle = "Reduce the Mirror's Push-Path Pre-Receive Latency: Batch Secret Diffs"
             + " and Bound Unrelated-History Detection";
         const sayings = [
             ["a quest's", answer(quest, "Launcher Speed"), "It says it's for Launcher Speed."],
             ["a long title's", answer(quest, longTitle),
-                "It says it's for Reduce Gitstream Push-Path Pre-Receive\u00a0\u2026"],
+                "It says it's for Reduce the Mirror's Push-Path Pre-Receive\u00a0\u2026"],
             // A cut never ends on a small word, so it reads as a cut, not
             // as a sentence missing its end (VKCF3Z, 2026-11-15).
             ["a title cut after a small word's",

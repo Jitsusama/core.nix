@@ -196,8 +196,11 @@ fn reads_a_name_holding_spaces_and_brackets() {
 
 #[test]
 fn says_only_values_in_the_harness_shape() {
-    assert!(quest_shaped(QUEST_ID));
-    assert!(session_shaped(SESSION_ID));
+    assert!(quest_shaped(QUEST_ID), "{QUEST_ID} should read as a quest");
+    assert!(
+        session_shaped(SESSION_ID),
+        "{SESSION_ID} should read as a session"
+    );
     for words in [
         "QEST-20261110-H6EDLC verified by joel",
         "QEST-2026111-H6EDLC",
@@ -235,5 +238,9 @@ fn reads_a_real_process_and_none_of_its_secret() {
     assert_eq!(said.quest.as_deref(), Some(QUEST_ID));
     assert_eq!(said.session, None);
     assert_eq!(said.title.as_deref(), Some("Launcher Speed"));
-    assert!(!said.answer().to_string().contains(SECRET));
+    let answer = said.answer().to_string();
+    assert!(
+        !answer.contains(SECRET),
+        "the answer said the secret: {answer}"
+    );
 }
