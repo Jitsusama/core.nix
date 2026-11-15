@@ -266,6 +266,49 @@ pub fn parse_looks(journal: &str) -> Vec<Look> {
     looks
 }
 
+/// The look a boot took: when the machine booted at `boot_at` into
+/// `booted`, the system an update was switching to when it was cut short,
+/// that update's core went on at the boot. On 14 November Joel rebooted
+/// at 22:22 mid-switch to core 7679bd7c, the update never wrote done, and
+/// the card listed six merges running on his machine as not on yet.
+#[must_use]
+pub fn boot_look(journal: &str, booted: &str, boot_at: i64) -> Option<Look> {
+    let mut asked: Option<&str> = None;
+    let mut into = None;
+    for line in journal.lines() {
+        let Some((stamp, rest)) = line.split_once(' ') else {
+            continue;
+        };
+        // short-unix stamps carry microseconds; whole seconds will do.
+        let Ok(at) = stamp.split('.').next().unwrap_or(stamp).parse::<i64>() else {
+            continue;
+        };
+        if let Some((_, core)) = rest.split_once("asks for an update with core at ") {
+            asked = Some(core.trim());
+        } else if let Some((_, system)) = rest.split_once("switching to system configuration ")
+            && system.trim() == booted
+            && at < boot_at
+        {
+            into = asked;
+        }
+    }
+    into.map(|core| Look {
+        at: boot_at,
+        core: core.to_owned(),
+        switched: true,
+    })
+}
+
+/// When the machine booted, from `/proc/stat`'s `btime`.
+#[must_use]
+pub fn boot_time(stat: &str) -> Option<i64> {
+    stat.lines()
+        .find_map(|line| line.strip_prefix("btime "))?
+        .trim()
+        .parse()
+        .ok()
+}
+
 impl Follower {
     /// Takes every update's looks, from the service's journal, over the
     /// follower's own, which are some of them. A hold the follower met
@@ -567,6 +610,43 @@ mod tests {
             "the switch by hand names the core it followed"
         );
         assert_eq!(follower.held, None, "a hold before the newest look stood");
+    }
+
+    /// The update Joel's 22:22 reboot cut short on 14 November, as
+    /// `journalctl -u update-to-main.service -o short-unix` wrote it.
+    const CUT_SHORT: &str = "\
+1794712715.101982 optimus update-to-main[4411]: uid 1000 asks for an update with core at 7679bd7c04a0
+1794712792.864540 optimus nixos[1033143]: switching to system configuration /nix/store/x8jh1lrs4vyr5lp7x8kfi0nkja2qd128-nixos-system-optimus-26.11.20261112.2074cc6
+1794712973.200710 optimus systemd[1]: Stopped Updates the machine to its repository's main when asked.
+";
+
+    #[test]
+    fn a_boot_into_the_system_a_cut_short_switch_built_puts_its_core_on() {
+        let booted = "/nix/store/x8jh1lrs4vyr5lp7x8kfi0nkja2qd128-nixos-system-optimus-26.11.20261112.2074cc6";
+        assert_eq!(
+            boot_time("cpu  1 2 3\nbtime 1794712989\nprocesses 9\n"),
+            Some(1_794_712_989),
+            "the boot's time"
+        );
+        assert_eq!(
+            boot_look(CUT_SHORT, booted, 1_794_712_989),
+            Some(Look {
+                at: 1_794_712_989,
+                core: "7679bd7c04a0".into(),
+                switched: true
+            }),
+            "the 22:22 boot put core 7679bd7c on"
+        );
+        assert_eq!(
+            boot_look(CUT_SHORT, "/nix/store/another-system", 1_794_712_989),
+            None,
+            "a boot into some other system says nothing of that core"
+        );
+        assert_eq!(
+            boot_look(CUT_SHORT, booted, 1_794_712_700),
+            None,
+            "a boot before the switch began isn't one into it"
+        );
     }
 
     #[test]

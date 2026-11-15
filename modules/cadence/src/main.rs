@@ -565,11 +565,14 @@ fn gather(
         "update-to-main-follows",
         &since,
     ]));
-    follower.saw(records::parse_looks(&journal(&[
-        "-u",
-        "update-to-main.service",
-        &since,
-    ])));
+    let service = journal(&["-u", "update-to-main.service", &since]);
+    follower.saw(records::parse_looks(&service));
+    // A switch a reboot cut short writes no done, yet its core runs.
+    let booted = fs::read_link("/run/booted-system").unwrap_or_default();
+    follower.looks.extend(
+        records::boot_time(&fs::read_to_string("/proc/stat").unwrap_or_default())
+            .and_then(|at| records::boot_look(&service, &booted.to_string_lossy(), at)),
+    );
     let landings = core.landings(now - DAY, &follower)?;
     let net = state_home.join("net");
     let round = core.round(&fs::read_to_string(net.join("state.json")).unwrap_or_default());
