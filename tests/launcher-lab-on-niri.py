@@ -71,10 +71,28 @@ WATCHED = ("Machine",)
 # How long each is held open a round, in seconds, for some twenty of Machine's changes.
 WATCHING = 20.0
 
+# How many programs are installed besides this niri's own, unless the run says otherwise as
+# LAB_PROGRAMS. Here Programs' step made 3 rows new, where on Joel's shell it made 21 and showing
+# them was its largest part, 18 to 48 ms (2026-11-13 and 14), so a run that times Programs
+# gives it as many as his.
+PROGRAMS = 0
+
+
+def installed(count: int) -> None:
+    """Install that many programs as desktop entries, where the shell and its daemon find them."""
+    data = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    applications = data / "applications"
+    applications.mkdir(parents=True, exist_ok=True)
+    for nth in range(count):
+        (applications / f"lab-program-{nth}.desktop").write_text(
+            f"[Desktop Entry]\nType=Application\nName=Lab Program {nth}\nExec=true\n"
+        )
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
     """Give the shell once it has kept home by itself, started once a run and never opened."""
+    installed(int(os.environ.get("LAB_PROGRAMS", str(PROGRAMS))))
     with launcher_on_niri.running() as started:
         started.launcher_until(lambda shown: shown.get("kept"))
         yield started
