@@ -1226,9 +1226,14 @@ Singleton {
     // home line's 8.2 for 17 minutes, past the builders sharing it. Every
     // window still opens as it did. Each is told through its steer inbox
     // once its pi says it runs, and one that never does within
-    // carryOnPatience is let go and said.
+    // carryOnPatience is let go and said. The holder gives a reopened pi
+    // its turn four at a time, a turn lasting up to a minute, so seventy-
+    // two can take eighteen minutes to run: half an hour lets each come.
+    // The uplink's rate lags the window it's measured over, so about one
+    // a look goes before a climb shows; their first requests are small
+    // beside the line.
     property var carryingOn: ({ pending: [], told: [] })
-    readonly property int carryOnPatience: 300000
+    readonly property int carryOnPatience: 1800000
     // A session told counts as working this long, in seconds, before its
     // pi idle says it's done: one just told hasn't begun its turn yet.
     readonly property int carryOnSettles: 15
