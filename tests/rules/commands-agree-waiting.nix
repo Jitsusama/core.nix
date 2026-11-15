@@ -50,8 +50,6 @@
     "helps"
   ];
   mypy = [ "helps" ];
-  niri-off-cpu-as-root = [ "helps" ];
-  niri-off-cpu-begun = [ "helps" ];
   nix-offload = [
     "kit"
     "exits"
@@ -81,7 +79,6 @@
     "exits"
     "helps"
   ];
-  pi-ask = [ "helps" ];
   pi-carry = [ "helps" ];
   pi-keys = [
     "kit"
@@ -89,7 +86,6 @@
     "helps"
   ];
   pi-verbs = [ "helps" ];
-  qt-javascript-lint = [ "helps" ];
   quests = [
     "kit"
     "exits"

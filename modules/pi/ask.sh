@@ -27,8 +27,33 @@
 # and where it doesn't, pi loads what it would; with no session it stays off
 # the mesh all the same.
 #
-# usage: pi-ask [more of pi's arguments]
+# Its own help, in the shape every command of ours takes (docs/commands.md),
+# says what it adds to pi and leaves the rest to pi's. The launcher never
+# asks it for help, so this answers only a person or an agent.
 set -euo pipefail
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+pi-ask  pi for the launcher's Ask row
+
+  The launcher speaks pi's RPC protocol over its stdin and
+  stdout: a quick question and a short answer each. It
+  loads only the extensions the machine names, the digest
+  of what's true on it and, where there's a launcher, the
+  launcher's tool. Every other word is pi's, as pi --help
+  says.
+
+EXAMPLES
+  pi-ask  waits for the launcher's questions on stdin
+
+EXIT
+  pi's own
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 ahead=
 while IFS= read -r folder; do
