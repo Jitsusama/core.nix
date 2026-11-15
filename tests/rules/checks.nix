@@ -260,9 +260,12 @@
         launcher-say = pkgs.callPackage ../../modules/quickshell/launcher-say/package.nix { };
         lid-docked = pkgs.callPackage ../../modules/lid/docked/package.nix { };
         load-proof = pkgs.callPackage ../../modules/load-proof/package.nix { };
+        loopback-holders = pkgs.callPackage ../../modules/v4l2loopback/holders/package.nix { };
         meaning = dictation;
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
         net = pkgs.callPackage ../../modules/net/package.nix { };
+        network-revive = pkgs.callPackage ../../modules/network-revive/package.nix { };
+        night-shift = pkgs.callPackage ../../modules/night-shift/package.nix { };
         noise-cancelled = dictation;
         open-now = recentFiles;
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
