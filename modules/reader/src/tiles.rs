@@ -69,7 +69,7 @@ pub fn draw(page: &Page, top: f64, height: f64, scale: f32) -> tiny_skia::Pixmap
         let words = render(page, band, clear, scale);
         let mut canvas =
             tiny_skia::Pixmap::new(words.width(), words.height()).expect("a band's canvas");
-        let [r, g, b, a] = crate::glow::rgba(&ground);
+        let [r, g, b, a] = crate::glow::components(&ground);
         canvas.fill(tiny_skia::Color::from_rgba(r, g, b, a).unwrap_or(tiny_skia::Color::WHITE));
         glow.paint(&mut canvas, scale);
         canvas.draw_pixmap(

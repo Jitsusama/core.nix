@@ -105,7 +105,7 @@ fn glow_of(shape: &typst::visualize::Shape) -> Option<(Arc<RadialGradient>, Size
 }
 
 /// A colour as Typst hands it to the canvas: its sRGB components.
-pub fn rgba(color: &Color) -> [f32; 4] {
+pub fn components(color: &Color) -> [f32; 4] {
     let c = color.to_process().to_rgb();
     [c.red, c.green, c.blue, c.alpha]
 }
@@ -116,7 +116,7 @@ impl Glow {
         let table = (0..=STEPS)
             .map(|i| {
                 let t = Ratio::new(f64::from(i) / f64::from(STEPS));
-                rgba(&gradient.sample(RatioOrAngle::Ratio(t)))
+                components(&gradient.sample(RatioOrAngle::Ratio(t)))
             })
             .collect();
         Glow {
