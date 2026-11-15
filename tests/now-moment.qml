@@ -729,6 +729,21 @@ ShellRoot {
             JSON.stringify([now.homeSays(), now.placePlate().say]));
         WaitingOnYou.now = [];
         WaitingOnYou.foremost = null;
+        // The plate's clock says only what timekeeping said: chrony is asked only while home
+        // shows, so a plate read shut, or the moment after opening, has no reading yet, and
+        // said nothing keeps the time while chrony kept it (P9R1KI, 2026-11-15). It's left out
+        // until the reader answers, and said once the reader refused.
+        const clockSays = () => Array.from(now.placePlate().groups)
+            .reduce((all, group) => all.concat(Array.from(group)), [])
+            .filter(fact => fact.label === Words.name("on:plate:clock")).map(fact => fact.value);
+        expect("unanswered, the plate's clock says nothing of how it's kept",
+            clockSays().length === 0, JSON.stringify(clockSays()));
+        Timekeeping.refused = true;
+        const refusedSays = clockSays();
+        Timekeeping.refused = false;
+        expect("refused, the plate's clock says nothing keeps the time",
+            JSON.stringify(refusedSays) === JSON.stringify(["nothing keeps the time"]),
+            JSON.stringify(refusedSays));
 
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look, and why the

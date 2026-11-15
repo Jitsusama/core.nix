@@ -491,6 +491,7 @@ let
         "Daemon.qml"
         "ForYouHolds.qml"
         "Location.qml"
+        "Timekeeping.qml"
         "Words.qml"
         "launcher/Now.qml"
         "launcher/PastNotices.qml"
