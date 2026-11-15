@@ -86,6 +86,19 @@ pub fn none_selected(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
         .any(|line| line.as_ref().contains(" / 0 selected"))
 }
 
+/// Whether a run's log ends in pytest's summary, so every subtest it
+/// selected ran, and those it names no failure of passed: a run killed
+/// at its time limit never says which of the rest would have failed.
+#[must_use]
+pub fn finished(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
+    log.into_iter().any(|line| {
+        let line = line.as_ref().trim_end();
+        (line.contains(" passed") || line.contains(" failed"))
+            && line.contains(" in ")
+            && line.ends_with("==")
+    })
+}
+
 /// Whether a narrowed run's log says the commit has no `subtests` to
 /// build, from before 29 October, so the whole test runs there instead.
 #[must_use]
@@ -197,5 +210,14 @@ mod tests {
             !unbuildable("error: builder failed".lines()),
             "a failure of the run itself"
         );
+    }
+
+    #[test]
+    fn a_run_is_finished_once_pytest_sums_it_up() {
+        let summed = "vm-test-run-x> ===== 1 failed, 19 passed in 752.38s (0:12:32) =====";
+        assert!(finished(summed.lines()), "pytest summed the run up");
+        let killed = "vm-test-run-x> [3601.91s] !!! Test \"A\" failed with error: \"[Errno 9]\"\n\
+                      error: Cannot build '/nix/store/x.drv'.\n";
+        assert!(!finished(killed.lines()), "a run killed at its limit");
     }
 }
