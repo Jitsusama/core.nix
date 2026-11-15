@@ -36,17 +36,12 @@ const LONGEST = 4000;
 // The name pi goes by, which a pi session's row notes.
 const PI = "pi";
 
-// pi's letter and its joint before a session's title, "π - name", which
-// the row's mark already says, set small and odd in the words' face
-// (VKCF3Z, 2026-11-13 [00c78048]). A stopgap: the windows daemon's `named`
-// drops it itself from about Sat 14 01:30 (ZINAWZ [5dc6c596]), and then
-// this finds nothing to drop.
-const PI_LEAD = /^\u03c0(?: - | \u2013 | \u2014 | \| )/u;
-
 // What a window says of itself, as Niri.qml holds it from the windows
-// daemon: its title without the program's name (`named`, core #4242).
+// daemon: its title without the program's name (`named`, core #4242), nor
+// pi's lead, "π - ", which the row's mark already says (the daemon's
+// entries.rs, VKCF3Z, 2026-11-13 [00c78048]).
 function ownTitle(window) {
-    return String(window?.named ?? window?.title ?? "").trim().replace(PI_LEAD, "");
+    return String(window?.named ?? window?.title ?? "").trim();
 }
 
 // What the programs daemon is asked for the tab in front of a browser's

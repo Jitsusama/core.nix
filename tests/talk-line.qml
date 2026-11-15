@@ -16,9 +16,10 @@ QtObject {
     Component.onCompleted: {
         try {
             // A window as Niri.qml holds it from the windows daemon, its title without the
-            // program's name (`named`) and the program's own (ZINAWZ, core #4242).
+            // program's name or pi's lead (`named`) and the program's own (ZINAWZ, core
+            // #4242); the daemon's entries.rs holds how the lead is dropped.
             const kitty = { app_id: "kitty", title: "π - Tune the launcher",
-                named: "π - Tune the launcher", untitled: false, program: "kitty" };
+                named: "Tune the launcher", untitled: false, program: "kitty" };
             const session = { to: "TESTQA", name: "Tune the launcher" };
             const rows = Said.attached({ window: kitty, session });
             Expect.same("a pi window attaches its window and its session, each with its mark "
@@ -26,12 +27,9 @@ QtObject {
                 rows.map(row => [row.kind, row.mark, row.text, row.note]),
                 [["window", "windows", "Tune the launcher", "kitty"],
                     ["session", "agent", "Tune the launcher", "pi"]]);
-            Expect.same("a pi window its session isn't known for yet shows its title without "
-                    + "pi's lead", Said.shownRows(Said.attached({ window: kitty }))
+            Expect.same("a pi window its session isn't known for yet shows the title the "
+                    + "windows daemon names it by", Said.shownRows(Said.attached({ window: kitty }))
                     .map(row => row.text), ["Tune the launcher"]);
-            Expect.same("a title that only begins with pi's letter keeps it",
-                Said.attached({ window: { title: "π day", named: "π day", program: "Foot" } })[0]
-                    .text, "π day");
             const slack = { app_id: "slack", title: "Slack", named: "Slack", untitled: true,
                 program: "Slack" };
             Expect.same("a window with no title of its own is said by its program alone, sent "
