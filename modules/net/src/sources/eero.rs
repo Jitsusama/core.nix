@@ -8,7 +8,8 @@
 use serde_json::{Map, Value};
 
 use crate::model::{
-    Device, End, Line, Link, LinkState, Medium, Port, PortKind, Radio, Role, Source, SourceState,
+    Device, End, Internet, Link, LinkState, Medium, Port, PortKind, Radio, Role, Source,
+    SourceState,
 };
 use crate::time;
 
@@ -22,7 +23,7 @@ pub struct Read {
     pub source: Source,
     pub devices: Vec<Device>,
     pub links: Vec<Link>,
-    pub line: Option<Line>,
+    pub internet: Option<Internet>,
 }
 
 /// The record as the source says it, or why it isn't there.
@@ -41,7 +42,7 @@ pub fn read(record: Result<Value, String>, now: u64) -> Read {
                 },
                 devices: Vec::new(),
                 links: Vec::new(),
-                line: None,
+                internet: None,
             };
         }
     };
@@ -67,25 +68,26 @@ pub fn read(record: Result<Value, String>, now: u64) -> Read {
         source: source(&record, read_at),
         devices,
         links,
-        line: line(&record),
+        internet: internet(&record),
     }
 }
 
-/// The provider's line, from the internet block: the provider eero names
-/// and its last speed test, which eero runs from the gateway, so it
-/// measures the line rather than any Wi-Fi.
-fn line(record: &Value) -> Option<Line> {
-    let internet = record.get("internet")?;
-    let test = internet.get("speed_test");
+/// The internet, from the record's block of that name: the provider eero
+/// names and its last speed test, which eero runs from the gateway, so it
+/// measures the internet rather than any Wi-Fi.
+fn internet(record: &Value) -> Option<Internet> {
+    let block = record.get("internet")?;
+    let test = block.get("speed_test");
     let rate = |key| test.and_then(|test| test.get(key)).and_then(Value::as_f64);
-    let line = Line {
-        provider: text(internet, "isp").map(Into::into),
+    let internet = Internet {
+        provider: text(block, "isp").map(Into::into),
         down_mbps: rate("down_mbps"),
         up_mbps: rate("up_mbps"),
         measured_at: test.and_then(|test| text(test, "at")).and_then(time::parse),
         source: NAME.into(),
     };
-    (line.provider.is_some() || line.down_mbps.is_some() || line.up_mbps.is_some()).then_some(line)
+    (internet.provider.is_some() || internet.down_mbps.is_some() || internet.up_mbps.is_some())
+        .then_some(internet)
 }
 
 /// What the source reads, in words.
@@ -487,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn the_line_is_eeros_last_speed_test_and_the_provider_it_names() {
+    fn the_internet_is_eeros_last_speed_test_and_the_provider_it_names() {
         let read = read(
             Ok(json!({
                 "cloud": {"state": "answering"},
@@ -501,8 +503,8 @@ mod tests {
             1_794_092_100,
         );
         assert_eq!(
-            read.line,
-            Some(Line {
+            read.internet,
+            Some(Internet {
                 provider: Some("Example ISP".into()),
                 down_mbps: Some(369.86),
                 up_mbps: Some(11.93),
@@ -513,7 +515,7 @@ mod tests {
     }
 
     #[test]
-    fn a_record_with_no_internet_says_no_line() {
-        assert_eq!(laptop_at_home().line, None);
+    fn a_record_with_no_internet_block_says_no_internet() {
+        assert_eq!(laptop_at_home().internet, None);
     }
 }

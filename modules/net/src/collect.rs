@@ -37,7 +37,7 @@ pub fn network(said: Said, now: u64) -> Network {
             .chain(eero.devices)
             .collect(),
         links: eero.links,
-        line: eero.line,
+        internet: eero.internet,
         concerns: Vec::new(),
     };
     room::work_out(&mut network);

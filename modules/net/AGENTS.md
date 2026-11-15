@@ -33,16 +33,17 @@ the switch are net's alone, and `eero` keeps only what's eero's.
   field each source gives about it in the source's own words.
 - `links`: a cable or a radio link, port to port or radio to radio; the
   map is drawn from these.
-- `line`: the internet provider's line beyond the modem, from eero's last
-  speed test, which runs from the gateway and so measures the line alone.
+- `internet`: the internet beyond the modem, its provider and speed each
+  way from eero's last speed test, which runs from the gateway and so
+  measures the internet alone.
 - Each device's `path` and the record's `concerns`, worked out rather
   than read (`src/room.rs`). A path lists the devices to the modem and,
   each way, its chokepoint: the hop with least room, a cable's speed or a
-  radio link's less the time its busier radio is busy, or the line. A hop
+  radio link's less the time its busier radio is busy, or the internet. A hop
   with no figure (eero gives Wi-Fi backhaul only as bars) is counted in
   `unmeasured`, never guessed. A concern is a radio busy 30% or more (the
   map's gold), a Wi-Fi link at -70 dBm or weaker, a cable under a gigabit,
-  or the line as a chokepoint, said once each way.
+  or the internet as a chokepoint, said once each way.
 
 A figure keeps its unit in its key (`speed_mbps`, `power_dbmv`, `up_s`),
 and one a source doesn't give is `null`, never a guess. `src/model.rs`

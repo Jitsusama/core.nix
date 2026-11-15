@@ -6,7 +6,9 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::model::{Chokepoint, Concern, ConcernKind, Device, Line, Link, Medium, Network, Path};
+use crate::model::{
+    Chokepoint, Concern, ConcernKind, Device, Internet, Link, Medium, Network, Path,
+};
 use crate::sources::modem;
 
 /// A radio busy this share of the time or more is a concern: past it,
@@ -80,9 +82,9 @@ fn path(network: &Network, toward: &HashMap<&str, &str>, id: &str) -> Option<Pat
         hops.push((from.to_owned(), Some(to.clone()), room));
         from = to;
     }
-    let line = network.line.as_ref();
-    let down = narrowest(&hops, line.and_then(|line| line.down_mbps));
-    let up = narrowest(&hops, line.and_then(|line| line.up_mbps));
+    let internet = network.internet.as_ref();
+    let down = narrowest(&hops, internet.and_then(|internet| internet.down_mbps));
+    let up = narrowest(&hops, internet.and_then(|internet| internet.up_mbps));
     Some(Path { through, down, up })
 }
 
@@ -119,15 +121,15 @@ fn room(network: &Network, link: &Link) -> Option<f64> {
 }
 
 /// The hop with least room, the nearest the device winning a tie, and the
-/// provider's line beyond the modem last; the hops with no room worked
-/// out are counted, since the real chokepoint may be one of them.
+/// internet beyond the modem last; the hops with no room worked out are
+/// counted, since the real chokepoint may be one of them.
 fn narrowest(
     hops: &[(String, Option<String>, Option<f64>)],
-    line: Option<f64>,
+    internet: Option<f64>,
 ) -> Option<Chokepoint> {
     let modem_end = hops.last().and_then(|(_, b, _)| b.clone())?;
-    let line_hop = (modem_end, None, line);
-    let all = hops.iter().chain([&line_hop]);
+    let internet_hop = (modem_end, None, internet);
+    let all = hops.iter().chain([&internet_hop]);
     let unmeasured = all.clone().filter(|(_, _, room)| room.is_none()).count();
     let (a, b, room) = all
         .filter_map(|(a, b, room)| room.map(|room| (a, b, room)))
@@ -157,8 +159,9 @@ fn concerns(network: &Network) -> Vec<Concern> {
                     on: Some(radio.name.clone()),
                     other: None,
                     says: format!(
-                        "{}'s {} radio is busy {busy}% of the time",
-                        device.name, radio.name
+                        "{} {} radio is busy {busy}% of the time",
+                        possessive(&device.name),
+                        radio.name
                     ),
                 });
             }
@@ -176,7 +179,7 @@ fn concerns(network: &Network) -> Vec<Concern> {
             (Medium::Ethernet, _, Some(speed)) if speed < GIGABIT => Some((
                 ConcernKind::Slow,
                 link.a.port.clone(),
-                format!("{near}'s cable to {far} runs at {speed} Mbit/s"),
+                format!("{} cable to {far} runs at {speed} Mbit/s", possessive(near)),
             )),
             _ => None,
         };
@@ -190,25 +193,27 @@ fn concerns(network: &Network) -> Vec<Concern> {
             });
         }
     }
-    if let Some(line) = &network.line {
-        concerns.extend(ceiling(network, line, "down", |path| path.down.as_ref()));
-        concerns.extend(ceiling(network, line, "up", |path| path.up.as_ref()));
+    if let Some(internet) = &network.internet {
+        concerns.extend(ceiling(network, internet, "down", |path| {
+            path.down.as_ref()
+        }));
+        concerns.extend(ceiling(network, internet, "up", |path| path.up.as_ref()));
     }
     concerns
 }
 
-/// The provider's line as the narrowest hop one way, said once for every
-/// device it's narrowest for, rather than once a device.
+/// The internet as the narrowest hop one way, said once for every device
+/// it's narrowest for, rather than once a device.
 fn ceiling(
     network: &Network,
-    line: &Line,
+    internet: &Internet,
     way: &str,
     chokepoint: impl Fn(&Path) -> Option<&Chokepoint>,
 ) -> Option<Concern> {
     let mbps = if way == "down" {
-        line.down_mbps
+        internet.down_mbps
     } else {
-        line.up_mbps
+        internet.up_mbps
     }?;
     let devices = network
         .devices
@@ -222,10 +227,20 @@ fn ceiling(
         on: None,
         other: None,
         says: format!(
-            "The provider's line gives {mbps:.1} Mbit/s {way}, the least room on {devices} \
+            "The internet comes in at {mbps:.1} Mbit/s {way}, the least room on {devices} \
              devices' way"
         ),
     })
+}
+
+/// A name as an owner, with the apostrophe alone after a final s, as in
+/// "Upstairs' radio".
+fn possessive(name: &str) -> String {
+    if name.ends_with('s') {
+        format!("{name}'")
+    } else {
+        format!("{name}'s")
+    }
 }
 
 fn device<'a>(network: &'a Network, id: &str) -> Option<&'a Device> {
@@ -246,19 +261,19 @@ fn tenths(mbps: f64) -> f64 {
 mod tests {
     use super::*;
 
-    use crate::model::{ConcernKind, Device, End, Line, Link, Medium};
+    use crate::model::{ConcernKind, Device, End, Internet, Link, Medium};
 
     const RECORD: &str = include_str!("../tests/network.json");
 
     /// The golden record as the sources said it, before any working out,
-    /// with the provider's line eero last measured.
+    /// with the internet as eero last measured it.
     fn network() -> Network {
         let mut network: Network = serde_json::from_str(RECORD).expect("the record reads");
         for device in &mut network.devices {
             device.path = None;
         }
         network.concerns.clear();
-        network.line = Some(Line {
+        network.internet = Some(Internet {
             provider: Some("Example ISP".into()),
             down_mbps: Some(369.86),
             up_mbps: Some(11.93),
@@ -298,7 +313,7 @@ mod tests {
     #[test]
     fn a_wifi_hop_has_its_speed_less_the_time_its_radio_is_busy() {
         // The tablet joins Den's 5 GHz low radio at 48 Mbit/s, busy 5%,
-        // so 45.6 Mbit/s is left, less than the line's 369.86 down.
+        // so 45.6 Mbit/s is left, less than the internet's 369.86 down.
         let mut network = network();
         work_out(&mut network);
         let path = device(&network, "mac:02:00:00:00:00:01")
@@ -318,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn the_line_is_the_chokepoint_when_it_has_least_room() {
+    fn the_internet_is_the_chokepoint_when_it_has_least_room() {
         let mut network = network();
         work_out(&mut network);
         let path = device(&network, "mac:02:00:00:00:00:01")
@@ -335,9 +350,9 @@ mod tests {
     }
 
     #[test]
-    fn without_a_line_a_path_still_finds_its_narrowest_link() {
+    fn without_the_internets_speed_a_path_still_finds_its_narrowest_link() {
         let mut network = network();
-        network.line = None;
+        network.internet = None;
         work_out(&mut network);
         let path = device(&network, "mac:02:00:00:00:00:0a")
             .path
@@ -350,7 +365,7 @@ mod tests {
             up.room_mbps, 1000.0,
             "the cable is narrower than 1201 less 5%"
         );
-        assert_eq!(up.unmeasured, 2, "the backhaul and the missing line");
+        assert_eq!(up.unmeasured, 2, "the backhaul and the internet");
     }
 
     #[test]
@@ -377,6 +392,22 @@ mod tests {
             .find(|concern| concern.kind == ConcernKind::Busy)
             .expect("Hall's radio is busy");
         assert_eq!(hall.says, "Hall's 5 GHz high radio is busy 41% of the time");
+    }
+
+    #[test]
+    fn a_name_ending_in_s_takes_the_apostrophe_alone() {
+        let mut network = network();
+        network.devices[2].name = "Upstairs".into();
+        work_out(&mut network);
+        let busy = network
+            .concerns
+            .iter()
+            .find(|concern| concern.device == "eero:2003")
+            .expect("the renamed node's radio is busy");
+        assert_eq!(
+            busy.says,
+            "Upstairs' 5 GHz high radio is busy 41% of the time"
+        );
     }
 
     #[test]
@@ -426,7 +457,7 @@ mod tests {
     }
 
     #[test]
-    fn the_line_as_the_chokepoint_is_one_concern_each_way() {
+    fn the_internet_as_the_chokepoint_is_one_concern_each_way() {
         let mut network = network();
         work_out(&mut network);
         let ceilings: Vec<&str> = network
@@ -438,8 +469,8 @@ mod tests {
         assert_eq!(
             ceilings,
             [
-                "The provider's line gives 369.9 Mbit/s down, the least room on 7 devices' way",
-                "The provider's line gives 11.9 Mbit/s up, the least room on 18 devices' way",
+                "The internet comes in at 369.9 Mbit/s down, the least room on 7 devices' way",
+                "The internet comes in at 11.9 Mbit/s up, the least room on 18 devices' way",
             ]
         );
     }

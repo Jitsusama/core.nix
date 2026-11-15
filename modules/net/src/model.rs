@@ -25,21 +25,21 @@ pub struct Network {
     pub sources: Vec<Source>,
     pub devices: Vec<Device>,
     pub links: Vec<Link>,
-    /// The provider's line beyond the modem, as last measured. A record
-    /// written before it had this reads as not said, as do the two below.
+    /// The internet beyond the modem, as last measured. A record written
+    /// before it had this reads as not said, as do the concerns below.
     #[serde(default)]
-    pub line: Option<Line>,
+    pub internet: Option<Internet>,
     /// What's worth a look, worked out from the figures above
     /// (src/room.rs): a busy radio, a weak signal, a slow cable, or the
-    /// line being the narrowest hop.
+    /// internet being the narrowest hop.
     #[serde(default)]
     pub concerns: Vec<Concern>,
 }
 
-/// The connection the internet provider gives beyond the modem, as its
-/// source last measured it each way.
+/// The internet the provider carries to the modem, as its source last
+/// measured it each way.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Line {
+pub struct Internet {
     pub provider: Option<String>,
     pub down_mbps: Option<f64>,
     pub up_mbps: Option<f64>,
@@ -57,8 +57,8 @@ pub struct Path {
 }
 
 /// The hop on a path with least room left: a link between devices `a`, the
-/// nearer the device, and `b`, the nearer the modem; or the provider's line
-/// beyond `a`, the modem, when `b` is `None`.
+/// nearer the device, and `b`, the nearer the modem; or the internet beyond
+/// `a`, the modem, when `b` is `None`.
 /// A link's room is its speed less the share of time its radio is busy;
 /// a link whose room isn't known is counted in `unmeasured`, since the
 /// path's real chokepoint may be one of them.
@@ -87,13 +87,13 @@ pub struct Concern {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ConcernKind {
-    /// A radio busy a third of the time or more, slowing all it carries.
+    /// A radio busy 30% of the time or more, slowing all it carries.
     Busy,
     /// A Wi-Fi link heard at -70 dBm or weaker.
     Weak,
     /// A cable link under a gigabit.
     Slow,
-    /// The provider's line is the narrowest hop on some device's path.
+    /// The internet is the narrowest hop on some device's path.
     Ceiling,
 }
 

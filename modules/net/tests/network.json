@@ -4584,7 +4584,7 @@
       "source": "eero"
     }
   ],
-  "line": {
+  "internet": {
     "provider": "Example ISP",
     "down_mbps": 369.86,
     "up_mbps": 11.93,
@@ -4620,12 +4620,12 @@
     {
       "kind": "ceiling",
       "device": "modem",
-      "says": "The provider's line gives 369.9 Mbit/s down, the least room on 7 devices' way"
+      "says": "The internet comes in at 369.9 Mbit/s down, the least room on 7 devices' way"
     },
     {
       "kind": "ceiling",
       "device": "modem",
-      "says": "The provider's line gives 11.9 Mbit/s up, the least room on 18 devices' way"
+      "says": "The internet comes in at 11.9 Mbit/s up, the least room on 18 devices' way"
     }
   ]
 }
