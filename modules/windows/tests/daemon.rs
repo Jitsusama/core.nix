@@ -11,7 +11,13 @@
 //! words, a watch of Screens is served each screen's row and Turn Every
 //! Screen Off, told only the rows a screen turned off changed; and a
 //! screen looked at reads its light from a stand-in for the machine
-//! daemon, which is hung up on once nothing looks.
+//! daemon, which is hung up on once nothing looks, and a Warmth's switch
+//! is asked of it.
+//!
+//! Long because every test here runs the daemon among the same stand-ins
+//! for niri and the machine daemon, and each file under tests/ is a crate
+//! of its own, so a second file would carry them again or a shared module
+//! warned of in each crate that leaves a part of it unused.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
