@@ -26,6 +26,7 @@ use crate::feedback;
 use crate::inboxes;
 use crate::kept_places::KeptPlaces;
 use crate::landed::{self, Reading};
+use crate::networks;
 use crate::recent;
 use crate::reopen::{self, Kept};
 use crate::row::{self, Known, Row, Shown, Words};
@@ -58,6 +59,9 @@ pub struct Inputs {
     /// The node's `team` records, each orchestration's, with the shape
     /// it's drawn by.
     pub teams: Held,
+    /// The node's `network` records, the mycelium's networks as
+    /// `mycelium networks` draws them.
+    pub networks: Held,
     /// The to-do daemon's `to-do` records.
     pub to_dos: Held,
     /// The windows daemon's `window` records.
@@ -596,7 +600,11 @@ impl Inputs {
             closed,
             talks: &talks,
         };
-        top::rows(rows, &known, &self.words)
+        let mut made = top::rows(rows, &known, &self.words);
+        let networks: Vec<&Value> = self.networks.records().map(|(_, one)| one).collect();
+        let after = networks::rows(&networks, &made, &self.words);
+        made.extend(after);
+        made
     }
 }
 
