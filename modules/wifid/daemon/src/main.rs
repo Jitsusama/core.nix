@@ -356,10 +356,11 @@ async fn follow(
                 // network meanwhile is left to it.
                 for card in std::mem::take(&mut air.left) {
                     wifid.picked.borrow_mut().remove(&card);
-                    wifid.let_go(&card).await;
-                    if joining.as_ref().is_none_or(|joining| joining.card != card) {
+                    let free = joining.as_ref().is_none_or(|joining| joining.card != card);
+                    if free {
                         wifid.turn_on_networks(&card).await;
                     }
+                    wifid.let_go(&card, free).await;
                 }
             }
             Some(event) = switched.recv() => {
@@ -1992,7 +1993,7 @@ impl Wifid<'_> {
             interface.roam(bssid).await
         };
         if let Err(error) = roamed.await {
-            self.let_go(&card).await;
+            self.let_go(&card, false).await;
             return Err(Refused::Failed {
                 reason: format!("{card} didn't move to {bssid}: {error}"),
             });
@@ -2012,7 +2013,14 @@ impl Wifid<'_> {
     /// Lets the network the card was held to join at any access point
     /// again, so it can rejoin wherever it's heard once the one it was
     /// held to goes.
-    async fn let_go(&self, card: &str) {
+    ///
+    /// wpa_supplicant can pick again from what it heard before it's let
+    /// go, and with that network held to a point that's gone it takes
+    /// another network, as it did 110 ms ahead of wifid in a test
+    /// (2026-11-15). So a card that's free, not in a join from the
+    /// launcher, and on another network by then looks again, and lands
+    /// where it would have unheld.
+    async fn let_go(&self, card: &str, free: bool) {
         let Some(network) = self.held.borrow_mut().remove(card) else {
             return;
         };
@@ -2021,6 +2029,29 @@ impl Wifid<'_> {
         match self.hold(&network, "any").await {
             Ok(()) => println!("<7>{card} may join any access point of its network again"),
             Err(error) => println!("<7>{card}'s network wasn't let go: {error}"),
+        }
+        if free {
+            self.look_again(card, &network).await;
+        }
+    }
+
+    /// Has the card pick again if it holds another network than the one
+    /// it was held on.
+    async fn look_again(&self, card: &str, held: &OwnedObjectPath) {
+        let looked = async {
+            let interface = interface(self.bus, self.supplicant.get_interface(card).await?).await?;
+            let step = interface.state().await?;
+            let elsewhere = interface.current_network().await? != *held;
+            if !(supplicant::holds_a_network(&step) && elsewhere) {
+                return zbus::Result::Ok(false);
+            }
+            interface.reassociate().await?;
+            Ok(true)
+        };
+        match looked.await {
+            Ok(true) => println!("<6>{card} took another network while held, so looks again"),
+            Ok(false) => {}
+            Err(error) => eprintln!("<4>{card} can't look again once let go: {error}"),
         }
     }
 
