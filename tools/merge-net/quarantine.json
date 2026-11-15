@@ -390,5 +390,16 @@
       "test_quickshell_warned_of_nothing_as_the_screens_came_and_went"
     ],
     "test": "vm-screens-keep-the-launcher"
+  },
+  {
+    "at": 1794785729,
+    "commit": "3600f69230b37fd910f43cad0b79860f15e66c61",
+    "due": "2026-11-17",
+    "owner_pr": 4849,
+    "reason": "failed, then passed, at 3600f69230b3",
+    "subtests": [
+      "test_a_meetings_call_open_in_meet_is_in_now_named_for_it"
+    ],
+    "test": "vm-desktop-launcher-holds-meetings"
   }
 ]
