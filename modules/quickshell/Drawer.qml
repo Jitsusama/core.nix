@@ -1324,6 +1324,14 @@ Floating {
         }
         return wrapped;
     }
+    // Each open nerdy bit's value as drawn, how many lines and whether it
+    // stands under its name, for the launcher to report.
+    function nerdDrawn() {
+        return Array.from({ length: nerdRows.count }, (_, at) => {
+            const bit = nerdRows.itemAt(at);
+            return bit ? { lines: bit.valueWords.lineCount, under: bit.under ?? false } : null;
+        });
+    }
     // How many of its values stand under their names rather than beside
     // them, for the launcher to report: a key list's never do.
     function factsUnder() {

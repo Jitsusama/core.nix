@@ -8563,6 +8563,9 @@ Scope {
                 acts: drawerCard.acts.map(act => `${act.key ?? ""} ${act.name}`.trim()),
                 nerd: drawerCard.nerd.map(bit => String(bit.label ?? "")),
                 folded: drawerCard.folded,
+                // Each open bit's value: how many lines it's drawn on and
+                // whether it stands under its name.
+                nerdDrawn: drawerCard.nerdDrawn(),
                 // How many times the drawer was asked again as a minute
                 // turned while it was out.
                 minutes: drawerMinute.turned,

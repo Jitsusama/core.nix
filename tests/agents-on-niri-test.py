@@ -1116,6 +1116,28 @@ def test_agents_top_level_is_the_rows_its_daemon_serves_ready(
     unfolded(shell, shoot, "agents-drawer-orchestrator")
 
 
+def test_an_identifier_in_a_fold_is_never_broken_its_name_standing_above_it(shell: Shell) -> None:
+    """A quest's id too wide for the fold's value column stands whole under its name.
+
+    At twenty letters, QEST-20261107-BOSSES won't fit beside Quest in a 288-pixel drawer and
+    broke at its hyphen; it stands under its name at the full measure instead, as the
+    glance's facts do (VKCF3Z, bfdad751).
+    """
+    opened(shell)
+    shell.launcher_until(
+        lambda shown: shown["drawer"]["shown"] and "Quest" in shown["drawer"]["nerd"]
+    )
+    shell.normal()
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is False)
+    drawer = shell.showing()["drawer"]
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is True)
+    shell.on_find()
+    bits = dict(zip(drawer["nerd"], drawer["nerdDrawn"], strict=True))
+    assert bits["Quest"] == {"lines": 1, "under": True}, f"its quest's id breaks: {bits}"
+
+
 def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(
     shell: Shell,
 ) -> None:
