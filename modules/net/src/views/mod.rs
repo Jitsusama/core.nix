@@ -152,15 +152,17 @@ fn kind_words(kind: ConcernKind) -> &'static str {
         ConcernKind::Weak => "weak",
         ConcernKind::Slow => "slow",
         ConcernKind::Ceiling => "ceiling",
-        ConcernKind::Fills => "fills",
+        // An adjective, as the others are, for a device filling the line.
+        ConcernKind::Fills => "heavy",
         ConcernKind::Lost => "lost",
     }
 }
 
 /// What's worth a look, each concern in net's own words beside its kind,
 /// then the internet as the narrowest point under a label of its own,
-/// since that's the line's speed rather than a fault. Neither shows when
-/// there's nothing to say.
+/// since that's the line's speed rather than a fault, a blank line between
+/// its two ways so they don't run together in a narrow terminal. Neither
+/// shows when there's nothing to say.
 fn worth_a_look(network: &Network, pen: &Pen, room: Room) -> Vec<Vec<String>> {
     let (ceilings, faults): (Vec<_>, Vec<_>) = network
         .concerns
@@ -178,7 +180,10 @@ fn worth_a_look(network: &Network, pen: &Pen, room: Room) -> Vec<Vec<String>> {
     }
     if !ceilings.is_empty() {
         let mut block = vec![pen.label("the internet")];
-        for concern in ceilings {
+        for (at, concern) in ceilings.into_iter().enumerate() {
+            if at > 0 {
+                block.push(String::new());
+            }
             block.extend(
                 layout::paragraph(&concern.says, 0, room)
                     .into_iter()
@@ -481,16 +486,25 @@ mod tests {
                 .expect("the view says what's worth a look");
             let internet = words.find("THE INTERNET").expect("and the internet apart");
             assert!(worth < internet, "the faults come first: {text}");
+            let mut last = worth;
             for said in [
-                "weak laptop computer 1 has a weak signal to Study",
                 "lost The modem's downstream channel 16 has lost 878",
-                "fills unknown computer 1 is using 83% of the internet's speed up",
+                "heavy unknown computer 1 is using 83% of the internet's speed up",
+                "weak laptop computer 1 has a weak signal to Study",
             ] {
                 let at = words
                     .find(said)
                     .unwrap_or_else(|| panic!("{said:?}: {text}"));
-                assert!(worth < at && at < internet, "{said:?} is a fault: {text}");
+                assert!(
+                    last < at && at < internet,
+                    "{said:?} is a fault, worst first: {text}"
+                );
+                last = at;
             }
+            assert!(
+                text.contains("\n\nThe internet is the narrowest point up"),
+                "each way's ceiling stands apart: {text}"
+            );
             let up = words
                 .find("The internet is the narrowest point up for every device")
                 .expect("the line's ceiling is said");

@@ -57,7 +57,7 @@ pub fn work_out(network: &mut Network) {
     for (device, path) in network.devices.iter_mut().zip(paths) {
         device.path = path;
     }
-    network.concerns = concerns(network);
+    network.concerns = crate::model::worst_first(concerns(network));
 }
 
 /// For each device the links reach from the modem, the next device on its

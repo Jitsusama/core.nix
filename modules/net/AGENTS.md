@@ -51,7 +51,9 @@ Apple TV are net's alone, and `eero` keeps only what's eero's.
   the internet as a chokepoint, said once each way, a modem channel that
   lost 100 or more it couldn't repair and ten times any other's, or a
   device using 80% or more of the internet's speed one way, which fills
-  it for every other.
+  it for every other. They're listed worst first, by how far each kind
+  reaches: the channel's losses, a device filling the line, a slow cable,
+  a busy radio, a weak link, then the internet.
 - What the day says, from net's own readings (`src/history.rs`): each
   radio's `busiest_pct` and `busiest_at`, and the modem's `lately_s` with
   each downstream channel's `lost_lately`, counted from the earliest
