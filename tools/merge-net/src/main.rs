@@ -32,7 +32,8 @@
 //! It waits, too, for a gate that started before the head's own and shares
 //! its files, so changes merge in the order their gates started (`turn.rs`),
 //! a change run again after a merge left its pass stale keeping the place
-//! its tree's first gate had (`places.rs`).
+//! its tree's first gate had (`places.rs`). That run again it starts
+//! itself, in the asking tree, where nothing else goes there (`rerun.rs`).
 //!
 //! `merge-net status` says where the net is.
 //!
@@ -63,6 +64,7 @@ mod places;
 mod quarantine;
 mod reach;
 mod ready;
+mod rerun;
 mod rules;
 mod running;
 mod stall;
@@ -293,6 +295,25 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
     ))
 }
 
+/// What to do about `commit`, which must run again: wait for the run
+/// `ready` started for it in this tree, or run it, where it was left to
+/// its author (`rerun.rs`).
+fn run_again(commit: &str) -> String {
+    let gates = turn::folder()
+        .map(|folder| turn::gates(&folder))
+        .unwrap_or_default();
+    env::current_dir()
+        .ok()
+        .and_then(|here| rerun::offer(&here, commit, &gates))
+        .unwrap_or_else(|| {
+            format!(
+                "run changed-checks at {}, committed so it's sent, which builds only what \
+                 the rebase moved, and merge again",
+                short(commit)
+            )
+        })
+}
+
 /// What ready says of `commit`, the same change that passed at `newest`
 /// and `earlier`, where main since moved only `shared`.
 fn twice(commit: &str, newest: &str, earlier: &str, shared: &[String]) -> String {
@@ -399,12 +420,10 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             turn::keep_place(&[commit, &checked]);
             answers::keep(commit, answers::Verdict::Regate, &shared);
             eprintln!(
-                "merge-net: the same change passed at {}, but main has since moved {}; run \
-                 changed-checks at {}, committed so it's sent, which builds only what the \
-                 rebase moved, and merge again",
+                "merge-net: the same change passed at {}, but main has since moved {}; {}",
                 short(&checked),
                 shared.join(", "),
-                short(commit)
+                run_again(commit)
             );
         }
         ready::Before::Twice(..) => unreachable!("a change checked twice was judged above"),
