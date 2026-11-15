@@ -206,7 +206,9 @@ const LOOKING: Duration = Duration::from_secs(15);
 const READYING: Duration = Duration::from_secs(2);
 
 /// How long a move waits once its look has ended, for what the look held
-/// up to reach the card before it leaves.
+/// up to reach the card before it leaves: a tenth of a second is one of
+/// the gaps between the pings that measure a move, so this leaves one or
+/// two answered between the look and the move.
 const CATCHING_UP: Duration = Duration::from_millis(200);
 
 /// Moves the card to the access point at `bssid`, looking for it first
@@ -218,8 +220,8 @@ const CATCHING_UP: Duration = Duration::from_millis(200);
 /// card this way too (moves.rs).
 ///
 /// One that's heard is readied first, its channel alone looked over for
-/// the kernel, which forgets a point sooner, and moved to once that look
-/// ends or `READYING` passes.
+/// the kernel, which forgets a point sooner, and moved to `CATCHING_UP`
+/// after that look ends, or once `READYING` passes.
 pub(crate) async fn roam(
     asks: &mpsc::Sender<Ask>,
     mut air: watch::Receiver<State>,
@@ -236,8 +238,10 @@ pub(crate) async fn roam(
     let before = air.borrow_and_update().looks();
     match once(asks, readying).await {
         Ok(()) => {
-            if looked(&mut air, before, READYING).await == Ok(false) {
-                return Err(stopping());
+            match looked(&mut air, before, READYING).await {
+                Ok(true) => tokio::time::sleep(CATCHING_UP).await,
+                Ok(false) => return Err(stopping()),
+                Err(_) => {}
             }
             return once(asks, roaming).await;
         }
