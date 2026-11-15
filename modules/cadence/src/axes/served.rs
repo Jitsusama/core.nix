@@ -8,8 +8,9 @@
 //! axis is in spec on a stand-in (Joel, 2026-11-11 21:39), and colour goes
 //! on a mark, never on text (the ink ruling, df110a81): a row with one of
 //! his out wears the failed mark, a stand-in the pending one. A reading's
-//! owner is served by address, so Return opens the owner's quest in
-//! Agents, a step the shell takes (6632bb36).
+//! owner is served by address, for Return to open the owner's quest in
+//! Agents, a step the shell is to take (6632bb36); until it does, Return
+//! copies the reading.
 
 use std::collections::BTreeMap;
 
@@ -196,9 +197,16 @@ fn reading_row(
         "parent": parent,
         "depth": 1,
         "name": said,
-        "side": [{"said": owner}],
+        // The owner is the note, which gives way before the name is cut,
+        // rather than the side, whose last item never does: a quest's
+        // whole title there cut the reading to a word (Y2YBTS's shots,
+        // 2026-11-15). The drawer still names them.
+        "note": owner,
         "owner": reading.owner,
-        "acts": [],
+        // Return copies the reading, to say to its owner, until the shell
+        // opens the owner's quest (6632bb36); with no act the foot named
+        // the reading's first word as its verb.
+        "acts": [{"key": "verb:copy", "copy": said}],
         "drawer": drawer,
     });
     if reading.his && reading.out() {
@@ -368,7 +376,16 @@ mod tests {
         let made = made(&axes(), &titles(), &words());
         let his = row(&made, "row:spec:time-to-done:1");
         assert_eq!(his["owner"], "WCJQSG");
-        assert_eq!(his["side"], json!([{"said": "Joel's Orchestration"}]));
+        assert_eq!(his["note"], "Joel's Orchestration");
+        assert!(
+            his.get("side").is_none(),
+            "the owner gives way before the name"
+        );
+        assert_eq!(
+            his["acts"],
+            json!([{"key": "verb:copy", "copy": "2 asks past their date, at most 0"}]),
+            "Return copies the reading"
+        );
         assert_eq!(
             his["drawer"]["facts"],
             json!([
@@ -381,10 +398,7 @@ mod tests {
         assert_eq!(raw(4.140_277_7, " h"), "4.14 h");
         assert_eq!(raw(20.0, " min"), "20 min");
         let untitled = row(&made, "row:spec:time-to-done:0");
-        assert_eq!(
-            untitled["side"],
-            json!([{"said": "a session with no quest"}])
-        );
+        assert_eq!(untitled["note"], "a session with no quest");
         assert_eq!(
             untitled["drawer"]["facts"][0]["said"],
             "a session with no quest"

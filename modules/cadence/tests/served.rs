@@ -78,7 +78,7 @@ fn spec_is_made_from_the_axes_with_its_headline_and_owners_named() {
         .unwrap_or_else(|| panic!("no row for his crashes among {rows:?}"));
     assert_eq!(crashes["parent"], "row:spec:quality");
     assert_eq!(crashes["owner"], "80ECO2");
-    assert_eq!(crashes["side"], json!([{"said": "The Cadence"}]));
+    assert_eq!(crashes["note"], "The Cadence");
     let at = |key: &str| {
         made["rows"]
             .as_array()
