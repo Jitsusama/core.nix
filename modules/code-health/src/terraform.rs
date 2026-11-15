@@ -1,7 +1,7 @@
 //! Terraform held as other code is, as the quality standard asks: the
-//! files `tofu fmt` would write otherwise, what tflint's own rules find
-//! in each workspace, its recommended set, as a workspace with no config
-//! of its own gets, and what trivy's checks find that would leave what
+//! files `tofu fmt` would write otherwise, what tflint finds in each
+//! workspace held to all its own rules and Google's (`RULES`), and what
+//! trivy's checks find that would leave what
 //! it makes open to attack, from the checks it was built with, so it
 //! fetches nothing, and what `tofu validate` refuses in each workspace
 //! (`terraform_validate.rs`). Each runs only where a repository holds Terraform,
@@ -96,15 +96,49 @@ fn formatting(file: &File) -> Result<Option<&'static str>, String> {
     }
 }
 
+/// The rules every workspace is held to, in place of any it sets itself,
+/// so each is measured against one standard: all of tflint's own and all
+/// of Google's, but for the two `terraform_docs.rs` already counts. Local
+/// modules are linted where they lie rather than through what calls them.
+const RULES: &str = r#"config {
+  call_module_type = "none"
+}
+plugin "terraform" {
+  enabled = true
+  preset  = "all"
+}
+plugin "google" {
+  enabled = true
+}
+rule "terraform_documented_variables" {
+  enabled = false
+}
+rule "terraform_documented_outputs" {
+  enabled = false
+}
+"#;
+
 /// What tflint finds in every workspace of the copy of the Terraform in
-/// `folder`.
+/// `folder`, held to `RULES`, written beside it and removed once read.
 fn linted(folder: &Path) -> Result<Vec<String>, String> {
+    let rules = PathBuf::from(format!("{}-tflint.hcl", folder.display()));
+    fs::write(&rules, RULES)
+        .map_err(|error| format!("tflint's rules couldn't be written: {error}"))?;
+    let config = format!("--config={}", rules.display());
     let found = run(
         "tflint",
-        &["--recursive", "--format=compact", "--no-color", "--force"],
+        &[
+            "--recursive",
+            &config,
+            "--format=compact",
+            "--no-color",
+            "--force",
+        ],
         Some(folder),
         None,
-    )?;
+    );
+    let _ = fs::remove_file(&rules);
+    let found = found?;
     let mark = folder
         .file_name()
         .map(|name| format!("{}/", name.to_string_lossy()))
@@ -410,6 +444,41 @@ mod tests {
             read.findings.iter().any(|finding| finding
                 .starts_with("ws/main.tf:2:3: Warning - local.zone is declared but not used")),
             "the unused local went unnamed: {:?}",
+            read.findings
+        );
+    }
+
+    #[test]
+    fn a_workspace_is_held_to_every_terraform_rule() {
+        let files = [file("ws/main.tf", "output \"o\" {\n  value = 1\n}\n")];
+        let read = read(&files).expect("Terraform was read as none");
+        let read = read.expect("the tools couldn't read it");
+        assert!(
+            read.findings
+                .iter()
+                .any(|finding| finding.ends_with("(terraform_standard_module_structure)")),
+            "the output outside outputs.tf went unnamed: {:?}",
+            read.findings
+        );
+    }
+
+    #[test]
+    fn a_workspace_is_held_to_googles_rules() {
+        let files = [file(
+            "ws/compute.tf",
+            concat!(
+                "resource \"google_compute_instance\" \"vm\" {\n",
+                "  machine_type = \"n1-nonexistent\"\n",
+                "}\n",
+            ),
+        )];
+        let read = read(&files).expect("Terraform was read as none");
+        let read = read.expect("the tools couldn't read it");
+        assert!(
+            read.findings.iter().any(|finding| {
+                finding.ends_with("(google_compute_instance_invalid_machine_type)")
+            }),
+            "the machine type Google has none of went unnamed: {:?}",
             read.findings
         );
     }
