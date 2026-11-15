@@ -7645,7 +7645,8 @@ Scope {
                 ink: String(line.color) })),
             foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
             drawn: root.rowsDrawn, built: root.rowsBuilt, factsMade: drawerCard.factsMade,
-            factsHeld: drawerCard.facts.length,
+            factsHeld: drawerCard.facts.length, widthsAsked: drawerCard.widths.asked,
+            widthsMade: drawerCard.widths.made,
             ahead: list.cacheBuffer, listed: list.count, firstAt,
             line: wordsIn(commandLoader.item, card),
             lines: wordsIn(commandRows, card) });
