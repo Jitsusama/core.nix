@@ -1,11 +1,12 @@
 //! The collector: every minute it reads eero's record from the eero
-//! daemon's file, the modem's status pages and what each receiver eero
-//! lists says, and writes the home network's record whole to
+//! daemon's file, the modem's status pages and what each receiver and
+//! printer eero lists says, and writes the home network's record whole to
 //! `$XDG_RUNTIME_DIR/net/network.json`, so a view never reads half of one.
 //! It listens on nothing and sends nothing but reads, one at a time and
 //! each given two seconds: the modem's pages, and a receiver's description
 //! and the SOAP actions that only ask (src/sources/sony.rs), each only at
-//! the receiver's own address and never following a redirect. The switch
+//! the receiver's own address and never following a redirect, and a
+//! printer's four status pages (src/sources/hp.rs). The switch
 //! it reads from its reader's report, never from the switch itself, since
 //! signing in to the switch takes a password this account never holds.
 
@@ -19,7 +20,7 @@ use serde_json::Value;
 use ureq::Agent;
 
 use crate::collect::{self, Said};
-use crate::sources::{modem, sony, switch};
+use crate::sources::{hp, modem, sony, switch};
 use crate::time;
 
 /// How often the sources are read: the eero daemon's own pace, so each
@@ -44,7 +45,8 @@ pub fn run() -> Result<(), String> {
         .into();
     // A receiver's answers name where it's asked next; sony.rs keeps only
     // those on the receiver itself, and this agent never follows a
-    // redirect, so no answer can send a request elsewhere.
+    // redirect, so no answer can send a request elsewhere. A printer's
+    // pages are asked with it too, so a redirect can't lead one away.
     let at_home: Agent = Agent::config_builder()
         .timeout_global(Some(PAGE))
         .max_redirects(0)
@@ -59,11 +61,19 @@ pub fn run() -> Result<(), String> {
             .into_iter()
             .map(|(mac, address)| (mac, read_receiver(&at_home, &address)))
             .collect();
+        let printers = heard
+            .as_ref()
+            .map(hp::listed)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(mac, address)| (mac, read_printer(&at_home, &address)))
+            .collect();
         let said = Said {
             eero: heard,
             modem: read_modem(&agent),
             switch: read_switch(Path::new(switch::REPORT)),
             receivers,
+            printers,
         };
         let network = collect::network(said, time::now());
         let written = serde_json::to_string_pretty(&network).map_err(|error| error.to_string())?;
@@ -123,6 +133,31 @@ fn read_modem(agent: &Agent) -> Result<modem::Pages, String> {
         return Err(failed.unwrap_or_else(|| "it didn't answer".into()));
     }
     Ok(pages)
+}
+
+/// What a printer answers: each page as far as it does, a page that
+/// doesn't left out, and the printer unreachable when none answers.
+fn read_printer(agent: &Agent, address: &str) -> Result<hp::Answers, String> {
+    let mut answers = hp::Answers::new();
+    let mut failed = None;
+    for page in hp::PAGES {
+        match agent
+            .get(&hp::url(address, page))
+            .call()
+            .and_then(|mut answer| answer.body_mut().read_to_string())
+        {
+            Ok(text) => {
+                answers.insert(page.to_owned(), text);
+            }
+            Err(error) => {
+                failed = failed.or(Some(format!("its {page} page didn't answer: {error}")));
+            }
+        }
+    }
+    if answers.is_empty() {
+        return Err(failed.unwrap_or_else(|| "it didn't answer".into()));
+    }
+    Ok(answers)
 }
 
 /// What a receiver answers: its description first, since it names where

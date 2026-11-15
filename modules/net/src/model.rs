@@ -149,6 +149,9 @@ pub struct Device {
     /// A receiver's own figures, on a device with the receiver role.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receiver: Option<Receiver>,
+    /// A printer's own figures, on a device with the printer role.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printer: Option<Printer>,
     /// Everything each source gives about the device, in its own words.
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub detail: Map<String, Value>,
@@ -166,7 +169,9 @@ pub enum Role {
     /// speakers, as an AV receiver does; not `player`, which the glossary
     /// keeps for a program playing on the machine.
     Receiver,
-    /// A thing that only joins the network, as a laptop or a printer does;
+    /// A device that prints what's sent to it over the home network.
+    Printer,
+    /// A thing that only joins the network, as a laptop or a phone does;
     /// not `host`, which the glossary keeps for pi's host.
     Client,
 }
@@ -274,6 +279,30 @@ pub struct Receiver {
     pub medium: Option<String>,
     /// Where what it plays comes from, while it plays.
     pub track: Option<String>,
+}
+
+/// What a printer says it's doing, its ink and what it has printed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Printer {
+    /// What it's doing, in plain words, each thing it says at once: ready,
+    /// printing, out of paper, saving power.
+    pub state: Vec<String>,
+    /// Each ink cartridge, in the order it sits in the printer.
+    pub ink: Vec<Ink>,
+    /// How many pages it has printed in its life.
+    pub pages: Option<u64>,
+}
+
+/// One ink cartridge.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Ink {
+    /// Its colour: black, colour (cyan, magenta and yellow in one), or
+    /// one of those three alone.
+    pub colour: String,
+    /// How much is left, as a percent of a full one.
+    pub left_percent: Option<u32>,
+    /// How the printer judges what's left, in plain words: ok, low.
+    pub state: Option<String>,
 }
 
 /// One channel of a cable line, down or up.

@@ -11,13 +11,13 @@ derived from what's read.
 ## The Words
 
 A device is one box, and its roles are what it does: modem, router,
-access point, switch, receiver or client (docs/glossary.md's Network
+access point, switch, receiver, printer or client (docs/glossary.md's Network
 words). One eero is one device with the router and access point roles,
 listed once. Each vendor is a source behind those roles: eero's record
 (the eero daemon's), the cable modem's status pages, the switch's web
-page and a Sony receiver's UPnP answers. No vendor's command reads
-another vendor's equipment, so the modem, the switch and the receiver
-are net's alone, and `eero` keeps only what's eero's.
+page, a Sony receiver's UPnP answers and an HP printer's status pages.
+No vendor's command reads another vendor's equipment, so the modem, the
+switch, the receiver and the printer are net's alone, and `eero` keeps only what's eero's.
 
 ## The Record
 
@@ -31,7 +31,7 @@ are net's alone, and `eero` keeps only what's eero's.
   out, and why.
 - `devices`: each device's generic fields, its ports and radios, a
   role's own block (a modem's channels and log, a receiver's volume and
-  what it's doing), and `detail`, every
+  what it's doing, a printer's ink and what it's doing), and `detail`, every
   field each source gives about it in the source's own words.
 - `links`: a cable or a radio link, port to port or radio to radio; the
   map is drawn from these.
@@ -86,6 +86,16 @@ each source once a minute and writes the record whole, through
   `detail.sony`, read from XML by `src/xml.rs`. Registering as its
   remote, sending it a key or text, or setting its volume waits on
   Joel's yes, so none is asked.
+- An HP printer: each device eero lists with HP or Hewlett as its
+  maker and printer as its kind, at the address eero gives. It asks four
+  fixed LEDM pages under `/DevMgmt/`, `ProductStatusDyn`,
+  `ConsumableConfigDyn`, `ProductConfigDyn` and `ProductUsageDyn`, one at
+  a time, two seconds each, following no redirect and nothing an answer
+  names. `src/sources/hp.rs` puts what it's doing, its ink and the pages
+  it has printed on eero's device for it, now a printer, with its model,
+  firmware and serial, and every page stays whole as `detail.hp`.
+  Printing, scanning, changing a setting or clearing an alert waits on
+  Joel's yes, so none is asked.
 
 It listens on nothing and asks nothing outside the home network. Away
 from home the modem doesn't answer, and the record says so while eero's
@@ -125,10 +135,13 @@ width without a terminal; tables and facts come from the terminal kit.
   address.
 - `net devices NAME` (`device` too): one device in layers. What any
   device can say, its ports and radios, the links it's on, a modem's
-  channels and log, a receiver's volume and what it's doing, then what
+  channels and log, a receiver's volume and what it's doing, a
+  printer's ink, what it's doing and the pages it has printed, then what
   each source says that those didn't, in the source's words. A list of
   records or a series of readings is left to `--json`, which keeps every
-  source's detail whole.
+  source's detail whole, but for a printer's statuses, read field by
+  field as HP names them; its usage counters and settings are left there
+  too.
 
 A name is matched in any case, and any of a device's addresses or its
 id always works. eero can give two devices one name, so a shared name

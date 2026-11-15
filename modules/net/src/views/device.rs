@@ -1,13 +1,13 @@
 //! `net devices NAME`: one device in layers. What every device can say,
 //! its ports, radios and links, a role's own figures (a modem's channels
-//! and log, a receiver's volume and what it's doing), then what each
-//! source says that none of those held, in the source's own words.
+//! and log, a receiver's volume and what it's doing, a printer's ink),
+//! then what each source says that none of those held, in the source's own words.
 
 use serde_json::Value;
 use terminal_kit::layout::{self, Align, ITEMS, Room};
 use terminal_kit::{Pen, time};
 
-use super::{ago, roles_of, touching};
+use super::{ago, count, roles_of, touching};
 use crate::model::{Channel, Device, End, LinkState, LogEntry, Network};
 
 /// `net devices NAME`: what every device can say, then its role's own
@@ -57,6 +57,34 @@ pub fn device(network: &Network, device: &Device, now: u64, pen: &Pen, room: Roo
             ("track", receiver.track.as_deref()),
         ];
         let mut block = vec![pen.label("receiver")];
+        block.extend(known_facts(&facts, pen, room));
+        blocks.push(block);
+    }
+    if let Some(printer) = &device.printer {
+        let doing = (!printer.state.is_empty()).then(|| printer.state.join(", "));
+        let pages = printer.pages.map(count);
+        // Each cartridge is a fact of its own, its state said only when it
+        // isn't fine, so a page with nothing wrong reads as its figures.
+        let ink: Vec<(String, Option<String>)> = printer
+            .ink
+            .iter()
+            .map(|ink| {
+                let left = ink.left_percent.map(|left| format!("{left}%"));
+                let state = ink.state.as_deref().filter(|state| *state != "ok");
+                let said = match (left, state) {
+                    (Some(left), Some(state)) => Some(format!("{left}, {state}")),
+                    (left, state) => left.or(state.map(str::to_owned)),
+                };
+                (format!("{} ink", ink.colour), said)
+            })
+            .collect();
+        let mut facts = vec![("doing", doing.as_deref())];
+        facts.extend(
+            ink.iter()
+                .map(|(label, said)| (label.as_str(), said.as_deref())),
+        );
+        facts.push(("pages printed", pages.as_deref()));
+        let mut block = vec![pen.label("printer")];
         block.extend(known_facts(&facts, pen, room));
         blocks.push(block);
     }
@@ -331,8 +359,8 @@ fn channels(way: &str, channels: &[Channel], active: &str, pen: &Pen, room: Room
                 channel.modulation.clone().unwrap_or_default(),
                 tenths(channel.power_dbmv).unwrap_or_default(),
                 tenths(channel.snr_db).unwrap_or_default(),
-                figure(channel.corrected),
-                figure(channel.uncorrectable),
+                channel.corrected.map(count).unwrap_or_default(),
+                channel.uncorrectable.map(count).unwrap_or_default(),
                 if channel.active { "yes" } else { "no" }.to_owned(),
             ]
         })
@@ -391,8 +419,10 @@ fn shown(device: &Device) -> Vec<String> {
 /// net's words, so its section leaves them out by name; the rest go by
 /// value, through `shown`. A receiver's reads are its receiver block, but
 /// for its transport's own word, and its rendering service's description
-/// and the devices inside its own are left to `--json`.
-const SAID: [&str; 16] = [
+/// and the devices inside its own are left to `--json`. A printer's
+/// counters and settings are left there too, since its printer block
+/// says what they'd bury.
+const SAID: [&str; 18] = [
     "id",
     "location",
     "model",
@@ -409,6 +439,8 @@ const SAID: [&str; 16] = [
     "GetMediaInfo",
     "GetPositionInfo",
     "deviceList",
+    "ProductConfigDyn",
+    "ProductUsageDyn",
 ];
 
 /// The most items a list may hold and still be a fact on one line; a
@@ -416,10 +448,17 @@ const SAID: [&str; 16] = [
 /// `--json` gives whole.
 const LIST_AT_MOST: usize = 4;
 
+/// The lists of records a source's section reads field by field, since
+/// they hold its own words for what the role's block says in net's: a
+/// printer's statuses, as HP names them. Every other list of records is a
+/// table the page would bury its facts under, so it's left to `--json`.
+const READ_BY_FIELD: [&str; 1] = ["Status"];
+
 /// A source's fields as labels and words, a nested field labelled by the
-/// path to it: `backhaul upstream`. What a fact can't say on a line, a
-/// list of records or a series, and what the source left empty, are left
-/// to `--json`.
+/// path to it: `backhaul upstream`. A list of flat records named in
+/// `READ_BY_FIELD` reads as each field's values in turn. What a fact
+/// can't say on a line, any other list of records or a series, and what
+/// the source left empty, are left to `--json`.
 fn flatten(path: &str, value: &Value, out: &mut Vec<(String, String)>) {
     let label = |key: &str| {
         let key = key.replace('_', " ");
@@ -437,15 +476,46 @@ fn flatten(path: &str, value: &Value, out: &mut Vec<(String, String)>) {
         }
         Value::Array(items) => {
             let records = items.iter().any(|item| item.is_object() || item.is_array());
-            if !items.is_empty() && items.len() <= LIST_AT_MOST && !records {
+            if items.is_empty() || items.len() > LIST_AT_MOST {
+            } else if !records {
                 let words: Vec<String> = items.iter().map(scalar).collect();
                 out.push((path.to_owned(), words.join(", ")));
+            } else if let Some(fields) = flat_records(items).filter(|_| {
+                READ_BY_FIELD
+                    .iter()
+                    .any(|name| path == *name || path.ends_with(&format!(" {name}")))
+            }) {
+                for field in fields {
+                    let words: Vec<String> = items
+                        .iter()
+                        .filter_map(|item| item.get(&field))
+                        .map(scalar)
+                        .collect();
+                    out.push((label(&field), words.join(", ")));
+                }
             }
         }
         Value::Null => {}
         Value::String(words) if words.is_empty() => {}
         _ => out.push((path.to_owned(), scalar(value))),
     }
+}
+
+/// The fields of records that hold only words and figures, in the order
+/// first met, or none when a record holds more than that.
+fn flat_records(items: &[Value]) -> Option<Vec<String>> {
+    let mut fields: Vec<String> = Vec::new();
+    for item in items {
+        for (key, value) in item.as_object()? {
+            if value.is_object() || value.is_array() {
+                return None;
+            }
+            if !fields.contains(key) {
+                fields.push(key.clone());
+            }
+        }
+    }
+    Some(fields)
 }
 
 fn scalar(value: &Value) -> String {
@@ -624,6 +694,24 @@ mod tests {
             assert!(text.contains("411.0"), "{text}");
             assert!(text.contains("REG-RSP-MP"), "{text}");
         }
+        let text = device(&network, modem, now(), &Pen::plain(), Room::Unbounded);
+        assert!(
+            text.contains("1,488,060,867"),
+            "its corrected codewords aren't counted with commas: {text}"
+        );
+    }
+
+    #[test]
+    fn a_count_sets_its_thousands_apart() {
+        for (value, said) in [
+            (0_u64, "0"),
+            (999, "999"),
+            (1_900, "1,900"),
+            (40_000, "40,000"),
+            (1_488_060_867, "1,488,060,867"),
+        ] {
+            assert_eq!(count(value), said, "{value} reads wrong");
+        }
     }
 
     #[test]
@@ -651,6 +739,47 @@ mod tests {
                 "its transport's own word isn't in Sony's section: {text}"
             );
             assert!(text.contains("STR-DN1050"), "its model isn't shown: {text}");
+        }
+    }
+
+    #[test]
+    fn a_printer_shows_its_ink_and_what_its_doing() {
+        let network = network();
+        let printer = find(&network, "Printer").expect("the printer");
+        for room in ROOMS {
+            let text = device(&network, printer, now(), &Pen::plain(), room);
+            fits(&text, room);
+            let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            assert!(text.contains("PRINTER"), "its block has no label: {text}");
+            assert!(
+                words.contains("doing out of paper, saving power"),
+                "what it's doing isn't shown: {text}"
+            );
+            assert!(
+                words.contains("black ink 50%"),
+                "its black ink isn't shown: {text}"
+            );
+            assert!(
+                words.contains("colour ink 60%"),
+                "its colour ink isn't shown: {text}"
+            );
+            assert!(
+                words.contains("pages printed 1,900"),
+                "what it has printed isn't shown: {text}"
+            );
+            assert!(
+                text.contains("SERIAL00000070") && text.contains("SPP5FN2223AR"),
+                "its serial and firmware aren't shown: {text}"
+            );
+            assert!(
+                words.contains("trayEmpty, inPowerSave"),
+                "HP's own status codes aren't in its section: {text}"
+            );
+            assert!(
+                !text.contains("PowerSaveTimeout") && !text.contains("TotalImpressions"),
+                "its settings and counters bury its section, rather than staying in --json: \
+                 {text}"
+            );
         }
     }
 }
