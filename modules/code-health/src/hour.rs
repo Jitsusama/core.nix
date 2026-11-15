@@ -1,11 +1,12 @@
 //! The hour's figures, held against their targets, for cadence's hourly
 //! read: each repository's measures beside the target its machine set,
 //! the figure the hour before, the owner and the first files it counted,
-//! those holding more than the day before first, and the one furthest
-//! past its target. It's `hour.json`, rewritten
-//! whole each hour, so it always says this hour and the last.
+//! those holding more than the day before first, what each of those holds
+//! by who owns it, and the one furthest past its target. It's
+//! `hour.json`, rewritten whole each hour, so it always says this hour and
+//! the last.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Value, json};
 
@@ -14,12 +15,14 @@ use serde_json::{Value, json};
 pub const FILES: usize = 20;
 
 /// What a repository's machine judges it by: a target for some of its
-/// measures, and who owns each, by measure or for the whole repository.
+/// measures, who owns each, by measure or for the whole repository, and
+/// who owns each folder, by its path from the repository's top.
 #[derive(Debug, Default, PartialEq)]
 pub struct Judged {
     pub targets: BTreeMap<String, f64>,
     pub owner: Option<String>,
     pub owners: BTreeMap<String, String>,
+    pub folders: BTreeMap<String, String>,
 }
 
 /// The hour at `at`: every measure of every repository, held against its
@@ -30,7 +33,10 @@ pub struct Judged {
 /// than in `earlier`, the newest day's counts by file before today's, so
 /// what was just added leads rather than what sorts first, among all of
 /// a measure's names rather than the first the day's record keeps. Lines
-/// move as files change, so a file is held against itself whole.
+/// move as files change, so a file is held against itself whole. Every
+/// entry of those files goes to who owns it, in `by_owner`: the owner of
+/// its deepest folder the repository's `folders` name, else the measure's;
+/// with no counts the day before, there's no `by_owner`.
 ///
 /// The worst is the measure most past its target for the target's size,
 /// so 22 tests past 21 outranks 227 lines past 7,000; a measure with no
@@ -54,14 +60,16 @@ pub fn hour(
             let owner = judged.owners.get(*measure).or(judged.owner.as_ref());
             let counted = named.get(repo).and_then(|named| named.get(measure));
             let had = earlier.map(|earlier| &earlier[repo][*measure]);
-            let files = counted.map_or_else(Vec::new, |counted| gained_first(counted, had));
+            let gained = counted.and_then(|counted| gained_files(counted, had));
+            let files =
+                counted.map_or_else(Vec::new, |counted| gained_first(counted, gained.as_ref()));
             if let Some(target) = target.filter(|target| now > target) {
                 let past = (now - target) / target.max(1.0);
                 if worst.is_none_or(|(most, _)| past > most) {
                     worst = Some((past, measures.len()));
                 }
             }
-            measures.push(json!({
+            let mut said = json!({
                 "repo": repo,
                 "measure": measure,
                 "now": now,
@@ -69,29 +77,68 @@ pub fn hour(
                 "was": was(before, repo, measure),
                 "owner": owner,
                 "files": files,
-            }));
+            });
+            if let (Some(counted), Some(gained)) = (counted, &gained) {
+                said["by_owner"] = json!(by_owner(counted, gained, &judged.folders, owner));
+            }
+            measures.push(said);
         }
     }
     let worst = worst.map_or(Value::Null, |(_, index)| measures[index].clone());
     json!({"at": at, "measures": measures, "worst": worst})
 }
 
-/// The first of a measure's entries, each of a file it now counts more of
-/// than `had`, the day before's count of each file, first, in their
-/// order, then the rest. With no counts the day before, none gained.
-fn gained_first<'a>(counted: &'a [String], had: Option<&Value>) -> Vec<&'a String> {
-    let Some(had) = had.and_then(Value::as_object) else {
+/// The files `counted` names more entries of than `had`, the day before's
+/// count of each file; with no counts the day before, none.
+fn gained_files<'a>(counted: &'a [String], had: Option<&Value>) -> Option<BTreeSet<&'a str>> {
+    let had = had.and_then(Value::as_object)?;
+    let now = per_file(counted.iter().map(String::as_str));
+    let more = |(file, now): &(&str, usize)| {
+        let was = had.get(*file).and_then(Value::as_u64).unwrap_or(0);
+        u64::try_from(*now).unwrap_or(u64::MAX) > was
+    };
+    Some(now.into_iter().filter(more).map(|(file, _)| file).collect())
+}
+
+/// The first of a measure's entries, each of a file that `gained`, first,
+/// in their order, then the rest.
+fn gained_first<'a>(counted: &'a [String], gained: Option<&BTreeSet<&str>>) -> Vec<&'a String> {
+    let Some(gained) = gained else {
         return counted.iter().take(FILES).collect();
     };
-    let now = per_file(counted.iter().map(String::as_str));
-    let gained = |entry: &&String| {
-        let file = file_of(entry);
-        let was = had.get(file).and_then(Value::as_u64).unwrap_or(0);
-        now.get(file)
-            .is_some_and(|&now| u64::try_from(now).unwrap_or(u64::MAX) > was)
-    };
-    let (first, rest): (Vec<&String>, Vec<&String>) = counted.iter().partition(gained);
+    let (first, rest): (Vec<&String>, Vec<&String>) = counted
+        .iter()
+        .partition(|entry| gained.contains(file_of(entry)));
     first.into_iter().chain(rest).take(FILES).collect()
+}
+
+/// Each entry of a file that `gained`, by who owns it: the owner of its
+/// deepest folder of `folders`, else `owner`; with neither, it's left out.
+fn by_owner<'a>(
+    counted: &'a [String],
+    gained: &BTreeSet<&str>,
+    folders: &BTreeMap<String, String>,
+    owner: Option<&String>,
+) -> BTreeMap<String, Vec<&'a String>> {
+    let mut each: BTreeMap<String, Vec<&String>> = BTreeMap::new();
+    for entry in counted {
+        let file = file_of(entry);
+        if !gained.contains(file) {
+            continue;
+        }
+        let within = |folder: &&String| {
+            file.strip_prefix(folder.as_str())
+                .is_some_and(|rest| rest.starts_with('/'))
+        };
+        let deepest = folders
+            .iter()
+            .filter(|(folder, _)| within(folder))
+            .max_by_key(|(folder, _)| folder.len());
+        if let Some(whose) = deepest.map(|(_, whose)| whose).or(owner) {
+            each.entry(whose.clone()).or_default().push(entry);
+        }
+    }
+    each
 }
 
 /// How many entries name each file.
@@ -148,7 +195,7 @@ mod tests {
                 .map(|(measure, figure)| ((*measure).to_owned(), *figure))
                 .collect(),
             owner: owner.map(str::to_owned),
-            owners: BTreeMap::new(),
+            ..Judged::default()
         }
     }
 
@@ -320,6 +367,55 @@ mod tests {
             measure(&hour, "core", "suppressions")["files"][0],
             "z.rs:1",
             "a file past the first {NAMED} names wasn't named first when it gained"
+        );
+    }
+
+    #[test]
+    fn each_gained_entry_goes_to_the_owner_of_its_deepest_folder() {
+        let read = figures(&[("core", "suppressions", 5.0)]);
+        let entries = [
+            "modules/net/a.rs:1",
+            "modules/net/switch/b.py:2",
+            "modules/netting.rs:3",
+            "c.sh:4",
+            "old.rs:5",
+        ];
+        let named = BTreeMap::from([(
+            "core".to_owned(),
+            BTreeMap::from([("suppressions", entries.map(str::to_owned).to_vec())]),
+        )]);
+        let mut core = judged(&[], Some("me"));
+        core.folders = BTreeMap::from([
+            ("modules/net".to_owned(), "net".to_owned()),
+            ("modules/net/switch".to_owned(), "switch".to_owned()),
+        ]);
+        let judged = BTreeMap::from([("core".to_owned(), core)]);
+        let earlier = json!({"core": {"suppressions": {"old.rs": 1}}});
+        let hour = hour("now", &read, &named, &judged, None, Some(&earlier));
+        assert_eq!(
+            measure(&hour, "core", "suppressions")["by_owner"],
+            json!({
+                "net": ["modules/net/a.rs:1"],
+                "switch": ["modules/net/switch/b.py:2"],
+                "me": ["modules/netting.rs:3", "c.sh:4"],
+            }),
+            "a gained entry wasn't given to its deepest folder's owner, or the measure's"
+        );
+    }
+
+    #[test]
+    fn with_no_counts_the_day_before_no_owner_is_given_entries() {
+        let read = figures(&[("core", "suppressions", 1.0)]);
+        let named = BTreeMap::from([(
+            "core".to_owned(),
+            BTreeMap::from([("suppressions", vec!["a.rs:1".to_owned()])]),
+        )]);
+        let judged = BTreeMap::from([("core".to_owned(), judged(&[], Some("me")))]);
+        let hour = hour("now", &read, &named, &judged, None, None);
+        assert_eq!(
+            measure(&hour, "core", "suppressions").get("by_owner"),
+            None,
+            "entries were given owners with nothing to say what they gained"
         );
     }
 }
