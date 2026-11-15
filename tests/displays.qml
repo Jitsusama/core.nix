@@ -14,7 +14,6 @@ import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
 import "Expect.js" as Expect
-import "launcher/Catalogue.js" as Catalogue
 
 ShellRoot {
     id: root
@@ -208,20 +207,11 @@ ShellRoot {
             JSON.stringify(acted.map(ask => [ask.do, ask.output])) === '[["on","DP-1"]]',
             JSON.stringify(acted));
         Expect.expect("and niri nothing", Niri.asked.length === 0, JSON.stringify(Niri.asked));
-        // The panel's Room Light, its sensor known but what it hears not
-        // read yet, as a walk of the catalogue finds it with no watch
-        // running: it says it's being read, so Return has a reason to only
-        // close, and copies nothing.
+        // The panel's light, its room's sensor known but what it hears not
+        // read yet. The Room Light itself is the windows daemon's
+        // (light/room.rs), whose cases say what it serves while it's read.
         displays.light = { connector: "eDP-1", share: 50, now: 100, most: 200 };
         displays.roomSensor = { device: "acpi-als", lux: null, raw: null };
-        const panel = displays.shown.find(output => output.name === "eDP-1");
-        const roomLight = displays.lightRows(panel)
-            .find(row => String(row.key).endsWith(":room"));
-        Expect.expect("a Room Light still being read does something on Return",
-            !!roomLight && Catalogue.acts(roomLight),
-            JSON.stringify({ side: roomLight?.side, verb: roomLight?.verb }));
-        Expect.expect("and copies nothing while it's read", roomLight?.copies() === "",
-            roomLight?.copies());
         // What its spots are made of holds while a level or a lux moves, so
         // a closing remakes none of them (Provider.spotsStamp), and moves
         // once a part comes or goes, or a screen changes.

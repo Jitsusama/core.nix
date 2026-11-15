@@ -41,13 +41,9 @@ QtObject {
 
     // The machine daemon's records of the panel's backlight and the room's
     // sensor (modules/machine's light.rs), as a step into a screen reads
-    // them: what the kernel reads back only where it differs, and the room's
-    // light measured to three digits.
+    // them: what the kernel reads back only where it differs. The room's
+    // light is measured by the windows daemon (light/room.rs).
     function lights(check) {
-        const readings = [0, 5.2, 28.47, 999.4, 999.6, 1235, 40000]
-            .map(each => Backlight.reading(each)).join("; ");
-        check("the room's light measured to three digits, zeros kept", readings
-            === "0 lx; 5.20 lx; 28.5 lx; 999 lx; 1.00 klx; 1.24 klx; 40.0 klx", readings);
         const panel = { key: "backlight:intel_backlight", kind: "backlight",
             device: "intel_backlight", brightness: 57_600, actual_brightness: 57_600,
             max_brightness: 96_000, type: "raw", scale: "non-linear", connector: "eDP-1" };
