@@ -174,6 +174,34 @@ function footed(place, to, view) {
     return Math.min(to, view.top(last) - view.height);
 }
 
+// Where a view moved to `to` rests, so no row is cut at its top: on the
+// top of the first row at or below it, which keeps whatever `to` showed
+// whole at the top, the rest moved up by less than a row (VKCF3Z,
+// 2026-11-15 [c09d8222]). No row's top is past the row `showing` brought
+// into view, so that row stays whole. Past the last row's top it stays.
+function rested(to, view) {
+    for (let each = 0; each < view.count; each += 1) {
+        const top = view.top(each);
+        if (top >= to - LEEWAY) {
+            return top;
+        }
+    }
+    return to;
+}
+
+// Whether a row is drawn in a view: only wholly in it, so the view never
+// shows a row cut at its foot, and a heading only with its first row whole
+// too, so none stands alone there. `row` says where it stands (`top`), how
+// tall it is (`tall`) and the row under it is (`under`, null for none),
+// and whether it's a heading; `view` where the view starts (`from`) and
+// how tall it is.
+function drawn(row, view) {
+    const whole = (at, high) => at >= view.from - LEEWAY
+        && at + high <= view.from + view.height + LEEWAY;
+    return whole(row.top, row.tall)
+        && !(row.heading && row.under !== null && !whole(row.top + row.tall, row.under));
+}
+
 // The rows with no heading, as a search shows them: its ranking mixes the
 // groups, so no heading names what's under it. The same list where none
 // is, so what reads it sees nothing new.

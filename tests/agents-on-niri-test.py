@@ -1543,6 +1543,46 @@ def test_a_networks_drawer_glances_in_its_order_and_y_copies_its_short_name(
     shell.close_launcher()
 
 
+@pytest.fixture
+def at_twice(shell: Shell) -> Iterator[None]:
+    """Hold niri's screen at twice its size, where the card holds three rows' room."""
+    outputs = json.loads(shell.as_account("niri msg --json outputs"))
+    for name in outputs:
+        shell.as_account(f"niri msg output {name} scale 2")
+    yield
+    for name, output in outputs.items():
+        shell.as_account(f"niri msg output {name} scale {output['logical']['scale']}")
+
+
+@pytest.mark.usefixtures("at_twice")
+def test_networks_never_rests_with_a_row_or_a_heading_cut(shell: Shell) -> None:
+    """Where Networks' rows overflow the card, each step leaves no row or heading cut.
+
+    A view rests on a row's top and draws only what's wholly in it, a heading only with its
+    first row (VKCF3Z, c09d8222), and the gutter numbers only the rows it draws.
+    """
+    opened(shell)
+    shell.down_to("Networks")
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["selected"]["name"] == "core.nix")
+    shell.normal()
+    steps = [("j", "harbour"), ("j", "machines"), ("k", "harbour"), ("k", "core.nix")]
+    for key, name in [*steps, ("G", "machines"), ("gg", "core.nix")]:
+
+        def rested(shown: Json, name: str = name) -> bool:
+            return bool(
+                shown["selected"]["name"] == name
+                and shown["cut"] == []
+                and shown["restsOnARow"]
+                and len(shown["gutter"]["numbers"]) == shown["drawnRows"]
+            )
+
+        shell.send_chars(key)
+        shell.launcher_until(rested)
+        assert rested(shell.showing()), shell.showing()
+    shell.close_launcher()
+
+
 def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_start(
     shell: Shell,
 ) -> None:

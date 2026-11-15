@@ -572,6 +572,19 @@ QtObject {
         const even = { height: 150, count: 9, top: each => each * 48, tall: () => 48,
             heading: () => false };
         holds("a list with none shows a row as it always has", Headings.showing(3, 0, even), 42);
+        // A view never rests with a heading or a row cut (VKCF3Z [c09d8222]).
+        holds("a view rests on the top of the row it cut", Headings.rested(142, view), 160);
+        holds("and stays where a row's top already is", Headings.rested(160, view), 160);
+        holds("past the last row's top it stays", Headings.rested(340, view), 340);
+        const drawn = (each, from, under = talls[each + 1] ?? null) => Headings.drawn({
+            top: tops[each], tall: talls[each], under, heading: at.includes(each) },
+            { from, height: 150 });
+        holds("a row wholly in view is drawn", drawn(5, 160), true);
+        holds("one cut at the foot isn't", drawn(7, 160), false);
+        holds("nor one cut at the top", drawn(3, 142), false);
+        holds("a heading whose first row is cut isn't drawn alone", drawn(4, 60), false);
+        holds("but one with its first row whole is", drawn(4, 100), true);
+        holds("and a heading last in the list is, whole", drawn(7, 200, null), true);
     }
 
     // A paragraph of rows, as Vim's of lines (VKCF3Z, 2026-11-05): a run of

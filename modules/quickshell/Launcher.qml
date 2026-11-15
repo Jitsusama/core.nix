@@ -4140,7 +4140,9 @@ Scope {
             const entry = shown.itemAtIndex(at);
             if (!entry || entry.y - from >= shown.height)
                 break;
-            if (headings.length > 0 && Headings.isHeading(matches[at]))
+            // A heading, or a row the view's edge would cut and so isn't
+            // drawn, has no number.
+            if (headings.length > 0 && (Headings.isHeading(matches[at]) || !list.draws(entry)))
                 continue;
             placed.push({ at: headings.length > 0 ? Headings.rank(headings, at) : at,
                 base: shown.y + entry.y - from + entry.nameBaseline });
@@ -8604,6 +8606,11 @@ Scope {
             // headline, and the first and last rows wholly in view.
             current: root.current,
             inView: list.inView(),
+            // The rows drawn but cut by the view's edge, by their place, and
+            // whether the view starts where a row does.
+            cut: list.cut(),
+            restsOnARow: list.restsOnARow(),
+            drawnRows: list.drawnRows(),
             // How wide its caret is drawn, and whether it's drawn: not in
             // normal. How lit it is as it blinks isn't said, since this is
             // said on every change.
@@ -12193,6 +12200,13 @@ Scope {
                             // And the widest any row has said there.
                             readonly property int sides: root.sidesWidest
                             boundsBehavior: Flickable.StopAtBounds
+                            // Where the wheel or a flick leaves a list with
+                            // headings, it rests on a row's top, as a step
+                            // does (Headings.rested).
+                            onMovementEnded: {
+                                if (root.headingsAt.length > 0)
+                                    list.contentY = Headings.rested(list.contentY, list.headed());
+                            }
                             // A row built past the view each way, so the
                             // next an arrow reaches is drawn before it's
                             // shown. Qt's own cache, about seven rows, made
@@ -12420,8 +12434,27 @@ Scope {
                                 const last = root.matches.length - 1;
                                 const least = list.rowY(0);
                                 const most = last < 0 ? least : Math.max(least,
-                                    list.rowY(last) + list.rowHeight(last) - list.height);
+                                    list.rowY(last) + list.rowHeight(last) - list.height
+                                        + list.bottomMargin);
                                 return Math.max(least, Math.min(to, most));
+                            }
+
+                            // Room under the last row where the list has
+                            // headings, so at its end too its view rests on
+                            // a row's top (Headings.rested), the list's own
+                            // bounds holding it there: less than a row's,
+                            // and never drawn on.
+                            bottomMargin: root.headingsAt.length > 0 ? list.restRoom() : 0
+                            function restRoom() {
+                                const last = root.matches.length - 1;
+                                const most = last < 0 ? 0
+                                    : list.rowTop(last) + list.rowHeight(last) - list.height;
+                                if (most <= 0)
+                                    return 0;
+                                return Math.max(0, Headings.rested(most, {
+                                    count: root.matches.length,
+                                    top: one => list.rowTop(one)
+                                }) - most);
                             }
 
                             function pick() {
@@ -12500,17 +12533,83 @@ Scope {
                             // where it stands, moving as little as it can.
                             function showing(at, from) {
                                 if (root.headingsAt.length > 0)
-                                    return list.clamped(Headings.showing(at, from, {
-                                        height: list.height,
-                                        count: root.matches.length,
-                                        top: one => list.rowY(one),
-                                        tall: one => list.rowHeight(one),
-                                        heading: one => Headings.isHeading(root.matches[one])
-                                    }));
+                                    return Headings.rested(list.clamped(Headings.showing(at,
+                                        from, list.headed())), list.headed());
                                 const top = list.rowY(at);
                                 const bottom = top + list.rowHeight(at);
                                 return list.clamped(top < from ? top
                                     : bottom > from + list.height ? bottom - list.height : from);
+                            }
+
+                            // The list as Headings reads it, to place a
+                            // view among headings.
+                            // Whether the list draws `entry` where the view
+                            // stands: always without headings, and with them
+                            // only whole, a heading only with its first row.
+                            // The gutter asks it too, as the view moves and
+                            // before the rows' own bindings have caught up.
+                            function draws(entry) {
+                                return root.headingsAt.length === 0 || entry.aside
+                                    || Headings.drawn({
+                                        top: entry.y,
+                                        tall: entry.height,
+                                        under: entry.index + 1 < root.matches.length
+                                            ? root.tallOf(root.matches[entry.index + 1],
+                                                entry.index + 1) : null,
+                                        heading: Headings.isHeading(entry.modelData)
+                                    }, { from: list.contentY, height: list.height });
+                            }
+
+                            function headed() {
+                                return {
+                                    height: list.height,
+                                    count: root.matches.length,
+                                    top: one => list.rowY(one),
+                                    tall: one => list.rowHeight(one),
+                                    heading: one => Headings.isHeading(root.matches[one])
+                                };
+                            }
+                            // The rows drawn but cut by the view, by their
+                            // place: none, where the list has headings.
+                            function cut() {
+                                const from = list.contentY;
+                                const cuts = [];
+                                for (let at = 0; at < root.matches.length; at += 1) {
+                                    const entry = list.itemAtIndex(at);
+                                    if (entry === null || entry.opacity === 0)
+                                        continue;
+                                    const top = entry.y;
+                                    const bottom = top + entry.height;
+                                    if (bottom > from + 0.5 && top < from + list.height - 0.5
+                                        && (top < from - 0.5 || bottom > from + list.height + 0.5))
+                                        cuts.push(at);
+                                }
+                                return cuts;
+                            }
+
+                            // How many rows, headings aside, are drawn in
+                            // the view, as many as the gutter numbers.
+                            function drawnRows() {
+                                const from = list.contentY;
+                                let drawn = 0;
+                                for (let at = 0; at < root.matches.length; at += 1) {
+                                    const entry = list.itemAtIndex(at);
+                                    if (entry === null || !list.draws(entry)
+                                        || Headings.isHeading(root.matches[at]))
+                                        continue;
+                                    if (entry.y + entry.height > from + 0.5
+                                        && entry.y < from + list.height - 0.5)
+                                        drawn += 1;
+                                }
+                                return drawn;
+                            }
+
+                            // Whether the view starts where a row does, with
+                            // none cut above it.
+                            function restsOnARow() {
+                                const at = list.indexAt(list.width / 2, list.contentY + 0.5);
+                                const entry = at < 0 ? null : list.itemAtIndex(at);
+                                return entry !== null && Math.abs(entry.y - list.contentY) <= 0.5;
                             }
 
                             // Scrolls just far enough to show the row, as
@@ -12628,6 +12727,12 @@ Scope {
 
                                 width: list.width
                                 height: root.tallOf(modelData, entry.index)
+                                // Drawn only wholly in view where the list
+                                // has headings, and a heading only with its
+                                // first row, so the view never rests with a
+                                // row or a heading cut (VKCF3Z [c09d8222]).
+                                opacity: entry.whole ? 1 : 0
+                                readonly property bool whole: list.draws(entry)
 
                                 // Its name's baseline, down from its top.
                                 readonly property real nameBaseline: choice.y
