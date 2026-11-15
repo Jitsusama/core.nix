@@ -36,6 +36,8 @@ Beside this file:
 - `map.js`: the probe for a walked map or graph, finding arrows that don't
   keep to one rule and names that cross a line or each other (a picture
   is walked, under [Keys](#keys)).
+- `homes.js`: the probe finding each mention of a thing that doesn't link
+  to its home ([One Home for Every Thing](#one-home-for-every-thing)).
 
 The theme itself, ready for a site, is the kit at `~/.local/share/jitsusama/web/`
 ([The Kit](#the-kit)). Never retype a colour, a size or a face.
@@ -179,6 +181,12 @@ that is awesome" (2026-11-11).
   access something, i don't use it" (2026-11-11).
 - **Nothing is a one-off.** A site for him is never put anywhere else, and a
   shared one that's done with is taken down rather than left to drift.
+- **An app's source lives in a repository.** The home's folder is what's
+  served, not where code is kept. An app he relies on (a live map, a page
+  that reads a program's record) keeps its source beside the program that
+  feeds it, in that program's repository, with its probes as its gate, and
+  is installed into its folder from there. A dated record or a mock is
+  written once and stays in the folder as it was written.
 
 ## One Home for Every Thing
 
@@ -224,7 +232,8 @@ own links, and none would meet.
   that home, its address taken from `homes.json`, never built by hand.
   The link is the kit's link, with the name in its own face (a cell's
   address and a machine's name in Monaspace). On its own home, the thing's
-  name needn't link. A name drawn on a walked map is the map's mark,
+  name needn't link: the view that is its home says so with `data-home`,
+  its address as `homes.json` gives it. A name drawn on a walked map is the map's mark,
   reached by its keys, and the drawer it opens is where the links are. A
   link out (GitHub, eero's app) is a second act beside the home's link,
   never instead of it.
@@ -238,7 +247,9 @@ own links, and none would meet.
 
   A thing that is two kinds (a laptop is a machine and, on the home
   network, a device) links once from each home to the other. Up is the
-  trail at the top, every crumb a link.
+  trail at the top, every crumb a link. `homes.js`, beside this file, is
+  the probe that finds each mention left unlinked and each twin left
+  apart (`checks.md`).
 
 ## The Kit
 
