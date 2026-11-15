@@ -102,8 +102,8 @@ and it allocated that queue's bookkeeping, one entry for each of its
 slots, as a single block of 64 to 128 KiB. The kernel doesn't try hard
 for blocks that large, so under a build's memory pressure the block
 wasn't there, the queue failed ("Tx queue alloc failed") and the join
-timed out: optimus, roaming between eeros on 14 November with a third of
-its 64 GB free, lost half a second and fell back to another radio. Only
+timed out: a laptop roaming between access points on 14 November with a
+third of its 64 GB free lost half a second and fell back to another radio. Only
 the processor reads those entries, so the patch lets them come from
 scattered pages when no single block is free. The rings the card itself
 reads are left as they were; the IOMMU already lets them be scattered.
