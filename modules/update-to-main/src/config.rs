@@ -71,6 +71,13 @@ pub struct Config {
     /// `health_within` seconds, or the machine goes back.
     pub health: Vec<Vec<String>>,
     pub health_within: u64,
+    /// The command that has to pass, given the new system's path after its
+    /// own arguments, before a system whose kernel, initrd or kernel
+    /// parameters differ from the booted one's becomes what the machine
+    /// boots. Until it does, the new system runs and the boot default
+    /// stays as it was. None to make it the boot default at once.
+    #[serde(default)]
+    pub boot_check: Option<Vec<String>>,
     /// Below this charge, on battery, nothing is started.
     pub battery_floor: u8,
     /// What the machine may be busy with, such as a call, when an update

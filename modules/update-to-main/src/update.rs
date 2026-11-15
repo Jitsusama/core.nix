@@ -360,6 +360,7 @@ fn switch(
                 applied: switched.applied,
                 restart: switched.restart,
                 restarted: switched.restarted,
+                boots: None,
                 followed,
             }
         }

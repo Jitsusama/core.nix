@@ -251,6 +251,7 @@ impl World {
                 format!("test ! -e {}/unhealthy", root.join("running").display()),
             ]],
             health_within: 1,
+            boot_check: None,
             battery_floor: 20,
             refuse_while: Vec::new(),
             follower_tells: None,
@@ -286,6 +287,7 @@ impl World {
         fs::create_dir_all(&world.config.state).unwrap();
         std::os::unix::fs::symlink(&first, &world.config.profile).unwrap();
         std::os::unix::fs::symlink(&first, world.root.join("running")).unwrap();
+        std::os::unix::fs::symlink(&first, world.root.join("boots")).unwrap();
         world
     }
 
@@ -379,8 +381,13 @@ impl World {
                 &format!(
                     "{head}\nhere=$(cd \"$(dirname \"$0\")/..\" && pwd)\n\
                      if [ -e \"$here/breaks\" ]; then echo 'activation failed' >&2; exit 1; fi\n\
-                     ln -sfn \"$here\" {running}\necho \"restarting the following units: sshd.service\"\n",
+                     echo \"$1\" >> {modes}\n\
+                     case \"$1\" in switch|boot) ln -sfn \"$here\" {boots};; esac\n\
+                     case \"$1\" in switch|test) ln -sfn \"$here\" {running}\n\
+                     echo \"restarting the following units: sshd.service\";; esac\n",
                     head = stand_in_head(),
+                    modes = self.root.join("modes").display(),
+                    boots = self.root.join("boots").display(),
                     running = self.root.join("running").display()
                 ),
             );
@@ -394,6 +401,18 @@ impl World {
 
     fn booting(&self) -> PathBuf {
         fs::read_link(&self.config.profile).unwrap()
+    }
+
+    /// The system the boot loader starts next, which only
+    /// switch-to-configuration's `switch` and `boot` set.
+    fn boots(&self) -> PathBuf {
+        fs::read_link(self.root.join("boots")).unwrap()
+    }
+
+    /// How switch-to-configuration was run, in order.
+    fn modes(&self) -> Vec<String> {
+        let modes = fs::read_to_string(self.root.join("modes")).unwrap_or_default();
+        modes.lines().map(str::to_owned).collect()
     }
 
     fn builds(&self) -> usize {
@@ -482,6 +501,7 @@ fn done(commit: &str) -> Line {
         applied: Applied::Now,
         restart: None,
         restarted: vec!["sshd.service".to_owned()],
+        boots: None,
         followed: BTreeMap::new(),
     }
 }
@@ -815,11 +835,93 @@ fn a_new_kernels_userland_runs_now_and_its_kernel_from_the_next_boot() {
             applied: Applied::Now,
             restart: Some("its kernel changed".to_owned()),
             restarted: vec!["sshd.service".to_owned()],
+            boots: None,
             followed: BTreeMap::new(),
         }
     );
     assert_eq!(world.running(), system);
     assert_eq!(world.booting(), system);
+}
+
+/// A machine booted from `first`'s initrd, and main's system for `head`
+/// with another, whose boot check runs `check` with the system's path as
+/// its `$1`.
+fn a_new_initrd(world: &mut World, head: &str, check: &str) -> PathBuf {
+    for system in [world.running(), world.root.join("booted")] {
+        fs::create_dir_all(&system).unwrap();
+        fs::write(system.join("initrd"), "one").unwrap();
+    }
+    let system = world.system(head);
+    fs::write(system.join("initrd"), "two").unwrap();
+    world.config.boot_check = Some(vec![
+        shell(),
+        "-c".to_owned(),
+        check.to_owned(),
+        "boot-check".to_owned(),
+    ]);
+    system
+}
+
+#[test]
+fn a_new_initrd_runs_now_and_is_booted_next_once_its_boot_check_passes() {
+    // On 15 November switch968 made a new initrd what the machine boots,
+    // and nothing had booted it: a broken one leaves a laptop that can't
+    // unlock its disk at the next boot.
+    let mut world = World::new();
+    let head = world.signed("one");
+    let checked = world.root.join("checked");
+    let check = format!("echo \"$1\" > {}", checked.display());
+    let system = a_new_initrd(&mut world, &head, &check);
+    let (_, ending) = world.update();
+    assert_eq!(
+        ending,
+        Line::Done {
+            commit: head,
+            applied: Applied::Now,
+            restart: Some("its initrd changed".to_owned()),
+            restarted: vec!["sshd.service".to_owned()],
+            boots: None,
+            followed: BTreeMap::new(),
+        },
+        "a passed boot check should end as a switch does"
+    );
+    assert_eq!(
+        fs::read_to_string(&checked).unwrap_or_default().trim(),
+        system.display().to_string(),
+        "the boot check wasn't given the new system"
+    );
+    assert_eq!(
+        world.modes(),
+        ["test", "boot"],
+        "the new system should run first, and be booted only after its check"
+    );
+    assert_eq!(world.running(), system, "the new system isn't running");
+    assert_eq!(world.boots(), system, "the checked system isn't booted next");
+}
+
+#[test]
+fn a_new_initrd_whose_boot_check_fails_runs_but_isnt_booted_next() {
+    let mut world = World::new();
+    let first = world.running();
+    let head = world.signed("one");
+    let check = "echo 'no passphrase prompt in 300 s' >&2; exit 1";
+    let system = a_new_initrd(&mut world, &head, check);
+    let (_, ending) = world.update();
+    let Line::Done { restart, boots, .. } = ending else {
+        panic!("a failed boot check went back, though the new system runs: {ending:?}")
+    };
+    let boots = boots.expect("a failed boot check wasn't said");
+    assert!(
+        boots.contains("the boot check") && boots.contains("no passphrase prompt in 300 s"),
+        "the failure doesn't say which check or what it said: {boots}"
+    );
+    assert_eq!(
+        restart, None,
+        "no restart brings in a system that isn't booted next"
+    );
+    assert_eq!(world.modes(), ["test"], "an unchecked system was made the boot default");
+    assert_eq!(world.running(), system, "the new system should still run");
+    assert_eq!(world.boots(), first, "the boot default should stay where it was");
 }
 
 #[test]
@@ -2128,6 +2230,7 @@ fn following_done(commit: &str, core: &str) -> Line {
         applied,
         restart,
         restarted,
+        boots: None,
         followed: BTreeMap::from([("core".to_owned(), core.to_owned())]),
     }
 }
