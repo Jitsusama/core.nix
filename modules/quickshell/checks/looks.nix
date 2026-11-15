@@ -326,6 +326,8 @@
       machine = graphical.config;
       measure = lib.getExe (pkgs.python3.withPackages (python: [ python.pillow ]));
     in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # case, or runs the case with what Nix built; the measuring is Python.
     pkgs.runCommandLocal "a-turned-mark-keeps-its-ink" { } ''
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
