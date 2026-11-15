@@ -50,6 +50,10 @@ fn tick() -> Help {
         "an orchestrator revived, again and again",
     )
     .option("--skip ADDRESS", "a session never revived")
+    .option(
+        "--realm NAME",
+        "a realm whose machines' failed updates it says",
+    )
     .exit(Exit::Usage, "a flag it doesn't take, or one with no value")
     .exit(
         Exit::Failed,
@@ -174,6 +178,8 @@ mod tests {
             "R",
             "--skip",
             "S",
+            "--realm",
+            "work",
         ],
         &[
             "day",
@@ -220,6 +226,7 @@ mod tests {
         );
         assert_eq!(asked.orchestrators, ["R"], "--revive");
         assert_eq!(asked.skip, ["S"], "--skip");
+        assert_eq!(asked.realms, ["work"], "--realm");
         assert_eq!(
             asked.owners.get("crashes").map(String::as_str),
             Some("A"),
