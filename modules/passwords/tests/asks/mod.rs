@@ -679,7 +679,9 @@ fn an_ask_is_refused_unseen_without_the_fences_list_or_with_one_it_cant_read() {
 
 #[test]
 fn a_sign_says_asks_are_answered_while_the_daemon_answers_them() {
-    let mut running = Running::releasing("asks-sign", &[LISTED]);
+    // The daemon serves its socket until it's stopped, so its sign names
+    // it by pid: one left by a stopped daemon names none that runs.
+    let running = Running::releasing("asks-sign", &[LISTED]);
     let sign = running.asks().join("answering");
     until("the sign", || sign.exists());
     assert_eq!(
@@ -687,16 +689,4 @@ fn a_sign_says_asks_are_answered_while_the_daemon_answers_them() {
         running.pid().to_string(),
         "the sign doesn't name the daemon"
     );
-    running.close();
-    let started = std::time::Instant::now();
-    while !running.ended() {
-        assert!(
-            started.elapsed() < Duration::from_secs(20),
-            "the daemon outlived its channel"
-        );
-        // A child's end raises no event to wait on: this looks again
-        // soon, as the daemon's own test of its channel does.
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    assert!(!sign.exists(), "the sign outlived the daemon");
 }

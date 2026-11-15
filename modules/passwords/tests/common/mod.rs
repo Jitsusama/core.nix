@@ -345,6 +345,11 @@ impl Running {
     pub fn logged(&self) -> String {
         std::fs::read_to_string(self.folder.join("logged")).unwrap_or_default()
     }
+
+    /// The daemon's pid.
+    pub fn pid(&self) -> u32 {
+        self.daemon.id()
+    }
 }
 
 impl Drop for Running {
