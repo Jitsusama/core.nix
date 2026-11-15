@@ -6,7 +6,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-use crate::{lints, notes, reached};
+use crate::{lints, notes, reached, terraform};
 
 /// A file of the repository: its path from the folder read, and its text.
 pub struct File {
@@ -41,7 +41,7 @@ pub const DAEMONS_WAITING: &str = "tests/rules/daemons-agree-waiting.nix";
 /// The extensions of the files counted as code.
 const CODE: &[&str] = &[
     "bash", "c", "cc", "cjs", "cpp", "go", "h", "js", "lua", "mjs", "nix", "py", "qml", "rb", "rs",
-    "sh", "ts", "tsx",
+    "sh", "tf", "ts", "tsx",
 ];
 
 /// A repository's figures, by measure, and what each counted, by name.
@@ -52,7 +52,7 @@ pub struct Health {
 }
 
 impl Health {
-    fn put(&mut self, measure: &'static str, names: Vec<String>, count: usize) {
+    pub fn put(&mut self, measure: &'static str, names: Vec<String>, count: usize) {
         self.figures.insert(measure, figure(count));
         self.named
             .insert(measure, names.into_iter().take(NAMED).collect());
@@ -81,7 +81,12 @@ pub fn is_read(path: &str) -> bool {
         extension(path),
         "md" | "json" | "jsonc" | "toml" | "yaml" | "yml"
     ) && !path.split('/').any(|part| part == "node_modules");
-    is_code(path) || is_note(path) || is_quarantine(path) || lints::is_config(path) || mentions
+    is_code(path)
+        || is_note(path)
+        || is_quarantine(path)
+        || lints::is_config(path)
+        || terraform::is_terraform(path)
+        || mentions
 }
 
 /// Whether a path is a folder's note, which says why it's crowded.

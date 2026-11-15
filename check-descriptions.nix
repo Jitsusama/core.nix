@@ -548,8 +548,10 @@
   code-health-counts-what-got-messier = ''
     code-health counts a repository's long files and crowded folders without their reasons, its
     suppressions in each language's own way, its lines repeated from elsewhere and its tests in
-    quarantine, from a ref's files, and writes the day's figures as cadence reads them, and the
-    hour's against each target, the hour before and the owner
+    quarantine, the lint rules its configs turn off, its files nothing reaches, its folders with
+    no note, its VM test lines, and its Terraform not as tofu fmt writes it and what tflint finds,
+    from a ref's files, and writes the day's figures as cadence reads them, and the hour's
+    against each target, the hour before and the owner
   '';
   code-health-finds-a-machines-programs-first = ''
     code-health finds a machine's own programs first on its PATH, such as a git that reads a
@@ -557,6 +559,9 @@
   '';
   code-health-passes-clippy = ''
     clippy finds nothing in code-health or its tests
+  '';
+  code-health-reads-each-folder-it-is-given = ''
+    code-health is handed every folder of a larger repository that a repository is given
   '';
   code-health-reads-hourly-against-targets = ''
     code-health reads each hour, handed each repository's targets, its owner and each measure's

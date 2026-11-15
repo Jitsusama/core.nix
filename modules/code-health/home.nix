@@ -4,7 +4,10 @@
 # the machine, fetching nothing, and writes the day's figures to
 # ~/.local/state/code-health/<date>.json: long files and crowded folders
 # that don't say why, suppressions, lines repeated from elsewhere, tests
-# in quarantine and the points of docs/daemons.md daemons still break.
+# in quarantine and the points of docs/daemons.md daemons still break;
+# lint rules turned off, files nothing reaches, folders with no note and
+# VM test lines; and Terraform not as tofu fmt writes it and what tflint
+# finds.
 # It writes hour.json beside them, each figure against the target and
 # owner a repository's `targets`, `owner` and `owners` give it, and the
 # figure the hour before, which `cadence hour` reads at ten past. A read
@@ -67,9 +70,13 @@ in
             description = "The ref read, so what's measured is what was merged.";
           };
           under = lib.mkOption {
-            type = lib.types.str;
-            default = "";
-            description = "The repository's folder in a larger one; the whole one when empty.";
+            type = lib.types.coercedTo lib.types.str lib.toList (lib.types.listOf lib.types.str);
+            default = [ ];
+            example = [
+              "apps/web"
+              "infra/web"
+            ];
+            description = "The repository's folders in a larger one, each path said from its top when there are several; the whole one when none.";
           };
           targets = lib.mkOption {
             type = lib.types.attrsOf lib.types.number;
@@ -123,7 +130,15 @@ in
           [ (lib.getExe package) ]
           ++ each "--repo" (repo: repo.checkout)
           ++ each "--ref" (repo: repo.ref)
-          ++ each "--under" (repo: repo.under)
+          ++ lib.concatLists (
+            lib.mapAttrsToList (
+              name: repo:
+              lib.concatMap (folder: [
+                "--under"
+                "${name}=${folder}"
+              ]) repo.under
+            ) cfg.repos
+          )
           ++ judged
         );
         Environment = [

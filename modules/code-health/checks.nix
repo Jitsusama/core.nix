@@ -53,8 +53,48 @@
   # holding no daemons to docs/daemons.md has no figure for it, git's batch
   # answer is split by its sizes, a repository's ref and folder go to it,
   # the day's file is the form cadence reads, and the hour's holds each
-  # measure against its target, the hour before and its owner.
+  # measure against its target, the hour before and its owner. As the
+  # quality standard has them, it names each lint rule a config turns off,
+  # each file nothing reaches, each folder that says nothing of what it
+  # holds and each VM test's lines; and of its Terraform, each file not as
+  # tofu fmt writes it and each finding of tflint's, a workspace it can't
+  # load among them, with the real tools.
   code-health-counts-what-got-messier = pkgs.callPackage ./package.nix { };
+  # A repository can be several folders of a larger one, such as one
+  # team's Terraform kept in a few places of a monorepo; each is handed
+  # to code-health, so none goes unread.
+  code-health-reads-each-folder-it-is-given =
+    let
+      home = account (bareNixos [
+        {
+          home-manager.sharedModules = [
+            self.homeModules.code-health
+            {
+              jitsusama.code-health.repos = {
+                some = {
+                  checkout = "/home/someone/src/mono";
+                  under = [
+                    "apps/web"
+                    "infra/web"
+                  ];
+                };
+                one = {
+                  checkout = "/home/someone/src/mono";
+                  under = "apps/one";
+                };
+              };
+            }
+          ];
+        }
+      ]);
+      started = pkgs.lib.concatStringsSep " " (
+        pkgs.lib.toList home.systemd.user.services.code-health.Service.ExecStart
+      );
+      handed = folder: pkgs.lib.hasInfix (pkgs.lib.escapeShellArgs [ "--under" folder ]) started;
+    in
+    holds "code-health-reads-each-folder-it-is-given"
+      "code-health isn't handed every folder a repository is given."
+      (handed "some=apps/web" && handed "some=infra/web" && handed "one=apps/one");
   # cadence's hourly read holds each measure against the target and owner
   # a machine sets, so code-health reads each hour and is handed both: a
   # repository's owner, a measure's own owner, and each target.

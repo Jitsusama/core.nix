@@ -7,7 +7,9 @@
 //! on to agree and the lines of its VM tests (measure.rs says how each is
 //! counted); the lints its configs turn off (lints.rs), its files nothing
 //! reaches (reached.rs) and its folders that don't say what they hold
-//! (notes.rs), as the quality standard has them; and how long the
+//! (notes.rs), as the quality standard has them; its Terraform's files
+//! not as `tofu fmt` writes them and what tflint finds (terraform.rs);
+//! and how long the
 //! changes it merged in the last day took from first edit to merge
 //! (merges.rs).
 //!
@@ -28,7 +30,9 @@
 //!
 //! A repository is read at `origin/main` unless `--ref` names another, and
 //! whole unless `--under` names the folder that's it in a larger one,
-//! whose merges are the larger one's, so it isn't timed. A target or an
+//! whose merges are the larger one's, so it isn't timed; `--under` given
+//! again names another folder of it, each path then said from the larger
+//! one's top. A target or an
 //! owner names one of MEASURES, so a misspelt one is refused rather than
 //! left unjudged.
 
@@ -39,6 +43,7 @@ mod measure;
 mod merges;
 mod notes;
 mod reached;
+mod terraform;
 
 use std::collections::BTreeMap;
 use std::env;
@@ -60,7 +65,7 @@ const FLAGS: [&str; 6] = [
 ];
 
 /// Every measure it reads (measure.rs and merges.rs).
-const MEASURES: [&str; 13] = [
+const MEASURES: [&str; 15] = [
     "crowded-folders",
     "daemons-waiting",
     "duplicated-lines",
@@ -72,6 +77,8 @@ const MEASURES: [&str; 13] = [
     "quarantined-tests",
     "shared-files",
     "suppressions",
+    "tf-unformatted",
+    "tflint-findings",
     "unreached-files",
     "vm-test-lines",
 ];
@@ -92,7 +99,7 @@ fn figure_said(measure: &str, figure: f64) -> String {
 struct Repo {
     checkout: String,
     reference: String,
-    under: String,
+    under: Vec<String>,
     judged: hour::Judged,
 }
 
@@ -146,9 +153,22 @@ fn run(context: &Context) -> Result<(), Failure> {
     let mut named = BTreeMap::new();
     let mut left_out = BTreeMap::new();
     for (name, repo) in &repos {
-        match git::files(&repo.checkout, &repo.reference, &repo.under) {
+        match git::files_in(&repo.checkout, &repo.reference, &repo.under) {
             Ok((paths, files)) => {
                 let mut health = measure::measure(&paths, &files);
+                match terraform::read(&files) {
+                    Some(Ok(read)) => {
+                        let count = read.unformatted.len();
+                        health.put("tf-unformatted", read.unformatted, count);
+                        let count = read.findings.len();
+                        health.put("tflint-findings", read.findings, count);
+                    }
+                    Some(Err(error)) => {
+                        let said = format!("{name}'s Terraform left out: {error}");
+                        let _ = context.tell("caution", "warning", &said);
+                    }
+                    None => {}
+                }
                 if repo.under.is_empty() {
                     let since = Timestamp::now().as_second() - DAY;
                     match git::merged(&repo.checkout, &repo.reference, since) {
@@ -326,7 +346,11 @@ fn parse(arguments: &[String]) -> Result<(BTreeMap<String, Repo>, Option<PathBuf
                 refs.insert(name, said);
             }
             "--under" => {
-                unders.insert(name, said);
+                // An empty folder is the whole repository, as none is.
+                let folders: &mut Vec<String> = unders.entry(name).or_default();
+                if !said.is_empty() {
+                    folders.push(said);
+                }
             }
             "--target" => {
                 let figure = said
@@ -465,7 +489,7 @@ mod tests {
             Repo {
                 checkout: "/world".to_owned(),
                 reference: "main".to_owned(),
-                under: "home/me".to_owned(),
+                under: vec!["home/me".to_owned()],
                 judged: hour::Judged::default(),
             },
             "a repository's ref or folder was lost"
