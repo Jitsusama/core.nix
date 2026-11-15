@@ -12,6 +12,10 @@ screen unlocks, that niri draws it in whole pixels at 1.5 and at 2, each screen 
 check's result, and that a move between workspaces has it hold its ground through niri's slide,
 a second move cutting it short holding on from where the first got to, and that on a workspace
 with no windows it sits on the floor until one opens there.
+
+Long because every case shares the one shell, started with the cat's own doze and scenes, and
+the readers of what it reports; the moves between workspaces could go to a check of their own,
+which would start a second shell and carry those readers twice.
 """
 
 from __future__ import annotations
