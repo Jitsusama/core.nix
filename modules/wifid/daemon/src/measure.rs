@@ -8,22 +8,23 @@
 //! So wifid measures the one it's on, and keeps what it measured of each,
 //! to choose between them. Each card echoes its gateway once a second, as
 //! a sampler did to find that, and logs its access point's figures each
-//! minute. Each minute too it asks the card's chooser (choose.rs) whether
-//! another of the network's access points would carry better, and moves
-//! the card as the roam act does. What each carried is learned by the hour
-//! too (learn.rs), for those the card hasn't been on in the span.
+//! minute. Each minute too it hands what it measured to moves.rs, which
+//! asks the card's chooser whether another of the network's access points
+//! would carry better and moves the card there. What each carried is
+//! learned by the hour too (learn.rs), for those the card hasn't been on
+//! in the span.
 
 use std::collections::{HashMap, VecDeque};
 
 use tokio::sync::{mpsc, watch};
 use tokio::time::{Duration, Instant, MissedTickBehavior, interval};
 
-use crate::acts;
 use crate::air::Heard;
 use crate::calling::Calling;
-use crate::choose::{Choice, Chooser, Other};
+use crate::choose::Chooser;
 use crate::echo::Echoer;
 use crate::learn::{self, Here, Learned};
+use crate::moves;
 use crate::nl80211::{Nl80211, Station};
 use crate::service::Ask;
 use crate::state::{Joined, State};
@@ -169,11 +170,15 @@ pub async fn follow(
                     let around = state.borrow().around(&on.card);
                     learn_from(&mut learned, &on, &carried, &around, hour);
                     let chooser = choosers.entry(on.card.clone()).or_default();
-                    let figures = (&on, &carried);
-                    let known = known(&measures, &learned, now, hour);
-                    if let Some(to) = chosen(chooser, now, figures, &around, &known, call) {
-                        tokio::spawn(roam(asks.clone(), state.clone(), on.card, to));
-                    }
+                    moves::choose(
+                        chooser,
+                        (now, hour),
+                        (&on, &carried),
+                        &around,
+                        (&measures, &learned),
+                        (&asks, &state),
+                        call,
+                    );
                 }
             }
         }
@@ -266,114 +271,8 @@ fn forget_the_forgotten(learned: &mut Learned, saved: &[String]) {
     }
 }
 
-/// Where what's known of an access point comes from, said with each move
-/// so a move made on what was learned can be told from one made on what
-/// was just measured (15 Nov 2026).
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum Whence {
-    /// Measured in the span.
-    Lately,
-    /// Learned at this hour, heard about as loud.
-    Learned,
-}
-
-/// What's known of how an access point carries from here: what it carried
-/// in the span, else what it's carried at this hour, heard about as loud.
-fn known<'a>(
-    lately: &'a Measures,
-    learned: &'a Learned,
-    now: Instant,
-    hour: u8,
-) -> impl Fn(&str, i16) -> Option<(Measured, Whence)> + 'a {
-    move |point, signal| {
-        let lately = lately
-            .of(point, now)
-            .map(|measured| (measured, Whence::Lately));
-        lately.or_else(|| {
-            learned
-                .of(point, hour, signal)
-                .map(|measured| (measured, Whence::Learned))
-        })
-    }
-}
-
-/// What's known of an access point heard this loud, and whence.
-type Known<'a> = dyn Fn(&str, i16) -> Option<(Measured, Whence)> + 'a;
-
-/// Asks a card's chooser where it should be, from what it's on carried and
-/// what it hears of its network, and says why where it moves.
-fn chosen(
-    chooser: &mut Chooser,
-    now: Instant,
-    (on, measured): (&Joined, &Measured),
-    around: &[Heard],
-    known: &Known<'_>,
-    call: bool,
-) -> Option<String> {
-    let signal = around.iter().find(|heard| heard.bssid == on.point)?.signal;
-    let (others, whence): (Vec<Other>, Vec<Option<Whence>>) = around
-        .iter()
-        .filter(|heard| heard.bssid != on.point)
-        .map(|heard| {
-            let known = known(&heard.bssid, heard.signal);
-            let whence = known.as_ref().map(|(_, whence)| *whence);
-            let other = Other {
-                point: heard.bssid.clone(),
-                signal: heard.signal,
-                busy: heard.radio.load.map(|load| load.busy),
-                measured: known.map(|(measured, _)| measured),
-            };
-            (other, whence)
-        })
-        .unzip();
-    match chooser.choose(now, (&on.point, measured, signal), &others, call) {
-        Choice::Stay => None,
-        Choice::Try(to) => {
-            let at = others.iter().position(|other| other.point == to)?;
-            println!("<6>{}", tried(on, measured, &others[at], whence[at]));
-            Some(to)
-        }
-        Choice::Back(to) => {
-            println!(
-                "<6>{} goes back to {to}, as {} carried worse",
-                on.card, on.point
-            );
-            Some(to)
-        }
-    }
-}
-
-/// Moves a card to the access point chosen as the roam act does, looking
-/// for it first where it's gone unheard.
-async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String, to: String) {
-    if let Err(refused) = acts::roam(&asks, air, &to).await {
-        eprintln!("<4>{card} couldn't move to {to}: {refused:?}");
-    }
-}
-
-/// Why a card tries another access point: what the one it's on carried,
-/// and what was known of the other, and from where.
-fn tried(on: &Joined, measured: &Measured, to: &Other, whence: Option<Whence>) -> String {
-    let known = match (&to.measured, whence) {
-        (Some(known), Some(Whence::Learned)) => {
-            format!("carried {} at p95 at this hour before", ms(known.p95))
-        }
-        (Some(known), _) => format!("carried {} at p95 in the last two minutes", ms(known.p95)),
-        (None, _) => format!("is untried, heard at {} dBm", to.signal),
-    };
-    format!(
-        "{} tries {}, as {} carried {} at p95 with {:.1}% lost, and {} {known}",
-        on.card,
-        to.point,
-        on.point,
-        ms(measured.p95),
-        measured.lost,
-        to.point
-    )
-}
-
 /// A span of time in milliseconds, as logged.
-fn ms(time: Option<Duration>) -> String {
+pub fn ms(time: Option<Duration>) -> String {
     time.map_or("none".into(), |time| {
         format!("{:.1} ms", time.as_secs_f64() * 1000.0)
     })
@@ -455,12 +354,8 @@ fn per_hundred(part: usize, whole: usize) -> f64 {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::path::Path;
-
+pub(crate) mod tests {
     use super::*;
-    use crate::radio::Radio;
-    use crate::state::Security;
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
     const HALL: &str = "6c:ae:f6:c1:84:28";
@@ -623,7 +518,9 @@ mod tests {
         );
     }
 
-    fn joined(point: &str) -> Joined {
+    /// A card joined to Lantern through the access point given, which
+    /// moves.rs's tests join through too.
+    pub(crate) fn joined(point: &str) -> Joined {
         Joined {
             card: "wlan2".into(),
             point: point.into(),
@@ -631,153 +528,5 @@ mod tests {
             network: "Lantern".into(),
             trusted: true,
         }
-    }
-
-    fn heard(bssid: &str, signal: i16) -> Heard {
-        Heard {
-            name: "Lantern".into(),
-            security: Security::Personal,
-            signal,
-            bssid: bssid.into(),
-            frequency: 2437,
-            age: 3,
-            radio: Radio::default(),
-        }
-    }
-
-    fn carried(p95: u64) -> Measured {
-        Measured {
-            echoes: 120,
-            p50: None,
-            p95: Some(ms(p95)),
-            lost: 0.0,
-            retried: 0.0,
-            failed: 0.0,
-            signal: None,
-        }
-    }
-
-    /// What the hall carried for ten minutes at eight in the evening.
-    fn the_hall_at_eight(dir: &Path, p95: u64) -> Learned {
-        let mut learned = Learned::kept_in(&dir.join("carried"));
-        let here = Here {
-            network: "Lantern",
-            point: HALL,
-            hour: 20,
-            signal: -50,
-            trusted: true,
-        };
-        for _ in 0..10 {
-            learned.carried(&here, &carried(p95)).unwrap();
-        }
-        learned
-    }
-
-    #[test]
-    fn an_access_point_not_measured_lately_is_known_by_what_it_carried_at_this_hour() {
-        let dir = tempfile::tempdir().unwrap();
-        let learned = the_hall_at_eight(dir.path(), 15);
-        let lately = Measures::default();
-
-        let at_eight = known(&lately, &learned, Instant::now(), 20);
-        let at_nine = known(&lately, &learned, Instant::now(), 21);
-
-        let (hall, whence) = at_eight(HALL, -50).expect("the hall was learned at eight");
-        assert_eq!(hall.p95, Some(ms(15)), "what it carried then is known");
-        assert_eq!(whence, Whence::Learned, "and known as learned");
-        assert_eq!(at_nine(HALL, -50), None, "nothing was learned at nine");
-    }
-
-    #[test]
-    fn what_an_access_point_carried_lately_outweighs_what_it_learned() {
-        let dir = tempfile::tempdir().unwrap();
-        let learned = the_hall_at_eight(dir.path(), 15);
-        let mut lately = Measures::default();
-        let start = Instant::now();
-        echoed(&mut lately, HALL, start, &[Some(40); 100]);
-
-        let known = known(&lately, &learned, start + Duration::from_secs(99), 20);
-
-        let (hall, whence) = known(HALL, -50).expect("the hall was measured lately");
-        assert_eq!(hall.p95, Some(ms(40)), "what it carried lately is known");
-        assert_eq!(whence, Whence::Lately, "and known as measured lately");
-    }
-
-    fn other(point: &str, measured: Option<Measured>) -> Other {
-        Other {
-            point: point.into(),
-            signal: -50,
-            busy: None,
-            measured,
-        }
-    }
-
-    #[test]
-    fn a_move_says_what_it_went_by_and_whence() {
-        let on = joined(DESK);
-        let why = "wlan2 tries 6c:ae:f6:c1:84:28, as 6c:ae:f6:c1:84:26 carried 30.0 ms at p95 \
-                   with 0.0% lost, and 6c:ae:f6:c1:84:28";
-        let quick = Some(carried(10));
-
-        assert_eq!(
-            tried(
-                &on,
-                &carried(30),
-                &other(HALL, quick.clone()),
-                Some(Whence::Learned)
-            ),
-            format!("{why} carried 10.0 ms at p95 at this hour before"),
-            "a move made on what was learned says so"
-        );
-        assert_eq!(
-            tried(&on, &carried(30), &other(HALL, quick), Some(Whence::Lately)),
-            format!("{why} carried 10.0 ms at p95 in the last two minutes"),
-            "a move made on what was just measured says so"
-        );
-        assert_eq!(
-            tried(&on, &carried(30), &other(HALL, None), None),
-            format!("{why} is untried, heard at -50 dBm"),
-            "a move made on signal alone says so"
-        );
-    }
-
-    #[test]
-    fn a_card_moves_to_an_access_point_learned_far_quicker_at_this_hour() {
-        let dir = tempfile::tempdir().unwrap();
-        let learned = the_hall_at_eight(dir.path(), 10);
-        let (lately, now) = (Measures::default(), Instant::now());
-        let around = [heard(DESK, -50), heard(HALL, -50)];
-        let known = known(&lately, &learned, now, 20);
-
-        let to = chosen(
-            &mut Chooser::default(),
-            now,
-            (&joined(DESK), &carried(30)),
-            &around,
-            &known,
-            false,
-        );
-
-        assert_eq!(to.as_deref(), Some(HALL), "10 ms learned beats 30 ms now");
-    }
-
-    #[test]
-    fn a_card_carrying_well_stays_where_nothing_is_known_to_carry_better() {
-        let dir = tempfile::tempdir().unwrap();
-        let learned = Learned::kept_in(&dir.path().join("carried"));
-        let (lately, now) = (Measures::default(), Instant::now());
-        let around = [heard(DESK, -50), heard(HALL, -50)];
-        let known = known(&lately, &learned, now, 20);
-
-        let to = chosen(
-            &mut Chooser::default(),
-            now,
-            (&joined(DESK), &carried(30)),
-            &around,
-            &known,
-            false,
-        );
-
-        assert_eq!(to, None, "30 ms is carrying well, and the hall is unknown");
     }
 }
