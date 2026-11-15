@@ -327,9 +327,11 @@ def test_a_card_whose_access_point_carries_slowly_moves_to_another_of_its_networ
     machine: BaseMachine, wifid: Wifid
 ) -> None:
     """A card whose access point carries slowly moves to another of its network it hears."""
-    # Lantern's second, as loud as the first, so it's heard well enough to try.
+    # Lantern's second, as loud as the first, so it's heard well enough to try: both are set
+    # alike, since the first's own power isn't the 20 dBm the second can be set to.
     machine.succeed("systemctl start lantern-two")
-    machine.succeed("ip netns exec air iw dev wlan5 set txpower fixed 2000")
+    for radio in ("wlan0", "wlan5"):
+        machine.succeed(f"ip netns exec air iw dev {radio} set txpower fixed 2000")
     machine.wait_until_succeeds(
         "wpa_cli -i wlan2 scan >/dev/null;"
         " wpa_cli -i wlan2 scan_results | grep -q 02:00:00:00:05:00",
