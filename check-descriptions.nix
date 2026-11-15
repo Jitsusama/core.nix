@@ -827,6 +827,10 @@
     every path pattern merge-net's must-run.txt, ruff.toml's per-file ignores and treefmt's
     unread kinds past treefmt-nix's own give matches a file the repository holds
   '';
+  every-window-says-what-it-holds = ''
+    the reader on a page and a kitty running the account's shell, opened on the account's niri,
+    are each titled by more than their app id or the name of a program running in them
+  '';
   every-pixel-mark-stands-level = ''
     every mark the theme draws in pixels, the empty places' cat in each pose, is square, its ink
     touching its top and bottom rows and centred across to within a cell, and the three empty

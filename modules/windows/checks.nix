@@ -3,6 +3,7 @@
 {
   account,
   bareNixos,
+  graphical,
   holds,
   lib,
   onLinux,
@@ -32,6 +33,53 @@ onLinux {
   windows-reads-the-launchers-words = pkgs.callPackage ./package.nix {
     words = (import ../quickshell/launcher/words.nix).file;
   };
+  # Every window core opens says what it holds, rather than only which
+  # program it is, which reads alike among the launcher's windows and in a
+  # line said about one: the account's niri, nested in the sandbox
+  # (tests/nested-niri.sh), opens the account's reader on a page and a
+  # kitty running the account's shell, and each title must say more than
+  # its app id or any process in it (tests/every-window-says-what-it-holds.py).
+  # The camera needs a device, so its real viewfinder's title is held in
+  # the-viewfinder-keeps-its-own-keys instead.
+  every-window-says-what-it-holds =
+    let
+      home = account graphical;
+      shell = (account (bareNixos [ self.nixosModules.workstation ])).home-files;
+      reader = lib.findFirst (package: lib.getName package == "reader") null home.home.packages;
+      files = lib.filterAttrs (
+        name: _: lib.any (folder: lib.hasPrefix folder name) [ "kitty/" "niri/" "reader/" ]
+      ) home.xdg.configFile;
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "every-window-says-what-it-holds"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          pkgs.dbus
+          pkgs.kitty
+          pkgs.python3
+          pkgs.sway-unwrapped
+          pkgs.zsh
+          reader
+        ];
+        # Everything draws in software, as the desktop's test machines do.
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+        FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD XDG_STATE_HOME=$PWD/state SHELL=${lib.getExe pkgs.zsh}
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ln -s ${shell}/.zshrc ${shell}/.zshenv .
+        printf '# Tides\n\nWhen the water comes in.\n' > tides.md
+        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+          python3 ${./tests/every-window-says-what-it-holds.py} "reader $PWD/tides.md" kitty
+        touch $out
+      '';
   # clippy finds nothing in the windows daemon, its tests included.
   windows-passes-clippy = passesClippy "windows-passes-clippy" daemon;
   # The shell brings the daemon, on the socket the shell's daemons share,
