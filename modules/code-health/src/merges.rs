@@ -16,8 +16,6 @@
 
 use std::collections::BTreeMap;
 
-use crate::measure::NAMED;
-
 /// A change merged into the line read: its merge commit, its title, when
 /// its first commit was authored and when it merged, in Unix seconds, and
 /// the files it changed.
@@ -55,7 +53,6 @@ pub fn shared_files(merged: &[Merged]) -> Option<(f64, Vec<String>)> {
     shared.sort_by_key(|(_, times)| std::cmp::Reverse(*times));
     let named: Vec<String> = shared
         .iter()
-        .take(NAMED)
         .map(|(file, times)| format!("{file}: {times} of {} changes", merged.len()))
         .collect();
     let count = u32::try_from(shared.len()).unwrap_or(u32::MAX);
@@ -98,7 +95,6 @@ fn ranked(
     };
     let named = each
         .iter()
-        .take(NAMED)
         .map(|(figure, change)| {
             let short = change.merge.get(..12).unwrap_or(&change.merge);
             format!("{short} {}: {figure}{unit}", change.title)

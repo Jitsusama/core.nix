@@ -16,8 +16,9 @@
 //! day took from first edit to merge (merges.rs).
 //!
 //! It writes `<date>.json` in its folder as `{repo: {measure: figure}}`,
-//! the form cadence reads, and `<date>-named.json` beside it naming what
-//! each figure counted, so a figure that rose is traced to its files. A
+//! the form cadence reads, `<date>-named.json` beside it naming the first
+//! 200 of what each figure counted, so a figure that rose is traced to its
+//! files, and `<date>-files.json` counting all of them by file. A
 //! repository it can't read is said and left out, as cadence leaves out
 //! any source it can't read; it fails only when it reads none. It answers
 //! with each repository's figures and the files it wrote, wrapped to the
@@ -220,7 +221,7 @@ fn run(context: &Context) -> Result<(), Failure> {
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok());
     let at = now.timestamp().to_string();
-    let earlier = earlier_named(&into, &date);
+    let earlier = earlier_counts(&into, &date);
     let hour = hour::hour(
         &at,
         &figures,
@@ -286,10 +287,11 @@ struct Day<'a> {
 }
 
 impl Day<'_> {
-    fn files(&self) -> [PathBuf; 3] {
+    fn files(&self) -> [PathBuf; 4] {
         [
             self.into.join(format!("{}.json", self.date)),
             self.into.join(format!("{}-named.json", self.date)),
+            self.into.join(format!("{}-files.json", self.date)),
             self.into.join("hour.json"),
         ]
     }
@@ -472,21 +474,42 @@ fn state() -> PathBuf {
         .join("code-health")
 }
 
-/// Write the day's figures and names, each through a file beside it, so
-/// cadence never reads half of one.
+/// Write the day's figures, the first `NAMED` of each measure's names and
+/// how many of all its names each file holds, each through a file beside
+/// it, so cadence never reads half of one.
 fn write(
     into: &std::path::Path,
     date: &str,
     figures: &impl serde::Serialize,
-    named: &impl serde::Serialize,
+    named: &BTreeMap<String, BTreeMap<&'static str, Vec<String>>>,
 ) -> Result<(), String> {
     let failed = |error: &dyn std::fmt::Display| format!("{}: {error}", into.display());
     fs::create_dir_all(into).map_err(|error| failed(&error))?;
+    let each = |say: &dyn Fn(&[String]) -> serde_json::Value| -> serde_json::Value {
+        named
+            .iter()
+            .map(|(repo, measures)| {
+                let measures = measures
+                    .iter()
+                    .map(|(measure, names)| ((*measure).to_owned(), say(names)));
+                (
+                    repo.clone(),
+                    measures.collect::<serde_json::Map<_, _>>().into(),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>()
+            .into()
+    };
+    let first = each(&|names| json!(&names[..names.len().min(measure::NAMED)]));
+    let counts = each(&|names| json!(hour::per_file(names.iter().map(String::as_str))));
+    let say = |value: &serde_json::Value| {
+        serde_json::to_string_pretty(value).map_err(|error| failed(&error))
+    };
     let figures = serde_json::to_string_pretty(figures).map_err(|error| failed(&error))?;
-    let named = serde_json::to_string_pretty(named).map_err(|error| failed(&error))?;
     for (file, text) in [
         (format!("{date}.json"), figures),
-        (format!("{date}-named.json"), named),
+        (format!("{date}-named.json"), say(&first)?),
+        (format!("{date}-files.json"), say(&counts)?),
     ] {
         written(into, &file, &text)?;
     }
@@ -500,14 +523,14 @@ fn write_whole(into: &Path, file: &str, value: &impl serde::Serialize) -> Result
     written(into, file, &text)
 }
 
-/// The newest day's named record in `into` from before `date`, if one
+/// The newest day's counts by file in `into` from before `date`, if one
 /// is there and reads as JSON.
-fn earlier_named(into: &Path, date: &str) -> Option<serde_json::Value> {
+fn earlier_counts(into: &Path, date: &str) -> Option<serde_json::Value> {
     let newest = fs::read_dir(into)
         .ok()?
         .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
         .filter(|file| {
-            file.strip_suffix("-named.json")
+            file.strip_suffix("-files.json")
                 .is_some_and(|day| day < date)
         })
         .max()?;
@@ -527,6 +550,7 @@ fn written(into: &Path, file: &str, text: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::measure::NAMED;
 
     fn said(words: &str) -> Vec<String> {
         words.split(' ').map(str::to_owned).collect()
@@ -663,11 +687,40 @@ mod tests {
     }
 
     #[test]
-    fn the_day_before_is_the_newest_named_record_before_today() {
+    fn the_days_names_are_cut_short_and_counted_whole_by_file() {
+        let folder = tempfile::tempdir().expect("no folder to write in");
+        let figures =
+            BTreeMap::from([("core".to_owned(), BTreeMap::from([("suppressions", 0.0)]))]);
+        let mut every: Vec<String> = (0..NAMED).map(|line| format!("a.rs:{line}")).collect();
+        every.extend(["z.rs:1".to_owned(), "z.rs:2".to_owned()]);
+        let named =
+            BTreeMap::from([("core".to_owned(), BTreeMap::from([("suppressions", every)]))]);
+        write(folder.path(), "2026-11-15", &figures, &named).expect("the day wasn't written");
+        let read = |file: &str| -> serde_json::Value {
+            let text = fs::read_to_string(folder.path().join(file))
+                .unwrap_or_else(|error| panic!("{file} wasn't written: {error}"));
+            serde_json::from_str(&text).expect("not JSON")
+        };
+        assert_eq!(
+            read("2026-11-15-named.json")["core"]["suppressions"]
+                .as_array()
+                .map(Vec::len),
+            Some(NAMED),
+            "the day's names weren't cut at {NAMED}"
+        );
+        assert_eq!(
+            read("2026-11-15-files.json"),
+            json!({"core": {"suppressions": {"a.rs": NAMED, "z.rs": 2}}}),
+            "each file's count wasn't of every name, past the cut too"
+        );
+    }
+
+    #[test]
+    fn the_day_before_is_the_newest_record_of_counts_before_today() {
         let folder = tempfile::tempdir().expect("no folder to write in");
         let into = folder.path();
         assert_eq!(
-            earlier_named(into, "2026-11-15"),
+            earlier_counts(into, "2026-11-15"),
             None,
             "an empty folder gave a day before"
         );
@@ -677,21 +730,22 @@ mod tests {
             ("2026-11-15", "15"),
         ] {
             fs::write(
-                into.join(format!("{date}-named.json")),
+                into.join(format!("{date}-files.json")),
                 format!("{{\"d\": {said}}}"),
             )
-            .expect("a day's names weren't written");
+            .expect("a day's counts weren't written");
         }
         fs::write(into.join("2026-11-13.json"), "{\"d\": 13}").expect("figures weren't written");
+        fs::write(into.join("2026-11-14-named.json"), "{\"d\": 0}").expect("names weren't written");
         fs::write(into.join("hour.json"), "{}").expect("the hour wasn't written");
         assert_eq!(
-            earlier_named(into, "2026-11-15"),
+            earlier_counts(into, "2026-11-15"),
             Some(json!({"d": 14})),
-            "the day before wasn't the newest named record before today"
+            "the day before wasn't the newest record of counts before today"
         );
-        fs::write(into.join("2026-11-14-named.json"), "half").expect("it wasn't written");
+        fs::write(into.join("2026-11-14-files.json"), "half").expect("it wasn't written");
         assert_eq!(
-            earlier_named(into, "2026-11-15"),
+            earlier_counts(into, "2026-11-15"),
             None,
             "a day before that isn't JSON was read as one"
         );
