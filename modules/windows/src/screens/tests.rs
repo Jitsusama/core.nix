@@ -107,6 +107,35 @@ fn a_screen_dark_by_name_says_its_hub_is_on() {
 }
 
 #[test]
+fn the_place_counts_its_screens_and_how_many_are_on_in_its_words() {
+    let words = words();
+    let said =
+        |outputs: &BTreeMap<String, Value>| summary(outputs, &words)["summary"]["said"].clone();
+    assert_eq!(summary(&desk(), &words)["key"], "summary:displays");
+    assert_eq!(
+        said(&desk()),
+        "2 of 3 on",
+        "a screen niri lays nothing out on is on"
+    );
+    let mut screens = BTreeMap::from([("eDP-1".to_owned(), output("BOE", "", &lit(2.0)))]);
+    assert_eq!(
+        said(&screens),
+        "1 screen",
+        "the only screen isn't counted as one of many"
+    );
+    screens.insert("DP-1".to_owned(), output("Dell Inc.", "U2723QE", &lit(1.0)));
+    assert_eq!(
+        said(&screens),
+        "2 screens",
+        "with every screen on, how many on is said"
+    );
+    if let Some(dell) = screens.get_mut("DP-1") {
+        dell["powered_off"] = json!(true);
+    }
+    assert_eq!(said(&screens), "1 of 2 on", "a screen dark by name is on");
+}
+
+#[test]
 fn turning_every_screen_off_says_what_it_does_to_which_and_how_its_typed() {
     let mut outputs = desk();
     let mut dark = output("Dell Inc.", "P2422H", &lit(1.0));
@@ -700,7 +729,7 @@ fn no_vocabulary_still_words_every_row_by_its_ids() {
     assert_eq!(words.sleep.glyph, "", "a glyph lacked isn't none");
     assert_eq!(
         lacked.len(),
-        109,
+        112,
         "not every word lacked was said: {lacked:?}"
     );
     let drawer = drawer("eDP-1", &panel(), &words);

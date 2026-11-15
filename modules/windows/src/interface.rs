@@ -8,7 +8,7 @@ use daemon_serve::asks::{Domain, error};
 use serde_json::{Value, json};
 
 /// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 9] = [
+pub const KINDS: [&str; 10] = [
     "window",
     "workspace",
     "desktop",
@@ -17,6 +17,7 @@ pub const KINDS: [&str; 9] = [
     "layout",
     "screenshot",
     "row",
+    "summary",
     "windows-open",
 ];
 
@@ -28,10 +29,10 @@ const SOLE: [&str; 4] = ["desktop", "focus", "screenshot", "windows-open"];
 /// to none at every opening of the launcher, which would wake every watch
 /// that names no kind, where only the few that draw tiles, or follow the
 /// keys as niri does, want them. A row is the launcher's alone, ready to
-/// show, so only a watch of its place wants it. How many windows are open,
-/// and whose, moves at every window opened or closed, and only Lock's drawer
-/// says it.
-const NAMED_ONLY: [&str; 4] = ["focus", "layout", "row", "windows-open"];
+/// show, so only a watch of its place wants it, as the summary Screens' own
+/// row says beside its name. How many windows are open, and whose, moves at
+/// every window opened or closed, and only Lock's drawer says it.
+const NAMED_ONLY: [&str; 5] = ["focus", "layout", "row", "summary", "windows-open"];
 
 /// What daemon-serve serves it as.
 pub const DOMAIN: Domain = Domain {
