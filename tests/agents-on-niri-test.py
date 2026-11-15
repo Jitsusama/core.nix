@@ -258,8 +258,9 @@ def shell() -> Iterator[Shell]:
             **under,
             "state": "listening",
             "repo": "core.nix",
-            # The mesh groups it joined, each a network (mycelium's networks).
-            "groups": ["repo.core.nix", "harbour"],
+            # The mesh groups it joined, as pi names them, each a network (mycelium's
+            # networks): its repository's, titled by its repo, and a group of its own.
+            "groups": ["#repo/core-nix", "#harbour"],
             "usage": FULL,
             "worksOn": WORKS_ON,
         },
@@ -267,7 +268,7 @@ def shell() -> Iterator[Shell]:
     lay(
         "PAUSED",
         "Paused Quest",
-        {**under, "state": "paused", "landings": LANDINGS, "groups": ["repo.core.nix"]},
+        {**under, "state": "paused", "landings": LANDINGS, "groups": ["#repo/core-nix"]},
     )
     lay("CLOSED", "Closed Quest", {"state": "idle", "repo": "tidepool"}, closed=True)
     lost_on_the_last_boot()
