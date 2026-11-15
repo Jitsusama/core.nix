@@ -1674,6 +1674,10 @@
     a Mac's Nix is given a line to sign with its own key, made before /etc under the name given
     or the Mac's own
   '';
+  a-stopped-kill-joins-its-timer = ''
+    the machine's Nix lives through a stop that comes while it waits on a child it killed with a
+    timer behind the signal, as the daemon's process for a connection kills its build hook
+  '';
   nix-builds-yield-to-the-person = ''
     Nix's builds run at a lower weight than the person's programs
   '';

@@ -1,0 +1,36 @@
+diff --git a/src/libutil/unix/processes.cc b/src/libutil/unix/processes.cc
+--- a/src/libutil/unix/processes.cc
++++ b/src/libutil/unix/processes.cc
+@@ -92,6 +92,18 @@
+             ::kill(separatePG ? -pid : pid, SIGKILL);
+         });
+ 
++    /* Join the timer however this returns. When wait() throws, as it
++       does when a stop interrupts it, a timer left running reads
++       `killed` after it's gone, and the next assignment to killThread,
++       from the destructor's kill(), meets a joinable thread and calls
++       std::terminate, which ended a daemon worker mid-build. */
++    Finally joinTimer([&] {
++        if (killThread.joinable()) {
++            killed = true;
++            killThread.join();
++        }
++    });
++
+     /* Send the requested signal to the child.  If it has its own
+        process group, send the signal to every process in the child
+        process group (which hopefully includes *all* its children). */
+@@ -105,12 +117,7 @@
+             logError(SysError("killing process %d", pid).info());
+     }
+ 
+-    int ret = wait(allowInterrupts);
+-    if (killThread.joinable()) {
+-        killed = true;
+-        killThread.join();
+-    }
+-    return ret;
++    return wait(allowInterrupts);
+ }
+ 
+ int Pid::wait(bool allowInterrupts)

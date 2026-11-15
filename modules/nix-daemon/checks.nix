@@ -139,6 +139,28 @@
       touch $out
     '';
 
+  # The machine's Nix lives through a stop that comes while it kills a child
+  # with a timer behind the signal, as the daemon's process for a connection
+  # kills its build hook. Stock 2.34 and 2.35 end in std::terminate there,
+  # which took five builds down in one night
+  # (tests/a-stopped-kill-joins-its-timer.cpp).
+  a-stopped-kill-joins-its-timer =
+    pkgs.runCommandCC "a-stopped-kill-joins-its-timer"
+      {
+        nativeBuildInputs = [ pkgs.pkg-config ];
+        buildInputs = [
+          workstation.config.nix.package.libs.nix-util
+          pkgs.libarchive
+          pkgs.nlohmann_json
+        ];
+      }
+      ''
+        $CXX ${./tests/a-stopped-kill-joins-its-timer.cpp} -o stops \
+          $(pkg-config --cflags --libs nix-util)
+        ./stops
+        touch $out
+      '';
+
   # clippy finds nothing in without-syncfs, its tests included.
   without-syncfs-passes-clippy = passesClippy "without-syncfs-passes-clippy" (
     pkgs.callPackage ./without-syncfs/package.nix { }
