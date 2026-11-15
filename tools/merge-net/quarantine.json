@@ -182,6 +182,18 @@
     "test": "the-launcher-answers-whats-typed-on-niri"
   },
   {
+    "at": 1794553008,
+    "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
+    "due": "2026-11-16",
+    "due_why": "Its steps are brought up to date; actless still finds For You's Slack conversations not made by their component once every message is held, which its owner fixes by 2026-11-16 23:59 UTC",
+    "owner_pr": 3596,
+    "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
+    "subtests": [
+      "test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count"
+    ],
+    "test": "vm-desktop-launcher-reads-mail"
+  },
+  {
     "at": 1794506844,
     "commit": "97b968eb686397074b9cd1695fba20e2c2ca4c2e",
     "due": "2026-11-16",
