@@ -214,6 +214,9 @@ let
     enter = keyFaces.Return;
     pageup = keyFaces.Page_Up;
     pagedown = keyFaces.Page_Down;
+    # The Copilot key as a keyboard counts it, by the kernel's F23, where a
+    # chord names what that F23 types.
+    f23 = keyFaces.XF86TouchpadOff;
   };
 
   # A chord in the key map's one spelling (super+shift+/), drawn key by key
