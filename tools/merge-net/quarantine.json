@@ -460,8 +460,9 @@
   {
     "at": 1794727050,
     "commit": "4b0d0f83295c0c04e545cf29d89491a3c7c282f1",
-    "owner_pr": null,
-    "reason": "failed, then passed, at 4b0d0f83295c",
+    "due": "2026-11-17",
+    "owner_pr": 2563,
+    "reason": "failed, then passed, at 4b0d0f83295c; the launcher's sessions are Y2YBTS's, and #2563 added this subtest",
     "subtests": [
       "test_two_orchestrations_come_back_each_where_it_sat"
     ],
@@ -482,8 +483,8 @@
     "at": 1794736626,
     "commit": "2c22e6094aa171140e1525a07c163b0e076033a3",
     "due": "2026-11-17",
-    "owner_pr": null,
-    "reason": "failed, then passed, at 2c22e6094aa1",
+    "owner_pr": 1632,
+    "reason": "failed, then passed, at 2c22e6094aa1; the launcher's sessions are Y2YBTS's, and #1632 added the newest of these subtests",
     "subtests": [
       "test_a_session_opens_in_the_agents_slice",
       "test_agents_puts_back_the_windows_that_reopen_themselves",
