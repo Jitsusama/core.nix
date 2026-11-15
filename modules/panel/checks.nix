@@ -3,11 +3,13 @@
 {
   bareNixos,
   lib,
+  onLinux,
   pkgs,
   self,
   ...
 }:
-{
+# What follows runs battery stand-ins built for Linux, which a Mac can't run.
+onLinux {
   # The XPS 14's panel stays fast at 30%, drops to 60 Hz once the battery falls
   # below it, stays there while the battery reads 31% again, and comes back to
   # its fastest rate on the charger. Only the panel's modes at the size it shows

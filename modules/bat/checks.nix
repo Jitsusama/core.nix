@@ -3,11 +3,13 @@
 {
   account,
   lib,
+  onLinux,
   pkgs,
   workstation,
   ...
 }:
-{
+# What follows runs the Linux workstation's own bat, which a Mac can't run.
+onLinux {
   # bat colours code in the account's theme from a cache built once, with
   # nothing to say, and delta finds the theme through it too; a switch
   # builds no cache of its own (tests/bat-reads-its-theme.sh).

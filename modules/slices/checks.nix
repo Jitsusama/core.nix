@@ -341,11 +341,6 @@
         && (daemon.Slice or "") == "machine.slice"
       );
 
-  # The sorter's tests run as it builds: a busy process group moves after two
-  # busy seconds and not one, the shell's group and pi's never move, a busy
-  # process inside them moves alone, and a process first seen counts nothing.
-  jobs-sorter-sorts-by-behaviour = pkgs.callPackage ./jobs-sorter/package.nix { };
-
   # systemd-run, in front of a stand-in that says what it was given, adds
   # --slice-inherit for an agent's --user call alone: not Joel's terminal
   # or launcher, nor a call naming a slice, nor one to the system manager.
@@ -406,7 +401,13 @@
       touch $out
     '';
 }
+# What follows needs Linux to build or to run, so a Mac leaves it out.
 // onLinux {
+  # The sorter's tests run as it builds: a busy process group moves after two
+  # busy seconds and not one, the shell's group and pi's never move, a busy
+  # process inside them moves alone, and a process first seen counts nothing.
+  jobs-sorter-sorts-by-behaviour = pkgs.callPackage ./jobs-sorter/package.nix { };
+
   # clippy finds nothing in the jobs sorter, its tests included.
   jobs-sorter-passes-clippy = passesClippy "jobs-sorter-passes-clippy" (
     pkgs.callPackage ./jobs-sorter/package.nix { }

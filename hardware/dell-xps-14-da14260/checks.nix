@@ -32,62 +32,6 @@ let
   );
 in
 {
-  # A hibernation's thaw once reset Bluetooth's chip and loaded its firmware
-  # afresh, so the power-off after found it still in its bootloader and
-  # refused, rolling the hibernation back with the laptop left on. Nothing
-  # takes the driver off the chip for it any more, so its thaw must be the
-  # plain wake btintel-pcie-pm makes it, and never the resume that resets.
-  bluetooth-lets-a-hibernation-power-off =
-    let
-      driver = "drivers/bluetooth/btintel_pcie.c";
-    in
-    pkgs.runCommandLocal "bluetooth-lets-a-hibernation-power-off" { } ''
-      source=${kernelSource [ driver ]}/${driver}
-      if ! grep -q '\.thaw = btintel_pcie_thaw,' "$source" ||
-        grep -q '\.thaw = btintel_pcie_resume,' "$source"; then
-        echo "Bluetooth's thaw resets its chip, so a hibernation's power-off can be refused." >&2
-        exit 1
-      fi
-      touch $out
-    '';
-
-  # Bluetooth's chip once halted with an exception dump the driver couldn't
-  # read, and as only a dump it could read led to a reset, the chip stayed
-  # dead, mouse and all, until a reboot. So an exception that passed no event
-  # on must still raise the Hardware Error that resets it
-  # (btintel-pcie-resets-unread-dump). Every way out of reading the dump
-  # goes through the label that raises it: a newer kernel's read added an
-  # early return the patch carried forward would leave, which skips the
-  # error as surely as having no call at all
-  # (tests/every-unread-dump-resets.sh).
-  bluetooth-recovers-from-an-unread-exception =
-    let
-      driver = "drivers/bluetooth/btintel_pcie.c";
-    in
-    pkgs.runCommandLocal "bluetooth-recovers-from-an-unread-exception" { } ''
-      ${lib.getExe pkgs.bash} ${./tests/every-unread-dump-resets.sh} \
-        ${kernelSource [ driver ]}/${driver}
-      touch $out
-    '';
-
-  # A model runs on the NPU only once its compiler has turned it into the
-  # NPU's program, and the driver looks for the compiler in its own
-  # directory, so both have to be in the graphics driver directory that
-  # /run/opengl-driver links to. Anywhere else, the driver never finds it.
-  the-npu-finds-its-compiler =
-    let
-      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.systemd.tmpfiles) settings;
-      drivers = settings.graphics-driver."/run/opengl-driver"."L+".argument;
-    in
-    pkgs.runCommandLocal "the-npu-finds-its-compiler" { } ''
-      for f in libze_intel_npu.so.1 libopenvino_intel_npu_compiler_loader.so \
-        libopenvino_intel_npu_compiler.so; do
-        [ -e ${drivers}/lib/$f ] ||
-          { echo "The graphics drivers lack $f, so the NPU can't compile a model." >&2; exit 1; }
-      done
-      touch $out
-    '';
-
   # The GPU's security controller waits 20 s from xe's start for its link
   # to the CSME and never tries again, so the link's drivers load in the
   # initrd with xe rather than after the disk's PIN.
@@ -137,31 +81,6 @@ in
     holds "the-window-buffers-stay-under-load"
       "xe's non-purgeable seeks aren't set to 64, so reclaim under a build backs up window buffers and the compositor waits on them."
       (lib.hasInfix ''DRIVER=="xe", ATTR{shrinker_non_purgeable_seeks}="64"'' extraRules);
-
-  # xe's 2 MiB buffer pages had the thread asking reclaim and compact for
-  # them, round after round, while memory was fragmented, and niri stalled
-  # for up to 1.3 s. Read from the patched source, that try only wakes
-  # background reclaim and falls back. No test runs the fallback itself:
-  # TTM's own tests never name a size the device gains from, and a 2 MiB
-  # allocation fails on cue only with fault injection, which this kernel
-  # isn't built with.
-  the-gpu-pool-never-stalls-for-big-pages =
-    let
-      pool = "drivers/gpu/drm/ttm/ttm_pool.c";
-    in
-    pkgs.runCommandLocal "the-gpu-pool-never-stalls-for-big-pages" { } ''
-      cd ${kernelSource [ pool ]}
-      fail() {
-        echo "The GPU's page pool $1, so a 2 MiB page can stall the compositor for a second."
-        exit 1
-      }
-      tried=$(grep -A1 'if (beneficial_order && order == beneficial_order)' ${pool}) ||
-        fail "has no try at the size the device gains from where this check looks"
-      grep -qF 'gfp_flags &= ~__GFP_DIRECT_RECLAIM;' <<<"$tried" ||
-        fail "reclaims in the caller for it"
-      ! grep -qF '__GFP_RETRY_MAYFAIL' <<<"$tried" || fail "retries reclaim for it"
-      touch $out
-    '';
 
   greetd-waits-for-the-gpu =
     let
@@ -318,7 +237,89 @@ in
         ]
       );
 }
+# What follows needs Linux to build or to run, so a Mac leaves it out.
 // onLinux {
+  # A hibernation's thaw once reset Bluetooth's chip and loaded its firmware
+  # afresh, so the power-off after found it still in its bootloader and
+  # refused, rolling the hibernation back with the laptop left on. Nothing
+  # takes the driver off the chip for it any more, so its thaw must be the
+  # plain wake btintel-pcie-pm makes it, and never the resume that resets.
+  bluetooth-lets-a-hibernation-power-off =
+    let
+      driver = "drivers/bluetooth/btintel_pcie.c";
+    in
+    pkgs.runCommandLocal "bluetooth-lets-a-hibernation-power-off" { } ''
+      source=${kernelSource [ driver ]}/${driver}
+      if ! grep -q '\.thaw = btintel_pcie_thaw,' "$source" ||
+        grep -q '\.thaw = btintel_pcie_resume,' "$source"; then
+        echo "Bluetooth's thaw resets its chip, so a hibernation's power-off can be refused." >&2
+        exit 1
+      fi
+      touch $out
+    '';
+
+  # Bluetooth's chip once halted with an exception dump the driver couldn't
+  # read, and as only a dump it could read led to a reset, the chip stayed
+  # dead, mouse and all, until a reboot. So an exception that passed no event
+  # on must still raise the Hardware Error that resets it
+  # (btintel-pcie-resets-unread-dump). Every way out of reading the dump
+  # goes through the label that raises it: a newer kernel's read added an
+  # early return the patch carried forward would leave, which skips the
+  # error as surely as having no call at all
+  # (tests/every-unread-dump-resets.sh).
+  bluetooth-recovers-from-an-unread-exception =
+    let
+      driver = "drivers/bluetooth/btintel_pcie.c";
+    in
+    pkgs.runCommandLocal "bluetooth-recovers-from-an-unread-exception" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/every-unread-dump-resets.sh} \
+        ${kernelSource [ driver ]}/${driver}
+      touch $out
+    '';
+
+  # A model runs on the NPU only once its compiler has turned it into the
+  # NPU's program, and the driver looks for the compiler in its own
+  # directory, so both have to be in the graphics driver directory that
+  # /run/opengl-driver links to. Anywhere else, the driver never finds it.
+  the-npu-finds-its-compiler =
+    let
+      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.systemd.tmpfiles) settings;
+      drivers = settings.graphics-driver."/run/opengl-driver"."L+".argument;
+    in
+    pkgs.runCommandLocal "the-npu-finds-its-compiler" { } ''
+      for f in libze_intel_npu.so.1 libopenvino_intel_npu_compiler_loader.so \
+        libopenvino_intel_npu_compiler.so; do
+        [ -e ${drivers}/lib/$f ] ||
+          { echo "The graphics drivers lack $f, so the NPU can't compile a model." >&2; exit 1; }
+      done
+      touch $out
+    '';
+
+  # xe's 2 MiB buffer pages had the thread asking reclaim and compact for
+  # them, round after round, while memory was fragmented, and niri stalled
+  # for up to 1.3 s. Read from the patched source, that try only wakes
+  # background reclaim and falls back. No test runs the fallback itself:
+  # TTM's own tests never name a size the device gains from, and a 2 MiB
+  # allocation fails on cue only with fault injection, which this kernel
+  # isn't built with.
+  the-gpu-pool-never-stalls-for-big-pages =
+    let
+      pool = "drivers/gpu/drm/ttm/ttm_pool.c";
+    in
+    pkgs.runCommandLocal "the-gpu-pool-never-stalls-for-big-pages" { } ''
+      cd ${kernelSource [ pool ]}
+      fail() {
+        echo "The GPU's page pool $1, so a 2 MiB page can stall the compositor for a second."
+        exit 1
+      }
+      tried=$(grep -A1 'if (beneficial_order && order == beneficial_order)' ${pool}) ||
+        fail "has no try at the size the device gains from where this check looks"
+      grep -qF 'gfp_flags &= ~__GFP_DIRECT_RECLAIM;' <<<"$tried" ||
+        fail "reclaims in the caller for it"
+      ! grep -qF '__GFP_RETRY_MAYFAIL' <<<"$tried" || fail "retries reclaim for it"
+      touch $out
+    '';
+
   # The SoundWire machine driver binds each amplifier by the names of the
   # DAIs it lists for it, and one the amplifiers' driver doesn't register
   # leaves no sound card at all. 7.2.11 named the OT25 DAI before it had

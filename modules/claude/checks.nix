@@ -5,6 +5,7 @@
   holds,
   lib,
   macWorkstation,
+  onLinux,
   passesClippy,
   pkgs,
   workstation,
@@ -49,6 +50,18 @@ in
           ]
       );
 
+  # clippy finds nothing in the status line, its tests included.
+  claude-statusline-passes-clippy = passesClippy "claude-statusline-passes-clippy" (
+    pkgs.callPackage ./statusline/package.nix { }
+  );
+
+  # The status line's tests run as it builds: the context its transcript
+  # holds, rounded as it reads, ink only where asked, and a session it
+  # can't read named.
+  claude-statusline-says-how-full-the-context-is = pkgs.callPackage ./statusline/package.nix { };
+}
+# What follows runs the Linux workstation's own programs, which a Mac can't run.
+// onLinux {
   # The status line's tests run as it builds (statusline/), and the command a
   # workstation gives Claude Code draws a session's folder in the theme's
   # strong colour, read from the account's theme as kitty's environment has it.
@@ -68,14 +81,4 @@ in
       grep -qF "$(printf '\033[1;38;2;${strongDrawn}m')core.nix" line
       touch $out
     '';
-
-  # clippy finds nothing in the status line, its tests included.
-  claude-statusline-passes-clippy = passesClippy "claude-statusline-passes-clippy" (
-    pkgs.callPackage ./statusline/package.nix { }
-  );
-
-  # The status line's tests run as it builds: the context its transcript
-  # holds, rounded as it reads, ink only where asked, and a session it
-  # can't read named.
-  claude-statusline-says-how-full-the-context-is = pkgs.callPackage ./statusline/package.nix { };
 }

@@ -4,45 +4,13 @@
   account,
   bareNixos,
   holds,
+  onLinux,
   passesClippy,
   pkgs,
   self,
   ...
 }:
 {
-  # A machine's own programs come first on code-health's PATH, with core's
-  # git after: stock git refuses a repository its own git keeps with an
-  # extension stock git doesn't know, and left such a one unread. Core's
-  # coreutils come last, for a git of the machine's that is a script: on
-  # 13 November one called tr about 60 times a read and found none.
-  code-health-finds-a-machines-programs-first =
-    let
-      # A package, and a profile kept outside the store, whose bin is searched.
-      first = [
-        pkgs.hello
-        "/home/someone/.local/state/tools/profile"
-      ];
-      home = account (bareNixos [
-        {
-          home-manager.sharedModules = [
-            self.homeModules.code-health
-            {
-              jitsusama.code-health = {
-                path = first;
-                repos.some.checkout = "/home/someone/src/some";
-              };
-            }
-          ];
-        }
-      ]);
-      # Written out rather than built as the module builds it.
-      profile = "/home/someone/.local/state/tools/profile/bin";
-      wanted = "PATH=${pkgs.hello}/bin:${profile}:${pkgs.git}/bin:${pkgs.coreutils}/bin";
-    in
-    holds "code-health-finds-a-machines-programs-first"
-      "code-health doesn't find a machine's programs first, or lost core's git or coreutils."
-      (home.systemd.user.services.code-health.Service.Environment == [ wanted ]);
-
   # code-health's tests run as it builds: a long file or crowded folder
   # counts only without its reason, a reason must open a sentence, a
   # suppression is read in its own language's way and not in a string, a
@@ -150,4 +118,39 @@
   code-health-passes-clippy = passesClippy "code-health-passes-clippy" (
     pkgs.callPackage ./package.nix { }
   );
+}
+# What follows runs the Linux workstation's own programs, which a Mac can't run.
+// onLinux {
+  # A machine's own programs come first on code-health's PATH, with core's
+  # git after: stock git refuses a repository its own git keeps with an
+  # extension stock git doesn't know, and left such a one unread. Core's
+  # coreutils come last, for a git of the machine's that is a script: on
+  # 13 November one called tr about 60 times a read and found none.
+  code-health-finds-a-machines-programs-first =
+    let
+      # A package, and a profile kept outside the store, whose bin is searched.
+      first = [
+        pkgs.hello
+        "/home/someone/.local/state/tools/profile"
+      ];
+      home = account (bareNixos [
+        {
+          home-manager.sharedModules = [
+            self.homeModules.code-health
+            {
+              jitsusama.code-health = {
+                path = first;
+                repos.some.checkout = "/home/someone/src/some";
+              };
+            }
+          ];
+        }
+      ]);
+      # Written out rather than built as the module builds it.
+      profile = "/home/someone/.local/state/tools/profile/bin";
+      wanted = "PATH=${pkgs.hello}/bin:${profile}:${pkgs.git}/bin:${pkgs.coreutils}/bin";
+    in
+    holds "code-health-finds-a-machines-programs-first"
+      "code-health doesn't find a machine's programs first, or lost core's git or coreutils."
+      (home.systemd.user.services.code-health.Service.Environment == [ wanted ]);
 }

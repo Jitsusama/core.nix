@@ -5,6 +5,7 @@
   bareNixos,
   holds,
   lib,
+  onLinux,
   pkgs,
   self,
   workstation,
@@ -285,7 +286,9 @@
     holds "theme-json-says-which-marks-turn"
       "theme.json turns ${builtins.toJSON turned}, and says nothing of ${unsaid} marks."
       (turned == [ "shapeDownTriangle" ] && unsaid == "0");
-
+}
+# What follows runs the Linux workstation's own programs, which a Mac can't run.
+// onLinux {
   # Picking another theme changes everything the account draws: the desktop
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
   # its files, so no surface was left behind in the old one. The design
