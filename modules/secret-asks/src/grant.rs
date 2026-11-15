@@ -199,7 +199,9 @@ pub fn row(grant: &Grant, words: &Words) -> Value {
         "glyph": "passwords",
         "hue": "machine",
         "note": note,
-        "side": [time::at(grant.ends_ms(), Form::Day)],
+        // Its day said as when it ends, since "granted · 22 Nov" read as
+        // granted on the 22nd (VKCF3Z, 15 November).
+        "side": [time::said(grant.ends_ms(), Form::Day, &words.fill("grantUntil", &[]))],
         "acts": [{
             "key": "verb:grant:forget",
             "ask": {"ask": "revoke", "key": thing},
@@ -381,6 +383,21 @@ mod tests {
             None,
             "a grant outlived its week"
         );
+    }
+
+    #[test]
+    fn a_grants_row_says_it_lasts_until_its_day() {
+        let grants = granted();
+        let grant = grants.iter().next().expect("a grant");
+        let words = Words::of(&[("grantUntil", "until {time}")]);
+        let side = &row(grant, &words)["side"][0];
+        // "granted · 22 Nov" read as granted on the 22nd (VKCF3Z,
+        // 15 November): the day is said as when it ends.
+        assert_eq!(
+            side["said"], "until {time}",
+            "the day isn't said as its end"
+        );
+        assert_eq!(side["at"], grant.ends_ms(), "the day isn't its end");
     }
 
     #[test]
