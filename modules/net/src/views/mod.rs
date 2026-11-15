@@ -398,23 +398,12 @@ mod tests {
         Room::Unbounded,
     ];
 
-    pub(crate) fn fits(text: &str, room: Room) {
-        if let Some(cells) = room.cells() {
-            for line in text.lines() {
-                assert!(
-                    layout::width(line) <= cells,
-                    "a line runs past {cells} cells: {line:?}"
-                );
-            }
-        }
-    }
-
     #[test]
     fn home_says_how_each_source_answers_and_what_the_devices_do() {
         let network = network();
         for room in ROOMS {
             let text = home(&network, now(), &Pen::plain(), room);
-            fits(&text, room);
+            assert_eq!(layout::overrun(&text, room), None);
             assert!(text.starts_with("home network · read 4 s ago"), "{text}");
             assert!(text.contains("modem   answering"), "{text}");
             // Read as words, since a narrow room wraps the line.
@@ -453,7 +442,7 @@ mod tests {
         let network = network();
         for room in ROOMS {
             let text = devices(&network, now(), &Pen::plain(), room);
-            fits(&text, room);
+            assert_eq!(layout::overrun(&text, room), None);
             let lines: Vec<&str> = text.lines().collect();
             let head = lines
                 .iter()
@@ -478,7 +467,7 @@ mod tests {
     #[test]
     fn a_narrow_terminal_drops_the_model_before_the_address() {
         let text = devices(&network(), now(), &Pen::plain(), Room::Cells(50));
-        fits(&text, Room::Cells(50));
+        assert_eq!(layout::overrun(&text, Room::Cells(50)), None);
         assert!(!text.contains("MODEL"), "{text}");
         assert!(text.contains("ROLES"), "{text}");
     }

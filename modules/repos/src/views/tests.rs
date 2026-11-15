@@ -14,17 +14,6 @@ const ROOMS: [Room; 4] = [
     Room::Unbounded,
 ];
 
-fn fits(text: &str, room: Room) {
-    if let Some(cells) = room.cells() {
-        for line in text.lines() {
-            assert!(
-                layout::width(line) <= cells,
-                "a line runs past {cells} cells: {line:?}"
-            );
-        }
-    }
-}
-
 #[expect(
     clippy::unnecessary_wraps,
     reason = "every view takes home as an option, and each test passes this one"
@@ -153,7 +142,7 @@ fn the_collection_is_a_line_for_each_repository_under_its_labels() {
     let record = record();
     for room in ROOMS {
         let text = repositories(&record, NOW, home(), &Pen::plain(), room);
-        fits(&text, room);
+        assert_eq!(layout::overrun(&text, room), None);
         assert!(
             text.starts_with("repositories · 4 on laptop · under ~/src\n"),
             "{text}"
@@ -189,7 +178,7 @@ fn a_name_two_repositories_share_is_said_with_its_owner() {
 #[test]
 fn a_narrow_terminal_drops_the_key_before_the_checkouts() {
     let text = repositories(&record(), NOW, home(), &Pen::plain(), Room::Cells(50));
-    fits(&text, Room::Cells(50));
+    assert_eq!(layout::overrun(&text, Room::Cells(50)), None);
     assert!(!text.contains("KEY"), "{text}");
     assert!(text.contains("CHECKOUTS"), "{text}");
 }
@@ -210,7 +199,7 @@ fn a_key_goes_whole_and_is_never_cut() {
     ));
     for room in ROOMS {
         let text = repositories(&record, NOW, home(), &Pen::plain(), room);
-        fits(&text, room);
+        assert_eq!(layout::overrun(&text, room), None);
         assert!(!text.contains('\u{2026}'), "a cell was cut: {text}");
         assert_eq!(
             text.contains("KEY"),
@@ -232,7 +221,7 @@ fn trees_say_their_shared_folder_once_and_each_its_own_name() {
             repository(core, NOW, home(), &Pen::plain(), room),
             trees(core, NOW, home(), &Pen::plain(), room),
         ] {
-            fits(&text, room);
+            assert_eq!(layout::overrun(&text, room), None);
             assert!(
                 text.contains("trees under ~/.local/state/pi/agentic-harness.pi/work/trees\n"),
                 "{text}"
@@ -295,7 +284,7 @@ fn a_repository_shows_its_facts_checkouts_and_newest_trees() {
     let core = &record.repositories[0];
     for room in ROOMS {
         let text = repository(core, NOW, home(), &Pen::plain(), room);
-        fits(&text, room);
+        assert_eq!(layout::overrun(&text, room), None);
         assert!(
             text.starts_with("core.nix · github:Jitsusama/core.nix\n"),
             "{text}"
@@ -352,7 +341,7 @@ fn every_tree_is_listed_and_a_gone_one_says_so() {
     let core = &record.repositories[0];
     for room in ROOMS {
         let text = trees(core, NOW, home(), &Pen::plain(), room);
-        fits(&text, room);
+        assert_eq!(layout::overrun(&text, room), None);
         assert_eq!(
             text.lines()
                 .filter(|line| line.starts_with("jitsusama-change-"))

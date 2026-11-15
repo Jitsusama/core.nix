@@ -1,5 +1,5 @@
 //! Reftables written here as git lays them out, a table to a stack, so the
-//! reading is proven without git; the reading's own tests build a monorepo's
+//! reading is proven without git; the reading's own tests build a large repository's
 //! layout from them too.
 
 use std::fs;

@@ -3,7 +3,7 @@
 //! into a checkout: a `.git` folder is the checkout's own, a `.git` file
 //! a tree's, followed to the checkout it was cut from. Each checkout then
 //! lists its own trees from its `worktrees/` folder, wherever their
-//! folders are, so the harness's trees and a monorepo's are found from their
+//! folders are, so the harness's trees and a large repository's are found from their
 //! checkouts without walking the folders that hold them. Checkouts whose
 //! remote is one repository are listed as one.
 //!
@@ -205,7 +205,7 @@ fn checkout(common: &Path, home: Option<&Path>) -> Found {
 }
 
 /// A checkout's name when it has no remote: its folder's, or for a bare
-/// one called `git`, as a monorepo's often is, the folder holding it.
+/// one called `git`, as a very large repository's often is, the folder holding it.
 fn folder_name(folder: &Path, bare: bool) -> String {
     let name = |path: &Path| {
         path.file_name()

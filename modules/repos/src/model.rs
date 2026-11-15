@@ -66,7 +66,7 @@ pub struct Remote {
 pub struct Checkout {
     /// Its folder: the one holding `.git`, or a bare one's own.
     pub path: String,
-    /// Whether it has no files of its own, only trees, as a large monorepo's often has.
+    /// Whether it has no files of its own, only trees, as a very large repository's often has.
     pub bare: bool,
     /// What its own files are at; none for a bare one.
     pub head: Option<Head>,

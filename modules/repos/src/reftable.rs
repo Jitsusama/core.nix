@@ -1,4 +1,4 @@
-//! A checkout's refs where git keeps them in a reftable, as a large monorepo's may be:
+//! A checkout's refs where git keeps them in a reftable, as a very large repository's may be:
 //! its `reftable/` folder's stack of tables, each a file of blocks, read
 //! for its ref records alone (git's Documentation/reftable.txt). A
 //! reftable checkout writes `ref: refs/heads/.invalid` in each HEAD file

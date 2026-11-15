@@ -532,7 +532,7 @@ fn scalar(value: &Value) -> String {
 mod tests {
     use super::*;
     use crate::views::find;
-    use crate::views::tests::{ROOMS, fits, network, now};
+    use crate::views::tests::{ROOMS, network, now};
 
     #[test]
     fn a_device_shows_its_fields_then_its_source_says_the_rest() {
@@ -540,7 +540,7 @@ mod tests {
         let study = find(&network, "Study").expect("the study's eero");
         for room in ROOMS {
             let text = device(&network, study, now(), &Pen::plain(), room);
-            fits(&text, room);
+            assert_eq!(layout::overrun(&text, room), None);
             assert!(text.starts_with("Study · access point"), "{text}");
             assert!(text.contains("firmware"), "{text}");
             assert!(text.contains("FROM EERO"), "{text}");
@@ -689,7 +689,7 @@ mod tests {
         let modem = find(&network, "Modem").expect("the modem");
         for room in ROOMS {
             let text = device(&network, modem, now(), &Pen::plain(), room);
-            fits(&text, room);
+            assert_eq!(layout::overrun(&text, room), None);
             assert!(text.contains("DOWN"), "{text}");
             assert!(text.contains("411.0"), "{text}");
             assert!(text.contains("REG-RSP-MP"), "{text}");
