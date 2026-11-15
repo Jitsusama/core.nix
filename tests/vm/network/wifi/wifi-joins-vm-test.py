@@ -332,10 +332,12 @@ def test_a_card_whose_access_point_carries_slowly_moves_to_another_of_its_networ
     machine.succeed("systemctl start lantern-two")
     for radio in ("wlan0", "wlan5"):
         machine.succeed(f"ip netns exec air iw dev {radio} set txpower fixed 2000")
+    # wifid may be looking for 5 GHz as the second comes up, since every radio here is on
+    # 2.4 GHz, and a look here takes about 20 s: one begun after it has to be waited out too.
     machine.wait_until_succeeds(
         "wpa_cli -i wlan2 scan >/dev/null;"
         " wpa_cli -i wlan2 scan_results | grep -q 02:00:00:00:05:00",
-        timeout=timedelta(seconds=30),
+        timeout=timedelta(seconds=60),
     )
     # What each of Lantern's access points is heard at, since one heard over 6 dB fainter than
     # the first isn't tried.
