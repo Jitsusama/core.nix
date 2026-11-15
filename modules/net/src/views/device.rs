@@ -3,11 +3,10 @@
 //! and log, a receiver's volume and what it's doing, a printer's ink),
 //! then what each source says that none of those held, in the source's own words.
 
-use serde_json::Value;
 use terminal_kit::layout::{self, Align, ITEMS, Room};
 use terminal_kit::{Pen, time};
 
-use super::{ago, count, roles_of, touching};
+use super::{ago, count, roles_of, said, touching};
 use crate::model::{Channel, Device, End, LinkState, LogEntry, Network};
 
 /// `net devices NAME`: what every device can say, then its role's own
@@ -88,31 +87,7 @@ pub fn device(network: &Network, device: &Device, now: u64, pen: &Pen, room: Roo
         block.extend(known_facts(&facts, pen, room));
         blocks.push(block);
     }
-    let shown = shown(device);
-    for (source, said) in &device.detail {
-        let mut fields = Vec::new();
-        match said {
-            Value::Object(said) => {
-                for (key, value) in said {
-                    if !SAID.contains(&key.as_str()) {
-                        flatten(&key.replace('_', " "), value, &mut fields);
-                    }
-                }
-            }
-            said => flatten("", said, &mut fields),
-        }
-        fields.retain(|(_, value)| !shown.contains(value));
-        if fields.is_empty() {
-            continue;
-        }
-        let facts: Vec<(&str, Option<&str>)> = fields
-            .iter()
-            .map(|(label, value)| (label.as_str(), Some(value.as_str())))
-            .collect();
-        let mut block = vec![pen.label(&format!("from {source}"))];
-        block.extend(layout::facts(&facts, "unknown", pen, room));
-        blocks.push(block);
-    }
+    blocks.extend(said::sections(device, pen, room));
     layout::joined(blocks)
 }
 
@@ -391,143 +366,6 @@ fn log(log: &[LogEntry], pen: &Pen, room: Room) -> Vec<String> {
     layout::table_in(&columns, &rows, pen, room, &[])
 }
 
-/// Every value the page already shows, so a source's section leaves it
-/// out: the device's name, its id's own part, and its generic fields.
-fn shown(device: &Device) -> Vec<String> {
-    let mut shown = vec![
-        device.name.clone(),
-        device.id.rsplit(':').next().unwrap_or_default().to_owned(),
-    ];
-    shown.extend(
-        [
-            &device.vendor,
-            &device.model,
-            &device.hardware,
-            &device.firmware,
-            &device.serial,
-        ]
-        .into_iter()
-        .flatten()
-        .cloned(),
-    );
-    shown.extend(device.macs.iter().cloned());
-    shown.extend(device.addresses.iter().cloned());
-    shown
-}
-
-/// A source's own fields that the page's tables and facts already say in
-/// net's words, so its section leaves them out by name; the rest go by
-/// value, through `shown`. A receiver's reads are its receiver block, but
-/// for its transport's own word, and its rendering service's description
-/// and the devices inside its own are left to `--json`. A printer's
-/// counters and settings are left there too, since its printer block
-/// says what they'd bury.
-const SAID: [&str; 18] = [
-    "id",
-    "location",
-    "model",
-    "firmware",
-    "serial",
-    "mac",
-    "address",
-    "up_s",
-    "ports",
-    "radios",
-    "GetVolume",
-    "GetMute",
-    "RenderingControl",
-    "GetMediaInfo",
-    "GetPositionInfo",
-    "deviceList",
-    "ProductConfigDyn",
-    "ProductUsageDyn",
-];
-
-/// The most items a list may hold and still be a fact on one line; a
-/// longer one is a series, such as a history of readings, which only
-/// `--json` gives whole.
-const LIST_AT_MOST: usize = 4;
-
-/// The lists of records a source's section reads field by field, since
-/// they hold its own words for what the role's block says in net's: a
-/// printer's statuses, as HP names them. Every other list of records is a
-/// table the page would bury its facts under, so it's left to `--json`.
-const READ_BY_FIELD: [&str; 1] = ["Status"];
-
-/// A source's fields as labels and words, a nested field labelled by the
-/// path to it: `backhaul upstream`. A list of flat records named in
-/// `READ_BY_FIELD` reads as each field's values in turn. What a fact
-/// can't say on a line, any other list of records or a series, and what
-/// the source left empty, are left to `--json`.
-fn flatten(path: &str, value: &Value, out: &mut Vec<(String, String)>) {
-    let label = |key: &str| {
-        let key = key.replace('_', " ");
-        if path.is_empty() {
-            key
-        } else {
-            format!("{path} {key}")
-        }
-    };
-    match value {
-        Value::Object(fields) => {
-            for (key, value) in fields {
-                flatten(&label(key), value, out);
-            }
-        }
-        Value::Array(items) => {
-            let records = items.iter().any(|item| item.is_object() || item.is_array());
-            if items.is_empty() || items.len() > LIST_AT_MOST {
-            } else if !records {
-                let words: Vec<String> = items.iter().map(scalar).collect();
-                out.push((path.to_owned(), words.join(", ")));
-            } else if let Some(fields) = flat_records(items).filter(|_| {
-                READ_BY_FIELD
-                    .iter()
-                    .any(|name| path == *name || path.ends_with(&format!(" {name}")))
-            }) {
-                for field in fields {
-                    let words: Vec<String> = items
-                        .iter()
-                        .filter_map(|item| item.get(&field))
-                        .map(scalar)
-                        .collect();
-                    out.push((label(&field), words.join(", ")));
-                }
-            }
-        }
-        Value::Null => {}
-        Value::String(words) if words.is_empty() => {}
-        _ => out.push((path.to_owned(), scalar(value))),
-    }
-}
-
-/// The fields of records that hold only words and figures, in the order
-/// first met, or none when a record holds more than that.
-fn flat_records(items: &[Value]) -> Option<Vec<String>> {
-    let mut fields: Vec<String> = Vec::new();
-    for item in items {
-        for (key, value) in item.as_object()? {
-            if value.is_object() || value.is_array() {
-                return None;
-            }
-            if !fields.contains(key) {
-                fields.push(key.clone());
-            }
-        }
-    }
-    Some(fields)
-}
-
-fn scalar(value: &Value) -> String {
-    match value {
-        Value::Bool(true) => "yes".to_owned(),
-        Value::Bool(false) => "no".to_owned(),
-        Value::String(words) => words.clone(),
-        Value::Null => "none".to_owned(),
-        other => other.to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -544,39 +382,16 @@ mod tests {
             assert!(text.starts_with("Study · access point"), "{text}");
             assert!(text.contains("firmware"), "{text}");
             assert!(text.contains("FROM EERO"), "{text}");
-            assert!(text.contains("backhaul upstream"), "{text}");
+            assert!(
+                text.contains("\nbackhaul\n") && text.contains("  upstream"),
+                "its backhaul's upstream isn't under its backhaul: {text}"
+            );
             assert!(text.contains("update available"), "{text}");
             // The source's id and location are the device's id and name,
             // already said.
             assert!(!text.contains("location"), "{text}");
             assert!(text.contains("Hall"), "the link to Hall is missing: {text}");
         }
-    }
-
-    #[test]
-    fn a_source_leaves_its_records_and_series_to_json() {
-        let network = network();
-        let study = find(&network, "Study").expect("the study's eero");
-        let text = device(&network, study, now(), &Pen::plain(), Room::Unbounded);
-        let from = text.find("FROM EERO").expect("the eero's section");
-        let section = &text[from..];
-        for left in [
-            "{",
-            "usage download hours",
-            "history at",
-            "up s",
-            "support ends",
-        ] {
-            assert!(
-                !section.contains(left),
-                "{left:?} is in the section: {section}"
-            );
-        }
-        assert!(
-            section.contains("ipv6"),
-            "a short list is a fact: {section}"
-        );
-        assert!(section.contains("usage download total bytes"), "{section}");
     }
 
     #[test]

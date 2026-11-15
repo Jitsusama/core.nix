@@ -155,9 +155,11 @@ With no credential the report says signed out, and nothing else changes.
 ## The Views
 
 Every view reads the record alone, never a source, so it answers at once
-and the same way away from home. `src/views.rs` draws each as a function
+and the same way away from home. `src/views/` draws each as a function
 of the record, the time, a pen and the room, so its tests set every
 width without a terminal; tables and facts come from the terminal kit.
+A device's page is `device.rs`, and what its sources say in their own
+words is `said.rs`.
 
 - `net`: how each source answers and how long ago, how many devices do
   what, each concern but the ceilings in net's words beside its kind
@@ -174,7 +176,10 @@ width without a terminal; tables and facts come from the terminal kit.
   records or a series of readings is left to `--json`, which keeps every
   source's detail whole, but for a printer's statuses, read field by
   field as HP names them; its usage counters and settings are left there
-  too.
+  too, as is what describes a maker's file rather than the device (HP's
+  versions, schemas and alert counter). A source's section says each
+  path once: its lone facts first, then each group of facts under a line
+  of the path they share, two cells in, and so again at every depth.
 
 A name is matched in any case, and any of a device's addresses or its
 id always works. eero can give two devices one name, so a shared name

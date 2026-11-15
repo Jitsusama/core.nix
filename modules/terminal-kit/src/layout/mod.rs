@@ -281,20 +281,34 @@ fn line(row: &Row, lead: usize, across: usize, pen: &Pen) -> String {
 }
 
 /// Facts, each a label in muted in one column and its value in text
-/// beside it, a value it can't know said as `unknown` in muted. Where the
-/// labels would take more than half the room, each value goes under its
+/// beside it, a value it can't know said as `unknown` in muted. The column
+/// is set by the longest label whose fact fits beside it, and each fact is
+/// judged on its own: one that can't fit beside the column, whole on its
+/// line, or wrapping in no more than half the room without cutting a word
+/// of it, as an identifier, that would fit whole under, goes under its
 /// label, two cells in. A long value wraps under itself.
 pub fn facts(facts: &[(&str, Option<&str>)], unknown: &str, pen: &Pen, room: Room) -> Vec<String> {
-    let labels = facts
+    fn said<'a>(value: Option<&'a str>, unknown: &'a str) -> (&'a str, &'static str) {
+        value.map_or((unknown, "muted"), |value| (value, "text"))
+    }
+    let fits = |column: usize, value: &str| {
+        room.cells().is_none_or(|cells| {
+            let longest = value.split_whitespace().map(width).max().unwrap_or(0);
+            let whole = column + longest <= cells || longest + GAP > cells;
+            column + width(value) <= cells || (column <= cells / 2 && whole)
+        })
+    };
+    let column = facts
         .iter()
-        .map(|(label, _)| width(label))
+        .filter(|(label, value)| fits(width(label) + GAP, said(*value, unknown).0))
+        .map(|(label, _)| width(label) + GAP)
         .max()
-        .unwrap_or(0);
-    let beside = room.cells().is_none_or(|cells| labels + GAP <= cells / 2);
-    let column = if beside { labels + GAP } else { GAP };
+        .unwrap_or(GAP);
     let mut lines = Vec::new();
     for (label, value) in facts {
-        let (value, role) = value.map_or((unknown, "muted"), |value| (value, "text"));
+        let (value, role) = said(*value, unknown);
+        let beside = width(label) + GAP <= column && fits(column, value);
+        let column = if beside { column } else { GAP };
         let inset = " ".repeat(column);
         let hung = hung(value, column, room);
         let mut values = hung
@@ -598,7 +612,29 @@ mod tests {
         );
         assert_eq!(
             facts(&facts_, "\u{2026}", &Pen::plain(), Room::Cells(20)),
-            ["Size", "  1 TB", "Temperature", "  \u{2026}"]
+            ["Size         1 TB", "Temperature  \u{2026}"],
+            "facts that fit beside their labels went under them"
+        );
+        assert_eq!(
+            facts(&facts_, "\u{2026}", &Pen::plain(), Room::Cells(12)),
+            ["Size  1 TB", "Temperature", "  \u{2026}"],
+            "only the fact that can't fit beside should go under its label"
+        );
+    }
+
+    #[test]
+    fn a_word_too_long_beside_its_label_goes_under_it_whole() {
+        let urn = "urn:schemas-upnp-org:device:MediaRenderer:1";
+        let facts_ = [("Kind", Some(urn)), ("Name", Some("Stereo"))];
+        assert_eq!(
+            facts(&facts_, "", &Pen::plain(), Room::Cells(46)),
+            ["Kind", &format!("  {urn}"), "Name  Stereo"],
+            "an identifier was cut beside its label when it fits whole under it"
+        );
+        assert_eq!(
+            facts(&facts_, "", &Pen::plain(), Room::Cells(80))[0],
+            format!("Kind  {urn}"),
+            "an identifier that fits beside its label left it"
         );
     }
 

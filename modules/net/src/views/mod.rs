@@ -4,9 +4,11 @@
 //! terminal. A page shows each fact once, in layers: what every device can
 //! say, then its role's own figures, then what each source says that
 //! neither held, in the source's words (docs/glossary.md's Network words).
-//! One device's page is device.rs; the rest, and the answers, are here.
+//! One device's page is device.rs, its sources' own words said.rs; the
+//! rest, and the answers, are here.
 
 mod device;
+mod said;
 
 pub use device::device;
 
