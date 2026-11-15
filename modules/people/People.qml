@@ -654,7 +654,7 @@ Provider {
                     return row;
                 // One only the daemon's sources know comes with the row a
                 // search finds them as, and its drawer, kept while their record says the
-                // same, which the daemon stamps `said` anew only when a source
+                // same, which the daemon stamps (`stamp`) anew only when a source
                 // says anything new of them, a restart of it included, so each
                 // search's answer remakes none it found before; and let go once
                 // no answer holds it.
@@ -666,7 +666,7 @@ Provider {
                 // listed is.
                 const record = readyFor(person);
                 return record ? keptAlike(made.keeping, person.key,
-                    [record.key, record.said, clocked(record.row) ? provider.minute : 0],
+                    [record.key, record.stamp, clocked(record.row) ? provider.minute : 0],
                     () => provider.made(person, Person.standing(person, []), record.row,
                         () => record.drawer))
                     : keptOr(made.keeping, person.key, JSON.stringify(person),
@@ -750,7 +750,7 @@ Provider {
             // One saying their time is kept for the minute too.
             if (ready)
                 return keptAlike(keptListed, person.key,
-                    [record.said ?? record, clocked(ready) ? now : 0],
+                    [record.stamp ?? record, clocked(ready) ? now : 0],
                     () => made(person, person.stood, ready,
                         () => Ready.drawerServed(ready, lister.held)));
             const stood = person.stood ?? standOf(person);

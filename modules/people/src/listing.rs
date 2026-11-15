@@ -24,7 +24,7 @@ use serde_json::{Value, json};
 
 use crate::drawer::{self, Named};
 use crate::name::{self, bare};
-use crate::{Book, LISTING, Record, address, said};
+use crate::{Book, LISTING, Record, address, stamp};
 
 /// How a source's entry says someone stands, as its module tells the
 /// daemon in the sources file: the entry's field that says it, which of
@@ -368,7 +368,7 @@ impl Person {
     }
 
     /// Their record beside their row, as one person with what each source
-    /// said, stamped by all it says (`said`): a daemon started again tells
+    /// said, stamped by all it says (`stamp`): a daemon started again tells
     /// each source's part as it comes, so the shell holds a new record of
     /// them for each, the last saying all the first one did, and it keeps
     /// their row by the stamp, which comes back as it was, rather than
@@ -380,7 +380,7 @@ impl Person {
             "key": self.key, "kind": LISTING, "person": self.json(),
             "sources": sourced(record, sources),
         });
-        listing["said"] = Value::String(said(&listing));
+        listing["stamp"] = Value::String(stamp(&listing));
         listing
     }
 
@@ -740,7 +740,7 @@ pub(crate) mod tests {
     fn their_listing_is_stamped_by_all_it_says() {
         let stamp = |entries: &[(&str, Value)]| {
             let record = record("person:bo@example.com", entries);
-            person(&record, &sources()).listing(&record, &sources())["said"].clone()
+            person(&record, &sources()).listing(&record, &sources())["stamp"].clone()
         };
         let busy = [("tuple", json!({"name": "Bo", "status": "busy"}))];
         assert!(stamp(&busy).is_string(), "a listing says its stamp");
