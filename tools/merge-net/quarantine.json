@@ -428,5 +428,17 @@
       "test_a_middle_row_closed_under_it_has_it_fall_onto_the_row_below"
     ],
     "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
+    "at": 1794763827,
+    "commit": "df6863c471fbac6ce2d04c7efb724af8429cc649",
+    "due": "2026-11-15",
+    "due_why": "Y2YBTS fixes the drawer's laying of a store path's hash by 13:30 local and takes it off",
+    "owner_pr": 2644,
+    "reason": "the drawer breaks a word laying 1Password's new store hash at scale 2, failing 4 of 4 runs from df6863c471fb (#4751, which changed only the wrapper's script) and passing at its parent; the laying is at fault, not #4751",
+    "subtests": [
+      "test_a_rows_words_are_in_the_serif_on_its_names_baseline"
+    ],
+    "test": "vm-desktop-looks-rows"
   }
 ]
