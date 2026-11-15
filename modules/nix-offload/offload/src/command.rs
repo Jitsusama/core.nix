@@ -136,6 +136,14 @@ pub fn asked(arguments: &[String]) -> Result<Asked, String> {
 /// end and passed (E2ZIAQ, 12 November). A command's 255 comes back as
 /// 254, since ssh's 255 means the builder was lost, and the run would be
 /// sent again.
+///
+/// A checkout that makes a folder of its own names it in `leaves`, and an
+/// EXIT trap of its shell removes it. Once the run is started apart, the
+/// shell drops that trap and the run takes the folder over, removing it
+/// once it has ended, or its watch does once nothing follows it: a lost
+/// link ends the shell, and its trap took the folder from under the run
+/// still going on in it (vitest's workers "Cannot find module", 3 of 4
+/// whole suites on 14 November).
 pub fn command(checkout: &str, asked: &Asked, run: &str) -> String {
     let words: Vec<String> = asked.words.iter().map(|word| there::quoted(word)).collect();
     let longest = asked.longest;
@@ -149,11 +157,12 @@ pub fn command(checkout: &str, asked: &Asked, run: &str) -> String {
     // that window, and the shell then waited on a clock asleep for
     // `longest` (14 November: 41 of 50 quick runs under dash).
     let apart = format!(
-        "run=$1; \
+        "run=$1; leaves=$2; \
          (trap '' TERM; while sleep 2; do [ -d \"$run\" ] || exit 0; \
          beat=$(stat -c %Y \"$run/beat\" 2>/dev/null) || exit 0; \
          [ $(($(date +%s) - beat)) -gt \"${{NIX_OFFLOAD_UNWATCHED:-120}}\" ] || continue; \
-         [ -e \"$run/status\" ] || kill -TERM 0; rm -rf \"$run\"; exit 0; done) \
+         [ -e \"$run/status\" ] || kill -TERM 0; rm -rf \"$run\"; \
+         [ -z \"$leaves\" ] || rm -rf \"$leaves\"; exit 0; done) \
          </dev/null >/dev/null 2>&1 & \
          (trap 'kill $sleeping 2>/dev/null; exit 0' TERM; \
          sleep {longest} 2>/dev/null & sleeping=$!; wait $sleeping; \
@@ -165,15 +174,17 @@ pub fn command(checkout: &str, asked: &Asked, run: &str) -> String {
          if [ $ended = 255 ]; then \
          echo 'nix-offload: the command ended 255, which ssh says of a lost builder, \
          so it ends 254' >&2; ended=254; fi; \
-         echo $ended > \"$run/status.new\" && mv -f \"$run/status.new\" \"$run/status\"",
+         echo $ended > \"$run/status.new\" && mv -f \"$run/status.new\" \"$run/status\"; \
+         [ -z \"$leaves\" ] || rm -rf \"$leaves\"",
         words.join(" ")
     );
     format!(
-        "{checkout}set +e; {RUN_DIR} \
+        "leaves=; {checkout}set +e; {RUN_DIR} \
          mkdir -p \"$run\" && : > \"$run/out\" && : > \"$run/err\" && : > \"$run/beat\" \
          || {{ echo \"nix-offload: the builder can't keep the run's files\" >&2; exit 254; }}; \
-         setsid sh -c {} nix-offload-run \"$run\" </dev/null >\"$run/out\" 2>\"$run/err\" & \
-         echo $! > \"$run/pid\"; \
+         setsid sh -c {} nix-offload-run \"$run\" \"$leaves\" \
+         </dev/null >\"$run/out\" 2>\"$run/err\" & \
+         echo $! > \"$run/pid\"; trap - EXIT; \
          echo \"{STARTED}{run}, so a lost link reattaches to it\" >&2; {}",
         there::quoted(&apart),
         follow(run, 0, 0),
@@ -800,6 +811,59 @@ mod tests {
             !folder.path().join("nix-offload-runs/lost").exists(),
             "its files stayed"
         );
+    }
+
+    /// A checkout as `changed` makes one: a folder of its own, named in
+    /// `leaves` and removed as its shell exits, holding `kept`.
+    fn checked_out_in(tree: &Path) -> String {
+        format!(
+            "leaves={0}; set -e; rm -rf {0}; mkdir -p {0}; trap 'rm -rf {0}' EXIT; \
+             cd {0}; echo here > kept; ",
+            tree.display()
+        )
+    }
+
+    /// A lost link hangs up the far shell, sent as `far_brief` sends it,
+    /// whose trap exits, and so runs the checkout's own EXIT trap: the tree
+    /// went from under the run, which went on without its files (vitest's
+    /// workers "Cannot find module", 3 of 4 whole suites on 14 November).
+    #[test]
+    fn a_lost_link_leaves_the_run_its_tree_until_it_ends() {
+        let folder = tempfile::tempdir().unwrap();
+        let tree = folder.path().join("tree");
+        let asked = Asked {
+            copies: Vec::new(),
+            longest: 60,
+            words: vec![
+                "sh".to_owned(),
+                "-c".to_owned(),
+                "echo started; sleep 3; cat kept; exit 4".to_owned(),
+            ],
+        };
+        let sent = there::far_brief(&command(&checked_out_in(&tree), &asked, "kept"));
+        let mut far = far_side(&sent, folder.path())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut said = BufReader::new(far.stdout.take().unwrap());
+        let mut line = String::new();
+        said.read_line(&mut line).unwrap();
+        assert_eq!(line, "started\n", "the run never started");
+        let group = libc::pid_t::try_from(far.id()).unwrap();
+        assert_eq!(unsafe { libc::kill(-group, libc::SIGHUP) }, 0);
+        far.wait().unwrap();
+        let followed = far_side(&follow("kept", 8, 0), folder.path())
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&followed.stderr);
+        assert_eq!(
+            String::from_utf8_lossy(&followed.stdout),
+            "here\n",
+            "its tree went from under it: {stderr}"
+        );
+        assert_eq!(followed.status.code(), Some(4), "{stderr}");
+        assert!(!tree.exists(), "its tree stayed once it ended");
     }
 
     /// Waits for the run's files to go, then for every process carrying the
