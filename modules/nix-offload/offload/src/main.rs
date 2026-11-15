@@ -1435,6 +1435,20 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         return ExitCode::SUCCESS;
     }
     let wanted = changed::wanted(arguments);
+    let twin = at.as_ref().map(|at| running::Twin {
+        commit: &at.commit,
+        folder: &folder,
+        system: wanted.system.as_deref(),
+    });
+    // The same run already going in this tree ends in what this one would
+    // find, so this one waits for it and looks again at what passed
+    // (`running.rs`).
+    if let Some(twin) = &twin
+        && running::waited_for_twin(&state(), std::process::id(), twin, now)
+    {
+        forget();
+        return changed_there(given, waiting, replays);
+    }
     let checks_of = |system: &str| format!("checks.{system}.");
     let told: Vec<String> = match (&at, &wanted.system) {
         (Some(at), Some(system)) => passed
@@ -1461,9 +1475,9 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
     // Said while it runs, so a merge sharing its files waits for it
     // (`running.rs`).
     let started = now();
-    let said_running = at.as_ref().and_then(|at| {
-        running::Running::start(&state(), std::process::id(), &at.commit, &folder, started)
-    });
+    let said_running = twin
+        .as_ref()
+        .and_then(|twin| running::Running::start(&state(), std::process::id(), twin, started));
     let finished = sent.somewhere(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
     forget();
     let Some(finished) = finished else {
