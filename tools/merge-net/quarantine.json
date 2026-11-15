@@ -462,5 +462,15 @@
       "test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts"
     ],
     "test": "the-launcher-answers-whats-typed-on-niri"
+  },
+  {
+    "at": 1794706203,
+    "commit": "c51fcc200e172b08a4e9705edeb9c397ebb75861",
+    "owner_pr": 3956,
+    "reason": "failed twice at a637004b052a, and at c51fcc200e17 after it",
+    "subtests": [
+      "test_a_second_move_holds_on_from_where_the_first_got_to"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
   }
 ]
