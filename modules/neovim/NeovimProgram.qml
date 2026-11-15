@@ -276,12 +276,15 @@ Provider {
     }
 
     // A repository's files, each as the file it is beside its folder in the
-    // repository, Return opening it there.
+    // repository, Return opening it there. Every file says the same keys
+    // where it isn't selected, Open, so the foot weighs one of them for all
+    // (Pacing.toWeigh): weighing each of core.nix's 3,560 new rows took
+    // 853 ms of Joel's 1,176 ms step into its files (2026-11-15).
     function filesOf(folder) {
         Repositories.askFiles(folder);
         return (Repositories.files[folder] ?? []).map(file => Object.assign(
             Files.file(file.path, thing, [provider.opening(file.path, folder, 0, 0)]),
-            { side: file.within }));
+            { side: file.within, keysAlike: "nvim:file" }));
     }
 
     // Open the Copied Path, saying the path and its line as copied.
