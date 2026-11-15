@@ -37,22 +37,38 @@ impl Calling {
     /// Takes what was said, answering whether it changed whether a call is
     /// on.
     pub fn told(&mut self, on: bool, now: Instant) -> bool {
-        let _ = (on, now);
-        false
+        let was = self.on(now);
+        self.word = Some((on, now));
+        was != on
     }
 
     /// Whether a call is on now.
     pub fn on(&self, now: Instant) -> bool {
-        let _ = now;
-        false
+        self.word
+            .is_some_and(|(on, at)| on && now.duration_since(at) <= LAPSE)
     }
 }
 
 /// Whether a calling ask says a call is on, read from its line strictly:
 /// or what's wrong with it, to be logged in place of what it said.
 pub fn asked(line: &str, said: &Value) -> Result<bool, &'static str> {
-    let _ = (line, said);
-    Err("unread")
+    if line.len() > LONGEST {
+        return Err("too long");
+    }
+    let Some(fields) = said.as_object() else {
+        return Err("not an object");
+    };
+    let own = ["id", "ask", "act", "on"];
+    if fields.len() != own.len() || !own.iter().all(|field| fields.contains_key(*field)) {
+        return Err("fields beyond its own");
+    }
+    if said["ask"] != "act" || said["act"] != "calling" {
+        return Err("not a calling act");
+    }
+    if !(said["id"].is_number() || said["id"].is_string()) {
+        return Err("an id neither a number nor a string");
+    }
+    said["on"].as_bool().ok_or("on isn't true or false")
 }
 
 /// Who said something on a connection, as the kernel tells it.
@@ -84,8 +100,8 @@ impl fmt::Display for Peer {
 
 /// The unit a process runs in, the last part of its cgroup's path.
 fn unit_of(cgroup: &str) -> Option<&str> {
-    let _ = cgroup;
-    None
+    let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
+    path.rsplit('/').next().filter(|unit| !unit.is_empty())
 }
 
 #[cfg(test)]

@@ -259,6 +259,21 @@ def test_and_measures_how_well_lanterns_access_point_carries(machine: BaseMachin
     )
 
 
+def test_and_hears_an_account_say_a_call_is_on_naming_who_said_it(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """And hears an account say a call is on, and over, naming the process that said it."""
+    for on, stands in ((True, "on"), (False, "over")):
+        answer = wifid.acting({"act": "calling", "on": on})
+        assert answer == {"id": 1, "done": True}, answer
+        # Any process of the wifi group's may say it, so each change names who did.
+        machine.wait_until_succeeds(
+            "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
+            f" | grep -qE '^pid [0-9]+ \\([^)]+\\) says a call is {stands}$'",
+            timeout=timedelta(seconds=10),
+        )
+
+
 @pytest.mark.usefixtures("wifid")
 def test_and_keeps_the_channel_it_joined_lantern_on_and_nothing_of_where(
     machine: BaseMachine,

@@ -21,7 +21,9 @@
 //! none, figures take the comma and the full stop.
 //!
 //! What a row's acts ask comes back on the same connection, as an `act`
-//! ask (acts.rs), so the shell acts without starting anything.
+//! ask (acts.rs), so the shell acts without starting anything. A calling
+//! act, Joel's session saying whether he's on a call, is taken by the
+//! connection itself (calling.rs), since it asks the main loop nothing.
 //!
 //! A watch whose `keys` name a network's row, as the shell's watch ahead
 //! does while the network's selected or stepped into (Y2YBTS,
@@ -45,7 +47,7 @@ use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
 use crate::acts;
-use crate::calling::Calling;
+use crate::calling::{self, Calling, Peer};
 use ready_rows::kept::Kept;
 use ready_rows::numbers::Numbers;
 
@@ -331,6 +333,7 @@ impl Face {
 
     /// Answers one connection until it hangs up.
     async fn answer(self: Arc<Face>, stream: UnixStream) {
+        let peer = Peer::at(stream.peer_cred().ok().and_then(|peer| peer.pid()));
         let (reading, mut writing) = stream.into_split();
         let (told, mut telling) = mpsc::channel::<String>(WAITING);
         let writer = tokio::spawn(async move {
@@ -349,6 +352,7 @@ impl Face {
             made_in: None,
             unworded: false,
             watches: HashMap::new(),
+            peer,
         };
         let mut lines = BufReader::new(reading).lines();
         while let Ok(Some(line)) = lines.next_line().await {
@@ -390,6 +394,8 @@ struct Connection {
     /// it's said once a connection rather than every act.
     unworded: bool,
     watches: HashMap<String, JoinHandle<()>>,
+    /// The process at the other end, named in what's logged of a call.
+    peer: Peer,
 }
 
 impl Connection {
@@ -460,6 +466,7 @@ impl Connection {
             }
             // Answered as the main loop gets to it, while the connection
             // asks on.
+            "act" if said["act"] == "calling" => Some(self.calling(&id, line, &said)),
             "act" => {
                 let asks = self.face.asks.clone();
                 let words = self.made_in.as_ref().and_then(|made_in| {
@@ -487,6 +494,31 @@ impl Connection {
             }
             _ => Some(error(&id, "unknown-ask", &format!("no ask {asked:?} here"))),
         }
+    }
+
+    /// Takes what a calling ask says, logging each change with who said
+    /// it, and anything misshapen by what was wrong with it alone.
+    fn calling(&self, id: &Value, line: &str, said: &Value) -> Value {
+        let on = match calling::asked(line, said) {
+            Ok(on) => on,
+            Err(wrong) => {
+                eprintln!("<4>refused a calling act from {}: {wrong}", self.peer);
+                let why = "say a call as {\"act\": \"calling\", \"on\": true or false}";
+                return error(id, "bad-ask", why);
+            }
+        };
+        let now = tokio::time::Instant::now();
+        // What's said is kept even when it changes nothing, since it
+        // keeps a call from lapsing; only a change wakes anyone.
+        if self
+            .face
+            .calling
+            .send_if_modified(|calling| calling.told(on, now))
+        {
+            let stands = if on { "on" } else { "over" };
+            println!("<6>{} says a call is {stands}", self.peer);
+        }
+        json!({"id": id, "done": true})
     }
 
     /// Answers a watch whole now, then with each change, until it's

@@ -211,7 +211,6 @@ fn counted(station: &Station) -> Option<Counts> {
 
 /// An access point's figures, as logged, and whether a call was on.
 fn said(on: &Joined, measured: &Measured, call: bool) -> String {
-    let _ = call;
     let ms = |time: Option<Duration>| {
         time.map_or("none".into(), |time| {
             format!("{:.1} ms", time.as_secs_f64() * 1000.0)
@@ -222,7 +221,7 @@ fn said(on: &Joined, measured: &Measured, call: bool) -> String {
         .map_or("unread".into(), |signal| format!("{signal} dBm"));
     format!(
         "{} on {}: gateway {} at p50, {} at p95, {:.1}% of {} echoes lost; \
-         {:.2} in 100 frames sent again, {:.2} lost; signal {signal}",
+         {:.2} in 100 frames sent again, {:.2} lost; signal {signal}{}",
         on.card,
         on.point,
         ms(measured.p50),
@@ -231,6 +230,7 @@ fn said(on: &Joined, measured: &Measured, call: bool) -> String {
         measured.echoes,
         measured.retried,
         measured.failed,
+        if call { ", during a call" } else { "" },
     )
 }
 
