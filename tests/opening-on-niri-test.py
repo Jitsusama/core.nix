@@ -1391,8 +1391,7 @@ def test_super_n_draws_the_notices_on_screen_from_what_was_kept(shell: Shell) ->
     It opened them whole every time, as no chord's place does: Joel's at 09:14 took 146 ms to
     its frame and was presented 167 ms from the ask (2026-11-15). One come since its last
     opening is listed, and it lands on the one in front, in normal, once it's filled in. With
-    the same ones on screen, it draws the rows it kept, building none: listed afresh each time,
-    its frame took a median 24 ms against home's 6 (a lab of 10 a side, 2026-11-15).
+    the same ones on screen, it builds no row again, as home doesn't.
     """
     for summary in ["Godwit", "Whimbrel"]:
         with shell.told(f"shows card {summary}"):

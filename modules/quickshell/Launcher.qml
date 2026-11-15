@@ -9090,7 +9090,7 @@ Scope {
             return false;
         const source = collections.find(one => one.settings.name === name) ?? null;
         const listed = source?.keptListed === true ? keptListing(source)
-            : listedNow === true ? ledListing(name, kept.matches) : kept.matches;
+            : listedNow === true ? ledListing(name) : kept.matches;
         if (listed === null)
             return false;
         keeping = true;
@@ -9145,19 +9145,12 @@ Scope {
     // holds, listed as they stand now, since what's on screen comes and
     // goes between openings, or null where that step doesn't list them,
     // when it opens whole.
-    function ledListing(name, keptRows) {
+    function ledListing(name) {
         const led = leadingTo(name)?.rows ?? [];
         const last = led[led.length - 1];
         if (typeof last?.targets !== "function")
             return null;
-        const listed = live(last.targets());
-        // The same rows as were kept are drawn as kept, each row's delegate
-        // standing, as home's are: listed afresh every time, Super+N's frame
-        // took a median 24 ms against home's 6 (a lab of 10 a side,
-        // 2026-11-15). The fill brings each row up to now.
-        const same = listed.length === keptRows.length
-            && listed.every((row, at) => steadyId(row) === steadyId(keptRows[at]));
-        return same ? keptRows : listed;
+        return live(last.targets());
     }
 
     function intoWhole(name, passing) {
