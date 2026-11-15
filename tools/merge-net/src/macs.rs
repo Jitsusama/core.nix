@@ -93,11 +93,7 @@ mod tests {
 
     #[test]
     fn a_skipped_comparison_is_named_with_why_and_how_to_run_it() {
-        let record = [
-            run(LINUX),
-            skip(MAC, "orchard nearby doesn't answer", 2),
-        ]
-        .concat();
+        let record = [run(LINUX), skip(MAC, "orchard nearby doesn't answer", 2)].concat();
         assert_eq!(
             said(&record, "abcd1234"),
             "a Mac's checks weren't compared at abcd1234, since orchard nearby doesn't \
