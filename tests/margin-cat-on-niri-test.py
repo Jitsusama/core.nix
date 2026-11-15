@@ -676,19 +676,38 @@ def moving(said: str) -> bool:
     return at is not None and bool(at.get("move"))
 
 
+def moving_back(said: str) -> bool:
+    """Say whether a report is a step of a move up a workspace, the way back from below."""
+    at = placed(said)
+    return at is not None and bool(at.get("move")) and at["move"]["way"] < 0
+
+
 def held(shell: Shell, since: int, way: int) -> list[Json]:
     """Give a move's steps once it sits, held still and on the screen while niri slides.
 
     Its hold is every step said before its first of another beat, at the one place it sat as
     the move began (Paths.moves). It's never off the screen's top or bottom, the layer's
     reach being the screen's on a move, nor rides back after it set off from its hold.
+
+    Under load the shell can hear the slide after its hold is over, and the hold is then
+    never drawn (Paths.replans): the first step is the next beat, still where it sat as the
+    move began (2026-11-14, a slide's first step said grabs at the seat it sat on).
     """
-    took = moved(shell, since)
+    reports, _ = shell.said_since(since)
+    places = [placed(report[len(SITS) :]) for report in reports if report.startswith(SITS)]
+    begun = next((at for at, one in enumerate(places) if one and one.get("move")), None)
+    assert begun is not None, "the cat never said a step of its move"
+    took = [one for one in places[begun:] if one is not None and one.get("move")]
     said = [step["move"]["beat"] for step in took]
     runs = [beat for at, beat in enumerate(said) if at == 0 or beat != said[at - 1]]
-    assert runs[0] == "rides", f"the cat's move came as {runs}"
     assert "rides" not in runs[1:], f"the cat's move came as {runs}"
     holding = [(step["x"], step["y"]) for step in took if step["move"]["beat"] == "rides"]
+    if not holding:
+        first = took[0]
+        assert runs[0] == first["move"]["beats"][1], f"the cat's move came as {runs}"
+        sat = [one for one in places[:begun] if one is not None and not one.get("walk")]
+        assert sat, f"it said nowhere it sat before its move came as {runs}"
+        holding = [(sat[-1]["x"], sat[-1]["y"]), (first["x"], first["y"])]
     assert len(set(holding)) == 1, f"it moved as it held: {holding}"
     gone = [step for step in took if step["y"] < 0 or step["y"] + step["size"] > step["reach"]]
     assert not gone, f"it went off the screen: {gone[:3]}"
@@ -763,7 +782,9 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     It's never put anywhere it didn't get to (WCJQSG, 2bd7c7c6): its first place said after
     the second move is made is a step from its last before, and the second move is one of its
     own, back the other way. A step of the first move said as the second is made may come
-    after the mark, and is a step on too.
+    after the mark, and is a step on too. Under load the first may not yet have left its seat,
+    and the cat says it sits there before the second's first step (2026-11-14), so the
+    second is waited for by its own steps rather than by where it sits.
     """
     since = shell.mark()
     upper = shell.opened("a workspace moved back to")
@@ -780,6 +801,7 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     heard(shell, moving, first)
     before, since = shell.said_since(first)
     shell.as_account("niri msg action focus-workspace-up")
+    heard(shell, moving_back, since)
     sits_over(shell, upper, since)
     said, _ = shell.said_since(since)
     places = [placed(report[len(SITS) :]) for report in before + said if report.startswith(SITS)]
