@@ -32,7 +32,8 @@ const OPENING: usize = 40;
 /// How many lines in a row, the same in two places, are a duplicate: fewer
 /// than eight would count a function's usual opening or a list's tail.
 const SAME: usize = 8;
-/// How many names each measure keeps, so a day's file stays readable.
+/// How many names each measure's day record keeps, so it stays readable;
+/// its counts by file are of every name.
 pub const NAMED: usize = 200;
 /// The list of the points of docs/daemons.md each daemon still breaks,
 /// as the daemons-agree check keeps it.
@@ -54,8 +55,7 @@ pub struct Health {
 impl Health {
     pub fn put(&mut self, measure: &'static str, names: Vec<String>, count: usize) {
         self.figures.insert(measure, figure(count));
-        self.named
-            .insert(measure, names.into_iter().take(NAMED).collect());
+        self.named.insert(measure, names);
     }
 }
 
