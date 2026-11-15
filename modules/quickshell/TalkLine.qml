@@ -375,10 +375,14 @@ Scope {
         : Thread.threadOf(opened, events, said, { dayOf: since => root.dayOf(since), replies })
 
     // Return: in normal with a line picked, it opens as its thread; else what's typed goes.
+    // The thread opens ready to type, its hint asking for a reply where the first letter
+    // goes, as the empty line opens, so a reply needs no i first (Joel, 2026-11-14 22:2x, on
+    // #4344: "i is not super intuitive"); Escape gives j, k, za and - back.
     function returned() {
         if (prompt.mode === "normal" && opened === null && talks[picked] !== undefined) {
             openedSince = talks[picked].since;
             nerdy = false;
+            prompt.typing();
         } else {
             send();
         }
