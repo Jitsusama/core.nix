@@ -298,7 +298,10 @@ pub fn refresh(
     Ok(seen)
 }
 
-/// GitHub's answer to `query`, asked with `token`.
+/// GitHub's answer to `query`, asked with `token`. Only the command asks,
+/// so a crate reading repositories through the library leaves the HTTP
+/// side out with the `github` feature.
+#[cfg(feature = "github")]
 pub fn post(token: &str, query: &str) -> Result<Value, String> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .http_status_as_error(false)

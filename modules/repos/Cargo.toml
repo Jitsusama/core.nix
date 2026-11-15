@@ -12,8 +12,20 @@ publish = false
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"
 # GitHub's GraphQL API, over rustls with its own roots, as github-broker
-# asks GitHub.
-ureq = "3"
+# asks GitHub: the command's alone, under the github feature.
+ureq = { version = "3", optional = true }
 # The shape every command of ours takes: help, the answer's form, the
 # terminal's colours and the shared exits (../terminal-kit).
 terminal-kit = { path = "../terminal-kit" }
+
+[features]
+default = ["github"]
+# Asking GitHub, which only the command does. A crate reading repositories
+# through the library leaves it out with `default-features = false`, so it
+# carries no HTTP or TLS.
+github = ["dep:ureq"]
+
+[[bin]]
+name = "repos"
+path = "src/main.rs"
+required-features = ["github"]
