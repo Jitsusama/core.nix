@@ -29,11 +29,13 @@
 // the same share, so one Brightness says it, in one screen's place: the
 // built-in one while it's on, else the first lit monitor that follows it,
 // as desk-facts says by a brightness among its facts (lid shut and
-// docked, the monitor). It leads that screen's settings: its share as a
-// bar, its levels a step in, which set it as the brightness keys do, so
-// the daemon, which follows the room while the lid is open, learns it as
-// Joel's pick; then, on the built-in screen, the Room light its sensor
-// hears. "brightness" asks it, and "brightness 40" sets it on Return. The
+// docked, the monitor). The windows daemon serves it leading that
+// screen's settings (modules/windows, light/brightness.rs): its share as
+// a bar, its levels a step in, which set it as the brightness keys do, so
+// the backlight daemon, which follows the room while the lid is open,
+// learns it as Joel's pick; then, on the built-in screen, the Warmth and
+// the Room light its sensor hears. "brightness" asks it, and "brightness
+// 40" sets it on Return. The
 // backlight and the room's light are the machine daemon's (modules/machine,
 // light.rs), read once a second while they can be seen and told here as
 // they move, so the shell reads no file for them, and the sensor's slow
@@ -60,7 +62,6 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Hearing.js" as Hearing
 import "Backlight.js" as Backlight
-import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "ScreenAnswers.js" as ScreenAnswers
 import "Screens.js" as Screens
@@ -213,51 +214,13 @@ Provider {
     }
 
 
-    // The levels a step into Brightness offers, brightest first.
-    readonly property var levels: [100, 90, 80, 70, 60, 50, 40, 30, 20, 10]
-
     // Sets the screen to a share, as the brightness keys do, through the
     // machine daemon (modules/machine/src/screen_acts.rs) rather than a
-    // program started for each step; the first step stays lit, since none
-    // at all leaves the screen black.
+    // program started for each step, for :set brightness= and "brightness
+    // 40"; the first step stays lit, since none at all leaves the screen
+    // black. The Brightness's levels ask the windows daemon to do the same.
     function brighten(share) {
         lights.ask({ ask: "act", act: "brightness", share: Math.max(1, share) }, null);
-    }
-
-    // A share as a bar. However bright, it wants nothing, so it never warns.
-    function level(now, most) {
-        return { shape: "bar", values: [most > 0 ? Math.max(0, Math.min(1, now / most)) : 0],
-            warn: false };
-    }
-
-    // The Brightness, or nothing for a screen whose place doesn't hold it.
-    // The Room Light is the windows daemon's (light/room.rs).
-    function lightRows(output) {
-        const light = backlit(output) ? provider.light : null;
-        if (light === null)
-            return [];
-        const rows = [Object.assign(setting(output, "brightness", lightRead ? `${light.share}%`
-            : unreadSaid(), "brightness",
-            // Each by its value, as every choice is (VKCF3Z, 2026-11-09),
-            // :set brightness= its command.
-            levels.map(each => choice({
-                key: `brightness-${each}`,
-                name: Words.name("displays:brightness:level", "", { n: each }),
-                mark: "brightness",
-                chosen: lightRead && light.share === each,
-                run: () => provider.brighten(each),
-                words: "displays:brightness:level",
-                fill: { n: each }
-            }))), {
-            graph: level(lightRead ? light.now : 0, light.most),
-            // With the lid shut nothing hears the room, and a monitor has
-            // no steps of the panel's, so it only says what sets it.
-            note: inTheRoom(output)
-                ? partSaid("brightness", lightRead ? "followsRoom" : "followsRoomUnread")
-                    .replace("{now}", grouped(light.now)).replace("{most}", grouped(light.most))
-                : partSaid("brightness", "everyFollows")
-        })];
-        return rows;
     }
 
     // How the screen's warmth stands, as the backlight program says it
@@ -642,34 +605,6 @@ Provider {
     readonly property var all: ready.rows()
     onAllChanged: changed()
 
-    // A setting's choice, said by its value alone, its setting named in the
-    // path above (design.md), with what it is beside it, as a mode the
-    // screen prefers, muted in its note, and Return's verb "set", as
-    // every choice's is (VKCF3Z, 2026-11-09). It wears the theme's mark of
-    // the setting it's for, by name, and its setting's name is a hidden
-    // word, so "scale 1.5" still finds 1.5\u00d7 from outside. Setting it
-    // keeps the launcher, the setting saying what it's at now. `made`
-    // holds its key, name, mark, whether it's chosen, its run, and its
-    // hidden words and note where it has them. Its command is its words'
-    // (`words`, verb:display-set's :setl scale=1.5 unless it names its
-    // own), `fill` filling it in.
-    function choice(made) {
-        return thing({
-            key: `verb:display-${made.key}`,
-            wordsId: made.words ?? "verb:display-set",
-            fill: made.fill,
-            name: made.name,
-            verb: partSaid("", "set"),
-            keywords: [partName(made.mark), made.keywords ?? ""].join(" ").trim(),
-            note: made.note ?? "",
-            glyph: Theme.glyph[made.mark],
-            hue: "action",
-            side: made.chosen ? partSaid("", "chosen") : "",
-            stays: true,
-            run: made.run
-        });
-    }
-
     // What one thing's spots are made of, so a change to one screen makes
     // only its parts again as the launcher closes (Launcher.qml's
     // heldSpots): its served rows, those inside it among them, its EDID's
@@ -701,41 +636,15 @@ Provider {
         return partNamed("displays", id);
     }
 
-    // A count, as of steps or of the sensor's, grouped in threes.
-    function grouped(value) {
-        return Numbers.format(value, undefined, settings.group, settings.point);
-    }
-
-    // A display's right arrow: while it's lit, its light, then what the
-    // daemon serves inside its row (screens.rs), as a step in offers it:
-    // a lit one's settings, each saying how it's set and stepping into its
-    // choices (which what's typed finds from here, so "scale 1.5" is
-    // Scale's 1.5\u00d7), then the ways it turns off or on, then what its
-    // EDID says, Return copying one. The Warmth and the Room Light the
-    // daemon serves first inside the screen holding the light sit right
-    // after Brightness, found by their keys, while Brightness is still
-    // made here.
+    // A display's right arrow: what the daemon serves inside its row
+    // (screens.rs), as a step in offers it: on the lit screen holding the
+    // light, its Brightness, Warmth and Room Light, then a lit one's
+    // settings, each saying how it's set and stepping into its choices
+    // (which what's typed finds from here, so "scale 1.5" is Scale's
+    // 1.5\u00d7), then the ways it turns off or on, then what its EDID
+    // says, Return copying one.
     function verbs(output) {
-        const inside = ready.inside(screenKey(output));
-        if (Screens.standing(output) !== "lit")
-            return inside;
-        const light = [`displays:${output.name}:warmth`, `displays:${output.name}:room`];
-        const served = inside.filter(row => light.includes(row.key));
-        return lightRows(output).concat(served, inside.filter(row => !served.includes(row)));
-    }
-
-    // A setting as a part: its name, how it's set, and the choices a step
-    // in, or only how it's set when there's nothing else to choose.
-    function setting(output, id, side, mark, choices) {
-        const fields = {
-            key: `displays:${output.name}:${id}`,
-            name: partName(id),
-            side: side
-        };
-        if (choices.length === 0)
-            return copyRow(Object.assign(fields, { copy: "", hue: "machine", glyph: "" }));
-        return holderRow(Object.assign(fields, { glyph: Theme.glyph[mark], offers: true }),
-            () => choices);
+        return ready.inside(screenKey(output));
     }
 
     // Asked of a display by a part's words, "colour depth" or "refresh
