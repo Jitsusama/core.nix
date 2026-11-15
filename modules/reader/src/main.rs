@@ -496,7 +496,15 @@ fn show(
     };
     let width = first_width(measuring);
     let opens_at = opening_at(kept.as_ref(), letter);
-    let first = page::set_first(file, opens_at.map(|(block, _, _)| block), width)?;
+    // Connecting before the page is set lets the GL driver come up beside it.
+    let conn = Connection::connect_to_env()?;
+    // SAFETY: the connection, and so its display, outlives the join below.
+    let warming = unsafe { gl::warm(conn.backend().display_ptr().cast()) };
+    let first = page::set_first(file, opens_at.map(|(block, _, _)| block), width);
+    if let Some(warming) = warming {
+        let _ = warming.join();
+    }
+    let first = first?;
     let starts = place::starts(&first.page.frame);
     let start_pt =
         opens_at.and_then(|(block, into_pt, at_end)| start_at(block, into_pt, at_end, &starts));
@@ -509,7 +517,6 @@ fn show(
         title,
     } = first;
 
-    let conn = Connection::connect_to_env()?;
     let (globals, queue) = registry_queue_init::<App>(&conn)?;
     let qh = queue.handle();
     let mut event_loop: EventLoop<App> = EventLoop::try_new()?;

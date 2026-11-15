@@ -261,6 +261,30 @@ pub struct Texture {
     pub height: u32,
 }
 
+/// Brings the GL driver up for the Wayland display on a thread of its own,
+/// while the first screen is set: loading Mesa and reading its settings
+/// was most of the 80 ms between the window's first configure and its
+/// first band asked for. EGL keeps one display for each Wayland display,
+/// so the window's own `initialize` finds it up and returns at once.
+///
+/// # Safety
+/// `display` must be the live Wayland display, outliving the thread.
+pub unsafe fn warm(display: *mut c_void) -> Option<std::thread::JoinHandle<()>> {
+    let at = display.expose_provenance();
+    std::thread::Builder::new()
+        .name("egl".into())
+        .spawn(move || {
+            let egl = egl::Instance::new(egl::Static);
+            let display = std::ptr::with_exposed_provenance_mut::<c_void>(at);
+            // A driver that won't come up here is met, and said, by the
+            // window's own.
+            if let Some(display) = unsafe { egl.get_display(display) } {
+                let _ = egl.initialize(display);
+            }
+        })
+        .ok()
+}
+
 impl Gl {
     /// # Safety
     /// `display` must be the live Wayland display the surface belongs to.
