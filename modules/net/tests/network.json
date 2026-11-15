@@ -6971,11 +6971,13 @@
     {
       "kind": "ceiling",
       "device": "modem",
+      "on": "down",
       "says": "The internet is the narrowest point down for 7 of the 18 devices on the eeros: 369.9 Mbit/s, as eero last measured it"
     },
     {
       "kind": "ceiling",
       "device": "modem",
+      "on": "up",
       "says": "The internet is the narrowest point up for every device on the eeros: 11.9 Mbit/s, as eero last measured it"
     }
   ]

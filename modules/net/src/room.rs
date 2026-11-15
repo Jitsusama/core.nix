@@ -399,7 +399,7 @@ fn ceiling(
     (devices > 0).then(|| Concern {
         kind: ConcernKind::Ceiling,
         device: modem::ID.into(),
-        on: None,
+        on: Some(way.into()),
         other: None,
         says: format!(
             "The internet is the narrowest point {way} for {whom}: {mbps:.1} Mbit/s, as eero \

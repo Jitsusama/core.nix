@@ -76,7 +76,8 @@ pub struct Concern {
     pub kind: ConcernKind,
     pub device: String,
     /// The radio or port on the device it's about, when it's one of them,
-    /// or the way, down or up, a device fills the internet.
+    /// or the way, down or up, a device fills the internet or the internet
+    /// is the narrowest point.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on: Option<String>,
     /// The device at a link's other end, when it's about a link.
