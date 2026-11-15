@@ -90,7 +90,8 @@ pub fn run() -> Result<(), String> {
         };
         let mut network = collect::network(said, time::now());
         let earlier = history::read(&day, network.collected_at);
-        room::recall(&mut network, &earlier);
+        history::recall(&mut network, &earlier);
+        room::work_out(&mut network);
         // A day that can't be kept costs what net says of the day, never
         // the record itself.
         if let Err(error) = history::keep(&day, &Moment::of(&network)) {

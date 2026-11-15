@@ -6,9 +6,8 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::history::{Lost, Moment};
 use crate::model::{
-    Chokepoint, Concern, ConcernKind, Device, Internet, Link, Medium, Modem, Network, Path, Role,
+    Chokepoint, Concern, ConcernKind, Device, Internet, Link, Medium, Network, Path, Role,
 };
 use crate::sources::modem;
 
@@ -234,69 +233,6 @@ fn concerns(network: &Network) -> Vec<Concern> {
     concerns
 }
 
-/// How far back the day's readings must reach before net says what a
-/// channel lost lately: less is a few minutes' noise, not a trend.
-const LATELY: u64 = 60 * 60;
-
-/// Fills in what the day's readings say beside the record, then works the
-/// concerns out again with it: what the modem's channels lost lately, and
-/// each radio's busiest reading and when.
-pub fn recall(network: &mut Network, day: &[Moment]) {
-    let now = network.collected_at;
-    for device in &mut network.devices {
-        if let Some(modem) = device.modem.as_mut() {
-            lately(modem, day, now);
-        }
-        for radio in &mut device.radios {
-            let busiest = day
-                .iter()
-                .filter_map(|moment| {
-                    moment
-                        .busy
-                        .iter()
-                        .find(|busy| busy.device == device.id && busy.radio == radio.name)
-                        .map(|busy| (busy.pct, moment.at))
-                })
-                .chain(radio.busy_pct.map(|pct| (pct, now)))
-                .max_by_key(|(pct, at)| (*pct, std::cmp::Reverse(*at)));
-            radio.busiest_pct = busiest.map(|(pct, _)| pct);
-            radio.busiest_at = busiest.map(|(_, at)| at);
-        }
-    }
-    network.concerns = concerns(network);
-}
-
-/// What each downstream channel lost since the day's earliest reading
-/// after the modem last started: a start sets every count back to zero,
-/// so the walk back stops at the first reading higher than the one after
-/// it.
-fn lately(modem: &mut Modem, day: &[Moment], now: u64) {
-    let mut later: Vec<Lost> = Moment::lost_of(modem);
-    let mut base: Option<&Moment> = None;
-    for moment in day.iter().rev().filter(|moment| moment.at < now) {
-        let started_since = moment.lost.iter().any(|earlier| {
-            later.iter().any(|each| {
-                each.kind == earlier.kind
-                    && each.channel == earlier.channel
-                    && earlier.uncorrectable > each.uncorrectable
-            })
-        });
-        if started_since {
-            break;
-        }
-        base = Some(moment);
-        later.clone_from(&moment.lost);
-    }
-    let base = base.filter(|base| now - base.at >= LATELY);
-    modem.lately_s = base.map(|base| now - base.at);
-    for channel in &mut modem.downstream {
-        channel.lost_lately = base.and_then(|base| {
-            let then = base.lost.iter().find(|each| each.of(channel))?;
-            Some(channel.uncorrectable?.saturating_sub(then.uncorrectable))
-        });
-    }
-}
-
 /// A span of the day in words: minutes under two hours, hours after.
 fn span(seconds: u64) -> String {
     let minutes = seconds / 60;
@@ -453,8 +389,10 @@ fn tenths(mbps: f64) -> f64 {
     (mbps * 10.0).round() / 10.0
 }
 
+/// The golden record and ways to set its figures, shared with the day's
+/// tests in src/history.rs, which work concerns out over it too.
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     use crate::model::{ConcernKind, Device, End, Internet, Link, Medium};
@@ -463,7 +401,7 @@ mod tests {
 
     /// The golden record as the sources said it, before any working out,
     /// with the internet as eero last measured it.
-    fn network() -> Network {
+    pub(crate) fn network() -> Network {
         let mut network: Network = serde_json::from_str(RECORD).expect("the record reads");
         for device in &mut network.devices {
             device.path = None;
@@ -479,7 +417,7 @@ mod tests {
         network
     }
 
-    fn device<'a>(network: &'a Network, id: &str) -> &'a Device {
+    pub(crate) fn device<'a>(network: &'a Network, id: &str) -> &'a Device {
         network
             .devices
             .iter()
@@ -581,7 +519,7 @@ mod tests {
     }
 
     /// Sets a node's 5 GHz high radio busy this share of the time.
-    fn busy(network: &mut Network, node: &str, pct: u32) {
+    pub(crate) fn busy(network: &mut Network, node: &str, pct: u32) {
         let radio = network
             .devices
             .iter_mut()
@@ -773,149 +711,6 @@ mod tests {
                 "The internet is the narrowest point up for every device on the eeros: 11.9 \
                  Mbit/s, as eero last measured it",
             ]
-        );
-    }
-
-    const HOUR: u64 = 60 * 60;
-
-    /// The record's figures as they were `ago` seconds before it, with
-    /// channel 16's losses and Hall's busy 5 GHz high radio as given.
-    fn earlier(network: &Network, ago: u64, sixteen: u64, hall: u32) -> Moment {
-        let mut moment = Moment::of(network);
-        moment.at = network.collected_at - ago;
-        for lost in &mut moment.lost {
-            if lost.channel == Some(16) {
-                lost.uncorrectable = sixteen;
-            }
-        }
-        for busy in &mut moment.busy {
-            if busy.device == "eero:2003" && busy.radio == "5 GHz high" {
-                busy.pct = hall;
-            }
-        }
-        moment
-    }
-
-    fn modem(network: &Network) -> &crate::model::Modem {
-        device(network, "modem")
-            .modem
-            .as_ref()
-            .expect("the record has the modem's channels")
-    }
-
-    fn sixteen(network: &Network) -> &crate::model::Channel {
-        modem(network)
-            .downstream
-            .iter()
-            .find(|channel| channel.channel == Some(16))
-            .expect("the modem has channel 16")
-    }
-
-    fn says(network: &Network, kind: ConcernKind) -> &str {
-        &network
-            .concerns
-            .iter()
-            .find(|concern| concern.kind == kind)
-            .unwrap_or_else(|| panic!("a {kind:?} concern: {:?}", network.concerns))
-            .says
-    }
-
-    #[test]
-    fn what_a_channel_lost_lately_counts_from_the_days_first_reading() {
-        // 800 five hours ago and 878 now: 78 lost in the last 5 hours.
-        let mut network = network();
-        work_out(&mut network);
-        let day = [
-            earlier(&network, 5 * HOUR, 800, 41),
-            earlier(&network, HOUR, 850, 41),
-        ];
-        recall(&mut network, &day);
-        assert_eq!(modem(&network).lately_s, Some(5 * HOUR));
-        assert_eq!(sixteen(&network).lost_lately, Some(78));
-        assert_eq!(
-            says(&network, ConcernKind::Lost),
-            "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair \
-             since the modem started, against at most 18 on any other, 78 of them in the last 5 \
-             hours; Example ISP can check the line"
-        );
-    }
-
-    #[test]
-    fn a_channel_that_lost_nothing_lately_is_said_to_have_stopped() {
-        let mut network = network();
-        work_out(&mut network);
-        let day = [earlier(&network, 5 * HOUR, 878, 41)];
-        recall(&mut network, &day);
-        assert_eq!(sixteen(&network).lost_lately, Some(0));
-        assert_eq!(
-            says(&network, ConcernKind::Lost),
-            "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair \
-             since the modem started, against at most 18 on any other, and none in the last 5 \
-             hours, so it isn't climbing now"
-        );
-    }
-
-    #[test]
-    fn lately_counts_only_since_the_modem_last_started() {
-        // 900 five hours ago is more than 878 now, so the modem started
-        // again since; it counts from 860 two hours ago.
-        let mut network = network();
-        work_out(&mut network);
-        let day = [
-            earlier(&network, 5 * HOUR, 900, 41),
-            earlier(&network, 2 * HOUR, 860, 41),
-        ];
-        recall(&mut network, &day);
-        assert_eq!(modem(&network).lately_s, Some(2 * HOUR));
-        assert_eq!(sixteen(&network).lost_lately, Some(18));
-    }
-
-    #[test]
-    fn under_an_hour_of_readings_says_nothing_of_lately() {
-        let mut network = network();
-        work_out(&mut network);
-        let before = network.concerns.clone();
-        let day = [earlier(&network, HOUR / 2, 800, 41)];
-        recall(&mut network, &day);
-        assert_eq!(modem(&network).lately_s, None);
-        assert_eq!(sixteen(&network).lost_lately, None);
-        assert_eq!(network.concerns, before, "half an hour is too short to say");
-    }
-
-    #[test]
-    fn a_radios_busiest_reading_of_the_day_is_kept_with_when() {
-        let mut network = network();
-        busy(&mut network, "eero:2003", 55);
-        work_out(&mut network);
-        let day = [
-            earlier(&network, 3 * HOUR, 70, 70),
-            earlier(&network, HOUR, 45, 45),
-        ];
-        recall(&mut network, &day);
-        let hall = device(&network, "eero:2003")
-            .radios
-            .iter()
-            .find(|radio| radio.name == "5 GHz high")
-            .expect("Hall has a 5 GHz high radio");
-        assert_eq!(hall.busiest_pct, Some(70));
-        assert_eq!(hall.busiest_at, Some(network.collected_at - 3 * HOUR));
-        assert_eq!(
-            says(&network, ConcernKind::Busy),
-            "Hall's 5 GHz high radio, on channel 149, is busy 55% of the time; 70% at its \
-             busiest, 3 hours ago"
-        );
-    }
-
-    #[test]
-    fn a_radio_busiest_now_says_so_once() {
-        let mut network = network();
-        busy(&mut network, "eero:2003", 55);
-        work_out(&mut network);
-        let day = [earlier(&network, HOUR, 878, 45)];
-        recall(&mut network, &day);
-        assert_eq!(
-            says(&network, ConcernKind::Busy),
-            "Hall's 5 GHz high radio, on channel 149, is busy 55% of the time"
         );
     }
 
