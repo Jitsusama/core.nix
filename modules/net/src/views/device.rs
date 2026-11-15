@@ -748,7 +748,7 @@ mod tests {
         let printer = find(&network, "Printer").expect("the printer");
         for room in ROOMS {
             let text = device(&network, printer, now(), &Pen::plain(), room);
-            fits(&text, room);
+            assert_eq!(layout::overrun(&text, room), None);
             let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
             assert!(text.contains("PRINTER"), "its block has no label: {text}");
             assert!(
