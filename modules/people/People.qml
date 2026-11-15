@@ -498,11 +498,22 @@ Provider {
         });
     }
 
-    // What a source serves between Joel and someone, each once by its key
-    // and the oldest first, as the people daemon takes it in (its
-    // between.rs), so nothing's merged here.
+    // What a source serves between Joel and someone, under any of their
+    // addresses, each once by its key and the oldest first. The people
+    // daemon serves each address's so (its between.rs), so here they're
+    // only taken together; one address's alone is already in order.
     function servedThings(person, name) {
-        return servedEntry(person, name)?.between ?? [];
+        const entries = entriesOf(person, name);
+        if (entries.length === 1)
+            return entries[0].between ?? [];
+        const by = {};
+        for (const entry of entries) {
+            for (const one of entry.between ?? []) {
+                if (one?.key && !(one.key in by))
+                    by[one.key] = one;
+            }
+        }
+        return Object.values(by).sort((one, other) => (one.at ?? 0) - (other.at ?? 0));
     }
 
     // Whether a served thing waits now: theirs on Joel however long ago,
@@ -525,11 +536,13 @@ Provider {
     // The first of a source's served things for their drawer, with no row
     // made: the oldest that waits now, the first of those served oldest
     // first, since what waits turns with the clock, and the newest they
-    // met at, which the people daemon serves ready as `met`.
+    // met at, the newest of each address's `met` as the people daemon
+    // serves it ready.
     function servedFirsts(person, name) {
         const now = Date.now();
         const wait = servedThings(person, name).find(one => waitsNow(one, now)) ?? null;
-        const met = servedEntry(person, name)?.met ?? null;
+        const met = entriesOf(person, name).map(entry => entry.met).filter(Boolean)
+            .reduce((newest, one) => newest && newest.at >= one.at ? newest : one, null);
         return {
             wait: wait ? {
                 at: wait.at, name: wait.row?.name ?? "", what: wait.what ?? "",
