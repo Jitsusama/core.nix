@@ -354,6 +354,22 @@ def opened(shell: Shell) -> None:
     )
 
 
+# How long what a link opens drops every key (Prompt.qml's linkQuiet), and a little more.
+LINK_QUIET = 0.8
+
+
+def followed(shell: Shell, verb: str, said: str, *, quiet: bool = True) -> Json:
+    """Ask the launcher what a mycelium: link asks, talkTo or network, and give its answer.
+
+    What a link opens drops every key for a moment, so unless the case is that moment, it's
+    waited out before the case presses one.
+    """
+    did = cast("Json", json.loads(shell.as_account(shell.ipc(verb, shlex.quote(said)))))
+    if quiet:
+        time.sleep(LINK_QUIET)
+    return did
+
+
 FOLD = "1 listening, 1 paused"
 
 
@@ -422,7 +438,7 @@ def test_talk_to_opens_a_sessions_talk_empty_and_sends_nothing_until_joel_does(
     inbox = STEER / "LISTEN"
     steered = set(inbox.glob("*.json"))
     for said in ("LISTEN", "listen send this now"):
-        did = json.loads(shell.as_account(shell.ipc("talkTo", shlex.quote(said))))
+        did = followed(shell, "talkTo", said)
         assert did["done"], did
         shell.launcher_until(
             lambda shown: (
@@ -433,7 +449,7 @@ def test_talk_to_opens_a_sessions_talk_empty_and_sends_nothing_until_joel_does(
         assert (shown["typed"], shown["mode"]) == ("", "insert"), shown
         shell.close_launcher()
     assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
-    did = json.loads(shell.as_account(shell.ipc("talkTo", "GONE42")))
+    did = followed(shell, "talkTo", "GONE42", quiet=False)
     assert did == {"error": "the launcher has nothing called GONE42"}, did
     assert not shell.showing()["open"], shell.showing()
 
@@ -1499,6 +1515,132 @@ def test_networks_is_one_row_after_the_tree_its_kinds_under_headings_never_selec
     shell.close_launcher()
 
 
+def test_talk_to_a_network_opens_agents_saying_once_it_has_no_one_lead(shell: Shell) -> None:
+    """TalkTo and a network's name opens Agents, its foot saying it didn't talk, and why.
+
+    A network has no one lead to say anything to (VKCF3Z, e1eb0ebe), so nothing asks for words.
+    Core.nix's network is among the rows the Networks row holds, not the tree's (KP0L6A,
+    2fed5a19), and is found there all the same.
+    """
+    did = followed(shell, "talkTo", "repo.core-nix")
+    assert did == {"done": False, "said": "didn't talk: a network has no one lead"}, did
+    shell.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and shown["held"] == ["agents"]
+            # The foot keeps each phrase whole with no-break spaces.
+            and "a network has no one lead" in " ".join(shown["saying"]).replace("\xa0", " ")
+        )
+    )
+    assert not shell.showing()["asking"], shell.showing()
+    shell.close_launcher()
+
+
+def test_network_opens_on_its_row_in_networks_selected_and_on_nothing_none_has(
+    shell: Shell,
+) -> None:
+    """Network and a network's name opens Agents' Networks, that network's row selected.
+
+    A mycelium: link to a network on the realm's map asks it (XUBK2E, 2026-11-15 [2b5c927a]),
+    landing where a step into Networks and a walk down to it would. Only the first word names
+    one; a name no network has is said as one the launcher hasn't, and opens nothing.
+    """
+
+    def on(name: str) -> Callable[[Json], bool]:
+        return lambda shown: (
+            shown["open"]
+            and shown["held"] == ["agents", "Networks"]
+            and (shown["selected"] or {}).get("name") == name
+        )
+
+    for said, name in (("repo.core-nix", "core.nix"), ("machines go", "machines")):
+        did = followed(shell, "network", said)
+        assert did["done"], did
+        shell.launcher_until(on(name))
+        shell.close_launcher()
+    did = followed(shell, "network", "repo.gone", quiet=False)
+    assert did == {"error": "the launcher has nothing called repo.gone"}, did
+    assert not shell.showing()["open"], shell.showing()
+
+
+def test_a_link_opens_nothing_over_the_launcher_or_the_line_joel_has_up(shell: Shell) -> None:
+    """A link asking talkTo or network while Joel has the launcher or the line up opens nothing.
+
+    A page picks when its link is followed, so one followed while he's typing would take his
+    place and his words (ISXEG8, 2026-11-15 [dd375f5e]): what he's typed and where he is stay
+    as they are, and the link is told the launcher's in use.
+    """
+    in_use = {"done": False, "said": "the launcher is in use, so the link opened nothing"}
+    opened(shell)
+    shell.type_in("listening")
+    was = shell.showing()
+    for verb, said in (("talkTo", "LISTEN"), ("network", "repo.core-nix")):
+        assert followed(shell, verb, said, quiet=False) == in_use, (verb, said)
+    shown = shell.showing()
+    kept = ("open", "held", "typed", "mode", "asking")
+    assert [shown[one] for one in kept] == [was[one] for one in kept], (was, shown)
+    assert not shown["line"]["up"], shown
+    shell.close_launcher()
+    shell.as_account(shell.ipc("line"))
+    shell.launcher_until(lambda shown: shown["line"]["up"] and shown["line"]["keys"])
+    try:
+        for verb, said in (("talkTo", "LISTEN"), ("network", "repo.core-nix")):
+            assert followed(shell, verb, said, quiet=False) == in_use, (verb, said)
+        assert not shell.showing()["open"], shell.showing()
+    finally:
+        shell.as_account(shell.ipc("line"))
+        shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def test_what_a_link_opens_drops_keys_at_first_and_takes_no_return_before_a_key(
+    shell: Shell,
+) -> None:
+    """What a link opens drops every key for a moment, then takes Return only after a key.
+
+    Joel may be mid-sentence in another window when a page's link opens Talk, so his next
+    keys and his Return would go to whoever the link named (ISXEG8, 2026-11-15 [dd375f5e]).
+    Keys in its first moment are dropped, and a Return before he types sends nothing, kept
+    words or none. The void's line holds back the same, a case of its own once the void is.
+    """
+    inbox = STEER / "LISTEN"
+    steered = set(inbox.glob("*.json"))
+
+    def sent() -> list[Path]:
+        return sorted(set(inbox.glob("*.json")) - steered)
+
+    try:
+        assert followed(shell, "talkTo", "LISTEN", quiet=False)["done"]
+        shell.launcher_until(
+            lambda shown: (
+                shown["open"]
+                and shown["asking"]
+                and shown["keys"]
+                and shown["held"] == ["agents", "Listening Quest"]
+            )
+        )
+        shell.send_chars("hi")
+        shell.send_key("ret")
+        time.sleep(LINK_QUIET)
+        shown = shell.showing()
+        assert (shown["typed"], shown["asking"]) == ("", True), shown
+        shell.send_key("ret")
+        time.sleep(0.3)
+        assert shell.showing()["asking"], shell.showing()
+        assert sent() == [], sent()
+        shell.send_chars("x")
+        shell.launcher_until(lambda shown: shown["typed"] == "x")
+        shell.send_key("ret")
+        deadline = time.monotonic() + 10
+        while not sent():
+            assert time.monotonic() < deadline, "nothing reached the session's inbox"
+            time.sleep(0.1)
+        assert [json.loads(one.read_text())["text"] for one in sent()] == ["x"]
+        shell.close_launcher()
+    finally:
+        for one in sent():
+            one.unlink()
+
+
 def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_start(
     shell: Shell,
 ) -> None:
@@ -2362,13 +2504,41 @@ def test_return_on_the_void_in_agents_opens_super_s_line_over_the_window_left(
 @pytest.mark.usefixtures("said_over")
 def test_talk_to_the_voids_address_opens_super_s_line_as_its_talk_does(shell: Shell) -> None:
     """TalkTo and the void's address opens Super+S's line, the void's one place, as Talk does."""
-    did = json.loads(shell.as_account(shell.ipc("talkTo", "void")))
+    did = followed(shell, "talkTo", "void")
     assert did["done"], did
     shell.launcher_until(
         lambda shown: not shown["open"] and shown["line"]["up"] and shown["line"]["keys"]
     )
     shell.as_account(shell.ipc("line"))
     shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def test_a_link_to_the_void_opens_nothing_over_the_launcher_and_its_line_drops_keys_at_first(
+    shell: Shell,
+) -> None:
+    """A link to the void holds back as one to a session does, on Super+S's line.
+
+    With the launcher up it opens nothing, and the line it opens from closed drops what's
+    typed in its first moment (ISXEG8, 2026-11-15 [dd375f5e]).
+    """
+    # Agents holds the void by now, so its rows aren't those opened waits on.
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["agents"])
+    did = followed(shell, "talkTo", "void", quiet=False)
+    assert did == {"done": False, "said": "the launcher is in use, so the link opened nothing"}
+    assert not shell.showing()["line"]["up"], shell.showing()
+    shell.close_launcher()
+    assert followed(shell, "talkTo", "void", quiet=False)["done"]
+    shell.launcher_until(lambda shown: shown["line"]["up"] and shown["line"]["keys"])
+    try:
+        was = shell.showing()["line"]["typed"]
+        shell.send_chars("hi")
+        time.sleep(0.3)
+        assert shell.showing()["line"]["typed"] == was, shell.showing()
+    finally:
+        shell.as_account(shell.ipc("line"))
+        shell.launcher_until(lambda shown: not shown["line"]["up"])
 
 
 def test_super_s_line_shows_every_line_still_open_after_a_restart_an_earlier_days_too(

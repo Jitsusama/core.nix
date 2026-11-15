@@ -230,10 +230,44 @@ Item {
     // (ZINAWZ, 2026-11-11: "→ Now" took 643 ms to its frame, unseen).
     property bool taking: true
     function dropped(event) {
-        if (taking)
+        if (taking && !heldForLink(event))
             return false;
         event.accepted = true;
         return true;
+    }
+
+    // A line a mycelium: link opened (mycelium-link/src/main.rs) may have come up while Joel
+    // was mid-sentence in another window, at a moment a page chose, so his next words and his
+    // Return would go to whoever the link named as his (ISXEG8's ruling, 2026-11-15
+    // [dd375f5e]). Such a line drops every key for `linkQuiet` ms from opening, and then takes
+    // no Return until he's typed a key in it. It's trusted no more than a line he opened
+    // himself, and nothing downstream may treat it differently: these only hold keys back.
+    readonly property int linkQuiet: 700
+    // Until when, on the wall clock in ms, every key is dropped.
+    property real quietUntil: 0
+    // Whether Return waits for a key typed first.
+    property bool returnWaits: false
+    function linked() {
+        quietUntil = Date.now() + linkQuiet;
+        returnWaits = true;
+    }
+    // A line opened any other way, or put away, holds nothing back.
+    function unlinked() {
+        quietUntil = 0;
+        returnWaits = false;
+    }
+    function heldForLink(event) {
+        if (Date.now() < quietUntil)
+            return true;
+        if (!returnWaits)
+            return false;
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+            return true;
+        // A modifier pressed alone is no key typed.
+        if (![Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta, Qt.Key_Super_L,
+            Qt.Key_Super_R, Qt.Key_AltGr].includes(event.key))
+            returnWaits = false;
+        return false;
     }
     // Says how far an aside may run, so a long one never crowds what's typed
     // or where Joel is: the path's steps and room to type come first, and

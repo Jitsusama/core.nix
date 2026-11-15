@@ -2755,7 +2755,16 @@
   talk-to-opens-only-on-whom-it-names = ''
     the launcher's talkTo opens a talk on the first word it's given alone: a session's address in
     either case, the void's on its line, a network told apart as having no one to talk to, and
-    anything else as nobody
+    anything else as nobody, and a network is named by the first word alone
+  '';
+  mycelium-links-open-in-the-launcher = ''
+    xdg-open and gio send mycelium: links to mycelium-link's entry, which asks the launcher to talk
+    to the cell or show the network a link names, by its name alone, and asks nothing for a link
+    naming neither, a name qs could take for a flag, or a second link within a few seconds
+  '';
+  mycelium-link-passes-clippy = ''
+    clippy finds nothing in mycelium-link, which opens a mycelium: link in the launcher, or its
+    tests
   '';
   terminal-kit-gives-every-command-one-shape = ''
     the terminal kit takes the shared flags out of a command line and leaves the rest in order,
