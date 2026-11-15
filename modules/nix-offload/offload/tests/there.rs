@@ -3058,6 +3058,51 @@ fn changed_checks_go_to_a_vm_builder_that_stands_while_no_lent_builder_answers()
 }
 
 #[test]
+fn a_changed_run_for_a_system_only_a_machine_nearby_builds_is_named_then_built_there() {
+    // The lent builders build for Intel Linux alone, so a changed run for
+    // a Mac's system sent whole to one could only fail there, while a Mac
+    // nearby, which builds for it, stood idle.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    fs::create_dir_all(changed.folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        changed.folder.path().join("nix-offload/nearby"),
+        format!("{} mac aarch64-darwin\n", answering.local_addr().unwrap()),
+    )
+    .unwrap();
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    let (ran, _) = changed.run(&["--build", "--system", "aarch64-darwin"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = fs::read_to_string(changed.bin.join("ssh-sent")).unwrap();
+    let to = |host: &str| -> Vec<String> {
+        sent.lines()
+            .filter(|line| line.split_once(' ').is_some_and(|(on, _)| on == host))
+            .map(str::to_owned)
+            .collect()
+    };
+    let lent = to("nix-offload");
+    assert!(
+        lent.iter()
+            .any(|line| line.contains("changed-checks -- --system aarch64-darwin --name-only")),
+        "the lent builder only names what changed: {sent}"
+    );
+    assert!(
+        !lent.iter().any(|line| line.contains("--build")),
+        "and builds none of it: {sent}"
+    );
+    assert!(
+        to("mac")
+            .iter()
+            .any(|line| line.contains("nix build") && line.contains("checks.aarch64-darwin.a")),
+        "what it named builds on the machine nearby: {sent}"
+    );
+    assert!(
+        String::from_utf8_lossy(&ran.stdout).contains("changed  a"),
+        "what it named comes here: {ran:?}"
+    );
+}
+
+#[test]
 fn an_evaluator_that_names_nothing_is_left_on_its_clock() {
     // On 8 November six runs sat on one evaluator for up to three hours,
     // having printed nothing. With no other, it's as though none answered.
