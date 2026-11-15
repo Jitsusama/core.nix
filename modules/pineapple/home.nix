@@ -1,9 +1,9 @@
 # The safe word that stops Joel's agents, read where it's said: Slack and
 # GitHub, and any site speaking GitHub's API that a machine names in
-# jitsusama.pineapple.sites, through Joel's own sign-ins, only read, and in
-# shadow, so its stops are written down and nothing acts on them yet
-# (src/lib.rs says how the pieces fit). A machine signed in to Slack as Joel
-# imports it.
+# jitsusama.pineapple.sites, through Joel's own sign-ins, only read. Each is
+# read in shadow until it goes live, so its stops are written down and
+# nothing acts on them yet (src/lib.rs says how the pieces fit). A machine
+# signed in to Slack as Joel imports it.
 {
   config,
   lib,
@@ -28,12 +28,16 @@ let
   '';
   # The GitHub reader again for each other site, finding what changed by
   # the pull requests Joel opened in the repositories named, since such a
-  # site has no notifications to read (src/bin/pineapple-github.rs).
+  # site has no notifications to read (src/bin/pineapple-github.rs). A site
+  # stays in shadow until a machine says it's live, each once Joel has read
+  # two days of its own, as Slack and GitHub go live after theirs.
   siteReader =
     name: site:
     lib.nameValuePair "pineapple-${name}" {
       Unit = {
-        Description = "Reads ${name} for the safe word that stops Joel's agents, in shadow";
+        Description =
+          "Reads ${name} for the safe word that stops Joel's agents"
+          + lib.optionalString (!site.live) ", in shadow";
         X-SwitchMethod = "restart";
       };
       Service = {
@@ -43,6 +47,9 @@ let
             "@${pineapple}/bin/pineapple-github"
             "pineapple-${name}"
             "run"
+          ]
+          ++ lib.optional site.live "--live"
+          ++ [
             "--origin"
             site.origin
             "--site"
@@ -96,6 +103,14 @@ in
           signIn = lib.mkOption {
             description = "A program printing Joel's sign-in there, run each round.";
             type = lib.types.path;
+          };
+          live = lib.mkOption {
+            description = ''
+              Whether the site's stops act, once Joel has read its shadow;
+              until then each is only written down.
+            '';
+            type = lib.types.bool;
+            default = false;
           };
         };
       }

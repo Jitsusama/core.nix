@@ -101,17 +101,27 @@ onLinux {
       home = withSites { inherit code; };
       unit = home.systemd.user.services.pineapple-code;
       command = lib.concatStringsSep " " (lib.toList unit.Service.ExecStart);
+      live =
+        (withSites {
+          code = code // {
+            live = true;
+          };
+        }).systemd.user.services.pineapple-code;
+      liveCommand = lib.concatStringsSep " " (lib.toList live.Service.ExecStart);
       readers = home: lib.filter (lib.hasPrefix "pineapple-") (lib.attrNames home.systemd.user.services);
       refused = home: lib.any (check: !check.assertion) home.assertions;
     in
     holds "pineapple-reads-each-site-named"
-      "A named site lacks its reader, search, sign-in or start, one is read unnamed, or a taken name or more than 20 repositories pass."
+      "A named site lacks its reader, search, sign-in, start or shadow, one said live isn't, one is read unnamed, or a taken name or more than 20 repositories pass."
       (
         lib.hasSuffix (
           "/bin/pineapple-github pineapple-code run --origin https://code.example.com/api/v3"
           + " --site code --authored-by joel@example.com --login joel.example"
           + " --repo example/shop --repo example/other"
         ) command
+        && lib.hasSuffix ", in shadow" unit.Unit.Description
+        && lib.hasInfix " pineapple-code run --live --origin " liveCommand
+        && !(lib.hasInfix "in shadow" live.Unit.Description)
         && lib.elem "SIGN_IN_KEYRING=${code.signIn}" (lib.toList unit.Service.Environment)
         && lib.elem "default.target" unit.Install.WantedBy
         && unit.Unit.X-SwitchMethod == "restart"
