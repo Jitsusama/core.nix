@@ -102,9 +102,20 @@ PanelWindow {
     property var place: null
     // The column it last sat over or set off for, so its window grown,
     // shrunk or moved up or down under it walks it rather than carries
-    // it (follow), and the windows as follow() last saw them.
+    // it (follow), the windows as follow() last saw them, and as they
+    // last held the window it stands on (Tiles.before).
     property var under: null
     property var seen: []
+    property var seenOn: []
+    // The window it sat on that closed, when, and the windows as they
+    // held it, while nothing has moved yet: niri first puts the row
+    // below in the closed one's place, its windows not resized yet, and
+    // only then lays the column out again, so the fall waits for that
+    // (the GPU rig, 2026-11-15: it rode the row below down instead,
+    // sitting, a jump of 105 px).
+    property var closedOn: null
+    property real closedAt: 0
+    property var closedSaw: null
     // The walk under way, the window it walks to, and the step it's
     // on: its pose, by the theme's name, and the way it faces.
     property var going: null
@@ -199,8 +210,10 @@ PanelWindow {
     // layout again for any window's change, a title's too, so the same
     // seat neither sets a walk off again nor restarts its rest.
     function follow(): void {
-        const saw = seen;
+        const saw = Tiles.before(seen, seenOn, standsOn());
         seen = tilesOf(space?.id);
+        if (seen.some(one => one.id === standsOn()))
+            seenOn = seen;
         if (moving !== null) {
             steer();
             return;
@@ -220,12 +233,20 @@ PanelWindow {
             roams = null;
             resting.stop();
             walkFrom(hurried, saw);
-        } else if (place !== null && going === null && under?.floats && sat !== wanted
-            && Niri.windows[sat] === undefined) {
-            // The floating window it sat on closed under it, which niri
-            // shrinks away at once: it gets off now, never waiting for
-            // the keys to rest (VKCF3Z 26038726).
+        } else if (place !== null && standsOn() !== wanted && standsOn() !== null
+            && Niri.windows[standsOn()] === undefined) {
+            // The window it sat on, or rode, closed under it, which niri
+            // takes away at once: it gets off now, never waiting for the
+            // keys to rest (VKCF3Z 26038726), and a row of a column falls
+            // ahead of the window grown down over it (Joel, 2026-11-14
+            // 17:24: "it seems to hang out in the middle then walk
+            // across, that is not believable"). niri moves a closing
+            // window's tile before it says the window's gone, which sets
+            // a ride going first (a nested niri, 2026-11-14).
             resting.stop();
+            closedOn = standsOn();
+            closedAt = Date.now();
+            closedSaw = saw;
             walkFrom(true, saw);
         } else if (place === null || (going === null && wanted === sat)) {
             resting.stop();
@@ -237,7 +258,7 @@ PanelWindow {
             sat = wanted;
             under = column;
             if (reshaped)
-                walkFrom(true, saw);
+                walkFrom(true, fallsYet() ? closedSaw : saw);
             else
                 place = there;
         } else if (going !== null && wanted === goingTo) {
@@ -260,6 +281,18 @@ PanelWindow {
     // the windows it `saw` (MarginCatFalls.js's rides).
     function walkFrom(hurried: bool, saw: var): void {
         walkTo(hurried, saw, there);
+    }
+
+    // The window it stands on: the one its walk goes to, walking, or
+    // the one it sat on.
+    function standsOn(): var {
+        return going === null ? sat : goingTo;
+    }
+
+    // Whether the window it sat on closed under it a moment ago, with
+    // nothing moved yet, so the next change of its column is that close's.
+    function fallsYet(): bool {
+        return closedOn !== null && Date.now() - closedAt < MarginCat.CLOSING;
     }
 
     // Its workspace emptied, it falls from where it is to the floor
@@ -304,12 +337,19 @@ PanelWindow {
             floats: Floats.of(tiles, 0),
             floated: saw ? Floats.of(saw, 0) : [],
             spring: Theme.motion.spring,
+            // The window it stands on gone, until it sits again.
+            closed: fallsYet()
+                || (standsOn() !== null && Niri.windows[standsOn()] === undefined),
+            // Gone too where the window over it has grown over it first.
+            on: fallsYet() ? closedOn : standsOn(),
             ahead: MarginCat.behind(frameMs, "resize"),
             frame: frameMs,
             marks: marksLit
         });
         goingTo = wanted;
         under = column;
+        if (plan !== null || !fallsYet())
+            closedOn = null;
         if (plan === null) {
             halt();
             sat = wanted;
@@ -375,20 +415,23 @@ PanelWindow {
     }
 
     // Where a move goes as niri says the new workspace's columns: as it
-    // holds, its way found again each time niri says any, since none of
-    // the hold depends on them; once it's on its way, a seat
-    // moved or the keys gone to another window cut it short, and it
-    // walks on from where it's got to (cut()).
+    // holds, or past its hold with no seat yet, its way found again each
+    // time niri says any, since none of the hold depends on them, and
+    // a seat said late sets off from the hold then (Paths.resumed);
+    // once it's on its way, a seat moved or the keys gone to another
+    // window cut it short, and it walks on from where it's got to
+    // (cut()).
     function steer(): void {
         if (there === null)
             return;
-        const holding = Paths.replans(moving, mover.elapsedTime * 1000, steps > 0);
+        const t = mover.elapsedTime * 1000;
+        const holding = Paths.replans(moving, t, steps > 0);
         const same = Math.round(there.x * ratio) === Math.round(moving.to.x * ratio)
             && Math.round(there.y * ratio) === Math.round(moving.to.y * ratio);
-        if (holding) {
+        if (holding || movingTo === null) {
             movingTo = wanted;
-            moving = plan(moving.way, moving.from, { x: there.x, y: there.y });
-        } else if (movingTo === null || wanted !== movingTo || !same) {
+            moving = Paths.resumed(plan(moving.way, moving.from, { x: there.x, y: there.y }), t);
+        } else if (wanted !== movingTo || !same) {
             cut();
         }
     }
@@ -717,15 +760,21 @@ PanelWindow {
     FrameAnimation {
         id: mover
         onTriggered: {
-            const now = Paths.frame(window.moving, mover.elapsedTime * 1000);
-            // A hold with no column at its end arrives at once: on an
-            // empty workspace it falls to the floor (arrive).
-            if (now.done
-                || (now.beat !== window.moving.beats[0].name && window.movingTo === null)) {
+            const t = mover.elapsedTime * 1000;
+            const now = Paths.frame(window.moving, t);
+            // A hold with no seat yet holds on a moment for one niri
+            // says late (Paths.holdsOn), where it is, rather than going
+            // and coming back with no walk; with none by then, or on an
+            // empty workspace, it arrives, where it falls to the floor.
+            const waits = window.movingTo === null && !window.emptied
+                && Paths.holdsOn(window.moving, t);
+            if (!waits && (now.done
+                || (now.beat !== window.moving.beats[0].name && window.movingTo === null))) {
                 window.arrive();
                 return;
             }
-            window.took(now);
+            if (!now.done)
+                window.took(now);
         }
     }
 

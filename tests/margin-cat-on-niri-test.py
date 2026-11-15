@@ -10,8 +10,9 @@ the check's result, that its layer is one taking no keys, that it goes in fullsc
 gap it sits in is gone, that it dozes off after a minute with no keys and stretches as the
 screen unlocks, that niri draws it in whole pixels at 1.5 and at 2, each screen kept as the
 check's result, and that a move between workspaces has it hold its ground through niri's slide,
-a second move cutting it short holding on from where the first got to, and that on a workspace
-with no windows it sits on the floor until one opens there.
+a second move cutting it short holding on from where the first got to, that on a workspace
+with no windows it sits on the floor until one opens there, and that a row of a column closed
+under it has it fall at once.
 
 Long because every case shares the one shell, started with the cat's own doze and scenes, and
 the readers of what it reports; the moves between workspaces could go to a check of their own,
@@ -78,6 +79,8 @@ POLL = 0.05
 JUDGING_LOOKS = 2
 # The longest a wait for the cat to sit and be judged may last, for a cat that never sits.
 SETTLES_BY = 90.0
+# How far, in logical pixels, the cat's feet may be from a window's top for it to sit flush.
+FLUSH = 0.5
 # How far each channel may be from the cat's hue for a pixel to be called near it, when
 # looking for a cat drawn somewhere other than where it said.
 NEAR = 24
@@ -216,6 +219,24 @@ def walking(said: str) -> bool:
     """Say whether a report is a step of a walk."""
     at = placed(said)
     return at is not None and bool(at.get("walk"))
+
+
+def flush_on_a_lower_row(window: Json) -> Callable[[str], bool]:
+    """Say whether a report has the cat sat still, flush on the top of `window` below a row."""
+
+    def flush(said: str) -> bool:
+        at = placed(said)
+        column = json.loads(said.split(" over ", 1)[1])
+        return bool(
+            at is not None
+            and not at.get("walk")
+            and at.get("window") == window["id"]
+            and column is not None
+            and column["top"] > at["size"] * 4
+            and abs(at["y"] + at["size"] + at["air"] - column["top"]) < FLUSH
+        )
+
+    return flush
 
 
 def test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest(shell: Shell) -> None:
@@ -823,3 +844,73 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     assert gone <= STEPS_ON * was["size"], f"the second move put it at {after}, from {was}"
     again = [step for step in moved(shell, since) if step["move"]["way"] < 0]
     assert again, "the second move set it on its seat, moving it no more"
+
+
+def test_a_row_closed_under_it_has_it_fall_at_once(shell: Shell) -> None:
+    """A row of its column closed under it, it falls at once, never waiting for the keys to rest.
+
+    Its fall ahead of the window grown down over it, and its climb from there, are
+    MarginCatFalls.js's, frame by frame in Qt's engine; here, only that niri's own close reaches
+    it: it sets off well inside the rest, falling first, never shoved, and sits on the window
+    left (Joel, 2026-11-14 17:24: "it seems to hang out in the middle then walk across, that is
+    not believable").
+    """
+    since = shell.mark()
+    left = shell.opened("a row left in its column")
+    closed = shell.opened("a row closed under the cat")
+    sits_over(shell, closed, since)
+    since = shell.mark()
+    shell.as_account("niri msg action consume-or-expel-window-left")
+
+    # Sat flush on the lower row's top, so the move into the column has settled and the
+    # first walk after the close is the close's (a loaded builder, 2026-11-14: a ride
+    # of the move's last pixel came first).
+    heard(shell, flush_on_a_lower_row(closed), since)
+    since = shell.mark()
+    gone = time.monotonic()
+    shell.close(closed)
+    heard(shell, walking, since)
+    set_off = time.monotonic() - gone
+    sits_over(shell, left, since)
+    walked = steps(shell, since)
+    way = walked[0]["walk"]["beats"]
+    assert set_off < RESTS / 2, f"the cat hung {set_off:.2f} s where its row was, then went"
+    said, _ = shell.said_since(since)
+    told = [report[len(SITS) :][:400] for report in said if report.startswith(SITS)][:6]
+    assert way[:3] == ["rides", "lands", "shakes"], f"the cat's way off was {way}: {told}"
+    assert "shoved" not in way, f"the cat was shoved across a window: {way}"
+
+
+def test_a_middle_row_closed_under_it_has_it_fall_onto_the_row_below(shell: Shell) -> None:
+    """The middle of three rows closed under it, it falls onto the row below, never riding it.
+
+    niri first puts the row below in the closed row's place, its windows not resized yet, and
+    lays the column out again only once they have: the cat waits for that, then falls in the
+    falling drawing, lands and shakes it off, rather than riding the row below down sitting (the
+    GPU rig, 2026-11-15: a jump of 105 px).
+    """
+    since = shell.mark()
+    shell.opened("a row left over the middle")
+    closed = shell.opened("a middle row closed under the cat")
+    shell.as_account("niri msg action consume-or-expel-window-left")
+    below = shell.opened("a row left under the middle")
+    shell.as_account("niri msg action consume-or-expel-window-left")
+    # Sat flush on the middle row once the keys come back to it, so the first walk after the
+    # close is the close's.
+    since = shell.mark()
+    shell.as_account(f"niri msg action focus-window --id {closed['id']}")
+    heard(shell, flush_on_a_lower_row(closed), since)
+    since = shell.mark()
+    shell.close(closed)
+    heard(shell, walking, since)
+    sits_over(shell, below, since)
+    walked = steps(shell, since)
+    way = walked[0]["walk"]["beats"]
+    said, _ = shell.said_since(since)
+    told = [report[len(SITS) :][:400] for report in said if report.startswith(SITS)][:6]
+    assert way[:3] == ["rides", "lands", "shakes"], f"the cat's way off was {way}: {told}"
+    # Onto the row below, never through its face to the floor and back up (the GPU rig,
+    # 2026-11-15).
+    assert "climbs" not in way, f"the cat fell past the row below, its way {way}: {told}"
+    falling = {step["walk"]["pose"] for step in walked if step["walk"]["beat"] == "rides"}
+    assert falling == {"falling"}, f"the cat fell as {falling}: {told}"

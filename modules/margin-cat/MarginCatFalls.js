@@ -198,13 +198,65 @@ function rides(way, cols, at) {
         away, room, frame: at.frame });
 }
 
+// The window it sat on closed (`at.closed`), and the one over it in its
+// column grown down over where it sat, as niri lays a column out again
+// as a row goes: it falls at once ahead of that window's edge, on niri's
+// own spring, onto what's under where the edge stops, lands and shakes
+// it off, rather than hanging there or shoved across the face (Joel,
+// 2026-11-14 17:24: "it seems to hang out in the middle then walk
+// across, that is not believable"). True where it fell.
+function drops(way, cols, at) {
+    if (!at.closed || !at.spring || way.legs.length !== 0) {
+        return false;
+    }
+    const inWindow = within(way, cols, at);
+    const bottom = inWindow === null ? closedUnder(way, at) : inWindow.row.bottom;
+    if (bottom === null || (inWindow !== null && inWindow.row.top > way.y)) {
+        return false;
+    }
+    // Not yet grown over it, it lands on what's under it now: niri may
+    // have moved the row below up into the closed one's place first (the
+    // GPU rig, 2026-11-15: from the closed row's old bottom it fell
+    // through that row's face to the floor).
+    const lands = under({ x: way.x, y: inWindow === null ? way.y : bottom + at.air }, cols, at);
+    const spring = Object.assign({}, at.spring, { slowdown: at.slowdown ?? 1 });
+    const ms = MarginCat.slides(spring);
+    const ahead = Math.min(at.ahead ?? 0, ms - 1);
+    way.turn = 0;
+    Ways.rides(way, { x: way.x, y: lands.y }, { ms: ms - ahead, frame: at.frame,
+        edge: t => MarginCat.slid(t + ahead, spring), away: true, falls: true });
+    Ways.holds(way, "lands", MarginCat.LANDS);
+    Ways.holds(way, "shakes", SHAKES);
+    return true;
+}
+
+// Where the row it stood on (`at.on`) reached down to, as it was
+// `before`, when a window over it in its column is still to grow down
+// over where it sat: niri can say the row closed before it lays the
+// column out again (a nested niri, 2026-11-14). Sitting, it hears
+// only its own window's tile, so the row over it is known by niri's
+// row for its own. Null otherwise.
+function closedUnder(way, at) {
+    for (const column of at.before ?? []) {
+        const r = column.rows.findIndex(one => one.id !== undefined && one.id === at.on);
+        const row = column.rows[r];
+        const on = row !== undefined && way.x < column.right && way.x + at.wide > column.left
+            && Math.abs(Routes.stands(row.top, at) - way.y) <= at.cell;
+        if (on && (r > 0 || (row.row ?? 1) > 1)) {
+            return row.bottom;
+        }
+    }
+    return null;
+}
+
 // From wherever it is on a way, onto something that holds it on
-// `cols`: shoved clear of a window grown into it, then, in the air, a
-// grab at an edge in reach or a fall onto what's below, landing on its
-// feet and shaking it off. The stop it ends on.
+// `cols`: fallen from a row closed under it, or shoved clear of a
+// window grown into it, then, in the air, a grab at an edge in reach or
+// a fall onto what's below, landing on its feet and shaking it off. The
+// stop it ends on.
 function settle(way, cols, at) {
     rides(way, cols, at);
-    const inWindow = within(way, cols, at);
+    const inWindow = drops(way, cols, at) ? null : within(way, cols, at);
     if (inWindow !== null) {
         const out = clear(way, cols, at, inWindow);
         if (out !== null) {

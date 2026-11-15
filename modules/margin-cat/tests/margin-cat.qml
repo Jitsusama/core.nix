@@ -549,6 +549,21 @@ QtObject {
         expect("stepped past its hold, it's cut short; still holding, it isn't",
             [Paths.replans(slow, 0, true), Paths.replans(down, 100, true),
                 Paths.replans(down, 240, true)], [false, true, false]);
+        // Its seat said only once the hold is over, as niri can on a
+        // loaded machine, the way there begins where the hold left it,
+        // then, never part way along it: cut into a walk, the move was
+        // never its own (the-margin-cat-follows-the-keys-on-niri, a
+        // builder drawing 87 ms apart, 2026-11-14).
+        const resumed = Paths.resumed(down, 300);
+        expect("its seat said late, its way there begins as it's said",
+            [Paths.frame(resumed, 299).x, Paths.frame(resumed, 299).beat,
+                Paths.frame(resumed, 300 + down.ends - 231).done], [100, "rides", true]);
+        expect("its seat said as it holds, nothing of the move is moved",
+            Paths.resumed(down, 100).ahead, down.ahead);
+        const seatless = Paths.moves(seat(100), null, world({ way: 1 }));
+        expect("with no seat yet, it holds on a little past the slide, then no more",
+            [Paths.holdsOn(seatless, 231 + 200), Paths.holdsOn(seatless, 231 + 300)],
+            [true, false]);
         const still = frames => frames.every((at, i) => i === 0
             || Math.hypot(at.x - frames[i - 1].x, at.y - frames[i - 1].y) <= 4);
         for (const [way, name] of [[1, "down"], [-1, "up"]]) {
@@ -621,42 +636,8 @@ QtObject {
         expect("down a workspace to a window under another, never gliding",
             [ends(deep), glides(deep), smooth(seen(deep))], [[948, 507], false, true]);
 
-        // The window over its own resized, as niri does: it rides the top
-        // it stands on, on niri's own spring, as the window's edge goes,
-        // never across or through a window (Joel, 2026-11-13, by WCJQSG
-        // 2bd7c7c6: "the kitten also needs to handle resizing windows").
-        const ided = three.map((tile, i) => Object.assign({ id: i + 1 }, tile));
-        const split = top => ided.map(tile => tile.column !== 2 ? tile : Object.assign({},
-            tile, tile.id === 4 ? { height: top - 32 } : { top, height: 784 - top }));
-        const resized = (now, to) => Paths.walk({ x: 948, y: 507 }, to, among({ hurried: true,
-            cols: Paths.columns(now, 0), before: Paths.columns(ided, 0) }));
-        for (const [top, name] of [[316, "shrunk, it rides up"], [616, "grown, it rides down"]]) {
-            const rode = resized(split(top), { x: 948, y: top - 9 });
-            expect(`the window over its own ${name} with its own window's top`,
-                [rode.beats[0].name, rode.beats[0].to.y, Paths.frame(rode, 40).y,
-                    seen(rode).every(one => one.x === 948)],
-                ["rides", top - 9, 507 + (top - 516) * MarginCat.slid(40, spring), true]);
-        }
-        const heard = Paths.walk({ x: 948, y: 507 }, { x: 948, y: 307 }, among({ hurried: true,
-            cols: Paths.columns(split(316), 0), before: Paths.columns(ided, 0), ahead: 30 }));
-        expect("told of the resize late, it rides as far into niri's spring as the edge has gone",
-            [Paths.frame(heard, 0).y, Math.round(heard.beats[0].ends)],
-            [507 - 200 * MarginCat.slid(30, spring), MarginCat.slides(spring) - 30]);
-        // Sitting, it hears only its own window's tile (24a136dde), so the
-        // window over it is known by niri's row for its own, the second.
-        const own = top => [Object.assign({ row: 2 }, split(top).find(tile => tile.id === 5))];
-        const alone = Paths.walk({ x: 948, y: 507 }, { x: 948, y: 607 }, among({
-            hurried: true, cols: Paths.columns(own(616), 0), before: Paths.columns(own(516), 0),
-            ahead: 63, frame: 8.2 }));
-        expect("the window over its own grown, heard alone and late, it rides flush, never in it",
-            [0, 16, 64].map(t => [Paths.frame(alone, t).y, Paths.frame(alone, t).pose]),
-            [0, 16, 64].map(t => [507 + 100 * MarginCat.slid(t + 63, spring), null]));
-        const narrowed = ided.map(tile => tile.column !== 2 ? tile
-            : Object.assign({}, tile, { width: 60 }));
-        const left = resized(narrowed, { x: 874, y: 507 });
-        expect("its column narrowed out from under it, it falls",
-            [left.beats[0].name, left.beats.some(beat => beat.name === "rides")], ["falls", false]);
-
+        // How it rides, falls and climbs back as the windows under it
+        // change is margin-cat-rides.qml's.
         expect("with nothing on the new workspace it only holds",
             Paths.moves(seat(100), seat(100), world({ way: 1, now: [] })).beats
                 .map(beat => beat.name), ["rides"]);
@@ -681,88 +662,5 @@ QtObject {
         expect("the theme's slowdown stretches all of a move",
             Math.round(Paths.moves(seat(100), seat(900), world({ way: 1, slowdown: 2 })).ends),
             Math.round(down.ends * 2));
-
-        // Heard late, a resize's ride catches niri's edge up without a jump (VKCF3Z,
-        // 2026-11-13 a36e05f9): carried up within two frames in the pose it
-        // had, left in the air a fall that sits flush by the time the edge
-        // stops, never so far behind that what follows passes through it.
-        expect("heard 25 ms and a frame late of a slide, and 30 ms more of a resize",
-            [MarginCat.behind(1000 / 60, "slide"), MarginCat.behind(1000 / 60, "resize"),
-                MarginCat.behind(1000 / 120, "slide"), MarginCat.behind(1000 / 120, "resize")],
-            [42, 72, 33, 63]);
-        const hz120 = 1000 / 120;
-        const edgeAt = (dy, t) => 400 + dy * MarginCat.slid(t + 40, spring);
-        const riding = (dy, more) => {
-            const way = Ways.begun({ cell: 1, wide: 8, tall: 8 }, { x: 100, y: 400 });
-            Ways.rides(way, { x: 100, y: 400 + dy }, Object.assign({ ms: 191, frame: hz120,
-                edge: t => MarginCat.slid(t + 40, spring) }, more ?? {}));
-            return Ways.timed(way);
-        };
-        const each = (route, ends) => {
-            const all = [];
-            for (let t = 0; t < ends; t++)
-                all.push(Object.assign({ t }, Ways.frame(route, t)));
-            return all;
-        };
-        const runs = frames => frames.reduce((all, one) => {
-            const last = all[all.length - 1];
-            if (last && last.pose === one.pose)
-                last.ms += 1;
-            else
-                all.push({ pose: one.pose, ms: 1 });
-            return all;
-        }, []);
-        const lifted = riding(-300);
-        expect("carried up, it starts where it sat", Ways.frame(lifted, 0).y, 400);
-        // On the GPU rig at 120 Hz niri drew a resize's frames 16.3 ms apart,
-        // so its two frames are never shorter than two at 60 Hz.
-        const hz60 = 1000 / 60;
-        expect("halfway to the edge a 60 Hz frame in, though it walked at 120",
-            Math.round(Ways.frame(lifted, hz60).y), Math.round((400 + edgeAt(-300, hz60)) / 2));
-        expect("and on the edge two such frames in, and after",
-            [2 * hz60, 3 * hz60, 100].map(t => Math.round(Ways.frame(lifted, t).y)),
-            [2 * hz60, 3 * hz60, 100].map(t => Math.round(edgeAt(-300, t))));
-        expect("in the pose it had", each(lifted, 191).every(one => one.pose === null), true);
-        const dropped = riding(300, { away: true });
-        const stops = each(dropped, 191).find(one => 300 - (edgeAt(300, one.t) - 400) < 1).t;
-        expect("left in the air, it starts where it sat, and never sinks into the window",
-            [Ways.frame(dropped, 0).y, each(dropped, 191).every(one =>
-                one.y <= edgeAt(300, one.t) + 1e-6)], [400, true]);
-        expect("it sits flush by the time the edge stops",
-            Math.abs(Ways.frame(dropped, stops).y - edgeAt(300, stops)) < 0.5, true);
-        const falling = runs(each(dropped, 191)).filter(one => one.pose !== null);
-        expect("falling in the falling drawing, landing crouched, each seen two frames at 60 Hz",
-            [falling.map(one => one.pose), falling.every(one => one.ms >= 33)],
-            [["falling", "pouncing"], true]);
-        const pressed = riding(300, { away: true, room: 20 });
-        expect("never more than its room behind, before what follows passes through it",
-            each(pressed, 191).every(one => edgeAt(300, one.t) - one.y <= 20 + 1e-6), true);
-        expect("a gap under two cells closes with no pose",
-            each(riding(1.5, { away: true }), 191).every(one => one.pose === null), true);
-
-        // Its own motion lands on its art's own pixels, cells of 2 here,
-        // carrying the part-cell a ride leaves it at (RSCH-20261113-24R2QV,
-        // finding 1); the ride keeps niri's pixels.
-        const stepped = Ways.begun({ cell: 2, wide: 16, tall: 16 }, { x: 101, y: 400 });
-        Ways.rides(stepped, { x: 101, y: 413.3 }, { ms: 100, frame: hz120, edge: t => t / 100 });
-        Ways.goes(stepped, 160, 413.3);
-        Ways.leap(stepped, { x: 175, y: 380.7 }, 2);
-        Ways.falls(stepped, { x: 175, y: 431 });
-        const byItself = Ways.timed(stepped);
-        const cells = v => Math.abs(v / 2 - Math.round(v / 2)) < 1e-6;
-        const stepping = each(byItself, byItself.ends).map(one => Object.assign(one,
-            { on: byItself.beats.find(beat => one.t < beat.ends) }));
-        expect("each frame of its own a whole number of cells from where its beat starts or ends",
-            stepping.filter(one => one.on.kind !== "rides").every(one => ["x", "y"].every(axis =>
-                cells(one[axis] - one.on.from[axis]) || cells(one[axis] - one.on.to[axis]))),
-            true);
-        expect("never stepping back to get there",
-            stepping.every((one, i) => i === 0 || one.x >= stepping[i - 1].x), true);
-        expect("walking flush on the part-cell the ride left it at, and ending where it's going",
-            [stepping.filter(one => one.beat === "goes").every(one => one.y === 413.3),
-                Ways.frame(byItself, byItself.ends - 1e-6).y, Ways.frame(byItself, byItself.ends).y],
-            [true, 431, 431]);
-        expect("the ride on niri's own pixels",
-            Math.round(Ways.frame(byItself, 50).y * 100), 40665);
     }
 }

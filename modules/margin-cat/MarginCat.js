@@ -64,6 +64,11 @@ const RESTS = 2000;
 // than niri takes between two events of one move, short of a glance.
 const LEAVES = 250;
 
+// How long after the window it sat on closed the next change of its column
+// is still that close's, in ms: niri lays the column out again once the
+// windows left have resized, which it waits on for at most 300 ms.
+const CLOSING = 500;
+
 // A walk's beats, in ms at the theme's pace, each a pose of the theme's own
 // (Joel, 2026-11-12: "proper smooth animations with character to them"):
 // it stands and turns its head the way it's going, stops a moment to

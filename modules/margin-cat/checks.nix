@@ -13,10 +13,11 @@ onLinux {
   # it's drawn, and its ways about the windows, as tests/margin-cat.qml holds
   # them, its ways on and off floating windows, as
   # tests/margin-cat-floats.qml holds them, the rules its journeys over
-  # generated layouts keep, as tests/margin-cat-journeys.qml holds them,
-  # how it reads niri's layout, as tests/margin-cat-tiles.qml holds it, and
-  # the plays that move it, as tests/margin-cat-games.qml holds them, in
-  # Qt's own engine.
+  # generated layouts keep, as tests/margin-cat-journeys.qml holds them, how
+  # it rides and falls as the windows under it change, as
+  # tests/margin-cat-rides.qml holds it, how it reads niri's layout, as
+  # tests/margin-cat-tiles.qml holds it, and the plays that move it, as
+  # tests/margin-cat-games.qml holds them, in Qt's own engine.
   the-margin-cat-sits-above-its-column =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -36,6 +37,7 @@ onLinux {
           ./tests/margin-cat-floats.qml
           ./tests/margin-cat-games.qml
           ./tests/margin-cat-journeys.qml
+          ./tests/margin-cat-rides.qml
           ./tests/margin-cat-tiles.qml
         ];
       };
