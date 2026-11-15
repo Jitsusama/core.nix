@@ -68,8 +68,9 @@ pub fn covers(list: &Value, test: &str, failing: &BTreeSet<String>) -> bool {
 /// them, excusing `subtests` of it, or the whole test when none are named.
 /// A test already listed gets an entry of its own for the subtests not
 /// held yet, leaving every other owner's entry as it was; one listed whole
-/// stays whole, and one listed by its subtests isn't listed whole. Gives
-/// whether the list changed.
+/// stays whole, and one listed by its subtests isn't listed whole. An
+/// entry is `due` off the list two days after its `at`, unless `fields`
+/// name a date. Gives whether the list changed.
 pub fn list(
     entries: &mut Vec<Value>,
     test: &str,
@@ -93,12 +94,43 @@ pub fn list(
         fresh
     };
     let mut entry = fields;
+    if entry.get("due").is_none()
+        && let Some(at) = entry["at"].as_u64()
+    {
+        entry["due"] = json!(date(at + DUE_AFTER));
+    }
     entry["test"] = json!(test);
     if !fresh.is_empty() {
         entry["subtests"] = json!(fresh);
     }
     entries.push(entry);
     true
+}
+
+/// How long after it's listed an entry is due off the list, for its owner
+/// to fix it forward: past it, the hourly loop counts the entry as a slip.
+/// On 14 November 44 entries named no date, so all counted as slips.
+const DUE_AFTER: u64 = 2 * 86_400;
+
+/// The day `at`, seconds since 1970, falls on in UTC, as `2026-11-16`:
+/// Howard Hinnant's days-to-civil, over eras of 400 years from 1 March of
+/// the year 0.
+#[must_use]
+pub fn date(at: u64) -> String {
+    let days = at / 86_400 + 719_468;
+    let era = days / 146_097;
+    let in_era = days % 146_097;
+    let years = (in_era - in_era / 1460 + in_era / 36_524 - in_era / 146_096) / 365;
+    let in_year = in_era - (365 * years + years / 4 - years / 100);
+    let shifted = (5 * in_year + 2) / 153;
+    let day = in_year - (153 * shifted + 2) / 5 + 1;
+    let month = if shifted < 10 {
+        shifted + 3
+    } else {
+        shifted - 9
+    };
+    let year = years + era * 400 + u64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
 }
 
 fn entries(list: &Value) -> impl Iterator<Item = &Value> {
@@ -267,6 +299,35 @@ mod tests {
             entries.len(),
             5,
             "a listing that changed nothing added an entry"
+        );
+    }
+
+    #[test]
+    fn a_listing_is_due_off_the_list_two_days_on() {
+        let mut entries = Vec::new();
+        // 14 November 2026, 23:30 UTC.
+        let at = json!({"owner_pr": 3, "at": 1_794_699_000});
+        assert!(
+            list(&mut entries, "vm-c", &set("test_q"), at),
+            "vm-c wasn't listed"
+        );
+        assert_eq!(
+            entries[0]["due"], "2026-11-16",
+            "an entry wasn't due two days after it was listed"
+        );
+        let given = json!({"owner_pr": 4, "at": 1_794_699_000, "due": "2026-11-15"});
+        assert!(
+            list(&mut entries, "vm-d", &set(""), given),
+            "vm-d wasn't listed"
+        );
+        assert_eq!(
+            entries[1]["due"], "2026-11-15",
+            "a date its owner gave was replaced"
+        );
+        assert_eq!(
+            date(951_782_400),
+            "2000-02-29",
+            "a leap day was dated wrong"
         );
     }
 }

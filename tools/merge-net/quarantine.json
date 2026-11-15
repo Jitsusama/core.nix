@@ -2,6 +2,7 @@
   {
     "at": 1794337827,
     "commit": "26852ce9a8ec1e828c6d26df64581bccba210135",
+    "due": "2026-11-12",
     "owner_pr": 2855,
     "reason": "failed twice at 420e2aa35b28, and at 26852ce9a8ec after it",
     "subtests": [
@@ -14,6 +15,7 @@
   {
     "at": 1794342753,
     "commit": "26852ce9a8ec1e828c6d26df64581bccba210135",
+    "due": "2026-11-12",
     "owner_pr": 2880,
     "reason": "broken since #2880, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "subtests": [
@@ -25,6 +27,7 @@
   {
     "at": 1794346840,
     "commit": "a693826b5ecfa6c0a2d7dfd66671cbe93dbd8ee7",
+    "due": "2026-11-12",
     "owner_pr": null,
     "reason": "failed, then passed, at a693826b5ecf",
     "subtests": [
@@ -35,6 +38,7 @@
   {
     "at": 1794346052,
     "commit": "0d7ca1f2a8b290d6eabe8d2affd24cd0d1905de5",
+    "due": "2026-11-15",
     "owner_pr": 3884,
     "reason": "reopening five sessions while the focus moves timed out once at 50e4d55f9 with all five opened, Y2YBTS's by Sun 15",
     "subtests": [
@@ -45,6 +49,7 @@
   {
     "at": 1794613888,
     "commit": "5782337e6e457780754e6e5684e6c69bd92827dd",
+    "due": "2026-11-15",
     "owner_pr": 4145,
     "reason": "failed, then passed, at 5782337e6e45",
     "subtests": [
@@ -55,6 +60,7 @@
   {
     "at": 1794377740,
     "commit": "405fff7e09e75f5f21857d710e1f02306a80664b",
+    "due": "2026-11-13",
     "owner_pr": null,
     "reason": "failed, then passed, at 405fff7e09e7",
     "subtests": [
@@ -66,6 +72,7 @@
   {
     "at": 1794560189,
     "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
+    "due": "2026-11-15",
     "owner_pr": 3946,
     "reason": "failed, then passed, at aefa56b98e80",
     "subtests": [
@@ -76,6 +83,7 @@
   {
     "at": 1794409299,
     "commit": "6e396fae765b7bee38c3af3a418e0ff73ad7d294",
+    "due": "2026-11-13",
     "owner_pr": 3176,
     "reason": "failed, then passed, at 6e396fae765b",
     "subtests": [
@@ -88,6 +96,7 @@
   {
     "at": 1794580353,
     "commit": "77b2c01c96435484735cb5eda87677902bda6396",
+    "due": "2026-11-15",
     "owner_pr": 3972,
     "reason": "failed, then passed, at 77b2c01c9643",
     "subtests": [
@@ -106,6 +115,7 @@
   {
     "at": 1794421209,
     "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
+    "due": "2026-11-13",
     "owner_pr": 3304,
     "reason": "failed, then passed, at 042387bc604a",
     "subtests": [
@@ -119,6 +129,7 @@
   {
     "at": 1794558951,
     "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
+    "due": "2026-11-15",
     "owner_pr": 3946,
     "reason": "failed, then passed, at aefa56b98e80",
     "subtests": [
@@ -130,6 +141,7 @@
   {
     "at": 1794433532,
     "commit": "5b1b2d0a9c9cf58e0e5885705ec2dcdd426c9fd7",
+    "due": "2026-11-13",
     "owner_pr": 3370,
     "reason": "failed, then passed, at 5b1b2d0a9c9c",
     "subtests": [
@@ -150,6 +162,7 @@
   {
     "at": 1794437795,
     "commit": "461743399d56dac959e8e102cd6c137100886045",
+    "due": "2026-11-13",
     "owner_pr": 3363,
     "reason": "failed, then passed, at 461743399d56",
     "subtests": [
@@ -163,6 +176,7 @@
   {
     "at": 1794468889,
     "commit": "dd21b75e8c65f6847ad9ff3a7e8a54a902417fa0",
+    "due": "2026-11-14",
     "owner_pr": 3542,
     "reason": "failed, then passed, at dd21b75e8c65",
     "subtests": [
@@ -173,6 +187,7 @@
   {
     "at": 1794478078,
     "commit": "1c6f5f46964301dcd2d1889ccbbc127c00db041b",
+    "due": "2026-11-14",
     "owner_pr": 3596,
     "reason": "failed twice at 4e0cc018600f, and at 1c6f5f469643 after it",
     "subtests": [
@@ -185,6 +200,7 @@
   {
     "at": 1794553008,
     "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
+    "due": "2026-11-15",
     "owner_pr": 3596,
     "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
     "subtests": [
@@ -195,6 +211,7 @@
   {
     "at": 1794506844,
     "commit": "97b968eb686397074b9cd1695fba20e2c2ca4c2e",
+    "due": "2026-11-14",
     "owner_pr": 3737,
     "reason": "failed, then passed, at 97b968eb6863",
     "subtests": [
@@ -206,6 +223,7 @@
   {
     "at": 1794514033,
     "commit": "1e94ca1cd67d2c73e02ea0d67f3d85a51f55ac53",
+    "due": "2026-11-14",
     "owner_pr": 3757,
     "reason": "failed, then passed, at 1e94ca1cd67d",
     "subtests": [
@@ -216,6 +234,7 @@
   {
     "at": 1794515309,
     "commit": "1e94ca1cd67d2c73e02ea0d67f3d85a51f55ac53",
+    "due": "2026-11-14",
     "owner_pr": 3758,
     "reason": "failed, then passed, at 1e94ca1cd67d",
     "subtests": [
@@ -227,6 +246,7 @@
   {
     "at": 1794555457,
     "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
+    "due": "2026-11-15",
     "owner_pr": 2078,
     "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
     "subtests": [
@@ -238,6 +258,7 @@
   {
     "at": 1794619286,
     "commit": "93eeb7412debd50edf5d9bcc77d90d702b7ceee9",
+    "due": "2026-11-16",
     "owner_pr": 4157,
     "reason": "failed, then passed, at 93eeb7412deb",
     "subtests": [
@@ -248,6 +269,7 @@
   {
     "at": 1794519380,
     "commit": "b0e3be7a0f1bf6c0be687e741bc129afcbb83cd7",
+    "due": "2026-11-14",
     "owner_pr": 3794,
     "reason": "failed, then passed, at b0e3be7a0f1b",
     "subtests": [
@@ -258,6 +280,7 @@
   {
     "at": 1794528605,
     "commit": "039909ee6f729f3c8d44e0ca2acb523133ce9be4",
+    "due": "2026-11-15",
     "owner_pr": 3827,
     "reason": "failed, then passed, at 039909ee6f72",
     "subtests": [
@@ -268,6 +291,7 @@
   {
     "at": 1794537635,
     "commit": "b2be6ae26c8fcb7f68b687145bafcbceec102640",
+    "due": "2026-11-15",
     "owner_pr": 3919,
     "reason": "failed, then passed, at b2be6ae26c8f",
     "subtests": [
@@ -278,6 +302,7 @@
   {
     "at": 1794538359,
     "commit": "b2be6ae26c8fcb7f68b687145bafcbceec102640",
+    "due": "2026-11-15",
     "owner_pr": 3908,
     "reason": "failed, then passed, at b2be6ae26c8f",
     "test": "vm-joel-comes-first"
@@ -285,6 +310,7 @@
   {
     "at": 1794557415,
     "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
+    "due": "2026-11-15",
     "owner_pr": 3956,
     "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
     "subtests": [
@@ -295,6 +321,7 @@
   {
     "at": 1794568169,
     "commit": "fe9f6ae1bd4ddc562eab03e03021937e076d7e19",
+    "due": "2026-11-15",
     "owner_pr": 3956,
     "reason": "failed twice at aefa56b98e80, and at fe9f6ae1bd4d after it",
     "subtests": [
@@ -305,6 +332,7 @@
   {
     "at": 1794582283,
     "commit": "b7a81d60bf2144b8873172e83bd4aa19fb38414d",
+    "due": "2026-11-15",
     "owner_pr": 3956,
     "reason": "failed twice at fe9f6ae1bd4d, and at b7a81d60bf21 after it",
     "subtests": [
@@ -316,6 +344,7 @@
   {
     "at": 1794580528,
     "commit": "b7a81d60bf2144b8873172e83bd4aa19fb38414d",
+    "due": "2026-11-15",
     "owner_pr": 4014,
     "reason": "failed, then passed, at b7a81d60bf21",
     "test": "vm-guide-installs"
@@ -323,6 +352,7 @@
   {
     "at": 1794610340,
     "commit": "81d294e5c2e51e5fdfa62d4d0db1d66b46a05c0b",
+    "due": "2026-11-15",
     "owner_pr": 4129,
     "reason": "failed, then passed, at 81d294e5c2e5",
     "subtests": [
@@ -333,6 +363,7 @@
   {
     "at": 1794614356,
     "commit": "5782337e6e457780754e6e5684e6c69bd92827dd",
+    "due": "2026-11-15",
     "owner_pr": 4145,
     "reason": "failed, then passed, at 5782337e6e45",
     "subtests": [
@@ -343,6 +374,7 @@
   {
     "at": 1794620016,
     "commit": "93eeb7412debd50edf5d9bcc77d90d702b7ceee9",
+    "due": "2026-11-16",
     "owner_pr": 4157,
     "reason": "failed, then passed, at 93eeb7412deb",
     "subtests": [
@@ -353,6 +385,7 @@
   {
     "at": 1794624253,
     "commit": "467ec1a20da37f9e7ef094c4b9b7c72d9058c1fe",
+    "due": "2026-11-16",
     "owner_pr": 4173,
     "reason": "failed, then passed, at 467ec1a20da3",
     "subtests": [
@@ -363,6 +396,7 @@
   {
     "at": 1794624729,
     "commit": "467ec1a20da37f9e7ef094c4b9b7c72d9058c1fe",
+    "due": "2026-11-16",
     "owner_pr": 4155,
     "reason": "failed, then passed, at 467ec1a20da3",
     "subtests": [
@@ -373,6 +407,7 @@
   {
     "at": 1794627705,
     "commit": "4515bb9f1e9dd08dce992c5885406b16d49da645",
+    "due": "2026-11-16",
     "owner_pr": 4202,
     "reason": "failed, then passed, at 4515bb9f1e9d",
     "subtests": [
@@ -383,6 +418,7 @@
   {
     "at": 1794631096,
     "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
+    "due": "2026-11-16",
     "owner_pr": 4228,
     "reason": "failed, then passed, at 580dc8dbd580",
     "subtests": [
@@ -394,6 +430,7 @@
   {
     "at": 1794637111,
     "commit": "4f0387b4623e6e3fee085982c9b469dbb3ddc299",
+    "due": "2026-11-16",
     "owner_pr": 4243,
     "reason": "failed, then passed, at 4f0387b4623e",
     "test": "vm-boot-asks-in-the-theme"
@@ -401,6 +438,7 @@
   {
     "at": 1794644284,
     "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
+    "due": "2026-11-16",
     "owner_pr": 4266,
     "reason": "failed, then passed, at fb51cf3f90b0",
     "subtests": [
@@ -411,6 +449,7 @@
   {
     "at": 1794652172,
     "commit": "ec4bf1f43e1390a0fb0844c61747ed977d800fbd",
+    "due": "2026-11-16",
     "owner_pr": 4303,
     "reason": "failed, then passed, at ec4bf1f43e13",
     "subtests": [
@@ -422,6 +461,7 @@
   {
     "at": 1794681104,
     "commit": "1501fe1f285b10c05bad4246ffc29beae45dc2d4",
+    "due": "2026-11-16",
     "owner_pr": null,
     "reason": "failed, then passed, at 1501fe1f285b",
     "subtests": [
@@ -432,6 +472,7 @@
   {
     "at": 1794688918,
     "commit": "0d36a13a4b655a56eec46425da9e1dcfef0b9137",
+    "due": "2026-11-16",
     "owner_pr": null,
     "reason": "failed, then passed, at 0d36a13a4b65",
     "subtests": [
@@ -445,6 +486,7 @@
   {
     "at": 1794702911,
     "commit": "a52af4357be29c48580dbc6ecc5cc07e1ad3e61d",
+    "due": "2026-11-17",
     "owner_pr": null,
     "reason": "failed, then passed, at a52af4357be2",
     "subtests": [
@@ -453,18 +495,9 @@
     "test": "the-launcher-answers-whats-typed-on-niri"
   },
   {
-    "at": 1794706203,
-    "commit": "c51fcc200e172b08a4e9705edeb9c397ebb75861",
-    "owner_pr": 3956,
-    "reason": "failed twice at a637004b052a, and at c51fcc200e17 after it",
-    "subtests": [
-      "test_a_second_move_holds_on_from_where_the_first_got_to"
-    ],
-    "test": "the-margin-cat-follows-the-keys-on-niri"
-  },
-  {
     "at": 1794707322,
     "commit": "f4ff17088982c04b151d13c7ff0062972c41af74",
+    "due": "2026-11-15",
     "owner_pr": 4364,
     "reason": "a loaded builder spaced foot's letters past the 160 ms rest in all three tries, in four gates between 18:00 and 20:45 on 14 Nov, on main's code too, BXNMUC's to make steady by 15 Nov 02:00",
     "subtests": [
@@ -474,20 +507,33 @@
     "test": "the-launcher-answers-whats-typed-on-niri"
   },
   {
-    "at": 1794709636,
-    "commit": "968627b69b715f69826460c9e5ab253e092d13f4",
-    "owner_pr": null,
-    "reason": "failed, then passed, at 968627b69b71",
+    "at": 1794709157,
+    "commit": "25e508c84df2ad15f66044c588f1529630a3b870",
+    "due": "2026-11-17",
+    "owner_pr": 4274,
+    "reason": "failed under loaded builders in the gates of 2 changes on 14 Nov, one that doesn't reach the launcher, and passed on rerun",
     "subtests": [
-      "test_the_cat_holds_its_ground_through_a_slide_between_workspaces"
+      "test_chords_said_through_a_handover_open_it_at_once"
     ],
-    "test": "the-margin-cat-follows-the-keys-on-niri"
+    "test": "the-launcher-opens-on-what-it-kept-on-niri"
   },
   {
     "at": 1794711310,
     "commit": "c51fcc200e172b08a4e9705edeb9c397ebb75861",
+    "due": "2026-11-17",
     "owner_pr": 4356,
     "reason": "failed, then passed, at c51fcc200e17",
     "test": "niri-tells-a-resize-at-once"
+  },
+  {
+    "at": 1794709157,
+    "commit": "25e508c84df2ad15f66044c588f1529630a3b870",
+    "due": "2026-11-17",
+    "owner_pr": 671,
+    "reason": "failed, then passed, at 1242616f and at e5dbb0d1 on 14 Nov",
+    "subtests": [
+      "test_swipes_on_the_touchscreen_move_through_the_workspaces_not_the_window"
+    ],
+    "test": "vm-desktop-starts-clean"
   }
 ]
