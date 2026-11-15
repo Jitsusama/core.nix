@@ -615,14 +615,17 @@ mod tests {
     /// The update Joel's 22:22 reboot cut short on 14 November, as
     /// `journalctl -u update-to-main.service -o short-unix` wrote it.
     const CUT_SHORT: &str = "\
-1794712715.101982 optimus update-to-main[4411]: uid 1000 asks for an update with core at 7679bd7c04a0
-1794712792.864540 optimus nixos[1033143]: switching to system configuration /nix/store/x8jh1lrs4vyr5lp7x8kfi0nkja2qd128-nixos-system-optimus-26.11.20261112.2074cc6
-1794712973.200710 optimus systemd[1]: Stopped Updates the machine to its repository's main when asked.
+1794712715.101982 host update-to-main[4411]: uid 1000 asks for an update with core at 7679bd7c04a0
+1794712792.864540 host nixos[1033143]: switching to system configuration /nix/store/x8jh1lrs4vyr5lp7x8kfi0nkja2qd128-nixos-system-host-26.11.20261112.2074cc6
+1794712973.200710 host systemd[1]: Stopped Updates the machine to its repository's main when asked.
 ";
 
     #[test]
     fn a_boot_into_the_system_a_cut_short_switch_built_puts_its_core_on() {
-        let booted = "/nix/store/x8jh1lrs4vyr5lp7x8kfi0nkja2qd128-nixos-system-optimus-26.11.20261112.2074cc6";
+        let booted = concat!(
+            "/nix/store/x8jh1lrs4vyr5lp7x8kfi0nkja2qd128-",
+            "nixos-system-host-26.11.20261112.2074cc6"
+        );
         assert_eq!(
             boot_time("cpu  1 2 3\nbtime 1794712989\nprocesses 9\n"),
             Some(1_794_712_989),
