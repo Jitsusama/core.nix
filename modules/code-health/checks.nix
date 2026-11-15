@@ -90,7 +90,12 @@
       started = pkgs.lib.concatStringsSep " " (
         pkgs.lib.toList home.systemd.user.services.code-health.Service.ExecStart
       );
-      handed = folder: pkgs.lib.hasInfix (pkgs.lib.escapeShellArgs [ "--under" folder ]) started;
+      handed =
+        folder:
+        pkgs.lib.hasInfix (pkgs.lib.escapeShellArgs [
+          "--under"
+          folder
+        ]) started;
     in
     holds "code-health-reads-each-folder-it-is-given"
       "code-health isn't handed every folder a repository is given."
