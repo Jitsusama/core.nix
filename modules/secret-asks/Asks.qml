@@ -44,6 +44,10 @@ Provider {
 
     // Newest first, as the daemon serves them.
     readonly property var all: ready.rows()
+    // Said as what they show moves, so the launcher open on Asks searches
+    // it again and a yes is drawn ran there and then; without it, the row
+    // read waiting until Asks was next opened (5GLTPH, 2026-11-15).
+    onAllChanged: changedTo(all)
 
     // An ask's row, from the one the daemon serves, with what For You
     // reads of it: whether it waits on Joel, and since when.
