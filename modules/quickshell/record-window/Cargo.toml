@@ -10,5 +10,6 @@ publish = false
 [dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 libc = "0.2"
+terminal-kit = { path = "../../terminal-kit" }
 tokio = { version = "1.53", features = ["io-util", "macros", "process", "rt", "signal", "time"] }
 zbus = { version = "5.19", default-features = false, features = ["tokio"] }

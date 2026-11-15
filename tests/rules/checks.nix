@@ -282,6 +282,7 @@
         quickshell-hands-over = import ../../modules/quickshell/hands-over.nix { inherit pkgs; };
         reader = pkgs.callPackage ../../modules/reader/package.nix { };
         recent-files = recentFiles;
+        record-window = pkgs.callPackage ../../modules/quickshell/record-window/package.nix { };
         rhythm = pkgs.callPackage ../../modules/rhythm/package.nix { };
         screen-text = dictation;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };

@@ -121,11 +121,6 @@
     "exits"
     "helps"
   ];
-  record-window = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   secret-asks = [
     "kit"
     "exits"
