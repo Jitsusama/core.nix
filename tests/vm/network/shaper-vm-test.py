@@ -429,8 +429,28 @@ def test_pi_sessions(connection: Connection) -> None:
     # The shaper looks for pi sessions every few seconds.
     client.wait_until_succeeds(listed, timeout=SHAPING)
     connection.reaches("bulk", "an untyped pi", send, "eth1", LEAST_TRANSFER)
+    # pi keeps its connection to the model's server open from turn to turn,
+    # so one is opened and used while nobody typed, and used again once a
+    # turn is typed: what it sends then has to leave bulk too.
+    client.succeed(
+        f"{BIN}/bash -c 'echo $$ > /sys/fs/cgroup/{window}/cgroup.procs;"
+        f" exec 3<>/dev/tcp/{connection.far}/5201; {BIN}/head -c 1000000 /dev/zero >&3;"
+        f" until [ -e /tmp/typed-go ]; do {BIN}/sleep 0.1; done;"
+        f" {BIN}/head -c 1000000 /dev/zero >&3; {BIN}/touch /tmp/typed-sent'"
+        " > /dev/null 2>&1 &"
+    )
+
+    def send_again() -> None:
+        """Send once more on the connection opened while nobody typed."""
+        client.succeed("touch /tmp/typed-go")
+        client.wait_until_succeeds("test -e /tmp/typed-sent", timeout=STILLING)
+
+    connection.still("eth1")
     client.succeed(f"mkdir -p /run/user/1000/pi/typed && touch /run/user/1000/pi/typed/{pid}")
     client.wait_until_fails(listed, timeout=HOLDING)
+    connection.reaches(
+        "best effort", "a typed pi's open connection", send_again, "eth1", LEAST_TRANSFER
+    )
     connection.reaches("best effort", "a typed pi", send, "eth1", LEAST_TRANSFER)
     client.succeed(f"rm /run/user/1000/pi/typed/{pid}")
     client.wait_until_succeeds(listed, timeout=HOLDING)

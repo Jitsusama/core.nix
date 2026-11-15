@@ -44,7 +44,7 @@ mod waiting;
 
 use memory::{Held, Memory};
 use probe::{Echo, Probes};
-use rate::{Bounds, Controller, Direction, Settings, State, float};
+use rate::{Bounds, Controller, Direction, Settings, State, float, whole};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -675,7 +675,7 @@ fn run(options: &Options) -> Result<(), Failure> {
         // step. nixos-rebuild loads the table afresh on a switch, empty, so
         // the sets are also written every few seconds, changed or not.
         let mut sets = classes::read(&options.cgroups);
-        sets.bulk5 = classes::untyped(&options.cgroups, &sessions);
+        (sets.bulk5, sets.typed5) = classes::by_typing(&options.cgroups, &sessions);
         sets.calling = call.heed(now, &options.users);
         let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
         read_vpns(&vpns.0, &mut heard, rides);
@@ -1391,7 +1391,17 @@ fn status(runtime: &Path) -> Result<(), Failure> {
                 "  real-time traffic flows, so the connection's queue is kept here"
             );
         }
-        if link.follows.is_none() {
+        // The one-way controller sets the rate where it runs, and the older
+        // one's held rates stay where it started, so on 14 November the
+        // status said 15.4 Mbit/s was held up while 9.9 was the line found.
+        let found = link.heard.as_ref().and_then(|h| h.plateau);
+        if let Some(plateau) = found {
+            let _ = writeln!(
+                out,
+                "  the upload's line, found under load: {}",
+                mbit(whole(plateau))
+            );
+        } else if link.follows.is_none() {
             let _ = writeln!(
                 out,
                 "  held under load: up {}, down {}",

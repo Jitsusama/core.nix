@@ -20,6 +20,7 @@ set app4 { typeof socket cgroupv2 level 4; }
 set video5 { typeof socket cgroupv2 level 5; }
 set awaited5 { typeof socket cgroupv2 level 5; }
 set bulk5 { typeof socket cgroupv2 level 5; }
+set typed5 { typeof socket cgroupv2 level 5; }
 # Meet's media servers, as Google lists them for a firewall to let calls
 # through. Meet sends a call to them on 443, as a page would, so only where
 # it goes tells the two apart, and these addresses carry nothing but calls.
@@ -107,6 +108,13 @@ chain classify {
   socket cgroupv2 level 1 @bulk1 goto bulk
   socket cgroupv2 level 2 @bulk2 goto bulk
   socket cgroupv2 level 4 @bulk4 goto bulk
+
+  # A pi window or host running a turn Joel typed. pi keeps its connection
+  # to the model's server open between turns, and the next rule keeps a
+  # connection's class, so on 14 November a turn he typed after one nobody
+  # typed went as bulk on the connection that one opened, behind every
+  # agent's. Each of its packets goes as best effort instead.
+  socket cgroupv2 level 5 @typed5 goto best
 
   # A unit that ends with bytes still to send leaves them in a socket whose
   # cgroup has gone from its set, so they match nothing; its connection

@@ -43,6 +43,10 @@ pub struct Sets {
     /// The windows in an account's apps whose pi sessions run turns nobody
     /// typed, which `untyped` finds.
     pub bulk5: Vec<String>,
+    /// The windows and hosts whose pi sessions run a turn a person typed,
+    /// which `typed` finds: each packet they send goes as best effort,
+    /// even on a connection a turn nobody typed opened as bulk.
+    pub typed5: Vec<String>,
     /// The protocols whose every packet from an app goes as video, which
     /// `calling` gives: UDP while a call is on, and none otherwise.
     pub calling: Vec<String>,
@@ -210,6 +214,26 @@ fn session_unit(cgroup: &str) -> Option<(String, String)> {
 /// are read afresh each time, so a typed turn leaves bulk at the next
 /// step.
 pub fn untyped(root: &Path, sessions: &[Session]) -> Vec<String> {
+    units(root, sessions, false)
+}
+
+/// The units under `root` where a pi session runs a turn a person typed.
+/// pi keeps its connection to the model's server open between turns, and
+/// a connection keeps the class it was given, so without this a turn typed
+/// after one nobody typed went as bulk on the connection that one opened.
+pub fn typed(root: &Path, sessions: &[Session]) -> Vec<String> {
+    units(root, sessions, true)
+}
+
+/// The units with no typed turn, then those with one: the two sets the
+/// sessions fill each step.
+pub fn by_typing(root: &Path, sessions: &[Session]) -> (Vec<String>, Vec<String>) {
+    (untyped(root, sessions), typed(root, sessions))
+}
+
+/// The units under `root` that have a typed turn, or have none, as `want`
+/// says, leaving out one that has gone.
+fn units(root: &Path, sessions: &[Session], want: bool) -> Vec<String> {
     let mut typed: BTreeMap<&str, bool> = BTreeMap::new();
     for session in sessions {
         let this = session.typed.join(session.pid.to_string()).exists();
@@ -217,7 +241,7 @@ pub fn untyped(root: &Path, sessions: &[Session]) -> Vec<String> {
     }
     typed
         .into_iter()
-        .filter(|&(unit, typed)| !typed && root.join(unit).is_dir())
+        .filter(|&(unit, typed)| typed == want && root.join(unit).is_dir())
         .map(|(unit, _)| unit.to_string())
         .collect()
 }
@@ -282,6 +306,7 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     fill("video5", &sets.video5, true);
     fill("awaited5", &sets.awaited5, true);
     fill("bulk5", &sets.bulk5, true);
+    fill("typed5", &sets.typed5, true);
     fill("calling", &sets.calling, false);
     fill("vpns", &local.marks, false);
     fill("local4", &local.v4, false);
@@ -512,6 +537,42 @@ mod tests {
         );
     }
 
+    /// pi keeps its connections to the model's server open from turn to
+    /// turn, and a connection keeps the class it was given. On 14 November
+    /// every request to the proxy went as bulk, so a turn Joel typed into a
+    /// host or window that had just run one nobody typed went as bulk too,
+    /// on the connection that turn opened. A unit with a typed turn is
+    /// named, so its every packet is taken back out of bulk.
+    #[test]
+    fn a_unit_with_a_typed_turn_is_named_so_its_open_connections_leave_bulk() {
+        let agents = format!("{ACCOUNT}/agents.slice");
+        let background = format!("{agents}/pi-host-home-background.service");
+        let attended = format!("{agents}/pi-host-home-attended.service");
+        let window = format!("{agents}/kitty-3-3.scope");
+        let root = tree(&[&background, &attended, &window]);
+        let proc = root.join("proc");
+        let run = root.join("run");
+        process(&proc, 10, "node", &background);
+        process(&proc, 20, "node", &attended);
+        process(&proc, 30, "pi", &window);
+        process(&proc, 31, "pi", &window);
+        fs::create_dir_all(run.join("1000/pi/typed")).unwrap();
+        fs::write(run.join("1000/pi/typed/20"), "").unwrap();
+        fs::write(run.join("1000/pi/typed/31"), "").unwrap();
+        let found = sessions(&proc, &run);
+        assert_eq!(
+            typed(&root, &found),
+            [window, attended.clone()],
+            "the host and the window with a typed turn are named: {found:?}"
+        );
+        fs::remove_file(run.join("1000/pi/typed/31")).unwrap();
+        assert_eq!(
+            typed(&root, &found),
+            [attended],
+            "the window whose typed turn ended is named no more"
+        );
+    }
+
     #[test]
     fn a_cgroup_that_isnt_there_is_left_out() {
         let root = tree(&["system.slice"]);
@@ -536,7 +597,7 @@ mod tests {
         ));
         assert!(text.contains(
             "flush set inet shaper awaited5\nflush set inet shaper bulk5\n\
-             flush set inet shaper calling\nflush set inet shaper vpns\n\
+             flush set inet shaper typed5\nflush set inet shaper calling\nflush set inet shaper vpns\n\
              add element inet shaper vpns { 0xca6c, 0x80000 }\n\
              flush set inet shaper local4\n"
         ));
