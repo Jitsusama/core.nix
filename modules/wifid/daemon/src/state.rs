@@ -461,8 +461,17 @@ impl State {
     /// The access points of the network a card is on that it hears, the
     /// one it's on among them, for choosing between them (choose.rs).
     pub fn around(&self, card: &str) -> Vec<Heard> {
-        let _ = card;
-        Vec::new()
+        let Some(path) = self.at.get(card) else {
+            return Vec::new();
+        };
+        let (Some(on), Some(under)) = (self.heard.get(path), card_of(path)) else {
+            return Vec::new();
+        };
+        self.heard
+            .iter()
+            .filter(|(other, heard)| card_of(other) == Some(under) && heard.name == on.name)
+            .map(|(_, heard)| heard.clone())
+            .collect()
     }
 
     /// Each card on a network through an access point it hears, with a

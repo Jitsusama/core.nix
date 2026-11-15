@@ -208,9 +208,6 @@ async fn serve(
     let state = watch::Sender::new(State::default());
     // Whether Joel's on a call, as his session tells the rows socket.
     let calling = watch::Sender::<calling::Calling>::default();
-    // How well each access point carries, measured from where the machine
-    // is, for choosing between them (measure.rs).
-    tokio::spawn(measure::follow(state.subscribe(), calling.subscribe()));
     let avoided = avoided();
     let wifid = Wifid {
         bus: &bus,
@@ -265,6 +262,13 @@ async fn serve(
         followed: HashMap::new(),
     };
     let (asks, taken) = mpsc::channel(1);
+    // How well each access point carries, measured from where the machine
+    // is, and the card moved to one carrying better (measure.rs).
+    tokio::spawn(measure::follow(
+        state.subscribe(),
+        calling.subscribe(),
+        asks.clone(),
+    ));
     let watching = watch::Sender::new(0);
     let wifi = Wifi {
         state: state.subscribe(),
