@@ -120,6 +120,25 @@ in
         && !plain.services.chrony.enable
       );
 
+  # A changed guest's network serves it no DNS, so macOS's Internet Sharing
+  # leaves the Mac's port 53 to its own resolvers: with it, on 15 November
+  # the Mac's VPN couldn't bind its resolver and dropped for hours. vzvm is
+  # patched to put such a guest on a NAT without the DNS proxy, and the
+  # guest asks resolvers of its own. One given nothing keeps the cached
+  # guest, whose network is nixpkgs' own, so it still needs no build.
+  linux-builder-leaves-the-macs-port-53-alone =
+    holds "linux-builder-leaves-the-macs-port-53-alone"
+      "A changed guest's network still serves it DNS from the Mac, its vzvm isn't the one patched to leave it out, it has no resolvers of its own, or a guest given nothing changed its network."
+      (
+        opened.virtualisation.vz.extraConfig.dnsProxy or true == false
+        && lib.elem "vzvm-without-dns-proxy.patch" (
+          map (patch: baseNameOf (toString patch)) (opened.virtualisation.vz.package.patches or [ ])
+        )
+        && opened.networking.nameservers != [ ]
+        && lib.hasInfix "nooption domain_name_servers" opened.networking.dhcpcd.extraConfig
+        && plain.virtualisation.vz.extraConfig == cached.virtualisation.vz.extraConfig
+      );
+
   # A changed guest collects garbage once a sixth of its disk is free, back
   # to five twelfths, so a build has room: nixpkgs' 1 GiB and 3 GiB left a
   # 60 GiB store 90 to 93% full on 9 November, with builds failing for disk.

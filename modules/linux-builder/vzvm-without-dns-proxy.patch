@@ -1,0 +1,78 @@
+--- a/Sources/vzvm/Config.swift
++++ b/Sources/vzvm/Config.swift
+@@ -19,11 +19,16 @@
+   var console: Console = Console()
+   /// Run the guest on demand, shut down after timeout seconds. None means guest runs always.
+   var idleTimeoutSeconds: Int?
++  /// Serve DNS to the guest from the host's NAT. Off, the guest gets a NAT whose DNS
++  /// proxy is disabled (macOS 26+), so the host's port 53 stays free for its own
++  /// resolvers, and the guest must be given a resolver of its own.
++  var dnsProxy: Bool = true
+   static let maxIdleTimeoutSeconds = 7 * 24 * 60 * 60
+ 
+   enum CodingKeys: String, CodingKey, CaseIterable {
+     case cpuCount, memorySizeMiB, kernel, initrd, cmdline
+     case disks, shares, rosetta, nestedVirtualization, vsock, console, idleTimeoutSeconds
++    case dnsProxy
+   }
+ 
+   init(from decoder: Decoder) throws {
+@@ -42,6 +47,7 @@
+     vsock = try container.decodeIfPresent(Vsock.self, forKey: .vsock) ?? Vsock()
+     console = try container.decodeIfPresent(Console.self, forKey: .console) ?? Console()
+     idleTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .idleTimeoutSeconds)
++    dnsProxy = try container.decodeIfPresent(Bool.self, forKey: .dnsProxy) ?? true
+   }
+ 
+   struct Disk: Decodable {
+--- a/Sources/vzvm/VirtualMachineBuilder.swift
++++ b/Sources/vzvm/VirtualMachineBuilder.swift
+@@ -1,5 +1,6 @@
+ import Foundation
+ import Virtualization
++import vmnet
+ 
+ /// Fixed, not configurable: guest's `virtualisation.rosetta.mountTag` must agree.
+ let rosettaMountTag = "rosetta"
+@@ -179,7 +180,7 @@
+ 
+     // NAT is the one attachment that needs no special entitlement.
+     let network = VZVirtioNetworkDeviceConfiguration()
+-    network.attachment = VZNATNetworkDeviceAttachment()
++    network.attachment = try networkAttachment(dnsProxy: config.dnsProxy)
+     vmc.networkDevices = [network]
+ 
+     if !config.vsock.forwards.isEmpty {
+@@ -194,6 +195,32 @@
+     return vmc
+   }
+ 
++  /// Kept for the process's lifetime, as the attachment's network must outlive the guest.
++  private static var network: vmnet_network_ref?
++
++  /// The host's NAT. With its DNS proxy, macOS's Internet Sharing has mDNSResponder
++  /// answer on the host's port 53, where a VPN's own resolver can then no longer bind,
++  /// so without it the guest is put on a vmnet network of its own that serves none.
++  private static func networkAttachment(dnsProxy: Bool) throws -> VZNetworkDeviceAttachment {
++    if dnsProxy {
++      return VZNATNetworkDeviceAttachment()
++    }
++    guard #available(macOS 26.0, *) else {
++      throw VZVMError.config("dnsProxy: false needs macOS 26 or newer")
++    }
++    var status: vmnet_return_t = .VMNET_SUCCESS
++    guard let shared = vmnet_network_configuration_create(.VMNET_SHARED_MODE, &status) else {
++      throw VZVMError.runtime("vmnet network configuration failed: status \(status.rawValue)")
++    }
++    vmnet_network_configuration_disable_dns_proxy(shared)
++    guard let created = vmnet_network_create(shared, &status) else {
++      throw VZVMError.runtime("vmnet network failed: status \(status.rawValue)")
++    }
++    network = created
++    Log.info("guest network: shared vmnet, no DNS proxy")
++    return VZVmnetNetworkDeviceAttachment(network: created)
++  }
++
+   private static func consoleDevice(
+     _ console: Config.Console
+   ) throws -> VZSerialPortConfiguration {
