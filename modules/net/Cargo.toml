@@ -1,0 +1,15 @@
+# net reads the whole home network, every device and the links between
+# them, from each vendor's own source (src/main.rs says how).
+[package]
+name = "net"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1"
+# The shape every command of ours takes: help, the answer's form, the
+# terminal's colours and the shared exits (../terminal-kit).
+terminal-kit = { path = "../terminal-kit" }

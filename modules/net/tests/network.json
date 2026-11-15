@@ -1,0 +1,346 @@
+{
+  "schema": "net.network/1",
+  "collected_at": 1794704405,
+  "sources": [
+    {
+      "name": "eero",
+      "what": "eero's cloud, through the eero daemon's record",
+      "state": "answering",
+      "read_at": 1794704401,
+      "since": null,
+      "reason": null
+    },
+    {
+      "name": "modem",
+      "what": "the cable modem's status pages at 192.0.2.100",
+      "state": "answering",
+      "read_at": 1794704403,
+      "since": null,
+      "reason": null
+    },
+    {
+      "name": "switch",
+      "what": "the switch's web page at 192.0.2.10",
+      "state": "signed-out",
+      "read_at": null,
+      "since": 1794704280,
+      "reason": "no password released for it yet"
+    }
+  ],
+  "devices": [
+    {
+      "id": "modem",
+      "name": "Modem",
+      "roles": ["modem"],
+      "source": "modem",
+      "read_at": 1794704403,
+      "vendor": "Hitron",
+      "model": "EN2251",
+      "hardware": "1A",
+      "firmware": "7.3.5.3.3b4",
+      "serial": "SAMPLE0001",
+      "macs": ["02:00:00:00:10:01"],
+      "addresses": ["192.0.2.100"],
+      "up_s": 812345,
+      "ports": [
+        {
+          "name": "cable",
+          "kind": "coax",
+          "link": "up",
+          "speed_mbps": null,
+          "duplex": null
+        },
+        {
+          "name": "ethernet",
+          "kind": "ethernet",
+          "link": "up",
+          "speed_mbps": 1000,
+          "duplex": "full"
+        }
+      ],
+      "radios": [],
+      "modem": {
+        "docsis": "3.1",
+        "network_access": "permitted",
+        "config_file": "sample.cfg",
+        "address": "198.51.100.98/20",
+        "downstream": [
+          {
+            "channel": 1,
+            "kind": "sc-qam",
+            "frequency_hz": 393000000,
+            "width_hz": 6000000,
+            "modulation": "256qam",
+            "power_dbmv": 9.2,
+            "snr_db": 40.9,
+            "corrected": 6,
+            "uncorrectable": 0,
+            "active": true
+          },
+          {
+            "channel": 33,
+            "kind": "ofdm",
+            "frequency_hz": 455600000,
+            "width_hz": null,
+            "modulation": "4k-fft",
+            "power_dbmv": 9.1,
+            "snr_db": 43.0,
+            "corrected": 0,
+            "uncorrectable": 0,
+            "active": true
+          }
+        ],
+        "upstream": [
+          {
+            "channel": 1,
+            "kind": "atdma",
+            "frequency_hz": 18400000,
+            "width_hz": 3200000,
+            "modulation": "64qam",
+            "power_dbmv": 35.3,
+            "active": true,
+            "snr_db": null,
+            "corrected": null,
+            "uncorrectable": null
+          },
+          {
+            "channel": 2,
+            "kind": "ofdma",
+            "frequency_hz": null,
+            "width_hz": null,
+            "modulation": null,
+            "power_dbmv": null,
+            "active": false,
+            "snr_db": null,
+            "corrected": null,
+            "uncorrectable": null
+          }
+        ],
+        "log": [
+          {
+            "at": 1794501645,
+            "priority": "notice",
+            "code": "74010100",
+            "message": "CM-STATUS message sent. Event Type Code: 5; Chan ID: 16",
+            "clock": "11/12/26 16:40:45"
+          },
+          {
+            "at": 1793900830,
+            "priority": "critical",
+            "code": "73050200",
+            "message": "REG-RSP-MP Mismatch",
+            "clock": "11/05/26 17:47:10"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eero:2001",
+      "name": "Hall",
+      "roles": ["router", "access-point"],
+      "source": "eero",
+      "read_at": 1794704401,
+      "vendor": "eero",
+      "model": "eero Pro 6",
+      "hardware": null,
+      "firmware": "v7.17.4-5",
+      "serial": "SAMPLE0002",
+      "macs": ["02:00:00:00:20:01"],
+      "addresses": ["192.0.2.1"],
+      "up_s": 665000,
+      "ports": [
+        {
+          "name": "1",
+          "kind": "ethernet",
+          "link": "up",
+          "speed_mbps": 1000,
+          "duplex": "full"
+        },
+        {
+          "name": "2",
+          "kind": "ethernet",
+          "link": "up",
+          "speed_mbps": 1000,
+          "duplex": "full"
+        }
+      ],
+      "radios": [
+        {
+          "name": "5.2 GHz",
+          "band": "5.2 GHz",
+          "channel": 52,
+          "width_mhz": 80,
+          "busy_pct": 20,
+          "power_dbm": 22
+        },
+        {
+          "name": "5.8 GHz",
+          "band": "5.8 GHz",
+          "channel": 149,
+          "width_mhz": 80,
+          "busy_pct": 38,
+          "power_dbm": 28
+        }
+      ]
+    },
+    {
+      "id": "eero:2002",
+      "name": "Study",
+      "roles": ["access-point"],
+      "source": "eero",
+      "read_at": 1794704401,
+      "vendor": "eero",
+      "model": "eero Pro 6",
+      "hardware": null,
+      "firmware": "v7.17.4-5",
+      "serial": "SAMPLE0003",
+      "macs": ["02:00:00:00:20:02"],
+      "addresses": ["192.0.2.88"],
+      "up_s": 665000,
+      "ports": [
+        {
+          "name": "1",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        },
+        {
+          "name": "2",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        }
+      ],
+      "radios": [
+        {
+          "name": "5.8 GHz",
+          "band": "5.8 GHz",
+          "channel": 149,
+          "width_mhz": 80,
+          "busy_pct": 41,
+          "power_dbm": 28
+        }
+      ],
+      "detail": {
+        "eero": {
+          "id": "2002",
+          "location": "Study",
+          "gateway": false,
+          "backhaul": {
+            "kind": "wi-fi",
+            "upstream": "Hall",
+            "radio": "5.8GHz",
+            "bars": 5
+          },
+          "light": {
+            "on": true,
+            "brightness": 100
+          },
+          "update_available": true
+        }
+      }
+    },
+    {
+      "id": "switch",
+      "name": "Hall switch",
+      "roles": ["switch"],
+      "source": "switch",
+      "read_at": null,
+      "vendor": "TP-Link",
+      "model": "TL-SG108E",
+      "hardware": "3.0",
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:30:01"],
+      "addresses": ["192.0.2.10"],
+      "up_s": null,
+      "ports": [],
+      "radios": []
+    },
+    {
+      "id": "mac:02:00:00:00:00:01",
+      "name": "laptop",
+      "roles": ["client"],
+      "source": "eero",
+      "read_at": 1794704401,
+      "vendor": "Intel",
+      "model": null,
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:01"],
+      "addresses": ["192.0.2.41"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "wifi",
+          "band": "5.2 GHz",
+          "channel": 52,
+          "width_mhz": 80,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "a": {
+        "device": "modem",
+        "port": "ethernet"
+      },
+      "b": {
+        "device": "eero:2001",
+        "port": "1"
+      },
+      "medium": "ethernet",
+      "speed_mbps": 1000,
+      "channel": null,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "eero:2001",
+        "port": "2"
+      },
+      "b": {
+        "device": "switch"
+      },
+      "medium": "ethernet",
+      "speed_mbps": 1000,
+      "channel": null,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "eero:2002",
+        "radio": "5.8 GHz"
+      },
+      "b": {
+        "device": "eero:2001",
+        "radio": "5.8 GHz"
+      },
+      "medium": "wifi",
+      "speed_mbps": 866,
+      "channel": 149,
+      "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:01",
+        "radio": "wifi"
+      },
+      "b": {
+        "device": "eero:2001",
+        "radio": "5.2 GHz"
+      },
+      "medium": "wifi",
+      "speed_mbps": 1080,
+      "channel": 52,
+      "source": "eero"
+    }
+  ]
+}

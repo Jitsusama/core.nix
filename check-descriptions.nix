@@ -1548,6 +1548,13 @@
     Neovim opens a file with only what draws its first screen, every key's command standing in,
     loads the rest when used or once drawn, and lua_ls reads only its runtime
   '';
+  net-passes-clippy = ''
+    clippy finds nothing in net or its tests
+  '';
+  net-reads-the-home-network = ''
+    net reads the home network's record into its model and writes it back unchanged, naming its
+    schema, with one eero as one device holding both the router and access point roles
+  '';
   network-revive-looks-once-the-network-settles = ''
     network-revive looks at the network once a burst of changes goes quiet, or anyway if it never
     does, and reads each unit's check and whether it reloads, refusing a setting it doesn't know

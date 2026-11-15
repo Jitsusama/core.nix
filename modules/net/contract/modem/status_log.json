@@ -1,0 +1,142 @@
+[
+  {
+    "index": 1,
+    "time": "11/12/26 12:40:45",
+    "type": "74010100",
+    "priority": "notice",
+    "event": "CM-STATUS message sent.  Event Type Code: 5; Chan ID: 16; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: N/A.;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 2,
+    "time": "11/10/26 16:19:03",
+    "type": "68010600",
+    "priority": "notice",
+    "event": "DHCP Renew - lease parameters tftp file-modem.cfg modified;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 3,
+    "time": "11/10/26 16:19:03",
+    "type": "68010300",
+    "priority": "error",
+    "event": "DHCP RENEW WARNING - Field invalid in response v4 option;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 4,
+    "time": "11/05/26 13:49:11",
+    "type": "73050400",
+    "priority": "warning",
+    "event": "REG-RSP-MP Mismatch Between Calculated Value for P1.6hi Compared to CCAP Provided Value;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 5,
+    "time": "11/05/26 13:49:08",
+    "type": "90000000",
+    "priority": "warning",
+    "event": "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 6,
+    "time": "11/02/26 19:18:28",
+    "type": "73050400",
+    "priority": "warning",
+    "event": "REG-RSP-MP Mismatch Between Calculated Value for P1.6hi Compared to CCAP Provided Value;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 7,
+    "time": "11/02/26 19:18:25",
+    "type": "90000000",
+    "priority": "warning",
+    "event": "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 8,
+    "time": "10/30/26 14:33:03",
+    "type": "68010600",
+    "priority": "notice",
+    "event": "DHCP Renew - lease parameters tftp file-modem.cfg modified;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 9,
+    "time": "10/30/26 14:33:03",
+    "type": "68010300",
+    "priority": "error",
+    "event": "DHCP RENEW WARNING - Field invalid in response v4 option;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 10,
+    "time": "10/29/26 10:31:09",
+    "type": "74010100",
+    "priority": "notice",
+    "event": "CM-STATUS message sent.  Event Type Code: 5; Chan ID: 16; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: N/A.;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 11,
+    "time": "10/25/26 19:26:08",
+    "type": "73050400",
+    "priority": "warning",
+    "event": "REG-RSP-MP Mismatch Between Calculated Value for P1.6hi Compared to CCAP Provided Value;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 12,
+    "time": "10/25/26 19:26:05",
+    "type": "90000000",
+    "priority": "warning",
+    "event": "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 13,
+    "time": "10/23/26 21:29:34",
+    "type": "68010600",
+    "priority": "notice",
+    "event": "DHCP Renew - lease parameters tftp file-modem.cfg modified;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 14,
+    "time": "10/23/26 21:29:34",
+    "type": "68010300",
+    "priority": "error",
+    "event": "DHCP RENEW WARNING - Field invalid in response v4 option;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 15,
+    "time": "10/19/26 05:09:40",
+    "type": "68010600",
+    "priority": "notice",
+    "event": "DHCP Renew - lease parameters tftp file-modem.cfg modified;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 16,
+    "time": "10/19/26 05:09:40",
+    "type": "68010300",
+    "priority": "error",
+    "event": "DHCP RENEW WARNING - Field invalid in response v4 option;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 17,
+    "time": "10/15/26 10:51:17",
+    "type": "74010100",
+    "priority": "notice",
+    "event": "CM-STATUS message sent.  Event Type Code: 24; Chan ID: 17; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: 1.;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 18,
+    "time": "10/13/26 23:05:47",
+    "type": "68010600",
+    "priority": "notice",
+    "event": "DHCP Renew - lease parameters tftp file-modem.cfg modified;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 19,
+    "time": "10/13/26 23:05:47",
+    "type": "68010300",
+    "priority": "error",
+    "event": "DHCP RENEW WARNING - Field invalid in response v4 option;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  },
+  {
+    "index": 20,
+    "time": "10/08/26 18:26:39",
+    "type": "68010600",
+    "priority": "notice",
+    "event": "DHCP Renew - lease parameters tftp file-modem.cfg modified;CM-MAC=02:00:00:00:10:01;CMTS-MAC=02:00:00:00:10:02;CM-QOS=1.1;CM-VER=3.1;"
+  }
+]

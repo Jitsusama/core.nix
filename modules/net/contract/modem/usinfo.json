@@ -1,0 +1,38 @@
+[
+  {
+    "portId": "1",
+    "frequency": "18400000",
+    "bandwidth": "3200000",
+    "modtype": "64QAM",
+    "scdmaMode": "TDMA_AND_ATDMA",
+    "signalStrength": "35.010",
+    "channelId": "1"
+  },
+  {
+    "portId": "2",
+    "frequency": "36768000",
+    "bandwidth": "6400000",
+    "modtype": "64QAM",
+    "scdmaMode": "ATDMA",
+    "signalStrength": "36.271",
+    "channelId": "4"
+  },
+  {
+    "portId": "3",
+    "frequency": "30112000",
+    "bandwidth": "6400000",
+    "modtype": "64QAM",
+    "scdmaMode": "ATDMA",
+    "signalStrength": "35.521",
+    "channelId": "3"
+  },
+  {
+    "portId": "4",
+    "frequency": "23456000",
+    "bandwidth": "6400000",
+    "modtype": "64QAM",
+    "scdmaMode": "ATDMA",
+    "signalStrength": "35.021",
+    "channelId": "2"
+  }
+]

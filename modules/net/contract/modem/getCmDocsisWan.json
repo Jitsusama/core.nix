@@ -1,0 +1,11 @@
+[
+  {
+    "Configname": "modem.cfg",
+    "ConfignameDisplay": "0",
+    "NetworkAccess": "Permitted",
+    "CmIpAddress": "100.64.0.98",
+    "CmNetMask": "255.255.240.0",
+    "CmGateway": "100.64.0.1",
+    "CmIpLeaseDuration": "D: 10 H: 00 M: 00 S: 00"
+  }
+]
