@@ -47,7 +47,12 @@ onLinux {
       shell = (account (bareNixos [ self.nixosModules.workstation ])).home-files;
       reader = lib.findFirst (package: lib.getName package == "reader") null home.home.packages;
       files = lib.filterAttrs (
-        name: _: lib.any (folder: lib.hasPrefix folder name) [ "kitty/" "niri/" "reader/" ]
+        name: _:
+        lib.any (folder: lib.hasPrefix folder name) [
+          "kitty/"
+          "niri/"
+          "reader/"
+        ]
       ) home.xdg.configFile;
       inherit (pkgs) mesa;
     in

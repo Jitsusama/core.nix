@@ -15,6 +15,10 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
+
+# A window as niri's IPC says one.
+Window = dict[str, Any]
 
 # How long, in seconds, the programs have to open their windows and title
 # them: kitty and the reader draw in software here, and the shell starts
@@ -24,16 +28,17 @@ DEADLINE = 90
 LOOK = 0.2
 
 
-def windows() -> list[dict]:
-    """Niri's windows, as its IPC says them."""
+def windows() -> list[Window]:
+    """Ask niri for its windows."""
     said = subprocess.run(
         ["niri", "msg", "--json", "windows"], capture_output=True, text=True, check=True
     )
-    return json.loads(said.stdout)
+    found: list[Window] = json.loads(said.stdout)
+    return found
 
 
 def processes(pid: int) -> list[int]:
-    """A process and every process it started, however deep."""
+    """Find a process and every process it started, however deep."""
     found = [pid]
     for task in Path(f"/proc/{pid}/task").glob("*"):
         try:
@@ -46,7 +51,7 @@ def processes(pid: int) -> list[int]:
 
 
 def names(pid: int) -> set[str]:
-    """What each process in a window is called: its comm and its command's file."""
+    """Name each process in a window, by its comm and its command's file."""
     found = set()
     for each in processes(pid):
         try:
@@ -58,8 +63,8 @@ def names(pid: int) -> set[str]:
     return found
 
 
-def bare(window: dict) -> bool:
-    """Whether a window's title says nothing a program's name doesn't."""
+def bare(window: Window) -> bool:
+    """Say whether a window's title says nothing a program's name doesn't."""
     title = (window.get("title") or "").strip().lower()
     programs = {(window.get("app_id") or "").lower()}
     if window.get("pid"):
@@ -71,25 +76,27 @@ def main() -> None:
     """Open each command's window and judge every title niri gives."""
     commands = [shlex.split(command) for command in sys.argv[1:]]
     started = [
-        subprocess.Popen(command, stdin=subprocess.DEVNULL, env=os.environ)
-        for command in commands
+        subprocess.Popen(command, stdin=subprocess.DEVNULL, env=os.environ) for command in commands
     ]
     try:
         deadline = time.monotonic() + DEADLINE
-        seen: list[dict] = []
+        seen: list[Window] = []
         while time.monotonic() < deadline:
-            ended = [" ".join(c) for c, p in zip(commands, started) if p.poll() is not None]
+            ended = [
+                " ".join(command)
+                for command, process in zip(commands, started, strict=True)
+                if process.poll() is not None
+            ]
             if ended:
                 sys.exit(f"these ended before their windows were judged: {ended}")
             seen = windows()
             if len(seen) >= len(commands) and not any(bare(window) for window in seen):
                 return
             time.sleep(LOOK)
-        said = [(window.get("app_id"), window.get("title")) for window in seen]
+        titled = [(window.get("app_id"), window.get("title")) for window in seen if bare(window)]
         sys.exit(
             f"after {DEADLINE} s, {len(seen)} of {len(commands)} windows were open, "
-            f"and these were titled only by a program: "
-            f"{[s for s, w in zip(said, seen) if bare(w)]}"
+            f"and these were titled only by a program: {titled}"
         )
     finally:
         for process in started:
