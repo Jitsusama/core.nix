@@ -5,8 +5,9 @@
 # settled one under Kept for Reference, with every name escaped; llms.txt
 # and the twin list all three; each stripped page gets its strip after the
 # skip link, linking home from its depth; the home's own files are put
-# beside it; a second run changes no file; and a root with no sites.json is
-# left alone.
+# beside it; its theme-color takes each look's ground from the kit, and
+# names none without one; a second run changes no file; and a root with no
+# sites.json is left alone.
 # usage: home-builds-from-its-rows.sh <python> <sources>
 set -euo pipefail
 
@@ -23,9 +24,24 @@ fail() {
 
 mkdir -p "$work/empty"
 "$python" "$sources/home.py" "$sources" "$work/empty" > /dev/null
-[ -z "$(ls -A "$work/empty")" ] || fail "a root with no sites.json gained files"
+left=$(ls -A "$work/empty")
+[ -z "$left" ] || fail "a root with no sites.json gained files"
 
-mkdir -p "$root/map" "$root/notes" "$root/old"
+mkdir -p "$root/map" "$root/notes" "$root/old" "$root/kit"
+# The kit's grounds, as theme.css writes them, under stand-in names: the
+# home's two theme-color metas take them, one per look.
+cat > "$root/kit/theme.css" << 'EOF'
+:root,
+:root[data-theme="dark"] {
+  --accent: jade;
+  --background: forest;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+  --background: paper;
+  }
+}
+EOF
 cat > "$root/sites.json" << 'EOF'
 {"about": "a stand-in", "sites": [
   {"path": "map/", "name": "The map", "what": "Where things are.", "asks": "Say what's missing.",
@@ -59,10 +75,16 @@ old_at=$(grep -n 'The old one' "$index" | cut -d: -f1)
 [ "$map_at" -lt "$notes_at" ] && [ "$notes_at" -lt "$shelf_at" ] && [ "$shelf_at" -lt "$old_at" ] ||
   fail "the home's rows are out of order: map $map_at, notes $notes_at, shelf $shelf_at, old $old_at"
 grep -q 'Mock · settled' "$index" || fail "the settled row doesn't say so"
+grep -q 'media="(prefers-color-scheme: dark)" content="forest"' "$index" ||
+  fail "the dark theme-color isn't the kit's dark ground"
+grep -q 'media="(prefers-color-scheme: light)" content="paper"' "$index" ||
+  fail "the light theme-color isn't the kit's light ground"
 
-[ "$(grep -c '^- \[' "$root/llms.txt")" = 3 ] || fail "llms.txt doesn't list all three"
+listed=$(grep -c '^- \[' "$root/llms.txt")
+[ "$listed" = 3 ] || fail "llms.txt doesn't list all three"
 grep -q '^- \[The map\](map/llms.txt): app, 15 Nov' "$root/llms.txt" || fail "llms.txt's map line"
-[ "$(grep -c '^- \[' "$root/index.md")" = 3 ] || fail "the twin doesn't list all three"
+listed=$(grep -c '^- \[' "$root/index.md")
+[ "$listed" = 3 ] || fail "the twin doesn't list all three"
 
 grep -A2 'class="skip"' "$root/map/index.html" | grep -q 'sites strip' ||
   fail "the map's strip isn't after its skip link"
@@ -76,4 +98,12 @@ before=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
 "$python" "$sources/home.py" "$sources" "$root" > /dev/null
 after=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
 [ "$before" = "$after" ] || fail "a second run changed a file"
-[ "$(grep -c 'sites strip: home.py' "$root/map/index.html")" = 1 ] || fail "a strip was doubled"
+strips=$(grep -c 'sites strip: home.py' "$root/map/index.html")
+[ "$strips" = 1 ] || fail "a strip was doubled"
+
+# Without the kit, the home names no ground rather than a made-up one.
+rm "$root/kit/theme.css"
+"$python" "$sources/home.py" "$sources" "$root" > /dev/null
+if grep -q 'theme-color' "$index"; then
+  fail "the home names a ground with no kit to take it from"
+fi

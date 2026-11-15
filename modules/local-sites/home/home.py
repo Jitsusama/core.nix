@@ -3,7 +3,9 @@
 It writes the list, its llms.txt and Markdown twin, and the strip at the top
 of every page whose row asks for one, and puts the home's own scripts and
 styles in place beside them. A row may name pages of its site that say their
-own kind in the strip, as "pages": {"tree.html": "test"}.
+own kind in the strip, as "pages": {"tree.html": "test"}. The home's
+theme-color takes each look's ground from the kit's theme.css, so it turns
+with the theme.
 
 usage: home.py <sources> <root>, where sources holds the home's page and its
 files, and root is the sites' folder. It rewrites index.html, index.md and
@@ -26,6 +28,8 @@ STATUS = {"withdrawn": "turned down, kept", "settled": "settled", "growing": ""}
 # link out of its root.
 FILES = ("home.js", "home.css", "theme.js", "strip.css")
 OPEN, CLOSE = "<!-- sites strip: home.py writes this -->", "<!-- /sites strip -->"
+GROUND = re.compile(r"--background:\s*([^;]+);")
+LIGHT = "@media (prefers-color-scheme: light)"
 
 
 @dataclass(frozen=True)
@@ -96,6 +100,24 @@ def home(page: str, sites: list[Site]) -> str:
     start = page.index('  <ul class="sites"')
     end = page.index("</main>")
     return page[:start] + "\n".join(listing) + "\n" + page[end:]
+
+
+def grounds(page: str, root: Path) -> str:
+    """Fill the page's theme-color with each look's ground from the kit's theme.css.
+
+    The kit writes the dark look first and the light one under its media query,
+    so the first ground on each side of that query is the look's own. With no
+    kit, the page names no ground rather than one that would drift from it.
+    """
+    theme = root / "kit" / "theme.css"
+    css = theme.read_text(encoding="utf-8") if theme.exists() else ""
+    dark_side, _, light_side = css.partition(LIGHT)
+    dark, light = GROUND.search(dark_side), GROUND.search(light_side)
+    if not (dark and light):
+        return "".join(line for line in page.splitlines(keepends=True) if "-ground@" not in line)
+    return page.replace("@dark-ground@", dark[1].strip()).replace(
+        "@light-ground@", light[1].strip()
+    )
 
 
 def llms(root: Path, sites: list[Site]) -> str:
@@ -180,7 +202,8 @@ def build(sources: Path, root: Path) -> str:
     sites = [Site.read(row) for row in json.loads(record.read_text(encoding="utf-8"))["sites"]]
     for name in FILES:
         write(root / name, (sources / name).read_text(encoding="utf-8"))
-    write(root / "index.html", home((sources / "index.html").read_text(encoding="utf-8"), sites))
+    shell = (sources / "index.html").read_text(encoding="utf-8")
+    write(root / "index.html", grounds(home(shell, sites), root))
     write(root / "llms.txt", llms(root, sites))
     write(root / "index.md", twin(sites))
 
