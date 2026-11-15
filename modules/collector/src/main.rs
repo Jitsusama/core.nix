@@ -258,17 +258,31 @@ fn answered(context: &Context, spans: &[(&Span, usize)], zone: &TimeZone) -> Res
             "schema": "collector.spans/1",
             "spans": spans.iter().map(|(span, _)| fact(span)).collect::<Vec<_>>(),
         })),
-        _ => {
-            let rows: String = spans
-                .iter()
-                .map(|(span, depth)| row(span, *depth, zone, context.room) + "\n")
-                .collect();
-            context.say(&rows)
-        }
+        _ => context.say(&rows(spans, zone, context.room)),
     };
     done.map_err(|error| {
         Failure::new(Exit::Failed, "the spans couldn't be said").because(error.to_string())
     })
+}
+
+/// The spans as rows a person reads, one after another, their durations
+/// ending in one column as wide as the longest shown, as the kit's tables
+/// set theirs.
+fn rows(spans: &[(&Span, usize)], zone: &TimeZone, room: Room) -> String {
+    let column = spans
+        .iter()
+        .map(|(span, _)| layout::width(&took(span)))
+        .max()
+        .unwrap_or_default();
+    spans
+        .iter()
+        .map(|(span, depth)| row(span, *depth, zone, room, column) + "\n")
+        .collect()
+}
+
+/// How long a span took, in milliseconds to a tenth, as a row says it.
+fn took(span: &Span) -> String {
+    format!("{:.1}", took_ms(span))
 }
 
 /// The spans in the order a tree reads, each with how deep it sits: every
@@ -334,16 +348,17 @@ fn fact(span: &Span) -> Value {
 /// more than half the room.
 const INSET: usize = 4;
 
-/// A span as a person reads it: when, how long, its name indented by how
-/// deep it sits, its service and trace, then its status and attributes.
-/// In a terminal the words after its head wrap beside it, under the name,
-/// or below it when the head takes more than half the room; into a pipe
-/// it's one line.
-fn row(span: &Span, depth: usize, zone: &TimeZone, room: Room) -> String {
+/// A span as a person reads it: when, how long (its figure `column`
+/// cells wide), its name indented by how deep it sits, its service and
+/// trace, then its status and attributes. In a terminal the words after
+/// its head wrap beside it, under the name, or below it when the head
+/// takes more than half the room; into a pipe it's one line.
+fn row(span: &Span, depth: usize, zone: &TimeZone, room: Room, column: usize) -> String {
+    let took = took(span);
     let head = format!(
-        "{}  {:>9.1} ms  ",
+        "{}  {}{took} ms  ",
         when::shown(span.start, zone),
-        took_ms(span)
+        " ".repeat(column.saturating_sub(layout::width(&took)))
     );
     let indent = "  ".repeat(depth);
     let mut pieces = vec![
@@ -429,10 +444,20 @@ mod tests {
     }
 
     fn lines(room: Room, depth: usize) -> Vec<String> {
-        row(&span(), depth, &TimeZone::UTC, room)
+        rows(&[(&span(), depth)], &TimeZone::UTC, room)
             .lines()
             .map(str::to_owned)
             .collect()
+    }
+
+    /// A span that took `ms` milliseconds, named for it.
+    fn took(ms: i64, name: &str) -> Span {
+        let mut span = span();
+        span.end = span.start + ms * 1_000_000;
+        name.clone_into(&mut span.name);
+        span.attributes.clear();
+        span.status = None;
+        span
     }
 
     #[test]
@@ -441,10 +466,23 @@ mod tests {
         assert_eq!(
             said,
             [
-                "2025-11-13 09:01:57.123       12.4 ms    rows drawn  launcher  4bf92f35  ok  \
+                "2025-11-13 09:01:57.123  12.4 ms    rows drawn  launcher  4bf92f35  ok  \
               row=the launcher's quests shown=14"
             ],
             "a pipe should take the row whole"
+        );
+    }
+
+    #[test]
+    fn the_durations_line_up_as_wide_as_the_longest_shown() {
+        let short = took(3, "short");
+        let hours = took(3 * 3_600_000, "hours");
+        let said = rows(&[(&short, 0), (&hours, 1)], &TimeZone::UTC, Room::Unbounded);
+        assert_eq!(
+            said,
+            "2025-11-13 09:01:57.123         3.0 ms  short  launcher  4bf92f35\n\
+             2025-11-13 09:01:57.123  10800000.0 ms    hours  launcher  4bf92f35\n",
+            "each duration should end where the longest does"
         );
     }
 
@@ -471,7 +509,7 @@ mod tests {
     fn narrow_the_words_go_below_the_head_inset_by_its_depth() {
         let said = lines(Room::Cells(60), 1);
         assert_eq!(
-            said[0], "2025-11-13 09:01:57.123       12.4 ms",
+            said[0], "2025-11-13 09:01:57.123  12.4 ms",
             "the head should stand alone"
         );
         for line in &said[1..] {
