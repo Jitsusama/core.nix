@@ -3335,10 +3335,11 @@ Scope {
 
     // Where the rows drawn stand, the glyph and hue an act of its own
     // without them wears and whether they're home's, told as their rows
-    // come rather than as held moves (RowsPlace.js), once the list keeps
-    // them (list.keep), so the rows of a place left never redraw for the
-    // place they give way to, and a refresh in the place they stay in
-    // redraws none. A move of held that brings no
+    // come rather than as held moves (RowsPlace.js), as the list keeps
+    // them (list.keep): once the rows of a place left are aside, so they
+    // never redraw for the place they give way to, and before the new
+    // ones are laid out, so none is laid out twice. A refresh in the
+    // place they stay in redraws none. A move of held that brings no
     // new rows tells them once it's done.
     property string rowsGlyph: ""
     property string rowsHue: ""
@@ -12028,6 +12029,12 @@ Scope {
                                     && steps.some(one => one.insert !== undefined))
                                     list.forceLayout();
                                 const aside = Date.now() - asideFrom;
+                                // Told where they stand before they go in,
+                                // once those they replace are aside, so each
+                                // is laid out once, wearing its place: told
+                                // after, every row of a step in from home
+                                // was laid out again for it.
+                                root.rowsPlaced(false);
                                 for (const step of steps.filter(one => one.remove === undefined)) {
                                     if (step.move !== undefined)
                                         rowsKept.move(step.move, step.to, 1);
