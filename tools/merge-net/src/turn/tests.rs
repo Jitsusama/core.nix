@@ -92,6 +92,32 @@ fn a_pass_waits_on_an_earlier_gate_only_so_long() {
 }
 
 #[test]
+fn a_change_rebased_onto_an_old_pass_waits_its_patience_from_the_rebase() {
+    // On 15 November #4721 and #4718 merged 19 and 25 seconds after their
+    // rebases, on passes kept before them, and went first at once, ahead
+    // of #4513's earlier gate on the kit they read.
+    let gates = [gate(1, "/kit", 100)];
+    let ours = owned(&["y.rs"]);
+    let touch = touching(&["y.rs"]);
+    let mut rebased = asking(200, "/b", &ours);
+    rebased.passed = patience_from(NOW - 2 * PATIENCE, Some(NOW - 19));
+    assert!(
+        ahead(&gates, &rebased, NOW, &own, &everyone, &touch).is_some(),
+        "a change rebased 19 seconds ago went ahead of an earlier gate on an old pass"
+    );
+    assert_eq!(
+        patience_from(NOW - 60, Some(NOW - 600)),
+        NOW - 60,
+        "a pass kept after its head was committed counted from the commit"
+    );
+    assert_eq!(
+        patience_from(NOW - 60, None),
+        NOW - 60,
+        "a head whose commit time can't be read lost its pass's time"
+    );
+}
+
+#[test]
 fn a_change_whose_gate_passed_keeps_its_turn_while_its_author_merges() {
     // On 14 November the tree at /a passed at 22:50:57, from a gate
     // started at 22:38:15, and /b's change, placed after it, asked 32

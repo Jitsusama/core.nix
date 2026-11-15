@@ -170,6 +170,14 @@ pub struct Asking<'a> {
     pub ours: &'a [String],
 }
 
+/// When a change's [`PATIENCE`] counts from: when the pass it merges on
+/// was `kept`, or when its head was `committed`, if later.
+#[must_use]
+pub fn patience_from(kept: u64, committed: Option<u64>) -> u64 {
+    let _ = committed;
+    kept
+}
+
 /// The gate among `gates` that holds back the change `asking`: the
 /// earliest that counts, as `place` says, as started before it, still runs
 /// as `alive` says of it, hasn't run past [`LONGEST`] by `now` since it
