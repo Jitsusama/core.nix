@@ -76,11 +76,6 @@
     "helps"
   ];
   pi-verbs = [ "helps" ];
-  quests = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   secret-asks = [
     "kit"
     "exits"

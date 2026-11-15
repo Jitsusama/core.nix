@@ -297,6 +297,7 @@
         plymouth-waits = pkgs.callPackage ../../modules/plymouth/waits/package.nix { };
         processor-telemetry = pkgs.callPackage ../../modules/processor-telemetry/package.nix { };
         programs = pkgs.callPackage ../../modules/programs/package.nix { };
+        quests = pkgs.callPackage ../../modules/quests/package.nix { };
         quickshell-hands-over = import ../../modules/quickshell/hands-over.nix { inherit pkgs; };
         reader = pkgs.callPackage ../../modules/reader/package.nix { };
         recent-files = recentFiles;
