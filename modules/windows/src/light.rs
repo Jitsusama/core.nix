@@ -185,6 +185,11 @@ pub struct Words {
     said: BTreeMap<String, String>,
     /// Warmth's (`displays:warmth`'s said), by key.
     warmth: BTreeMap<String, String>,
+    /// The mark of each of Warmth's switches, by its id after `displays:`.
+    glyphs: BTreeMap<&'static str, String>,
+    /// How a switch stands, as Variable Refresh's says it.
+    on: String,
+    off: String,
 }
 
 /// The words of Screens' the light says, each said as its key where the
@@ -200,7 +205,18 @@ const SAID: [&str; 7] = [
 ];
 
 /// The words of Warmth's the light says.
-const WARMTH: [&str; 5] = ["until", "from", "waits", "following", "own"];
+const WARMTH: [&str; 7] = [
+    "until",
+    "from",
+    "waits",
+    "following",
+    "own",
+    "via",
+    "screen",
+];
+
+/// Warmth's switches, by their id after `displays:`.
+const SWITCHES: [&str; 2] = ["night-light", "follow-room"];
 
 impl Words {
     /// The light's words, `word` looking one up by its thing's id and
@@ -225,7 +241,17 @@ impl Words {
                 ((*key).to_owned(), said)
             })
             .collect();
-        Words { said, warmth }
+        let glyphs = SWITCHES
+            .iter()
+            .map(|id| (*id, word(&format!("displays:{id}"), &["glyph"], "")))
+            .collect();
+        Words {
+            said,
+            warmth,
+            glyphs,
+            on: word("displays:variable", &["said", "on"], "on"),
+            off: word("displays:variable", &["said", "off"], "off"),
+        }
     }
 
     fn said(&self, key: &str) -> &str {
@@ -269,14 +295,17 @@ struct Settled {
 }
 
 /// What holds the warmth: the kelvin now, whether it follows the room and
-/// a sensor sees colour, and the night light, with the night's sunset and
-/// sunrise in milliseconds since the epoch.
+/// a sensor sees colour, the room's white, and the night light with its
+/// white and the night's sunset and sunrise in milliseconds since the
+/// epoch.
 #[derive(Clone, Debug, PartialEq)]
 struct Warmth {
     kelvin: f64,
     follows_the_room: bool,
     sees_colour: bool,
+    room_white: Option<f64>,
     night_light: bool,
+    night_white: Option<f64>,
     sunset: Option<u64>,
     sunrise: Option<u64>,
 }
@@ -369,7 +398,9 @@ impl Light {
                     kelvin: finite(&found["kelvin"])?,
                     follows_the_room: found["follows_the_room"].as_bool()?,
                     sees_colour: found["sees_colour"] == true,
+                    room_white: finite(&found["room_white_kelvin"]),
                     night_light: found["night_light"] == true,
+                    night_white: finite(&found["night_white_kelvin"]),
                     sunset: found["sunset_ms"].as_u64(),
                     sunrise: found["sunrise_ms"].as_u64(),
                 })
@@ -477,7 +508,7 @@ fn follows(settled: Option<&Settled>, words: &Words) -> String {
 /// as a time, or waiting for where Joel is; else the room, or the
 /// screen's own white.
 fn warmth(warmth: &Warmth, name: &str, now: u64, words: &Words, numbers: &Numbers) -> Value {
-    let kelvin = format!("{} K", numbers.number(warmth.kelvin, 0));
+    let kelvin = warmth::kelvin(warmth.kelvin, numbers);
     let said = |key: &str| words.warmth.get(key).map_or("", String::as_str);
     let timed = |key: &str, at: u64| {
         json!({"name": name, "at": at, "as": "moment",
@@ -485,9 +516,7 @@ fn warmth(warmth: &Warmth, name: &str, now: u64, words: &Words, numbers: &Number
     };
     match (warmth.night_light, warmth.sunset, warmth.sunrise) {
         (true, None, _) => json!({"name": name, "said": runs(&[&kelvin, said("waits")])}),
-        (true, Some(sunset), Some(sunrise)) if sunset <= now && now < sunrise => {
-            timed("until", sunrise)
-        }
+        (true, _, Some(sunrise)) if warmth.dark(now) => timed("until", sunrise),
         (true, Some(sunset), _) => timed("from", sunset),
         (false, _, _) => {
             let holds = if warmth.follows_the_room && warmth.sees_colour {
@@ -500,13 +529,17 @@ fn warmth(warmth: &Warmth, name: &str, now: u64, words: &Words, numbers: &Number
     }
 }
 
-/// The light as it's said while a screen is looked at: what's held of it,
-/// whether that was read for this look, and the time now, in milliseconds
-/// since the epoch, which the warmth's night light is said by.
+/// The light as it's said: what's held of it, whether that was read for
+/// this look, the time now, in milliseconds since the epoch, which the
+/// warmth's night light is said by, and whether a screen is looked at,
+/// which its drawer says the light only while it is. The Warmth's rows
+/// are served from what's held whether or not one is, so they keep their
+/// place as screens are selected.
 pub struct Seen<'a> {
     pub light: &'a Light,
     pub reading: Reading,
     pub now: u64,
+    pub looked: bool,
 }
 
 /// A screen the light is said in: whether it holds the room's sensor, as
@@ -620,5 +653,8 @@ pub fn facts(seen: &Seen, screen: &Screen, words: &Words) -> Vec<Value> {
     facts
 }
 
+pub mod warmth;
+
+// Its warmth record is the screens' cases' too.
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

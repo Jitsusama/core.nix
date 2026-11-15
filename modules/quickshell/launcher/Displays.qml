@@ -44,13 +44,16 @@
 // The backlight daemon warms the built-in screen at night from sunset to
 // sunrise, and toward the room's light where its sensor sees colour, and
 // says how that stands, which the machine daemon serves as it changes
-// (modules/backlight, modules/machine's steered.rs), so the Warmth
-// follows the Brightness on every machine with a panel to warm: its side
-// the warmth now, its note what holds it, and Return stepping into the
-// Night Light and Follow the Room switches, which the daemon is told over
-// the session's bus and keeps, then the room's white, the night's sunset
-// and sunrise and its white (Warmth.js; VKCF3Z, 2026-11-08). "screen
-// warmth" asks it.
+// (modules/backlight, modules/machine's steered.rs). The windows daemon
+// serves the Warmth inside the screen holding the light, on every machine
+// with a panel to warm (modules/windows, light/warmth.rs): its side the
+// warmth now, its note what holds it, and Return stepping into the Night
+// Light and Follow the Room switches, which the backlight daemon is told
+// over the session's bus and keeps, then the room's white, the night's
+// sunset and sunrise and its white, each time said by the shell's clock
+// (VKCF3Z, 2026-11-08). It follows the Brightness here. "screen warmth"
+// asks it. What's held of the warmth (Warmth.js) is read here only for
+// the : line's :set nightlight and :set warmth.
 import qs
 import Quickshell
 import QtQuick
@@ -277,86 +280,15 @@ Provider {
                 graph: level(heard === null ? 0 : Power.roomLevel(heard), 1),
                 note: partSaid("room", "hears")
             }));
-        // Warmth sits right after Brightness, found by its key, so a row
-        // put above Brightness later can't move it.
-        if (inTheRoom(output) && warmth !== null) {
-            const brightness = `displays:${output.name}:brightness`;
-            rows.splice(rows.findIndex(row => row.key === brightness) + 1, 0, warmthRow(output));
-        }
         return rows;
     }
 
     // How the screen's warmth stands, as the backlight program says it
-    // (Warmth.js's of), or null where nothing warms the screen.
+    // (Warmth.js's of), or null where nothing warms the screen: what the
+    // : line's :set nightlight and :set warmth read and offer. Its rows
+    // are the windows daemon's (light/warmth.rs).
     property var warmth: null
     onWarmthChanged: changed()
-
-    // How Warmth says a time and a kelvin: by the clock, and with its
-    // thousands grouped (VKCF3Z, 2026-11-08: "4,000 K").
-    readonly property var warmthTold: ({
-        clock: at => Qt.formatDateTime(new Date(at), "HH:mm"),
-        kelvin: value => `${Numbers.format(value, 0, settings.group ?? ",",
-            settings.point ?? ".")} K`
-    })
-    readonly property var warmthSaid: Words.of("displays:warmth").said ?? {}
-
-    // A switch of Warmth's, in its words' state, so the : line says its
-    // command: Return turns it off or back on, the launcher staying to
-    // show it change.
-    function warmthSwitch(output, id, on, run) {
-        return thing({
-            key: `displays:${output.name}:${id}`,
-            wordsId: `displays:${id}`,
-            wordState: on ? "" : "off",
-            name: Words.name(`displays:${id}`),
-            verb: Words.verb(`displays:${id}`, on ? "" : "off"),
-            glyph: Words.glyph(`displays:${id}`),
-            hue: "machine",
-            side: on ? "on" : "off",
-            stays: true,
-            run: () => run(!on)
-        });
-    }
-
-    // The Warmth, a thing: its side the warmth now, its note what holds
-    // it, and Return stepping into the Night Light, Follow the Room where
-    // a sensor sees colour, then its figures, which its plate shows too,
-    // under where it's set and what it warms (VKCF3Z, 2026-11-08).
-    function warmthRow(output) {
-        const now = Date.now();
-        const figures = Warmth.figures(warmth, now, warmthSaid, warmthTold);
-        const name = partName("warmth");
-        return thingRow({
-            key: `displays:${output.name}:warmth`,
-            name: name,
-            glyph: Theme.glyph.warmth,
-            side: warmthTold.kelvin(warmth.kelvin),
-            note: Warmth.note(warmth, now, warmthSaid, warmthTold),
-            thing: true,
-            // Where it's set, then what it warms, which gives way first
-            // where the plate is narrow (VKCF3Z: where, then kind).
-            drawer: () => ({
-                eyebrow: [warmthSaid.via, warmthSaid.screen].join(" \u00b7 "),
-                eyebrowItems: [{ said: warmthSaid.via ?? "", keep: 2 },
-                    { said: warmthSaid.screen ?? "", keep: 1 }],
-                eyebrowNames: true,
-                title: name,
-                facts: figures.map(figure => ({
-                    label: Words.name(`displays:warmth:${figure.id}`),
-                    value: figure.side
-                }))
-            })
-        }, () => [warmthSwitch(output, "night-light", warmth.nightLight,
-            on => provider.nightLight(on))]
-            .concat(warmth.seesColour ? [warmthSwitch(output, "follow-room",
-                warmth.followsTheRoom, follows => provider.followTheRoom(follows))] : [])
-            .concat(figures.map(figure => copyRow({
-                name: Words.name(`displays:warmth:${figure.id}`),
-                side: figure.side,
-                copy: figure.side,
-                glyph: ""
-            }))));
-    }
 
     // Tells the backlight daemon whether the night light is on, through
     // the machine daemon, which sets its property on the session's bus.
@@ -564,8 +496,9 @@ Provider {
             return ready.thing(row, key);
         // A setting with choices offers them, so what's typed from the
         // screen finds them, as Sound's served settings do; one with
-        // nothing to choose only copies its value.
-        if (row.kind === "setting")
+        // nothing to choose only copies its value. The Warmth offers its
+        // switches and figures the same way (light/warmth.rs).
+        if (row.kind === "setting" || row.kind === "warmth")
             return ready.thing(row, key,
                 { offers: (row.acts ?? []).some(one => one.step === "rows") });
         // A choice keeps its setting's name as a hidden word, so "scale
@@ -580,12 +513,14 @@ Provider {
                 verbs: null,
                 targets: undefined
             });
-        // A switch keeps its name as it flips, its verb saying which way.
+        // A switch keeps its name as it flips, its verb saying which way
+        // in its act's words: Variable Refresh's, or the Warmth's Night
+        // Light and Follow the Room.
         if (row.kind === "switch") {
             const on = row.held?.on === true;
             return ready.thing(row, key, {
                 wordState: on ? "" : "off",
-                verb: Words.verb("displays:variable", on ? "" : "off"),
+                verb: Words.verb(row.acts?.[0]?.key ?? "displays:variable", on ? "" : "off"),
                 verbs: null,
                 targets: undefined
             });
@@ -799,10 +734,21 @@ Provider {
     // a lit one's settings, each saying how it's set and stepping into its
     // choices (which what's typed finds from here, so "scale 1.5" is
     // Scale's 1.5\u00d7), then the ways it turns off or on, then what its
-    // EDID says, Return copying one.
+    // EDID says, Return copying one. The Warmth the daemon serves first
+    // inside the screen holding the light sits right after Brightness,
+    // found by its key, while Brightness is still made here.
     function verbs(output) {
         const inside = ready.inside(screenKey(output));
-        return Screens.standing(output) === "lit" ? lightRows(output).concat(inside) : inside;
+        if (Screens.standing(output) !== "lit")
+            return inside;
+        const rows = lightRows(output);
+        const warmed = inside.findIndex(row => row.key === `displays:${output.name}:warmth`);
+        if (warmed >= 0) {
+            const brightness = `displays:${output.name}:brightness`;
+            rows.splice(rows.findIndex(row => row.key === brightness) + 1, 0,
+                inside.splice(warmed, 1)[0]);
+        }
+        return rows.concat(inside);
     }
 
     // A setting as a part: its name, how it's set, and the choices a step

@@ -294,7 +294,7 @@ function actForm(act) {
     if (act.ask !== null && typeof act.ask === "object") {
         return "ask";
     }
-    if (typeof act.copy === "string") {
+    if (typeof act.copy === "string" || timed(act.copy)) {
         return "copy";
     }
     if (typeof act.open === "string" && act.open !== "") {
@@ -304,6 +304,16 @@ function actForm(act) {
         return "go";
     }
     return act.step === "drawer" || act.step === "rows" ? "step" : "";
+}
+
+// What a copy act copies at `now`: its words, or its time as a side says
+// it by the clock then, `said` the launcher's words for times, so one served
+// before midnight and copied after says today; "" for neither.
+function copyOf(act, now, said) {
+    if (timed(act?.copy)) {
+        return itemSaid(act.copy, now, said);
+    }
+    return typeof act?.copy === "string" ? act.copy : "";
 }
 
 // The program an open act names its link opened in, by its desktop
@@ -408,17 +418,6 @@ const DONE_HERE = new Set(["go", "open", "copy"]);
 function alsoOf(act) {
     return DONE_HERE.has(actForm(act)) && act.also !== null && typeof act.also === "object"
         ? act.also : null;
-}
-
-// An ask as it's sent: with the activation token the act was given where
-// it carries `token: true`, so its sender can bring its window forward;
-// null where it needs one and none came, so it isn't sent without.
-function tokened(act, token) {
-    if (act.token !== true) {
-        return act.ask;
-    }
-    return typeof token === "string" && token !== ""
-        ? Object.assign({}, act.ask, { token }) : null;
 }
 
 // An act's row as it's said: `worded`, its key's words.json name, glyph and act key (normal's

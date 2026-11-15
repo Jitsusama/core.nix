@@ -54,3 +54,14 @@ function answeredInto(ask, into, answer) {
     at[path[path.length - 1]] = answer;
     return top;
 }
+
+// An ask as it's sent: with the activation token the act was given where
+// it carries `token: true`, so its sender can bring its window forward;
+// null where it needs one and none came, so it isn't sent without.
+function tokened(act, token) {
+    if (act.token !== true) {
+        return act.ask;
+    }
+    return typeof token === "string" && token !== ""
+        ? Object.assign({}, act.ask, { token }) : null;
+}

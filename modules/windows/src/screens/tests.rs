@@ -3,6 +3,7 @@
 //! read.
 
 use super::*;
+use crate::light::Light;
 
 /// The launcher's words for its Screens, in the file the socket's
 /// tests hand the daemon too.
@@ -86,14 +87,7 @@ fn a_screen_says_how_it_stands_and_the_focused_one_only_beside_another_lit() {
     assert_eq!(rows[1]["note"], "off", "an unlaid screen runs nothing");
     assert_eq!(rows[2]["side"], json!([]));
     let alone = BTreeMap::from([("eDP-1".to_owned(), output("BOE", "", &lit(2.0)))]);
-    let rows = super::rows(
-        &alone,
-        &BTreeMap::new(),
-        Some("eDP-1"),
-        true,
-        None,
-        &words(),
-    );
+    let rows = every(&alone, &BTreeMap::new(), Some("eDP-1"), &Light::default());
     assert_eq!(
         rows[0]["side"],
         json!([]),
@@ -207,10 +201,65 @@ fn a_rate_keeps_every_digit_and_a_scale_two_places() {
 /// none is looked at, so no light is said; the settings inside a screen's
 /// row are settings/tests.rs's.
 fn rows(outputs: &BTreeMap<String, Value>, focused: Option<&str>, words: &Words) -> Vec<Value> {
-    super::rows(outputs, &BTreeMap::new(), focused, true, None, words)
+    let unseen = Seen {
+        light: &Light::default(),
+        reading: crate::light::Reading::Waiting,
+        now: 0,
+        looked: false,
+    };
+    super::rows(outputs, &BTreeMap::new(), focused, true, &unseen, words)
         .into_iter()
         .filter(|row| row.get("parent").is_none())
         .collect()
+}
+
+/// Every row, those inside a screen's too, where none is looked at, with
+/// `light` held of the light from a look before.
+fn every(
+    outputs: &BTreeMap<String, Value>,
+    desk: &BTreeMap<String, Value>,
+    focused: Option<&str>,
+    light: &Light,
+) -> Vec<Value> {
+    let unseen = Seen {
+        light,
+        reading: crate::light::Reading::Read,
+        now: 500,
+        looked: false,
+    };
+    super::rows(outputs, desk, focused, true, &unseen, &words())
+}
+
+#[test]
+fn the_warmth_leads_a_step_into_the_built_in_screen_alone_looked_at_or_not() {
+    let light = Light::of(&[crate::light::tests::warmed()]);
+    let made = every(&desk(), &BTreeMap::new(), None, &light);
+    let inside = |name: &str| -> Vec<&str> {
+        let screen = key(&format!("display:{name}"));
+        made.iter()
+            .filter(|row| row["parent"] == screen.as_str())
+            .filter_map(|row| row["key"].as_str())
+            .collect()
+    };
+    assert_eq!(
+        inside("eDP-1").first().copied(),
+        Some("row:displays:warmth:eDP-1"),
+        "the Warmth doesn't lead the built-in screen while none is looked at"
+    );
+    assert!(
+        !inside("HDMI-A-1")
+            .iter()
+            .any(|key| key.starts_with("row:displays:warmth:")),
+        "a monitor holds a Warmth only the panel has"
+    );
+    let mut shut = desk();
+    shut.insert("eDP-1".to_owned(), output("BOE", "0x0BCA", &Value::Null));
+    assert!(
+        !every(&shut, &BTreeMap::new(), None, &light)
+            .iter()
+            .any(|row| row["kind"] == "warmth"),
+        "the lid shut, a Warmth is served"
+    );
 }
 
 /// A screen's drawer where desk-facts says nothing of it, and no light.
@@ -235,9 +284,10 @@ fn only_the_screen_holding_the_brightness_says_the_light_and_only_while_looked_a
         light: &light,
         reading: crate::light::Reading::Read,
         now: 0,
+        looked: true,
     };
     let looked = |outputs: &BTreeMap<String, Value>, desk: &BTreeMap<String, Value>| {
-        super::rows(outputs, desk, None, true, Some(&seen), &words())
+        super::rows(outputs, desk, None, true, &seen, &words())
     };
     let none = BTreeMap::new();
     assert_eq!(
@@ -317,7 +367,7 @@ fn a_step_into_a_screen_offers_its_settings_then_its_ways_then_its_edid_to_copy(
         ("DP-4".to_owned(), monitor()),
         ("DP-2".to_owned(), json!([{"name": "maker", "value": "LG"}])),
     ]);
-    let made = super::rows(&outputs, &desk, None, true, None, &words());
+    let made = every(&outputs, &desk, None, &Light::default());
     let inside = |name: &str| -> Vec<&Value> {
         let screen = key(&format!("display:{name}"));
         made.iter()
@@ -373,7 +423,7 @@ fn a_step_into_a_screen_offers_its_settings_then_its_ways_then_its_edid_to_copy(
 #[test]
 fn the_last_lit_screens_turn_it_off_closes_the_launcher_and_says_a_key_wakes_it() {
     let outputs = BTreeMap::from([("eDP-1".to_owned(), output("BOE", "", &lit(2.0)))]);
-    let made = super::rows(&outputs, &BTreeMap::new(), None, true, None, &words());
+    let made = every(&outputs, &BTreeMap::new(), None, &Light::default());
     let way = made
         .iter()
         .find(|row| row["kind"] == "action" && row.get("parent").is_some())
@@ -600,7 +650,7 @@ fn no_vocabulary_still_words_every_row_by_its_ids() {
     assert_eq!(words.sleep.glyph, "", "a glyph lacked isn't none");
     assert_eq!(
         lacked.len(),
-        93,
+        99,
         "not every word lacked was said: {lacked:?}"
     );
     let drawer = drawer("eDP-1", &panel(), &words);

@@ -596,6 +596,20 @@ fn backlit<'a>(
         .map(|name| name.as_str())
 }
 
+/// The Warmth's rows inside `screen`, the row of the screen `name` that
+/// holds the light (light/warmth.rs).
+fn warmth(name: &str, screen: &str, seen: &Seen, words: &Words) -> Vec<Value> {
+    let part = |id: &str| words.told.part(id);
+    let inside = light::warmth::Inside {
+        name,
+        screen,
+        named: &part,
+        numbers: &words.numbers,
+        now: seen.now,
+    };
+    light::warmth::rows(seen.light, &inside, &words.light)
+}
+
 /// A row's key in the place.
 pub fn key(id: &str) -> String {
     format!("row:{PLACE}:{id}")
@@ -615,8 +629,9 @@ pub fn looks_at(keys: Option<&[String]>) -> bool {
 /// then Turn Every Screen Off while any is lit. `focused` is the
 /// connector of the workspace in front, said beside its screen only
 /// where more than one is lit. `desk` is what desk-facts says of each
-/// screen's EDID, by connector, and `seen` the light while a screen is
-/// looked at, which the drawer of the one holding it says. `each` is
+/// screen's EDID, by connector, and `seen` the light, which the drawer of
+/// the one holding it says while it's looked at, and whose Warmth leads
+/// what a step into it offers. `each` is
 /// whether niri darkens one screen by name (`NIRI_POWERS_OFF_EACH_OUTPUT`),
 /// which the ways a screen turns off follow (acts.rs).
 pub fn rows(
@@ -624,14 +639,14 @@ pub fn rows(
     desk: &BTreeMap<String, Value>,
     focused: Option<&str>,
     each: bool,
-    seen: Option<&Seen>,
+    seen: &Seen,
     words: &Words,
 ) -> Vec<Value> {
     let mut shown: Vec<(&String, &Value)> = outputs.iter().collect();
     shown.sort_by_key(|(name, _)| (!built_in(name), name.as_str()));
-    let holds = seen.and_then(|seen| backlit(&shown, desk, seen.light.connector()));
+    let holds = backlit(&shown, desk, seen.light.connector());
     let part = |id: &str| words.told.part(id);
-    let lit_by = |name: &str| match seen.filter(|_| holds == Some(name)) {
+    let lit_by = |name: &str| match Some(seen).filter(|seen| seen.looked && holds == Some(name)) {
         Some(seen) => light::facts(
             seen,
             &light::Screen {
@@ -690,14 +705,20 @@ pub fn rows(
             })
         })
         .collect();
-    // What a step into each screen offers, inside its row: a lit one's
-    // settings, then the ways it turns off or on, then what its EDID says.
+    // What a step into each screen offers, inside its row: the Warmth,
+    // where a lit screen holds the light and the room's sensor, then a lit
+    // one's settings, then the ways it turns off or on, then what its
+    // EDID says.
     for (name, output) in &shown {
         let stands = standing(output);
+        let screen = key(&format!("display:{name}"));
+        let warmed = holds == Some(name.as_str()) && in_the_room(name, shown.len());
+        if stands == "lit" && warmed {
+            rows.extend(warmth(name, &screen, seen, words));
+        }
         if stands == "lit" && output["logical"].is_object() {
             rows.extend(settings::rows(name, output, words));
         }
-        let screen = key(&format!("display:{name}"));
         rows.extend(acts::ways(name, stands, lit == 1, each, &screen, words));
         let desk = desk.get(name.as_str()).unwrap_or(&Value::Null);
         rows.extend(facts::rows(name, &screen, desk, words));

@@ -152,9 +152,17 @@
         "from": "night light from {time}",
         "waits": "night light waits for where you are",
         "following": "following the room",
-        "own": "the screen's own white"
+        "own": "the screen's own white",
+        "via": "via wl-gammarelay-rs",
+        "screen": "built-in screen"
       }
     },
+    { "id": "displays:night-light", "name": "Night Light", "glyph": "nightLight" },
+    { "id": "displays:follow-room", "name": "Follow the Room", "glyph": "warmth" },
+    { "id": "displays:warmth:room", "name": "Room's White" },
+    { "id": "displays:warmth:sunset", "name": "Sunset" },
+    { "id": "displays:warmth:sunrise", "name": "Sunrise" },
+    { "id": "displays:warmth:night", "name": "Night White" },
     { "id": "displays:room", "name": "Room Light" },
     { "id": "displays:reads", "name": "Reads" },
     { "id": "displays:stepping", "name": "Stepping" },

@@ -111,6 +111,19 @@ QtObject {
         Expect.same("a moment today", say({ at: at(11, 9, 5), as: "moment" }), "09:05");
         Expect.same("a moment on another day", say({ at: at(10, 9, 5), as: "moment" }),
             "yesterday 09:05");
+        // A copy that's a time is worded as Return copies it, by the clock
+        // then, not as it was served (Y2YBTS, 2026-11-14, be74ab9e).
+        const moment = { at: at(11, 9, 5), as: "moment" };
+        Expect.same("a copy that's a time copies what its side says",
+            Ready.copyOf({ key: "verb:copy", copy: moment }, now, said),
+            Ready.itemSaid(moment, now, said));
+        Expect.same("a copy of words copies them as served",
+            Ready.copyOf({ key: "verb:copy", copy: "6,500 K" }, now, said), "6,500 K");
+        const sunrise = { key: "verb:copy", copy: { at: at(12, 7, 12), as: "moment" } };
+        Expect.same("served before midnight and copied then, it's tomorrow",
+            Ready.copyOf(sunrise, at(11, 23, 50), said), "tomorrow 07:12");
+        Expect.same("copied after midnight, it's today",
+            Ready.copyOf(sunrise, at(12, 0, 10), said), "07:12");
         Expect.same("dated this year", say({ at: at(11, 9, 5), as: "dated" }),
             "Wednesday 11 November, 09:05");
         Expect.same("dated another year",
@@ -323,14 +336,16 @@ QtObject {
             { ask: { ask: "act" } },
             { key: "verb:open", open: "" },
             { key: "verb:notice:goTo", go: "Slack" },
-            { key: "verb:notice:goTo", go: "" }
+            { key: "verb:notice:goTo", go: "" },
+            { key: "verb:copy:sunrise", copy: { at: 0, as: "moment" } },
+            { key: "verb:copy:said", copy: { said: "07:12" } }
         ];
         Expect.same("each act is known by its form", acts.map(Ready.actForm),
-            ["ask", "copy", "open", "step", "step", "", "", "", "go", ""]);
+            ["ask", "copy", "open", "step", "step", "", "", "", "go", "", "copy", ""]);
         Expect.same("only the acts the shell can do are offered, in their order",
             Ready.actsOf({ acts: acts }).map(act => act.key), ["verb:wifi-leave",
                 "verb:copy:copy", "verb:open", "verb:details", "verb:more",
-                "verb:notice:goTo"]);
+                "verb:notice:goTo", "verb:copy:sunrise"]);
         const going = acts[8];
         const slack = { id: "Slack" };
         Expect.same("going to a program with a window open goes to its window",
@@ -382,10 +397,10 @@ QtObject {
             ["verb:notice:link"]);
         const asking = { key: "verb:notice:open", ask: { ask: "invoke", id: 4 }, token: true };
         Expect.same("an ask that takes a token is sent with it",
-            Ready.tokened(asking, "abc"), { ask: "invoke", id: 4, token: "abc" });
-        Expect.same("and never without one", [Ready.tokened(asking, ""),
-            Ready.tokened(asking, undefined)], [null, null]);
-        Expect.same("an ask that takes none is sent as served", Ready.tokened(acts[0], "abc"),
+            Forms.tokened(asking, "abc"), { ask: "invoke", id: 4, token: "abc" });
+        Expect.same("and never without one", [Forms.tokened(asking, ""),
+            Forms.tokened(asking, undefined)], [null, null]);
+        Expect.same("an ask that takes none is sent as served", Forms.tokened(acts[0], "abc"),
             acts[0].ask);
         Expect.same("a row serving no acts offers none", Ready.actsOf({}), []);
         // A document opens in Google's window, not the browser, so its

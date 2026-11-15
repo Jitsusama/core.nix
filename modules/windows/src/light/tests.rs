@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use super::*;
 
 /// The light's words, from the file the socket's tests hand the daemon.
-fn told() -> Words {
+pub(super) fn told() -> Words {
     let vocabulary: Value = serde_json::from_str(include_str!("../../tests/screen-words.json"))
         .expect("the test's words are JSON");
     crate::screens::Words::read(&vocabulary).0.light
@@ -38,7 +38,7 @@ fn settled(level: f64, lux: &Value, asks: &Value, following: bool) -> Value {
 
 /// The warmth following the room, the night light off, as steered.rs
 /// says it.
-fn warmed() -> Value {
+pub(crate) fn warmed() -> Value {
     json!({"key": "warmth:built-in", "kind": "warmth", "kelvin": 6500,
         "follows_the_room": true, "sees_colour": true, "room_white_kelvin": 5100,
         "night_light": false, "night_white_kelvin": 3400, "sunset_ms": 1000,
@@ -55,6 +55,7 @@ fn facts_of(records: &[Value], reading: Reading, in_the_room: bool) -> Vec<Value
         light: &light,
         reading,
         now: 1500,
+        looked: true,
     };
     let screen = Screen {
         in_the_room,

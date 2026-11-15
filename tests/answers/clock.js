@@ -38,29 +38,6 @@ function run(failures) {
             offline: "{count} offline", burst: "{count} in a burst",
             unresolved: "{count} unresolved" }
     };
-    // A night in Toronto's November as the daemon says it, the clock
-    // given as hours and minutes in local time and a kelvin bare, so
-    // the cases read the same wherever they run.
-    const local = (date, time) =>
-        new Date(date[0], date[1] - 1, date[2], time[0], time[1]).getTime();
-    const WarmthCases = {
-        night: { kelvin: 4000, followsTheRoom: true, seesColour: true, roomWhite: 3200,
-            nightLight: true, nightWhite: 4000, sunset: local([2026, 11, 8], [16, 59]),
-            sunrise: local([2026, 11, 9], [7, 4]) },
-        evening: local([2026, 11, 8], [21, 0]),
-        noon: local([2026, 11, 8], [12, 0]),
-        said: { until: "night light until {time}", from: "night light from {time}",
-            waits: "night light waits for where you are", following: "following the room",
-            own: "the screen's own white", tomorrow: "tomorrow", yesterday: "yesterday" },
-        told: {
-            clock: instant => {
-                const moment = new Date(instant);
-                const two = value => String(value).padStart(2, "0");
-                return `${two(moment.getHours())}:${two(moment.getMinutes())}`;
-            },
-            kelvin: value => `${value} K`
-        }
-    };
     const evening = at("2026-11-04T22:00");
     const day = new Date(2026, 10, 4);
     const moon = Moment.moon(evening);
@@ -214,11 +191,9 @@ function run(failures) {
         ["a server answering with no sample yet still says where it stands", Keeping.note({
             standing: "combined", lastSample: null, reach: 1 },
             { "standing:combined": "agrees" }), "agrees"],
-        // The screen's Warmth, from what the backlight daemon says: what
-        // holds it, by night, by day, waiting for a place, or the room;
-        // and its figures, the room's white where a sensor sees it, then
-        // the night's, a day said only when it isn't today (VKCF3Z,
-        // 2026-11-08).
+        // The screen's warmth, as the backlight daemon says it, which the
+        // : line's :set nightlight and :set warmth read; its rows are the
+        // windows daemon's (modules/windows, light/warmth.rs).
         ["nothing warming the screen", Warmth.of([]), null],
         ["a daemon before the night light", quoted(Warmth.of([{ kind: "warmth",
             kelvin: 6500, follows_the_room: true }])), quoted({ kelvin: 6500,
@@ -232,28 +207,6 @@ function run(failures) {
                 sunrise_ms: 2000 }])), quoted({ kelvin: 3400, followsTheRoom: false,
             seesColour: true, roomWhite: 5100, nightLight: true, nightWhite: 3400,
             sunset: 1000, sunrise: 2000 })],
-        ["by night", Warmth.note(WarmthCases.night, WarmthCases.evening, WarmthCases.said,
-            WarmthCases.told), "night light until 07:04"],
-        ["by day", Warmth.note(WarmthCases.night, WarmthCases.noon, WarmthCases.said,
-            WarmthCases.told), "night light from 16:59"],
-        ["waiting for a place", Warmth.note(Object.assign({}, WarmthCases.night,
-            { sunset: null, sunrise: null }), WarmthCases.noon, WarmthCases.said,
-            WarmthCases.told), "night light waits for where you are"],
-        ["following the room", Warmth.note(Object.assign({}, WarmthCases.night,
-            { nightLight: false }), WarmthCases.evening, WarmthCases.said, WarmthCases.told),
-            "following the room"],
-        ["the screen's own white", Warmth.note(Object.assign({}, WarmthCases.night,
-            { nightLight: false, seesColour: false }), WarmthCases.evening,
-            WarmthCases.said, WarmthCases.told), "the screen's own white"],
-        ["its figures by night", quoted(Warmth.figures(WarmthCases.night,
-            WarmthCases.evening, WarmthCases.said, WarmthCases.told)), quoted([
-            { id: "room", side: "3200 K" },
-            { id: "sunrise", side: "07:04 \u00b7 tomorrow" },
-            { id: "sunset", side: "16:59" }, { id: "night", side: "4000 K" }])],
-        ["by day, the sunset comes first, and no room's white without a sensor",
-            Warmth.figures(Object.assign({}, WarmthCases.night, { seesColour: false }),
-                WarmthCases.noon, WarmthCases.said, WarmthCases.told)
-                .map(figure => figure.id).join(" "), "sunset sunrise night"],
         // What a server is asked as, how its exchange went, its packets
         // saying only what differs, its score, its delay's asymmetry,
         // and what the servers' activity says beyond their count, a
