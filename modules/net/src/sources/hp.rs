@@ -93,7 +93,7 @@ pub fn read(
     let answering = !found.is_empty();
     let source = Source {
         name: NAME.into(),
-        what: "the HP printers eero lists, asked only to read".into(),
+        what: "the HP printers eero lists, read and never changed".into(),
         state: if answering {
             SourceState::Answering
         } else {

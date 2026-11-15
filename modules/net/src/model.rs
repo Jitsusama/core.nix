@@ -95,6 +95,9 @@ pub enum ConcernKind {
     Slow,
     /// The internet is the narrowest hop on some device's path.
     Ceiling,
+    /// One of the modem's downstream channels lost far more than the
+    /// others, which points at noise on its frequency.
+    Lost,
 }
 
 /// Where a vendor's facts come from, and whether they're current.
