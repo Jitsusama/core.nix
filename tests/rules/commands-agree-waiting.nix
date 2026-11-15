@@ -16,11 +16,6 @@
     "kit"
     "helps"
   ];
-  clipboard-history = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   collector = [ "tables" ];
   eero = [ "inks" ];
   guide = [
@@ -38,11 +33,6 @@
   ];
   jobs-sorter = [
     "kit"
-    "helps"
-  ];
-  location = [
-    "kit"
-    "exits"
     "helps"
   ];
   machine = [
