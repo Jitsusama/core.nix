@@ -145,6 +145,7 @@
   "launcher/Emoji.js" = [ "Fuzzy.js" ];
   "launcher/ForYou.js" = [ "launcher/Order.js" ];
   "launcher/ForYouFilter.js" = [ "launcher/Order.js" ];
+  "launcher/Headings.js" = [ "Operators.js" ];
   "launcher/Heat.qml" = [ "launcher/Seen.js" ];
   "launcher/HomeNetwork.js" = [ "launcher/Numbers.js" ];
   "launcher/Keeping.js" = [ "launcher/Numbers.js" ];

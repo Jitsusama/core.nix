@@ -55,6 +55,12 @@ Rectangle {
     // (agents-tree-look.md). Its name's room gives the step up, never
     // what it says at its right, and the selection keeps the whole row.
     property int depth: 0
+    // A heading, naming the rows under it rather than being one (VKCF3Z,
+    // 2026-11-15 [90904822]): its name alone, muted, in the row's face at
+    // the note's size, from where the mark column starts, so it hangs left
+    // of the names under it; no mark, no ground, nothing to click. The
+    // launcher sets its height, the groups' rung above its line.
+    property bool heading: false
     readonly property real indent: Math.max(0, Math.min(2, depth)) * glyphColumn
     // A glyph's column: a mark's square cell, a line pitch wide, and the
     // mark rung before its text (VKCF3Z, 2026-11-05). The glyph stands an
@@ -210,7 +216,8 @@ Rectangle {
     signal clicked
 
     width: parent.width
-    height: 4 * Theme.space.beat
+    // A heading is its line alone, nothing below it.
+    height: row.heading ? headingText.implicitHeight : 4 * Theme.space.beat
     color: "transparent"
     // Selected, it's filled, unless the list draws the selection itself as
     // one band among its rows (Launcher.qml's list).
@@ -233,7 +240,8 @@ Rectangle {
         from: row.groundFrom
         width: row.width + row.groundFrom
         height: row.height
-        ink: row.flashed ? "flash" : row.selected && row.fills || row.tinted ? "selection" : ""
+        ink: row.heading ? "" : row.flashed ? "flash"
+            : row.selected && row.fills || row.tinted ? "selection" : ""
     }
 
     // What the row says at its right is measured as it loads at many times
@@ -252,7 +260,7 @@ Rectangle {
         line: (row.height + row.capitals) / 2
         // A swatch is the figure itself, so it stays, as does a figure's
         // mark saying how it stands.
-        visible: row.sort !== "figure" || row.swatch || row.marked
+        visible: !row.heading && (row.sort !== "figure" || row.swatch || row.marked)
         text: row.glyph
         // A row holding more is quieter than one that acts, muted as a
         // place's mark is in the head: never the frame's edge, which the
@@ -300,8 +308,23 @@ Rectangle {
     // The name's room, which it's cut to: all there is to the side, since
     // the words after it give way first, by whole items from their last,
     // and only then is the name cut (VKCF3Z, 2026-11-14 [04792410]).
+    // A heading's name, on its line at the foot of its band.
+    Text {
+        id: headingText
+        visible: row.heading
+        x: row.markAt
+        anchors.bottom: parent.bottom
+        width: Math.max(0, row.width - x - Theme.space.rung.inset)
+        elide: Text.ElideRight
+        text: row.heading ? row.plainName : ""
+        color: Theme.muted
+        font.family: Theme.level.name.family
+        font.pointSize: Theme.level.note.pointSize
+    }
+
     ReadsOn {
         id: nameBox
+        visible: !row.heading
         x: Theme.space.rung.inset + row.glyphColumn + row.indent
         width: Math.max(0, Math.min(implicitWidth, row.ends - x - Theme.space.rung.groups))
         // On the mono's line, so the voice sits where the mono's name
@@ -743,7 +766,7 @@ Rectangle {
     // navigated").
     MouseArea {
         anchors.fill: parent
-        enabled: !row.quiet
+        enabled: !row.quiet && !row.heading
         onClicked: row.clicked()
     }
 }

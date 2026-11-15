@@ -4,7 +4,8 @@
 // check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
 // ListedKeys.js, DrawerPage.js, DrawerFigure.js, DrawerProse.js, DrawerValue.js, Search.js,
 // Reading.js, Changes.js,
-// LineEditing.js, Operators.js, Finding.js and Confirm.js beside this file and runs
+// LineEditing.js, Operators.js, Finding.js, Confirm.js and launcher/Headings.js beside this
+// file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
 import "Editing.js" as Editing
@@ -23,6 +24,7 @@ import "DrawerValue.js" as Value
 import "Identifier.js" as Identifier
 import "Changes.js" as Changes
 import "Search.js" as Search
+import "launcher/Headings.js" as Headings
 
 QtObject {
     // What failed, said as the test ends, or as it throws.
@@ -511,6 +513,57 @@ QtObject {
         holds("and one y can't copy", says("y", "copy", null, 0), "y \u00b7 nothing to copy");
     }
 
+    // A list's headings, which name the rows under them and are never a row
+    // (VKCF3Z, 2026-11-15 [90904822]; Y2YBTS's fc1b8044): every move counts
+    // rows alone, the selection never rests on one, a search shows none, and
+    // none stands alone at the list's foot.
+    function headings(holds) {
+        const heading = name => ({ name, heading: true });
+        const row = name => ({ name });
+        const rows = [heading("Repositories"), row("core"), row("harness"), row("mycelium"),
+            heading("Projects"), row("Networks"), row("Shapes"), heading("Machines"),
+            row("optimus")];
+        const at = Headings.at(rows);
+        holds("each heading is found where it stands", at, [0, 4, 7]);
+        const place = (from, top = 0, bottom = 8) => ({ at: from, highest: 0, last: 8, top,
+            bottom, screen: 8 });
+        const moved = (act, count, from, top, bottom) =>
+            Headings.moved(act, count, place(from, top, bottom), at);
+        holds("5j goes five rows, the headings it passes uncounted", moved("next", 5, 1), 8);
+        holds("j steps over a heading", moved("next", 0, 3), 5);
+        holds("and k too", moved("previous", 0, 5), 3);
+        holds("gg lands on the first row, not its heading", moved("first", 0, 6), 1);
+        holds("G on the last", moved("last", 0, 1), 8);
+        holds("3G on the third row", moved("last", 3, 1), 3);
+        holds("H and L count the view's rows", [moved("viewTop", 0, 2, 0, 4),
+            moved("viewBottom", 0, 2, 0, 4)], [1, 3]);
+        holds("a list with none moves as it always has", Headings.moved("next", 5,
+            place(1), []), Operators.moved("next", 5, place(1)));
+        holds(":4 goes to the fourth row", Headings.nth(at, 4, 8), 5);
+        holds("the gutter counts rows alone", [Headings.rank(at, 1), Headings.rank(at, 5),
+            Headings.rank(at, 8)], [0, 3, 5]);
+        holds("the selection rests past a heading the way it went",
+            [Headings.off(rows, 4, 3), Headings.off(rows, 4, 5), Headings.off(rows, 0, 0)],
+            [5, 3, 1]);
+        holds("and stays on a row", Headings.off(rows, 2, 0), 2);
+        holds("a search shows no heading", Headings.without(rows).map(one => one.name),
+            ["core", "harness", "mycelium", "Networks", "Shapes", "optimus"]);
+        const plain = [row("core"), row("harness")];
+        holds("and a list with none is the same list", Headings.without(plain) === plain, true);
+        // Headings shorter than a row, the first with no rung above it.
+        const talls = [16, 48, 48, 48, 36, 48, 48, 36, 48];
+        const tops = talls.map((_, each) => talls.slice(0, each).reduce((sum, one) => sum + one,
+            0));
+        const view = { height: 150, count: 9, top: each => tops[each], tall: each => talls[each],
+            heading: each => at.includes(each) };
+        holds("rising to a row brings its heading, and none is left at the foot",
+            Headings.showing(5, 200, view), 142);
+        holds("a heading at the foot brings its first row", Headings.showing(3, 40, view), 94);
+        const even = { height: 150, count: 9, top: each => each * 48, tall: () => 48,
+            heading: () => false };
+        holds("a list with none shows a row as it always has", Headings.showing(3, 0, even), 42);
+    }
+
     // A paragraph of rows, as Vim's of lines (VKCF3Z, 2026-11-05): a run of
     // one kind, or of one sender's notices, ending at a gap or where that
     // changes. ip and ap take it, the same rows, since a list has no blank
@@ -660,6 +713,7 @@ QtObject {
             Operators.takenWith({ key: "x", at: 1000 }, "x", 1100, 300), false);
         holds("nor with none before", Operators.takenWith(null, "d", 1100, 300), false);
         paragraphs(holds);
+        headings(holds);
         holds("the command line takes the selection's range", [Operators.rangeFor(0, "visual"),
             Operators.rangeFor(3, "visual"), Operators.rangeFor(3, "normal"),
             Operators.rangeFor(0, "normal")],
