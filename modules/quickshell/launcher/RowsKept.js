@@ -81,6 +81,32 @@ function placesOf(keys) {
     return places;
 }
 
+// The marks of the rows a ListModel holds once `taken` (what steps gave) is
+// done to it as Launcher.qml's keep does it, the removals first, from
+// `was`, the marks of those it held, each row put in given the next of
+// `next`; with the marks each step putting rows in gives them, in order,
+// so the model's rows are given the same. A row reads what it shows by its
+// mark, which stays with it however the rows around it come and go: read
+// by its place, each row a removal or a move shifted read another's row,
+// then its own again, every binding on it run twice.
+function marked(was, taken, next) {
+    const marks = was.slice();
+    const given = [];
+    for (const step of taken.filter(one => one.remove !== undefined)) {
+        marks.splice(step.remove, step.count);
+    }
+    for (const step of taken.filter(one => one.remove === undefined)) {
+        if (step.move !== undefined) {
+            marks.splice(step.to, 0, ...marks.splice(step.move, 1));
+        } else {
+            const put = step.keys.map(() => next());
+            given.push(put);
+            marks.splice(step.insert, 0, ...put);
+        }
+    }
+    return { marks, given };
+}
+
 // Every row held gone and every row now put in, in one step each.
 function afresh(was, now) {
     return (was.length > 0 ? [{ remove: 0, count: was.length }] : [])

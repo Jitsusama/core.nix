@@ -67,6 +67,27 @@ function copied(row, fields) {
     return Object.defineProperties({}, laid);
 }
 
+// `row` made again over `fields` as copied() makes it, with what it was
+// made from, or `last` itself when that was made from this very row over
+// the same fields. A search makes every row it finds afresh, so a row kept
+// across a letter was a new one, and the launcher's row showing it ran
+// each of its bindings again; found again alike, it's the same row, which
+// a binding to it hears as no change. The keys lab's "co" showed one row
+// new in 40 to 67 ms, its laying 6 to 12 of it (2026-11-15).
+function copiedAgain(last, row, fields) {
+    if (last !== undefined && last.from === row && alike(last.fields, fields)) {
+        return last;
+    }
+    return { from: row, fields, made: copied(row, fields) };
+}
+
+// Whether two rows' makings give each field the same value.
+function alike(was, now) {
+    const names = Object.keys(now);
+    return names.length === Object.keys(was).length
+        && names.every(name => was[name] === now[name]);
+}
+
 // The rows found, each made by `copy` in its place, and the milliseconds
 // `clock` saw each kind take, `sortOf` naming a row's kind. Copying a row
 // reads every getter it has, and Joel's first "c" spent 11 ms making 112

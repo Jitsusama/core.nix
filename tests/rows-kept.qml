@@ -57,6 +57,19 @@ QtObject {
         }
         Expect.same("the same rows take no step at all", RowsKept.steps(["a", "b"], ["a", "b"]),
             []);
+        // Each row held keeps its mark wherever the steps move it, and a
+        // row put in is given the next, so a row reads what it shows by its
+        // mark, which no other row's coming or going changes: read by its
+        // place, each row a removal or a move shifted read another's, then
+        // its own again, every binding on it run twice (the keys lab's
+        // "co", 2026-11-15).
+        let given = 10;
+        const marking = RowsKept.marked([1, 2, 3, 4, 5],
+            RowsKept.steps("a b c d e".split(" "), "d x b a y z".split(" ")), () => given++);
+        Expect.same("each row keeps its mark, and a row put in is given the next", marking,
+            { marks: [4, 10, 2, 1, 11, 12], given: [[10], [11, 12]] });
+        Expect.same("a list put in afresh is given a mark a row",
+            RowsKept.marked([], RowsKept.steps([], ["a", "b"]), () => given++).marks, [13, 14]);
         // [what, the rows held, the rows listed now, the steps]
         const moves = [
             ["a row falling to the end is one move", "a b c d e", "b c d e a",
