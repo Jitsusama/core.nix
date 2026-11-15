@@ -2,8 +2,8 @@
 //!
 //! Not for every flicker: a change has to be worth seeing, and the light has
 //! to hold. Brighter light is followed after a second, since a dim screen in
-//! sunlight is hard to read; dimmer light after four, so a hand or a passing
-//! shadow over the sensor changes nothing.
+//! sunlight is hard to read; dimmer light after ten, so a hand, a passing
+//! shadow or Joel leaning in over the sensor changes nothing.
 
 use std::time::{Duration, Instant};
 
@@ -14,8 +14,12 @@ pub const SLIGHT: f64 = 0.03;
 /// How long brighter light has to hold before the screen follows it.
 pub const BRIGHTENING: Duration = Duration::from_secs(1);
 
-/// How long dimmer light has to hold.
-pub const DIMMING: Duration = Duration::from_secs(4);
+/// How long dimmer light has to hold. At four seconds the screen dimmed
+/// twelve times on 13 and 14 November for a shadow that then lifted, ten
+/// of them lasting four to nine seconds; ten waits those out, and a room
+/// that really darkens loses nothing the eye sees, since the eye takes
+/// longer than that to adapt, and the move then glides over `FADING`.
+pub const DIMMING: Duration = Duration::from_secs(10);
 
 /// How long a move to a dimmer level glides. The eye stays adapted to the
 /// brighter room for minutes, so a screen that drops in a second reads dark
@@ -173,6 +177,25 @@ mod tests {
         steer.heard(0.2, 0.5, start);
         steer.heard(0.5, 0.5, start + Duration::from_secs(1));
         assert_eq!(steer.due(start + DIMMING), None);
+    }
+
+    #[test]
+    fn a_shadow_held_nine_seconds_changes_nothing() {
+        // Joel leaning in over the lid shades the sensor for longer than a
+        // hand passing: on 13 and 14 November ten of twelve such shadows
+        // lasted four to nine seconds, and each dimmed the screen by a
+        // third or more before the light came back.
+        let start = Instant::now();
+        let mut steer = Steer::default();
+        steer.heard(0.2, 0.5, start);
+        let back = start + Duration::from_secs(9);
+        assert_eq!(steer.due(back), None, "the screen followed the shadow");
+        steer.heard(0.5, 0.5, back);
+        assert_eq!(
+            steer.next(),
+            None,
+            "a move still waited once the light came back"
+        );
     }
 
     #[test]
