@@ -108,16 +108,31 @@ pub fn needs(areas: &[Area], files: &[String], known: Option<&[String]>) -> Need
 /// What a change touching `files` runs first, given `said`, what
 /// `changed-checks --name-only` printed for it, when it could compare: the
 /// VM tests the areas name whose derivation moved from main, or broke.
-/// Without it, every VM test in `known` the areas name runs.
+/// Without it, every VM test in `known` the areas name runs. Each other
+/// check that moved touches the areas as `check:` and its name, as the
+/// example laptop's initrd does.
 pub fn first(
     areas: &[Area],
     files: &[String],
     said: Option<&str>,
     known: Option<&[String]>,
 ) -> Needs {
+    let mut touching = files.to_vec();
+    if let Some(said) = said {
+        touching.extend(
+            Changed::parse(said)
+                .moved
+                .into_iter()
+                .filter(|name| !name.starts_with("vm-"))
+                .map(|name| format!("{CHECK}{name}")),
+        );
+    }
     let moved = said.map(moved);
-    needs(areas, files, moved.as_deref().or(known))
+    needs(areas, &touching, moved.as_deref().or(known))
 }
+
+/// How an area's path names a check that moved rather than a file.
+const CHECK: &str = "check:";
 
 /// What `changed-checks` is asked to say moved from `base`. Sent to a
 /// builder, as `nix-offload there --run` sets `elsewhere`, it compares

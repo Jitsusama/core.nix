@@ -8,6 +8,7 @@
   lib,
   nix-darwin,
   nixpkgs,
+  pkgs,
   self,
   ...
 }:
@@ -20,6 +21,14 @@
   );
   # Evaluated once in checks.nix, since the rules' daemons-agree reads it too.
   example-laptop = evaluates "example-laptop" exampleLaptop;
+  # The laptop's initrd alone, by its derivation, so changed-checks says when
+  # a change moves what boots and unlocks the disk: merge-net needs then runs
+  # the VM tests that boot through it before the change merges. #4513 moved
+  # it through a library hibernate-unlock reads, which no area names. Only
+  # the path is written, so building it builds no initrd.
+  example-laptop-initrd = pkgs.writeText "example-laptop-initrd" (
+    builtins.unsafeDiscardStringContext exampleLaptop.config.system.build.initialRamdisk.drvPath
+  );
 
   # A system account whose manager runs, as one lingering for a builder's
   # logins does, starts none of a person's services: their home is

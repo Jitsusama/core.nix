@@ -892,6 +892,10 @@
   example-laptop = ''
     a laptop on the XPS 14, its disk and Secure Boot, with Chrome beside Google's pages, evaluates
   '';
+  example-laptop-initrd = ''
+    the example laptop's initrd evaluates, its derivation written down so a change that moves it
+    runs the VM tests that boot through it first
+  '';
   example-nixos = ''
     a NixOS workstation with a screen evaluates
   '';

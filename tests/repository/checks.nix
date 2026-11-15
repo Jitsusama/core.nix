@@ -207,7 +207,7 @@
   # quietly drop its VM tests from the net or its ignores from ruff, and
   # the next file to take its name would go unlinted. It's given the files'
   # paths, not what they hold, so only a file added, moved or removed runs it
-  # again.
+  # again, and the checks' names, which an area naming a check matches.
   every-pattern-names-a-file =
     let
       paths = map (file: lib.removePrefix "./" (lib.path.removePrefix ../.. file)) (
@@ -218,7 +218,8 @@
       ${lib.getExe pkgs.python3} ${./every-pattern-names-a-file.py} \
         ${../../tools/merge-net/must-run.txt} ${../../ruff.toml} \
         ${pkgs.writeText "unread" (lib.concatLines formatterExcludes)} \
-        ${pkgs.writeText "paths" (lib.concatLines paths)}
+        ${pkgs.writeText "paths" (lib.concatLines paths)} \
+        ${pkgs.writeText "checks" (lib.concatLines (lib.attrNames self.checks.x86_64-linux))}
       touch $out
     '';
 }
