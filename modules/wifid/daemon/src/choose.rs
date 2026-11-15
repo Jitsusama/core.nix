@@ -4,7 +4,8 @@
 //! The best access point changes with the hour and the room (Joel, 14 Nov
 //! 2026: "fixating on one could hurt me"), so none is fixed: the one the
 //! card is on is kept while it carries well, and another is tried only
-//! when it carries badly, or when one measured lately carried far better.
+//! when it carries badly two minutes running, or fails, or when one
+//! measured lately carried far better.
 //! A wider band, 5 or 6 GHz, is kept to while it carries well and tried
 //! from 2.4 GHz whenever one is heard well enough: 2.4 GHz can be quicker
 //! to the gateway but carries far less.
@@ -131,6 +132,11 @@ impl Chooser {
     ) -> Choice {
         let (point, measured, signal, frequency) = on;
         let failing = measured.lost > FAILING;
+        let carried_badly = badly(measured);
+        // A failing link is left on its first minute, a merely bad one on
+        // its second.
+        let lately = std::mem::replace(&mut self.badly_on, carried_badly.then(|| point.to_owned()));
+        let bad = carried_badly && (failing || lately.as_deref() == Some(point));
         if calling && !failing {
             return Choice::Stay;
         }
@@ -161,7 +167,6 @@ impl Chooser {
         }
         self.spurned
             .retain(|_, spurned| now.duration_since(*spurned) < SPURNED);
-        let bad = badly(measured);
         // A card on a wider band carrying well keeps off a narrower one,
         // however quick, since quickness isn't room to bring things down.
         let untried = others.iter().filter(|other| {
