@@ -22,8 +22,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::journal::{Entry, Job};
-use crate::reloads::{self, Asker};
 use crate::launcher::percent;
+use crate::reloads::{self, Asker};
 
 /// What the windows daemon writes its journal as.
 pub const IDENTIFIER: &str = "windows";
