@@ -361,6 +361,8 @@ PanelWindow {
             // Gone too where the window over it has grown over it first.
             on: fallsYet() ? closedOn : standsOn(),
             ahead: MarginCat.behind(frameMs, "resize"),
+            // As far into a window's growth over it as niri says it is.
+            grows: MarginCat.behindResize(frameMs, Tiles.resizing(Niri.windows, space?.id)),
             frame: frameMs,
             marks: marksLit
         });

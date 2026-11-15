@@ -86,5 +86,15 @@ QtObject {
         expect("its seat still there, from the tiles last seen",
             Tiles.before(shut, sat, 1), shut);
         expect("sitting nowhere, from the tiles last seen", Tiles.before(shut, sat, null), shut);
+        // niri's word of when each tile's resize began, as its patch says it.
+        const moving = (one, animation, began) => Object.assign({}, one, { layout:
+            Object.assign({}, one.layout, { tile_animation: animation,
+                tile_animation_began_ms_ago: began }) });
+        const growing = Object.assign({}, windows, { 1: moving(windows[1], "Resize", 4.5),
+            2: moving(windows[2], "Resize", 0.1), 3: moving(windows[3], "TileMove", 90),
+            4: moving(windows[4], "Resize", 200) });
+        expect("a resize under way says when it began, the longest ago on its workspace",
+            [Tiles.resizing(growing, 7), Tiles.resizing(windows, 7), Tiles.resizing(growing, 9)],
+            [4.5, null, null]);
     }
 }

@@ -137,7 +137,15 @@ function rides(way, to, ride) {
     const closes = 2 * Math.max(ride.frame, MarginCat.MS / 60);
     let slide = t => edge(t) * (ride.frame > 0 ? Math.min(1, t / closes) : 1);
     let posed = () => null;
-    if (ride.away && ground > 0) {
+    // Pushed down by a window's edge growing over it, it goes exactly as
+    // that edge from its first frame: any catching up, by weight or over
+    // two frames, is spent in that window's face (VKCF3Z, 3bc784ec).
+    // Where it starts under that edge and lands under where it stops, so
+    // is every frame between, since both go on the one spring.
+    if (ride.leads && ground > 0) {
+        slide = edge;
+        posed = () => "falling";
+    } else if (ride.away && ground > 0) {
         let stops = ms;
         while (stops > 1 && ground * (1 - edge(stops - 1)) < 1) {
             stops -= 1;
