@@ -349,9 +349,11 @@ td {
 }
 
 /* The skip link, the first thing focus reaches: out of sight above the
-   page until then, it drops into the top centre as a label, a whole target
-   tall, and goes back once focus moves on. One for every site, so none
-   draws its own. */
+   page until then, it shows at once in the top centre as a label, a whole
+   target tall, and eases back once focus moves on. Arriving takes no
+   motion, since a keyboard user pressing Tab must see where focus went
+   that instant, not after a slide. One for every site, so none draws its
+   own. */
 .skip {
   position: fixed;
   z-index: 10;
@@ -377,6 +379,7 @@ td {
 
 .skip:focus-visible {
   translate: -50% 0;
+  transition: none;
 }
 
 .sites-strip > .asks {
