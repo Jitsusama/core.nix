@@ -247,6 +247,23 @@ QtObject {
                 Places.homeOf({ id: "01-a" }, null),
                 Places.homeOf({ workspace: "reef; rm" }, null)],
             ["REEF", "KELP", "BUOY", "", ""]);
+        // An orchestrator back at its kept place names that workspace for
+        // itself, so a session of its own back before its pi says who it is
+        // joins it there, rather than making a workspace of its own and
+        // staying alone on it (Joel, 2026-11-14 22:36: "why did this window
+        // get put on a workspace by itself?").
+        const spaces = [{ id: 3, name: null }, { id: 5, name: "KELP" }];
+        expect("named for its orchestrator: by address, by what it orchestrates",
+            [Places.homeToName({ address: "REEF" }, "REEF", 3, spaces),
+                Places.homeToName({ orchestrates: "REEF" }, "REEF", 3, spaces)],
+            ["REEF", "REEF"]);
+        expect("named for nothing: one it leads, its own name, another's, nowhere, no home",
+            [Places.homeToName({ id: "01-a" }, "REEF", 3, spaces),
+                Places.homeToName({ address: "KELP" }, "KELP", 3, spaces),
+                Places.homeToName({ address: "REEF" }, "REEF", 5, spaces),
+                Places.homeToName({ address: "REEF" }, "REEF", null, spaces),
+                Places.homeToName({ address: "REEF" }, "", 3, spaces)],
+            ["", "", "", "", ""]);
         // One handed over while Reopen Them All already holds it, or has
         // begun it, joins nothing, or two pis would write one log.
         const asked = id => ({ one: { id } });
