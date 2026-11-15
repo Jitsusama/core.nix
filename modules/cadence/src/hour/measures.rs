@@ -102,13 +102,67 @@ const fn count(n: usize) -> f64 {
     n as f64
 }
 
+/// A change a check names, such as `core #4568`: its repository, as cadence
+/// calls it, and its number there.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Named {
+    pub repo: String,
+    pub number: u64,
+}
+
+/// The changes `check` names in core or the harness, the two whose mains
+/// cadence mirrors, so only theirs can be seen to have merged: each `#N`
+/// after the repository's name, as `core #4568`, `core#4500` or
+/// `harness #1592`.
+fn named(check: &str) -> Vec<Named> {
+    check
+        .match_indices('#')
+        .filter_map(|(at, _)| {
+            let digits: String = check[at + 1..]
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect();
+            let word = check[..at]
+                .trim_end()
+                .rsplit(|c: char| c.is_whitespace() || c == '(' || c == ',')
+                .next()?
+                .to_lowercase();
+            let repo = match word.as_str() {
+                "core" | "core.nix" => "core",
+                "harness" | "agentic-harness.pi" => "harness",
+                _ => return None,
+            };
+            Some(Named {
+                repo: repo.to_owned(),
+                number: digits.parse().ok()?,
+            })
+        })
+        .collect()
+}
+
+/// Every change the misses' checks name in the mirrored repositories, so
+/// each can be looked for once among the merges.
+#[must_use]
+pub fn named_in(text: &str) -> BTreeSet<Named> {
+    lines(text)
+        .filter_map(|miss| miss["check"].as_str().map(named))
+        .flatten()
+        .collect()
+}
+
 /// The misses Joel found himself, from the orchestrator's `misses.jsonl`:
 /// one stays open until its owner names the check that would have caught
-/// it, and that check merges.
+/// it and that check has merged, as `merged` holds them. A check naming no
+/// change cadence can see merge, such as a memory or World's, leaves it
+/// open, since its words alone would tell Joel it's fixed before it is.
 #[must_use]
-pub fn misses(text: &str) -> Measure {
+pub fn misses(text: &str, merged: &BTreeSet<Named>) -> Measure {
+    let closed = |miss: &Value| {
+        let changes = miss["check"].as_str().map(named).unwrap_or_default();
+        !changes.is_empty() && changes.iter().all(|change| merged.contains(change))
+    };
     let open: Vec<(String, String)> = lines(text)
-        .filter(|miss| miss["check"].is_null())
+        .filter(|miss| !closed(miss))
         .map(|miss| {
             let what = miss["what"]
                 .as_str()
@@ -124,7 +178,7 @@ pub fn misses(text: &str) -> Measure {
     Measure {
         key: "misses".to_owned(),
         class: Class::Miss,
-        says: "misses Joel found himself, with no check yet to catch the next".to_owned(),
+        says: "misses Joel found himself, with no merged check yet to catch the next".to_owned(),
         now: count(open.len()),
         target: Some(0.0),
         // The oldest open miss's owner moves it first.
@@ -325,7 +379,8 @@ pub fn reverts(text: &str, now: i64, owner: &str) -> Measure {
 /// The checks still failing on main that last passed before a merge in
 /// the day before `now`, from the net's `results.jsonl`: a check whose
 /// newest result failed where the one before it passed. A stalled run
-/// proves nothing either way, so it's left out.
+/// proves nothing either way, so it's left out, and a subtest's failure
+/// gives way to its whole test passing since, which ran it again.
 #[must_use]
 pub fn broken(text: &str, now: i64, owner: &str) -> Measure {
     let mut by_check: BTreeMap<String, Vec<(i64, bool)>> = BTreeMap::new();
@@ -342,14 +397,27 @@ pub fn broken(text: &str, now: i64, owner: &str) -> Measure {
             .or_default()
             .push((at, passed));
     }
+    let passed_whole = |whole: &str| {
+        by_check.get(whole).map_or(i64::MIN, |runs| {
+            runs.iter()
+                .filter(|(_, passed)| *passed)
+                .map(|(at, _)| *at)
+                .max()
+                .unwrap_or(i64::MIN)
+        })
+    };
     let failing: Vec<String> = by_check
-        .into_iter()
-        .filter_map(|(check, mut runs)| {
+        .iter()
+        .filter_map(|(check, runs)| {
+            let mut runs = runs.clone();
             runs.sort_by_key(|(at, _)| *at);
             let [.., (_, before), (at, last)] = runs.as_slice() else {
                 return None;
             };
-            (*before && !last && *at > now - DAY).then_some(check)
+            let since = check
+                .split_once("::")
+                .is_some_and(|(whole, _)| passed_whole(whole) > *at);
+            (*before && !last && *at > now - DAY && !since).then(|| check.clone())
         })
         .collect();
     Measure {
@@ -559,13 +627,57 @@ mod tests {
             r#"{"words":"w","what":"History paused","owner":"RCTRF8","check":"core#4500"}"#,
             "\n",
         );
-        let m = misses(text);
+        let merged = BTreeSet::from([change("core", 4500)]);
+        let m = misses(text, &merged);
         assert!((m.now - 1.0).abs() < 0.5, "one open, got {}", m.now);
         assert_eq!(m.owner, "KNURBN", "its first owner moves it");
         assert_eq!(
             m.behind,
             ["the map had no network · KNURBN"],
             "it says what it was"
+        );
+    }
+
+    fn change(repo: &str, number: u64) -> Named {
+        Named {
+            repo: repo.to_owned(),
+            number,
+        }
+    }
+
+    #[test]
+    fn a_miss_whose_check_has_not_merged_stays_open() {
+        let miss = |check: &str| {
+            serde_json::json!({"words": "w", "what": "the cat waits", "owner": "XY9H5C",
+                "check": check})
+            .to_string()
+        };
+        let two = format!(
+            "{}\n{}\n",
+            miss("core #4568 (the deleted-row check; merge ~07:30)"),
+            miss("rule memory #5331, plus harness #1592 (mesh gate), merge ~06:00")
+        );
+        assert_eq!(
+            named_in(&two),
+            BTreeSet::from([change("core", 4568), change("harness", 1592)]),
+            "a check's changes in the mirrored repositories weren't each found"
+        );
+        let open = misses(&two, &BTreeSet::new());
+        assert_eq!(
+            open.behind,
+            ["the cat waits · XY9H5C", "the cat waits · XY9H5C"],
+            "a miss closed on a check named but not merged"
+        );
+        let one = misses(&two, &BTreeSet::from([change("harness", 1592)]));
+        assert!(
+            (one.now - 1.0).abs() < 0.5,
+            "a merged check didn't close its miss, or an unmerged one did: {}",
+            one.now
+        );
+        let elsewhere = misses(&miss("World #2450121"), &BTreeSet::new());
+        assert!(
+            (elsewhere.now - 1.0).abs() < 0.5,
+            "a check cadence can't see merge closed its miss"
         );
     }
 
@@ -679,12 +791,18 @@ mod tests {
             result("stalled", NOW - 60, false, true),
             result("mended", NOW - 900, false, false),
             result("mended", NOW - 60, true, false),
+            result("whole::sub", NOW - 900, true, false),
+            result("whole::sub", NOW - 600, false, false),
+            result("whole", NOW - 300, true, false),
+            result("later::sub", NOW - 900, true, false),
+            result("later", NOW - 600, true, false),
+            result("later::sub", NOW - 300, false, false),
         ]
         .join("\n");
         assert_eq!(
             broken(&text, NOW, "D5QEKR").behind,
-            ["broke"],
-            "only the one a merge broke"
+            ["broke", "later::sub"],
+            "only those a merge broke: a subtest's fail gives way to its whole test passing since"
         );
     }
 

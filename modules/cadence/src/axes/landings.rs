@@ -140,10 +140,9 @@ pub(super) fn side_by_side<A: Send, B: Send, C>(
     })
 }
 
-/// The harness's changes, read the way core's are: its mirror as
-/// pi-packages last fetched it, and each move of his install from
-/// pi-packages's journal, as a look that built the commit it moved to.
-pub fn gather_harness(now: i64) -> Sources {
+/// The harness's mirror, as pi-packages keeps it to install from.
+#[must_use]
+pub fn harness_mirror() -> std::path::PathBuf {
     let data = std::env::var_os("XDG_DATA_HOME").map_or_else(
         || {
             std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
@@ -151,7 +150,14 @@ pub fn gather_harness(now: i64) -> Sources {
         },
         std::path::PathBuf::from,
     );
-    let mirror = data.join("pi-packages/github.com/Jitsusama/agentic-harness.pi/mirror.git");
+    data.join("pi-packages/github.com/Jitsusama/agentic-harness.pi/mirror.git")
+}
+
+/// The harness's changes, read the way core's are: its mirror as
+/// pi-packages last fetched it, and each move of his install from
+/// pi-packages's journal, as a look that built the commit it moved to.
+pub fn gather_harness(now: i64) -> Sources {
+    let mirror = harness_mirror();
     let mirror = mirror.to_string_lossy();
     let since = format!("--since=@{}", now - DAYS * DAY);
     let git = |args: &[&str]| {
