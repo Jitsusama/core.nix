@@ -103,6 +103,24 @@ function sinceKey(now, taken, done) {
     return done < taken ? 0 : now - done;
 }
 
+// What a key's act, `one`, cost on its way to the frame drawn at `drawn`,
+// said once slow enough to feel: the key's own work, done at `keyDone`;
+// when the change was told and by whom, how long it then waited for the
+// event loop's next turn, for its refresh and for its frame; and what the
+// collector, at `collected` now, ran of it since the key. The line before
+// this one left out the key's work and the turn, so 534 ms of an act in
+// agents taking 595 was said by no span (Joel's journal, 2026-11-14 09:39).
+function actSaid(one, drawn, keyDone, collected) {
+    const ms = (from, to) => Math.round(to - from);
+    const took = ms(one.heard, drawn);
+    return `launcher: what ${one.key || "a key"} changed in ${one.name} took ${took} ms `
+        + `to its frame: its work took ${ms(one.heard, keyDone)} ms; ${one.by} told it `
+        + `${ms(one.heard, one.at)} ms after the key, its turn came ${ms(one.at, one.done)} ms `
+        + `later, its refresh began ${ms(one.done, one.begun)} ms after that and was drawn `
+        + `${ms(one.begun, drawn)} ms after it; the collector ran `
+        + `${ms(one.collected, collected)} ms of the ${took}`;
+}
+
 // The timer rang: the refresh it waited for is taken.
 function rang(pace) {
     return { at: pace.at, due: null, cost: pace.cost, costs: pace.costs };
