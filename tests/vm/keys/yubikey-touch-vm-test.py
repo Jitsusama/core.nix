@@ -199,7 +199,7 @@ def test_an_ssh_login_is_asked_for_the_password(seat: Seat, asking: str, tty: st
     machine.succeed(
         "su someone -c 'mkdir -p -m 0700 ~/.ssh'",
         "su someone -c 'test -e ~/.ssh/id_ed25519"
-        " || ssh-keygen -q -t ed25519 -N \"\" -f ~/.ssh/id_ed25519'",
+        ' || ssh-keygen -q -t ed25519 -N "" -f ~/.ssh/id_ed25519\'',
         "su someone -c 'cp ~/.ssh/id_ed25519.pub ~/.ssh/authorized_keys'",
     )
     seat.signs_in_at(tty)
