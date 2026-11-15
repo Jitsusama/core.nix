@@ -9,8 +9,8 @@
 //! zoxide saw each folder ([`visited`]), the machines ssh knows and how
 //! often it reached them ([`machines`]), inotify, which says when any of
 //! them changes ([`notify`]),
-//! and every open tab's row, Chrome's ([`tab_rows`]) and kitty's
-//! ([`kitty_tabs`]).
+//! every open tab's row, Chrome's ([`tab_rows`]) and kitty's
+//! ([`kitty_tabs`]), and every repository's, Code's ([`code_rows`]).
 //!
 //! A record names every figure its source has, as the source says it,
 //! with its unit in its key (`_s` seconds since 1970, `_ms`
@@ -19,6 +19,7 @@
 
 pub mod agent_panes;
 pub mod bookmark_rows;
+pub mod code_rows;
 pub mod command;
 pub mod entry;
 pub mod folder;

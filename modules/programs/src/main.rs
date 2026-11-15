@@ -37,7 +37,10 @@
 //! vocabulary WORDS, and with no WORDS none is (taken.rs). A program that
 //! tells its lists changed has them read again (told.rs). Chrome's and
 //! kitty's open tabs are rows of their own while watched (tabs.rs), and
-//! Chrome's bookmarks too, but for a page open now (bookmarks.rs). kitty's
+//! Chrome's bookmarks too, but for a page open now (bookmarks.rs). Every
+//! repository on the machine is a row of Code's, read from git's own files
+//! as a watch of them begins, the first waiting on its read and the rest
+//! answered from what's held as the disk is read again (code.rs). kitty's
 //! open list leaves out the panes the agents daemon names, and Programs counts
 //! their windows apart, as it tells (agents.rs). The tab in front of one
 //! of Chrome's windows is made as a get names niri's window (fronts.rs).
@@ -54,6 +57,7 @@
 
 mod agents;
 mod bookmarks;
+mod code;
 mod follow;
 mod fronts;
 mod heard;
@@ -147,6 +151,8 @@ struct Daemon {
     agents: agents::Agents,
     /// Chrome's bookmarks' rows as last told.
     bookmarks: Kept,
+    /// Code's rows, every repository's, as last told.
+    code: Kept,
 }
 
 struct Shared {
@@ -167,6 +173,8 @@ struct Shared {
     tab_words: tab_rows::Words,
     /// The windows daemon's socket, asked a window's title (fronts.rs).
     windows: PathBuf,
+    /// Where Code looks for repositories and how it words them.
+    code: code::Code,
 }
 
 /// What `programs --help` says, as its unit runs it.
@@ -253,6 +261,7 @@ fn serve(given: &[String]) -> Result<(), Failure> {
             tabs: Kept::default(),
             agents: agents::Agents::default(),
             bookmarks: Kept::default(),
+            code: Kept::default(),
         }),
         read: Condvar::new(),
         notify,
@@ -264,6 +273,7 @@ fn serve(given: &[String]) -> Result<(), Failure> {
         taken_words: taken::words(&vocabulary),
         tab_words: tab_rows::Words::read(&vocabulary),
         windows,
+        code: code::Code::new(&std::env::var("HOME").unwrap_or_default(), &vocabulary),
     });
     shared.served().fresh(Box::new({
         let shared = Arc::downgrade(&shared);
@@ -699,8 +709,15 @@ fn read_for(shared: &Arc<Shared>, wanted: &Wanted<'_>) {
         read_programs(shared, keys);
     }
     if names_rows(kinds, keys) {
-        let mut daemon = lock(&shared.daemon);
         let places = wanted.places.unwrap_or_default();
+        // Code's first read is the disk's, so it's made outside the lock.
+        if places
+            .iter()
+            .any(|place| place == programs::code_rows::PLACE)
+        {
+            code::begin(shared);
+        }
+        let mut daemon = lock(&shared.daemon);
         if places.is_empty() {
             rows::make(shared, &mut daemon);
         }
@@ -709,6 +726,7 @@ fn read_for(shared: &Arc<Shared>, wanted: &Wanted<'_>) {
                 "taken" => taken::make(shared, &mut daemon),
                 "tabs" => tabs::make(shared, &mut daemon),
                 "bookmarks" => bookmarks::make(shared, &mut daemon),
+                programs::code_rows::PLACE => {}
                 _ => rows::make(shared, &mut daemon),
             }
         }

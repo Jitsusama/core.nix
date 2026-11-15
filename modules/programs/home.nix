@@ -49,8 +49,10 @@ in
       # File by Name steps into one (src/repositories.rs), and the
       # file-preview it keeps for drawers that preview a file
       # (src/preview.rs), and the niri and kitten that go to one of
-      # kitty's tabs in Tabs and close it (src/tabs.rs).
+      # kitty's tabs in Tabs and close it (src/tabs.rs). Code's rows are
+      # read under the folders repos looks under (src/code.rs, modules/repos).
       Environment = [
+        "REPOS_ROOTS=${lib.concatStringsSep ":" (config.jitsusama.repos.roots or [ ])}"
         "PROGRAMS_GIT=${lib.getExe pkgs.git}"
         "PROGRAMS_PREVIEW=${lib.getExe (pkgs.callPackage ../open-with/file-preview.nix { })}"
         "PROGRAMS_NIRI=${lib.getExe (osConfig.programs.niri.package or pkgs.niri)}"
