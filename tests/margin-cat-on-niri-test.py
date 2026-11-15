@@ -26,7 +26,7 @@ import zlib
 from collections import Counter
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
 import launcher_on_niri
 import pytest
@@ -69,6 +69,11 @@ ON_THEIR_WAY = 3
 # How long niri may take to say its layers have changed.
 LAYERED = 10.0
 POLL = 0.05
+# Looks running at a sitting cat, each begun well after it last said anything, that find it
+# drawn otherwise than it said: a cat that sat still that long and is still wrong is a fault.
+JUDGING_LOOKS = 2
+# The longest a wait for the cat to sit and be judged may last, for a cat that never sits.
+SETTLES_BY = 90.0
 # How far each channel may be from the cat's hue for a pixel to be called near it, when
 # looking for a cat drawn somewhere other than where it said.
 NEAR = 24
@@ -315,6 +320,19 @@ def test_the_cat_takes_no_keys_on_a_layer_of_its_own(shell: Shell) -> None:
 def counting(shell: Shell) -> str:
     """Give the command that counts the shell's frames by window (Frames.qml)."""
     return f"qs -p {shell.folder} ipc call frames"
+
+
+def sitting(at: Json | None, scale: float) -> TypeGuard[Json]:
+    """Say whether the cat's report has it sitting, sized for the scale, so its box is known.
+
+    Its first report at a new scale can still be sized for the old one, and a walking cat's
+    report runs ahead of the screen, so neither says what a look should find.
+    """
+    return (
+        at is not None
+        and at.get("walk") is None
+        and round(at["size"] * scale) == at["cell"] * at["cells"]
+    )
 
 
 def cat_frames(shell: Shell) -> tuple[int, Json]:
@@ -591,11 +609,18 @@ def test_the_cat_is_drawn_in_whole_pixels(shell: Shell, scale: float) -> None:
     try:
         # niri lays the columns out again at the new scale a moment after it takes it, so the
         # cat's first report there may still be over the old ones: each try takes its newest.
+        # It may walk to a seat there, and on a loaded builder a look can take longer than any
+        # fixed wait, so the wait goes by the cat rather than the clock: only a look begun
+        # LANDS after its newest report, with it sitting and saying nothing new meanwhile,
+        # judges it (FEH1HE and Y2YBTS's gates, 2026-11-14: one look in a 10 s wait, taken
+        # before the cat was drawn, and a look taking 32 s while it walked).
         at: Json | None = None
         drawn, wanted, colours = 0, -1, Counter[str]()
-        deadline = time.monotonic() + LAYERED
-        while drawn != wanted and time.monotonic() < deadline:
+        heard_at, judged = began, 0
+        while drawn != wanted and judged < JUDGING_LOOKS and time.monotonic() - began < SETTLES_BY:
             said, _ = shell.said_since(since)
+            if len(said) > seen:
+                heard_at = time.monotonic()
             heard += [
                 f"{time.monotonic() - began:.1f}s {report}"
                 for report in said[seen:]
@@ -604,11 +629,17 @@ def test_the_cat_is_drawn_in_whole_pixels(shell: Shell, scale: float) -> None:
             seen = len(said)
             sits = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)]
             at = sits[-1] if sits else None
-            if at is not None and round(at["size"] * scale) == at["cell"] * at["cells"]:
+            looked = time.monotonic()
+            if sitting(at, scale):
                 wanted = at["lit"] * at["cell"] ** 2
                 colours = boxed(shell, at, scale)
                 drawn = inked(colours, at["hue"])
-                heard.append(f"{time.monotonic() - began:.1f}s poll: {drawn} in its box")
+                still = len(shell.said_since(since)[0]) == seen and looked - heard_at >= LANDS
+                judged = judged + 1 if still else 0
+                heard.append(
+                    f"{time.monotonic() - began:.1f}s look from {looked - began:.1f}s: "
+                    f"{drawn} in its box, {'judged' if still else 'not judged'}"
+                )
             if drawn != wanted:
                 time.sleep(POLL)
         assert at is not None, f"the cat said nowhere at {scale}"
