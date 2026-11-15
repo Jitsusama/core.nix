@@ -22,6 +22,7 @@ use zlink::introspect::{CustomType, Type};
 use zlink::tokio::unix::Listener;
 use zlink::{Reply, introspect, service};
 
+use crate::calling::Calling;
 use crate::detail::{Best, Count, Detail, Joined, Point, Station, Way};
 use crate::radio::{Band, Load, Management, Protection};
 use crate::state::{Card, Described, Nearby, Reach, Saved, Security, State, Trouble};
@@ -35,6 +36,8 @@ pub struct Wifi {
     /// How many are asking for a network in detail as it changes, while
     /// which the cards on networks read their links.
     pub watching: watch::Sender<u32>,
+    /// Whether Joel's on a call, as his session says on the rows socket.
+    pub calling: watch::Sender<Calling>,
 }
 
 /// A change to the saved networks, which wifid's main loop makes, since
@@ -557,6 +560,7 @@ mod tests {
             asked,
             asks,
             watching: watch::Sender::new(0),
+            calling: watch::Sender::default(),
         };
         (wifi, state, checks, taken)
     }

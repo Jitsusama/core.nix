@@ -27,4 +27,13 @@ onLinux {
   wifid-passes-clippy = passesClippy "wifid-passes-clippy" (
     pkgs.callPackage ./sign-in/package.nix { }
   );
+
+  # What tells wifid of calls has its tests run as it builds: it says
+  # nothing is on at its start, then only a change or a call still on a
+  # minute later, and wifid's rows socket hears exactly a calling act.
+  wifid-calls-tells-wifid = pkgs.callPackage ./calls/package.nix { };
+  # clippy finds nothing in it, its tests included.
+  wifid-calls-passes-clippy = passesClippy "wifid-calls-passes-clippy" (
+    pkgs.callPackage ./calls/package.nix { }
+  );
 }

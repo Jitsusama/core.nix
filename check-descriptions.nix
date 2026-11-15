@@ -4741,8 +4741,8 @@
   '';
   vm-wifi-joins = ''
     wifid joins the networks it's given, off the frequencies Nix avoids on each, finds sign-ins
-    and sessions ending, measures how well the access point it's on carries, tells the shell what
-    it hears in detail, chooses a network the launcher saved first, and trusts one when asked
+    and sessions ending, measures how well the access point it's on carries, hears an account say
+    a call is on and names who said it, tells the shell what it hears in detail, chooses a network the launcher saved first, and trusts one when asked
   '';
   vm-wifi-joins-when-asked = ''
     the shell has wifid sign in, join with a password or an account, leave, save and switch the
@@ -4808,6 +4808,13 @@
     something in it held, or a find from the root showing a row of its, the launcher open, or a
     terminal's show walked into it; never open on another place, at home or on another's find,
     and at once on stepping in
+  '';
+  wifid-calls-passes-clippy = ''
+    clippy finds nothing in what tells wifid of calls, or its tests
+  '';
+  wifid-calls-tells-wifid = ''
+    what tells wifid of calls says nothing is on at its start, then a change or a call still on a
+    minute later, as exactly a calling act wifid's rows socket takes, and says a refusal as it is
   '';
   wifid-passes-clippy = ''
     clippy finds nothing in wifid, its sign-in window or their tests
