@@ -175,7 +175,8 @@ and passed every run with a mouse.
 - **A keyboard walk.** Tab from the top: the skip link shows, designed; every
   control is reached once, in reading order, and shows the one ring; every
   scroll container is reachable; nothing traps focus; Escape closes only a
-  popup and returns focus, never a drawer or work. On an interface, j, k, /,
+  popup or a sheet of evidence, with focus on what opened it or was chosen,
+  never a drawer holding work or a field's words. On an interface, j, k, /,
   :, ?, Space ? and Ctrl+K (Cmd+K on a Mac) do what the skill says on every
   page, and single letters do nothing in a text field. On every page, j, k, g
   and G step through its parts, ? opens and closes the Keys list, Escape
