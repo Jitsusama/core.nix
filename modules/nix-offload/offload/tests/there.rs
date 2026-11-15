@@ -3264,6 +3264,40 @@ fn the_same_run_twice_in_one_tree_is_evaluated_once() {
 }
 
 #[test]
+fn a_run_that_never_asks_leaves_its_twin_be_and_ends_as_not_taken() {
+    // changed-checks' keep of main's head sends --never-ask for an answer
+    // at once, and backs off from 75 until it looks again.
+    let changed = Changed::new();
+    fs::remove_file(changed.offload.join("store")).unwrap();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = answering.local_addr().unwrap();
+    fs::create_dir_all(changed.folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        changed.folder.path().join("nix-offload/evaluators"),
+        format!("{address} far o\n"),
+    )
+    .unwrap();
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("evaluates-for"), "3").unwrap();
+    let (first, second) = std::thread::scope(|scope| {
+        let first = scope.spawn(|| changed.run(&["--name-only"]).0);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        let second = changed.run_after(&["--never-ask"], &["--name-only"]).0;
+        (first.join().unwrap(), second)
+    });
+    assert_eq!(first.status.code(), Some(0), "{first:?}");
+    assert_eq!(
+        second.status.code(),
+        Some(75),
+        "a run told to wait for nothing didn't end as not taken: {second:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&second.stderr).contains("stop that one to go on"),
+        "a run leaving its twin be didn't say how to go on: {second:?}"
+    );
+}
+
+#[test]
 fn what_changed_checks_keeps_of_a_run_there_comes_home_once_and_never_fails_it() {
     // A builder goes when its lend ends, taking changed-checks' own record
     // of where each run's time went, which on 12 November could be read
