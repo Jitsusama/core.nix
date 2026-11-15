@@ -104,11 +104,17 @@ fn walks(wanted: &[(Named, i64)], known: &BTreeSet<Named>) -> BTreeMap<String, i
     since
 }
 
-/// The changes of `wanted` merged, `known` among them: each repository
-/// still wanting one has its main's first-parent subjects read once, from
-/// its `origin/main` where it has one, else its `main`.
-fn merged(wanted: &[(Named, i64)], repos: &Checkouts, known: &BTreeSet<Named>) -> BTreeSet<Named> {
+/// The changes of `wanted` merged, `known` among them, and the repositories
+/// whose main couldn't be read: each repository still wanting one has its
+/// main's first-parent subjects read once, from its `origin/main` where it
+/// has one, else its `main`.
+fn merged(
+    wanted: &[(Named, i64)],
+    repos: &Checkouts,
+    known: &BTreeSet<Named>,
+) -> (BTreeSet<Named>, BTreeSet<String>) {
     let mut found = known.clone();
+    let mut unread = BTreeSet::new();
     for (repo, since) in walks(wanted, known) {
         let Some(path) = repos.get(&repo) else {
             continue;
@@ -141,6 +147,7 @@ fn merged(wanted: &[(Named, i64)], repos: &Checkouts, known: &BTreeSet<Named>) -
         // nothing told which step failed.
         .unwrap_or_else(|error| {
             eprintln!("cadence: couldn't read {repo}'s {main} at {path}: {error}");
+            unread.insert(repo.clone());
             String::new()
         });
         let numbers = merged_numbers(&subjects);
@@ -151,7 +158,7 @@ fn merged(wanted: &[(Named, i64)], repos: &Checkouts, known: &BTreeSet<Named>) -
                 .map(|(change, _)| change.clone()),
         );
     }
-    found
+    (found, unread)
 }
 
 /// The misses in `text`, each closed once its check merged on a main
@@ -173,38 +180,57 @@ pub fn checked(text: &str, folder: &Path, checkouts: &[String]) -> io::Result<Me
         .ok()
         .and_then(|kept| serde_json::from_str(&kept).ok())
         .unwrap_or_default();
-    let found = merged(&named_in(text, &repos), &repos, &known);
+    let (found, unread) = merged(&named_in(text, &repos), &repos, &known);
     if found != known {
         write_whole(&kept_at, &serde_json::to_string(&found)?)?;
     }
-    Ok(misses(text, &repos, &found))
+    Ok(misses(text, &repos, &found, &unread))
 }
 
 /// The misses Joel found himself, from the orchestrator's `misses.jsonl`:
 /// one stays open until its owner names the check that would have caught
 /// it and that check has merged, as `merged` holds them. A check naming no
 /// change cadence can see merge, such as a memory, leaves it open, since
-/// its words alone would tell Joel it's fixed before it is.
-fn misses(text: &str, repos: &Checkouts, merged: &BTreeSet<Named>) -> Measure {
-    let closed = |miss: &Value| {
-        let changes = miss["check"]
+/// its words alone would tell Joel it's fixed before it is. One whose check
+/// is in an `unread` main says so, since the hour, not its owner, is then
+/// what keeps it open: at 12:10 on 15 November the card asked the
+/// orchestrator to steer a miss whose check had merged in a main stock git
+/// couldn't open.
+fn misses(
+    text: &str,
+    repos: &Checkouts,
+    merged: &BTreeSet<Named>,
+    unread: &BTreeSet<String>,
+) -> Measure {
+    let changes = |miss: &Value| {
+        miss["check"]
             .as_str()
             .map(|check| named(check, repos))
-            .unwrap_or_default();
-        !changes.is_empty() && changes.iter().all(|change| merged.contains(change))
+            .unwrap_or_default()
     };
-    let open: Vec<(String, String)> = lines(text)
-        .filter(|miss| !closed(miss))
-        .map(|miss| {
+    let open: Vec<(String, String, String)> = lines(text)
+        .filter_map(|miss| {
+            let changes = changes(&miss);
+            if !changes.is_empty() && changes.iter().all(|change| merged.contains(change)) {
+                return None;
+            }
             let what = miss["what"]
                 .as_str()
                 .or_else(|| miss["words"].as_str())
                 .unwrap_or_default()
                 .to_owned();
-            (
-                what,
-                first_owner(miss["owner"].as_str().unwrap_or_default()),
-            )
+            let owner = first_owner(miss["owner"].as_str().unwrap_or_default());
+            let note = changes
+                .iter()
+                .find(|change| unread.contains(&change.repo))
+                .map(|change| {
+                    format!(
+                        ", though cadence couldn't read {}'s main to see its check",
+                        change.repo
+                    )
+                })
+                .unwrap_or_default();
+            Some((what, owner, note))
         })
         .collect();
     Measure {
@@ -214,10 +240,10 @@ fn misses(text: &str, repos: &Checkouts, merged: &BTreeSet<Named>) -> Measure {
         now: count(open.len()),
         target: Some(0.0),
         // The oldest open miss's owner moves it first.
-        owner: open.first().map(|(_, o)| o.clone()).unwrap_or_default(),
+        owner: open.first().map(|(_, o, _)| o.clone()).unwrap_or_default(),
         behind: open
             .iter()
-            .map(|(what, owner)| format!("{what} · {owner}"))
+            .map(|(what, owner, note)| format!("{what} · {owner}{note}"))
             .collect(),
     }
 }
@@ -258,7 +284,7 @@ mod tests {
             "\n",
         );
         let merged = BTreeSet::from([change("core", 4500)]);
-        let m = misses(text, &repos(), &merged);
+        let m = misses(text, &repos(), &merged, &BTreeSet::new());
         assert!((m.now - 1.0).abs() < 0.5, "one open, got {}", m.now);
         assert_eq!(m.owner, "KNURBN", "its first owner moves it");
         assert_eq!(
@@ -283,13 +309,18 @@ mod tests {
             ],
             "a check's changes in the repositories cadence reads weren't each found"
         );
-        let open = misses(&two, &repos(), &BTreeSet::new());
+        let open = misses(&two, &repos(), &BTreeSet::new(), &BTreeSet::new());
         assert_eq!(
             open.behind,
             ["the cat waits · XY9H5C", "the cat waits · XY9H5C"],
             "a miss closed on a check named but not merged"
         );
-        let one = misses(&two, &repos(), &BTreeSet::from([change("harness", 1592)]));
+        let one = misses(
+            &two,
+            &repos(),
+            &BTreeSet::from([change("harness", 1592)]),
+            &BTreeSet::new(),
+        );
         assert!(
             (one.now - 1.0).abs() < 0.5,
             "a merged check didn't close its miss, or an unmerged one did: {}",
@@ -309,12 +340,28 @@ mod tests {
         unread.remove("world");
         let merged = BTreeSet::from([change("world", 2_450_001)]);
         assert!(
-            (misses(&world, &unread, &merged).now - 1.0).abs() < 0.5,
+            (misses(&world, &unread, &merged, &BTreeSet::new()).now - 1.0).abs() < 0.5,
             "a check in a repository cadence can't read closed its miss"
         );
         assert!(
-            misses(&world, &repos(), &merged).now < 0.5,
+            misses(&world, &repos(), &merged, &BTreeSet::new()).now < 0.5,
             "a merged check in a named checkout didn't close its miss"
+        );
+    }
+
+    #[test]
+    fn a_miss_whose_main_went_unread_says_so_rather_than_wait_on_its_owner() {
+        let world = miss("a-backup-that-works-again-says-so (World #2450001, live switch949)");
+        let open = misses(
+            &world,
+            &repos(),
+            &BTreeSet::new(),
+            &BTreeSet::from(["world".to_owned()]),
+        );
+        assert_eq!(
+            open.behind,
+            ["the cat waits · XY9H5C, though cadence couldn't read world's main to see its check"],
+            "an open miss blamed its owner for a main the hour itself couldn't read"
         );
     }
 
