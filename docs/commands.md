@@ -524,6 +524,12 @@ first, a build refuses it and prints the real one. It holds its commands
 to this page with `core.lib.commandsAgree`, as core does, given the
 commands it builds on the kit and a waiting list of its own.
 
+Inside core, the two crates whose builds the initrd holds, hibernate-unlock
+and console-font, pin the kit the same way in their `package.nix`, so a
+change to the kit doesn't rebuild the initrd and need the boot tests.
+Their `Cargo.toml` keeps the path, so cargo in the dev shell still builds
+them against the working copy's kit.
+
 ## When a Command Doesn't Agree Yet
 
 The `commands-agree` check ([`tests/rules/commands-agree.py`][check])

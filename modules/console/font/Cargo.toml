@@ -10,4 +10,6 @@ publish = false
 
 [dependencies]
 fontdue = "0.9"
+# The shape every command of ours takes (docs/commands.md). Its Nix build
+# puts the kit pinned to a commit at this path (package.nix says why).
 terminal-kit = { path = "../../terminal-kit" }
