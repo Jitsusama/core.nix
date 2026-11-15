@@ -1369,6 +1369,56 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     }
 }
 
+/// A run said as going and holding its work alone, both let go when this
+/// is dropped (`running.rs`).
+struct Going {
+    _said: Option<running::Running>,
+    _alone: Option<running::Held>,
+}
+
+/// This run, said as going from `started`, so a merge sharing its files
+/// waits for it, and holding alone the work that the tree at `folder`'s
+/// commit `at` and `arguments` name; or nothing once it waited for a twin
+/// doing that work to end.
+fn going_alone(
+    at: Option<&passed::At>,
+    folder: &Path,
+    arguments: &[String],
+    started: u64,
+) -> Option<Going> {
+    let Some(at) = at else {
+        return Some(Going {
+            _said: None,
+            _alone: None,
+        });
+    };
+    let twin = running::Twin::new(&at.commit, folder, arguments);
+    let me = std::process::id();
+    let alone = match running::alone(&state(), me, &twin, now) {
+        running::Alone::Held(held) => Some(held),
+        running::Alone::Waited => return None,
+        running::Alone::Unheld => None,
+    };
+    Some(Going {
+        _said: running::Running::start(&state(), me, &twin, started),
+        _alone: alone,
+    })
+}
+
+/// The checks a pass at `at` already told of for `system`, by their names
+/// under it, so a run there need not build them again.
+fn told(passed: &passed::Passed, at: Option<&passed::At>, system: Option<&str>) -> Vec<String> {
+    let (Some(at), Some(system)) = (at, system) else {
+        return Vec::new();
+    };
+    let under = format!("checks.{system}.");
+    passed
+        .checks(at)
+        .iter()
+        .filter_map(|check| check.strip_prefix(&under).map(str::to_owned))
+        .collect()
+}
+
 /// `there --changed`: changed-checks run for the tree here on the lent
 /// builder, else a warm VM builder, else an evaluator with its builds
 /// sent on, else a builder waited for as `waiting` says (`changed.rs` says why). It exits with the
@@ -1435,15 +1485,14 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         return ExitCode::SUCCESS;
     }
     let wanted = changed::wanted(arguments);
-    let checks_of = |system: &str| format!("checks.{system}.");
-    let told: Vec<String> = match (&at, &wanted.system) {
-        (Some(at), Some(system)) => passed
-            .checks(at)
-            .iter()
-            .filter_map(|check| check.strip_prefix(&checks_of(system)).map(str::to_owned))
-            .collect(),
-        _ => Vec::new(),
+    // The same run already going in this tree ends in what this one would
+    // find, so this one waits for it and looks again at what passed.
+    let started = now();
+    let Some(going) = going_alone(at.as_ref(), &folder, arguments, started) else {
+        forget();
+        return changed_there(given, waiting, replays);
     };
+    let told = told(&passed, at.as_ref(), wanted.system.as_deref());
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     // Decided only while the VM lender ran, a run sent as a switch
@@ -1458,12 +1507,6 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         moves: false,
         own,
     };
-    // Said while it runs, so a merge sharing its files waits for it
-    // (`running.rs`).
-    let started = now();
-    let said_running = at.as_ref().and_then(|at| {
-        running::Running::start(&state(), std::process::id(), &at.commit, &folder, started)
-    });
     let finished = sent.somewhere(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
     forget();
     let Some(finished) = finished else {
@@ -1484,7 +1527,8 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         kept_passing(&passed, at, arguments, printed, started);
     }
     if runs_again(replayed.as_deref(), finished.status) {
-        drop(said_running); // The replay ended, so it goes unsaid first.
+        // The replay ended, so it goes unsaid and lets its work go first.
+        drop(going);
         return changed_there(given, waiting, false);
     }
     ExitCode::from(u8::try_from(finished.status).unwrap_or(1))
