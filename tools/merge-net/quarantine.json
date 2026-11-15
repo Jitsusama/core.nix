@@ -385,17 +385,6 @@
     "test": "vm-desktop-moves-keep-their-window"
   },
   {
-    "at": 1794624253,
-    "commit": "467ec1a20da37f9e7ef094c4b9b7c72d9058c1fe",
-    "due": "2026-11-16",
-    "owner_pr": 4173,
-    "reason": "failed, then passed, at 467ec1a20da3",
-    "subtests": [
-      "test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest"
-    ],
-    "test": "the-margin-cat-follows-the-keys-on-niri"
-  },
-  {
     "at": 1794624729,
     "commit": "467ec1a20da37f9e7ef094c4b9b7c72d9058c1fe",
     "due": "2026-11-16",
@@ -528,17 +517,6 @@
       "test_swipes_on_the_touchscreen_move_through_the_workspaces_not_the_window"
     ],
     "test": "vm-desktop-starts-clean"
-  },
-  {
-    "at": 1794721740,
-    "commit": "762f65998402bc47b6b9fa76c511e8d787a4a7e4",
-    "due": "2026-11-17",
-    "owner_pr": 4528,
-    "reason": "failed under load at bea86990d and at 762f65998, in changes that don't reach a move between workspaces",
-    "subtests": [
-      "test_the_cat_holds_its_ground_through_a_slide_between_workspaces"
-    ],
-    "test": "the-margin-cat-follows-the-keys-on-niri"
   },
   {
     "at": 1794723405,
