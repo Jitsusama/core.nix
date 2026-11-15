@@ -538,6 +538,18 @@ QtObject {
         expect("told of the slide late, it holds only what's left of it",
             [Paths.frame(late, 180).beat === "rides", Paths.frame(late, 182).beat === "rides",
                 Paths.frame(late, down.ends - 50).done], [true, false, true]);
+        // On a screen drawing slowly, told of the slide later than it holds,
+        // a move yet to take a step is still where it began: it finds its way
+        // again as niri says the new columns, never cut short before it's
+        // moved at all (Y2YBTS, 2026-11-14, a0cd2ad5: a builder drawing every
+        // 112 ms, 249 ms behind a 231 ms hold).
+        const slow = Paths.moves(seat(100), seat(900),
+            world({ way: 1, frame: 112, ahead: MarginCat.behind(112, "slide") }));
+        expect("a move told of its slide too late to hold, yet to step, finds its way again",
+            [slow.ahead > held.ends, Paths.replans(slow, 0, false)], [true, true]);
+        expect("stepped past its hold, it's cut short; still holding, it isn't",
+            [Paths.replans(slow, 0, true), Paths.replans(down, 100, true),
+                Paths.replans(down, 240, true)], [false, true, false]);
         const still = frames => frames.every((at, i) => i === 0
             || Math.hypot(at.x - frames[i - 1].x, at.y - frames[i - 1].y) <= 4);
         for (const [way, name] of [[1, "down"], [-1, "up"]]) {
