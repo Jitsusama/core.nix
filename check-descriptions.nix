@@ -2094,6 +2094,12 @@
     commits waits for the host to end or continue it, once, across recovery; words the host's agent
     queued show as pending, never queued on the agent again, until a dequeue clears them
   '';
+  pi-hosted-builds-boundary-context-when-read = ''
+    pi built with the host's patches, applied exactly, builds a turn's boundary context only when a
+    handler reads it, once a handler and afresh for the next, and builds entries a handler returns at
+    once to check them, dropping ones that don't fit as before, where unpatched it built before the
+    handlers and after each, read or not
+  '';
   pi-hosted-loads-where-a-link-points = ''
     pi built with the host's patches, applied exactly, loads a linked extension through the file
     its link points at now, so once the link moves, a reload loads the new copy and its own helpers,
