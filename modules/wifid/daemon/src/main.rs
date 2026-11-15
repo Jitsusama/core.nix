@@ -24,6 +24,7 @@
 mod acts;
 mod address;
 mod air;
+mod calling;
 mod card;
 mod check;
 mod detail;
@@ -204,9 +205,11 @@ async fn serve(
     let changes = drained(owners.receive_name_owner_changed().await?);
     let supplicant = SupplicantProxy::new(&bus).await?;
     let state = watch::Sender::new(State::default());
+    // Whether Joel's on a call, as his session tells the rows socket.
+    let calling = watch::Sender::<calling::Calling>::default();
     // How well each access point carries, measured from where the machine
     // is, for choosing between them (measure.rs).
-    tokio::spawn(measure::follow(state.subscribe()));
+    tokio::spawn(measure::follow(state.subscribe(), calling.subscribe()));
     let avoided = avoided();
     let wifid = Wifid {
         bus: &bus,
@@ -267,6 +270,7 @@ async fn serve(
         asked: networks.asked.clone(),
         asks,
         watching: watching.clone(),
+        calling,
     };
     // Every card there is now was given wpa_supplicant above.
     networks.follow_all(all_links(&bus).await);
@@ -407,7 +411,12 @@ async fn follow(
 /// it answers nobody.
 async fn answer(wifi: Wifi) -> Result<(), Box<dyn Error>> {
     let service::Handed { varlink, rows } = service::handed()?;
-    let face = Face::new(wifi.state.clone(), wifi.asks.clone(), wifi.watching.clone());
+    let face = Face::new(
+        wifi.state.clone(),
+        wifi.asks.clone(),
+        wifi.watching.clone(),
+        wifi.calling.clone(),
+    );
     let rows = async move {
         let Some(listener) = rows else {
             eprintln!("<4>systemd passed no rows socket, so the launcher draws no Wi-Fi");

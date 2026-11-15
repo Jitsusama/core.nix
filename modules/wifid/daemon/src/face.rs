@@ -45,6 +45,7 @@ use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
 use crate::acts;
+use crate::calling::Calling;
 use ready_rows::kept::Kept;
 use ready_rows::numbers::Numbers;
 
@@ -191,6 +192,8 @@ pub struct Face {
     /// How many look at a network, which the main loop reads each card's
     /// link for (service.rs).
     watching: watch::Sender<u32>,
+    /// Whether Joel's on a call, as his session says (calling.rs).
+    calling: watch::Sender<Calling>,
 }
 
 impl Face {
@@ -198,8 +201,9 @@ impl Face {
         state: watch::Receiver<State>,
         asks: mpsc::Sender<Ask>,
         watching: watch::Sender<u32>,
+        calling: watch::Sender<Calling>,
     ) -> Arc<Face> {
-        Face::within(state, PathBuf::from(STORE), asks, watching)
+        Face::within(state, PathBuf::from(STORE), asks, watching, calling)
     }
 
     fn within(
@@ -207,6 +211,7 @@ impl Face {
         store: PathBuf,
         asks: mpsc::Sender<Ask>,
         watching: watch::Sender<u32>,
+        calling: watch::Sender<Calling>,
     ) -> Arc<Face> {
         Arc::new(Face {
             state,
@@ -214,6 +219,7 @@ impl Face {
             vocabularies: Mutex::new(HashMap::new()),
             asks,
             watching,
+            calling,
         })
     }
 
@@ -595,7 +601,7 @@ mod tests {
 
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
     use tokio::net::unix::OwnedReadHalf;
-    use tokio::time::timeout;
+    use tokio::time::{Instant, timeout};
 
     use super::*;
     use crate::link::Link;
@@ -681,7 +687,7 @@ mod tests {
         let watching = watch::Sender::new(0);
         let looked = watching.subscribe();
         (
-            Face::within(state, root, asks, watching),
+            Face::within(state, root, asks, watching, watch::Sender::default()),
             sending,
             store,
             words,
@@ -712,7 +718,13 @@ mod tests {
     async fn an_act_on_the_socket_is_done_by_the_main_loop() {
         let (_state, state) = watch::channel(State::default());
         let (asks, mut taken) = mpsc::channel(1);
-        let face = Face::within(state, PathBuf::from(STORE), asks, watch::Sender::new(0));
+        let face = Face::within(
+            state,
+            PathBuf::from(STORE),
+            asks,
+            watch::Sender::new(0),
+            watch::Sender::default(),
+        );
         let mut client = connect(&face);
         client
             .ask(json!({"id": 9, "ask": "act", "act": "scan"}))
@@ -722,6 +734,35 @@ mod tests {
         };
         done.send(Ok(())).expect("answered");
         assert_eq!(client.heard().await, json!({"id": 9, "done": true}));
+    }
+
+    #[tokio::test]
+    async fn a_call_said_on_the_socket_is_on_and_one_misshapen_changes_nothing() {
+        let (_state, state) = watch::channel(State::default());
+        let (asks, _) = mpsc::channel(1);
+        let calling = watch::Sender::default();
+        let heard = calling.subscribe();
+        let face = Face::within(
+            state,
+            PathBuf::from(STORE),
+            asks,
+            watch::Sender::new(0),
+            calling,
+        );
+        let mut client = connect(&face);
+        let misshapen = json!({"id": 1, "ask": "act", "act": "calling", "on": true, "x": 1});
+        client.ask(misshapen).await;
+        let refused = client.heard().await;
+        assert_eq!(refused["error"]["code"], "bad-ask", "{refused}");
+        assert!(
+            !heard.borrow().on(Instant::now()),
+            "nothing misshapen says a call"
+        );
+        client
+            .ask(json!({"id": 2, "ask": "act", "act": "calling", "on": true}))
+            .await;
+        assert_eq!(client.heard().await, json!({"id": 2, "done": true}));
+        assert!(heard.borrow().on(Instant::now()), "the call is on");
     }
 
     #[tokio::test]

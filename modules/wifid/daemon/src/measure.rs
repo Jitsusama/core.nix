@@ -15,6 +15,7 @@ use std::collections::{HashMap, VecDeque};
 use tokio::sync::watch;
 use tokio::time::{Duration, Instant, MissedTickBehavior, interval};
 
+use crate::calling::Calling;
 use crate::echo::Echoer;
 use crate::nl80211::{Nl80211, Station};
 use crate::state::{Joined, State};
@@ -120,8 +121,8 @@ const EACH: Duration = Duration::from_secs(1);
 const TOLD: Duration = Duration::from_secs(60);
 
 /// Measures the access point each card is on, for as long as wifid runs,
-/// and logs each one's figures every minute.
-pub async fn follow(state: watch::Receiver<State>) {
+/// and logs each one's figures every minute, saying when a call was on.
+pub async fn follow(state: watch::Receiver<State>, calling: watch::Receiver<Calling>) {
     let mut echoers: HashMap<String, Echoer> = HashMap::new();
     let mut kernel: Option<Nl80211> = None;
     let mut measures = Measures::default();
@@ -141,9 +142,10 @@ pub async fn follow(state: watch::Receiver<State>) {
             }
             _ = told.tick() => {
                 let (now, joined) = (Instant::now(), state.borrow().joined());
+                let call = calling.borrow().on(now);
                 for on in joined {
                     if let Some(measured) = measures.of(&on.point, now) {
-                        println!("<6>{}", said(&on, &measured));
+                        println!("<6>{}", said(&on, &measured, call));
                     }
                 }
             }
@@ -207,8 +209,9 @@ fn counted(station: &Station) -> Option<Counts> {
     })
 }
 
-/// An access point's figures, as logged.
-fn said(on: &Joined, measured: &Measured) -> String {
+/// An access point's figures, as logged, and whether a call was on.
+fn said(on: &Joined, measured: &Measured, call: bool) -> String {
+    let _ = call;
     let ms = |time: Option<Duration>| {
         time.map_or("none".into(), |time| {
             format!("{:.1} ms", time.as_secs_f64() * 1000.0)
@@ -392,10 +395,14 @@ mod tests {
         };
 
         assert_eq!(
-            said(&on, &measured),
+            said(&on, &measured, false),
             "wlan2 on 6c:ae:f6:c1:84:26: gateway 5.1 ms at p50, 15.0 ms at p95, 0.0% of 120 \
              echoes lost; 1.25 in 100 frames sent again, 0.00 lost; signal -47 dBm",
             "one line says all of it"
+        );
+        assert!(
+            said(&on, &measured, true).ends_with("signal -47 dBm, during a call"),
+            "a call on is said, since the card stays put for it"
         );
     }
 
