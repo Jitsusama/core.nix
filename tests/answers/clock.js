@@ -3,7 +3,6 @@
 .import "common.js" as Common
 .import "../Moment.js" as Moment
 .import "../Keeping.js" as Keeping
-.import "../Warmth.js" as Warmth
 .import "../Here.js" as Here
 
 function run(failures) {
@@ -191,22 +190,6 @@ function run(failures) {
         ["a server answering with no sample yet still says where it stands", Keeping.note({
             standing: "combined", lastSample: null, reach: 1 },
             { "standing:combined": "agrees" }), "agrees"],
-        // The screen's warmth, as the backlight daemon says it, which the
-        // : line's :set nightlight and :set warmth read; its rows are the
-        // windows daemon's (modules/windows, light/warmth.rs).
-        ["nothing warming the screen", Warmth.of([]), null],
-        ["a daemon before the night light", quoted(Warmth.of([{ kind: "warmth",
-            kelvin: 6500, follows_the_room: true }])), quoted({ kelvin: 6500,
-            followsTheRoom: true,
-            seesColour: false, roomWhite: null, nightLight: false, nightWhite: null,
-            sunset: null, sunrise: null })],
-        ["the night light, as the machine daemon serves it", quoted(Warmth.of([
-            { kind: "backlight", device: "panel" }, { kind: "warmth", kelvin: 3400,
-                follows_the_room: false, sees_colour: true, room_white_kelvin: 5100,
-                night_light: true, night_white_kelvin: 3400, sunset_ms: 1000,
-                sunrise_ms: 2000 }])), quoted({ kelvin: 3400, followsTheRoom: false,
-            seesColour: true, roomWhite: 5100, nightLight: true, nightWhite: 3400,
-            sunset: 1000, sunrise: 2000 })],
         // What a server is asked as, how its exchange went, its packets
         // saying only what differs, its score, its delay's asymmetry,
         // and what the servers' activity says beyond their count, a

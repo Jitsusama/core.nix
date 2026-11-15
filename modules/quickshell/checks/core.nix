@@ -572,7 +572,6 @@ in
       cp ${../launcher/Moment.js} Moment.js
       cp ${../launcher/NowDrawers.js} NowDrawers.js
       cp ${../launcher/Keeping.js} Keeping.js
-      cp ${../launcher/Warmth.js} Warmth.js
       cp ${../launcher/Here.js} Here.js
       cp ${../launcher/Colours.js} Colours.js
       cp ${../launcher/Asking.js} Asking.js

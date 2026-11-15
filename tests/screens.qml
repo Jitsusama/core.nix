@@ -128,6 +128,22 @@ QtObject {
         check(failures, 'and leaves the level\'s own ask as it was',
             rows[1].acts[0].ask.share, 100);
 
+        // The : line's :set nightlight and :set warmth ask what the
+        // Warmth's served switches ask, only to turn one the other way,
+        // and are offered only while it's served.
+        const night = on => ({ key: "row:displays:switch:night-light", held: { on: on },
+            acts: [{ key: "displays:night-light",
+                ask: { ask: "light", do: "night-light", on: !on } }] });
+        check(failures, 'a switch served says how it stands',
+            Screens.switchOf([rows[0], night(true)], "displays:night-light")?.on, true);
+        check(failures, 'and turned the other way asks what its Return asks',
+            Screens.switchOf([night(true)], "displays:night-light").asked(false),
+            { ask: "light", do: "night-light", on: false });
+        check(failures, 'but turned the way it stands asks nothing',
+            Screens.switchOf([night(false)], "displays:night-light").asked(false), null);
+        check(failures, 'and one not served is no switch',
+            Screens.switchOf(rows, "displays:follow-room"), null);
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
