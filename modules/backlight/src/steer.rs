@@ -176,6 +176,21 @@ mod tests {
     }
 
     #[test]
+    fn a_shadow_held_nine_seconds_changes_nothing() {
+        // Joel leaning in over the lid shades the sensor for longer than a
+        // hand passing: on 13 and 14 November ten of twelve such shadows
+        // lasted four to nine seconds, and each dimmed the screen by a
+        // third or more before the light came back.
+        let start = Instant::now();
+        let mut steer = Steer::default();
+        steer.heard(0.2, 0.5, start);
+        let back = start + Duration::from_secs(9);
+        assert_eq!(steer.due(back), None, "the screen followed the shadow");
+        steer.heard(0.5, 0.5, back);
+        assert_eq!(steer.next(), None, "a move still waited once the light came back");
+    }
+
+    #[test]
     fn light_that_keeps_changing_the_same_way_is_still_followed_in_time() {
         let start = Instant::now();
         let mut steer = Steer::default();
