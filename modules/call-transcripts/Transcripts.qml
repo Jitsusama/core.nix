@@ -8,10 +8,11 @@ pragma ComponentBehavior: Bound
 //
 // `row` is a call's one row, which every surface showing one takes as it
 // is, as Calendar.row is a meeting's: the launcher's Transcripts
-// (Transcribed.qml beside this), someone's Last Met in People
-// (TranscriptSource.qml) and a meeting's Open the Transcript all show
+// (Transcribed.qml beside this) and a meeting's Open the Transcript show
 // the same thing, with the same acts and details. Transcripts.js works
-// out what it says.
+// out what it says. Someone's Last Met in People draws the row the people
+// daemon serves of each call with them, which transcripts-people makes
+// to read as this does (src/rows.rs).
 import qs
 import Quickshell
 import QtQuick
