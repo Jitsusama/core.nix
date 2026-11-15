@@ -25,6 +25,8 @@
 //! - `closed`: the closed orchestrators, and what reopening each needs.
 //! - `top`: Agents' top level, one row for each orchestration.
 //! - `networks`: the mycelium's other networks, one row after the tree.
+//! - `network_drawer`: what Peek on a network says, its sessions' spend
+//!   added up, each once.
 //! - `answered`: the sessions' answers to Joel's talks he hasn't read.
 //! - `talks`: Joel's talks with each session, as rows inside its step.
 //! - `windows`: which kitty pane and window each session here is in.
@@ -53,6 +55,7 @@ pub mod inboxes;
 pub mod inputs;
 pub mod kept_places;
 pub mod landed;
+pub mod network_drawer;
 pub mod networks;
 pub mod recent;
 pub mod reopen;

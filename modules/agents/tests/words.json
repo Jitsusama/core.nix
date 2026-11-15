@@ -152,6 +152,31 @@
       "name": "Machines"
     },
     {
+      "id": "agents:standing",
+      "in": "agents",
+      "name": "Standing"
+    },
+    {
+      "id": "agents:busiest",
+      "in": "agents",
+      "name": "Busiest"
+    },
+    {
+      "id": "agents:branched",
+      "in": "agents",
+      "name": "Branched From"
+    },
+    {
+      "id": "agents:last-changed",
+      "in": "agents",
+      "name": "Last Changed"
+    },
+    {
+      "id": "agents:short",
+      "in": "agents",
+      "name": "Short Name"
+    },
+    {
       "id": "agents:budget",
       "in": "agents",
       "name": "Budget",
