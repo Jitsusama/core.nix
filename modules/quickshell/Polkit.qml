@@ -5,14 +5,17 @@
 // the dots, then what the keys do. A wrong password turns the frame to the
 // alert and says so. Escape refuses.
 //
-// polkit says which action is asked for but not which program asked, so the
-// asker is the one that owns the action: org.freedesktop.systemd1's actions
-// are systemd's.
+// Who asks is the command that called polkit, read from /proc by the pid
+// polkit gives with each ask, so an agent's run0 shows the command it would
+// run as root, never only "systemd" (Polkit.js says each). One gone before
+// it's read is named by the program owning the action.
 pragma ComponentBehavior: Bound
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Polkit
 import Quickshell.Wayland
 import QtQuick
+import "Polkit.js" as Said
 
 Scope {
     id: root
@@ -27,32 +30,29 @@ Scope {
     readonly property var flow: agent.flow
     readonly property bool failed: flow !== null && flow.supplementaryIsError
         && flow.supplementaryMessage !== ""
-    // The program owning the action: its name after its maker's reversed
-    // domain, without the version a D-Bus name ends in. libvirt's is named
-    // for the socket it guards, org.libvirt.unix.manage, as a VM on the
-    // system's connection asks.
-    readonly property string asker: {
-        const parts = flow ? flow.actionId.split(".") : [];
-        const known = { policykit: "pkexec", login: "logind", unix: "libvirt" };
-        const name = parts.length > 3 ? parts[2].replace(/\d+$/, "") : "";
-        return known[name] ?? (name || "polkit");
+    // The command line of the process asking, its words ended by NULs, read
+    // before the prompt's first frame; empty while nothing asks or once
+    // it's gone.
+    FileView {
+        id: asking
+        readonly property string pid: root.flow ? Said.askerPid(root.flow.details) : ""
+        path: pid === "" ? "" : `/proc/${pid}/cmdline`
+        printErrors: false
+        blockLoading: true
+    }
+    readonly property string cmdline: asking.path === "" ? "" : asking.text()
+
+    readonly property string asker: flow ? Said.asker(cmdline, flow.actionId) : "polkit"
+    onAskerChanged: {
+        if (flow)
+            Report.say(`polkit asked by ${asker}`);
     }
     readonly property string who: {
         const identity = flow ? flow.selectedIdentity : null;
         return identity ? (identity.displayName || identity.name || "") : Quickshell.env("USER");
     }
 
-    // Polkit's message says what it's for as "Authentication is required to
-    // do this"; the prompt says "To do this."
-    readonly property string why: {
-        if (!flow)
-            return "";
-        const asked = /^authentication is (required|needed) (in order )?to /i;
-        const message = flow.message.trim().replace(asked, "");
-        const sentence = message.charAt(0).toUpperCase() + message.slice(1);
-        const reason = message === flow.message.trim() ? sentence : "To " + message;
-        return /[.!?]$/.test(reason) ? reason : reason + ".";
-    }
+    readonly property string why: flow ? Said.reason(flow.message, cmdline, flow.details) : ""
 
     PanelWindow {
         Counted { name: "polkit" }
@@ -81,66 +81,16 @@ Scope {
             color: Qt.alpha(Theme.deepest, Theme.floating.scrim)
         }
 
-        Floating {
+        PolkitCard {
             anchors.centerIn: parent
             width: root.width
-            keys: true
-            urgent: root.failed
-
-            Column {
-                width: parent.width
-
-                // Who asks in the mono, as a program is named, and whose
-                // password a strong span; then why, or what went wrong.
-                PromptHead {
-                    width: parent.width
-                    readonly property string asker:
-                        `<span style="font-family:'${Theme.mono.family}'">${root.asker}</span>`
-                    readonly property string owner: `<span style="color:${Theme.strong};`
-                        + `font-weight:${Theme.level.words.spans.strong}">${root.who}</span>`
-                    asked: `${asker} needs ${owner}'s password`
-                    askedOpens: root.asker.charAt(0)
-                    askedOpensIn: Theme.mono.family
-                    reason: root.failed ? root.flow.supplementaryMessage : root.why
-                    reasonColour: root.failed ? Theme.alert : Theme.level.words.colour
-                }
-
-                Hairline {
-                    width: parent.width
-                }
-
-                // The field, one row, its mark on the head's column.
-                Item {
-                    width: parent.width
-                    height: prompt.height
-
-                    Prompt {
-                        id: prompt
-                        x: Theme.space.rung.inset - markAt
-                        width: parent.width - 2 * x
-                        glyph: Theme.glyph.secret
-                        hue: Theme.machine
-                        secret: !(root.flow && root.flow.responseVisible)
-                        onAccepted: {
-                            root.flow.submit(text);
-                            clear();
-                        }
-                        onCancelled: {
-                            root.flow.cancelAuthenticationRequest();
-                            clear();
-                        }
-                    }
-                }
-
-                Hairline {
-                    width: parent.width
-                }
-
-                PromptFoot {
-                    width: parent.width
-                    keys: [["\u21b5", "allow"], ["Esc", "refuse"]]
-                }
-            }
+            asker: root.asker
+            who: root.who
+            reason: root.failed ? root.flow.supplementaryMessage : root.why
+            failed: root.failed
+            secret: !(root.flow && root.flow.responseVisible)
+            onSubmitted: text => root.flow.submit(text)
+            onRefused: root.flow.cancelAuthenticationRequest()
         }
     }
 }

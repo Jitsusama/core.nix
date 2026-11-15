@@ -2242,6 +2242,10 @@
     root-owned file, only past the gate saying the person is in, with its helper let reach the key,
     and no other login does; with none named, polkit asks for the password alone
   '';
+  polkits-prompt-says-what-runs = ''
+    polkit's prompt names the command asking, its store paths without their hashes and a long one
+    cut at its middle, shown as written, and the account run0 or pkexec would run it as
+  '';
   processor-telemetry-passes-clippy = ''
     clippy finds nothing in the processor telemetry reader or its tests
   '';
