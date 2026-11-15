@@ -165,7 +165,7 @@ mod tests {
         );
         let long = format!("{{\"id\": \"{}\"}}", "x".repeat(LONGEST));
         assert_eq!(
-            asked(&long, &on),
+            asked(&long, &serde_json::from_str(&long).expect("JSON")),
             Err("too long"),
             "the line's length is capped"
         );
