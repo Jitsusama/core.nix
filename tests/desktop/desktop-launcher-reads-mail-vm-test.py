@@ -410,10 +410,16 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         # Its acts are the conversation's, Open in Slack alone; with no link
         # to share, there's nothing to copy. They lie on its row, which holds
         # nothing to step into (Joel, 2026-11-11: "if they have nothing under
-        # them, we shouldn't open a submenu for them"), so they're read as a
-        # terminal reads a thing's own acts.
-        acts = conversation_acts(desktop, "Ada Lovelace")
-        assert acts == ["Open in Slack"], f"Ada Lovelace's acts: {acts}"
+        # them, we shouldn't open a submenu for them"), so they're read in its
+        # drawer, Return's first.
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"] is not None
+                and shown["drawer"]["title"] == "Ada Lovelace"
+                and [act.removeprefix("\u21b5 ") for act in shown["drawer"]["acts"]]
+                == ["Open in Slack"]
+            )
+        )
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
         # Every Slack conversation row is made by its one component.
@@ -453,15 +459,6 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
     desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-
-
-def conversation_acts(desktop: Desktop, name: str) -> list[str]:
-    """Name a conversation's own acts in For You's Slack row, as `launcher show` says them."""
-    # Each step after the mark, since qs takes no empty argument, and after
-    # `--`, since `show` is also qs ipc's own command otherwise.
-    path = shlex.quote("".join(f"\u203a{step}" for step in ("now", "for you", "slack", name)))
-    said = cast("Json", json.loads(desktop.as_account(f"qs ipc call -- launcher show {path}")))
-    return [str(act["name"]) for act in cast("list[Json]", said["acts"])]
 
 
 def slack_program(desktop: Desktop) -> None:
