@@ -144,6 +144,10 @@ let
   # character at a time it kept up to twice the room it needed, the largest
   # holder of the shell's malloc memory
   # (qtdeclarative-json-strings-at-their-length.patch).
+  # A picture read uncached from a file lets its pixels go once they're a
+  # texture, and is read again for another, since the wallpaper's kept a
+  # second copy of the screen, 20 MB, for as long as it was shown
+  # (qtdeclarative-uncached-pictures-let-go.patch).
   # Its Wayland client focuses the window a sync asks for even while an
   # earlier change is still queued, since a leave and an enter close
   # together left the launcher holding the keys yet never active
@@ -174,6 +178,7 @@ let
             ./qtdeclarative-json-strings-kept-once.patch
             ./qtdeclarative-collector-keeps-up.patch
             ./qtdeclarative-json-strings-at-their-length.patch
+            ./qtdeclarative-uncached-pictures-let-go.patch
           ];
         });
       }
