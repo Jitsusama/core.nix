@@ -379,5 +379,27 @@
       "test_a_closed_launcher_makes_nothing_of_the_machine_queue"
     ],
     "test": "vm-desktop-launcher-draws-still"
+  },
+  {
+    "at": 1794778984,
+    "commit": "533895e2e473ebc82569f21a96983005c0c4095c",
+    "due": "2026-11-17",
+    "owner_pr": 4813,
+    "reason": "the cat walked and never sat to be petted, in the net's reruns at 9e74a5d5f, 68bfc1629, 3a3a3d466, 0d9ff63cc and a3d200ec, and at 533895e2e473 after #4813, passing when rerun",
+    "subtests": [
+      "test_a_pointer_resting_on_the_cat_leans_it_in_and_a_click_beside_it_reaches_the_window"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
+    "at": 1794778984,
+    "commit": "759d940c7ac0ca75cd385b778d48285515cea929",
+    "due": "2026-11-17",
+    "owner_pr": 4845,
+    "reason": "Quickshell warned of a dangling screen object, failing twice at 9bf894fb7d68 and at 759d940c7ac0 and once of two at a14dc5cd465d, passing alone at each and whole at ab85b124599e and 428bb1944fb0",
+    "subtests": [
+      "test_quickshell_warned_of_nothing_as_the_screens_came_and_went"
+    ],
+    "test": "vm-screens-keep-the-launcher"
   }
 ]
