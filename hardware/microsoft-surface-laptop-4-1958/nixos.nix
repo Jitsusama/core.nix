@@ -251,6 +251,14 @@
     }
     # The PSP refuses the secure display TA at every boot, and only a
     # debugfs test of the display uses it.
+    # Loading amdgpu took 5 s before its own start ran, since ftrace looked
+    # each of the module's records up in its whole symbol table, and other
+    # modules' loads waited on the lock it held. The series upstream is
+    # waiting on sorts the symbols once.
+    {
+      name = "ftrace-module-enable-bsearch";
+      patch = ./kernel/ftrace-module-enable-bsearch.patch;
+    }
     {
       name = "amdgpu-no-secure-display";
       patch = ./kernel/amdgpu-no-secure-display.patch;
