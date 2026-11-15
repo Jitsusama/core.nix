@@ -442,7 +442,9 @@ pub fn landed(log: &str, now: i64) -> usize {
 }
 
 /// The code-health measures Y9XISP's hourly read writes, each with its
-/// target, or none where no target is set yet.
+/// target, or none where no target is set yet. Where it says which owner
+/// each gained file is, by folder, the files behind it are said with
+/// theirs, so a drag reaches who owns the code rather than code-health.
 #[must_use]
 pub fn clean(text: &str) -> Vec<Measure> {
     let read: Value = serde_json::from_str(text).unwrap_or_default();
@@ -460,17 +462,30 @@ pub fn clean(text: &str) -> Vec<Measure> {
                 now: m["now"].as_f64()?,
                 target: m["target"].as_f64(),
                 owner: m["owner"].as_str().unwrap_or("Y9XISP").to_owned(),
-                behind: m["files"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Value::as_str)
-                    .take(3)
-                    .map(str::to_owned)
-                    .collect(),
+                behind: m["by_owner"].as_object().map_or_else(
+                    || strings(&m["files"]).take(3).map(str::to_owned).collect(),
+                    |owners| {
+                        owners
+                            .iter()
+                            .flat_map(|(owner, files)| {
+                                strings(files)
+                                    .take(3)
+                                    .map(move |f| format!("{f} · {owner}"))
+                            })
+                            .collect()
+                    },
+                ),
             })
         })
         .collect()
+}
+
+/// The strings in a JSON list, none where it isn't one.
+fn strings(list: &Value) -> impl Iterator<Item = &str> {
+    list.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
 }
 
 #[cfg(test)]
@@ -735,5 +750,17 @@ mod tests {
         assert_eq!(read.len(), 2, "both read");
         assert!(read[0].past().is_some(), "past its target");
         assert_eq!(read[1].past(), None, "no target is unjudged");
+    }
+
+    #[test]
+    fn code_health_files_by_owner_are_each_said_with_their_owner() {
+        let text = r#"{"measures":[{"repo":"core.nix","measure":"suppressions","now":12,
+            "target":10,"owner":"Y9XISP","files":["net/a.rs","net/b.rs","x.rs"],
+            "by_owner":{"PN2VZC":["net/a.rs","net/b.rs"],"Y9XISP":["x.rs"]}}]}"#;
+        assert_eq!(
+            clean(text)[0].behind,
+            ["net/a.rs · PN2VZC", "net/b.rs · PN2VZC", "x.rs · Y9XISP"],
+            "each file names its own owner, so each hears of its own"
+        );
     }
 }
