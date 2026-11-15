@@ -20,9 +20,19 @@ use crate::terraform_docs::{Scan, workspaces};
 /// unset, none are.
 const PROVIDERS: &str = "CODE_HEALTH_TERRAFORM_PROVIDERS";
 
-/// Each error `tofu validate` finds in the workspaces of the copy of the
-/// Terraform in `folder`, and each workspace it couldn't validate.
-pub fn invalid(folder: &Path, terraform: &[&File]) -> Result<Vec<String>, String> {
+/// What `tofu validate` says of the workspaces of a copy of Terraform:
+/// each error, with each workspace it couldn't validate, and apart from
+/// them each warning, such as an argument its provider or module has
+/// marked deprecated.
+#[derive(Debug, Default, PartialEq)]
+pub struct Said {
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+/// What `tofu validate` says of the workspaces of the copy of the
+/// Terraform in `folder`.
+pub fn invalid(folder: &Path, terraform: &[&File]) -> Result<Said, String> {
     let settings = PathBuf::from(format!("{}-tofurc", folder.display()));
     let none = PathBuf::from(format!("{}-providers", folder.display()));
     let mirror = env::var_os(PROVIDERS).map_or_else(|| none.clone(), PathBuf::from);
@@ -30,9 +40,11 @@ pub fn invalid(folder: &Path, terraform: &[&File]) -> Result<Vec<String>, String
     let named = written
         .map_err(|error| format!("tofu's settings couldn't be written: {error}"))
         .and_then(|()| {
-            let mut named = Vec::new();
+            let mut named = Said::default();
             for workspace in workspaces(terraform) {
-                named.extend(validated(folder, workspace, terraform, &settings)?);
+                let said = validated(folder, workspace, terraform, &settings)?;
+                named.errors.extend(said.errors);
+                named.warnings.extend(said.warnings);
             }
             Ok(named)
         });
@@ -54,12 +66,16 @@ fn validated(
     workspace: &str,
     terraform: &[&File],
     settings: &Path,
-) -> Result<Vec<String>, String> {
+) -> Result<Said, String> {
     let shown = if workspace.is_empty() { "." } else { workspace };
+    let unvalidated = |why: String| Said {
+        errors: vec![format!("{shown}: {why}")],
+        warnings: Vec::new(),
+    };
     if reaches_elsewhere(workspace, terraform, &mut BTreeSet::new()) {
-        return Ok(vec![format!(
-            "{shown}: uses a module from elsewhere, so it isn't validated"
-        )]);
+        return Ok(unvalidated(
+            "uses a module from elsewhere, so it isn't validated".to_owned(),
+        ));
     }
     let at = folder.join(workspace);
     let setting = [("TF_CLI_CONFIG_FILE", settings)];
@@ -71,7 +87,7 @@ fn validated(
             .lines()
             .find_map(|line| line.trim().strip_prefix("Error: "))
             .map_or_else(|| format!("it ended {}", readied.code), str::to_owned);
-        return Ok(vec![format!("{shown}: tofu init can't ready it: {why}")]);
+        return Ok(unvalidated(format!("tofu init can't ready it: {why}")));
     }
     let validate = ["validate", "-json", "-no-color"];
     let checked = run_with("tofu", &validate, Some(&at), None, &setting)?;
@@ -81,7 +97,7 @@ fn validated(
             checked.code, checked.said
         ));
     }
-    errors(&checked.said, workspace)
+    diagnostics(&checked.said, workspace)
 }
 
 /// Whether a workspace, or a module it takes from a folder of the copy,
@@ -171,27 +187,34 @@ struct Start {
     line: u64,
 }
 
-/// Each error in `tofu validate -json`'s answer for `workspace`, named
-/// at its file and line from the copy's top where it has one.
-fn errors(said: &str, workspace: &str) -> Result<Vec<String>, String> {
+/// Each error and each warning in `tofu validate -json`'s answer for
+/// `workspace`, named at its file and line from the copy's top where it
+/// has one.
+fn diagnostics(said: &str, workspace: &str) -> Result<Said, String> {
     let validated: Validated = serde_json::from_str(said)
         .map_err(|error| format!("tofu validate's answer couldn't be read: {error}"))?;
-    let named = validated
-        .diagnostics
-        .into_iter()
-        .filter(|diagnostic| diagnostic.severity == "error")
-        .map(|Diagnostic { summary, range, .. }| {
-            let at = match (range, workspace) {
-                (Some(Range { filename, start }), "") => format!("{filename}:{}", start.line),
-                (Some(Range { filename, start }), _) => {
-                    format!("{workspace}/{filename}:{}", start.line)
-                }
-                (None, "") => ".".to_owned(),
-                (None, _) => workspace.to_owned(),
-            };
-            format!("{at}: {summary}")
-        });
-    Ok(named.collect())
+    let mut named = Said::default();
+    for Diagnostic {
+        severity,
+        summary,
+        range,
+    } in validated.diagnostics
+    {
+        let at = match (range, workspace) {
+            (Some(Range { filename, start }), "") => format!("{filename}:{}", start.line),
+            (Some(Range { filename, start }), _) => {
+                format!("{workspace}/{filename}:{}", start.line)
+            }
+            (None, "") => ".".to_owned(),
+            (None, _) => workspace.to_owned(),
+        };
+        match severity.as_str() {
+            "error" => named.errors.push(format!("{at}: {summary}")),
+            "warning" => named.warnings.push(format!("{at}: {summary}")),
+            _ => {}
+        }
+    }
+    Ok(named)
 }
 
 #[cfg(test)]
@@ -209,20 +232,36 @@ mod tests {
              "range": {"filename": "main.tf", "start": {"line": 9, "column": 3}}},
             {"severity": "error", "summary": "Missing required provider"}
         ]}"#;
+        let said = diagnostics(said, "ws").expect("tofu's answer wasn't read");
         assert_eq!(
-            errors(said, "ws").expect("tofu's answer wasn't read"),
+            said.errors,
             [
                 "ws/main.tf:2: Reference to undeclared input variable",
                 "ws: Missing required provider",
-            ]
+            ],
+            "an error was missed, misplaced or a warning taken for one"
         );
-        let top = errors(said, "").expect("tofu's answer wasn't read");
-        assert_eq!(top[0], "main.tf:2: Reference to undeclared input variable");
+        assert_eq!(
+            said.warnings,
+            ["ws/main.tf:9: Deprecated attribute"],
+            "a warning was missed, misplaced or an error taken for one"
+        );
+        let top = diagnostics(
+            r#"{"diagnostics": [{"severity": "error", "summary": "S",
+            "range": {"filename": "main.tf", "start": {"line": 2}}}]}"#,
+            "",
+        )
+        .expect("tofu's answer wasn't read");
+        assert_eq!(
+            top.errors,
+            ["main.tf:2: S"],
+            "a top-level workspace's file was named with a folder"
+        );
     }
 
     #[test]
     fn an_answer_tofu_garbled_is_refused() {
-        let refused = errors("{\"diagnostics\": 3}", "ws");
+        let refused = diagnostics("{\"diagnostics\": 3}", "ws");
         assert!(refused.is_err(), "a garbled answer read as {refused:?}");
     }
 
@@ -247,6 +286,14 @@ mod tests {
             ),
             file("fine/main.tf", "output \"o\" {\n  value = 1\n}\n"),
             file(
+                "old/main.tf",
+                "module \"m\" {\n  source = \"./sub\"\n  was    = 1\n}\n",
+            ),
+            file(
+                "old/sub/main.tf",
+                "variable \"was\" {\n  type       = number\n  deprecated = \"say is\"\n}\n",
+            ),
+            file(
                 "near/main.tf",
                 "module \"m\" {\n  source = \"../shared/far\"\n}\n",
             ),
@@ -265,7 +312,13 @@ mod tests {
                 "needs: tofu init can't ready it: Failed to query available provider packages",
                 "shared/far: uses a module from elsewhere, so it isn't validated",
                 "ws/main.tf:6: Reference to undeclared input variable",
-            ]
+            ],
+            "what tofu refuses, or can't ready, was missed or misnamed"
+        );
+        assert_eq!(
+            read.warned,
+            ["old/main.tf:3: Variable marked as deprecated by the module author"],
+            "a deprecated argument tofu warns of was missed or misnamed"
         );
     }
 }

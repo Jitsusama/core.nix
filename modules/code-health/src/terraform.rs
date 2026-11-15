@@ -3,7 +3,7 @@
 //! workspace held to all its own rules and Google's (`RULES`), and what
 //! trivy's checks find that would leave what
 //! it makes open to attack, from the checks it was built with, so it
-//! fetches nothing, and what `tofu validate` refuses in each workspace
+//! fetches nothing, and what `tofu validate` refuses or warns of in each workspace
 //! (`terraform_validate.rs`). Each runs only where a repository holds Terraform,
 //! so one holding none has no figure rather than a nought.
 
@@ -22,13 +22,15 @@ use crate::terraform_validate;
 
 /// What a repository's Terraform was found to hold: each file named with
 /// why `tofu fmt` would write it otherwise, each tflint finding, each of
-/// trivy's security findings, and each error `tofu validate` finds.
+/// trivy's security findings, and each error and, apart, each warning
+/// `tofu validate` finds.
 #[derive(Debug, Default, PartialEq)]
 pub struct Read {
     pub unformatted: Vec<String>,
     pub findings: Vec<String>,
     pub insecure: Vec<String>,
     pub invalid: Vec<String>,
+    pub warned: Vec<String>,
 }
 
 /// Whether a path is Terraform: a `.tf` file or a `.tfvars` one.
@@ -67,12 +69,13 @@ fn read_all(terraform: &[&File]) -> Result<Read, String> {
         ))
     });
     let _ = fs::remove_dir_all(&folder);
-    let (findings, insecure, invalid) = read?;
+    let (findings, insecure, said) = read?;
     Ok(Read {
         unformatted,
         findings,
         insecure,
-        invalid,
+        invalid: said.errors,
+        warned: said.warnings,
     })
 }
 
