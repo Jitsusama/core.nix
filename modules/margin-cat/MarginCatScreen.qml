@@ -723,7 +723,9 @@ PanelWindow {
     // niri's new size, so its ride began out of sight and showed only as
     // it ended (the GPU rig, 2026-11-13: 141, 331, then 801 px down).
     // Nothing of it takes the pointer, and Qt draws it only as it moves.
-    implicitHeight: modelData.height
+    // Its screen is null for a moment as the screen goes, and the binding
+    // reads it again then (vm-screens-keep-the-launcher, 2026-11-15).
+    implicitHeight: modelData?.height ?? 0
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
     // Under the margin's marks, the launcher and notices, on Overlay, so
