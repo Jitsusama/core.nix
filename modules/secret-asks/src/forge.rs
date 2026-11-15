@@ -23,8 +23,8 @@ use crate::tree;
 /// How long a forge may take to answer before it's taken as saying
 /// nothing, which covers no ask, since a row is still asked of Joel.
 const ANSWERING: Duration = Duration::from_secs(10);
-/// How long a forge's answer is kept: the engine asks it while it holds
-/// the asks, so a burst of asks from one repository asks it once.
+/// How long a forge's answer is kept, so a burst of asks from one
+/// repository asks it once.
 const KEPT: Duration = Duration::from_secs(30);
 /// How often an unanswered forge is looked at again.
 const POLL: Duration = Duration::from_millis(20);
