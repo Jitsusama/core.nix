@@ -15,9 +15,9 @@
 let
   kit = fetchgit {
     url = "https://github.com/Jitsusama/core.nix";
-    rev = "5d502f291f10c1968e9e7d50c340e9ffa32d4b48";
+    rev = "b9374ddb10cc664e1a1c4f159cd13df6c121ed57";
     rootDir = "modules/terminal-kit";
-    hash = "sha256-jYS3//iS1/r2wRbVhaZBX1ieI7xK96G1uNCzIV3lgyg=";
+    hash = "sha256-6PoA31idF7JayVeQs7RO69DQl/CzaV98+pK0DLZBsxQ=";
   };
 in
 rustPlatform.buildRustPackage rec {
