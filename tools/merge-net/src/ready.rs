@@ -1,7 +1,10 @@
 //! `merge-net ready COMMIT`: whether a branch's head may merge, asked
 //! before merging by whatever merges it. It may when it sits on origin's
 //! main as it is now, changed-checks built what it named there, and
-//! `needs` was asked of the change (`gated.rs`).
+//! `needs` was asked of the change (`gated.rs`). A head behind main may
+//! merge as it stands, as a merge commit, when main moved none of its
+//! files since its base, as a rebased head's earlier run is judged
+//! ([`speakers`]).
 //!
 //! On 8 November four checks were red on main by 11:00. changed-checks
 //! named each at its merge, but one branch was built before main gained
@@ -109,6 +112,24 @@ pub fn checked_before(
     first_shared.map_or(Before::Unchecked, |(newest, shared)| {
         Before::Shares(newest, shared)
     })
+}
+
+/// The commits whose changed-checks runs may speak for `head`, newest
+/// first, from the `candidates` of the same change: `head` itself first
+/// when it's `behind` origin's main, since its own run checked it against
+/// the main it branched from, as an earlier commit's run checks a rebased
+/// head. A head on main with a run of its own is judged by it before
+/// this, so it never speaks for itself here.
+pub fn speakers(head: &str, behind: bool, candidates: &[String]) -> Vec<String> {
+    let others = candidates
+        .iter()
+        .filter(|candidate| *candidate != head)
+        .cloned();
+    if behind {
+        std::iter::once(head.to_owned()).chain(others).collect()
+    } else {
+        others.collect()
+    }
 }
 
 /// What `then` makes of `candidate`'s base (`base_of`), only when the
@@ -327,6 +348,28 @@ mod tests {
 
     fn owned(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_head_behind_main_speaks_for_itself_first() {
+        // On 15 November #4791 rebased four times in 20 minutes as main
+        // moved eight times, none of them in its files, and each rebase
+        // ran nothing again: its own run spoke for it as well as before.
+        assert_eq!(
+            speakers("head", true, &owned(&["earlier"])),
+            owned(&["head", "earlier"]),
+            "a head behind main wasn't judged by its own run first"
+        );
+        assert_eq!(
+            speakers("head", true, &owned(&["earlier", "head"])),
+            owned(&["head", "earlier"]),
+            "a head behind main that was a candidate spoke twice"
+        );
+        assert_eq!(
+            speakers("head", false, &owned(&["head", "earlier"])),
+            owned(&["earlier"]),
+            "a head on main spoke for itself, which its own record already judged"
+        );
     }
 
     #[test]

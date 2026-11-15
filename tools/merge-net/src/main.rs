@@ -269,18 +269,27 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
             .status()
             .is_ok_and(|status| status.success())
     };
+    let on_main = |base: &str| holds(base, &main);
     if !holds(&main, &commit) {
+        // On 15 November #4791 rebased four times in 20 minutes as main
+        // moved eight times, none of them in its files, and no rebase ran
+        // anything again. A head behind main is judged as a rebased one
+        // is, by its own run first, unless its base lacks main's newest
+        // rules for which VM tests run, which its needs answer can't know.
+        let rules = newest_rules(&main);
+        if rules.is_empty() || holds(&rules, &commit) {
+            return by_change(&commit, &main, &on_main);
+        }
         eprintln!(
-            "merge-net: {} doesn't sit on origin's main as it is now, {}, so what it was \
-             checked against isn't what it merges onto; rebase onto origin/main, push, and \
-             merge again, which needs no new run where main moved none of its files, nor a \
-             crate its crates are in, read or are read by",
+            "merge-net: {} doesn't sit on origin's main as it is now, {}, and its base \
+             lacks main's newest rules for which VM tests run (must-run.txt), so what \
+             needs said of it can't speak for them; rebase onto origin/main, push, and \
+             merge again",
             short(&commit),
             short(&main)
         );
         return Ok(ExitCode::FAILURE);
     }
-    let on_main = |base: &str| holds(base, &main);
     if !ready::built_there(&ready::record(&commit), &on_main) {
         return by_change(&commit, &main, &on_main);
     }
@@ -319,15 +328,7 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
 /// onto #4770, which added the rule that its initrd moved, after needs had
 /// been asked only at commits whose base lacked it.
 fn needs_heard(commit: &str, main: &str, passes: &[&str], files: &[String]) -> bool {
-    let rules = git(&[
-        "log",
-        "-1",
-        "--format=%H",
-        main,
-        "--",
-        "tools/merge-net/must-run.txt",
-    ]);
-    let rules = rules.unwrap_or_default();
+    let rules = newest_rules(main);
     let knows_rules = |asked: &str| {
         rules.is_empty()
             || Command::new("git")
@@ -341,7 +342,8 @@ fn needs_heard(commit: &str, main: &str, passes: &[&str], files: &[String]) -> b
     if gated::asked(&asked) {
         return true;
     }
-    let Some(change) = patch_id(Path::new("."), main, commit) else {
+    let base = git(&["merge-base", main, commit]).unwrap_or_else(|_| main.to_owned());
+    let Some(change) = patch_id(Path::new("."), &base, commit) else {
         return false;
     };
     let earlier: Vec<String> = candidates(commit, main, files)
@@ -381,14 +383,58 @@ fn run_again(commit: &str) -> String {
         })
 }
 
-/// What ready says of `commit`, the same change that passed at `newest`
-/// and `earlier`, where main since moved only `shared`.
-fn twice(commit: &str, newest: &str, earlier: &str, shared: &[String]) -> String {
-    format!(
-        "ready: {} sits on origin's main, and changed-checks built what it named at {} and \
-         {}, the same change, so a clean rebase needs no third run though main has since \
-         moved {}; the net tests it after it merges",
+/// The newest commit on `main` to change the rules for which VM tests run
+/// before a merge, or nothing when git can't say.
+fn newest_rules(main: &str) -> String {
+    git(&[
+        "log",
+        "-1",
+        "--format=%H",
+        main,
+        "--",
+        "tools/merge-net/must-run.txt",
+    ])
+    .unwrap_or_default()
+}
+
+/// Refuse `commit`, behind origin's main at `main`, which since moved
+/// `shared` of its files unseen by its run at `checked`. A run again at a
+/// head behind main would check it against the same old base, so only a
+/// rebase brings main's moves in.
+fn rebase_over(commit: &str, main: &str, checked: &str, shared: &[String]) -> ExitCode {
+    eprintln!(
+        "merge-net: {} doesn't sit on origin's main as it is now, {}, which has since moved \
+         {}, so its run at {} didn't see them; rebase onto origin/main, push, and merge again",
         short(commit),
+        short(main),
+        shared.join(", "),
+        short(checked)
+    );
+    ExitCode::FAILURE
+}
+
+/// Where `commit` stands against origin's main at `main`, as `ready` says
+/// it: on it, or behind it and merging as it stands.
+fn stands(commit: &str, main: &str, behind: bool) -> String {
+    if behind {
+        format!(
+            "{} is behind origin's main, {}, and merges as it stands,",
+            short(commit),
+            short(main)
+        )
+    } else {
+        format!("{} sits on origin's main,", short(commit))
+    }
+}
+
+/// What ready says of a head standing as `stands` says, the same change
+/// that passed at `newest` and `earlier`, where main since moved only
+/// `shared`.
+fn twice(stands: &str, newest: &str, earlier: &str, shared: &[String]) -> String {
+    format!(
+        "ready: {stands} and changed-checks built what it named at {} and {}, the same \
+         change, so a clean rebase needs no third run though main has since moved {}; the \
+         net tests it after it merges",
         short(newest),
         short(earlier),
         shared.join(", ")
@@ -398,12 +444,17 @@ fn twice(commit: &str, newest: &str, earlier: &str, shared: &[String]) -> String
 /// Whether `commit`, a head on `main` with no run of its own, is ready by
 /// an earlier commit of the same change, saying what to do when it isn't.
 fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result<ExitCode, String> {
-    let files = lines(&git(&["diff", "--name-only", main, commit])?);
-    let renamed = gone(main, commit)?;
+    // The change is what the head adds to the main it branched from, which
+    // is main itself unless the head is behind it.
+    let branched = git(&["merge-base", main, commit])?;
+    let behind = branched != main;
+    let stands = stands(commit, main, behind);
+    let files = lines(&git(&["diff", "--name-only", &branched, commit])?);
+    let renamed = gone(&branched, commit)?;
     let at = |rev: &str, file: &str| git(&["show", &format!("{rev}:{file}")]).unwrap_or_default();
     let at_head = |file: &str| at(commit, file);
     let at_main = |file: &str| at(main, file);
-    let change = patch_id(Path::new("."), main, commit);
+    let change = patch_id(Path::new("."), &branched, commit);
     let base_of = |candidate: &str| git(&["merge-base", candidate, main]).ok();
     // What main did since `base`: the files it changed and the paths it
     // took away.
@@ -437,9 +488,6 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         Some(shared)
     };
     let same = |candidate: &str| {
-        if candidate == commit {
-            return None;
-        }
         ready::when_same(candidate, change.as_deref()?, base_of, id_of, |base| {
             shared_since(candidate, base)
         })
@@ -455,11 +503,11 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         naming.extend(crates.beside(&files, &since));
         Some(naming)
     };
-    let candidates = candidates(commit, main, &files)?;
+    let candidates = ready::speakers(commit, behind, &candidates(commit, main, &files)?);
     let mut before = ready::checked_before(&candidates, &ready::record, on_main, &same);
     if let ready::Before::Twice(newest, earlier, shared) = before {
         if names_gone(&newest).is_some_and(|naming| naming.is_empty()) {
-            let said = twice(commit, &newest, &earlier, &shared);
+            let said = twice(&stands, &newest, &earlier, &shared);
             return Ok(may_merge(commit, main, &[&newest, &earlier], &files, &said));
         }
         // Main renamed or deleted a path one side names, which neither
@@ -469,9 +517,8 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
     match before {
         ready::Before::Clean(checked) => {
             let said = format!(
-                "ready: {} sits on origin's main, and changed-checks built what it named at \
-                 {}, the same change, whose files main hasn't moved since",
-                short(commit),
+                "ready: {stands} and changed-checks built what it named at {}, the same \
+                 change, whose files main hasn't moved since",
                 short(&checked)
             );
             return Ok(may_merge(commit, main, &[&checked], &files, &said));
@@ -482,6 +529,9 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             let quarantine = quarantine.unwrap_or_default();
             if let Some(said) = lists::say(commit, &shared, &quarantine, &passes) {
                 return Ok(said);
+            }
+            if behind {
+                return Ok(rebase_over(commit, main, &checked, &shared));
             }
             // Its run again keeps the place this pass's gate had.
             turn::keep_place(&[commit, &checked]);
