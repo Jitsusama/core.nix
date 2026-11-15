@@ -8,15 +8,35 @@
 # his own. A command, and a root shell alone, go to run0; anything sudo
 # alone can say, such as another user, kept surroundings or a shell given
 # a command, goes to sudo, which asks for the password as it always did.
+# Its own help takes the shape every command of ours does
+# (docs/commands.md), by hand, and says how to reach sudo's.
 set -euo pipefail
 
 case $# in
 0) exec @sudo@ ;;
 1)
   case $1 in
+  -h | --help)
+    cat << 'EOF'
+sudo-by-touch  sudo through run0, so a key's touch answers
+
+EXAMPLES
+  sudo nixos-rebuild switch  run0 asks: a touch at the
+                             unlocked desk, else the password
+  sudo -i                    a root shell, through run0
+  sudo -u someone true       sudo's own, with the password
+  command sudo --help        sudo's own help
+
+EXIT
+  what run0 or sudo exits
+EOF
+    exit 0
+    ;;
   -i | -s | --login | --shell) exec @run0@ ;;
+  *) ;;
   esac
   ;;
+*) ;;
 esac
 case $1 in
 --)
@@ -24,5 +44,6 @@ case $1 in
   [ $# -gt 0 ] || exec @sudo@ --
   ;;
 -*) exec @sudo@ "$@" ;;
+*) ;;
 esac
 exec @run0@ -- "$@"

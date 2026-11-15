@@ -34,4 +34,11 @@ says "sudo -i whoami" -i whoami
 says "sudo -k" -k
 says "sudo --" --
 says "sudo"
+# Its own help is its, naming it first and how to reach sudo's.
+help=$("${by_touch}" --help)
+if [[ "${help}" != sudo-by-touch* || "${help}" != *"command sudo --help"* ]]; then
+  echo "sudo --help didn't answer sudo-by-touch's own help"
+  exit 1
+fi
+says "sudo -h -u someone" -h -u someone
 echo "every case held"

@@ -74,9 +74,13 @@ class Seat:
         self.machine.fail(f"test -e {made}")
 
     def not_let_in(self, made: str) -> None:
-        """See polkit's prompt open and, past the second a touch takes, nothing let in."""
+        """See polkit's prompt open and, past the second a touch takes, nothing let in.
+
+        The helper is a oneshot, so it's activating for as long as its prompt is open.
+        """
         self.machine.wait_until_succeeds(
-            "systemctl list-units --state=active --no-legend 'polkit-agent-helper@*' | grep -q .",
+            "systemctl list-units --state=activating --no-legend 'polkit-agent-helper@*'"
+            " | grep -q .",
             timeout=ANSWERING.seconds,
         )
         self.machine.fail(
