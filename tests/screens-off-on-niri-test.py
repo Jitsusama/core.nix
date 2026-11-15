@@ -23,6 +23,10 @@ for, so the proxy turns the daemon's request into niri's own ReturnError, which 
 its example error. What the daemon says of each refusal, and of a screen gone, is held in its
 own tests (modules/windows, screens/acts.rs and screens/line.rs); here, only that niri's words
 reach the line.
+
+How many screens there are, which Screens says at its right inside Desktop, is the windows
+daemon's summary, worded there and served beside its rows (modules/windows, screens.rs), so
+here it's the nested niri's one screen as the daemon counts it.
 """
 
 from __future__ import annotations
@@ -174,6 +178,19 @@ def niri_asked(proxy: Proxy, mark: int, asked: bytes = b'"PowerOffMonitors"') ->
         time.sleep(POLL)
     failed = f"the shell never asked niri for {asked!r}: {proxy.since(mark)!r}"
     raise AssertionError(failed)
+
+
+def test_screens_says_how_many_screens_there_are_as_the_daemon_counts(shell: Shell) -> None:
+    """Inside Desktop, Screens says at its right how many screens there are, as served."""
+    shell.launcher_until(lambda shown: not shown["open"])
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.down_to("Desktop")
+    shell.step_in("ret")
+    shell.launcher_until(lambda shown: "Screens" in shown["rows"])
+    shell.down_to("Screens")
+    # The nested niri lays out one screen, which the windows daemon counts (screens.rs).
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1 screen")
 
 
 def test_turn_every_screen_off_powers_niris_monitors_off(shell: Shell, proxy: Proxy) -> None:
