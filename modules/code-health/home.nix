@@ -12,11 +12,12 @@
 # It writes hour.json beside them, each figure against the target and
 # owner a repository's `targets`, `owner` and `owners` give it, and the
 # figure the hour before, with the first files counted, those of a file
-# holding more than the day before's counts by file first; `cadence hour`
-# reads it at ten past. A read takes about half a minute, so hourly costs
-# little. It runs before `cadence day`, which holds each figure against
-# the days before it, so a repository getting messier is named the day it
-# does.
+# holding more than the day before's counts by file first, and each of
+# those files' entries by the owner `folders` gives its folder;
+# `cadence hour` reads it at ten past. A read takes about half a minute,
+# so hourly costs little. It runs before `cadence day`, which holds each
+# figure against the days before it, so a repository getting messier is
+# named the day it does.
 # jitsusama.code-health.path puts a machine's own programs ahead of core's
 # git, for a repository kept by a git of its own that stock git refuses;
 # core's coreutils come after, for such a git that is a script.
@@ -47,6 +48,12 @@ let
         "${name}=${repo.owner}"
       ]
       ++ byMeasure "--owner" name repo.owners
+      ++ lib.concatLists (
+        lib.mapAttrsToList (folder: owner: [
+          "--owner"
+          "${name}:${folder}=${owner}"
+        ]) repo.folders
+      )
     ) cfg.repos
   );
   each =
@@ -98,6 +105,14 @@ in
             type = lib.types.attrsOf lib.types.str;
             default = { };
             description = "Who owns a measure, by its name, ahead of the repository's owner.";
+          };
+          folders = lib.mkOption {
+            type = lib.types.attrsOf lib.types.str;
+            default = { };
+            example = {
+              "modules/net" = "someone";
+            };
+            description = "Who owns what the hour names in a folder, by its path from the repository's top, the deepest first, ahead of the measure's owner.";
           };
         };
       }

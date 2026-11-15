@@ -29,7 +29,7 @@
 //!
 //!     code-health --repo NAME=CHECKOUT... [--ref NAME=REF]...
 //!         [--under NAME=FOLDER]... [--target NAME/MEASURE=FIGURE]...
-//!         [--owner NAME[/MEASURE]=OWNER]... [--into FOLDER]
+//!         [--owner NAME[/MEASURE|:FOLDER]=OWNER]... [--into FOLDER]
 //!
 //! A repository is read at `origin/main` unless `--ref` names another, and
 //! whole unless `--under` names the folder that's it in a larger one,
@@ -37,7 +37,8 @@
 //! again names another folder of it, each path then said from the larger
 //! one's top. A target or an
 //! owner names one of MEASURES, so a misspelt one is refused rather than
-//! left unjudged.
+//! left unjudged; an owner of a FOLDER, said from the repository's top as
+//! its files are, owns what the hour names in it.
 
 mod git;
 mod hour;
@@ -141,8 +142,8 @@ fn help() -> Help {
         "the most a measure should be, for the hour's file",
     )
     .option(
-        "--owner NAME[/MEASURE]=OWNER",
-        "who owns a repository, or one measure of it",
+        "--owner NAME[/MEASURE|:FOLDER]=OWNER",
+        "who owns a repository, one measure of it, or a folder",
     )
     .option(
         "--into FOLDER",
@@ -426,6 +427,13 @@ fn parse(arguments: &[String]) -> Result<(BTreeMap<String, Repo>, Option<PathBuf
             .insert(measure.to_owned(), figure);
     }
     for (named, owner) in owners {
+        if let Some((name, folder)) = named.split_once(':') {
+            let folder = folder.trim_end_matches('/').to_owned();
+            judged(&mut repos, name, "--owner")?
+                .folders
+                .insert(folder, owner);
+            continue;
+        }
         let (name, measure) = measured(&named, "--owner")?;
         let judged = judged(&mut repos, name, "--owner")?;
         match measure {
@@ -612,6 +620,23 @@ mod tests {
             ),
             (Some("someone"), Some("another")),
             "a repository's or a measure's owner was lost"
+        );
+    }
+
+    #[test]
+    fn a_folders_owner_goes_to_its_repository() {
+        let (repos, _) = parse(&said(
+            "--repo core=/src/core --owner core:modules/net/=someone \
+             --owner core:modules/net/switch=another",
+        ))
+        .expect("good folder owners were refused");
+        assert_eq!(
+            repos["core"].judged.folders,
+            BTreeMap::from([
+                ("modules/net".to_owned(), "someone".to_owned()),
+                ("modules/net/switch".to_owned(), "another".to_owned()),
+            ]),
+            "a folder's owner was lost"
         );
     }
 
