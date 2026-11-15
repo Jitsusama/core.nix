@@ -325,7 +325,6 @@ QtObject {
         // (VKCF3Z, 2026-11-15: every pick ever made would hold a program
         // over a person for good). Picks for any query add up, and picks
         // inside a step don't count, as Picks.qml's counts() has it.
-        const day = 24 * 60 * 60 * 1000;
         const today = 100 * day;
         const lately = (table, daysAgo) => Fading.lately(picks(table, today - daysAgo * day),
             today, 14 * day);
