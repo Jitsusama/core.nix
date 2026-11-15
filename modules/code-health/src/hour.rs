@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
+use crate::measure::NAMED;
+
 /// How many of a measure's files the hour names; the day's named file
 /// holds the rest.
 pub const FILES: usize = 20;
@@ -76,10 +78,16 @@ pub fn hour(
 }
 
 /// The first of a measure's entries, each of a file it now counts more of
-/// than `had` did first, in their order, then the rest.
+/// than `had` did first, in their order, then the rest. A list cut at
+/// `NAMED` doesn't say how many a file past the cut held, and not every
+/// measure lists its files in order, so either day's list cut leaves the
+/// order as it was.
 fn gained_first<'a>(counted: &'a [String], had: Option<&Value>) -> Vec<&'a String> {
-    let had = had.and_then(Value::as_array).into_iter().flatten();
-    let was = per_file(had.filter_map(Value::as_str));
+    let had = had.and_then(Value::as_array).map_or(&[][..], Vec::as_slice);
+    if counted.len() >= NAMED || had.len() >= NAMED {
+        return counted.iter().take(FILES).collect();
+    }
+    let was = per_file(had.iter().filter_map(Value::as_str));
     let now = per_file(counted.iter().map(String::as_str));
     let gained = |entry: &&String| {
         let file = file_of(entry);
@@ -298,6 +306,26 @@ mod tests {
             measure(&hour, "core", "tf-invalid")["files"],
             json!(["ws: Missing provider"]),
             "an earlier record out of shape lost a measure's files"
+        );
+    }
+
+    #[test]
+    fn a_list_cut_short_is_held_against_nothing() {
+        let read = figures(&[("core", "suppressions", 2.0)]);
+        let named = BTreeMap::from([(
+            "core".to_owned(),
+            BTreeMap::from([(
+                "suppressions",
+                vec!["a.rs:1".to_owned(), "z.rs:1".to_owned()],
+            )]),
+        )]);
+        let cut: Vec<String> = (0..NAMED).map(|line| format!("a.rs:{line}")).collect();
+        let earlier = json!({"core": {"suppressions": cut}});
+        let hour = hour("now", &read, &named, &BTreeMap::new(), None, Some(&earlier));
+        assert_eq!(
+            measure(&hour, "core", "suppressions")["files"],
+            json!(["a.rs:1", "z.rs:1"]),
+            "a file past where the day before's list was cut was called gained"
         );
     }
 }
