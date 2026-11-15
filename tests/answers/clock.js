@@ -38,11 +38,6 @@ function run(failures) {
             offline: "{count} offline", burst: "{count} in a burst",
             unresolved: "{count} unresolved" }
     };
-    // A night in Toronto's November as the daemon says it, the clock
-    // given as hours and minutes in local time and a kelvin bare, so
-    // the cases read the same wherever they run.
-    const local = (date, time) =>
-        new Date(date[0], date[1] - 1, date[2], time[0], time[1]).getTime();
     const evening = at("2026-11-04T22:00");
     const day = new Date(2026, 10, 4);
     const moon = Moment.moon(evening);
