@@ -282,15 +282,27 @@ fn line(row: &Row, lead: usize, across: usize, pen: &Pen) -> String {
 
 /// Facts, each a label in muted in one column and its value in text
 /// beside it, a value it can't know said as `unknown` in muted. Where the
-/// labels would take more than half the room, each value goes under its
-/// label, two cells in. A long value wraps under itself.
+/// labels would take more than half the room, or a word of a value, as an
+/// identifier, would be cut beside them that fits whole under them, each
+/// value goes under its label, two cells in. A long value wraps under
+/// itself.
 pub fn facts(facts: &[(&str, Option<&str>)], unknown: &str, pen: &Pen, room: Room) -> Vec<String> {
     let labels = facts
         .iter()
         .map(|(label, _)| width(label))
         .max()
         .unwrap_or(0);
-    let beside = room.cells().is_none_or(|cells| labels + GAP <= cells / 2);
+    let longest = facts
+        .iter()
+        .filter_map(|(_, value)| *value)
+        .flat_map(str::split_whitespace)
+        .map(width)
+        .max()
+        .unwrap_or(0);
+    let beside = room.cells().is_none_or(|cells| {
+        let whole = longest + labels + GAP <= cells || longest + GAP > cells;
+        labels + GAP <= cells / 2 && whole
+    });
     let column = if beside { labels + GAP } else { GAP };
     let mut lines = Vec::new();
     for (label, value) in facts {
