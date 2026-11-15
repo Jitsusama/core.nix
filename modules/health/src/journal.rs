@@ -144,10 +144,9 @@ pub fn parse(line: &str) -> Option<Entry> {
     let message = text("MESSAGE").unwrap_or_default();
     let identifier = text("SYSLOG_IDENTIFIER").or_else(|| text("_COMM"));
     let unit = text("USER_UNIT").or_else(|| text("UNIT"));
-    let ask = (identifier.as_deref() == Some(asks::IDENTIFIER)
-        && !agents_ran(&text("_SYSTEMD_CGROUP").unwrap_or_default()))
-    .then(|| asks::of(text))
-        .flatten();
+    let asked_joel = identifier.as_deref() == Some(asks::IDENTIFIER)
+        && !agents_ran(&text("_SYSTEMD_CGROUP").unwrap_or_default());
+    let ask = asked_joel.then(|| asks::of(text)).flatten();
     let thing = match (identifier.as_deref(), unit) {
         (Some("systemd") | None, Some(unit)) => unit,
         (Some(identifier), _) => identifier.to_owned(),
