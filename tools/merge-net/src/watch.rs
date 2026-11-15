@@ -995,7 +995,7 @@ fn told_fixed(
         }
         state.say(&format!(
             "{test} {} at {}, and fails one of two runs at main's newest head {}, so it is \
-             listed there: nothing is searched for, reverted or held",
+             flaky there, not broken: nothing is searched for, reverted or held",
             if commit.is_some() { "broke" } else { "fails" },
             short(commit.unwrap_or(head)),
             short(newest)
@@ -3473,7 +3473,9 @@ mod tests {
     }
 
     #[test]
-    fn a_test_failing_one_run_at_mains_newest_head_is_listed_there() {
+    fn a_test_failing_one_run_at_mains_newest_head_is_found_flaky_there() {
+        // Before a search no merge is known to own it, so it goes to the
+        // watcher unlisted rather than onto the list with nobody to mend it.
         let state = state("flaky-at-newest");
         state.set_heads("s", "s").unwrap();
         state.begin("h").unwrap();
@@ -3489,13 +3491,23 @@ mod tests {
             round(&world, &state, "s").unwrap(),
             Round::Failed("h".into())
         );
-        assert_eq!(*world.put_in_quarantine.lock().unwrap(), names("vm-a"));
+        assert!(
+            world.put_in_quarantine.lock().unwrap().is_empty(),
+            "a test no merge owns was listed"
+        );
         assert!(world.reverted.lock().unwrap().is_empty());
         assert_eq!(state.hold(), None);
         let found = findings(&state);
         assert_eq!(
             (&found[0]["kind"], &found[0]["commit"]),
             (&json!("flaky"), &json!("n"))
+        );
+        assert!(
+            found[0]["quarantine_error"]
+                .as_str()
+                .is_some_and(|why| why.contains("no owner")),
+            "the finding didn't say why it went unlisted: {}",
+            found[0]
         );
     }
 
