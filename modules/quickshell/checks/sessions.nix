@@ -365,4 +365,51 @@ in
       timeout 60 ${qs} -p shell.qml
       touch $out
     '';
+
+  # A monitor plugged back in takes back the workspace niri kept on the
+  # laptop's screen, even when niri is late to say the monitor is there
+  # (tests/sessions-screen-comes-home.qml), with niri stood in.
+  a-screen-niri-is-late-to-name-takes-its-workspaces-back =
+    let
+      options = singleton "Options.qml" ''
+        readonly property var sounds: ({ wants: "", player: "" })
+      '';
+      quiet = singleton "Quiet.qml" ''
+        property bool on: false
+      '';
+      notices = singleton "Notices.qml" ''
+        property var live: ({})
+        function mark(id, read) {}
+      '';
+      waiting = singleton "WaitingOnYou.qml" ''
+        readonly property var standing: ({})
+      '';
+      report = singleton "Report.qml" "function say(text) {}";
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Quickshell runs them with.
+    pkgs.runCommandLocal "a-screen-niri-is-late-to-name-takes-its-workspaces-back" { } ''
+      export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
+      ${lib.getExe pkgs.bash} ${../tests/stand-ins/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
+      ${copied [
+        "Daemon.qml"
+        "PiSource.qml"
+        "Sessions.qml"
+      ]}
+      cp ${waiting} WaitingOnYou.qml
+      cp ${report} Report.qml
+      cp ${../../../tests/sessions-screen-comes-home.qml} shell.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../tests/stand-ins/hosted-reopen-niri.qml} Niri.qml
+      cp ${options} Options.qml
+      cp ${quiet} Quiet.qml
+      cp ${away} Away.qml
+      cp ${notices} Notices.qml
+      export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
 }

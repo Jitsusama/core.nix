@@ -148,6 +148,11 @@
     quietly where the last boot kept it, and keeps the place of one no host serves yet, opens none
     for one kept nowhere, and holds one bound for the workspace Joel is on until he leaves it
   '';
+  a-screen-niri-is-late-to-name-takes-its-workspaces-back = ''
+    a monitor plugged back in takes back the workspace niri kept on the laptop's screen, leaving
+    the one niri gave back, even when niri never answers the shell's look at the screens as the
+    monitor comes, the shell looking again while workspaces wait
+  '';
   a-session-behind-the-lock-waits-for-its-kin = ''
     a session handed over while the screen is locked, beside its sender in the sessions' kitty,
     waits once the lock is gone until the node says which window is the sender's, by the app id it

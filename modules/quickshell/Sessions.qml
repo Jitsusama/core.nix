@@ -594,6 +594,7 @@ Singleton {
             return;
         screensPatience.restart();
         Niri.request("Outputs", answer => {
+            screensUnheard = 0;
             if (answer?.Outputs)
                 screens = Places.screensOf(answer.Outputs);
             screensLooked();
@@ -605,10 +606,23 @@ Singleton {
         screensWaiting = [];
         waiting.forEach(then => then());
     }
+    // Looks in a row niri has left unanswered. A screen that came while
+    // niri lagged, as at a redock on 2026-11-15, was never seen, so the
+    // workspaces waiting for it (comeHome) stayed away with nothing to look
+    // again: so while any wait, an unanswered look is tried again, for
+    // about a minute, a niri that never answers being one gone.
+    property int screensUnheard: 0
     Timer {
         id: screensPatience
         interval: 2000
-        onTriggered: root.screensLooked()
+        onTriggered: {
+            root.screensLooked();
+            if (Object.keys(root.awayFrom).length === 0 || root.screensUnheard >= 15)
+                return;
+            root.screensUnheard += 1;
+            console.info(`sessions: niri didn't say its screens in 2 s, so looking again`);
+            arranging.restart();
+        }
     }
     Timer {
         id: arranging
