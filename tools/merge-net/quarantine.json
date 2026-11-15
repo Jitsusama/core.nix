@@ -534,5 +534,17 @@
       "test_the_cat_holds_its_ground_through_a_slide_between_workspaces"
     ],
     "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
+    "at": 1794723405,
+    "commit": "79d804bc87b2789f36216e9928e1351d54feba9b",
+    "owner_pr": 4577,
+    "reason": "failed, then passed, at 79d804bc87b2",
+    "subtests": [
+      "test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin",
+      "test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray",
+      "test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is"
+    ],
+    "test": "vm-desktop-minds-the-margin"
   }
 ]
