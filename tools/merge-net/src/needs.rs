@@ -12,10 +12,23 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
 use crate::state::{self, short};
-use crate::{SYSTEM, comments, gated, git, owners, ready, rules, world};
+use crate::{SYSTEM, comments, gated, git, macs, owners, ready, rules, world};
+
+/// Say whether the branch's change runs VM tests before merging, and which,
+/// then each of a Mac's comparisons its gate passed without (`macs.rs`).
+pub fn needs(base: &str) -> Result<ExitCode, String> {
+    let answered = answer(base);
+    // A tree with edits holds what no gate at its head saw, so its record
+    // speaks only of the commit.
+    let clean = git(&["status", "--porcelain"]).is_ok_and(|status| status.is_empty());
+    if clean && let Ok(head) = git(&["rev-parse", "HEAD"]) {
+        print!("{}", macs::said(&ready::record(&head), short(&head)));
+    }
+    answered
+}
 
 /// Say whether the branch's change runs VM tests before merging, and which.
-pub fn needs(base: &str) -> Result<ExitCode, String> {
+fn answer(base: &str) -> Result<ExitCode, String> {
     let began = state::now();
     let head = git(&["rev-parse", "HEAD"])?;
     let merge_base = git(&["merge-base", "HEAD", base])?;
