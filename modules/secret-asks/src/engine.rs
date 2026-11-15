@@ -33,6 +33,9 @@ use crate::ask::{self, Ask};
 use crate::grant::{self, Grants};
 use crate::mask::{MOST_BYTES, masked};
 use crate::reading::{self, Outcome};
+// What a daemon decides of its own lives beside the engine, named here
+// still so each daemon reaches it where it always has.
+pub use crate::releaser::{Releaser, Secret};
 use crate::row::{self, Held, STAYS_MS, State};
 use crate::tree::{self, Checkout, Tree};
 use crate::words::Words;
@@ -132,64 +135,6 @@ pub fn session_locked(loginctl: &Path) -> bool {
     };
     let hint = asked(&["show-session", &display, "--property=LockedHint", "--value"]);
     hint.as_deref() != Some("no")
-}
-
-/// A value read to be released, its bytes zeroed once it's let go.
-pub struct Secret(String);
-
-impl Secret {
-    pub fn new(value: String) -> Secret {
-        Secret(value)
-    }
-
-    /// The value, for the command it's released to alone.
-    pub fn reveal(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Drop for Secret {
-    fn drop(&mut self) {
-        // SAFETY: zeroes are valid UTF-8, so the string stays a string.
-        unsafe { self.0.as_bytes_mut() }.fill(0);
-    }
-}
-
-/// What a daemon decides of its own: what it may release, whether the
-/// session is locked, how a value is read, and what command it runs in.
-pub trait Releaser: Send + Sync {
-    /// Why an ask may not be served at all, where it may not; it's then
-    /// answered refused, unseen.
-    fn refused(&self, ask: &Ask) -> Option<String>;
-    /// Whether the session in front is locked, when no yes is taken.
-    fn locked(&self) -> bool;
-    /// The value an ask names, read once Joel has said yes.
-    ///
-    /// # Errors
-    ///
-    /// Where it can't be read, saying why.
-    fn read_value(&self, ask: &Ask) -> Result<Secret, String>;
-    /// The command an ask runs, given the value; its standard input,
-    /// output and error are the engine's to set.
-    ///
-    /// # Errors
-    ///
-    /// Where it can't be made, saying why.
-    fn command(&self, ask: &Ask, value: &Secret) -> Result<Command, String>;
-    /// The program an ask's command comes to, as this releaser resolves
-    /// it, which a standing yes is to as much as the command's words;
-    /// none by default, so a releaser that resolves none makes no grant.
-    fn program(&self, ask: &Ask) -> Option<PathBuf> {
-        let _ = ask;
-        None
-    }
-    /// What to tell the agent of what the releaser did once a release was
-    /// answered, its command run or not, a sentence each; nothing by
-    /// default.
-    fn after(&self, ask: &Ask) -> Vec<String> {
-        let _ = ask;
-        Vec::new()
-    }
 }
 
 /// Where the engine works, and what it says things with.
@@ -429,29 +374,15 @@ impl Engine {
                         self.answered(&id, "ended", "ended unanswered");
                     } else {
                         let tree = self.tree_of(&ask, now);
-                        // A grant releases without the lock's say, since
-                        // Joel's yes that made it was given unlocked.
                         if tree.landed == Some(true) && self.mark(&id) {
-                            eprintln!(
-                                "<6>secret-asks: {id} released by grant to {} for {} \
-                                 to run {:?} in {}",
-                                ask.session, ask.item, ask.argv, ask.tree
-                            );
-                            self.reading(&ask, Outcome::Granted, &Value::Null);
-                            let (released, kept) = (ask.clone(), tree.checkout.clone());
-                            held.insert(
-                                id,
-                                Held {
-                                    ask,
-                                    tree,
-                                    state: State::Releasing,
-                                    since_ms: now,
-                                },
-                            );
-                            let engine = Arc::clone(self);
-                            std::thread::spawn(move || {
-                                engine.run_released(&released, &kept, true);
-                            });
+                            let mut one = Held {
+                                ask,
+                                tree,
+                                state: State::Waiting,
+                                since_ms: now,
+                            };
+                            self.release_by_grant(&mut one, now);
+                            held.insert(id, one);
                             continue;
                         }
                         eprintln!(
@@ -471,6 +402,43 @@ impl Engine {
                 }
             }
         }
+    }
+
+    /// Releases an ask a standing yes covers, its mark already left: read
+    /// as granted and run on a thread of its own. A grant releases without
+    /// the lock's say, since Joel's yes that made it was given unlocked.
+    fn release_by_grant(self: &Arc<Self>, one: &mut Held, now: i64) {
+        let ask = &one.ask;
+        eprintln!(
+            "<6>secret-asks: {} released by grant to {} for {} to run {:?} in {}",
+            ask.id, ask.session, ask.item, ask.argv, ask.tree
+        );
+        self.reading(ask, Outcome::Granted, &Value::Null);
+        one.state = State::Releasing;
+        one.since_ms = now;
+        let (released, kept) = (ask.clone(), one.tree.checkout.clone());
+        let engine = Arc::clone(self);
+        std::thread::spawn(move || engine.run_released(&released, &kept, true));
+    }
+
+    /// Releases each ask still waiting that a grant just made covers, so
+    /// a yes to one doesn't leave its twins from other trees waiting on
+    /// him; answers whether any was.
+    fn release_covered(self: &Arc<Self>, held: &mut BTreeMap<String, Held>) -> bool {
+        let now = now_ms();
+        let mut any = false;
+        for one in held.values_mut() {
+            if one.state != State::Waiting {
+                continue;
+            }
+            let tree = self.tree_of(&one.ask, now);
+            if tree.landed == Some(true) && self.mark(&one.ask.id) {
+                one.tree = tree;
+                self.release_by_grant(one, now);
+                any = true;
+            }
+        }
+        any
     }
 
     /// Ends each ask past its ten minutes, and lets go of each row
@@ -577,8 +545,14 @@ impl Engine {
         one.state = State::Releasing;
         one.since_ms = now_ms();
         let ask = one.ask.clone();
-        if let (Some(program), Some(mut grants)) = (self.releaser.program(&ask), self.grants()) {
-            grants.grant(&ask, &tree.checkout, &program, now_ms());
+        let granted = match (self.releaser.program(&ask), self.grants()) {
+            (Some(program), Some(mut grants)) => grants
+                .grant(&ask, &tree.checkout, &program, now_ms())
+                .is_some(),
+            _ => false,
+        };
+        if granted {
+            self.release_covered(&mut held);
         }
         drop(held);
         self.reading(&ask, Outcome::Released, said);

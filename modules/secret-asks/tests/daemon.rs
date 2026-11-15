@@ -286,6 +286,41 @@ fn a_yes_lets_the_same_ask_from_any_tree_of_its_repository_run_for_a_week() {
 }
 
 #[test]
+fn a_yes_lets_the_same_ask_already_waiting_run_too() {
+    let setting = Setting::new("granted-waiting");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    row(&mut client, &first);
+    let waiting = setting.ask(ITEM);
+    assert_eq!(
+        row(&mut client, &waiting)["state"],
+        "waiting",
+        "the second ask didn't wait before any yes"
+    );
+    let drawn = client.ask(&json!({"id": 1, "ask": "list", "kind": "row"}))["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|record| record["row"].clone())
+        .find(|row| row["thing"] == format!("ask:{first}"))
+        .expect("the first ask's row is listed");
+    assert_eq!(
+        act(&mut client, &drawn, 0)["releasing"],
+        true,
+        "the yes wasn't taken"
+    );
+    let answer = setting.answer(&waiting);
+    assert_eq!(
+        answer["state"], "ran",
+        "the same ask already waiting still waited: {answer}"
+    );
+    assert_eq!(
+        answer["granted"], true,
+        "the answer doesn't say so: {answer}"
+    );
+}
+
+#[test]
 fn a_grant_covers_no_tree_whose_code_isnt_all_on_main() {
     let setting = Setting::new("granted-unlanded");
     let mut client = setting.watching();
@@ -391,12 +426,21 @@ fn asks_lists_a_grant_and_revoking_it_has_the_same_ask_wait_again() {
         grant["acts"][0]["key"], "verb:revoke",
         "its one act isn't Revoke It: {grant}"
     );
-    assert_eq!(
-        client.ask(&acting(grant, 0))["revoked"],
-        true,
-        "the revoke wasn't taken"
-    );
-    let gone = client.gone();
+    // The row's going may be pushed before the revoke is answered, and an
+    // ask passes over pushes, so both are read here in whichever order.
+    let revoke = acting(grant, 0);
+    client.send(&revoke);
+    let (mut answer, mut gone) = (None, None);
+    while answer.is_none() || gone.is_none() {
+        let said = client.heard();
+        if let Some(keys) = said["gone"].as_array() {
+            gone = Some(keys.clone());
+        } else if said["id"] == revoke["id"] && said.get("changed").is_none() {
+            answer = Some(said);
+        }
+    }
+    let (answer, gone) = (answer.unwrap_or_default(), gone.unwrap_or_default());
+    assert_eq!(answer["revoked"], true, "the revoke wasn't taken: {answer}");
     assert!(
         gone.iter().any(|key| key.as_str() == grant["key"].as_str()),
         "the grant's row didn't go: {gone:?}"
