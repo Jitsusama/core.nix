@@ -1326,9 +1326,12 @@ Scope {
                         own.push(`${names.concat([row.name]).join(" \u203a ")}`
                             + ` (${row.is ?? row.key})`);
                     const kind = uncomposed(row);
+                    // What it was made as instead, so a failure names the
+                    // maker that drew its own version of the thing.
                     if (kind !== null)
                         loose.push(`${names.concat([row.name]).join(" \u203a ")}`
-                            + ` (${row.key}, not made as a ${kind})`);
+                            + ` (${row.key}, not made as a ${kind}, but as`
+                            + ` ${row.component ?? "none"}${row.is ? `, is ${row.is}` : ""})`);
                     else if (row.component)
                         composed += 1;
                     const drawn = drawerOf(row);
