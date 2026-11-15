@@ -22,9 +22,16 @@ use crate::time;
 /// How often the switch is read, as often as net-daemon reads its report.
 const EVERY: Duration = Duration::from_secs(60);
 
-/// How long one page may take. The switch's web server is slow and at
-/// times sends nothing, so each page is asked for again once.
+/// How long one page may take.
 const PAGE: Duration = Duration::from_secs(5);
+
+/// How many times each request is made before the switch reads as
+/// unreachable, and the pause between them. The switch's web server closes
+/// about one connection in four without a reply, at times twice running
+/// (5 of 20 asks on 15 Nov), so a round of nine requests asked twice each
+/// mostly lost one; five tries leave each about a 1 in 1000 chance.
+const TRIES: usize = 5;
+const PAUSE: Duration = Duration::from_millis(300);
 
 /// The switch's one account; its name can't be changed on these switches'
 /// status pages, only its password.
@@ -114,18 +121,16 @@ fn pages(agent: &Agent, address: &str) -> Result<Pages, String> {
         .iter()
         .map(|page| {
             let url = format!("http://{address}/{page}.htm");
-            let read = || {
+            again(|| {
                 agent
                     .get(&url)
                     .call()
                     .and_then(|mut answer| answer.body_mut().read_to_string())
                     .ok()
                     .filter(|text| !text.is_empty())
-            };
-            read()
-                .or_else(read)
-                .map(|text| ((*page).to_owned(), text))
-                .ok_or_else(|| format!("its {page} page didn't answer"))
+            })
+            .map(|text| ((*page).to_owned(), text))
+            .ok_or_else(|| format!("its {page} page didn't answer"))
         })
         .collect()
 }
@@ -133,17 +138,32 @@ fn pages(agent: &Agent, address: &str) -> Result<Pages, String> {
 /// Signs in. The switch ties the session to the address asking, and its
 /// answer says nothing reliable, so the next read is what tells.
 fn sign_in(agent: &Agent, address: &str, password: &str) -> Result<(), String> {
-    agent
-        .post(&format!("http://{address}/logon.cgi"))
-        .send_form([
-            ("username", USER),
-            ("password", password),
-            ("logon", "Login"),
-        ])
-        .map(drop)
-        // Only the kind of failure is said: ureq's own words could carry
-        // what was sent.
-        .map_err(|_| "its sign-in page didn't answer".to_owned())
+    let url = format!("http://{address}/logon.cgi");
+    again(|| {
+        agent
+            .post(&url)
+            .send_form([
+                ("username", USER),
+                ("password", password),
+                ("logon", "Login"),
+            ])
+            .ok()
+    })
+    .map(drop)
+    // Only the kind of failure is said: ureq's own words could carry what
+    // was sent.
+    .ok_or_else(|| "its sign-in page didn't answer".to_owned())
+}
+
+/// Makes one request until the switch answers it, at most `TRIES` times.
+fn again<T>(mut ask: impl FnMut() -> Option<T>) -> Option<T> {
+    for _ in 1..TRIES {
+        if let Some(answer) = ask() {
+            return Some(answer);
+        }
+        thread::sleep(PAUSE);
+    }
+    ask()
 }
 
 /// Writes a file whole, so net-daemon never reads half of one.
@@ -167,13 +187,20 @@ mod tests {
     /// once signed in with `PASSWORD`, and the sign-in form until then, and
     /// keeps every request it was sent.
     fn switch_on_loopback(signed_in: bool) -> (String, Arc<Mutex<Vec<String>>>) {
+        stand_in(signed_in, false)
+    }
+
+    /// The stand-in, and when `flaky`, one that closes two connections in
+    /// every three without a reply, twice in a row, as the real switch's web
+    /// server closes about one in four.
+    fn stand_in(signed_in: bool, flaky: bool) -> (String, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
         let address = listener.local_addr().expect("its address").to_string();
         let heard = Arc::new(Mutex::new(Vec::new()));
         let kept = Arc::clone(&heard);
         thread::spawn(move || {
             let mut session = signed_in;
-            for stream in listener.incoming() {
+            for (count, stream) in listener.incoming().enumerate() {
                 let Ok(mut stream) = stream else { return };
                 let mut reader = BufReader::new(stream.try_clone().expect("a second handle"));
                 let mut request = String::new();
@@ -192,6 +219,9 @@ mod tests {
                 reader.read_exact(&mut body).expect("the body");
                 let body = String::from_utf8_lossy(&body).into_owned();
                 request.push_str(&body);
+                if flaky && count % 3 != 2 {
+                    continue;
+                }
                 let path = request.split_whitespace().nth(1).unwrap_or("/").to_owned();
                 kept.lock().expect("the log").push(request);
                 if path == "/logon.cgi" {
@@ -250,6 +280,15 @@ mod tests {
         let report = round(&agent(), &address, Some(PASSWORD), 10);
         assert_eq!(report.state, SourceState::Answering, "{:?}", report.reason);
         assert_eq!(signed_in(&heard), 0, "it signed in over a live session");
+    }
+
+    #[test]
+    fn a_switch_that_drops_connections_is_asked_again_until_it_answers() {
+        let (address, heard) = stand_in(false, true);
+        let report = round(&agent(), &address, Some(PASSWORD), 10);
+        assert_eq!(report.state, SourceState::Answering, "{:?}", report.reason);
+        assert_eq!(report.status.map(|status| status.ports.len()), Some(8));
+        assert_eq!(signed_in(&heard), 1, "a sign-in it answered was sent again");
     }
 
     #[test]
