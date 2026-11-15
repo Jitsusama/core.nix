@@ -46,8 +46,9 @@ pub struct Frames {
 }
 
 /// One opening. `at` is when it opened, in milliseconds since the epoch;
-/// `ms` how long until the pick, or -1 with nothing picked; `open` how
-/// long it stayed open.
+/// `ms` how long until the last pick, or -1 with nothing picked;
+/// `first_ms` until the first, -1 where the launcher didn't yet say;
+/// `open` how long it stayed open.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Trial {
@@ -55,6 +56,8 @@ pub struct Trial {
     pub keys: Keys,
     pub picked: String,
     pub ms: i64,
+    #[serde(rename = "firstMs")]
+    pub first_ms: i64,
     pub open: i64,
     pub missed: bool,
     pub timed: Option<Timed>,
@@ -68,6 +71,7 @@ impl Default for Trial {
             keys: Keys::default(),
             picked: String::new(),
             ms: -1,
+            first_ms: -1,
             open: -1,
             missed: false,
             timed: None,
@@ -114,6 +118,18 @@ impl Trial {
     /// Whether something was picked.
     pub fn picked_one(&self) -> bool {
         !self.picked.is_empty()
+    }
+
+    /// How long until he found what he came for: the first pick, since
+    /// an opening kept up to settle several looks runs `ms` to the last
+    /// (09:38 on 14 Nov, 212 s for three); the last, for trials older
+    /// than the launcher's saying so.
+    pub fn found(&self) -> i64 {
+        if self.first_ms >= 0 {
+            self.first_ms
+        } else {
+            self.ms
+        }
     }
 
     /// When it closed, in milliseconds since the epoch.
@@ -250,5 +266,12 @@ mod tests {
         assert_eq!(trial.closed(), 1_794_455_364_916 + 19_546);
         assert_eq!(trial.timed.as_ref().map(|t| t.felt.len()), Some(1));
         assert_eq!(trial.frames.as_ref().map(|f| f.longest), Some(69.0));
+        assert_eq!(trial.found(), 19521, "an older trial was found at its pick");
+    }
+
+    #[test]
+    fn several_picks_were_found_at_the_first() {
+        let trials = read(r#"{"picked":"on:look:bad8","ms":212000,"firstMs":9000,"picks":3}"#);
+        assert_eq!(trials[0].found(), 9000);
     }
 }
