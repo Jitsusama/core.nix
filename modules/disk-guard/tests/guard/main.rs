@@ -70,6 +70,8 @@ mod temp;
 mod trash;
 mod trees;
 mod units;
+#[cfg(target_os = "linux")]
+mod unread;
 mod unregistered;
 mod variants;
 mod vouch;
