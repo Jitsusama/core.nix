@@ -26,6 +26,7 @@ mod blend;
 mod ex;
 mod eyebrow;
 mod gl;
+mod glow;
 mod keys;
 mod links;
 mod menu;
