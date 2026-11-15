@@ -27,10 +27,13 @@ esac
 
 /// The nested desktop: it notes what it was given and its sleep's pid, and
 /// passes no signal on to the sleep, as dbus-run-session passes none to
-/// niri.
+/// niri. Told to close at once, it ends with the code it's told, or 0.
 const DBUS_RUN_SESSION: &str = r#"#!/bin/sh
 echo "$@" > "$STAND_IN/started"
-[ -e "$STAND_IN/close-at-once" ] && exit 0
+if [ -e "$STAND_IN/close-at-once" ]; then
+  code=$(cat "$STAND_IN/close-at-once")
+  exit "${code:-0}"
+fi
 sleep 300 &
 echo $! > "$STAND_IN/desktop"
 wait
@@ -184,22 +187,83 @@ fn the_window_closing_ends_the_preview_as_the_desktop_did() {
     );
     let said = String::from_utf8_lossy(&ran.stderr);
     assert!(
-        said.contains("1 files follow the working copy, 1 were built"),
+        said.contains("1 file follows the working copy, 1 was built"),
         "{said}"
     );
 }
 
 #[test]
-fn an_option_it_doesnt_take_is_refused_saying_how_it_is_used() {
-    let ran = Command::new(env!("CARGO_BIN_EXE_shell-preview"))
-        .arg("--typo")
+fn the_desktop_ending_badly_passes_its_code_on() {
+    let stand_in = StandIn::new("failed");
+    stand_in.write("close-at-once", "3");
+
+    let ran = stand_in
+        .start()
+        .wait_with_output()
+        .expect("the preview ends");
+
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(ran.status.code(), Some(3), "{said}");
+    assert!(said.contains("the nested desktop ended with 3"), "{said}");
+}
+
+/// shell-preview run with only these words, and nothing to show.
+fn asked(words: &[&str]) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_shell-preview"))
+        .args(words)
         .output()
-        .expect("shell-preview runs");
+        .expect("shell-preview runs")
+}
+
+/// The error a run said on stderr, as JSON.
+fn error_of(ran: &std::process::Output) -> serde_json::Value {
+    serde_json::from_slice(&ran.stderr).expect("its error is JSON")
+}
+
+#[test]
+fn an_option_it_doesnt_take_is_refused_naming_the_nearest_it_does() {
+    let ran = asked(&["--tpye", "firefox", "--format", "json"]);
 
     assert_eq!(ran.status.code(), Some(64));
-    let said = String::from_utf8_lossy(&ran.stderr);
+    let error = error_of(&ran);
+    assert_eq!(error["what"], "no option called --tpye", "{error}");
+    assert_eq!(error["why"], "did you mean --type?", "{error}");
+}
+
+#[test]
+fn an_option_without_its_value_is_refused() {
+    let ran = asked(&["--check", "--format", "json"]);
+
+    assert_eq!(ran.status.code(), Some(64));
+    let error = error_of(&ran);
+    assert_eq!(error["what"], "--check needs a value", "{error}");
+}
+
+#[test]
+fn its_help_names_each_option_and_the_codes_it_ends_with() {
+    let ran = asked(&["--help", "--format", "json"]);
+
+    assert_eq!(ran.status.code(), Some(0));
+    let help: serde_json::Value = serde_json::from_slice(&ran.stdout).expect("help/1");
+    assert_eq!(help["schema"], "help/1", "{help}");
+    let named = |group: &str, field: &str| -> Vec<String> {
+        help[group]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|entry| entry[field].to_string().trim_matches('"').to_owned())
+            .collect()
+    };
+    let options = named("options", "name");
+    for option in ["--type TEXT", "--check NAME", "--account NAME"] {
+        assert!(options.iter().any(|named| named == option), "{options:?}");
+    }
+    let codes = named("exits", "code");
+    assert_eq!(codes, ["0", "1", "64", "130"], "{help}");
     assert!(
-        said.starts_with("shell-preview: --typo isn't something it takes\n"),
-        "{said}"
+        help["passes"]
+            .as_str()
+            .is_some_and(|words| words.contains("nested desktop")),
+        "the desktop's own code isn't said as passed on: {help}"
     );
 }

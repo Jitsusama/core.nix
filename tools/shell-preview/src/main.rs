@@ -18,7 +18,9 @@
 //!
 //! git, nix, dbus-run-session and wtype are found on the path: the first
 //! two are the person's own, with their settings, and package.nix puts the
-//! others there.
+//! others there. Its help, exits and failures are the terminal kit's
+//! (docs/commands.md): a desktop that ends badly passes its code on, as a
+//! stand-in's does.
 
 mod desktop;
 mod layout;
@@ -33,10 +35,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use desktop::{Desktop, Ended};
+use terminal_kit::{Context, Exit, Failure, Help, flags};
 
-/// What a run asked for is refused with, as sysexits.h numbers it.
-const USAGE: u8 = 64;
-const USED: &str = "Usage: shell-preview [--type TEXT] [--check NAME] [--account NAME]";
+/// The options it takes, each with a value.
+const OPTIONS: [&str; 3] = ["--type", "--check", "--account"];
 /// How long the nested shell may take to answer: it starts cold, drawn in
 /// software when the GPU is the session's.
 const STARTING: Duration = Duration::from_secs(60);
@@ -73,28 +75,65 @@ struct Options {
 }
 
 impl Options {
-    /// Read the command line's arguments, or say what's wrong with them.
-    fn parse(mut arguments: impl Iterator<Item = String>) -> Result<Self, String> {
+    /// Read the command line's words, each option given as `--type TEXT`
+    /// or `--type=TEXT`, or say what's wrong with them.
+    fn parse(words: &[String]) -> Result<Self, Failure> {
         let mut options = Self {
             typed: None,
             check: "vm-desktop-starts-clean".to_owned(),
             account: "jitsusama".to_owned(),
         };
-        while let Some(argument) = arguments.next() {
-            let mut value = || {
-                arguments
-                    .next()
-                    .ok_or_else(|| format!("{argument} needs a value"))
+        let mut words = words.iter();
+        while let Some(word) = words.next() {
+            let (option, attached) = match word.split_once('=') {
+                Some((option, value)) if option.starts_with("--") => (option, Some(value)),
+                _ => (word.as_str(), None),
             };
-            match argument.as_str() {
-                "--type" => options.typed = Some(value()?),
-                "--check" => options.check = value()?,
-                "--account" => options.account = value()?,
-                _ => return Err(format!("{argument} isn't something it takes")),
+            if !OPTIONS.contains(&option) {
+                return Err(
+                    flags::unknown("option", option, &OPTIONS).try_this("shell-preview --help")
+                );
+            }
+            let value = attached
+                .or_else(|| words.next().map(String::as_str))
+                .filter(|value| !value.starts_with("--"))
+                .ok_or_else(|| {
+                    Failure::new(Exit::Usage, format!("{option} needs a value"))
+                        .try_this("shell-preview --help")
+                })?
+                .to_owned();
+            match option {
+                "--type" => options.typed = Some(value),
+                "--check" => options.check = value,
+                _ => options.account = value,
             }
         }
         Ok(options)
     }
+}
+
+fn help() -> Help {
+    Help::new(
+        "shell-preview",
+        "shows the desktop's shell from the working copy, in a niri window of its own",
+    )
+    .option("--type TEXT", "opens the launcher and types TEXT into it")
+    .option(
+        "--check NAME",
+        "the check whose machine's shell it shows, vm-desktop-starts-clean unless given",
+    )
+    .option(
+        "--account NAME",
+        "that machine's account, jitsusama unless given",
+    )
+    .example("shell-preview", "shows the shell until its window closes")
+    .example(
+        "shell-preview --type firefox",
+        "shows the rows the launcher gives for firefox",
+    )
+    .exit(Exit::Failed, "the preview couldn't start")
+    .exit(Exit::Interrupted, "stopped with Ctrl+C")
+    .passes("the nested desktop's own code, or 128 and a stop's signal")
 }
 
 /// What a preview takes from a check's machine, each a path in the store.
@@ -106,47 +145,56 @@ struct Machine {
 }
 
 fn main() -> ExitCode {
-    let arguments: Vec<String> = env::args().skip(1).collect();
-    if arguments.iter().any(|argument| argument == "--help") {
-        println!("{USED}");
-        return ExitCode::SUCCESS;
-    }
-    let options = match Options::parse(arguments.into_iter()) {
-        Ok(options) => options,
-        Err(why) => {
-            eprintln!("shell-preview: {why}\n{USED}");
-            return ExitCode::from(USAGE);
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let options = Options::parse(&context.args)?;
+        let (ended, heard) = mpsc::channel();
+        desktop::hear_stops(ended.clone()).map_err(|error| {
+            Failure::new(Exit::Failed, "it can't hear its stop signals").because(error.to_string())
+        })?;
+        // Named for this run alone, so what a run cut short left can't refuse it.
+        let started = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos());
+        let own = env::temp_dir().join(format!("shell-preview-{}-{started}", std::process::id()));
+        let shown = preview(context, &options, &own, &ended, &heard);
+        let _ = fs::remove_dir_all(&own);
+        match shown {
+            Ok(ended) => ending(&ended),
+            Err(why) => {
+                Err(Failure::new(Exit::Failed, "the preview couldn't be shown").because(why))
+            }
         }
-    };
-    let (ended, heard) = mpsc::channel();
-    if let Err(error) = desktop::hear_stops(ended.clone()) {
-        eprintln!("shell-preview: can't hear its stop signals: {error}");
-        return ExitCode::FAILURE;
-    }
-    // Named for this run alone, so what a run cut short left can't refuse it.
-    let started = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.as_nanos());
-    let own = env::temp_dir().join(format!("shell-preview-{}-{started}", std::process::id()));
-    let shown = preview(&options, &own, &ended, &heard);
-    let _ = fs::remove_dir_all(&own);
-    match shown {
-        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
-        Err(why) => {
-            eprintln!("shell-preview: {why}");
-            ExitCode::FAILURE
-        }
+    })
+}
+
+/// How the run ends once the preview has: done when its window closed, the
+/// kit's interruption for Ctrl+C, and otherwise the code a shell gives,
+/// passed on.
+fn ending(ended: &Ended) -> Result<(), Failure> {
+    let code = u8::try_from(ended.code()).unwrap_or(1);
+    match ended {
+        Ended::Closed(0) => Ok(()),
+        Ended::Closed(_) => Err(Failure::passed(
+            code,
+            format!("the nested desktop ended with {code}"),
+        )),
+        Ended::Stopped(libc::SIGINT) => Err(Failure::new(Exit::Interrupted, "it was stopped")),
+        Ended::Stopped(signal) => Err(Failure::passed(
+            code,
+            format!("it was stopped by signal {signal}"),
+        )),
     }
 }
 
 /// Show the shell, in the folder of its own given, until something ends it,
-/// and give what the preview exits with.
+/// and give what ended it.
 fn preview(
+    context: &Context,
     options: &Options,
     own: &Path,
     ended: &mpsc::Sender<Ended>,
     heard: &Receiver<Ended>,
-) -> Result<i32, String> {
+) -> Result<Ended, String> {
     let failed = |doing: &'static str| move |error: std::io::Error| format!("{doing}: {error}");
     let root = PathBuf::from(run("git", &["rev-parse", "--show-toplevel"])?);
     let system = run(
@@ -159,7 +207,11 @@ fn preview(
             "builtins.currentSystem",
         ],
     )?;
-    eprintln!("building the shell's home from the working copy");
+    let _ = context.tell(
+        "running",
+        "accent",
+        "building the shell's home from the working copy",
+    );
     let flake = format!("git+file://{}", root.display());
     let built = machine(&flake, &system, &options.check, &options.account)?;
 
@@ -190,9 +242,14 @@ fn preview(
         &shell,
     )
     .map_err(failed("laying the shell out"))?;
-    eprintln!(
-        "{} files follow the working copy, {} were built",
-        laid.linked, laid.copied
+    let _ = context.tell(
+        "done",
+        "success",
+        &format!(
+            "{} the working copy, {} built",
+            counted(laid.linked, "file follows", "files follow"),
+            counted(laid.copied, "was", "were")
+        ),
     );
     let config = layout::niri_config(
         &built.home.join(".config/niri"),
@@ -220,22 +277,39 @@ fn preview(
     )
     .map_err(failed("starting niri"))?;
     let shown = match &options.typed {
-        Some(text) => typed_into(&built.quickshell, &shell, &environment, text, heard),
+        Some(text) => typed_into(
+            context,
+            &built.quickshell,
+            &shell,
+            &environment,
+            text,
+            heard,
+        ),
         None => Ok(None),
     };
-    let code = match shown {
-        Ok(Some(early)) => Ok(early.code()),
-        Ok(None) => Ok(heard.recv().map_or(1, |ended| ended.code())),
+    let what_ended = match shown {
+        Ok(Some(early)) => Ok(early),
+        Ok(None) => Ok(heard.recv().unwrap_or(Ended::Closed(1))),
         Err(why) => Err(why),
     };
     desktop.end(ENDING);
-    code
+    what_ended
+}
+
+/// A count with its words, one or many: "1 file follows", "2 were".
+fn counted(count: usize, one: &str, many: &str) -> String {
+    if count == 1 {
+        format!("1 {one}")
+    } else {
+        format!("{count} {many}")
+    }
 }
 
 /// Open the nested launcher once its shell answers, and type the text into
 /// it on the nested niri's keyboard. Gives what ended the preview first, if
 /// something did while it waited.
 fn typed_into(
+    context: &Context,
     quickshell: &Path,
     shell: &Path,
     environment: &Environment,
@@ -287,7 +361,11 @@ fn typed_into(
     if !typed.success() {
         return Err(format!("wtype couldn't type {text:?}"));
     }
-    eprintln!("typed {text:?} into the launcher");
+    let _ = context.tell(
+        "done",
+        "success",
+        &format!("typed {text:?} into the launcher"),
+    );
     Ok(None)
 }
 
