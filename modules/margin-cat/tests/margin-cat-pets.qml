@@ -57,8 +57,8 @@ QtObject {
             [-1, 1, 1, 0]);
         // Each drawing's cells as they land on the screen, from a cell left
         // of where it sits.
-        const screen = (drawing, out) => drawing.map(row =>
-            (".".repeat(1 - out) + row).padEnd(10, "."));
+        const padded = line => line.padEnd(10, ".");
+        const screen = (drawing, out) => drawing.map(row => padded(".".repeat(1 - out) + row));
         const sitting = screen(Drawings.poses.nothingHere, 0);
         const toLeft = screen(MarginCat.leaning(-1, Drawings.poses), MarginCat.leansOut(-1));
         const toRight = screen(MarginCat.leaning(1, Drawings.poses), MarginCat.leansOut(1));
