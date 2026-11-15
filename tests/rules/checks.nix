@@ -288,6 +288,7 @@
         google-people = google;
         google-rows = google;
         guide = pkgs.callPackage ../../modules/guide/package.nix { };
+        health = pkgs.callPackage ../../modules/health/package.nix { };
         hibernate-unlock = pkgs.callPackage ../../modules/hibernate/unlock/package.nix { };
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         jobs-broker = pkgs.callPackage ../../modules/jobs-broker/package.nix { };

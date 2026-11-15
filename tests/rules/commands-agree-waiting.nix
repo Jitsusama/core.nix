@@ -13,10 +13,6 @@
     "exits"
     "inks"
   ];
-  health = [
-    "exits"
-    "helps"
-  ];
   merge-net = [ "exits" ];
   nix-offload = [
     "kit"
