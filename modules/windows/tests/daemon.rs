@@ -823,6 +823,25 @@ fn a_warmth_switch_is_asked_of_the_machine_daemon_and_answered_as_it_answers() {
 }
 
 #[test]
+fn a_brightness_level_is_asked_of_the_machine_daemon_as_the_keys_set_it() {
+    let running = Running::worded("level", &json!({"eDP-1": screen("BOE", Some(2.0))}));
+    let mut client = running.daemon.client();
+    let done = client.ask(&json!({"id": 5, "ask": "light", "do": "brightness", "share": 40}));
+    assert_eq!(
+        done,
+        json!({"id": 5, "done": true}),
+        "the level was answered otherwise"
+    );
+    let asked = running.machine.asked.lock().unwrap().clone();
+    let acts: Vec<&Value> = asked.iter().filter(|one| one["ask"] == "act").collect();
+    assert_eq!(
+        acts,
+        vec![&json!({"id": 5, "ask": "act", "act": "brightness", "share": 40})],
+        "the machine daemon was asked otherwise: {asked:?}"
+    );
+}
+
+#[test]
 fn an_ask_or_kind_it_doesnt_know_is_refused() {
     let running = Running::new("refused");
     let mut client = running.daemon.client();

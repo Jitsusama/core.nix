@@ -189,6 +189,12 @@ pub struct Words {
     glyphs: BTreeMap<&'static str, String>,
     /// What the Room Light's bar runs between (`displays:room`'s said).
     room: String,
+    /// What sets the Brightness (`displays:brightness`'s said), by key.
+    brightness: BTreeMap<String, String>,
+    /// A level's name, its share filled in for `{n}`.
+    level: String,
+    /// What the level the screen is at says beside it.
+    chosen: String,
     /// How a switch stands, as Variable Refresh's says it.
     on: String,
     off: String,
@@ -220,6 +226,9 @@ const WARMTH: [&str; 7] = [
 /// Warmth's switches, by their id after `displays:`.
 const SWITCHES: [&str; 2] = ["night-light", "follow-room"];
 
+/// The words of Brightness's that say what sets it.
+const BRIGHTNESS: [&str; 3] = ["followsRoom", "followsRoomUnread", "everyFollows"];
+
 impl Words {
     /// The light's words, `word` looking one up by its thing's id and
     /// path, as screens.rs's Words does, and `screens` Screens' own said,
@@ -247,11 +256,21 @@ impl Words {
             .iter()
             .map(|id| (*id, word(&format!("displays:{id}"), &["glyph"], "")))
             .collect();
+        let brightness = BRIGHTNESS
+            .iter()
+            .map(|key| {
+                let said = word("displays:brightness", &["said", key], key);
+                ((*key).to_owned(), said)
+            })
+            .collect();
         Words {
             said,
             warmth,
             glyphs,
             room: word("displays:room", &["said", "hears"], "hears"),
+            brightness,
+            level: word(brightness::LEVEL, &["name"], "{n}%"),
+            chosen: word("displays", &["said", "chosen"], "chosen"),
             on: word("displays:variable", &["said", "on"], "on"),
             off: word("displays:variable", &["said", "off"], "off"),
         }
@@ -669,6 +688,7 @@ pub struct Inside<'a> {
     pub now: u64,
 }
 
+pub mod brightness;
 pub mod room;
 pub mod warmth;
 

@@ -597,9 +597,16 @@ fn backlit<'a>(
 }
 
 /// The light's rows inside `screen`, the row of the screen `name` that
-/// holds it: the Warmth's (light/warmth.rs), then the Room Light
+/// holds it: the Brightness's (light/brightness.rs), then, where it's in
+/// the room, the Warmth's (light/warmth.rs) and the Room Light
 /// (light/room.rs).
-fn light_rows(name: &str, screen: &str, seen: &Seen, words: &Words) -> Vec<Value> {
+fn light_rows(
+    name: &str,
+    screen: &str,
+    in_the_room: bool,
+    seen: &Seen,
+    words: &Words,
+) -> Vec<Value> {
     let part = |id: &str| words.told.part(id);
     let inside = light::Inside {
         name,
@@ -608,7 +615,12 @@ fn light_rows(name: &str, screen: &str, seen: &Seen, words: &Words) -> Vec<Value
         numbers: &words.numbers,
         now: seen.now,
     };
-    let mut rows = light::warmth::rows(seen.light, &inside, &words.light);
+    let mut rows =
+        light::brightness::rows(seen.light, &inside, in_the_room, seen.reading, &words.light);
+    if !in_the_room {
+        return rows;
+    }
+    rows.extend(light::warmth::rows(seen.light, &inside, &words.light));
     rows.extend(light::room::row(
         seen.light,
         &inside,
@@ -713,16 +725,16 @@ pub fn rows(
             })
         })
         .collect();
-    // What a step into each screen offers, inside its row: the Warmth and
-    // the Room Light, where a lit screen holds the light and the room's
-    // sensor, then a lit one's settings, then the ways it turns off or on, then what its
-    // EDID says.
+    // What a step into each screen offers, inside its row: the Brightness,
+    // where a lit screen holds the light, with the Warmth and the Room
+    // Light where it holds the room's sensor too, then a lit one's
+    // settings, then the ways it turns off or on, then what its EDID says.
     for (name, output) in &shown {
         let stands = standing(output);
         let screen = key(&format!("display:{name}"));
-        let warmed = holds == Some(name.as_str()) && in_the_room(name, shown.len());
-        if stands == "lit" && warmed {
-            rows.extend(light_rows(name, &screen, seen, words));
+        if stands == "lit" && holds == Some(name.as_str()) {
+            let room = in_the_room(name, shown.len());
+            rows.extend(light_rows(name, &screen, room, seen, words));
         }
         if stands == "lit" && output["logical"].is_object() {
             rows.extend(settings::rows(name, output, words));
