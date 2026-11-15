@@ -285,6 +285,16 @@ def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str
                     f" over {spent.count}, {place}",
                     flush=True,
                 )
+            # A step's showing is said by its whole too, so what holds the rest is named, as
+            # keep holds laying the rows out and each row's acts made within it.
+            if span == "search-step":
+                wholes = sorted(places.items(), key=lambda one: one[1].whole, reverse=True)
+                for place, spent in wholes[:COSTLIEST]:
+                    print(
+                        f"lab-profile {span} whole: {spent.whole:.2f} ms over {spent.count},"
+                        f" own {spent.own:.2f}, {place}",
+                        flush=True,
+                    )
 
 
 def flushed(profiler: subprocess.Popen[bytes], trace: Path) -> None:
