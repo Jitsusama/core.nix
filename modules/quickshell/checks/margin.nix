@@ -239,9 +239,11 @@
       dozes = 45;
       pace = 1.0e-2;
     };
+    # A virtual pointer, to pet it and click beside it.
     given = [
       "QT_QUICK_BACKEND=rhi"
       "QSG_RHI_BACKEND=opengl"
+      "WLRCTL=${lib.getExe pkgs.wlrctl}"
     ];
   };
 

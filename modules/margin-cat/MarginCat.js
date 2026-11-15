@@ -230,6 +230,52 @@ function turned(drawing, way) {
     return way > 0 ? drawing.map(row => row.split("").reverse().join("")) : drawing;
 }
 
+// A pet (VKCF3Z, b8fc852e): a pointer moved onto the cat and resting on it
+// PETS ms leans it in, held while it stays and PETTED ms after it goes, so
+// a pointer passing over on its way elsewhere has left before it leans.
+const PETS = 300;
+const PETTED = 600;
+// How long the cat has rested before a pointer over it is one that moved
+// there rather than one it walked or sat down under: niri tells the shell
+// of the pointer over its new place a frame or two after it gets there.
+const SETTLED = 200;
+
+// Whether the pointer, last seen over the cat at `was` (null as it comes
+// onto it) and now at `at`, both in the screen's pixels, strokes it: moved
+// there once the cat had rested `rested` ms (-1 while it goes), never a
+// pointer at rest it came to under.
+function strokes(was, at, rested) {
+    return rested >= SETTLED && (was === null || was.x !== at.x || was.y !== at.y);
+}
+
+// Which way a cat `size` across leans into a pointer `across` it: -1 to
+// its left, 1 to its right.
+function leansTo(across, size) {
+    return across < size / 2 ? -1 : 1;
+}
+
+// The rows of the cat's head and neck, which a lean moves; below them it
+// sits on the seat's cells, whichever way it leans.
+const HEAD_ROWS = 5;
+
+// The cat leaning `way` (leansTo), in the theme's `pixels`: the pose leans
+// to its right, toward its tail. To its left, the same head and neck a
+// cell left of sitting's, over sitting's own body and tail, unmoved, so
+// it never hops away from the hand (VKCF3Z, 10bacc58). Sitting's head is
+// at its drawing's left edge, so that one starts a cell out (leansOut).
+function leaning(way, pixels) {
+    if (way > 0) {
+        return pixels.leaning;
+    }
+    const head = row => `${row.slice(1)}..`;
+    return pixels.nothingHere.map((row, r) => r < HEAD_ROWS ? head(pixels.leaning[r]) : `.${row}`);
+}
+
+// How many cells left of where it sits its drawing leaning `way` begins.
+function leansOut(way) {
+    return way < 0 ? 1 : 0;
+}
+
 // How the yarn at `yarn` (MarginCatGames.js's frame) looks, as a word that
 // changes only as its pose or its facing does, so the screen builds its
 // drawing again only then rather than each frame it rolls; "" with none.

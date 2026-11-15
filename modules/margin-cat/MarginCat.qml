@@ -2,8 +2,8 @@
 // on the top edge of the column Joel is in, in the gap the windows leave
 // above them, where MarginCat.js says (VKCF3Z's fun for Joel, 2026-11-12:
 // "something that crawls around the screen, unobtrusive and cute"). It
-// lives on a layer of its own that takes no keys and no pointer and moves no
-// window, gone while the screen is shared, and gone where the
+// lives on a layer of its own that takes no keys, takes the pointer only over
+// its own cells, to be petted, and moves no window, gone while the screen is shared, and gone where the
 // gap can't hold it, as in fullscreen or the overview. Once the keys rest
 // two seconds on another column it walks there, a frame each time the
 // screen draws, with the beats MarginCat.js gives it; otherwise it draws a

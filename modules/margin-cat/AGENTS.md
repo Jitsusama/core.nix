@@ -170,4 +170,18 @@ still often does not look like its paws are moving."
 - Owed since 2026-11-14: a climb up or down a side stepped in whole strides by the ground it
   covers, as a walk is, each drawing held two 60 Hz frames, in every journey.
 
+### Play With the Mouse
+
+Joel, 2026-11-12 15:56: "i want to be able to also use my mouse to engage with my
+animals."
+
+- Held by `margin-cat-pets.qml`: "a pointer moved onto it as it sits strokes it"
+- Held by `margin-cat-pets.qml`: "never one it came to under, still where it was"
+- Held by `margin-cat-pets.qml`: "resting on it 300 ms, and leaning 600 ms after it goes"
+- Held by `margin-cat-pets.qml`: "it leans toward the pointer's side, a lean left drawn from a
+  cell out"
+- Held by `margin-cat-pets.qml`: "leaning either way, its base is on sitting's cells, and leaning
+  left its tail too"
+- Held by `margin-cat-pets.qml`: "and only its head a cell toward the hand, eyes shut"
+
 [design]: ../../docs/design.md

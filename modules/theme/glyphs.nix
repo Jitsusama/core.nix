@@ -1074,6 +1074,25 @@ in
       ".######."
     ];
   };
+  # The margin's cat leaning into a hand, a pointer resting on it (VKCF3Z,
+  # b8fc852e): sitting's body and tail, its head a cell toward its tail's
+  # side, eyes shut, which is its purr. Leaning left, the screen sets this
+  # head and neck a cell left of sitting's, over sitting's body and tail.
+  leaning = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      ".#...#.."
+      ".#####.."
+      ".#####.."
+      ".#####.."
+      "..###..."
+      "#####.#."
+      "#####.#."
+      "#######."
+    ];
+  };
   # The margin's cat walking between windows, four strides in profile
   # facing along the ground as stretching's head does: both pairs of legs
   # apart (A), the forelegs gathered (C), both gathered (B), then the

@@ -3590,7 +3590,9 @@
     leaves while a window is fullscreen, draws nothing for 30 s with no keys, then curls up
     asleep in a frame and wakes at
     a key, stretches for about half a second as the lock lets go, and is drawn in whole screen
-    pixels of its hue at scales 1.5 and 2, each screen kept as its result
+    pixels of its hue at scales 1.5 and 2, each screen kept as its result; a pointer moved onto
+    it leans it toward the pointer's side until it goes, a pointer it walks back under leaves it
+    sitting, and a click beside it reaches the window there
   '';
   the-margin-cat-plays-more-the-less-he-types-on-niri = ''
     on a nested niri, the margin's cat makes a single small move in place while keys come, held
