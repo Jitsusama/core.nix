@@ -23,6 +23,8 @@ Both commands read the realm in `MYCELIUM_REALM`; `--realm` names another.
 Add `-o json` for JSON lines: networks first, then cells.
 
 ```sh
+mycelium networks -o json --counts # every network and its counts, no cells
+mycelium cells --standing needs-you,stuck -o json  # only the cells standing so
 mycelium networks -o json          # every network, then every cell
 mycelium networks grow -o json     # one network, by name, short name or title words
 mycelium cells -o json             # every session worst first, then the machines
@@ -31,7 +33,8 @@ mycelium cells NAME -o json        # one cell, by name or title words, and its n
 
 A network line has `name`, `short` (what a person types), `title`,
 `shape` (`orchestration`, `project`, `repository`, `group` or
-`machines`), `within` (the network it branched from), `cells`,
+`machines`), `within` (the network it branched from), `glyph` (the shape
+an orchestration is drawn by, such as `hexagon`, or null), `cells`,
 `machines`, and `counts`: how many of its sessions stand as each of
 `needs-you`, `stuck`, `moving`, `quiet` and `dormant`. A session cell has
 `name` (its address), `title`, `standing` (one of those five), `doing`,
@@ -43,16 +46,19 @@ percentage from 0 to 100 of the last ten seconds some task waited on a
 processor; past 50 is busy) and `runs` (how many sessions it runs).
 
 A realm can hold thousands of cells, far more JSON than belongs in your
-context. Summarize with `jq` before reading, and read the whole output
-only for one network or one cell:
+context. Ask for the part you need, so the rest is never sent: `--counts`
+gives the networks alone, and `--standing` only the cells standing so; no
+lines from it means nothing stands so, not that the read failed.
+Start from those, summarize with `jq` before reading, and read the whole
+output only for one network or one cell:
 
 ```sh
 # What needs the person, and what's stuck.
-mycelium cells -o json | jq -c 'select(.standing == "needs-you" or .standing == "stuck")
-  | {title, standing, asks, doing, machine}'
+mycelium cells --standing needs-you,stuck -o json |
+  jq -c '{title, standing, asks, doing, machine}'
 # The ten networks with the most sessions moving, counts only.
-mycelium networks -o json | jq -sc '[.[] | select(.kind == "network")]
-  | sort_by(-.counts.moving) | .[:10] | map({short, title, shape, counts})'
+mycelium networks -o json --counts |
+  jq -sc 'sort_by(-.counts.moving) | .[:10] | map({short, title, shape, counts})'
 ```
 
 ## Answering
