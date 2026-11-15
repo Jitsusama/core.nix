@@ -229,14 +229,16 @@ function drops(way, cols, at) {
 // Where the row it stood on (`at.on`) reached down to, as it was
 // `before`, when a window over it in its column is still to grow down
 // over where it sat: niri can say the row closed before it lays the
-// column out again (a nested niri, 2026-11-14). Null otherwise.
+// column out again (a nested niri, 2026-11-14). Sitting, it hears
+// only its own window's tile, so the row over it is known by niri's
+// row for its own. Null otherwise.
 function closedUnder(way, at) {
     for (const column of at.before ?? []) {
         const r = column.rows.findIndex(one => one.id !== undefined && one.id === at.on);
         const row = column.rows[r];
         const on = row !== undefined && way.x < column.right && way.x + at.wide > column.left
             && Math.abs(Routes.stands(row.top, at) - way.y) <= at.cell;
-        if (on && r > 0) {
+        if (on && (r > 0 || (row.row ?? 1) > 1)) {
             return row.bottom;
         }
     }

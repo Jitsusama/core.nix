@@ -724,6 +724,17 @@ QtObject {
             [firstBeats[0], closedFirst.beats[0].to?.y, firstBeats.includes("rides")
                 ? posed(closedFirst, "rides").map(one => one.pose) : firstBeats,
                 ends(closedFirst)], ["rides", 792, ["falling"], [532, 7]]);
+        // Sitting, it heard only its own tile, niri's second in its column,
+        // and hears nothing of the column yet: it rides down all the same.
+        const ownRow = [Object.assign({ row: 2 }, ided.find(tile => tile.id === 3))];
+        const aloneFirst = Paths.walk({ x: 532, y: 307 }, { x: 532, y: 7 }, among({
+            hurried: true, closed: true, on: 3, cols: [],
+            before: Paths.columns(ownRow, 0), ahead: 72, frame: 1000 / 60 }));
+        const aloneBeats = aloneFirst.beats.map(beat => beat.name);
+        expect("its row closed, heard alone, before the window over it grows, it rides down",
+            [aloneBeats[0], aloneBeats.includes("rides")
+                ? posed(aloneFirst, "rides").map(one => one.pose) : aloneBeats,
+                aloneBeats.includes("shoved")], ["rides", ["falling"], false]);
         const opened = ided.concat([{ id: 9, left: 432, top: 500, width: 400, height: 284,
             column: 1 }]);
         const staysOn = Paths.walk({ x: 532, y: 307 }, { x: 532, y: 7 }, among({
