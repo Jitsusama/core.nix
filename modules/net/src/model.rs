@@ -25,6 +25,76 @@ pub struct Network {
     pub sources: Vec<Source>,
     pub devices: Vec<Device>,
     pub links: Vec<Link>,
+    /// The provider's line beyond the modem, as last measured. A record
+    /// written before it had this reads as not said, as do the two below.
+    #[serde(default)]
+    pub line: Option<Line>,
+    /// What's worth a look, worked out from the figures above
+    /// (src/room.rs): a busy radio, a weak signal, a slow cable, or the
+    /// line being the narrowest hop.
+    #[serde(default)]
+    pub concerns: Vec<Concern>,
+}
+
+/// The connection the internet provider gives beyond the modem, as its
+/// source last measured it each way.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Line {
+    pub provider: Option<String>,
+    pub down_mbps: Option<f64>,
+    pub up_mbps: Option<f64>,
+    pub measured_at: Option<u64>,
+    pub source: String,
+}
+
+/// A device's way to the internet: the devices its traffic crosses, in
+/// order, up to the modem, and the hop with least room each way.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Path {
+    pub through: Vec<String>,
+    pub down: Option<Chokepoint>,
+    pub up: Option<Chokepoint>,
+}
+
+/// The hop on a path with least room left: a link between devices `a`, the
+/// nearer the device, and `b`, the nearer the modem; or the provider's line
+/// beyond `a`, the modem, when `b` is `None`.
+/// A link's room is its speed less the share of time its radio is busy;
+/// a link whose room isn't known is counted in `unmeasured`, since the
+/// path's real chokepoint may be one of them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Chokepoint {
+    pub a: String,
+    pub b: Option<String>,
+    pub room_mbps: f64,
+    pub unmeasured: u32,
+}
+
+/// Something on the home network worth a look, where it is, and in words.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Concern {
+    pub kind: ConcernKind,
+    pub device: String,
+    /// The radio or port on the device it's about, when it's one of them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on: Option<String>,
+    /// The device at a link's other end, when it's about a link.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub other: Option<String>,
+    pub says: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConcernKind {
+    /// A radio busy a third of the time or more, slowing all it carries.
+    Busy,
+    /// A Wi-Fi link heard at -70 dBm or weaker.
+    Weak,
+    /// A cable link under a gigabit.
+    Slow,
+    /// The provider's line is the narrowest hop on some device's path.
+    Ceiling,
 }
 
 /// Where a vendor's facts come from, and whether they're current.
@@ -73,6 +143,9 @@ pub struct Device {
     /// A modem's own figures, on a device with the modem role.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub modem: Option<Modem>,
+    /// Its way to the internet, when the links reach the modem from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<Path>,
     /// Everything each source gives about the device, in its own words.
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub detail: Map<String, Value>,

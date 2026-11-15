@@ -124,6 +124,7 @@ fn device(pages: &Pages, now: u64) -> Device {
         ],
         radios: Vec::new(),
         modem: Some(modem(pages, now)),
+        path: None,
         detail: detail(pages),
     }
 }
