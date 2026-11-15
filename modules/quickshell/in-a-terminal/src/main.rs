@@ -29,10 +29,10 @@
 //! `launcher names [step ...]` the rows a place holds as it offers them.
 //!
 //! Where it's installed (../home.nix) says what it asks, how it inks and
-//! its words: `LAUNCHER_QS`, Quickshell's `qs`; `LAUNCHER_LOOK`, the
-//! theme's roles as escapes and its marks' stand-ins; `LAUNCHER_WORDS`, the
+//! its words: `LAUNCHER_QS`, Quickshell's `qs`; `LAUNCHER_WORDS`, the
 //! launcher's words.json, whose `terminal` section holds what it says of
-//! its own. Its help, its failures and its exits take the terminal kit's
+//! its own. It inks with the terminal kit's pen, from the account's theme
+//! (look.rs). Its help, its failures and its exits take the terminal kit's
 //! shape (`help()`), `--json` among the kit's flags: a step that names
 //! nothing exits 66; a shell that doesn't answer 69; an act asked
 //! about and answered no, or with no terminal to ask on and no `--yes`,
@@ -54,7 +54,7 @@ use terminal_kit::{Exit, Failure, Help};
 
 use crate::asking::Answer;
 use crate::layout::Room;
-use crate::look::{Ink, Look};
+use crate::look::Look;
 use crate::words::Words;
 
 /// What a command line asked for.
@@ -218,7 +218,16 @@ fn asked(arguments: &[String]) -> Asked {
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
         let words = Words::read(env::var_os("LAUNCHER_WORDS").as_deref());
-        run(asked(&context.args), context.format().is_json(), &words)
+        let look = Look::new(
+            context.out.clone(),
+            terminal_kit::ink::theme(&context.environment).as_ref(),
+        );
+        run(
+            asked(&context.args),
+            context.format().is_json(),
+            &words,
+            &look,
+        )
     })
 }
 
@@ -228,7 +237,7 @@ fn misused(said: String) -> Failure {
 }
 
 /// Does what was asked: shows, as JSON where `json` says, or does.
-fn run(asked: Asked, json: bool, words: &Words) -> Result<(), Failure> {
+fn run(asked: Asked, json: bool, words: &Words, look: &Look) -> Result<(), Failure> {
     match asked {
         Asked::Unknown(what) => Err(misused(words.unknown(&what))),
         Asked::NoShell => Err(misused(words.no_shell())),
@@ -263,8 +272,7 @@ fn run(asked: Asked, json: bool, words: &Words) -> Result<(), Failure> {
                     serde_json::to_string_pretty(&shown).unwrap_or_default()
                 )
             } else {
-                let look = Look::read(env::var_os("LAUNCHER_LOOK").as_deref(), Ink::for_stdout());
-                layout::shown(&shown, &look, Room::of_stdout(), words, drawers)
+                layout::shown(&shown, look, Room::of_stdout(), words, drawers)
             };
             // A pipe closed early, as `| head` does, isn't a failure.
             let _ = io::stdout().write_all(out.as_bytes());

@@ -507,16 +507,8 @@ fn held(words: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::look::{Colours, Ink};
-
     fn plain() -> Look {
-        Look::from_value(
-            &Value::Null,
-            Ink {
-                colours: Colours::None,
-                console: false,
-            },
-        )
+        Look::plain()
     }
 
     fn words() -> Words {

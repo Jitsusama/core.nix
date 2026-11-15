@@ -760,60 +760,10 @@ let
   # thread pays nothing (shell-weighs/src/main.rs says how).
   shellWeighs = pkgs.callPackage ./shell-weighs/package.nix { };
 
-  # How `launcher` (in-a-terminal/) inks a terminal: each role it draws in
-  # as a 24-bit escape, and as the terminal colour holding the role's
-  # pigment or near it (../theme/nearest.nix), or the terminal's own
-  # foreground where none is; each mark with its console stand-in; and the
-  # mark a failure wears.
-  terminalLook =
-    let
-      inherit (config.jitsusama.theme) terminal;
-      eight = [
-        "black"
-        "red"
-        "green"
-        "yellow"
-        "blue"
-        "magenta"
-        "cyan"
-        "white"
-      ];
-      sixteen = eight ++ map (name: "bright_${name}") eight;
-      slot =
-        role:
-        let
-          at = import ../theme/nearest.nix { inherit lib; } colours.${role} (
-            map (name: terminal.${name}) (sixteen ++ [ "foreground" ])
-          );
-        in
-        if at == null || at == 16 then "39" else toString (if at < 8 then 30 + at else 82 + at);
-      roles = [
-        "text"
-        "strong"
-        "muted"
-        "alert"
-        "warning"
-        "success"
-        "action"
-        "program"
-        "machine"
-        "person"
-        "voice"
-      ];
-    in
-    pkgs.writeText "launcher-look.json" (
-      builtins.toJSON {
-        roles = lib.genAttrs roles (role: {
-          truecolour = import ../theme/sgr.nix { inherit lib; } "38" colours.${role};
-          sixteen = slot role;
-        });
-        marks = lib.mapAttrsToList (_: mark: { inherit (mark) glyph console; }) marks;
-      }
-    );
-
   # `launcher`, the launcher in a terminal (in-a-terminal/): what it asks
-  # the shell through, how it inks and the words it says, from the
-  # launcher's own vocabulary; and zsh's completion, as it writes it.
+  # the shell through and the words it says, from the launcher's own
+  # vocabulary; and zsh's completion, as it writes it. It inks with the
+  # terminal kit's pen, from the account's theme.json.
   launcherInATerminal =
     let
       program = lib.getExe (pkgs.callPackage ./in-a-terminal/package.nix { });
@@ -826,7 +776,6 @@ let
       ''
         makeWrapper ${program} $out/bin/launcher \
           --set LAUNCHER_QS ${lib.getExe' pkgs.quickshell "qs"} \
-          --set LAUNCHER_LOOK ${terminalLook} \
           --set LAUNCHER_WORDS ${launcherWords}
         mkdir -p $out/share/zsh/site-functions
         $out/bin/launcher completion zsh > $out/share/zsh/site-functions/_launcher
