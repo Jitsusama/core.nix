@@ -359,27 +359,52 @@ function openingParts(parts) {
 // the launcher about 7 s after his chord, when the thread came free (Joel,
 // 2026-11-10: "It takes 7 seconds for me to see the launcher window").
 // `stall` is the longest gap between ticks, begun at `stallAt`, and
-// `usable` is -1 until then. `collected` is the collector's own count of
-// its milliseconds at each tick (Heap.collected), so `stallCollected` is
+// `usable` is -1 until then. Each tick's `clocks` are read then, one left
+// out keeping the last: `collected`, the collector's own count of
+// its milliseconds (Heap.collected), so `stallCollected` is
 // how much of the longest stall was the collector's: profiles of Joel's
 // openings found 24 to 64 ms of collecting in each, which the stall's
-// named work didn't say (H6EDLC, 2026-11-14).
-function feltBegun(now, collected = 0) {
-    return { last: now, calm: now, stall: 0, stallAt: now, usable: -1, collected,
-        stallCollected: 0 };
+// named work didn't say (H6EDLC, 2026-11-14); and `thread`, the shell
+// thread's `{ ran, waited }` (KeyTimes.ran and waited), so
+// `stallThread` is how much of the stall it ran and waited for a CPU:
+// the rest it slept.
+function feltBegun(now, clocks = {}) {
+    return { last: now, calm: now, stall: 0, stallAt: now, usable: -1,
+        collected: clocks.collected ?? 0, stallCollected: 0,
+        thread: clocks.thread ?? { ran: 0, waited: 0 }, stallThread: { ran: 0, waited: 0 } };
 }
 
-function feltTicked(felt, now, pace, collected = felt.collected) {
+function feltTicked(felt, now, pace, clocks = {}) {
     if (felt.usable >= 0) {
         return felt;
     }
+    const collected = clocks.collected ?? felt.collected;
+    const thread = clocks.thread ?? felt.thread;
     const gap = now - felt.last;
     const calm = gap - pace.every > pace.within ? now : felt.calm;
     const longer = gap > felt.stall;
     return { last: now, calm, stall: longer ? gap : felt.stall,
         stallAt: longer ? felt.last : felt.stallAt,
         usable: now - calm >= pace.calmFor ? calm : -1, collected,
-        stallCollected: longer ? collected - felt.collected : felt.stallCollected };
+        stallCollected: longer ? collected - felt.collected : felt.stallCollected, thread,
+        stallThread: longer
+            ? { ran: thread.ran - felt.thread.ran, waited: thread.waited - felt.thread.waited }
+            : felt.stallThread };
+}
+
+// What the shell's thread did in an opening's longest stall, said last:
+// what it ran, what it waited for a CPU behind the machine's other work,
+// and what it slept, on the render thread, the disk or a page; or nothing
+// when there was no stall.
+function threadSaid(stall, inStall) {
+    const all = Math.round(stall);
+    if (all < 1) {
+        return "";
+    }
+    const ran = Math.round(inStall.ran);
+    const waited = Math.round(inStall.waited);
+    return `; its thread ran ${ran} ms of the stall, waited ${waited} for a CPU and slept`
+        + ` ${Math.max(0, all - ran - waited)}`;
 }
 
 // What the collector took of an opening, in its longest stall and in all,
