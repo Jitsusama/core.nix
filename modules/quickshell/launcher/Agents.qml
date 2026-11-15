@@ -1902,7 +1902,31 @@ Provider {
         });
     }
 
-    things: [toReopen, landed, budgets, recent, start].filter(row => row !== null)
+    // Spec after Budgets, since it's a reading of the agents as Budgets is
+    // (VKCF3Z, 2026-11-14 [efa2d961]): how they deliver against the bars
+    // Joel set, its side the head cadence-spec serves, "14 readings out of spec",
+    // wearing the daemon's glyph, and a step in its axes, each stepping in
+    // to its readings (modules/cadence/Spec.qml). Agents' own row says
+    // nothing of it, so it never competes with "needs you". None where
+    // cadence-spec hasn't answered or isn't on this machine.
+    readonly property var spec: {
+        if (!readNow)
+            return madeBefore("spec", null);
+        const place = source("spec");
+        const head = place?.head() ?? null;
+        if (head === null)
+            return null;
+        return thingRow({
+            key: "agents:spec",
+            name: Words.name("agents:spec"),
+            side: String(head.said ?? ""),
+            glyph: head.glyph || Words.glyph("agents:spec"),
+            hue: head.hue || "agent"
+        }, () => place.axes());
+    }
+    onSpecChanged: lastMade.spec = spec
+
+    things: [toReopen, landed, budgets, spec, recent, start].filter(row => row !== null)
 
     // Asked while they aren't wanted, as a step into Agents asks before it's
     // held, its rows are laid out as asked, from the daemon's rows held.
@@ -1911,7 +1935,8 @@ Provider {
         // made ready from those (Provider.qml's looksThrough).
         const tree = provider.wanted || !opened() ? treeRows() : laidOut();
         const sessions = topServed && opened() && !provider.lookingThrough.now ? top.rows() : tree;
-        return sessions.concat([toReopen, landed, recent, start].filter(row => row !== null));
+        return sessions.concat([toReopen, landed, spec, recent, start]
+            .filter(row => row !== null));
     }
 
     // How they stand together, "1 needs you \u00b7 3 working \u00b7 $214

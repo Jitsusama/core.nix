@@ -77,7 +77,8 @@ own, are never places.
 The models working for Joel, what they work on, and what they cost. Its
 sessions stand in one tree, each under its orchestrator, the orchestrators
 closed at its end. Its places are Quests, Orchestrators, the Queue, Runs
-and AI spend, then Budgets, how each budget stands, always last. A
+and AI spend, then Budgets, how each budget stands, and Spec, how the
+agents deliver against the bars Joel set, always last. A
 session can be talked to, gone to, paused and stopped, and a closed
 orchestrator reopened; a quest can start a session, orchestrate, go first in
 the queue and conclude.
@@ -160,6 +161,7 @@ the queue and conclude.
 | tokens | what a model is sent and writes, counted as OpenTelemetry's gen_ai names them, never money | | `gen_ai.usage.*` |
 | bill | what a provider charged for AI spend, as its feed reports it, rather than estimated from list prices | | |
 | budget | a named source of money a model call draws on: a Claude plan, an API key, the AI proxy, a team's token | | `agents:budgets`, AI spend's Budgets |
+| Spec | the bars Joel set for how the agents deliver, read on ten axes; an axis or a reading is in spec or out of spec | | `agents:spec`, cadence-spec |
 | AI proxy | the service a work machine's model calls go through, whose feed gives spend-watch its bill | model gateway, LLM gateway, LLM proxy | |
 | Claude plan | Joel's Claude subscription, whose allowances stop turns when spent | subscription | `claude-plan` |
 | allowance | how much of a budget one window allows: a share of a Claude plan's five hours or week, or dollars of the AI proxy's week | limit | `5h`, `wk` |

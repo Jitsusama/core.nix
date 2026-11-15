@@ -164,6 +164,14 @@
       "glyph": "agent"
     },
     {
+      "id": "agents:spec",
+      "in": "agents",
+      "name": "Spec",
+      "term": "Agents/Spec",
+      "verb": "more",
+      "glyph": "agent"
+    },
+    {
       "id": "verb:agents:landed:change",
       "command": "open",
       "in": "agents:landed",

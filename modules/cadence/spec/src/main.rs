@@ -167,12 +167,16 @@ fn made(asking: &Asking) -> Option<(Vec<Value>, Value)> {
     rows
 }
 
-/// The rows and headline in what `cadence axes --served` printed.
+/// The rows and headline in what `cadence axes --served` printed, the
+/// headline as the whole record served beside the rows, its fields under
+/// its kind, as every place's reader reads one (ReadyRows.qml's held);
+/// served bare, Spec's head read as nothing (Y2YBTS, 2026-11-14).
 fn parsed(printed: &[u8]) -> Option<(Vec<Value>, Value)> {
     let mut made: Value = serde_json::from_slice(printed).ok()?;
     let head = made.get_mut("head").filter(|head| head.is_object())?.take();
     let rows = made.get_mut("rows")?.as_array_mut().map(std::mem::take)?;
-    Some((rows, head))
+    let key = format!("head:{PLACE}");
+    Some((rows, json!({"key": key, "kind": "head", "head": head})))
 }
 
 #[cfg(test)]
@@ -181,10 +185,17 @@ mod tests {
 
     #[test]
     fn what_cadence_prints_reads_as_rows_and_a_headline() {
-        let printed = br#"{"rows": [{"key": "row:spec:scale"}], "head": {"key": "head:spec"}}"#;
+        let printed = br#"{"rows": [{"key": "row:spec:scale"}],
+            "head": {"key": "head:spec", "said": "all in spec"}}"#;
         let (rows, head) = parsed(printed).expect("rows and a headline");
         assert_eq!(rows, vec![json!({"key": "row:spec:scale"})]);
-        assert_eq!(head, json!({"key": "head:spec"}));
+        assert_eq!(
+            head,
+            json!({"key": "head:spec", "kind": "head",
+                "head": {"key": "head:spec", "said": "all in spec"}}),
+            "the headline is served as a whole record, its fields under its kind, as every \
+             place's reader reads it (ReadyRows.qml's held)"
+        );
     }
 
     #[test]

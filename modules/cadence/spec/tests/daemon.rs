@@ -79,11 +79,15 @@ fn asked(folder: &Path) -> String {
 fn a_watch_of_spec_is_served_the_rows_cadence_makes() {
     let printed = json!({
         "rows": [{"key": "row:spec:scale", "place": "spec", "name": "Scale"}],
-        "head": {"key": "head:spec", "place": "spec", "said": "1 out of spec"},
+        "head": {"key": "head:spec", "place": "spec", "said": "1 reading out of spec"},
     });
     let daemon = started("served", &format!("echo '{printed}'"));
     let held = watched(&daemon);
-    assert_eq!(held["head:spec"]["said"], "1 out of spec", "{held:?}");
+    assert_eq!(held["head:spec"]["kind"], "head", "{held:?}");
+    assert_eq!(
+        held["head:spec"]["head"]["said"], "1 reading out of spec",
+        "{held:?}"
+    );
     assert_eq!(held["row:spec:scale"]["row"]["name"], "Scale", "{held:?}");
     assert_eq!(asked(daemon.folder()).trim(), "axes --served words.json");
 }

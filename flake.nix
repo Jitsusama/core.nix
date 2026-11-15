@@ -175,7 +175,7 @@
         bat = ./modules/bat/home.nix;
         broot = ./modules/broot/home.nix;
         btop = ./modules/btop/home.nix;
-        cadence = ./modules/cadence/home.nix;
+        cadence = moduleFrom ./modules/cadence/home.nix { inherit (self.homeModules) quickshell; };
         call-transcripts = moduleFrom ./modules/call-transcripts/home.nix {
           inherit (self.homeModules) people quickshell;
         };
