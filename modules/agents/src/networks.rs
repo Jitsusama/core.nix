@@ -342,7 +342,7 @@ mod tests {
             "key": format!("network:{name}"), "kind": "network", "heard": heard,
             "name": name, "shape": shape, "short": name.rsplit('.').next(),
             "title": name.rsplit('.').next(), "glyph": null, "within": null,
-            "cells": cells, "machines": ["optimus"], "counts": counts,
+            "cells": cells, "machines": ["kestrel"], "counts": counts,
         })
     }
 
@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn the_networks_row_steps_into_a_heading_for_each_kind_it_holds() {
         let repo = record("repo.world", "repository", &[], &quiet(), 1);
-        let mut machines = record("machines", "machines", &["optimus"], &quiet(), 1);
+        let mut machines = record("machines", "machines", &["kestrel"], &quiet(), 1);
         machines["title"] = json!("the realm's machines");
         let group = record("hub.tide", "group", &[], &quiet(), 1);
         let made = rows(&[&machines, &repo, &group], &[], &words());
@@ -415,7 +415,7 @@ mod tests {
                 "row:agents-top:network:hub.tide",
                 "row:agents-top:networks:machines",
                 "row:agents-top:network:machines",
-                "row:agents-top:network:machines:optimus",
+                "row:agents-top:network:machines:kestrel",
             ],
             "the headings come in their one order, each only where it holds a network"
         );
@@ -452,7 +452,7 @@ mod tests {
     fn a_network_says_how_its_sessions_stand_worst_first_leaving_out_none() {
         let counts = json!({"needs-you": 1, "stuck": 0, "moving": 3, "quiet": 2, "dormant": 0});
         let mut repo = record("repo.world", "repository", &[], &counts, 1);
-        repo["machines"] = json!(["optimus", "penelope"]);
+        repo["machines"] = json!(["kestrel", "skiff"]);
         let made = rows(&[&repo], &[], &words());
         assert_eq!(
             said(&made[2]),

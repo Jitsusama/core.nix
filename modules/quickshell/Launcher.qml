@@ -5776,7 +5776,7 @@ Scope {
     property var matches: []
     // Where the rows' headings stand, which name the rows under them and
     // are never a row (Headings.js): none, for nearly every list.
-    readonly property var headingsAt: Headings.at(matches)
+    readonly property var headingsAt: Headings.placesOf(matches)
     // Where the selection was, which it leaves a heading the way it went
     // from.
     property int currentWas: 0
