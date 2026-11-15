@@ -367,10 +367,12 @@ in
               "${name}=${path}"
             ]) cfg.checkouts
           )
+          ++ reading
         );
         # git for the three mains, and journalctl for update-to-main's
         # looks at them, as the axes read them. A machine's own git comes
-        # first, for a checkout stock git refuses to open.
+        # first, for a checkout stock git refuses to open. The account's
+        # mycelium, last, says how crowded each realm's machines are.
         Environment = [
           "PATH=${
             lib.makeBinPath (
@@ -380,7 +382,7 @@ in
                 pkgs.systemd
               ]
             )
-          }"
+          }${lib.optionalString (realms != [ ]) ":${config.home.profileDirectory}/bin"}"
         ];
         Slice = "background.slice";
       };
