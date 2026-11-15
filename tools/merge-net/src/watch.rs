@@ -4835,20 +4835,19 @@ mod tests {
         // On 15 November vm-screens-keep-the-launcher failed at the base
         // 93b1a9bc only in a subtest main listed, so it counted as passed;
         // #4658 took the entry off, the head failed in it, and the search
-        // blamed #4615 for what failed before it.
+        // blamed #4615 for what failed before it. An excused run is the
+        // only one a round makes there, as a pass is.
         let state = state("base-excused");
-        for run in 1..=2 {
-            let log = state.log("s", "vm-a", run);
-            fs::write(
-                &log,
-                "vm-test-run> FAILED vm-pytest-ab/t.py::test_b - Error\n\
-                 vm-test-run> ======= 1 failed, 9 passed in 1.00s =======\n",
-            )
+        let log = state.log("s", "vm-a", 1);
+        fs::write(
+            &log,
+            "vm-test-run> FAILED vm-pytest-ab/t.py::test_b - Error\n\
+             vm-test-run> ======= 1 failed, 9 passed in 1.00s =======\n",
+        )
+        .unwrap();
+        state
+            .record("s", "vm-a", Ran::Passed, Some(1), &log, 0)
             .unwrap();
-            state
-                .record("s", "vm-a", Ran::Passed, Some(1), &log, 0)
-                .unwrap();
-        }
         let world = Stand {
             head: "m2".into(),
             merges: names("m1 m2"),
