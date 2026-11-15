@@ -137,8 +137,11 @@ impl Scan {
             None => false,
         };
         if !current {
+            // Only those it couldn't read: the system's guard reads no
+            // more processes than it's asked about.
             let request = socket::Request::Processes {
                 roots: voucher.roots.clone(),
+                pids: unread.iter().map(|&(pid, _)| pid).collect(),
             };
             let ask = || match socket::ask(&voucher.socket, &request, ASK_TIMEOUT) {
                 Ok(socket::Reply::Answer(answer)) => Ok(answer),

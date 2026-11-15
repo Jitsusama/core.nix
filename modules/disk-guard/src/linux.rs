@@ -538,6 +538,23 @@ pub fn processes(proc: &Path) -> io::Result<Vec<crate::activity::Process>> {
     Ok(all)
 }
 
+/// The processes among `pids` that `/proc` shows, read as `processes`
+/// reads each. One that's gone, a kernel thread or a zombie is left out.
+///
+/// # Errors
+///
+/// `Interrupted` once a stop waits, as `processes` gives it.
+pub fn named(proc: &Path, pids: &[u32]) -> io::Result<Vec<crate::activity::Process>> {
+    let mut all = Vec::new();
+    for &pid in pids {
+        if crate::commands::stop_waiting() {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "stopping"));
+        }
+        all.extend(process(&proc.join(pid.to_string()), pid));
+    }
+    Ok(all)
+}
+
 /// When process `pid` started, in clock ticks since boot, or none when it's
 /// gone or a zombie, which holds no files. Its stat is anybody's to read.
 pub fn started(proc: &Path, pid: u32) -> Option<u64> {

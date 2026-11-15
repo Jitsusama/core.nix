@@ -30,8 +30,14 @@ pub const WALKING: &str = "another footprint is being walked: ask again soon";
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Request {
-    /// The processes touching the asker's files beneath these roots.
-    Processes { roots: Vec<PathBuf> },
+    /// The processes touching the asker's files beneath these roots, of
+    /// those `pids` names, or of every one when it names none, as an
+    /// asker from before it did asks.
+    Processes {
+        roots: Vec<PathBuf>,
+        #[serde(default)]
+        pids: Vec<u32>,
+    },
     /// A user daemon's heartbeat: the filesystems it watches, by a path on
     /// each. Answered with those the system collects garbage on, whose
     /// passes the user daemon then drives.

@@ -6,26 +6,27 @@ use crate::host::{TARGET, hidden, sitting};
 use disk_guard::activity::Use;
 use disk_guard::host::Scan;
 use disk_guard::reclaim::Looker;
+use disk_guard::socket::Request;
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-/// A system daemon answering `answers` asks with `touching`, counting them.
+/// A system daemon answering `answers` asks with `touching`, telling each.
 fn vouching(
     socket: &Path,
     touching: Vec<disk_guard::activity::Process>,
     answers: usize,
-) -> std::sync::mpsc::Receiver<()> {
+) -> std::sync::mpsc::Receiver<Request> {
     vouching_each(socket, vec![touching; answers], Duration::ZERO)
 }
 
 /// A system daemon answering each ask with the next of `answers`, letting
-/// an account ask once `every`, and counting the asks it answers.
+/// an account ask once `every`, and telling each ask it answers.
 fn vouching_each(
     socket: &Path,
     answers: Vec<Vec<disk_guard::activity::Process>>,
     every: Duration,
-) -> std::sync::mpsc::Receiver<()> {
+) -> std::sync::mpsc::Receiver<Request> {
     let mut server = disk_guard::socket::Server::bind(socket, every).unwrap();
     let (sender, asked) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -33,9 +34,9 @@ fn vouching_each(
         // A refused ask takes a connection without an answer.
         while answers.len() > 0 {
             server
-                .serve(&mut |_, _, responder| {
+                .serve(&mut |_, request, responder| {
                     let touching = answers.next().unwrap();
-                    sender.send(()).unwrap();
+                    sender.send(request).unwrap();
                     responder.send(&disk_guard::socket::Reply::Answer(
                         disk_guard::vouch::Answer {
                             vouched: touching.iter().map(|p| (p.pid, p.start_ticks)).collect(),
@@ -78,6 +79,25 @@ fn a_process_this_account_cant_read_is_judged_by_what_the_system_says() {
     let _asked = vouching(&socket, vec![building(300, 77)], 1);
     let mut scan = vouched_scan(proc.path(), &socket, Duration::ZERO);
     assert_eq!(scan.judge(Path::new(TARGET), None).unwrap(), Use::Busy(300));
+}
+
+#[test]
+fn the_system_is_asked_only_about_what_this_account_cant_read() {
+    let proc = tempfile::tempdir().unwrap();
+    hidden(proc.path(), 300, 77);
+    sitting(proc.path(), 400, "/home/u/src/app");
+    let socket = proc.path().join("socket");
+    let asked = vouching(&socket, vec![building(300, 77)], 1);
+    let mut scan = vouched_scan(proc.path(), &socket, Duration::ZERO);
+    scan.judge(Path::new(TARGET), None).unwrap();
+    assert_eq!(
+        asked.try_iter().collect::<Vec<_>>(),
+        vec![Request::Processes {
+            roots: vec!["/home/u/src".into()],
+            pids: vec![300],
+        }],
+        "it asked about more than the process it couldn't read"
+    );
 }
 
 #[test]

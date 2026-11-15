@@ -344,6 +344,25 @@ pub fn processes(_proc: &Path) -> io::Result<Vec<crate::activity::Process>> {
     Ok(all)
 }
 
+/// The processes among `pids`, read as `processes` reads each. One that's
+/// gone is left out.
+pub fn named(_proc: &Path, pids: &[u32]) -> io::Result<Vec<crate::activity::Process>> {
+    let argmax: c_int = sysctl_value(c"kern.argmax")?;
+    // A negative maximum leaves no room, as it says nothing.
+    let mut args = vec![0u8; usize::try_from(argmax).unwrap_or(0)];
+    let mut all = Vec::new();
+    let asked = pids
+        .iter()
+        .filter_map(|&pid| libc::pid_t::try_from(pid).ok());
+    for pid in asked.filter(|&pid| pid > 0) {
+        if crate::commands::stop_waiting() {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "stopping"));
+        }
+        all.extend(process(pid, &mut args));
+    }
+    Ok(all)
+}
+
 /// What each process has in hand, for the store's runtime roots: its
 /// program, its folder, its open and mapped files, and its arguments and
 /// environment whole, as `KERN_PROCARGS2` gives them. What can't be read
