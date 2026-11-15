@@ -462,19 +462,24 @@ pub fn clean(text: &str) -> Vec<Measure> {
                 now: m["now"].as_f64()?,
                 target: m["target"].as_f64(),
                 owner: m["owner"].as_str().unwrap_or("Y9XISP").to_owned(),
-                behind: m["by_owner"].as_object().map_or_else(
-                    || strings(&m["files"]).take(3).map(str::to_owned).collect(),
-                    |owners| {
-                        owners
-                            .iter()
-                            .flat_map(|(owner, files)| {
-                                strings(files)
-                                    .take(3)
-                                    .map(move |f| format!("{f} · {owner}"))
-                            })
-                            .collect()
-                    },
-                ),
+                // With nothing gained, code-health gives no one anything, so the
+                // measure's own files are said, for its own owner.
+                behind: m["by_owner"]
+                    .as_object()
+                    .filter(|o| !o.is_empty())
+                    .map_or_else(
+                        || strings(&m["files"]).take(3).map(str::to_owned).collect(),
+                        |owners| {
+                            owners
+                                .iter()
+                                .flat_map(|(owner, files)| {
+                                    strings(files)
+                                        .take(3)
+                                        .map(move |f| format!("{f} · {owner}"))
+                                })
+                                .collect()
+                        },
+                    ),
             })
         })
         .collect()
@@ -761,6 +766,13 @@ mod tests {
             clean(text)[0].behind,
             ["net/a.rs · PN2VZC", "net/b.rs · PN2VZC", "x.rs · Y9XISP"],
             "each file names its own owner, so each hears of its own"
+        );
+        let nothing_gained = r#"{"measures":[{"repo":"core.nix","measure":"suppressions",
+            "now":12,"target":10,"owner":"Y9XISP","files":["x.rs"],"by_owner":{}}]}"#;
+        assert_eq!(
+            clean(nothing_gained)[0].behind,
+            ["x.rs"],
+            "with no file gained there's no one to give it to, so its files are said bare"
         );
     }
 }
