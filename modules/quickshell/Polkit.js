@@ -210,16 +210,45 @@ function asker(cmdline, actionId) {
     return command(words(cmdline)) || owner(actionId);
 }
 
-// A quest's id as the harness gives it, its short last.
-const questShape = /^QEST-\d{8}-(?<short>[A-Z0-9]{6})$/u;
+// A quest's id as the harness gives it.
+const questShape = /^QEST-\d{8}-[A-Z0-9]{6}$/u;
+// The most of a quest's title its line holds, so the line stays one.
+const titleLongest = 48;
+// A title's code marks, which are markdown's, not words.
+const codeMarks = /`/gu;
+const spaces = /\s+/u;
+// What ends a title given way, joined to its last word kept.
+const titleLeftOut = "\u00a0\u2026";
+
+// A quest's title as one line: its words, past `titleLongest` given way at a
+// whole word to one ellipsis, and a word past `longestWord` inside itself.
+function titled(title) {
+    const all = title
+        .replace(codeMarks, "")
+        .split(spaces)
+        .filter(word => word !== "")
+        .map(word => middleCut(word, longestWord));
+    if (all.join(" ").length <= titleLongest) {
+        return `${all.join(" ")}.`;
+    }
+    const kept = [];
+    for (const word of all) {
+        if ([...kept, word].join(" ").length + titleLeftOut.length > titleLongest) {
+            break;
+        }
+        kept.push(word);
+    }
+    return `${kept.join(" ")}${titleLeftOut}`;
+}
 
 // What the asking process says of itself, from asker-says's answer: the
-// quest it says it runs under, by its short, as its own word, since any
-// process can say any quest, so it's never proof of who asks; the command
-// above it stays what's judged. Nothing for no answer, one not parsed, a
-// process that says none, or a quest not in the harness's shape, which
-// asker-says leaves out too, so no process puts words of its own here
-// (ISXEG8, 2026-11-15).
+// quest it says it's for, by its title, as its own word, since any process
+// can say any quest, so it's never proof of who asks; the command above it
+// stays what's judged. Never the quest's id, which means nothing to Joel at
+// a password prompt (VKCF3Z, 2026-11-15). Nothing for no answer, one not
+// parsed, a process that says none, a quest not in the harness's shape,
+// which asker-says leaves out too, or one with no title (ISXEG8,
+// 2026-11-15).
 function says(answer) {
     let said = null;
     try {
@@ -227,9 +256,11 @@ function says(answer) {
     } catch (_error) {
         return "";
     }
-    const quest = questShape.exec(said?.quest ?? "");
-    // Read by index, since Qt's engine has no named groups' object.
-    return quest ? `It says it's from ${quest[1]}.` : "";
+    const title = typeof said?.title === "string" ? said.title.trim() : "";
+    if (!questShape.test(said?.quest ?? "") || title === "") {
+        return "";
+    }
+    return `It says it's for ${titled(title)}`;
 }
 
 // Text as rich text shows it, as written: a command is the asker's to

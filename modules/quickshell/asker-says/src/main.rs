@@ -15,12 +15,19 @@
 //! the harness gives, a quest's id or a session's UUID, is left out rather
 //! than said, so a process can't put words of its own on the prompt.
 //!
+//! With the quest, it answers that quest's short title, as the launcher's
+//! Agents and Spec name a quest, from the README the harness keeps for it,
+//! since an id means nothing to Joel at a password prompt (VKCF3Z,
+//! 2026-11-15). The id is read only in its shape, so it names a folder
+//! under the quests' and nowhere else.
+//!
 //! What it answers is only what the process says: any process can set its
 //! own `PI_QUEST`, so the prompt shows it as said, never as proof, and the
 //! command stays what Joel judges by. A process that's gone, or that says
 //! neither, answers neither, and the prompt shows no session line.
 //!
-//! `ASKER_SAYS_PROC` names a stand-in for /proc, for tests.
+//! `ASKER_SAYS_PROC` names a stand-in for /proc, and `ASKER_SAYS_QUESTS` one
+//! for the quests' folder, for tests.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -42,12 +49,17 @@ const DEEPEST: usize = 64;
 /// one agent's.
 const MANAGER: &str = "systemd";
 
-/// What a process says of itself, and which process said it.
+/// Where the harness keeps each quest's folder, under the account's data.
+const QUESTS: &str = "pi/agentic-harness.pi/quest-workflow/quests";
+
+/// What a process says of itself, which process said it, and the title of
+/// the quest it names.
 #[derive(Debug, Default, PartialEq)]
 struct Says {
     quest: Option<String>,
     session: Option<String>,
     by: Option<u32>,
+    title: Option<String>,
 }
 
 impl Says {
@@ -57,6 +69,7 @@ impl Says {
             "quest": self.quest,
             "session": self.session,
             "by": self.by,
+            "title": self.title,
         })
     }
 
@@ -64,8 +77,11 @@ impl Says {
         match (&self.quest, &self.session) {
             (None, None) => "it says no quest or session\n".to_owned(),
             (quest, session) => format!(
-                "quest {}, session {}\n",
+                "quest {}{}, session {}\n",
                 quest.as_deref().unwrap_or("unsaid"),
+                self.title
+                    .as_deref()
+                    .map_or_else(String::new, |title| format!(" ({title})")),
                 session.as_deref().unwrap_or("unsaid")
             ),
         }
@@ -105,6 +121,33 @@ fn named(environ: &[u8], name: &str, shaped: fn(&str) -> bool) -> Option<String>
     })
 }
 
+/// A README's short title from its frontmatter, else its H1 past the
+/// frontmatter, as cadence's Spec reads one (cadence/src/axes/spec.rs).
+fn title(readme: &str) -> Option<String> {
+    let (front, body) = readme
+        .strip_prefix("---\n")
+        .and_then(|front| front.split_once("\n---\n"))
+        .unwrap_or(("", readme));
+    let short = front
+        .lines()
+        .find_map(|line| line.strip_prefix("short:"))
+        .map(|short| short.trim().trim_matches('"').trim())
+        .filter(|short| !short.is_empty());
+    if let Some(short) = short {
+        return Some(short.to_owned());
+    }
+    body.lines()
+        .find_map(|line| line.strip_prefix("# "))
+        .map(|title| title.trim().to_owned())
+        .filter(|title| !title.is_empty())
+}
+
+/// The title of the quest `quest` names, from its README in `quests`; the
+/// id is in its shape, so it names one folder there.
+fn titled(quests: &Path, quest: &str) -> Option<String> {
+    title(&fs::read_to_string(quests.join(quest).join("README.md")).ok()?)
+}
+
 /// A process's name and its parent's pid, from its stat. The name sits in
 /// brackets and may hold spaces or brackets itself, so the fields after it
 /// are read from the last closing one.
@@ -119,8 +162,9 @@ fn parent(stat: &str) -> Option<(&str, u32)> {
 }
 
 /// What the process `pid` says of itself, or the nearest of its parents
-/// that says anything, read from `proc`.
-fn says(proc: &Path, pid: u32) -> Says {
+/// that says anything, read from `proc`, with its quest's title from
+/// `quests`.
+fn says(proc: &Path, quests: &Path, pid: u32) -> Says {
     let mut at = pid;
     for _ in 0..DEEPEST {
         let process = proc.join(at.to_string());
@@ -139,10 +183,12 @@ fn says(proc: &Path, pid: u32) -> Says {
         let quest = named(&environ, QUEST, quest_shaped);
         let session = named(&environ, SESSION, session_shaped);
         if quest.is_some() || session.is_some() {
+            let title = quest.as_deref().and_then(|quest| titled(quests, quest));
             return Says {
                 quest,
                 session,
                 by: Some(at),
+                title,
             };
         }
         if up <= 1 {
@@ -156,7 +202,7 @@ fn says(proc: &Path, pid: u32) -> Says {
 fn help() -> Help {
     Help::new(
         "asker-says",
-        "says the quest and session a process says it runs under",
+        "says the quest, its title and the session a process says it runs under",
     )
     .command("PID", "what PID, or the nearest parent, says")
     .example(
@@ -177,7 +223,19 @@ fn main() -> ExitCode {
         };
         let proc =
             env::var_os("ASKER_SAYS_PROC").map_or_else(|| PathBuf::from("/proc"), PathBuf::from);
-        let said = says(&proc, pid);
+        let quests = env::var_os("ASKER_SAYS_QUESTS").map_or_else(
+            || {
+                env::var_os("XDG_DATA_HOME")
+                    .map(PathBuf::from)
+                    .or_else(|| {
+                        env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share"))
+                    })
+                    .unwrap_or_default()
+                    .join(QUESTS)
+            },
+            PathBuf::from,
+        );
+        let said = says(&proc, &quests, pid);
         let written = if context.format() == &terminal_kit::Format::Text {
             context.say(&said.said())
         } else {

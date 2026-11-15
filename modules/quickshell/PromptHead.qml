@@ -129,6 +129,10 @@ Item {
         x: head.inset - reasonFace.tightBoundingRect(head.reason.charAt(0)).x
         y: head.askedLast + head.pitch - baselineOffset
         width: head.width - x - head.inset
+        // Plain, as its words come from whoever asks (a quest's title, a
+        // program's detail), so a tag in them can't restyle the prompt or
+        // fold its lines into one.
+        textFormat: Text.PlainText
         text: head.reason
         color: head.reasonColour
         wrapMode: Text.Wrap

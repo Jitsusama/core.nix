@@ -37,6 +37,24 @@ impl Proc {
         fs::write(dir.join("environ"), bytes).unwrap();
         self
     }
+
+    /// The stand-in quests' folder, beside the processes, where no pid is.
+    fn quests(&self) -> PathBuf {
+        self.0.join("quests")
+    }
+
+    /// A quest's README, in its folder by its id.
+    fn quest(&self, id: &str, readme: &str) -> &Proc {
+        let dir = self.quests().join(id);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("README.md"), readme).unwrap();
+        self
+    }
+
+    /// What `pid` says, over these processes and quests.
+    fn says(&self, pid: u32) -> Says {
+        says(&self.0, &self.quests(), pid)
+    }
 }
 
 impl Drop for Proc {
@@ -65,15 +83,47 @@ fn says_the_quest_and_session_a_process_holds() {
         "run0",
         30,
         &["HOME=/home/someone", &quest(), &session()],
-    );
+    )
+    .quest(QUEST_ID, "---\nid: x\n---\n# Launcher Speed\n");
     assert_eq!(
-        says(&proc.0, 40),
+        proc.says(40),
         Says {
             quest: Some(QUEST_ID.to_owned()),
             session: Some(SESSION_ID.to_owned()),
             by: Some(40),
+            title: Some("Launcher Speed".to_owned()),
         }
     );
+}
+
+#[test]
+fn names_a_quest_by_its_short_title_else_its_heading() {
+    let short = "---\nid: x\nshort: Launcher\n---\n# A Launcher That Fits\n";
+    assert_eq!(title(short).as_deref(), Some("Launcher"));
+    let blank = "---\nshort: \"\"\n---\n# The Loop\n";
+    assert_eq!(title(blank).as_deref(), Some("The Loop"));
+    let yaml = "---\nid: x\n# not a heading in yaml\n---\n\n# The Loop\n";
+    assert_eq!(title(yaml).as_deref(), Some("The Loop"));
+    assert_eq!(title("no heading"), None);
+    assert_eq!(title("# \n"), None);
+}
+
+#[test]
+fn a_quest_with_no_readme_says_no_title() {
+    let proc = Proc::new("untitled");
+    proc.process(40, "run0", 30, &[&quest()]);
+    let said = proc.says(40);
+    assert_eq!(said.quest.as_deref(), Some(QUEST_ID));
+    assert_eq!(said.title, None);
+}
+
+#[test]
+fn reads_no_readme_for_a_quest_out_of_shape() {
+    let proc = Proc::new("climbs");
+    let climbing = format!("{QUEST}=../quests/{QUEST_ID}");
+    proc.process(40, "run0", 30, &[&climbing])
+        .quest(QUEST_ID, "# Launcher Speed\n");
+    assert_eq!(proc.says(40), Says::default());
 }
 
 #[test]
@@ -84,7 +134,7 @@ fn never_says_anything_beside_the_two_names() {
     proc.process(40, "run0", 30, &[&secret(), &quested_secret, &session()])
         .process(41, "run0", 30, &[&secret(), &misshapen]);
     for pid in [40, 41, 42] {
-        let said = says(&proc.0, pid);
+        let said = proc.says(pid);
         let answered = said.answer().to_string();
         assert!(
             !answered.contains(SECRET),
@@ -95,7 +145,7 @@ fn never_says_anything_beside_the_two_names() {
             "{pid}'s words said the secret"
         );
     }
-    assert_eq!(says(&proc.0, 41), Says::default());
+    assert_eq!(proc.says(41), Says::default());
 }
 
 #[test]
@@ -106,7 +156,7 @@ fn asks_each_parent_up_to_the_first_that_says() {
         .process(30, "bash", 20, &[&quest(), &session()])
         .process(35, "sh", 30, &["PATH=/bin"])
         .process(40, "run0", 35, &[&secret()]);
-    assert_eq!(says(&proc.0, 40).by, Some(30));
+    assert_eq!(proc.says(40).by, Some(30));
 }
 
 #[test]
@@ -115,7 +165,7 @@ fn stops_at_the_accounts_manager() {
     proc.process(10, MANAGER, 1, &[&quest(), &session()])
         .process(20, "niri", 10, &["PATH=/bin"])
         .process(40, "pkexec", 20, &["PATH=/bin"]);
-    assert_eq!(says(&proc.0, 40), Says::default());
+    assert_eq!(proc.says(40), Says::default());
 }
 
 #[test]
@@ -125,14 +175,14 @@ fn stops_at_a_process_it_cant_read() {
         .process(30, "bash", 20, &["PATH=/bin"])
         .process(40, "run0", 30, &["PATH=/bin"]);
     fs::remove_file(proc.0.join("30").join("environ")).unwrap();
-    assert_eq!(says(&proc.0, 40), Says::default());
+    assert_eq!(proc.says(40), Says::default());
 }
 
 #[test]
 fn a_process_gone_says_nothing() {
     let proc = Proc::new("gone");
-    assert_eq!(says(&proc.0, 40), Says::default());
-    assert_eq!(says(&proc.0, 40).said(), "it says no quest or session\n");
+    assert_eq!(proc.says(40), Says::default());
+    assert_eq!(proc.says(40).said(), "it says no quest or session\n");
 }
 
 #[test]
@@ -177,10 +227,13 @@ fn reads_a_real_process_and_none_of_its_secret() {
         .stdout(Stdio::null())
         .spawn()
         .unwrap();
-    let said = says(Path::new("/proc"), child.id());
+    let quests = Proc::new("real");
+    quests.quest(QUEST_ID, "# Launcher Speed\n");
+    let said = says(Path::new("/proc"), &quests.quests(), child.id());
     child.kill().unwrap();
     child.wait().unwrap();
     assert_eq!(said.quest.as_deref(), Some(QUEST_ID));
     assert_eq!(said.session, None);
+    assert_eq!(said.title.as_deref(), Some("Launcher Speed"));
     assert!(!said.answer().to_string().contains(SECRET));
 }
