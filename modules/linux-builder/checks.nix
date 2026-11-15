@@ -43,6 +43,8 @@ let
     );
   marked = guestOf { features = [ "own-code" ]; };
   system = guest: builtins.unsafeDiscardStringContext guest.system.build.toplevel.drvPath;
+  # A line of the VM's launchd script that starts it under caffeinate -s.
+  underCaffeinate = " */usr/bin/caffeinate -s /nix/store/[^ ]+/bin/create-builder";
 
   # The lines of what sudo reads on a Mac with these settings that let
   # anything run without a password, and the rule each account given should
@@ -181,5 +183,16 @@ in
         && lib.subtractLists nixpkgsOwn marked.nix.settings.extra-system-features == [ "own-code" ]
         && (plain.nix.settings.extra-system-features or [ ]) == nixpkgsOwn
         && builtins.elem "big-parallel" marked.nix.settings.system-features
+      );
+
+  # The VM runs under caffeinate -s, so the Mac stays awake while it serves
+  # and its builds don't stop with a Mac that sleeps.
+  linux-builder-keeps-a-serving-mac-awake =
+    holds "linux-builder-keeps-a-serving-mac-awake"
+      "The VM doesn't run under caffeinate -s, so the Mac could sleep while it serves."
+      (
+        builtins.any (line: builtins.match underCaffeinate line != null) (
+          lib.splitString "\n" (macOf { }).launchd.daemons.linux-builder-vz.script
+        )
       );
 }

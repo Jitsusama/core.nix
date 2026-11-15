@@ -1296,6 +1296,9 @@
     a Mac's Linux VM given keys or features steps its clock with chrony at any time, past a second,
     in place of timesyncd, and one given nothing keeps the cached guest's clock
   '';
+  linux-builder-keeps-a-serving-mac-awake = ''
+    a Mac's Linux VM runs under caffeinate -s, so the Mac stays awake on AC power while it serves
+  '';
   linux-builder-keeps-room-in-a-changed-guest = ''
     a Mac's Linux VM given keys or features collects garbage once a sixth of its disk is free, back
     to five twelfths, and one given nothing keeps the cached guest's 1 GiB and 3 GiB

@@ -42,6 +42,8 @@
 }:
 let
   cfg = config.jitsusama.linux-builder;
+  # What holds the Mac awake while the VM runs.
+  awake = "/usr/bin/caffeinate -s";
   # Whether the guest is changed from the one nixpkgs caches.
   changed = cfg.features != [ ] || cfg.authorizedKeys != [ ] || cfg.collectableBy != [ ];
 
@@ -278,12 +280,18 @@ in
       };
       # It shares certificates with the VM through TMPDIR, which macOS empties
       # of files three days unread, so it gets one of its own.
+      #
+      # A Mac that sleeps stops the VM's builds with it: on 15 November a
+      # Mac with its lid shut slept and woke 221 times in an hour, and a
+      # kernel sent to its builder sat there for hours. So the VM runs under
+      # caffeinate -s, which holds the Mac awake while the VM runs, on AC
+      # power only, and lets its display sleep.
       script = ''
         export TMPDIR=/run/org.nixos.linux-builder-vz USE_TMPDIR=1
         rm -rf $TMPDIR
         mkdir -p $TMPDIR
         trap "rm -rf $TMPDIR" EXIT
-        ${builder}/bin/create-builder
+        ${awake} ${builder}/bin/create-builder
       '';
       serviceConfig = {
         # At utility QoS, which uses every core while the person's programs
