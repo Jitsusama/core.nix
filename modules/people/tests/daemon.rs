@@ -220,7 +220,7 @@ fn a_get_is_a_step_in_answered_by_every_source_within_its_patience() {
         .ask(&json!({"id": 2, "ask": "get", "keys": ["person:Ada@Example.com"], "patience": 5000}));
     assert_eq!(
         said["records"],
-        json!([{"key": "person:ada@example.com", "kind": "person", "said": said["records"][0]["said"],
+        json!([{"key": "person:ada@example.com", "kind": "person", "stamp": said["records"][0]["stamp"],
                 "sources": {"slack": {"name": "ada", "way": "step"}}}])
     );
     assert_eq!(said["waiting"], json!([]));

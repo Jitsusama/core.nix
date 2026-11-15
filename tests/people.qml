@@ -576,13 +576,38 @@ ShellRoot {
         },
         {
             // As Tuple says them now, with the favourites changed here,
-            // which the stand-in never says, kept as they were asked.
+            // which the stand-in never says, kept as they were asked. Ada,
+            // whose favourite didn't change, is the daemon's row as she is
+            // when nothing is merged here, her Kolkata time and all.
             what: "a favourite gone into a call, as Tuple says it",
             holds: () => names(people.all) === "Ada Brook, Ben Carrow, Eli Fenwick, Cal Dunmore"
-                && sides(people.all) === "in a call, in a call, , offline",
+                && /^in a call \u00b7 Kolkata \u00b7 \d\d:\d\d, in a call, , offline$/u
+                    .test(sides(people.all)),
             check: () => {
                 expect("is joined", firstAct(people.all[0]).name === "Join Their Call",
                     firstAct(people.all[0]).name);
+            }
+        },
+        {
+            // Tuple says the favourites changed here within moments, which
+            // the stand-in never does, so they're taken as said: those
+            // listed are then the daemon's, no longer merged here. Each way
+            // kept rows by its own key, so every listed row was made again
+            // at each Favourite flipped, and after a restart that came
+            // back to the daemon's (2026-11-14, #4545's case).
+            what: "a favourite said by Tuple keeps the rows it didn't change",
+            run: () => {
+                root.rowsBefore = {};
+                for (const row of people.all)
+                    root.rowsBefore[row.name] = row;
+                tuple().favoured = ({});
+            },
+            holds: () => !names(people.all).includes("Eli Fenwick"),
+            check: () => {
+                const remade = ["Ada Brook", "Ben Carrow", "Cal Dunmore"]
+                    .filter(name => root.rowsBefore[name] !== home(name));
+                expect("those it didn't change keep their rows", remade.length === 0,
+                    `${remade.join(", ")} made again of ${names(people.all)}`);
             }
         },
         {
@@ -590,14 +615,6 @@ ShellRoot {
             // last listed, which would read as if all were well.
             what: "the people daemon gone",
             run: () => {
-                // Tuple says the favourites changed here within moments,
-                // which the stand-in never does, so they're taken as said
-                // and those listed are the daemon's, as Joel's are when a
-                // switch restarts it. Kept here, they were merged here,
-                // and listed as the daemon's once it was back, which
-                // remade them all.
-                tuple().favoured = ({});
-                void people.all;
                 root.stampsBefore = people.listedStamps();
                 root.stoppedAt = Date.now();
                 stopping.running = true;
@@ -824,6 +841,7 @@ ShellRoot {
     property real stoppedAt: 0
     property var stampsBefore: ({})
     property int goneRows: 0
+    property var rowsBefore: ({})
 
     // How often People found more once asked, as the launcher hears it,
     // and how often before Tuple came to know Fay.

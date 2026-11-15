@@ -281,8 +281,9 @@ impl Standing {
 /// FNV-1a over it as JSON, whose fields `serde_json` keeps sorted, so
 /// it's the same in every run and every build, as std's hashers aren't
 /// promised to be. Said as hex, since 64 bits are past what a JavaScript
-/// number holds whole.
-pub(crate) fn said<T: serde::Serialize + ?Sized>(what: &T) -> String {
+/// number holds whole. Named `stamp` rather than `said`, which in these
+/// same records means words, as how someone stands is said.
+pub(crate) fn stamp<T: serde::Serialize + ?Sized>(what: &T) -> String {
     let text = serde_json::to_string(what).unwrap_or_default();
     let stamp = text.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |stamp, byte| {
         (stamp ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
@@ -329,14 +330,14 @@ impl Record {
         });
     }
 
-    /// Served with a stamp of what its sources say, `said`, which moves
+    /// Served with a stamp of what its sources say, `stamp`, which moves
     /// only when that does, so the shell keeps what it made of them while
     /// it's the same (People.qml). Stamped with the moment they were
     /// heard instead, a daemon started again told everyone as changed,
     /// and Joel's next first letter made 136 and 137 people's rows again
     /// (his journal, 2026-11-14 09:38 and 17:07).
     pub fn json(&self) -> Value {
-        json!({"key": self.key, "kind": KIND, "said": said(&self.sources),
+        json!({"key": self.key, "kind": KIND, "stamp": stamp(&self.sources),
                "sources": self.sources})
     }
 
@@ -770,7 +771,7 @@ mod tests {
         let served = record.json();
         assert_eq!(
             served,
-            json!({"key": "person:ada@example.com", "kind": "person", "said": served["said"],
+            json!({"key": "person:ada@example.com", "kind": "person", "stamp": served["stamp"],
                    "sources": {"slack": {"name": "Ada"}, "vault": {"name": "Ada L"}}})
         );
         assert_eq!(book.everyone().count(), 1);
@@ -801,8 +802,8 @@ mod tests {
             "heard again, whatever came between, as before"
         );
         assert_ne!(
-            served(&["Ada L"])["said"],
-            served(&["Ada"])["said"],
+            served(&["Ada L"])["stamp"],
+            served(&["Ada"])["stamp"],
             "what's said moved, so its stamp does"
         );
     }
