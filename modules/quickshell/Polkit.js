@@ -29,6 +29,9 @@ const spaced = /\s/u;
 const letterInWord = /(?<letter>\S)(?=\S)/gu;
 // The joiner itself, U+2060, which draws nothing.
 const joiner = "\u2060";
+// The ellipsis that stands for words left out, held to the words either
+// side by no-break spaces, so a line never starts or ends with it.
+const wordsLeftOut = "\u00a0\u2026\u00a0";
 // The spaces a cut's start ends with and its end starts with, taken off by
 // hand, as Qt's engine has no trimEnd or trimStart.
 const spacesAfter = /\s+$/u;
@@ -47,6 +50,12 @@ const run0Takes = new Set([
     "-u", "--user", "-g", "--group", "--unit", "-p", "--property", "--description",
     "--slice", "--nice", "-D", "--chdir", "--setenv", "--background", "--machine", "--area"
 ]);
+// Each runner's options that take the word after them; pkexec's only
+// such is its user.
+const runnerTakes = new Map([["run0", run0Takes], ["pkexec", new Set(["--user"])]]);
+// The words of what runs said whatever gives way: its program and that
+// program's first word, which say what runs (VKCF3Z, 2026-11-15).
+const whatRuns = 2;
 
 // A command line as /proc keeps it, each word ended by a NUL, as words.
 function words(cmdline) {
@@ -66,34 +75,71 @@ function shown(word) {
 }
 
 // A command, its program by name and its words as shown, cut at its middle
-// past the longest said whole.
+// past the longest said whole. A runner's options give way first, all of
+// them as one, so what it runs follows it: they say how it runs, where the
+// program and its first word say what (VKCF3Z, 2026-11-15).
 function command(argv) {
     if (argv.length === 0) {
         return "";
     }
-    return wordsCut([program(argv[0])].concat(argv.slice(1).map(shown))
-        .map(word => middleCut(word, longestWord)));
-}
-
-// The ellipsis that stands for words left out, held to the words either
-// side by no-break spaces, so a line never starts or ends with it.
-const wordsLeftOut = "\u00a0\u2026\u00a0";
-
-// Words said with spaces, those past `longest` letters given way from the
-// middle. Each word is said whole or not at all, since a piece of one
-// joined to a piece of another reads as a flag that isn't there
-// (VKCF3Z, 2026-11-15). Words are kept from each end in turn, the
-// program first, while they fit.
-function wordsCut(parts) {
+    const parts = [program(argv[0])].concat(argv.slice(1).map(shown))
+        .map(word => middleCut(word, longestWord));
     const said = parts.join(" ");
     if (said.length <= longest) {
         return said;
     }
-    const front = parts.slice(0, 1);
+    const runs = programIndex(argv);
+    if (runs === 0) {
+        return wordsCut(parts, whatRuns);
+    }
+    if (runs === 1) {
+        return wordsCut(parts, whatRuns + 1);
+    }
+    if (runs >= parts.length) {
+        return wordsCut(parts, 1);
+    }
+    const runner = `${parts[0]}${wordsLeftOut}${parts[runs]}`;
+    return wordsCut([runner].concat(parts.slice(runs + 1)), whatRuns);
+}
+
+// Where what a runner runs starts in its command: past the runner's options
+// and the words they take, or past "--". A command no runner runs is what
+// runs, from its first word.
+function programIndex(argv) {
+    const takes = runnerTakes.get(program(argv[0]));
+    if (takes === undefined) {
+        return 0;
+    }
+    for (let at = 1; at < argv.length; at += 1) {
+        const word = argv[at];
+        if (word === "--") {
+            return at + 1;
+        }
+        if (!word.startsWith("-")) {
+            return at;
+        }
+        if (takes.has(word)) {
+            at += 1;
+        }
+    }
+    return argv.length;
+}
+
+// Words said with spaces, those past `longest` letters given way from the
+// middle. Each word is said whole or not at all, since a piece of one
+// joined to a piece of another reads as a flag that isn't there
+// (VKCF3Z, 2026-11-15). The first `kept` words are said whatever gives
+// way; the rest are kept from each end in turn while they fit.
+function wordsCut(parts, kept) {
+    const said = parts.join(" ");
+    if (said.length <= longest) {
+        return said;
+    }
+    const front = parts.slice(0, kept);
     const back = [];
     const fits = (start, end) => start.join(" ").length + wordsLeftOut.length
         + end.join(" ").length <= longest;
-    let first = 1;
+    let first = kept;
     let last = parts.length - 1;
     let frontFits = true;
     let backFits = true;
