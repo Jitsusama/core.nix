@@ -163,8 +163,9 @@ Every view reads the record alone, never a source, so it answers at once
 and the same way away from home. `src/views/` draws each as a function
 of the record, the time, a pen and the room, so its tests set every
 width without a terminal; tables and facts come from the terminal kit.
-A device's page is `device.rs`, and what its sources say in their own
-words is `said.rs`.
+A device's page is `device.rs`, what its sources say in their own
+words is `said.rs`, and what the line carried over the last day is
+`carried.rs`.
 
 - `net`: how each source answers and how long ago, how many devices do
   what, each concern but the ceilings in net's words beside its kind
