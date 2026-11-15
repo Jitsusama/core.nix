@@ -9,6 +9,8 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The shape every command of ours takes: its flags, help, errors and exits.
+terminal-kit = { path = "../terminal-kit" }
 # The serving side of the shell's daemon interface every daemon holds.
 daemon-serve = { path = "../daemon-serve" }
 inotify = { version = "0.11", default-features = false }

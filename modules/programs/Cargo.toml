@@ -10,6 +10,8 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The shape every command of ours takes: its flags, help, errors and exits.
+terminal-kit = { path = "../terminal-kit" }
 # inotify, which says when an entry, a list's file or a type changes, and
 # which std doesn't name.
 libc = "0.2"

@@ -3,7 +3,8 @@
 # (../daemon-client), it speaks the interface every daemon does
 # (../daemon-serve), it keeps Programs' rows with the ready-rows
 # crate (../ready-rows), and it reads what Chrome has open with
-# chrome-session (../chrome/session), so the source is cut from the modules folder
+# chrome-session (../chrome/session), and it starts as every command of
+# ours does (../terminal-kit), so the source is cut from the modules folder
 # holding them, and built from this one.
 {
   lib,
@@ -29,6 +30,8 @@ rustPlatform.buildRustPackage rec {
       ../daemon-serve/src
       ../chrome/session/Cargo.toml
       ../chrome/session/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/programs";
