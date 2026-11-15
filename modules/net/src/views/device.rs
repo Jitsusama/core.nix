@@ -7,7 +7,7 @@ use serde_json::Value;
 use terminal_kit::layout::{self, Align, ITEMS, Room};
 use terminal_kit::{Pen, time};
 
-use super::{ago, roles_of, touching};
+use super::{ago, count, roles_of, touching};
 use crate::model::{Channel, Device, End, LinkState, LogEntry, Network};
 
 /// `net devices NAME`: what every device can say, then its role's own
@@ -155,12 +155,6 @@ fn generic(device: &Device, now: u64, pen: &Pen, room: Room) -> Vec<String> {
 
 fn figure<T: ToString>(value: Option<T>) -> String {
     value.map(|value| value.to_string()).unwrap_or_default()
-}
-
-/// A count as net says one, its thousands set apart by commas so 1,900
-/// pages don't read as a year; `--json` keeps the bare figure.
-fn count(value: u64) -> String {
-    value.to_string()
 }
 
 const PORTS: [(&str, Align); 5] = [
@@ -710,7 +704,7 @@ mod tests {
     #[test]
     fn a_count_sets_its_thousands_apart() {
         for (value, said) in [
-            (0, "0"),
+            (0_u64, "0"),
             (999, "999"),
             (1_900, "1,900"),
             (40_000, "40,000"),

@@ -34,14 +34,28 @@ fn role_words(role: Role) -> &'static str {
     }
 }
 
+/// A count as net says one, its thousands set apart by commas so 1,900
+/// pages don't read as a year; `--json` keeps the bare figure.
+fn count(value: u64) -> String {
+    let digits = value.to_string();
+    let mut said = String::new();
+    for (at, digit) in digits.chars().enumerate() {
+        if at > 0 && (digits.len() - at).is_multiple_of(3) {
+            said.push(',');
+        }
+        said.push(digit);
+    }
+    said
+}
+
 /// A count of a role as a person says it: `a modem`, `2 access points`.
-fn counted_role(role: Role, count: usize) -> String {
+fn counted_role(role: Role, many: usize) -> String {
     let word = role_words(role);
-    match count {
+    match many {
         1 if word.starts_with(['a', 'e', 'i', 'o', 'u']) => format!("an {word}"),
         1 => format!("a {word}"),
-        _ if word.ends_with("ch") => format!("{count} {word}es"),
-        _ => format!("{count} {word}s"),
+        _ if word.ends_with("ch") => format!("{} {word}es", count(many as u64)),
+        _ => format!("{} {word}s", count(many as u64)),
     }
 }
 
@@ -120,7 +134,7 @@ fn census(devices: &[Device]) -> String {
     let said: Vec<&str> = said.iter().map(String::as_str).collect();
     let devices = match devices.len() {
         1 => "1 device".to_owned(),
-        count => format!("{count} devices"),
+        many => format!("{} devices", count(many as u64)),
     };
     if said.is_empty() {
         devices
@@ -271,7 +285,7 @@ pub fn find<'a>(network: &'a Network, word: &str) -> Result<&'a Device, Failure>
                 .collect();
             return Err(Failure::new(
                 Exit::Usage,
-                format!("{} devices are called {word}", sharing.len()),
+                format!("{} devices are called {word}", count(sharing.len() as u64)),
             )
             .because(each.join(ITEMS))
             .try_this(format!("net devices {}", picking(network, first))));
