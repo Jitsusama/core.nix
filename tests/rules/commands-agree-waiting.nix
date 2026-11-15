@@ -124,11 +124,6 @@
     "exits"
     "helps"
   ];
-  tuple-call = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   wifid = [
     "kit"
     "helps"
