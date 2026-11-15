@@ -34,6 +34,8 @@ the Trips folder, as Starred; Team Budget, as Shared with Me; and the Team share
 What a Recent holds: Joel held Retro a day before the stand-in starts, Ada's on Meet with Grace
 going, and once before that, a week earlier, as one series; he read Grace's Trip Notes three
 hours before it starts, and an hour before that sent Ada, Grace and Alan Notes on the Plan.
+Long because the program serves Calendar, Mail and Drive on one socket, so its stand-in answers
+all three as one daemon, every watch and act on the same records.
 """
 
 import copy
@@ -260,8 +262,7 @@ class Watch:
         # A watch of keys sees them alone, whatever their kind or place, as
         # the daemon's does (daemon-serve's serve.rs, wants): the launcher's
         # watch ahead names the rows beside the one drawn and no place.
-        keys = asked.get("keys")
-        self.keys = {str(key) for key in keys} if isinstance(keys, list) else None
+        self.keys = named_in(asked.get("keys"))
 
     def sees(self, key: str) -> bool:
         """Say whether a record is one this watch asked for, by its key or its place."""
