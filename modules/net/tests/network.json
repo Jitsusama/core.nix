@@ -2198,7 +2198,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "5 GHz",
           "band": "5 GHz",
           "channel": 52,
           "width_mhz": 80,
@@ -2310,7 +2310,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "5 GHz",
           "band": "5 GHz",
           "channel": 149,
           "width_mhz": 80,
@@ -2422,7 +2422,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "2.4 GHz",
           "band": "2.4 GHz",
           "channel": 6,
           "width_mhz": 20,
@@ -2527,7 +2527,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "5 GHz",
           "band": "5 GHz",
           "channel": 52,
           "width_mhz": null,
@@ -2640,7 +2640,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "5 GHz",
           "band": "5 GHz",
           "channel": 149,
           "width_mhz": 80,
@@ -2752,7 +2752,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "2.4 GHz",
           "band": "2.4 GHz",
           "channel": 6,
           "width_mhz": null,
@@ -2857,7 +2857,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "5 GHz",
           "band": "5 GHz",
           "channel": 149,
           "width_mhz": 80,
@@ -2962,7 +2962,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "5 GHz",
           "band": "5 GHz",
           "channel": 149,
           "width_mhz": 80,
@@ -3074,7 +3074,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "5 GHz",
           "band": "5 GHz",
           "channel": 149,
           "width_mhz": 80,
@@ -3186,7 +3186,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "2.4 GHz",
           "band": "2.4 GHz",
           "channel": 6,
           "width_mhz": 20,
@@ -3298,7 +3298,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "5 GHz",
           "band": "5 GHz",
           "channel": 52,
           "width_mhz": 80,
@@ -3403,7 +3403,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "5 GHz",
           "band": "5 GHz",
           "channel": 52,
           "width_mhz": null,
@@ -3508,7 +3508,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "5 GHz",
           "band": "5 GHz",
           "channel": 52,
           "width_mhz": 80,
@@ -3618,7 +3618,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "2.4 GHz",
           "band": "2.4 GHz",
           "channel": 6,
           "width_mhz": 20,
@@ -3723,7 +3723,7 @@
       "ports": [],
       "radios": [
         {
-          "name": "wifi",
+          "name": "5 GHz",
           "band": "5 GHz",
           "channel": 149,
           "width_mhz": 80,
@@ -3832,6 +3832,7 @@
       "medium": "wifi",
       "speed_mbps": null,
       "channel": 149,
+      "signal_dbm": null,
       "source": "eero"
     },
     {
@@ -3846,6 +3847,7 @@
       "medium": "wifi",
       "speed_mbps": null,
       "channel": 149,
+      "signal_dbm": null,
       "source": "eero"
     },
     {
@@ -3860,12 +3862,13 @@
       "medium": "ethernet",
       "speed_mbps": 1000,
       "channel": null,
+      "signal_dbm": null,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:0a",
-        "radio": "wifi"
+        "radio": "5 GHz"
       },
       "b": {
         "device": "eero:2001",
@@ -3874,12 +3877,13 @@
       "medium": "wifi",
       "speed_mbps": 1201,
       "channel": 52,
+      "signal_dbm": -37,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:11",
-        "radio": "wifi"
+        "radio": "5 GHz"
       },
       "b": {
         "device": "eero:2001",
@@ -3888,12 +3892,13 @@
       "medium": "wifi",
       "speed_mbps": 1201,
       "channel": 149,
+      "signal_dbm": -38,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:13",
-        "radio": "wifi"
+        "radio": "2.4 GHz"
       },
       "b": {
         "device": "eero:2001",
@@ -3902,12 +3907,13 @@
       "medium": "wifi",
       "speed_mbps": 72,
       "channel": 6,
+      "signal_dbm": -49,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:01",
-        "radio": "wifi"
+        "radio": "5 GHz"
       },
       "b": {
         "device": "eero:2001",
@@ -3916,12 +3922,13 @@
       "medium": "wifi",
       "speed_mbps": 48,
       "channel": 52,
+      "signal_dbm": -59,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:15",
-        "radio": "wifi"
+        "radio": "5 GHz"
       },
       "b": {
         "device": "eero:2002",
@@ -3930,12 +3937,13 @@
       "medium": "wifi",
       "speed_mbps": 433,
       "channel": 149,
+      "signal_dbm": -20,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:17",
-        "radio": "wifi"
+        "radio": "2.4 GHz"
       },
       "b": {
         "device": "eero:2002",
@@ -3944,12 +3952,13 @@
       "medium": "wifi",
       "speed_mbps": 48,
       "channel": 6,
+      "signal_dbm": -29,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:16",
-        "radio": "wifi"
+        "radio": "5 GHz"
       },
       "b": {
         "device": "eero:2002",
@@ -3958,12 +3967,13 @@
       "medium": "wifi",
       "speed_mbps": 325,
       "channel": 149,
+      "signal_dbm": -43,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:08",
-        "radio": "wifi"
+        "radio": "5 GHz"
       },
       "b": {
         "device": "eero:2002",
@@ -3972,12 +3982,13 @@
       "medium": "wifi",
       "speed_mbps": 1201,
       "channel": 149,
+      "signal_dbm": -57,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:0d",
-        "radio": "wifi"
+        "radio": "5 GHz"
       },
       "b": {
         "device": "eero:2002",
@@ -3986,12 +3997,13 @@
       "medium": "wifi",
       "speed_mbps": 390,
       "channel": 149,
+      "signal_dbm": -65,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:0f",
-        "radio": "wifi"
+        "radio": "2.4 GHz"
       },
       "b": {
         "device": "eero:2002",
@@ -4000,12 +4012,13 @@
       "medium": "wifi",
       "speed_mbps": 72,
       "channel": 6,
+      "signal_dbm": -66,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:07",
-        "radio": "wifi"
+        "radio": "5 GHz"
       },
       "b": {
         "device": "eero:2002",
@@ -4014,12 +4027,13 @@
       "medium": "wifi",
       "speed_mbps": 360,
       "channel": 52,
+      "signal_dbm": -68,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:03",
-        "radio": "wifi"
+        "radio": "5 GHz"
       },
       "b": {
         "device": "eero:2002",
@@ -4028,12 +4042,13 @@
       "medium": "wifi",
       "speed_mbps": 48,
       "channel": 52,
+      "signal_dbm": -69,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:0e",
-        "radio": "wifi"
+        "radio": "5 GHz"
       },
       "b": {
         "device": "eero:2002",
@@ -4042,12 +4057,13 @@
       "medium": "wifi",
       "speed_mbps": 432,
       "channel": 52,
+      "signal_dbm": -75,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:0b",
-        "radio": "wifi"
+        "radio": "2.4 GHz"
       },
       "b": {
         "device": "eero:2003",
@@ -4056,12 +4072,13 @@
       "medium": "wifi",
       "speed_mbps": 72,
       "channel": 6,
+      "signal_dbm": -48,
       "source": "eero"
     },
     {
       "a": {
         "device": "mac:02:00:00:00:00:05",
-        "radio": "wifi"
+        "radio": "5 GHz"
       },
       "b": {
         "device": "eero:2003",
@@ -4070,6 +4087,7 @@
       "medium": "wifi",
       "speed_mbps": 313,
       "channel": 149,
+      "signal_dbm": -52,
       "source": "eero"
     }
   ]

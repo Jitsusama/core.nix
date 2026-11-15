@@ -187,6 +187,7 @@ fn backhaul(node: &Value, nodes: &[&Value]) -> Option<Link> {
             medium: Medium::Ethernet,
             speed_mbps: port.and_then(|port| number(port, "mbps")),
             channel: None,
+            signal_dbm: None,
             source: NAME.into(),
         });
     }
@@ -207,6 +208,7 @@ fn backhaul(node: &Value, nodes: &[&Value]) -> Option<Link> {
         medium: Medium::Wifi,
         speed_mbps: None,
         channel: ours.and_then(|radio| number(radio, "channel")),
+        signal_dbm: None,
         source: NAME.into(),
     })
 }
@@ -245,6 +247,7 @@ fn wan(node: &Value) -> Option<Link> {
         medium: Medium::Ethernet,
         speed_mbps: number(port, "mbps"),
         channel: None,
+        signal_dbm: None,
         source: NAME.into(),
     })
 }
@@ -271,21 +274,12 @@ fn client_device(client: &Value, read_at: Option<u64>) -> Device {
         firmware: None,
         serial: None,
         macs: vec![mac.into()],
-        addresses: client
-            .get("addresses")
-            .and_then(Value::as_array)
-            .map(|all| {
-                all.iter()
-                    .filter_map(Value::as_str)
-                    .map(Into::into)
-                    .collect()
-            })
-            .unwrap_or_default(),
+        addresses: client_addresses(client),
         up_s: None,
         ports: Vec::new(),
         radios: if wifi {
             vec![Radio {
-                name: "wifi".into(),
+                name: client_radio(client),
                 band: text(client, "band").map(Into::into),
                 channel: number(client, "channel"),
                 width_mhz: client.get("rx").and_then(|rx| number(rx, "width_mhz")),
@@ -298,6 +292,31 @@ fn client_device(client: &Value, read_at: Option<u64>) -> Device {
         modem: None,
         detail: detail(client),
     }
+}
+
+/// A client's addresses, the one eero reaches it by first, since eero's
+/// list can lead with another of its links, such as a virtual machine's
+/// bridge, which nothing else on the home network reaches.
+fn client_addresses(client: &Value) -> Vec<String> {
+    let mut addresses: Vec<String> = text(client, "address")
+        .map(Into::into)
+        .into_iter()
+        .collect();
+    for address in list(client, "addresses")
+        .into_iter()
+        .filter_map(Value::as_str)
+    {
+        if !addresses.iter().any(|known| known == address) {
+            addresses.push(address.into());
+        }
+    }
+    addresses
+}
+
+/// A client's radio, named by the band it joins on, as eero names it
+/// (`5 GHz`), so a link reads band to band.
+fn client_radio(client: &Value) -> String {
+    text(client, "band").unwrap_or("Wi-Fi").into()
 }
 
 /// A client's way onto its node: its radio to the node's radio on the
@@ -329,6 +348,7 @@ fn join(client: &Value, nodes: &[&Value]) -> Option<Link> {
             medium: Medium::Ethernet,
             speed_mbps: None,
             channel: None,
+            signal_dbm: None,
             source: NAME.into(),
         });
     }
@@ -340,7 +360,7 @@ fn join(client: &Value, nodes: &[&Value]) -> Option<Link> {
         a: End {
             device: format!("mac:{mac}"),
             port: None,
-            radio: Some("wifi".into()),
+            radio: Some(client_radio(client)),
         },
         b: End {
             device: node_id(node)?,
@@ -350,6 +370,10 @@ fn join(client: &Value, nodes: &[&Value]) -> Option<Link> {
         medium: Medium::Wifi,
         speed_mbps: speed("rx"),
         channel,
+        signal_dbm: client
+            .get("signal_dbm")
+            .and_then(Value::as_i64)
+            .and_then(|dbm| i32::try_from(dbm).ok()),
         source: NAME.into(),
     })
 }
@@ -385,4 +409,58 @@ fn whole(mbps: f64) -> Option<u32> {
     (mbps.is_finite() && mbps >= 0.0 && mbps < f64::from(u32::MAX))
         .then(|| format!("{mbps:.0}").parse().ok())
         .flatten()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use serde_json::json;
+
+    /// One node and one laptop on its 5 GHz low radio, as the eero
+    /// daemon writes them; the laptop also runs a virtual machine bridge,
+    /// whose address eero happens to list first.
+    fn laptop_at_home() -> Read {
+        read(
+            Ok(json!({
+                "cloud": {"state": "answering"},
+                "read": "2026-11-07T22:54:43Z",
+                "nodes": [{
+                    "id": "2003", "location": "Hall", "gateway": true,
+                    "radios": [{"band": "5 GHz low", "channel": 52}]
+                }],
+                "devices": [{
+                    "mac": "02:00:00:00:00:01", "name": "laptop", "node": "2003",
+                    "address": "10.0.0.20",
+                    "addresses": ["10.0.122.1", "10.0.0.20", "fe80::1"],
+                    "band": "5 GHz", "channel": 52, "signal_dbm": -55,
+                    "rx": {"mbps": 1080.6}
+                }]
+            })),
+            1_794_092_100,
+        )
+    }
+
+    #[test]
+    fn a_clients_own_address_comes_first() {
+        let laptop = &laptop_at_home().devices[1];
+        assert_eq!(
+            laptop.addresses,
+            ["10.0.0.20", "10.0.122.1", "fe80::1"],
+            "eero's own address for it leads, each once"
+        );
+    }
+
+    #[test]
+    fn a_clients_radio_is_named_by_its_band() {
+        let read = laptop_at_home();
+        assert_eq!(read.devices[1].radios[0].name, "5 GHz");
+        assert_eq!(read.links[0].a.radio.as_deref(), Some("5 GHz"));
+        assert_eq!(read.links[0].b.radio.as_deref(), Some("5 GHz low"));
+    }
+
+    #[test]
+    fn a_clients_link_carries_its_signal() {
+        assert_eq!(laptop_at_home().links[0].signal_dbm, Some(-55));
+    }
 }

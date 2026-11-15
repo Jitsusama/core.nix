@@ -64,10 +64,13 @@ mod tests {
     /// repository's formatter lays the file out its own way.
     #[test]
     fn the_contract_collects_into_the_golden_record() {
-        let record = serde_json::to_value(network(contract(), NOW)).expect("it writes");
+        let collected = network(contract(), NOW);
+        let record = serde_json::to_value(&collected).expect("it writes");
         let golden = format!("{}/tests/network.json", env!("CARGO_MANIFEST_DIR"));
         if std::env::var_os("NET_BLESS").is_some() {
-            let text = serde_json::to_string_pretty(&record).expect("it writes") + "\n";
+            // Written from the model, not the value, so fields keep the
+            // model's order rather than the alphabet's.
+            let text = serde_json::to_string_pretty(&collected).expect("it writes") + "\n";
             fs::write(&golden, text).expect("the golden record is written");
         }
         let want: Value =

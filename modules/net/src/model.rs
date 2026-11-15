@@ -135,6 +135,11 @@ pub struct Link {
     /// Whole megabits, as a port's speed is, so the two compare.
     pub speed_mbps: Option<u32>,
     pub channel: Option<u32>,
+    /// How strongly a radio link's far end hears the near one, as its
+    /// access point measures it. A record written before it had this
+    /// reads as not said.
+    #[serde(default)]
+    pub signal_dbm: Option<i32>,
     /// The source that says the link is there.
     pub source: String,
 }
