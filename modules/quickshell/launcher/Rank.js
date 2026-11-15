@@ -128,6 +128,10 @@ function joined(top, inside) {
     return out;
 }
 
+// How many more picks than any other a row needs to hold what's typed, so
+// one stray pick, or one more than another's, moves nothing.
+const LEAD = 2;
+
 // The tier of a name starting with what's typed, between one typed whole
 // and one whose later word starts with it.
 const NAME_START = 0.5;
@@ -166,6 +170,24 @@ function tier(name, typed, byWord) {
     return says(said, query) ? WORD_WHOLE : 1;
 }
 
+// The tier a row's name puts it in, for what it is, from its key and
+// `often` (key -> picks). A program Joel's opened LEAD times is known by
+// each word of its name, so Google Chrome at "chro" is a name's start,
+// before a person whose name only starts so. A notice's words say
+// something about a thing rather than name it, so they never take a
+// name's tiers, and the thing comes first: at 22:27 "ch" and "chr" led
+// with a person, and "chro" and "chrome" with Camera's "chrome has MX
+// Brio 705 for Business open" (VKCF3Z, 2026-11-15).
+function rowTier(row, typed, often) {
+    const found = tier(row.name, typed, false);
+    const kind = kindOf(row.key);
+    if (kind === "notice") {
+        return Math.max(1, found);
+    }
+    const opened = (often?.[row.key] ?? 0) >= LEAD;
+    return kind === "program" && opened && found > NAME_START && found <= 1 ? NAME_START : found;
+}
+
 // The tier of a row found by its other words (`known`, as one string): by
 // the name's tiers for a name it had (`olds`), as Caffeinate is Keep Awake;
 // else 2 when each word typed is one of them whole, WORD_START if started.
@@ -185,10 +207,10 @@ function startsEvery(name, typed) {
     return query !== "" && query.split(" ").every(word => words.some(one => one.startsWith(word)));
 }
 
-// The tier of a collection's best match gathered at the top: the name's,
-// found `byName`, else what it holds, after every name.
+// The tier of a collection's best match gathered at the top: its name's,
+// as rowTier has it, found `byName`, else what it holds, after every name.
 function gatheredTier(best, typed, byName) {
-    return byName ? tier(best.name, typed, false) : CONTENT;
+    return byName ? rowTier(best, typed, {}) : CONTENT;
 }
 
 // Whether each word typed is one of a string's words whole.
@@ -197,10 +219,6 @@ function says(text, typed) {
     const query = plainly(typed);
     return query !== "" && query.split(" ").every(word => words.includes(word));
 }
-
-// How many more picks than any other a row needs to hold what's typed, so
-// one stray pick, or one more than another's, moves nothing.
-const LEAD = 2;
 
 // Whether a pick for `asked` counts for `query`: one for exactly it, and
 // when both are one word, one for a word it starts, as "slack" for "sl".
@@ -469,31 +487,4 @@ function gatheredSide(belongs, found, noun, kinded) {
 function likeliest(counts, names) {
     return Object.keys(counts).filter(key => names[key] !== undefined).sort((a, b) =>
         counts[b] - counts[a] || alphabetically(names[a], names[b]));
-}
-
-// The rows found, each made by `copy` in its place, and the milliseconds
-// `clock` saw each kind take, `kindOf` naming it. Copying a row reads
-// every getter it has, and Joel's first "c" spent 11 ms making 112 rows
-// (2026-11-12), so a slow key says whose rows it spent on. Each kind is
-// made together and timed once, so timing costs nothing a row. `sortOf`
-// names a row's kind.
-function madeByKind(rows, sortOf, copy, clock) {
-    const made = new Array(rows.length);
-    const at = Object.create(null);
-    rows.forEach((row, index) => {
-        const sort = sortOf(row);
-        if (!at[sort]) {
-            at[sort] = [];
-        }
-        at[sort].push(index);
-    });
-    const took = {};
-    for (const sort of Object.keys(at)) {
-        const began = clock();
-        for (const index of at[sort]) {
-            made[index] = copy(rows[index]);
-        }
-        took[sort] = clock() - began;
-    }
-    return { made, took };
 }

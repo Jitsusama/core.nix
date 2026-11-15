@@ -294,6 +294,30 @@ QtObject {
             often: { "program:a": 40 }
         })), "program:b program:a program:d program:c");
 
+        // The thing itself before rows about it, and a program Joel opens
+        // before a person whose name only starts the same (VKCF3Z,
+        // 2026-11-15: at 22:27 "ch" and "chr" led with a person, and "chro"
+        // and "chrome" with Camera's notice that chrome had the camera open,
+        // so he went down and opened Chrome from a row below).
+        const chrome = row("program:google-chrome", "Google Chrome");
+        const christa = row("person:christa", "Christa Chung");
+        const camera = row("notice:1214", "chrome has MX Brio 705 for Business open");
+        const opened = { "program:google-chrome": 30 };
+        const leads = typed => keys(Rank.placed(Rank.order([{ choice: chrome,
+            tier: Rank.rowTier(chrome, typed, opened), score: 0 }], { often: opened })
+            .map(one => Object.assign({ tier: one.tier }, one.choice)),
+            [christa, camera].filter(one => Rank.startsEvery(one.name, typed)).map(one =>
+                Object.assign({ tier: Rank.gatheredTier(one, typed, true) }, one)), ""))
+            .split(" ")[0];
+        expect("the thing before rows about it", ["ch", "chr", "chro", "chrome"].map(leads),
+            [chrome.key, chrome.key, chrome.key, chrome.key]);
+        expect("a program not opened by its later word", Rank.rowTier(chrome, "chro", {}), 1);
+        expect("a program opened by its name's start", Rank.rowTier(chrome, "chro", opened),
+            Rank.tier("Chrome", "chro", false));
+        expect("a notice after its thing", Rank.rowTier(camera, "chrome", {}), 1);
+        expect("a person by the name's start", Rank.rowTier(christa, "ch", opened),
+            Rank.tier("Christa Chung", "ch", false));
+
         // Later rows go after their tier, never above it, but for the latched.
         const ordered = [f("program:a", "A", 0), f("program:b", "B", 1), f("program:c", "C", 2)]
             .map(one => Object.assign({ tier: one.tier }, one.choice));
@@ -374,7 +398,7 @@ QtObject {
         let now = 0;
         const twoKinds = [row("p1", "Pass", { what: "password" }),
             row("a1", "Ada", { what: "person" }), row("p2", "Pin", { what: "password" })];
-        const byKind = Rank.madeByKind(twoKinds, one => one.what, one => {
+        const byKind = Member.madeByKind(twoKinds, one => one.what, one => {
             now += one.what === "password" ? 3 : 0;
             return Object.assign({ copied: true }, one);
         }, () => now++);
@@ -408,7 +432,7 @@ QtObject {
             program("program:music", "Music")];
         const searched = Rank.order(programs.map(one => ({ choice: one, tier: 1, score: 1 })),
             {});
-        const madeRows = Rank.madeByKind(searched, one => one.choice.what,
+        const madeRows = Member.madeByKind(searched, one => one.choice.what,
             one => Member.copied(one.choice, { grade: 1, tier: one.tier, kept: false }),
             () => 0).made;
         const listedRows = Rank.keysHeld(Rank.once(Rank.placed(madeRows, [], "")));

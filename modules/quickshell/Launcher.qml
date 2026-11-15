@@ -6034,7 +6034,7 @@ Scope {
                         item: choice.prepared,
                         score: byName.score * choice.weight,
                         grade: byName.grade,
-                        tier: Rank.tier(choice.name, letters, false),
+                        tier: Rank.rowTier(choice, letters, often),
                         choice: choice
                     });
                     continue;
@@ -6084,7 +6084,7 @@ Scope {
             // its making spent on; an answer's rows say no kind. Each
             // choice's getters are copied unread (Member.js's copied), so
             // what a row holds is read only for the rows drawn.
-            const making = Rank.madeByKind(ordered, f => f.choice.what || "answer",
+            const making = Member.madeByKind(ordered, f => f.choice.what || "answer",
                 f => Member.copied(f.choice, {
                     byWord: f.byWord === true,
                     times: (learned[f.choice.key] ?? { times: 0 }).times,
