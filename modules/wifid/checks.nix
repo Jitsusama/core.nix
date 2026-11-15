@@ -1,11 +1,17 @@
 # The checks of wifid, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  bareNixos,
+  holds,
   onLinux,
   passesClippy,
   pkgs,
+  self,
   ...
 }:
+let
+  services = (bareNixos [ self.nixosModules.wifid ]).config.systemd.services;
+in
 # wifid talks to wpa_supplicant over D-Bus and its window is WebKitGTK's, so
 # both are Linux's alone.
 onLinux {
@@ -36,4 +42,20 @@ onLinux {
   wifid-calls-passes-clippy = passesClippy "wifid-calls-passes-clippy" (
     pkgs.callPackage ./calls/package.nix { }
   );
+
+  # A switch restarts wifid and wpa_supplicant in place, never stopping
+  # them before it activates, so a switch whose later units hang still
+  # brings both back. On 14 Nov 2026 one hung starting the account's
+  # home-manager unit, and the units stopped beforehand, wifid among them,
+  # were never started again: the card stayed off its network until a
+  # reboot.
+  wifid-comes-back-from-a-stalled-switch =
+    holds "wifid-comes-back-from-a-stalled-switch"
+      "A switch would stop wifid or wpa_supplicant first, so a hang leaves them down."
+      (
+        services.wifid.restartIfChanged
+        && !services.wifid.stopIfChanged
+        && services.wpa_supplicant.restartIfChanged
+        && !services.wpa_supplicant.stopIfChanged
+      );
 }
