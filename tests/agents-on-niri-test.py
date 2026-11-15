@@ -1928,6 +1928,31 @@ def attach(shell: Shell, register: str, rows: list[tuple[str, str]]) -> None:
             return
 
 
+def complete_take(shell: Shell, shoot: Callable[[str], None]) -> None:
+    """Type : in Super+S's line, see its commands listed, and complete :take with Tab.
+
+    Its : lists what it runs, under what's typed, as every other command line does, and Tab
+    completes what's typed (Joel, 2026-11-14 16:25: "the void lacks any Ex command completion
+    like other windows do"), all of it over the foot, and nothing chosen before Tab.
+    """
+    menu = ["take", "q[uit]"]
+    shell.send_chars(":")
+    shell.launcher_until(
+        lambda shown: shown["line"]["menu"] == menu and shown["line"]["menuDrawn"] == len(menu)
+    )
+    listed = shell.showing()["line"]
+    assert listed["menuEnds"] < listed["footAt"], listed
+    assert listed["menuChosen"] == -1, listed
+    shoot("commands")
+    shell.send_chars("t")
+    shell.launcher_until(lambda shown: shown["line"]["menu"] == menu[:1])
+    shell.send_key("tab")
+    shell.launcher_until(lambda shown: shown["line"]["command"] == "take")
+    taken = shell.showing()["line"]
+    assert taken["menuChosen"] == 0, taken
+    shoot("completed")
+
+
 def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
     shell: Shell, said_over: str, shoot: Callable[[str], None]
 ) -> None:
@@ -1990,7 +2015,7 @@ def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
     # :take in normal tells the void to undo it, and its undone reads taken back, in the line.
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
-    shell.send_chars(":take")
+    complete_take(shell, shoot)
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["line"]["talk"] == "taking")
     replied(steered(lambda text: text == "undo 04:58"), "undone")
