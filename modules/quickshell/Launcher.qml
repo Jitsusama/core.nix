@@ -4140,7 +4140,9 @@ Scope {
             const entry = shown.itemAtIndex(at);
             if (!entry || entry.y - from >= shown.height)
                 break;
-            if (headings.length > 0 && Headings.isHeading(matches[at]))
+            // A heading, or a row the view's edge would cut and so isn't
+            // drawn, has no number.
+            if (headings.length > 0 && (Headings.isHeading(matches[at]) || !entry.whole))
                 continue;
             placed.push({ at: headings.length > 0 ? Headings.rank(headings, at) : at,
                 base: shown.y + entry.y - from + entry.nameBaseline });
