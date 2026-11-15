@@ -369,6 +369,28 @@ fn a_sign_in_gone_and_a_stream_that_ends_are_said() {
 }
 
 #[test]
+fn a_sign_in_tuple_finishes_once_it_reaches_its_servers_is_heard() {
+    let running = Running::start("late-sign-in", true);
+    running.streams("{\"type\":\"state\",\"data\":{\"contacts\":[],\"sign_in\":\"signed_out\"}}");
+    let mut client = running.client();
+    client.watch();
+    client.stands("signed-out");
+    // Tuple signed in as it reached its servers, saying nothing more on the
+    // stream followed now; only a stream followed afresh says so.
+    std::fs::write(running.path("bin/stream"), format!("{STATE}\n")).unwrap();
+    running.logs(&logged(
+        now(),
+        "signaler state changed: synchronizing -> connected",
+    ));
+    client.stands("answering");
+    assert_eq!(
+        running.read("bin/followed").len(),
+        2,
+        "Tuple's stream wasn't followed afresh, once"
+    );
+}
+
+#[test]
 fn tuple_starting_is_followed_at_once() {
     let mut running = Running::start("starts", false);
     let mut client = running.client();
