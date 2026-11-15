@@ -711,6 +711,15 @@ mod tests {
                 text.contains("SERIAL00000070") && text.contains("SPP5FN2223AR"),
                 "its serial and firmware aren't shown: {text}"
             );
+            assert!(
+                words.contains("trayEmpty, inPowerSave"),
+                "HP's own status codes aren't in its section: {text}"
+            );
+            assert!(
+                !text.contains("PowerSaveTimeout") && !text.contains("TotalImpressions"),
+                "its settings and counters bury its section, rather than staying in --json: \
+                 {text}"
+            );
         }
     }
 }
