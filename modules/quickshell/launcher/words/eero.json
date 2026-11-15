@@ -296,6 +296,7 @@
     },
     {
       "id": "verb:eero:map",
+      "command": "open",
       "in": "eero",
       "name": "Map",
       "verb": "open",
