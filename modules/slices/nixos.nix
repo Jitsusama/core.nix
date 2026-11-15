@@ -80,7 +80,7 @@
 }:
 let
   sorter = pkgs.callPackage ./jobs-sorter/package.nix { };
-  asks = pkgs.callPackage ./agents-ask.nix { };
+  asks = pkgs.callPackage ./agents-ask.nix { inherit (config.jitsusama.slices) agentsMayRepeat; };
   limits = {
     LimitRTPRIO = "10";
     LimitNICE = "-10";
@@ -304,6 +304,36 @@ in
     ./tiers.nix
   ];
 
+  # agents-ask-first.rules says why a unit's verbs are all it can name.
+  options.jitsusama.slices.agentsMayRepeat = lib.mkOption {
+    description = ''
+      The root steps an agent may take again without asking Joel: a named
+      system unit, each with the verbs systemd may do to it for an agent,
+      granted and written to the journal (polkit-asks) rather than asked.
+      Naming one is Joel's yes to it. Every other root step still asks him
+      once, and nothing is named by default. Restarting starts a stopped
+      unit, so start itself can't be named: systemd asks it of a unit an
+      agent's run0 makes, by whatever name the agent gives it.
+    '';
+    default = { };
+    example = {
+      "nix-daemon.service" = [ "restart" ];
+    };
+    type = lib.types.attrsOf (
+      lib.types.listOf (
+        lib.types.enum [
+          "reload"
+          "reload-or-restart"
+          "reload-or-try-restart"
+          "reset-failed"
+          "restart"
+          "stop"
+          "try-restart"
+        ]
+      )
+    );
+  };
+
   options.jitsusama.slices.disks = lib.mkOption {
     description = ''
       The disks shared by the slices' weights, by their names under
@@ -351,6 +381,18 @@ in
   };
 
   config = {
+    # A unit's name is all the grant goes by, so it's the whole name of one
+    # the system has, never a pattern, and never one run0 makes, whose
+    # name an agent chooses.
+    assertions = lib.mapAttrsToList (unit: _: {
+      assertion =
+        builtins.match "[A-Za-z0-9:_.@\\-]+\\.(service|socket|timer|path|mount|target)" unit != null
+        && builtins.match "run-.*" unit == null;
+      message =
+        "jitsusama.slices.agentsMayRepeat names ${unit}, "
+        + "which isn't one system unit's whole name, or is one run0 makes.";
+    }) config.jitsusama.slices.agentsMayRepeat;
+
     # A unit an agent starts with systemd-run stays in the agent's slice,
     # rather than landing among Joel's apps, as systemd-run.sh says.
     environment.systemPackages = [

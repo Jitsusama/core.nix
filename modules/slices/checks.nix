@@ -364,23 +364,45 @@
   # A workstation's polkit rules, as polkitd assembles them, run in duktape,
   # polkit's own engine, after polkit's init.js: what would ask Joel is
   # refused for a process where agents' work runs, or one gone, but an
-  # agent's run0 or pkexec, which asks him once for its command; it's left
-  # to ask from his terminal and apps, and a grant stays a grant
-  # (agents-ask-test.rules).
+  # agent's run0 or pkexec, which asks him once for its command, and a root
+  # step Joel named in jitsusama.slices.agentsMayRepeat, which is granted;
+  # it's left to ask from his terminal and apps, and a grant stays a grant
+  # (agents-ask-test.rules). The cases run on a machine naming no root
+  # step, as every machine is by default, and on one naming one. A name
+  # that isn't one unit's whole name, or is one run0 makes, is refused.
   an-agent-raises-no-polkit-prompt =
     let
       # fwupd's rules ask an administrator, so a machine with them shows
       # that asking turned into a refusal.
-      machine = bareNixos [
-        self.nixosModules.graphical
-        self.nixosModules.fwupd
-      ];
-      rules = machine.config.environment.etc."polkit-1/rules.d/10-nixos.rules".text;
+      machineNaming =
+        named:
+        (bareNixos [
+          self.nixosModules.graphical
+          self.nixosModules.fwupd
+          { jitsusama.slices.agentsMayRepeat = named; }
+        ]).config;
+      rulesOf = named: (machineNaming named).environment.etc."polkit-1/rules.d/10-nixos.rules".text;
+      refuses =
+        unit: lib.any (claim: !claim.assertion) (machineNaming { ${unit} = [ "restart" ]; }).assertions;
+      namesHeld =
+        lib.all refuses [
+          "run-u42.service"
+          "nix-daemon"
+          "*.service"
+        ]
+        && !refuses "nix-daemon.service";
+      run = catalogued: named: ''
+        ${lib.getExe' pkgs.duktape "duk"} ${./agents-ask-polkit.rules} \
+          ${pkgs.polkit.src}/src/polkitbackend/init.js \
+          ${pkgs.writeText "10-nixos.rules" (rulesOf named)} \
+          ${pkgs.writeText "catalogued.js" "var catalogued = ${lib.boolToString catalogued};"} \
+          ${./agents-ask-test.rules}
+      '';
     in
+    assert lib.assertMsg namesHeld "agentsMayRepeat took a name that isn't one system unit's";
     pkgs.runCommandLocal "an-agent-raises-no-polkit-prompt" { } ''
-      ${lib.getExe' pkgs.duktape "duk"} ${./agents-ask-polkit.rules} \
-        ${pkgs.polkit.src}/src/polkitbackend/init.js \
-        ${pkgs.writeText "10-nixos.rules" rules} ${./agents-ask-test.rules}
+      ${run false { }}
+      ${run true { "nix-daemon.service" = [ "restart" ]; }}
       touch $out
     '';
 }
