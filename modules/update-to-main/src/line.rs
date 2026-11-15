@@ -14,7 +14,8 @@ pub enum Line {
     Building { commit: String },
     /// Switching the machine to the system built from this commit.
     Switching { commit: String },
-    /// The machine runs this commit, and boots it next.
+    /// The machine runs this commit, and boots it next unless `boots`
+    /// says otherwise.
     Done {
         commit: String,
         applied: Applied,
@@ -24,6 +25,10 @@ pub enum Line {
         /// What the switch restarted on its own, such as a Mac's Linux VM,
         /// so an asker knows what of theirs ended.
         restarted: Vec<String>,
+        /// Why the machine still boots the system it booted before, when
+        /// the boot check for this one failed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        boots: Option<String>,
         /// The commit each input that follows its own main is at, when
         /// any does.
         #[serde(default, skip_serializing_if = "Followed::is_empty")]

@@ -9,7 +9,9 @@
 //! daemon the config holds, restart an account's unit it holds, or change a
 //! path it holds such as the kernel, is refused unless an asker granted it. A
 //! switch the follower asked for waits, once built, while someone is at the
-//! machine. Each step is told as it starts.
+//! machine. With a boot check, a system whose kernel, initrd or kernel
+//! parameters changed becomes what the machine boots only once it passes.
+//! Each step is told as it starts.
 
 use crate::config::{Busy, Config, Kind};
 use crate::follows;
@@ -349,17 +351,32 @@ fn switch(
     let switched = system::switch(config, built)
         .and_then(|switched| system::healthy(config).map(|()| switched));
     match switched {
-        Ok(switched) => {
+        Ok(mut switched) => {
             if let Err(e) =
                 remember(config, &head).and_then(|()| follows::remember(config, &followed))
             {
                 return failed(Some(head), e);
+            }
+            // A failed boot check leaves the system running, since it's
+            // whole, but booting what it booted before, which no restart
+            // changes.
+            let mut boots = None;
+            if switched.unbooted
+                && let Err(failure) = system::boot_once_checked(config, built)
+            {
+                switched.restart = None;
+                boots = Some(format!(
+                    "{}, so the machine boots what it booted before: {}",
+                    failure.why,
+                    failure.lines.join("; ")
+                ));
             }
             Line::Done {
                 commit: head,
                 applied: switched.applied,
                 restart: switched.restart,
                 restarted: switched.restarted,
+                boots,
                 followed,
             }
         }

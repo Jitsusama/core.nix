@@ -497,6 +497,19 @@ in
       default = 120;
       description = "How many seconds the health commands have to succeed.";
     };
+    bootCheck = mkOption {
+      type = types.nullOr (types.nonEmptyListOf types.str);
+      default = null;
+      description = ''
+        On NixOS, a command that has to pass, given the new system's path
+        after its own arguments, before a system whose kernel, initrd or
+        kernel parameters differ from the booted one's becomes what the
+        machine boots, such as one that boots it in a VM and unlocks its
+        disk. Until then the new system runs and the machine boots what it
+        did, and a failure is said in the update's ending. None to make it
+        the boot default at once.
+      '';
+    };
     batteryFloor = mkOption {
       type = types.ints.between 0 100;
       default = 20;
@@ -583,6 +596,7 @@ in
               health
               ;
             health_within = cfg.healthWithin;
+            boot_check = cfg.bootCheck;
             battery_floor = cfg.batteryFloor;
             group = "update-ask";
             signers = signersFor cfg.signers;

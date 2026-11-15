@@ -508,6 +508,7 @@ pub(crate) mod tests {
             applied: crate::line::Applied::Now,
             restart: None,
             restarted: Vec::new(),
+            boots: None,
             followed: Followed::new(),
         };
         f.asked(at("a"), &switched, "", t);
