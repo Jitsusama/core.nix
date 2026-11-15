@@ -121,15 +121,18 @@ def quiet(shell: Shell) -> int:
 def test_while_he_types_it_makes_one_small_move_in_place(shell: Shell) -> None:
     """A key every 0.4 s, and within the rest a single pose comes, holds a moment, and goes.
 
-    It moves none while it does, and draws a frame for the pose and one for sitting again.
+    It moves none while it does, and draws a frame for the pose and one for sitting again. Its
+    frames are counted from the key's gap the pose came in, as a settling column can redraw
+    its window between keys on a loaded builder, the cat saying nothing (RCTRF8, 15 Nov).
     """
     sitting_over(shell, "a column typed in")
     quiet(shell)
-    shell.as_account(f"qs -p {shell.folder} ipc call frames start")
     since = shell.mark()
     began, posed, sat, still = time.monotonic(), 0.0, 0.0, None
     seen: list[Json] = []
     while time.monotonic() - began < TYPED and not sat:
+        if not posed:
+            shell.as_account(f"qs -p {shell.folder} ipc call frames start")
         shell.send_key("F24")
         time.sleep(TYPING)
         found, since = reports(shell, since)
