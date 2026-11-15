@@ -1,0 +1,33 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Hold each JSON string value at its own length
+
+JSON.parse grew each string value one character at a time, and each
+growth rounded up to the next power of two, so a value kept up to twice
+the room it needed for as long as the parse's result lived. The shell
+keeps its daemons' answers parsed, and in its weigh lab these values
+were the largest holder of its malloc memory: 17.3 MB of 84.1 MB live.
+No escape reads as more characters than it's written in, so the span to
+the closing quote is room enough, and each value now reserves it first.
+
+---
+--- a/src/qml/jsruntime/qv4jsonobject.cpp
++++ b/src/qml/jsruntime/qv4jsonobject.cpp
+@@ -562,6 +562,18 @@
+ {
+     BEGIN << "parse string stringPos=" << json;
+ 
++    // Grown a character at a time, a value was held at the next power of two
++    // of what it needed, up to twice that, for as long as the parse's result
++    // lived. No escape reads as more characters than it's written in, so the
++    // span to the closing quote is room enough for the whole value.
++    const QChar *close = json;
++    while (close < end && *close != u'"') {
++        if (*close == u'\\' && close + 1 < end)
++            ++close;
++        ++close;
++    }
++    string->reserve(close - json);
++
+     while (json < end) {
+         if (*json == u'"')
+             break;
