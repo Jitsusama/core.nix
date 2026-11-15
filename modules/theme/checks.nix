@@ -251,6 +251,21 @@
       && mix 0.25 "#ff0000" "#000000" == "#400000"
     );
 
+  # A program reading theme.json draws a mark the shell turns the way the
+  # shell does, so it must be told which turn: the down triangle is the
+  # triangle turned, and drawn bare it reads as pointing up. Every other mark
+  # says it isn't turned rather than leaving the reader to guess.
+  theme-json-says-which-marks-turn =
+    let
+      home = account workstation;
+      inherit ((builtins.fromJSON home.xdg.configFile."jitsusama/theme.json".text)) marks;
+      turned = lib.attrNames (lib.filterAttrs (_: mark: mark.turned or null == true) marks);
+      unsaid = toString (lib.length (lib.attrNames (lib.filterAttrs (_: m: !(m ? turned)) marks)));
+    in
+    holds "theme-json-says-which-marks-turn"
+      "theme.json turns ${builtins.toJSON turned}, and says nothing of ${unsaid} marks."
+      (turned == [ "shapeDownTriangle" ] && unsaid == "0");
+
   # Picking another theme changes everything the account draws: the desktop
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
   # its files, so no surface was left behind in the old one. The design

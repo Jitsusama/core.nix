@@ -495,7 +495,9 @@ in
       }
     ) cfg.type.levels;
     name = cfg.title;
-    marks = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.marks;
+    # Whether a mark is turned goes too, since a program drawing the glyph
+    # bare would draw the down triangle pointing up.
+    marks = lib.mapAttrs (_: mark: { inherit (mark) glyph console turned; }) cfg.marks;
   };
 
   # The theme for a website, which a site copies whole rather than retyping
