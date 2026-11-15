@@ -58,6 +58,7 @@ Singleton {
     // The notice's action comes back through the shell, so the door stays
     // this one.
     function tell(network: string): void {
+        Report.say(`told sign-in ${network}`);
         Niri.spawn(["sh", "-c", [
             'asked=$(notify-send --app-name=Wi-Fi --action=sign-in="Sign in" \\',
             '    "$1 wants a sign-in" "Nothing reaches past it until you sign in.")',

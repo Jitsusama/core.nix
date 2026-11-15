@@ -1400,6 +1400,14 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     machine = desktop.machine
     machine.wait_for_unit("lantern.service")
     machine.wait_for_unit("wifid.service")
+    # The stand-in air beacons from this machine itself, so a machine starved
+    # on a busy builder misses its own beacons: a run lost Lantern while the
+    # sign-in window started cold, 7 beacons missed being all mac80211 lets
+    # pass, and the Return on its button reached no front desk
+    # (2026-11-15). A join reads the count as it's made, so it is raised
+    # first, to ride out ten seconds of it; a real network's air isn't
+    # starved with its card.
+    machine.succeed("echo 100 > /sys/module/mac80211/parameters/beacon_loss_count")
     wifi = "varlinkctl call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
     machine.wait_until_succeeds(
         f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Lantern\"'",
@@ -1452,7 +1460,11 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.shoot("launcher-wifi-refused")
     machine.succeed(desktop.in_session(LAUNCHER_OPEN))
     desktop.type_in("glowing in the dark")
-    machine.send_key("ret")
+    # Lantern wants a sign-in once joined, and the shell tells of it then, before anything
+    # has asked for the sign-in: a shell that made its sign-in only once one was asked for
+    # never told, nor took its notice back (2026-11-15).
+    with desktop.told("told sign-in Lantern", timeout=timedelta(seconds=90)):
+        machine.send_key("ret")
     # Joined means an address too, and wifid says so once it's checked
     # how far the network reaches.
     machine.wait_until_succeeds(

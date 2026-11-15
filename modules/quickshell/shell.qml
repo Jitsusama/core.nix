@@ -7,6 +7,11 @@ import Quickshell
 import QtQuick
 
 ShellRoot {
+    // A network wanting a sign-in is told of as wifid says so, and its notice taken back once
+    // it's done (SignIn.qml), so the sign-in is made at start: QML makes a singleton only when
+    // it's first used, and only a press on Sign in would make it otherwise (2026-11-15).
+    Component.onCompleted: SignIn.follow()
+
     Wallpaper {}
     Notifications {
         launcher: theLauncher
