@@ -590,6 +590,15 @@ ShellRoot {
             // last listed, which would read as if all were well.
             what: "the people daemon gone",
             run: () => {
+                // Tuple says the favourites changed here within moments,
+                // which the stand-in never does, so they're taken as said
+                // and those listed are the daemon's, as Joel's are when a
+                // switch restarts it. Kept here, they were merged here,
+                // and listed as the daemon's once it was back, which
+                // remade them all.
+                tuple().favoured = ({});
+                void people.all;
+                root.stampsBefore = people.listedStamps();
                 root.stoppedAt = Date.now();
                 stopping.running = true;
             },
@@ -604,6 +613,10 @@ ShellRoot {
                 // Said inside People too, on its head, as home's row says it.
                 expect("said on People's head", people.pressing === "not answering",
                     people.pressing);
+                // Shut while it's away and comes back, as a switch finds
+                // the launcher, so nothing is made until it opens again.
+                launcher.wanting = false;
+                root.goneRows = people.tally.rows;
             }
         },
         {
@@ -611,7 +624,23 @@ ShellRoot {
             run: () => {
                 starting.running = true;
             },
-            holds: () => people.pressing === "",
+            // Back once every source has told it again what it said of
+            // each listed before, as a daemon started again hears each
+            // source's part as it comes: Tuple's first, then Slack's.
+            // Waiting on Tuple's alone, Gil's step opened People between
+            // them, which made each listed row for Tuple's part and again
+            // for Slack's, 9 rows rather than Gil's one. Read as People
+            // reads it: a person it merges here, beside a source saying
+            // how they stand, has no `stood` of the daemon's.
+            holds: () => {
+                const ada = people.listedPersons()
+                    .find(person => person.key === "ada@example.com");
+                const stamps = people.listedStamps();
+                return people.pressing === "" && ada !== undefined
+                    && (ada.stood ?? people.standOf(ada))?.said === "in a call"
+                    && Object.keys(root.stampsBefore)
+                        .every(key => stamps[key] === root.stampsBefore[key]);
+            },
             check: () => {
                 expect("home counts again", people.homeSays() !== "not answering",
                     people.homeSays());
@@ -629,10 +658,18 @@ ShellRoot {
                     rows: [{ key: "calendar:meeting:standup:guest:gil@example.com",
                         lends: "person:gil@example.com", name: "gil@example.com" }] }];
                 guesting.told = 0;
+                launcher.wanting = true;
                 naming.running = true;
             },
             holds: () => names(people.all).includes("Gil Hart"),
             check: () => {
+                // Its listing, told whole again once it was back, made
+                // none of those it listed before: told everyone anew, a
+                // daemon started again by a switch made 136 and 137 rows
+                // at Joel's next first letter (his journal, 2026-11-14).
+                expect("the daemon back made only Gil's row",
+                    people.tally.rows - root.goneRows === 1,
+                    `${people.tally.rows - root.goneRows} rows made`);
                 launcher.held = [];
                 expect("tells the place holding them, to ask for them again",
                     guesting.told > 0, `told ${guesting.told} times`);
@@ -774,12 +811,19 @@ ShellRoot {
     function slackOf(address) {
         return people.recordFor(`person:${address}`)?.sources?.slack ?? null;
     }
+    // Tuple's source, as People made it.
+    function tuple() {
+        return people.sources.find(source => source.settings.name === "tuple");
+    }
     // How many rows People had made once Slack was asked, the launcher
     // shut.
     property int shutRows: 0
 
-    // When the people daemon was stopped.
+    // When the people daemon was stopped, and how many rows People had
+    // made once it was gone.
     property real stoppedAt: 0
+    property var stampsBefore: ({})
+    property int goneRows: 0
 
     // How often People found more once asked, as the launcher hears it,
     // and how often before Tuple came to know Fay.
@@ -842,8 +886,14 @@ ShellRoot {
                 root.left -= 1;
                 if (root.left === 0) {
                     stop();
+                    // Those listed too, with how each stands, since a
+                    // shut launcher's home lists no one.
+                    const listed = people.listedPersons()
+                        .map(person => `${person.key} `
+                            + `${(person.stood ?? people.standOf(person))?.said ?? "?"}`);
                     root.fail(`never came: ${now.what}: home ${root.names(people.all)}`
-                        + ` (${root.sides(people.all)}), sought ${people.sought.words}`);
+                        + ` (${root.sides(people.all)}), sought ${people.sought.words}`
+                        + `, pressing "${people.pressing}", listed ${listed.join(", ")}`);
                 }
             }
         }

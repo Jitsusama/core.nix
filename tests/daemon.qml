@@ -57,9 +57,20 @@ ShellRoot {
             root.peopleChanged = root.peopleChanged.concat(changed);
             root.peopleGone = root.peopleGone.concat(gone);
         }
+        // Told by the people daemon's watch ahead, which tells Ada as she
+        // was before it stopped, so her record held doesn't change: what
+        // it tells is what says it was asked. Started again, it knows her
+        // only once the source it asks ahead answers, so she comes as a
+        // change of the watch rather than in its first answer.
+        onTold: answer => {
+            if (answer.id === "ahead" && (answer.records ?? answer.changed ?? [])
+                .some(record => record?.key === root.ada))
+                root.aheadTold += 1;
+        }
     }
     property var peopleChanged: []
     property var peopleGone: []
+    property int aheadTold: 0
 
     // Watching only those a source lists with nothing typed.
     Daemon {
@@ -328,7 +339,7 @@ ShellRoot {
     property int step: 0
     property int left: 0
     property var answered: undefined
-    property real heardBefore: 0
+    property int aheadToldBefore: 0
     // The stages an ask answered in steps was given, in order.
     property var stepsHeard: []
 
@@ -428,7 +439,7 @@ ShellRoot {
         {
             what: "the daemon stopping is said, and what was held stays unless let go",
             run: () => {
-                root.heardBefore = people.held[root.ada].heard;
+                root.aheadToldBefore = root.aheadTold;
                 peopleRunning.running = false;
             },
             // Held only once the daemon has exited, not just closed its
@@ -451,7 +462,7 @@ ShellRoot {
                 peopleRunning.running = true;
             },
             holds: () => people.state === "answering"
-                && people.held[root.ada].heard > root.heardBefore
+                && root.aheadTold > root.aheadToldBefore
                 && root.hal in forgetting.held
         },
         {

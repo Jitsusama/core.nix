@@ -654,9 +654,10 @@ Provider {
                     return row;
                 // One only the daemon's sources know comes with the row a
                 // search finds them as, and its drawer, kept while their record says the
-                // same, which the daemon stamps `heard` anew when a source
-                // says anything new of them, so each search's answer remakes
-                // none it found before; and let go once no answer holds it.
+                // same, which the daemon stamps `said` anew only when a source
+                // says anything new of them, a restart of it included, so each
+                // search's answer remakes none it found before; and let go once
+                // no answer holds it.
                 // The rest are merged here from what a source the daemon
                 // doesn't hold gives: Slack's are the daemon's, so someone
                 // Slack found once is held only while listed or found, and
@@ -665,7 +666,7 @@ Provider {
                 // listed is.
                 const record = readyFor(person);
                 return record ? keptAlike(made.keeping, person.key,
-                    [record.key, record.heard, clocked(record.row) ? provider.minute : 0],
+                    [record.key, record.said, clocked(record.row) ? provider.minute : 0],
                     () => provider.made(person, Person.standing(person, []), record.row,
                         () => record.drawer))
                     : keptOr(made.keeping, person.key, JSON.stringify(person),
@@ -723,18 +724,21 @@ Provider {
         keepingBegun(keptListed);
         const rows = listed.map(person => {
             // One the daemon listed comes with their row ready, kept while
-            // their record is the one it last told, which it tells anew
-            // only when they changed: so nothing about them is written out
-            // again to find it the same, and nothing of the row is worded
-            // here.
+            // their record says what it said, by the stamp the daemon
+            // gives it (listing.rs's `listing`) rather than by the record
+            // held: started again, the daemon tells each source's part as
+            // it comes, each a new record, though the last says all the
+            // first did. So nothing about them is written out again to
+            // find it the same, and nothing of the row is worded here.
             // Their row reads only what their record says, but for its
             // order, which places it and is read no further, so it's kept
-            // by the record.
+            // by the record's stamp.
             const record = person.stood ? lister.held[`person:${person.key}`] : null;
             const ready = record ? rowsHeld[`row:people:${person.key}`] : null;
             // One saying their time is kept for the minute too.
             if (ready)
-                return keptAlike(keptListed, person.key, [record, clocked(ready) ? now : 0],
+                return keptAlike(keptListed, person.key,
+                    [record.said ?? record, clocked(ready) ? now : 0],
                     () => made(person, person.stood, ready,
                         () => Ready.drawerServed(ready, lister.held)));
             const stood = person.stood ?? standOf(person);
@@ -1377,6 +1381,18 @@ Provider {
             kept.until = Person.changesAt(everyone.persons, now);
         }
         return kept.listed;
+    }
+    // Each listed person's listing stamp, by the daemon's key, so a case
+    // can tell when a daemon started again has told every source's part
+    // as before: it tells each part as it comes, the first saying less.
+    function listedStamps() {
+        const stamps = {};
+        for (const key of placing.keys) {
+            const thing = rowsHeld[key]?.thing;
+            if (thing)
+                stamps[thing] = lister.held[thing]?.said ?? "";
+        }
+        return stamps;
     }
     // Home says the people daemon isn't answering rather than a count of
     // whom it last listed, so a down daemon is never silent.

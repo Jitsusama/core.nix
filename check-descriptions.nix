@@ -1954,7 +1954,9 @@
     into one, says a source running is answering before anything asks it, never waits on a source
     signed out, asks one back from a sign-out, or from saying later, again about everyone watched
     it hasn't said once it says who someone is, starts a source that stops again and asks it about
-    everyone watched, says a get nothing answered in time isn't ready, and refuses an ask or a kind it doesn't know
+    everyone watched, says a get nothing answered in time isn't ready, serves someone a source
+    says the same of as it did before it was started again, and refuses an ask or a kind it
+    doesn't know
   '';
   people-passes-clippy = ''
     clippy finds nothing in the people daemon or its tests

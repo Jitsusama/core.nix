@@ -340,7 +340,7 @@ fn took_in(shared: &Shared, source: &str, line: &str) {
         .about(source, &heard)
         .and_then(|key| daemon.book.record(&key))
         .is_some_and(Record::listed);
-    if let Some(key) = daemon.book.take(source, heard, now()) {
+    if let Some(key) = daemon.book.take(source, heard) {
         daemon.revision += 1;
         let record = daemon.book.record(&key);
         let listed = was_listed || record.is_some_and(Record::listed);
