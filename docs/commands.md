@@ -441,7 +441,9 @@ command passes through from a program it runs:
   never reads as "broken".
 - **A stand-in passes through.** A command that runs another program as
   its stand-in (a wrapper, `run` on another machine) exits with that
-  program's code, and says so in its help.
+  program's code, and says so in its help. On the kit, its failure is
+  `Failure::passed(code, what)`, whose exit stays the table's 1, and its
+  help's `passes` adds `N the job's own code` to the EXIT group.
 - **Each lists its own.** A command lists the codes it uses in its help's
   EXIT group, and the kind is the `kind` of its JSON error.
 

@@ -45,11 +45,6 @@
     "exits"
     "helps"
   ];
-  loopback-holders = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   machine = [
     "kit"
     "exits"
@@ -61,16 +56,6 @@
     "helps"
   ];
   mypy = [ "helps" ];
-  network-revive = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  night-shift = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   niri-off-cpu-as-root = [ "helps" ];
   niri-off-cpu-begun = [ "helps" ];
   nix-offload = [

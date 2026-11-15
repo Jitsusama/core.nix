@@ -18,7 +18,9 @@
 //! reloads, and each it leaves down because the unit's check still fails.
 //! What it found each time it looked it says at debug level, and only when
 //! its configuration asks: journald drops a unit's debug lines only for the
-//! system's manager, which alone tells it the unit's `LogLevelMax`.
+//! system's manager, which alone tells it the unit's `LogLevelMax`. Its
+//! help, its failures and its exits take the terminal kit's shape
+//! (`help()`).
 
 mod config;
 mod network;
@@ -35,6 +37,7 @@ use std::process::ExitCode;
 
 use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
+use terminal_kit::{Exit, Failure, Help};
 use tokio::time::{Instant, sleep_until};
 use zbus::Connection;
 
@@ -42,26 +45,54 @@ use config::{Config, Unit};
 use revive::{Action, Outcome, Units, Why};
 use settle::Settling;
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> ExitCode {
-    let Some(path) = std::env::args_os().nth(1).map(PathBuf::from) else {
-        eprintln!("<3>usage: network-revive CONFIG");
-        return ExitCode::from(2);
-    };
-    let config = match Config::read(&path) {
-        Ok(config) => config,
-        Err(error) => {
-            eprintln!("<3>{error}");
-            return ExitCode::from(2);
-        }
-    };
-    match follow(&config).await {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("<3>{error}");
-            ExitCode::FAILURE
-        }
+/// What `network-revive --help` says.
+fn help() -> Help {
+    Help::new(
+        "network-revive",
+        "gives units the network let down another go",
+    )
+    .example("network-revive units.json", "as its unit runs it")
+    .argument("CONFIG", "the units to look at, as home.nix writes them")
+    .exit(Exit::Failed, "the buses went away, or couldn't be reached")
+    .exit(Exit::Config, "its configuration couldn't be read")
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let config = Config::read(&configuration(&context.args)?).map_err(|error| {
+            Failure::new(Exit::Config, "network-revive can't read its configuration").because(error)
+        })?;
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| failed(&error))?
+            .block_on(follow(&config))
+            .map_err(|error| failed(&*error))
+    })
+}
+
+/// The one word it's started with, its configuration's path.
+///
+/// # Errors
+///
+/// Asked wrongly, 64, given no path, more than one, or a flag.
+fn configuration(args: &[String]) -> Result<PathBuf, Failure> {
+    let wrongly = |what: String| Failure::new(Exit::Usage, what).try_this("network-revive --help");
+    if let Some(flag) = args.iter().find(|arg| arg.starts_with('-')) {
+        return Err(wrongly(format!("{flag} isn't a flag it takes")));
     }
+    match args {
+        [path] => Ok(PathBuf::from(path)),
+        [] => Err(wrongly("network-revive takes its configuration".into())),
+        [_, extra, ..] => Err(wrongly(format!(
+            "network-revive takes one configuration, and {extra} is another"
+        ))),
+    }
+}
+
+fn failed(error: &dyn Error) -> Failure {
+    Failure::new(Exit::Failed, "network-revive stopped following the network")
+        .because(error.to_string())
 }
 
 async fn follow(config: &Config) -> Result<(), Box<dyn Error>> {
@@ -149,6 +180,63 @@ fn say(name: &str, why: Why, outcome: &Outcome) {
                 Action::Reload => "reload",
             };
             println!("<4>couldn't {verb} {name}: {error}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{configuration, help};
+    use std::path::PathBuf;
+    use terminal_kit::{Environment, Exit};
+
+    /// How the kit ends network-revive started with `words`, its body
+    /// reading only its configuration's path.
+    fn started(words: &[&str]) -> (Exit, String) {
+        let ending = terminal_kit::run(
+            &help(),
+            "0.1.0",
+            &Environment::of([false; 3], &[]),
+            words.iter().map(|word| (*word).to_owned()).collect(),
+            |context| configuration(&context.args).map(drop),
+        );
+        (ending.exit, ending.stderr)
+    }
+
+    #[test]
+    fn its_units_word_is_read_as_its_configuration() {
+        let unit = ["/nix/store/x-network-revive.json"];
+        let read = configuration(&unit.map(String::from)).unwrap();
+        assert_eq!(
+            read,
+            PathBuf::from(unit[0]),
+            "its unit's one word wasn't read as the configuration"
+        );
+        assert_eq!(
+            started(&unit).0,
+            Exit::Done,
+            "the kit refused its unit's words"
+        );
+    }
+
+    #[test]
+    fn a_start_asked_wrongly_ends_64_naming_its_help() {
+        for words in [
+            &[][..],
+            &["a.json", "b.json"],
+            &["--debug", "a.json"],
+            &["a.json", "-v"],
+        ] {
+            let (exit, said) = started(words);
+            assert_eq!(
+                exit,
+                Exit::Usage,
+                "{words:?} wasn't refused as asked wrongly: {said}"
+            );
+            assert!(
+                said.contains("network-revive --help"),
+                "{words:?}'s refusal didn't name its help: {said}"
+            );
         }
     }
 }

@@ -35,15 +35,11 @@
 //! which waits for it rather than leaving the turn (src/turn.rs says how),
 //! so a night job tried meanwhile leaves it to a later try.
 //!
-//! Usage: night-shift turn NAME [--wait-at-most SECONDS] -- COMMAND [ARG]...
-//!        night-shift run NAME [--start-under PCT] [--stop SLICE=PCT]...
-//!                            [--stop-machine PCT] [--rests HOURS]
-//!                            [--every SECONDS] [--grace SECONDS]
-//!                            [--memory-high SIZE] [--memory-max SIZE]
-//!                            [--swap-max SIZE] [--reads-at-most DISK=RATE]...
-//!                            -- COMMAND [ARG]...
+//! Its help, its failures and its exits take the terminal kit's shape
+//! (src/commands.rs); a failed job's run ends with the job's own code.
 
 mod cgroup;
+mod commands;
 mod pressure;
 mod turn;
 
@@ -58,6 +54,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, ExitStatus};
 use std::thread;
 use std::time::{Duration, Instant};
+use terminal_kit::{Exit, Failure};
 
 /// One night job, as its arguments give it.
 #[derive(Debug, PartialEq)]
@@ -73,42 +70,25 @@ struct Job {
     command: Vec<String>,
 }
 
-const USAGE: &str = "usage: night-shift turn NAME [--wait-at-most SECONDS] -- COMMAND [ARG]...\n       \
-     night-shift run NAME [--start-under PCT] [--stop SLICE=PCT]... \
-     [--stop-machine PCT] [--rests HOURS] [--every SECONDS] [--grace SECONDS] \
-     [--memory-high SIZE] [--memory-max SIZE] [--swap-max SIZE] \
-     [--reads-at-most DISK=RATE]... -- COMMAND [ARG]...";
-
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("turn") {
-        return match turn::parse(&args) {
-            Ok(asked) => turn::take(&asked, &runtime_dir()),
-            Err(problem) => {
-                eprintln!("night-shift: {problem}");
-                eprintln!("{USAGE}");
-                ExitCode::from(2)
-            }
-        };
-    }
-    match parse(&args) {
-        Ok(job) => run(&job),
-        Err(problem) => {
-            eprintln!("night-shift: {problem}");
-            eprintln!("{USAGE}");
-            ExitCode::from(2)
+    terminal_kit::main(&commands::help(), env!("CARGO_PKG_VERSION"), |context| {
+        let args = &context.args;
+        if args.first().map(String::as_str) == Some("turn") {
+            let asked = turn::parse(args).map_err(|problem| commands::wrongly(args, problem))?;
+            return turn::take(&asked, &runtime_dir());
         }
-    }
+        run(&parse(args).map_err(|problem| commands::wrongly(args, problem))?)
+    })
 }
 
 fn parse(args: &[String]) -> Result<Job, String> {
     let (Some("run"), Some(name)) = (args.first().map(String::as_str), args.get(1)) else {
-        return Err("it takes `run` or `turn` and a job's name".into());
+        return Err("night-shift takes run or turn, and the job's name".into());
     };
     let split = args
         .iter()
         .position(|arg| arg == "--")
-        .ok_or("it takes `--` and the job's command")?;
+        .ok_or("night-shift run takes the job's command after --")?;
     let command = args[split + 1..].to_vec();
     if command.is_empty() {
         return Err("the job's command is empty".into());
@@ -159,7 +139,7 @@ fn parse(args: &[String]) -> Result<Job, String> {
                 })?;
                 job.limits.reads.push((PathBuf::from(disk), bytes));
             }
-            _ => return Err(format!("{option} isn't an option")),
+            _ => return Err(format!("{option} isn't an option of run")),
         }
     }
     Ok(job)
@@ -168,6 +148,11 @@ fn parse(args: &[String]) -> Result<Job, String> {
 /// What a line of the job's log says, with its name.
 fn say(job: &Job, what: &str) {
     println!("night-shift {}: {what}", job.name);
+}
+
+/// How the job's run fails, saying what failed with its name.
+fn failed(job: &Job, what: &str) -> Failure {
+    Failure::new(Exit::Failed, format!("night-shift {}: {what}", job.name))
 }
 
 /// Where the lock is: one for the account, which a night job and a heavy
@@ -192,15 +177,14 @@ struct Folders {
     runtime: PathBuf,
 }
 
-fn run(job: &Job) -> ExitCode {
+fn run(job: &Job) -> Result<(), Failure> {
     let state = dir("XDG_STATE_HOME", ".local/state").join("night-shift");
     let places = Folders {
         state,
         runtime: runtime_dir(),
     };
-    let (_lock, at) = match may_start(job, &places) {
-        Ok(started) => started,
-        Err(code) => return code,
+    let Some((_lock, at)) = may_start(job, &places)? else {
+        return Ok(());
     };
     let pressures = Places::of_this_machine();
     let watched: Vec<(String, PathBuf, f64)> = job
@@ -219,13 +203,8 @@ fn run(job: &Job) -> ExitCode {
             );
         }
     }
-    let samples = match File::create(places.state.join(format!("{}.samples", job.name))) {
-        Ok(file) => file,
-        Err(error) => {
-            say(job, &format!("can't write its samples: {error}"));
-            return ExitCode::FAILURE;
-        }
-    };
+    let samples = File::create(places.state.join(format!("{}.samples", job.name)))
+        .map_err(|error| failed(job, "can't write its samples").because(error.to_string()))?;
     let mut command = Command::new(&job.command[0]);
     command.args(&job.command[1..]).process_group(0);
     // Its own cgroup's pressure, the job's when it has one apart.
@@ -234,8 +213,10 @@ fn run(job: &Job) -> ExitCode {
     let mut procs_open = None;
     if job.limits.any() {
         let Some(unit) = own.clone() else {
-            say(job, "can't find its own cgroup to give the job its limits");
-            return ExitCode::FAILURE;
+            return Err(failed(
+                job,
+                "can't find its own cgroup to give the job its limits",
+            ));
         };
         match cgroup::split(&unit, &job.limits) {
             Ok((cgroup, procs)) => {
@@ -244,25 +225,21 @@ fn run(job: &Job) -> ExitCode {
                 procs_open = Some(procs);
             }
             Err(error) => {
-                say(
+                return Err(failed(
                     job,
                     &format!(
-                        "can't give the job a cgroup of its own under {}, as its limits need: {error}; its unit needs Delegate=memory io",
+                        "can't give the job a cgroup of its own under {}, as its limits need",
                         unit.display()
                     ),
-                );
-                return ExitCode::FAILURE;
+                )
+                .because(format!("{error}; its unit needs Delegate=memory io")));
             }
         }
     }
     let own = own.map(|dir| dir.join("memory.pressure"));
-    let mut child = match command.spawn() {
-        Ok(child) => child,
-        Err(error) => {
-            say(job, &format!("can't start {}: {error}", job.command[0]));
-            return ExitCode::FAILURE;
-        }
-    };
+    let mut child = command.spawn().map_err(|error| {
+        failed(job, &format!("can't start {}", job.command[0])).because(error.to_string())
+    })?;
     drop(procs_open);
     say(
         job,
@@ -271,7 +248,7 @@ fn run(job: &Job) -> ExitCode {
             job.command.join(" ")
         ),
     );
-    match watch(
+    if let Some(status) = watch(
         job,
         &mut child,
         &pressures,
@@ -279,24 +256,25 @@ fn run(job: &Job) -> ExitCode {
         &watched,
         samples,
     ) {
-        Some(status) => finish(
+        finish(
             job,
             status,
             &places.state.join(format!("{}.done", job.name)),
-        ),
-        None => stop(job, &mut child),
+        )
+    } else {
+        stop(job, &mut child);
+        Ok(())
     }
 }
 
-/// The lock and the machine's pressure a job starts at, or how the run
-/// ends when it doesn't start: done already, another job running, or the
-/// machine short of memory.
-fn may_start(job: &Job, places: &Folders) -> Result<(File, f64), ExitCode> {
+/// The lock and the machine's pressure a job starts at; none when it
+/// doesn't start and leaves a later try its turn: done already, another
+/// job running, or the machine short of memory.
+fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure> {
     for place in [&places.state, &places.runtime] {
-        if let Err(error) = fs::create_dir_all(place) {
-            say(job, &format!("can't make {}: {error}", place.display()));
-            return Err(ExitCode::FAILURE);
-        }
+        fs::create_dir_all(place).map_err(|error| {
+            failed(job, &format!("can't make {}", place.display())).because(error.to_string())
+        })?;
     }
     let done = places.state.join(format!("{}.done", job.name));
     if let Some(ago) = fs::metadata(&done)
@@ -312,14 +290,12 @@ fn may_start(job: &Job, places: &Folders) -> Result<(File, f64), ExitCode> {
                 ago.as_secs() / 60
             ),
         );
-        return Err(ExitCode::SUCCESS);
+        return Ok(None);
     }
 
     // Held until this process ends, however it ends.
-    let lock = File::create(places.runtime.join("lock")).map_err(|error| {
-        say(job, &format!("can't open the lock: {error}"));
-        ExitCode::FAILURE
-    })?;
+    let lock = File::create(places.runtime.join("lock"))
+        .map_err(|error| failed(job, "can't open the lock").because(error.to_string()))?;
     match lock.try_lock() {
         Ok(()) => turn::note(&places.runtime, &job.name),
         Err(TryLockError::WouldBlock) => {
@@ -330,11 +306,10 @@ fn may_start(job: &Job, places: &Folders) -> Result<(File, f64), ExitCode> {
                     turn::holder(&places.runtime)
                 ),
             );
-            return Err(ExitCode::SUCCESS);
+            return Ok(None);
         }
         Err(TryLockError::Error(error)) => {
-            say(job, &format!("can't take the lock: {error}"));
-            return Err(ExitCode::FAILURE);
+            return Err(failed(job, "can't take the lock").because(error.to_string()));
         }
     }
 
@@ -347,9 +322,9 @@ fn may_start(job: &Job, places: &Folders) -> Result<(File, f64), ExitCode> {
                 now.avg60, job.start_under
             ),
         );
-        return Err(ExitCode::SUCCESS);
+        return Ok(None);
     }
-    Ok((lock, now.avg60))
+    Ok(Some((lock, now.avg60)))
 }
 
 /// Samples the pressures until the job ends, giving its status, or until
@@ -408,22 +383,24 @@ fn watch(
     }
 }
 
-fn finish(job: &Job, status: ExitStatus, done: &Path) -> ExitCode {
+/// How a job that ended ends the run: marked done, or failed with its own
+/// code, or 1 where a signal ended it.
+fn finish(job: &Job, status: ExitStatus, done: &Path) -> Result<(), Failure> {
     if status.success() {
-        if let Err(error) = File::create(done) {
-            say(job, &format!("finished, but can't mark it done: {error}"));
-            return ExitCode::FAILURE;
-        }
+        File::create(done).map_err(|error| {
+            failed(job, "finished, but can't mark it done").because(error.to_string())
+        })?;
         say(job, "finished");
-        return ExitCode::SUCCESS;
+        return Ok(());
     }
-    say(job, &format!("the job failed: {status}"));
-    ExitCode::from(
-        status
-            .code()
-            .and_then(|code| u8::try_from(code).ok())
-            .unwrap_or(1),
-    )
+    let code = status
+        .code()
+        .and_then(|code| u8::try_from(code).ok())
+        .unwrap_or(1);
+    Err(Failure::passed(
+        code,
+        format!("night-shift {}: the job failed: {status}", job.name),
+    ))
 }
 
 // std links libc, so these come from it.
@@ -462,14 +439,14 @@ fn signal_group(child: &Child, signal: i32) {
 }
 
 /// TERMs the job's group, then kills what is left once the grace passes.
-fn stop(job: &Job, child: &mut Child) -> ExitCode {
+fn stop(job: &Job, child: &mut Child) {
     signal_group(child, SIGTERM);
     let asked = Instant::now();
     while asked.elapsed() < job.grace {
         if let Ok(Some(_)) = child.try_wait() {
             signal_group(child, SIGKILL);
             say(job, "stopped; a later try goes on");
-            return ExitCode::SUCCESS;
+            return;
         }
         thread::sleep(Duration::from_millis(100));
     }
@@ -477,7 +454,6 @@ fn stop(job: &Job, child: &mut Child) -> ExitCode {
     signal_group(child, SIGKILL);
     let _ = child.wait();
     say(job, "stopped; a later try goes on");
-    ExitCode::SUCCESS
 }
 
 #[cfg(test)]

@@ -44,6 +44,9 @@ pub struct Help {
     /// Whether its parent's help lists it; one that isn't is kept only so
     /// an old caller's words still work.
     pub listed: bool,
+    /// What the code it passes through from its stand-in is, where it
+    /// ends with another program's (`Failure::passed`).
+    pub passes: Option<String>,
 }
 
 /// The widest a name's column grows before a long name's words go on the
@@ -80,7 +83,17 @@ impl Help {
             subs: Vec::new(),
             aliases: Vec::new(),
             listed: true,
+            passes: None,
         }
+    }
+
+    /// The same, ending with the code of the program it runs as its
+    /// stand-in when that fails, and what that code is, as "N the job's
+    /// own code".
+    #[must_use]
+    pub fn passes(mut self, words: &str) -> Self {
+        self.passes = Some(words.to_owned());
+        self
     }
 
     /// The same, taking a word before its subcommands, as `<name>`, and
@@ -266,6 +279,7 @@ impl Help {
             .every_exit()
             .iter()
             .map(|(exit, words)| format!("{} {words}", exit.code()))
+            .chain(self.passes.iter().map(|words| format!("N {words}")))
             .collect();
         let mut block = vec![pen.label("Exit")];
         block.extend(
@@ -321,7 +335,7 @@ impl Help {
             .map(str::to_owned)
             .chain(self.forms.iter().cloned())
             .collect();
-        json!({
+        let mut value = json!({
             "schema": "help/1",
             "name": self.name,
             "about": self.about,
@@ -332,7 +346,12 @@ impl Help {
             "options": entries(&self.every_option()),
             "formats": formats,
             "exits": exits,
-        })
+        });
+        // Beside the exits, which hold only the table's codes.
+        if let Some(words) = &self.passes {
+            value["passes"] = json!(words);
+        }
+        value
     }
 }
 
@@ -504,5 +523,24 @@ mod tests {
             .collect();
         assert_eq!(codes, [0, 64, 66, 69]);
         assert_eq!(value["exits"][2]["kind"], "not-found");
+    }
+
+    #[test]
+    fn a_stand_ins_code_is_said_last_and_beside_the_tables() {
+        let help = Help::new("wrap", "runs a job").passes("the job's own code");
+        let text = help.text(&Pen::plain(), Room::Cells(100));
+        assert!(
+            text.ends_with("EXIT\n  0 done \u{b7} 64 asked wrongly \u{b7} N the job's own code\n"),
+            "the stand-in's code wasn't the last exit: {text}"
+        );
+        let value = help.json();
+        assert_eq!(
+            (
+                value["passes"].as_str(),
+                value["exits"].as_array().map(Vec::len)
+            ),
+            (Some("the job's own code"), Some(2)),
+            "the stand-in's code went among the table's: {value}"
+        );
     }
 }
