@@ -653,7 +653,22 @@ def test_za_shows_a_sessions_fold_above_its_more_line_its_prose_giving_way(shell
     opened = shell.showing()["drawer"]
     shell.send_chars("za")
     shell.launcher_until(lambda shown: shown["drawer"]["folded"] is True)
+    shut = shell.showing()["drawer"]
     shell.on_find()
+    # The last line it keeps fades at its end, as a long name does as it
+    # reads on, so it says more follows rather than read as a broken
+    # sentence; shut, its prose is whole to its ellipsis (VKCF3Z, 448f6cc6).
+    fade = opened.get("wordsFade")
+    assert fade, f"its kept prose ends with nothing to say more follows: {opened}"
+    assert fade["from"] < fade["to"], f"its fade covers nothing: {opened}"
+    # Drawn only where effects draw: Qt drawing in software draws none, and
+    # a mask it can't draw would take the whole line with it, so there the
+    # line stands whole to its last word (VKCF3Z, f24de250).
+    effects = os.environ.get("QT_QUICK_BACKEND") != "software"
+    assert opened.get("fadeDrawn") is effects, (
+        f"its fade not drawn just where effects are: {opened}"
+    )
+    assert shut.get("wordsFade") is None, f"shut, its prose still fades: {shut}"
     _, *bits = cast("list[float]", opened["lines"]["nerd"])
     foot = cast("float", opened["foot"])
     assert bits, f"its fold opens on no bits: {opened}"
@@ -1114,6 +1129,23 @@ def test_agents_top_level_is_the_rows_its_daemon_serves_ready(
     shell.launcher_until(worded)
     assert not shell.showing()["drawer"]["eyebrowDrawn"].startswith("[object"), shell.showing()
     unfolded(shell, shoot, "agents-drawer-orchestrator")
+
+
+def test_an_orchestrators_acts_split_evenly_none_alone_on_a_line(shell: Shell) -> None:
+    """Acts too wide for one line split evenly over two, none alone on one.
+
+    The orchestrator's five acts left Close alone under the other four at 288 pixels, a wrap
+    as gross as any (VKCF3Z, 448f6cc6).
+    """
+    opened(shell)
+    shell.launcher_until(lambda shown: shown["drawer"]["shown"] and shown["drawer"]["acts"])
+    drawer = shell.showing()["drawer"]
+    laid = cast("list[int]", drawer["actsLaid"])
+    assert sum(laid) == len(drawer["acts"]), f"its acts aren't all laid: {drawer}"
+    # Its step into its sessions, last, is too wide to share a line with
+    # Close, so it stands alone; the five before it split evenly over two,
+    # Return's act leading the longer.
+    assert laid == [3, 2, 1], f"its acts aren't split evenly, one alone only as it must: {drawer}"
 
 
 def test_an_identifier_in_a_fold_is_never_broken_its_name_standing_above_it(shell: Shell) -> None:
