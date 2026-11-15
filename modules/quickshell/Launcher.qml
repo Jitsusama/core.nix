@@ -8997,7 +8997,8 @@ Scope {
     // (Notifications.qml). The opening never waits for that row: it's drawn
     // with what's there, and the cursor moves the moment the row is,
     // in the same frame where it's there already (Y2YBTS, 2026-11-13
-    // [b712b9f2]). Stepping elsewhere or closing first lets it go. Asked
+    // [b712b9f2]). Stepping elsewhere, a key or closing first lets it go
+    // (Steady.landing says why). Asked
     // for normal, the line leaves the find it opened on, so j and k move at
     // once, as they did through the held notices (Joel, 2026-11-14), and /
     // finds; the opening took the keys already, so normal holds.
@@ -9012,10 +9013,10 @@ Scope {
     function landed() {
         if (landOn === null)
             return;
-        const at = matches.findIndex(row => landOn(row));
+        const { at, waiting } = Steady.landing(landOn, { rows: matches });
+        landOn = waiting;
         if (at < 0)
             return;
-        landOn = null;
         current = at;
         list.positionViewAtIndex(current, ListView.Contain);
     }
@@ -10108,6 +10109,14 @@ Scope {
         // niri slow to present there, though each was presented alone.
         interval: 500
         onTriggered: root.presentedFill("unpresented")
+    }
+
+    // A key reaching the line, before it does anything: a card shown from
+    // what it kept is filled first, and a landing still waiting goes, so
+    // the key acts on what's there and nothing moves the cursor after it.
+    function keyPressing() {
+        filled("key");
+        landOn = Steady.landing(landOn, { key: true }).waiting;
     }
 
     // Brings a card shown from what it kept up to now: open, every source
@@ -11548,7 +11557,7 @@ Scope {
                                 .replace("{all}", String(root.matches.length + root.foundPast))
                             : (Words.field.found ?? "").replace("{count}",
                                 String(root.matches.length))
-                        onPressing: root.filled("key")
+                        onPressing: root.keyPressing()
                         // A talk's caret is kept with its words, moved by
                         // a vi motion as much as by typing.
                         onCaretChanged: root.drafted()
