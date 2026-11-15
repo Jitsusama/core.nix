@@ -63,5 +63,16 @@ QtObject {
         rows.told = 0;
         RowsPlace.tell(rows, []);
         Expect.same("back home tells each", rows.told, 3);
+
+        // Whether the rows already wear a place, so the launcher can say
+        // when rows just laid out had to be told another.
+        Expect.same("rows told home wear home", RowsPlace.told(rows, []), true);
+        Expect.same("rows told home don't wear a place",
+            RowsPlace.told(rows, [step("machine", "M", "machine")]), false);
+        RowsPlace.tell(rows, [step("machine", "M", "machine")]);
+        Expect.same("rows told a place wear it, made again or not",
+            RowsPlace.told(rows, [step("machine", "M", "machine")]), true);
+        Expect.same("rows told a place don't wear one alike but for its hue",
+            RowsPlace.told(rows, [step("desktop", "M", "desktop")]), false);
     }
 }

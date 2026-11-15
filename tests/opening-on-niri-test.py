@@ -923,6 +923,19 @@ def test_a_kept_opening_tells_only_its_own_rows_where_they_stand(shell: Shell) -
     assert told == 0, f"the kept opening told rows about to go {told} times: {opening}"
 
 
+def test_a_kept_opening_tells_its_rows_their_place_before_laying_them(shell: Shell) -> None:
+    """A kept opening's rows are laid out once, already wearing their place.
+
+    Told once laid out, each row said its glyph, hue and kind again, and was laid out a
+    second time: offscreen, 11 rows given a new place after laying cost 3.3 ms against 2.5
+    told before, and Joel's step into Chrome showed for 24 ms, 12 of them unnamed
+    (2026-11-14).
+    """
+    opening = windows_reopened(shell)
+    told = cast("int | None", opening.get("toldLate"))
+    assert told == 0, f"the kept opening told rows laid out {told} times: {opening}"
+
+
 def test_a_kept_opening_says_it_is_open_from_its_first_frame(shell: Shell) -> None:
     """A kept opening's mark reads open from its first frame, written without holding it.
 
