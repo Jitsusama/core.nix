@@ -1,12 +1,15 @@
 //! The hour's figures, held against their targets, for cadence's hourly
 //! read: each repository's measures beside the target its machine set,
 //! the figure the hour before, the owner and the first files it counted,
-//! and the one furthest past its target. It's `hour.json`, rewritten
+//! those holding more than the day before first, and the one furthest
+//! past its target. It's `hour.json`, rewritten
 //! whole each hour, so it always says this hour and the last.
 
 use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
+
+use crate::measure::NAMED;
 
 /// How many of a measure's files the hour names; the day's named file
 /// holds the rest.
@@ -25,6 +28,11 @@ pub struct Judged {
 /// target, and the worst, from the figures and names read and the hour
 /// before, `before`, as it was written, if it could be read.
 ///
+/// A measure's files name first each entry of a file it counts more of
+/// than in `earlier`, the newest day's named record before today's, so
+/// what was just added leads rather than what sorts first. Lines move as
+/// files change, so a file is held against itself whole.
+///
 /// The worst is the measure most past its target for the target's size,
 /// so 22 tests past 21 outranks 227 lines past 7,000; a measure with no
 /// target, or at or under it, is never the worst, and with none past
@@ -35,6 +43,7 @@ pub fn hour(
     named: &BTreeMap<String, BTreeMap<&'static str, Vec<String>>>,
     judged: &BTreeMap<String, Judged>,
     before: Option<&Value>,
+    earlier: Option<&Value>,
 ) -> Value {
     let unjudged = Judged::default();
     let mut measures = Vec::new();
@@ -44,11 +53,9 @@ pub fn hour(
         for (measure, now) in read {
             let target = judged.targets.get(*measure).copied();
             let owner = judged.owners.get(*measure).or(judged.owner.as_ref());
-            let files: Vec<&String> = named
-                .get(repo)
-                .and_then(|named| named.get(measure))
-                .map(|files| files.iter().take(FILES).collect())
-                .unwrap_or_default();
+            let counted = named.get(repo).and_then(|named| named.get(measure));
+            let had = earlier.map(|earlier| &earlier[repo][*measure]);
+            let files = counted.map_or_else(Vec::new, |counted| gained_first(counted, had));
             if let Some(target) = target.filter(|target| now > target) {
                 let past = (now - target) / target.max(1.0);
                 if worst.is_none_or(|(most, _)| past > most) {
@@ -68,6 +75,40 @@ pub fn hour(
     }
     let worst = worst.map_or(Value::Null, |(_, index)| measures[index].clone());
     json!({"at": at, "measures": measures, "worst": worst})
+}
+
+/// The first of a measure's entries, each of a file it now counts more of
+/// than `had` did first, in their order, then the rest. A list cut at
+/// `NAMED` doesn't say how many a file past the cut held, and not every
+/// measure lists its files in order, so either day's list cut leaves the
+/// order as it was.
+fn gained_first<'a>(counted: &'a [String], had: Option<&Value>) -> Vec<&'a String> {
+    let had = had.and_then(Value::as_array).map_or(&[][..], Vec::as_slice);
+    if counted.len() >= NAMED || had.len() >= NAMED {
+        return counted.iter().take(FILES).collect();
+    }
+    let was = per_file(had.iter().filter_map(Value::as_str));
+    let now = per_file(counted.iter().map(String::as_str));
+    let gained = |entry: &&String| {
+        let file = file_of(entry);
+        now.get(file) > Some(was.get(file).unwrap_or(&0))
+    };
+    let (first, rest): (Vec<&String>, Vec<&String>) = counted.iter().partition(gained);
+    first.into_iter().chain(rest).take(FILES).collect()
+}
+
+/// How many entries name each file.
+fn per_file<'a>(entries: impl Iterator<Item = &'a str>) -> BTreeMap<&'a str, usize> {
+    let mut counts = BTreeMap::new();
+    for entry in entries {
+        *counts.entry(file_of(entry)).or_default() += 1;
+    }
+    counts
+}
+
+/// The file an entry names: what comes before its first colon, if any.
+fn file_of(entry: &str) -> &str {
+    entry.split(':').next().unwrap_or(entry)
 }
 
 /// A measure's figure in the hour before, if that hour was read whole
@@ -142,7 +183,7 @@ mod tests {
         let before = json!({"at": "then", "measures": [
             {"repo": "core", "measure": "long-files", "now": 97.0},
         ]});
-        let hour = hour("now", &read, &named, &judged, Some(&before));
+        let hour = hour("now", &read, &named, &judged, Some(&before), None);
         assert_eq!(hour["at"], "now", "the hour didn't say when it was read");
         let long = measure(&hour, "core", "long-files");
         assert_eq!(
@@ -191,7 +232,7 @@ mod tests {
             ),
             ("pi".to_owned(), judged(&[("long-files", 0.0)], None)),
         ]);
-        let hour = hour("now", &read, &BTreeMap::new(), &judged, None);
+        let hour = hour("now", &read, &BTreeMap::new(), &judged, None, None);
         assert_eq!(
             (&hour["worst"]["repo"], &hour["worst"]["measure"]),
             (&json!("core"), &json!("quarantined-tests")),
@@ -212,7 +253,7 @@ mod tests {
             ("core", "suppressions", 900.0),
         ]);
         let judged = BTreeMap::from([("core".to_owned(), judged(&[("long-files", 96.0)], None))]);
-        let hour = hour("now", &read, &BTreeMap::new(), &judged, None);
+        let hour = hour("now", &read, &BTreeMap::new(), &judged, None, None);
         assert_eq!(
             hour["worst"],
             Value::Null,
@@ -230,11 +271,61 @@ mod tests {
             &BTreeMap::new(),
             &BTreeMap::new(),
             Some(&before),
+            None,
         );
         assert_eq!(
             measure(&hour, "core", "long-files")["was"],
             Value::Null,
             "an hour before out of shape gave a figure"
+        );
+    }
+
+    #[test]
+    fn what_a_file_gained_since_the_day_before_is_named_first() {
+        let read = figures(&[("core", "suppressions", 4.0), ("core", "tf-invalid", 1.0)]);
+        let named = BTreeMap::from([(
+            "core".to_owned(),
+            BTreeMap::from([
+                (
+                    "suppressions",
+                    ["a.sh:3", "b.rs:4", "b.rs:9", "c.py:2"]
+                        .map(str::to_owned)
+                        .to_vec(),
+                ),
+                ("tf-invalid", vec!["ws: Missing provider".to_owned()]),
+            ]),
+        )]);
+        let earlier = json!({"core": {"suppressions": ["a.sh:1", "b.rs:4"], "tf-invalid": 3}});
+        let hour = hour("now", &read, &named, &BTreeMap::new(), None, Some(&earlier));
+        assert_eq!(
+            measure(&hour, "core", "suppressions")["files"],
+            json!(["b.rs:4", "b.rs:9", "c.py:2", "a.sh:3"]),
+            "what files gained since the day before wasn't named first, in order"
+        );
+        assert_eq!(
+            measure(&hour, "core", "tf-invalid")["files"],
+            json!(["ws: Missing provider"]),
+            "an earlier record out of shape lost a measure's files"
+        );
+    }
+
+    #[test]
+    fn a_list_cut_short_is_held_against_nothing() {
+        let read = figures(&[("core", "suppressions", 2.0)]);
+        let named = BTreeMap::from([(
+            "core".to_owned(),
+            BTreeMap::from([(
+                "suppressions",
+                vec!["a.rs:1".to_owned(), "z.rs:1".to_owned()],
+            )]),
+        )]);
+        let cut: Vec<String> = (0..NAMED).map(|line| format!("a.rs:{line}")).collect();
+        let earlier = json!({"core": {"suppressions": cut}});
+        let hour = hour("now", &read, &named, &BTreeMap::new(), None, Some(&earlier));
+        assert_eq!(
+            measure(&hour, "core", "suppressions")["files"],
+            json!(["a.rs:1", "z.rs:1"]),
+            "a file past where the day before's list was cut was called gained"
         );
     }
 }
