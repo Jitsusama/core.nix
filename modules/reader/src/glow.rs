@@ -18,6 +18,7 @@ use typst::visualize::{
 pub struct Glow {
     radial: Arc<RadialGradient>,
     table: Vec<[f32; 4]>,
+    shades: Vec<tiny_skia::PremultipliedColorU8>,
     at: Point,
     size: Size,
 }
@@ -26,6 +27,12 @@ pub struct Glow {
 /// little across one that it rounds to the same 8 bits as Typst's own mix,
 /// and a stop at a half, a quarter or an eighth falls on a step.
 const STEPS: u32 = 1024;
+
+/// How many steps the painted shades hold along the gradient, each mixed
+/// from the table once: so fine that a pixel's nearest one rounds as its
+/// own mix would, and a pixel costs a lookup rather than a colour built
+/// and checked.
+const SHADES: u32 = 8192;
 
 /// Takes the first radial glow out of a band's frame, searching groups that
 /// neither move nor clip what they hold, so where it lands is plain.
@@ -119,24 +126,38 @@ impl Glow {
                 components(&gradient.sample(RatioOrAngle::Ratio(t)))
             })
             .collect();
-        Glow {
+        let mut glow = Glow {
             radial,
             table,
+            shades: Vec::new(),
             at,
             size,
-        }
+        };
+        glow.shades = (0..=SHADES)
+            .map(|i| glow.color(f64::from(i) / f64::from(SHADES)))
+            .collect();
+        glow
     }
 
     /// Where along the gradient a point of the rect falls, both as
     /// fractions of its width and height, as Typst works it out.
+    #[expect(
+        clippy::float_cmp,
+        reason = "a focus left at its centre is the very same number, not a near one"
+    )]
     fn t(&self, x: f64, y: f64) -> f64 {
         let r = &self.radial;
         let (cx, cy) = (r.center.x.get(), r.center.y.get());
         let (qx, qy) = (r.focal_center.x.get(), r.focal_center.y.get());
         let (cr, fr) = (r.radius.get(), r.focal_radius.get());
+        let zp = ((x - cx) * (x - cx) + (y - cy) * (y - cy)).sqrt();
+        // A glow whose focus is its centre, as the page's is, falls off
+        // with distance alone, so it needs no second root.
+        if fr == 0.0 && qx == cx && qy == cy {
+            return (zp / cr).min(1.0);
+        }
         let (zqx, zqy) = (x - qx, y - qy);
         let zq = (zqx * zqx + zqy * zqy).sqrt();
-        let zp = ((x - cx) * (x - cx) + (y - cy) * (y - cy)).sqrt();
         if zq < fr {
             return 0.0;
         }
@@ -165,6 +186,16 @@ impl Glow {
         let zp = (x - cx) * (x - cx) + (y - cy) * (y - cy);
         let zq = (x - qx) * (x - qx) + (y - qy) * (y - qy);
         zq >= fr * fr && zp > cr * cr
+    }
+
+    /// The painted shade nearest a point along the glow.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "t is within 0 and 1, so its shade is within the table"
+    )]
+    fn shade(&self, t: f64) -> tiny_skia::PremultipliedColorU8 {
+        self.shades[(t * f64::from(SHADES) + 0.5) as usize]
     }
 
     /// The glow's colour at a point along it, premultiplied in 8 bits as
@@ -217,7 +248,7 @@ impl Glow {
             ((d as f32 + 0.5 - o).floor() as i64).clamp(0, i64::from(n) - 1) as f32 / n as f32
         };
         let xs: Vec<f64> = cols.clone().map(|c| f64::from(nearest(c, ox, w))).collect();
-        let end = self.color(1.0);
+        let end = self.shade(1.0);
         let pixels = canvas.pixels_mut();
         for row in rows {
             let y = f64::from(nearest(row, oy, h));
@@ -226,7 +257,7 @@ impl Glow {
                 *pixel = if self.past_reach(x, y) {
                     end
                 } else {
-                    self.color(self.t(x, y))
+                    self.shade(self.t(x, y))
                 };
             }
         }
