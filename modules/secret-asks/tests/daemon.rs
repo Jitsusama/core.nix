@@ -423,8 +423,12 @@ fn asks_lists_a_grant_and_revoking_it_has_the_same_ask_wait_again() {
         "the grant doesn't say what it lets run where: {grant}"
     );
     assert_eq!(
-        grant["acts"][0]["key"], "verb:revoke",
-        "its one act isn't Revoke It: {grant}"
+        grant["acts"][0]["key"], "verb:grant:forget",
+        "its one act isn't Forget It: {grant}"
+    );
+    assert_eq!(
+        grant["acts"][0]["costly"], false,
+        "forgetting a standing yes is asked to be sure of: {grant}"
     );
     // The row's going may be pushed before the revoke is answered, and an
     // ask passes over pushes, so both are read here in whichever order.

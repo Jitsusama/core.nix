@@ -85,13 +85,15 @@
         "lasts": "a week, for this command from any tree of {repository} on main",
         "granted": "standing yes",
         "grantNote": "{command}, from {repository}",
-        "grantBody": "Your yes lets this command have this secret again, from any tree of this repository whose code is all on main, without asking you until it ends. Revoke it to be asked again.",
         "anyTree": "any tree of {repository} on main",
         "unlanded": "doesn't cover this, since its code isn't all on main",
         "grantGone": "that yes has already ended",
         "none": "none waiting",
         "one": "1 waiting",
         "waiting": "{count} waiting"
+      },
+      "tells": {
+        "grantBody": "Your yes lets this command have this secret again, from any tree of this repository whose code is all on main, without asking you until it ends. Forget it to be asked again."
       }
     },
     {

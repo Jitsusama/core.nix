@@ -1,5 +1,6 @@
 //! Asks' words, as the launcher's vocabulary says them
-//! (modules/quickshell/launcher/words.json, the `asks` thing's `said`),
+//! (modules/quickshell/launcher/words.json, the `asks` thing's `said`,
+//! and its `tells`, the sentences a drawer reads as its own),
 //! read rather than written again here, so a word changes in one place,
 //! as the quests daemon reads Quests' (modules/quests/src/words.rs). A
 //! drawer fact's name is a thing of its own, `asks:fact:<id>`, as Mail's
@@ -31,7 +32,8 @@ impl Words {
         let things = || vocabulary["things"].as_array().into_iter().flatten();
         let said = things()
             .filter(|thing| thing["id"] == THING)
-            .filter_map(|thing| thing["said"].as_object())
+            .flat_map(|thing| [&thing["said"], &thing["tells"]])
+            .filter_map(Value::as_object)
             .flatten()
             .filter_map(|(key, word)| Some((key.clone(), word.as_str()?.to_owned())));
         let facts = things().filter_map(|thing| {

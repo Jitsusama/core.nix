@@ -82,12 +82,14 @@
       "key": "r"
     },
     {
-      "id": "verb:revoke",
-      "command": "revoke",
+      "id": "verb:grant:forget",
+      "command": "forget",
       "in": "asks",
-      "name": "Revoke It",
-      "verb": "revoke",
-      "glyph": "passwords"
+      "name": "Forget It",
+      "verb": "forget",
+      "glyph": "dismiss",
+      "act": "ending",
+      "ends": "forget"
     }
   ]
 }

@@ -3,7 +3,7 @@
 //! for a week without asking him again (ISXEG8's approvals audit, 15
 //! November, after Joel asked why he approves everything). A grant never
 //! covers another item, another command or another repository, and Asks
-//! lists each with a key that revokes it.
+//! lists each with Forget It, which revokes it.
 //!
 //! A command is its words and the program they come to, as the releaser
 //! resolves it, so the same words come to another program later are no
@@ -180,7 +180,10 @@ impl Grants {
 }
 
 /// A grant's row in Asks: what it lets run and from where, until when,
-/// and its one act, Revoke It, which Return does.
+/// and its one act, Forget It, which Return does. Forgetting a standing
+/// yes costs Joel no more than his next yes, so it's served as costing
+/// little, as a notice's Forget It is, and the launcher doesn't ask first;
+/// as an ending act, Return typed in insert never does it.
 pub fn row(grant: &Grant, words: &Words) -> Value {
     let command = crate::row::command(&grant.argv);
     let name = named(&grant.repository);
@@ -197,7 +200,11 @@ pub fn row(grant: &Grant, words: &Words) -> Value {
         "hue": "machine",
         "note": note,
         "side": [time::at(grant.ends_ms(), Form::Day)],
-        "acts": [{"key": "verb:revoke", "ask": {"ask": "revoke", "key": thing}}],
+        "acts": [{
+            "key": "verb:grant:forget",
+            "ask": {"ask": "revoke", "key": thing},
+            "costly": false,
+        }],
         "drawer": {
             "eyebrow": words.fill("granted", &[]),
             "title": grant.item,
