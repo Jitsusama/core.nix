@@ -166,6 +166,12 @@ function tier(name, typed, byWord) {
     return says(said, query) ? WORD_WHOLE : 1;
 }
 
+// The tier a row's name puts it in, for what it is, from its key and
+// `often` (key -> picks).
+function rowTier(row, typed, often) {
+    return tier(row.name, typed, false);
+}
+
 // The tier of a row found by its other words (`known`, as one string): by
 // the name's tiers for a name it had (`olds`), as Caffeinate is Keep Awake;
 // else 2 when each word typed is one of them whole, WORD_START if started.

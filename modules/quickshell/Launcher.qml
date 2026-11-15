@@ -6034,7 +6034,7 @@ Scope {
                         item: choice.prepared,
                         score: byName.score * choice.weight,
                         grade: byName.grade,
-                        tier: Rank.tier(choice.name, letters, false),
+                        tier: Rank.rowTier(choice, letters, often),
                         choice: choice
                     });
                     continue;
