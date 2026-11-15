@@ -501,7 +501,11 @@ mod tests {
     #[test]
     fn an_untested_cable_says_nothing_and_a_tested_one_its_fault() {
         let status = parse(&contract()).expect("the contract reads");
-        assert!(status.ports.iter().all(|port| port.cable.is_none()));
+        assert!(
+            status.ports.iter().all(|port| port.cable.is_none()),
+            "no cable test had run, yet a port says one: {:?}",
+            status.ports
+        );
         let mut pages = contract();
         pages.insert(
             "CableDiagRpm".into(),
@@ -535,7 +539,7 @@ mod tests {
             "PortSettingRpm".into(),
             "<html><form action=logon.cgi></form></html>".into(),
         );
-        assert!(parse(&pages).is_err());
+        assert!(parse(&pages).is_err(), "a sign-in page read as status");
     }
 
     #[test]
@@ -572,7 +576,10 @@ mod tests {
         let (source, device) = read(Ok(report), 1_794_700_005);
         assert_eq!(source.state, SourceState::SignedOut);
         assert_eq!(source.reason.as_deref(), Some("no password is set for it"));
-        assert!(device.is_none());
+        assert!(
+            device.is_none(),
+            "a signed-out switch gave a device: {device:?}"
+        );
     }
 
     #[test]
@@ -580,6 +587,6 @@ mod tests {
         let (source, device) = read(Err("its reader's report isn't there".into()), 10);
         assert_eq!(source.state, SourceState::Unreachable);
         assert_eq!(source.since, Some(10));
-        assert!(device.is_none());
+        assert!(device.is_none(), "no report gave a device: {device:?}");
     }
 }

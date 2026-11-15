@@ -276,10 +276,10 @@ mod tests {
         drop(listener);
         let report = round(&agent(), &address, Some(PASSWORD), 10);
         assert_eq!(report.state, SourceState::Unreachable);
+        let written = serde_json::to_string(&report).expect("it writes");
         assert!(
-            !serde_json::to_string(&report)
-                .expect("it writes")
-                .contains(PASSWORD)
+            !written.contains(PASSWORD),
+            "the password reached the report: {written}"
         );
     }
 }
