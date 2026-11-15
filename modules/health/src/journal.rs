@@ -270,6 +270,10 @@ pub fn followed() -> Vec<Vec<String>> {
             format!("MESSAGE_ID={STARTUP_FINISHED}"),
             format!("MESSAGE_ID={SHUTTING_DOWN}"),
         ],
+        // Who asked systemd to reload, said as a notice with no unit,
+        // about two hundred a day: a restart after one a switch didn't ask
+        // for is no switch's (`reloads.rs`).
+        asked(&["CODE_FUNC=manager_log_caller"]),
         // A service stopping and started, by the machine's systemd or
         // Joel's: the two a restart is timed between, and the start of the
         // disk's password and its opening. Every unit's are followed, since
