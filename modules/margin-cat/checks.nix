@@ -39,9 +39,22 @@ onLinux {
           ./tests/margin-cat-tiles.qml
         ];
       };
+      # The theme's drawings of the yarn, which margin-cat-games.qml draws
+      # as the screen does.
+      glyphs = import ../theme/glyphs.nix { inherit (pkgs) lib; };
+      drawings = pkgs.writeText "MarginCatDrawings.js" ''
+        .pragma library
+        // The yarn's drawings, from modules/theme/glyphs.nix.
+        var pixels = ${
+          builtins.toJSON (
+            pkgs.lib.genAttrs [ "yarn" "yarnRollingA" "yarnRollingB" ] (name: glyphs.${name}.pixels)
+          )
+        };
+      '';
     in
     pkgs.runCommandLocal "the-margin-cat-sits-above-its-column" { } ''
       cp ${sources}/*.js ${sources}/tests/*.qml .
+      cp ${drawings} MarginCatDrawings.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}

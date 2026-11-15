@@ -8,6 +8,8 @@
 // modules/margin-cat's scripts beside this file and runs `qml -platform
 // offscreen margin-cat-games.qml`.
 import QtQuick
+import "MarginCat.js" as MarginCat
+import "MarginCatDrawings.js" as Drawings
 import "MarginCatGames.js" as Games
 import "MarginCatPlays.js" as Plays
 
@@ -31,6 +33,7 @@ QtObject {
         rooms(expect);
         yarn(expect);
         rests(expect);
+        drawn(expect);
         pounce(expect);
         hop(expect);
         for (const failure of failures)
@@ -203,6 +206,39 @@ QtObject {
         expect("four idle hours, the yarn a few times, 15 minutes apart at the least, unevenly",
             [yarned.length >= 4, apart.every(gap => gap >= 15 * 60_000),
                 Math.max(...apart) - Math.min(...apart) > 5 * 60_000], [true, true, true]);
+    }
+
+    // The yarn drawn once a look (MarginCat.yarnLooks), as the screen draws
+    // it, lights the same device pixels as the drawing it made afresh each
+    // frame before, at a cell of 1 and of 2, every frame of a play either
+    // way and at whatever it faces (VKCF3Z, f3ca0bb2), the theme's own
+    // drawings (MarginCatDrawings.js, from modules/theme/glyphs.nix).
+    function drawn(expect) {
+        const lit = (drawing, cell) => drawing.reduce((all, row, y) => {
+            for (let x = 0; x < row.length; x++)
+                for (let n = 0; row[x] === "#" && n < cell * cell; n++)
+                    all.push((y * cell + Math.floor(n / cell)) * 64 + x * cell + n % cell);
+            return all;
+        }, []).join(",");
+        const afresh = yarn => MarginCat.turned(Drawings.pixels[yarn.pose] ?? [], yarn.facing);
+        const once = yarn => MarginCat.yarnDrawn(MarginCat.yarnLooks(yarn), Drawings.pixels);
+        const rolled = [Games.play("yarn", sat()), Games.play("yarn", sat({
+            seat: { x: 500, y: 20 }, column: { left: 0, top: 30, width: 528 } }))]
+            .reduce((all, played) => all.concat(frames(played)), [])
+            .filter(frame => frame.yarn !== null).map(frame => frame.yarn);
+        const facings = [1, -1, 0, -0, undefined];
+        const posed = Object.keys(Drawings.pixels).reduce((all, pose) =>
+            all.concat(facings.map(facing => ({ pose, facing }))), []);
+        const differ = [...rolled, ...posed].filter(yarn => [1, 2].some(cell =>
+            lit(afresh(yarn), cell) !== lit(once(yarn), cell)));
+        expect("the yarn drawn once a look lights the pixels it lit drawn each frame",
+            [rolled.length > 30_000, differ.slice(0, 3)], [true, []]);
+        expect("and it lights some, each way it faces",
+            [lit(once({ pose: "yarn", facing: 1 }), 2).length > 0,
+                lit(once({ pose: "yarn", facing: 1 }), 1)
+                    !== lit(once({ pose: "yarn", facing: -1 }), 1)], [true, true]);
+        expect("none where there's no yarn", MarginCat.yarnDrawn(MarginCat.yarnLooks(null),
+            Drawings.pixels), []);
     }
 
     // A pounce at nothing it's sure of: it eyes it, crouches, wiggles,

@@ -224,3 +224,17 @@ function walked(shown, drawing, unseen, counted) {
 function turned(drawing, way) {
     return way > 0 ? drawing.map(row => row.split("").reverse().join("")) : drawing;
 }
+
+// How the yarn at `yarn` (MarginCatGames.js's frame) looks, as a word that
+// changes only as its pose or its facing does, so the screen builds its
+// drawing again only then rather than each frame it rolls; "" with none.
+function yarnLooks(yarn) {
+    return yarn ? `${yarn.pose} ${yarn.facing}` : "";
+}
+
+// The yarn's drawing as it `looks` (yarnLooks): its pose's in `pixels`, the
+// theme's, turned the way it faces.
+function yarnDrawn(looks, pixels) {
+    const [pose, facing] = looks.split(" ");
+    return pose ? turned(pixels[pose] ?? [], Number(facing)) : [];
+}

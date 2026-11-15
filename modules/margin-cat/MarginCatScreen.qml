@@ -929,11 +929,8 @@ PanelWindow {
     // never each frame it rolls: a new drawing each frame had its cells
     // made again each frame, and a play cost the shell 4 to 7% of a core
     // (the GPU rig, 2026-11-14).
-    readonly property string yarnLooks: yarnAt ? `${yarnAt.pose} ${yarnAt.facing}` : ""
-    readonly property var yarnDrawn: {
-        const [pose, facing] = yarnLooks.split(" ");
-        return pose ? MarginCat.turned(Theme.pixels[pose] ?? [], Number(facing)) : [];
-    }
+    readonly property string yarnLooks: MarginCat.yarnLooks(yarnAt)
+    readonly property var yarnDrawn: MarginCat.yarnDrawn(yarnLooks, Theme.pixels)
 
     // Where `at` logical pixels falls on one of the screen's own.
     function snapped(at: real): real {
