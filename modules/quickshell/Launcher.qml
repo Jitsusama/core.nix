@@ -9413,6 +9413,7 @@ Scope {
     property int openingsDrawn: 0
     function askedToOpen() {
         if (!open && !opening) {
+            Heap.leaveRoom(openingRoom);
             openAsked = KeyTimes.now();
             openSettled = -1;
             openBegun = -1;
@@ -10141,7 +10142,10 @@ Scope {
     // this leaves what the opening makes to the next closing's collection
     // (modules/quickshell/heap/heap.cpp). An opening grows what's held by
     // about 1 MB, so 32 is ample, and bounds what a launcher left open
-    // long may grow by before it collects.
+    // long may grow by before it collects. It's left again as an opening
+    // is asked, since what the shell makes while the launcher is shut can
+    // use the closing's room up: the lab's openings then began a collection
+    // of their own, 236 to 377 ms of it (cycle-r1, 2026-11-14).
     readonly property real openingRoom: 32
     function collectClosed() {
         if (open || opening || parting !== "")

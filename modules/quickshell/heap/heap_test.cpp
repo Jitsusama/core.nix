@@ -6,8 +6,9 @@
 // are never more than what's held beyond live; and the time the collector
 // has spent grows with each collection; and a heap holding far more than is
 // live, as one does after the launcher's closing, starts the collector as
-// it makes more unless it's left room, and doesn't once it is. It exits 0 once
-// all of it holds, and otherwise 1, saying what didn't.
+// it makes more unless it's left room, and doesn't once it is, nor as it
+// makes strings whose text is held outside the heap. It exits 0 once all of
+// it holds, and otherwise 1, saying what didn't.
 #include "heap.h"
 
 #include <QCoreApplication>
@@ -43,11 +44,20 @@ Weight weighed(QJSEngine &engine, const Heap &heap) {
 // How much room a heap is left, in megabytes, well beyond what's made in it.
 constexpr double ROOM_MB = 64;
 
-// Whether making twice as many objects as are let go starts the collector
-// on a heap left holding a scattered few, given that much room first. The
-// objects hold only numbers, so no memory outside the heap, which starts the
-// collector on its own, comes into it.
-bool collectsWhileMaking(double room) {
+// What's made, and how many: objects holding only numbers, twice as many as
+// are let go, so nothing outside the heap comes into it; or strings of 200
+// characters, whose text Qt holds outside the heap, about 8 MB of it against
+// 2 MB inside, so only what Qt allows outside can start the collector.
+struct Making {
+    const char *each;
+    int count;
+};
+constexpr Making NUMBERS{"{ n: i, m: i }", 2 * KEPT};
+constexpr Making STRINGS{"String(i).padEnd(200, ' of the clipboard history')", 20000};
+
+// Whether making them starts the collector on a heap left holding a
+// scattered few, given that much room first.
+bool collectsWhileMaking(double room, const Making &made) {
     QJSEngine engine;
     Heap heap(&engine);
     QJSValue few = engine.evaluate(
@@ -58,10 +68,11 @@ bool collectsWhileMaking(double room) {
     engine.collectGarbage();
     heap.leaveRoom(room);
     const double before = heap.collected();
-    QJSValue made = engine.evaluate(
-        QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push({ n: i, "
-                       "m: i }); return made; })()")
-            .arg(2 * KEPT));
+    QJSValue making = engine.evaluate(
+        QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push(%2); "
+                       "return made; })()")
+            .arg(made.count)
+            .arg(QLatin1StringView(made.each)));
     return heap.collected() > before;
 }
 
@@ -128,13 +139,20 @@ int main(int argc, char **argv) {
     if (!timed)
         std::fprintf(stderr, "FAIL the collector's time grows with each collection: %.3f, "
                      "then %.3f, then %.3f ms\n", collectedFirst, collectedBefore, collectedAfter);
-    const bool collects = collectsWhileMaking(0);
+    const bool collects = collectsWhileMaking(0, NUMBERS);
     if (!collects)
         std::fprintf(stderr, "FAIL a heap holding far more than is live starts the collector "
                      "as it makes more\n");
-    const bool roomy = !collectsWhileMaking(ROOM_MB);
+    const bool roomy = !collectsWhileMaking(ROOM_MB, NUMBERS);
     if (!roomy)
         std::fprintf(stderr, "FAIL a heap left %.0f MB of room doesn't start the collector as "
                      "it makes more\n", ROOM_MB);
-    return grows && falls && holds && scattered && bounded && timed && collects && roomy ? 0 : 1;
+    const bool roomyOutside = !collectsWhileMaking(ROOM_MB, STRINGS);
+    if (!roomyOutside)
+        std::fprintf(stderr, "FAIL a heap left %.0f MB of room doesn't start the collector as "
+                     "it makes strings held outside it\n", ROOM_MB);
+    return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
+                   roomyOutside
+               ? 0
+               : 1;
 }
