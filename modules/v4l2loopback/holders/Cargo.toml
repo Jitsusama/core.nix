@@ -7,6 +7,8 @@ edition = "2024"
 license = "MIT"
 publish = false
 
-# The standard library alone, which links the C library its few calls
-# come from.
+# The standard library, which links the C library its few calls come
+# from, and the shape every command of ours takes: its flags, help,
+# errors and exits.
 [dependencies]
+terminal-kit = { path = "../../terminal-kit" }

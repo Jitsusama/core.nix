@@ -29,7 +29,8 @@
 //! the stream shows only in sysfs, which says nothing when it changes.
 //!
 //! Between those it sleeps on inotify and a signal, so a camera nobody
-//! holds costs nothing.
+//! holds costs nothing. Its help, its failures and its exits take the
+//! terminal kit's shape (`help()`).
 
 mod camera;
 mod holders;
@@ -43,6 +44,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
+use terminal_kit::{Exit, Failure, Help};
 use wait::{Events, Woken};
 
 struct Options {
@@ -54,10 +56,32 @@ struct Options {
     output: PathBuf,
 }
 
-const USAGE: &str = "usage: loopback-holders [--card NAME] [--ignore-unit UNIT]... SOURCE OUTPUT\n       \
-    loopback-holders --usb [--ignore-unit UNIT]... NODE FOLDER";
+/// What it says it is, does and ends with, as `--help` shows it. Its
+/// tests' `--sysfs PATH`, where sysfs is, goes unnamed.
+fn help() -> Help {
+    Help::new("loopback-holders", "says who has a camera open, in a file")
+        .example(
+            "loopback-holders /dev/video9 /run/camera-holders/meet",
+            "names who holds a loopback",
+        )
+        .example(
+            "loopback-holders --usb /dev/video0 /run/camera-holders",
+            "names who streams from a USB camera",
+        )
+        .argument("SOURCE", "the camera's node, or a file naming it")
+        .argument("OUTPUT", "the file to name them in; with --usb, its folder")
+        .option("--card NAME", "only a loopback of this name counts")
+        .option("--ignore-unit UNIT", "leaves out this unit's processes")
+        .option("--usb", "SOURCE is a USB camera's node")
+        .exit(Exit::Failed, "its camera or file couldn't be watched")
+}
 
-fn options(mut arguments: impl Iterator<Item = String>) -> Option<Options> {
+/// A start asked wrongly, pointing at the help.
+fn wrongly(what: String) -> Failure {
+    Failure::new(Exit::Usage, what).try_this("loopback-holders --help")
+}
+
+fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failure> {
     let mut card = None;
     let mut units = Vec::new();
     let mut usb = false;
@@ -65,17 +89,27 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Option<Options> {
     let mut sysfs = PathBuf::from("/sys");
     let mut places = Vec::new();
     while let Some(argument) = arguments.next() {
+        let mut value = || {
+            arguments
+                .next()
+                .ok_or_else(|| wrongly(format!("{argument} wants a value after it")))
+        };
         match argument.as_str() {
-            "--card" => card = Some(arguments.next()?),
-            "--ignore-unit" => units.push(arguments.next()?),
+            "--card" => card = Some(value()?),
+            "--ignore-unit" => units.push(value()?),
+            "--sysfs" => sysfs = PathBuf::from(value()?),
             "--usb" => usb = true,
-            "--sysfs" => sysfs = PathBuf::from(arguments.next()?),
-            option if option.starts_with("--") => return None,
+            option if option.starts_with('-') => {
+                return Err(wrongly(format!("{option} isn't a flag it takes")));
+            }
             _ => places.push(PathBuf::from(argument)),
         }
     }
-    let [source, output] = <[PathBuf; 2]>::try_from(places).ok()?;
-    Some(Options {
+    let [source, output] = <[PathBuf; 2]>::try_from(places).map_err(|places| {
+        wrongly("loopback-holders takes a SOURCE and an OUTPUT".to_owned())
+            .because(format!("it was given {} of them", places.len()))
+    })?;
+    Ok(Options {
         card,
         units,
         usb,
@@ -198,30 +232,31 @@ fn watch(
 
 /// Says who streams from a USB camera while it's there, in a file of its
 /// own that goes with it.
-fn usb(events: &mut Events, options: &Options) -> ExitCode {
+fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
     let Ok(node) = fs::canonicalize(&options.source) else {
-        return ExitCode::SUCCESS;
+        return Ok(());
     };
-    let output = match camera::camera_file(&options.sysfs, &node, &options.output) {
-        Ok(output) => output,
-        Err(error) => {
-            eprintln!("{}: {error}", node.display());
-            return ExitCode::FAILURE;
-        }
-    };
+    let output = camera::camera_file(&options.sysfs, &node, &options.output).map_err(|error| {
+        Failure::new(
+            Exit::Failed,
+            "loopback-holders can't name the camera's file",
+        )
+        .because(format!("{}: {error}", node.display()))
+    })?;
     tidy(&output);
     watch(events, &node, &output, &options.units, Some(&options.sysfs));
     match fs::remove_file(&output) {
-        Err(error) if error.kind() != io::ErrorKind::NotFound => {
-            eprintln!("{}: {error}", output.display());
-            ExitCode::FAILURE
-        }
-        _ => ExitCode::SUCCESS,
+        Err(error) if error.kind() != io::ErrorKind::NotFound => Err(Failure::new(
+            Exit::Failed,
+            "loopback-holders can't remove the camera's file",
+        )
+        .because(format!("{}: {error}", output.display()))),
+        _ => Ok(()),
     }
 }
 
 /// Says who holds a loopback, following the source to each node it names.
-fn loopback(events: &mut Events, options: &Options) -> ExitCode {
+fn loopback(events: &mut Events, options: &Options) {
     let nobody = BTreeSet::new();
     let say_nobody = || {
         if let Err(error) = write(&options.output, &nobody) {
@@ -238,7 +273,7 @@ fn loopback(events: &mut Events, options: &Options) -> ExitCode {
                 gone = true;
             }
             if let Woken::Stopped = events.sleep(Duration::from_secs(1)) {
-                return ExitCode::SUCCESS;
+                return;
             }
             continue;
         };
@@ -246,32 +281,29 @@ fn loopback(events: &mut Events, options: &Options) -> ExitCode {
         let ended = watch(events, &node, &options.output, &options.units, None);
         say_nobody();
         if let Ended::Stopped = ended {
-            return ExitCode::SUCCESS;
+            return;
         }
         // So a node it can't watch is tried again, not spun on.
         if let Woken::Stopped = events.sleep(Duration::from_millis(500)) {
-            return ExitCode::SUCCESS;
+            return;
         }
     }
 }
 
 fn main() -> ExitCode {
-    let Some(options) = options(std::env::args().skip(1)) else {
-        eprintln!("{USAGE}");
-        return ExitCode::from(2);
-    };
-    let mut events = match Events::new() {
-        Ok(events) => events,
-        Err(error) => {
-            eprintln!("inotify: {error}");
-            return ExitCode::FAILURE;
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let options = options(context.args.iter().cloned())?;
+        let mut events = Events::new().map_err(|error| {
+            Failure::new(Exit::Failed, "loopback-holders can't watch for its camera")
+                .because(format!("inotify: {error}"))
+        })?;
+        if options.usb {
+            usb(&mut events, &options)
+        } else {
+            loopback(&mut events, &options);
+            Ok(())
         }
-    };
-    if options.usb {
-        usb(&mut events, &options)
-    } else {
-        loopback(&mut events, &options)
-    }
+    })
 }
 
 #[cfg(test)]
@@ -365,8 +397,30 @@ mod tests {
             (Path::new("/run/d"), Path::new("/run/o"))
         );
         assert!(given("--usb /dev/video0 /run/camera-holders").unwrap().usb);
-        assert!(given("/dev/video0").is_none());
-        assert!(given("--card").is_none());
-        assert!(given("--what /a /b").is_none());
+    }
+
+    #[test]
+    fn each_wrong_start_is_refused_as_asked_wrongly() {
+        for line in [
+            "/dev/video0",
+            "--card",
+            "--what /a /b",
+            "-x /a /b",
+            "/a /b /c",
+        ] {
+            let ending = terminal_kit::run(
+                &help(),
+                "0.1.0",
+                &terminal_kit::Environment::of([false; 3], &[]),
+                line.split(' ').map(str::to_owned).collect(),
+                |context| options(context.args.iter().cloned()).map(|_| ()),
+            );
+            assert_eq!(ending.exit, Exit::Usage, "{line} wasn't refused with 64");
+            assert!(
+                ending.stderr.contains("loopback-holders --help"),
+                "{line}'s refusal didn't point at the help: {}",
+                ending.stderr
+            );
+        }
     }
 }
