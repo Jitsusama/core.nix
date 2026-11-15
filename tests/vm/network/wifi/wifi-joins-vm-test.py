@@ -345,6 +345,9 @@ def test_a_card_whose_access_point_carries_slowly_moves_to_another_of_its_networ
     machine.succeed("ip netns exec air tc qdisc add dev wlan0 root netem delay 200ms")
     # The choice is made with the figures, once a minute, so this waits up to two.
     wifid.says("wlan2 moved to 02:00:00:00:05:00, as asked", timeout=timedelta(seconds=150))
+    # Having looked over its channel first, so the kernel needn't look for it as the card
+    # leaves the first: that look cost 145 ms of the 401 one move went silent (2026-11-15).
+    wifid.says("wlan2 looks over 2452 MHz for 02:00:00:00:05:00 before moving to it")
     machine.succeed(
         "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
         " | grep -qE '^wlan2 tries 02:00:00:00:05:00, as [0-9a-f:]+ carried [0-9.]+ ms at p95'"

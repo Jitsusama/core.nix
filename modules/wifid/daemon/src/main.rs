@@ -1912,6 +1912,10 @@ impl Wifid<'_> {
                 let _ = done.send(self.scan().await);
                 return;
             }
+            Ask::Ready { bssid: _, done } => {
+                let _ = done.send(Ok(()));
+                return;
+            }
             Ask::Roam { bssid, done } => {
                 let _ = done.send(self.roam(&bssid).await);
                 return;

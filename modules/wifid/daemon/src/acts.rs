@@ -352,48 +352,47 @@ mod tests {
         assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
     }
 
-    #[tokio::test]
-    async fn roaming_asks_for_the_access_point_by_its_address() {
-        let heard = acted(
-            json!({"act": "roam", "bssid": "6C:AE:F6:C1:84:26"}),
-            |ask| {
-                let Ask::Roam { bssid, done } = ask else {
-                    panic!("asked {ask:?}, not to roam");
-                };
-                assert_eq!(
-                    bssid, "6c:ae:f6:c1:84:26",
-                    "written as wpa_supplicant writes it"
-                );
-                done.send(Ok(())).expect("answered");
-            },
-        )
-        .await;
-        assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
-    }
-
     /// Roams to an access point the main loop hears only once it's looked
-    /// `near_after` times, if ever, each look it's asked for ending where
-    /// `ending`, and says what the connection was told and how many looks
-    /// were asked for.
-    async fn roamed(near_after: Option<u32>, ending: bool) -> (Vec<Value>, u32) {
+    /// everywhere `near_after` times, if ever, each look it's asked for
+    /// ending where `ending`, and says what the connection was told and
+    /// what the main loop was asked, in turn.
+    async fn roamed(near_after: Option<u32>, ending: bool) -> (Vec<Value>, Vec<&'static str>) {
         let (asks, mut taken) = mpsc::channel(1);
         let (told, mut telling) = mpsc::channel(16);
         let (state, watching) = watch::channel(State::default());
         let main_loop = tokio::spawn(async move {
-            let mut asked = 0;
+            let mut asked = Vec::new();
+            let mut looks = 0;
+            let near = |looks| {
+                if near_after.is_some_and(|after| looks >= after) {
+                    Ok(())
+                } else {
+                    Err(Refused::NotNearby)
+                }
+            };
+            let address = "6c:ae:f6:c1:84:26";
             while let Some(ask) = taken.recv().await {
                 match ask {
-                    Ask::Roam { done, .. } => {
-                        let near = near_after.is_some_and(|after| asked >= after);
-                        let answer = if near {
-                            Ok(())
-                        } else {
-                            Err(Refused::NotNearby)
-                        };
+                    Ask::Ready { bssid, done } => {
+                        assert_eq!(bssid, address, "written as wpa_supplicant writes it");
+                        asked.push("ready");
+                        let answer = near(looks);
+                        let heard = answer.is_ok();
                         done.send(answer).expect("answered");
+                        // Its look over the one channel ends, as the main
+                        // loop hears it.
+                        if heard && ending {
+                            state.send_modify(State::look_ended);
+                        }
+                    }
+                    Ask::Roam { bssid, done } => {
+                        assert_eq!(bssid, address, "written as wpa_supplicant writes it");
+                        asked.push("roam");
+                        done.send(near(looks)).expect("answered");
                     }
                     Ask::Scan { done } => {
-                        asked += 1;
+                        looks += 1;
+                        asked.push("scan");
                         done.send(Ok(())).expect("answered");
                         if ending {
                             state.send_modify(State::look_ended);
@@ -404,32 +403,55 @@ mod tests {
             }
             asked
         });
-        let asked = json!({"act": "roam", "bssid": "6c:ae:f6:c1:84:26"});
+        let asked = json!({"act": "roam", "bssid": "6C:AE:F6:C1:84:26"});
         act(asks, watching, json!(7), asked, told, None).await;
-        let looks = main_loop.await.expect("the main loop answered");
+        let asked = main_loop.await.expect("the main loop answered");
         let mut heard = Vec::new();
         while let Ok(line) = telling.try_recv() {
             heard.push(serde_json::from_str(&line).expect("JSON"));
         }
-        (heard, looks)
+        (heard, asked)
+    }
+
+    #[tokio::test]
+    async fn roaming_readies_the_access_point_and_moves_once_its_channel_is_looked_over() {
+        let (heard, asked) = roamed(Some(0), true).await;
+        assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
+        assert_eq!(asked, ["ready", "roam"], "readied, then moved");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn roaming_moves_anyway_once_its_look_is_waited_for_long_enough() {
+        let (heard, asked) = roamed(Some(0), false).await;
+        assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
+        assert_eq!(asked, ["ready", "roam"], "readied, then moved");
     }
 
     #[tokio::test]
     async fn roaming_to_an_access_point_forgotten_looks_for_it_first() {
-        let (heard, looks) = roamed(Some(1), true).await;
+        let (heard, asked) = roamed(Some(1), true).await;
         assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
-        assert_eq!(looks, 1, "one look asked for before roaming again");
+        assert_eq!(
+            asked,
+            ["ready", "scan", "roam"],
+            "one look everywhere asked for before moving"
+        );
     }
 
     #[tokio::test(start_paused = true)]
     async fn an_access_point_unheard_after_one_look_is_refused() {
         for ending in [true, false] {
-            let (heard, looks) = roamed(None, ending).await;
+            let (heard, asked) = roamed(None, ending).await;
             assert_eq!(
                 heard[0]["error"]["refused"], "NotNearby",
                 "the look ending: {ending}"
             );
-            assert_eq!(looks, 1, "one look asked for, the look ending: {ending}");
+            let moved = if ending { &["roam"][..] } else { &[] };
+            assert_eq!(
+                asked,
+                [&["ready", "scan"][..], moved].concat(),
+                "one look asked for, the look ending: {ending}"
+            );
         }
     }
 

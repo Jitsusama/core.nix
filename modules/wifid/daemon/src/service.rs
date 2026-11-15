@@ -55,6 +55,13 @@ pub enum Ask {
     Scan {
         done: oneshot::Sender<Result<(), Refused>>,
     },
+    /// Holding the card's network to an access point it's about to move
+    /// to, and having it look over that point's channel, so the kernel's
+    /// own account of the point is fresh when it moves.
+    Ready {
+        bssid: String,
+        done: oneshot::Sender<Result<(), Refused>>,
+    },
     /// Moving the card on an access point's network to it, by the access
     /// point's address, as 6c:ae:f6:c1:84:26.
     Roam {
