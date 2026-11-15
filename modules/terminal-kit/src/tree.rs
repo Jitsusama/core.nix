@@ -88,12 +88,14 @@ fn takes_value(root: &Help, word: &str) -> bool {
 }
 
 /// Whether a level takes another word as a name, having taken `filled`.
+/// A last argument takes any number when its name ends in `...`, inside
+/// its optional brackets or outside them (`[why...]` or `[why]...`).
 fn takes_name(help: &Help, filled: usize) -> bool {
     filled < help.arguments.len()
         || help
             .arguments
             .last()
-            .is_some_and(|last| last.name.ends_with("..."))
+            .is_some_and(|last| last.name.trim_end_matches(']').ends_with("..."))
 }
 
 /// Walks the words down the tree from `root`, which has subcommands of
@@ -325,6 +327,25 @@ mod tests {
             path("devices Pixel Study"),
             "refused: eero devices takes no more words"
         );
+    }
+
+    #[test]
+    fn an_argument_that_may_take_many_takes_them_however_its_bracketed() {
+        // hibernate-unlock's rescue is told a word and a name, as
+        // `rescue device virtio-pci`, under an argument written `[why...]`.
+        for name in ["[why...]", "[why]...", "why..."] {
+            let help = Help::new("unlock", "what it does").subcommand(
+                Help::new("rescue", "tells of a rollback").argument(name, "why it rolled back"),
+            );
+            let walked = walk(&help, &words("rescue device virtio-pci"));
+            assert_eq!(
+                walked
+                    .map(|walked| walked.path())
+                    .map_err(|failure| failure.what),
+                Ok("unlock rescue".to_owned()),
+                "{name} took only one word"
+            );
+        }
     }
 
     #[test]

@@ -1103,6 +1103,34 @@ mod tests {
         assert_eq!(Why::from_args(&[]), Why::Unsaid);
     }
 
+    /// The words a rollback hands the rescue, and the disks the sleep
+    /// hands `post`, are each taken by the command line, never refused as
+    /// one too many: a refused rescue never retries or powers off.
+    #[test]
+    fn the_command_line_takes_every_why_and_every_disk_its_callers_give() {
+        let told = |words: Vec<String>| {
+            terminal_kit::tree::walk(&help(), &words)
+                .map(|walked| walked.path())
+                .map_err(|failure| failure.what)
+        };
+        for (why, _) in cases() {
+            let words = std::iter::once("rescue".to_owned())
+                .chain(why.args())
+                .collect();
+            assert_eq!(
+                told(words),
+                Ok("hibernate-unlock rescue".to_owned()),
+                "{why:?} was refused"
+            );
+        }
+        let disks = lines(&["post", "hibernate", "root", "home"]);
+        assert_eq!(
+            told(disks),
+            Ok("hibernate-unlock post".to_owned()),
+            "a second disk was refused"
+        );
+    }
+
     /// Every notice, word for word, with the laptop still on.
     #[test]
     fn each_notice_says_why_that_nothing_was_lost_and_what_to_do() {
