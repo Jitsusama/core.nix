@@ -86,7 +86,6 @@
     "helps"
   ];
   pi-verbs = [ "helps" ];
-  qt-javascript-lint = [ "helps" ];
   quests = [
     "kit"
     "exits"
