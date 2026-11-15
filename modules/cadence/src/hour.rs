@@ -331,12 +331,21 @@ fn follow(last: Option<&Held>, measures: &[Measure]) -> (Option<String>, u32) {
             } else {
                 ""
             };
+            // A drag that grew hasn't moved down either, so it counts on; at
+            // 01:10 on 15 November one that went from 7 to 8 read "still 8".
+            let how = if m.now > last.now {
+                format!("grew from {} to {}", figure(last.now), figure(m.now))
+            } else {
+                format!(
+                    "hasn't moved in {unmoved} {}: still {}",
+                    if unmoved == 1 { "hour" } else { "hours" },
+                    figure(m.now)
+                )
+            };
             (
                 Some(format!(
-                    "Last hour's drag, {}, hasn't moved in {unmoved} {}: still {}, with {}.{steer}",
+                    "Last hour's drag, {}, {how}, with {}.{steer}",
                     last.says,
-                    if unmoved == 1 { "hour" } else { "hours" },
-                    figure(m.now),
                     owner_or_none(&last.owner)
                 )),
                 unmoved,
@@ -529,6 +538,21 @@ mod tests {
         assert!(card.contains("hasn't moved in 2 hours"), "{card}");
         assert!(card.contains("Orchestrator: please steer it."), "{card}");
         assert_eq!(next.drag.map(|d| d.unmoved), Some(2), "it counts on");
+    }
+
+    #[test]
+    fn a_drag_that_grew_says_so_and_counts_as_unmoved() {
+        let grew = [measure("slips", Class::Slip, 5.0, Some(0.0))];
+        let (card, next) = compose("01:10", &grew, &held("slips", 3.0, 0), "");
+        assert!(
+            card.contains("Last hour's drag, slips said, grew from 3 to 5, with OWNER."),
+            "a drag that got worse was said to hold still: {card}"
+        );
+        assert_eq!(
+            next.drag.map(|d| d.unmoved),
+            Some(1),
+            "growing is no move down"
+        );
     }
 
     #[test]
