@@ -1023,11 +1023,31 @@ Provider {
         const whom = TalkTo.whom(said, {
             isVoid: address => provider.isVoid(address),
             session: address => held(address) !== null,
-            network: name => `row:${top.place}:network:${name}` in (top.held ?? {})
+            network: name => networkKey(name) in (top.held ?? {})
         });
         const act = whom.to === "session" ? sessionAct(held(whom.address), "talk")
             : whom.to === "void" ? lineOpened("verb:agent:talk") : null;
         return { whom, act };
+    }
+
+    // The key the daemon serves a network's row by, among the rows the Networks row holds
+    // (modules/agents' networks.rs).
+    function networkKey(name) {
+        return `row:${top.place}:network:${name}`;
+    }
+
+    // The rows a walk into Agents takes to the network `said` names, as `qs ipc call launcher
+    // network` asks it (Launcher.qml's showNetwork): Networks, the fold it's under where its
+    // heading holds more than a dozen, and its own row last, each as the place made it. Only the
+    // first word said names one (TalkTo.js). `name` is that word, and `rows` is empty for a
+    // name no network has.
+    function networkWalk(said) {
+        const name = TalkTo.named(said);
+        const rows = [];
+        for (let key = networkKey(name); top.served(key) !== null;
+            key = top.served(key).parent ?? "")
+            rows.unshift(top.rowAt(key));
+        return { name, rows: rows.includes(null) ? [] : rows };
     }
 
     // What the foot says when talkTo names a network: that it didn't talk, and why, since a

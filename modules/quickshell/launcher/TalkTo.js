@@ -15,8 +15,14 @@
 // what was `said`.
 const spaces = /\s+/u;
 
-function whom(said, known) {
+// The one name `said` gives: its first word, as talkTo and network read it.
+function named(said) {
     const [name] = String(said ?? "").trim().split(spaces);
+    return name;
+}
+
+function whom(said, known) {
+    const name = named(said);
     if (name === "") {
         return { to: "none", said: name };
     }

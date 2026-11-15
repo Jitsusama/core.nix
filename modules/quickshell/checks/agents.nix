@@ -9,6 +9,7 @@
   launcherOnNiri,
   lib,
   noFonts,
+  passesClippy,
   pkgs,
   qs,
   self,
@@ -87,6 +88,46 @@
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml talk-to.qml
       touch $out
     '';
+
+  # A mycelium: link a page hands the desktop reaches mycelium-link's entry
+  # through niri's own list of defaults, and asks the launcher to talk to
+  # the cell or show the network it names, by its name alone, and nothing
+  # for a link naming neither or a second within a few seconds
+  # (tests/mycelium-links-open-in-the-launcher.sh). Its tests run as it builds.
+  mycelium-links-open-in-the-launcher =
+    let
+      home = account graphical;
+      entry = home.home.file."${home.xdg.dataHome}/applications/mycelium-link.desktop".text;
+      defaults = home.xdg.configFile."niri-mimeapps.list".text;
+      # The same program built to ask a stand-in, which writes down what
+      # it was asked where the script says.
+      askingStandIn = pkgs.callPackage ../mycelium-link/package.nix {
+        quickshell = pkgs.writeShellScriptBin "qs" ''printf '%s\n' "$*" >> "$ASKED"'';
+      };
+    in
+    pkgs.runCommandLocal "mycelium-links-open-in-the-launcher"
+      {
+        nativeBuildInputs = [
+          pkgs.xdg-utils
+          pkgs.glib.bin
+        ];
+      }
+      ''
+        ${lib.getExe pkgs.bash} ${../../../tests/mycelium-links-open-in-the-launcher.sh} ${
+          lib.escapeShellArgs [
+            (pkgs.writeText "mycelium-link.desktop" entry)
+            (pkgs.writeText "niri-mimeapps.list" defaults)
+            (lib.getExe (pkgs.callPackage ../mycelium-link/package.nix { }))
+            (lib.getExe askingStandIn)
+          ]
+        }
+        touch $out
+      '';
+
+  # clippy finds nothing in mycelium-link, its tests included.
+  mycelium-link-passes-clippy = passesClippy "mycelium-link-passes-clippy" (
+    pkgs.callPackage ../mycelium-link/package.nix { }
+  );
 
   # pi's sessions, as many and as large as Joel's, each changing its step
   # with the launcher shut and then showing them, sorted and lived again as

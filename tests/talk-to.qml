@@ -43,5 +43,8 @@ QtObject {
             TalkTo.whom("GONE42", known), { to: "none", said: "GONE42" });
         Expect.same("nothing said is nobody",
             TalkTo.whom("   ", known), { to: "none", said: "" });
+        Expect.same("a network is named by the first word said alone, as network reads it",
+            TalkTo.named(" repo.world and more\tstill"), "repo.world");
+        Expect.same("nothing said names nothing", TalkTo.named(undefined), "");
     }
 }

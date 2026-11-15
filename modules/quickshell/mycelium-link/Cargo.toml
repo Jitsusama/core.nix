@@ -1,0 +1,20 @@
+# What a mycelium: link opens in the launcher, run by the browser on each
+# one Joel follows (src/main.rs says what it lets through).
+[package]
+name = "mycelium-link"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+terminal-kit = { path = "../../terminal-kit" }
+
+[profile.release]
+# Small: it reads a link, keeps a time and runs qs, so speed of its code
+# doesn't matter.
+opt-level = "s"
+panic = "abort"
+lto = true
+codegen-units = 1
+strip = true

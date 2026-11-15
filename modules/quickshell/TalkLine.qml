@@ -121,6 +121,16 @@ Scope {
             toggle(-1);
     }
 
+    // Brings the line up for a mycelium: link, which holds Joel's first keys back as
+    // Prompt.qml's linked says; false where it was up already, which a link leaves alone.
+    function openLinked() {
+        if (up)
+            return false;
+        toggle(-1);
+        prompt.linked();
+        return true;
+    }
+
     // `chord` is when launcher-say ran for it, on the wall clock in ms, or -1 where it didn't
     // say, as qs ipc doesn't.
     function toggle(chord) {
@@ -288,6 +298,7 @@ Scope {
             sawShown();
         launcher.drafts.flush();
         commanding = false;
+        prompt.unlinked();
         up = false;
     }
 
