@@ -511,7 +511,7 @@ commands it builds on the kit and a waiting list of its own.
 ## When a Command Doesn't Agree Yet
 
 The `commands-agree` check ([`tests/rules/commands-agree.py`][check])
-reads every program a crate builds, and holds it to five points:
+reads every program a crate builds, and holds it to seven points:
 
 - **kit:** its crate builds on the terminal kit;
 - **exits:** its own code never ends the process, with `process::exit`
@@ -539,7 +539,14 @@ reads every program a crate builds, and holds it to five points:
   view's words, its variables and its files, so a command that reads a
   fixed path or a settings file is pointed at it. A view may name steps
   to run first in the same state, as `first`, where a person would have
-  run one before, such as an import before a report.
+  run one before, such as an import before a report;
+- **subcommands:** each subcommand its help lists answers help of its
+  own at every depth, as [Subcommands](#subcommands) says;
+- **tables:** its own code pads no word to a width by hand, as `{:<10}`
+  or `{name:>width$}` do, since columns padded so line up only while
+  their words stay short and never fit the terminal: the kit's tables
+  align them and give way to the width. A zero fill, as `{:0<3}`, sets a
+  figure's digits, not a column, so it's left alone.
 
 It reads every script a Nix file outside the tests wraps as a program,
 with `writeShellApplication` or `writeShellScriptBin`, too: the files its

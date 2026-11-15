@@ -22,6 +22,7 @@
     "exits"
     "helps"
   ];
+  collector = [ "tables" ];
   eero = [ "inks" ];
   guide = [
     "exits"
@@ -97,6 +98,7 @@
     "kit"
     "exits"
     "helps"
+    "tables"
   ];
   passwords-1password = [
     "kit"
@@ -146,6 +148,7 @@
     "exits"
     "helps"
   ];
+  spend-watch = [ "tables" ];
   switch-system-as-root = [ "helps" ];
   switch-system-known = [ "helps" ];
   systemd-run = [ "helps" ];
