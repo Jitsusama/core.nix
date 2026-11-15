@@ -482,5 +482,15 @@
       "test_letters_typed_quicker_than_the_rest_make_one_drawer"
     ],
     "test": "the-launcher-answers-whats-typed-on-niri"
+  },
+  {
+    "at": 1794709636,
+    "commit": "968627b69b715f69826460c9e5ab253e092d13f4",
+    "owner_pr": null,
+    "reason": "failed, then passed, at 968627b69b71",
+    "subtests": [
+      "test_the_cat_holds_its_ground_through_a_slide_between_workspaces"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
   }
 ]
