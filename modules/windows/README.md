@@ -119,6 +119,23 @@ it 1,500 wakes where the growing pause costs about 65. niri's event stream says
 nothing of the key that asked a window to close, so a quit is timed from
 the window gone, not from the ask.
 
+## A Window an Agent Opened
+
+Agents run in agents.slice and the jobs slices, so a window whose process
+sits there was opened by an agent over Joel's work. The daemon says each
+one to the journal as it opens, as a warning (src/unasked.rs):
+
+```text
+an agent opened a window over Joel's work: org.kde.heaptrack "Heaptrack", from
+pi-host-work-background.service in /home/joel/src/tree
+```
+
+The sessions' own windows, in kitty's one instance in agents.slice, are
+never said, nor is anything the launcher opens, which starts in
+app.slice. A window there as the event stream begins was said when it
+opened. Nothing is closed: the line names the unit and its folder, so the
+agent behind it can be found.
+
 ## Left Out, and Why
 
 - **A row's tile.** A window's record says its column and how far down,
