@@ -56,6 +56,7 @@ mod candidates;
 mod comments;
 mod gated;
 mod holds;
+mod kit;
 mod lists;
 mod movers;
 mod needs;
