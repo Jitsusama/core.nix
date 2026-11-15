@@ -18,22 +18,28 @@ in
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "net-switch";
 
-  nodes.switch = {
-    networking.firewall.allowedTCPPorts = [ 80 ];
-    systemd.services.switch-stand-in = {
-      wantedBy = [ "multi-user.target" ];
-      serviceConfig = {
-        RuntimeDirectory = "switch-stand-in";
-        ExecStart = lib.escapeShellArgs [
-          (lib.getExe pkgs.python3)
-          "${./switch-stand-in.py}"
-          "${../../../modules/net/contract/switch}"
-          password
-          counted
-        ];
+  nodes.switch =
+    { config, ... }:
+    {
+      networking.firewall.allowedTCPPorts = [ 80 ];
+      systemd.services.switch-stand-in = {
+        wantedBy = [ "multi-user.target" ];
+        # It serves on the switch's own address, which has to be there first.
+        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ];
+        serviceConfig = {
+          RuntimeDirectory = "switch-stand-in";
+          ExecStart = lib.escapeShellArgs [
+            (lib.getExe pkgs.python3)
+            "${./switch-stand-in.py}"
+            "${../../../modules/net/contract/switch}"
+            password
+            counted
+            config.networking.primaryIPAddress
+          ];
+        };
       };
     };
-  };
 
   nodes.machine =
     { nodes, ... }:
