@@ -3,6 +3,12 @@
 //! the world's, for the cases, which read the same wherever they run.
 //! Nothing here reads the clock's now: a time that changes as the minute
 //! does travels as the ready-row form's `{at, as}`, for the shell to word.
+//!
+//! glibc reads the machine's zone once a run, as `localtime_r` doesn't
+//! look again, so a zone changed while travelling words each call's date
+//! in the old zone until the source starts again, with the people daemon.
+//! That's accepted: the date is the call's own, read once over its title,
+//! and its hour off until then costs less than asking the zone each line.
 
 /// A moment's date and time of day.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
