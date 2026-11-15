@@ -2,16 +2,13 @@
 //! edges, the cursor and the jumps between places.
 
 use super::{FLICK, JUMP_UNTIL, REFERENCE_SCALE, SCROLL_UNTIL, Spot, ZOOM_UNTIL, covers, phase};
+use crate::painter::numbers::{f32_of, f64_of, i32_of, u32_of, usize_of};
 use crate::{App, SCROLL_OFF_LINES, line_pt, motion, moves, search};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::time::Instant;
 
 impl App {
     /// Shows the buffer's top left at the window's size.
-    #[expect(
-        clippy::cast_possible_wrap,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     pub(crate) fn cut(&self) {
         if let Some(viewport) = &self.viewport {
             let (w, h) = self.size;
@@ -20,34 +17,27 @@ impl App {
             // its buffer scale, which is 1 under a fractional scale.
             let over = f64::from(self.buffer_scale());
             viewport.set_source(0.0, 0.0, f64::from(bw) / over, f64::from(bh) / over);
-            viewport.set_destination(w as i32, h as i32);
+            let whole = |n: u32| i32::try_from(n).unwrap_or(i32::MAX);
+            viewport.set_destination(whole(w), whole(h));
         }
     }
 
     /// The buffer for the window at its scale, in device pixels.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     pub(crate) fn buffer_size(&self) -> (i32, i32) {
         let (w, h) = self.size;
         (
-            (f64::from(w) * self.scale).round() as i32,
-            (f64::from(h) * self.scale).round() as i32,
+            i32_of((f64::from(w) * self.scale).round()),
+            i32_of((f64::from(h) * self.scale).round()),
         )
     }
 
     /// The surface's buffer scale: 1 under a fractional scale, which the
     /// viewport carries instead, and the whole scale otherwise.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     pub(crate) fn buffer_scale(&self) -> i32 {
         if self.fractional.is_some() {
             1
         } else {
-            self.scale.round() as i32
+            i32_of(self.scale.round())
         }
     }
 
@@ -80,15 +70,10 @@ impl App {
         self.zoom * self.scale / REFERENCE_SCALE
     }
 
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     pub(crate) fn zoom_key(&self) -> u32 {
         // Drawn in twentieths of a level, so a glide asks for a band set a
         // step rather than every frame, and a new scale is one more step.
-        ((self.level() * 20.0).round() * 50.0) as u32
+        u32_of((self.level() * 20.0).round() * 50.0)
     }
 
     pub(crate) fn screen_px(&self) -> f64 {
@@ -99,15 +84,13 @@ impl App {
     /// page centred, so a wide window leaves even room either side of its
     /// measure, on a whole pixel so its type is sharp, and at the window's
     /// edge once the page is as wide as the window.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "a window's pixels as f32, as GL takes them"
-    )]
     pub(crate) fn page_x(&self) -> f32 {
         let window = self.gl.as_ref().map_or(0.0, |gl| f64::from(gl.width));
-        ((window - self.painter.width_pt() * self.px_per_pt()) / 2.0)
-            .max(0.0)
-            .round() as f32
+        f32_of(
+            ((window - self.painter.width_pt() * self.px_per_pt()) / 2.0)
+                .max(0.0)
+                .round(),
+        )
     }
 
     pub(crate) fn clamp(&mut self) {
@@ -121,11 +104,6 @@ impl App {
 
     /// Moves the view as the measure's script says at `t` seconds, `dt` since
     /// the last frame.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     pub(crate) fn script(&mut self, t: f64, dt: f64) {
         let flick = FLICK * self.scale * dt;
         let screen = self.screen_px();
@@ -135,7 +113,7 @@ impl App {
             "jump" => {
                 // A screen down every 0.4 s, then to the end and the top, as
                 // Ctrl+F, G and gg would.
-                let step = ((t - SCROLL_UNTIL) / 0.4).floor() as u32;
+                let step = u32_of(((t - SCROLL_UNTIL) / 0.4).floor());
                 let measure = self.measure.as_mut().expect("measuring");
                 if step > measure.jumps {
                     measure.jumps = step;
@@ -151,7 +129,7 @@ impl App {
                 self.jump = None;
                 let s = t - JUMP_UNTIL;
                 let zoom = if s < 2.0 {
-                    [1.25, 1.5, 1.25, 1.0][((s / 0.5) as usize).min(3)]
+                    [1.25, 1.5, 1.25, 1.0][usize_of(s / 0.5).min(3)]
                 } else {
                     1.0 + 0.5 * (std::f64::consts::PI * (s - 2.0) / 2.0).sin()
                 };
@@ -163,7 +141,7 @@ impl App {
                 // second, which costs it what a resize from niri would.
                 self.set_zoom(1.0);
                 self.offset += 300.0 * self.scale * dt;
-                let wide = ((t - ZOOM_UNTIL) / 0.25) as u32 % 2 == 1;
+                let wide = u32_of((t - ZOOM_UNTIL) / 0.25) % 2 == 1;
                 let width = if wide { 1200 } else { 960 };
                 if width != self.size.0 {
                     self.size.0 = width;
@@ -213,12 +191,8 @@ impl App {
     /// Whether the whole page's own bands, at any zoom or the stand-in's,
     /// cover the view down to the whole page's end, with nothing of the
     /// first screen's page needed.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     pub(crate) fn whole_page_covers(&self) -> bool {
-        let screen = self.screen_px() as f32;
+        let screen = f32_of(self.screen_px());
         let mut spans: Vec<(f32, f32)> = self
             .textures
             .iter()
@@ -229,7 +203,7 @@ impl App {
             })
             .filter(|(top, foot)| foot > top)
             .collect();
-        let end = (self.painter.height_pt() * self.px_per_pt() - self.offset) as f32;
+        let end = f32_of(self.painter.height_pt() * self.px_per_pt() - self.offset);
         covers(&mut spans, screen.min(end))
     }
 
@@ -368,11 +342,10 @@ impl App {
                 .or_else(|| lines.iter().position(|line| moves::top_of(line) >= top))?;
             Some((shown, lines))
         }) else {
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "a count of lines, a few thousand at most"
-            )]
-            let by_px = by as f64 * line_pt() * self.px_per_pt();
+            // A count of lines, a few thousand at most, signed by its way.
+            let lines = f64_of(by.unsigned_abs());
+            let lines = if by < 0 { -lines } else { lines };
+            let by_px = lines * line_pt() * self.px_per_pt();
             self.step_to(self.heading() + by_px);
             return;
         };

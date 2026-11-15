@@ -11,6 +11,7 @@ use smithay_client_toolkit::reexports::calloop::channel::Sender;
 use typst_layout::PagedDocument;
 
 use crate::page;
+use crate::painter::numbers::f64_of;
 
 /// The prompt's row: Space's xxxl, the pitch of a prompt's row, as 36 pt
 /// at 0.75 pt a logical pixel.
@@ -51,6 +52,34 @@ pub struct Ask {
     /// How wide the page is set for the window, so the prompt's words start
     /// where its measure does.
     pub page: crate::page::Width,
+}
+
+impl Ask {
+    /// A list standing over the prompt's row, gO's outline or the command
+    /// line's menu, with nothing of the prompt's own.
+    pub fn list(
+        outline: Vec<(u8, String, bool)>,
+        menu: Option<Menu>,
+        width_pt: f64,
+        px_per_pt: f64,
+        page: crate::page::Width,
+    ) -> Self {
+        Ask {
+            serial: 0,
+            keys: false,
+            labels: Vec::new(),
+            outline,
+            menu,
+            note: String::new(),
+            mark: "",
+            typed: String::new(),
+            cursor: false,
+            count: None,
+            width_pt,
+            px_per_pt,
+            page,
+        }
+    }
 }
 
 /// The command line's menu as it shows: each line's command, title and
@@ -510,11 +539,7 @@ fn outline_room(ask: &Ask) -> Option<Room> {
     let at = ask.outline.iter().position(|(_, _, chosen)| *chosen)?;
     let (width, side, highest) = outline_measure(ask);
     let indent = indent_pt(ask.outline[at].0, highest);
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "the outline shows ten rows at most"
-    )]
-    let above = at as f64;
+    let above = f64_of(at);
     Some(Room {
         said: ask.outline[at].1.clone(),
         left_pt: side + indent,

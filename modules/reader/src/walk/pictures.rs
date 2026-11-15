@@ -6,6 +6,7 @@ use std::fmt::Write;
 use markup5ever_rcdom::Handle;
 
 use super::{Walker, attr, caption_of, literal, picture_kind, tag};
+use crate::painter::numbers::f64_of;
 
 impl Walker<'_> {
     /// A picture: a file beside the page is put in the world and set at its
@@ -90,17 +91,13 @@ impl Walker<'_> {
     /// Puts a picture's bytes into the world: its path there, named for its
     /// kind as Typst reads it, and its size in pixels where its header
     /// gives one.
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "a picture's size in pixels, far below a mantissa's 52 bits"
-    )]
     fn put_picture(&mut self, bytes: Vec<u8>) -> Option<(String, Option<f64>, Option<f64>)> {
         let ext = picture_kind(&bytes)?;
         let (w, h) = if ext == "svg" || ext == "pdf" {
             (None, None)
         } else {
             let size = imagesize::blob_size(&bytes).ok()?;
-            (Some(size.width as f64), Some(size.height as f64))
+            (Some(f64_of(size.width)), Some(f64_of(size.height)))
         };
         let name = format!("/pictures/{}.{ext}", self.pictures);
         self.pictures += 1;

@@ -16,6 +16,7 @@ use std::time::Instant;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 
 use crate::keys::Act;
+use crate::painter::numbers::f32_of;
 use crate::select::{Kind, Motion, Object, Selection};
 use crate::{
     App, FLASH, SCROLL_OFF_LINES, baseline, ex, gl, keys_logged, line_pt, moves, prompt, select,
@@ -365,10 +366,6 @@ impl App {
     /// as tall as the line's cell, clear of the marks a list hangs there.
     /// A window too narrow for that sets it half way into the room left of
     /// the words, and one with no room there draws none.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "points and pixels as f32, as GL takes them, within a page's few hundred thousand"
-    )]
     pub(crate) fn draw_cursor_line(&self, gl: &gl::Gl, screen: f32) {
         let (false, Some(rule), Some((top, foot))) =
             (baseline(), self.rule.as_ref(), self.cursor_line())
@@ -388,16 +385,12 @@ impl App {
             return;
         }
         let x = (right - width).round();
-        gl.draw(rule, x as f32, y as f32, width as f32, height as f32);
+        gl.draw(rule, f32_of(x), f32_of(y), f32_of(width), f32_of(height));
     }
 
     /// The selection, and what a copy took while it flashes, on the
     /// selection's ground with their words in strong; then the cursor, a
     /// block on its character.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "points and pixels as f32, as GL takes them, within a page's few hundred thousand"
-    )]
     pub(crate) fn draw_selection(&self, gl: &gl::Gl, screen: f32) {
         let (false, Some([chosen, cursor])) = (baseline(), self.chosen.as_ref()) else {
             return;
@@ -414,10 +407,10 @@ impl App {
             }
             gl.lay(
                 chosen,
-                (left + from * px) as f32,
-                y as f32,
-                ((to - from) * px) as f32,
-                height as f32,
+                f32_of(left + from * px),
+                f32_of(y),
+                f32_of((to - from) * px),
+                f32_of(height),
             );
         };
         let mut pieces = Vec::new();

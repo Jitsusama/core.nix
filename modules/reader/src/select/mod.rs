@@ -21,8 +21,7 @@ mod view;
 use std::ops::Range;
 
 use typst::foundations::Value;
-use typst::introspection::{MetadataElem, Tag};
-use typst::layout::{Frame, FrameItem, Point};
+use typst::layout::Frame;
 
 use crate::text::{Line, Piece};
 
@@ -328,35 +327,20 @@ fn class(c: char) -> Class {
 
 /// Every piece's mark on a page, top to bottom.
 pub fn units(frame: &Frame) -> Vec<Unit> {
-    fn walk(frame: &Frame, at: Point, found: &mut Vec<Unit>) {
-        for (place, item) in frame.items() {
-            let here = at + *place;
-            match item {
-                FrameItem::Group(group) => {
-                    let moved = Point::new(group.transform.tx, group.transform.ty);
-                    walk(&group.frame, here + moved, found);
-                }
-                FrameItem::Tag(Tag::Start(content, _)) => {
-                    if let Some(metadata) = content.to_packed::<MetadataElem>()
-                        && let Value::Str(said) = &metadata.value
-                        && let Some((first, last)) = said
-                            .strip_prefix("s ")
-                            .and_then(|lines| lines.split_once('-'))
-                        && let (Ok(first), Ok(last)) = (first.parse(), last.parse())
-                    {
-                        found.push(Unit {
-                            top_pt: here.y.to_pt(),
-                            first,
-                            last,
-                        });
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    let mut found = Vec::new();
-    walk(frame, Point::zero(), &mut found);
+    let mut found: Vec<Unit> = crate::place::marks(frame)
+        .into_iter()
+        .filter_map(|(top_pt, value)| {
+            let Value::Str(said) = value else {
+                return None;
+            };
+            let (first, last) = said.strip_prefix("s ")?.split_once('-')?;
+            Some(Unit {
+                top_pt,
+                first: first.parse().ok()?,
+                last: last.parse().ok()?,
+            })
+        })
+        .collect();
     found.sort_by(|a, b| a.top_pt.total_cmp(&b.top_pt));
     found
 }

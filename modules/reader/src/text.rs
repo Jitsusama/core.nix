@@ -4,6 +4,8 @@
 //! hyphenation broke is found across the break, as it reads.
 use typst::layout::{Frame, FrameItem, Point};
 
+use crate::painter::numbers::f64_of;
+
 /// A run of set text and where it sits, in points from the page's top left.
 pub struct Run {
     pub x_pt: f64,
@@ -30,6 +32,21 @@ pub struct Line {
     /// For each character of `text`, by its place among them, where it
     /// starts and ends across the page.
     pub spans: Vec<(f64, f64)>,
+}
+
+/// A line for a test that reads only its words and its baseline: at the
+/// page's left edge, set at 10 pt, each character spanning the first point.
+#[cfg(test)]
+pub fn test_line(baseline_pt: f64, text: &str) -> Line {
+    Line {
+        x_pt: 0.0,
+        tail_x_pt: 0.0,
+        baseline_pt,
+        size_pt: 10.0,
+        cap_pt: 7.0,
+        text: text.into(),
+        spans: text.chars().map(|_| (0.0, 1.0)).collect(),
+    }
 }
 
 /// A match's part on one line.
@@ -78,10 +95,6 @@ pub fn runs(frame: &Frame) -> Vec<Run> {
     found
 }
 
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "a cluster's character count, a handful"
-)]
 fn walk(frame: &Frame, at: Point, found: &mut Vec<Run>) {
     for (place, item) in frame.items() {
         let here = at + *place;
@@ -101,9 +114,9 @@ fn walk(frame: &Frame, at: Point, found: &mut Vec<Run>) {
                     let range = usize::from(glyph.range.start)..usize::from(glyph.range.end);
                     let cluster = text.text.get(range).unwrap_or_default();
                     // A ligature's characters share its advance evenly.
-                    let count = cluster.chars().count().max(1) as f64;
+                    let count = f64_of(cluster.chars().count().max(1));
                     for (i, c) in cluster.chars().enumerate() {
-                        let from = x + advance * i as f64 / count;
+                        let from = x + advance * f64_of(i) / count;
                         chars.push((c, from, from + advance / count));
                     }
                     x += advance;
@@ -308,15 +321,11 @@ mod tests {
         find_as(lines, query, true)
     }
 
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "a cluster's character count, a handful"
-    )]
     fn run(x: f64, baseline: f64, text: &str) -> Run {
         let chars = text
             .chars()
             .enumerate()
-            .map(|(i, c)| (c, x + i as f64 * 6.0, x + (i + 1) as f64 * 6.0))
+            .map(|(i, c)| (c, x + f64_of(i) * 6.0, x + f64_of(i + 1) * 6.0))
             .collect();
         Run {
             x_pt: x,

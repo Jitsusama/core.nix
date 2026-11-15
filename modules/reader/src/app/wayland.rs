@@ -389,10 +389,6 @@ impl Dispatch2<WpPresentation, App> for Presentation {
 }
 
 impl Dispatch2<WpPresentationFeedback, App> for Feedback {
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     fn event(
         &self,
         app: &mut App,
@@ -413,7 +409,8 @@ impl Dispatch2<WpPresentationFeedback, App> for Feedback {
                 ..
             } => {
                 let seconds = (u64::from(tv_sec_hi) << 32) | u64::from(tv_sec_lo);
-                if let Some(drawn) = measure.drawn.get_mut(self.0 as usize) {
+                let frame = usize::try_from(self.0).ok();
+                if let Some(drawn) = frame.and_then(|at| measure.drawn.get_mut(at)) {
                     drawn.presented_ns = Some(seconds * 1_000_000_000 + u64::from(tv_nsec));
                 }
                 if refresh > 0 {

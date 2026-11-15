@@ -2,13 +2,10 @@
 //! one refresh interval.
 
 use super::{Drawn, memory};
+use crate::painter::numbers::{f64_of, ms_of_ns, usize_of};
 use crate::{App, Measure};
 
 impl App {
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     pub(crate) fn report(&self) {
         let Some(measure) = self.measure.as_ref() else {
             return;
@@ -18,7 +15,7 @@ impl App {
         let all: Vec<f64> = measure
             .drawn
             .windows(2)
-            .filter_map(|pair| Some((pair[1].presented_ns? - pair[0].presented_ns?) as f64 / 1e6))
+            .filter_map(|pair| Some(ms_of_ns(pair[1].presented_ns? - pair[0].presented_ns?)))
             .collect();
         let refresh_given = measure.refresh_ns > 0;
         let refresh_ms = if refresh_given {
@@ -64,10 +61,6 @@ impl App {
 
     /// One phase of the measure's script: its frames, when each reached
     /// the screen against the refresh, and what each frame's work took.
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "nanoseconds between frames, which never pass a mantissa's 52 bits"
-    )]
     fn phase_report(measure: &Measure, name: &str, refresh_ms: f64) -> serde_json::Value {
         let frames: Vec<(usize, &Drawn)> = measure
             .drawn
@@ -81,7 +74,7 @@ impl App {
                 continue;
             }
             if let (Some(now), Some(before)) = (d.presented_ns, measure.drawn[i - 1].presented_ns) {
-                intervals.push((now.saturating_sub(before)) as f64 / 1e6);
+                intervals.push(ms_of_ns(now.saturating_sub(before)));
             }
         }
         let work: Vec<f64> = frames.iter().map(|(_, d)| d.work_ms).collect();
@@ -135,19 +128,13 @@ impl App {
     }
 }
 
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss,
-    reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-)]
 fn percentile(values: &[f64], p: f64) -> f64 {
     if values.is_empty() {
         return 0.0;
     }
     let mut sorted = values.to_vec();
     sorted.sort_by(f64::total_cmp);
-    let i = ((sorted.len() as f64 - 1.0) * p).round() as usize;
+    let i = usize_of(((f64_of(sorted.len()) - 1.0) * p).round());
     (sorted[i] * 100.0).round() / 100.0
 }
 

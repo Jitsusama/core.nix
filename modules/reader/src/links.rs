@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use typst::layout::{Frame, FrameItem, Point};
 use typst::model::Destination;
 
+use crate::painter::numbers::f32_of;
+
 /// A link's first piece on the page, in points from the page's top left,
 /// and what it points at as written.
 #[derive(Clone, Debug, PartialEq)]
@@ -72,12 +74,8 @@ fn walk(frame: &Frame, at: Point, found: &mut Vec<Link>) {
 /// letters' baseline, `baseline_px` below its top, stands on its link's,
 /// on a page `px_per_pt` device pixels a point with the view's top
 /// `offset_px` down it.
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "pixels as f32, as GL takes them, within a page's few hundred thousand"
-)]
 pub fn label_top(link: &Link, baseline_px: f64, px_per_pt: f64, offset_px: f64) -> f32 {
-    (link.baseline_pt * px_per_pt - offset_px - baseline_px).round() as f32
+    f32_of((link.baseline_pt * px_per_pt - offset_px - baseline_px).round())
 }
 
 /// Where a link goes.

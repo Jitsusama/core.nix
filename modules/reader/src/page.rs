@@ -10,6 +10,7 @@ use std::time::Instant;
 use typst_layout::{Page, PagedDocument};
 
 use crate::eyebrow::about;
+use crate::painter::numbers::ms_of_ns;
 use crate::walk::{self, Costs, Pieces};
 use crate::world::PageWorld;
 
@@ -558,10 +559,6 @@ pub struct First {
 }
 
 /// Times a part of the set into `parts`.
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "nanoseconds of a set, which never pass a mantissa's 52 bits"
-)]
 fn timed<T>(
     parts: &mut Vec<(&'static str, f64, f64)>,
     name: &'static str,
@@ -571,7 +568,7 @@ fn timed<T>(
     let waited = crate::run_delay_ns();
     let out = part();
     let ms = start.elapsed().as_secs_f64() * 1000.0;
-    let waited = crate::run_delay_ns().saturating_sub(waited) as f64 / 1e6;
+    let waited = ms_of_ns(crate::run_delay_ns().saturating_sub(waited));
     parts.push((name, ms, waited));
     out
 }

@@ -3,25 +3,27 @@
 
 use super::{Drawn, ReadsOn, STAND_IN, covers, ground, painted, phase};
 use crate::painter::Key;
+use crate::painter::numbers::{f32_of, f32_of_whole, ms_of_ns};
 use crate::{App, baseline, gl, keys_logged, place, prompt, reading, run_delay_ns, whole};
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use std::time::Instant;
 
+/// A texture's width and height in pixels, as GL places it.
+pub(super) fn size_of(texture: &gl::Texture) -> (f32, f32) {
+    (f32_of_whole(texture.width), f32_of_whole(texture.height))
+}
+
 impl App {
     /// Each search match over the page, the one the view is on in the
     /// current match's colours.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "points and pixels as f32, as GL takes them, within a page's few hundred thousand"
-    )]
     fn draw_marks(&self, gl: &gl::Gl, screen: f32) {
         let (true, false, Some([others, current])) =
             (self.highlighting, baseline(), self.lit.as_ref())
         else {
             return;
         };
-        let px = (self.painter.scale(1000) * self.level()) as f32;
-        let offset = self.offset as f32;
+        let px = f32_of(self.painter.scale(1000) * self.level());
+        let offset = f32_of(self.offset);
         let left = self.page_x();
         for (i, found) in self.found.iter().enumerate() {
             let (swatch, blend) = if Some(i) == self.current {
@@ -30,16 +32,16 @@ impl App {
                 others
             };
             for piece in &found.pieces {
-                let top = (piece.baseline_pt - piece.size_pt * 0.92) as f32 * px - offset;
-                let height = (piece.size_pt * 1.2) as f32 * px;
+                let top = f32_of(piece.baseline_pt - piece.size_pt * 0.92) * px - offset;
+                let height = f32_of(piece.size_pt * 1.2) * px;
                 if top + height < 0.0 || top > screen {
                     continue;
                 }
-                let width = (piece.to_pt - piece.from_pt) as f32 * px;
+                let width = f32_of(piece.to_pt - piece.from_pt) * px;
                 gl.mark(
                     swatch,
                     blend,
-                    left + piece.from_pt as f32 * px,
+                    left + f32_of(piece.from_pt) * px,
                     top,
                     width,
                     height,
@@ -66,31 +68,27 @@ impl App {
 
     /// What stands over the page: the prompt at its foot, gO's outline on
     /// it, and the key list in the middle.
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "a canvas or a buffer is a whole number of pixels within a screen's few thousand"
-    )]
     fn draw_over(&mut self, screen: f32) {
         let Some(gl) = self.gl.as_ref() else { return };
         let mut over = None;
         if self.prompt_shown
             && let Some(canvas) = painted(gl, &mut self.prompt_canvas, self.prompt_set.take())
         {
-            let (width, height) = (canvas.width as f32, canvas.height as f32);
+            let (width, height) = size_of(canvas);
             gl.draw(canvas, 0.0, screen - height, width, height);
             over = Some(screen - height);
         }
         // gO's outline stands on the prompt's row while that shows, as his
         // location list stands on his command line.
         let below = match self.prompt_canvas.as_ref() {
-            Some(canvas) if self.prompt_shown => canvas.height as f32,
+            Some(canvas) if self.prompt_shown => f32_of_whole(canvas.height),
             _ => 0.0,
         };
         let mut list_top = None;
         if (self.outline.is_some() || self.menu_shows())
             && let Some(canvas) = painted(gl, &mut self.outline_canvas, self.outline_set.take())
         {
-            let (width, height) = (canvas.width as f32, canvas.height as f32);
+            let (width, height) = size_of(canvas);
             gl.draw(canvas, 0.0, screen - below - height, width, height);
             list_top = Some(screen - below - height);
         }
@@ -106,11 +104,6 @@ impl App {
     /// Lays the ground over the page from the top of the first line an
     /// overlay whose top stands at `over` would cut, so no line shows cut by
     /// it and no heading stands alone over it (whole.rs).
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_precision_loss,
-        reason = "pixels as f32, as GL takes them, within a screen's few thousand"
-    )]
     fn bare_above(&mut self, over: f32) {
         let version = self.painter.version;
         let count = self.words.as_ref().map_or(0, Vec::len);
@@ -132,9 +125,9 @@ impl App {
             return;
         };
         let shown = whole::shown(lines, heads, self.px_per_pt(), self.offset);
-        let from = whole::bare_from(&shown, f64::from(over)).max(0.0).round() as f32;
+        let from = f32_of(whole::bare_from(&shown, f64::from(over)).max(0.0).round());
         if from < over {
-            gl.draw(ground, 0.0, from, gl.width as f32, over - from);
+            gl.draw(ground, 0.0, from, f32_of_whole(gl.width), over - from);
         }
     }
 
@@ -189,11 +182,6 @@ impl App {
     /// top stands at `top`, shown only inside their room; at their start
     /// the list's own row shows, ending in its ellipsis. Resting, a timer
     /// wakes the frame that moves them on.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_precision_loss,
-        reason = "a row is a few thousand pixels at most"
-    )]
     fn draw_reading(&mut self, top: f32) {
         let (Some(gl), Some(on)) = (self.gl.as_ref(), self.reads_on.as_mut()) else {
             return;
@@ -246,22 +234,17 @@ impl App {
             gl.paint(canvas, &words.pixels);
             on.painted = true;
         }
-        let (left, y) = (on.strip.left_px as f32, top + on.strip.top_px as f32);
-        let (width, height) = (canvas.width as f32, canvas.height as f32);
+        let (left, y) = (f32_of(on.strip.left_px), top + f32_of(on.strip.top_px));
+        let (width, height) = size_of(canvas);
         gl.draw_within(
             canvas,
-            (left - at.slid as f32, y, width, height),
-            [left, y, on.strip.room_px as f32, height],
+            (left - f32_of(at.slid), y, width, height),
+            [left, y, f32_of(on.strip.room_px), height],
         );
     }
 
     /// The frame past the first frame's wait and the measure's script: the
     /// view moved, bands taken in and asked for, drawn, marked, and swapped.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_precision_loss,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     fn draw_after_measure(&mut self, began: Instant, waited_before: u64, script_ms: f64) {
         self.move_jump(began);
         self.clamp();
@@ -273,7 +256,7 @@ impl App {
         let ask_ms = asking.elapsed().as_secs_f64() * 1000.0;
         let Some(gl) = self.gl.as_ref() else { return };
         let key = self.zoom_key();
-        let screen = self.screen_px() as f32;
+        let screen = f32_of(self.screen_px());
         let left = self.page_x();
         let drawing = Instant::now();
         // The first GL call after a swap, where Mesa takes the next back
@@ -297,15 +280,21 @@ impl App {
             if top + height < 0.0 || top > screen {
                 continue;
             }
-            let ratio = (self.level() * 1000.0 / f64::from(k.zoom)) as f32;
-            gl.draw(texture, left, top, texture.width as f32 * ratio, height);
+            let ratio = f32_of(self.level() * 1000.0 / f64::from(k.zoom));
+            gl.draw(
+                texture,
+                left,
+                top,
+                f32_of_whole(texture.width) * ratio,
+                height,
+            );
             drawn_now.push(*k);
             // A band of the first screen's page holds the page only down to
             // where it settled; below that it shows ground, so it counts so.
             // While that page is held it is the page shown, so it counts whole.
             let foot = if self.stale.contains(k) && self.held_pt.is_none() {
                 let settled = self.settled_pt * self.painter.scale(k.zoom) * f64::from(ratio);
-                (settled - self.offset) as f32
+                f32_of(settled - self.offset)
             } else {
                 top + height
             };
@@ -317,7 +306,7 @@ impl App {
         }
         // Blank: some of the view shows only the ground. Stood in: some of
         // it shows a stand-in rather than this zoom's own bands.
-        let page_end = (self.end_px() - self.offset) as f32;
+        let page_end = f32_of(self.end_px() - self.offset);
         let draw_ms = drawing.elapsed().as_secs_f64() * 1000.0;
         let fresh = drawn_now.iter().filter(|k| self.fresh.remove(k)).count();
         let blank = !covers(&mut shown, screen.min(page_end));
@@ -355,7 +344,7 @@ impl App {
                 parts_ms: [
                     upload_ms, evict_ms, swap_ms, ask_ms, script_ms, draw_ms, clear_ms,
                 ],
-                waited_ms: run_delay_ns().saturating_sub(waited_before) as f64 / 1e6,
+                waited_ms: ms_of_ns(run_delay_ns().saturating_sub(waited_before)),
                 blank,
                 stood_in,
                 fresh,

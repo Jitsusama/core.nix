@@ -3,13 +3,23 @@
 //! it.
 
 use super::{Incoming, Landing, Reset, STAND_IN};
+use crate::painter::numbers::u32_of;
 use crate::painter::{BAND_PX, Band, Key};
 use crate::theme::PT_A_PX;
 use crate::{
     App, anchor, kept_marks, keys_logged, links, moves, page, place, showing, start, text,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::ops::Range;
 use std::time::Instant;
+
+/// The bands of a page `height` pixels tall, each `band` pixels, that a
+/// view `offset` pixels down it and `screen` pixels tall shows.
+fn bands_over(offset: f64, screen: f64, band: f64, height: f64) -> Range<u32> {
+    let first = u32_of((offset / band).floor().max(0.0));
+    let last = u32_of(((offset + screen) / band).ceil()).min(u32_of((height / band).ceil()));
+    first..last
+}
 
 impl App {
     /// The whole page has been set: draw from it, keeping each band above
@@ -107,11 +117,6 @@ impl App {
 
     /// The bands the saved page needs to cover the view where it will show,
     /// at the zoom shown.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     pub(crate) fn ask_incoming(&mut self) {
         let key = self.zoom_key();
         let screen = self.screen_px();
@@ -121,10 +126,7 @@ impl App {
             return;
         };
         let height = incoming.page.frame.size().y.to_pt() * scale;
-        let first = (incoming.offset / band).floor().max(0.0) as u32;
-        let last =
-            (((incoming.offset + screen) / band).ceil() as u32).min((height / band).ceil() as u32);
-        for index in first..last {
+        for index in bands_over(incoming.offset, screen, band, height) {
             let k = Key { zoom: key, index };
             let have = incoming.textures.contains_key(&k)
                 || incoming.loading.contains(&k)
@@ -137,11 +139,6 @@ impl App {
     }
 
     /// Whether the saved page's bands cover the view where it will show.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     pub(crate) fn incoming_covers(&self) -> bool {
         let Some(incoming) = self.incoming.as_ref() else {
             return false;
@@ -149,10 +146,8 @@ impl App {
         let key = self.zoom_key();
         let band = f64::from(BAND_PX) * self.level() * 1000.0 / f64::from(key);
         let height = incoming.page.frame.size().y.to_pt() * self.painter.scale(key);
-        let first = (incoming.offset / band).floor().max(0.0) as u32;
-        let last = (((incoming.offset + self.screen_px()) / band).ceil() as u32)
-            .min((height / band).ceil() as u32);
-        (first..last).all(|index| incoming.textures.contains_key(&Key { zoom: key, index }))
+        bands_over(incoming.offset, self.screen_px(), band, height)
+            .all(|index| incoming.textures.contains_key(&Key { zoom: key, index }))
     }
 
     /// The saved page takes the page's place, whole, with the view on the

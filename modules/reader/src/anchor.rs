@@ -48,18 +48,7 @@ pub fn carried(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn line(baseline_pt: f64, text: &str) -> Line {
-        Line {
-            x_pt: 0.0,
-            tail_x_pt: 0.0,
-            baseline_pt,
-            size_pt: 10.0,
-            cap_pt: 7.0,
-            text: text.to_string(),
-            spans: Vec::new(),
-        }
-    }
+    use crate::text::test_line as line;
 
     #[test]
     fn a_view_no_key_moved_stays_where_the_page_was_set_for() {

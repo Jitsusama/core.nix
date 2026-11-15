@@ -74,30 +74,37 @@ pub fn starts(frame: &Frame) -> Vec<(usize, f64)> {
 
 /// Every block of a page, top to bottom.
 pub fn blocks(frame: &Frame) -> Vec<Block> {
-    let mut found = Vec::new();
-    walk(frame, Point::zero(), &mut found);
+    let mut found: Vec<Block> = marks(frame)
+        .into_iter()
+        .filter_map(|(top_pt, value)| said(value, top_pt))
+        .collect();
     found.sort_by(|a, b| a.top_pt.total_cmp(&b.top_pt));
     found
 }
 
-fn walk(frame: &Frame, at: Point, found: &mut Vec<Block>) {
-    for (place, item) in frame.items() {
-        let here = at + *place;
-        match item {
-            FrameItem::Group(group) => {
-                let moved = Point::new(group.transform.tx, group.transform.ty);
-                walk(&group.frame, here + moved, found);
-            }
-            FrameItem::Tag(Tag::Start(content, _)) => {
-                if let Some(metadata) = content.to_packed::<MetadataElem>()
-                    && let Some(block) = said(&metadata.value, here.y.to_pt())
-                {
-                    found.push(block);
+/// Every metadata mark the walk left on a page, with its top in points, in
+/// the frame's order: the blocks' marks and visual mode's pieces' alike.
+pub fn marks(frame: &Frame) -> Vec<(f64, &Value)> {
+    fn walk<'a>(frame: &'a Frame, at: Point, found: &mut Vec<(f64, &'a Value)>) {
+        for (place, item) in frame.items() {
+            let here = at + *place;
+            match item {
+                FrameItem::Group(group) => {
+                    let moved = Point::new(group.transform.tx, group.transform.ty);
+                    walk(&group.frame, here + moved, found);
                 }
+                FrameItem::Tag(Tag::Start(content, _)) => {
+                    if let Some(metadata) = content.to_packed::<MetadataElem>() {
+                        found.push((here.y.to_pt(), &metadata.value));
+                    }
+                }
+                _ => {}
             }
-            _ => {}
         }
     }
+    let mut found = Vec::new();
+    walk(frame, Point::zero(), &mut found);
+    found
 }
 
 /// A block's metadata read back: a dictionary of its number, lines and
