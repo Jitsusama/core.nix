@@ -107,6 +107,15 @@ PanelWindow {
     property var under: null
     property var seen: []
     property var seenOn: []
+    // The window it sat on that closed, when, and the windows as they
+    // held it, while nothing has moved yet: niri first puts the row
+    // below in the closed one's place, its windows not resized yet, and
+    // only then lays the column out again, so the fall waits for that
+    // (the GPU rig, 2026-11-15: it rode the row below down instead,
+    // sitting, a jump of 105 px).
+    property var closedOn: null
+    property real closedAt: 0
+    property var closedSaw: null
     // The walk under way, the window it walks to, and the step it's
     // on: its pose, by the theme's name, and the way it faces.
     property var going: null
@@ -235,6 +244,9 @@ PanelWindow {
             // window's tile before it says the window's gone, which sets
             // a ride going first (a nested niri, 2026-11-14).
             resting.stop();
+            closedOn = standsOn();
+            closedAt = Date.now();
+            closedSaw = saw;
             walkFrom(true, saw);
         } else if (place === null || (going === null && wanted === sat)) {
             resting.stop();
@@ -246,7 +258,7 @@ PanelWindow {
             sat = wanted;
             under = column;
             if (reshaped)
-                walkFrom(true, saw);
+                walkFrom(true, fallsYet() ? closedSaw : saw);
             else
                 place = there;
         } else if (going !== null && wanted === goingTo) {
@@ -275,6 +287,12 @@ PanelWindow {
     // the one it sat on.
     function standsOn(): var {
         return going === null ? sat : goingTo;
+    }
+
+    // Whether the window it sat on closed under it a moment ago, with
+    // nothing moved yet, so the next change of its column is that close's.
+    function fallsYet(): bool {
+        return closedOn !== null && Date.now() - closedAt < MarginCat.CLOSING;
     }
 
     // Its workspace emptied, it falls from where it is to the floor
@@ -320,15 +338,18 @@ PanelWindow {
             floated: saw ? Floats.of(saw, 0) : [],
             spring: Theme.motion.spring,
             // The window it stands on gone, until it sits again.
-            closed: standsOn() !== null && Niri.windows[standsOn()] === undefined,
+            closed: fallsYet()
+                || (standsOn() !== null && Niri.windows[standsOn()] === undefined),
             // Gone too where the window over it has grown over it first.
-            on: standsOn(),
+            on: fallsYet() ? closedOn : standsOn(),
             ahead: MarginCat.behind(frameMs, "resize"),
             frame: frameMs,
             marks: marksLit
         });
         goingTo = wanted;
         under = column;
+        if (plan !== null || !fallsYet())
+            closedOn = null;
         if (plan === null) {
             halt();
             sat = wanted;

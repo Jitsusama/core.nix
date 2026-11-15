@@ -873,3 +873,33 @@ def test_a_row_closed_under_it_has_it_fall_at_once(shell: Shell) -> None:
     told = [report[len(SITS) :][:400] for report in said if report.startswith(SITS)][:6]
     assert way[:3] == ["rides", "lands", "shakes"], f"the cat's way off was {way}: {told}"
     assert "shoved" not in way, f"the cat was shoved across a window: {way}"
+
+
+def test_a_middle_row_closed_under_it_has_it_fall_onto_the_row_below(shell: Shell) -> None:
+    """The middle of three rows closed under it, it falls onto the row below, never riding it.
+
+    niri first puts the row below in the closed row's place, its windows not resized yet, and
+    lays the column out again only once they have: the cat waits for that, then falls in the
+    falling drawing, lands and shakes it off, rather than riding the row below down sitting (the
+    GPU rig, 2026-11-15: a jump of 105 px).
+    """
+    since = shell.mark()
+    shell.opened("a row left over the middle")
+    closed = shell.opened("a middle row closed under the cat")
+    shell.as_account("niri msg action consume-or-expel-window-left")
+    below = shell.opened("a row left under the middle")
+    shell.as_account("niri msg action consume-or-expel-window-left")
+    shell.as_account(f"niri msg action focus-window --id {closed['id']}")
+    sits_over(shell, closed, since)
+    time.sleep(1)
+    since = shell.mark()
+    shell.close(closed)
+    heard(shell, walking, since)
+    sits_over(shell, below, since)
+    walked = steps(shell, since)
+    way = walked[0]["walk"]["beats"]
+    said, _ = shell.said_since(since)
+    told = [report[len(SITS) :][:400] for report in said if report.startswith(SITS)][:6]
+    assert way[:3] == ["rides", "lands", "shakes"], f"the cat's way off was {way}: {told}"
+    falling = {step["walk"]["pose"] for step in walked if step["walk"]["beat"] == "rides"}
+    assert falling == {"falling"}, f"the cat fell as {falling}: {told}"
