@@ -73,11 +73,12 @@ function moves(from, to, at) {
 // The quickest way down from `from` to `to`, each foot it can drop off
 // and each catch below it tried: null where there's none, or where its
 // seat's on a floating window, which MarginCatPaths.js's walk gets onto.
-// The workspace it leaves is `at.lift` above the one it goes to.
+// The workspace it leaves is `at.lift` above the one it goes to, so a
+// seat at the same spot on the screen as `from` is still a way down.
 function descends(from, to, at) {
     const now = Paths.columns(at.now, 0);
     const was = Paths.columns(at.was, 0);
-    if (now.length === 0 || Paths.there(from, to, at) || Floats.on(at.floats, to, at) !== null) {
+    if (now.length === 0 || Floats.on(at.floats, to, at) !== null) {
         return null;
     }
     // On the workspace it leaves, it hurries, and the marks it would hop
