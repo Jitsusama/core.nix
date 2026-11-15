@@ -1714,6 +1714,10 @@
   nix-offload-passes-clippy = ''
     clippy finds nothing in nix-offload or its tests
   '';
+  nix-offload-root-outwaits-the-relay = ''
+    root's ssh waits for a lent builder's first line longer than the builder's relay goes on dialling
+    its tunnel, so a tunnel slow to open costs a build a wait rather than its only builder
+  '';
   nix-offload-standing-door-trusts-no-one = ''
     the lender's door to the standing builders, run as its socket unit runs it, answers as the
     Nix daemon and takes its caller as untrusted, names root's list of them through the daemon,

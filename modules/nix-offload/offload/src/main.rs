@@ -497,13 +497,16 @@ fn main() -> ExitCode {
         // Said, so a helper offers its builder only once its way stands.
         println!("listening");
         let _ = std::io::Write::flush(&mut std::io::stdout());
-        // Less than the 10 s ssh gives a server to answer, so a caller
-        // hung up on hears it before ssh gives up on its own.
+        // Less than the 30 s root's ssh gives a server to answer
+        // (nixos.nix), so a caller hung up on hears it before ssh gives up
+        // on its own. Root's build hook drops its only builder for a build
+        // on one failed connection, and a tunnel opening under load took
+        // past 9 s three times in an hour on 14 November.
         // Three minutes of callers hung up on is a tunnel that won't come
         // back, where one connection's failing to open is dialled again.
         let gave_up = relay::Relay {
             to,
-            within: Duration::from_secs(9),
+            within: Duration::from_secs(25),
             pause: Duration::from_millis(250),
             gives_up: Duration::from_secs(180),
         }

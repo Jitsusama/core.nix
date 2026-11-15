@@ -259,6 +259,16 @@ in
       extra-trusted-public-keys = lib.mkIf (keys != [ ]) keys;
     };
 
+    # Nix's build hook gives up on a builder for the build it was asked
+    # about the first time it can't connect (2.34's build-remote.cc), and
+    # with no other builder that build fails. A lent builder's relay dials
+    # its tunnel again for 25 s (offload's main.rs), but ssh gave up at the
+    # 10 s a machine's ssh_config gives it: on 14 November an update lost
+    # its builder on four tries running, three of them while a relay hung
+    # up on a caller its tunnel was slow to answer. Given on the command
+    # line, it outranks the config.
+    systemd.services.nix-daemon.environment.NIX_SSHOPTS = "-o ConnectTimeout=30";
+
     # A builder near its end hands over to a successor, whose relay shares
     # the old one's port until the old one stops listening; a connection
     # waiting on that listener as it closes then goes to the successor's,

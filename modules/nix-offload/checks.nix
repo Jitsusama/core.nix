@@ -90,6 +90,43 @@ onLinux {
         && failing bare.config != [ ]
       );
 
+  # Root's ssh waits for a builder's first line longer than a relay goes on
+  # dialling its tunnel for it, so a tunnel slow to open under load costs
+  # the build a wait, not its builder.
+  nix-offload-root-outwaits-the-relay =
+    let
+      machine = bareNixos [
+        self.nixosModules.nix-offload
+        {
+          users.users.someone = {
+            isNormalUser = true;
+            group = "users";
+          };
+          jitsusama.nix-offload.account = "someone";
+        }
+      ];
+      # The seconds the last line of `text` that `pattern` matches gives,
+      # line by line, since a regex's `.` may not cross a line.
+      seconds =
+        pattern: text:
+        lib.foldl' (
+          found: line:
+          let
+            matched = builtins.match pattern line;
+          in
+          if matched == null then found else lib.toInt (builtins.head matched)
+        ) 0 (lib.splitString "\n" text);
+      root = seconds ".*-o ConnectTimeout=([0-9]+).*" (
+        machine.config.systemd.services.nix-daemon.environment.NIX_SSHOPTS or ""
+      );
+      relay = seconds " *within: Duration::from_secs\\(([0-9]+)\\)," (
+        builtins.readFile ./offload/src/main.rs
+      );
+    in
+    holds "nix-offload-root-outwaits-the-relay"
+      "root's ssh gives a builder ${toString root} s, no longer than its relay's ${toString relay} s"
+      (relay > 9 && root > relay);
+
   # The door to the standing builders answers as Nix's daemon and takes its
   # caller as untrusted, run as its unit runs it, over a store of its own,
   # and names root's list of them; only the lender's account may open it,

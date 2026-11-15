@@ -33,8 +33,9 @@ pub struct Relay {
     /// Where each connection is passed on to.
     pub to: String,
     /// How long the far side has to say its first line, across every dial,
-    /// which is less than ssh waits for a server's, 10 s as the builder's
-    /// entry has it.
+    /// which is less than root's ssh waits for a server's, 30 s. A caller
+    /// whose ssh gives up sooner, as an account's at 10 s, has hung up by
+    /// then, and a line said to it goes nowhere.
     pub within: Duration,
     /// How long to wait before dialling again.
     pub pause: Duration,
