@@ -29,7 +29,16 @@
 //! GitHub is GitHub's own, unless a test names a stand-in with `--origin`
 //! and a quicker pace with `--every`.
 //!
-//! How far it has read is kept in judged-github.json: from when, and the
+//! Another site speaking GitHub's API is read the same way, named by
+//! `--origin` and `--site` so its keys and what it keeps are its own. One
+//! with no notifications to ask, nor a way to ask who Joel is, is given
+//! his address with `--authored-by`, his login with `--login`, and each
+//! repository to search with `--repo`, since such a site searches only
+//! within one: each round then searches for the pull requests he opened
+//! there that changed, and what he says is known by his address. A pull
+//! request he only commented on isn't read there.
+//!
+//! How far it has read is kept in judged-<site>.json: from when, and the
 //! keys of what it judged, so a restart neither judges anything twice nor
 //! misses what was said while it was down. Starting with nothing kept, it
 //! begins ten minutes back rather than judging GitHub's whole history.
@@ -39,7 +48,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::gate::Gate;
-use pineapple::github::{self, Kind, Said, Thread, notified, worth_judging};
+use pineapple::github::{self, Kind, Said, Thread, found, notified, worth_judging};
 use pineapple::record::{self, Source};
 use pineapple::resume;
 use pineapple::{Context, Heard, Joel, Platform, Reply, Target, Verdict, decide};
@@ -58,6 +67,18 @@ const LOOK_BACK: u64 = 10 * 60;
 /// GitHub can show a comment a little after the time it gives it. What
 /// that finds twice is known by its key.
 const OVERLAP: u64 = 60;
+
+/// How far before the last round a search asks from, in seconds: a
+/// search's index can lag an update by more than a minute, and a pull
+/// request it indexed late would otherwise never be read. What that
+/// finds again is known by its key.
+const INDEX_LAG: u64 = 10 * 60;
+
+/// The most repositories one reader searches. A site allows a signed-in
+/// reader 30 searches a minute, and each round spends one a repository,
+/// and one more for each page past the first; past that, every round
+/// would be refused and the reader would never move on.
+const SEARCHED: usize = 20;
 
 /// How long one request may take before the round gives up on it.
 const PATIENCE: Duration = Duration::from_secs(20);
@@ -81,8 +102,8 @@ const PAGE: &str = "100";
 /// can't hold a round.
 const PAGES: usize = 30;
 
-/// What it keeps of how far it has read, beside the Slack reader's.
-const JUDGED: &str = "judged-github.json";
+/// The site it reads unless told another.
+const SITE: &str = "github";
 
 /// How many judged keys are kept: far more than a few rounds find.
 const KEPT: usize = 1000;
@@ -122,7 +143,26 @@ fn help() -> Help {
                 "--live",
                 "acts on what it hears; only writes it down unless given",
             )
-            .option("--origin URL", "asks a stand-in for GitHub there")
+            .option(
+                "--origin URL",
+                "asks another site speaking GitHub's API, or a stand-in",
+            )
+            .option(
+                "--site NAME",
+                "names that site in its keys and what it keeps",
+            )
+            .option(
+                "--authored-by ADDRESS",
+                "searches for Joel's pull requests there, for a site with no notifications",
+            )
+            .option(
+                "--login LOGIN",
+                "Joel's login there, for a site that won't say",
+            )
+            .option(
+                "--repo OWNER/NAME",
+                "a repository searched by author, given once for each, at most 20",
+            )
             .option("--every MS", "how often it asks, a minute unless given"),
     )
 }
@@ -144,6 +184,17 @@ fn main() -> ExitCode {
 /// acts on what it hears.
 struct Run {
     origin: String,
+    /// The site's name in keys and in what it keeps, so a site speaking
+    /// GitHub's API beside GitHub is read apart from it.
+    site: String,
+    /// For a site with no notifications, Joel's address, by which it
+    /// searches for the pull requests he opened instead.
+    authored_by: Option<String>,
+    /// Joel's login, for a site that can't be asked who he is.
+    login: Option<String>,
+    /// The repositories searched by author, one search each, since such a
+    /// site searches only within one.
+    repos: Vec<String>,
     every: Duration,
     /// Whether its stops and resumes are only written down: unless its
     /// service says `--live`, they are, so nothing that runs it unasked
@@ -151,10 +202,15 @@ struct Run {
     shadow: bool,
 }
 
-/// How run runs, from its `--live`, `--origin` and `--every`.
+/// How run runs, from its `--live`, `--origin`, `--site`, `--authored-by`,
+/// `--login`, `--repo` and `--every`.
 fn run_options(rest: &[String]) -> Result<Run, Failure> {
     let mut how = Run {
         origin: GITHUB.to_owned(),
+        site: SITE.to_owned(),
+        authored_by: None,
+        login: None,
+        repos: Vec::new(),
         every: EVERY,
         shadow: true,
     };
@@ -169,6 +225,35 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
                         .try_this("pineapple-github run --origin http://127.0.0.1:8080")
                 })?;
             }
+            "--site" => {
+                how.site = args
+                    .next()
+                    .filter(|name| a_site(name))
+                    .cloned()
+                    .ok_or_else(|| {
+                        Failure::new(Exit::Usage, "--site takes a name in small letters")
+                            .try_this("pineapple-github run --site code")
+                    })?;
+            }
+            "--authored-by" => {
+                how.authored_by = Some(args.next().cloned().ok_or_else(|| {
+                    Failure::new(Exit::Usage, "--authored-by takes Joel's address there")
+                        .try_this("pineapple-github run --authored-by joel@example.com")
+                })?);
+            }
+            "--login" => {
+                how.login = Some(args.next().cloned().ok_or_else(|| {
+                    Failure::new(Exit::Usage, "--login takes Joel's login there")
+                        .try_this("pineapple-github run --login joel.example")
+                })?);
+            }
+            "--repo" => {
+                let repo = args.next().filter(|repo| repo.split('/').count() == 2);
+                how.repos.push(repo.cloned().ok_or_else(|| {
+                    Failure::new(Exit::Usage, "--repo takes a repository as OWNER/NAME")
+                        .try_this("pineapple-github run --repo example/shop")
+                })?);
+            }
             "--every" => {
                 how.every = args
                     .next()
@@ -180,12 +265,62 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
                     })?;
             }
             other => {
-                let known = ["--live", "--origin", "--every"];
+                let known = [
+                    "--live",
+                    "--origin",
+                    "--site",
+                    "--authored-by",
+                    "--login",
+                    "--repo",
+                    "--every",
+                ];
                 return Err(flags::unknown("option", other, &known));
             }
         }
     }
+    if how.authored_by.is_some() && (how.login.is_none() || how.repos.is_empty()) {
+        return Err(
+            Failure::new(Exit::Usage, "--authored-by needs --login and a --repo")
+                .because("a site searched by author can't say who Joel is, nor search it all")
+                .try_this(
+                    "pineapple-github run --authored-by joel@example.com --login joel \
+                     --repo example/shop",
+                ),
+        );
+    }
+    if how.repos.len() > SEARCHED {
+        return Err(Failure::new(
+            Exit::Usage,
+            format!("--repo is given at most {SEARCHED} times"),
+        )
+        .because("a site allows 30 searches a minute, and each round spends one a repository"));
+    }
     Ok(how)
+}
+
+/// Whether a site's name can name a file: small letters, digits and dashes.
+fn a_site(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+}
+
+/// What it keeps of how far it has read on a site, beside the Slack
+/// reader's.
+fn judged_file(site: &str) -> String {
+    format!("judged-{site}.json")
+}
+
+/// A site's name as Joel reads it.
+fn shown(site: &str) -> String {
+    if site == SITE {
+        return "GitHub".to_owned();
+    }
+    let mut letters = site.chars();
+    letters.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(letters).collect()
+    })
 }
 
 /// Where it keeps what it judged, beside the Slack reader's log and stops.
@@ -198,30 +333,63 @@ fn state() -> PathBuf {
         .join("pineapple")
 }
 
-/// When GitHub was last read whole, so a quiet reader is told from one
+/// When each site was last read whole, so a quiet reader is told from one
 /// that isn't reading at all.
 fn last_read(context: &terminal_kit::Context) -> Result<(), Failure> {
-    let read_at = std::fs::read_to_string(state().join(JUDGED))
-        .ok()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .and_then(|kept| kept.get("read_at").and_then(Value::as_u64));
-    let written = match (context.format(), read_at) {
-        (Format::Text, Some(at)) => context.say(&format!(
-            "GitHub was last read {} s ago\n",
-            millis().saturating_sub(at) / MILLIS
-        )),
-        (Format::Text, None) => context.say("GitHub hasn't been read yet\n"),
-        _ => context.answer(&json!({"schema": "pineapple-github.read/1", "read_at": read_at})),
+    let sites = read_sites();
+    let github = sites
+        .iter()
+        .find(|(site, _)| site == SITE)
+        .map(|(_, at)| *at);
+    let written = match context.format() {
+        Format::Text if sites.is_empty() => context.say("GitHub hasn't been read yet\n"),
+        Format::Text => {
+            let said: String = sites
+                .iter()
+                .map(|(site, at)| {
+                    let ago = millis().saturating_sub(*at) / MILLIS;
+                    format!("{} was last read {ago} s ago\n", shown(site))
+                })
+                .collect::<Vec<_>>()
+                .concat();
+            context.say(&said)
+        }
+        _ => {
+            let each: serde_json::Map<String, Value> = sites
+                .iter()
+                .map(|(site, at)| (site.clone(), json!(at)))
+                .collect();
+            context.answer(&json!({"schema": "pineapple-github.read/1",
+                "read_at": github, "sites": each}))
+        }
     };
     written.map_err(|error| {
         Failure::new(Exit::Failed, "couldn't write the answer").because(error.to_string())
     })
 }
 
+/// Each site read, by name, and when it was last read, in milliseconds.
+fn read_sites() -> Vec<(String, u64)> {
+    let mut sites: Vec<(String, u64)> = std::fs::read_dir(state())
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let site = name.strip_prefix("judged-")?.strip_suffix(".json")?;
+            let text = std::fs::read_to_string(entry.path()).ok()?;
+            let kept: Value = serde_json::from_str(&text).ok()?;
+            Some((site.to_owned(), kept.get("read_at")?.as_u64()?))
+        })
+        .collect();
+    sites.sort();
+    sites
+}
+
 /// The reader, which runs until its service stops it.
 fn run(how: &Run) -> Result<(), Failure> {
     let state = state();
-    let mut judged = read_judged(&state).unwrap_or_else(|| Judged {
+    let mut judged = read_judged(&state, &how.site).unwrap_or_else(|| Judged {
         since: seconds().saturating_sub(LOOK_BACK),
         keys: Vec::new(),
     });
@@ -238,7 +406,7 @@ fn run(how: &Run) -> Result<(), Failure> {
                     token: &token,
                     agent: &agent,
                 };
-                round(&github, &state, &mut judged, how.shadow);
+                round(&github, how, &state, &mut judged);
             }
             None => eprintln!("<4>no GitHub sign-in yet, so nothing is read"),
         }
@@ -291,10 +459,7 @@ impl GitHub<'_> {
     /// but GitHub's own origin isn't asked, so Joel's sign-in goes nowhere
     /// else, and the round is tried again.
     fn all(&self, path: &str, query: &[(&str, &str)]) -> Result<Value, Unread> {
-        let (said, mut next) = self.ask(&format!("{}{path}", self.origin), query)?;
-        let Value::Array(mut list) = said else {
-            return Ok(said);
-        };
+        let (mut list, mut next) = self.ask(&format!("{}{path}", self.origin), query)?;
         let own = format!("{}/", self.origin);
         let mut pages = 1;
         while let Some(url) = next {
@@ -307,11 +472,11 @@ impl GitHub<'_> {
                 break;
             }
             let (more, after) = self.ask(&url, &[])?;
-            list.extend(more.as_array().into_iter().flatten().cloned());
+            add_page(&mut list, more);
             next = after;
             pages += 1;
         }
-        Ok(Value::Array(list))
+        Ok(list)
     }
 
     /// One GET of a URL on GitHub's origin: its answer, and the next page
@@ -361,33 +526,88 @@ impl GitHub<'_> {
     }
 }
 
-/// One round: what changed since the last, judged oldest first, and how
-/// far it has read moved on only once every pull request and issue it
-/// named was read.
-fn round(github: &GitHub<'_>, state: &Path, judged: &mut Judged, shadow: bool) {
-    let began = seconds();
-    let login = match github.get("/user", &[]) {
-        Ok(user) => user["login"].as_str().map(str::to_owned),
+/// A page added to a list read so far: a list's own, or a search's items.
+fn add_page(list: &mut Value, page: Value) {
+    let (kept, more) = match (list, page) {
+        (Value::Array(kept), Value::Array(more)) => (kept, more),
+        (Value::Object(kept), Value::Object(mut more)) => {
+            match (kept.get_mut("items"), more.remove("items")) {
+                (Some(Value::Array(kept)), Some(Value::Array(more))) => (kept, more),
+                _ => return,
+            }
+        }
+        _ => return,
+    };
+    kept.extend(more);
+}
+
+/// Who Joel is on the site: as `--login` says, else as GitHub answers.
+fn who(github: &GitHub<'_>, how: &Run) -> Option<String> {
+    if let Some(login) = &how.login {
+        return Some(login.clone());
+    }
+    match github.get("/user", &[]) {
+        Ok(user) => {
+            let login = user["login"].as_str().map(str::to_owned);
+            if login.is_none() {
+                eprintln!("<4>GitHub didn't say who Joel is");
+            }
+            login
+        }
         Err(Unread::Gone(why) | Unread::Failed(why)) => {
             eprintln!("<4>couldn't ask GitHub who Joel is: {why}");
-            return;
+            None
         }
-    };
-    let Some(login) = login else {
-        eprintln!("<4>GitHub didn't say who Joel is");
-        return;
-    };
-    let from = judged.since.saturating_sub(OVERLAP);
-    let since = github::stamp(from);
-    // Read ones too, since Joel may read one on his phone before a round.
+    }
+}
+
+/// The pull requests and issues that changed since `since`: those Joel
+/// takes part in, as his notifications say, read ones too since he may
+/// read one on his phone before a round; or, where a site has none, the
+/// pull requests he opened, as a search finds them.
+fn changed(github: &GitHub<'_>, how: &Run, since: &str) -> Result<Vec<Thread>, Unread> {
+    if let Some(address) = &how.authored_by {
+        let mut threads = Vec::new();
+        for repo in &how.repos {
+            let query = format!("is:pr repo:{repo} author:{address} updated:>={since}");
+            let asked = [
+                ("q", query.as_str()),
+                ("sort", "updated"),
+                ("order", "desc"),
+                ("per_page", PAGE),
+            ];
+            let answer = github.all("/search/issues", &asked)?;
+            threads.extend(found(&answer, &how.site));
+        }
+        return Ok(threads);
+    }
     let asked = [
         ("participating", "true"),
         ("all", "true"),
-        ("since", since.as_str()),
+        ("since", since),
         ("per_page", PAGE),
     ];
-    let threads = match github.all("/notifications", &asked) {
-        Ok(answer) => notified(&answer),
+    let answer = github.all("/notifications", &asked)?;
+    Ok(notified(&answer, &how.site))
+}
+
+/// One round: what changed since the last, judged oldest first, and how
+/// far it has read moved on only once every pull request and issue it
+/// named was read.
+fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
+    let began = seconds();
+    let Some(login) = who(github, how) else {
+        return;
+    };
+    let back = if how.authored_by.is_some() {
+        INDEX_LAG
+    } else {
+        OVERLAP
+    };
+    let from = judged.since.saturating_sub(back);
+    let since = github::stamp(from);
+    let threads = match changed(github, how, &since) {
+        Ok(threads) => threads,
         Err(Unread::Gone(why) | Unread::Failed(why)) => {
             eprintln!("<4>couldn't ask GitHub what changed: {why}");
             return;
@@ -408,19 +628,20 @@ fn round(github: &GitHub<'_>, state: &Path, judged: &mut Judged, shadow: bool) {
         said.at >= from && !judged.keys.contains(&said.key) && worth_judging(&said.text, &login)
     });
     heard.sort_by_key(|(said, ..)| said.at);
+    // Where logins are addresses, what Joel says is by his address.
     let joel = Joel {
         slack_ids: Vec::new(),
         logins: vec![login],
-        emails: Vec::new(),
+        emails: how.authored_by.iter().cloned().collect(),
     };
     for (said, thread, context) in heard {
-        judge(state, &joel, &said, &thread, context, shadow);
+        judge(state, &joel, &said, &thread, context, how.shadow);
         judged.keys.push(said.key);
     }
     judged.since = began;
     let over = judged.keys.len().saturating_sub(KEPT);
     judged.keys.drain(..over);
-    write_judged(state, judged);
+    write_judged(state, &how.site, judged);
 }
 
 /// What was said on a pull request or issue since `since`, each with it
@@ -529,8 +750,8 @@ fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str)
     }
 }
 
-fn read_judged(state: &Path) -> Option<Judged> {
-    let text = std::fs::read_to_string(state.join(JUDGED)).ok()?;
+fn read_judged(state: &Path, site: &str) -> Option<Judged> {
+    let text = std::fs::read_to_string(state.join(judged_file(site))).ok()?;
     let kept: Value = serde_json::from_str(&text).ok()?;
     let since = kept.get("since").and_then(Value::as_u64)?;
     let keys = kept
@@ -546,9 +767,9 @@ fn read_judged(state: &Path) -> Option<Judged> {
 
 /// Keeps how far it has read, and when GitHub was read, through a file
 /// renamed into place.
-fn write_judged(state: &Path, judged: &Judged) {
+fn write_judged(state: &Path, site: &str, judged: &Judged) {
     let kept = json!({ "since": judged.since, "keys": judged.keys, "read_at": millis() });
-    let path = state.join(JUDGED);
+    let path = state.join(judged_file(site));
     let written = path.with_extension("new");
     let wrote = std::fs::create_dir_all(state)
         .and_then(|()| std::fs::write(&written, kept.to_string()))

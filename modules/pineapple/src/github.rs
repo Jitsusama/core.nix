@@ -26,9 +26,13 @@ const EPOCH_DAYS: i64 = 719_468;
 /// The days in four hundred years, after which the calendar repeats.
 const ERA_DAYS: i64 = 146_097;
 
-/// A pull request or issue Joel takes part in, as a notification names it.
+/// A pull request or issue Joel takes part in, as a notification or a
+/// search names it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Thread {
+    /// The site it's on, as its reader names it: `github`, or another
+    /// speaking GitHub's API, so the same repository on two sites is two.
+    pub site: String,
     /// Its repository, as `owner/name`.
     pub repo: String,
     /// Its number.
@@ -38,10 +42,10 @@ pub struct Thread {
 }
 
 impl Thread {
-    /// The key naming it, `github:<owner>/<name>#<number>`.
+    /// The key naming it, `<site>:<owner>/<name>#<number>`.
     #[must_use]
     pub fn key(&self) -> String {
-        format!("github:{}#{}", self.repo, self.number)
+        format!("{}:{}#{}", self.site, self.repo, self.number)
     }
 
     /// What a stop said on it is about: a pull request is itself; an issue
@@ -88,7 +92,7 @@ impl Kind {
 /// One thing said on a pull request or issue.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Said {
-    /// The key naming it, `github:<owner>/<name>#<number>:<kind>:<id>`,
+    /// The key naming it, `<site>:<owner>/<name>#<number>:<kind>:<id>`,
     /// which names its record.
     pub key: String,
     /// Where GitHub shows it.
@@ -107,7 +111,7 @@ pub struct Said {
 /// in the order named; anything else it names (a release, a discussion)
 /// is let go.
 #[must_use]
-pub fn notified(answer: &Value) -> Vec<Thread> {
+pub fn notified(answer: &Value, site: &str) -> Vec<Thread> {
     let mut threads: Vec<Thread> = Vec::new();
     for one in answer.as_array().into_iter().flatten() {
         let pull = match one["subject"]["type"].as_str() {
@@ -123,6 +127,7 @@ pub fn notified(answer: &Value) -> Vec<Thread> {
             continue;
         };
         let thread = Thread {
+            site: site.to_owned(),
             repo: repo.to_owned(),
             number,
             pull,
@@ -132,6 +137,44 @@ pub fn notified(answer: &Value) -> Vec<Thread> {
         }
     }
     threads
+}
+
+/// The pull requests and issues a page of search results names, each once,
+/// for a site with no notifications to ask, where the reader searches for
+/// what Joel opened instead.
+#[must_use]
+pub fn found(answer: &Value, site: &str) -> Vec<Thread> {
+    let mut threads: Vec<Thread> = Vec::new();
+    for one in answer["items"].as_array().into_iter().flatten() {
+        let repo = one["repository_url"].as_str().and_then(|url| {
+            let mut parts = url.rsplit('/');
+            let name = parts.next()?;
+            Some(format!("{}/{name}", parts.next()?))
+        });
+        let (Some(repo), Some(number)) = (repo, one["number"].as_u64()) else {
+            continue;
+        };
+        let thread = Thread {
+            site: site.to_owned(),
+            repo,
+            number,
+            pull: one.get("pull_request").is_some(),
+        };
+        if !threads.contains(&thread) {
+            threads.push(thread);
+        }
+    }
+    threads
+}
+
+/// Whether a bot or an app is who said something: GitHub's own mark, or a
+/// cloud service account's login, which is how a site whose logins are
+/// addresses names its checks and its reviewing apps.
+fn by_bot(user: &Value) -> bool {
+    user["type"] == "Bot"
+        || user["login"]
+            .as_str()
+            .is_some_and(|login| login.ends_with(".gserviceaccount.com"))
 }
 
 /// What an answer holds that was said on `thread`: for an opening, the
@@ -158,7 +201,7 @@ fn opening(answer: &Value, thread: &Thread) -> Option<Said> {
         key: format!("{}:{}", thread.key(), Kind::Opening.name()),
         link: answer["html_url"].as_str()?.to_owned(),
         author: answer["user"]["login"].as_str()?.to_owned(),
-        by_bot: answer["user"]["type"] == "Bot",
+        by_bot: by_bot(&answer["user"]),
         text: format!("{title}\n\n{body}"),
         at: seconds(answer["created_at"].as_str()?)?,
     })
@@ -179,7 +222,7 @@ fn one_said(one: &Value, thread: &Thread, kind: Kind) -> Option<Said> {
         key: format!("{}:{}:{}", thread.key(), kind.name(), one["id"].as_u64()?),
         link: one["html_url"].as_str()?.to_owned(),
         author: one["user"]["login"].as_str()?.to_owned(),
-        by_bot: one["user"]["type"] == "Bot",
+        by_bot: by_bot(&one["user"]),
         text: text.to_owned(),
         at,
     })
@@ -283,6 +326,7 @@ mod tests {
 
     fn pull() -> Thread {
         Thread {
+            site: "github".to_owned(),
             repo: "example/shop".to_owned(),
             number: 12,
             pull: true,
@@ -329,11 +373,57 @@ mod tests {
             ),
         ]);
         let issue = Thread {
-            repo: "example/shop".to_owned(),
             number: 7,
             pull: false,
+            ..pull()
         };
-        assert_eq!(notified(&answer), [pull(), issue]);
+        assert_eq!(notified(&answer, "github"), [pull(), issue]);
+    }
+
+    #[test]
+    fn a_search_names_each_pull_request_once_on_its_own_site() {
+        let one = |number: u64, pull: bool| {
+            let mut item = json!({"number": number,
+                "repository_url": "https://code.example.com/api/v3/repos/example/shop"});
+            if pull {
+                item["pull_request"] = json!({});
+            }
+            item
+        };
+        let answer = json!({"items": [one(12, true), one(12, true), one(7, false)]});
+        let on_site = |thread: Thread| Thread {
+            site: "code".to_owned(),
+            ..thread
+        };
+        let issue = Thread {
+            number: 7,
+            pull: false,
+            ..pull()
+        };
+        assert_eq!(
+            found(&answer, "code"),
+            [on_site(pull()), on_site(issue)],
+            "each once, in order, an issue told from a pull request"
+        );
+        assert_eq!(
+            on_site(pull()).key(),
+            "code:example/shop#12",
+            "its site names it, so the same repository elsewhere is another"
+        );
+    }
+
+    #[test]
+    fn a_cloud_service_account_is_a_bot() {
+        let by = |login: &str, kind: &str| {
+            json!([{"id": 1, "body": "pineapple override", "html_url": "https://code.example.com/x",
+                "user": {"login": login, "type": kind}, "created_at": "2023-11-14T22:13:20Z"}])
+        };
+        let bot = |answer: Value| said(&answer, &pull(), Kind::Comment)[0].by_bot;
+        assert!(
+            bot(by("checks@example.iam.gserviceaccount.com", "User")),
+            "a service account, though marked a user"
+        );
+        assert!(!bot(by("joel@example.com", "User")), "a person by address");
     }
 
     #[test]

@@ -2118,6 +2118,11 @@
   pineapple-passes-clippy = ''
     clippy finds nothing in pineapple, the judge of the safe word that stops Joel's agents
   '';
+  pineapple-reads-each-site-named = ''
+    each other site a machine names for the safe word is read by its own unit, searching the
+    repositories named for what Joel opened with that site's sign-in; none is read unnamed, and a
+    name GitHub's or Slack's reader has is refused
+  '';
   pineapple-serves-the-launcher-from-its-socket = ''
     the daemon showing the safe word's stops in the launcher starts at login on its socket, where
     the launcher looks, knocks with notify-send and reads its words from the launcher's vocabulary
