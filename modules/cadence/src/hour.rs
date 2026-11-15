@@ -11,7 +11,7 @@
 
 mod measures;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::fs;
 use std::io;
@@ -128,7 +128,11 @@ fn gather(folder: &Path, state_home: &Path, now: i64) -> Vec<Measure> {
     let card_text = text(&folder.join("card.txt"));
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
     let misses = text(&mission.join("misses.jsonl"));
-    let merged = merged(&measures::named_in(&misses), &core);
+    let merged = measures::merged(
+        &measures::named_in(&misses),
+        &core,
+        &axes::landings::harness_mirror(),
+    );
     let mut all = vec![
         measures::misses(&misses, &merged),
         measures::slips(&text(&mission.join("asks.jsonl")), now),
@@ -154,40 +158,6 @@ fn gather(folder: &Path, state_home: &Path, now: i64) -> Vec<Measure> {
         &state_home.join("code-health/hour.json"),
     )));
     all
-}
-
-/// Those of `named` merged on their repository's main, as its mirror last
-/// fetched it: a merge commit saying it merged the pull request. The whole
-/// history is searched, so a fix stays closed however long ago it landed.
-fn merged(named: &BTreeSet<measures::Named>, core: &Path) -> BTreeSet<measures::Named> {
-    let harness = axes::landings::harness_mirror();
-    named
-        .iter()
-        .filter(|change| {
-            let mirror = if change.repo == "core" {
-                core
-            } else {
-                &harness
-            };
-            let grep = format!("--grep=Merge pull request #{} from", change.number);
-            command(
-                "git",
-                &[
-                    "-C",
-                    &mirror.to_string_lossy(),
-                    "log",
-                    "--first-parent",
-                    "-F",
-                    &grep,
-                    "-1",
-                    "--format=%H",
-                    "main",
-                ],
-            )
-            .is_ok_and(|found| !found.trim().is_empty())
-        })
-        .cloned()
-        .collect()
 }
 
 /// The date at `now` here, as `2026-11-14`.
