@@ -642,7 +642,14 @@ def test_za_shows_a_sessions_fold_above_its_more_line_its_prose_giving_way(shell
     shell.launcher_until(lambda shown: shown["drawer"]["shown"] and shown["drawer"]["nerd"])
     shell.normal()
     shell.send_chars("za")
-    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is False)
+
+    # Read once every bit is made, which the repeater does after it counts them.
+    def laid(shown: Json) -> bool:
+        drawer = shown["drawer"]
+        lasts = drawer["lines"]["nerdLast"]
+        return drawer["folded"] is False and len(lasts) == len(drawer["nerd"]) and None not in lasts
+
+    shell.launcher_until(laid)
     opened = shell.showing()["drawer"]
     shell.send_chars("za")
     shell.launcher_until(lambda shown: shown["drawer"]["folded"] is True)
@@ -651,6 +658,11 @@ def test_za_shows_a_sessions_fold_above_its_more_line_its_prose_giving_way(shell
     foot = cast("float", opened["foot"])
     assert bits, f"its fold opens on no bits: {opened}"
     assert bits[0] < foot, f"its fold's line and first bit stand below its foot: {opened}"
+    # A bit is shown whole or not at all: a value's second line cut at the
+    # foot showed the tops of its letters alone.
+    lasts = cast("list[float]", opened["lines"]["nerdLast"])
+    cut = [(first, last) for first, last in zip(bits, lasts, strict=True) if first < foot < last]
+    assert not cut, f"a bit stands across its foot: {opened}"
     assert opened["moreSays"] != "", f"it hides its prose's rest unsaid: {opened}"
 
 

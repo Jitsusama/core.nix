@@ -461,6 +461,12 @@ Floating {
                     return bit ? contentTop + flow.y + foldShown.y + bit.y
                         + bit.valueWords.y + bit.valueWords.baselineOffset : null;
                 })) : [],
+            // Each open bit's last line's, so a bit cut at the foot is seen.
+            nerdLast: Array.from({ length: nerdRows.count }, (_, at) => {
+                const bit = nerdRows.itemAt(at);
+                return bit ? contentTop + flow.y + foldShown.y + bit.y + bit.height
+                    - drawer.pitch / 2 + drawer.dropped : null;
+            }),
             words: wordsBox.visible ? contentTop + flow.y + wordsBox.y + bodyText.y
                 + bodyText.baselineOffset : null,
             title: flowed(titleText),
