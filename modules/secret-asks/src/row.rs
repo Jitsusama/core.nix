@@ -179,7 +179,9 @@ fn side(held: &Held, words: &Words) -> Value {
         State::Refused => "side:refused",
         State::Ended => "side:ended",
     };
-    json!([{"said": words.fill(stands, &[])}, came])
+    // Where the row hasn't room for both, when the ask came gives way
+    // first, since how it stands is what the row is read for.
+    json!([{"said": words.fill(stands, &[]), "keep": 2}, {"at": came, "keep": 1}])
 }
 
 /// The fact saying what came of an answered ask, or none while it waits.
@@ -460,6 +462,19 @@ mod tests {
             "a ran ask's side"
         );
         assert_eq!(state, Value::Null, "a ran ask says its state twice");
+        // Where the row hasn't room for both, the launcher gives way the
+        // item kept least, and how the ask stands is what it's for.
+        let side = row(
+            &held(State::Ran { exit: Some(0) }, Some(0)),
+            "",
+            &words(),
+            true,
+        )["side"]
+            .clone();
+        assert!(
+            side[0]["keep"].as_u64() > side[1]["keep"].as_u64(),
+            "how an answered ask stands gives way before when it came: {side}"
+        );
         let (word, items, _) = said(State::Refused);
         assert_eq!(
             (word, items),

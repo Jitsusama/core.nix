@@ -131,11 +131,15 @@
         "place": "asks",
         "side": [
           {
+            "keep": 2,
             "said": "released"
           },
           {
-            "as": "came",
-            "at": 1794458400000
+            "at": {
+              "as": "came",
+              "at": 1794458400000
+            },
+            "keep": 1
           }
         ],
         "state": null,
