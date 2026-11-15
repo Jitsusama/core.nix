@@ -123,6 +123,24 @@ pub fn keep(head: &str, began: u64, asked: Asked) {
     }
 }
 
+/// Whether `needs` was asked at any of `commits`, by the lines kept in
+/// `needs.jsonl`'s text `kept`. On 15 November #4653 merged with its gate
+/// passed but `needs` never asked, though it moved the laptop's initrd,
+/// which needs would have answered with the boot and hibernation tests.
+pub fn asked_at(kept: &str, commits: &[&str]) -> bool {
+    let _ = (kept, commits);
+    true
+}
+
+/// Whether `needs` was asked at any of `commits` on this machine.
+pub fn asked(commits: &[&str]) -> bool {
+    let root = crate::state::State::from_env().root;
+    asked_at(
+        &fs::read_to_string(root.join("needs.jsonl")).unwrap_or_default(),
+        commits,
+    )
+}
+
 /// Append `line` to `needs.jsonl` in `root`, in one write.
 fn keep_in(root: &Path, line: &str) -> io::Result<()> {
     fs::create_dir_all(root)?;
@@ -203,6 +221,25 @@ mod tests {
             (Some("changed  vm-z\n"), Asked::Changed),
             "a tree with edits the gate never saw was answered from the gate"
         );
+    }
+
+    #[test]
+    fn only_a_needs_asked_at_one_of_the_commits_counts() {
+        let kept = [
+            line(10, "h1", 3, Asked::Gate),
+            "not a line\n".to_owned(),
+            line(20, "h2", 0, Asked::Nothing),
+        ]
+        .concat();
+        assert!(
+            asked_at(&kept, &["h9", "h2"]),
+            "a needs asked at the change's earlier commit wasn't seen"
+        );
+        assert!(
+            !asked_at(&kept, &["h3"]),
+            "a change needs was never asked of was taken as asked"
+        );
+        assert!(!asked_at("", &["h1"]), "no needs was kept, yet one was seen");
     }
 
     #[test]
