@@ -260,40 +260,7 @@ QtObject {
             Plays.scene("typing", draws(0), "", { asked: "wander" }).beats.length, 1);
         expect("and the yarn asked for comes however lately it played",
             Plays.scene("idle", draws(0), "", { asked: "yarn", yarnIn: 60_000 }).name, "yarn");
-
-        // The yarn, its costliest play, comes at most once in 15 minutes,
-        // spaced at random, never twice running (VKCF3Z 63b08065).
-        expect("the yarn rests 15 to 30 minutes once it's played",
-            [Plays.yarnRests(0), Plays.yarnRests(1)], [15 * 60_000, 30 * 60_000]);
-        const lately = chances.map(chance => Plays.scene("idle", draws(0.8, chance), "",
-            { yarnIn: 1 }).name);
-        expect("while it rests, its other moves, never the yarn",
-            Array.from(new Set(lately)).sort(), ["hop", "pounce", "wander"]);
-        expect("its rest over, the yarn again", Plays.scene("idle", draws(0.8, 0.6), "",
-            { yarnIn: 0 }).name, "yarn");
-        let seed = 11;
-        const random = () => {
-            seed = (seed * 16_807) % 2_147_483_647;
-            return seed / 2_147_483_647;
-        };
-        const yarned = [];
-        let clock = 0;
-        let lastPlay = "";
-        let yarnFrom = 0;
-        while (clock < 4 * 3_600_000) {
-            const coming = Plays.next("idle", random, lastPlay, { yarnIn: yarnFrom - clock });
-            clock += coming.after;
-            lastPlay = coming.scene.name;
-            if (lastPlay === "yarn") {
-                yarned.push(clock);
-                yarnFrom = clock + Plays.yarnRests(random());
-            }
-            clock += long(coming.scene.beats) + (coming.scene.beats[0]?.play ? 17_000 : 0);
-        }
-        const apart = yarned.slice(1).map((at, i) => at - yarned[i]);
-        expect("four idle hours, the yarn a few times, 15 minutes apart at the least, unevenly",
-            [yarned.length >= 4, apart.every(gap => gap >= 15 * 60_000),
-                Math.max(...apart) - Math.min(...apart) > 5 * 60_000], [true, true, true]);
+        // How often the yarn comes is margin-cat-games.qml's, beside the yarn.
     }
 
     // A walk of 100 cells of 1 to the right, thinking 200 ms: it turns,

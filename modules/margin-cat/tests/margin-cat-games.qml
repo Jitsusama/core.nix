@@ -2,12 +2,14 @@
 // at nothing and its ball of yarn, each a way of the walk's own beats, so
 // they keep the rules a walk keeps (RSCH-20261113-24R2QV): whole cells, a
 // leap that rises, tucks and falls, and no drawing seen for less than two
-// frames at 60 Hz. Run in Qt's own JavaScript engine, the one the shell
+// frames at 60 Hz, and how often the yarn comes (MarginCatPlays.js). Run in
+// Qt's own JavaScript engine, the one the shell
 // runs it in: the `the-margin-cat-sits-above-its-column` check copies
 // modules/margin-cat's scripts beside this file and runs `qml -platform
 // offscreen margin-cat-games.qml`.
 import QtQuick
 import "MarginCatGames.js" as Games
+import "MarginCatPlays.js" as Plays
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -28,6 +30,7 @@ QtObject {
         };
         rooms(expect);
         yarn(expect);
+        rests(expect);
         pounce(expect);
         hop(expect);
         for (const failure of failures)
@@ -156,6 +159,50 @@ QtObject {
             Games.play("yarn", sat({ slowdown: 2 })).ends, played.ends * 2);
         expect("with no room for the yarn, there's no play",
             Games.play("yarn", sat({ column: { left: 95, top: 30, width: 16 } })), null);
+    }
+
+    // The yarn, its costliest play, comes at most once in 15 minutes,
+    // spaced at random, never twice running (VKCF3Z 63b08065): each idle
+    // scene drawn from a run of chances (`draws`), as Math.random would
+    // give them.
+    function rests(expect) {
+        const draws = (...chances) => {
+            let i = 0;
+            return () => chances[i++ % chances.length];
+        };
+        const long = beats => beats.reduce((all, beat) => all + (beat.ms ?? 0), 0);
+        const chances = [0, 0.2, 0.4, 0.6, 0.8, 0.99];
+        expect("the yarn rests 15 to 30 minutes once it's played",
+            [Plays.yarnRests(0), Plays.yarnRests(1)], [15 * 60_000, 30 * 60_000]);
+        const lately = chances.map(chance => Plays.scene("idle", draws(0.8, chance), "",
+            { yarnIn: 1 }).name);
+        expect("while it rests, its other moves, never the yarn",
+            Array.from(new Set(lately)).sort(), ["hop", "pounce", "wander"]);
+        expect("its rest over, the yarn again", Plays.scene("idle", draws(0.8, 0.6), "",
+            { yarnIn: 0 }).name, "yarn");
+        let seed = 11;
+        const random = () => {
+            seed = (seed * 16_807) % 2_147_483_647;
+            return seed / 2_147_483_647;
+        };
+        const yarned = [];
+        let clock = 0;
+        let lastPlay = "";
+        let yarnFrom = 0;
+        while (clock < 4 * 3_600_000) {
+            const coming = Plays.next("idle", random, lastPlay, { yarnIn: yarnFrom - clock });
+            clock += coming.after;
+            lastPlay = coming.scene.name;
+            if (lastPlay === "yarn") {
+                yarned.push(clock);
+                yarnFrom = clock + Plays.yarnRests(random());
+            }
+            clock += long(coming.scene.beats) + (coming.scene.beats[0]?.play ? 17_000 : 0);
+        }
+        const apart = yarned.slice(1).map((at, i) => at - yarned[i]);
+        expect("four idle hours, the yarn a few times, 15 minutes apart at the least, unevenly",
+            [yarned.length >= 4, apart.every(gap => gap >= 15 * 60_000),
+                Math.max(...apart) - Math.min(...apart) > 5 * 60_000], [true, true, true]);
     }
 
     // A pounce at nothing it's sure of: it eyes it, crouches, wiggles,
