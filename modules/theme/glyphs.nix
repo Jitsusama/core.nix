@@ -742,11 +742,6 @@ in
     console = "r";
     means = "a repository, and the network of the cells working in it";
   };
-  quest = {
-    glyph = nerd "f502";
-    console = "q";
-    means = "a quest, and the network of the cells working on it";
-  };
   group = {
     glyph = nerd "f0849";
     console = "g";
