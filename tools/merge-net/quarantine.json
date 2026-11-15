@@ -489,5 +489,20 @@
       "test_quickshell_warned_of_nothing_as_the_screens_came_and_went"
     ],
     "test": "vm-screens-keep-the-launcher"
+  },
+  {
+    "at": 1794736626,
+    "commit": "2c22e6094aa171140e1525a07c163b0e076033a3",
+    "due": "2026-11-17",
+    "owner_pr": null,
+    "reason": "failed, then passed, at 2c22e6094aa1",
+    "subtests": [
+      "test_a_session_opens_in_the_agents_slice",
+      "test_agents_puts_back_the_windows_that_reopen_themselves",
+      "test_agents_reopens_each_session_where_it_sat",
+      "test_quickshell_warned_of_nothing_it_drew_all_along",
+      "test_sessions_handed_over_while_locked_open_behind_the_lock_and_go_to_their_place_after"
+    ],
+    "test": "vm-desktop-launcher-finds-sessions"
   }
 ]
