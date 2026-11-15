@@ -1502,6 +1502,13 @@ def test_the_screens_warmth_stands_beside_them_and_return_switches_it(desktop: D
         "sunrise": sunrise * 1000,
     }
     warmth(night)
+    # A row served while the list is shown comes at its end, the rest held still (Steady.js),
+    # and the Warmth said just now can come mid-opening. So Screens opens again once it's
+    # heard, as on a machine that's been up since its warmth was said.
+    desktop.as_account("qs ipc call launcher collection displays")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: "Warmth" in shown["rows"])
+    desktop.close_launcher()
     desktop.as_account("qs ipc call launcher collection displays")
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: shown["rows"][-2:] == ["Warmth", "Turn Every Screen Off"])

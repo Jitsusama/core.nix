@@ -239,6 +239,44 @@ fn placed(made: &[Value]) -> Vec<&str> {
         .collect()
 }
 
+// The backlight program says its warmth after the screens are served, as
+// the answers VM test's does, so the Warmth comes into a making that
+// already placed the rest.
+#[test]
+fn a_warmth_told_late_still_stands_before_turn_every_screen_off() {
+    let one = BTreeMap::from([(
+        "Virtual-1".to_owned(),
+        output("Smithay", "Winit", &lit(1.0)),
+    )]);
+    let mut kept = ready_rows::kept::Kept::default();
+    kept.take(
+        every(&one, &BTreeMap::new(), None, &Light::default()),
+        Vec::new(),
+    );
+    let light = Light::of(&[crate::light::tests::warmed()]);
+    kept.take(every(&one, &BTreeMap::new(), None, &light), Vec::new());
+    let mut top: Vec<(i64, &str)> = kept
+        .all()
+        .filter(|record| record["row"].get("parent").is_none())
+        .map(|record| {
+            (
+                record["row"]["order"].as_i64().unwrap_or_default(),
+                record["key"].as_str().unwrap_or_default(),
+            )
+        })
+        .collect();
+    top.sort_unstable();
+    assert_eq!(
+        top.iter().map(|(_, key)| *key).collect::<Vec<_>>(),
+        [
+            "row:displays:display:Virtual-1",
+            "row:displays:warmth",
+            "row:displays:sleep"
+        ],
+        "a Warmth told late isn't ordered beside the screens: {top:?}"
+    );
+}
+
 // VKCF3Z, 2026-11-15: Night Light warms every screen, so the Warmth is
 // Screens', beside the screens, in the same place with the lid open or
 // shut; Follow the Room inside it only while the panel's lit, since only
