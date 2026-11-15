@@ -29,7 +29,6 @@
 //! (`there.rs`), so those changes keep it apart from the run before.
 
 use std::fs;
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 /// A run's file, removed when this is dropped.
@@ -154,14 +153,30 @@ impl Drop for Held {
     }
 }
 
+/// FNV-1a over `parts`, a zero byte between each, as every build of this
+/// program reckons it. std's `DefaultHasher` leaves its algorithm free to
+/// change between Rust releases, so the installed nix-offload and a dev
+/// shell's could name one piece of work differently and each do it.
+pub fn stable_digest(parts: &[&[u8]]) -> u64 {
+    const BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0100_0000_01b3;
+    let mut digest = BASIS;
+    for (index, part) in parts.iter().enumerate() {
+        let between: &[u8] = if index == 0 { &[] } else { &[0] };
+        for &byte in between.iter().chain(part.iter()) {
+            digest = (digest ^ u64::from(byte)).wrapping_mul(PRIME);
+        }
+    }
+    digest
+}
+
 /// Take the work `at` names for the run `me`, or wait for the run doing
 /// it to end, saying so with the one going's process and how long it has
 /// gone by `now`, in seconds since 1970.
 pub fn alone(state: &Path, me: u32, at: &Twin, now: impl Fn() -> u64) -> Alone {
     let twins = state.join("nix-offload/twins");
-    let mut work = DefaultHasher::new();
-    (at.folder, &at.asked).hash(&mut work);
-    let file = twins.join(format!("{}-{:016x}.lock", at.commit, work.finish()));
+    let work = stable_digest(&[at.folder.as_os_str().as_encoded_bytes(), at.asked.as_bytes()]);
+    let file = twins.join(format!("{}-{work:016x}.lock", at.commit));
     let opened = fs::create_dir_all(&twins).and_then(|()| {
         fs::OpenOptions::new()
             .create(true)
