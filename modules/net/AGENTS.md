@@ -160,7 +160,9 @@ of the record, the time, a pen and the room, so its tests set every
 width without a terminal; tables and facts come from the terminal kit.
 
 - `net`: how each source answers and how long ago, how many devices do
-  what, and the commands that go further.
+  what, each concern but the ceilings in net's words beside its kind
+  under Worth a Look, the ceilings under The Internet, since they're the
+  line's speed rather than a fault, and the commands that go further.
 - `net devices`: one line per device, its roles, address, time up and
   model; a narrow terminal drops the model, then the time, then the
   address.

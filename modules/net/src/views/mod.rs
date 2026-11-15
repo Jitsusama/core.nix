@@ -14,7 +14,7 @@ use serde_json::{Map, Value, json};
 use terminal_kit::layout::{self, Align, ITEMS, Room};
 use terminal_kit::{Exit, Failure, Pen, flags, time};
 
-use crate::model::{Device, Link, Network, Role, Source, SourceState};
+use crate::model::{ConcernKind, Device, Link, Network, Role, Source, SourceState};
 
 /// How long ago `then` was, for a person: `4 s ago`.
 fn ago(now: u64, then: u64) -> String {
@@ -143,8 +143,53 @@ fn census(devices: &[Device]) -> String {
     }
 }
 
-/// `net`: whether each source answers, what the devices do, and the
-/// commands that go further.
+/// A concern's kind as its label says it.
+fn kind_words(kind: ConcernKind) -> &'static str {
+    match kind {
+        ConcernKind::Busy => "busy",
+        ConcernKind::Weak => "weak",
+        ConcernKind::Slow => "slow",
+        ConcernKind::Ceiling => "ceiling",
+        ConcernKind::Fills => "fills",
+        ConcernKind::Lost => "lost",
+    }
+}
+
+/// What's worth a look, each concern in net's own words beside its kind,
+/// then the internet as the narrowest point under a label of its own,
+/// since that's the line's speed rather than a fault. Neither shows when
+/// there's nothing to say.
+fn worth_a_look(network: &Network, pen: &Pen, room: Room) -> Vec<Vec<String>> {
+    let (ceilings, faults): (Vec<_>, Vec<_>) = network
+        .concerns
+        .iter()
+        .partition(|concern| concern.kind == ConcernKind::Ceiling);
+    let mut blocks = Vec::new();
+    if !faults.is_empty() {
+        let facts: Vec<(&str, Option<&str>)> = faults
+            .iter()
+            .map(|concern| (kind_words(concern.kind), Some(concern.says.as_str())))
+            .collect();
+        let mut block = vec![pen.label("worth a look")];
+        block.extend(layout::facts(&facts, "", pen, room));
+        blocks.push(block);
+    }
+    if !ceilings.is_empty() {
+        let mut block = vec![pen.label("the internet")];
+        for concern in ceilings {
+            block.extend(
+                layout::paragraph(&concern.says, 0, room)
+                    .into_iter()
+                    .map(|line| pen.role("text", &line)),
+            );
+        }
+        blocks.push(block);
+    }
+    blocks
+}
+
+/// `net`: whether each source answers, what the devices do, what's worth
+/// a look, and the commands that go further.
 pub fn home(network: &Network, now: u64, pen: &Pen, room: Room) -> String {
     let sources: Vec<Vec<String>> = network
         .sources
@@ -162,18 +207,20 @@ pub fn home(network: &Network, now: u64, pen: &Pen, room: Room) -> String {
         ),
     ]
     .map(|(command, shows)| vec![command.to_owned(), shows.to_owned()]);
-    layout::joined(vec![
+    let mut blocks = vec![
         head(network, now, pen),
         layout::table_in(&SOURCES, &sources, pen, room, &[2]),
         vec![pen.role("text", &layout::hung(&census(&network.devices), 0, room))],
-        layout::table_in(
-            &[("further", Align::Left), ("shows", Align::Left)],
-            &further,
-            pen,
-            room,
-            &[],
-        ),
-    ])
+    ];
+    blocks.extend(worth_a_look(network, pen, room));
+    blocks.push(layout::table_in(
+        &[("further", Align::Left), ("shows", Align::Left)],
+        &further,
+        pen,
+        room,
+        &[],
+    ));
+    layout::joined(blocks)
 }
 
 /// The devices' columns, and the order they give way in, by place: the
@@ -418,6 +465,44 @@ mod tests {
             );
             assert!(text.contains("net devices NAME"), "{text}");
         }
+    }
+
+    #[test]
+    fn home_says_whats_worth_a_look_in_nets_words_and_the_internet_apart() {
+        let network = network();
+        for room in [Room::Cells(60), Room::Cells(100), Room::Unbounded] {
+            let text = home(&network, now(), &Pen::plain(), room);
+            assert_eq!(layout::overrun(&text, room), None);
+            let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            let worth = words
+                .find("WORTH A LOOK")
+                .expect("the view says what's worth a look");
+            let internet = words.find("THE INTERNET").expect("and the internet apart");
+            assert!(worth < internet, "the faults come first: {text}");
+            for said in [
+                "weak laptop computer 1 has a weak signal to Study",
+                "lost The modem's downstream channel 16 has lost 878",
+                "fills unknown computer 1 is using 83% of the internet's speed up",
+            ] {
+                let at = words
+                    .find(said)
+                    .unwrap_or_else(|| panic!("{said:?}: {text}"));
+                assert!(worth < at && at < internet, "{said:?} is a fault: {text}");
+            }
+            let up = words
+                .find("The internet is the narrowest point up for every device")
+                .expect("the line's ceiling is said");
+            assert!(internet < up, "the ceiling is the internet's: {text}");
+        }
+    }
+
+    #[test]
+    fn a_network_with_nothing_worth_a_look_says_nothing_of_it() {
+        let mut network = network();
+        network.concerns.clear();
+        let text = home(&network, now(), &Pen::plain(), Room::Unbounded);
+        assert!(!text.contains("WORTH A LOOK"), "{text}");
+        assert!(!text.contains("THE INTERNET"), "{text}");
     }
 
     #[test]
