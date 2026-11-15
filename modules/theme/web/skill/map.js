@@ -104,6 +104,10 @@
     return pick;
   };
   const strayed = new Set();
+  // The last step that moved, so an opposite arrow pressed next is judged
+  // as the retrace it promises rather than by the cone, which a step back
+  // to a mark outside it would otherwise fail.
+  let last = null;
   const order = ["ArrowRight", "ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown"];
   for (let step = 0; step < 24; step += 1) {
     const arrow = order[step % order.length];
@@ -115,7 +119,8 @@
       );
       break;
     }
-    const want = expected(from, ways[arrow]);
+    const retrace = last !== null && arrow === back[last.arrow] && from === last.to;
+    const want = retrace ? last.from : expected(from, ways[arrow]);
     const before = said();
     await press(arrow);
     const landed = here();
@@ -129,6 +134,11 @@
         `${arrow} from ${from} found nothing that way and said nothing new: ` +
           "say so in the live region, naming the way, so a repeat is heard too",
       );
+    } else if (retrace && landed !== want) {
+      strayed.add(
+        `${arrow} after ${back[arrow]} from ${want} went to ${landed}: ` +
+          "the opposite arrow retraces the step",
+      );
     } else if (want !== null && landed !== want) {
       strayed.add(
         `${arrow} from ${from} moved to ${landed}, not ${want}, the nearest mark on its level ` +
@@ -136,6 +146,7 @@
       );
     }
     if (landed !== from) {
+      last = { arrow, from, to: landed };
       await press(back[arrow]);
       if (here() !== from) {
         strayed.add(
