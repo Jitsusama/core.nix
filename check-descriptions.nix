@@ -3176,6 +3176,11 @@
     search, and Return or anything else that reads what was found searches it at once; the next
     key's letters count from the held key's text
   '';
+  late-answers-are-taken-in-once = ''
+    what a key's sources find after its search, heard in one turn, is taken in once, fresh when
+    any came fresh and for what was typed as the last came; a key's own search drops what's
+    gathered, and answers heard in turns apart are each taken in
+  '';
   a-place-reads-alike-everywhere = ''
     a place's row says nothing after its name; at its right it says how it stands where it says,
     else its word for none while it holds nothing, else how many it holds, and nothing for a place

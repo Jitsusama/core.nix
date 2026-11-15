@@ -314,6 +314,26 @@ in
       touch $out
     '';
 
+  # Answers a key's sources find after its search, heard in one turn, are
+  # taken in once, and a key's own search drops what's gathered (VKCF3Z's
+  # owed red for #4647). Three sources answering in one turn can't be made
+  # to on niri, so tests/gathering.qml holds launcher/Gathering.qml, the
+  # very component Launcher.qml gathers with, in Qt's own engine.
+  late-answers-are-taken-in-once =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "late-answers-are-taken-in-once" { } ''
+      cp ${../../../tests/gathering.qml} gathering.qml
+      cp ${../launcher/Gathering.qml} Gathering.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml gathering.qml
+      touch $out
+    '';
+
   # A place's row reads alike at home and inside its parent (VKCF3Z's
   # 2a429f67, on Joel's 2026-11-08 "i don't like how the title and values on
   # the home screen differ from every other sub-menu"): tests/place-row.qml
