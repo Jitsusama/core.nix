@@ -647,24 +647,7 @@ fn run(options: &Options) -> Result<(), Failure> {
         if last_look.is_none_or(|at| now - at >= Duration::from_secs(1)) {
             last_look = Some(now);
             let order = look(&mut shaped, &mut memory, options, &send);
-            let networks: Vec<(&str, &str)> = order
-                .iter()
-                .filter_map(|n| shaped.get(n).map(|s| (n.as_str(), s.network.as_str())))
-                .collect();
-            let follows = links::leaders(&networks);
-            for (name, s) in &mut shaped {
-                let leader = follows.get(name).cloned();
-                if leader != s.follows {
-                    match &leader {
-                        Some(l) => {
-                            eprintln!("{name} reaches the same router as {l}; taking its rate");
-                        }
-                        None if s.follows.is_some() => eprintln!("{name} finds its own rate again"),
-                        None => {}
-                    }
-                    s.follows = leader;
-                }
-            }
+            follow_leaders(&mut shaped, &order);
             primary = order.first().cloned();
             let base = order
                 .first()
@@ -720,6 +703,27 @@ fn run(options: &Options) -> Result<(), Failure> {
         let heard = live.as_ref().and_then(live::Live::heard);
         write_status(&options.runtime, &shaped, heard.as_ref());
         thread::sleep(STEP);
+    }
+}
+
+/// Has each link that reaches the same router as one before it in `order`
+/// follow that one's rates, saying so when a link starts or stops.
+fn follow_leaders(shaped: &mut BTreeMap<String, Shaped>, order: &[String]) {
+    let networks: Vec<(&str, &str)> = order
+        .iter()
+        .filter_map(|n| shaped.get(n).map(|s| (n.as_str(), s.network.as_str())))
+        .collect();
+    let follows = links::leaders(&networks);
+    for (name, s) in shaped {
+        let leader = follows.get(name).cloned();
+        if leader != s.follows {
+            match &leader {
+                Some(l) => eprintln!("{name} reaches the same router as {l}; taking its rate"),
+                None if s.follows.is_some() => eprintln!("{name} finds its own rate again"),
+                None => {}
+            }
+            s.follows = leader;
+        }
     }
 }
 
