@@ -143,7 +143,16 @@
     { "id": "displays:made", "name": "Made" },
     { "id": "displays:input", "name": "Input" },
     { "id": "displays:edid", "name": "EDID" },
-    { "id": "displays:brightness", "name": "Brightness" },
+    {
+      "id": "displays:brightness",
+      "name": "Brightness",
+      "said": {
+        "followsRoom": "{now} of {most} steps; it follows the room, and the keys set it",
+        "followsRoomUnread": "{most} steps \u00b7 follows the room",
+        "everyFollows": "every screen follows it, and the keys set it"
+      }
+    },
+    { "id": "displays:brightness:level", "name": "{n}%" },
     {
       "id": "displays:warmth",
       "name": "Warmth",

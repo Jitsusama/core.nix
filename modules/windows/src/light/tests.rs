@@ -15,7 +15,7 @@ pub(super) fn told() -> Words {
 }
 
 /// The panel's backlight, as light.rs says it.
-fn backlight() -> Value {
+pub(super) fn backlight() -> Value {
     json!({"key": "backlight:intel_backlight", "kind": "backlight",
         "device": "intel_backlight", "brightness": 57_600, "actual_brightness": 57_600,
         "max_brightness": 96_000, "type": "raw", "scale": "non-linear", "connector": "eDP-1"})

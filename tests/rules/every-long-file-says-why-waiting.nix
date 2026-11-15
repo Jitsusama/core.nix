@@ -40,7 +40,6 @@
   "modules/quickshell/launcher/Accessories.qml"
   "modules/quickshell/launcher/Agents.qml"
   "modules/quickshell/launcher/Applications.qml"
-  "modules/quickshell/launcher/Displays.qml"
   "modules/quickshell/launcher/Now.qml"
   "modules/quickshell/launcher/Sound.qml"
   "modules/quickshell/timekeeping/src/candm.rs"

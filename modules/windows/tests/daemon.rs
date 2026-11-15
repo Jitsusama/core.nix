@@ -307,6 +307,22 @@ fn placed(said: &Value) -> Vec<Value> {
         .collect()
 }
 
+/// Whether a watch's records were made after the light was read as the
+/// daemon started: the Brightness inside the screen holding it says the
+/// stand-in's half. The light is read on a thread of its own, so it can
+/// come after a watch's first answer, and its change would be heard
+/// before the one a case waits on.
+fn lit(said: &Value) -> bool {
+    said["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|record| {
+            record["key"] == "row:displays:setting:eDP-1:brightness"
+                && record["row"]["side"] == json!([{"said": "50%"}])
+        })
+}
+
 /// The keys of the records a message changed, those inside a row left
 /// out, as a screen's settings are.
 fn keys(said: &Value) -> Vec<String> {
@@ -577,7 +593,7 @@ fn a_watch_of_screens_is_told_each_screens_row_and_only_those_a_change_moved() {
         let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row",
             "place": "displays"}));
         let records = placed(&said);
-        if records.len() == 3 {
+        if records.len() == 3 && lit(&said) {
             break records;
         }
         client.ask(&json!({"id": 1, "ask": "unwatch"}));
@@ -651,7 +667,7 @@ fn a_look_asked_tells_a_screen_the_shell_changed_with_nothing_in_niris_stream() 
     loop {
         let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row",
             "place": "displays"}));
-        if placed(&said).len() == 2 {
+        if placed(&said).len() == 2 && lit(&said) {
             break;
         }
         client.ask(&json!({"id": 1, "ask": "unwatch"}));
@@ -819,6 +835,25 @@ fn a_warmth_switch_is_asked_of_the_machine_daemon_and_answered_as_it_answers() {
     assert_eq!(
         refused["error"]["code"], "unknown-act",
         "a light act it doesn't know was answered otherwise: {refused}"
+    );
+}
+
+#[test]
+fn a_brightness_level_is_asked_of_the_machine_daemon_as_the_keys_set_it() {
+    let running = Running::worded("level", &json!({"eDP-1": screen("BOE", Some(2.0))}));
+    let mut client = running.daemon.client();
+    let done = client.ask(&json!({"id": 5, "ask": "light", "do": "brightness", "share": 40}));
+    assert_eq!(
+        done,
+        json!({"id": 5, "done": true}),
+        "the level was answered otherwise"
+    );
+    let asked = running.machine.asked.lock().unwrap().clone();
+    let acts: Vec<&Value> = asked.iter().filter(|one| one["ask"] == "act").collect();
+    assert_eq!(
+        acts,
+        vec![&json!({"id": 5, "ask": "act", "act": "brightness", "share": 40})],
+        "the machine daemon was asked otherwise: {asked:?}"
     );
 }
 

@@ -648,6 +648,9 @@ fn light_done(shared: &Shared, id: &Value, said: &Value) -> Value {
         Some(act @ "follow-the-room") => {
             json!({"id": id, "ask": "act", "act": act, "follows": said["follows"]})
         }
+        Some(act @ "brightness") => {
+            json!({"id": id, "ask": "act", "act": act, "share": said["share"]})
+        }
         _ => {
             let why = format!("no light act {} here", said["do"]);
             return error(id, "unknown-act", &why);

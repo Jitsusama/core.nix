@@ -262,6 +262,52 @@ fn the_warmth_leads_a_step_into_the_built_in_screen_alone_looked_at_or_not() {
     );
 }
 
+#[test]
+fn the_brightness_leads_the_screen_holding_it_and_the_warmth_follows_in_the_room_alone() {
+    let light = Light::of(&[
+        json!({"key": "backlight:intel_backlight", "kind": "backlight",
+            "device": "intel_backlight", "brightness": 48, "max_brightness": 96,
+            "connector": "eDP-1"}),
+        crate::light::tests::warmed(),
+    ]);
+    let inside = |made: &[Value], name: &str| -> Vec<String> {
+        let screen = key(&format!("display:{name}"));
+        made.iter()
+            .filter(|row| row["parent"] == screen.as_str())
+            .filter_map(|row| row["key"].as_str().map(str::to_owned))
+            .collect()
+    };
+    let made = every(&desk(), &BTreeMap::new(), None, &light);
+    assert_eq!(
+        inside(&made, "eDP-1")[..2],
+        [
+            "row:displays:setting:eDP-1:brightness",
+            "row:displays:warmth:eDP-1"
+        ],
+        "the Brightness doesn't lead the built-in screen, the Warmth after it"
+    );
+    let mut away = desk();
+    away.insert("eDP-1".to_owned(), output("BOE", "0x0BCA", &Value::Null));
+    away.insert("DP-3".to_owned(), output("LG", "27GL850", &lit(1.0)));
+    let follows = BTreeMap::from([(
+        "DP-3".to_owned(),
+        json!([{"name": "Brightness", "value": "95%"}]),
+    )]);
+    let docked = every(&away, &follows, None, &light);
+    let held = inside(&docked, "DP-3");
+    assert_eq!(
+        held.first().map(String::as_str),
+        Some("row:displays:setting:DP-3:brightness"),
+        "the monitor following the panel doesn't lead with the Brightness"
+    );
+    assert!(
+        !held
+            .iter()
+            .any(|key| key.starts_with("row:displays:warmth:")),
+        "a monitor holds a Warmth only the panel has"
+    );
+}
+
 /// A screen's drawer where desk-facts says nothing of it, and no light.
 fn drawer(name: &str, output: &Value, words: &Words) -> Value {
     super::drawer(name, output, &Value::Null, Vec::new(), words)
@@ -650,7 +696,7 @@ fn no_vocabulary_still_words_every_row_by_its_ids() {
     assert_eq!(words.sleep.glyph, "", "a glyph lacked isn't none");
     assert_eq!(
         lacked.len(),
-        100,
+        105,
         "not every word lacked was said: {lacked:?}"
     );
     let drawer = drawer("eDP-1", &panel(), &words);
