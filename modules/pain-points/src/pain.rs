@@ -64,10 +64,10 @@ impl Usual {
     pub fn of(trials: &[Trial]) -> Usual {
         let mut clean: HashMap<String, Vec<i64>> = HashMap::new();
         let mut every: HashMap<String, Vec<i64>> = HashMap::new();
-        for trial in trials.iter().filter(|t| t.picked_one() && t.ms >= 0) {
-            every.entry(trial.trying()).or_default().push(trial.ms);
+        for trial in trials.iter().filter(|t| t.picked_one() && t.found() >= 0) {
+            every.entry(trial.trying()).or_default().push(trial.found());
             if trial.keys.erased == 0 {
-                clean.entry(trial.trying()).or_default().push(trial.ms);
+                clean.entry(trial.trying()).or_default().push(trial.found());
             }
         }
         for times in clean.values_mut().chain(every.values_mut()) {
@@ -172,7 +172,7 @@ pub fn lost(trial: &Trial, usable: Option<f64>, usual: &Usual) -> Lost {
     // he arrowed his way to is reading what each row says, as a long
     // dwell on a page is, and isn't counted against him.
     if trial.picked_one() && trial.keys.letters > 0 {
-        let past = float(trial.ms) - usual.ms(&trial.trying()) - it.waiting();
+        let past = float(trial.found()) - usual.ms(&trial.trying()) - it.waiting();
         it.hunting = past.clamp(0.0, HUNTING_MOST_MS);
     } else if trial.missed && trial.keys.letters > trial.keys.erased {
         // A search he cleared before leaving was set aside for reading the
@@ -570,6 +570,8 @@ mod tests {
             HUNTING_MOST_MS,
             "one opening can't outweigh a day's struggles"
         );
+        let settled = Trial { first_ms: 9000, ..long };
+        assert_eq!(lost(&settled, None, &usual).hunting, 5000.0, "found at the first");
     }
 
     #[test]
