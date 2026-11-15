@@ -99,18 +99,27 @@ pub fn finished(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
     })
 }
 
-/// Whether a narrowed run's log says the commit has no `subtests` to
-/// build, from before 29 October, so the whole test runs there instead.
+/// Whether a narrowed run's log says its subtests can't be built alone,
+/// so the whole test runs there instead: a commit from before 29 October
+/// has no `subtests`, and a check on a nested niri isn't a VM test, which
+/// run-subtests refuses. On 14 November that refusal counted as the
+/// chords failing again, and the net held main 18 minutes on a flake.
 #[must_use]
 pub fn unbuildable(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
     let (mut missing, mut subtests) = (false, false);
     for line in log {
         let line = line.as_ref();
+        if line.contains(NOT_A_VM_TEST) {
+            return true;
+        }
         missing |= line.contains("does not provide attribute");
         subtests |= line.contains("subtests");
     }
     missing && subtests
 }
+
+/// What run-subtests' `subtests` throws for a check that isn't a VM test.
+const NOT_A_VM_TEST: &str = "isn't a VM test, so it has no subtests";
 
 #[cfg(test)]
 mod tests {
@@ -206,6 +215,12 @@ mod tests {
         let old = "error: flake 'github:o/r/c' does not provide attribute \
                    'legacyPackages.x86_64-linux.subtests'";
         assert!(unbuildable(old.lines()), "the commit has no subtests");
+        let nested = "       error: run-subtests: the-launcher-opens-on-what-it-kept-on-niri isn't \
+                      a VM test, so it has no subtests; build it whole";
+        assert!(
+            unbuildable(nested.lines()),
+            "a check on a nested niri has no subtests to build alone"
+        );
         assert!(
             !unbuildable("error: builder failed".lines()),
             "a failure of the run itself"
