@@ -33,6 +33,9 @@ Beside this file:
   Parts](#every-page-has-its-parts)) and what its words get wrong.
 - `layout.js`: the probe run after it, finding rows and folds that don't
   hold their layout ([Layout That Holds](#layout-that-holds)).
+- `map.js`: the probe for a walked map or graph, finding arrows that don't
+  keep to one rule and names that cross a line or each other (a picture
+  is walked, under [Keys](#keys)).
 
 The theme itself, ready for a site, is the kit at `~/.local/share/jitsusama/web/`
 ([The Kit](#the-kit)). Never retype a colour, a size or a face.
@@ -558,7 +561,12 @@ destroyed by it" (2026-11-11).
     arrows or h, j, k and l step along its links to the nearest thing that
     way, Return opens what the cursor is on (centring it and showing its
     details), / finds and jumps, and - steps back out. Pan and zoom have
-    keys, and ? lists them all.
+    keys, and ? lists them all. An arrow lands on the nearest thing on the
+    level being walked within 45 degrees of it, or stays and says so, and
+    the opposite arrow comes back; Tab leaves the map from any depth; no
+    name sits over a line or another name. `map.js` measures each. The
+    arrows on the mycelium map once jumped to whatever lay nearest at any
+    level, and he said they "seem to pick at random" (2026-11-14).
   - **A screen reader gets the same structure**, as a tree, grid or list
     with names and states, never a picture with a caption. Each thing says
     what it is, how it stands and what it links to.
