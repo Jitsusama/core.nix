@@ -105,7 +105,7 @@ onLinux {
       refused = home: lib.any (check: !check.assertion) home.assertions;
     in
     holds "pineapple-reads-each-site-named"
-      "A named site lacks its reader, search, sign-in or start, one is read unnamed, or a taken name passes."
+      "A named site lacks its reader, search, sign-in or start, one is read unnamed, or a taken name or more than 20 repositories pass."
       (
         lib.hasSuffix (
           "/bin/pineapple-github pineapple-code run --origin https://code.example.com/api/v3"
@@ -125,6 +125,11 @@ onLinux {
           ]
         && refused (withSites {
           github = code;
+        })
+        && refused (withSites {
+          code = code // {
+            repos = map (n: "example/repo${toString n}") (lib.range 1 21);
+          };
         })
       );
   # pineapple, the daemon showing stops in the launcher, is started at
