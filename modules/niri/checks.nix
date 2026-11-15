@@ -210,6 +210,24 @@ onLinux {
         touch $out
       '';
 
+  # The Copilot key types, in the keymap niri builds from its account's
+  # files with the libxkbcommon it links, the key its dictation bind names
+  # (tests/copilot-key-types-its-bind.py). xkeyboard-config 2.49 moved it
+  # from F23 to XF86TouchpadOff, leaving the bind matching nothing where
+  # only a desktop VM test saw; a new one that moves it fails here.
+  niri-hears-the-copilot-key =
+    let
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;
+    in
+    pkgs.runCommandLocal "niri-hears-the-copilot-key" { } ''
+      ${lib.concatLines (
+        lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+      )}
+      ${lib.getExe pkgs.python3} ${./tests/copilot-key-types-its-bind.py} \
+        ${graphical.pkgs.libxkbcommon}/lib/libxkbcommon.so.0 niri
+      touch $out
+    '';
+
   # niri walks every window at most once a frame, however often a client's
   # commits wake it (refreshes-once-a-frame.patch): its real niri, with the
   # account's configuration, nested in a headless sway in the sandbox
