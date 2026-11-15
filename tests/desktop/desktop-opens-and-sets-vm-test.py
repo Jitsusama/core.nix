@@ -1404,10 +1404,13 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     # on a busy builder misses its own beacons: a run lost Lantern while the
     # sign-in window started cold, 7 beacons missed being all mac80211 lets
     # pass, and the Return on its button reached no front desk
-    # (2026-11-15). A join reads the count as it's made, so it is raised
-    # first, to ride out ten seconds of it; a real network's air isn't
+    # (2026-11-15). A builder can freeze the whole machine too: a later run's
+    # kernel saw 12.8 s pass between two of its clock's reads, and dropped
+    # Lantern as it woke. A join reads the count as it's made, so it is raised
+    # first, to ride out a minute of it, as long as this test's own waits;
+    # no subtest leans on a beacon loss, and a real network's air isn't
     # starved with its card.
-    machine.succeed("echo 100 > /sys/module/mac80211/parameters/beacon_loss_count")
+    machine.succeed("echo 600 > /sys/module/mac80211/parameters/beacon_loss_count")
     wifi = "varlinkctl call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
     machine.wait_until_succeeds(
         f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Lantern\"'",

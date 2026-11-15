@@ -48,19 +48,6 @@
     "test": "vm-desktop-launcher-finds-sessions"
   },
   {
-    "at": 1794377740,
-    "commit": "405fff7e09e75f5f21857d710e1f02306a80664b",
-    "due": "2026-11-16",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
-    "owner_pr": 4515,
-    "reason": "failed, then passed, at 405fff7e09e7",
-    "subtests": [
-      "test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_password",
-      "test_quickshell_warned_of_nothing_it_drew_all_along"
-    ],
-    "test": "vm-desktop-opens-and-sets"
-  },
-  {
     "at": 1794560189,
     "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
     "due": "2026-11-15",
