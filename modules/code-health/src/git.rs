@@ -9,8 +9,36 @@ use std::thread;
 use crate::measure::{self, File};
 use crate::merges::Merged;
 
+/// As `files` reads them, across the folders `unders` names of a larger
+/// repository, each path then from its top, so two folders' files stay
+/// apart; across one, or none (the whole), as `files` reads it.
+pub fn files_in(
+    checkout: &str,
+    reference: &str,
+    unders: &[String],
+) -> Result<(Vec<String>, Vec<File>), String> {
+    match unders {
+        [] => files(checkout, reference, ""),
+        [under] => files(checkout, reference, under),
+        unders => {
+            let mut paths = Vec::new();
+            let mut read = Vec::new();
+            for under in unders {
+                let top = |path: String| format!("{}/{path}", under.trim_end_matches('/'));
+                let (inside, texts) = files(checkout, reference, under)?;
+                paths.extend(inside.into_iter().map(top));
+                read.extend(texts.into_iter().map(|file| File {
+                    path: top(file.path),
+                    text: file.text,
+                }));
+            }
+            Ok((paths, read))
+        }
+    }
+}
+
 /// Every file's path at `reference` under `under`, from the folder read,
-/// and the text of each that's code or a folder's note.
+/// and the text of each a measure reads (`measure::is_read`).
 pub fn files(
     checkout: &str,
     reference: &str,
@@ -42,7 +70,7 @@ pub fn files(
             continue;
         };
         paths.push(inside.to_owned());
-        if measure::is_code(inside) || measure::is_note(inside) || measure::is_quarantine(inside) {
+        if measure::is_read(inside) {
             let object = about.rsplit(' ').next().unwrap_or_default();
             read.push((inside.to_owned(), object.to_owned()));
         }
@@ -263,6 +291,40 @@ mod tests {
             .status()
             .expect("git couldn't be started");
         assert!(status.success(), "git {arguments:?} failed");
+    }
+
+    #[test]
+    fn several_folders_are_read_each_from_the_top() {
+        let folder = tempfile::tempdir().expect("no folder for the repository");
+        let path = folder.path();
+        for (file, text) in [
+            ("a/x/main.tf", "a\n"),
+            ("b/main.tf", "b\n"),
+            ("c/no.tf", "c\n"),
+        ] {
+            let file = path.join(file);
+            let parent = file.parent().expect("a file with no folder");
+            std::fs::create_dir_all(parent).expect("a folder wasn't made");
+            std::fs::write(file, text).expect("a file wasn't written");
+        }
+        commit_at(path, 0, &["init", "-q", "-b", "main"]);
+        commit_at(path, 0, &["add", "."]);
+        commit_at(path, 0, &["commit", "-q", "-m", "start"]);
+        let checkout = path.to_str().expect("the folder's path isn't text");
+        let unders = ["a/".to_owned(), "b".to_owned()];
+        let (paths, files) = files_in(checkout, "main", &unders).expect("they weren't read");
+        assert_eq!(
+            paths,
+            ["a/x/main.tf", "b/main.tf"],
+            "a folder's paths were wrong"
+        );
+        let texts: Vec<(&str, &str)> = files
+            .iter()
+            .map(|file| (file.path.as_str(), file.text.as_str()))
+            .collect();
+        assert_eq!(texts, [("a/x/main.tf", "a\n"), ("b/main.tf", "b\n")]);
+        let (one, _) = files_in(checkout, "main", &unders[1..]).expect("it wasn't read");
+        assert_eq!(one, ["main.tf"], "one folder's paths weren't its own");
     }
 
     #[test]

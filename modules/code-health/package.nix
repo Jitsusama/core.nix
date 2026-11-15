@@ -1,11 +1,16 @@
 # code-health, built from this directory, its tests run as it builds, with
-# git for the one that times a repository's merges. It takes its shape
+# git for the one that times a repository's merges, and tofu and tflint,
+# which it runs over a repository's Terraform, found on its own PATH
+# wherever it runs (src/terraform.rs). It takes its shape
 # from the terminal kit (../terminal-kit), so the source is cut from the
 # folder holding both.
 {
   git,
   lib,
+  makeWrapper,
+  opentofu,
   rustPlatform,
+  tflint,
 }:
 rustPlatform.buildRustPackage rec {
   pname = "code-health";
@@ -22,7 +27,20 @@ rustPlatform.buildRustPackage rec {
   };
   sourceRoot = "${src.name}/code-health";
   cargoLock.lockFile = ./Cargo.lock;
-  nativeCheckInputs = [ git ];
+  nativeBuildInputs = [ makeWrapper ];
+  nativeCheckInputs = [
+    git
+    opentofu
+    tflint
+  ];
+  postInstall = ''
+    wrapProgram $out/bin/code-health --suffix PATH : ${
+      lib.makeBinPath [
+        opentofu
+        tflint
+      ]
+    }
+  '';
   meta = {
     description = "Writes the day's figures of how messy each repository it's given is";
     license = lib.licenses.mit;
