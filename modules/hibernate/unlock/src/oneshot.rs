@@ -63,8 +63,11 @@ pub fn hold(
     kept: &Path,
     set: impl FnOnce(&str) -> bool,
 ) -> io::Result<bool> {
-    let _ = (booted, default, kept, set);
-    Ok(false)
+    if !differs(booted, default) || !set("@current") {
+        return Ok(false);
+    }
+    fs::write(kept, "@current\n")?;
+    Ok(true)
 }
 
 /// Once the machine is back, unset the next start's entry `hold` set, if
