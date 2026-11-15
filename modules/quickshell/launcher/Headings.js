@@ -174,6 +174,18 @@ function footed(place, to, view) {
     return Math.min(to, view.top(last) - view.height);
 }
 
+// Where a view moved to `to` rests, so no row is cut at its top. For now,
+// where it was moved (a stub).
+function rested(to, _view) {
+    return to;
+}
+
+// Whether a row at `top`, `tall` high, is drawn in a view from `from`,
+// `height` high. For now, every row is (a stub).
+function drawn(_top, _tall, _under, _heading, _from, _height) {
+    return true;
+}
+
 // The rows with no heading, as a search shows them: its ranking mixes the
 // groups, so no heading names what's under it. The same list where none
 // is, so what reads it sees nothing new.
