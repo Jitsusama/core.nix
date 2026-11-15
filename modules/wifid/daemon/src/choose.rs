@@ -456,6 +456,17 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn one_carrying_badly_keeps_off_an_untried_channel_45_percent_busy() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let badly = carried(72, 0.0);
+        let busy = hall(-45, Some(45), None);
+
+        let choice = chooser.choose(Instant::now(), (DESK, &badly, -47, CH52), &[busy], false);
+
+        assert_eq!(choice, Choice::Stay, "45% busy carried badly all afternoon");
+    }
+
+    #[test]
     fn one_measured_lately_and_carrying_far_better_is_moved_to() {
         let mut chooser = Chooser::default();
         let middling = carried(30, 0.0);
@@ -619,6 +630,20 @@ pub(crate) mod tests {
         let choice = chooser.choose(Instant::now(), on, &[desk_at(-75, None)], false);
 
         assert_eq!(choice, Choice::Stay, "at -75 dBm 5 GHz would carry worse");
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_keeps_off_5_ghz_45_percent_busy() {
+        let mut chooser = Chooser::default();
+        let well = carried(9, 0.0);
+        let busy = Other {
+            busy: Some(45),
+            ..desk_at(-45, None)
+        };
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &well, -34, CH6), &[busy], false);
+
+        assert_eq!(choice, Choice::Stay, "a busy channel is no more room");
     }
 
     #[test]
