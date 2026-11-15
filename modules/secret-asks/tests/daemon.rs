@@ -165,11 +165,16 @@ impl Setting {
 /// Puts up an ask for `item` in the setting's folder, daemon or not, and
 /// answers its id.
 fn put_up(folder: &Path, item: &str) -> String {
+    put_up_in(folder, &folder.join("tree"), item)
+}
+
+/// Puts up an ask for `item` to run in `tree`, and answers its id.
+fn put_up_in(folder: &Path, tree: &Path, item: &str) -> String {
     let ran = Command::new(env!("CARGO_BIN_EXE_secret-asks"))
         .args(["ask", "--item", item, "--why", "To try the line.", "--asks"])
         .arg(folder.join("asks"))
         .arg("--tree")
-        .arg(folder.join("tree"))
+        .arg(tree)
         .output()
         .expect("the ask is put up");
     assert!(ran.status.success(), "the ask wasn't put up: {ran:?}");
@@ -179,6 +184,174 @@ fn put_up(folder: &Path, item: &str) -> String {
 /// The row of an ask, once a watch is told of it.
 fn row(client: &mut Client, id: &str) -> Value {
     client.changed(&format!("row:asks:{id}"))["row"].clone()
+}
+
+/// Says yes to an ask once its row is drawn, and waits for what it ran;
+/// answers the row the yes was to.
+fn said_yes(setting: &Setting, client: &mut Client, id: &str) -> Value {
+    let drawn = row(client, id);
+    assert_eq!(
+        act(client, &drawn, 0)["releasing"],
+        true,
+        "the yes wasn't taken"
+    );
+    assert_eq!(setting.answer(id)["state"], "ran", "the yes didn't run");
+    drawn
+}
+
+/// The grants Asks lists, as the daemon serves them now.
+fn grants(client: &mut Client) -> Vec<Value> {
+    let held = client.ask(&json!({"id": 1, "ask": "list", "kind": "row"}));
+    held["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|record| record["row"].clone())
+        .filter(|row| row["kind"] == "grant")
+        .collect()
+}
+
+/// A repository of its own beside the setting's tree, one commit in.
+fn another_repository(folder: &Path) -> PathBuf {
+    let other = folder.join("other");
+    std::fs::create_dir_all(&other).expect("the other tree is made");
+    git(&other, &["init", "-q"]);
+    std::fs::write(other.join("README"), "another tree").expect("a file is written");
+    git(&other, &["add", "README"]);
+    git(&other, &["commit", "-q", "-m", "a commit"]);
+    other
+}
+
+#[test]
+fn a_yes_lets_the_same_ask_from_any_tree_of_its_repository_run_for_a_week() {
+    let setting = Setting::new("granted");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    let drawn = said_yes(&setting, &mut client, &first);
+    let lasts = drawn["drawer"]["facts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|fact| fact["name"] == "Yes Lasts");
+    assert_eq!(
+        lasts.map(|fact| fact["said"].clone()),
+        Some(json!("a week, for this command from any tree of tree")),
+        "the line didn't say what a yes lets run: {drawn}"
+    );
+    assert!(
+        setting.reading().contains("ASK_OUTCOME=released\n"),
+        "the yes wasn't read"
+    );
+    let worktree = setting.folder.join("worktree");
+    git(
+        &setting.folder.join("tree"),
+        &["worktree", "add", "-q", &worktree.to_string_lossy()],
+    );
+    let again = put_up_in(&setting.folder, &worktree, ITEM);
+    let answer = setting.answer(&again);
+    assert_eq!(answer["state"], "ran", "the grant didn't run it: {answer}");
+    assert_eq!(
+        answer["granted"], true,
+        "the answer doesn't say so: {answer}"
+    );
+    let reading = setting.reading();
+    assert!(
+        reading.contains("ASK_OUTCOME=granted\n"),
+        "a release by grant isn't read as one: {reading}"
+    );
+    assert_eq!(setting.op_ran(), 2, "op didn't run for each");
+}
+
+#[test]
+fn a_grant_never_covers_another_repository() {
+    let setting = Setting::new("granted-elsewhere");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    let other = another_repository(&setting.folder);
+    let elsewhere = put_up_in(&setting.folder, &other, ITEM);
+    assert_eq!(
+        row(&mut client, &elsewhere)["state"],
+        "waiting",
+        "a grant covered another repository"
+    );
+    assert_eq!(setting.op_ran(), 1, "op ran for another repository");
+}
+
+#[test]
+fn a_no_grants_nothing() {
+    let setting = Setting::new("no-grant");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    let drawn = row(&mut client, &first);
+    assert_eq!(
+        act(&mut client, &drawn, 1)["refused"],
+        true,
+        "the no wasn't taken"
+    );
+    let again = setting.ask(ITEM);
+    assert_eq!(
+        row(&mut client, &again)["state"],
+        "waiting",
+        "a no let the same ask through"
+    );
+    assert!(grants(&mut client).is_empty(), "a no left a grant");
+}
+
+#[test]
+fn asks_lists_a_grant_and_revoking_it_has_the_same_ask_wait_again() {
+    let setting = Setting::new("revoked");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    let listed = grants(&mut client);
+    assert_eq!(listed.len(), 1, "the grant isn't listed once: {listed:?}");
+    let grant = &listed[0];
+    assert_eq!(
+        grant["name"], ITEM,
+        "the grant doesn't name its item: {grant}"
+    );
+    assert_eq!(
+        grant["note"], "secret-asks received, from tree",
+        "the grant doesn't say what it lets run where: {grant}"
+    );
+    assert_eq!(
+        grant["acts"][0]["key"], "verb:revoke",
+        "its one act isn't Revoke It: {grant}"
+    );
+    assert_eq!(
+        client.ask(&acting(grant, 0))["revoked"],
+        true,
+        "the revoke wasn't taken"
+    );
+    let gone = client.gone();
+    assert!(
+        gone.iter().any(|key| key.as_str() == grant["key"].as_str()),
+        "the grant's row didn't go: {gone:?}"
+    );
+    assert!(grants(&mut client).is_empty(), "the grant stayed");
+    let again = setting.ask(ITEM);
+    assert_eq!(
+        row(&mut client, &again)["state"],
+        "waiting",
+        "a revoked grant still let it through"
+    );
+    assert_eq!(setting.op_ran(), 1, "op ran under a revoked grant");
+}
+
+#[test]
+fn a_grant_runs_while_the_screen_is_locked_since_joel_said_yes_unlocked() {
+    let setting = Setting::new("granted-locked");
+    let mut client = setting.watching();
+    let first = setting.ask(ITEM);
+    said_yes(&setting, &mut client, &first);
+    std::fs::write(setting.folder.join("locked"), "yes").expect("the lock is written");
+    let again = setting.ask(ITEM);
+    assert_eq!(
+        setting.answer(&again)["state"],
+        "ran",
+        "a grant waited on the lock"
+    );
 }
 
 /// Asks the daemon what a row's act asks, as the launcher sends it.
