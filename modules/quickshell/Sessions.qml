@@ -594,8 +594,19 @@ Singleton {
             return;
         screensPatience.restart();
         Niri.request("Outputs", answer => {
-            if (answer?.Outputs)
+            // Answered once nothing waits any more, as when niri lagged at a
+            // redock on 2026-11-15 and answered after screensPatience, the
+            // screens it names can be where workspaces wait to go (comeHome),
+            // which ran without them. Only a change looks again, so a late
+            // answer never loops.
+            const late = screensWaiting.length === 0;
+            if (answer?.Outputs) {
+                const were = JSON.stringify(screens);
                 screens = Places.screensOf(answer.Outputs);
+                if (late && JSON.stringify(screens) !== were
+                    && Object.keys(awayFrom).length > 0)
+                    arranging.restart();
+            }
             screensLooked();
         });
     }
