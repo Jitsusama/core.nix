@@ -170,4 +170,13 @@ still often does not look like its paws are moving."
 - Owed since 2026-11-14: a climb up or down a side stepped in whole strides by the ground it
   covers, as a walk is, each drawing held two 60 Hz frames, in every journey.
 
+### Play With the Mouse
+
+Joel, 2026-11-12 15:56: "i want to be able to also use my mouse to engage with my
+animals."
+
+- Owed since 2026-11-12: a pointer moved onto it and resting there leans it in, eyes shut,
+  toward the pointer's side, never a pointer passing over or one it came to under; it takes
+  the pointer only over its own cells, so a click beside it reaches the window.
+
 [design]: ../../docs/design.md
