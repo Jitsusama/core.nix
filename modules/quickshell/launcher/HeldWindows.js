@@ -189,6 +189,23 @@ function needing(held, waiting) {
         && (record.urgent === true || String(record.id) in waiting)).length;
 }
 
+// The joints a program's name trails a title after, as Chrome's
+// " - Google Chrome" and the reader's " · Reader".
+const JOINTS = [" - ", " \u2013 ", " \u2014 ", " | ", " \u00b7 "];
+
+// A window's title without its program's name trailing it, since the glyph
+// and the row already say whose window it is: as the windows daemon tidies
+// its `named` (modules/windows), so a window's key matches its row's.
+function tidy(title, program) {
+    if (program === "") {
+        return title;
+    }
+    const joint = JOINTS.find((one) => title.endsWith(one + program));
+    return joint === undefined
+        ? title
+        : title.slice(0, title.length - joint.length - program.length);
+}
+
 // What of a window's record its row says, beside whether it has the focus
 // and when it was used, which the shut launcher hears (Windows.qml's used).
 function worded() {

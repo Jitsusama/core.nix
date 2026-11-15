@@ -178,5 +178,17 @@ QtObject {
             record(5, 40, { urgent: true, focused: true })], []);
         Expect.same("those urgent and those waiting are counted, his own left out",
             HeldWindows.needing(asking, { 4: true, 1: true }), 2);
+
+        // A title loses its program's name after a joint, as the windows
+        // daemon's `named` does (modules/windows), so a window's key here
+        // matches its row's.
+        Expect.same("a dash's trailing program name goes",
+            HeldWindows.tidy("Inbox - Google Chrome", "Google Chrome"), "Inbox");
+        Expect.same("and a middle dot's, as Reader and the camera join theirs",
+            HeldWindows.tidy("Notes \u00b7 Reader", "Reader"), "Notes");
+        Expect.same("a title that is only the name keeps it",
+            HeldWindows.tidy("Reader", "Reader"), "Reader");
+        Expect.same("a name inside a title stays",
+            HeldWindows.tidy("about kitty", "kitty"), "about kitty");
     }
 }
