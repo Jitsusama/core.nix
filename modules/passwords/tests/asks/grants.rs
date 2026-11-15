@@ -3,27 +3,12 @@
 //! on origin's main run without him, the twin already waiting included;
 //! Asks lists the standing yes, and its Forget It has the ask wait again.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
 use super::{LISTED, answer, put_up_in, row_of, saying, stored_bash, yes};
-use crate::common::{Client, Running};
-
-/// Runs git in `tree` as the test's own, with no settings of Joel's, so
-/// its commits are made unsigned.
-fn git(tree: &Path, args: &[&str]) {
-    let ran = Command::new("git")
-        .arg("-C")
-        .arg(tree)
-        .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
-        .args(args)
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .output()
-        .expect("git runs");
-    assert!(ran.status.success(), "git {args:?} failed: {ran:?}");
-}
+use crate::common::{Client, Running, git_in as git};
 
 /// A repository inside the running folder, one commit in and nothing
 /// uncommitted, whose commit origin's default branch holds, as a tree on
