@@ -491,5 +491,16 @@
       "test_two_orchestrations_come_back_each_where_it_sat"
     ],
     "test": "vm-desktop-reopens-under-orchestrators"
+  },
+  {
+    "at": 1794735908,
+    "commit": "aef5997dd94d7fa99fce396f7a82aa2af2849cfc",
+    "due": "2026-11-17",
+    "owner_pr": 4615,
+    "reason": "has been broken since #4615, but fails with it reverted too, so a later merge breaks it as well; whoever finds that merge fixes it forward and takes it off this list",
+    "subtests": [
+      "test_quickshell_warned_of_nothing_as_the_screens_came_and_went"
+    ],
+    "test": "vm-screens-keep-the-launcher"
   }
 ]
