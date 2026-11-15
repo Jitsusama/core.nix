@@ -1,8 +1,10 @@
 # The checks of wifid, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  account,
   bareNixos,
   holds,
+  lib,
   onLinux,
   passesClippy,
   pkgs,
@@ -59,4 +61,15 @@ onLinux {
         && services.wpa_supplicant.restartIfChanged
         && !services.wpa_supplicant.stopIfChanged
       );
+
+  # What tells wifid of calls starts with the account's session, not only
+  # with PipeWire, so a switch that brings it in starts it while PipeWire
+  # already runs. On 15 Nov 2026 one didn't, and wifid heard no calls.
+  wifid-calls-starts-at-a-switch =
+    let
+      calls = (account (bareNixos [ self.nixosModules.wifid ])).systemd.user.services.wifid-calls;
+    in
+    holds "wifid-calls-starts-at-a-switch"
+      "wifid-calls is wanted only as PipeWire starts, so a switch never starts it."
+      (lib.elem "default.target" calls.Install.WantedBy);
 }
