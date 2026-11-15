@@ -298,7 +298,7 @@ fn known<'a>(
 }
 
 /// What's known of an access point heard this loud, and whence.
-type Known = dyn Fn(&str, i16) -> Option<(Measured, Whence)>;
+type Known<'a> = dyn Fn(&str, i16) -> Option<(Measured, Whence)> + 'a;
 
 /// Asks a card's chooser where it should be, from what it's on carried and
 /// what it hears of its network, and says why where it moves.
@@ -307,7 +307,7 @@ fn chosen(
     now: Instant,
     (on, measured): (&Joined, &Measured),
     around: &[Heard],
-    known: &Known,
+    known: &Known<'_>,
     call: bool,
 ) -> Option<String> {
     let signal = around.iter().find(|heard| heard.bssid == on.point)?.signal;
