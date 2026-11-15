@@ -283,8 +283,9 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
 /// reads or is read by, which `ready` counts as moved under the gate once
 /// ours merges, so its pass would go stale for them all the same.
 fn shares(theirs: Vec<String>, ours: &[String], crates: &Crates) -> Vec<String> {
-    let _ = (ours, crates);
-    theirs
+    let beside = crates.beside(&theirs, ours);
+    let shared: BTreeSet<String> = theirs.into_iter().chain(beside).collect();
+    shared.into_iter().collect()
 }
 
 /// Each tree a place is kept for, with its head, where git can read it.
