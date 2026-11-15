@@ -842,8 +842,8 @@ Singleton {
         // it opens on, so its sessions back before its pi says who it is
         // join it rather than make a workspace of their own (homeSpace).
         const into = root.keptOrKin(one, at, beside, others);
-        const name = Places.homeToName(one, address, into?.workspace ?? null,
-            Object.values(Niri.workspaces));
+        const name = into === null ? "" : Places.homeToName(one, address, into.workspace,
+            Object.values(Niri.workspaces ?? {}));
         if (name !== "")
             Niri.act({ SetWorkspaceName: { name, workspace: { Id: into.workspace } } });
         return into;
