@@ -48,18 +48,31 @@ mod tests {
             json!({"key": "team:REEF01", "glyph": "plus"}),
             json!({"key": "team:TIDE01", "lead": "s-tide"}),
             json!({"key": "team:GULL01", "lead": "s-gull", "glyph": "down-triangle"}),
+            json!({"key": "team:CRAB01", "lead": "s-crab", "glyph": "spiral"}),
         ];
         let marks = by_lead(teams.iter());
         assert_eq!(
             marks,
-            HashMap::from([("s-harbor", "shapeSquare"), ("s-kelp", "shapeStar")]),
-            "none for a team no one leads, one drawn by no shape, or one the theme can't mark yet"
+            HashMap::from([
+                ("s-harbor", "shapeSquare"),
+                ("s-kelp", "shapeStar"),
+                ("s-gull", "shapeDownTriangle")
+            ]),
+            "none for a team no one leads, one drawn by no shape, or one the theme can't mark"
         );
     }
 
     #[test]
-    fn every_shape_but_the_down_triangle_has_its_own_mark() {
-        let shapes = ["square", "triangle", "plus", "hexagon", "circle", "star"];
+    fn every_shape_the_map_draws_has_its_own_mark() {
+        let shapes = [
+            "square",
+            "triangle",
+            "plus",
+            "hexagon",
+            "circle",
+            "down-triangle",
+            "star",
+        ];
         let marks: Vec<_> = shapes.iter().filter_map(|shape| mark(shape)).collect();
         assert_eq!(
             marks,
@@ -69,10 +82,11 @@ mod tests {
                 "shapePlus",
                 "shapeHexagon",
                 "shapeCircle",
+                "shapeDownTriangle",
                 "shapeStar"
             ],
             "one mark each, in the map's order"
         );
-        assert_eq!(mark("down-triangle"), None, "it waits on a turned mark");
+        assert_eq!(mark("spiral"), None, "a shape the theme has no mark for");
     }
 }

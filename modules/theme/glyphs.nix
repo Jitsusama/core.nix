@@ -642,6 +642,16 @@ in
     console = "*";
     means = "an orchestration's network, drawn as a star";
   };
+  # The icon font has no down triangle at the others' size, so it's the
+  # triangle turned a half turn about its ink's middle (VKCF3Z, 2026-11-14).
+  # The text-form selector after it draws nothing, and makes it a glyph of
+  # its own that a mark drawing it knows to turn (Mark.qml).
+  shapeDownTriangle = {
+    glyph = nerd "f0536" + nerd "fe0e";
+    turned = true;
+    console = "v";
+    means = "an orchestration's network, drawn as a down triangle";
+  };
   # A person with a clock: something the agents can't go on without until
   # Joel has done it.
   waitsOnJoel = {

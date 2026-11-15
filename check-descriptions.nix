@@ -216,6 +216,10 @@
     a trusted cable's network is a stranger's cable with mDNS on, matched by its card and picked
     first, and a machine naming none gets no such network
   '';
+  a-turned-mark-keeps-its-ink = ''
+    the theme's down triangle is its triangle drawn a half turn about the ink's middle, wide at
+    its top, with every edge of its ink within a device pixel of the upright one's, at 2 and at 1
+  '';
   a-want-rings-low = ''
     a machine with pi plays pi's low bell struck twice when a session wants Joel, not the theme's
     high message

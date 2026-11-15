@@ -63,6 +63,11 @@ let
   ) (lib.filterAttrs (_: about: about ? command) config.jitsusama.keyLanguage.acts);
   # The marks the theme draws as paths, for Theme.drawn.
   drawn = lib.mapAttrs (_: mark: mark.drawn) (lib.filterAttrs (_: mark: mark.drawn != "") marks);
+  # The glyphs the theme draws turned a half turn, for Theme.turned: a set
+  # by the glyph itself, so a mark knows by its text alone (Mark.qml).
+  turned = lib.mapAttrs' (_: mark: lib.nameValuePair mark.glyph true) (
+    lib.filterAttrs (_: mark: mark.turned) marks
+  );
   # The marks the theme draws in pixels, for Theme.pixels.
   pixels = lib.mapAttrs (_: mark: mark.pixels) (lib.filterAttrs (_: mark: mark.pixels != [ ]) marks);
   slowed = milliseconds: builtins.floor (milliseconds * builtins.fromJSON motion.slowdown + 0.5);
@@ -2208,6 +2213,9 @@ in
               // The marks drawn in pixels, the empty places' cat: each row a
               // string, # for ink (PixelMark.qml).
               readonly property var pixels: ${object pixels}
+              // The glyphs drawn turned a half turn about their ink's middle,
+              // each true, for a shape the face draws one way up only.
+              readonly property var turned: ${object turned}
               // Each picture's file, empty for none.
               readonly property var wallpaper: ${
                 object {
