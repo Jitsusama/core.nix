@@ -192,6 +192,14 @@ QtObject {
             ["a quest's", answer(quest, "Launcher Speed"), "It says it's for Launcher Speed."],
             ["a long title's", answer(quest, longTitle),
                 "It says it's for Reduce Gitstream Push-Path Pre-Receive\u00a0\u2026"],
+            // A cut never ends on a small word, so it reads as a cut, not
+            // as a sentence missing its end (VKCF3Z, 2026-11-15).
+            ["a title cut after a small word's",
+                answer(quest, "Make Window Management Work Well With Many Monitors"),
+                "It says it's for Make Window Management Work Well\u00a0\u2026"],
+            ["a title cut after small words'",
+                answer(quest, "Make Window Management Work Out of the Way of Monitors"),
+                "It says it's for Make Window Management Work Out\u00a0\u2026"],
             ["a marked title's", answer(quest, "Read `OctokitClient`'s  <b>pages</b>"),
                 "It says it's for Read OctokitClient's <b>pages</b>."],
             ["an untitled quest's", answer(quest, null), ""],
