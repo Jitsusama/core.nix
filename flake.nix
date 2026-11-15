@@ -292,7 +292,6 @@
         };
         unlisted = ./modules/unlisted/home.nix;
         vivid = ./modules/vivid/home.nix;
-        warp = ./modules/warp/home.nix;
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
         wifid = ./modules/wifid/home.nix;
         windows = ./modules/windows/home.nix;

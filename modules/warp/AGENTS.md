@@ -3,7 +3,11 @@
 WARP, the VPN, read from warp-cli, WARP's own client, which asks
 WARP's service over its socket. A Rust program, `warp`, reads it, and
 changes only its switch, `warp connect` and `warp disconnect`, as the
-launcher's `:connect` and `:disconnect` run them. Joel's bar for every
+launcher's `:connect` and `:disconnect` run them. It isn't on Joel's
+path, where the organisation's own `warp` comes first: the shell runs
+it by its store path (`modules/quickshell/home.nix`), and a person reads
+the link in a terminal with `launcher show network work-network`.
+Joel's bar for every
 integration (2026-11-07): "every integration has an insanely high bar
 of nerdiness and integration and each should be given the same care",
 so every figure warp-cli gives is shown where he looks, or named as
@@ -29,7 +33,7 @@ test`.
 
 ## Serving the Shell
 
-Each read asks warp-cli five questions at once. Run by hand, `warp`
+Each read asks warp-cli five questions at once. Run on its own, `warp`
 keeps nothing, since WARP's service holds every figure and answers in
 about 20 ms. The shell spawns nothing to read or switch it (Joel,
 2026-11-10: "CLI execs is not performant"), so `warp serve` holds the
