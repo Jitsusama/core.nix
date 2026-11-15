@@ -492,5 +492,16 @@
       "test_sessions_handed_over_while_locked_open_behind_the_lock_and_go_to_their_place_after"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
+  },
+  {
+    "at": 1794737828,
+    "commit": "2c22e6094aa171140e1525a07c163b0e076033a3",
+    "due": "2026-11-17",
+    "owner_pr": 4637,
+    "reason": "failed, then passed, at 2c22e6094aa1",
+    "subtests": [
+      "test_finds_the_connection"
+    ],
+    "test": "vm-the-connection-stays-quick"
   }
 ]
