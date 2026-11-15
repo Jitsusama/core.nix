@@ -2213,8 +2213,8 @@
   '';
   pineapple-reads-each-site-named = ''
     each other site a machine names for the safe word is read by its own unit, searching the
-    repositories named for what Joel opened with that site's sign-in; none is read unnamed, and a
-    name GitHub's or Slack's reader has is refused
+    repositories named for what Joel opened with that site's sign-in, in shadow until the machine
+    says it's live; none is read unnamed, and a name GitHub's or Slack's reader has is refused
   '';
   pineapple-serves-the-launcher-from-its-socket = ''
     the daemon showing the safe word's stops in the launcher starts at login on its socket, where
