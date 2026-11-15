@@ -135,7 +135,7 @@ QtObject {
     // where the edge stops, lands, and climbs to its seat by an edge,
     // never shoved across a face, never gliding.
     function closed(expect) {
-        const { ided, among, seen, smooth, posed, glides, ends } = world();
+        const { spring, ided, among, seen, smooth, posed, glides, ends } = world();
         const rowGone = ided.filter(tile => tile.id !== 3).map(tile => tile.id !== 2 ? tile
             : Object.assign({}, tile, { height: 768 }));
         const dropsOut = Paths.walk({ x: 532, y: 307 }, { x: 532, y: 7 }, among({
@@ -146,11 +146,13 @@ QtObject {
             [dropBeats[0], dropsOut.beats[0].to.y, dropBeats.includes("shoved"),
                 dropBeats.includes("thinks")], ["rides", 792, false, false]);
         const dropping = seen(dropsOut).filter(at => at.beat === "rides");
-        expect("from where it sat, only ever down, in the falling drawing, landing crouched",
-            [Paths.frame(dropsOut, 0).y, dropping.every((at, i) => i === 0
+        expect("from where the edge grown over it has come to, only ever down, falling, landing",
+            [Math.round(Paths.frame(dropsOut, 0).y), dropping.every((at, i) => i === 0
                 || at.y >= dropping[i - 1].y), dropBeats.includes("rides")
                 ? posed(dropsOut, "rides").map(one => one.pose) : dropBeats,
-                dropBeats.slice(1, 3)], [307, true, ["falling"], ["lands", "shakes"]]);
+                dropBeats.slice(1, 3)],
+            [Math.round(307 + 485 * MarginCat.slid(72, spring)), true, ["falling"],
+                ["lands", "shakes"]]);
         const grownFace = at => at.x < 831.5 && at.x + 8 > 432.5 && at.y < 783.5
             && at.y + 8 > 16.5;
         const climbedOut = seen(dropsOut).filter(at => at.t >= dropsOut.beats[0].ends);
@@ -210,6 +212,45 @@ QtObject {
         expect("the middle row closed, the row below moved up first, it rides down onto that row",
             [belowBeats.slice(0, 3), ontoBelow.beats[0].to?.y, belowBeats.includes("climbs"),
                 ends(ontoBelow)], [["rides", "lands", "shakes"], 399, false, [532, 399]]);
+        // And the window over it grown down over where it sat, told late
+        // as the shell is: it falls in the gap, never above that window's
+        // bottom edge, and never holds still falling (VKCF3Z, 3bc784ec: on
+        // the GPU rig at 120 Hz it was up to 28 px in that window's face).
+        const grown = [Object.assign({}, rows[0], { height: 367 }), movedUp[1]];
+        const underIt = Paths.walk({ x: 532, y: 257 }, { x: 532, y: 399 }, among({
+            hurried: true, closed: true, on: 7, cols: Paths.columns(grown, 0),
+            before: Paths.columns(rows, 0), ahead: 63, frame: 1000 / 120 }));
+        const edgeAbove = t => 250 + 133 * MarginCat.slid(t + 63, spring);
+        const fell = seen(underIt).filter(at => at.t < MarginCat.slides(spring) - 63);
+        const falls = fell.filter(at => at.beat === "rides");
+        expect("the window over it grown down too, it falls never above that window's edge",
+            [fell.filter(at => at.y < edgeAbove(at.t) - 1e-6).map(at => Math.round(at.t)),
+                falls.length > 1, falls.every((at, i) => i === 0 || at.y > falls[i - 1].y),
+                ends(underIt)], [[], true, true, [532, 399]]);
+        // Told by niri how long ago the window began to grow, it goes that
+        // far in rather than as far as a resize is guessed to be.
+        const toldOf = Paths.walk({ x: 532, y: 257 }, { x: 532, y: 399 }, among({
+            hurried: true, closed: true, on: 7, cols: Paths.columns(grown, 0),
+            before: Paths.columns(rows, 0), ahead: 63, grows: 42, frame: 1000 / 120 }));
+        expect("told by niri when the window began to grow, it goes as far into it as niri says",
+            Paths.frame(toldOf, 0).y, 257 + 142 * MarginCat.slid(42, spring));
+        expect("how far in: niri's word, heard late and drawn a frame after, and a frame more",
+            [MarginCat.behindResize(1000 / 120, 0.1), MarginCat.behindResize(1000 / 60, 10),
+                MarginCat.behindResize(1000 / 120, null), MarginCat.behindResize(1000 / 60)],
+            [42, 68, 63, 72]);
+        // Heard to close late, niri's row below already moved up into its
+        // place under the cat as the shell last saw the column: it falls
+        // ahead of the window over it all the same, never riding the row
+        // below down sitting (a builder's nested niri, 2026-11-15: rides,
+        // turns, lands).
+        const belowInPlace = [rows[0], Object.assign({}, rows[2], { top: 266 })];
+        const heardLate = Paths.walk({ x: 532, y: 257 }, { x: 532, y: 399 }, among({
+            hurried: true, closed: true, on: 7, cols: Paths.columns(grown, 0),
+            before: Paths.columns(belowInPlace, 0), ahead: 63, frame: 1000 / 120 }));
+        expect("heard to close once the row below moved into its place, it falls all the same",
+            [heardLate.beats.map(beat => beat.name).slice(0, 3),
+                posed(heardLate, "rides").every(one => one.pose === "falling"), ends(heardLate)],
+            [["rides", "lands", "shakes"], true, [532, 399]]);
         const opened = ided.concat([{ id: 9, left: 432, top: 500, width: 400, height: 284,
             column: 1 }]);
         const staysOn = Paths.walk({ x: 532, y: 307 }, { x: 532, y: 7 }, among({

@@ -42,6 +42,19 @@ function before(saw, held, seat) {
         ? saw : held;
 }
 
+// How long before niri last told of it a resize began on a workspace's
+// windows, in ms, the longest where several are under way, null for none:
+// niri's own word, as its tile_animation (modules/niri/tiled-positions.patch),
+// so a fall a window grows down over goes with that window's edge.
+function resizing(windows, workspaceId) {
+    const began = Object.values(windows)
+        .filter(one => one.workspace_id === workspaceId
+            && one.layout?.tile_animation === "Resize"
+            && typeof one.layout?.tile_animation_began_ms_ago === "number")
+        .map(one => one.layout.tile_animation_began_ms_ago);
+    return began.length ? Math.max(...began) : null;
+}
+
 // The tiles of a workspace's windows, each with its column and its row in
 // niri's scrolling layout, both null for a floating one, and its window's id.
 function of(windows, workspaceId) {

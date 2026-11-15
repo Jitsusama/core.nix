@@ -174,6 +174,12 @@ function rides(way, cols, at) {
             column.top - at.tall), column.bottom - at.tall) };
     } else {
         const id = was.rows[held.row].id;
+        // The row it sat on closed, it rides no other: niri may have
+        // moved the row below up into its place before the shell heard of
+        // the close, and drops() has it fall ahead of the window over it.
+        if (at.closed && at.on !== undefined && at.on !== null && id !== at.on) {
+            return;
+        }
         const row = column.rows.find(one => id !== undefined && one.id === id);
         const middle = way.x + column.left - was.left + at.wide / 2;
         if (row && middle >= column.left && middle <= column.right) {
@@ -221,10 +227,18 @@ function drops(way, cols, at) {
     const lands = under({ x: way.x, y: inWindow === null ? way.y : bottom + at.air }, cols, at);
     const spring = Object.assign({}, at.spring, { slowdown: at.slowdown ?? 1 });
     const ms = MarginCat.slides(spring);
-    const ahead = Math.min(at.ahead ?? 0, ms - 1);
+    const ahead = Math.min(at.grows ?? at.ahead ?? 0, ms - 1);
+    const edge = t => MarginCat.slid(t + ahead, spring);
+    // The window's edge leads it down, done once that edge has under a
+    // pixel to go, rather than holding still in the air.
+    const ground = Math.abs(lands.y - way.y);
+    let lasts = ms - ahead;
+    while (lasts > 1 && ground * (1 - edge(lasts - 1)) < 1) {
+        lasts -= 1;
+    }
     way.turn = 0;
-    Ways.rides(way, { x: way.x, y: lands.y }, { ms: ms - ahead, frame: at.frame,
-        edge: t => MarginCat.slid(t + ahead, spring), away: true, falls: true });
+    Ways.rides(way, { x: way.x, y: lands.y }, { ms: lasts, frame: at.frame, edge,
+        leads: true, falls: true });
     Ways.holds(way, "lands", MarginCat.LANDS);
     Ways.holds(way, "shakes", SHAKES);
     return true;

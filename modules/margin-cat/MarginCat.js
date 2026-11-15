@@ -190,6 +190,16 @@ function above(seat, leaving) {
     return seat?.floats === true && !leaving;
 }
 
+// How far into a resize niri says began `began` ms before it told of it
+// the cat's first frame shows, rather than RESIZES' guess at it, and a
+// frame further: a cat late of the edge of a window growing down over it
+// is in that window's face, and one early is in the gap it leaves
+// (VKCF3Z, 3bc784ec). As `behind` gives with no word from niri.
+function behindResize(frame, began) {
+    return typeof began === "number" && began >= 0
+        ? Math.round(HEARS + 2 * frame + began) : behind(frame, "resize");
+}
+
 // A drawing given a quarter turn, clockwise for `turn` 1 and back for -1,
 // cell for cell, so a climbing cat stays as sharp as a walking one.
 function quartered(drawing, turn) {

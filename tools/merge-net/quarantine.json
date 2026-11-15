@@ -348,17 +348,6 @@
     "test": "vm-the-connection-stays-quick"
   },
   {
-    "at": 1794754896,
-    "commit": "2762cfcd25fe0616d6aa7a12cda315132aad4ab0",
-    "due": "2026-11-16",
-    "owner_pr": 4568,
-    "reason": "rode before it heard the middle row close, beats rides, turns, lands, in ZJ62K2's changed-checks on 2762cfcd25fe and #4776's at 5254182379dc, passing in the net's run there",
-    "subtests": [
-      "test_a_middle_row_closed_under_it_has_it_fall_onto_the_row_below"
-    ],
-    "test": "the-margin-cat-follows-the-keys-on-niri"
-  },
-  {
     "at": 1794764338,
     "commit": "1684d55bce393ef57a189745df52343982d91271",
     "due": "2026-11-17",

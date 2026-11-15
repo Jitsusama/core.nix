@@ -141,6 +141,12 @@ out in the middle then walk across, that is not believable"
   shoved or thinking"
 - Held by `margin-cat-rides.qml`: "and from the floor to its seat by an edge, in no face, never
   gliding"
+- Held by `margin-cat-rides.qml`: "the window over it grown down too, it falls never above that
+  window's edge"
+- Held by `margin-cat-rides.qml`: "told by niri when the window began to grow, it goes as far into
+  it as niri says"
+- Held by `margin-cat-rides.qml`: "heard to close once the row below moved into its place, it
+  falls all the same"
 
 ### Floating Windows
 
