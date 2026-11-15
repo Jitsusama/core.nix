@@ -95,22 +95,26 @@ impl Named {
 }
 
 /// People's words and a drawer's names, from the launcher's vocabulary at
-/// `path`, the daemon's WORDS; each said by its name where there's none,
-/// or it can't be read.
+/// `path`, the daemon's WORDS, and the vocabulary itself; each said by its
+/// name where there's none, or it can't be read.
 #[must_use]
-pub fn words_at(path: Option<&str>) -> (BTreeMap<String, String>, Named) {
+pub fn words_at(path: Option<&str>) -> (BTreeMap<String, String>, Named, Value) {
     let read = path.map(|path| {
         std::fs::read_to_string(path)
             .map_err(|error| error.to_string())
             .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|e| e.to_string()))
     });
     match read {
-        Some(Ok(vocabulary)) => (listing::words(&vocabulary), Named::read(&vocabulary)),
+        Some(Ok(vocabulary)) => (
+            listing::words(&vocabulary),
+            Named::read(&vocabulary),
+            vocabulary,
+        ),
         Some(Err(why)) => {
             eprintln!("<4>couldn't read the launcher's words, so each is said by name: {why}");
-            (BTreeMap::default(), Named::read(&Value::Null))
+            (BTreeMap::default(), Named::read(&Value::Null), Value::Null)
         }
-        None => (BTreeMap::default(), Named::read(&Value::Null)),
+        None => (BTreeMap::default(), Named::read(&Value::Null), Value::Null),
     }
 }
 

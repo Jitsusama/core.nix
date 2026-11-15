@@ -21,8 +21,9 @@
 // through the daemon, Reply in Slack leads their ways while their message
 // waits on Joel, and that conversation is their Waiting; someone Slack
 // found once stepped into, whom nobody lists, makes no row at the next
-// first letter and is found as Slack says they stand, and one it knows
-// nobody by is no one. It exits 0 once every case
+// first letter and is found as Slack says they stand, one it knows
+// nobody by is no one, and one it hasn't answered of yet has Write in
+// Slack's place held as the daemon serves it. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
 //
 // Long because its cases are steps over the one shell, daemon and
@@ -782,10 +783,18 @@ ShellRoot {
             // Someone Slack hasn't said a word of yet, as Joel first steps
             // in, has Write in Slack's place held, looking, leading the ways
             // to reach them, so it lights there rather than coming in below.
+            // The daemon serves that place for a guest nobody knows, so
+            // People makes no row of it.
             what: "Write in Slack's place is held while Slack is asked",
+            run: () => {
+                launcher.held = [{ row: { component: "person",
+                    person: { emails: ["unasked@example.com"] } } }];
+            },
+            holds: () => slackOf("unasked@example.com") !== null,
             check: () => {
                 const held = people.servedActs({ key: "unasked@example.com",
-                    emails: ["unasked@example.com"] }, "slack", "verb:person:slack");
+                    emails: ["unasked@example.com"] }, "slack");
+                launcher.held = [];
                 expect("held dimmed, looking in Slack, and leading",
                     held.length === 1 && held[0].name === "Write in Slack"
                     && held[0].gone === true && held[0].main === true

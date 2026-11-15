@@ -70,8 +70,9 @@
 // each row (People.qml's servedActs and servedBetween), and a source
 // learning something of someone once asked is heard by its watch. One
 // whose settings name the act it `holds`, as Slack's names Write in Slack,
-// has that act's place held dimmed, looking, while it's asked and hasn't
-// said, so it leads the ways to reach them from the first rows.
+// has the people daemon serve that act's place dimmed, looking, while it's
+// asked and hasn't said, so it leads the ways to reach them from the first
+// rows.
 import QtQuick
 
 QtObject {
@@ -108,7 +109,7 @@ QtObject {
     readonly property bool served: daemonHolds && place !== null
 
     function acts(person, provider) {
-        return served ? place.servedActs(person, settings.name, settings.holds ?? "") : [];
+        return served ? place.servedActs(person, settings.name) : [];
     }
 
     function next(person, provider) {

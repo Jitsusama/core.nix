@@ -39,6 +39,9 @@ let
       sources = map (source: {
         inherit (source) name stands;
         command = source.daemon;
+        # The act whose place the daemon holds while the source is asked
+        # (its held.rs), as Slack's Write in Slack.
+        holds = source.holds or null;
       }) daemonSources;
     }
   );

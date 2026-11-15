@@ -140,7 +140,7 @@
         "command": ["${helper}/bin/tuple-people", "people", "${tuple}/bin/tuple", "tuple-0"]},
         {"name": "facts",
           "command": ["${lib.getExe pkgs.bash}", "${../../../tests/people-facts-source.sh}"]},
-        {"name": "slack", "stands": ${builtins.toJSON slackStands},
+        {"name": "slack", "stands": ${builtins.toJSON slackStands}, "holds": "verb:person:slack",
           "command": ["${lib.getExe pkgs.bash}", "${../../../tests/people-slack-source.sh}"]}]}
       EOF
       export PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json

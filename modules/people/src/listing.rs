@@ -20,11 +20,12 @@ use std::collections::BTreeMap;
 
 use ready_rows::kept::{Kept, Moved};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::drawer::{self, Named};
+use crate::held::{self, Holds};
 use crate::name::{self, bare};
-use crate::{Book, LISTING, Record, address, stamp};
+use crate::{Book, LISTING, Record, address};
 
 /// How a source's entry says someone stands, as its module tells the
 /// daemon in the sources file: the entry's field that says it, which of
@@ -375,12 +376,20 @@ impl Person {
     /// by the record. Kept by the record, every listed row was made again
     /// at the first letter after a switch started the daemon again, 136
     /// and 137 of them (Joel's journal, 2026-11-14).
-    pub fn listing(&self, record: &Record, sources: &[(String, Option<Stands>)]) -> Value {
+    ///
+    /// Each place a source holds for them while it's asked, `held`, is
+    /// beside what the others said, and stamped with it (held.rs's `put`).
+    pub fn listing(
+        &self,
+        record: &Record,
+        sources: &[(String, Option<Stands>)],
+        held: Map<String, Value>,
+    ) -> Value {
         let mut listing = json!({
             "key": self.key, "kind": LISTING, "person": self.json(),
             "sources": sourced(record, sources),
         });
-        listing["stamp"] = Value::String(stamp(&listing));
+        held::put(&mut listing, held);
         listing
     }
 
@@ -483,13 +492,16 @@ impl Told {
     /// Those listed now: each one's row in the order shown, its `order`
     /// kept where it still rises, so one person moving is told alone, and
     /// beside it their record, as one person with what each source said,
-    /// which the shell reads for who they are, and their drawer. Answered
-    /// with the records that read differently and the keys that went.
+    /// which the shell reads for who they are, each place a source holds
+    /// for them while it's asked beside it (held.rs), and their drawer.
+    /// Answered with the records that read differently and the keys that
+    /// went.
     pub fn changes(
         &mut self,
         book: &Book,
         sources: &[(String, Option<Stands>)],
         named: &Named,
+        holds: &Holds,
         now: f64,
     ) -> Moved {
         let persons: Vec<Person> = book
@@ -504,8 +516,9 @@ impl Told {
             .iter()
             .filter_map(|person| book.record(&person.key).map(|record| (person, record)))
             .flat_map(|(person, record)| {
+                let held = holds.of_key(book, &record.key, &record.sources);
                 [
-                    person.listing(record, sources),
+                    person.listing(record, sources, held),
                     drawer::drawer(person, record, sources, named, book.standings()),
                 ]
             })
@@ -740,7 +753,7 @@ pub(crate) mod tests {
     fn their_listing_is_stamped_by_all_it_says() {
         let stamp = |entries: &[(&str, Value)]| {
             let record = record("person:bo@example.com", entries);
-            person(&record, &sources()).listing(&record, &sources())["stamp"].clone()
+            person(&record, &sources()).listing(&record, &sources(), Map::new())["stamp"].clone()
         };
         let busy = [("tuple", json!({"name": "Bo", "status": "busy"}))];
         assert!(stamp(&busy).is_string(), "a listing says its stamp");

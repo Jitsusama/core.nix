@@ -10,7 +10,10 @@
 //! every source; those listed are asked ahead of while they're watched,
 //! each source's entry saying how it has them stand; what's held is known
 //! by key with no source asked; one started again serves the same record
-//! as before; and an ask or kind it doesn't know is refused.
+//! as before; a source that holds an act's place while it's asked has it
+//! served, wherever someone's served, until it says anything of them, and
+//! holds none once signed out; and an ask or kind it doesn't know is
+//! refused.
 //!
 //! Long because every case runs the one daemon over its socket with the
 //! same stand-in sources and the same running harness, which a split would
@@ -55,8 +58,26 @@ fn launchers() -> Value {
             thing["said"]["available"] = json!("around");
         }
     }
+    if let Some(things) = words["things"].as_array_mut() {
+        things.push(json!({"id": "verb:person:slack", "said": {"looking": "looking in Slack"}}));
+    }
     words
 }
+
+/// A source that answers, but has nothing to say of anyone yet, as Slack
+/// a while once asked, logging each line it's asked; once `$log.out` is
+/// there, its sign-in is refused.
+const ASKED: &str = r#"
+log=$1
+while read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  if [ -e "$log.out" ]; then
+    echo '{"signedOut":true}'
+  else
+    echo '{"email":"'"${line#\?}"'","later":true}'
+  fi
+done
+"#;
 
 /// A source whose sign-in is refused, as slack-people says it.
 const SIGNED_OUT: &str = r#"
@@ -138,6 +159,22 @@ impl Running {
         stands: &[(&str, Value)],
         launcher: &[&str],
     ) -> Running {
+        Running::configured(test, sources, stands, &[], launcher)
+    }
+
+    /// Started with the act some of its sources hold the place of while
+    /// they're asked, by name, as Slack's settings name Write in Slack.
+    fn holding(test: &str, sources: &[(&str, &str)], holds: &[(&str, &str)]) -> Running {
+        Running::configured(test, sources, &[], holds, &[])
+    }
+
+    fn configured(
+        test: &str,
+        sources: &[(&str, &str)],
+        stands: &[(&str, Value)],
+        holds: &[(&str, &str)],
+        launcher: &[&str],
+    ) -> Running {
         let folder = std::env::temp_dir().join(format!("people-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
@@ -150,7 +187,14 @@ impl Running {
                     .iter()
                     .find(|(source, _)| source == name)
                     .map(|(_, stands)| stands);
-                json!({"name": name, "command": [shell, "-c", script, name, log], "stands": stands})
+                let holds = holds
+                    .iter()
+                    .find(|(source, _)| source == name)
+                    .map(|(_, act)| act);
+                json!({
+                    "name": name, "command": [shell, "-c", script, name, log],
+                    "stands": stands, "holds": holds,
+                })
             })
             .collect();
         let config = folder.join("sources.json");
@@ -853,6 +897,136 @@ fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
         said["records"].as_array().map(Vec::len),
         Some(3),
         "a list is the whole: {said}"
+    );
+}
+
+#[test]
+fn a_source_asked_holds_its_acts_place_until_it_says_anything() {
+    let stands =
+        json!({"field": "status", "words": {"unknown": {"word": "available", "order": 0}}});
+    let running = Running::configured(
+        "held",
+        &[("tuple", ROSTER), ("slack", ASKED)],
+        &[("tuple", stands)],
+        &[("slack", "verb:person:slack")],
+        &[],
+    );
+    let mut client = running.client();
+    // Slack's asked of a guest, and says it's nothing to say yet, so it's
+    // answering with nothing said of anyone.
+    client.ask(&json!({"id": 0, "ask": "get", "keys": ["person:ivy@example.com"]}));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let health = client.ask(&json!({"id": 0, "ask": "health"}));
+        if health["people"] == 3 && health["sources"]["slack"]["state"] == "answering" {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "never held and answering: {health}"
+        );
+        // The roster's three lines land as the source starts, and Slack's
+        // as it's asked, asked about again each 20 ms until the deadline.
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // Write in Slack's place, dimmed and looking, as Slack's own entry
+    // says while it looks, so the shell makes no row of its own.
+    let held = json!({"known": false, "acts": [{
+        "key": "verb:person:slack", "side": "looking in Slack", "gone": true, "main": true,
+    }]});
+    let slack_of = |records: &Value, key: &str| {
+        records
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|record| record["key"] == key)
+            .map_or(Value::Null, |record| record["sources"]["slack"].clone())
+    };
+    let listing = client.ask(&json!({"id": 1, "ask": "list", "kind": "listing"}));
+    assert_eq!(
+        slack_of(&listing["records"], "person:ada@example.com"),
+        held,
+        "Ada listed: {listing}"
+    );
+    let said = client.ask(&json!({"id": 2, "ask": "search", "words": "fenwick"}));
+    assert_eq!(
+        slack_of(&said["records"], "person:eli@example.com"),
+        held,
+        "Eli found: {said}"
+    );
+    // Someone nobody's said a word of, as a guest Joel steps into, has it
+    // held from the watch's first answer.
+    let said = client.ask(&json!({"id": 3, "ask": "watch", "keys": ["person:zed@example.com"]}));
+    assert_eq!(
+        slack_of(&said["records"], "person:zed@example.com"),
+        held,
+        "Zed: {said}"
+    );
+    // Gus, known by Tuple's id alone, has no address to ask Slack of.
+    let said = client.ask(&json!({"id": 4, "ask": "search", "words": "gus"}));
+    assert_eq!(
+        slack_of(&said["records"], "person:tuple:7"),
+        Value::Null,
+        "Gus: {said}"
+    );
+}
+
+#[test]
+fn a_watch_loses_a_held_place_as_its_source_signs_out() {
+    let running = Running::holding(
+        "held-out",
+        &[("slack", ASKED)],
+        &[("slack", "verb:person:slack")],
+    );
+    let mut watching = running.client();
+    let zed = |said: &Value, list: &str| {
+        said[list]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|record| record["key"] == "person:zed@example.com")
+            .cloned()
+    };
+    // Zed, a guest nobody's said a word of, is held for once Slack's asked
+    // ahead of him and answers, if not in the watch's first answer, then
+    // as it's told how Slack stands.
+    let first = watching.ask(&json!({"id": 1, "ask": "watch", "keys": ["person:zed@example.com"]}));
+    let mut held = zed(&first, "records");
+    while held
+        .as_ref()
+        .is_none_or(|zed| zed["sources"]["slack"].is_null())
+    {
+        held = zed(&next_change(&mut watching), "changed");
+    }
+    // Slack's sign-in is refused as Joel steps into Eve, and Zed's place
+    // goes with it, though nothing was said of him.
+    std::fs::write(running.daemon.folder().join("slack.log.out"), "").unwrap();
+    running
+        .client()
+        .ask(&json!({"id": 2, "ask": "get", "keys": ["person:eve@example.com"], "patience": 1000}));
+    loop {
+        if let Some(zed) = zed(&next_change(&mut watching), "changed") {
+            assert_eq!(zed["gone"], true, "{zed}");
+            break;
+        }
+    }
+}
+
+#[test]
+fn a_source_that_signs_out_holds_no_place() {
+    let running = Running::holding(
+        "unheld",
+        &[("tuple", ROSTER), ("slack", SIGNED_OUT)],
+        &[("slack", "verb:person:slack")],
+    );
+    let mut client = running.client();
+    let said = client
+        .ask(&json!({"id": 1, "ask": "get", "keys": ["person:zed@example.com"], "patience": 5000}));
+    assert_eq!(said["records"], json!([]), "nothing held for Zed: {said}");
+    let said = client.ask(&json!({"id": 2, "ask": "search", "words": "fenwick"}));
+    assert!(
+        said["records"][0]["sources"].get("slack").is_none(),
+        "Eli, with Slack signed out: {said}"
     );
 }
 

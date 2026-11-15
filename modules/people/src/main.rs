@@ -54,6 +54,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use people::drawer::{self, Named};
+use people::held::Holds;
 use people::listing::{Stands, Told};
 use people::{Ask, Book, Heard, KIND, Record, Standing, VERSION, address, ask, error, heard, now};
 use serde::Deserialize;
@@ -82,6 +83,9 @@ struct Source {
     /// How its lines say someone stands, in People's words (listing.rs).
     #[serde(default)]
     stands: Option<Stands>,
+    /// The act whose place it holds while it's asked (held.rs).
+    #[serde(default)]
+    holds: Option<String>,
 }
 
 /// One watch a client holds.
@@ -122,6 +126,9 @@ struct Daemon {
     sources: Vec<(String, Option<Stands>)>,
     /// What a drawer names what it adds to the sources' facts.
     named: Named,
+    /// The places sources hold while they're asked, served beside what
+    /// they said.
+    holds: Holds,
     /// Counts each change the book takes, for a watch of those listed.
     revision: u64,
 }
@@ -134,7 +141,7 @@ fn main() {
         eprintln!("usage: people SOCKET SOURCES [WORDS]");
         std::process::exit(64);
     };
-    let (said, drawn) = drawer::words_at(args.next().as_deref());
+    let (said, drawn, vocabulary) = drawer::words_at(args.next().as_deref());
     let sources: Vec<Source> = match std::fs::read_to_string(&sources)
         .map_err(|error| error.to_string())
         .and_then(|text| serde_json::from_str::<Sources>(&text).map_err(|error| error.to_string()))
@@ -172,6 +179,12 @@ fn main() {
                 })
                 .collect(),
             named: drawn,
+            holds: Holds::of(
+                sources
+                    .iter()
+                    .filter_map(|source| Some((&source.name, source.holds.as_ref()?))),
+                &vocabulary,
+            ),
             revision: 0,
         }),
         Condvar::new(),
@@ -344,7 +357,10 @@ fn took_in(shared: &Shared, source: &str, line: &str) {
         daemon.revision += 1;
         let record = daemon.book.record(&key);
         let listed = was_listed || record.is_some_and(Record::listed);
-        let told = record.map_or_else(|| Record::gone(&key), Record::json);
+        let told = record.map_or_else(
+            || Record::gone(&key),
+            |record| daemon.holds.served(&daemon.book, record),
+        );
         for watch in &mut daemon.watches {
             let wants = match &watch.keys {
                 _ if watch.listing.is_some() => false,
@@ -416,6 +432,14 @@ fn tell_standings(daemon: &mut Daemon, stood: &Value) {
             .told
             .send(json!({"id": watch.id, "sources": standing}).to_string());
     }
+    // And whoever's watched by key, a listing's watch having none, since
+    // the places held for them come and go with how their sources stand.
+    for watch in &mut daemon.watches {
+        let retold = daemon
+            .holds
+            .retold(&daemon.book, watch.keys.iter().flatten());
+        watch.pending.extend(retold);
+    }
 }
 
 /// Writes a line to each source running, dropping one that's gone.
@@ -481,6 +505,7 @@ fn say_gathered(daemon: &mut Daemon) {
         book,
         sources,
         named,
+        holds,
         revision,
         ..
     } = daemon;
@@ -494,7 +519,7 @@ fn say_gathered(daemon: &mut Daemon) {
                 return true;
             }
             *seen = *revision;
-            let moved = told.changes(book, sources, named, at);
+            let moved = told.changes(book, sources, named, holds, at);
             if moved.is_empty() {
                 return true;
             }
@@ -553,7 +578,13 @@ fn listing(
 ) -> Option<Value> {
     let mut daemon = lock(shared);
     let mut said = Told::default();
-    said.changes(&daemon.book, &daemon.sources, &daemon.named, clock());
+    said.changes(
+        &daemon.book,
+        &daemon.sources,
+        &daemon.named,
+        &daemon.holds,
+        clock(),
+    );
     let records = said.all();
     if !watch {
         return Some(json!({"id": id, "records": records}));
@@ -607,7 +638,7 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
                 .everyone()
                 .filter(|record| !listed || record.listed())
                 .take(limit.unwrap_or(usize::MAX))
-                .map(Record::json)
+                .map(|record| daemon.holds.served(&daemon.book, record))
                 .collect();
             json!({"id": id, "records": records})
         }
@@ -618,16 +649,12 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
         Ask::Watch { id, keys, listed } => {
             let mut daemon = lock(shared);
             let held: Vec<Value> = match &keys {
-                Some(keys) => keys
-                    .iter()
-                    .filter_map(|key| daemon.book.record(key))
-                    .map(Record::json)
-                    .collect(),
+                Some(keys) => daemon.holds.known(&daemon.book, keys),
                 None => daemon
                     .book
                     .everyone()
                     .filter(|record| !listed || record.listed())
-                    .map(Record::json)
+                    .map(|record| daemon.holds.served(&daemon.book, record))
                     .collect(),
             };
             if let Some(keys) = &keys {
@@ -698,7 +725,11 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
 /// Each record with the row and drawer the launcher shows it as.
 fn drawn(daemon: &Daemon, records: Vec<&Record>) -> Vec<Value> {
     let standings = daemon.book.standings();
-    let draw = |record: &Record| drawer::found(record, &daemon.sources, &daemon.named, standings);
+    let draw = |record: &Record| {
+        let mut said = drawer::found(record, &daemon.sources, &daemon.named, standings);
+        daemon.holds.beside(&daemon.book, record, &mut said);
+        said
+    };
     records.into_iter().map(draw).collect()
 }
 
@@ -740,11 +771,7 @@ fn get(shared: &Shared, id: &Value, keys: &[String], patience: u64) -> Value {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .0;
     }
-    let records: Vec<Value> = keys
-        .iter()
-        .filter_map(|key| daemon.book.record(key))
-        .map(people::Record::json)
-        .collect();
+    let records = daemon.holds.known(&daemon.book, keys);
     for address in &addresses {
         if let Some(count) = daemon.stepping.get_mut(address) {
             *count -= 1;

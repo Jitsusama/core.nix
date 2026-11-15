@@ -87,7 +87,8 @@ in
     order = 5;
     # Write in Slack stands in its place, looking in Slack, from the first
     # rows of someone Joel steps into while Slack is asked, and lights
-    # there once it answers, rather than coming in below what's drawn.
+    # there once it answers, rather than coming in below what's drawn. The
+    # people daemon serves that place, so the shell makes no row of it.
     holds = "verb:person:slack";
     # Slack's reader, run by the people daemon alone, which asks it only
     # what a client of the daemon asks, or ahead of those it lists. It's
