@@ -850,8 +850,11 @@ PanelWindow {
     color: "transparent"
     // Under the margin's marks, the launcher and notices, on Overlay, so
     // a mark's ink lies over its paws as it perches there and it never
-    // hides a mark or a notice (VKCF3Z, 3d799798).
-    WlrLayershell.layer: WlrLayer.Top
+    // hides a mark or a notice (VKCF3Z, 3d799798); and under the windows,
+    // but on a floating one's top over them (MarginCat.above). It leaves
+    // that seat on a walk to another window or a move between workspaces.
+    readonly property bool leaving: moving !== null || (going !== null && goingTo !== sat)
+    WlrLayershell.layer: MarginCat.above(under, leaving) ? WlrLayer.Top : WlrLayer.Bottom
     WlrLayershell.namespace: "cat"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     // Only its own cells take the pointer, to be petted, so the gap
