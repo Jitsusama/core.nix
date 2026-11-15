@@ -72,6 +72,7 @@ mod stall;
 mod state;
 mod subtests;
 mod turn;
+mod waited;
 mod watch;
 mod world;
 
