@@ -132,6 +132,16 @@ QtObject {
                     .map(one => [one.pose, one.beat, Math.round(one.from)]), []);
         }
 
+        // Its seat below at the same spot on the screen as the one it
+        // leaves, as with the same windows on both, it's still a way down
+        // the one screen, never a hold in place as the windows slide by.
+        const same = Stacked.moves({ x: 900, y: 7 }, { x: 900, y: 7 }, at);
+        expect("its seat at the same spot below, it still goes off the top and drops in",
+            [same.beats.some(beat => beat.name === "drops"),
+                frames(same, 1000 / 120).some(one => one.t < slides && one.y + 8 <= 0),
+                Paths.frame(same, same.ends).beat],
+            [true, true, "sits"]);
+
         // Its seat said again while it's out of sight, it finds its way
         // from where it set off, never walking on from above the screen.
         const again = Stacked.moves({ x: 100, y: 7 }, { x: 900, y: 7 }, at);
