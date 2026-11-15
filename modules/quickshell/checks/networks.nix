@@ -175,6 +175,8 @@ in
         function say(text) { said = said.concat([text]); }
       '';
     in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # case, or sets what the shell runs it with.
     pkgs.runCommandLocal "a-sign-in-notice-is-taken-back-even-late" { } ''
       mkdir -p runtime && chmod 700 runtime
       ${copied [ "SignIn.qml" ]}
