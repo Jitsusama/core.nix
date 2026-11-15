@@ -10,6 +10,10 @@
 # Each wtype adds a keyboard of its own and takes it away as it ends, so
 # each one waits before typing for the reader to take the new keyboard.
 #
+# READER_LATE_FENCE has each texture's first look find the GPU still
+# filling it, as a busy machine's does, so the reader has to look again
+# by itself: nothing else comes to wake a window that hasn't shown yet.
+#
 # usage: reader-takes-its-keys.sh <file> <photo> <heading colour> <cursor> <cursor text> <accent>
 #
 # The markdown a copy is held to holds backticks and dollars, meant as
@@ -25,7 +29,7 @@ cursor_text=$5
 accent=$6
 : > said
 
-READER_KEYS_LOG=1 reader "$file" > said 2>&1 &
+READER_KEYS_LOG=1 READER_LATE_FENCE=1 reader "$file" > said 2>&1 &
 reader=$!
 
 fail() {
