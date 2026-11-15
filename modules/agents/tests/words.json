@@ -7,7 +7,7 @@
       "noun": "agents",
       "what": "agent",
       "glyph": "agent",
-      "parts": ["quests", "jobs", "runs", "spend", "agents:budgets"],
+      "parts": ["quests", "jobs", "runs", "spend", "agents:budgets", "agents:spec"],
       "ask": "which session?",
       "empty": "No sessions running.",
       "none": "none running",
