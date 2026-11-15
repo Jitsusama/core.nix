@@ -25,6 +25,14 @@
       "read_at": 1794702030,
       "since": null,
       "reason": null
+    },
+    {
+      "name": "sony",
+      "what": "the Sony receivers eero lists, asked only to read",
+      "state": "answering",
+      "read_at": 1794702033,
+      "since": null,
+      "reason": null
     }
   ],
   "devices": [
@@ -4310,6 +4318,273 @@
           }
         }
       }
+    },
+    {
+      "id": "mac:02:00:00:00:00:60",
+      "name": "Stereo",
+      "roles": ["receiver"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Sony Corporation",
+      "model": "STR-DN1050",
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:60"],
+      "addresses": ["10.0.0.60"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "2.4 GHz",
+          "band": "2.4 GHz",
+          "channel": 6,
+          "width_mhz": null,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "path": {
+        "through": ["eero:2003", "modem"],
+        "down": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 369.86,
+          "unmeasured": 1
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 1
+        }
+      },
+      "receiver": {
+        "volume": 27,
+        "muted": false,
+        "state": "no media present",
+        "medium": "none",
+        "track": null
+      },
+      "detail": {
+        "eero": {
+          "address": "10.0.0.60",
+          "addresses": ["10.0.0.60"],
+          "band": "2.4 GHz",
+          "channel": 6,
+          "ethernet": false,
+          "hostname": "str-dn1050000060",
+          "kind": "audio",
+          "mac": "02:00:00:00:00:60",
+          "make": "Sony",
+          "manufacturer": "Sony Corporation",
+          "name": "Stereo",
+          "nickname": "Stereo",
+          "node": "2003"
+        },
+        "sony": {
+          "ActionList": {
+            "action": [
+              {
+                "mode": "1",
+                "name": "register",
+                "url": "http://10.0.0.60:50001/cers/register"
+              },
+              {
+                "name": "getSystemInformation",
+                "url": "http://10.0.0.60:50001/cers/getSystemInformation"
+              },
+              {
+                "name": "getRemoteCommandList",
+                "url": "http://10.0.0.60:50001/cers/getRemoteCommandList"
+              },
+              {
+                "name": "getStatus",
+                "url": "http://10.0.0.60:50001/cers/getStatus"
+              },
+              {
+                "name": "getText",
+                "url": "http://10.0.0.60:50001/cers/getText"
+              },
+              {
+                "name": "sendText",
+                "url": "http://10.0.0.60:50001/cers/sendText"
+              }
+            ]
+          },
+          "GetMediaInfo": {
+            "CurrentURI": "",
+            "CurrentURIMetaData": "",
+            "MediaDuration": "0:00:00",
+            "NextURI": "",
+            "NextURIMetaData": "",
+            "NrTracks": "0",
+            "PlayMedium": "NONE",
+            "RecordMedium": "NOT_IMPLEMENTED",
+            "WriteStatus": "NOT_IMPLEMENTED"
+          },
+          "GetMute": {
+            "CurrentMute": "0"
+          },
+          "GetPositionInfo": {
+            "AbsCount": "0",
+            "AbsTime": "0:00:00",
+            "RelCount": "0",
+            "RelTime": "0:00:00",
+            "Track": "0",
+            "TrackDuration": "0:00:00",
+            "TrackMetaData": "",
+            "TrackURI": ""
+          },
+          "GetTransportInfo": {
+            "CurrentSpeed": "1",
+            "CurrentTransportState": "NO_MEDIA_PRESENT",
+            "CurrentTransportStatus": "OK"
+          },
+          "GetVolume": {
+            "CurrentVolume": "27"
+          },
+          "UDN": "uuid:5f9ec1b3-ed59-1900-4530-020000000060",
+          "X_DLNACAP": "playcontainer-0-1",
+          "X_DLNADOC": "DMR-1.50",
+          "X_IRCC_DeviceInfo": {
+            "X_IRCC_CategoryList": {
+              "X_IRCC_Category": {
+                "X_CategoryInfo": "AAMAAAEQ"
+              }
+            },
+            "X_IRCC_Version": "1.0"
+          },
+          "X_StandardDMR": "1.1",
+          "X_Tandem_Deviceinfo": {
+            "X_Tandem_Version": "3.0"
+          },
+          "X_UNR_DeviceInfo": {
+            "X_CERS_ActionList_URL": "http://10.0.0.60:50001/cers/ActionList.xml",
+            "X_UNR_Version": "1.2"
+          },
+          "X_compatibleId": "MS_DigitalMediaDeviceClass_DMR_V001",
+          "X_deviceCategory": ["MediaDevices", "Multimedia.DMR"],
+          "X_hardwareId": "VEN_0106&DEV_0500&SUBSYS_001&REV_01",
+          "deviceList": {
+            "device": {
+              "UDN": "uuid:5f9ec1b3-ed59-1900-4531-020000000060",
+              "deviceType": "urn:schemas-upnp-org:device:Basic:1",
+              "friendlyName": "STR_CISIP",
+              "manufacturer": "Sony Corporation",
+              "manufacturerURL": "http://www.sony.net/",
+              "modelDescription": "IPSTR2",
+              "modelName": "STR-DN1050",
+              "modelNumber": "",
+              "modelURL": "http://www.sony.net/",
+              "serviceList": {
+                "service": {
+                  "SCPDURL": "CIS_ServiceDescription.xml",
+                  "controlURL": "/upnp/control/CIS",
+                  "eventSubURL": "/upnp/event/CIS",
+                  "serviceId": "urn:schemas-sony-com:serviceId:X_CIS",
+                  "serviceType": "urn:schemas-sony-com:service:X_CIS:1"
+                }
+              }
+            }
+          },
+          "deviceType": "urn:schemas-upnp-org:device:MediaRenderer:1",
+          "friendlyName": "STR-DN1050 000060",
+          "getSystemInformation": {
+            "actionHeader": {
+              "name": "CERS-DEVICE-ID"
+            },
+            "generation": "2013",
+            "name": "STR",
+            "remoteType": {
+              "bundled": "true",
+              "text": "RM-AAP102"
+            },
+            "supportFunction": {
+              "function": {
+                "name": "Notification"
+              }
+            }
+          },
+          "iconList": {
+            "icon": [
+              {
+                "depth": "24",
+                "height": "48",
+                "mimetype": "image/jpeg",
+                "url": "/device_icon_48.jpg",
+                "width": "48"
+              },
+              {
+                "depth": "24",
+                "height": "120",
+                "mimetype": "image/jpeg",
+                "url": "/device_icon_120.jpg",
+                "width": "120"
+              },
+              {
+                "depth": "24",
+                "height": "48",
+                "mimetype": "image/png",
+                "url": "/device_icon_48.png",
+                "width": "48"
+              },
+              {
+                "depth": "24",
+                "height": "120",
+                "mimetype": "image/png",
+                "url": "/device_icon_120.png",
+                "width": "120"
+              }
+            ]
+          },
+          "manufacturer": "Sony Corporation",
+          "manufacturerURL": "http://www.sony.net/",
+          "modelDescription": "MULTI CHANNEL AV RECEIVER",
+          "modelName": "STR-DN1050",
+          "modelNumber": "JB3.2",
+          "presentationURL": "http://10.0.0.60",
+          "serviceList": {
+            "service": [
+              {
+                "SCPDURL": "/RenderingControl/desc.xml",
+                "controlURL": "/RenderingControl/ctrl",
+                "eventSubURL": "/RenderingControl/evt",
+                "serviceId": "urn:upnp-org:serviceId:RenderingControl",
+                "serviceType": "urn:schemas-upnp-org:service:RenderingControl:1"
+              },
+              {
+                "SCPDURL": "/ConnectionManager/desc.xml",
+                "controlURL": "/ConnectionManager/ctrl",
+                "eventSubURL": "/ConnectionManager/evt",
+                "serviceId": "urn:upnp-org:serviceId:ConnectionManager",
+                "serviceType": "urn:schemas-upnp-org:service:ConnectionManager:1"
+              },
+              {
+                "SCPDURL": "/AVTransport/desc.xml",
+                "controlURL": "/AVTransport/ctrl",
+                "eventSubURL": "/AVTransport/evt",
+                "serviceId": "urn:upnp-org:serviceId:AVTransport",
+                "serviceType": "urn:schemas-upnp-org:service:AVTransport:1"
+              },
+              {
+                "SCPDURL": "/IRCCSCPD.xml",
+                "controlURL": "/upnp/control/IRCC",
+                "eventSubURL": "",
+                "serviceId": "urn:schemas-sony-com:serviceId:IRCC",
+                "serviceType": "urn:schemas-sony-com:service:IRCC:1"
+              },
+              {
+                "SCPDURL": "/TANDEMSCPD.xml",
+                "controlURL": "/upnp/control/TANDEM",
+                "eventSubURL": "",
+                "serviceId": "urn:schemas-sony-com:serviceId:X_Tandem",
+                "serviceType": "urn:schemas-sony-com:service:X_Tandem:1"
+              }
+            ]
+          }
+        }
+      }
     }
   ],
   "links": [
@@ -4582,6 +4857,21 @@
       "channel": 149,
       "signal_dbm": -52,
       "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:60",
+        "radio": "2.4 GHz"
+      },
+      "b": {
+        "device": "eero:2003",
+        "radio": "2.4 GHz"
+      },
+      "medium": "wifi",
+      "speed_mbps": null,
+      "channel": 6,
+      "signal_dbm": null,
+      "source": "eero"
     }
   ],
   "internet": {
@@ -4620,12 +4910,12 @@
     {
       "kind": "ceiling",
       "device": "modem",
-      "says": "The internet comes in at 369.9 Mbit/s down, the least room on 7 devices' way"
+      "says": "The internet comes in at 369.9 Mbit/s down, the least room on 8 devices' way"
     },
     {
       "kind": "ceiling",
       "device": "modem",
-      "says": "The internet comes in at 11.9 Mbit/s up, the least room on 18 devices' way"
+      "says": "The internet comes in at 11.9 Mbit/s up, the least room on 19 devices' way"
     }
   ]
 }

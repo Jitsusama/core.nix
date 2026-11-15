@@ -17,3 +17,10 @@ golden copy is `../../eero/home-network.json`.
   address and addresses (`Closet`, `02:00:00:00:00:30`, `10.0.0.x`). Its
   cable page holds no test, since none had run; the cases in
   `src/sources/switch.rs` give it one.
+- `sony/`: a Sony STR-DN1050 receiver's eight answers, asked on
+  2026-11-15 without registering as its remote: its UPnP description,
+  five SOAP reads (`GetVolume`, `GetMute`, `GetTransportInfo`,
+  `GetMediaInfo`, `GetPositionInfo`), its CERS action list and
+  `getSystemInformation`, one file each, byte for byte apart from its
+  address, the hardware address in its UDN and its name's suffix
+  (`10.0.0.60`, `020000000060`, `000060`).

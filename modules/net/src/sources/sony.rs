@@ -1,4 +1,4 @@
-//! A Sony AV receiver as a source: what its UPnP description and its
+//! A Sony AV receiver as a source: what its `UPnP` description and its
 //! read-only SOAP actions say, asked of each receiver eero lists, without
 //! registering as its remote (contract/sony/ holds a real one's answers,
 //! redacted). The receiver is the device eero already lists by its
@@ -12,14 +12,15 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-use crate::model::{Receiver, Source};
+use crate::model::{Receiver, Source, SourceState};
+use crate::xml;
 
 /// The source's name, and the key its answers sit under in `detail`.
 pub const NAME: &str = "sony";
 
-/// The port a Sony receiver serves its UPnP description and services on.
+/// The port a Sony receiver serves its `UPnP` description and services on.
 pub const PORT: u16 = 8080;
 
 /// Each answer's text, by the name of what was asked: `description`, a
@@ -55,29 +56,203 @@ pub struct Found {
 /// eero reaches it at: a device whose maker is Sony that eero takes for
 /// audio, so a Sony television or console isn't asked.
 pub fn listed(eero: &Value) -> Vec<(String, String)> {
-    let _ = eero;
-    Vec::new()
+    let Some(Value::Array(devices)) = eero.get("devices") else {
+        return Vec::new();
+    };
+    devices
+        .iter()
+        .filter(|device| {
+            let said = |key| device.get(key).and_then(Value::as_str);
+            let sony = ["make", "manufacturer"]
+                .into_iter()
+                .any(|key| said(key).is_some_and(|maker| maker.starts_with("Sony")));
+            sony && said("kind") == Some("audio")
+        })
+        .filter_map(|device| {
+            let mac = device.get("mac")?.as_str()?;
+            let address = device.get("address")?.as_str()?;
+            Some((mac.to_owned(), address.to_owned()))
+        })
+        .collect()
 }
 
+/// The reads each service is asked, by the service's type: each only
+/// asks, and the volume and mute are of the receiver's master channel.
+const READS: [(&str, &str); 5] = [
+    ("RenderingControl", "GetVolume"),
+    ("RenderingControl", "GetMute"),
+    ("AVTransport", "GetTransportInfo"),
+    ("AVTransport", "GetMediaInfo"),
+    ("AVTransport", "GetPositionInfo"),
+];
+
 /// What to ask a receiver once its description is read: each service's
-/// reads, then its list of Sony's own actions.
+/// reads, then its list of Sony's own actions. A service the description
+/// doesn't offer isn't asked.
 pub fn asks(description: &str, address: &str) -> Vec<Ask> {
-    let _ = (description, address);
-    Vec::new()
+    let Some((_, root)) = xml::read(description) else {
+        return Vec::new();
+    };
+    let device = root.get("device");
+    let services = match device.and_then(|device| xml::find(device, "serviceList")) {
+        Some(list) => match list.get("service") {
+            Some(Value::Array(services)) => services.iter().collect(),
+            Some(service) => vec![service],
+            None => Vec::new(),
+        },
+        None => Vec::new(),
+    };
+    let mut asks: Vec<Ask> = READS
+        .iter()
+        .filter_map(|(service, action)| {
+            let kind = format!("urn:schemas-upnp-org:service:{service}:1");
+            let control = services
+                .iter()
+                .find(|said| said.get("serviceType").and_then(Value::as_str) == Some(&kind))?
+                .get("controlURL")?
+                .as_str()?;
+            let channel = if *service == "RenderingControl" {
+                "<Channel>Master</Channel>"
+            } else {
+                ""
+            };
+            Some(Ask {
+                name: (*action).to_owned(),
+                url: at(address, control),
+                soap: Some(Soap {
+                    action: format!("\"{kind}#{action}\""),
+                    body: format!(
+                        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+                         <s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" \
+                         s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">\
+                         <s:Body><u:{action} xmlns:u=\"{kind}\">\
+                         <InstanceID>0</InstanceID>{channel}</u:{action}></s:Body></s:Envelope>"
+                    ),
+                }),
+            })
+        })
+        .collect();
+    if let Some(list) = device
+        .and_then(|device| xml::find(device, "X_CERS_ActionList_URL"))
+        .and_then(Value::as_str)
+    {
+        asks.push(Ask {
+            name: "ActionList".into(),
+            url: list.to_owned(),
+            soap: None,
+        });
+    }
+    asks
+}
+
+/// A URL the description gives, which may be a path on the receiver.
+fn at(address: &str, url: &str) -> String {
+    if url.starts_with("http://") {
+        url.to_owned()
+    } else {
+        format!("http://{address}:{PORT}{url}")
+    }
 }
 
 /// Where a receiver's system information is asked, from its list of
 /// Sony's own actions.
 pub fn system(action_list: &str) -> Option<String> {
-    let _ = action_list;
-    None
+    let (_, list) = xml::read(action_list)?;
+    let actions = match list.get("action")? {
+        Value::Array(actions) => actions.iter().collect(),
+        action => vec![action],
+    };
+    actions
+        .into_iter()
+        .find(|action| action.get("name").and_then(Value::as_str) == Some("getSystemInformation"))?
+        .get("url")?
+        .as_str()
+        .map(str::to_owned)
 }
 
 /// Each receiver as it answered, and the source, or none when eero lists
-/// no receiver.
-pub fn read(said: Vec<(String, Result<Answers, String>)>, now: u64) -> (Option<Source>, Vec<Found>) {
-    let _ = (said, now);
-    (None, Vec::new())
+/// no receiver. The source answers while any receiver does.
+pub fn read(
+    said: Vec<(String, Result<Answers, String>)>,
+    now: u64,
+) -> (Option<Source>, Vec<Found>) {
+    if said.is_empty() {
+        return (None, Vec::new());
+    }
+    let mut found = Vec::new();
+    let mut reason = None;
+    for (mac, answers) in said {
+        match answers {
+            Ok(answers) => found.push(heard(mac, &answers)),
+            Err(why) => reason = reason.or(Some(why)),
+        }
+    }
+    let answering = !found.is_empty();
+    let source = Source {
+        name: NAME.into(),
+        what: "the Sony receivers eero lists, asked only to read".into(),
+        state: if answering {
+            SourceState::Answering
+        } else {
+            SourceState::Unreachable
+        },
+        read_at: answering.then_some(now),
+        since: (!answering).then_some(now),
+        reason: if answering { None } else { reason },
+    };
+    (Some(source), found)
+}
+
+/// One receiver from its answers, each kept in its own words: the
+/// description's fields as the receiver's own, and beside them each other
+/// answer by what was asked, a SOAP reply as its response's fields.
+fn heard(mac: String, answers: &Answers) -> Found {
+    let mut detail = Map::new();
+    for (name, text) in answers {
+        let Some((_, value)) = xml::read(text) else {
+            continue;
+        };
+        let kept = match name.as_str() {
+            "description" => {
+                if let Some(Value::Object(device)) = value.get("device") {
+                    detail.extend(device.clone());
+                }
+                None
+            }
+            "ActionList" | "getSystemInformation" => Some(value),
+            action => xml::find(&value, &format!("{action}Response")).cloned(),
+        };
+        if let Some(kept) = kept {
+            detail.insert(name.clone(), kept);
+        }
+    }
+    let said = |answer: &str, field: &str| {
+        detail
+            .get(answer)
+            .and_then(|value| value.get(field))
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+    };
+    let model = detail
+        .get("modelName")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let words = |text: &str| text.to_lowercase().replace('_', " ");
+    let receiver = Receiver {
+        volume: said("GetVolume", "CurrentVolume").and_then(|volume| volume.parse().ok()),
+        muted: said("GetMute", "CurrentMute").map(|muted| muted != "0"),
+        state: said("GetTransportInfo", "CurrentTransportState").map(words),
+        medium: said("GetMediaInfo", "PlayMedium").map(words),
+        track: said("GetPositionInfo", "TrackURI")
+            .or_else(|| said("GetMediaInfo", "CurrentURI"))
+            .map(str::to_owned),
+    };
+    Found {
+        mac,
+        model,
+        receiver,
+        detail: Value::Object(detail),
+    }
 }
 
 #[cfg(test)]
@@ -87,8 +262,6 @@ pub mod tests {
     use std::fs;
 
     use serde_json::json;
-
-    use crate::model::SourceState;
 
     /// The contract's receiver: its hardware address and address, as the
     /// eero record the collector's tests add it to gives them.
@@ -216,7 +389,7 @@ pub mod tests {
             "its receiver block is wrong"
         );
         assert_eq!(
-            found.detail["description"]["friendlyName"],
+            found.detail["friendlyName"],
             json!("STR-DN1050 000060"),
             "its description wasn't kept in its own words"
         );

@@ -145,7 +145,9 @@ fn read_receiver(agent: &Agent, address: &str) -> Result<sony::Answers, String> 
             answers.insert(ask.name, answer);
         }
     }
-    if let Some(url) = answers.get("ActionList").and_then(|list| sony::system(list))
+    if let Some(url) = answers
+        .get("ActionList")
+        .and_then(|list| sony::system(list))
         && let Ok(answer) = get(&url)
     {
         answers.insert("getSystemInformation".into(), answer);

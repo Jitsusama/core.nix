@@ -402,9 +402,12 @@ mod tests {
             fits(&text, room);
             assert!(text.starts_with("home network · read 4 s ago"), "{text}");
             assert!(text.contains("modem   answering"), "{text}");
+            // Read as words, since a narrow room wraps the line.
+            let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
             assert!(
-                text.contains(
-                    "20 devices: a modem, a router, 3 access points, a switch and 15 clients"
+                words.contains(
+                    "21 devices: a modem, a router, 3 access points, a switch, a receiver and 15 \
+                     clients"
                 ),
                 "{text}"
             );

@@ -1,7 +1,7 @@
 //! `net devices NAME`: one device in layers. What every device can say,
 //! its ports, radios and links, a role's own figures (a modem's channels
-//! and log), then what each source says that none of those held, in the
-//! source's own words.
+//! and log, a receiver's volume and what it's doing), then what each
+//! source says that none of those held, in the source's own words.
 
 use serde_json::Value;
 use terminal_kit::layout::{self, Align, ITEMS, Room};
@@ -40,6 +40,22 @@ pub fn device(network: &Network, device: &Device, now: u64, pen: &Pen, room: Roo
         blocks.push(channels("down", &modem.downstream, "locked", pen, room));
         blocks.push(channels("up", &modem.upstream, "in use", pen, room));
         blocks.push(log(&modem.log, pen, room));
+    }
+    if let Some(receiver) = &device.receiver {
+        let volume = receiver.volume.map(|volume| volume.to_string());
+        let facts = [
+            ("volume", volume.as_deref()),
+            (
+                "muted",
+                receiver.muted.map(|muted| if muted { "yes" } else { "no" }),
+            ),
+            ("doing", receiver.state.as_deref()),
+            ("playing from", receiver.medium.as_deref()),
+            ("track", receiver.track.as_deref()),
+        ];
+        let mut block = vec![pen.label("receiver")];
+        block.extend(known_facts(&facts, pen, room));
+        blocks.push(block);
     }
     let shown = shown(device);
     for (source, said) in &device.detail {
@@ -370,9 +386,25 @@ fn shown(device: &Device) -> Vec<String> {
 
 /// A source's own fields that the page's tables and facts already say in
 /// net's words, so its section leaves them out by name; the rest go by
-/// value, through `shown`.
-const SAID: [&str; 10] = [
-    "id", "location", "model", "firmware", "serial", "mac", "address", "up_s", "ports", "radios",
+/// value, through `shown`. A receiver's reads are its receiver block, and
+/// the devices inside its description are left to `--json`.
+const SAID: [&str; 16] = [
+    "id",
+    "location",
+    "model",
+    "firmware",
+    "serial",
+    "mac",
+    "address",
+    "up_s",
+    "ports",
+    "radios",
+    "GetVolume",
+    "GetMute",
+    "GetTransportInfo",
+    "GetMediaInfo",
+    "GetPositionInfo",
+    "deviceList",
 ];
 
 /// The most items a list may hold and still be a fact on one line; a
@@ -407,6 +439,7 @@ fn flatten(path: &str, value: &Value, out: &mut Vec<(String, String)>) {
             }
         }
         Value::Null => {}
+        Value::String(words) if words.is_empty() => {}
         _ => out.push((path.to_owned(), scalar(value))),
     }
 }

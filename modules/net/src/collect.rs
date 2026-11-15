@@ -303,7 +303,10 @@ mod tests {
         assert_eq!(stereo.roles, [Role::Receiver], "it isn't a receiver");
         assert_eq!(stereo.name, "Stereo", "eero's name for it was lost");
         assert_eq!(
-            stereo.receiver.as_ref().and_then(|receiver| receiver.volume),
+            stereo
+                .receiver
+                .as_ref()
+                .and_then(|receiver| receiver.volume),
             Some(27),
             "its volume wasn't heard"
         );

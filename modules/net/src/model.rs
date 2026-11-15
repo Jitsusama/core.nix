@@ -263,7 +263,7 @@ pub struct Receiver {
     /// Its volume, on its own scale.
     pub volume: Option<u32>,
     pub muted: Option<bool>,
-    /// What its transport is doing, in UPnP's words: playing, stopped or
+    /// What its transport is doing, in `UPnP`'s words: playing, stopped or
     /// no media present.
     pub state: Option<String>,
     /// What it plays from, as it names it: none, network.

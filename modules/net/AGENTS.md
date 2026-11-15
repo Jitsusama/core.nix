@@ -11,12 +11,13 @@ derived from what's read.
 ## The Words
 
 A device is one box, and its roles are what it does: modem, router,
-access point, switch or client (docs/glossary.md's Network words). One
-eero is one device with the router and access point roles, listed once.
-Each vendor is a source behind those roles: eero's record (the eero
-daemon's), the cable modem's status pages and the switch's web page.
-No vendor's command reads another vendor's equipment, so the modem and
-the switch are net's alone, and `eero` keeps only what's eero's.
+access point, switch, receiver or client (docs/glossary.md's Network
+words). One eero is one device with the router and access point roles,
+listed once. Each vendor is a source behind those roles: eero's record
+(the eero daemon's), the cable modem's status pages, the switch's web
+page and a Sony receiver's UPnP answers. No vendor's command reads
+another vendor's equipment, so the modem, the switch and the receiver
+are net's alone, and `eero` keeps only what's eero's.
 
 ## The Record
 
@@ -29,7 +30,8 @@ the switch are net's alone, and `eero` keeps only what's eero's.
 - `sources`: each source, whether it's answering, unreachable or signed
   out, and why.
 - `devices`: each device's generic fields, its ports and radios, a
-  role's own block (a modem's channels and log), and `detail`, every
+  role's own block (a modem's channels and log, a receiver's volume and
+  what it's doing), and `detail`, every
   field each source gives about it in the source's own words.
 - `links`: a cable or a radio link, port to port or radio to radio; the
   map is drawn from these.
@@ -69,6 +71,17 @@ each source once a minute and writes the record whole, through
   where eero lists it as a wired client by the same hardware address; the
   report's status stays whole as `detail.switch`. When one port alone is
   linked, eero's cable to the switch comes in on it.
+- A Sony receiver: each device eero lists with Sony as its maker and
+  audio as its kind, at the address eero gives. It asks its UPnP
+  description at `:8080/description.xml`, then, posted to the services
+  the description names, `GetVolume`, `GetMute`, `GetTransportInfo`,
+  `GetMediaInfo` and `GetPositionInfo`, then Sony's action list and
+  `getSystemInformation` from it: eight reads, one at a time, two seconds
+  each. `src/sources/sony.rs` puts its volume and what it's doing on
+  eero's device for it, now a receiver, and every answer stays as
+  `detail.sony`, read from XML by `src/xml.rs`. Registering as its
+  remote, sending it a key or text, or setting its volume waits on
+  Joel's yes, so none is asked.
 
 It listens on nothing and asks nothing outside the home network. Away
 from home the modem doesn't answer, and the record says so while eero's
@@ -108,9 +121,10 @@ width without a terminal; tables and facts come from the terminal kit.
   address.
 - `net devices NAME` (`device` too): one device in layers. What any
   device can say, its ports and radios, the links it's on, a modem's
-  channels and log, then what each source says that those didn't, in
-  the source's words. A list of records or a series of readings is left
-  to `--json`, which keeps every source's detail whole.
+  channels and log, a receiver's volume and what it's doing, then what
+  each source says that those didn't, in the source's words. A list of
+  records or a series of readings is left to `--json`, which keeps every
+  source's detail whole.
 
 A name is matched in any case, and any of a device's addresses or its
 id always works. eero can give two devices one name, so a shared name
