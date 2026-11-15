@@ -146,6 +146,9 @@ pub struct Device {
     /// Its way to the internet, when the links reach the modem from it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<Path>,
+    /// A receiver's own figures, on a device with the receiver role.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receiver: Option<Receiver>,
     /// Everything each source gives about the device, in its own words.
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub detail: Map<String, Value>,
@@ -159,6 +162,10 @@ pub enum Role {
     Router,
     AccessPoint,
     Switch,
+    /// A device that plays what's sent to it over the home network into
+    /// speakers, as an AV receiver does; not `player`, which the glossary
+    /// keeps for a program playing on the machine.
+    Receiver,
     /// A thing that only joins the network, as a laptop or a printer does;
     /// not `host`, which the glossary keeps for pi's host.
     Client,
@@ -248,6 +255,21 @@ pub struct Modem {
     pub upstream: Vec<Channel>,
     /// The modem's event log, newest first.
     pub log: Vec<LogEntry>,
+}
+
+/// What a receiver says it's doing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Receiver {
+    /// Its volume, on its own scale.
+    pub volume: Option<u32>,
+    pub muted: Option<bool>,
+    /// What its transport is doing, in UPnP's words: playing, stopped or
+    /// no media present.
+    pub state: Option<String>,
+    /// What it plays from, as it names it: none, network.
+    pub medium: Option<String>,
+    /// Where what it plays comes from, while it plays.
+    pub track: Option<String>,
 }
 
 /// One channel of a cable line, down or up.

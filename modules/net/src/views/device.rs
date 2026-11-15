@@ -588,4 +588,21 @@ mod tests {
             assert!(text.contains("REG-RSP-MP"), "{text}");
         }
     }
+
+    #[test]
+    fn a_receiver_shows_its_volume_and_what_its_doing() {
+        let network = network();
+        let stereo = find(&network, "Stereo").expect("the stereo");
+        for room in ROOMS {
+            let text = device(&network, stereo, now(), &Pen::plain(), room);
+            fits(&text, room);
+            assert!(text.contains("RECEIVER"), "its block has no label: {text}");
+            assert!(text.contains("27"), "its volume isn't shown: {text}");
+            assert!(
+                text.contains("no media present"),
+                "what it's doing isn't shown: {text}"
+            );
+            assert!(text.contains("STR-DN1050"), "its model isn't shown: {text}");
+        }
+    }
 }

@@ -1,25 +1,32 @@
 //! One record of the home network from what each source said: the modem,
 //! the switch, then eero's devices and links, in that order, so a reader
-//! always finds the same device in the same place; then where it runs out
-//! of room (src/room.rs).
+//! always finds the same device in the same place, each receiver's own
+//! figures on eero's device for it; then where it runs out of room
+//! (src/room.rs).
 
 use serde_json::Value;
 
 use crate::model::{Device, LinkState, Medium, Network, SCHEMA};
 use crate::room;
-use crate::sources::{eero, modem, switch};
+use crate::sources::{eero, modem, sony, switch};
 
 /// What each source said in one round of reads.
 pub struct Said {
     pub eero: Result<Value, String>,
     pub modem: Result<modem::Pages, String>,
     pub switch: Result<switch::Report, String>,
+    /// What each receiver eero lists answered, by its hardware address.
+    pub receivers: Vec<(String, Result<sony::Answers, String>)>,
 }
 
 pub fn network(said: Said, now: u64) -> Network {
     let mut eero = eero::read(said.eero, now);
     let (modem_source, modem) = modem::read(said.modem, now);
     let (switch_source, switch) = switch::read(said.switch, now);
+    let (receiver_source, receivers) = sony::read(said.receivers, now);
+    for found in receivers {
+        hear_the_receiver(&mut eero.devices, found);
+    }
     if let Some(switch) = &switch {
         // eero lists the switch as a wired client by the same hardware
         // address; the switch's own source says more, so it stands for
@@ -30,7 +37,10 @@ pub fn network(said: Said, now: u64) -> Network {
     let mut network = Network {
         schema: SCHEMA.into(),
         collected_at: now,
-        sources: vec![eero.source, modem_source, switch_source],
+        sources: [eero.source, modem_source, switch_source]
+            .into_iter()
+            .chain(receiver_source)
+            .collect(),
         devices: modem
             .into_iter()
             .chain(switch)
@@ -42,6 +52,21 @@ pub fn network(said: Said, now: u64) -> Network {
     };
     room::work_out(&mut network);
     network
+}
+
+/// Puts what a receiver said on eero's device for it: it's a receiver
+/// rather than a client, its model is its own, and its answers sit beside
+/// eero's. A receiver eero no longer lists is left out, since eero's
+/// device is what places it on the network.
+fn hear_the_receiver(devices: &mut [Device], found: sony::Found) {
+    let id = format!("mac:{}", found.mac);
+    let Some(device) = devices.iter_mut().find(|device| device.id == id) else {
+        return;
+    };
+    device.roles = vec![crate::model::Role::Receiver];
+    device.model = found.model.or(device.model.take());
+    device.receiver = Some(found.receiver);
+    device.detail.insert(sony::NAME.into(), found.detail);
 }
 
 /// Gives eero's cable to the switch the switch's end: when one port alone
@@ -79,10 +104,14 @@ mod tests {
     /// contract's modem read its clock, so its log is placed in UTC.
     const NOW: u64 = 1_794_702_033;
 
-    /// The contract: eero's golden record, and a real modem's pages.
+    /// The contract: eero's golden record with the stereo in it, a real
+    /// modem's and switch's pages, and a real receiver's answers.
     fn contract() -> Said {
-        let eero = serde_json::from_str(include_str!("../../eero/home-network.json"))
+        let mut eero: Value = serde_json::from_str(include_str!("../../eero/home-network.json"))
             .expect("eero's golden record reads");
+        if let Some(Value::Array(devices)) = eero.get_mut("devices") {
+            devices.push(sony::tests::listing());
+        }
         let pages = modem::PAGES
             .iter()
             .map(|page| {
@@ -115,6 +144,7 @@ mod tests {
                 reason: None,
                 status: Some(status),
             }),
+            receivers: vec![(sony::tests::MAC.into(), Ok(sony::tests::answers()))],
         }
     }
 
@@ -256,6 +286,45 @@ mod tests {
             cable.speed_mbps,
             Some(1000),
             "the cable's speed isn't the port's"
+        );
+    }
+
+    #[test]
+    fn the_stereo_is_eeros_device_for_it_heard_as_a_receiver() {
+        let network = network(contract(), NOW);
+        let named: Vec<_> = network
+            .devices
+            .iter()
+            .filter(|device| device.id == "mac:02:00:00:00:00:60")
+            .collect();
+        let [stereo] = named.as_slice() else {
+            panic!("the stereo should be one device: {named:?}");
+        };
+        assert_eq!(stereo.roles, [Role::Receiver], "it isn't a receiver");
+        assert_eq!(stereo.name, "Stereo", "eero's name for it was lost");
+        assert_eq!(
+            stereo.receiver.as_ref().and_then(|receiver| receiver.volume),
+            Some(27),
+            "its volume wasn't heard"
+        );
+        assert!(
+            stereo.detail.contains_key("eero") && stereo.detail.contains_key("sony"),
+            "a source's words were lost: {:?}",
+            stereo.detail.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            network
+                .sources
+                .iter()
+                .any(|source| source.name == sony::NAME && source.state == SourceState::Answering),
+            "the receivers aren't said as a source"
+        );
+        assert!(
+            network
+                .links
+                .iter()
+                .any(|link| link.a.device == stereo.id || link.b.device == stereo.id),
+            "eero's link to it was lost"
         );
     }
 

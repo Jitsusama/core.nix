@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope
+		xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+		s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+	<s:Body>
+		<u:GetMediaInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+			<NrTracks>0</NrTracks>
+			<MediaDuration>0:00:00</MediaDuration>
+			<CurrentURI></CurrentURI>
+			<CurrentURIMetaData></CurrentURIMetaData>
+			<NextURI></NextURI>
+			<NextURIMetaData></NextURIMetaData>
+			<PlayMedium>NONE</PlayMedium>
+			<RecordMedium>NOT_IMPLEMENTED</RecordMedium>
+			<WriteStatus>NOT_IMPLEMENTED</WriteStatus>
+		</u:GetMediaInfoResponse>
+	</s:Body>
+</s:Envelope>
+
+

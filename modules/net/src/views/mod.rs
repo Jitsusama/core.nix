@@ -28,6 +28,7 @@ fn role_words(role: Role) -> &'static str {
         Role::Router => "router",
         Role::AccessPoint => "access point",
         Role::Switch => "switch",
+        Role::Receiver => "receiver",
         Role::Client => "client",
     }
 }

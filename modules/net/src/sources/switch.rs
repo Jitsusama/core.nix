@@ -419,6 +419,7 @@ fn device(status: &Status, read_at: u64) -> Device {
         ports,
         radios: Vec::new(),
         modem: None,
+        receiver: None,
         path: None,
         detail,
     }
