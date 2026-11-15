@@ -238,6 +238,19 @@ QtObject {
             [MarginCat.behindResize(1000 / 120, 0.1), MarginCat.behindResize(1000 / 60, 10),
                 MarginCat.behindResize(1000 / 120, null), MarginCat.behindResize(1000 / 60)],
             [42, 68, 63, 72]);
+        // Heard to close late, niri's row below already moved up into its
+        // place under the cat as the shell last saw the column: it falls
+        // ahead of the window over it all the same, never riding the row
+        // below down sitting (a builder's nested niri, 2026-11-15: rides,
+        // turns, lands).
+        const belowInPlace = [rows[0], Object.assign({}, rows[2], { top: 266 })];
+        const heardLate = Paths.walk({ x: 532, y: 257 }, { x: 532, y: 399 }, among({
+            hurried: true, closed: true, on: 7, cols: Paths.columns(grown, 0),
+            before: Paths.columns(belowInPlace, 0), ahead: 63, frame: 1000 / 120 }));
+        expect("heard to close once the row below moved into its place, it falls all the same",
+            [heardLate.beats.map(beat => beat.name).slice(0, 3),
+                posed(heardLate, "rides").every(one => one.pose === "falling"), ends(heardLate)],
+            [["rides", "lands", "shakes"], true, [532, 399]]);
         const opened = ided.concat([{ id: 9, left: 432, top: 500, width: 400, height: 284,
             column: 1 }]);
         const staysOn = Paths.walk({ x: 532, y: 307 }, { x: 532, y: 7 }, among({

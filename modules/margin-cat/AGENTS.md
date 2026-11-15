@@ -145,6 +145,8 @@ out in the middle then walk across, that is not believable"
   window's edge"
 - Held by `margin-cat-rides.qml`: "told by niri when the window began to grow, it goes as far into
   it as niri says"
+- Held by `margin-cat-rides.qml`: "heard to close once the row below moved into its place, it
+  falls all the same"
 
 ### Floating Windows
 

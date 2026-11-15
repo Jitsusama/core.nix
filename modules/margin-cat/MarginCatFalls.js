@@ -174,6 +174,12 @@ function rides(way, cols, at) {
             column.top - at.tall), column.bottom - at.tall) };
     } else {
         const id = was.rows[held.row].id;
+        // The row it sat on closed, it rides no other: niri may have
+        // moved the row below up into its place before the shell heard of
+        // the close, and drops() has it fall ahead of the window over it.
+        if (at.closed && at.on !== undefined && at.on !== null && id !== at.on) {
+            return;
+        }
         const row = column.rows.find(one => id !== undefined && one.id === id);
         const middle = way.x + column.left - was.left + at.wide / 2;
         if (row && middle >= column.left && middle <= column.right) {
