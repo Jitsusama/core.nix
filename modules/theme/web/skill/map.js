@@ -39,7 +39,9 @@
   const marks = () => [...map.querySelectorAll("[data-key]")].filter(shown);
   const here = () => map.querySelector("[data-here]")?.dataset.key ?? null;
   const said = () =>
-    [...page.querySelectorAll("[aria-live]")].map((region) => region.textContent).join(" ");
+    [...page.querySelectorAll("[aria-live], [role=status], [role=alert], [role=log]")]
+      .map((region) => region.textContent)
+      .join(" ");
   // A key is pressed as the page hears one, on what holds focus, and the
   // answer says whether the page kept the browser from acting on it.
   const press = async (key, shiftKey = false) => {
@@ -124,8 +126,8 @@
       );
     } else if (want === null && said() === before) {
       strayed.add(
-        `${arrow} from ${from} found nothing that way and said nothing: ` +
-          "say so in the live region",
+        `${arrow} from ${from} found nothing that way and said nothing new: ` +
+          "say so in the live region, naming the way, so a repeat is heard too",
       );
     } else if (want !== null && landed !== want) {
       strayed.add(
@@ -153,18 +155,24 @@
       .slice(0, 8)
       .map((mark) => centre(mark).map(Math.round).join())
       .join(" ");
+  // A map still gliding, or redrawn from new data, moves on its own; it's
+  // judged only once it holds still for a settle.
+  await settle();
   const placed = view();
+  await settle();
+  const still = view() === placed;
   const level = [map.dataset.level, map.dataset.within].join();
   await press("Escape");
-  if (view() !== placed) {
+  if (still && view() !== placed) {
     missing.push("Escape moved the map: let it close only what a mode opened, never move the view");
   }
   if ([map.dataset.level, map.dataset.within].join() !== level) {
     missing.push("Escape changed the level the arrows walk: only - steps back out");
   }
   map.focus();
+  const outside = map.dataset.within;
   await press("Enter");
-  if (map.dataset.within !== undefined) {
+  if (map.dataset.within !== undefined && map.dataset.within !== outside) {
     const opened = map.dataset.within;
     await press("-");
     if (map.dataset.within === opened) {
