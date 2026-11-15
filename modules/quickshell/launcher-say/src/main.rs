@@ -18,6 +18,11 @@
 //! under 92% disk pressure on 2026-11-10). This is one file, linked
 //! statically so no library is read, and `launcher-say-resident` holds its
 //! pages in memory (home.nix), so a chord reads nothing from the disk.
+//!
+//! A chord's words go straight down the socket. Only a flag first, or no
+//! words at all, goes through the terminal kit, for its help, its version
+//! and its refusals, since the kit reads the theme from the disk and a
+//! chord must not wait on that.
 
 use std::env;
 use std::io::{self, Write};
@@ -27,6 +32,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use terminal_kit::{Exit, Failure, Help, flags};
 
 /// How long a chord waits for a shell to listen: a restart's new shell
 /// listened 1 to 5 s after the old one stopped on Joel's machine
@@ -89,23 +96,80 @@ fn socket() -> Option<PathBuf> {
     env::var_os("XDG_RUNTIME_DIR").map(|runtime| PathBuf::from(runtime).join("launcher.sock"))
 }
 
-fn main() -> ExitCode {
-    let words: Vec<String> = env::args().skip(1).collect();
+fn help() -> Help {
+    Help::new("launcher-say", "what a chord says to the launcher")
+        .example("launcher-say toggle", "opens the launcher, or closes it")
+        .example(
+            "launcher-say collection windows",
+            "opens it on the open windows",
+        )
+        .argument(
+            "<words>...",
+            "what the launcher is told, as niri's chords say it",
+        )
+        .exit(
+            Exit::Failed,
+            "neither the launcher's socket nor qs answered",
+        )
+}
+
+/// Says the words to the launcher, down its socket, or through `qs` once
+/// no shell has listened within `WAITING`. It returns only when the socket
+/// took them, or when both failed, with what `qs` failed at.
+fn tell(words: &[String]) -> Result<(), io::Error> {
     let at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     if let Some(socket) = socket()
-        && say_waiting(&socket, &line(&words, at), WAITING, TRYING).is_ok()
+        && say_waiting(&socket, &line(words, at), WAITING, TRYING).is_ok()
     {
-        return ExitCode::SUCCESS;
+        return Ok(());
     }
     // exec only returns when it failed.
-    let failed = Command::new(QS)
+    Err(Command::new(QS)
         .args(["ipc", "call", "launcher"])
-        .args(&words)
-        .exec();
-    eprintln!("launcher-say: neither the launcher's socket nor {QS} answered: {failed}");
-    ExitCode::FAILURE
+        .args(words)
+        .exec())
+}
+
+/// Whether the words are the kit's to answer, a flag first or none at
+/// all, rather than a chord's to say.
+fn the_kits(words: &[String]) -> bool {
+    words.first().is_none_or(|word| word.starts_with('-'))
+}
+
+fn main() -> ExitCode {
+    let words: Vec<String> = env::args().skip(1).collect();
+    if the_kits(&words) {
+        return terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+            let Some(first) = context.args.first() else {
+                return Err(
+                    Failure::new(Exit::Usage, "launcher-say needs the words to say")
+                        .try_this("launcher-say toggle"),
+                );
+            };
+            // A flag the kit didn't take is a mistake, and never words for
+            // the launcher, which would wait out the socket and then qs.
+            if first.starts_with('-') {
+                return Err(flags::unknown("option", first, &["--help", "--version"])
+                    .try_this("launcher-say --help"));
+            }
+            tell(&context.args).map_err(|failed| {
+                Failure::new(
+                    Exit::Failed,
+                    "neither the launcher's socket nor qs answered",
+                )
+                .because(failed.to_string())
+            })
+        });
+    }
+    match tell(&words) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(failed) => {
+            eprintln!("launcher-say: neither the launcher's socket nor {QS} answered: {failed}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 #[cfg(test)]
@@ -116,6 +180,16 @@ mod tests {
 
     fn words(said: &[&str]) -> Vec<String> {
         said.iter().map(|word| (*word).to_owned()).collect()
+    }
+
+    #[test]
+    fn only_a_flag_or_nothing_goes_to_the_kit() {
+        for chord in [&["toggle"][..], &["collection", "windows"], &["line"]] {
+            assert!(!the_kits(&words(chord)), "{chord:?} waited on the kit");
+        }
+        for asked in [&[][..], &["--help"], &["-h"], &["--version"], &["--tgogle"]] {
+            assert!(the_kits(&words(asked)), "{asked:?} went down the socket");
+        }
     }
 
     #[test]

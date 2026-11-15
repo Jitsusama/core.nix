@@ -215,7 +215,6 @@
   "modules/quickshell/clipboard/src/main.rs" = 3;
   "modules/quickshell/in-a-terminal/src/asking.rs" = 8;
   "modules/quickshell/in-a-terminal/src/layout.rs" = 1;
-  "modules/quickshell/in-a-terminal/src/look.rs" = 1;
   "modules/quickshell/in-a-terminal/src/main.rs" = 12;
   "modules/quickshell/in-a-terminal/src/names.rs" = 3;
   "modules/quickshell/keyboard-lights.rs" = 1;
