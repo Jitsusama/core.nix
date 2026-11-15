@@ -25,7 +25,8 @@
 //! (`places.rs`), so a change that runs again after a merge left its pass
 //! stale keeps its place rather than going behind every gate since.
 //!
-//! A change that passed waits so for at most [`PATIENCE`], then goes first.
+//! A change that passed waits so for at most [`PATIENCE`], from its pass or
+//! from when it was rebased, if later, then goes first.
 //! Waiting saves the other gate's run only by costing this change one of its
 //! own once the other merges, so it's a turn, not a right: on 11 November a
 //! change that passed at 22:40 and again at 23:14 was refused six times in
@@ -164,10 +165,31 @@ pub struct Ahead<'a> {
 /// the tree it's in, and the files it changes.
 pub struct Asking<'a> {
     pub started: u64,
-    /// When its pass was kept, which [`PATIENCE`] counts from.
+    /// When its pass was kept, or its head committed if later, which
+    /// [`PATIENCE`] counts from ([`patience_from`]).
     pub passed: u64,
     pub here: &'a Path,
     pub ours: &'a [String],
+}
+
+/// When a change's [`PATIENCE`] counts from: when the pass it merges on
+/// was `kept`, or when its head was `committed`, if later. A head rebased
+/// onto main merges on a pass kept before the rebase, and counting from
+/// that let it go first at once: on 15 November #4721 and #4718 merged
+/// 19 and 25 seconds after rebasing, ahead of #4513's earlier gate on the
+/// kit they read, and left its pass stale.
+#[must_use]
+pub fn patience_from(kept: u64, committed: Option<u64>) -> u64 {
+    committed.map_or(kept, |committed| kept.max(committed))
+}
+
+/// When `commit` was committed, in seconds since 1970, as git says in the
+/// asking tree.
+fn committed(commit: &str) -> Option<u64> {
+    git_in(Path::new("."), &["show", "-s", "--format=%ct", commit])?
+        .trim()
+        .parse()
+        .ok()
 }
 
 /// The gate among `gates` that holds back the change `asking`: the
@@ -237,7 +259,10 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     let here = std::env::current_dir().ok()?;
     let now = crate::state::now();
     let places = placed(&gates, &here, Some(its_gate), now);
-    let kept = kept_at(passes, &crate::ready::record).unwrap_or(now);
+    let kept = patience_from(
+        kept_at(passes, &crate::ready::record).unwrap_or(now),
+        committed(commit),
+    );
     let asking = Asking {
         started: places.start(&here, its_gate, now),
         passed: kept,
@@ -453,332 +478,4 @@ pub fn folder() -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const NOW: u64 = 10_000;
-
-    fn gate(pid: u32, folder: &str, started: u64) -> Gate {
-        Gate {
-            pid,
-            ticks: 1,
-            commit: format!("{pid:040}"),
-            folder: PathBuf::from(folder),
-            started,
-        }
-    }
-
-    fn owned(names: &[&str]) -> Vec<String> {
-        names.iter().map(|name| (*name).to_owned()).collect()
-    }
-
-    fn everyone(_: &Gate) -> bool {
-        true
-    }
-
-    fn touching(files: &[&str]) -> impl Fn(&Gate) -> Option<Vec<String>> {
-        let files = owned(files);
-        move |_| Some(files.clone())
-    }
-
-    /// Each gate counted as started when it did, as with no places kept.
-    fn own(gate: &Gate) -> u64 {
-        gate.started
-    }
-
-    fn asking<'a>(started: u64, here: &'a str, ours: &'a [String]) -> Asking<'a> {
-        Asking {
-            started,
-            passed: NOW,
-            here: Path::new(here),
-            ours,
-        }
-    }
-
-    #[test]
-    fn a_change_to_a_crate_reading_an_earlier_gates_crate_waits_behind_it() {
-        // #4513 changed terminal-kit, which cadence and others read. From
-        // 23:44 on 14 November six of its passes went stale, each as a
-        // change to a crate reading the kit merged during its run, sharing
-        // no file with it, so nothing held that change back.
-        let crates = Crates::of(
-            "c:modules/terminal-kit/Cargo.toml:1:[package]\n\
-             c:modules/cadence/Cargo.toml:1:[package]\n\
-             c:modules/cadence/Cargo.toml:14:terminal-kit = { path = \"../terminal-kit\" }\n\
-             c:modules/sun/Cargo.toml:1:[package]\n",
-        );
-        let theirs = owned(&["modules/terminal-kit/src/lib.rs"]);
-        let ours = owned(&["modules/cadence/src/hour.rs", "modules/sun/src/main.rs"]);
-        let touch = |_: &Gate| Some(shares(theirs.clone(), &ours, &crates));
-        let gates = [gate(1, "/kit", 100)];
-        let held = ahead(
-            &gates,
-            &asking(200, "/cadence", &ours),
-            NOW,
-            &own,
-            &everyone,
-            &touch,
-        );
-        assert_eq!(
-            held.map(|held| held.shared),
-            Some(owned(&["modules/cadence/src/hour.rs"])),
-            "a change to a crate reading the kit merged ahead of the kit's earlier gate"
-        );
-    }
-
-    #[test]
-    fn a_pass_waits_on_an_earlier_gate_only_so_long() {
-        let gates = [gate(1, "/a", 100)];
-        let ours = owned(&["y.rs"]);
-        let touch = touching(&["y.rs"]);
-        let mut waiting = asking(200, "/b", &ours);
-        waiting.passed = NOW - PATIENCE + 1;
-        assert!(
-            ahead(&gates, &waiting, NOW, &own, &everyone, &touch).is_some(),
-            "a pass short of its patience went ahead of an earlier gate"
-        );
-        waiting.passed = NOW - PATIENCE;
-        assert_eq!(
-            ahead(&gates, &waiting, NOW, &own, &everyone, &touch),
-            None,
-            "a pass that waited its patience was still held back"
-        );
-    }
-
-    #[test]
-    fn a_change_whose_gate_passed_keeps_its_turn_while_its_author_merges() {
-        // On 14 November the tree at /a passed at 22:50:57, from a gate
-        // started at 22:38:15, and /b's change, placed after it, asked 32
-        // seconds later and merged first, leaving /a's pass stale again.
-        let started = 1_794_713_895;
-        let kept = 1_794_714_657;
-        let asked = kept + 32;
-        let trees = [(PathBuf::from("/a"), "9d0f6cb20".to_owned())];
-        let passes = |commit: &str| (commit == "9d0f6cb20").then_some((started, kept));
-        let unmerged = |_: &str| Some(false);
-        let ours = owned(&["modules/quickshell/Launcher.qml"]);
-        let touch = touching(&["modules/quickshell/Launcher.qml"]);
-        let mut later = asking(started + 60, "/b", &ours);
-        later.passed = asked - 60;
-        let gates = finished(&trees, asked, &passes, &unmerged);
-        let held = ahead(&gates, &later, asked, &own, &everyone, &touch);
-        assert_eq!(
-            held.map(|held| held.gate.folder.clone()),
-            Some(PathBuf::from("/a")),
-            "a change placed later merged ahead of one whose gate had just passed"
-        );
-        assert!(
-            finished(&trees, kept + GRACE, &passes, &unmerged).is_empty(),
-            "a pass left unmerged past its grace still held others back"
-        );
-        let merged = |_: &str| Some(true);
-        assert!(
-            finished(&trees, asked, &passes, &merged).is_empty(),
-            "a pass main already holds still held others back"
-        );
-        let untold = |_: &str| None;
-        assert!(
-            finished(&trees, asked, &passes, &untold).is_empty(),
-            "a pass main can't be told to hold or not held others back"
-        );
-        let never = |_: &str| None;
-        assert!(
-            finished(&trees, asked, &never, &unmerged).is_empty(),
-            "a head that never passed held others back"
-        );
-    }
-
-    #[test]
-    fn an_earlier_gate_sharing_a_file_holds_a_later_change_back() {
-        let gates = [gate(1, "/a", 100)];
-        let ours = owned(&["y.rs", "z.rs"]);
-        let touch = touching(&["x.rs", "y.rs"]);
-        let held = ahead(
-            &gates,
-            &asking(200, "/b", &ours),
-            NOW,
-            &own,
-            &everyone,
-            &touch,
-        );
-        assert_eq!(
-            held,
-            Some(Ahead {
-                gate: &gates[0],
-                shared: owned(&["y.rs"]),
-                started: 100,
-            }),
-            "an earlier gate sharing y.rs didn't hold the change back"
-        );
-    }
-
-    #[test]
-    fn a_later_gate_holds_an_earlier_change_back_never() {
-        let gates = [gate(1, "/a", 300)];
-        let ours = owned(&["y.rs"]);
-        let touch = touching(&["y.rs"]);
-        let held = ahead(
-            &gates,
-            &asking(200, "/b", &ours),
-            NOW,
-            &own,
-            &everyone,
-            &touch,
-        );
-        assert_eq!(held, None, "a gate started later held the change back");
-    }
-
-    #[test]
-    fn a_rerun_keeps_its_trees_place_ahead_of_gates_started_since_its_first() {
-        // The tree at /a passed a gate at 100, a merge left it stale, and
-        // it runs again from 300; /b's gate started at 200, between them.
-        let mut places = Places::default();
-        places.keep(Path::new("/a"), 100);
-        let place = |gate: &Gate| places.start(&gate.folder, gate.started, NOW);
-        let rerun = [gate(1, "/a", 300)];
-        let ours = owned(&["y.rs"]);
-        let touch = touching(&["y.rs"]);
-        let held = ahead(
-            &rerun,
-            &asking(200, "/b", &ours),
-            NOW,
-            &place,
-            &everyone,
-            &touch,
-        );
-        assert_eq!(
-            held.map(|held| held.started),
-            Some(100),
-            "a rerun went behind a gate started after its tree's first"
-        );
-        let first = [gate(2, "/c", 50)];
-        let held = ahead(
-            &first,
-            &asking(100, "/a", &ours),
-            NOW,
-            &place,
-            &everyone,
-            &touch,
-        );
-        assert_eq!(
-            held.map(|held| held.gate.pid),
-            Some(2),
-            "a rerun in its tree's place went ahead of a gate started before it"
-        );
-    }
-
-    #[test]
-    fn a_gate_gone_here_too_long_or_sharing_only_lists_holds_nothing_back() {
-        let ours = owned(&["y.rs", "check-descriptions.nix"]);
-        let gone = [gate(1, "/a", 100)];
-        let nobody = |_: &Gate| false;
-        let touch = touching(&["y.rs"]);
-        let at = asking(200, "/b", &ours);
-        assert_eq!(
-            ahead(&gone, &at, NOW, &own, &nobody, &touch),
-            None,
-            "a gate whose process is gone held the change back"
-        );
-        let here = [gate(1, "/b", 100)];
-        assert_eq!(
-            ahead(&here, &at, NOW, &own, &everyone, &touch),
-            None,
-            "a gate in the asking tree held its own change back"
-        );
-        let old = [gate(1, "/a", 100)];
-        let later = 100 + LONGEST;
-        let placed_early = |_: &Gate| 10;
-        assert_eq!(
-            ahead(&old, &at, later, &placed_early, &everyone, &touch),
-            None,
-            "a gate past the longest wait held the change back"
-        );
-        let lists = touching(&["check-descriptions.nix"]);
-        assert_eq!(
-            ahead(&old, &at, NOW, &own, &everyone, &lists),
-            None,
-            "a gate sharing only a list held the change back"
-        );
-    }
-
-    #[test]
-    fn a_rebased_head_takes_the_start_of_the_pass_it_merges_on() {
-        let kept = |started: u64| format!(r#"{{"run":["x"],"started":{started}}}"#);
-        let record = |commit: &str| match commit {
-            "newer" => kept(300),
-            "older" => kept(100),
-            _ => String::new(),
-        };
-        assert_eq!(
-            start_of(&["head", "older"], &record),
-            Some(100),
-            "a rebased head with no run of its own took no start"
-        );
-        assert_eq!(start_of(&["newer", "older"], &record), Some(300));
-        assert_eq!(start_of(&["head"], &record), None);
-    }
-
-    #[test]
-    fn a_gates_start_is_its_earliest_kept_and_none_before_starts_were() {
-        let record = "{\"dir\":null,\"run\":[\"--build\"],\"printed\":\"\",\"started\":300}\n\
-                      {\"dir\":null,\"check\":\"checks.x.a\"}\n\
-                      {\"dir\":null,\"run\":[\"--build\",\"--no-vm\"],\"started\":200}\n\
-                      {\"dir\":\"sub\",\"run\":[\"--build\"],\"started\":100}\n";
-        assert_eq!(started(record), Some(200), "the wrong start was read");
-        let old = "{\"dir\":null,\"run\":[\"--build\"],\"printed\":\"\"}\n";
-        assert_eq!(started(old), None, "a record with no start gave one");
-    }
-
-    #[test]
-    fn a_gate_is_alive_only_while_a_process_started_when_it_said_has_its_id() {
-        let pid = std::process::id();
-        let ticks = ticks(pid).expect("this process's start is read");
-        let mut running = gate(pid, "/a", 100);
-        running.ticks = ticks;
-        assert!(
-            alive(&running),
-            "a gate whose process runs was taken as ended"
-        );
-        running.ticks = ticks + 1;
-        assert!(
-            !alive(&running),
-            "a gate was taken as running by another process given its id"
-        );
-        assert!(
-            !alive(&gate(u32::MAX, "/a", 100)),
-            "a gate with no process ran"
-        );
-    }
-
-    #[test]
-    fn the_gates_going_are_read_beside_what_passed() {
-        assert!(
-            folder().is_some_and(|folder| folder.ends_with("nix-offload/running")),
-            "the gates going were looked for outside nix-offload's state"
-        );
-    }
-
-    #[test]
-    fn gates_are_read_as_nix_offload_says_them() {
-        let folder = std::env::temp_dir().join(format!("merge-net-turn-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&folder);
-        fs::create_dir_all(&folder).unwrap();
-        let said = r#"{"pid":7,"ticks":9,"commit":"abc","folder":"/t","started":5}"#;
-        fs::write(folder.join("7.json"), said).unwrap();
-        fs::write(folder.join("8.json.new"), said).unwrap();
-        fs::write(folder.join("9.json"), "not yet whole").unwrap();
-        let read = gates(&folder);
-        let _ = fs::remove_dir_all(&folder);
-        assert_eq!(
-            read,
-            [Gate {
-                pid: 7,
-                ticks: 9,
-                commit: "abc".to_owned(),
-                folder: PathBuf::from("/t"),
-                started: 5
-            }],
-            "the gates going were misread"
-        );
-    }
-}
+mod tests;
