@@ -726,7 +726,7 @@ fn one_found_says_how_they_stand_as_one_listed_does() {
 }
 
 #[test]
-fn those_listed_are_asked_ahead_of_and_each_source_says_how_they_stand() {
+fn those_listed_are_asked_ahead_of_and_told_whole_once_each_source_says_how_they_stand() {
     // Tuple says everyone unasked, Ada a favourite, and Slack only those
     // asked about, standing in a call once asked ahead.
     let tuple = json!({"field": "status", "words": {"unknown": {"word": "available", "order": 0}}});
@@ -747,23 +747,20 @@ fn those_listed_are_asked_ahead_of_and_each_source_says_how_they_stand() {
     }
     // Nobody is asked ahead of while nothing watches those listed.
     assert_eq!(running.asked("slack"), Vec::<String>::new());
-    client.ask(&json!({"id": 1, "ask": "watch", "kind": "listing"}));
     // Ada, listed, is asked ahead of, as the shell's Slack source asked as
     // the launcher opened; Eli, listed by nobody, and Gus, with no
-    // address, aren't.
-    let ada = loop {
-        let said = next_change(&mut client);
-        let found = said["changed"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .find(|record| record["key"] == "person:ada@example.com")
-            .cloned();
-        if let Some(ada) = found.filter(|ada| !ada["sources"]["slack"].is_null()) {
-            break ada;
-        }
-    };
-    assert_eq!(running.asked("slack"), ["?ada@example.com"]);
+    // address, aren't. The whole is told once Slack has answered, as a
+    // daemon started again by a switch tells the shell: told with
+    // Tuple's part alone, then Slack's, the shell made every listed row
+    // twice (2026-11-15).
+    let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "listing"}));
+    let ada = said["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|record| record["key"] == "person:ada@example.com")
+        .cloned()
+        .unwrap_or_default();
     // Each source's entry says how it has them stand, in the launcher's
     // words, so the shell words nobody's stand itself.
     assert_eq!(
@@ -777,6 +774,7 @@ fn those_listed_are_asked_ahead_of_and_each_source_says_how_they_stand() {
         ),
         "{ada}"
     );
+    assert_eq!(running.asked("slack"), ["?ada@example.com"]);
     // And so does each a search finds.
     let said = client.ask(&json!({"id": 2, "ask": "search", "words": "fenwick"}));
     assert_eq!(
