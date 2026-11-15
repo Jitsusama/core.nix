@@ -31,11 +31,11 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       boot.loader.systemd-boot.enable = true;
       boot.loader.efi.canTouchEfiVariables = true;
       # systemd's initrd reads where the image went from the EFI variable
-      # systemd-hibernate keeps, so nothing names the swap's disk to it.
-      boot.initrd.systemd.enable = true;
+      # systemd-hibernate keeps, so nothing names the swap's disk to it. The
+      # empty disk comes third, after the boot disk and the store's image.
       swapDevices = lib.mkOverride 0 [
         {
-          device = "/dev/disk/by-id/virtio-empty0";
+          device = "/dev/vdc";
           options = [ "x-systemd.makefs" ];
         }
       ];
