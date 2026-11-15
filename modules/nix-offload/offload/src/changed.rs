@@ -33,6 +33,11 @@
 //! 400 to 900 s, to build nothing new. The same run again there says what
 //! it named and goes nowhere; another is told, as `CHANGED_CHECKS_PASSED`,
 //! which checks passed at the commit, so the far side builds none again.
+//!
+//! With a Mac nearby, a run that passed for another system compares a
+//! Mac's checks too when the change touches a file they read, and its pass
+//! is kept only once theirs is, or once their comparison is kept as
+//! skipped while the Mac is away (`changed/mac.rs`).
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -775,6 +780,7 @@ pub fn building(folder: &Path, system: &str, checks: &[String]) -> Command {
     command
 }
 
+pub mod mac;
 pub mod runs;
 pub mod turns;
 
