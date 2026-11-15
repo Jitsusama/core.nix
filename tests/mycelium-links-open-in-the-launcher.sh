@@ -8,13 +8,12 @@
 # and ones it mustn't pass on, and a second link within a few seconds of
 # the first.
 # usage: mycelium-links-open-in-the-launcher.sh <desktop entry> <niri's defaults>
-#   <mycelium-link> <mycelium-link asking a stand-in qs>
+#   <mycelium-link asking a stand-in qs>
 set -euo pipefail
 
 entry=$1
 defaults=$2
-link=$3
-asking_stand_in=$4
+asking_stand_in=$3
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cd "$work"
@@ -43,9 +42,11 @@ if ! grep -qxF 'Default application for “x-scheme-handler/mycelium”: myceliu
   echo "gio opens mycelium links with: $said"
   exit 1
 fi
-command=$(sed -n 's|^Exec=\(.*\) %u$|\1|p' "$entry")
-if [ "$command" != "$link" ]; then
-  echo "the entry runs '$command', not mycelium-link"
+# The entry runs the home's own build, asking the shell's qs, so it's
+# checked by name; the stand-in's build below is the same program.
+command=$(sed -n 's|^Exec=\(/nix/store/[^ ]*/bin/mycelium-link\) %u$|\1|p' "$entry")
+if [ -z "$command" ] || [ ! -x "$command" ]; then
+  echo "the entry runs '$(sed -n 's|^Exec=||p' "$entry")', not mycelium-link"
   exit 1
 fi
 

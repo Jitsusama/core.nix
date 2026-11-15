@@ -117,7 +117,6 @@
           lib.escapeShellArgs [
             (pkgs.writeText "mycelium-link.desktop" entry)
             (pkgs.writeText "niri-mimeapps.list" defaults)
-            (lib.getExe (pkgs.callPackage ../mycelium-link/package.nix { }))
             (lib.getExe askingStandIn)
           ]
         }
