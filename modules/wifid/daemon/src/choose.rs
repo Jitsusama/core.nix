@@ -685,6 +685,53 @@ pub(crate) mod tests {
         );
     }
 
+    /// Another eero's 5 GHz radio, heard from the desk far more faintly.
+    fn far_at(signal: i16, measured: Option<Measured>) -> Other {
+        Other {
+            point: "6c:ae:f6:ba:85:88".into(),
+            signal,
+            busy: Some(20),
+            frequency: 5745,
+            measured,
+        }
+    }
+
+    #[test]
+    fn one_on_5_ghz_carrying_badly_keeps_off_5_ghz_heard_much_more_faintly() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let badly = carried(56, 0.0);
+
+        let on = (DESK, &badly, -47, CH52);
+        let choice = chooser.choose(Instant::now(), on, &[far_at(-65, None)], false);
+
+        assert_eq!(choice, Choice::Stay, "18 dB fainter carries less");
+    }
+
+    #[test]
+    fn one_carrying_badly_keeps_off_one_known_quicker_but_heard_much_more_faintly() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let badly = carried(61, 0.0);
+        let known = far_at(-65, Some(carried(26, 0.0)));
+
+        let on = (DESK, &badly, -48, CH52);
+        let choice = chooser.choose(Instant::now(), on, &[known], false);
+
+        assert_eq!(choice, Choice::Stay, "17 dB fainter isn't room");
+    }
+
+    #[test]
+    fn one_on_2_4_ghz_carrying_badly_moves_to_5_ghz_known_quicker_though_fainter() {
+        let mut chooser = after_a_bad_minute(NEAR);
+        let badly = carried(119, 0.0);
+        let known = desk_at(-45, Some(carried(20, 0.0)));
+
+        let on = (NEAR, &badly, -34, CH6);
+        let choice = chooser.choose(Instant::now(), on, &[known], false);
+
+        let to_the_desk = Choice::Try(DESK.into());
+        assert_eq!(choice, to_the_desk, "5 GHz is heard fainter, and wider");
+    }
+
     #[test]
     fn a_move_to_a_wider_band_goes_back_only_if_it_carries_badly() {
         let start = Instant::now();
