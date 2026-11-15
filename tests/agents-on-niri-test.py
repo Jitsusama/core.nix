@@ -1458,6 +1458,10 @@ def test_networks_is_one_row_after_the_tree_its_kinds_under_headings_never_selec
     shell.launcher_until(lambda shown: shown["selected"]["name"] == "harbour")
     shell.send_chars("k")
     shell.launcher_until(lambda shown: shown["selected"]["name"] == "core.nix")
+    # G lands on the last network, the list scrolled so the Machines heading shows above it.
+    shell.send_chars("G")
+    shell.launcher_until(lambda shown: shown["selected"]["name"] == "machines")
+    shoot("agents-networks-scrolled")
     shell.send_chars("gg")
     shell.launcher_until(lambda shown: shown["selected"]["name"] == "core.nix")
     # Return on a network steps into its cells, each its session's own row.
