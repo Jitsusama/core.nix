@@ -108,6 +108,20 @@ fn names_a_quest_by_its_short_title_else_its_heading() {
     assert_eq!(title("# \n"), None);
 }
 
+// Any agent can write a README, so a title can't draw itself reversed,
+// hidden or on two lines on the prompt (ISXEG8, 2026-11-15).
+#[test]
+fn says_a_title_without_its_control_or_format_characters() {
+    let reversed = "# Launcher \u{202e}deepS\u{202c} Fix\u{200b}es\u{2028}and\u{0}more\r\n";
+    assert_eq!(
+        title(reversed).as_deref(),
+        Some("Launcher deepS Fixes and more")
+    );
+    let short = "---\nshort: \"\u{feff}Launcher\tSpeed\u{2066}\"\n---\n# The Loop\n";
+    assert_eq!(title(short).as_deref(), Some("Launcher Speed"));
+    assert_eq!(title("# \u{202e}\u{200d}\n"), None);
+}
+
 #[test]
 fn a_quest_with_no_readme_says_no_title() {
     let proc = Proc::new("untitled");

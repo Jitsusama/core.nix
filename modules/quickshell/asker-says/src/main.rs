@@ -131,15 +131,60 @@ fn title(readme: &str) -> Option<String> {
     let short = front
         .lines()
         .find_map(|line| line.strip_prefix("short:"))
-        .map(|short| short.trim().trim_matches('"').trim())
+        .map(|short| drawable(short.trim().trim_matches('"')))
         .filter(|short| !short.is_empty());
-    if let Some(short) = short {
-        return Some(short.to_owned());
-    }
-    body.lines()
-        .find_map(|line| line.strip_prefix("# "))
-        .map(|title| title.trim().to_owned())
-        .filter(|title| !title.is_empty())
+    short.or_else(|| {
+        body.lines()
+            .find_map(|line| line.strip_prefix("# "))
+            .map(drawable)
+            .filter(|title| !title.is_empty())
+    })
+}
+
+/// Unicode's format characters (Cf), which Rust's char doesn't name: the
+/// bidi marks, embeddings, overrides and isolates, the zero-widths and the
+/// invisible operators among them.
+const FORMATS: &[(char, char)] = &[
+    ('\u{ad}', '\u{ad}'),
+    ('\u{600}', '\u{605}'),
+    ('\u{61c}', '\u{61c}'),
+    ('\u{6dd}', '\u{6dd}'),
+    ('\u{70f}', '\u{70f}'),
+    ('\u{890}', '\u{891}'),
+    ('\u{8e2}', '\u{8e2}'),
+    ('\u{180e}', '\u{180e}'),
+    ('\u{200b}', '\u{200f}'),
+    ('\u{202a}', '\u{202e}'),
+    ('\u{2060}', '\u{2064}'),
+    ('\u{2066}', '\u{206f}'),
+    ('\u{feff}', '\u{feff}'),
+    ('\u{fff9}', '\u{fffb}'),
+    ('\u{110bd}', '\u{110bd}'),
+    ('\u{110cd}', '\u{110cd}'),
+    ('\u{13430}', '\u{1343f}'),
+    ('\u{1bca0}', '\u{1bca3}'),
+    ('\u{1d173}', '\u{1d17a}'),
+    ('\u{e0001}', '\u{e0001}'),
+    ('\u{e0020}', '\u{e007f}'),
+];
+
+/// A title as the prompt may draw it. Any agent can write a README, so a
+/// format character, which could turn the words around or hide some, is
+/// dropped; a control character or a line or paragraph separator becomes
+/// a space, so no title takes two lines; and spaces run together.
+fn drawable(title: &str) -> String {
+    title
+        .chars()
+        .filter(|letter| {
+            !FORMATS
+                .iter()
+                .any(|(from, to)| (from..=to).contains(&letter))
+        })
+        .map(|letter| if letter.is_control() { ' ' } else { letter })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// The title of the quest `quest` names, from its README in `quests`; the
