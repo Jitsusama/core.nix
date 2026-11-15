@@ -8,23 +8,28 @@ use serde_json::{Value, json};
 use super::super::tests::{told, warmed};
 use super::*;
 
-/// The Warmth's rows inside eDP-1 at the moment `now`, from the warmth
-/// record `warmth` changed by `changes`, each part named by its id.
-fn rows_at(changes: &Value, now: u64) -> Vec<Value> {
+/// The Warmth's rows at the moment `now`, from the warmth record
+/// `warmth` changed by `changes`, each part named by its id, a screen in
+/// the room's light where `room`.
+fn rows_in(changes: &Value, now: u64, room: bool) -> Vec<Value> {
     let mut record = warmed();
     for (field, value) in changes.as_object().into_iter().flatten() {
         record[field] = value.clone();
     }
     let numbers = Numbers::default();
     let named = |id: &str| id.to_owned();
-    let inside = Inside {
-        name: "eDP-1",
-        screen: "row:displays:display:eDP-1",
+    let warmed = Warmed {
         named: &named,
         numbers: &numbers,
         now,
+        room,
     };
-    rows(&Light::of(&[record]), &inside, &told())
+    rows(&Light::of(&[record]), &warmed, &told())
+}
+
+/// The same with the lid open, its panel in the room.
+fn rows_at(changes: &Value, now: u64) -> Vec<Value> {
+    rows_in(changes, now, true)
 }
 
 fn keys(rows: &[Value]) -> Vec<&str> {
@@ -38,7 +43,7 @@ fn row<'a>(rows: &'a [Value], key: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("no row {key} among {:?}", keys(rows)))
 }
 
-const WARMTH: &str = "row:displays:warmth:eDP-1";
+const WARMTH: &str = "row:displays:warmth";
 
 #[test]
 fn by_day_the_warmth_steps_into_its_switches_then_its_figures() {
@@ -47,12 +52,12 @@ fn by_day_the_warmth_steps_into_its_switches_then_its_figures() {
         keys(&made),
         [
             WARMTH,
-            "row:displays:switch:eDP-1:night-light",
-            "row:displays:switch:eDP-1:follow-room",
-            "row:displays:fact:eDP-1:warmth-room",
-            "row:displays:fact:eDP-1:warmth-sunset",
-            "row:displays:fact:eDP-1:warmth-sunrise",
-            "row:displays:fact:eDP-1:warmth-night",
+            "row:displays:switch:night-light",
+            "row:displays:switch:follow-room",
+            "row:displays:fact:warmth-room",
+            "row:displays:fact:warmth-sunset",
+            "row:displays:fact:warmth-sunrise",
+            "row:displays:fact:warmth-night",
         ],
         "the Warmth's rows aren't served in the order a step into it lists them"
     );
@@ -65,12 +70,12 @@ fn by_day_the_warmth_steps_into_its_switches_then_its_figures() {
             &warmth["kind"]
         ),
         (
-            &json!("row:displays:display:eDP-1"),
-            &json!(1),
-            &json!("displays:eDP-1:warmth"),
+            &Value::Null,
+            &json!(0),
+            &json!("displays:warmth"),
             &json!("warmth")
         ),
-        "the Warmth isn't inside its screen as the shell made it"
+        "the Warmth isn't at Screens' own level, beside the screens"
     );
     assert_eq!(
         (&warmth["side"], &warmth["note"]),
@@ -85,7 +90,7 @@ fn by_day_the_warmth_steps_into_its_switches_then_its_figures() {
     assert!(
         made[1..]
             .iter()
-            .all(|inside| inside["parent"] == WARMTH && inside["depth"] == 2),
+            .all(|inside| inside["parent"] == WARMTH && inside["depth"] == 1),
         "what a step into the Warmth holds isn't inside it"
     );
 }
@@ -93,7 +98,7 @@ fn by_day_the_warmth_steps_into_its_switches_then_its_figures() {
 #[test]
 fn each_switch_says_how_it_stands_and_asks_the_other_way() {
     let made = rows_at(&json!({}), 500);
-    let night = row(&made, "row:displays:switch:eDP-1:night-light");
+    let night = row(&made, "row:displays:switch:night-light");
     assert_eq!(
         (
             &night["name"],
@@ -115,13 +120,10 @@ fn each_switch_says_how_it_stands_and_asks_the_other_way() {
             "ask": {"ask": "light", "do": "night-light", "on": true}}]),
         "the Night Light's Return doesn't ask it on"
     );
-    let follows = row(&made, "row:displays:switch:eDP-1:follow-room");
+    let follows = row(&made, "row:displays:switch:follow-room");
     assert_eq!(
         (&follows["side"], &follows["thing"]),
-        (
-            &json!([{"said": "on"}]),
-            &json!("displays:eDP-1:follow-room")
-        ),
+        (&json!([{"said": "on"}]), &json!("displays:follow-room")),
         "Follow the Room doesn't stand on"
     );
     assert_eq!(
@@ -144,8 +146,8 @@ fn by_night_the_night_light_holds_until_sunrise_which_leads_the_figures() {
     assert_eq!(
         keys(&made)[3..5],
         [
-            "row:displays:fact:eDP-1:warmth-room",
-            "row:displays:fact:eDP-1:warmth-sunrise"
+            "row:displays:fact:warmth-room",
+            "row:displays:fact:warmth-sunrise"
         ],
         "by night the sunrise doesn't come first"
     );
@@ -201,10 +203,10 @@ fn where_no_sensor_sees_colour_the_room_neither_switches_nor_figures() {
     assert_eq!(
         keys(&made)[1..],
         [
-            "row:displays:switch:eDP-1:night-light",
-            "row:displays:fact:eDP-1:warmth-sunset",
-            "row:displays:fact:eDP-1:warmth-sunrise",
-            "row:displays:fact:eDP-1:warmth-night",
+            "row:displays:switch:night-light",
+            "row:displays:fact:warmth-sunset",
+            "row:displays:fact:warmth-sunrise",
+            "row:displays:fact:warmth-night",
         ],
         "Follow the Room or the room's white is served where no sensor sees colour"
     );
@@ -215,19 +217,47 @@ fn where_no_sensor_sees_colour_the_room_neither_switches_nor_figures() {
     );
 }
 
+// VKCF3Z, 2026-11-15: Night Light warms every screen, so the Warmth
+// stays where it was with the lid shut, its Night Light inside it; only
+// the panel has the room's light to follow, so what follows it leaves.
+#[test]
+fn with_the_lid_shut_the_night_light_stays_and_the_room_leaves() {
+    let made = rows_in(&json!({}), 500, false);
+    assert_eq!(
+        keys(&made),
+        [
+            WARMTH,
+            "row:displays:switch:night-light",
+            "row:displays:fact:warmth-sunset",
+            "row:displays:fact:warmth-sunrise",
+            "row:displays:fact:warmth-night",
+        ],
+        "with the lid shut the Warmth doesn't keep its Night Light and lose the room's parts"
+    );
+    assert_eq!(
+        row(&made, WARMTH)["note"],
+        json!("the screen's own white"),
+        "with the lid shut the Warmth says it follows a room it can't see"
+    );
+    assert_eq!(
+        row(&made, WARMTH)["drawer"]["facts"][0]["name"],
+        "warmth:sunset",
+        "with the lid shut the plate still says the room's white"
+    );
+}
+
 #[test]
 fn nothing_warming_the_screen_serves_no_warmth() {
     let numbers = Numbers::default();
     let named = |id: &str| id.to_owned();
-    let inside = Inside {
-        name: "eDP-1",
-        screen: "row:displays:display:eDP-1",
+    let warmed = Warmed {
         named: &named,
         numbers: &numbers,
         now: 0,
+        room: true,
     };
     assert!(
-        rows(&Light::default(), &inside, &told()).is_empty(),
+        rows(&Light::default(), &warmed, &told()).is_empty(),
         "a Warmth is served with no record of it"
     );
 }

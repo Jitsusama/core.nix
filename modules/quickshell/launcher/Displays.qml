@@ -33,8 +33,8 @@
 // screen's settings (modules/windows, light/brightness.rs): its share as
 // a bar, its levels a step in, which set it as the brightness keys do, so
 // the backlight daemon, which follows the room while the lid is open,
-// learns it as Joel's pick; then, on the built-in screen, the Warmth and
-// the Room light its sensor hears. "brightness" asks it, and "brightness
+// learns it as Joel's pick; then, on the built-in screen, the Room light
+// its sensor hears. "brightness" asks it, and "brightness
 // 40" sets it on Return. The
 // backlight and the room's light are the machine daemon's (modules/machine,
 // light.rs), read once a second while they can be seen and told here as
@@ -43,19 +43,19 @@
 // names as its connector holds Brightness, and is never said, since its
 // drawer's eyebrow already names it.
 //
-// The backlight daemon warms the built-in screen at night from sunset to
+// The backlight daemon warms every screen at night from sunset to
 // sunrise, and toward the room's light where its sensor sees colour, and
 // says how that stands, which the machine daemon serves as it changes
 // (modules/backlight, modules/machine's steered.rs). The windows daemon
-// serves the Warmth inside the screen holding the light, on every machine
-// with a panel to warm (modules/windows, light/warmth.rs): its side the
-// warmth now, its note what holds it, and Return stepping into the Night
-// Light and Follow the Room switches, which the backlight daemon is told
-// over the session's bus and keeps, then the room's white, the night's
-// sunset and sunrise and its white, each time said by the shell's clock
-// (VKCF3Z, 2026-11-08). It follows the Brightness here. "screen warmth"
-// asks it. What's held of the warmth (Warmth.js) is read here only for
-// the : line's :set nightlight and :set warmth.
+// serves the Warmth as Screens' own, beside the screens, in the same
+// place with the lid open or shut (modules/windows, light/warmth.rs;
+// VKCF3Z, 2026-11-15): its side the warmth now, its note what holds it,
+// and Return stepping into the Night Light, then Follow the Room while a
+// screen in the room is lit, switches the backlight daemon is told over
+// the session's bus and keeps, then the room's white, the night's sunset
+// and sunrise and its white, each time said by the shell's clock.
+// "screen warmth" asks it, and the : line's :set nightlight and :set
+// warmth ask what its switches ask (switchOption).
 import qs
 import Quickshell
 import QtQuick
@@ -66,7 +66,6 @@ import "Order.js" as Order
 import "ScreenAnswers.js" as ScreenAnswers
 import "Screens.js" as Screens
 import "Seen.js" as Seen
-import "Warmth.js" as Warmth
 
 Provider {
     id: provider
@@ -110,8 +109,9 @@ Provider {
 
     // :set brightness=60 sets the screen as its Brightness levels do, asking
     // the windows daemon what they ask (brighten), on a machine with a
-    // backlight, and :set nowarmth gives it its own white by
-    // day as Warmth's Follow the Room does, where a sensor sees colour. :set
+    // backlight; :set nightlight and nonightlight turn the night light on
+    // and off, and :set nowarmth gives the screens their own white by day,
+    // as the Warmth's switches do, while each is served. :set
     // noscreens turns every screen off, doing Turn Every Screen Off's act;
     // they are on whenever the launcher can be seen, so screens alone does
     // nothing.
@@ -137,27 +137,32 @@ Provider {
                 return "";
             }
         }
-    }, warmth === null ? {} : {
-        // :set nightlight and nonightlight turn the night light on and off,
-        // as its switch in Warmth does.
-        nightlight: {
+    }, switchOption("nightlight", "displays:night-light"),
+        switchOption("warmth", "displays:follow-room"))
+
+    // The rows served, placed or not, for what the : line asks of them.
+    function servedRows() {
+        return ready.keys.map(key => ready.served(key));
+    }
+
+    // The : line's option `name` for the served switch whose act is `act`,
+    // offered only while it's served: it says how the switch stands, and
+    // turning it the other way asks what its Return asks (Screens.js's
+    // switchOf).
+    function switchOption(name, act) {
+        if (Screens.switchOf(servedRows(), act) === null)
+            return {};
+        return { [name]: {
             kind: "switch",
-            now: () => provider.warmth?.nightLight ?? false,
-            set: to => {
-                provider.nightLight(to);
+            now: () => Screens.switchOf(provider.servedRows(), act)?.on ?? false,
+            set: (to, change, later) => {
+                const ask = Screens.switchOf(provider.servedRows(), act)?.asked(to) ?? null;
+                if (ask !== null)
+                    provider.lineAsked(ask, later, name);
                 return "";
             }
-        }
-    }, warmth === null || !warmth.seesColour ? {} : {
-        warmth: {
-            kind: "switch",
-            now: () => provider.warmth?.followsTheRoom ?? false,
-            set: to => {
-                provider.followTheRoom(to);
-                return "";
-            }
-        }
-    })
+        } };
+    }
 
     // A change made to a screen here says nothing in niri's stream, nor
     // does a key waking the screens, so the windows daemon is asked to look
@@ -218,14 +223,21 @@ Provider {
     // Sets the screen to a share, for :set brightness= and "brightness
     // 40", asking the windows daemon what its Brightness levels ask, at
     // that share (Screens.js's brightening), so it goes as a level's
-    // Return does; nothing is asked while no level is served. No row asked
-    // it, so none is drawn becoming: a refusal, in the daemon's words or
-    // the launcher's for an answer that never came, goes to `later` as the
-    // : line's other answers do (lineAsk), else to the journal, the
-    // Brightness saying the light as it stands.
+    // Return does; nothing is asked while no level is served.
     function brighten(share, later) {
-        const ask = Screens.brightening(ready.keys.map(key => ready.served(key)), share);
-        if (ask === null || !ready.link)
+        const ask = Screens.brightening(servedRows(), share);
+        if (ask !== null)
+            lineAsked(ask, later, `brightness ${ask.share}`);
+    }
+
+    // Asks the windows daemon what a served row's Return asks, for the
+    // : line or typed words, the Brightness saying the light and a switch
+    // how it stands once the daemon tells them. No row asked it, so none is
+    // drawn becoming: a refusal, in the daemon's words or the launcher's for
+    // an answer that never came, goes to `later` as the : line's other
+    // answers do (lineAsk), else to the journal, naming `what` was asked.
+    function lineAsked(ask, later, what) {
+        if (!ready.link)
             return;
         const becoming = Words.field.becoming ?? {};
         ready.link.ask(ask, answer => {
@@ -234,27 +246,8 @@ Provider {
             if (later)
                 later(why, true);
             else if (why !== "")
-                console.info(`launcher: brightness ${ask.share} refused: ${why}`);
+                console.info(`launcher: ${what} refused: ${why}`);
         });
-    }
-
-    // How the screen's warmth stands, as the backlight program says it
-    // (Warmth.js's of), or null where nothing warms the screen: what the
-    // : line's :set nightlight and :set warmth read and offer. Its rows
-    // are the windows daemon's (light/warmth.rs).
-    property var warmth: null
-    onWarmthChanged: changed()
-
-    // Tells the backlight daemon whether the night light is on, through
-    // the machine daemon, which sets its property on the session's bus.
-    function nightLight(on) {
-        lights.ask({ ask: "act", act: "night-light", on: on }, null);
-    }
-
-    // Tells the backlight daemon whether the screen follows the room, the
-    // same way.
-    function followTheRoom(follows) {
-        lights.ask({ ask: "act", act: "follow-the-room", follows: follows }, null);
     }
 
     // Setting the screen to a share, Return doing it.
@@ -288,7 +281,7 @@ Provider {
         id: lights
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
-        kind: ["backlight", "light", "brightness", "warmth"]
+        kind: ["backlight", "light", "brightness"]
         live: provider.lightsSeen
         keptThroughGap: false
         answersWhole: true
@@ -364,18 +357,14 @@ Provider {
         const records = Object.values(lights.held);
         const now = Backlight.lit(records);
         const sensed = Backlight.sensor(records);
-        const warmed = Warmth.of(records);
         const moved = (was, is) => JSON.stringify(was) !== JSON.stringify(is);
         const lit = moved(light, now);
         const sensing = moved(roomSensor, sensed);
-        const warming = moved(warmth, warmed);
         if (lit)
             light = now;
         if (sensing)
             roomSensor = sensed;
-        if (warming)
-            warmth = warmed;
-        if ((lit || sensing || warming) && lightShown)
+        if ((lit || sensing) && lightShown)
             answered();
     }
 
@@ -624,7 +613,7 @@ Provider {
     // only its parts again as the launcher closes (Launcher.qml's
     // heldSpots): its served rows, those inside it among them, its EDID's
     // facts and its ways (ReadyRows.stampOf), and for a screen whether it
-    // holds the light, the sensor and warmth; never a level. Joel's closing
+    // holds the light and the sensor; never a level. Joel's closing
     // at 14:36 on 2026-11-11 made all 87 of Displays' rows again.
     function spotsStampOf(thing) {
         const served = ready.stampOf(thing);
@@ -634,17 +623,15 @@ Provider {
         if (output === undefined)
             return served;
         return JSON.stringify([served, backlit(output),
-            light === null ? false : light.connector ?? "", roomSensor !== null,
-            warmth === null ? null : warmth.seesColour === true]);
+            light === null ? false : light.connector ?? "", roomSensor !== null]);
     }
 
     // What its spots are made of (Launcher.qml's spotsFrom): the screens
     // as the daemon serves them, which one holds the Brightness, and
-    // whether the room's sensor and the warmth are there; never a level, a
-    // lux or a warmth's figure, which move while nothing else does.
+    // whether the room's sensor is there; never a level or a lux, which
+    // move while nothing else does.
     property string spotsStamp: JSON.stringify([ready.placings,
-        light === null ? false : light.connector ?? "", roomSensor !== null,
-        warmth === null ? null : warmth.seesColour === true])
+        light === null ? false : light.connector ?? "", roomSensor !== null])
 
     // A part's name, as the vocabulary says it (Provider's partNamed).
     function partName(id) {
@@ -653,7 +640,7 @@ Provider {
 
     // A display's right arrow: what the daemon serves inside its row
     // (screens.rs), as a step in offers it: on the lit screen holding the
-    // light, its Brightness, Warmth and Room Light, then a lit one's
+    // light, its Brightness and Room Light, then a lit one's
     // settings, each saying how it's set and stepping into its choices
     // (which what's typed finds from here, so "scale 1.5" is Scale's
     // 1.5\u00d7), then the ways it turns off or on, then what its EDID
@@ -684,6 +671,8 @@ Provider {
         const id = partsAsked[asks(typed)];
         if (id === undefined || lit.length === 0)
             return null;
+        if (id === "warmth")
+            return warmthAnswer();
         const partOf = output => verbs(output).find(row => row.name === partName(id)) ?? null;
         // The focused screen's, or the first that has it: only one has a
         // Brightness.
@@ -712,6 +701,21 @@ Provider {
                     copy: "",
                     glyph: ""
                 }))
+        };
+    }
+
+    // "screen warmth": the Warmth, Screens' own beside the screens, as
+    // its row says it, its switches and figures below; nothing while it
+    // isn't served.
+    function warmthAnswer() {
+        const warmth = all.find(row => row.key === "displays:warmth");
+        if (warmth === undefined)
+            return null;
+        return {
+            headline: warmth.side,
+            glyph: Theme.glyph.display,
+            note: warmth.note,
+            rows: warmth.verbs ? warmth.verbs() : []
         };
     }
 

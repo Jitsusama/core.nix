@@ -260,7 +260,7 @@ def test_a_persons_page_names_what_its_rows_hold_at_each_scale(
 
 
 def warmth_shown(desktop: Desktop, scale: str) -> None:
-    """See the screen's Warmth say what holds it by night and by day, inside and on its plate."""
+    """See the Warmth, beside the screens, say what holds it by night and by day, on its plate."""
     note = "/run/user/1000/backlight-warmth"
     now = int(desktop.machine.succeed("date +%s").strip()) * 1000
     hour = 3_600_000
@@ -297,7 +297,6 @@ def warmth_shown(desktop: Desktop, scale: str) -> None:
             said(warmth)
             desktop.as_account("qs ipc call launcher collection displays")
             desktop.launcher_ready()
-            desktop.follow()
             desktop.launcher_until(lambda shown: "Warmth" in shown["rows"])
             desktop.down_to("Warmth")
             desktop.launcher_until(partial(warmth_plated, kelvin=kelvin))

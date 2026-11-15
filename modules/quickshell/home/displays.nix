@@ -7,5 +7,4 @@
   "launcher/Screens.js"
   "launcher/ScreenAnswers.js"
   "launcher/Backlight.js"
-  "launcher/Warmth.js"
 ]

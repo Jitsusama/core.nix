@@ -81,3 +81,20 @@ function brightening(rows, share) {
     }
     return null;
 }
+
+// The switch served among `rows` whose act is `act`, as the : line's
+// :set nightlight and :set warmth take the Warmth's Night Light and
+// Follow the Room (light/warmth.rs): how it stands, and what turning it
+// `to` asks of the windows daemon, which is its Return's ask, since that
+// always asks the other way, or null where it stands so already; or null
+// while none is served, so the option isn't offered.
+function switchOf(rows, act) {
+    for (const row of rows) {
+        const served = (row?.acts ?? []).find(one => one.key === act);
+        if (served?.ask) {
+            const on = row.held?.on === true;
+            return { on, asked: to => to === on ? null : served.ask };
+        }
+    }
+    return null;
+}

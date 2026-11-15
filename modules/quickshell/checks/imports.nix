@@ -142,7 +142,6 @@
     "launcher/ScreenAnswers.js"
     "launcher/Screens.js"
     "launcher/Seen.js"
-    "launcher/Warmth.js"
   ];
   "launcher/Emoji.js" = [ "Fuzzy.js" ];
   "launcher/ForYou.js" = [ "launcher/Order.js" ];

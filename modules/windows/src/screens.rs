@@ -598,8 +598,8 @@ fn backlit<'a>(
 
 /// The light's rows inside `screen`, the row of the screen `name` that
 /// holds it: the Brightness's (light/brightness.rs), then, where it's in
-/// the room, the Warmth's (light/warmth.rs) and the Room Light
-/// (light/room.rs).
+/// the room, the Room Light (light/room.rs). The Warmth is Screens' own,
+/// beside the screens (see [`rows`]).
 fn light_rows(
     name: &str,
     screen: &str,
@@ -620,7 +620,6 @@ fn light_rows(
     if !in_the_room {
         return rows;
     }
-    rows.extend(light::warmth::rows(seen.light, &inside, &words.light));
     rows.extend(light::room::row(
         seen.light,
         &inside,
@@ -628,6 +627,26 @@ fn light_rows(
         &words.light,
     ));
     rows
+}
+
+/// The Warmth's rows, beside the screens `shown`, where they stay as the
+/// lid opens or shuts, since the night light warms every screen; the
+/// room's to follow while a lit screen is in it (VKCF3Z, 2026-11-15).
+fn warmth_rows(shown: &[(&String, &Value)], seen: &Seen, words: &Words) -> Vec<Value> {
+    let part = |id: &str| words.told.part(id);
+    let room = shown
+        .iter()
+        .any(|(name, output)| standing(output) == "lit" && in_the_room(name, shown.len()));
+    light::warmth::rows(
+        seen.light,
+        &light::warmth::Warmed {
+            named: &part,
+            numbers: &words.numbers,
+            now: seen.now,
+            room,
+        },
+        &words.light,
+    )
 }
 
 /// A row's key in the place.
@@ -650,8 +669,9 @@ pub fn looks_at(keys: Option<&[String]>) -> bool {
 /// connector of the workspace in front, said beside its screen only
 /// where more than one is lit. `desk` is what desk-facts says of each
 /// screen's EDID, by connector, and `seen` the light, which the drawer of
-/// the one holding it says while it's looked at, and whose Warmth leads
-/// what a step into it offers. `each` is
+/// the one holding it says while it's looked at, and whose Brightness
+/// leads what a step into it offers. The Warmth follows the screens, as
+/// it warms them all. `each` is
 /// whether niri darkens one screen by name (`NIRI_POWERS_OFF_EACH_OUTPUT`),
 /// which the ways a screen turns off follow (acts.rs).
 pub fn rows(
@@ -726,9 +746,9 @@ pub fn rows(
         })
         .collect();
     // What a step into each screen offers, inside its row: the Brightness,
-    // where a lit screen holds the light, with the Warmth and the Room
-    // Light where it holds the room's sensor too, then a lit one's
-    // settings, then the ways it turns off or on, then what its EDID says.
+    // where a lit screen holds the light, with the Room Light where it
+    // holds the room's sensor too, then a lit one's settings, then the
+    // ways it turns off or on, then what its EDID says.
     for (name, output) in &shown {
         let stands = standing(output);
         let screen = key(&format!("display:{name}"));
@@ -743,6 +763,7 @@ pub fn rows(
         let desk = desk.get(name.as_str()).unwrap_or(&Value::Null);
         rows.extend(facts::rows(name, &screen, desk, words));
     }
+    rows.extend(warmth_rows(&shown, seen, words));
     if lit > 0 {
         let turned_off: Vec<String> = shown
             .iter()

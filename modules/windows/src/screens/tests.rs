@@ -230,40 +230,96 @@ fn every(
     super::rows(outputs, desk, focused, true, &unseen, &words())
 }
 
+/// The keys of the place's own rows, those beside the screens, in the
+/// order served.
+fn placed(made: &[Value]) -> Vec<&str> {
+    made.iter()
+        .filter(|row| row.get("parent").is_none())
+        .filter_map(|row| row["key"].as_str())
+        .collect()
+}
+
+// The backlight program says its warmth after the screens are served, as
+// the answers VM test's does, so the Warmth comes into a making that
+// already placed the rest.
 #[test]
-fn the_warmth_leads_a_step_into_the_built_in_screen_alone_looked_at_or_not() {
+fn a_warmth_told_late_still_stands_before_turn_every_screen_off() {
+    let one = BTreeMap::from([(
+        "Virtual-1".to_owned(),
+        output("Smithay", "Winit", &lit(1.0)),
+    )]);
+    let mut kept = ready_rows::kept::Kept::default();
+    kept.take(
+        every(&one, &BTreeMap::new(), None, &Light::default()),
+        Vec::new(),
+    );
+    let light = Light::of(&[crate::light::tests::warmed()]);
+    kept.take(every(&one, &BTreeMap::new(), None, &light), Vec::new());
+    let mut top: Vec<(i64, &str)> = kept
+        .all()
+        .filter(|record| record["row"].get("parent").is_none())
+        .map(|record| {
+            (
+                record["row"]["order"].as_i64().unwrap_or_default(),
+                record["key"].as_str().unwrap_or_default(),
+            )
+        })
+        .collect();
+    top.sort_unstable();
+    assert_eq!(
+        top.iter().map(|(_, key)| *key).collect::<Vec<_>>(),
+        [
+            "row:displays:display:Virtual-1",
+            "row:displays:warmth",
+            "row:displays:sleep"
+        ],
+        "a Warmth told late isn't ordered beside the screens: {top:?}"
+    );
+}
+
+// VKCF3Z, 2026-11-15: Night Light warms every screen, so the Warmth is
+// Screens', beside the screens, in the same place with the lid open or
+// shut; Follow the Room inside it only while the panel's lit, since only
+// it has the room's light to follow.
+#[test]
+fn the_warmth_stands_beside_the_screens_with_the_lid_open_or_shut() {
     let light = Light::of(&[crate::light::tests::warmed()]);
     let made = every(&desk(), &BTreeMap::new(), None, &light);
-    let inside = |name: &str| -> Vec<&str> {
-        let screen = key(&format!("display:{name}"));
-        made.iter()
-            .filter(|row| row["parent"] == screen.as_str())
-            .filter_map(|row| row["key"].as_str())
-            .collect()
-    };
     assert_eq!(
-        inside("eDP-1").first().copied(),
-        Some("row:displays:warmth:eDP-1"),
-        "the Warmth doesn't lead the built-in screen while none is looked at"
+        placed(&made)[3..],
+        ["row:displays:warmth", "row:displays:sleep"],
+        "the Warmth doesn't follow the screens, before Turn Every Screen Off"
     );
     assert!(
-        !inside("HDMI-A-1")
-            .iter()
-            .any(|key| key.starts_with("row:displays:warmth:")),
-        "a monitor holds a Warmth only the panel has"
+        made.iter()
+            .any(|row| row["key"] == "row:displays:switch:follow-room"),
+        "the panel lit, Follow the Room isn't inside the Warmth"
     );
     let mut shut = desk();
     shut.insert("eDP-1".to_owned(), output("BOE", "0x0BCA", &Value::Null));
-    assert!(
-        !every(&shut, &BTreeMap::new(), None, &light)
-            .iter()
-            .any(|row| row["kind"] == "warmth"),
-        "the lid shut, a Warmth is served"
+    let docked = every(&shut, &BTreeMap::new(), None, &light);
+    assert_eq!(
+        placed(&docked)[3..],
+        ["row:displays:warmth", "row:displays:sleep"],
+        "the lid shut, the Warmth isn't where it was"
+    );
+    let inside: Vec<&str> = docked
+        .iter()
+        .filter(|row| row["parent"] == "row:displays:warmth")
+        .filter_map(|row| row["key"].as_str())
+        .collect();
+    assert_eq!(
+        inside[..2],
+        [
+            "row:displays:switch:night-light",
+            "row:displays:fact:warmth-sunset"
+        ],
+        "the lid shut, the Warmth doesn't hold the Night Light alone of its switches"
     );
 }
 
 #[test]
-fn the_brightness_leads_the_screen_holding_it_and_the_warmth_follows_in_the_room_alone() {
+fn the_brightness_leads_the_screen_holding_it_and_no_screen_holds_the_warmth() {
     let light = Light::of(&[
         json!({"key": "backlight:intel_backlight", "kind": "backlight",
             "device": "intel_backlight", "brightness": 48, "max_brightness": 96,
@@ -279,12 +335,15 @@ fn the_brightness_leads_the_screen_holding_it_and_the_warmth_follows_in_the_room
     };
     let made = every(&desk(), &BTreeMap::new(), None, &light);
     assert_eq!(
-        inside(&made, "eDP-1")[..2],
-        [
-            "row:displays:setting:eDP-1:brightness",
-            "row:displays:warmth:eDP-1"
-        ],
-        "the Brightness doesn't lead the built-in screen, the Warmth after it"
+        inside(&made, "eDP-1").first().map(String::as_str),
+        Some("row:displays:setting:eDP-1:brightness"),
+        "the Brightness doesn't lead the built-in screen"
+    );
+    assert!(
+        !made
+            .iter()
+            .any(|row| row["kind"] == "warmth" && row.get("parent").is_some()),
+        "a screen holds the Warmth, which is Screens'"
     );
     let mut away = desk();
     away.insert("eDP-1".to_owned(), output("BOE", "0x0BCA", &Value::Null));
@@ -303,8 +362,8 @@ fn the_brightness_leads_the_screen_holding_it_and_the_warmth_follows_in_the_room
     assert!(
         !held
             .iter()
-            .any(|key| key.starts_with("row:displays:warmth:")),
-        "a monitor holds a Warmth only the panel has"
+            .any(|key| key.starts_with("row:displays:warmth")),
+        "a monitor holds the Warmth, which is Screens'"
     );
 }
 

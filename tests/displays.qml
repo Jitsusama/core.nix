@@ -6,8 +6,9 @@ pragma ComponentBehavior: Bound
 // row as it's served; a change to the monitor's row makes its row again
 // and keeps the panel's; a screen's Return asks the daemon the act it
 // serves, and niri nothing; what its spots are made of holds while a
-// level or a lux moves; and a share typed asks the daemon as a Brightness
-// level does.
+// level or a lux moves; a share typed asks the daemon as a Brightness
+// level does; and :set nightlight asks what the Warmth's Night Light
+// asks, only to turn it the other way.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -93,6 +94,25 @@ ShellRoot {
                 ask: { ask: "light", do: "brightness", share: 50 } }]
         } })
 
+    // The Warmth, Screens' own beside the screens, as light/warmth.rs
+    // serves it, with its Night Light inside it, off, and no Follow the
+    // Room, as with the lid shut.
+    readonly property var warmth: ({ key: "row:displays:warmth", kind: "row", row: {
+            key: "row:displays:warmth", thing: "displays:warmth", place: "displays",
+            kind: "warmth", order: 2560, name: "Warmth", glyph: "warmth", hue: "machine",
+            depth: 0, side: [{ said: "6,500 K" }], note: "the screen's own white",
+            acts: [{ key: "verb:more", step: "rows" }]
+        } })
+    readonly property var nightLight: ({ key: "row:displays:switch:night-light", kind: "row",
+        row: {
+            key: "row:displays:switch:night-light", thing: "displays:night-light",
+            place: "displays", kind: "switch", order: 2561, name: "Night Light",
+            glyph: "nightLight", hue: "machine", parent: "row:displays:warmth", depth: 1,
+            side: [{ said: "off" }], held: { on: false },
+            acts: [{ key: "displays:night-light",
+                ask: { ask: "light", do: "night-light", on: true } }]
+        } })
+
     // The shell's watch, so the stand-in can tell it more, and the acts it
     // was asked of a screen and of its light.
     property var watch: null
@@ -124,7 +144,7 @@ ShellRoot {
                         answer = { id: ask.id, records: [
                             root.screen("eDP-1", "Built-in Screen", 1024, true),
                             root.screen("DP-1", "Dell Inc. U2723QE", 2048, true), root.sleep,
-                            root.level] };
+                            root.level, root.warmth, root.nightLight] };
                     } else if (ask.ask === "screen") {
                         root.acted = root.acted.concat([ask]);
                         answer = { id: ask.id, done: true };
@@ -181,7 +201,7 @@ ShellRoot {
             done();
         else if (waiting === "the monitor lit again" && displays.spotsStamp !== made)
             brightened();
-        else if (waiting === "the shares asked" && lit.length === 2)
+        else if (waiting === "the shares asked" && lit.length === 3)
             asked();
     }
 
@@ -198,8 +218,12 @@ ShellRoot {
         // launcher's search reads them (Launcher.qml's hiddenWords).
         Expect.expect("each screen is found by its connector",
             first[1].keywords?.text === "DP-1", JSON.stringify(first[1].keywords));
-        Expect.expect("Turn Every Screen Off follows them",
-            displays.all[2]?.key === "displays:sleep", displays.all.map(row => row.key).join(", "));
+        Expect.expect("the Warmth stands beside them, Turn Every Screen Off after it",
+            displays.all[2]?.key === "displays:warmth" && displays.all[3]?.key === "displays:sleep",
+            displays.all.map(row => row.key).join(", "));
+        Expect.expect("\"screen warmth\" says the Warmth beside the screens",
+            displays.warmthAnswer()?.headline === "6,500 K",
+            JSON.stringify(displays.warmthAnswer()?.headline));
         waiting = "the monitor's change";
         tell([screen("DP-1", "Dell Inc. U2723QE", 2048, false)]);
     }
@@ -248,17 +272,28 @@ ShellRoot {
     }
 
     // "brightness 40" typed and :set brightness=45 each ask the windows
-    // daemon what a Brightness level asks, at the share typed.
+    // daemon what a Brightness level asks, at the share typed; :set
+    // nonightlight, the Night Light off already, asks nothing, and :set
+    // nightlight what its Return asks. With no Follow the Room served,
+    // :set warmth isn't offered.
     function brightened() {
+        Expect.expect(":set nightlight says the Night Light stands off",
+            displays.setOptions.nightlight?.now() === false,
+            JSON.stringify(Object.keys(displays.setOptions)));
+        Expect.expect("and :set warmth isn't offered with no room to follow",
+            displays.setOptions.warmth === undefined, "");
         waiting = "the shares asked";
         displays.setTo(40).run();
         displays.setOptions.brightness.set(45);
+        displays.setOptions.nightlight.set(false);
+        displays.setOptions.nightlight.set(true);
     }
 
     function asked() {
-        Expect.expect("each share typed asked the daemon as a level does",
-            JSON.stringify(lit.map(ask => [ask.do, ask.share])) === '[["brightness",40],'
-                + '["brightness",45]]', JSON.stringify(lit));
+        Expect.expect("each share typed and the night light asked the daemon as its row does",
+            JSON.stringify(lit.map(ask => [ask.do, ask.share ?? ask.on]))
+                === '[["brightness",40],["brightness",45],["night-light",true]]',
+            JSON.stringify(lit));
         Expect.expect("and no level was drawn asking", acted.length === 1, JSON.stringify(acted));
         waiting = "done";
         Qt.exit(0);

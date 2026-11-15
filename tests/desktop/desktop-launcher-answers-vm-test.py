@@ -1463,11 +1463,13 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         desktop.as_account(f"rm -rf {said}")
 
 
-def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: Desktop) -> None:
-    """The screen's warmth follows its Brightness, says what holds it, and its switches switch.
+def test_the_screens_warmth_stands_beside_them_and_return_switches_it(desktop: Desktop) -> None:
+    """The Warmth stands beside the screens, says what holds it, and its switches switch.
 
-    Inside are the Night Light and Follow the Room, each switched by Return, then the room's
-    white and the night's; :set nightlight and :set warmth say and switch them too.
+    Night Light warms every screen, so the Warmth is Screens' own, not inside the screen holding
+    the Brightness (VKCF3Z, 2026-11-15). Inside are the Night Light and Follow the Room, each
+    switched by Return, then the room's white and the night's; :set nightlight and :set warmth
+    say and switch them too.
     """
     machine = desktop.machine
     note = "/run/user/1000/backlight-warmth"
@@ -1500,10 +1502,16 @@ def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: D
         "sunrise": sunrise * 1000,
     }
     warmth(night)
+    # A row served while the list is shown comes at its end, the rest held still (Steady.js),
+    # and the Warmth said just now can come mid-opening. So Screens opens again once it's
+    # heard, as on a machine that's been up since its warmth was said.
     desktop.as_account("qs ipc call launcher collection displays")
     desktop.launcher_ready()
-    desktop.follow()
-    desktop.launcher_until(lambda shown: shown["rows"][1:3] == ["Brightness", "Warmth"])
+    desktop.launcher_until(lambda shown: "Warmth" in shown["rows"])
+    desktop.close_launcher()
+    desktop.as_account("qs ipc call launcher collection displays")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: shown["rows"][-2:] == ["Warmth", "Turn Every Screen Off"])
     desktop.down_to("Warmth")
     desktop.launcher_until(selected("Warmth", "4,000 K", "more"))
     assert desktop.showing()["selected"]["note"] == f"night light until {clock}", desktop.showing()[
