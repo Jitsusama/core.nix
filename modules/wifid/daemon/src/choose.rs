@@ -62,6 +62,8 @@ pub struct Other {
     pub signal: i16,
     /// How busy it says its channel is, in percent, where it says.
     pub busy: Option<u8>,
+    /// Its channel, by frequency in MHz; 0 where wpa_supplicant doesn't say.
+    pub frequency: u32,
     /// What it carried while the card was last on it, within the span.
     pub measured: Option<Measured>,
 }
@@ -95,11 +97,11 @@ impl Chooser {
     pub fn choose(
         &mut self,
         now: Instant,
-        on: (&str, &Measured, i16),
+        on: (&str, &Measured, i16, u32),
         others: &[Other],
         calling: bool,
     ) -> Choice {
-        let (point, measured, signal) = on;
+        let (point, measured, signal, _frequency) = on;
         let failing = measured.lost > FAILING;
         if calling && !failing {
             return Choice::Stay;
@@ -155,6 +157,11 @@ impl Chooser {
     }
 }
 
+/// Whether a channel is on a wider band than another's.
+pub fn wider(_to: u32, _from: u32) -> bool {
+    false
+}
+
 /// An access point's p95, where nothing answered as slow as can be.
 fn slowness(measured: &Measured) -> Duration {
     measured.p95.unwrap_or(Duration::MAX)
@@ -181,6 +188,10 @@ mod tests {
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
     const HALL: &str = "6c:ae:f6:c1:84:28";
+    /// The desk's access point's own 2.4 GHz radio.
+    const NEAR: &str = "6c:ae:f6:c1:84:27";
+    const CH52: u32 = 5260;
+    const CH6: u32 = 2437;
 
     fn carried(p95: u64, lost: f64) -> Measured {
         Measured {
@@ -199,6 +210,7 @@ mod tests {
             point: HALL.into(),
             signal,
             busy,
+            frequency: CH52,
             measured,
         }
     }
@@ -209,7 +221,7 @@ mod tests {
         let well = carried(15, 0.0);
         let louder = hall(-40, Some(10), None);
 
-        let choice = chooser.choose(Instant::now(), (DESK, &well, -50), &[louder], false);
+        let choice = chooser.choose(Instant::now(), (DESK, &well, -50, CH52), &[louder], false);
 
         assert_eq!(
             choice,
@@ -224,7 +236,7 @@ mod tests {
         let badly = carried(119, 0.5);
         let near = hall(-53, Some(20), None);
 
-        let choice = chooser.choose(Instant::now(), (DESK, &badly, -50), &[near], false);
+        let choice = chooser.choose(Instant::now(), (DESK, &badly, -50, CH52), &[near], false);
 
         assert_eq!(
             choice,
@@ -239,7 +251,7 @@ mod tests {
         let badly = carried(119, 0.5);
         let faint = hall(-70, Some(20), None);
 
-        let choice = chooser.choose(Instant::now(), (DESK, &badly, -50), &[faint], false);
+        let choice = chooser.choose(Instant::now(), (DESK, &badly, -50, CH52), &[faint], false);
 
         assert_eq!(
             choice,
@@ -254,7 +266,12 @@ mod tests {
         let middling = carried(30, 0.0);
         let better = hall(-55, None, Some(carried(12, 0.0)));
 
-        let choice = chooser.choose(Instant::now(), (DESK, &middling, -50), &[better], false);
+        let choice = chooser.choose(
+            Instant::now(),
+            (DESK, &middling, -50, CH52),
+            &[better],
+            false,
+        );
 
         assert_eq!(
             choice,
@@ -269,7 +286,12 @@ mod tests {
         let middling = carried(30, 0.0);
         let little = hall(-55, None, Some(carried(24, 0.0)));
 
-        let choice = chooser.choose(Instant::now(), (DESK, &middling, -50), &[little], false);
+        let choice = chooser.choose(
+            Instant::now(),
+            (DESK, &middling, -50, CH52),
+            &[little],
+            false,
+        );
 
         assert_eq!(choice, Choice::Stay, "6 ms better is within the margin");
     }
@@ -282,8 +304,9 @@ mod tests {
         let near = hall(-53, Some(20), None);
         let now = Instant::now();
 
-        let held = chooser.choose(now, (DESK, &badly, -50), std::slice::from_ref(&near), true);
-        let saved = chooser.choose(now, (DESK, &failing, -50), &[near], true);
+        let on = (DESK, &badly, -50, CH52);
+        let held = chooser.choose(now, on, std::slice::from_ref(&near), true);
+        let saved = chooser.choose(now, (DESK, &failing, -50, CH52), &[near], true);
 
         assert_eq!(held, Choice::Stay, "a slow link is borne through a call");
         assert_eq!(saved, Choice::Try(HALL.into()), "a failing one isn't");
@@ -297,7 +320,7 @@ mod tests {
         let near = hall(-53, Some(20), None);
         let tried = chooser.choose(
             start,
-            (DESK, &badly, -50),
+            (DESK, &badly, -50, CH52),
             std::slice::from_ref(&near),
             false,
         );
@@ -308,7 +331,7 @@ mod tests {
         };
 
         let soon = start + TRIAL + Duration::from_secs(1);
-        let choice = chooser.choose(soon, (HALL, &badly, -53), &[desk], false);
+        let choice = chooser.choose(soon, (HALL, &badly, -53, CH52), &[desk], false);
 
         assert_eq!(
             choice,
@@ -325,7 +348,7 @@ mod tests {
         let badly = carried(119, 0.5);
         let tried = chooser.choose(
             start,
-            (DESK, &badly, -50),
+            (DESK, &badly, -50, CH52),
             std::slice::from_ref(&near),
             false,
         );
@@ -334,13 +357,14 @@ mod tests {
             point: DESK.into(),
             signal: -50,
             busy: None,
+            frequency: CH52,
             measured: Some(badly.clone()),
         };
 
         let worse = carried(200, 1.0);
-        let back = chooser.choose(start + TRIAL, (HALL, &worse, -53), &[desk], false);
+        let back = chooser.choose(start + TRIAL, (HALL, &worse, -53, CH52), &[desk], false);
         let later = start + SETTLE + TRIAL + Duration::from_secs(1);
-        let again = chooser.choose(later, (DESK, &badly, -50), &[near], false);
+        let again = chooser.choose(later, (DESK, &badly, -50, CH52), &[near], false);
 
         assert_eq!(
             back,
@@ -352,5 +376,153 @@ mod tests {
             Choice::Stay,
             "the hall carried worse from here an hour ago"
         );
+    }
+
+    /// The desk's 5 GHz radio, heard this loud.
+    fn desk_at(signal: i16, measured: Option<Measured>) -> Other {
+        Other {
+            point: DESK.into(),
+            signal,
+            busy: Some(20),
+            frequency: CH52,
+            measured,
+        }
+    }
+
+    /// The desk's 2.4 GHz radio, heard this loud.
+    fn near_at(signal: i16, measured: Option<Measured>) -> Other {
+        Other {
+            point: NEAR.into(),
+            signal,
+            busy: Some(20),
+            frequency: CH6,
+            measured,
+        }
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_carrying_well_tries_5_ghz_heard_well_enough() {
+        let mut chooser = Chooser::default();
+        let well = carried(9, 0.0);
+
+        let on = (NEAR, &well, -34, CH6);
+        let choice = chooser.choose(Instant::now(), on, &[desk_at(-45, None)], false);
+
+        assert_eq!(
+            choice,
+            Choice::Try(DESK.into()),
+            "2.4 GHz carries a quarter of what 5 GHz does, however quick"
+        );
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_keeps_off_5_ghz_heard_too_faintly() {
+        let mut chooser = Chooser::default();
+        let well = carried(9, 0.0);
+
+        let on = (NEAR, &well, -34, CH6);
+        let choice = chooser.choose(Instant::now(), on, &[desk_at(-75, None)], false);
+
+        assert_eq!(choice, Choice::Stay, "at -75 dBm 5 GHz would carry worse");
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_keeps_off_5_ghz_known_to_carry_badly_from_here() {
+        let mut chooser = Chooser::default();
+        let well = carried(9, 0.0);
+        let known = desk_at(-45, Some(carried(119, 0.0)));
+
+        let on = (NEAR, &well, -34, CH6);
+        let choice = chooser.choose(Instant::now(), on, &[known], false);
+
+        assert_eq!(choice, Choice::Stay, "119 ms at p95 is no better band");
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_moves_to_5_ghz_known_to_carry_well_though_slower() {
+        let mut chooser = Chooser::default();
+        let well = carried(9, 0.0);
+        let known = desk_at(-45, Some(carried(20, 0.0)));
+
+        let on = (NEAR, &well, -34, CH6);
+        let choice = chooser.choose(Instant::now(), on, &[known], false);
+
+        assert_eq!(
+            choice,
+            Choice::Try(DESK.into()),
+            "20 ms at p95 carries well, and on the wider band"
+        );
+    }
+
+    #[test]
+    fn a_card_on_5_ghz_carrying_well_keeps_off_2_4_ghz_however_quick() {
+        let mut chooser = Chooser::default();
+        let middling = carried(30, 0.0);
+        let quick = near_at(-34, Some(carried(9, 0.0)));
+
+        let on = (DESK, &middling, -45, CH52);
+        let choice = chooser.choose(Instant::now(), on, &[quick], false);
+
+        assert_eq!(
+            choice,
+            Choice::Stay,
+            "30 ms carries well, on the wider band"
+        );
+    }
+
+    #[test]
+    fn one_carrying_badly_tries_5_ghz_before_a_louder_2_4_ghz() {
+        let mut chooser = Chooser::default();
+        let badly = carried(119, 0.0);
+        let others = [near_at(-34, None), desk_at(-44, None)];
+
+        let on = (HALL, &badly, -46, 5745);
+        let choice = chooser.choose(Instant::now(), on, &others, false);
+
+        assert_eq!(
+            choice,
+            Choice::Try(DESK.into()),
+            "the 5 GHz radio, heard well enough, comes before the louder 2.4"
+        );
+    }
+
+    #[test]
+    fn one_on_2_4_ghz_carrying_badly_tries_5_ghz_heard_well_enough_though_fainter() {
+        let mut chooser = Chooser::default();
+        let badly = carried(119, 0.0);
+
+        let on = (NEAR, &badly, -34, CH6);
+        let choice = chooser.choose(Instant::now(), on, &[desk_at(-45, None)], false);
+
+        assert_eq!(
+            choice,
+            Choice::Try(DESK.into()),
+            "5 GHz is heard fainter than 2.4 from the same radio, and -45 is loud"
+        );
+    }
+
+    #[test]
+    fn a_move_to_a_wider_band_goes_back_only_if_it_carries_badly() {
+        let start = Instant::now();
+        let well = carried(9, 0.0);
+        let on = (NEAR, &well, -34, CH6);
+        let (mut kept, mut left) = (Chooser::default(), Chooser::default());
+        for chooser in [&mut kept, &mut left] {
+            let tried = chooser.choose(start, on, &[desk_at(-45, None)], false);
+            assert_eq!(tried, Choice::Try(DESK.into()), "the first move is made");
+        }
+        let near = near_at(-34, Some(well.clone()));
+        let (slower, slow) = (carried(25, 0.0), carried(60, 0.0));
+
+        let stayed = kept.choose(
+            start + TRIAL,
+            (DESK, &slower, -45, CH52),
+            std::slice::from_ref(&near),
+            false,
+        );
+        let back = left.choose(start + TRIAL, (DESK, &slow, -45, CH52), &[near], false);
+
+        assert_eq!(stayed, Choice::Stay, "25 ms on 5 GHz still carries well");
+        assert_eq!(back, Choice::Back(NEAR.into()), "60 ms doesn't");
     }
 }

@@ -21,7 +21,7 @@ use tokio::time::{Duration, Instant, MissedTickBehavior, interval};
 use crate::acts;
 use crate::air::Heard;
 use crate::calling::Calling;
-use crate::choose::{Choice, Chooser, Other};
+use crate::choose::{self, Choice, Chooser, Other};
 use crate::echo::Echoer;
 use crate::learn::{self, Here, Learned};
 use crate::nl80211::{Nl80211, Station};
@@ -310,7 +310,7 @@ fn chosen(
     known: &Known<'_>,
     call: bool,
 ) -> Option<String> {
-    let signal = around.iter().find(|heard| heard.bssid == on.point)?.signal;
+    let here = around.iter().find(|heard| heard.bssid == on.point)?;
     let (others, whence): (Vec<Other>, Vec<Option<Whence>>) = around
         .iter()
         .filter(|heard| heard.bssid != on.point)
@@ -321,16 +321,19 @@ fn chosen(
                 point: heard.bssid.clone(),
                 signal: heard.signal,
                 busy: heard.radio.load.map(|load| load.busy),
+                frequency: heard.frequency,
                 measured: known.map(|(measured, _)| measured),
             };
             (other, whence)
         })
         .unzip();
-    match chooser.choose(now, (&on.point, measured, signal), &others, call) {
+    let card = (&*on.point, measured, here.signal, here.frequency);
+    match chooser.choose(now, card, &others, call) {
         Choice::Stay => None,
         Choice::Try(to) => {
             let at = others.iter().position(|other| other.point == to)?;
-            println!("<6>{}", tried(on, measured, &others[at], whence[at]));
+            let why = tried(on, (measured, here.frequency), &others[at], whence[at]);
+            println!("<6>{why}");
             Some(to)
         }
         Choice::Back(to) => {
@@ -353,7 +356,12 @@ async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String
 
 /// Why a card tries another access point: what the one it's on carried,
 /// and what was known of the other, and from where.
-fn tried(on: &Joined, measured: &Measured, to: &Other, whence: Option<Whence>) -> String {
+fn tried(
+    on: &Joined,
+    (measured, frequency): (&Measured, u32),
+    to: &Other,
+    whence: Option<Whence>,
+) -> String {
     let known = match (&to.measured, whence) {
         (Some(known), Some(Whence::Learned)) => {
             format!("carried {} at p95 at this hour before", ms(known.p95))
@@ -361,8 +369,13 @@ fn tried(on: &Joined, measured: &Measured, to: &Other, whence: Option<Whence>) -
         (Some(known), _) => format!("carried {} at p95 in the last two minutes", ms(known.p95)),
         (None, _) => format!("is untried, heard at {} dBm", to.signal),
     };
+    let band = if choose::wider(to.frequency, frequency) {
+        ", on a wider band"
+    } else {
+        ""
+    };
     format!(
-        "{} tries {}, as {} carried {} at p95 with {:.1}% lost, and {} {known}",
+        "{} tries {}, as {} carried {} at p95 with {:.1}% lost, and {} {known}{band}",
         on.card,
         to.point,
         on.point,
@@ -708,6 +721,7 @@ mod tests {
             point: point.into(),
             signal: -50,
             busy: None,
+            frequency: 2437,
             measured,
         }
     }
@@ -722,7 +736,7 @@ mod tests {
         assert_eq!(
             tried(
                 &on,
-                &carried(30),
+                (&carried(30), 2437),
                 &other(HALL, quick.clone()),
                 Some(Whence::Learned)
             ),
@@ -730,15 +744,60 @@ mod tests {
             "a move made on what was learned says so"
         );
         assert_eq!(
-            tried(&on, &carried(30), &other(HALL, quick), Some(Whence::Lately)),
+            tried(
+                &on,
+                (&carried(30), 2437),
+                &other(HALL, quick),
+                Some(Whence::Lately)
+            ),
             format!("{why} carried 10.0 ms at p95 in the last two minutes"),
             "a move made on what was just measured says so"
         );
         assert_eq!(
-            tried(&on, &carried(30), &other(HALL, None), None),
+            tried(&on, (&carried(30), 2437), &other(HALL, None), None),
             format!("{why} is untried, heard at -50 dBm"),
             "a move made on signal alone says so"
         );
+    }
+
+    #[test]
+    fn a_move_to_a_wider_band_says_so() {
+        let on = joined(DESK);
+        let wide = Other {
+            frequency: 5260,
+            ..other(HALL, None)
+        };
+
+        let why = tried(&on, (&carried(9), 2437), &wide, None);
+
+        assert!(
+            why.ends_with("is untried, heard at -50 dBm, on a wider band"),
+            "a move from 2.4 GHz to 5 GHz says it's for the band: {why}"
+        );
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_moves_to_5_ghz_heard_well_enough() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = Learned::kept_in(&dir.path().join("carried"));
+        let (lately, now) = (Measures::default(), Instant::now());
+        let wide = Heard {
+            frequency: 5260,
+            ..heard(HALL, -45)
+        };
+        let around = [heard(DESK, -34), wide];
+        let known = known(&lately, &learned, now, 20);
+
+        let to = chosen(
+            &mut Chooser::default(),
+            now,
+            (&joined(DESK), &carried(9)),
+            &around,
+            &known,
+            false,
+        );
+
+        assert_eq!(to.as_deref(), Some(HALL), "the hall's 5 GHz is heard well");
     }
 
     #[test]
