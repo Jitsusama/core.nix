@@ -20,7 +20,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Write as _};
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
-use terminal_kit::{Exit, Failure};
+use terminal_kit::layout::{self, Align};
+use terminal_kit::{Exit, Failure, Pen};
 
 use crate::wrongly;
 
@@ -726,9 +727,8 @@ pub fn summary(report: &Report) -> String {
         "{stays} stay{plural}, {} of the connection\n",
         span(seconds)
     );
-    let _ = writeln!(out, "{:<16}{:>12}{:>12}", "", "up", "down");
     let (up, down) = (&report.up, &report.down);
-    let rows: [(&str, String, String); 5] = [
+    let counts: [(&str, String, String); 5] = [
         ("held low", span(up.held_idle_s), span(down.held_idle_s)),
         (
             "  longest",
@@ -743,8 +743,20 @@ pub fn summary(report: &Report) -> String {
         ),
         ("starved", span(up.starved_s), span(down.starved_s)),
     ];
-    for (name, up, down) in rows {
-        let _ = writeln!(out, "{name:<16}{up:>12}{down:>12}");
+    let rows: Vec<Vec<String>> = counts
+        .into_iter()
+        .map(|(name, up, down)| vec![name.to_owned(), up, down])
+        .collect();
+    let columns = [
+        ("", Align::Left),
+        ("up", Align::Right),
+        ("down", Align::Right),
+    ];
+    // The kit sets every command's tables, so they read alike; a
+    // summary goes to a file or a pipe as often as a terminal, so it
+    // is plain.
+    for line in layout::table(&columns, &rows, &Pen::plain()) {
+        let _ = writeln!(out, "{line}");
     }
     let _ = writeln!(
         out,
@@ -766,7 +778,7 @@ pub fn summary(report: &Report) -> String {
         for (way, score) in [("up", &s.up), ("down", &s.down)] {
             let _ = writeln!(
                 out,
-                "  {way:<6}held low {}, longest {}; {} cuts, {} without cause; starved {}",
+                "  {way}: held low {}, longest {}; {} cuts, {} without cause; starved {}",
                 span(score.held_idle_s),
                 span(score.longest_held_idle_s),
                 score.cuts,
@@ -1440,6 +1452,39 @@ mod tests {
         ] {
             assert!(text.contains(words), "{words} in:\n{text}");
         }
+    }
+
+    #[test]
+    fn the_summary_s_counts_are_set_as_the_kit_sets_a_table() {
+        let lines = connection(NOV3, 150, constant(0, 0), quiet);
+        let report = replay(&read_lines(&lines), Some(BASE), || fixed(4_000));
+        let text = summary(&report);
+        let (up, down) = (&report.up, &report.down);
+        let row = |name: &str, up: String, down: String| vec![name.to_owned(), up, down];
+        let table = layout::table(
+            &[
+                ("", Align::Left),
+                ("up", Align::Right),
+                ("down", Align::Right),
+            ],
+            &[
+                row("held low", span(up.held_idle_s), span(down.held_idle_s)),
+                row(
+                    "  longest",
+                    span(up.longest_held_idle_s),
+                    span(down.longest_held_idle_s),
+                ),
+                row("cuts", up.cuts.to_string(), down.cuts.to_string()),
+                row(
+                    "  without cause",
+                    up.unfounded.to_string(),
+                    down.unfounded.to_string(),
+                ),
+                row("starved", span(up.starved_s), span(down.starved_s)),
+            ],
+            &Pen::plain(),
+        );
+        assert!(text.contains(&table.join("\n")), "{table:#?} in:\n{text}");
     }
 
     #[test]

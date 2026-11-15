@@ -411,9 +411,14 @@ fn idle_call(seconds: u64) -> Vec<f64> {
 }
 
 fn say(block: &Block, arm: Arm) {
-    eprintln!(
-        "  {:<3} Joel up {:>6.0} kbit/s of {:>6.0} ({:>3.0}%), down {:>7.0}, \
-         call p50 {:>5.1} p99 {:>5.1} ms, {} lost, first byte p50 {:>4.0} ms, \
+    eprintln!("{}", said(block, arm));
+}
+
+/// What one block measured, as a line of the run's progress.
+fn said(block: &Block, arm: Arm) -> String {
+    format!(
+        "  {} Joel up {:.0} kbit/s of {:.0} ({:.0}%), down {:.0}, \
+         call p50 {:.1} p99 {:.1} ms, {} lost, first byte p50 {:.0} ms, \
          {} refused, {} unanswered{}",
         if arm == Arm::On { "on" } else { "off" },
         block.up_kbit,
@@ -430,7 +435,7 @@ fn say(block: &Block, arm: Arm) {
             .void()
             .map(|why| format!(", void: {why}"))
             .unwrap_or_default()
-    );
+    )
 }
 
 /// `shaper proof`: the run itself.
@@ -629,6 +634,24 @@ mod tests {
     use super::verdict::tests::pairs;
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_block_is_said_in_words_without_padding() {
+        let block = Block {
+            up_kbit: 812.0,
+            sent_kbit: 9_000.0,
+            down_kbit: 4_000.0,
+            call_ms: vec![21.0; 10],
+            first_byte_ms: vec![90.0; 10],
+            ..Block::default()
+        };
+        let line = said(&block, Arm::On);
+        assert!(
+            line.starts_with("  on Joel up 812 kbit/s of 9000 (9%)"),
+            "{line}"
+        );
+        assert!(!line.trim_start().contains("  "), "{line}");
+    }
 
     fn node(class: &str, state: &str) -> serde_json::Value {
         json!({
