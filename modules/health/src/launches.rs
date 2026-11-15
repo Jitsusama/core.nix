@@ -288,10 +288,10 @@ impl Launches {
         (!parts.is_empty()).then(|| parts.join("; "))
     }
 
-    /// Each program's openings and ends, the slowest first, as `health
-    /// launches` shows them.
+    /// Each program's name and its openings and ends, the slowest first,
+    /// as `health launches` shows them.
     #[must_use]
-    pub fn by_program(&self) -> Vec<String> {
+    pub fn by_program(&self) -> Vec<(String, String)> {
         let mut names: Vec<&String> = self
             .opened
             .keys()
@@ -337,7 +337,7 @@ impl Launches {
                 if let Some(times) = self.outlived.get(name) {
                     parts.push(format!("{times} still running 30 s on"));
                 }
-                format!("{name:<24} {}", parts.join("; "))
+                (name.clone(), parts.join("; "))
             })
             .collect()
     }
@@ -506,8 +506,11 @@ mod tests {
             "the day's readies were said wrongly"
         );
         assert_eq!(
-            launches.by_program().first().map(String::as_str),
-            Some("dictation                1 ready, the slowest 1065 ms"),
+            launches.by_program().first(),
+            Some(&(
+                "dictation".to_owned(),
+                "1 ready, the slowest 1065 ms".to_owned()
+            )),
             "the slowest daemon wasn't said first"
         );
     }
@@ -544,10 +547,14 @@ mod tests {
         assert_eq!(
             launches.by_program(),
             [
-                "google-chrome            1 opened, the slowest 1840 ms",
-                "foot                     2 opened, the slowest 212 ms; 1 ended, the slowest 14 ms",
-                "zoom                     1 still running 30 s on",
-            ],
+                ("google-chrome", "1 opened, the slowest 1840 ms"),
+                (
+                    "foot",
+                    "2 opened, the slowest 212 ms; 1 ended, the slowest 14 ms"
+                ),
+                ("zoom", "1 still running 30 s on"),
+            ]
+            .map(|(name, said)| (name.to_owned(), said.to_owned())),
             "each program wasn't said, the slowest first"
         );
         assert_eq!(

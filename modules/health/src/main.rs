@@ -135,9 +135,15 @@ fn main() -> ExitCode {
     let words = args.join(" ");
     if words.is_empty() {
         print!("{}", show::day(&day));
-    } else {
-        print!("{}", show::asked(&day, &words));
+        return ExitCode::SUCCESS;
     }
+    // The kit's context, taking no words, only reads the terminal: how
+    // wide it is and whether it inks, which the lists are fitted to.
+    let context = match terminal_kit::Context::new(terminal_kit::Environment::here(), vec![], &[]) {
+        Ok(context) => context,
+        Err(failure) => return refused(&failure.what),
+    };
+    print!("{}", show::asked(&day, &words, &context.out, context.room));
     ExitCode::SUCCESS
 }
 

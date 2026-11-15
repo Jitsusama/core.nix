@@ -1,18 +1,21 @@
 //! What `health` prints: the day in one line a kind, worst first, and one
 //! kind's or one thing's lines when it's asked for by name. Written for
 //! Joel to read at a glance, so counts are said in words and the worst
-//! thing of each kind is named.
+//! thing of each kind is named. What's asked for by name is `asked`'s.
+
+mod asked;
 
 use std::fmt::Write as _;
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use crate::agents::{self, Agents, Died};
+pub use asked::asked;
+
+use crate::agents::{self, Agents};
 use crate::day::{Badness, Boot, Day, Kind, Thing};
 use crate::disk;
 use crate::feel;
-use crate::figures::{self, Side};
 use crate::memory::{self, Memory};
 use crate::typing;
 
@@ -27,7 +30,7 @@ pub const KINDS: [Kind; 6] = [
 ];
 
 /// How many of a kind's things, or a thing's signatures, are shown.
-const SHOWN: usize = 10;
+pub(super) const SHOWN: usize = 10;
 
 /// How many of the day's most painful interactions open `health`.
 const PAINS: usize = 3;
@@ -143,197 +146,14 @@ fn the_dead(agents: &Agents) -> Option<String> {
     ))
 }
 
-/// Each agent that died in the day, and each still gone from before it,
-/// in the order they died.
-fn the_dead_by_name(day: &Day) -> String {
-    let mut out = format!(
-        "agents gone without parking, {}{}\n",
-        day.date,
-        until(day.to)
-    );
-    let mut dead: Vec<(&String, &Died)> = day.agents.died.iter().collect();
-    let earlier = day
-        .agents
-        .gone
-        .iter()
-        .filter(|(session, _)| !day.agents.died.contains_key(*session));
-    dead.extend(earlier);
-    dead.sort_by_key(|(_, died)| died.at);
-    for (session, died) in dead {
-        let _ = writeln!(
-            out,
-            "{} {:<9} {:<20} {} ({session})",
-            when(died.at, &day.date),
-            died.state,
-            died.quest,
-            died.title
-        );
-    }
-    out
-}
-
-/// A moment's time, and its day when it isn't `date`.
-fn when(at: i64, date: &str) -> String {
-    Timestamp::from_microsecond(at).map_or_else(
-        |_| "--:--".to_owned(),
-        |at| {
-            let zoned = at.to_zoned(TimeZone::system());
-            let day = zoned.strftime("%Y-%m-%d").to_string();
-            if day == date {
-                zoned.strftime("      %H:%M").to_string()
-            } else {
-                zoned.strftime("%b %d %H:%M").to_string()
-            }
-        },
-    )
-}
-
 /// What a watched program's copies held at the last look.
-fn holding(held: &Memory) -> String {
+pub(super) fn holding(held: &Memory) -> String {
     format!(
         "{} hold {}, {} in swap",
         held.copies,
         memory::size(held.kib + held.swap_kib),
         memory::size(held.swap_kib)
     )
-}
-
-/// Each watched program's copies by age, what each age holds together
-/// and each copy on average, so a program that grows as it ages shows.
-fn memory_by_age(day: &Day) -> String {
-    let mut out = format!("memory on {}{}\n", day.date, until(day.to));
-    for (name, held) in day.memory.iter().filter(|(_, held)| held.most_kib > 0) {
-        let _ = writeln!(out, "{name}: {}", holding(held));
-        for (group, aged) in held.by_age.iter().enumerate() {
-            if aged.copies > 0 {
-                let _ = writeln!(
-                    out,
-                    "  {:<12} {:>3} hold {}, {} each",
-                    memory::aged(group),
-                    aged.copies,
-                    memory::size(aged.kib),
-                    memory::size(aged.kib / aged.copies)
-                );
-            }
-        }
-    }
-    out
-}
-
-/// What was asked for: a kind's things worst first, or the things whose
-/// name holds the words, each with what it kept saying.
-#[must_use]
-pub fn asked(day: &Day, words: &str) -> String {
-    if words == "boot" {
-        return boot_stages(day);
-    }
-    if words == "memory" {
-        return memory_by_age(day);
-    }
-    // Not `agents`, which is a daemon's name, whose lines that asks for.
-    if words == "died" {
-        return the_dead_by_name(day);
-    }
-    if words == "launcher" {
-        return launcher_by_part(day);
-    }
-    if words == "launches" {
-        return launches_by_program(day);
-    }
-    if words == "figures" {
-        return figures_by_side(day);
-    }
-    if words == "busy" {
-        let said = day.busy.said();
-        let said = if said.is_empty() {
-            "nothing weighed\n".to_owned()
-        } else {
-            said
-        };
-        return format!("busy on {}{}\n{said}", day.date, until(day.to));
-    }
-    if let Some(&kind) = KINDS.iter().find(|kind| kind.name() == words) {
-        let mut out = format!("{} on {}{}\n", kind.name(), day.date, until(day.to));
-        for (name, thing) in worst_of(day, kind).into_iter().take(SHOWN) {
-            let _ = writeln!(out, "{name:<24} {}", counted(&thing.badness(), 0));
-        }
-        return out;
-    }
-    let mut things: Vec<(&String, &Thing)> = day
-        .things
-        .iter()
-        .filter(|(name, _)| name.contains(words))
-        .collect();
-    if things.is_empty() {
-        return format!("nothing called {words} said a warning on {}\n", day.date);
-    }
-    things.sort_by_key(|(_, thing)| std::cmp::Reverse(thing.badness()));
-    let mut out = String::new();
-    for (name, thing) in things.into_iter().take(SHOWN) {
-        let _ = writeln!(out, "{name}: {}", counted(&thing.badness(), 0));
-        let mut said: Vec<_> = thing.signatures.values().collect();
-        said.sort_by_key(|signature| (signature.priority, std::cmp::Reverse(signature.count)));
-        for signature in said.into_iter().take(SHOWN) {
-            let _ = writeln!(
-                out,
-                "  {:>6}  {} to {}  {}",
-                grouped(signature.count),
-                clock(signature.first),
-                clock(signature.last),
-                signature.example
-            );
-        }
-    }
-    out
-}
-
-/// Each part of the launcher Joel used, how long it took and how many went
-/// past its budget.
-fn launcher_by_part(day: &Day) -> String {
-    let mut out = format!("the launcher on {}{}\n", day.date, until(day.to));
-    let said = day.launcher.said();
-    if said.is_empty() {
-        out.push_str("nothing timed\n");
-    }
-    for line in said {
-        let _ = writeln!(out, "{line}");
-    }
-    out
-}
-
-/// Each program's openings and ends, the slowest first.
-fn launches_by_program(day: &Day) -> String {
-    let mut out = format!("launches on {}{}\n", day.date, until(day.to));
-    let said = day.launches.by_program();
-    if said.is_empty() {
-        out.push_str("nothing timed\n");
-    }
-    for line in said {
-        let _ = writeln!(out, "{line}");
-    }
-    out
-}
-
-/// Each figure cadence judges the day by, Joel's side first: what he
-/// waited for or saw, then our stand-ins for it.
-fn figures_by_side(day: &Day) -> String {
-    let mut out = format!("figures on {}{}\n", day.date, until(day.to));
-    let all = figures::of(day);
-    for (side, called) in [(Side::His, "his "), (Side::Ours, "ours")] {
-        for (name, value) in all.iter().filter(|(name, _)| figures::side(name) == side) {
-            let _ = writeln!(out, "{called}  {name:<34} {}", figure(*value));
-        }
-    }
-    out
-}
-
-/// A figure, whole when it is and to a tenth when not.
-fn figure(value: f64) -> String {
-    if value.fract().abs() < f64::EPSILON {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.1}")
-    }
 }
 
 /// The day's boots, in the order they happened.
@@ -344,7 +164,7 @@ fn boots_of(day: &Day) -> Vec<&Boot> {
 }
 
 /// Each boot's stages as systemd timed them, and its shutdown.
-fn boot_stages(day: &Day) -> String {
+pub(super) fn boot_stages(day: &Day) -> String {
     let mut out = format!("boots on {}\n", day.date);
     let boots = boots_of(day);
     if boots.is_empty() {
@@ -384,7 +204,7 @@ fn seconds(micros: i64) -> String {
 }
 
 /// A kind's things, worst first.
-fn worst_of(day: &Day, kind: Kind) -> Vec<(&String, &Thing)> {
+pub(super) fn worst_of(day: &Day, kind: Kind) -> Vec<(&String, &Thing)> {
     let mut things: Vec<(&String, &Thing)> = day
         .things
         .iter()
@@ -403,7 +223,7 @@ fn total(things: &[(&String, &Thing)]) -> Badness {
 
 /// Badness in words, gravest first, leaving out what's none: "3 crashes
 /// (1 yours), 12 errors, 1,470 warnings from 21".
-fn counted(bad: &Badness, things: usize) -> String {
+pub(super) fn counted(bad: &Badness, things: usize) -> String {
     let Badness {
         his_crashes: his,
         crashes,
@@ -455,7 +275,7 @@ fn plural(count: u64, one: &str, many: &str) -> String {
 }
 
 /// A count with its thousands set apart: 18,216.
-fn grouped(count: u64) -> String {
+pub(super) fn grouped(count: u64) -> String {
     let digits = count.to_string();
     let mut out = String::new();
     for (place, digit) in digits.chars().enumerate() {
@@ -469,7 +289,7 @@ fn grouped(count: u64) -> String {
 
 /// How far into the day it was read, ", to 22:41", or nothing for a day
 /// with no entry.
-fn until(to: i64) -> String {
+pub(super) fn until(to: i64) -> String {
     if to == 0 {
         String::new()
     } else {
@@ -478,7 +298,7 @@ fn until(to: i64) -> String {
 }
 
 /// A time of day on the machine's clock, from microseconds since the epoch.
-fn clock(at: i64) -> String {
+pub(super) fn clock(at: i64) -> String {
     Timestamp::from_microsecond(at).map_or_else(
         |_| "--:--".to_owned(),
         |at| {
@@ -491,8 +311,17 @@ fn clock(at: i64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use terminal_kit::Pen;
+    use terminal_kit::layout::{self, Room};
+
     use super::*;
+    use crate::agents::Died;
     use crate::day::Signature;
+
+    /// What was asked for, uninked, in a terminal 100 cells wide.
+    fn asked(day: &Day, words: &str) -> String {
+        super::asked(day, words, &Pen::plain(), Room::Cells(100))
+    }
 
     fn thing(kind: Kind, lines: u64, errors: u64, crashes: u64, his: u64) -> Thing {
         Thing {
@@ -583,7 +412,10 @@ mod tests {
             shown.starts_with("people: 4 errors, 114 warnings\n"),
             "{shown}"
         );
-        assert!(shown.contains("     4  "), "its count: {shown}");
+        assert!(
+            shown.contains("\nCOUNT  FIRST  LAST   EXAMPLE\n    4  "),
+            "its count, under its heading: {shown}"
+        );
         assert!(
             shown.contains("lookup 12 failed"),
             "an example as said: {shown}"
@@ -690,10 +522,19 @@ mod tests {
         );
         let named = asked(&mourned, "died");
         let lines: Vec<&str> = named.lines().collect();
-        assert_eq!(lines.len(), 3, "each once, the earlier gone first: {named}");
-        assert!(lines[1].contains(" busy      QEST-1"), "{named}");
-        assert!(lines[2].ends_with("π - Git upkeep (b)"), "{named}");
+        assert_eq!(lines.len(), 5, "each once, the earlier gone first: {named}");
+        assert!(lines[3].contains("  busy       QEST-1  a  "), "{named}");
+        assert!(lines[4].ends_with("  b        π - Git upkeep"), "{named}");
         assert!(!day(&a_day()).contains("agents"), "none died");
+        let narrow = super::asked(&mourned, "died", &Pen::plain(), Room::Cells(40));
+        assert!(
+            narrow.lines().all(|line| layout::width(line) <= 40),
+            "a line passes 40 cells: {narrow}"
+        );
+        assert!(
+            narrow.contains("busy") && !narrow.contains("SESSION"),
+            "the session doesn't give way first: {narrow}"
+        );
     }
 
     #[test]
@@ -727,11 +568,11 @@ mod tests {
         let aged = asked(&minded, "memory");
         assert!(!aged.contains("quickshell"), "not running all day: {aged}");
         assert!(
-            aged.contains("\n  under 1 h      1 hold 4.0 GiB, 4.0 GiB each\n"),
+            aged.contains("\nunder 1 h         1  4.0 GiB  4.0 GiB\n"),
             "{aged}"
         );
         assert!(
-            aged.contains("\n  6 h to 24 h    1 hold 2.0 GiB, 2.0 GiB each\n"),
+            aged.contains("\n6 h to 24 h       1  2.0 GiB  2.0 GiB\n"),
             "{aged}"
         );
     }
@@ -774,6 +615,28 @@ mod tests {
             asked(&a_day(), "boot"),
             "boots on 2026-11-12\nthe machine neither started nor stopped\n",
             "a day without one says so"
+        );
+    }
+
+    #[test]
+    fn an_empty_view_says_what_it_found_none_of() {
+        let quiet = Day::new("2026-11-12");
+        for (words, none) in [
+            ("services", "nothing said a warning"),
+            ("died", "no agent went without parking"),
+            ("launches", "nothing timed"),
+        ] {
+            let shown = asked(&quiet, words);
+            assert_eq!(
+                shown.lines().nth(1),
+                Some(none),
+                "{words} on a quiet day doesn't say it found none: {shown}"
+            );
+        }
+        let figures = asked(&quiet, "figures");
+        assert!(
+            !figures.contains("-0"),
+            "a figure of nothing reads as negative: {figures}"
         );
     }
 
