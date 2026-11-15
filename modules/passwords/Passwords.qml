@@ -172,7 +172,7 @@ Provider {
         } : {
             verb: "show",
             stays: true,
-            run: () => provider.launcher?.intoDrawer?.()
+            run: () => provider.launcher?.drawerAtOnce?.()
         });
         return Object.assign(thing(row), { named: Fuzzy.letters([name.toLowerCase()]),
             worded: 0 });

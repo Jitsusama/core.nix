@@ -8173,16 +8173,14 @@ Scope {
     property var drawerSplit: null
     // Return's way into the selected row's drawer, for a row whose Return
     // has nothing else to do, since every row's does something (Y2YBTS,
-    // 2026-11-10): its drawer out at once rather than after the
-    // selection's rest, so Return just after a step still finds it, then
-    // the keys in it, as Space and Right's drawer act give them. A ready
-    // row's drawer act names its row, and one acted on from elsewhere
-    // (`launcher do`) while another is selected opens nothing, since the
-    // drawer only ever shows the selected row's.
-    function intoDrawer(row) {
+    // 2026-11-10), as Passwords' off row's: its drawer out at once rather
+    // than after the selection's rest, so Return just after a step still
+    // finds it, then the keys in it, as Space and Right's drawer act give
+    // them. It isn't named intoDrawer, which a ready row's drawer step and
+    // a past notice's Return look for before taking a way of their own
+    // (ReadyRows.qml, PastNotices.qml), so they keep theirs.
+    function drawerAtOnce() {
         if (!open || selected === null)
-            return;
-        if (row && row.key !== selected.key)
             return;
         drawerFollowDue = false;
         drawerRow = selected;
