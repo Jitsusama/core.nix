@@ -139,6 +139,17 @@ QtObject {
             expect(`${name}, in no window's face, old or new`,
                 shown.filter(one => inFace(one, at.was, lift) || inFace(one, at.now, 0))
                     .map(one => [Math.round(one.t), one.beat]), []);
+            // Told of the slide late, as the shell is (MarginCat.behind),
+            // its frame at `t` shows as niri's slide is `ahead` ms further
+            // on, and the old top it stands on is where that slide has it.
+            // A frame ahead of it at 120 Hz, going up, it showed 90 px into
+            // its window's face (2026-11-15, take uw3).
+            const told = Stacked.moves({ x: from, y: 7 }, { x: to, y: 7 },
+                world({ way, ahead: 33, frame: 1000 / 120 }));
+            expect(`${name}, told late, never ahead of niri's slide into its window`,
+                frames(told, 1000 / 120).filter(one => one.t < slides && seen(one)
+                    && one.y + 8 > 16 - lift * MarginCat.slid(one.t + 33, at.spring) + 0.5)
+                    .map(one => [Math.round(one.t), one.beat]), []);
             // Each pose it shows held two frames at 60 Hz, as it goes off
             // and comes in too.
             const runs = [];

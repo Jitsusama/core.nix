@@ -81,7 +81,12 @@ function moves(from, to, at) {
     }
     const spring = Object.assign({}, at.spring, { slowdown: at.slowdown ?? 1 });
     const lift = down ? apart(at) : -apart(at);
-    const told = { way: at.way, ahead: (at.ahead ?? 0) + (at.frame ?? 0), from,
+    // Told of the slide late by about `at.ahead`, it errs where an error
+    // falls in the gap between the workspaces: down a frame further on, so
+    // the window it stands on never rises over it, and up no further, as
+    // MarginCatPaths.js's moves() does, since a frame on at 120 Hz carried
+    // it 90 px into its window's face as niri's spring ran fastest.
+    const told = { way: at.way, ahead: (at.ahead ?? 0) + (down ? at.frame ?? 0 : 0), from,
         stacked: { lift, spring } };
     if (to === null) {
         const way = Ways.begun(at, { x: from.x, y: from.y - lift });

@@ -87,6 +87,7 @@ claws on the top of the window below, climb up, and then walk over."
   straight up it"
 - Held by `margin-cat-one-screen.qml`: "up with no side over any top, it comes in at the nearest
   side's foot, unmoved"
+- Held by `margin-cat-one-screen.qml`: "told late, never ahead of niri's slide into its window"
 
 ### Climb, Path and Leap About the Windows
 
