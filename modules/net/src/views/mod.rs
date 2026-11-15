@@ -344,7 +344,9 @@ mod tests {
             assert!(text.starts_with("home network · read 4 s ago"), "{text}");
             assert!(text.contains("modem   answering"), "{text}");
             assert!(
-                text.contains("19 devices: a modem, a router, 3 access points and 15 clients"),
+                text.contains(
+                    "20 devices: a modem, a router, 3 access points, a switch and 15 clients"
+                ),
                 "{text}"
             );
             assert!(text.contains("net devices NAME"), "{text}");

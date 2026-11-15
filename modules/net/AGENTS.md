@@ -52,10 +52,32 @@ each source once a minute and writes the record whole, through
   `src/sources/modem.rs` maps them, and every page's answer stays as
   `detail.modem`. Its log's times are placed by the modem's own clock
   against ours, rounded to 15 minutes, and `clock` keeps what it wrote.
+- The switch: its reader's report, `/run/net-switch/report.json`
+  (`net.switch/1`), never the switch itself (below). `src/sources/switch.rs`
+  maps it into one device with the switch role, which stands for the box
+  where eero lists it as a wired client by the same hardware address; the
+  report's status stays whole as `detail.switch`. When one port alone is
+  linked, eero's cable to the switch comes in on it.
 
 It listens on nothing and asks nothing outside the home network. Away
 from home the modem doesn't answer, and the record says so while eero's
 devices stay.
+
+## The Switch's Reader
+
+A TP-Link Easy Smart switch shows its ports only once signed in, and its
+admin password lets its holder mirror ports or change VLANs, so it never
+reaches Joel's account, where every agent runs. `net switch-reader
+ADDRESS` (`src/switch_reader.rs`) runs apart, as a system service holding
+the password as a systemd credential, `$CREDENTIALS_DIRECTORY/switch-password`.
+Each minute it reads four status pages one at a time, since the switch
+drops a reply when asked for two, and asks for a page again once when it
+answers nothing. It signs in only when the pages come back holding no
+status, as they do once the switch's session has ended, because the
+sign-in is plain HTTP and puts the password on the home network in the
+clear. It writes `$RUNTIME_DIRECTORY/report.json` with only what the pages
+show: the password, the sign-in and ureq's own error words never go in it.
+With no credential the report says signed out, and nothing else changes.
 
 ## The Views
 
@@ -84,12 +106,14 @@ id; an unknown one is refused (66) with the nearest. `--json` answers
 
 ## Changing It
 
-[`contract/modem/`][contract] holds a real modem's pages, its addresses
-and serials replaced, and `src/collect.rs`'s tests collect them with
-eero's golden record into the golden record. After a change that's
+[`contract/`][contract] holds a real modem's pages and a real switch's,
+their addresses and serials replaced, and `src/collect.rs`'s tests collect
+them with eero's golden record into the golden record. The reader's tests
+run it against a stand-in switch on a loopback port, which serves the
+contract's pages only once signed in. After a change that's
 meant to move it, `NET_BLESS=1 cargo test` writes it anew; read the
 diff before committing it. `cargo` runs from the dev shell:
 `direnv exec ../.. cargo test` here.
 
 [record]: tests/network.json
-[contract]: contract/modem/
+[contract]: contract/README.md

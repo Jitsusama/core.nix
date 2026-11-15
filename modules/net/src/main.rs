@@ -17,6 +17,7 @@
 //! net                             whether each source answers, what the devices do
 //! net devices [NAME]              every device, or one in full (views.rs)
 //! net daemon                      keep the home network's record
+//! net switch-reader ADDRESS       read the switch for the daemon (switch_reader.rs)
 //! ```
 //!
 //! It takes the shape every command of ours does (docs/commands.md),
@@ -27,6 +28,7 @@ mod commands;
 mod daemon;
 pub mod model;
 mod sources;
+mod switch_reader;
 mod time;
 mod views;
 
@@ -49,6 +51,9 @@ fn run(context: &Context) -> Result<(), Failure> {
     let words: Vec<&str> = context.args.iter().map(String::as_str).collect();
     match words.as_slice() {
         ["daemon"] => daemon::run().map_err(|why| Failure::new(Exit::Failed, why)),
+        ["switch-reader", address] => {
+            switch_reader::run(address).map_err(|why| Failure::new(Exit::Failed, why))
+        }
         [] => {
             let network = record()?;
             show(context, &views::home_json(&network), || {

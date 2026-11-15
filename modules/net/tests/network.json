@@ -17,6 +17,14 @@
       "read_at": 1794702033,
       "since": null,
       "reason": null
+    },
+    {
+      "name": "switch",
+      "what": "the switch's status pages, read by its own reader",
+      "state": "answering",
+      "read_at": 1794702030,
+      "since": null,
+      "reason": null
     }
   ],
   "devices": [
@@ -951,6 +959,221 @@
               "repPower1_6": "    0.0000",
               "state": "  DISABLED",
               "uschindex": "1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "mac:02:00:00:00:00:30",
+      "name": "Closet",
+      "roles": ["switch"],
+      "source": "switch",
+      "read_at": 1794702030,
+      "vendor": "TP-Link",
+      "model": "TL-SG108E",
+      "hardware": "3.0",
+      "firmware": "1.0.0 Build 20170717 Rel.42042(Beta)",
+      "serial": null,
+      "macs": ["02:00:00:00:00:30"],
+      "addresses": ["10.0.0.30"],
+      "up_s": null,
+      "ports": [
+        {
+          "name": "1",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        },
+        {
+          "name": "2",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        },
+        {
+          "name": "3",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        },
+        {
+          "name": "4",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        },
+        {
+          "name": "5",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        },
+        {
+          "name": "6",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        },
+        {
+          "name": "7",
+          "kind": "ethernet",
+          "link": "down",
+          "speed_mbps": null,
+          "duplex": null
+        },
+        {
+          "name": "8",
+          "kind": "ethernet",
+          "link": "up",
+          "speed_mbps": 1000,
+          "duplex": "full"
+        }
+      ],
+      "radios": [],
+      "detail": {
+        "switch": {
+          "address": "10.0.0.30",
+          "description": "Closet",
+          "firmware": "1.0.0 Build 20170717 Rel.42042(Beta)",
+          "gateway": "10.0.0.1",
+          "hardware": "TL-SG108E 3.0",
+          "mac": "02:00:00:00:00:30",
+          "netmask": "255.255.255.0",
+          "ports": [
+            {
+              "cable": null,
+              "duplex": null,
+              "enabled": true,
+              "flow_control": false,
+              "flow_control_set": false,
+              "lag": null,
+              "link": "Link Down",
+              "port": 1,
+              "rx_bad": 0,
+              "rx_good": 0,
+              "speed_mbps": null,
+              "speed_set": "Auto",
+              "tx_bad": 0,
+              "tx_good": 0
+            },
+            {
+              "cable": null,
+              "duplex": null,
+              "enabled": true,
+              "flow_control": false,
+              "flow_control_set": false,
+              "lag": null,
+              "link": "Link Down",
+              "port": 2,
+              "rx_bad": 0,
+              "rx_good": 6136738,
+              "speed_mbps": null,
+              "speed_set": "Auto",
+              "tx_bad": 0,
+              "tx_good": 8066519
+            },
+            {
+              "cable": null,
+              "duplex": null,
+              "enabled": true,
+              "flow_control": false,
+              "flow_control_set": false,
+              "lag": null,
+              "link": "Link Down",
+              "port": 3,
+              "rx_bad": 0,
+              "rx_good": 0,
+              "speed_mbps": null,
+              "speed_set": "Auto",
+              "tx_bad": 0,
+              "tx_good": 0
+            },
+            {
+              "cable": null,
+              "duplex": null,
+              "enabled": true,
+              "flow_control": false,
+              "flow_control_set": false,
+              "lag": null,
+              "link": "Link Down",
+              "port": 4,
+              "rx_bad": 0,
+              "rx_good": 0,
+              "speed_mbps": null,
+              "speed_set": "Auto",
+              "tx_bad": 0,
+              "tx_good": 0
+            },
+            {
+              "cable": null,
+              "duplex": null,
+              "enabled": true,
+              "flow_control": false,
+              "flow_control_set": false,
+              "lag": null,
+              "link": "Link Down",
+              "port": 5,
+              "rx_bad": 0,
+              "rx_good": 0,
+              "speed_mbps": null,
+              "speed_set": "Auto",
+              "tx_bad": 0,
+              "tx_good": 0
+            },
+            {
+              "cable": null,
+              "duplex": null,
+              "enabled": true,
+              "flow_control": false,
+              "flow_control_set": false,
+              "lag": null,
+              "link": "Link Down",
+              "port": 6,
+              "rx_bad": 0,
+              "rx_good": 0,
+              "speed_mbps": null,
+              "speed_set": "Auto",
+              "tx_bad": 0,
+              "tx_good": 0
+            },
+            {
+              "cable": null,
+              "duplex": null,
+              "enabled": true,
+              "flow_control": false,
+              "flow_control_set": false,
+              "lag": null,
+              "link": "Link Down",
+              "port": 7,
+              "rx_bad": 0,
+              "rx_good": 0,
+              "speed_mbps": null,
+              "speed_set": "Auto",
+              "tx_bad": 0,
+              "tx_good": 0
+            },
+            {
+              "cable": null,
+              "duplex": "full",
+              "enabled": true,
+              "flow_control": false,
+              "flow_control_set": false,
+              "lag": null,
+              "link": "1000Full",
+              "port": 8,
+              "rx_bad": 0,
+              "rx_good": 9617421,
+              "speed_mbps": 1000,
+              "speed_set": "Auto",
+              "tx_bad": 0,
+              "tx_good": 6150636
             }
           ]
         }

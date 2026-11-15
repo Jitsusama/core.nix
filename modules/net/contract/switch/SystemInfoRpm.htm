@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<script>
+var info_ds = {
+descriStr:[
+"Closet"
+],
+macStr:[
+"02:00:00:00:00:30"
+],
+ipStr:[
+"10.0.0.30"
+],
+netmaskStr:[
+"255.255.255.0"
+],
+gatewayStr:[
+"10.0.0.1"
+],
+firmwareStr:[
+"1.0.0 Build 20170717 Rel.42042(Beta)"
+],
+hardwareStr:[
+"TL-SG108E 3.0"
+]
+};
+var tip = "";
+</script>
+<html> <head> <meta charset="gb2312"> <script>document.write(top.Abbrev);</script><script type=text/javascript>function isValid(e){return RegExp("^([a-zA-Z0-9_-])*$").test(e)}function doSubmit(){return isValid($id("tDevDscr").value)?($id("btApply").disabled=!0,document.forms[0].submit(),!0):(alert("The length of device description should not be more than 32 characters using digits, English letters, hyphens and underlines only."),!1)}function check_charkey(e,i,n){var s;return e.value.length>n?!1:(i=i?i:window.event,s=i.keyCode?i.keyCode:i.which,8==s?!0:s>=32&&126>=s&&34!=s?!0:!1)}function loadValue(){$id("sp_devicetype").innerHTML=info_ds.descriStr,$id("sp_macaddress").innerHTML=info_ds.macStr,$id("sp_ipaddress").innerHTML=info_ds.ipStr,$id("sp_netmask").innerHTML=info_ds.netmaskStr,$id("sp_gateway").innerHTML=info_ds.gatewayStr,$id("sp_firewareversion").innerHTML=info_ds.firmwareStr,$id("sp_hardwareversion").innerHTML=info_ds.hardwareStr,$id("tDevDscr").value=info_ds.descriStr}incCss("main.css"),incJs("tips.js");</script><body> <div id=div_tip_mask class=TIP_MASK> <div id=div_tip_svr class=TIP><span id=sp_tip_svr class=TIP_CONTENT></span></div> </div> <fieldset> <legend> <span id=systemInformation class=PAIN_TITLE>System Info</span> </legend> <table class=BORDER width=500> <tbody> <tr> <td class=TD_FIRST_COL width=160><span class=NORMAL id=t_devicetype>Device Description</span> <td class=NORMAL_TAIL><span class=NORMAL id=sp_devicetype>TL-SG105E</span>  <tr> <td class=TD_FIRST_COL width=160><span class=NORMAL id=t_macaddress>MAC Address</span> <td class=NORMAL_TAIL><span class=NORMAL id=sp_macaddress>00-0A-EB-00-13-01</span>  <tr> <td class=TD_FIRST_COL width=160><span class=NORMAL id=t_ipaddress>IP Address</span> <td class=NORMAL_TAIL><span class=NORMAL id=sp_ipaddress>10.0.0.1</span>  <tr> <td class=TD_FIRST_COL width=160><span class=NORMAL id=t_netmask>Subnet Mask</span> <td class=NORMAL_TAIL><span class=NORMAL id=sp_netmask>255.255.255.0</span>  <tr> <td class=TD_FIRST_COL width=160><span class=NORMAL id=t_gateway>Default Gateway</span> <td class=NORMAL_TAIL><span class=NORMAL id=sp_gateway>10.0.0.1</span>  <tr> <td class=TD_FIRST_COL width=160><span class=NORMAL id=t_firewareversion>Firmware Version</span> <td class=NORMAL_TAIL><span class=NORMAL id=sp_firewareversion>1.0.0 Build 20150513 Rel.00000</span>  <tr> <td class=TD_FIRST_COL width=160><span class=NORMAL id=t_hardwaredate>Hardware Version</span> <td class=NORMAL_TAIL><span class=NORMAL id=sp_hardwareversion>TL-SG105E 2.0</span>   </table> <table class=BTN_WRAPPER align=center width=500> <tr> <td class=TD_FIRST_COL width=160><span class=NORMAL id=t_deviceinfo>Device Description</span> <form name=sysname_setting action=system_name_set.cgi> <td> <input id=tDevDscr name=sysName class=TEXT_ENABLE maxlength=32 onkeypress="return check_charkey(this,event,32)">  </form> <td width=120>&nbsp; <td class=BTN_WRAPPER style=width:auto> <a class=BTN> <input type=submit onclick="return doSubmit()" id=btApply name=btApply value=Apply class="BTN_NORMAL_BTN"> </a> <td>  </table> <script type=text/javascript>loadValue();</script><div> <table width=100%> <tbody> <tr> <td class=BOTTOM_LINE>   </table> </div> <div> <table width=100%> <tr> <td align=left><span id=t_note_title class=BOLDER>Note:</span>  <tr> <td align=left><span id=t_note_info class=NORMAL>The length of device description should not be more than 32 characters.</span>  </table> </div> </fieldset>   <script>""!=tip&&(ShowTips("sp_tip_svr",tip),startDownScroll("div_tip_svr"));</script>

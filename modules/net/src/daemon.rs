@@ -2,7 +2,9 @@
 //! daemon's file and the modem's status pages, and writes the home
 //! network's record whole to `$XDG_RUNTIME_DIR/net/network.json`, so a view
 //! never reads half of one. It listens on nothing and sends nothing but
-//! plain reads of the modem's pages, each given two seconds.
+//! plain reads of the modem's pages, each given two seconds. The switch
+//! it reads from its reader's report, never from the switch itself, since
+//! signing in to the switch takes a password this account never holds.
 
 use std::fs;
 use std::io;
@@ -14,7 +16,7 @@ use serde_json::Value;
 use ureq::Agent;
 
 use crate::collect::{self, Said};
-use crate::sources::modem;
+use crate::sources::{modem, switch};
 use crate::time;
 
 /// How often the sources are read: the eero daemon's own pace, so each
@@ -41,6 +43,7 @@ pub fn run() -> Result<(), String> {
         let said = Said {
             eero: read_eero(&eero),
             modem: read_modem(&agent),
+            switch: read_switch(Path::new(switch::REPORT)),
         };
         let network = collect::network(said, time::now());
         let written = serde_json::to_string_pretty(&network).map_err(|error| error.to_string())?;
@@ -57,6 +60,15 @@ fn read_eero(file: &Path) -> Result<Value, String> {
     })?;
     serde_json::from_str(&text)
         .map_err(|error| format!("the eero daemon's record doesn't read: {error}"))
+}
+
+fn read_switch(file: &Path) -> Result<switch::Report, String> {
+    let text = fs::read_to_string(file).map_err(|error| match error.kind() {
+        io::ErrorKind::NotFound => "its reader's report isn't there".to_owned(),
+        _ => format!("can't read its reader's report: {error}"),
+    })?;
+    serde_json::from_str(&text)
+        .map_err(|error| format!("its reader's report doesn't read: {error}"))
 }
 
 /// Each page, as far as the modem answers: a page that doesn't is left

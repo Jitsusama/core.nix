@@ -59,6 +59,7 @@ in
     # What programs and devices answered, recorded for the tests to compare
     # byte for byte, and the stand-in keys and signatures they sign with.
     "modules/eero/src/views/golden/*"
+    "modules/net/contract/switch/*.htm"
     "modules/guide/fixtures/*"
     "modules/inkscape/tests/inkscape-recent.xbel"
     "modules/signing/tests/*.sig"

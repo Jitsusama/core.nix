@@ -1,27 +1,62 @@
-//! One record of the home network from what each source said: eero's
-//! devices and links, then the modem, in that order, so a reader always
-//! finds the same device in the same place.
+//! One record of the home network from what each source said: the modem,
+//! the switch, then eero's devices and links, in that order, so a reader
+//! always finds the same device in the same place.
 
 use serde_json::Value;
 
-use crate::model::{Network, SCHEMA};
-use crate::sources::{eero, modem};
+use crate::model::{Device, LinkState, Medium, Network, SCHEMA};
+use crate::sources::{eero, modem, switch};
 
 /// What each source said in one round of reads.
 pub struct Said {
     pub eero: Result<Value, String>,
     pub modem: Result<modem::Pages, String>,
+    pub switch: Result<switch::Report, String>,
 }
 
 pub fn network(said: Said, now: u64) -> Network {
-    let eero = eero::read(said.eero, now);
+    let mut eero = eero::read(said.eero, now);
     let (modem_source, modem) = modem::read(said.modem, now);
+    let (switch_source, switch) = switch::read(said.switch, now);
+    if let Some(switch) = &switch {
+        // eero lists the switch as a wired client by the same hardware
+        // address; the switch's own source says more, so it stands for
+        // the box, and eero's cable to it now reaches it.
+        eero.devices.retain(|device| device.id != switch.id);
+        reach_the_switch(&mut eero.links, switch);
+    }
     Network {
         schema: SCHEMA.into(),
         collected_at: now,
-        sources: vec![eero.source, modem_source],
-        devices: modem.into_iter().chain(eero.devices).collect(),
+        sources: vec![eero.source, modem_source, switch_source],
+        devices: modem
+            .into_iter()
+            .chain(switch)
+            .chain(eero.devices)
+            .collect(),
         links: eero.links,
+    }
+}
+
+/// Gives eero's cable to the switch the switch's end: when one port alone
+/// is linked, the cable must come in on it, since the switch reaches
+/// nothing else; with more, the pages don't say which, so it's left unsaid.
+fn reach_the_switch(links: &mut [crate::model::Link], switch: &Device) {
+    let mut linked = switch
+        .ports
+        .iter()
+        .filter(|port| port.link == Some(LinkState::Up));
+    let (Some(port), None) = (linked.next(), linked.next()) else {
+        return;
+    };
+    for link in links
+        .iter_mut()
+        .filter(|link| link.medium == Medium::Ethernet)
+    {
+        if link.a.device == switch.id && link.a.port.is_none() {
+            link.a.port = Some(port.name.clone());
+            link.speed_mbps = link.speed_mbps.or(port.speed_mbps);
+        }
     }
 }
 
@@ -32,6 +67,7 @@ mod tests {
     use std::fs;
 
     use crate::model::{Role, SourceState};
+    use crate::sources::switch;
 
     /// When the golden record was collected: five seconds after the
     /// contract's modem read its clock, so its log is placed in UTC.
@@ -52,10 +88,43 @@ mod tests {
                 )
             })
             .collect();
+        let switch = switch::PAGES
+            .iter()
+            .map(|page| {
+                let file = format!("{}/contract/switch/{page}.htm", env!("CARGO_MANIFEST_DIR"));
+                (
+                    page.to_string(),
+                    fs::read_to_string(&file).expect("the contract has each page"),
+                )
+            })
+            .collect();
+        let status = switch::parse(&switch).expect("the switch's contract reads");
         Said {
             eero: Ok(eero),
             modem: Ok(pages),
+            switch: Ok(switch::Report {
+                schema: switch::SCHEMA.into(),
+                read_at: NOW - 3,
+                state: SourceState::Answering,
+                reason: None,
+                status: Some(status),
+            }),
         }
+    }
+
+    /// The contract, with eero seeing the switch as a wired client on the
+    /// gateway's second port, as it does once the switch takes a lease.
+    fn with_the_switch_behind_the_gateway() -> Said {
+        let mut said = contract();
+        if let Ok(Value::Object(eero)) = &mut said.eero
+            && let Some(Value::Array(devices)) = eero.get_mut("devices")
+        {
+            devices.push(serde_json::json!({
+                "mac": "02:00:00:00:00:30", "name": "closet", "node": "2003",
+                "ethernet": true, "port": "2", "address": "10.0.0.30",
+            }));
+        }
+        said
     }
 
     /// The record the views are drawn from in their tests is exactly what
@@ -143,6 +212,44 @@ mod tests {
                 .iter()
                 .any(|link| link.a.device == modem::ID && link.b.device == gateway.id),
             "the modem's cable to the gateway is missing"
+        );
+    }
+
+    #[test]
+    fn the_switch_is_one_device_though_eero_lists_it_too() {
+        let network = network(with_the_switch_behind_the_gateway(), NOW);
+        let named: Vec<_> = network
+            .devices
+            .iter()
+            .filter(|device| device.id == "mac:02:00:00:00:00:30")
+            .collect();
+        assert_eq!(named.len(), 1, "the switch is listed twice");
+        assert_eq!(named[0].roles, [Role::Switch], "it isn't a switch");
+        assert_eq!(named[0].name, "Closet", "the switch's own name was lost");
+    }
+
+    #[test]
+    fn the_gateways_cable_reaches_the_switchs_one_linked_port() {
+        let network = network(with_the_switch_behind_the_gateway(), NOW);
+        let cable = network
+            .links
+            .iter()
+            .find(|link| link.a.device == "mac:02:00:00:00:00:30")
+            .expect("the cable to the switch is there");
+        assert_eq!(
+            cable.a.port.as_deref(),
+            Some("8"),
+            "the switch's end has no port"
+        );
+        assert_eq!(
+            cable.b.port.as_deref(),
+            Some("2"),
+            "the gateway's end lost its port"
+        );
+        assert_eq!(
+            cable.speed_mbps,
+            Some(1000),
+            "the cable's speed isn't the port's"
         );
     }
 
