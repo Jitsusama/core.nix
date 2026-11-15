@@ -4,10 +4,10 @@ pragma ComponentBehavior: Bound
 // (stand-ins/hosted-reopen-niri.qml): the laptop's screen with Joel's
 // window on its one workspace, and the monitor's two. niri sends the monitor's two workspaces to
 // the laptop's screen and, once the monitor is back, gives back only the
-// first, since a window opened in the second meanwhile. niri answers the
-// shell's look at the screens after its patience has run out, as it did
-// while lagging at a redock on 2026-11-15, and the second workspace still
-// goes back to the monitor once niri has said the monitor is there. It
+// first, since a window opened in the second meanwhile. niri never answers
+// the shell's look at the screens as the monitor comes, as when it lagged
+// and dropped its connection at a redock on 2026-11-15, and the second
+// workspace still goes back to the monitor once niri answers a look again. It
 // exits 0 once that holds, and otherwise 1, saying what didn't.
 import qs
 import Quickshell
@@ -113,8 +113,8 @@ ShellRoot {
         stage = "redocked";
     }
 
-    // The shell looks at the screens again, and niri answers only once the
-    // shell has stopped waiting for it.
+    // The shell looks at the screens again, and niri never answers, as on a
+    // connection that closed.
     function redocked() {
         const waiting = Niri.asked.find(one => one.asking === "Outputs");
         if (waiting === undefined)
@@ -125,7 +125,7 @@ ShellRoot {
             return;
         Expect.expect("nothing went home while niri hadn't answered", movedHome(14).length === 0,
             JSON.stringify(Niri.acts));
-        root.answerOutputs({ "Virtual-1": root.laptop, "Virtual-2": root.monitor });
+        Niri.asked = Niri.asked.filter(one => one !== waiting);
         stage = "answered";
     }
 

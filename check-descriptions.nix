@@ -150,8 +150,8 @@
   '';
   a-screen-niri-is-late-to-name-takes-its-workspaces-back = ''
     a monitor plugged back in takes back the workspace niri kept on the laptop's screen, leaving
-    the one niri gave back, even when niri answers the shell's look at the screens only after the
-    shell stopped waiting for it
+    the one niri gave back, even when niri never answers the shell's look at the screens as the
+    monitor comes, the shell looking again while workspaces wait
   '';
   a-session-behind-the-lock-waits-for-its-kin = ''
     a session handed over while the screen is locked, beside its sender in the sessions' kitty,
