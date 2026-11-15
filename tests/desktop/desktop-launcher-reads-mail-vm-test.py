@@ -292,8 +292,6 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
     desktop.close_launcher()
     # Each message row is made by its one component, as a conversation's is.
     actless = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
-    print("DEBUG uncomposed:", actless["uncomposed"], "composed:", actless["composed"])
-    print("DEBUG show:", desktop.as_account("qs ipc call -- launcher show '›now›for you›slack'"))
     assert actless["uncomposed"] == [], "\n".join(actless["uncomposed"])
     # Read in Slack, Grace's message leaves For You by itself, for its History.
     done = {"how": "readInSlack", "minutes": 0}
