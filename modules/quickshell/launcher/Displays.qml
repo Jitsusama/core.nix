@@ -39,8 +39,9 @@
 // machine daemon's (modules/machine, light.rs), which the windows daemon
 // reads while a screen is watched ahead (modules/windows, light.rs), so
 // the shell reads neither the lights nor a file for them: which screen
-// holds the Brightness, and the share :set brightness and "brightness
-// 40" say, are its served row's (Screens.js's brightnessOf).
+// holds the Brightness is its served row's, and the share :set
+// brightness and "brightness 40" say the Brightness's (Screens.js's
+// brightnessOf).
 //
 // The backlight daemon warms every screen at night from sunset to
 // sunrise, and toward the room's light where its sensor sees colour, and
@@ -146,8 +147,8 @@ Provider {
     }
 
     // The Brightness the windows daemon serves (Screens.js's
-    // brightnessOf): the row's key of the screen holding it and the share
-    // it read, or null while it's read; null while none is served.
+    // brightnessOf): the share it read, or null while it's read; null
+    // while none is served.
     readonly property var servedBrightness: {
         void ready.placings;
         return Screens.brightnessOf(servedRows());
@@ -200,39 +201,6 @@ Provider {
                 provider.drawerWanted = "";
         }
     }
-
-    function builtIn(output) {
-        return output.name.startsWith("eDP");
-    }
-
-    // Whether a monitor's brightness follows the panel's, which the
-    // windows daemon holds on its row from desk-facts, by a brightness
-    // read back from it (screens/facts.rs).
-    function follows(output) {
-        return ready.served(screenKey(output))?.held?.follows === true;
-    }
-
-    // Whether the room's light is heard here: the built-in screen's lid
-    // holds the sensor, and so does the only screen there is, as in a
-    // virtual machine's.
-    function inTheRoom(output) {
-        return builtIn(output) || shown.length === 1;
-    }
-
-    // Whether this screen's place holds the Brightness: the one the
-    // windows daemon serves it inside, else, before it's served, the
-    // built-in one while it's on, the only screen there is, or the first
-    // lit monitor that follows the panel, as the daemon chooses
-    // (screens.rs's backlit). Only one holds it, since every screen shows
-    // the same level.
-    function backlit(output) {
-        const holding = servedBrightness?.screen ?? "";
-        const home = lit.find(each => screenKey(each) === holding)
-            ?? lit.find(each => inTheRoom(each))
-            ?? lit.find(each => follows(each)) ?? null;
-        return home !== null && home.name === output.name;
-    }
-
 
     // Sets the screen to a share, for :set brightness= and "brightness
     // 40", asking the windows daemon what its Brightness levels ask, at
@@ -324,10 +292,13 @@ Provider {
     stillReading: terminalLooks && !(launcher?.open ?? false) && ready.state !== "not answering"
         && servedBrightness !== null && brightnessServed(backlitKey) === ""
 
-    // The row's key of the screen whose place holds the Brightness, or "".
+    // The row's key of the screen whose place holds the Brightness, read
+    // or not, as the windows daemon says on its row (screens.rs's
+    // backlit), or "". Only one holds it, since every screen shows the
+    // same level.
     readonly property string backlitKey: {
-        const home = lit.find(output => backlit(output));
-        return home ? `row:displays:display:${home.name}` : "";
+        void ready.placings;
+        return ready.keys.find(key => ready.served(key)?.held?.lights === true) ?? "";
     }
 
     // What the drawer the daemon serves on the row of `key` says of the
@@ -348,12 +319,10 @@ Provider {
             || ["brightness", "room"].includes(partsAsked[asks(typed)]))
         || terminalLooks
 
-    // Its maker and model, leaving out a model that's only a number.
+    // Its name, as the windows daemon serves it on its row (screens.rs's
+    // named), else its connector's.
     function named(output) {
-        if (builtIn(output))
-            return "Built-in screen";
-        const model = /^0x[0-9a-f]+$/i.test(output.model) ? "" : output.model;
-        return `${output.make} ${model}`.trim() || output.name;
+        return ready.served(screenKey(output))?.name ?? output.name;
     }
 
     // Screens in the order the daemon serves them: the built-in first, as
@@ -541,17 +510,11 @@ Provider {
     // What one thing's spots are made of, so a change to one screen makes
     // only its parts again as the launcher closes (Launcher.qml's
     // heldSpots): its served rows, those inside it among them, its EDID's
-    // facts and its ways (ReadyRows.stampOf), and for a screen whether it
-    // holds the light; never a level. Joel's closing
-    // at 14:36 on 2026-11-11 made all 87 of Displays' rows again.
+    // facts and its ways (ReadyRows.stampOf), a screen's saying whether
+    // it holds the light; never a level. Joel's closing at 14:36 on
+    // 2026-11-11 made all 87 of Displays' rows again.
     function spotsStampOf(thing) {
-        const served = ready.stampOf(thing);
-        const name = served === null ? undefined
-            : ready.served(ready.madeOf[thing.key])?.held?.output;
-        const output = name === undefined ? undefined : outputs[name];
-        if (output === undefined)
-            return served;
-        return JSON.stringify([served, backlit(output)]);
+        return ready.stampOf(thing);
     }
 
     // What its spots are made of (Launcher.qml's spotsFrom): the rows as
