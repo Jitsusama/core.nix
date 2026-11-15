@@ -674,6 +674,10 @@ in
             # A session's holder, with the pi it runs, is no busy work either.
             "--keep"
             "mycelium"
+            # pi's status line reads git through it, kept beside pi so it
+            # never waits behind builds.
+            "--keep"
+            "git-engine"
             "--jobs"
             "jobs.slice/jobs-awaited.slice/awaited.service"
             "--split"
@@ -715,6 +719,9 @@ in
             # unit ranks as they would in windows of their own: low while
             # every one is marked, held while Joel is at a window showing
             # one, and keeping an orchestrator's floor for each it holds.
+            # Its busy commands go to jobs as a terminal's do, since the unit
+            # holds every command its sessions start and oomd avoids it: on
+            # 15 November three evaluations there filled agents.slice.
             "--hosts"
             "pi-host-"
             # When the kernel's reclaim thread gives up, agents' work gives a

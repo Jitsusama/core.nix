@@ -69,7 +69,8 @@
 //!
 //! With `--hosts` and `--background`, each pi host's unit under that
 //! prefix ranks as the sessions it holds would in windows of their own, as
-//! `src/hosts.rs` says why and how.
+//! `src/hosts.rs` says why and how. With `--hosts` alone, each one's busy
+//! work goes to jobs as a terminal's does, as `looked_at` says why.
 //!
 //! With `--sessions` and `--weigh`, a session's holder found in jobs goes
 //! back to a scope of its own in that slice, with the pi it runs, as
@@ -271,7 +272,7 @@ impl Sorter {
                 if total * MS_PER_TICK >= busy_after && self.streak(&key, settings) {
                     let name = leader.map_or("a group", |leader| leader.comm.as_str());
                     moves.push(Move {
-                        pids: members.iter().map(|proc| proc.pid).collect(),
+                        pids: whole(members, procs),
                         says: format!(
                             "Moved {name} (process group {pgrp}, {} processes) from {scope} \
                              to jobs: {} ms of CPU in {span_ms} ms.",
@@ -284,7 +285,12 @@ impl Sorter {
                 }
                 continue;
             }
-            for proc in members.iter().filter(|proc| proc.pid != *pgrp) {
+            // One named by `--keep` stays alone too, as a host's git
+            // engine does, which pi keeps beside it for its status line.
+            for proc in members
+                .iter()
+                .filter(|proc| proc.pid != *pgrp && !settings.keep.contains(&proc.comm))
+            {
                 let key = (scope.to_string(), proc.pid);
                 if used[&proc.pid] * MS_PER_TICK < busy_after {
                     continue;
@@ -341,6 +347,21 @@ impl Sorter {
         self.seen.retain(|pid, _| alive.contains(pid));
         self.last = now;
     }
+}
+
+/// A group's processes and every process under them in the scope, so
+/// what one started in a group of its own, as Nix's ssh to a builder is,
+/// goes with it.
+fn whole(members: &[&Sample], procs: &[Sample]) -> Vec<u32> {
+    let mut found: Vec<u32> = Vec::new();
+    for member in members {
+        for pid in descendants(member.pid, procs) {
+            if !found.contains(&pid) {
+                found.push(pid);
+            }
+        }
+    }
+    found
 }
 
 /// A process and every process under it in the scope.
@@ -1313,6 +1334,21 @@ fn homes(under: &Path, prefixes: &[String]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// What's looked at for busy work under `under`: each terminal's scope
+/// under a `homes` prefix, and each pi host's unit under the `hosts` one.
+/// A host runs every command its conversations start in its own unit,
+/// which oomd avoids, until something moves it: from 00:19 on 15 November
+/// three evaluations there held 22 GB, agents.slice stalled at its
+/// ceiling, Joel's typing into his sessions with it, and oomd ended 38
+/// small units beside them, holders and mycelium's node, freeing nothing.
+fn looked_at(under: &Path, prefixes: &[String], hosts: Option<&str>) -> Vec<PathBuf> {
+    let mut found = homes(under, prefixes);
+    if let Some(prefix) = hosts {
+        found.extend(hosts::units(under, prefix));
+    }
+    found
+}
+
 /// Where a scope's work goes back to: the cgroup of the process that
 /// started it, outside the scope, when that sits in `jobs` or under it.
 /// Paths are the user manager's, as /proc/<pid>/cgroup gives them below it.
@@ -1750,7 +1786,7 @@ fn run() -> Result<(), String> {
         let now = uptime_ticks().ok_or("can't read /proc/uptime")?;
         let mut alive = HashSet::new();
         for (slice, jobs) in under.iter().zip(&sends) {
-            for scope in homes(slice, &settings.homes) {
+            for scope in looked_at(slice, &settings.homes, settings.hosts.as_deref()) {
                 let procs = samples(&scope);
                 alive.extend(procs.iter().map(|proc| proc.pid));
                 let name = scope.file_name().unwrap_or_default().to_string_lossy();
@@ -1915,7 +1951,7 @@ mod tests {
         Settings {
             under: vec!["app.slice".into()],
             homes: vec!["kitty-".into()],
-            keep: vec!["pi".into()],
+            keep: vec!["pi".into(), "git-engine".into()],
             jobs: "jobs.slice/jobs.service".into(),
             busy_ms: 500,
             ticks: 2,
@@ -2043,6 +2079,58 @@ mod tests {
         let mut sorter = Sorter::default();
         let moves = looks(&mut sorter, &[busy(0), busy(90), busy(180), busy(270)]);
         assert!(moves.iter().all(Vec::is_empty));
+    }
+
+    #[test]
+    fn a_hosts_commands_are_looked_at_beside_the_terminals() {
+        let slice = std::env::temp_dir().join(format!("jobs-sorter-hosts-{}", process::id()));
+        for unit in [
+            "kitty-1-1.scope",
+            "pi-host-work-background.service",
+            "sessions-kitty.service",
+            "mycelium.service",
+        ] {
+            fs::create_dir_all(slice.join(unit)).expect("a unit's folder");
+        }
+        let mut looked: Vec<String> = looked_at(&slice, &["kitty-".into()], Some("pi-host-"))
+            .iter()
+            .filter_map(|path| Some(path.file_name()?.to_str()?.to_owned()))
+            .collect();
+        looked.sort_unstable();
+        let _ = fs::remove_dir_all(&slice);
+        assert_eq!(
+            looked,
+            ["kitty-1-1.scope", "pi-host-work-background.service"],
+            "a host's unit is looked at as a terminal's scope is, and nothing else is"
+        );
+    }
+
+    // From 00:19 on 15 November a host's command evaluated in the host's
+    // own unit, its shell's parent outside it, as the harness's kept
+    // command wrapper leaves it, while the host and its git engine idled.
+    #[test]
+    fn a_hosts_busy_command_moves_whole_and_the_host_stays() {
+        let frame = |cpu: u64| {
+            vec![
+                proc(10, 1, 10, "node", 1),
+                proc(11, 10, 10, "git-engine", cpu),
+                proc(21, 20, 20, "tee", 0),
+                proc(22, 20, 20, "bash", 0),
+                proc(23, 22, 20, "nix", cpu),
+                proc(24, 23, 24, "ssh", 0),
+            ]
+        };
+        let mut sorter = Sorter::default();
+        let moves = looks(&mut sorter, &[frame(0), frame(90), frame(180)]);
+        assert_eq!(moves[2].len(), 1, "one move: {:?}", moves[2]);
+        let mut pids = moves[2][0].pids.clone();
+        pids.sort_unstable();
+        assert_eq!(
+            pids,
+            [21, 22, 23, 24],
+            "the command goes whole, what it started in a group of its own with it, \
+             and the host and its busy git engine stay"
+        );
     }
 
     #[test]

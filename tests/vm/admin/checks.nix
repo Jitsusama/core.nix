@@ -21,6 +21,9 @@ onLinux {
   vm-a-measured-disk-shares-by-its-model = import ./slices/measured-disk.nix {
     inherit self pkgs;
   };
+  # Whether a host's runaway leaves the sessions beside it shows only with
+  # the account's real slices, its sorter and the kernel's OOM scores.
+  vm-a-pis-busy-work-goes-to-jobs = import ./slices/hosts.nix { inherit self pkgs; };
   # Whether the shell draws on time while work bursts for memory shows only
   # with the kernel reclaiming and swapping across the account's real slices.
   vm-joel-comes-first = import ./joel-first { inherit self pkgs; };
