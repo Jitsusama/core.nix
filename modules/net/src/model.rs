@@ -45,6 +45,26 @@ pub struct Internet {
     pub up_mbps: Option<f64>,
     pub measured_at: Option<u64>,
     pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carried: Option<Carried>,
+}
+
+/// What the line carried over the last day, as its source counted it at
+/// the gateway: the bytes each way, and each hour's average speed, oldest
+/// first, so an hour reads against the line's own.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Carried {
+    pub down_bytes: u64,
+    pub up_bytes: u64,
+    pub hours: Vec<Hour>,
+}
+
+/// One hour of what the line carried, from `at`, as its average speed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Hour {
+    pub at: u64,
+    pub down_mbps: f64,
+    pub up_mbps: f64,
 }
 
 /// A device's way to the internet: the devices its traffic crosses, in
@@ -76,7 +96,8 @@ pub struct Concern {
     pub kind: ConcernKind,
     pub device: String,
     /// The radio or port on the device it's about, when it's one of them,
-    /// or the way, down or up, a device fills the internet.
+    /// or the way, down or up, a device fills the internet or the internet
+    /// is the narrowest point.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on: Option<String>,
     /// The device at a link's other end, when it's about a link.
@@ -102,6 +123,31 @@ pub enum ConcernKind {
     /// One of the modem's downstream channels lost far more than the
     /// others, which points at noise on its frequency.
     Lost,
+}
+
+impl ConcernKind {
+    /// How far a concern of this kind reaches, the widest first: the line
+    /// itself, and a device filling it, touch every device; a slow cable
+    /// everything behind it; a busy radio all it carries; a weak signal
+    /// one device. The internet's ceiling is the line's speed, not a fault.
+    fn reach(self) -> u8 {
+        match self {
+            ConcernKind::Lost => 0,
+            ConcernKind::Fills => 1,
+            ConcernKind::Slow => 2,
+            ConcernKind::Busy => 3,
+            ConcernKind::Weak => 4,
+            ConcernKind::Ceiling => 5,
+        }
+    }
+}
+
+/// The concerns worst first, by how far each kind reaches, keeping the
+/// order they were found in within a kind. A reader meets the worst
+/// first, and the launcher's Map row, which says only the first, says it.
+pub(crate) fn worst_first(mut concerns: Vec<Concern>) -> Vec<Concern> {
+    concerns.sort_by_key(|concern| concern.kind.reach());
+    concerns
 }
 
 /// Where a vendor's facts come from, and whether they're current.
@@ -389,6 +435,44 @@ mod tests {
         let written = serde_json::to_value(&network).expect("the model writes");
         let record: Value = serde_json::from_str(RECORD).expect("the record is JSON");
         assert_eq!(written, record, "the model lost or added a field");
+    }
+
+    #[test]
+    fn concerns_go_worst_first_keeping_their_order_within_a_kind() {
+        use ConcernKind::{Busy, Ceiling, Fills, Lost, Slow, Weak};
+        let concern = |kind, device: &str| Concern {
+            kind,
+            device: device.to_owned(),
+            on: None,
+            other: None,
+            says: String::new(),
+        };
+        let found = vec![
+            concern(Busy, "hall"),
+            concern(Weak, "tablet"),
+            concern(Ceiling, "modem"),
+            concern(Busy, "den"),
+            concern(Lost, "modem"),
+            concern(Slow, "desk"),
+            concern(Fills, "laptop"),
+        ];
+        let order: Vec<(ConcernKind, String)> = worst_first(found)
+            .into_iter()
+            .map(|concern| (concern.kind, concern.device))
+            .collect();
+        let want: Vec<(ConcernKind, String)> = [
+            (Lost, "modem"),
+            (Fills, "laptop"),
+            (Slow, "desk"),
+            (Busy, "hall"),
+            (Busy, "den"),
+            (Weak, "tablet"),
+            (Ceiling, "modem"),
+        ]
+        .into_iter()
+        .map(|(kind, device)| (kind, device.to_owned()))
+        .collect();
+        assert_eq!(order, want, "the widest reach comes first");
     }
 
     #[test]

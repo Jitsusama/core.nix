@@ -234,6 +234,25 @@ mod tests {
         );
     }
 
+    /// Each ceiling names its way, as a device filling the line does, so a
+    /// reader such as the page marks the right figure without reading
+    /// net's sentence for it.
+    #[test]
+    fn each_ceiling_names_its_way() {
+        let network = network(contract(), NOW);
+        let ways: Vec<Option<&str>> = network
+            .concerns
+            .iter()
+            .filter(|concern| concern.kind == crate::model::ConcernKind::Ceiling)
+            .map(|concern| concern.on.as_deref())
+            .collect();
+        assert_eq!(
+            ways,
+            [Some("down"), Some("up")],
+            "a ceiling without its way"
+        );
+    }
+
     #[test]
     fn the_modem_comes_first_with_every_channel() {
         let network = network(contract(), NOW);

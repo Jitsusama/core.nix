@@ -40,7 +40,9 @@ Apple TV are net's alone, and `eero` keeps only what's eero's.
   map is drawn from these.
 - `internet`: the internet beyond the modem, its provider and speed each
   way from eero's last speed test, which runs from the gateway and so
-  measures the internet alone.
+  measures the internet alone; and `carried`, what the line carried over
+  the last day as eero counted it at the gateway, the bytes each way and
+  each hour's average speed, so an hour reads against the line's own.
 - Each device's `path` and the record's `concerns`, worked out rather
   than read (`src/room.rs`). A path lists the devices to the modem and,
   each way, its chokepoint: the hop with least room, a cable's speed or a
@@ -49,9 +51,12 @@ Apple TV are net's alone, and `eero` keeps only what's eero's.
   `unmeasured`, never guessed. A concern is a radio busy 50% or more (the
   map's gold), a Wi-Fi link at -70 dBm or weaker, a cable under a gigabit,
   the internet as a chokepoint, said once each way, a modem channel that
-  lost 100 or more it couldn't repair and ten times any other's, or a
+  lost 100 or more it couldn't repair and ten times any other's, unless
+  the day shows it lost none lately, or a
   device using 80% or more of the internet's speed one way, which fills
-  it for every other.
+  it for every other. They're listed worst first, by how far each kind
+  reaches: the channel's losses, a device filling the line, a slow cable,
+  a busy radio, a weak link, then the internet.
 - What the day says, from net's own readings (`src/history.rs`): each
   radio's `busiest_pct` and `busiest_at`, and the modem's `lately_s` with
   each downstream channel's `lost_lately`, counted from the earliest
@@ -158,13 +163,16 @@ Every view reads the record alone, never a source, so it answers at once
 and the same way away from home. `src/views/` draws each as a function
 of the record, the time, a pen and the room, so its tests set every
 width without a terminal; tables and facts come from the terminal kit.
-A device's page is `device.rs`, and what its sources say in their own
-words is `said.rs`.
+A device's page is `device.rs`, what its sources say in their own
+words is `said.rs`, and what the line carried over the last day is
+`carried.rs`.
 
 - `net`: how each source answers and how long ago, how many devices do
   what, each concern but the ceilings in net's words beside its kind
   under Worth a Look, the ceilings under The Internet, since they're the
-  line's speed rather than a fault, and the commands that go further.
+  line's speed rather than a fault, then what the line carried over the
+  last day each way: its bytes, average, share of the line's speed and
+  busiest hour, and the commands that go further.
 - `net devices`: one line per device, its roles, address, time up and
   model; a narrow terminal drops the model, then the time, then the
   address.

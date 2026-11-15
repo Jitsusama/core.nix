@@ -6946,16 +6946,140 @@
     "down_mbps": 369.86,
     "up_mbps": 11.93,
     "measured_at": 1793875935,
-    "source": "eero"
+    "source": "eero",
+    "carried": {
+      "down_bytes": 167091577600,
+      "up_bytes": 72699566336,
+      "hours": [
+        {
+          "at": 1794002400,
+          "down_mbps": 0.0,
+          "up_mbps": 0.0
+        },
+        {
+          "at": 1794006000,
+          "down_mbps": 21.4,
+          "up_mbps": 10.22
+        },
+        {
+          "at": 1794009600,
+          "down_mbps": 22.52,
+          "up_mbps": 9.2
+        },
+        {
+          "at": 1794013200,
+          "down_mbps": 28.1,
+          "up_mbps": 10.18
+        },
+        {
+          "at": 1794016800,
+          "down_mbps": 21.55,
+          "up_mbps": 10.79
+        },
+        {
+          "at": 1794020400,
+          "down_mbps": 18.75,
+          "up_mbps": 10.04
+        },
+        {
+          "at": 1794024000,
+          "down_mbps": 17.99,
+          "up_mbps": 8.35
+        },
+        {
+          "at": 1794027600,
+          "down_mbps": 21.33,
+          "up_mbps": 9.31
+        },
+        {
+          "at": 1794031200,
+          "down_mbps": 16.57,
+          "up_mbps": 10.38
+        },
+        {
+          "at": 1794034800,
+          "down_mbps": 11.12,
+          "up_mbps": 3.53
+        },
+        {
+          "at": 1794038400,
+          "down_mbps": 12.3,
+          "up_mbps": 3.12
+        },
+        {
+          "at": 1794042000,
+          "down_mbps": 4.79,
+          "up_mbps": 2.93
+        },
+        {
+          "at": 1794045600,
+          "down_mbps": 11.2,
+          "up_mbps": 1.03
+        },
+        {
+          "at": 1794049200,
+          "down_mbps": 9.14,
+          "up_mbps": 0.39
+        },
+        {
+          "at": 1794052800,
+          "down_mbps": 11.78,
+          "up_mbps": 0.62
+        },
+        {
+          "at": 1794056400,
+          "down_mbps": 17.13,
+          "up_mbps": 0.66
+        },
+        {
+          "at": 1794060000,
+          "down_mbps": 17.17,
+          "up_mbps": 2.73
+        },
+        {
+          "at": 1794063600,
+          "down_mbps": 8.89,
+          "up_mbps": 4.63
+        },
+        {
+          "at": 1794067200,
+          "down_mbps": 18.87,
+          "up_mbps": 9.38
+        },
+        {
+          "at": 1794070800,
+          "down_mbps": 20.07,
+          "up_mbps": 9.21
+        },
+        {
+          "at": 1794074400,
+          "down_mbps": 13.36,
+          "up_mbps": 8.51
+        },
+        {
+          "at": 1794078000,
+          "down_mbps": 13.06,
+          "up_mbps": 9.06
+        },
+        {
+          "at": 1794081600,
+          "down_mbps": 9.38,
+          "up_mbps": 9.94
+        },
+        {
+          "at": 1794085200,
+          "down_mbps": 13.54,
+          "up_mbps": 9.46
+        },
+        {
+          "at": 1794088800,
+          "down_mbps": 11.34,
+          "up_mbps": 7.88
+        }
+      ]
+    }
   },
   "concerns": [
-    {
-      "kind": "weak",
-      "device": "mac:02:00:00:00:00:0e",
-      "on": "5 GHz",
-      "other": "eero:2002",
-      "says": "laptop computer 1 has a weak signal to Study: −75 dBm, and from −70 down its speed falls"
-    },
     {
       "kind": "lost",
       "device": "modem",
@@ -6969,13 +7093,22 @@
       "says": "unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s"
     },
     {
+      "kind": "weak",
+      "device": "mac:02:00:00:00:00:0e",
+      "on": "5 GHz",
+      "other": "eero:2002",
+      "says": "laptop computer 1 has a weak signal to Study: −75 dBm, and from −70 down its speed falls"
+    },
+    {
       "kind": "ceiling",
       "device": "modem",
+      "on": "down",
       "says": "The internet is the narrowest point down for 7 of the 18 devices on the eeros: 369.9 Mbit/s, as eero last measured it"
     },
     {
       "kind": "ceiling",
       "device": "modem",
+      "on": "up",
       "says": "The internet is the narrowest point up for every device on the eeros: 11.9 Mbit/s, as eero last measured it"
     }
   ]

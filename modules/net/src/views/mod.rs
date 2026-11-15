@@ -4,12 +4,14 @@
 //! terminal. A page shows each fact once, in layers: what every device can
 //! say, then its role's own figures, then what each source says that
 //! neither held, in the source's words (docs/glossary.md's Network words).
-//! One device's page is device.rs, its sources' own words said.rs; the
-//! rest, and the answers, are here.
+//! One device's page is device.rs, its sources' own words said.rs, what
+//! the line carried carried.rs; the rest, and the answers, are here.
 
+mod carried;
 mod device;
 mod said;
 
+use carried::carried;
 pub use device::device;
 
 use serde_json::{Map, Value, json};
@@ -152,15 +154,17 @@ fn kind_words(kind: ConcernKind) -> &'static str {
         ConcernKind::Weak => "weak",
         ConcernKind::Slow => "slow",
         ConcernKind::Ceiling => "ceiling",
-        ConcernKind::Fills => "fills",
+        // An adjective, as the others are, for a device filling the line.
+        ConcernKind::Fills => "heavy",
         ConcernKind::Lost => "lost",
     }
 }
 
 /// What's worth a look, each concern in net's own words beside its kind,
 /// then the internet as the narrowest point under a label of its own,
-/// since that's the line's speed rather than a fault. Neither shows when
-/// there's nothing to say.
+/// since that's the line's speed rather than a fault, a blank line between
+/// its two ways so they don't run together in a narrow terminal. Neither
+/// shows when there's nothing to say.
 fn worth_a_look(network: &Network, pen: &Pen, room: Room) -> Vec<Vec<String>> {
     let (ceilings, faults): (Vec<_>, Vec<_>) = network
         .concerns
@@ -176,15 +180,23 @@ fn worth_a_look(network: &Network, pen: &Pen, room: Room) -> Vec<Vec<String>> {
         block.extend(layout::facts(&facts, "", pen, room));
         blocks.push(block);
     }
-    if !ceilings.is_empty() {
+    let day = carried(network, pen, room);
+    if !ceilings.is_empty() || !day.is_empty() {
         let mut block = vec![pen.label("the internet")];
-        for concern in ceilings {
+        for (at, concern) in ceilings.into_iter().enumerate() {
+            if at > 0 {
+                block.push(String::new());
+            }
             block.extend(
                 layout::paragraph(&concern.says, 0, room)
                     .into_iter()
                     .map(|line| pen.role("text", &line)),
             );
         }
+        if !day.is_empty() && block.len() > 1 {
+            block.push(String::new());
+        }
+        block.extend(day);
         blocks.push(block);
     }
     blocks
@@ -481,20 +493,41 @@ mod tests {
                 .expect("the view says what's worth a look");
             let internet = words.find("THE INTERNET").expect("and the internet apart");
             assert!(worth < internet, "the faults come first: {text}");
+            let mut last = worth;
             for said in [
-                "weak laptop computer 1 has a weak signal to Study",
                 "lost The modem's downstream channel 16 has lost 878",
-                "fills unknown computer 1 is using 83% of the internet's speed up",
+                "heavy unknown computer 1 is using 83% of the internet's speed up",
+                "weak laptop computer 1 has a weak signal to Study",
             ] {
                 let at = words
                     .find(said)
                     .unwrap_or_else(|| panic!("{said:?}: {text}"));
-                assert!(worth < at && at < internet, "{said:?} is a fault: {text}");
+                assert!(
+                    last < at && at < internet,
+                    "{said:?} is a fault, worst first: {text}"
+                );
+                last = at;
             }
+            assert!(
+                text.contains("\n\nThe internet is the narrowest point up"),
+                "each way's ceiling stands apart: {text}"
+            );
             let up = words
                 .find("The internet is the narrowest point up for every device")
                 .expect("the line's ceiling is said");
             assert!(internet < up, "the ceiling is the internet's: {text}");
+            let mut last = up;
+            for said in [
+                "What the line carried over the last day:",
+                "down 167 GB, averaging 14.9 Mbit/s, 4% of its speed; 28.1 in its busiest hour",
+                "up 72.7 GB, averaging 6.5 Mbit/s, 54% of its speed; 10.8 in its busiest hour",
+            ] {
+                let at = words
+                    .find(said)
+                    .unwrap_or_else(|| panic!("{said:?}: {text}"));
+                assert!(last < at, "{said:?} follows the ceilings: {text}");
+                last = at;
+            }
         }
     }
 
@@ -504,6 +537,14 @@ mod tests {
         network.concerns.clear();
         let text = home(&network, now(), &Pen::plain(), Room::Unbounded);
         assert!(!text.contains("WORTH A LOOK"), "{text}");
+        assert!(
+            text.contains("THE INTERNET\nWhat the line carried"),
+            "the internet says only its day: {text}"
+        );
+        if let Some(internet) = network.internet.as_mut() {
+            internet.carried = None;
+        }
+        let text = home(&network, now(), &Pen::plain(), Room::Unbounded);
         assert!(!text.contains("THE INTERNET"), "{text}");
     }
 
