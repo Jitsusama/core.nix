@@ -179,7 +179,9 @@ pub fn stable_digest(parts: &[&[u8]]) -> u64 {
 /// it to end, saying so with the one going's process and how long it has
 /// gone by `now`, in seconds since 1970.
 pub fn alone(state: &Path, me: u32, at: &Twin, now: impl Fn() -> u64) -> Alone {
-    alone_saying(state, me, at, now, SAY_EVERY, &mut |said| eprintln!("{said}"))
+    alone_saying(state, me, at, now, SAY_EVERY, &mut |said| {
+        eprintln!("{said}")
+    })
 }
 
 /// [`alone`], saying through `say` that it waits, and again every `every`
@@ -193,7 +195,10 @@ fn alone_saying(
     say: &mut dyn FnMut(String),
 ) -> Alone {
     let twins = state.join("nix-offload/twins");
-    let work = stable_digest(&[at.folder.as_os_str().as_encoded_bytes(), at.asked.as_bytes()]);
+    let work = stable_digest(&[
+        at.folder.as_os_str().as_encoded_bytes(),
+        at.asked.as_bytes(),
+    ]);
     let file = twins.join(format!("{}-{work:016x}.lock", at.commit));
     let opened = fs::create_dir_all(&twins).and_then(|()| {
         fs::OpenOptions::new()
@@ -231,7 +236,7 @@ fn alone_saying(
     // Looked at a few times a second rather than blocked on, so a wait
     // behind a first that hangs keeps saying so; a first that dies frees
     // its lock with it.
-    let look = every.min(Duration::from_millis(250));
+    let pause = every.min(Duration::from_millis(250));
     let mut since = Duration::ZERO;
     loop {
         match lock.try_lock() {
@@ -239,8 +244,8 @@ fn alone_saying(
             Err(fs::TryLockError::WouldBlock) => {}
             Err(fs::TryLockError::Error(_)) => return Alone::Unheld,
         }
-        std::thread::sleep(look);
-        since += look;
+        std::thread::sleep(pause);
+        since += pause;
         if since >= every {
             since = Duration::ZERO;
             say(format!(
@@ -285,7 +290,9 @@ mod tests {
     fn a_twins_lock_is_named_the_same_by_every_build() {
         let state = tempfile::tempdir().unwrap();
         let _held = alone(state.path(), 1, &at("abc", "/t", ASKED), || 10);
-        let named = state.path().join("nix-offload/twins/abc-806d23c24afc7eb5.lock");
+        let named = state
+            .path()
+            .join("nix-offload/twins/abc-806d23c24afc7eb5.lock");
         assert!(
             named.exists(),
             "the lock wasn't named by FNV-1a of its tree and ask, which every build agrees on"
@@ -437,7 +444,10 @@ mod tests {
             "a second run didn't wait for the first"
         );
         assert!(
-            said.iter().filter(|line| line.contains("still waits")).count() >= 2,
+            said.iter()
+                .filter(|line| line.contains("still waits"))
+                .count()
+                >= 2,
             "a run waiting on a twin went quiet while it waited: {said:?}"
         );
     }
