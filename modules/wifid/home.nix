@@ -22,6 +22,12 @@
       Restart = "always";
       RestartSec = 2;
     };
-    Install.WantedBy = [ "pipewire.service" ];
+    # The session wants it too, so a switch that brings it in starts it
+    # while PipeWire already runs: on 15 Nov 2026 one didn't, since only
+    # PipeWire starting would have, and wifid heard no calls.
+    Install.WantedBy = [
+      "pipewire.service"
+      "default.target"
+    ];
   };
 }
