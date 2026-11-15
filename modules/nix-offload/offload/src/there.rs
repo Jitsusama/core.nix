@@ -2393,10 +2393,8 @@ pub fn outlives_on(store: &str, scratch: &Path, ssh: &str) -> bool {
 /// seconds, as the far shell reads them. One `outlives` names itself for
 /// `OUTLIVING_ASKED` while it runs.
 fn far_within(command: &str, grace: &str, outlives: bool) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::hash::DefaultHasher::new();
-    command.hash(&mut hasher);
-    let claims = format!("${{TMPDIR:-/tmp}}/nix-offload-run-{:016x}", hasher.finish());
+    let named_for = crate::running::stable_digest(&[command.as_bytes()]);
+    let claims = format!("${{TMPDIR:-/tmp}}/nix-offload-run-{named_for:016x}");
     let (named, unnamed) = if outlives {
         (
             "outliving=\"${TMPDIR:-/tmp}/nix-offload-outliving-$$\"; : > \"$outliving\"; ",

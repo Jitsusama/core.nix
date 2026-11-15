@@ -29,8 +29,12 @@
 //! (`there.rs`), so those changes keep it apart from the run before.
 
 use std::fs;
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+/// How often a run waiting on its twin says it still waits, so one that
+/// hangs behind a hung first shows it rather than going quiet.
+const SAY_EVERY: Duration = Duration::from_secs(300);
 
 /// A run's file, removed when this is dropped.
 pub struct Running {
@@ -154,14 +158,48 @@ impl Drop for Held {
     }
 }
 
+/// FNV-1a over `parts`, a zero byte between each, as every build of this
+/// program reckons it. std's `DefaultHasher` leaves its algorithm free to
+/// change between Rust releases, so the installed nix-offload and a dev
+/// shell's could name one piece of work differently and each do it.
+pub fn stable_digest(parts: &[&[u8]]) -> u64 {
+    const BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0100_0000_01b3;
+    let mut digest = BASIS;
+    for (index, part) in parts.iter().enumerate() {
+        let between: &[u8] = if index == 0 { &[] } else { &[0] };
+        for &byte in between.iter().chain(part.iter()) {
+            digest = (digest ^ u64::from(byte)).wrapping_mul(PRIME);
+        }
+    }
+    digest
+}
+
 /// Take the work `at` names for the run `me`, or wait for the run doing
 /// it to end, saying so with the one going's process and how long it has
 /// gone by `now`, in seconds since 1970.
 pub fn alone(state: &Path, me: u32, at: &Twin, now: impl Fn() -> u64) -> Alone {
+    alone_saying(state, me, at, now, SAY_EVERY, &mut |said| {
+        eprintln!("{said}");
+    })
+}
+
+/// [`alone`], saying through `say` that it waits, and again every `every`
+/// while it still does.
+fn alone_saying(
+    state: &Path,
+    me: u32,
+    at: &Twin,
+    now: impl Fn() -> u64,
+    every: Duration,
+    say: &mut dyn FnMut(String),
+) -> Alone {
     let twins = state.join("nix-offload/twins");
-    let mut work = DefaultHasher::new();
-    (at.folder, &at.asked).hash(&mut work);
-    let file = twins.join(format!("{}-{:016x}.lock", at.commit, work.finish()));
+    let work = stable_digest(&[
+        at.folder.as_os_str().as_encoded_bytes(),
+        at.asked.as_bytes(),
+    ]);
+    let file = twins.join(format!("{}-{work:016x}.lock", at.commit));
     let opened = fs::create_dir_all(&twins).and_then(|()| {
         fs::OpenOptions::new()
             .create(true)
@@ -173,28 +211,79 @@ pub fn alone(state: &Path, me: u32, at: &Twin, now: impl Fn() -> u64) -> Alone {
         return Alone::Unheld;
     };
     match lock.try_lock() {
-        Ok(()) => return Alone::Held(Held { file, _lock: lock }),
+        Ok(()) => {
+            take_away_left(&twins, &file);
+            return Alone::Held(Held { file, _lock: lock });
+        }
         Err(fs::TryLockError::WouldBlock) => {}
         Err(fs::TryLockError::Error(_)) => return Alone::Unheld,
     }
-    let going = twin(state, me, at).map_or_else(
-        || "another run".to_owned(),
-        |going| {
-            format!(
-                "run {}, going {} s so far,",
-                going.pid,
-                now().saturating_sub(going.started)
-            )
-        },
-    );
-    eprintln!(
-        "nix-offload: {going} already runs these changed-checks in this tree at {}, so this \
+    let going = || {
+        twin(state, me, at).map_or_else(
+            || "another run".to_owned(),
+            |going| {
+                format!(
+                    "run {}, going {} s so far,",
+                    going.pid,
+                    now().saturating_sub(going.started)
+                )
+            },
+        )
+    };
+    let commit = at.commit.get(..12).unwrap_or(at.commit);
+    say(format!(
+        "nix-offload: {} already runs these changed-checks in this tree at {commit}, so this \
          waits for it to end and then reads what it passed",
-        at.commit.get(..12).unwrap_or(at.commit),
-    );
-    match lock.lock() {
-        Ok(()) => Alone::Waited,
-        Err(_) => Alone::Unheld,
+        going()
+    ));
+    // Looked at a few times a second rather than blocked on, so a wait
+    // behind a first that hangs keeps saying so; a first that dies frees
+    // its lock with it.
+    let pause = every.min(Duration::from_millis(250));
+    let mut since = Duration::ZERO;
+    loop {
+        match lock.try_lock() {
+            Ok(()) => return Alone::Waited,
+            Err(fs::TryLockError::WouldBlock) => {}
+            Err(fs::TryLockError::Error(_)) => return Alone::Unheld,
+        }
+        std::thread::sleep(pause);
+        since += pause;
+        if since >= every {
+            since = Duration::ZERO;
+            say(format!(
+                "nix-offload: this still waits on {} at {commit}; stop that one to go on",
+                going()
+            ));
+        }
+    }
+}
+
+/// How long a lock no run holds is kept: a day, far past any run's, so
+/// one taken away is one a run killed with SIGKILL left behind.
+const LEFT_FOR: Duration = Duration::from_hours(24);
+
+/// Take away each lock in `twins` but `mine` that's older than
+/// [`LEFT_FOR`] and that no run holds, since a killed run never removes
+/// its own and they gather one per commit.
+fn take_away_left(twins: &Path, mine: &Path) {
+    let Ok(entries) = fs::read_dir(twins) else {
+        return;
+    };
+    for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+        let old = fs::metadata(&path)
+            .and_then(|meta| meta.modified())
+            .is_ok_and(|at| at.elapsed().is_ok_and(|age| age > LEFT_FOR));
+        if path == mine || !old {
+            continue;
+        }
+        let unheld = fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .is_ok_and(|left| left.try_lock().is_ok());
+        if unheld {
+            let _ = fs::remove_file(&path);
+        }
     }
 }
 
@@ -227,6 +316,19 @@ mod tests {
     }
 
     const ASKED: &str = "--system x86_64-linux";
+
+    #[test]
+    fn a_twins_lock_is_named_the_same_by_every_build() {
+        let state = tempfile::tempdir().unwrap();
+        let _held = alone(state.path(), 1, &at("abc", "/t", ASKED), || 10);
+        let named = state
+            .path()
+            .join("nix-offload/twins/abc-806d23c24afc7eb5.lock");
+        assert!(
+            named.exists(),
+            "the lock wasn't named by FNV-1a of its tree and ask, which every build agrees on"
+        );
+    }
 
     #[test]
     fn a_run_finds_its_twin_going_and_nothing_else() {
@@ -315,6 +417,69 @@ mod tests {
         assert!(
             matches!(alone(state.path(), 2, &first, || 10), Alone::Held(_)),
             "a run waited where nothing else went"
+        );
+    }
+
+    #[test]
+    fn a_lock_a_killed_run_left_a_day_ago_is_taken_away() {
+        use std::time::SystemTime;
+        let state = tempfile::tempdir().unwrap();
+        let twins = state.path().join("nix-offload/twins");
+        fs::create_dir_all(&twins).unwrap();
+        let two_days_ago = SystemTime::now() - Duration::from_hours(48);
+        let left = |name: &str, when: SystemTime| {
+            let file = fs::File::create(twins.join(name)).unwrap();
+            file.set_modified(when).unwrap();
+            file
+        };
+        drop(left("old-0000000000000000.lock", two_days_ago));
+        drop(left("new-0000000000000000.lock", SystemTime::now()));
+        let going = left("going-0000000000000000.lock", two_days_ago);
+        going.lock().unwrap();
+        let _held = alone(state.path(), 1, &at("abc", "/t", ASKED), || 10);
+        assert!(
+            !twins.join("old-0000000000000000.lock").exists(),
+            "a lock no run has held for a day was left to gather"
+        );
+        assert!(
+            twins.join("new-0000000000000000.lock").exists(),
+            "a lock left within the day was taken away"
+        );
+        assert!(
+            twins.join("going-0000000000000000.lock").exists(),
+            "a lock a run still holds was taken away"
+        );
+    }
+
+    #[test]
+    fn a_run_waiting_on_its_twin_says_it_still_waits() {
+        let state = tempfile::tempdir().unwrap();
+        let first = at("abc", "/t", ASKED);
+        let held = alone(state.path(), 1, &first, || 10);
+        let ender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(1100));
+            drop(held);
+        });
+        let mut said = Vec::new();
+        let waited = alone_saying(
+            state.path(),
+            2,
+            &first,
+            || 10,
+            Duration::from_millis(300),
+            &mut |line| said.push(line),
+        );
+        ender.join().unwrap();
+        assert!(
+            matches!(waited, Alone::Waited),
+            "a second run didn't wait for the first"
+        );
+        assert!(
+            said.iter()
+                .filter(|line| line.contains("still waits"))
+                .count()
+                >= 2,
+            "a run waiting on a twin went quiet while it waited: {said:?}"
         );
     }
 
