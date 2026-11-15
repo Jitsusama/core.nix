@@ -618,12 +618,21 @@ impl Book {
     /// Whether every source that can answer has answered for a key: one
     /// signed out or refused never will, so it isn't waited on.
     pub fn ready(&self, key: &str) -> bool {
+        self.waiting(key).next().is_none()
+    }
+
+    /// The sources that can answer for a key and haven't yet, so a watch
+    /// of those listed can tell which of them put the key off.
+    pub fn waiting<'a>(&'a self, key: &str) -> impl Iterator<Item = &'a str> {
         let answered = self.answered.get(key);
-        self.standings.iter().all(|(source, standing)| {
-            self.rosters.contains(source)
-                || matches!(standing, Standing::SignedOut | Standing::Refused(_))
-                || answered.is_some_and(|answered| answered.contains(source))
-        })
+        self.standings
+            .iter()
+            .filter(move |(source, standing)| {
+                !(self.rosters.contains(*source)
+                    || matches!(standing, Standing::SignedOut | Standing::Refused(_))
+                    || answered.is_some_and(|answered| answered.contains(*source)))
+            })
+            .map(|(source, _)| source.as_str())
     }
 
     /// Forgets which keys a source answered, as when it starts again, so
