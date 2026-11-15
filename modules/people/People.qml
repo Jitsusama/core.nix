@@ -498,17 +498,11 @@ Provider {
         });
     }
 
-    // What a source serves between Joel and someone, by any address, each
-    // once by its key.
+    // What a source serves between Joel and someone, each once by its key
+    // and the oldest first, as the people daemon takes it in (its
+    // between.rs), so nothing's merged here.
     function servedThings(person, name) {
-        const by = {};
-        for (const entry of entriesOf(person, name)) {
-            for (const one of entry.between ?? []) {
-                if (one?.key && !(one.key in by))
-                    by[one.key] = one;
-            }
-        }
-        return Object.values(by);
+        return servedEntry(person, name)?.between ?? [];
     }
 
     // Whether a served thing waits now: theirs on Joel however long ago,
@@ -529,21 +523,20 @@ Provider {
     }
 
     // The first of a source's served things for their drawer, with no row
-    // made: the oldest that waits and the newest they met at.
+    // made: the oldest that waits now, the first of those served oldest
+    // first, since what waits turns with the clock, and the newest they
+    // met at, which the people daemon serves ready as `met`.
     function servedFirsts(person, name) {
         const now = Date.now();
-        const all = servedThings(person, name);
-        const wait = all.filter(one => waitsNow(one, now))
-            .reduce((first, one) => first && first.at <= one.at ? first : one, null);
-        const met = all.filter(one => one.kind === "met")
-            .reduce((newest, one) => newest && newest.at >= one.at ? newest : one, null);
+        const wait = servedThings(person, name).find(one => waitsNow(one, now)) ?? null;
+        const met = servedEntry(person, name)?.met ?? null;
         return {
             wait: wait ? {
                 at: wait.at, name: wait.row?.name ?? "", what: wait.what ?? "",
                 mine: wait.mine === true,
                 opens: (wait.row?.acts ?? []).find(one => typeof one.open === "string")?.open
             } : null,
-            met: met ? { at: met.at, name: met.row?.name ?? "", one: met.one === true } : null
+            met: met
         };
     }
 
