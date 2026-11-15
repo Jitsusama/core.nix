@@ -120,6 +120,25 @@ QtObject {
                 || said.some(word => word !== "\u2026" && !whole.includes(word)))
                 failures.push(`a long command said ${long}`);
         }
+        // Past the longest, a runner's options give way first, as one, so the
+        // program it runs and that program's first word follow the runner, as
+        // they say what runs; a program run by none keeps its first word too
+        // (VKCF3Z, 2026-11-15).
+        const tail = Array(12).fill(`/nix/store/${hash}-qtdeclarative-6.12.0.drv^out`);
+        const ahead = [
+            [["run0", "--setenv", "NIX_PATH=nixpkgs=flake:nixpkgs", "--unit", "a-build", "--",
+                "nix", "build", ...tail], "run0\u00a0\u2026\u00a0nix build"],
+            [["pkexec", "--user", "joel", "--keep-cwd", "nix", "build", ...tail],
+                "pkexec\u00a0\u2026\u00a0nix build"],
+            [["run0", "nix", "build", ...tail], "run0 nix build"],
+            [["systemctl", "restart", ...tail], "systemctl restart"]];
+        for (const [argv, start] of ahead) {
+            const long = Polkit.asker(line(...argv), units);
+            asked++;
+            if (!long.startsWith(start) || !/[ \u00a0]/u.test(long.charAt(start.length))
+                || long.length > 120 || !long.endsWith("6.12.0.drv^out"))
+                failures.push(`a long ${argv[0]} command said ${long}`);
+        }
         // A word longer than a line gives way at its own middle, as it breaks
         // only at a space.
         const path = `/home/joel/${"d".repeat(60)}/end.qml`;
