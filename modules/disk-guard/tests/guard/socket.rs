@@ -63,6 +63,7 @@ fn serving(
 fn roots() -> Request {
     Request::Processes {
         roots: vec![PathBuf::from("/home/u/src")],
+        pids: vec![],
     }
 }
 

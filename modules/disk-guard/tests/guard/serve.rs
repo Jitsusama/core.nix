@@ -53,6 +53,7 @@ fn the_system_daemon_answers_for_what_the_asker_owns() {
     answering(&socket, &proc, Duration::ZERO, None).unwrap();
     let request = Request::Processes {
         roots: vec![root.join("src"), "/proc".into()],
+        pids: vec![],
     };
     let answer = |request: &Request| match ask(&socket, request, Duration::from_secs(5)) {
         Ok(Reply::Answer(answer)) => answer,
@@ -64,6 +65,46 @@ fn the_system_daemon_answers_for_what_the_asker_owns() {
     assert_eq!(told.touching[0].cwd.as_deref(), Some(mine.as_path()));
     let again = answer(&request);
     assert_eq!(again.vouched.len(), 2, "it goes on answering");
+}
+
+// Reading every process for one the asker couldn't read cost the system's
+// guard a core's worth of scans on a busy desktop, so an asker names the
+// processes it wants vouched for, and only those are read.
+#[test]
+fn the_system_daemon_reads_only_the_processes_it_is_asked_about() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    let mine = root.join("src/app");
+    fs::create_dir_all(&mine).unwrap();
+    let proc = root.join("proc");
+    sitting(&proc, 700, &mine);
+    sitting(&proc, 701, &mine);
+    let socket = root.join("socket");
+    answering(&socket, &proc, Duration::ZERO, None).unwrap();
+    let request = Request::Processes {
+        roots: vec![root.join("src")],
+        pids: vec![701, 702],
+    };
+    let told = match ask(&socket, &request, Duration::from_secs(5)) {
+        Ok(Reply::Answer(answer)) => answer,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        told.vouched,
+        vec![(701, 500)],
+        "it read more than it was asked: {told:?}"
+    );
+    assert_eq!(told.touching.len(), 1, "{told:?}");
+    // An asker from before names none, and is answered for every process.
+    let older: Request = serde_json::from_str(r#"{"processes":{"roots":["/src"]}}"#).unwrap();
+    assert_eq!(
+        older,
+        Request::Processes {
+            roots: vec!["/src".into()],
+            pids: vec![],
+        },
+        "an older asker's request no longer reads"
+    );
 }
 
 #[test]

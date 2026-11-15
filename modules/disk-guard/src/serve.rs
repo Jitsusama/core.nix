@@ -16,6 +16,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::Duration;
 
+/// The processes an asker named, or every one when it named none.
+fn read(proc: &Path, pids: &[u32]) -> io::Result<Vec<crate::activity::Process>> {
+    if pids.is_empty() {
+        crate::sys::processes(proc)
+    } else {
+        crate::sys::named(proc, pids)
+    }
+}
+
 /// Takes the lock that keeps one daemon to a state directory, or None
 /// while another daemon holds it. It's held as long as the file is open,
 /// and the kernel lets it go when the daemon dies however it dies.
@@ -59,7 +68,7 @@ pub fn answering(
             loop {
                 let answered = server.serve(&mut |uid, request, responder| {
                     let reply = match request {
-                        Request::Processes { roots } => match crate::sys::processes(&proc) {
+                        Request::Processes { roots, pids } => match read(&proc, &pids) {
                             Ok(processes) => {
                                 Reply::Answer(vouch::answer(&processes, &roots, |path| {
                                     vouch::reached_by(path, uid)
