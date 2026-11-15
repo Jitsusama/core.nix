@@ -130,7 +130,11 @@ pub fn keep(head: &str, began: u64, asked: Asked) {
 pub fn asked_at(kept: &str, commits: &[&str]) -> bool {
     kept.lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .any(|line| line["head"].as_str().is_some_and(|head| commits.contains(&head)))
+        .any(|line| {
+            line["head"]
+                .as_str()
+                .is_some_and(|head| commits.contains(&head))
+        })
 }
 
 /// Whether `needs` was asked at any of `commits` on this machine.
@@ -240,7 +244,10 @@ mod tests {
             !asked_at(&kept, &["h3"]),
             "a change needs was never asked of was taken as asked"
         );
-        assert!(!asked_at("", &["h1"]), "no needs was kept, yet one was seen");
+        assert!(
+            !asked_at("", &["h1"]),
+            "no needs was kept, yet one was seen"
+        );
     }
 
     #[test]

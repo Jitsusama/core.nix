@@ -319,7 +319,14 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
 /// onto #4770, which added the rule that its initrd moved, after needs had
 /// been asked only at commits whose base lacked it.
 fn needs_heard(commit: &str, main: &str, passes: &[&str], files: &[String]) -> bool {
-    let rules = git(&["log", "-1", "--format=%H", main, "--", "tools/merge-net/must-run.txt"]);
+    let rules = git(&[
+        "log",
+        "-1",
+        "--format=%H",
+        main,
+        "--",
+        "tools/merge-net/must-run.txt",
+    ]);
     let rules = rules.unwrap_or_default();
     let knows_rules = |asked: &str| {
         rules.is_empty()
