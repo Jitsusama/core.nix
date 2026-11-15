@@ -11,6 +11,7 @@
 
 mod measures;
 
+use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::fs;
 use std::io;
@@ -239,6 +240,8 @@ pub fn compose(at: &str, measures: &[Measure], kept: &Kept, due: &str) -> (Strin
                 figure(m.target.unwrap_or_default()),
                 if m.class == Class::Miss {
                     "each miss's owner"
+                } else if !by_owner(m).is_empty() {
+                    "each file's owner"
                 } else {
                     owner_or_none(&m.owner)
                 }
@@ -401,6 +404,26 @@ fn filed(m: &Measure) -> Vec<Filed> {
         figure(m.now),
         figure(m.target.unwrap_or_default())
     );
+    let owners = by_owner(m);
+    if !owners.is_empty() {
+        return owners
+            .into_iter()
+            .map(|(owner, files)| {
+                let files = files.join(", ");
+                Filed {
+                    key: format!("hour:{}:{owner}", m.key),
+                    says: format!("{says}, yours: {files}"),
+                    text: format!(
+                        "cadence hour: the biggest drag this hour is {says}, and these of \
+                         its files are yours: {files}. Please reply with their cause and fix \
+                         within a day, or why they can't move. It closes by itself once its \
+                         figure is back in."
+                    ),
+                    owner,
+                }
+            })
+            .collect();
+    }
     vec![Filed {
         key: format!("hour:{}", m.key),
         owner: m.owner.clone(),
@@ -413,8 +436,24 @@ fn filed(m: &Measure) -> Vec<Filed> {
     }]
 }
 
+/// A clean measure's files by the owner each is said with, where
+/// code-health said one; empty otherwise, and for every other class.
+fn by_owner(m: &Measure) -> BTreeMap<String, Vec<String>> {
+    let mut owners: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    if m.class == Class::Clean {
+        for (file, owner) in m.behind.iter().filter_map(|line| line.rsplit_once(" · ")) {
+            owners
+                .entry(owner.to_owned())
+                .or_default()
+                .push(file.to_owned());
+        }
+    }
+    owners
+}
+
 /// Whether the drag filed as `key` is back in: its miss no longer open,
-/// or its measure read and within its target.
+/// or its measure read and within its target; a clean drag filed for each
+/// file's owner carries that owner after its measure's key.
 fn back_in(key: &str, measures: &[Measure]) -> bool {
     let key = key.strip_prefix("hour:").unwrap_or(key);
     if let Some(what) = key.strip_prefix("miss:") {
@@ -427,7 +466,13 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
     }
     measures
         .iter()
-        .find(|m| m.key == key)
+        .find(|m| {
+            m.key == key
+                || (m.class == Class::Clean
+                    && key
+                        .strip_prefix(m.key.as_str())
+                        .is_some_and(|owner| owner.starts_with(':')))
+        })
         .is_some_and(|m| m.past().is_none())
 }
 
@@ -622,6 +667,38 @@ mod tests {
             "none told"
         );
         assert!(!ledger[0].open, "back in closes it");
+    }
+
+    #[test]
+    fn a_clean_drag_goes_to_each_files_owner_and_closes_once_back_in() {
+        let mut suppressions = measure(
+            "clean:core.nix:suppressions",
+            Class::Clean,
+            12.0,
+            Some(10.0),
+        );
+        suppressions.behind = vec![
+            "net/a.rs · PN2VZC".to_owned(),
+            "net/b.rs · PN2VZC".to_owned(),
+            "x.rs · Y9XISP".to_owned(),
+        ];
+        let (card, _) = compose("03:10", &[suppressions.clone()], &Kept::default(), "");
+        assert!(card.contains("to each file's owner by"), "{card}");
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &[suppressions.clone()], "2026-11-15", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(owners, ["PN2VZC", "Y9XISP"], "each owner of a file is told");
+        assert!(
+            told[0].1.contains("net/a.rs, net/b.rs") && !told[0].1.contains("x.rs"),
+            "each hears only of its own files: {}",
+            told[0].1
+        );
+        suppressions.now = 10.0;
+        file(&mut ledger, &[suppressions], "2026-11-15", 4600);
+        assert!(
+            ledger.iter().all(|e| !e.open),
+            "back in closes every owner's"
+        );
     }
 
     #[test]
