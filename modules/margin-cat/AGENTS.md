@@ -175,8 +175,9 @@ still often does not look like its paws are moving."
 Joel, 2026-11-12 15:56: "i want to be able to also use my mouse to engage with my
 animals."
 
-- Owed since 2026-11-12: a pointer moved onto it and resting there leans it in, eyes shut,
-  toward the pointer's side, never a pointer passing over or one it came to under; it takes
-  the pointer only over its own cells, so a click beside it reaches the window.
+- Held by `margin-cat.qml`: "a pointer moved onto it as it sits strokes it"
+- Held by `margin-cat.qml`: "never one it came to under, still where it was"
+- Held by `margin-cat.qml`: "resting on it 300 ms, and leaning 600 ms after it goes"
+- Held by `margin-cat.qml`: "it leans toward the pointer's side, the one drawing mirrored"
 
 [design]: ../../docs/design.md

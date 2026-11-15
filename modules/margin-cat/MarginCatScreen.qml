@@ -129,6 +129,24 @@ PanelWindow {
     // builder.
     property string pose: ""
     property int facing: 0
+    // Whether it's sitting still, neither going, moving, at play nor
+    // stretching, so a pointer may pet it; and since when, so one it
+    // came to under isn't one that moved onto it (MarginCat.strokes).
+    readonly property bool still: going === null && moving === null && yarnAt === null
+        && window.scene.posed === "" && !window.scene.stretching
+    property real stillSince: 0
+    onStillChanged: {
+        stillSince = Date.now();
+        if (!still)
+            unpetted();
+    }
+    // Where the pointer was last seen over it, in the screen's pixels,
+    // null with none; the way it leans into it, 0 while it doesn't
+    // (MarginCat.leansTo); and the way it'd lean as the pet comes.
+    property var pointer: null
+    property int leaning: 0
+    property int leaningTo: 0
+    onLeaningChanged: say()
     // When niri showed each frame of the walk under way, how long the
     // shell took to draw each, and how many niri never showed, said
     // once it sits (MarginCat.walked). Kept as plain arrays, pushed
@@ -164,10 +182,10 @@ PanelWindow {
     readonly property var marksLit: modelData === null ? null
         : Paths.marks(MarginMarks.drawn, modelData.width, Theme.gap)
     // What it's drawn as: a pose of its walk, turned the way it
-    // goes and the way it climbs, or the scope's, sitting, asleep or
-    // stretching.
-    readonly property var drawn: pose
-        ? MarginCat.quartered(
+    // goes and the way it climbs, leaning into a pointer, or the
+    // scope's, sitting, asleep or stretching.
+    readonly property var drawn: leaning !== 0 ? MarginCat.leaning(leaning, Theme.pixels)
+        : pose ? MarginCat.quartered(
             MarginCat.turned(Theme.pixels[pose] ?? window.scene.drawing, facing), turn)
         : window.scene.drawing
     // Whether it's on its way to another column or workspace, waiting
@@ -824,7 +842,7 @@ PanelWindow {
     // rest: grown only as a move set off, its first frames waited on
     // niri's new size, so its ride began out of sight and showed only as
     // it ended (the GPU rig, 2026-11-13: 141, 331, then 801 px down).
-    // Nothing of it takes the pointer, and Qt draws it only as it moves.
+    // Only its own cells take the pointer, and Qt draws it only as it moves.
     // Its screen is null for a moment as the screen goes, and the binding
     // reads it again then (vm-screens-keep-the-launcher, 2026-11-15).
     implicitHeight: modelData?.height ?? 0
@@ -836,8 +854,51 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "cat"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-    // Nothing of it takes the pointer, so the gap stays the windows'.
-    mask: Region {}
+    // Only its own cells take the pointer, to be petted, so the gap
+    // around it stays the windows' and a click beside it reaches them.
+    mask: Region { item: cat }
+
+    // The pointer over it at `at`, in the screen's pixels, `across` its
+    // cells: one that moved onto it as it sat still starts a pet.
+    function felt(at: point, across: real): void {
+        const moved = MarginCat.strokes(pointer, at, still ? Date.now() - stillSince : -1);
+        pointer = { x: at.x, y: at.y };
+        if (moved && leaning === 0 && !petting.running) {
+            leaningTo = MarginCat.leansTo(across, size);
+            petting.restart();
+        } else if (leaning !== 0) {
+            petting.stop();
+        }
+    }
+
+    // The pointer gone from it: a pet not yet come never comes, and a
+    // lean is held a moment before it sits again.
+    function unfelt(): void {
+        pointer = null;
+        if (leaning === 0)
+            petting.stop();
+        else
+            petting.restart();
+    }
+
+    // No pet coming and no lean, as it sets off or dozes.
+    function unpetted(): void {
+        petting.stop();
+        leaning = 0;
+    }
+
+    // Its one timer for a pet: run only while a pointer comes onto it or
+    // leaves it, never at rest.
+    Timer {
+        id: petting
+        interval: window.leaning === 0 ? MarginCat.PETS : MarginCat.PETTED
+        onTriggered: {
+            if (window.leaning !== 0)
+                window.leaning = 0;
+            else if (hand.hovered && window.still && !window.scene.asleep)
+                window.leaning = window.leaningTo;
+        }
+    }
 
     // Where it sits, or that it's nowhere, for a test to read.
     // It says the column it saw too, so a test that finds it nowhere
@@ -862,6 +923,7 @@ PanelWindow {
             window: sat,
             asleep: window.scene.asleep,
             stretching: window.scene.stretching,
+            leaning: window.leaning,
             walk: going === null || stepped === null ? null : {
                 t: Math.round(walker.elapsedTime * 10000) / 10,
                 beat: stepped.beat,
@@ -894,7 +956,11 @@ PanelWindow {
     // while its cells take more device pixels, so it says so too.
     onRatioChanged: say()
     readonly property bool asleep: window.scene.asleep
-    onAsleepChanged: say()
+    onAsleepChanged: {
+        if (asleep)
+            unpetted();
+        say();
+    }
     readonly property bool stretching: window.scene.stretching
     onStretchingChanged: say()
     // A scene's pose changes nothing of its place, so it says so too.
@@ -920,6 +986,18 @@ PanelWindow {
                 * window.ratio) / window.ratio)
         width: window.size
         height: window.size
+
+        // The pointer over its cells, which never changes its shape.
+        HoverHandler {
+            id: hand
+
+            onHoveredChanged: hovered ? window.felt(point.scenePosition, point.position.x)
+                : window.unfelt()
+            onPointChanged: {
+                if (hovered)
+                    window.felt(point.scenePosition, point.position.x);
+            }
+        }
 
         Repeater {
             model: Pixels.runs(window.drawn)

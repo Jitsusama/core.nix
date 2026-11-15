@@ -1033,12 +1033,15 @@ voice; the cell of air keeps its feet off the border, whose accent is too
 near the voice in both looks to tell them apart. Its
 cells are whole device pixels, about two thirds of the gap tall all told,
 so it's as sharp at 1.5 as at 2. It keeps beside the marks rather than on
-them, since they say what's true. It takes no keys and no pointer, and
-it's gone wherever the gap can't hold it (fullscreen, the overview) and
-while a call shares the screen; a screenshot shows it, as it shows the
-marks. At rest it draws no frame. Once the keys rest two seconds on
-another column it walks there, never for keys passing through, so h and l
-tapped along the columns leave it sitting. A walk is animated, moved a
+them, since they say what's true. It takes no keys, and the pointer only
+over its own cells: moved onto it as it sits and resting there 300 ms, it
+leans into it, eyes shut, toward the pointer's side, until 600 ms after it
+goes, and a click on it does nothing. It's gone wherever the gap can't
+hold it (fullscreen, the overview) and while a call shares the screen; a
+screenshot shows it, as it shows the marks. At rest it draws no frame.
+Once the keys rest two seconds on another column it walks there, never
+for keys passing through, so h and l tapped along the columns leave it
+sitting. A walk is animated, moved a
 whole cell of its own art each frame the screen draws, with character
 (Joel, 2026-11-12: "we need proper smooth animations with character to
 them"): it stands and turns its head the way it's going, stops a moment

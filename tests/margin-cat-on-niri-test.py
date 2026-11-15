@@ -11,8 +11,9 @@ gap it sits in is gone, that it dozes off after a minute with no keys and stretc
 screen unlocks, that niri draws it in whole pixels at 1.5 and at 2, each screen kept as the
 check's result, and that a move between workspaces has it hold its ground through niri's slide,
 a second move cutting it short holding on from where the first got to, that on a workspace
-with no windows it sits on the floor until one opens there, and that a row of a column closed
-under it has it fall at once.
+with no windows it sits on the floor until one opens there, that a row of a column closed
+under it has it fall at once, and that a pointer moved onto it leans it in while one it came
+to under doesn't, a click beside it reaching the window.
 
 Long because every case shares the one shell, started with the cat's own doze and scenes, and
 the readers of what it reports; the moves between workspaces could go to a check of their own,
@@ -84,6 +85,12 @@ FLUSH = 0.5
 # How far each channel may be from the cat's hue for a pixel to be called near it, when
 # looking for a cat drawn somewhere other than where it said.
 NEAR = 24
+# How far up and left the pointer is sent to put it in the screen's corner, from which a move
+# is to a point on the screen.
+TO_THE_CORNER = -10000
+# How long a pointer resting on the cat takes to pet it, and how long its lean holds after the
+# pointer goes (modules/margin-cat/MarginCat.js), in seconds.
+PETS, PETTED = 0.3, 0.6
 # What a PNG's header says of niri's screenshot: eight bits a channel, in red, green and
 # blue, with alpha or without.
 BYTE, RGB, RGBA = 8, 2, 6
@@ -914,3 +921,97 @@ def test_a_middle_row_closed_under_it_has_it_fall_onto_the_row_below(shell: Shel
     assert "climbs" not in way, f"the cat fell past the row below, its way {way}: {told}"
     falling = {step["walk"]["pose"] for step in walked if step["walk"]["beat"] == "rides"}
     assert falling == {"falling"}, f"the cat fell as {falling}: {told}"
+
+
+def point(shell: Shell, x: float, y: float) -> None:
+    """Put the pointer at a point on the screen, through a virtual pointer from its corner."""
+    wlrctl = os.environ["WLRCTL"]
+    shell.as_account(f"{wlrctl} pointer move {TO_THE_CORNER} {TO_THE_CORNER}")
+    shell.as_account(f"{wlrctl} pointer move {round(x)} {round(y)}")
+
+
+def leaning(said: str) -> int:
+    """Give the way a report has the cat leaning into the pointer, 0 for none."""
+    at = placed(said)
+    return 0 if at is None else int(at.get("leaning") or 0)
+
+
+def leaning_to(way: int) -> Callable[[str], bool]:
+    """Give a test of a report having the cat lean this way."""
+    return lambda said: leaning(said) == way
+
+
+def seat(shell: Shell, window: Json, since: int) -> Json:
+    """Wait until the cat sits on this window's column, and give where it says it sits."""
+    sits_over(shell, window, since)
+    said, _ = shell.said_since(since)
+    at = placed(next(report for report in reversed(said) if report.startswith(SITS))[len(SITS) :])
+    assert at is not None, "the cat sat over its window and then said it was nowhere"
+    return at
+
+
+def test_a_pointer_resting_on_the_cat_leans_it_in_and_a_click_beside_it_reaches_the_window(
+    shell: Shell,
+) -> None:
+    """A pointer moved onto the cat leans it in toward its side, and its cells take no more.
+
+    Joel, 2026-11-12: "i want to be able to also use my mouse to engage with my animals". The
+    times and the drawing are held in Qt's engine (margin-cat.qml); here, that niri's pointer
+    reaches its cells on its layer, on either side, and that the lean ends once the pointer
+    goes. Its layer spans the screen, yet only its cells take the pointer, so a click on the
+    window beside its column focuses that window.
+    """
+    since = shell.mark()
+    beside = shell.opened("a column clicked into past the cat")
+    petted = shell.opened("a column the cat is petted on")
+    at = seat(shell, petted, since)
+    middle = at["y"] + at["size"] / 2
+    for across, way in ((1, -1), (at["size"] - 2, 1)):
+        shell.send_key("F24")
+        since = shell.mark()
+        point(shell, at["x"] + across, middle)
+        heard(shell, leaning_to(way), since)
+        since = shell.mark()
+        point(shell, TO_THE_CORNER, TO_THE_CORNER)
+        heard(shell, lambda said: leaning(said) == 0, since)
+    place = beside["layout"]["tile_pos_in_workspace_view"]
+    point(shell, place[0] + NEAR, place[1] + NEAR)
+    shell.as_account(f"{os.environ['WLRCTL']} pointer click left")
+    deadline = time.monotonic() + LAYERED
+    while json.loads(shell.as_account("niri msg --json focused-window"))["id"] != beside["id"]:
+        assert time.monotonic() < deadline, "a click beside the cat never reached the window"
+        time.sleep(POLL)
+
+
+def test_the_cat_never_leans_on_a_pointer_it_came_to_under(shell: Shell) -> None:
+    """A pointer at rest where the cat sits down leaves it sitting, until the pointer moves.
+
+    Only a pointer that moved onto it pets it (VKCF3Z, b8fc852e). The pointer waits where the
+    cat sat over one column while it sits over another; once it walks back under it, it sits
+    there a pet's time and its hold's, unleaning, and a step of the pointer then leans it,
+    so the pointer was over it all along.
+    """
+    since = shell.mark()
+    walked_from = shell.opened("a column the cat walks from to the pointer")
+    under = shell.opened("a column the cat walks back to under the pointer")
+    there = seat(shell, under, since)
+    since = shell.mark()
+    shell.as_account("niri msg action focus-column-left")
+    seat(shell, walked_from, since)
+    point(shell, there["x"] + there["size"] / 2, there["y"] + there["size"] / 2)
+    since = shell.mark()
+    shell.as_account("niri msg action focus-column-right")
+    back = seat(shell, under, since)
+    assert (back["x"], back["y"]) == (there["x"], there["y"]), (
+        f"the cat came back to sit at {back}, not under the pointer at {there}"
+    )
+    # A pet would have leaned it by now, and a lean begun as it sat would still hold.
+    time.sleep(PETS + PETTED)
+    said, _ = shell.said_since(since)
+    leant = [report for report in said if report.startswith(SITS) and leaning(report[len(SITS) :])]
+    assert not leant, f"the cat leaned on a pointer it came to under: {leant[:2]}"
+    shell.send_key("F24")
+    since = shell.mark()
+    shell.as_account(f"{os.environ['WLRCTL']} pointer move 1 0")
+    heard(shell, lambda said: leaning(said) != 0, since)
+    point(shell, TO_THE_CORNER, TO_THE_CORNER)
