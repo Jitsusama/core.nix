@@ -63,7 +63,7 @@ const boundary = async (handlers) => {
     seen.push(event.context.builtAs, event.context.builtAs);
   };
   const { builds } = await boundary([reader, () => undefined, reader]);
-  assert.deepEqual(seen, [1, 1, 2], "a read didn't build once a handler, afresh for the next");
+  assert.deepEqual(seen, [1, 1, 2, 2], "a read didn't build once a handler, afresh for the next");
   assert.deepEqual(builds, [[], []]);
 }
 
