@@ -20,6 +20,8 @@ rustPlatform.buildRustPackage rec {
       ./tests/words.json
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
+      ../ready-rows/Cargo.toml
+      ../ready-rows/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

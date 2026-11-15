@@ -84,16 +84,49 @@ fn counted(said: &crate::said::Said, standing: &str, words: &str, many: u64) -> 
     }
 }
 
+/// How a network's sessions stand, worst first and leaving out none, each
+/// count in its words with how long it keeps its place, as its row and
+/// its drawer both say it.
+pub(crate) fn standings(network: &Value, said: &crate::said::Said) -> Vec<(String, u8)> {
+    STANDINGS
+        .iter()
+        .filter_map(|(standing, words, keep)| {
+            let many = count(network, standing);
+            (many > 0).then(|| (counted(said, standing, words, many), *keep))
+        })
+        .collect()
+}
+
+/// Whether a network has a row of its own here: an orchestration is the
+/// tree's.
+pub(crate) fn shown(network: &Value) -> bool {
+    HEADINGS
+        .iter()
+        .any(|(shape, _, _)| network["shape"] == *shape)
+}
+
+/// What a network's row and its drawer are called: its own name, as the
+/// mesh names it, the machines' too, whose title is a sentence for its
+/// drawer (VKCF3Z, 692362f1).
+pub(crate) fn called(network: &Value) -> String {
+    let name = network["name"].as_str().unwrap_or("");
+    network["title"]
+        .as_str()
+        .filter(|_| network["shape"] != "machines")
+        .or_else(|| network["short"].as_str())
+        .unwrap_or(name)
+        .to_owned()
+}
+
 /// What a network's row says at its right: how its sessions stand, worst
 /// first and leaving out none, then its machines where there's more than
 /// one.
 fn side(network: &Value, words: &Words) -> Vec<Value> {
     let said = &words.agents;
     let machines = network["machines"].as_array().map_or(0, Vec::len);
-    let standings = STANDINGS.iter().filter_map(|(standing, words, keep)| {
-        let many = count(network, standing);
-        (many > 0).then(|| json!({"said": counted(said, standing, words, many), "keep": keep}))
-    });
+    let standings = standings(network, said)
+        .into_iter()
+        .map(|(said, keep)| json!({"said": said, "keep": keep}));
     let spread = (machines > 1 && network["shape"] != "machines").then(|| {
         json!({"said": said.fill("machinesCount", &[("count", &machines.to_string())]), "keep": 1})
     });
@@ -116,7 +149,7 @@ fn ordered(mut networks: Vec<&Value>) -> Vec<&Value> {
 
 /// The rows of every session the tree served, by its address in lower
 /// case, which each network's cells are named by.
-fn sessions(top: &[Value]) -> HashMap<String, &Value> {
+pub(crate) fn sessions(top: &[Value]) -> HashMap<String, &Value> {
     let lead = key_of("");
     top.iter()
         .filter(|row| matches!(row["kind"].as_str(), Some("session" | "orchestration")))
@@ -202,26 +235,19 @@ fn network(
 ) -> Vec<Value> {
     let name = network["name"].as_str().unwrap_or("");
     let key = key_of(&format!("network:{name}"));
-    // Each row shows its network's own name, as the mesh names it, the
-    // machines' too, whose title is a sentence for its drawer (VKCF3Z,
-    // 692362f1).
-    let title = network["title"]
-        .as_str()
-        .filter(|_| network["shape"] != "machines");
-    let called = title
-        .or_else(|| network["short"].as_str())
-        .unwrap_or(name)
-        .to_owned();
     let inside = cells(network, &key, depth + 1, rows, words);
+    // Return steps in, so the step comes first; Peek opens its drawer.
+    let peek = json!({"key": "verb:details", "step": "drawer"});
     let acts = if inside.is_empty() {
-        json!([])
+        json!([peek])
     } else {
-        json!([more()])
+        json!([more(), peek])
     };
     let mut made = vec![json!({
         "key": key, "thing": format!("network:{name}"), "place": PLACE, "parent": parent,
-        "kind": "network", "name": called, "glyph": glyph, "hue": "program", "depth": depth,
-        "side": side(network, words), "acts": acts,
+        "kind": "network", "name": called(network), "glyph": glyph, "hue": "program",
+        "depth": depth, "side": side(network, words), "acts": acts,
+        "drawer": crate::network_drawer::key(name),
         "held": {"name": name, "short": network["short"]},
     })];
     made.extend(inside);
@@ -506,6 +532,14 @@ mod tests {
             "a network steps into its cells"
         );
         assert_eq!(
+            (&network["acts"][1], &network["drawer"]),
+            (
+                &json!({"key": "verb:details", "step": "drawer"}),
+                &json!("drawer:agents-top:network:repo.world")
+            ),
+            "Peek opens its drawer"
+        );
+        assert_eq!(
             network["held"]["short"], "world",
             "its short name is held, for y"
         );
@@ -548,8 +582,8 @@ mod tests {
         let made = rows(&[&repo], &[], &words());
         assert_eq!(
             made[2]["acts"],
-            json!([]),
-            "Return on it steps into nothing empty"
+            json!([{"key": "verb:details", "step": "drawer"}]),
+            "Return on it steps into nothing empty, though Peek still opens its drawer"
         );
     }
 

@@ -19,5 +19,9 @@ inotify = { version = "0.11", default-features = false }
 # Today's date where Joel is, through the C library's localtime_r, as a
 # session's figures are dated by it (src/clock.rs).
 libc = "0.2"
+# Dollars said as spend-watch says them, so a network's sum of its
+# sessions' spend reads as each of them does (src/network_drawer.rs), and
+# times sent as the shell words them.
+ready-rows = { path = "../ready-rows" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

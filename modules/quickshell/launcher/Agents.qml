@@ -104,7 +104,8 @@ Provider {
         // opening's frame is drawn, as the tree's rows are.
         paced: provider.launcher
         make: (row, key) => top.thing(row, key,
-            Object.assign(provider.topReopens(row), provider.topDrawer(row)))
+            Object.assign(provider.topReopens(row), provider.topDrawer(row),
+                provider.topNetwork(row)))
         actMade: (key, one, row) => provider.topTalk(key, one, row)
             ?? provider.topGoTo(one)
         maker: provider
@@ -178,9 +179,12 @@ Provider {
     // is its quest, else its address, as the tree's session rows give it
     // (sessionRow's operands): read for the foot from its acts instead,
     // each row an arrow first chose made its four act rows, 89 in a frozen
-    // turn of 90 keys (keeps-up, 2026-11-13).
+    // turn of 90 keys (keeps-up, 2026-11-13). A network's drawer,
+    // "drawer:agents-top:network:<name>", is no session's: it's served in
+    // ready-rows.md's own shape and drawn as any ready-rows drawer is.
     function topDrawer(row) {
-        const address = /^drawer:agents(?:-top)?:(.+)$/u.exec(String(row?.drawer ?? ""))?.[1];
+        const address = /^drawer:agents(?:-top)?:(?!network:)(.+)$/u
+            .exec(String(row?.drawer ?? ""))?.[1];
         if (address === undefined)
             return {};
         return {
@@ -196,6 +200,16 @@ Provider {
                     : provider.copyOperand("fact:agent:address", address)];
             }
         };
+    }
+
+    // A network's row in Networks, whose y copies its short name, the one
+    // its cells are told by (VKCF3Z, 2026-11-14 [e1eb0ebe]): its acts step
+    // into its cells and peek, so y is read from what it holds instead.
+    function topNetwork(row) {
+        const short = row?.kind === "network" ? String(row?.held?.short ?? "") : "";
+        if (short === "")
+            return {};
+        return { operands: () => [provider.copyOperand("fact:network:short", short)] };
     }
 
     // A closed orchestrator the daemon serves under Closed, with no acts

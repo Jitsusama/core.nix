@@ -26,6 +26,7 @@ use crate::feedback;
 use crate::inboxes;
 use crate::kept_places::KeptPlaces;
 use crate::landed::{self, Reading};
+use crate::network_drawer;
 use crate::networks;
 use crate::recent;
 use crate::reopen::{self, Kept};
@@ -503,9 +504,10 @@ impl Inputs {
         });
         let mut orchestrating = HashSet::new();
         orchestrators(&rows, &mut orchestrating);
-        let drawers = self.drawers(&sessions, &orchestrating, (&answers, &waiting));
+        let mut drawers = self.drawers(&sessions, &orchestrating, (&answers, &waiting));
         let closed = self.closed();
         let top = self.top(&sessions, &rows, &closed);
+        drawers.extend(self.network_drawers(&sessions, &top));
         served::made(
             &rows,
             &summary::summary(
@@ -573,6 +575,30 @@ impl Inputs {
             .collect();
         drawers.extend(top::drawers(&drawers));
         drawers
+    }
+
+    /// Each network's drawer, what its sessions spent today added up from
+    /// what spend-watch serves of each as figures, none while the screen
+    /// is shared.
+    fn network_drawers(&self, sessions: &[Session], top: &[Value]) -> Vec<Value> {
+        let ids: HashMap<String, &str> = sessions
+            .iter()
+            .map(|one| (one.address().to_lowercase(), one.id()))
+            .collect();
+        let figures = self
+            .spend
+            .as_ref()
+            .and_then(|spend| spend.get("sessionsSpent"))
+            .filter(|_| !self.sharing);
+        let spent = |address: &str| {
+            let figure = figures?.get(*ids.get(address)?)?;
+            Some((
+                figure.get("dollars")?.as_f64()?,
+                figure.get("estimated")?.as_bool()?,
+            ))
+        };
+        let networks: Vec<&Value> = self.networks.records().map(|(_, one)| one).collect();
+        network_drawer::drawers(&networks, top, &self.words, &spent)
     }
 
     /// Agents' top level made of the `rows` laid out, with what each
@@ -1062,6 +1088,35 @@ mod tests {
             summary_of(&shown),
             "1 needs you \u{b7} 1 working \u{b7} $214 today"
         );
+    }
+
+    #[test]
+    fn a_networks_drawer_adds_up_what_spend_watch_says_its_sessions_spent() {
+        let mut inputs = inputs();
+        inputs.spend.as_mut().expect("its spend")["sessionsSpent"] = json!({
+            "s-o": {"dollars": 5.0, "estimated": false},
+            "s-p": {"dollars": 4.0, "estimated": false}});
+        inputs.networks.took(&json!({"records": [
+            {"key": "network:repo.kelp", "kind": "network", "name": "repo.kelp",
+             "shape": "repository", "short": "kelp", "title": "kelp", "heard": 0,
+             "cells": ["o", "p"], "machines": [], "counts": {}}]}));
+        let spent = |inputs: &Inputs| {
+            served(inputs)
+                .get("drawer:agents-top:network:repo.kelp")
+                .expect("its drawer")["drawer"]["facts"]
+                .as_array()
+                .expect("its facts")
+                .iter()
+                .find(|fact| fact["name"] == "Spent Today")
+                .map(|fact| fact["said"].clone())
+        };
+        assert_eq!(
+            spent(&inputs),
+            Some(json!(ready_rows::money::dollars(9.0))),
+            "each of its sessions' figures, added up"
+        );
+        inputs.sharing = true;
+        assert_eq!(spent(&inputs), None, "no amount while the screen is shared");
     }
 
     #[test]

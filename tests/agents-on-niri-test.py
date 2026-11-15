@@ -1499,6 +1499,50 @@ def test_networks_is_one_row_after_the_tree_its_kinds_under_headings_never_selec
     shell.close_launcher()
 
 
+# A network's drawer's glance, in VKCF3Z's order, what none says left out (e1eb0ebe).
+NETWORK_GLANCE = [
+    "Standing",
+    "Spent Today",
+    "Busiest",
+    "Machines",
+    "Branched From",
+    "Last Changed",
+]
+
+
+def test_a_networks_drawer_glances_in_its_order_and_y_copies_its_short_name(
+    shell: Shell,
+) -> None:
+    """A network's drawer says how it stands and when it changed, and y copies its short name.
+
+    It's served in ready-rows' own drawer shape, so it's drawn as any ready-rows drawer is,
+    titled by its row's name, its short name folded under z a (VKCF3Z, e1eb0ebe).
+    """
+    opened(shell)
+    shell.down_to("Networks")
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["selected"]["name"] == "core.nix")
+    shell.normal()
+    shell.send_chars("j")
+    shell.launcher_until(
+        lambda shown: (
+            shown["selected"]["name"] == "harbour"
+            and bool((shown["drawer"] or {}).get("shown"))
+            and shown["drawer"]["title"] == "harbour"
+        )
+    )
+    drawer = shell.showing()["drawer"]
+    facts = cast("list[str]", drawer["facts"])
+    assert facts == [fact for fact in NETWORK_GLANCE if fact in facts], drawer
+    assert {"Standing", "Last Changed"} <= set(facts), drawer
+    assert "Short Name" in drawer["nerd"], drawer
+    since = shell.mark()
+    shell.send_chars("yy")
+    shell.reported("yanked 1", lambda rest: rest == "", since)
+    assert shell.copied() == "harbour"
+    shell.close_launcher()
+
+
 def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_start(
     shell: Shell,
 ) -> None:
