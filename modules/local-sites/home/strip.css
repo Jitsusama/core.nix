@@ -1,0 +1,29 @@
+/* The strip at the top of each of Joel's sites: the way home, what kind of page it is, as of
+   when, and what it asks of him. One line where it fits, in the mono, quiet but for the ask.
+   It takes the page's own theme, so it needs nothing of its own but its layout. */
+.sites-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tie, 4px) var(--apart, 12px);
+  align-items: baseline;
+  padding: var(--tie, 4px) var(--inset, 20px);
+  border-bottom: 1px solid var(--rule);
+  font: 400 0.78rem / 1.5 var(--mono);
+  color: var(--muted);
+}
+
+/* Each link's hit area is 44 px tall (WCAG 2.5.5), the type staying small. */
+.sites-strip a {
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.sites-strip a::before {
+  content: "\2039\00a0";
+}
+
+.sites-strip .asks {
+  color: var(--strong);
+}
