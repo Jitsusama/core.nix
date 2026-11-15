@@ -230,6 +230,24 @@ mod tests {
         }
     }
 
+    /// The hour of `read` and `named`, with no targets or hour before, since
+    /// the day `earlier` counted by file.
+    fn since_earlier(
+        read: &BTreeMap<String, BTreeMap<&'static str, f64>>,
+        named: &BTreeMap<String, BTreeMap<&'static str, Vec<String>>>,
+        earlier: &Value,
+    ) -> Value {
+        hour(
+            "now",
+            read,
+            named,
+            &BTreeMap::new(),
+            None,
+            Some(earlier),
+            &[],
+        )
+    }
+
     fn measure<'a>(hour: &'a Value, repo: &str, measure: &str) -> &'a Value {
         hour["measures"]
             .as_array()
@@ -373,15 +391,7 @@ mod tests {
             ]),
         )]);
         let earlier = json!({"core": {"suppressions": {"a.sh": 1, "b.rs": 1}, "tf-invalid": 3}});
-        let hour = hour(
-            "now",
-            &read,
-            &named,
-            &BTreeMap::new(),
-            None,
-            Some(&earlier),
-            &[],
-        );
+        let hour = since_earlier(&read, &named, &earlier);
         assert_eq!(
             measure(&hour, "core", "suppressions")["files"],
             json!(["b.rs:4", "b.rs:9", "c.py:2", "a.sh:3"]),
@@ -402,15 +412,7 @@ mod tests {
         let named =
             BTreeMap::from([("core".to_owned(), BTreeMap::from([("suppressions", every)]))]);
         let earlier = json!({"core": {"suppressions": {"a.rs": 250}}});
-        let hour = hour(
-            "now",
-            &read,
-            &named,
-            &BTreeMap::new(),
-            None,
-            Some(&earlier),
-            &[],
-        );
+        let hour = since_earlier(&read, &named, &earlier);
         assert_eq!(
             measure(&hour, "core", "suppressions")["files"][0],
             "z.rs:1",
