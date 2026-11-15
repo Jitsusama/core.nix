@@ -4,13 +4,19 @@
 //! later is a fix that didn't hold. This reads the whole ledger, closed
 //! entries too, where open.rs reads only what's open.
 
+use std::collections::BTreeMap;
+
 use super::readings::count;
-use super::{Bar, Reading};
+use super::{Bar, Reading, shown};
+use crate::day;
 use crate::findings::Entry;
 
 /// How far back a fix is still watched for coming back: the 28-day reread
 /// of plan item 5, which a fix that holds that long has passed.
 const WATCHED: i64 = 28 * 86_400;
+
+/// Each kept day's figures by its key, by the day's date.
+pub type Dated = BTreeMap<String, BTreeMap<String, f64>>;
 
 /// The fixes of the last four weeks that came back, out of all of them,
 /// from the ledger's text `ledger`; none read where there's no ledger. A
@@ -19,7 +25,7 @@ const WATCHED: i64 = 28 * 86_400;
 /// figure, so they aren't fixes here. It came back when a later line
 /// carries its key, since the day opens a new entry for a closed key.
 #[must_use]
-pub fn came_back(ledger: &str, now: i64) -> Reading {
+pub fn came_back(ledger: &str, dated: &Dated, now: i64) -> Reading {
     let entries: Vec<Entry> = ledger
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
@@ -41,8 +47,13 @@ pub fn came_back(ledger: &str, now: i64) -> Reading {
             let owner = fix.owner.as_deref().unwrap_or("no owner yet");
             format!(" · came back: {} · {owner}", fix.words)
         });
+        let moved = fixes
+            .iter()
+            .filter(|(_, fix)| !back.iter().any(|b| b.key == fix.key))
+            .find_map(|(_, fix)| then_and_now(fix, dated))
+            .map_or_else(String::new, |said| format!(" · held: {said}"));
         format!(
-            "kept down {} of {}{named}",
+            "kept down {} of {}{named}{moved}",
             fixes.len() - back.len(),
             fixes.len()
         )
@@ -56,6 +67,26 @@ pub fn came_back(ledger: &str, now: i64) -> Reading {
     .bar(Bar::AtMost(0.0))
     .detail((!ledger.trim().is_empty()).then_some(detail))
     .from("cadence day's findings, closed ones too")
+}
+
+/// What a fix that held moved: its figure on the day it was last out,
+/// and on the newest kept day, in its measure's words and unit; none
+/// where either day or the measure isn't kept, so no figure is made up.
+/// How often each happens isn't counted anywhere yet, so this stops short
+/// of what the fix saves a day.
+fn then_and_now(fix: &Entry, dated: &Dated) -> Option<String> {
+    let measure = day::measures().find(|m| m.holds(&fix.key))?;
+    let then = dated.get(&fix.last)?.get(&fix.key)?;
+    let (newest, figures) = dated.last_key_value()?;
+    let now = figures.get(&fix.key)?;
+    (*newest != fix.last).then(|| {
+        format!(
+            "{}, {} then, {} now",
+            measure.says,
+            shown(*then, measure.unit),
+            shown(*now, measure.unit)
+        )
+    })
 }
 
 /// Who rereads the fixes, and so moves this reading's owner to each fix's.
@@ -78,10 +109,20 @@ mod tests {
         .to_string()
     }
 
+    const DRAWER: &str = "launcher.drawers.presented";
+
+    /// Two kept days' figures: the day the drawer was last out, and today.
+    fn dated() -> Dated {
+        [("2026-11-12", 66.0), ("2026-11-14", 39.0)]
+            .into_iter()
+            .map(|(date, ms)| (date.to_owned(), BTreeMap::from([(DRAWER.to_owned(), ms)])))
+            .collect()
+    }
+
     #[test]
     fn a_fix_found_again_after_it_closed_came_back() {
         let ledger = [
-            entry("held", NOW - 3 * DAY, false, None),
+            entry(DRAWER, NOW - 3 * DAY, false, None),
             entry("back", NOW - 5 * DAY, false, None),
             entry("long ago", NOW - 40 * DAY, false, None),
             entry("a must", NOW - 2 * DAY, false, Some("must")),
@@ -90,25 +131,42 @@ mod tests {
             entry("back", NOW - DAY, true, None),
         ]
         .join("\n");
-        let reading = came_back(&ledger, NOW);
+        let reading = came_back(&ledger, &dated(), NOW);
         assert_eq!(reading.figure(), Some(1.0), "one fix came back");
         assert!(reading.out(), "past its bar of none");
         assert_eq!(
             reading.detail.as_deref(),
-            Some("kept down 1 of 2 · came back: back rose · H6EDLC"),
-            "it says how many held and names what came back"
+            Some(
+                "kept down 1 of 2 · came back: back rose · H6EDLC · held: a row's details' \
+                 median time in the launcher, key to frame, 66 ms then, 39 ms now"
+            ),
+            "it says how many held, names what came back, and what one that held moved"
+        );
+    }
+
+    #[test]
+    fn a_held_fix_with_no_kept_day_is_only_counted() {
+        let reading = came_back(&entry(DRAWER, NOW - DAY, false, None), &Dated::new(), NOW);
+        assert_eq!(
+            reading.detail.as_deref(),
+            Some("kept down 1 of 1"),
+            "no figures to show, so none are made up"
         );
     }
 
     #[test]
     fn no_fixes_yet_reads_none_and_no_ledger_reads_nothing() {
-        let quiet = came_back(&entry("never fixed", NOW, true, None), NOW);
+        let quiet = came_back(&entry("never fixed", NOW, true, None), &dated(), NOW);
         assert_eq!(quiet.figure(), Some(0.0), "nothing fixed, nothing back");
         assert_eq!(
             quiet.detail.as_deref(),
             Some("no fix in the last four weeks yet"),
             "it says why"
         );
-        assert_eq!(came_back("", NOW).figure(), None, "no ledger, unread");
+        assert_eq!(
+            came_back("", &dated(), NOW).figure(),
+            None,
+            "no ledger, unread"
+        );
     }
 }
