@@ -143,7 +143,7 @@ pub async fn follow(state: watch::Receiver<State>) {
                 let (now, joined) = (Instant::now(), state.borrow().joined());
                 for on in joined {
                     if let Some(measured) = measures.of(&on.point, now) {
-                        eprintln!("<6>{}", said(&on, &measured));
+                        println!("<6>{}", said(&on, &measured));
                     }
                 }
             }
@@ -190,13 +190,11 @@ async fn station(kernel: &mut Option<Nl80211>, card: &str) -> Option<Station> {
         *kernel = Nl80211::open().await.ok();
     }
     let reading = kernel.as_mut()?.station(card);
-    match tokio::time::timeout(Duration::from_secs(1), reading).await {
-        Ok(Ok(station)) => station,
-        _ => {
-            *kernel = None;
-            None
-        }
+    if let Ok(Ok(station)) = tokio::time::timeout(Duration::from_secs(1), reading).await {
+        return station;
     }
+    *kernel = None;
+    None
 }
 
 /// A station's counts, where the kernel says them all.
@@ -310,20 +308,20 @@ mod tests {
 
     /// One echo a second for the times given, in milliseconds, starting
     /// at `start`.
-    fn echoed(measures: &mut Measures, point: &str, start: Instant, times: &[Option<u64>]) {
+    fn echoed(kept: &mut Measures, point: &str, start: Instant, times: &[Option<u64>]) {
         for (second, time) in (0..).zip(times) {
             let echo = time.map_or(Echo::Lost, |time| Echo::Answered(ms(time)));
-            measures.echoed(point, start + Duration::from_secs(second), echo);
+            kept.echoed(point, start + Duration::from_secs(second), echo);
         }
     }
 
     #[test]
     fn an_access_point_s_echoes_say_its_middle_and_its_slow_end() {
         let start = Instant::now();
-        let mut measures = Measures::default();
+        let mut kept = Measures::default();
         let times: Vec<Option<u64>> = (1..=100).map(Some).collect();
-        echoed(&mut measures, DESK, start, &times);
-        let measured = measures.of(DESK, start + Duration::from_secs(100));
+        echoed(&mut kept, DESK, start, &times);
+        let measured = kept.of(DESK, start + Duration::from_secs(100));
         let measured = measured.expect("an access point echoed through is measured");
         assert_eq!(measured.echoes, 100, "every echo in the span counts");
         assert_eq!(measured.p50, Some(ms(50)), "half answered by 50 ms");
@@ -338,9 +336,9 @@ mod tests {
     #[test]
     fn a_lost_echo_counts_as_lost_and_not_as_slow() {
         let start = Instant::now();
-        let mut measures = Measures::default();
-        echoed(&mut measures, DESK, start, &[Some(5), None, Some(5), None]);
-        let measured = measures.of(DESK, start + Duration::from_secs(4));
+        let mut kept = Measures::default();
+        echoed(&mut kept, DESK, start, &[Some(5), None, Some(5), None]);
+        let measured = kept.of(DESK, start + Duration::from_secs(4));
         let measured = measured.expect("an access point echoed through is measured");
         assert!(
             (measured.lost - 50.0).abs() < 1e-9,
@@ -353,11 +351,11 @@ mod tests {
     #[test]
     fn only_the_span_s_echoes_are_counted() {
         let start = Instant::now();
-        let mut measures = Measures::default();
-        echoed(&mut measures, DESK, start, &[Some(500)]);
+        let mut kept = Measures::default();
+        echoed(&mut kept, DESK, start, &[Some(500)]);
         let later = start + SPAN + Duration::from_secs(10);
-        echoed(&mut measures, DESK, later, &[Some(5)]);
-        let measured = measures.of(DESK, later + Duration::from_secs(1));
+        echoed(&mut kept, DESK, later, &[Some(5)]);
+        let measured = kept.of(DESK, later + Duration::from_secs(1));
         let measured = measured.expect("an access point echoed through is measured");
         assert_eq!(measured.echoes, 1, "the echo before the span is let go");
         assert_eq!(measured.p95, Some(ms(5)), "and says nothing of now");
@@ -366,12 +364,12 @@ mod tests {
     #[test]
     fn each_access_point_is_measured_on_its_own() {
         let start = Instant::now();
-        let mut measures = Measures::default();
-        echoed(&mut measures, DESK, start, &[Some(5)]);
-        echoed(&mut measures, HALL, start, &[Some(120)]);
+        let mut kept = Measures::default();
+        echoed(&mut kept, DESK, start, &[Some(5)]);
+        echoed(&mut kept, HALL, start, &[Some(120)]);
         let now = start + Duration::from_secs(1);
-        let desk = measures.of(DESK, now).expect("the desk's was measured");
-        let hall = measures.of(HALL, now).expect("the hall's was measured");
+        let desk = kept.of(DESK, now).expect("the desk's was measured");
+        let hall = kept.of(HALL, now).expect("the hall's was measured");
         assert_eq!(desk.p95, Some(ms(5)), "the desk's echo is the desk's");
         assert_eq!(hall.p95, Some(ms(120)), "the hall's echo is the hall's");
     }
@@ -403,9 +401,9 @@ mod tests {
 
     #[test]
     fn an_access_point_never_measured_says_nothing() {
-        let measures = Measures::default();
+        let kept = Measures::default();
         assert_eq!(
-            measures.of(DESK, Instant::now()),
+            kept.of(DESK, Instant::now()),
             None,
             "nothing measured, nothing said"
         );
@@ -414,10 +412,10 @@ mod tests {
     #[test]
     fn retries_and_failures_are_per_hundred_frames_sent_in_the_span() {
         let start = Instant::now();
-        let mut measures = Measures::default();
-        measures.counted(DESK, start, counts(1_000, 10, 1));
-        measures.counted(DESK, start + Duration::from_secs(60), counts(3_000, 110, 5));
-        let measured = measures.of(DESK, start + Duration::from_secs(60));
+        let mut kept = Measures::default();
+        kept.counted(DESK, start, counts(1_000, 10, 1));
+        kept.counted(DESK, start + Duration::from_secs(60), counts(3_000, 110, 5));
+        let measured = kept.of(DESK, start + Duration::from_secs(60));
         let measured = measured.expect("an access point counted on is measured");
         assert!(
             (measured.retried - 5.0).abs() < 1e-9,
@@ -435,11 +433,11 @@ mod tests {
     #[test]
     fn counts_that_start_again_on_a_new_join_are_counted_from_there() {
         let start = Instant::now();
-        let mut measures = Measures::default();
-        measures.counted(DESK, start, counts(9_000, 900, 90));
-        measures.counted(DESK, start + Duration::from_secs(10), counts(100, 1, 0));
-        measures.counted(DESK, start + Duration::from_secs(20), counts(1_100, 21, 2));
-        let measured = measures.of(DESK, start + Duration::from_secs(20));
+        let mut kept = Measures::default();
+        kept.counted(DESK, start, counts(9_000, 900, 90));
+        kept.counted(DESK, start + Duration::from_secs(10), counts(100, 1, 0));
+        kept.counted(DESK, start + Duration::from_secs(20), counts(1_100, 21, 2));
+        let measured = kept.of(DESK, start + Duration::from_secs(20));
         let measured = measured.expect("an access point counted on is measured");
         assert!(
             (measured.retried - 2.0).abs() < 1e-9,

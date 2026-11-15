@@ -2,7 +2,7 @@
 //! point it's on carries.
 //!
 //! The echo goes out on an ICMP datagram socket, which the kernel lets any
-//! group in net.ipv4.ping_group_range open, so wifid needs no capability
+//! group in `net.ipv4.ping_group_range` open, so wifid needs no capability
 //! for it: its bounding set stays empty. The socket is bound to the card,
 //! so a VPN's routes or a cable can't carry the echo another way. The
 //! kernel sets each echo's identifier and checksum, and hands back only the
