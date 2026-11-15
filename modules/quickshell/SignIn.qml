@@ -58,6 +58,7 @@ Singleton {
     // The notice's action comes back through the shell, so the door stays
     // this one.
     function tell(network: string): void {
+        Report.say(`told sign-in ${network}`);
         Niri.spawn(["sh", "-c", [
             'asked=$(notify-send --app-name=Wi-Fi --action=sign-in="Sign in" \\',
             '    "$1 wants a sign-in" "Nothing reaches past it until you sign in.")',
@@ -70,6 +71,20 @@ Singleton {
 
         function onCardsChanged() {
             root.follow();
+        }
+    }
+
+    // A notice arrives a moment after it's told, as niri starts its sender,
+    // so one for a network that stopped wanting a sign-in in that moment is
+    // taken back as it comes, rather than staying (2026-11-15).
+    Connections {
+        target: Notices
+
+        function onCame(notification, notice) {
+            const found = notification?.appName === "Wi-Fi"
+                ? String(notification.summary).match(/^(.*) wants a sign-in$/) : null;
+            if (found && !root.told.includes(found[1]))
+                root.withdraw(found[1]);
         }
     }
 

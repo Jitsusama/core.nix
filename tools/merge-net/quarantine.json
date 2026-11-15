@@ -147,19 +147,6 @@
     "test": "the-launcher-answers-whats-typed-on-niri"
   },
   {
-    "at": 1794506844,
-    "commit": "97b968eb686397074b9cd1695fba20e2c2ca4c2e",
-    "due": "2026-11-16",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
-    "owner_pr": 3737,
-    "reason": "failed, then passed, at 97b968eb6863",
-    "subtests": [
-      "test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder",
-      "test_quickshell_warned_of_nothing_it_drew_all_along"
-    ],
-    "test": "vm-desktop-captures"
-  },
-  {
     "at": 1794515309,
     "commit": "1e94ca1cd67d2c73e02ea0d67f3d85a51f55ac53",
     "due": "2026-11-16",

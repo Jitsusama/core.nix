@@ -147,4 +147,49 @@ in
   # drawer alone, nobody looking at it, tells the launcher nothing
   # (tests/wifi-ahead.qml).
   wifi-holds-the-network-joined-ahead = wifiCase "wifi-holds-the-network-joined-ahead" ../../../tests/wifi-ahead.qml;
+
+  # A network wanting a sign-in is told of once, and its notice taken back
+  # once it stops wanting one, even a notice arriving only after that
+  # (tests/sign-in.qml), with the real SignIn.qml and what it reads stood in.
+  a-sign-in-notice-is-taken-back-even-late =
+    let
+      # Kept in Nix because each only stands in for what SignIn.qml reads
+      # or says, recording what it was told.
+      wifi = singleton "Wifi.qml" ''
+        property var cards: []
+        readonly property var signingIn: null
+      '';
+      notices = singleton "Notices.qml" ''
+        property var live: ({})
+        property var history: []
+        property var marked: []
+        signal came(var notification, var notice)
+        function mark(id, read, how) { marked = marked.concat([[id, read, how]]); }
+      '';
+      niri = singleton "Niri.qml" ''
+        property var spawned: []
+        function spawn(command) { spawned = spawned.concat([command]); }
+      '';
+      report = singleton "Report.qml" ''
+        property var said: []
+        function say(text) { said = said.concat([text]); }
+      '';
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # case, or sets what the shell runs it with.
+    pkgs.runCommandLocal "a-sign-in-notice-is-taken-back-even-late" { } ''
+      mkdir -p runtime && chmod 700 runtime
+      ${copied [ "SignIn.qml" ]}
+      cp ${wifi} Wifi.qml
+      cp ${notices} Notices.qml
+      cp ${niri} Niri.qml
+      cp ${report} Report.qml
+      cp ${../../../tests/sign-in.qml} shell.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
 }
