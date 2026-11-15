@@ -398,7 +398,7 @@ QtObject {
         let now = 0;
         const twoKinds = [row("p1", "Pass", { what: "password" }),
             row("a1", "Ada", { what: "person" }), row("p2", "Pin", { what: "password" })];
-        const byKind = Rank.madeByKind(twoKinds, one => one.what, one => {
+        const byKind = Member.madeByKind(twoKinds, one => one.what, one => {
             now += one.what === "password" ? 3 : 0;
             return Object.assign({ copied: true }, one);
         }, () => now++);
@@ -432,7 +432,7 @@ QtObject {
             program("program:music", "Music")];
         const searched = Rank.order(programs.map(one => ({ choice: one, tier: 1, score: 1 })),
             {});
-        const madeRows = Rank.madeByKind(searched, one => one.choice.what,
+        const madeRows = Member.madeByKind(searched, one => one.choice.what,
             one => Member.copied(one.choice, { grade: 1, tier: one.tier, kept: false }),
             () => 0).made;
         const listedRows = Rank.keysHeld(Rank.once(Rank.placed(madeRows, [], "")));

@@ -1,7 +1,8 @@
 .pragma library
 // A collection's row as Provider.qml's member() makes it: the provider's
 // defaults, then the fields given, with a name made ready to match only
-// when it's first read, since a collection has thousands.
+// when it's first read, since a collection has thousands. And the rows a
+// search found, made again as the launcher shows them.
 
 // The row of `fields` over `defaults`, its `prepared` read through
 // `prepare` from its own name once something asks for it. The getter is
@@ -64,4 +65,30 @@ function copied(row, fields) {
         }
     }
     return Object.defineProperties({}, laid);
+}
+
+// The rows found, each made by `copy` in its place, and the milliseconds
+// `clock` saw each kind take, `sortOf` naming a row's kind. Copying a row
+// reads every getter it has, and Joel's first "c" spent 11 ms making 112
+// rows (2026-11-12), so a slow key says whose rows it spent on. Each kind
+// is made together and timed once, so timing costs nothing a row.
+function madeByKind(rows, sortOf, copy, clock) {
+    const made = new Array(rows.length);
+    const at = Object.create(null);
+    rows.forEach((row, index) => {
+        const sort = sortOf(row);
+        if (!at[sort]) {
+            at[sort] = [];
+        }
+        at[sort].push(index);
+    });
+    const took = {};
+    for (const sort of Object.keys(at)) {
+        const began = clock();
+        for (const index of at[sort]) {
+            made[index] = copy(rows[index]);
+        }
+        took[sort] = clock() - began;
+    }
+    return { made, took };
 }
