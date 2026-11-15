@@ -5575,13 +5575,14 @@ Scope {
         }
         if (!open || asking || typed.trim() === "")
             return;
-        gathered.found(fresh, typed);
+        lateAnswers.found(fresh, typed);
     }
 
     // What sources found after a key's search is taken in once, all
-    // together (launcher/Gathering.qml says why).
+    // together (launcher/Gathering.qml says why). Not named gathered, which
+    // is the search's own list of rows gathered from collections.
     Gathering {
-        id: gathered
+        id: lateAnswers
         onTakeIn: (fresh, text) => root.moreFoundNow(fresh, text)
     }
     function moreFoundNow(fresh, text) {
@@ -5866,7 +5867,7 @@ Scope {
 
     function search(letters) {
         const searchBegan = Date.now();
-        gathered.drop();
+        lateAnswers.drop();
         // Only what's typed is a search of its own; a list said again in
         // place is a refresh. Its letters are counted, never kept.
         if (!steadying) {
