@@ -2372,10 +2372,12 @@ Singleton {
     // What a want is, in words after the session's name: "needs you",
     // the one phrase for waiting on Joel everywhere, and a yes or a stuck
     // run said within it (VKCF3Z, 2026-11-06), as the vocabulary has them.
-    function wanted(wants) {
+    // `kind` is the want's kind, a question, a yes or a stuck run.
+    function wanted(kind) {
         const said = Words.of("agents:wants").said ?? {};
-        return String(said[wants.kind] ?? said.question ?? "");
+        return String(said[kind] ?? said.question ?? "");
     }
+
 
     // A session's quest's whole title and its folder's name, as its record
     // says them: `questInfo.title` and the last part of `cwd`, as the

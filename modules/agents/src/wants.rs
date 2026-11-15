@@ -80,6 +80,10 @@ pub fn records(sessions: &[Session], joel_can: &JoelCan) -> Vec<Value> {
                 "address": one.address(),
                 "title": title,
                 "asked": asked,
+                // The want's own kind and words, as the bell's notice says
+                // them, since the presence may let them go before this does.
+                "wants": wants["kind"].as_str().unwrap_or(""),
+                "said": wants["said"].as_str().unwrap_or(""),
                 "since": since,
                 "parked": one.lives() == Lives::Parked,
                 "answers": answers(wants),
@@ -243,7 +247,8 @@ mod tests {
         assert_eq!(
             wants[0],
             json!({"key": "want:agents:BUOY", "kind": "want", "address": "BUOY",
-                "title": "BUOY Quest", "asked": "BUOY Quest", "since": "2026-11-13T04:00:00Z",
+                "title": "BUOY Quest", "asked": "BUOY Quest", "wants": "approval", "said": "",
+                "since": "2026-11-13T04:00:00Z",
                 "parked": true, "answers": null, "rings": true,
                 "known": "BUOY approval 2026-11-13T04:00:00Z"}),
             "one asking nothing in words is named by its session, and offers no answers"
@@ -257,8 +262,13 @@ mod tests {
             "its answers the recommended first, each labelled, its id as the session knows it"
         );
         assert_eq!(
-            wants[1]["asked"], "which tide?",
-            "what it asked, in its words"
+            (&wants[1]["asked"], &wants[1]["wants"], &wants[1]["said"]),
+            (
+                &json!("which tide?"),
+                &json!("question"),
+                &json!("which tide?")
+            ),
+            "what it asked, in its words, and what kind of want it is"
         );
     }
 

@@ -1520,7 +1520,7 @@ Provider {
     readonly property var toReopen: source("agents")?.toReopen ?? null
     readonly property string first: toReopen !== null ? toReopen.name
         : sessions.length > 0
-        ? `${sessions[0].title} ${Sessions.wanted(sessions[0].presence.wants)}`
+        ? `${sessions[0].title} ${Sessions.wanted(sessions[0].presence.wants.kind)}`
         : WaitingOnYou.foremost ? WaitingOnYou.titled(WaitingOnYou.foremost)
         : looks.waiting.length > 0 ? looks.waiting[0].title
         : given.waiting.length > 0 ? given.waiting[0].row.name
