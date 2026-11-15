@@ -932,8 +932,11 @@ Provider {
 
     // Says `text` to whom a line goes, as a talk does. The talk line says it went and what
     // came back inside itself, never on a card elsewhere (VKCF3Z, 2026-11-13 [092d52ca]).
-    function say(heard, text) {
-        const said = { ask: "talk", address: heard.to, text };
+    // Said `now`, it goes into the run under way after its tool rather than waiting for the
+    // turn to end (modules/agents/src/acts.rs).
+    function say(heard, text, now) {
+        const said = Object.assign({ ask: "talk", address: heard.to, text },
+            now ? { now: true } : {});
         if (rowsKind)
             rowsKind.ask(said, answer => Sessions.steered(heard.to, answer));
         else

@@ -2395,10 +2395,18 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
     shell.launcher_until(
         lambda shown: shown["line"]["picked"] == far and shown["line"]["scrolled"] > 0
     )
-    # Return opens it as its thread, za its nerdy bits, and - comes back to it picked.
+    # Return opens it as its thread, ready to type; after Escape, za opens its nerdy bits,
+    # and - comes back to it picked.
     picked = shell.showing()["line"]["talks"][far]["line"]
     shell.send_key("ret")
-    shell.launcher_until(lambda shown: (shown["line"]["thread"] or {}).get("line") == picked)
+    shell.launcher_until(
+        lambda shown: (
+            (shown["line"]["thread"] or {}).get("line") == picked
+            and shown["line"]["mode"] == "insert"
+        )
+    )
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
     shell.send_chars("za")
     # Pictured once niri has given it the fold's size, so a surface still at the last is not.
     shell.launcher_until(lambda shown: shown["line"]["nerdy"] and shown["line"]["sized"])
@@ -2484,10 +2492,13 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
     shell.send_chars(f"{at_line + 1}j")
     shell.launcher_until(lambda shown: shown["line"]["picked"] == at_line)
     shell.send_key("ret")
-    shell.launcher_until(lambda shown: (shown["line"]["thread"] or {}).get("key") == key)
+    # It opens ready to type, so the reply's first letter is its first letter, no i before.
+    shell.launcher_until(
+        lambda shown: (
+            (shown["line"]["thread"] or {}).get("key") == key and shown["line"]["mode"] == "insert"
+        )
+    )
     words = "and the reply?"
-    shell.send_chars("i")
-    shell.launcher_until(lambda shown: shown["line"]["mode"] == "insert")
     shell.send_chars(words)
     shell.launcher_until(lambda shown: shown["line"]["typed"] == words)
     shell.send_key("ret")
@@ -2500,6 +2511,8 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
     )
     sent = steered(words)
     assert sent["text"] == f"reply {key}\n{words}", sent
+    # Said now, so the void reads it into the run under way rather than after it.
+    assert sent.get("now") is True, sent
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
@@ -2571,6 +2584,8 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
     shell.send_key("ret")
     fold = "replied \u00b7 msg w3 \u00b7 re w2 \u00b7 to WCJQSG"
     shell.launcher_until(lambda shown: mine(shown) == [[words, True, fold]])
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
     shell.send_chars("za")
     shell.launcher_until(lambda shown: shown["line"]["nerdy"] and shown["line"]["sized"])
     shoot("replied")

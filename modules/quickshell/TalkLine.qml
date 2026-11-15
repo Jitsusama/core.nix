@@ -303,7 +303,11 @@ Scope {
         const sent = thread === null ? Said.said(text, rows)
             : Thread.replying(replyTo, Said.said(text, rows));
         launcher.drafts.handed(key, hears.to, sent);
-        agents()?.say(hears, sent);
+        // Said now: the void's run only routes his last line, so a new one goes in after its
+        // tool rather than waiting the minutes a run takes (QCXZEB, 2026-11-14 [aeab1d44]: a
+        // line waited 4 minutes). Only the void's; words to a session at work wait for its
+        // turn to end unless he says now (Joel, 2026-11-12).
+        agents()?.say(hears, sent, true);
         saidHere = [Said.begun(hears.to, text, sent, Date.now())].concat(saidHere);
         registers = [];
         prompt.clear();
@@ -375,10 +379,14 @@ Scope {
         : Thread.threadOf(opened, events, said, { dayOf: since => root.dayOf(since), replies })
 
     // Return: in normal with a line picked, it opens as its thread; else what's typed goes.
+    // The thread opens ready to type, its hint asking for a reply where the first letter
+    // goes, as the empty line opens, so a reply needs no i first (Joel, 2026-11-14 22:2x, on
+    // #4344: "i is not super intuitive"); Escape gives j, k, za and - back.
     function returned() {
         if (prompt.mode === "normal" && opened === null && talks[picked] !== undefined) {
             openedSince = talks[picked].since;
             nerdy = false;
+            prompt.typing();
         } else {
             send();
         }
