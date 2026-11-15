@@ -83,6 +83,16 @@
       }
     },
     {
+      "id": "verb:eero:map",
+      "in": "eero",
+      "name": "Map",
+      "verb": "open",
+      "glyph": "web",
+      "said": {
+        "note": "every device on the home network, drawn"
+      }
+    },
+    {
       "id": "eero:internet",
       "in": "eero",
       "name": "Internet",

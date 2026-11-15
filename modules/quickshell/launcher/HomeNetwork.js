@@ -2,9 +2,10 @@
 // figure in its own unit, said one way, as the Home Network's are: the
 // Work Network (Warp.js), Machine and the virtual machines say theirs so
 // too. And how many nodes and devices the Home Network holds, as its row
-// says at home. Its rows and their drawers are the eero daemon's
-// (modules/eero's rows.rs and drawers.rs), served ready, so nothing here
-// reads them. Held in Qt's own engine (tests/home-network.qml).
+// says at home, and how a served row is drawn. Its rows and their drawers
+// are the eero daemon's (modules/eero's rows.rs and drawers.rs), served
+// ready, so nothing here words them. Held in Qt's own engine
+// (tests/home-network.qml).
 .pragma library
 .import "Numbers.js" as Numbers
 
@@ -62,6 +63,14 @@ function bytes(value, settings) {
 // A count of a noun, "1 node", "3 nodes".
 function counted(count, noun) {
     return `${count} ${count === 1 ? noun : `${noun}s`}`;
+}
+
+// Whether a served row is something to do, drawn as ready-rows draws any
+// served act, with no drawer or step of its own: what's inside the
+// internet, and the map, which the daemon serves as an act; every other
+// row is a thing.
+function asAct(row) {
+    return (row?.parent ?? "") !== "" || row?.kind === "act";
 }
 
 // How many nodes and devices the place holds, as its row says at home.
