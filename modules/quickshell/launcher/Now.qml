@@ -1943,12 +1943,14 @@ Provider {
     }
     // History lists a notice past the notices place's page from the rows
     // asked for once it's stepped into (PastNotices.qml's every), plain
-    // until they come, so it's said again once they do.
+    // until they come, and Desktop lists every notice's row until its own
+    // place tells, a frame after the launcher opens, so each is said again
+    // whenever the notices' rows change: heard only from History's
+    // answers, Desktop's row went on saying "unread" after its own came.
     Connections {
         target: provider.source("notices")
-        ignoreUnknownSignals: true
 
-        function onWholeHeard() {
+        function onChanged() {
             provider.changed();
         }
     }

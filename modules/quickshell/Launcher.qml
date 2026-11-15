@@ -5575,8 +5575,24 @@ Scope {
         }
         if (!open || asking || typed.trim() === "")
             return;
+        moreDue = { fresh: fresh || (moreDue?.fresh ?? false), text: typed };
+        Qt.callLater(root.moreFoundNow);
+    }
+
+    // What sources found after a key's search is taken in once the shell
+    // is back at its event loop, so answers heard together search again
+    // together: each searched every source again and laid the list out,
+    // four times in 55 ms after Joel's "kee", holding his next key
+    // (perf on his shell, 2026-11-14). A search under way meanwhile, a
+    // key's own, takes in all of them, so none is left waiting after it.
+    property var moreDue: null
+    function moreFoundNow() {
+        const due = moreDue;
+        moreDue = null;
+        if (due === null || due.text !== typed || !open || asking || typed.trim() === "")
+            return;
         // Rows held still take what was found in their order, waiting.
-        if (fresh && !holdingRows)
+        if (due.fresh && !holdingRows)
             search(typed);
         else
             reshow(held.length);
@@ -5854,6 +5870,7 @@ Scope {
 
     function search(letters) {
         const searchBegan = Date.now();
+        moreDue = null;
         // Only what's typed is a search of its own; a list said again in
         // place is a refresh. Its letters are counted, never kept.
         if (!steadying) {

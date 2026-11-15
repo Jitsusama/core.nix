@@ -930,9 +930,7 @@ Provider {
     Connections {
         target: (provider.launcher?.sources ?? [])
             .find(source => typeof source.sentBy === "function") ?? null
-        ignoreUnknownSignals: true
-
-        function onWholeHeard() {
+        function onChanged() {
             provider.redrawHeld();
         }
     }
