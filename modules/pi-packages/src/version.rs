@@ -133,8 +133,7 @@ pub fn build_env(config: &Config) -> Vec<(String, String)> {
         .collect();
     env.extend(config.env.iter().filter(|(key, _)| key != "PATH").cloned());
     let path = std::env::join_paths(&config.path)
-        .map(|path| path.to_string_lossy().into_owned())
-        .unwrap_or_default();
+        .map_or_default(|path| path.to_string_lossy().into_owned());
     env.push(("PATH".to_owned(), path));
     env
 }

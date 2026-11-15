@@ -97,25 +97,19 @@ impl Config {
                 Package::new(url, package["branch"].as_str().unwrap_or("main"))
             })
             .collect::<Result<Vec<_>, String>>()?;
-        let path = value["path"]
-            .as_array()
-            .map(|dirs| {
-                dirs.iter()
-                    .filter_map(Value::as_str)
-                    .map(PathBuf::from)
-                    .collect()
-            })
-            .unwrap_or_default();
-        let env = value["env"]
-            .as_object()
-            .map(|vars| {
-                vars.iter()
-                    .filter_map(|(key, value)| {
-                        value.as_str().map(|value| (key.clone(), value.to_owned()))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let path = value["path"].as_array().map_or_default(|dirs| {
+            dirs.iter()
+                .filter_map(Value::as_str)
+                .map(PathBuf::from)
+                .collect()
+        });
+        let env = value["env"].as_object().map_or_default(|vars| {
+            vars.iter()
+                .filter_map(|(key, value)| {
+                    value.as_str().map(|value| (key.clone(), value.to_owned()))
+                })
+                .collect()
+        });
         Ok(Self {
             root: text("root")?,
             packages,

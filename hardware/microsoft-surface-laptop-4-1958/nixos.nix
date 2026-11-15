@@ -235,13 +235,6 @@
       name = "surface-laptop-amd-sensors-and-fan";
       patch = ./kernel/surface-laptop-amd-sensors-and-fan.patch;
     }
-    # The firmware fixes _CPC's Autonomous Selection Enable at 1, which
-    # amd-pstate refused to accept, so the CPU fell back to acpi-cpufreq.
-    # Mainline's fix, marked for stable, until a 7.3 release carries it.
-    {
-      name = "amd-pstate-skip-matching-auto-sel";
-      patch = ./kernel/amd-pstate-skip-matching-auto-sel.patch;
-    }
     # A wake could ask the charger for its state before the controller had
     # resumed, which warned and tainted the kernel.
     {

@@ -25,13 +25,20 @@ let
   # A quest's compiler, which writes a little every second, since vm-first
   # says nothing of a stopped build that wrote nothing. A write at its start
   # would go uncounted: vm-first hands a build its io controller only once
-  # the build is there to be found. It never waits for the disk, so being
-  # stopped never finds it in the middle of a write that holds its cgroup.
+  # the build is there to be found. Each write is a new file, as a
+  # compiler's objects are, sent to the disk as it's made: a file's
+  # writeback stays with the cgroup that first wrote it, and each daemon
+  # restart gives a build a cgroup of its own again, so a file written
+  # over and over counted for the build only until the first restart, and
+  # whether the last look saw its pages dirty was a race. A 64 KiB write
+  # takes no time, so being stopped never finds it in the middle of one
+  # that holds its cgroup.
   standInQuestCompiler = pkgs.writeShellApplication {
     name = "stand-in-quest-compiler";
     text = ''
       exec ${impostors}/bin/cc1 -c 'while :; do
-        ${pkgs.coreutils}/bin/dd if=/dev/zero of=written bs=64K count=1 status=none
+        ${pkgs.coreutils}/bin/rm -f written
+        ${pkgs.coreutils}/bin/dd if=/dev/zero of=written bs=64K count=1 conv=fsync status=none
         ${pkgs.coreutils}/bin/sleep 1
       done'
     '';

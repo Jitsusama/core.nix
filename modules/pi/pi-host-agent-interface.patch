@@ -33,8 +33,8 @@ to the host's private pi build; ordinary interactive pi stays unchanged.
  	sessionManager: SessionManager;
  	settingsManager: SettingsManager;
  	cwd: string;
-@@ -392,7 +395,11 @@
- // ============================================================================
+@@ -407,7 +410,11 @@
+ }
  
  export class AgentSession {
 -	readonly agent: Agent;

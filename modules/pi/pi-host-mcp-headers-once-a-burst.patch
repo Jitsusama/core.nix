@@ -147,9 +147,9 @@ unchanged.
  }
 --- a/packages/coding-agent/src/extensions/mcp/runtime.ts
 +++ b/packages/coding-agent/src/extensions/mcp/runtime.ts
-@@ -30,7 +30,11 @@ import {
- } from "@earendil-works/pi-mcp";
- import { McpOAuthAuthorizationRequiredError, type OAuthChallenge } from "@earendil-works/pi-mcp/oauth";
+@@ -35,7 +35,11 @@ import {
+ 	type OAuthChallenge,
+ } from "@earendil-works/pi-mcp/oauth";
  import { VERSION } from "../../config.ts";
 -import { resolveConfigValueOrThrow, resolveHeadersOrThrow } from "../../core/resolve-config-value.ts";
 +import {
@@ -157,9 +157,9 @@ unchanged.
 +	resolveConfigValueOrThrow,
 +	resolveHeadersFreshOrThrow,
 +} from "../../core/resolve-config-value.ts";
+ import { sliceTail } from "../../core/tools/truncate.ts";
  import type { McpServerEntry } from "./config.ts";
  import type { McpServerLog } from "./log.ts";
- import {
 @@ -60,7 +64,7 @@ export type McpTransportFactory = (
  	entry: McpServerEntry,
  	cwd: string,

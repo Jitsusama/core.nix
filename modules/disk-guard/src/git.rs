@@ -128,7 +128,7 @@ fn is_git(process: &Process) -> bool {
 
 /// A file name as a person would say it, through Nix's `.name-wrapped`.
 fn plain(name: Option<&OsStr>) -> String {
-    let name = name.map(OsStr::to_string_lossy).unwrap_or_default();
+    let name = name.map_or_default(OsStr::to_string_lossy);
     let name = name.strip_prefix('.').unwrap_or(&name);
     name.strip_suffix("-wrapped").unwrap_or(name).to_owned()
 }

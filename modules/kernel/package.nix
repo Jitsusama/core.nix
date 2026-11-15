@@ -1,4 +1,4 @@
-# Joel's kernel: the 7.3 series, from kernel.org until nixpkgs has it, built
+# Joel's kernel: the 7.3 series, at its newest stable release, built
 # with Clang and ThinLTO for one CPU, with the BORE scheduler and the settings
 # in settings.nix. docs/kernel.md explains each choice, and how to move to a new
 # series.
@@ -14,7 +14,7 @@
   fetchpatch,
   fetchurl,
   kernelPatches,
-  linux_7_2,
+  linux_7_3,
   llvmPackages_22,
   overrideCC,
   writeText,
@@ -37,18 +37,17 @@ let
   cpuFlags = writeText "kernel-cpu-flags" "-march=${cpu} -mtune=${cpu}";
 
   # The newest stable release, until nixpkgs's pin reaches it. It applies
-  # only while nixpkgs's is older, so it never holds the kernel back. The
-  # pinned nixpkgs has no 7.3 package yet, so it's built from 7.2's, whose
-  # build is the same. docs/kernel.md says why this release.
+  # only while nixpkgs's is older, so it never holds the kernel back.
+  # docs/kernel.md says why this release.
   stable = {
-    version = "7.3.3";
-    hash = "sha256-ecZt3mbNlod/zej302rslGsfQj0rl7WnsXUbdcdk89E=";
+    version = "7.3.4";
+    hash = "sha256-sRtt+Clejpkf8EC3GqpJlKi1XKojtrCSkH8ZW1hA/R8=";
   };
 in
-linux_7_2.override {
+linux_7_3.override {
   stdenv = clangStdenv;
 
-  argsOverride = lib.optionalAttrs (lib.versionOlder linux_7_2.version stable.version) {
+  argsOverride = lib.optionalAttrs (lib.versionOlder linux_7_3.version stable.version) {
     inherit (stable) version;
     # A first release, such as 7.3, puts its modules under 7.3.0, and a
     # stable one, such as 7.3.1, under its own version.
@@ -125,15 +124,6 @@ linux_7_2.override {
       # nothing. Written here; docs/kernel.md has the cause.
       name = "virtio-gpu-panic-outside-panic";
       patch = ./virtio-gpu-panic-outside-panic.patch;
-    }
-    {
-      # Since 7.3.2 the kernel warns, on a processor that needs the ITS
-      # mitigation, that its trampolines are writable and executable while
-      # it patches its own text at boot, when all of that text still is.
-      # The warning is false; upstream's patch makes it one quiet line. Drop
-      # it once a release has it; docs/kernel.md has the cause.
-      name = "early-wx-warning-gentle";
-      patch = ./early-wx-warning-gentle.patch;
     }
   ];
 }

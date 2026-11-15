@@ -3,8 +3,12 @@
 # state), its every command's help the same as v2026_10_21.0's, whose
 # screen sharing through the portal was seen to work here.
 # The address and checksum of each build are what Tuple's latest_version
-# endpoint gives, the one nixpkgs' own update script reads. Once nixpkgs'
-# tuple is this new, this file can go.
+# endpoint gives, the one nixpkgs' own update script reads.
+#
+# nixpkgs writes the command's completions through its wrapper, which runs
+# the command as .tuple-wrapped, so the zsh completion it writes is for
+# that name, which zsh never completes. This names it for tuple, and stays
+# while nixpkgs' completion does.
 {
   stdenv,
   fetchurl,
@@ -33,4 +37,8 @@ else
       url = "https://tuple-client-releases.s3.amazonaws.com/linux/${release}/${build.arch}/tuple";
       inherit (build) hash;
     };
+    postInstall = ''
+      sed -i 's/\.tuple-wrapped/tuple/g' $out/share/zsh/site-functions/_tuple
+      grep -q '^#compdef tuple$' $out/share/zsh/site-functions/_tuple
+    '';
   }

@@ -21,19 +21,29 @@ let
   inherit (config.jitsusama.disk-guard) configFile;
   podman = config.virtualisation.podman;
 
-  # Nix 2.34's collector takes other programs' temporary roots on a
+  # Nix's collector takes other programs' temporary roots on a
   # socket, a thread a client, and a client that left before its thread
   # was registered left a stale entry: the next given the same descriptor
   # ended the collector with std::terminate. On 11 November that aborted
   # the guard's deletes at 06:16 and 11:54, each freeing nothing. So the
   # guard's own Nix carries upstream's two fixes (NixOS/nix#16569 and
   # #15963), and the machine's Nix stays as it is, so nothing else is
-  # built again. Another version is left as it is, as it may hold them.
+  # built again. They apply unchanged to 2.34 and 2.35, neither of which
+  # holds them; any other version goes unpatched, so
+  # disk-guard-nix-collects-beside-leaving-clients fails until they're
+  # carried to it or upstream has them, rather than a bump quietly
+  # dropping them.
+  patchedVersions = [
+    "2.34"
+    "2.35"
+  ];
   nix =
     let
       machine = config.nix.package;
     in
-    if machine ? appendPatches && lib.versions.majorMinor machine.version == "2.34" then
+    if
+      machine ? appendPatches && builtins.elem (lib.versions.majorMinor machine.version) patchedVersions
+    then
       machine.appendPatches [
         ./nix-gc-roots-client-leaves.patch
         ./nix-gc-roots-client-interrupted.patch

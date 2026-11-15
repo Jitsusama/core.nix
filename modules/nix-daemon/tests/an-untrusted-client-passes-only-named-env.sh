@@ -21,7 +21,9 @@ shift 4
 here=$(pwd -P)
 socket=$here/door.sock
 store=$here/store
-mkdir -p "$here/conf"
+# From 2.35 a client opens the store folder it names before it connects, and
+# the daemon would only make it on the first connection.
+mkdir -p "$here/conf" "$store"
 cat >"$here/conf/nix.conf" <<'EOF'
 experimental-features = nix-command configurable-impure-env
 sandbox = false

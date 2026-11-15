@@ -9,6 +9,7 @@
 {
   callPackage,
   lib,
+  oniguruma,
   openvino,
   openvino-tokenizers,
   pipewire,
@@ -41,7 +42,10 @@ rustPlatform.buildRustPackage {
     pkg-config
     rustPlatform.bindgenHook
   ];
+  # onig_sys links nixpkgs's Oniguruma, since nixpkgs's cargo hook refuses
+  # a crate's vendored copy of a C library.
   buildInputs = [
+    oniguruma
     openvino
     openvino-genai
     pipewire

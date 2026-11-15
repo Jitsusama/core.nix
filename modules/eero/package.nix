@@ -2,7 +2,12 @@
 # the form every daemon's do (../ready-rows), and its command line the
 # shape every command's does (../terminal-kit), so the source is cut from
 # the modules folder holding them, and built from this one.
-{ lib, rustPlatform }:
+{
+  lib,
+  pkg-config,
+  rustPlatform,
+  sqlite,
+}:
 rustPlatform.buildRustPackage rec {
   pname = "eero";
   version = "0.1.0";
@@ -29,6 +34,10 @@ rustPlatform.buildRustPackage rec {
   };
   sourceRoot = "${src.name}/eero";
   cargoLock.lockFile = ./Cargo.lock;
+  # rusqlite links nixpkgs's SQLite, found through pkg-config, since
+  # nixpkgs's cargo hook refuses the copy its bundled feature compiles.
+  nativeBuildInputs = [ pkg-config ];
+  buildInputs = [ sqlite ];
   meta = {
     description = "Reads the home network's eero from eero's cloud, at home or away";
     license = lib.licenses.mit;

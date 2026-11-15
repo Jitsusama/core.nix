@@ -124,9 +124,6 @@ onLinux {
     let
       home = account graphical;
       tuple = lib.findFirst (package: lib.getName package == "tuple") null home.home.packages;
-      completion = lib.findFirst (
-        package: lib.getName package == "tuple-zsh-completion"
-      ) null home.home.packages;
     in
     pkgs.runCommandLocal "tuple-completes-in-zsh"
       {
@@ -138,7 +135,7 @@ onLinux {
       ''
         export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
         mkdir -m 700 run
-        zsh -f ${./tests/tuple-completion.zsh} ${completion}/share/zsh/site-functions/_tuple
+        zsh -f ${./tests/tuple-completion.zsh} ${tuple}/share/zsh/site-functions/_tuple
         tuple stop > /dev/null 2>&1 || true
         touch $out
       '';

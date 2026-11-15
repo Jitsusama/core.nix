@@ -28,6 +28,8 @@ let
 
   # The guest nixpkgs builds, which is the one its cache holds.
   cached = (bareDarwin [ ]).pkgs.darwin.linux-builder-vz.nixosConfig;
+  # The features nixpkgs's own guest adds to its Nix's.
+  nixpkgsOwn = cached.nix.settings.extra-system-features or [ ];
 
   another = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGRkdxraohorYagcirm3lEonh6at0F7DvFoLuEqBQajh elsewhere";
   plain = guestOf { };
@@ -160,6 +162,8 @@ in
   # A feature of the machine's own is offered on the Mac's line and by the
   # guest's Nix, beside the builder's own, so a piece asking for it is both
   # sent there and built there; with none, both offer only the builder's.
+  # The guest's own are nixpkgs's, the cached guest's, which since 26.11
+  # include what its nspawn tests need; the Mac's line leaves those out.
   linux-builder-offers-the-features-it-is-given =
     holds "linux-builder-offers-the-features-it-is-given"
       "The VM's builder didn't offer exactly benchmark, big-parallel and the features it was given, on the Mac's line and in the guest's Nix."
@@ -174,8 +178,8 @@ in
             "big-parallel"
             "own-code"
           ]
-        && marked.nix.settings.extra-system-features == [ "own-code" ]
-        && !(plain.nix.settings ? extra-system-features)
+        && lib.subtractLists nixpkgsOwn marked.nix.settings.extra-system-features == [ "own-code" ]
+        && (plain.nix.settings.extra-system-features or [ ]) == nixpkgsOwn
         && builtins.elem "big-parallel" marked.nix.settings.system-features
       );
 }

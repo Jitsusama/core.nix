@@ -222,8 +222,7 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
     // Where the journey is, its count at the right while both fit.
     let count = at
         .steps
-        .map(|steps| format!("{} of {steps}", at.step))
-        .unwrap_or_default();
+        .map_or_default(|steps| format!("{} of {steps}", at.step));
     let name_width = at.journey.chars().count();
     let mut header = indent(vec![span(Role::Strong, at.journey)]);
     if !count.is_empty() && name_width + 4 + count.chars().count() <= inside && height >= 12 {
