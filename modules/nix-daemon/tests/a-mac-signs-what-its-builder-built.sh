@@ -20,26 +20,27 @@ exit "$(cat "$(dirname "$0")/ends" 2>/dev/null || echo 0)"
 EOF
 chmod +x "$here/nix"
 
-fail() {
-  echo "$1" >&2
+# Each failure names the hook, since it runs beside the daemon's own checks.
+wrong() {
+  echo "sign-what-came-back: $1" >&2
   exit 1
 }
 
 OUT_PATHS="/nix/store/a-one /nix/store/b-two" "$bash" "$hook" "$here/nix" ||
-  fail "the hook failed though the signing passed"
+  wrong "the hook failed though the signing passed"
 asked=$(cat "$here/asked" 2>/dev/null || true)
 [ "$asked" = "store sign --key-file /etc/nix/signing-key /nix/store/a-one /nix/store/b-two" ] ||
-  fail "the hook asked nix for '$asked', not to sign both paths with the Mac's key"
+  wrong "the hook asked nix for '$asked', not to sign both paths with the Mac's key"
 
 rm -f "$here/asked"
-OUT_PATHS="" "$bash" "$hook" "$here/nix" || fail "the hook failed with nothing built"
-[ ! -e "$here/asked" ] || fail "the hook asked nix for something though nothing was built"
+OUT_PATHS="" "$bash" "$hook" "$here/nix" || wrong "the hook failed with nothing built"
+[ ! -e "$here/asked" ] || wrong "the hook asked nix for something though nothing was built"
 
 echo 1 >"$here/ends"
 said=$(OUT_PATHS="/nix/store/a-one" "$bash" "$hook" "$here/nix" 2>&1) ||
-  fail "a signing that failed failed the build"
+  wrong "a signing that failed failed the build"
 case $said in
 *"/nix/store/a-one stays unsigned"*) ;;
-*) fail "a signing that failed said '$said', not which path stays unsigned" ;;
+*) wrong "a signing that failed said '$said', not which path stays unsigned" ;;
 esac
 echo "every path is signed, none asked of nothing, and a failure fails no build"
