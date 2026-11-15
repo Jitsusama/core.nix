@@ -87,6 +87,9 @@ struct Options {
     /// what the recorder writes in `record`, rather than the round trip's.
     one_way: bool,
     record: PathBuf,
+    /// Where a trial of how the upload finds its line may be written, by
+    /// an account that may stop the shaper anyway (src/live.rs).
+    trial: PathBuf,
 }
 
 /// Reads the flags `run`, `status` and `record` take, refusing any other
@@ -108,6 +111,7 @@ fn options(command: &str, args: &[String]) -> Result<Options, Failure> {
         vpns: Vec::new(),
         one_way: false,
         record: "/var/lib/shaper-record".into(),
+        trial: "/run/shaper-trial/upload.json".into(),
     };
     // A network of its own, a test's among them, names its own distant hosts.
     if let Ok(hosts) = std::env::var("SHAPER_HOSTS") {
@@ -128,6 +132,7 @@ fn options(command: &str, args: &[String]) -> Result<Options, Failure> {
             "--proc" => o.proc = value()?.into(),
             "--users" => o.users = value()?.into(),
             "--record" => o.record = value()?.into(),
+            "--trial" => o.trial = value()?.into(),
             "--controller" => match value()?.as_str() {
                 "one-way" => o.one_way = true,
                 "round-trip" => o.one_way = false,
@@ -642,24 +647,7 @@ fn run(options: &Options) -> Result<(), Failure> {
         if last_look.is_none_or(|at| now - at >= Duration::from_secs(1)) {
             last_look = Some(now);
             let order = look(&mut shaped, &mut memory, options, &send);
-            let networks: Vec<(&str, &str)> = order
-                .iter()
-                .filter_map(|n| shaped.get(n).map(|s| (n.as_str(), s.network.as_str())))
-                .collect();
-            let follows = links::leaders(&networks);
-            for (name, s) in &mut shaped {
-                let leader = follows.get(name).cloned();
-                if leader != s.follows {
-                    match &leader {
-                        Some(l) => {
-                            eprintln!("{name} reaches the same router as {l}; taking its rate");
-                        }
-                        None if s.follows.is_some() => eprintln!("{name} finds its own rate again"),
-                        None => {}
-                    }
-                    s.follows = leader;
-                }
-            }
+            follow_leaders(&mut shaped, &order);
             primary = order.first().cloned();
             let base = order
                 .first()
@@ -669,6 +657,7 @@ fn run(options: &Options) -> Result<(), Failure> {
             reach = local(&shaped, &vpns.0);
             watch_real_time(&mut shaped, (now - began).as_secs_f64());
             if let Some(l) = live.as_mut() {
+                l.tune(live::trial(&options.trial));
                 tell_live(l, options, &mut shaped, &vpns.0, (&mut last_resent, now));
             }
         }
@@ -714,6 +703,27 @@ fn run(options: &Options) -> Result<(), Failure> {
         let heard = live.as_ref().and_then(live::Live::heard);
         write_status(&options.runtime, &shaped, heard.as_ref());
         thread::sleep(STEP);
+    }
+}
+
+/// Has each link that reaches the same router as one before it in `order`
+/// follow that one's rates, saying so when a link starts or stops.
+fn follow_leaders(shaped: &mut BTreeMap<String, Shaped>, order: &[String]) {
+    let networks: Vec<(&str, &str)> = order
+        .iter()
+        .filter_map(|n| shaped.get(n).map(|s| (n.as_str(), s.network.as_str())))
+        .collect();
+    let follows = links::leaders(&networks);
+    for (name, s) in shaped {
+        let leader = follows.get(name).cloned();
+        if leader != s.follows {
+            match &leader {
+                Some(l) => eprintln!("{name} reaches the same router as {l}; taking its rate"),
+                None if s.follows.is_some() => eprintln!("{name} finds its own rate again"),
+                None => {}
+            }
+            s.follows = leader;
+        }
     }
 }
 

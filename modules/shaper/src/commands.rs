@@ -40,6 +40,7 @@ fn run() -> Help {
         .option("--vpns VPNS", "the tunnels it shapes too, by commas")
         .option("--controller CONTROLLER", "round-trip, or one-way")
         .option("--record DIR", "where the recorder writes, for one-way")
+        .option("--trial FILE", "a trial of how the upload finds its line")
         .option("--state DIR", "where each network's rate is kept")
         .option("--runtime DIR", "where its status is written")
         .option("--cgroups DIR", "where the slices' cgroups are")

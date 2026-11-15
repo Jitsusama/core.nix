@@ -177,6 +177,13 @@ in
   config.security.polkit.enable = true;
   config.security.polkit.extraConfig = builtins.readFile ./shaper.rules;
 
+  # Where the same administrators may write a trial of how the upload
+  # finds its line (src/live.rs), for an A/B of it on the real line
+  # without a switch. The shaper holds each value within bounds that keep
+  # a standing queue under what a call hears, and stopping the shaper
+  # would do more, so this too gives wheel nothing more.
+  config.systemd.tmpfiles.rules = [ "d /run/shaper-trial 0775 root wheel -" ];
+
   config.systemd.services.shaper = {
     description = "Keep the network's queue here, sorted by the slices";
     # The one-way controller starts at boot: a day of it on against off
