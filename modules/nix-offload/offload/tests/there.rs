@@ -3107,6 +3107,7 @@ fn an_evaluator_evaluates_one_run_at_a_time() {
     fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
     fs::write(changed.bin.join("evaluates-for"), "2").unwrap();
     // Asked differently, so neither is the other's twin (`running.rs`).
+    let changed = &changed;
     let ran: Vec<Output> = std::thread::scope(|scope| {
         let runs: Vec<_> = [&["--name-only"][..], &["--name-only", "--no-vm"]]
             .into_iter()
