@@ -297,6 +297,52 @@ QtObject {
         expect("no queue holds nothing",
             [Places.mayBegin("", 5010), Places.mayBegin("{", 5010)], [true, true]);
 
+        // Thirty reopened at once each open as before, but are told to
+        // carry on only as the uplink has room, since a session told to
+        // carry on is what sends: on 2026-11-14 seventy-two told at once
+        // filled the home line's upload for a quarter of an hour.
+        {
+        const thirty = Array.from({ length: 30 }, (_, at) => ({ id: `01-${at}`,
+            address: `S${at}`, carried: at === 20 ? { from: "far", at: "1" } : undefined,
+            leads: at === 25 }));
+        const sending = (mbit, heartbeat) => JSON.stringify({ v: 1, heartbeat: heartbeat ?? 5000,
+            machine: { over: [], pressure: { io: 1 }, uplink: mbit === undefined ? undefined
+                : { sentMbit: mbit } } });
+        const ids = told => told.map(one => one.id);
+        const due = (text, told) => Places.carryOnsDue(thirty, told, text, 5010);
+        expect("the line full: none is told yet", ids(due(sending(6.1), [])), []);
+        expect("the line with room: one at a time", due(sending(2.0), []).length, 1);
+        // Those waiting on Joel first, then one carried in, then a leader.
+        const wanting = thirty.map(one => Object.assign({}, one, { wants: one.id === "01-7" }));
+        expect("waiting on Joel, then carried in, then leaders, then the rest",
+            ids(Places.carryOnsDue(wanting, [], sending(undefined), 5010)),
+            ["01-7", "01-20", "01-25", "01-0"]);
+        // With no uplink said yet, four at a time, the next once one has
+        // gone idle or a minute has passed since it was told.
+        const told = (at, idle) => thirty.slice(0, 4).map(one => ({ id: one.id, at, idle }));
+        expect("four working: none more", due(sending(undefined), told(5000, false)).length, 0);
+        expect("one gone idle: one more", due(sending(undefined),
+            told(5000, false).map((one, at) => at === 0 ? Object.assign({}, one, { idle: true })
+                : one)).length, 1);
+        expect("a minute on: four more", due(sending(undefined), told(4940, false)).length, 4);
+        // A queue not heard from says nothing of the line, so all are told.
+        expect("a queue gone quiet: all told at once",
+            due(sending(6.1, 5010 - 121), []).length, 30);
+        expect("no queue: all told at once", Places.carryOnsDue(thirty, [], "", 5010)
+            .length, 30);
+        // Before the line has room again, no more than the few allowed go:
+        // thirty pending through ten looks at a full line, none told.
+        let sent = [];
+        for (let look = 0; look < 10; look += 1)
+            sent = sent.concat(due(sending(5.0), sent));
+        expect("thirty reopened, the line full: none told before room returns", sent.length, 0);
+        let few = [];
+        for (let look = 0; look < 10; look += 1)
+            few = few.concat(due(sending(undefined), few)
+                .map(one => ({ id: one.id, at: 5010, idle: false })));
+        expect("thirty reopened, no uplink said: four told until one is done", few.length, 4);
+        }
+
         // A session moving onto pi's host keeps where its window was, as
         // the windows daemon's record of it says, so its viewer opens there
         // once it runs hosted; one with no window, or none laid out yet,

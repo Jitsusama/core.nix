@@ -241,6 +241,16 @@ function opensAt(where, beside) {
 const ioStalls = 50;
 // How old the queue's heartbeat may be, in seconds, and still be heard.
 const queueHeard = 120;
+// How fast the uplink may already send, in Mbit/s, before the next
+// session is told to carry on: the evening's rate on 2026-11-14, which
+// the builders sharing the home line lived with, where the 22:24 boot's
+// seventy-two told at once sent 6.4 of the 8.2 it had for 17 minutes.
+const uplinkRoom = 4.5;
+// While the queue says nothing of the uplink, this many told and still
+// working at once, each counted until it goes idle or this many seconds
+// pass since it was told.
+const fewAtOnce = 4;
+const fewPatience = 60;
 
 // Where a session to reopen sat, by its id: this boot's place while it
 // has one, else the restored boot's. An orchestrator bringing its own
@@ -322,6 +332,46 @@ function underOrchestrator(title, orchestrator, under) {
 function queuedOnce(queue, more, begun) {
     const asked = new Set(queue.map(entry => entry.one.id).concat(begun));
     return queue.concat(more.filter(entry => !asked.has(entry.one.id)));
+}
+
+// Those of `pending` (each `{ id, wants, carried, leads }`, as reopened,
+// `wants` when it waits on Joel) to tell to carry on now, in the order
+// they're told: those waiting on Joel, then those carried in from another
+// machine, then leaders, then
+// the rest, each part in the order given. `told` is those told already,
+// `{ id, at, idle }` each, `at` in seconds as `now` is, and none of them is
+// told again. With the machine queue's `text` saying the uplink sends under
+// uplinkRoom, one; past it, none. With a queue that says nothing of the
+// uplink, as before the machine queue measured it, fewAtOnce working at
+// once. A queue unread or silent past `queueHeard` says nothing of the
+// line, so all are told, as mayBegin holds nothing back.
+function carryOnsDue(pending, told, text, now) {
+    const done = new Set(told.map(one => one.id));
+    const left = pending.filter(one => !done.has(one.id));
+    const first = [one => one.wants === true, one => Boolean(one.carried),
+        one => one.leads === true];
+    const rank = one => {
+        const at = first.findIndex(is => is(one));
+        return at === -1 ? first.length : at;
+    };
+    const ordered = left.map((one, at) => ({ one, at }))
+        .sort((a, b) => rank(a.one) - rank(b.one) || a.at - b.at).map(entry => entry.one);
+    let read = null;
+    try {
+        read = JSON.parse(text);
+    } catch (_error) {
+        return ordered;
+    }
+    const machine = read?.machine;
+    if (typeof read?.heartbeat !== "number" || now - read.heartbeat > queueHeard || !machine) {
+        return ordered;
+    }
+    const sent = machine.uplink?.sentMbit;
+    if (typeof sent === "number") {
+        return ordered.slice(0, sent < uplinkRoom ? 1 : 0);
+    }
+    const working = told.filter(one => !one.idle && now - one.at < fewPatience).length;
+    return ordered.slice(0, Math.max(0, fewAtOnce - working));
 }
 
 // Whether Reopen Them All may begin the next session now, from the machine
