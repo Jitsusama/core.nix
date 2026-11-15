@@ -47,6 +47,7 @@ mod card;
 mod commands;
 mod daily;
 mod day;
+mod elsewhere;
 mod findings;
 mod gate;
 mod health;
@@ -101,6 +102,8 @@ struct Args {
     orchestrators: Vec<String>,
     skip: Vec<String>,
     owners: BTreeMap<String, String>,
+    /// The realms whose other machines' updates are read.
+    realms: Vec<String>,
 }
 
 fn main() -> ExitCode {
@@ -148,6 +151,7 @@ fn ticking(mut args: impl Iterator<Item = String>) -> Result<Args, Failure> {
         orchestrators: Vec::new(),
         skip: Vec::new(),
         owners: BTreeMap::new(),
+        realms: Vec::new(),
     };
     while let Some(flag) = args.next() {
         let value = args.next();
@@ -157,6 +161,7 @@ fn ticking(mut args: impl Iterator<Item = String>) -> Result<Args, Failure> {
             ("--restart", Some(v)) => parsed.restart = Some(v),
             ("--revive", Some(v)) => parsed.orchestrators.push(v),
             ("--skip", Some(v)) => parsed.skip.push(v),
+            ("--realm", Some(v)) => parsed.realms.push(v),
             ("--owner", Some(v)) if v.contains('=') => {
                 let (prefix, address) = v.split_once('=').unwrap_or_default();
                 parsed.owners.insert(prefix.to_owned(), address.to_owned());
@@ -594,6 +599,7 @@ fn gather(
         now,
         landings,
         follower,
+        failing_elsewhere: failing_elsewhere(&args.realms),
         runs: records::parse_runs(
             &fs::read_to_string(state_home.join("nix-offload/there.jsonl")).unwrap_or_default(),
             now - DAY,
@@ -634,6 +640,17 @@ fn gather(
             .map(|ms| ms / 1000),
         answered: sent.into_iter().filter_map(|m| m.re).collect(),
     })
+}
+
+/// Each realm's other machines whose newest update failed, as the node
+/// keeping it says; none from a realm whose node doesn't answer.
+fn failing_elsewhere(realms: &[String]) -> Vec<elsewhere::Failing> {
+    let this = fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+    realms
+        .iter()
+        .filter_map(|realm| command("mycelium", &["--realm", realm, "machines"]).ok())
+        .flat_map(|answer| elsewhere::failing_elsewhere(&answer, this.trim()))
+        .collect()
 }
 
 fn message(to: &str, intent: &str, text: String) -> Message {

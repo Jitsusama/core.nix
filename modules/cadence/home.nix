@@ -8,8 +8,9 @@
 #
 # It reads core's merges from a bare clone of its own in the same folder,
 # fetched each tick, the switches from update-to-main's journal, whoever asked,
-# the runs from nix-offload's record, and the net's round from its state,
-# so it needs no builder and holds nothing between ticks.
+# the runs from nix-offload's record, the net's round from its state, and
+# from each realm's mycelium node, the other machines whose newest update
+# failed, so it needs no builder and holds nothing between ticks.
 #
 # Given `revive.restart`, each tick first starts again every orchestrator
 # and every orchestrator's session whose pi died, in a terminal on the
@@ -55,6 +56,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   ...
 }:
@@ -98,6 +100,20 @@ let
       a
     ]) cfg.revive.skip
   );
+  # The realms this machine's mycelium nodes keep, where it has any, whose
+  # other machines' failed updates each tick says: on 15 November the work
+  # Mac's had failed for hours before Joel saw it idle.
+  realms = lib.optionals (options.jitsusama ? mycelium) (
+    lib.optional (config.jitsusama.mycelium.realm != null) config.jitsusama.mycelium.realm
+    ++ lib.attrNames config.jitsusama.mycelium.alsoJoins
+  );
+  reading = lib.concatMap (realm: [
+    "--realm"
+    realm
+  ]) realms;
+  # The account's own programs, mycelium among them, for reviving and for
+  # asking a realm's node.
+  onProfile = reviving || realms != [ ];
 in
 {
   # A machine still setting the orchestrator by its old name, a word the
@@ -177,16 +193,18 @@ in
           ++ asking
           ++ owning
           ++ revive
+          ++ reading
         );
-        # git and journalctl, as the account has them, and to revive, the
-        # terminal, shell and holder it starts a session with.
+        # git and journalctl, as the account has them; to revive, the
+        # terminal, shell and holder it starts a session with; and the
+        # node it asks about each realm's machines.
         Environment = [
           "PATH=${
             lib.makeBinPath [
               pkgs.git
               pkgs.systemd
             ]
-          }${lib.optionalString reviving ":${config.home.profileDirectory}/bin:/run/current-system/sw/bin"}"
+          }${lib.optionalString onProfile ":${config.home.profileDirectory}/bin:/run/current-system/sw/bin"}"
         ];
         Slice = "background.slice";
       };

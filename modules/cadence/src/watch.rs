@@ -1,6 +1,7 @@
 //! What the cycle's records say now, and which targets that misses;
 //! `asking.rs` says whom cadence asks about each.
 
+use crate::elsewhere::Failing;
 use crate::net::{Round, lag};
 use crate::records::{Follower, Look, Merge, NetHold, Run};
 use crate::stats::spread;
@@ -42,6 +43,8 @@ pub struct Snapshot {
     pub now: i64,
     pub landings: Vec<Landing>,
     pub follower: Follower,
+    /// The realm's other machines whose newest update failed.
+    pub failing_elsewhere: Vec<Failing>,
     pub runs: Vec<Run>,
     pub cpu_avg300: Option<f64>,
     /// The higher of Joel's apps' and session's CPU pressure over five
@@ -87,6 +90,7 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
     if let Some(breach) = switch_failing(s) {
         out.push(breach);
     }
+    out.extend(s.failing_elsewhere.iter().map(|f| failing_there(f, s.now)));
     // Said at once, unlike a merge not on yet: after this refusal the
     // follower asks no more, so nothing moves until someone asks with a
     // hold sent, and sessions-kitty joined the held daemons on 9 November.
@@ -280,6 +284,28 @@ fn switch_failing(s: &Snapshot) -> Option<Breach> {
     })
 }
 
+/// Another machine's update failing, said once for each machine and error,
+/// since its follower tries again with each commit and a later try failing
+/// the same way is news to nobody. On 15 November the work Mac's updates
+/// had failed on one test for hours, and nothing said so until Joel saw
+/// the Mac idle.
+fn failing_there(failing: &Failing, now: i64) -> Breach {
+    let error: String = failing.error.chars().take(240).collect();
+    let panicked = failing
+        .panicked
+        .as_ref()
+        .map_or_else(String::new, |p| format!(" ({p})"));
+    Breach {
+        key: format!("elsewhere:{}:{}", failing.machine, failing.error),
+        text: format!(
+            "{}'s newest update failed {} min ago, so it stays on the system it has: \
+             {error}{panicked}",
+            failing.machine,
+            (now - failing.at) / 60
+        ),
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -303,6 +329,38 @@ pub mod tests {
             last_card: Some(now - 60),
             ..Snapshot::default()
         }
+    }
+
+    #[test]
+    fn another_machines_failing_update_is_said_once_for_each_error() {
+        let mut s = calm(100_000);
+        let held = Failing {
+            machine: "mac".into(),
+            at: 100_000 - 30 * 60,
+            error: "error: Cannot build 'mycelium.drv'.".into(),
+            panicked: Some("panicked at tests/held.rs:118:5".into()),
+        };
+        s.failing_elsewhere = vec![held.clone()];
+        let mut state = State::default();
+        let first = tick(&s, &mut state);
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].to, To::Watcher);
+        assert_eq!(
+            first[0].text,
+            "Cadence alarm: mac's newest update failed 30 min ago, so it stays on the system \
+             it has: error: Cannot build 'mycelium.drv'. (panicked at tests/held.rs:118:5)."
+        );
+        s.now += 600;
+        s.last_card = Some(s.now - 60);
+        s.failing_elsewhere[0].at = s.now - 60;
+        assert_eq!(
+            tick(&s, &mut state),
+            [] as [Question; 0],
+            "the same error at a later try was said again"
+        );
+        s.failing_elsewhere[0].error = "fetching the input failed".into();
+        s.failing_elsewhere[0].panicked = None;
+        assert_eq!(tick(&s, &mut state).len(), 1, "a new error wasn't said");
     }
 
     #[test]
