@@ -233,11 +233,11 @@ fn scalar(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use terminal_kit::Pen;
-    use terminal_kit::layout::Room;
+    use terminal_kit::layout::{self, Room};
 
     use crate::views::device::device;
     use crate::views::find;
-    use crate::views::tests::{ROOMS, fits, network, now};
+    use crate::views::tests::{ROOMS, network, now};
 
     #[test]
     fn a_source_leaves_its_records_and_series_to_json() {
@@ -268,7 +268,7 @@ mod tests {
         let printer = find(&network, "Printer").expect("the printer");
         for room in ROOMS {
             let text = device(&network, printer, now(), &Pen::plain(), room);
-            fits(&text, room);
+            assert_eq!(layout::overrun(&text, room), None, "a line passes {room:?}");
             let lines: Vec<&str> = text.lines().collect();
             let head = lines
                 .iter()
