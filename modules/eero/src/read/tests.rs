@@ -301,6 +301,26 @@ fn an_ethernet_device_names_its_port_and_speed() {
 }
 
 #[test]
+fn a_read_with_every_device_at_nothing_has_no_speed_at_all() {
+    let on = |mac: &str, down: f64, up: f64| json!({"mac": mac, "connected": true, "usage": {"down_mbps": down, "up_mbps": up}});
+    let speeds = |answer: &Value| -> Vec<(Option<f64>, Option<f64>)> {
+        devices(answer)
+            .into_iter()
+            .map(|d| (d.speed.down_mbps, d.speed.up_mbps))
+            .collect()
+    };
+
+    let blank = json!([on("a", 0.0, 0.0), on("b", 0.0, 0.0)]);
+    let measured = json!([on("a", 0.0, 0.0), on("b", 20.8, 8.2)]);
+
+    assert_eq!(speeds(&blank), [(None, None), (None, None)]);
+    assert_eq!(
+        speeds(&measured),
+        [(Some(0.0), Some(0.0)), (Some(20.8), Some(8.2))]
+    );
+}
+
+#[test]
 fn only_devices_on_now_are_listed_by_node_then_signal() {
     let answer = json!([
         {"mac": "a", "connected": true, "source": {"url": "/2.2/eeros/2002"},

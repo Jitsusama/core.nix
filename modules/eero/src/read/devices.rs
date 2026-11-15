@@ -19,6 +19,20 @@ pub(super) fn devices(answer: &Value) -> Vec<Device> {
         let signal = |d: &Device| Reverse(d.signal_dbm.unwrap_or(i16::MIN));
         (node(a), signal(a), &a.mac).cmp(&(node(b), signal(b), &b.mac))
     });
+    // Most reads eero's cloud answers with every device at exactly 0.0 each
+    // way, its own machine's included while it streams: nine reads in ten
+    // over a week. That's no figure, not a home gone idle, so it's kept as
+    // none rather than drawn as idle. A read where any device moves is
+    // measured, and a 0.0 in it is a device truly idle.
+    let idle = |speed: &Speed| speed.down_mbps == Some(0.0) && speed.up_mbps == Some(0.0);
+    if devices.iter().all(|device| idle(&device.speed)) {
+        for device in &mut devices {
+            device.speed = Speed {
+                down_mbps: None,
+                up_mbps: None,
+            };
+        }
+    }
     devices
 }
 
