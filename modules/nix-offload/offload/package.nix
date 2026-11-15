@@ -10,6 +10,7 @@
   stdenv,
   systemd,
   util-linux,
+  zsh,
 }:
 let
   changed-checks = callPackage ../../../tools/changed-checks/package.nix { };
@@ -43,11 +44,13 @@ rustPlatform.buildRustPackage {
   };
   # Its tests bundle a real git tree's commits, and start a run apart with
   # setsid as a builder does, in dash as well, since most builders' sh is
-  # dash (src/command.rs).
+  # dash (src/command.rs), and send a run far through zsh, a Mac's login
+  # shell (src/there.rs).
   nativeCheckInputs = [
     dash
     git
     util-linux
+    zsh
   ];
   meta = {
     description = "Lends the machine a builder while its queue has builds one could take";

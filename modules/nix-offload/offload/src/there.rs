@@ -2323,7 +2323,10 @@ const GRACE: u32 = 300;
 /// nowhere, so it never holds the session open. Hung up or ended, the shell
 /// exits, so the command's own EXIT trap still cleans up; the `exit` after
 /// it keeps zsh from running its last command in the shell's own process,
-/// which would leave nothing to run that trap.
+/// which would leave nothing to run that trap. The command's code is kept
+/// as `ended`, never `status`, which zsh holds read-only: a run sent to a
+/// Mac ended as failed whatever its command did, so from 8 to 15 November
+/// no fetch asked of one passed, and only a folder's builds went there.
 ///
 /// Ending at once lost work: on 3 November a lender's restart cut a VM
 /// test mid-compile, and the run sent again built linux from the start.
@@ -2413,7 +2416,7 @@ fn far_within(command: &str, grace: &str, outlives: bool) -> String {
          </dev/null >/dev/null 2>&1 & \
          {ROOM_SAID} watching=$!; \
          trap 'kill $watching 2>/dev/null; exit 143' HUP TERM; {command}; \
-         status=$?; kill $watching 2>/dev/null; exit $status"
+         ended=$?; kill $watching 2>/dev/null; exit $ended"
     )
 }
 
@@ -4633,6 +4636,32 @@ mod tests {
             .unwrap();
         assert_eq!(ran.status.code(), Some(1), "{ran:?}");
         assert_eq!(String::from_utf8_lossy(&ran.stdout), "ran\n");
+    }
+
+    #[test]
+    fn a_run_sent_to_a_mac_runs_in_its_login_shell_zsh() {
+        // ssh runs the command in the account's login shell, which is
+        // zsh on a Mac, where `status` is read-only: on 15 November every
+        // fetch asked of the work Mac failed on it, so nothing built there.
+        // What it says goes to files, and only zsh is waited on, as sshd
+        // waits: a pipe held by the shell's loops would keep it unreaped,
+        // which those loops read as a shell still alive.
+        let folder = tempfile::tempdir().unwrap();
+        let (out, err) = (folder.path().join("out"), folder.path().join("err"));
+        let ran = Command::new("zsh")
+            .args(["-c", &far("echo ran")])
+            .process_group(0)
+            .stdout(fs::File::create(&out).unwrap())
+            .stderr(fs::File::create(&err).unwrap())
+            .status()
+            .unwrap();
+        let said = fs::read_to_string(&err).unwrap_or_default();
+        assert_eq!(ran.code(), Some(0), "zsh said: {said}");
+        assert_eq!(
+            fs::read_to_string(&out).unwrap(),
+            "ran\n",
+            "zsh said: {said}"
+        );
     }
 
     /// What a run sent far says while it runs for `seconds`, and how long
