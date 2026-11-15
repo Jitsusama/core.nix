@@ -17,6 +17,7 @@ fn a_watch_is_answered_whole_before_any_change_told_it() {
             since: now(),
             sources: Vec::new(),
             named: Named::read(&Value::Null),
+            holds: Holds::default(),
             revision: 0,
         }),
         Condvar::new(),
