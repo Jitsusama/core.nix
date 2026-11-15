@@ -1672,15 +1672,27 @@ impl Sent<'_> {
 
     /// The run on the lent builder a store names, or none when there's no
     /// store or ssh couldn't reach it. With `vm_apart`, VM tests go to a
-    /// builder of their own.
+    /// builder of their own. A store `on_vm`, a warm VM builder's, takes
+    /// no turn of the lent builders' (`changed/turns.rs`).
     fn lent_to(
         &self,
         arguments: &[String],
         vm_apart: bool,
         store: Option<String>,
+        on_vm: bool,
     ) -> Option<Finished> {
         let wanted = changed::wanted(arguments);
         let lent = store.and_then(|store| there::builder(store.lines().next()?.trim()))?;
+        // A turn at sending it there, held until the run ends
+        // (`changed/turns.rs`); a run that may move is sent on from a full
+        // builder to the next.
+        let turns = env::var_os("XDG_RUNTIME_DIR")
+            .map_or_else(env::temp_dir, PathBuf::from)
+            .join("nix-offload-there");
+        let _turn = match changed::turns::sending(&turns, &lent.host, self.moves, !on_vm) {
+            changed::turns::Turn::Full => return Some(Finished::of(there::BUSY, None)),
+            changed::turns::Turn::Had(held) => held,
+        };
         // Sent as `--run`'s `--copy` paths are, as held outputs go, since
         // the builder trusts no account.
         if let Some(own) = self.own {
@@ -1789,6 +1801,7 @@ impl Sent<'_> {
         vm_apart: bool,
     ) -> Option<Finished> {
         let lent = changed::in_turn(lenders, std::process::id()).map(standing);
+        let lent_builders = lent.len();
         let stores: Vec<Option<String>> = self
             .kept_first(arguments, lent)
             .into_iter()
@@ -1802,11 +1815,13 @@ impl Sent<'_> {
             moves: stores.iter().filter(|store| store.is_some()).count() > 1,
             ..*self
         };
+        // The two lent builders come first, then the warm VM builders.
+        let on_vm = |index: usize| index >= lent_builders;
         let mut busy = None;
-        for store in &stores {
-            match moving.lent_to(arguments, vm_apart, store.clone()) {
+        for (index, store) in stores.iter().enumerate() {
+            match moving.lent_to(arguments, vm_apart, store.clone(), on_vm(index)) {
                 Some(finished) if moving.moves && finished.status == there::BUSY => {
-                    busy = busy.or_else(|| store.clone());
+                    busy = busy.or_else(|| Some((index, store.clone()?)));
                 }
                 Some(finished) => {
                     self.share_kept(arguments, store.as_deref(), &stores);
@@ -1815,11 +1830,10 @@ impl Sent<'_> {
                 None => {}
             }
         }
-        let finished = busy
-            .as_ref()
-            .and_then(|store| self.lent_to(arguments, vm_apart, Some(store.clone())));
+        let (index, store) = busy?;
+        let finished = self.lent_to(arguments, vm_apart, Some(store.clone()), on_vm(index));
         if finished.is_some() {
-            self.share_kept(arguments, busy.as_deref(), &stores);
+            self.share_kept(arguments, Some(&store), &stores);
         }
         finished
     }
@@ -1924,7 +1938,7 @@ impl Sent<'_> {
             ..
         } = *self;
         let wanted = changed::wanted(arguments);
-        let on_builder = |store: Option<String>| self.lent_to(arguments, vm_apart, store);
+        let on_builder = |store: Option<String>| self.lent_to(arguments, vm_apart, store, false);
         // The second lent builder stands in for the first, so one whose
         // tunnel died never leaves the run to an evaluator or this machine
         // while the other stands. Runs take the two in turn, and each asks
