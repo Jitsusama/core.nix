@@ -319,6 +319,33 @@ mod tests {
     }
 
     #[test]
+    fn a_change_that_moves_a_machines_initrd_names_the_tests_that_boot_it() {
+        // #4513, at a6b6ca22: the kit moved, which hibernate-unlock reads in
+        // the initrd, and needs named only the tests owning its daemons.
+        let files = words(
+            "modules/terminal-kit/src/lib.rs modules/night-shift/src/main.rs \
+             modules/network-revive/src/main.rs modules/v4l2loopback/holders/src/main.rs",
+        );
+        let said = "changed  example-laptop\nchanged  example-laptop-initrd\n\
+                    changed  vm-hibernation-comes-back\n\
+                    changed  vm-boot-says-it-wakes-from-hibernation\n\
+                    changed  vm-loopback-says-who-holds-it\nchanged  vm-desktop-looks\n";
+        let found = first(&areas(), &files, Some(said), None);
+        assert_eq!(
+            found.tests,
+            words("vm-boot-says-it-wakes-from-hibernation vm-hibernation-comes-back"),
+            "a change that moved the example laptop's initrd didn't name the tests that boot it"
+        );
+        let said = "changed  example-laptop\nchanged  vm-hibernation-comes-back\n";
+        let found = first(&areas(), &files, Some(said), None);
+        assert!(
+            found.tests.is_empty(),
+            "a change that left the initrd as it was named boot tests: {:?}",
+            found.tests
+        );
+    }
+
+    #[test]
     fn a_change_to_what_runs_vm_tests_sends_one_through_it() {
         let offload = areas()
             .into_iter()
