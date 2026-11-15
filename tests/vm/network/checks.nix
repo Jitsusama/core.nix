@@ -29,6 +29,10 @@ onLinux {
   # What an account's services make of the network coming late, changing
   # and networkd restarting shows only with both managers running.
   vm-network-revives-units = import ./network-revive.nix { inherit self pkgs; };
+  # What systemd makes of the switch's password, kept from every account
+  # and the reader starting signed out without it, shows only on a booted
+  # machine reaching a stand-in switch.
+  vm-net-reads-the-switch = import ./net-switch.nix { inherit self pkgs; };
   # Whether chrony hears the network's server, and sets the clock past it
   # when it never answers, shows only on a network that names one.
   vm-clock-keeps-time = import ./clock.nix { inherit self pkgs; };

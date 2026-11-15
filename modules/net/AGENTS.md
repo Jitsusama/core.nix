@@ -68,8 +68,12 @@ devices stay.
 A TP-Link Easy Smart switch shows its ports only once signed in, and its
 admin password lets its holder mirror ports or change VLANs, so it never
 reaches Joel's account, where every agent runs. `net switch-reader
-ADDRESS` (`src/switch_reader.rs`) runs apart, as a system service holding
-the password as a systemd credential, `$CREDENTIALS_DIRECTORY/switch-password`.
+ADDRESS` (`src/switch_reader.rs`) runs apart, as the system service
+`net-switch` (`nixos.nix`) under a user of its own, on a machine that sets
+`jitsusama.net.switch.address`. It holds the password as the encrypted
+credential `/etc/credstore.encrypted/switch-password`, written by hand with
+`systemd-creds encrypt`, and reads it as `$CREDENTIALS_DIRECTORY/switch-password`;
+it may reach the switch's address and nothing else.
 Each minute it reads four status pages one at a time, since the switch
 drops a reply when asked for two, and asks for a page again once when it
 answers nothing. It signs in only when the pages come back holding no

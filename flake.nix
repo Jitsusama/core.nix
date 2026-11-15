@@ -392,6 +392,7 @@
         mpv = ./modules/mpv/nixos.nix;
         mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
         name-service = ./modules/name-service/nixos.nix;
+        net = ./modules/net/nixos.nix;
         network-revive = ./modules/network-revive/nixos.nix;
         nftables = ./modules/nftables/nixos.nix;
         niri = ./modules/niri/nixos.nix;

@@ -4622,6 +4622,11 @@
     its IPv4 address, and both families, through the name service; and a program that has looked
     up an absent .local name still finds a present one
   '';
+  vm-net-reads-the-switch = ''
+    net's switch reader starts signed out with no credential, signs in once when one is written
+    and reads all eight ports; Joel's account reads its report but not the password, and the
+    password is in no report or journal line
+  '';
   vm-network-revives-units = ''
     what the network let down starts, and reloads on change
   '';
