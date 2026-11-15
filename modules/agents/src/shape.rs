@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 /// The theme's mark for a shape the node serves, or none for one the theme
-/// has no mark for yet, whose row keeps the agent's mark. The down triangle
-/// waits on a mark turned a half turn, since the icon font draws none at
-/// the others' size.
+/// has no mark for, whose row keeps the agent's mark. The down triangle's is
+/// the triangle turned a half turn, since the icon font draws none at the
+/// others' size.
 #[must_use]
 pub fn mark(shape: &str) -> Option<&'static str> {
     match shape {
@@ -20,6 +20,7 @@ pub fn mark(shape: &str) -> Option<&'static str> {
         "plus" => Some("shapePlus"),
         "hexagon" => Some("shapeHexagon"),
         "circle" => Some("shapeCircle"),
+        "down-triangle" => Some("shapeDownTriangle"),
         "star" => Some("shapeStar"),
         _ => None,
     }
