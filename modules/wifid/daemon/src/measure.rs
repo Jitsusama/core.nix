@@ -266,6 +266,17 @@ fn forget_the_forgotten(learned: &mut Learned, saved: &[String]) {
     }
 }
 
+/// Where what's known of an access point comes from, said with each move
+/// so a move made on what was learned can be told from one made on what
+/// was just measured (15 Nov 2026).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Whence {
+    /// Measured in the span.
+    Lately,
+    /// Learned at this hour, heard about as loud.
+    Learned,
+}
+
 /// What's known of how an access point carries from here: what it carried
 /// in the span, else what it's carried at this hour, heard about as loud.
 fn known<'a>(
@@ -273,11 +284,16 @@ fn known<'a>(
     learned: &'a Learned,
     now: Instant,
     hour: u8,
-) -> impl Fn(&str, i16) -> Option<Measured> + 'a {
+) -> impl Fn(&str, i16) -> Option<(Measured, Whence)> + 'a {
     move |point, signal| {
-        lately
+        let lately = lately
             .of(point, now)
-            .or_else(|| learned.of(point, hour, signal))
+            .map(|measured| (measured, Whence::Lately));
+        lately.or_else(|| {
+            learned
+                .of(point, hour, signal)
+                .map(|measured| (measured, Whence::Lately))
+        })
     }
 }
 
@@ -288,30 +304,30 @@ fn chosen(
     now: Instant,
     (on, measured): (&Joined, &Measured),
     around: &[Heard],
-    known: &dyn Fn(&str, i16) -> Option<Measured>,
+    known: &dyn Fn(&str, i16) -> Option<(Measured, Whence)>,
     call: bool,
 ) -> Option<String> {
     let signal = around.iter().find(|heard| heard.bssid == on.point)?.signal;
-    let others: Vec<Other> = around
+    let (others, whence): (Vec<Other>, Vec<Option<Whence>>) = around
         .iter()
         .filter(|heard| heard.bssid != on.point)
-        .map(|heard| Other {
-            point: heard.bssid.clone(),
-            signal: heard.signal,
-            busy: heard.radio.load.map(|load| load.busy),
-            measured: known(&heard.bssid, heard.signal),
+        .map(|heard| {
+            let known = known(&heard.bssid, heard.signal);
+            let whence = known.as_ref().map(|(_, whence)| *whence);
+            let other = Other {
+                point: heard.bssid.clone(),
+                signal: heard.signal,
+                busy: heard.radio.load.map(|load| load.busy),
+                measured: known.map(|(measured, _)| measured),
+            };
+            (other, whence)
         })
-        .collect();
+        .unzip();
     match chooser.choose(now, (&on.point, measured, signal), &others, call) {
         Choice::Stay => None,
         Choice::Try(to) => {
-            println!(
-                "<6>{} tries {to}, as {} carried {} at p95 with {:.1}% lost",
-                on.card,
-                on.point,
-                ms(measured.p95),
-                measured.lost
-            );
+            let at = others.iter().position(|other| other.point == to)?;
+            println!("<6>{}", tried(on, measured, &others[at], whence[at]));
             Some(to)
         }
         Choice::Back(to) => {
@@ -330,6 +346,19 @@ async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String
     if let Err(refused) = acts::roam(&asks, air, &to).await {
         eprintln!("<4>{card} couldn't move to {to}: {refused:?}");
     }
+}
+
+/// Why a card tries another access point: what the one it's on carried,
+/// and what was known of the other, and from where.
+fn tried(on: &Joined, measured: &Measured, to: &Other, _whence: Option<Whence>) -> String {
+    format!(
+        "{} tries {}, as {} carried {} at p95 with {:.1}% lost",
+        on.card,
+        to.point,
+        on.point,
+        ms(measured.p95),
+        measured.lost
+    )
 }
 
 /// A span of time in milliseconds, as logged.
@@ -642,10 +671,9 @@ mod tests {
         let at_eight = known(&lately, &learned, Instant::now(), 20);
         let at_nine = known(&lately, &learned, Instant::now(), 21);
 
-        assert_eq!(
-            at_eight(HALL, -50).and_then(|known| known.p95),
-            Some(ms(15))
-        );
+        let (hall, whence) = at_eight(HALL, -50).expect("the hall was learned at eight");
+        assert_eq!(hall.p95, Some(ms(15)), "what it carried then is known");
+        assert_eq!(whence, Whence::Learned, "and known as learned");
         assert_eq!(at_nine(HALL, -50), None, "nothing was learned at nine");
     }
 
@@ -659,7 +687,47 @@ mod tests {
 
         let known = known(&lately, &learned, start + Duration::from_secs(99), 20);
 
-        assert_eq!(known(HALL, -50).and_then(|known| known.p95), Some(ms(40)));
+        let (hall, whence) = known(HALL, -50).expect("the hall was measured lately");
+        assert_eq!(hall.p95, Some(ms(40)), "what it carried lately is known");
+        assert_eq!(whence, Whence::Lately, "and known as measured lately");
+    }
+
+    fn other(point: &str, measured: Option<Measured>) -> Other {
+        Other {
+            point: point.into(),
+            signal: -50,
+            busy: None,
+            measured,
+        }
+    }
+
+    #[test]
+    fn a_move_says_what_it_went_by_and_whence() {
+        let on = joined(DESK);
+        let why = "wlan2 tries 6c:ae:f6:c1:84:28, as 6c:ae:f6:c1:84:26 carried 30.0 ms at p95 \
+                   with 0.0% lost, and 6c:ae:f6:c1:84:28";
+        let quick = Some(carried(10));
+
+        assert_eq!(
+            tried(
+                &on,
+                &carried(30),
+                &other(HALL, quick.clone()),
+                Some(Whence::Learned)
+            ),
+            format!("{why} carried 10.0 ms at p95 at this hour before"),
+            "a move made on what was learned says so"
+        );
+        assert_eq!(
+            tried(&on, &carried(30), &other(HALL, quick), Some(Whence::Lately)),
+            format!("{why} carried 10.0 ms at p95 in the last two minutes"),
+            "a move made on what was just measured says so"
+        );
+        assert_eq!(
+            tried(&on, &carried(30), &other(HALL, None), None),
+            format!("{why} is untried, heard at -50 dBm"),
+            "a move made on signal alone says so"
+        );
     }
 
     #[test]
