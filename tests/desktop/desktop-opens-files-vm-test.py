@@ -72,7 +72,10 @@ def test_the_launchers_home_keeps_its_shape_and_a_collection_opens_by_name(
     home = ["Now", "Agents", "Code", "Programs", "People", "Passwords", "Desktop", "Machine",
             "Network", "Keyboard"]  # fmt: skip
     assert rows == home, rows
-    # A page down stops on the last.
+    # A page down stops on the last. A page is at most 8 rows, and home holds ten, so the
+    # first goes a page and the second, past the end, stops on the last.
+    machine.send_key("pgdn")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Network")
     machine.send_key("pgdn")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Keyboard")
     # Opening a collection keeps the launcher open, where a program
