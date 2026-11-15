@@ -214,6 +214,26 @@ impl Passed {
         }
     }
 
+    /// Keep that the changed-checks run with `arguments` was skipped at
+    /// `at`, `because` saying why, beside the pass of the run it joined
+    /// (`changed/mac.rs`): what the net runs again once it can. It's no
+    /// pass, so no run is found by it, and it's kept once.
+    pub fn keep_skipped(&self, at: &At, arguments: &[String], because: &str) {
+        let skipped = serde_json::json!(arguments);
+        if self.lines(at).iter().any(|line| line["skipped"] == skipped) {
+            return;
+        }
+        let line = serde_json::json!({
+            "dir": at.dir,
+            "skipped": skipped,
+            "because": because,
+            "at": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |since| since.as_secs()),
+        });
+        self.keep(at, &[line]);
+    }
+
     /// Each `there --run` that passed at `at`, as its line: the command's
     /// words exactly as they ran (`ran`) and the store paths copied up
     /// before it (`copies`).

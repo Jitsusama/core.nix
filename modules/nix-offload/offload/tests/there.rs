@@ -148,6 +148,8 @@ case "$2" in
   *changed-checks*) [ -f "$here/far-runs-grow" ] \
     && printf '{"at":%s}\n' "$$" >> "$here/far-runs" ;;
 esac
+# A host whose builds fail, as a Mac failing one of its checks does.
+case "$2" in *"nix build"*) [ -f "$here/fails-on-$1" ] && exit 1 ;; esac
 # A run that fails once, then ends as the status file says.
 if [ -f "$here/fails-once" ]; then
   rm -f "$here/fails-once"
@@ -2682,6 +2684,46 @@ impl Changed {
         (ran, sent)
     }
 
+    /// Commits `path` past main, as a change touching it, and says the
+    /// commit.
+    fn touching(&self, path: &str) -> String {
+        let file = self.tree.join(path);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, "{ }\n").unwrap();
+        git(&self.tree, &self.config, &["add", path]);
+        git(&self.tree, &self.config, &["commit", "-q", "-m", "touched"]);
+        git(&self.tree, &self.config, &["rev-parse", "HEAD"])
+    }
+
+    /// A Mac nearby at `address`, building for its own system.
+    fn mac_at(&self, address: std::net::SocketAddr) {
+        fs::create_dir_all(self.folder.path().join("nix-offload")).unwrap();
+        fs::write(
+            self.folder.path().join("nix-offload/nearby"),
+            format!("{address} mac aarch64-darwin\n"),
+        )
+        .unwrap();
+    }
+
+    /// The lines ssh was sent for `host`.
+    fn sent_to(&self, host: &str) -> Vec<String> {
+        fs::read_to_string(self.bin.join("ssh-sent"))
+            .unwrap_or_default()
+            .lines()
+            .filter(|line| line.split_once(' ').is_some_and(|(on, _)| on == host))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// What was kept as passed at `commit`, a line each.
+    fn kept_at(&self, commit: &str) -> Vec<serde_json::Value> {
+        fs::read_to_string(self.folder.path().join("nix-offload/passed").join(commit))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    }
+
     /// Each host ssh was given, with whether its command was marked to
     /// move on rather than wait, in the order they were asked.
     fn asked(&self) -> Vec<(String, bool)> {
@@ -3148,6 +3190,138 @@ fn a_changed_run_for_a_system_only_a_machine_nearby_builds_is_named_then_built_t
     assert!(
         String::from_utf8_lossy(&ran.stdout).contains("changed  a"),
         "what it named comes here: {ran:?}"
+    );
+}
+
+/// What a Linux gate run asks, as a session's gate does.
+const GATE: [&str; 4] = ["--build", "--no-vm", "--system", "x86_64-linux"];
+
+#[test]
+fn a_change_a_macs_checks_read_is_compared_on_the_mac_too() {
+    // On 15 November a Mac built its whole set alone for the first time,
+    // and 53 of its 256 checks failed or didn't evaluate: no gate had
+    // compared them, so nothing ever said so.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    let head = changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+
+    let (ran, _) = changed.run(&GATE);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let lent = changed.sent_to("nix-offload");
+    assert!(
+        lent.iter()
+            .any(|line| line.contains("--system aarch64-darwin") && line.contains("--name-only")),
+        "the lent builder names what changed for a Mac: {lent:?}"
+    );
+    let mac = changed.sent_to("mac");
+    assert!(
+        mac.iter()
+            .any(|line| line.contains("nix build") && line.contains("checks.aarch64-darwin.a")),
+        "and the Mac builds it: {mac:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(
+            "modules/zsh/home.nix is read by a Mac's checks, so they're compared on mac too"
+        ),
+        "{ran:?}"
+    );
+    let kept = changed.kept_at(&head);
+    assert!(
+        kept.iter()
+            .any(|line| line["run"] == serde_json::json!(GATE)),
+        "the gate's pass is kept once the Mac's passed: {kept:?}"
+    );
+}
+
+#[test]
+fn a_change_no_macs_check_reads_is_never_sent_to_the_mac() {
+    // A Mac's comparison costs an evaluation of its checks on the lent
+    // builder, a few minutes each gate, which a change to prose or a
+    // Linux module would pay for nothing.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    changed.touching("modules/zsh/nixos.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+
+    let (ran, _) = changed.run(&GATE);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = fs::read_to_string(changed.bin.join("ssh-sent")).unwrap();
+    assert!(
+        !sent.contains("aarch64-darwin"),
+        "nothing went for a Mac: {sent}"
+    );
+}
+
+#[test]
+fn a_change_a_macs_checks_read_passes_while_the_mac_is_away_kept_as_skipped() {
+    // The Mac goes to sleep and leaves the network, on 15 November for
+    // 45 minutes at a time, and a gate held for it would hold every merge.
+    let changed = Changed::new();
+    // A port that was listening and no longer is answers nothing.
+    let away = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    changed.mac_at(away);
+    let head = changed.touching("flake.lock");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+
+    let (ran, _) = changed.run(&GATE);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = fs::read_to_string(changed.bin.join("ssh-sent")).unwrap();
+    assert!(
+        !sent.contains("aarch64-darwin"),
+        "nothing went for a Mac: {sent}"
+    );
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(
+            "flake.lock is read by a Mac's checks, and mac nearby doesn't answer, so their \
+             comparison is kept as skipped"
+        ),
+        "{ran:?}"
+    );
+    let kept = changed.kept_at(&head);
+    let skipped: Vec<_> = kept
+        .iter()
+        .filter(|line| line["skipped"].is_array())
+        .collect();
+    assert_eq!(skipped.len(), 1, "the skip is kept once: {kept:?}");
+    assert_eq!(
+        skipped[0]["skipped"],
+        serde_json::json!(["--build", "--no-vm", "--system", "aarch64-darwin"]),
+        "as the run the Mac would have had: {kept:?}"
+    );
+    assert_eq!(
+        skipped[0]["because"], "mac nearby doesn't answer",
+        "{kept:?}"
+    );
+    assert!(
+        kept.iter()
+            .any(|line| line["run"] == serde_json::json!(GATE)),
+        "and the gate's pass beside it: {kept:?}"
+    );
+}
+
+#[test]
+fn a_macs_checks_failing_fail_the_run_and_keep_no_pass() {
+    // A gate's pass kept before the Mac's comparison ended would let the
+    // net merge what the Mac then failed.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    let head = changed.touching("modules/zsh/darwin.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("fails-on-mac"), "").unwrap();
+
+    let (ran, _) = changed.run(&GATE);
+    assert_ne!(ran.status.code(), Some(0), "{ran:?}");
+    let kept = changed.kept_at(&head);
+    assert!(
+        !kept.iter().any(|line| line["run"].is_array()),
+        "no run's pass is kept: {kept:?}"
     );
 }
 

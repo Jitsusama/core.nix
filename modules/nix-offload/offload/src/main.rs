@@ -1544,8 +1544,22 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         }
         return not_taken("no builder or evaluator answered");
     };
+    // A change a Mac's checks read passes only once their comparison on a
+    // Mac does, or is kept as skipped while the Mac is away
+    // (`changed/mac.rs`), so its pass waits for that.
+    let mac = if finished.status == 0 {
+        on_a_mac(arguments, &folder, waiting)
+    } else {
+        OnAMac::Unasked
+    };
+    if let OnAMac::Failed(code) = mac {
+        return code;
+    }
     if let (0, Some(at), Some(printed)) = (finished.status, &at, &finished.printed) {
         kept_passing(&passed, at, arguments, printed, started);
+        if let OnAMac::Skipped(because) = &mac {
+            passed.keep_skipped(at, &changed::mac::for_a_mac(arguments), because);
+        }
     }
     if runs_again(replayed.as_deref(), finished.status) {
         // The replay ended, so it goes unsaid and lets its work go first.
@@ -1565,6 +1579,64 @@ fn with_system(arguments: &[String]) -> Vec<String> {
         arguments.extend(["--system".to_owned(), this_system()]);
     }
     arguments
+}
+
+/// How a Mac's comparison joined a changed-checks run that passed.
+enum OnAMac {
+    /// None was asked: no Mac is nearby, the run doesn't build for
+    /// another system, or the change touches nothing a Mac's checks read.
+    Unasked,
+    /// It passed.
+    Passed,
+    /// It was skipped, for the reason given.
+    Skipped(String),
+    /// It failed, and the run ends as it did.
+    Failed(ExitCode),
+}
+
+/// A Mac's comparison of the change in `folder`, joining a run with
+/// `arguments` that passed, when a Mac nearby builds for its system and
+/// the change touches a file its checks read (`changed/mac.rs`). It goes
+/// as any run for a Mac's system goes: named on a lent builder, built on
+/// the Mac.
+fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnAMac {
+    use changed::mac;
+    let macs: Vec<there::Nearby> = nearby()
+        .into_iter()
+        .filter(|machine| machine.systems.iter().any(|system| system == mac::SYSTEM))
+        .collect();
+    if macs.is_empty() || !mac::joins(arguments) || this_system() == mac::SYSTEM {
+        return OnAMac::Unasked;
+    }
+    let Some(base) = changed::base_of(arguments, folder, "HEAD") else {
+        return OnAMac::Unasked;
+    };
+    let touched = mac::touched(folder, &base);
+    let Some(read) = touched.iter().find(|path| mac::reads(path)) else {
+        return OnAMac::Unasked;
+    };
+    let Some(answering) = macs
+        .iter()
+        .find(|machine| machines::answers(&machine.address))
+    else {
+        let names: Vec<&str> = macs.iter().map(|machine| machine.host.as_str()).collect();
+        let because = format!("{} nearby doesn't answer", names.join(", "));
+        eprintln!(
+            "nix-offload: {read} is read by a Mac's checks, and {because}, so their \
+             comparison is kept as skipped, for the net to run once it's back"
+        );
+        return OnAMac::Skipped(because);
+    };
+    eprintln!(
+        "nix-offload: {read} is read by a Mac's checks, so they're compared on {} too",
+        answering.host
+    );
+    let compared = changed_there(&mac::for_a_mac(arguments), waiting, false);
+    if compared == ExitCode::SUCCESS {
+        return OnAMac::Passed;
+    }
+    eprintln!("nix-offload: a Mac's checks didn't pass, so this run's pass isn't kept");
+    OnAMac::Failed(compared)
 }
 
 /// Whether a run that ended with `status`, of the change `replayed` as
