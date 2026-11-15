@@ -90,7 +90,7 @@ pub fn needs(base: &str) -> Result<ExitCode, String> {
         return Ok(ExitCode::SUCCESS);
     }
     println!("yes:");
-    said_owners(&owning, base, &list);
+    print!("{}", said_owners(&owning, base, &list));
     if found.touched.is_empty() {
         return Ok(ExitCode::SUCCESS);
     }
@@ -121,17 +121,18 @@ pub fn needs(base: &str) -> Result<ExitCode, String> {
 /// Name the VM tests that own a file the change touches, each of which is
 /// the one written to catch it, so it runs before the merge rather than
 /// on main.
-fn said_owners(owning: &[String], base: &str, list: &serde_json::Value) {
+fn said_owners(owning: &[String], base: &str, list: &serde_json::Value) -> String {
     if owning.is_empty() {
-        return;
+        return String::new();
     }
-    println!(
+    let mut said = format!(
         "run the subtests that reach what it touched with run-subtests --there, in each VM \
-         test that owns one of its files and moved from {base}:"
+         test that owns one of its files and moved from {base}:\n"
     );
     for test in owning {
-        println!("  {}", rules::named(test, list));
+        said.push_str(&format!("  {}\n", rules::named(test, list)));
     }
+    said
 }
 
 /// What the changed-checks it was built with (the profile has none) says
@@ -161,4 +162,28 @@ fn known_vm_tests() -> Option<Vec<String>> {
         .map(str::to_owned)
         .collect();
     (!tests.is_empty()).then_some(tests)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_owning_test_is_named_with_the_commands_that_run_its_subtests() {
+        // On 15 November a session ran each owning test as named, with no
+        // words, and each only listed its subtests and passed.
+        let said = said_owners(
+            &["vm-desktop-a".to_owned()],
+            "origin/main",
+            &serde_json::Value::Null,
+        );
+        assert!(
+            said.contains("run-subtests --there vm-desktop-a <words>"),
+            "the owning test isn't given as a command that runs subtests: {said}"
+        );
+        assert!(
+            said.contains("with no words"),
+            "it doesn't warn that no words runs nothing: {said}"
+        );
+    }
 }
