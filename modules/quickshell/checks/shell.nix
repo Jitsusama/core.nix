@@ -175,7 +175,8 @@
       '';
 
   # The handover waits for the old shell's launcher and Super+S's line to be shut before
-  # ending it, a chord heard just after they were found shut included, restarts instead on
+  # ending it, a chord heard just after they were found shut included, and one sent before
+  # but read late by a busy shell (../tests/late-chord.py), restarts instead on
   # a locked screen, and leaves the old shell the unit's when
   # the new one fails as it loads (modules/quickshell/tests/hands-over.sh).
   the-shell-hands-over-only-once-its-surfaces-are-shut =
@@ -184,12 +185,13 @@
         nativeBuildInputs = [
           pkgs.jq
           pkgs.procps
+          pkgs.python3
           pkgs.util-linux
         ];
       }
       ''
         ${lib.getExe' pkgs.coreutils "timeout"} 120 ${lib.getExe pkgs.bash} \
-          ${../tests/hands-over.sh} ${../shell-hands-over.sh}
+          ${../tests/hands-over.sh} ${../shell-hands-over.sh} ${../tests/late-chord.py}
         touch $out
       '';
 

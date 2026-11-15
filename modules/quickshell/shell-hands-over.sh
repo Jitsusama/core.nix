@@ -101,18 +101,38 @@ shut() {
   read -r line 2>/dev/null <"$talking" || true
   [ "$open" != true ] && [ "$line" != open ]
 }
+# Whether the old shell holds a connection to its socket it hasn't read:
+# a chord launcher-say sent, waiting on a busy shell. The kernel lists each
+# under the socket's path, accepted or not, until the shell has read its
+# line and closed it; the one flagged as listening is the socket itself.
+# grep takes out the socket's own lines first, since a machine has
+# thousands, which bash alone read in over a second.
+unread() {
+  local flags path
+  while read -r _ _ _ flags _ _ _ path; do
+    [[ $path == "$socket" && $flags != 00010000 ]] && return 0
+  done < <(grep -F -e "$socket" /proc/net/unix || true)
+  return 1
+}
 # Found shut, the old shell could still hear a chord before its socket
 # went, open, and be ended under it: on a busy builder the fourth of four
 # chords drew the old launcher and was never presented (2026-11-14,
 # e777b33d). So the socket is taken aside, which launcher-say waits out,
-# and the shell asked again once a chord it had already been sent has
-# opened it; open then, the socket goes back and the wait goes on.
+# and the shell asked again once it has read every chord it was sent;
+# open then, the socket goes back and the wait goes on. A fixed 50 ms for
+# that read was outlasted on a loaded builder (2026-11-15), so it's waited
+# for, polled every 10 ms for up to a second, past which the shell is
+# taken as still busy and asked again later.
 for ((i = 0; i < 600; i++)); do
   if shut "$1"; then
     mv -f "$socket" "$aside" 2>/dev/null || true
-    # A chord read before the socket went is opening within this.
-    sleep 0.05
-    shut "$1" && break
+    for ((j = 0; j < 100; j++)); do
+      unread || break
+      sleep 0.01
+    done
+    if ! unread && shut "$1"; then
+      break
+    fi
     put_back
   fi
   sleep 0.1
