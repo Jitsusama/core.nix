@@ -109,7 +109,6 @@
     "Fuzzy.js"
     "launcher/SessionRow.js"
   ];
-  "launcher/Backlight.js" = [ "launcher/Order.js" ];
   "launcher/ByEar.js" = [ "launcher/Numbers.js" ];
   "launcher/Calculator.qml" = [ "launcher/Numbers.js" ];
   "launcher/Capture.qml" = [
@@ -137,7 +136,6 @@
   "launcher/Displays.qml" = [
     "Fuzzy.js"
     "Hearing.js"
-    "launcher/Backlight.js"
     "launcher/Order.js"
     "launcher/ScreenAnswers.js"
     "launcher/Screens.js"

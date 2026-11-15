@@ -5,10 +5,10 @@ pragma ComponentBehavior: Bound
 // of its screen, as modules/windows' screens.rs does. Screens draws each
 // row as it's served; a change to the monitor's row makes its row again
 // and keeps the panel's; a screen's Return asks the daemon the act it
-// serves, and niri nothing; what its spots are made of holds while a
-// level or a lux moves; a share typed asks the daemon as a Brightness
-// level does; and :set nightlight asks what the Warmth's Night Light
-// asks, only to turn it the other way.
+// serves, and niri nothing; :set brightness and "brightness 40" say
+// the share the served Brightness holds; a share typed asks the daemon as a Brightness level does;
+// and :set nightlight asks what the Warmth's Night Light asks, only to
+// turn it the other way.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -81,14 +81,33 @@ ShellRoot {
             acts: [{ key: "displays:sleep", ask: { ask: "screen", do: "sleep" } }]
         } })
 
-    // A Brightness level inside the panel, as light/brightness.rs serves
-    // each, ordered as the ready-rows crate's Kept orders every row.
+    // The panel's Brightness at `share`, a level inside it and its Room
+    // Light, as light/brightness.rs and light/room.rs serve them, each
+    // ordered as the ready-rows crate's Kept orders every row.
+    function brightness(share) {
+        return { key: "row:displays:setting:eDP-1:brightness", kind: "row", row: {
+            key: "row:displays:setting:eDP-1:brightness",
+            thing: "displays:eDP-1:brightness", place: "displays", kind: "setting",
+            order: 1025, name: "Brightness", glyph: "brightness", hue: "machine",
+            parent: "row:displays:display:eDP-1", depth: 1,
+            side: [{ said: `${share}%` }], note: "", held: { share: share },
+            graph: { shape: "bar", values: [share / 100], warn: false },
+            acts: [{ key: "verb:more", step: "rows" }]
+        } };
+    }
+    readonly property var room: ({ key: "row:displays:setting:eDP-1:room", kind: "row",
+        row: {
+            key: "row:displays:setting:eDP-1:room", thing: "displays:eDP-1:room",
+            place: "displays", kind: "fact", order: 1027, name: "Room Light",
+            glyph: "room", hue: "machine", parent: "row:displays:display:eDP-1", depth: 1,
+            side: [{ said: "312 lx" }], note: "", acts: []
+        } })
     readonly property var level: ({ key: "row:displays:choice:eDP-1:brightness-50",
         kind: "row", row: {
             key: "row:displays:choice:eDP-1:brightness-50",
             thing: "verb:display-brightness-50", place: "displays", kind: "choice",
-            order: 1025, name: "50%", glyph: "brightness", hue: "action",
-            parent: "row:displays:display:eDP-1", depth: 1, side: [], note: "",
+            order: 1026, name: "50%", glyph: "brightness", hue: "action",
+            parent: "row:displays:setting:eDP-1:brightness", depth: 2, side: [], note: "",
             held: { fill: { n: 50 } },
             acts: [{ key: "displays:brightness:level",
                 ask: { ask: "light", do: "brightness", share: 50 } }]
@@ -144,7 +163,8 @@ ShellRoot {
                         answer = { id: ask.id, records: [
                             root.screen("eDP-1", "Built-in Screen", 1024, true),
                             root.screen("DP-1", "Dell Inc. U2723QE", 2048, true), root.sleep,
-                            root.level, root.warmth, root.nightLight] };
+                            root.brightness(50), root.level, root.room, root.warmth,
+                            root.nightLight] };
                     } else if (ask.ask === "screen") {
                         root.acted = root.acted.concat([ask]);
                         answer = { id: ask.id, done: true };
@@ -199,6 +219,8 @@ ShellRoot {
             changedHere();
         else if (waiting === "the act" && acted.length === 1)
             done();
+        else if (waiting === "the share moved" && displays.servedBrightness?.share === 80)
+            shareMoved();
         else if (waiting === "the monitor lit again" && displays.spotsStamp !== made)
             brightened();
         else if (waiting === "the shares asked" && lit.length === 3)
@@ -250,23 +272,26 @@ ShellRoot {
             JSON.stringify(acted.map(ask => [ask.do, ask.output])) === '[["on","DP-1"]]',
             JSON.stringify(acted));
         Expect.expect("and niri nothing", Niri.asked.length === 0, JSON.stringify(Niri.asked));
-        // The panel's light, its room's sensor known but what it hears not
-        // read yet. The Room Light itself is the windows daemon's
-        // (light/room.rs), whose cases say what it serves while it's read.
-        displays.light = { connector: "eDP-1", share: 50, now: 100, most: 200 };
-        displays.roomSensor = { device: "acpi-als", lux: null, raw: null };
-        // What its spots are made of holds while a level or a lux moves, so
-        // a closing remakes none of them (Provider.spotsStamp), and moves
-        // once a part comes or goes, or a screen changes.
+        // The panel holds the Brightness the daemon serves inside it, at
+        // the share it read.
+        Expect.expect("the panel holds the Brightness served inside it, at its share",
+            displays.backlitKey === "row:displays:display:eDP-1"
+                && displays.servedBrightness?.share === 50,
+            JSON.stringify([displays.backlitKey, displays.servedBrightness]));
+        waiting = "the share moved";
+        tell([brightness(80)]);
+    }
+
+    // The share it moves to is what :set brightness and "brightness 40"
+    // say it is now; then the monitor lights again.
+    function shareMoved() {
+        Expect.expect(":set brightness says the share served",
+            displays.setOptions.brightness?.now() === 80,
+            JSON.stringify(displays.setOptions.brightness?.now()));
+        Expect.expect("and \"brightness 40\" says it's at that share now",
+            displays.setTo(40)?.note.includes("80") === true,
+            JSON.stringify(displays.setTo(40)?.note));
         made = displays.spotsStamp;
-        displays.light = { connector: "eDP-1", share: 80, now: 160, most: 200 };
-        displays.roomSensor = { device: "acpi-als", lux: 312, raw: 40 };
-        Expect.expect("a level and a lux moving leave the spots' make as it was",
-            displays.spotsStamp === made, "");
-        displays.roomSensor = null;
-        Expect.expect("the room's sensor going changes it", displays.spotsStamp !== made, "");
-        displays.roomSensor = { device: "acpi-als", lux: 5, raw: 1 };
-        Expect.expect("and coming back puts it back", displays.spotsStamp === made, "");
         waiting = "the monitor lit again";
         tell([screen("DP-1", "Dell Inc. U2723QE", 2048, true)]);
     }
