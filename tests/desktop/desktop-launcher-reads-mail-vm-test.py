@@ -407,10 +407,13 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
                 and shown["selected"]["note"] == "a direct message"
             )
         )
-        # Its acts are the conversation's, Open in Slack first; with no link
-        # to share, there's nothing to copy.
-        desktop.follow()
-        desktop.launcher_until(lambda shown: shown["rows"] == ["Open in Slack"])
+        # Its acts are the conversation's, Open in Slack alone; with no link
+        # to share, there's nothing to copy. They lie on its row, which holds
+        # nothing to step into (Joel, 2026-11-11: "if they have nothing under
+        # them, we shouldn't open a submenu for them"), so they're read as a
+        # terminal reads a thing's own acts.
+        acts = conversation_acts(desktop, "Ada Lovelace")
+        assert acts == ["Open in Slack"], f"Ada Lovelace's acts: {acts}"
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
         # Every Slack conversation row is made by its one component.
@@ -450,6 +453,15 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
     desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def conversation_acts(desktop: Desktop, name: str) -> list[str]:
+    """Name a conversation's own acts in For You's Slack row, as `launcher show` says them."""
+    # Each step after the mark, since qs takes no empty argument, and after
+    # `--`, since `show` is also qs ipc's own command otherwise.
+    path = shlex.quote("".join(f"\u203a{step}" for step in ("now", "for you", "slack", name)))
+    said = cast("Json", json.loads(desktop.as_account(f"qs ipc call -- launcher show {path}")))
+    return [str(act["name"]) for act in cast("list[Json]", said["acts"])]
 
 
 def slack_program(desktop: Desktop) -> None:
@@ -1198,8 +1210,12 @@ def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
 
 # How long the shell's clients of a socket just gone take to try it again
 # and hear the file go, and how long after that a client still polling
-# every 2 s would be seen trying it four times.
-SOCKET_GOING_SETTLES = 4
+# every 2 s would be seen trying it four times. A socket not there is
+# tried 2, 4 and 8 s after it goes (Daemon.qml's missingTries), since a
+# daemon starting again makes it anew, so those 14 s pass first, with
+# room for a loaded guest's timers: counted from 4 s, each client's try
+# at 6 s and 14 s fell in the span, 6 in 8 s (2026-11-15).
+SOCKET_GOING_SETTLES = 18
 SOCKET_MISSING_WATCHED = 8
 
 
