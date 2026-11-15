@@ -2,6 +2,7 @@
 # gathers with every other folder's; README.md beside this says what each
 # file here is.
 {
+  onLinux,
   pkgs,
   ...
 }:
@@ -22,7 +23,9 @@ in
           vm-helpers-test.py vm-pytest-test.py
         touch $out
       '';
-
+}
+# The qemu wrapper waits on its sockets with inotify, which only Linux has.
+// onLinux {
   # The qemu VM tests run, put in front of a stand-in qemu that says how
   # it was run.
   qemu-starts-after-its-sockets =

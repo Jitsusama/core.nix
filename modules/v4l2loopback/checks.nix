@@ -6,7 +6,8 @@
   pkgs,
   ...
 }:
-{
+# The watch is built for Linux alone, where its cameras are.
+onLinux {
   # The camera watch's tests, which run as it builds. Over a sysfs of its
   # own, a USB camera's holder is named only while one of its streaming
   # interfaces has a nonzero alternate setting, its file is named for the
@@ -15,8 +16,7 @@
   # what it wraps, and only a unit in a process's cgroup is ignored. What
   # takes real holders is vm-loopback-says-who-holds-it's.
   usb-camera-holders-follow-the-stream = pkgs.callPackage ./holders/package.nix { };
-}
-// onLinux {
+
   # clippy finds nothing in the cameras' holders watcher, its tests included.
   v4l2loopback-holders-passes-clippy = passesClippy "v4l2loopback-holders-passes-clippy" (
     pkgs.callPackage ./holders/package.nix { }

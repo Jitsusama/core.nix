@@ -6,6 +6,7 @@ args@{
   holds,
   lib,
   macWorkstation,
+  onLinux,
   passesClippy,
   pkgs,
   self,
@@ -187,31 +188,6 @@ import ./host-checks.nix args
             pending = marks.pending.glyph;
             thinking = marks.thinking.glyph;
           }
-      );
-
-  # A run Joel typed rings with what chime.nix names, in the file the
-  # harness's done-chime-widget reads, on Linux alone: the store's pw-play
-  # and a ding, and no voice, since Joel kept only the bell on 9 November.
-  # It names the shell's Do Not Disturb file, under the runtime folder,
-  # which holds the ring while it's on. A Mac rings with its own sound, so
-  # it gets no file.
-  pi-rings-when-a-run-is-done =
-    let
-      home = account workstation;
-      mac = account macWorkstation;
-      file = "pi/agentic-harness.pi/done-chime-widget/sound.json";
-      sound = builtins.fromJSON (builtins.unsafeDiscardStringContext home.xdg.configFile.${file}.text);
-      store = path: builtins.unsafeDiscardStringContext path;
-    in
-    holds "pi-rings-when-a-run-is-done"
-      "pi's ring names no ding or quiet file, another player, a voice, or reaches a Mac."
-      (
-        lib.hasPrefix builtins.storeDir sound.ding
-        && sound.player == store (lib.getExe' pkgs.pipewire "pw-play")
-        && (sound.quiet or null) == "quiet"
-        && !(sound ? voice)
-        && !(sound ? want)
-        && !(mac.xdg.configFile ? ${file})
       );
 
   # A session wanting Joel rings pi's low bell, struck twice, in the shell
@@ -515,50 +491,6 @@ import ./host-checks.nix args
         touch $out
       '';
 
-  # A machine on the Claude plan has one pi, on it: the provider is an
-  # extension pi finds by itself, pi starts on it and on Sonnet, Claude Code
-  # is the one it drives, and there is no pi-claude beside it. The Ask row
-  # follows, on the machine's own login. A work machine has none of this.
-  # The plan's model is said once, so naming another moves both pis to it.
-  pi-runs-on-the-machines-plan =
-    let
-      onClaude = account (
-        workstation.extendModules {
-          modules = [ { home-manager.users.someone.jitsusama.pi.plan = "claude"; } ];
-        }
-      );
-      onPi = account workstation;
-      onAnother = account (
-        workstation.extendModules {
-          modules = [
-            {
-              home-manager.users.someone.jitsusama.pi = {
-                plan = "claude";
-                claude.model = "a-model";
-              };
-            }
-          ];
-        }
-      );
-      names = home: map lib.getName home.home.packages;
-      provider = onClaude.home.file.".pi/agent/extensions/claude-code".source;
-    in
-    holds "pi-runs-on-the-machines-plan"
-      "A machine's pi isn't on the plan it names, or a work machine's pi changed."
-      (
-        builtins.pathExists "${provider}/index.ts"
-        && onClaude.jitsusama.pi.settings.defaultProvider == "claude-code"
-        && onClaude.jitsusama.pi.settings.defaultModel == "claude-sonnet-5"
-        && onAnother.jitsusama.pi.settings.defaultModel == "a-model"
-        && onClaude.home.sessionVariables ? PI_CLAUDE_CODE_COMMAND
-        && !(lib.elem "pi-claude" (names onClaude))
-        && onClaude.jitsusama.pi.ask.plan == "claude"
-        && !(onPi.home.file ? ".pi/agent/extensions/claude-code")
-        && onPi.jitsusama.pi.settings.defaultProvider != "claude-code"
-        && lib.elem "pi-claude" (names onPi)
-        && onPi.jitsusama.pi.ask.plan == "pi"
-      );
-
   # Off the Claude plan pi starts on Opus 5.5 at high thinking, on Linux and
   # on a Mac: the settings every switch writes into pi's file say so.
   pi-starts-on-opus =
@@ -716,4 +648,77 @@ import ./host-checks.nix args
   pi-spawner-passes-clippy = passesClippy "pi-spawner-passes-clippy" (
     pkgs.callPackage ./spawner/package.nix { }
   );
+}
+# Checks a Mac can't evaluate: the first reads pipewire, which a Mac has
+# none of, and the second reads a file of a source built for Linux while it
+# evaluates.
+// onLinux {
+  # A run Joel typed rings with what chime.nix names, in the file the
+  # harness's done-chime-widget reads, on Linux alone: the store's pw-play
+  # and a ding, and no voice, since Joel kept only the bell on 9 November.
+  # It names the shell's Do Not Disturb file, under the runtime folder,
+  # which holds the ring while it's on. A Mac rings with its own sound, so
+  # it gets no file.
+  pi-rings-when-a-run-is-done =
+    let
+      home = account workstation;
+      mac = account macWorkstation;
+      file = "pi/agentic-harness.pi/done-chime-widget/sound.json";
+      sound = builtins.fromJSON (builtins.unsafeDiscardStringContext home.xdg.configFile.${file}.text);
+      store = path: builtins.unsafeDiscardStringContext path;
+    in
+    holds "pi-rings-when-a-run-is-done"
+      "pi's ring names no ding or quiet file, another player, a voice, or reaches a Mac."
+      (
+        lib.hasPrefix builtins.storeDir sound.ding
+        && sound.player == store (lib.getExe' pkgs.pipewire "pw-play")
+        && (sound.quiet or null) == "quiet"
+        && !(sound ? voice)
+        && !(sound ? want)
+        && !(mac.xdg.configFile ? ${file})
+      );
+
+  # A machine on the Claude plan has one pi, on it: the provider is an
+  # extension pi finds by itself, pi starts on it and on Sonnet, Claude Code
+  # is the one it drives, and there is no pi-claude beside it. The Ask row
+  # follows, on the machine's own login. A work machine has none of this.
+  # The plan's model is said once, so naming another moves both pis to it.
+  pi-runs-on-the-machines-plan =
+    let
+      onClaude = account (
+        workstation.extendModules {
+          modules = [ { home-manager.users.someone.jitsusama.pi.plan = "claude"; } ];
+        }
+      );
+      onPi = account workstation;
+      onAnother = account (
+        workstation.extendModules {
+          modules = [
+            {
+              home-manager.users.someone.jitsusama.pi = {
+                plan = "claude";
+                claude.model = "a-model";
+              };
+            }
+          ];
+        }
+      );
+      names = home: map lib.getName home.home.packages;
+      provider = onClaude.home.file.".pi/agent/extensions/claude-code".source;
+    in
+    holds "pi-runs-on-the-machines-plan"
+      "A machine's pi isn't on the plan it names, or a work machine's pi changed."
+      (
+        builtins.pathExists "${provider}/index.ts"
+        && onClaude.jitsusama.pi.settings.defaultProvider == "claude-code"
+        && onClaude.jitsusama.pi.settings.defaultModel == "claude-sonnet-5"
+        && onAnother.jitsusama.pi.settings.defaultModel == "a-model"
+        && onClaude.home.sessionVariables ? PI_CLAUDE_CODE_COMMAND
+        && !(lib.elem "pi-claude" (names onClaude))
+        && onClaude.jitsusama.pi.ask.plan == "claude"
+        && !(onPi.home.file ? ".pi/agent/extensions/claude-code")
+        && onPi.jitsusama.pi.settings.defaultProvider != "claude-code"
+        && lib.elem "pi-claude" (names onPi)
+        && onPi.jitsusama.pi.ask.plan == "pi"
+      );
 }

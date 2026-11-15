@@ -132,7 +132,9 @@ onLinux {
     holds "onepassword-answers-op"
       "1Password's command-line tool isn't setgid in the onepassword-cli group, so the app won't answer it."
       (op.group or null == "onepassword-cli" && op.setgid or false && !(op.setuid or false));
-
+}
+# The manager is built for Linux alone, so a Mac can't evaluate its checks.
+// onLinux {
   # 1Password's manager for Passwords tests itself as it builds, against
   # op's own JSON: an entry carries no secret op gives, a password's
   # history included, a secret is read only for the detail asked,
