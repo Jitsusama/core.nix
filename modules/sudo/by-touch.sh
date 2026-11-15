@@ -22,7 +22,7 @@ sudo-by-touch  sudo through run0, so a key's touch answers
 
 EXAMPLES
   sudo nixos-rebuild switch  run0 asks: a touch at the
-                             unlocked desk, else the password
+                             unlocked desk, else a password
   sudo -i                    a root shell, through run0
   sudo -u someone true       sudo's own, with the password
   command sudo --help        sudo's own help
