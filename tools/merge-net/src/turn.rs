@@ -263,16 +263,17 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     } else {
         "still runs"
     };
+    let theirs = files_of(held.gate).unwrap_or_default();
     let said = format!(
         "merge-net: the gate in {} at {}, which counts as started {} minutes before this \
-         one's, as its tree's first gate did, {state} and changes {} too; merging first \
+         one's, as its tree's first gate did, {state} and {}; merging first \
          would leave its pass stale, so merge again once it ends, which needs no new run \
          here unless it merges first and moves these; this one waits at most {} more \
          minutes, then goes first",
         held.gate.folder.display(),
         crate::state::short(&held.gate.commit),
         (asking.started - held.started) / 60,
-        held.shared.join(", "),
+        crate::sharing::said(&theirs, &held.shared),
         (PATIENCE.saturating_sub(now.saturating_sub(kept))).div_ceil(60)
     );
     Some((said, held.shared))

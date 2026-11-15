@@ -67,6 +67,7 @@ mod ready;
 mod rerun;
 mod rules;
 mod running;
+mod sharing;
 mod stall;
 mod state;
 mod subtests;
