@@ -4361,9 +4361,10 @@
       },
       "receiver": {
         "volume": 27,
+        "loudest": 100,
         "muted": false,
-        "state": "no media present",
-        "medium": "none",
+        "state": "nothing to play",
+        "medium": null,
         "track": null
       },
       "detail": {
@@ -4443,6 +4444,188 @@
           },
           "GetVolume": {
             "CurrentVolume": "27"
+          },
+          "RenderingControl": {
+            "actionList": {
+              "action": [
+                {
+                  "argumentList": {
+                    "argument": [
+                      {
+                        "direction": "in",
+                        "name": "InstanceID",
+                        "relatedStateVariable": "A_ARG_TYPE_InstanceID"
+                      },
+                      {
+                        "direction": "out",
+                        "name": "CurrentPresetNameList",
+                        "relatedStateVariable": "PresetNameList"
+                      }
+                    ]
+                  },
+                  "name": "ListPresets"
+                },
+                {
+                  "argumentList": {
+                    "argument": [
+                      {
+                        "direction": "in",
+                        "name": "InstanceID",
+                        "relatedStateVariable": "A_ARG_TYPE_InstanceID"
+                      },
+                      {
+                        "direction": "in",
+                        "name": "PresetName",
+                        "relatedStateVariable": "A_ARG_TYPE_PresetName"
+                      }
+                    ]
+                  },
+                  "name": "SelectPreset"
+                },
+                {
+                  "argumentList": {
+                    "argument": [
+                      {
+                        "direction": "in",
+                        "name": "InstanceID",
+                        "relatedStateVariable": "A_ARG_TYPE_InstanceID"
+                      },
+                      {
+                        "direction": "in",
+                        "name": "Channel",
+                        "relatedStateVariable": "A_ARG_TYPE_Channel"
+                      },
+                      {
+                        "direction": "out",
+                        "name": "CurrentMute",
+                        "relatedStateVariable": "Mute"
+                      }
+                    ]
+                  },
+                  "name": "GetMute"
+                },
+                {
+                  "argumentList": {
+                    "argument": [
+                      {
+                        "direction": "in",
+                        "name": "InstanceID",
+                        "relatedStateVariable": "A_ARG_TYPE_InstanceID"
+                      },
+                      {
+                        "direction": "in",
+                        "name": "Channel",
+                        "relatedStateVariable": "A_ARG_TYPE_Channel"
+                      },
+                      {
+                        "direction": "in",
+                        "name": "DesiredMute",
+                        "relatedStateVariable": "Mute"
+                      }
+                    ]
+                  },
+                  "name": "SetMute"
+                },
+                {
+                  "argumentList": {
+                    "argument": [
+                      {
+                        "direction": "in",
+                        "name": "InstanceID",
+                        "relatedStateVariable": "A_ARG_TYPE_InstanceID"
+                      },
+                      {
+                        "direction": "in",
+                        "name": "Channel",
+                        "relatedStateVariable": "A_ARG_TYPE_Channel"
+                      },
+                      {
+                        "direction": "out",
+                        "name": "CurrentVolume",
+                        "relatedStateVariable": "Volume"
+                      }
+                    ]
+                  },
+                  "name": "GetVolume"
+                },
+                {
+                  "argumentList": {
+                    "argument": [
+                      {
+                        "direction": "in",
+                        "name": "InstanceID",
+                        "relatedStateVariable": "A_ARG_TYPE_InstanceID"
+                      },
+                      {
+                        "direction": "in",
+                        "name": "Channel",
+                        "relatedStateVariable": "A_ARG_TYPE_Channel"
+                      },
+                      {
+                        "direction": "in",
+                        "name": "DesiredVolume",
+                        "relatedStateVariable": "Volume"
+                      }
+                    ]
+                  },
+                  "name": "SetVolume"
+                }
+              ]
+            },
+            "serviceStateTable": {
+              "stateVariable": [
+                {
+                  "dataType": "string",
+                  "name": "PresetNameList",
+                  "sendEvents": "no"
+                },
+                {
+                  "dataType": "string",
+                  "name": "LastChange",
+                  "sendEvents": "yes"
+                },
+                {
+                  "dataType": "boolean",
+                  "name": "Mute",
+                  "sendEvents": "no"
+                },
+                {
+                  "allowedValueRange": {
+                    "maximum": "100",
+                    "minimum": "0",
+                    "step": "1"
+                  },
+                  "dataType": "ui2",
+                  "name": "Volume",
+                  "sendEvents": "no"
+                },
+                {
+                  "allowedValueList": {
+                    "allowedValue": "Master"
+                  },
+                  "dataType": "string",
+                  "name": "A_ARG_TYPE_Channel",
+                  "sendEvents": "no"
+                },
+                {
+                  "dataType": "ui4",
+                  "name": "A_ARG_TYPE_InstanceID",
+                  "sendEvents": "no"
+                },
+                {
+                  "allowedValueList": {
+                    "allowedValue": "FactoryDefaults"
+                  },
+                  "dataType": "string",
+                  "name": "A_ARG_TYPE_PresetName",
+                  "sendEvents": "no"
+                }
+              ]
+            },
+            "specVersion": {
+              "major": "1",
+              "minor": "0"
+            }
           },
           "UDN": "uuid:5f9ec1b3-ed59-1900-4530-020000000060",
           "X_DLNACAP": "playcontainer-0-1",

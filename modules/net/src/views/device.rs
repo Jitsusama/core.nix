@@ -42,7 +42,10 @@ pub fn device(network: &Network, device: &Device, now: u64, pen: &Pen, room: Roo
         blocks.push(log(&modem.log, pen, room));
     }
     if let Some(receiver) = &device.receiver {
-        let volume = receiver.volume.map(|volume| volume.to_string());
+        let volume = receiver.volume.map(|volume| match receiver.loudest {
+            Some(loudest) => format!("{volume} of {loudest}"),
+            None => volume.to_string(),
+        });
         let facts = [
             ("volume", volume.as_deref()),
             (
@@ -386,8 +389,9 @@ fn shown(device: &Device) -> Vec<String> {
 
 /// A source's own fields that the page's tables and facts already say in
 /// net's words, so its section leaves them out by name; the rest go by
-/// value, through `shown`. A receiver's reads are its receiver block, and
-/// the devices inside its description are left to `--json`.
+/// value, through `shown`. A receiver's reads are its receiver block, but
+/// for its transport's own word, and its rendering service's description
+/// and the devices inside its own are left to `--json`.
 const SAID: [&str; 16] = [
     "id",
     "location",
@@ -401,7 +405,7 @@ const SAID: [&str; 16] = [
     "radios",
     "GetVolume",
     "GetMute",
-    "GetTransportInfo",
+    "RenderingControl",
     "GetMediaInfo",
     "GetPositionInfo",
     "deviceList",

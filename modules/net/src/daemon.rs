@@ -4,7 +4,8 @@
 //! `$XDG_RUNTIME_DIR/net/network.json`, so a view never reads half of one.
 //! It listens on nothing and sends nothing but reads, one at a time and
 //! each given two seconds: the modem's pages, and a receiver's description
-//! and the SOAP actions that only ask (src/sources/sony.rs). The switch
+//! and the SOAP actions that only ask (src/sources/sony.rs), each only at
+//! the receiver's own address and never following a redirect. The switch
 //! it reads from its reader's report, never from the switch itself, since
 //! signing in to the switch takes a password this account never holds.
 
@@ -41,6 +42,14 @@ pub fn run() -> Result<(), String> {
         .timeout_global(Some(PAGE))
         .build()
         .into();
+    // A receiver's answers name where it's asked next; sony.rs keeps only
+    // those on the receiver itself, and this agent never follows a
+    // redirect, so no answer can send a request elsewhere.
+    let at_home: Agent = Agent::config_builder()
+        .timeout_global(Some(PAGE))
+        .max_redirects(0)
+        .build()
+        .into();
     loop {
         let heard = read_eero(&eero);
         let receivers = heard
@@ -48,7 +57,7 @@ pub fn run() -> Result<(), String> {
             .map(sony::listed)
             .unwrap_or_default()
             .into_iter()
-            .map(|(mac, address)| (mac, read_receiver(&agent, &address)))
+            .map(|(mac, address)| (mac, read_receiver(&at_home, &address)))
             .collect();
         let said = Said {
             eero: heard,

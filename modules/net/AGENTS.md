@@ -75,10 +75,14 @@ each source once a minute and writes the record whole, through
   audio as its kind, at the address eero gives. It asks its UPnP
   description at `:8080/description.xml`, then, posted to the services
   the description names, `GetVolume`, `GetMute`, `GetTransportInfo`,
-  `GetMediaInfo` and `GetPositionInfo`, then Sony's action list and
-  `getSystemInformation` from it: eight reads, one at a time, two seconds
-  each. `src/sources/sony.rs` puts its volume and what it's doing on
-  eero's device for it, now a receiver, and every answer stays as
+  `GetMediaInfo` and `GetPositionInfo`, then its rendering service's
+  description for its volume's scale, then Sony's action list and
+  `getSystemInformation` from it: nine reads, one at a time, two seconds
+  each. A URL an answer names is asked only when it's on the receiver's
+  own address, and no redirect is followed, so no answer can send a
+  request outside the home. `src/sources/sony.rs` puts its volume and
+  what it's doing, in plain words, on eero's device for it, now a
+  receiver, and every answer stays as
   `detail.sony`, read from XML by `src/xml.rs`. Registering as its
   remote, sending it a key or text, or setting its volume waits on
   Joel's yes, so none is asked.

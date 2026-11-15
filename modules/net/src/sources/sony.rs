@@ -6,9 +6,12 @@
 //! what it's playing are its receiver block, and every answer stays under
 //! `detail.sony`, by the name of what was asked.
 //!
-//! Only reads are asked: the description, the volume and mute, what its
-//! transport is doing, and Sony's system information. Registering as a
-//! remote, sending text or a key, or setting anything waits on Joel's yes.
+//! Only reads are asked: the description, the volume and mute and the
+//! scale the volume is on, what its transport is doing, and Sony's system
+//! information. Each is asked only at the receiver's own address, whatever
+//! its answers name, so no answer can send a request outside the home.
+//! Registering as a remote, sending text or a key, or setting anything
+//! waits on Joel's yes.
 
 use std::collections::BTreeMap;
 
@@ -24,7 +27,8 @@ pub const NAME: &str = "sony";
 pub const PORT: u16 = 8080;
 
 /// Each answer's text, by the name of what was asked: `description`, a
-/// SOAP action's name, `ActionList` and `getSystemInformation`.
+/// SOAP action's name, `RenderingControl` (that service's description),
+/// `ActionList` and `getSystemInformation`.
 pub type Answers = BTreeMap<String, String>;
 
 /// One read of a receiver: a plain GET, or a SOAP action posted to its
@@ -87,8 +91,9 @@ const READS: [(&str, &str); 5] = [
 ];
 
 /// What to ask a receiver once its description is read: each service's
-/// reads, then its list of Sony's own actions. A service the description
-/// doesn't offer isn't asked.
+/// reads, the rendering service's description for its volume's scale, then
+/// its list of Sony's own actions. A service the description doesn't offer
+/// isn't asked, nor one it places on another host.
 pub fn asks(description: &str, address: &str) -> Vec<Ask> {
     let Some((_, root)) = xml::read(description) else {
         return Vec::new();
@@ -118,7 +123,7 @@ pub fn asks(description: &str, address: &str) -> Vec<Ask> {
             };
             Some(Ask {
                 name: (*action).to_owned(),
-                url: at(address, control),
+                url: at(address, control)?,
                 soap: Some(Soap {
                     action: format!("\"{kind}#{action}\""),
                     body: format!(
@@ -132,31 +137,51 @@ pub fn asks(description: &str, address: &str) -> Vec<Ask> {
             })
         })
         .collect();
-    if let Some(list) = device
+    let rendering = "urn:schemas-upnp-org:service:RenderingControl:1";
+    if let Some(url) = services
+        .iter()
+        .find(|said| said.get("serviceType").and_then(Value::as_str) == Some(rendering))
+        .and_then(|service| service.get("SCPDURL"))
+        .and_then(Value::as_str)
+        .and_then(|url| at(address, url))
+    {
+        asks.push(Ask {
+            name: "RenderingControl".into(),
+            url,
+            soap: None,
+        });
+    }
+    if let Some(url) = device
         .and_then(|device| xml::find(device, "X_CERS_ActionList_URL"))
         .and_then(Value::as_str)
+        .and_then(|url| at(address, url))
     {
         asks.push(Ask {
             name: "ActionList".into(),
-            url: list.to_owned(),
+            url,
             soap: None,
         });
     }
     asks
 }
 
-/// A URL the description gives, which may be a path on the receiver.
-fn at(address: &str, url: &str) -> String {
-    if url.starts_with("http://") {
-        url.to_owned()
-    } else {
-        format!("http://{address}:{PORT}{url}")
+/// A URL a receiver's answer gives, kept only when it's on the receiver
+/// itself: a path is on its description's port, and a whole URL only
+/// when its host is the receiver's own address, at any port. Anything
+/// else, another host or a name hidden before an `@`, is never asked.
+fn at(address: &str, url: &str) -> Option<String> {
+    if url.starts_with('/') {
+        return Some(format!("http://{address}:{PORT}{url}"));
     }
+    let rest = url.strip_prefix("http://")?;
+    let authority = rest.split('/').next().unwrap_or_default();
+    let (host, port) = authority.split_once(':').unwrap_or((authority, ""));
+    (host == address && port.bytes().all(|byte| byte.is_ascii_digit())).then(|| url.to_owned())
 }
 
 /// Where a receiver's system information is asked, from its list of
 /// Sony's own actions.
-pub fn system(action_list: &str, _address: &str) -> Option<String> {
+pub fn system(action_list: &str, address: &str) -> Option<String> {
     let (_, list) = xml::read(action_list)?;
     let actions = match list.get("action")? {
         Value::Array(actions) => actions.iter().collect(),
@@ -167,7 +192,7 @@ pub fn system(action_list: &str, _address: &str) -> Option<String> {
         .find(|action| action.get("name").and_then(Value::as_str) == Some("getSystemInformation"))?
         .get("url")?
         .as_str()
-        .map(str::to_owned)
+        .and_then(|url| at(address, url))
 }
 
 /// Each receiver as it answered, and the source, or none when eero lists
@@ -219,7 +244,7 @@ fn heard(mac: String, answers: &Answers) -> Found {
                 }
                 None
             }
-            "ActionList" | "getSystemInformation" => Some(value),
+            "RenderingControl" | "ActionList" | "getSystemInformation" => Some(value),
             action => xml::find(&value, &format!("{action}Response")).cloned(),
         };
         if let Some(kept) = kept {
@@ -240,10 +265,12 @@ fn heard(mac: String, answers: &Answers) -> Found {
     let words = |text: &str| text.to_lowercase().replace('_', " ");
     let receiver = Receiver {
         volume: said("GetVolume", "CurrentVolume").and_then(|volume| volume.parse().ok()),
-        loudest: None,
+        loudest: detail.get("RenderingControl").and_then(loudest),
         muted: said("GetMute", "CurrentMute").map(|muted| muted != "0"),
         state: said("GetTransportInfo", "CurrentTransportState").map(doing),
-        medium: said("GetMediaInfo", "PlayMedium").map(words),
+        medium: said("GetMediaInfo", "PlayMedium")
+            .filter(|medium| *medium != "NONE")
+            .map(words),
         track: said("GetPositionInfo", "TrackURI")
             .or_else(|| said("GetMediaInfo", "CurrentURI"))
             .map(str::to_owned),
@@ -256,9 +283,36 @@ fn heard(mac: String, answers: &Answers) -> Found {
     }
 }
 
-/// What a transport is doing, in plain words, from `UPnP`'s state.
+/// What a transport is doing, in plain words, from `UPnP`'s state; a
+/// state `UPnP` doesn't name is its own word, lowered.
 fn doing(state: &str) -> String {
-    state.to_lowercase().replace('_', " ")
+    match state {
+        "PLAYING" => "playing".into(),
+        "PAUSED_PLAYBACK" | "PAUSED_RECORDING" => "paused".into(),
+        "STOPPED" => "stopped".into(),
+        "NO_MEDIA_PRESENT" => "nothing to play".into(),
+        "TRANSITIONING" => "starting".into(),
+        "RECORDING" => "recording".into(),
+        other => other.to_lowercase().replace('_', " "),
+    }
+}
+
+/// The top of a receiver's volume scale, from its rendering service's
+/// description: the most its `Volume` state variable allows.
+fn loudest(rendering: &Value) -> Option<u32> {
+    let variables = rendering.get("serviceStateTable")?.get("stateVariable")?;
+    let variables = match variables {
+        Value::Array(variables) => variables.iter().collect(),
+        variable => vec![variable],
+    };
+    variables
+        .into_iter()
+        .find(|variable| variable.get("name").and_then(Value::as_str) == Some("Volume"))?
+        .get("allowedValueRange")?
+        .get("maximum")?
+        .as_str()?
+        .parse()
+        .ok()
 }
 
 #[cfg(test)]
@@ -359,7 +413,10 @@ pub mod tests {
             asks[5].url, "http://10.0.0.60:8080/RenderingControl/desc.xml",
             "the volume's scale isn't asked of its service's description"
         );
-        assert!(asks[5].soap.is_none(), "a service's description was posted to");
+        assert!(
+            asks[5].soap.is_none(),
+            "a service's description was posted to"
+        );
         assert_eq!(
             asks[6].url, "http://10.0.0.60:50001/cers/ActionList.xml",
             "the action list isn't where the description says"
