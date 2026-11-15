@@ -389,6 +389,14 @@ ShellRoot {
             expect("For You's History lists each notice's row as the daemon served it",
                 notices.length === 27 && unlike.length === 0,
                 JSON.stringify([notices.length, unlike.map(row => [row.key, row.hue])]));
+            // Desktop lists every notice's row until its own place tells,
+            // a frame after the launcher opens, so Now says it changed
+            // once it does, or a step into Desktop goes on saying
+            // "unread" until something else changes (draws-still's dd).
+            const toldBefore = root.nowChanged;
+            pastNotices.changed();
+            expect("Now says it changed as the notices' rows do",
+                root.nowChanged === toldBefore + 1, root.nowChanged - toldBefore);
             const unanswered = pastNotices.search("notice").rows;
             expect("a search lists no notice until the daemon answers it",
                 unanswered.length === 0, `${unanswered.length} listed`);
