@@ -7,7 +7,7 @@
 //! hold the merge: the record keeps the comparison as skipped, one line
 //! `{dir, skipped, because, at}` whose `skipped` is the run's arguments for
 //! the Mac's system. At 13:07 on 15 November one gate kept a skipped line
-//! when equilibrius ran past 20 minutes, and nothing said so to its owner.
+//! when the Mac ran past 20 minutes, and nothing said so to its owner.
 //!
 //! A comparison run later at the same commit, by hand or by a gate again,
 //! keeps a `run` line with those same arguments beside it, which clears it.
@@ -95,12 +95,12 @@ mod tests {
     fn a_skipped_comparison_is_named_with_why_and_how_to_run_it() {
         let record = [
             run(LINUX),
-            skip(MAC, "equilibrius nearby doesn't answer", 2),
+            skip(MAC, "orchard nearby doesn't answer", 2),
         ]
         .concat();
         assert_eq!(
             said(&record, "abcd1234"),
-            "a Mac's checks weren't compared at abcd1234, since equilibrius nearby doesn't \
+            "a Mac's checks weren't compared at abcd1234, since orchard nearby doesn't \
              answer: once a Mac answers, run this in a tree at abcd1234\n  \
              nix-offload there --changed --build --no-vm --base bbbb --system aarch64-darwin\n",
             "a skipped comparison wasn't named with its reason and the command that runs it"
