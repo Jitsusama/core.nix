@@ -96,7 +96,6 @@
       "test_a_question_is_asked_on_return_and_answered_where_it_was_typed",
       "test_a_search_lists_each_thing_once_and_normal_moves_through_it",
       "test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place",
-      "test_a_terminal_is_shown_a_place_as_the_running_shell_answers",
       "test_spotify_signed_out_offers_sign_in_and_says_so",
       "test_the_launcher_finds_emoji_in_their_own_place_and_only_there",
       "test_the_launcher_lists_each_thing_once_for_everything_joel_types",

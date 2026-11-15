@@ -1765,7 +1765,8 @@ def reads_cold_for_a_terminal(desktop: Desktop) -> None:
     Each is asked once, so it's said within the terminal's own wait or not at all, and from
     nothing read: the shell starts again, with the backlight's daemon stopped, whose word
     of each step would have the screen's light read anyway, and the cards forget what
-    earlier looks heard until wifid says none nearby.
+    earlier looks heard until wifid says none nearby. Wi-Fi is asked only once wifid has
+    looked again, since a look takes as long as the terminal waits.
     """
     desktop.launcher_left_closed()
     machine = desktop.machine
@@ -1788,14 +1789,27 @@ def each_read_cold(desktop: Desktop) -> None:
     # elsewhere in what it says, and only once wifid has answered, so a wifid that won't isn't
     # taken for one hearing none.
     wifi = "varlinkctl --json=short call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
-    machine.wait_until_succeeds(
+    said = machine.wait_until_succeeds(
         "for card in $(busctl tree --list fi.w1.wpa_supplicant1"
         " | grep -E '/Interfaces/[0-9]+$'); do busctl call fi.w1.wpa_supplicant1"
         ' "$card" fi.w1.wpa_supplicant1.Interface FlushBSS u 0; done'
         f" && said=$({wifi}.Describe '{{}}')"
         ' && printf %s "$said" | grep -q \'"nearby":\''
-        ' && ! printf %s "$said" | grep -qE \'"nearby":\\[[^]]\'',
+        ' && ! printf %s "$said" | grep -qE \'"nearby":\\[[^]]\''
+        ' && printf %s "$said"',
         timeout=dt.timedelta(seconds=30),
+    )
+    # Asked once wifid has looked again, by its own count of looks done: the look the
+    # shell's ask starts took 6.5 to 9 s, and the terminal's show says what it has 10 s
+    # after its first ask (in-a-terminal's SETTLING), so a slow look had Office come after
+    # it (0TUD09's timings for #3972, 2026-11-14). A look hearing nothing still fails below.
+    flushed = re.search(r'"looks":(\d+)', said)
+    assert flushed, f"wifid said no count of its looks: {said}"
+    machine.succeed(f"{wifi}.Scan '{{}}'")
+    machine.wait_until_succeeds(
+        f"{wifi}.Describe '{{}}' | grep -oE '\"looks\":[0-9]+' | cut -d: -f2"
+        f" | xargs test {flushed.group(1)} -lt",
+        timeout=dt.timedelta(seconds=60),
     )
 
     def rows(*steps: str) -> dict[str, Json]:
