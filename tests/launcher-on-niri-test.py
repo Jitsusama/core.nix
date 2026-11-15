@@ -2428,6 +2428,23 @@ def test_a_name_too_long_for_its_row_reads_on_while_selected(shell: Shell) -> No
 READINGS = 2
 
 
+def opening_said(shell: Shell, since: int) -> str:
+    """Give what the shell has said since the mark, once it's said an opening's time.
+
+    A key's time is said once the same frame is presented, in no order beside it, so what's said
+    is read again the time a late key is given to land.
+    """
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    said = ""
+    while time.monotonic() < deadline:
+        said = shell.log.read_bytes()[since:].decode(errors="replace")
+        if "launcher: opening took " in said:
+            time.sleep(LATE_LANDS_S)
+            return shell.log.read_bytes()[since:].decode(errors="replace")
+        time.sleep(launcher_on_niri.POLL)
+    raise AssertionError(f"no opening was timed: {said[-2000:]}")
+
+
 def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts(
     shell: Shell,
 ) -> None:
@@ -2455,6 +2472,7 @@ def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts
     # Home kept first, as it is by the time Joel presses it, so opening finds no home anew.
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     searches = launcher_on_niri.searched(shell)
+    since = shell.mark()
     shell.take_notices()
     shell.launcher_ready()
     on_screen = ["Kestrel", "Lapwing", "Merlin"]
@@ -2469,6 +2487,12 @@ def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts
     # searching home and For You first held all of Joel's Super+N openings past 50 ms.
     searched = launcher_on_niri.searched(shell) - searches
     assert searched == 1, f"Super+N searched {searched} times to open on the notices"
+    # The steps it takes are the opening's, timed in its line, never again as steps of their own:
+    # each of Joel's "\u2192 On Screen" lines timed its opening's frame a second time, the
+    # slowest place in his journal (2026-11-14, 16:00 to 22:30).
+    said = opening_said(shell, since)
+    stepped = [line for line in said.splitlines() if '"\u2192 ' in line]
+    assert stepped == [], f"Super+N's opening was timed again as a step: {stepped}"
     # Passed through, For You is listed as - climbs back onto it.
     shell.send_chars("-")
     shell.launcher_until(lambda shown: shown["held"][-1:] == ["For You"] and bool(shown["rows"]))
