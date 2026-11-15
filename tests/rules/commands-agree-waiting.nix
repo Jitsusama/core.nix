@@ -16,7 +16,6 @@
     "exits"
     "helps"
   ];
-  collector = [ "tables" ];
   eero = [ "inks" ];
   guide = [
     "exits"
