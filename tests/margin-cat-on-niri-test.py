@@ -839,13 +839,32 @@ def held(shell: Shell, since: int, way: int) -> list[Json]:
     return took
 
 
-def test_the_cat_holds_its_ground_through_a_slide_between_workspaces(shell: Shell) -> None:
-    """Between workspaces, it holds where it sat as niri slides, then sits on the new one.
+def descended(shell: Shell, since: int) -> list[Json]:
+    """Give a move down's steps once it sits, walked as if the workspaces were one screen.
 
-    Its ways are MarginCatPaths.js's, frame by frame in Qt's engine; here, only that niri's
-    workspaces and their windows reach it, up one and down one, and that it's seen through
-    the slide, never ridden off the screen to come back in somewhere else (VKCF3Z 4138e938,
-    4d18ade4). Each move's steps are kept as the check's result, for a strip of it.
+    It goes off the top with the workspace it leaves, never off the bottom, and its way drops
+    across the gap to grab a top's corner below (MarginCatStacked.js; Joel, 2026-11-14 17:30,
+    "drop down and grab with its claws on the top of the window below").
+    """
+    took = moved(shell, since)
+    assert took, "the cat never said a step of its move down"
+    beats = took[-1]["move"]["beats"]
+    assert "drops" in beats, f"its way down was {beats}"
+    assert beats[beats.index("drops") + 1] == "grabs", f"its way down was {beats}"
+    assert any(step["y"] + step["size"] <= 0 for step in took), f"it never went up: {took[:3]}"
+    under = [step for step in took if step["y"] + step["size"] > step["reach"]]
+    assert not under, f"it went off the screen's bottom: {under[:3]}"
+    assert {step["move"]["way"] for step in took} == {1}, f"it moved {took[:3]}"
+    return took
+
+
+def test_the_cat_walks_between_workspaces_as_if_on_one_screen(shell: Shell) -> None:
+    """Up a workspace it holds where it sat as niri slides; down one it walks off and drops in.
+
+    Its ways are MarginCatStacked.js's and MarginCatPaths.js's, frame by frame in Qt's engine;
+    here, only that niri's workspaces and their windows reach it, up one and down one: up, it's
+    seen through the slide; down, it rides the old workspace off the top and comes in from
+    above (VKCF3Z fcd95edd). Each move's steps are kept as the check's result, for a strip.
     """
     since = shell.mark()
     upper = shell.opened("a workspace to go up to")
@@ -863,7 +882,7 @@ def test_the_cat_holds_its_ground_through_a_slide_between_workspaces(shell: Shel
     shell.as_account("niri msg action focus-workspace-down")
     heard(shell, moving, since)
     sits_over(shell, lower, since)
-    down = held(shell, since, 1)
+    down = descended(shell, since)
     kept = Path(os.environ["out"])  # noqa: SIM112, the check's own result, as Nix names it
     kept.mkdir(exist_ok=True)
     (kept / "moves.json").write_text(json.dumps({"up": up, "down": down}))

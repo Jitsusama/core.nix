@@ -132,6 +132,14 @@ QtObject {
                     .map(one => [one.pose, one.beat, Math.round(one.from)]), []);
         }
 
+        // Its seat said again while it's out of sight, it finds its way
+        // from where it set off, never walking on from above the screen.
+        const again = Stacked.moves({ x: 100, y: 7 }, { x: 900, y: 7 }, at);
+        const drops = again.beats.find(beat => beat.name === "drops").begins;
+        expect("its seat moved as it's out of sight, it finds its way again, till it drops in",
+            [Paths.replans(again, drops - 10, true), Paths.replans(again, drops + 10, true)],
+            [true, false]);
+
         // Told where it's going only after the slide's begun (the screen's
         // plan with no seat yet), it goes off the top with its window.
         const blind = Stacked.moves({ x: 100, y: 7 }, null, at);
@@ -141,6 +149,12 @@ QtObject {
                 Math.round(half.y * 100), Math.round(blind.ends)],
             [["rides"], 100, Math.round((7 - 880 * MarginCat.slid(slides / 2, at.spring)) * 100),
                 slides]);
+        // Ridden off over an empty workspace, it falls to the floor from
+        // just above the screen, never from all the way up the old one.
+        expect("off the top with nowhere to sit, it drops in from just above the screen",
+            [Stacked.dropsFrom(Paths.frame(blind, blind.ends), at),
+                Stacked.dropsFrom({ x: 100, y: 7 }, at)],
+            [{ x: 100, y: -24 }, { x: 100, y: 7 }]);
         const late = Stacked.moves({ x: 100, y: 7 }, { x: 900, y: 7 }, world({ ahead: 50 }));
         expect("told of the slide 50 ms late, it's as far up as niri's slide has gone",
             Math.round(Paths.frame(late, 0).y * 100),
