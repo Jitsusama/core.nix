@@ -23,7 +23,6 @@
     "helps"
   ];
   collector = [ "tables" ];
-  disk-guard = [ "tables" ];
   eero = [ "inks" ];
   guide = [
     "exits"
