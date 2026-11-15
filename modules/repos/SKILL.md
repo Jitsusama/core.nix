@@ -67,9 +67,10 @@ trunk, written_at, checkouts}`, the one written to last first; each checkout
 `{path, bare, head {branch, commit}, written_at, trees}`; each tree `{path,
 kind ("worktree" or "snapshot"), present, head, written_at}`. A bare
 checkout's `head` is null, and a `branch` is null where the head is a bare
-commit. Paths are whole, times RFC 3339, and an unread one is null. `repos NAME --json` holds
-its one under `repository`, and `repos NAME trees --json` its trees, newest
-first, each naming its `checkout`, under `trees`.
+commit. Paths are whole, times RFC 3339, and an unread one is null.
+`repos NAME --json` holds its one under `repository`, and
+`repos NAME trees --json` its trees, newest first, each naming its
+`checkout`, under `trees`.
 
 ```bash
 # Where a repository is checked out.
@@ -84,9 +85,10 @@ repos --json | jq -r '.repositories[] | .key as $k
 
 ## What It Doesn't Say
 
-- Only checkouts under its roots are found, four folders deep (`REPOS_ROOTS`,
-  from `jitsusama.repos.roots`); a tree is found from its checkout wherever
-  it lies. A repository checked out nowhere under them isn't listed.
+- Only checkouts under its roots are found, up to four folders deep
+  (`REPOS_ROOTS`, from `jitsusama.repos.roots`); a tree is found from its
+  checkout wherever it lies. A repository checked out nowhere under them
+  isn't listed.
 - It says nothing yet of changes or checks, which come from each source's
   host; read a change with the harness's review tools until it does.
 - One machine's disk only: `machine` says which.
