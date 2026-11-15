@@ -838,6 +838,22 @@ QtObject {
         check(failures, "and one long after it is no key's",
             Pacing.keyed(Pacing.sinceKey(1200, 1000, 1070), false, within, true), false);
 
+        // A slow act's line says where its time went, each span once, so
+        // the 534 ms the old line left out (agents, 595 ms, Joel's journal,
+        // 14 Nov 09:39) is read as the key's work, the change's wait for
+        // its turn, or the collector.
+        const act = { key: "Return", name: "agents", by: "the shell", heard: 1000,
+            at: 1002, done: 1534, begun: 1534, collected: 40 };
+        check(failures, "a slow act says the key, its work, its turn and the collector",
+            Pacing.actSaid(act, 1595, 1530, 440),
+            "launcher: what Return changed in agents took 595 ms to its frame: its work "
+            + "took 530 ms; the shell told it 2 ms after the key, its turn came 532 ms "
+            + "later, its refresh began 0 ms after that and was drawn 61 ms after it; "
+            + "the collector ran 400 ms of the 595");
+        check(failures, "a key named by nothing is a key",
+            Pacing.actSaid(Object.assign({}, act, { key: "" }), 1595, 1530, 40)
+                .startsWith("launcher: what a key changed in agents took 595 ms"), true);
+
         costing(failures);
         framing(failures);
         presenting(failures);

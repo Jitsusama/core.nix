@@ -4996,7 +4996,8 @@ Scope {
         // screen (Pacing.keyed), timed from when its work was done
         // (Pacing.sinceKey). What's on screen is read only beside such a
         // key, since it looks through what's listed.
-        const ago = Pacing.sinceKey(KeyTimes.now(), keyHeardAt, keyDoneAt);
+        const now = KeyTimes.now();
+        const ago = Pacing.sinceKey(now, keyHeardAt, keyDoneAt);
         const near = open && !prompt.keyMoved && ago < keyedWithin;
         const byKey = near && Pacing.keyed(ago, prompt.keyMoved, keyedWithin, onScreen(source));
         // One just past it is said, so a key's change left to the pace is
@@ -5004,10 +5005,11 @@ Scope {
         if (open && !byKey && !prompt.keyMoved && ago < 1000)
             Report.say(`heard ${source.settings.name} ${Math.round(ago)} ms after a key's work`);
         if (byKey && !keyedActs.some(one => one.source === source && one.heard === keyHeardAt)) {
-            // Who told it, and how long after the key's work, so a slow
-            // one says whether a daemon was late or the shell was.
-            const act = { source: source, heard: keyHeardAt, done: Infinity,
-                told: Math.round(ago), by: Hearing.heardBy() };
+            // Which key, who told it and when, so a slow one says whether
+            // a daemon was late or the shell was (Pacing.actSaid).
+            const act = { source: source, name: source.settings.name, key: keyHeardName,
+                heard: keyHeardAt, at: now, done: Infinity, by: Hearing.heardBy(),
+                collected: keyCollectedAt };
             keyedActs = keyedActs.filter(one => one.heard === keyHeardAt).concat([act]);
             // When the key's own work is done, and the change could be shown.
             Qt.callLater(() => act.done = KeyTimes.now());
@@ -5078,6 +5080,10 @@ Scope {
     readonly property int keyedWithin: 50
     property real keyHeardAt: -Infinity
     property real keyDoneAt: -Infinity
+    // The last such key by name, and the collector's count as it was heard,
+    // so a slow act says which key it was and what collecting took of it.
+    property string keyHeardName: ""
+    property real keyCollectedAt: 0
     property var keyedActs: []
     property var actsDrawing: Pacing.unframed()
 
@@ -5092,6 +5098,8 @@ Scope {
                 return;
             const heard = KeyTimes.now();
             root.keyHeardAt = heard;
+            root.keyHeardName = prompt.keyTaken;
+            root.keyCollectedAt = Heap.collected();
             // Its work is done once its handler has returned.
             Qt.callLater(() => {
                 if (root.keyHeardAt === heard)
@@ -5133,10 +5141,8 @@ Scope {
             Report.say(`act shown in ${name} after ${took} ms, `
                 + `refreshed ${waited} ms after the key's work`);
             if (took >= 50)
-                console.info(`launcher: what a key changed in ${name} took ${took} ms to its `
-                    + `frame: ${one.by || "the shell"} told it ${one.told} ms after the key's `
-                    + `work, its refresh began ${waited} ms later and was drawn `
-                    + `${Math.round(drawn - one.begun)} ms after that`);
+                console.info(Pacing.actSaid(Object.assign({}, one, { by: one.by || "the shell" }),
+                    drawn, keyDoneAt, Heap.collected()));
         }
     }
     // A condition a shown place names has moved, as when the charger goes
