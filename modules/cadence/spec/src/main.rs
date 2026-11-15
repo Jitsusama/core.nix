@@ -78,6 +78,7 @@ struct Asking {
 
 /// Serves on `socket` for as long as the program runs.
 fn serving(socket: &Path, asking: &Asking) -> Result<(), Failure> {
+    let started = Instant::now();
     let shared = Shared::new(DOMAIN, Box::new(|_| None));
     let (wake, woken) = mpsc::channel();
     shared.on_watches(Box::new(move || {
@@ -91,6 +92,11 @@ fn serving(socket: &Path, asking: &Asking) -> Result<(), Failure> {
         .because(why.to_string())
     })?;
     serve::accept(Arc::clone(&shared), listener);
+    // Health reads a daemon's start to ready from this line.
+    eprintln!(
+        "cadence-spec: ready in {} ms",
+        started.elapsed().as_millis()
+    );
     let mut kept = Kept::default();
     let mut last: Option<Instant> = None;
     loop {
@@ -104,11 +110,26 @@ fn serving(socket: &Path, asking: &Asking) -> Result<(), Failure> {
             }
         }
         // Woken as a watch begins or ends, else when the rows go stale.
-        let wait = last.map_or(FRESH, |at| FRESH.saturating_sub(at.elapsed()));
-        if let Err(mpsc::RecvTimeoutError::Disconnected) = woken.recv_timeout(wait) {
+        let ended = match waiting(watched, last.map(|at| at.elapsed())) {
+            Some(wait) => matches!(
+                woken.recv_timeout(wait),
+                Err(mpsc::RecvTimeoutError::Disconnected)
+            ),
+            None => woken.recv().is_err(),
+        };
+        if ended {
             return Ok(());
         }
     }
+}
+
+/// How long to sleep before looking again, given whether Spec is watched
+/// and how long ago the rows were last made; none to sleep until a watch
+/// begins or ends. Stale rows nobody watches are left stale: waking for
+/// them would find nothing to do and, with nothing left to wait, wake
+/// again at once, spinning a core until a watch came.
+fn waiting(watched: bool, since: Option<Duration>) -> Option<Duration> {
+    watched.then(|| since.map_or(FRESH, |since| FRESH.saturating_sub(since)))
 }
 
 /// Spec's rows and headline as cadence makes them now, or none where it
@@ -164,6 +185,22 @@ mod tests {
         let (rows, head) = parsed(printed).expect("rows and a headline");
         assert_eq!(rows, vec![json!({"key": "row:spec:scale"})]);
         assert_eq!(head, json!({"key": "head:spec"}));
+    }
+
+    #[test]
+    fn unwatched_it_sleeps_until_a_watch_however_stale_the_rows() {
+        let stale = Some(FRESH + Duration::from_secs(60));
+        assert_eq!(
+            waiting(false, stale),
+            None,
+            "stale rows nobody watches must not wake it at once, again and again"
+        );
+        assert_eq!(waiting(false, None), None, "never made, never watched");
+        assert_eq!(
+            waiting(true, Some(Duration::from_mins(2))),
+            Some(Duration::from_mins(3)),
+            "watched, it wakes as the rows go stale"
+        );
     }
 
     #[test]
