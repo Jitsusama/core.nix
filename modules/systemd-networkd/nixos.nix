@@ -155,6 +155,25 @@ in
       "net.ipv4.conf.default.arp_ignore" = 1;
       "net.ipv4.conf.all.arp_announce" = 2;
       "net.ipv4.conf.default.arp_announce" = 2;
+
+      # Moving between access points of one network drops a Wi-Fi card's
+      # carrier for about a tenth of a second, and the kernel forgot the
+      # neighbours it knew with it, the router among them. Its first
+      # question for the router, asked before the new access point let
+      # anything through, went unanswered and was asked again a second
+      # later, so each move between a home's access points stopped traffic
+      # for 1.13 to 1.19 s (2026-11-14) where the move itself took 0.1. A
+      # Wi-Fi card keeps them, which is what the kernel made these settings
+      # for. Joining a network of another name, networkd starts the card's
+      # configuration over and takes its address away, and the kernel
+      # forgets its IPv4 neighbours with the last address; the IPv6
+      # router's answer to networkd's first question replaces whatever was
+      # known for its address. A cable keeps the kernel's default, since
+      # one unplugged is often plugged into another network. The pattern
+      # reaches a card plugged in later too, through systemd's own udev
+      # rule, where `all` would reach the cables as well.
+      "net.ipv4.conf.wl*.arp_evict_nocarrier" = 0;
+      "net.ipv6.conf.wl*.ndisc_evict_nocarrier" = 0;
     };
 
     # The kernel's Wi-Fi stack reads each country's channel and power limits
