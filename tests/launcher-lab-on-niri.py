@@ -73,7 +73,7 @@ WATCHING = 20.0
 
 # How many programs are installed besides this niri's own, unless the run says otherwise as
 # LAB_PROGRAMS. Here Programs' step made 3 rows new, where on Joel's shell it made 21 and showing
-# them was most of its time, 18 to 29 ms (2026-11-13 and 14), so a run that times Programs
+# them was its largest part, 18 to 48 ms (2026-11-13 and 14), so a run that times Programs
 # gives it as many as his.
 PROGRAMS = 0
 

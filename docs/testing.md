@@ -445,7 +445,12 @@ step's showing into the rows new to the list and their laying out.
 `LAB_STEPS` names the places, by the names home lists them by, and
 `LAB_WINDOWS` how many windows are open. Over 40 windows, laying out the
 new rows was most of a step's showing: 10 to 49 ms into Windows' 39 rows
-and 37 to 93 ms into Emoji's 1914 (2026-11-11).
+and 37 to 93 ms into Emoji's 1914 (2026-11-11). `LAB_PROGRAMS` installs
+that many programs before the shell starts, none unless given, since the
+lab's Programs otherwise makes 3 rows new to Joel's 21. Given 21, its step
+made 24 rows new, laid them out in 3 to 5 ms and was presented in a median
+38 ms, p90 67, where Joel's laid 21 out in 5 to 13 ms (13 and 14 November),
+so the count of rows alone isn't what his step spends.
 
 A place's updates are timed by `test_each_places_changes_are_timed`, run
 alone with `PYTEST_ADDOPTS = "-k changes_are_timed"`: it steps into each of
