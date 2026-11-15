@@ -195,7 +195,8 @@ pub fn devices(network: &Network, now: u64, pen: &Pen, room: Room) -> String {
 
 /// One of several devices sharing a name, told apart as a person would:
 /// its first address and what it reaches the network through, where the
-/// record says them, then its id for a script.
+/// record says them, then its id only where no address of its own picks
+/// it out.
 fn told_apart(network: &Network, device: &Device) -> String {
     let through = touching(network, device).find_map(|link| {
         let other = if link.a.device == device.id {
@@ -212,9 +213,11 @@ fn told_apart(network: &Network, device: &Device) -> String {
         .into_iter()
         .chain(through.map(|through| format!("on {}", through.name)))
         .collect();
-    match place.as_slice() {
-        [] => format!("id {}", device.id),
-        _ => format!("{}, id {}", place.join(" "), device.id),
+    let id = (picking(network, device) == device.id).then(|| format!("id {}", device.id));
+    match (place.as_slice(), id) {
+        ([], id) => id.unwrap_or_default(),
+        (place, None) => place.join(" "),
+        (place, Some(id)) => format!("{}, {id}", place.join(" ")),
     }
 }
 
@@ -499,11 +502,8 @@ mod tests {
         assert_eq!(failure.exit, Exit::Usage, "{failure:?}");
         assert_eq!(
             failure.why.as_deref(),
-            Some(&*format!(
-                "10.0.0.40 on Study, id mac:02:00:00:00:00:03{ITEMS}\
-                 10.0.0.23 on Hall, id mac:02:00:00:00:00:05"
-            )),
-            "each doesn't lead with where it is, its id last: {failure:?}"
+            Some(&*format!("10.0.0.40 on Study{ITEMS}10.0.0.23 on Hall")),
+            "each isn't told by where it is alone: {failure:?}"
         );
         assert_eq!(
             failure.then.as_deref(),
@@ -513,6 +513,36 @@ mod tests {
         assert_eq!(
             find(&network, "mac:02:00:00:00:00:05").map(|d| &d.name),
             Ok(&"phone 1".to_owned())
+        );
+    }
+
+    #[test]
+    fn devices_sharing_an_address_too_are_told_apart_by_their_ids() {
+        let mut network = network();
+        let first = network
+            .devices
+            .iter()
+            .position(|device| device.id == "mac:02:00:00:00:00:03")
+            .expect("the first phone");
+        let second = network
+            .devices
+            .iter()
+            .position(|device| device.id == "mac:02:00:00:00:00:05")
+            .expect("the second phone");
+        network.devices[second].addresses = network.devices[first].addresses.clone();
+        let failure = find(&network, "phone 1").expect_err("two phones are called phone 1");
+        assert_eq!(
+            failure.why.as_deref(),
+            Some(&*format!(
+                "10.0.0.40 on Study, id mac:02:00:00:00:00:03{ITEMS}\
+                 10.0.0.40 on Hall, id mac:02:00:00:00:00:05"
+            )),
+            "a shared address doesn't add each one's id: {failure:?}"
+        );
+        assert_eq!(
+            failure.then.as_deref(),
+            Some("net devices mac:02:00:00:00:00:03"),
+            "{failure:?}"
         );
     }
 

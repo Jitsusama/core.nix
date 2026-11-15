@@ -114,9 +114,10 @@ width without a terminal; tables and facts come from the terminal kit.
 
 A name is matched in any case, and any of a device's addresses or its
 id always works. eero can give two devices one name, so a shared name
-is refused (64) with each one's address and access point, its id last,
-offering the first one's address to type; an unknown one is refused
-(66) with the nearest. `--json` answers
+is refused (64) with each one's address and access point, offering the
+first one's address to type; where devices share an address too, each
+one's id follows and is what's offered. An unknown one is refused (66)
+with the nearest. `--json` answers
 `net.network/1`, `net.devices/1` or `net.device/1`, each time in RFC
 3339 (docs/commands.md). No record yet ends 69, pointing at
 `systemctl --user status net-daemon`.
