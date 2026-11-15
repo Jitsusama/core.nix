@@ -246,12 +246,14 @@ mod tests {
             let refused = json!({"id": 1, "error": {"code": "bad-ask", "message": "no"}});
             writeln!(&stream, "{refused}").expect("answered");
         });
+        // It asserts before it waits on wifid's thread, so a tell that never
+        // reaches the socket fails here rather than leaving the test waiting.
         let refused = tell(&socket, false);
-        wifid.join().expect("wifid answered");
         assert!(
             refused.as_ref().is_err_and(|why| why.contains("bad-ask")),
             "the refusal is said: {refused:?}"
         );
+        wifid.join().expect("wifid answered");
     }
 
     #[test]
