@@ -30,6 +30,9 @@ pub struct Switched {
     pub applied: Applied,
     pub restart: Option<String>,
     pub restarted: Vec<String>,
+    /// Whether the system runs but isn't yet what the machine boots, until
+    /// its boot check passes (`boot_once_checked`).
+    pub unbooted: bool,
 }
 
 /// Builds `flake`, its inputs overridden by `overrides`, keeping it from
@@ -1005,7 +1008,10 @@ pub fn current(config: &Config) -> Option<PathBuf> {
 /// boot, so the system runs now on the kernel the machine booted, as
 /// NixOS's own switch does: its modules are still loaded from the booted
 /// system, and the boot loader starts the new kernel next time. The switch
-/// says so as the restart it needs.
+/// says so as the restart it needs. With a boot check, such a system is
+/// only activated, and the boot loader keeps what it had until the check
+/// passes: on 15 November switch968 made a new initrd the boot default
+/// that nothing had booted.
 pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
     let previous = current(config);
     set_profile(config, system)?;
@@ -1016,17 +1022,19 @@ pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
                 .exists()
                 .then(|| for_next_boot(booted, system))
                 .flatten();
+            let unbooted = waits.is_some() && config.boot_check.is_some();
             // It says what it stopped, started and restarted on its error
             // stream.
             let said = run::said(
                 run::command(&system.join("bin/switch-to-configuration"), &config.state),
                 "switching",
-                ["switch"],
+                [if unbooted { "test" } else { "switch" }],
             )?;
             Ok(Switched {
                 applied: Applied::Now,
                 restart: waits,
                 restarted: restarted_units(&said),
+                unbooted,
             })
         }
         Kind::Darwin => {
@@ -1043,6 +1051,7 @@ pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
                 applied: Applied::Now,
                 restart: None,
                 restarted,
+                unbooted: false,
             })
         }
     }
@@ -1063,6 +1072,25 @@ pub fn go_back(config: &Config, system: &Path) -> Result<(), Failure> {
         run::command(&program, &config.state),
         "switching back",
         args,
+    )
+    .map(|_| ())
+}
+
+/// Runs the boot check on `system`, which runs but isn't yet what the
+/// machine boots, and once it passes makes `system` the boot default.
+pub fn boot_once_checked(config: &Config, system: &Path) -> Result<(), Failure> {
+    if let Some(check) = &config.boot_check
+        && let Some((program, args)) = check.split_first()
+    {
+        let mut command = run::command(Path::new(program), &config.state);
+        command.args(args);
+        let what = format!("the boot check `{}`", check.join(" "));
+        run::output(command, &what, [system])?;
+    }
+    run::said(
+        run::command(&system.join("bin/switch-to-configuration"), &config.state),
+        "making it what the machine boots",
+        ["boot"],
     )
     .map(|_| ())
 }

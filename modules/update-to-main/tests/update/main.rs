@@ -896,7 +896,11 @@ fn a_new_initrd_runs_now_and_is_booted_next_once_its_boot_check_passes() {
         "the new system should run first, and be booted only after its check"
     );
     assert_eq!(world.running(), system, "the new system isn't running");
-    assert_eq!(world.boots(), system, "the checked system isn't booted next");
+    assert_eq!(
+        world.boots(),
+        system,
+        "the checked system isn't booted next"
+    );
 }
 
 #[test]
@@ -919,9 +923,17 @@ fn a_new_initrd_whose_boot_check_fails_runs_but_isnt_booted_next() {
         restart, None,
         "no restart brings in a system that isn't booted next"
     );
-    assert_eq!(world.modes(), ["test"], "an unchecked system was made the boot default");
+    assert_eq!(
+        world.modes(),
+        ["test"],
+        "an unchecked system was made the boot default"
+    );
     assert_eq!(world.running(), system, "the new system should still run");
-    assert_eq!(world.boots(), first, "the boot default should stay where it was");
+    assert_eq!(
+        world.boots(),
+        first,
+        "the boot default should stay where it was"
+    );
 }
 
 #[test]
