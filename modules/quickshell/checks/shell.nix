@@ -61,6 +61,18 @@
     command = "${lib.getExe pkgs.bash} ${../../../tests/flat-windows-hold-no-depth-on-niri.sh} quickshell logs ${../../../tests/lib/Memory.js}";
   };
 
+  # A picture read uncached from a file, as the wallpaper's is, lets the
+  # file's pixels go once it's a texture, in the shell's own Qt
+  # (qtdeclarative-uncached-pictures-let-go.patch), and is read again for a
+  # window it moves to (tests/uncached-pictures-let-go-on-niri.sh).
+  uncached-pictures-let-go-on-niri = shellOnNiri {
+    name = "uncached-pictures-let-go-on-niri";
+    away = 3600;
+    root = ../../../tests/uncached-pictures-let-go.qml;
+    inputs = [ pkgs.imagemagick ];
+    command = "${lib.getExe pkgs.bash} ${../../../tests/uncached-pictures-let-go-on-niri.sh} quickshell logs";
+  };
+
   # The wallpaper's picture is read at its screen's own pixels, by niri's
   # scale for the output, as tests/wallpaper.qml holds Wallpaper.js to, in
   # Qt's engine.
