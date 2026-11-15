@@ -68,8 +68,8 @@ bool collectsWhileMaking(double room, const QString &made) {
 }
 
 // What's made: objects holding only numbers, so nothing outside the heap;
-// and strings, whose text Qt holds outside it, about 20 MB of them, which
-// start the collector on their own once they pass what Qt allows outside.
+// and strings, whose text Qt holds outside it, which start the collector on
+// their own once they pass what Qt allows outside.
 const QString NUMBERS = QStringLiteral("{ n: i, m: i }");
 const QString STRINGS = QStringLiteral("`row ${i} of the clipboard's history`");
 

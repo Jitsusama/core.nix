@@ -23,11 +23,18 @@
 // while what's held is over twice what the last full sweep left in use, and
 // after the closing's collection it always is: three times, in Joel's shell
 // and the launcher's lab. So Emoji's openings ran one to six passes each,
-// 47 to 204 ms of the collector, none of them started by memory held
-// outside the heap (the lab, 2026-11-14). Qt reads only the count of what
-// the last sweep left in use to decide it, and the next sweep sets it again,
-// so raising it to half of what's held and the room asked for lets the heap
-// grow by that room first, and lasts until a collection.
+// 47 to 204 ms of the collector (the lab, 2026-11-14). Qt reads only the
+// count of what the last sweep left in use to decide it, and the next sweep
+// sets it again, so raising it to half of what's held and the room asked
+// for lets the heap grow by that room first, and lasts until a collection.
+//
+// Qt also starts one once the text strings hold outside the heap passes a
+// limit it sets at each collection's end, and that limit was what met the
+// openings once the heap had room: the lab's openings began 4 MB under it,
+// at 17 to 18 MB of 22, and passed it within the opening, 106 to 214 ms of
+// the collector each (the lab's cycle-u1, 2026-11-14). So the same room is
+// left outside the heap too, until the next collection sets the limit
+// again.
 //
 // heap_test.cpp holds it to what it says.
 
@@ -109,10 +116,12 @@ void Heap::leaveRoom(double megabytes) {
     QV4::MemoryManager *manager = engine->handle()->memoryManager;
     const std::size_t held =
         manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
-    const auto room =
-        static_cast<std::size_t>(std::max(megabytes, 0.0) * BYTES_PER_MB) / QV4::Chunk::SlotSize;
+    const auto bytes = static_cast<std::size_t>(std::max(megabytes, 0.0) * BYTES_PER_MB);
+    const auto room = bytes / QV4::Chunk::SlotSize;
     manager->usedSlotsAfterLastFullSweep =
         std::max(manager->usedSlotsAfterLastFullSweep, (held + room) / OVERALLOCATION);
+    manager->unmanagedHeapSizeGCLimit =
+        std::max(manager->unmanagedHeapSizeGCLimit, manager->unmanagedHeapSize + bytes);
 }
 
 double Heap::collected() const {
