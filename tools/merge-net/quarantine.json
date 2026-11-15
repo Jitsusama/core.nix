@@ -14,28 +14,6 @@
     "test": "vm-desktop-launcher-goes-places"
   },
   {
-    "at": 1794346052,
-    "commit": "0d7ca1f2a8b290d6eabe8d2affd24cd0d1905de5",
-    "due": "2026-11-15",
-    "owner_pr": 3884,
-    "reason": "reopening five sessions while the focus moves timed out once at 50e4d55f9 with all five opened, Y2YBTS's by Sun 15",
-    "subtests": [
-      "test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile"
-    ],
-    "test": "vm-desktop-launcher-finds-sessions"
-  },
-  {
-    "at": 1794613888,
-    "commit": "5782337e6e457780754e6e5684e6c69bd92827dd",
-    "due": "2026-11-15",
-    "owner_pr": 4145,
-    "reason": "failed, then passed, at 5782337e6e45",
-    "subtests": [
-      "test_a_session_another_starts_leaves_every_key_where_joel_types"
-    ],
-    "test": "vm-desktop-launcher-finds-sessions"
-  },
-  {
     "at": 1794560189,
     "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
     "due": "2026-11-15",
@@ -181,17 +159,6 @@
     "test": "the-launcher-opens-on-what-it-kept-on-niri"
   },
   {
-    "at": 1794537635,
-    "commit": "b2be6ae26c8fcb7f68b687145bafcbceec102640",
-    "due": "2026-11-15",
-    "owner_pr": 3919,
-    "reason": "failed, then passed, at b2be6ae26c8f",
-    "subtests": [
-      "test_a_list_kept_on_numbers_since_taken_comes_back_alone_moving_nothing"
-    ],
-    "test": "vm-desktop-reopens-under-orchestrators"
-  },
-  {
     "at": 1794538359,
     "commit": "b2be6ae26c8fcb7f68b687145bafcbceec102640",
     "due": "2026-11-15",
@@ -328,18 +295,6 @@
     "test": "vm-screens-keep-the-launcher"
   },
   {
-    "at": 1794652172,
-    "commit": "ec4bf1f43e1390a0fb0844c61747ed977d800fbd",
-    "due": "2026-11-16",
-    "owner_pr": 4303,
-    "reason": "failed, then passed, at ec4bf1f43e13",
-    "subtests": [
-      "test_a_session_another_restores_goes_to_its_workspace_and_leaves_joel_his_focus",
-      "test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal"
-    ],
-    "test": "vm-desktop-launcher-finds-sessions"
-  },
-  {
     "at": 1794681104,
     "commit": "1501fe1f285b10c05bad4246ffc29beae45dc2d4",
     "due": "2026-11-16",
@@ -371,24 +326,12 @@
     "test": "vm-desktop-starts-clean"
   },
   {
-    "at": 1794727050,
-    "commit": "4b0d0f83295c0c04e545cf29d89491a3c7c282f1",
-    "due": "2026-11-17",
-    "owner_pr": 2563,
-    "reason": "failed, then passed, at 4b0d0f83295c; the launcher's sessions are Y2YBTS's, and #2563 added this subtest",
-    "subtests": [
-      "test_two_orchestrations_come_back_each_where_it_sat"
-    ],
-    "test": "vm-desktop-reopens-under-orchestrators"
-  },
-  {
     "at": 1794736626,
     "commit": "2c22e6094aa171140e1525a07c163b0e076033a3",
     "due": "2026-11-17",
     "owner_pr": 1632,
     "reason": "failed, then passed, at 2c22e6094aa1; the launcher's sessions are Y2YBTS's, and #1632 added the newest of these subtests",
     "subtests": [
-      "test_a_session_opens_in_the_agents_slice",
       "test_agents_puts_back_the_windows_that_reopen_themselves",
       "test_agents_reopens_each_session_where_it_sat",
       "test_quickshell_warned_of_nothing_it_drew_all_along",
