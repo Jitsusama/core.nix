@@ -43,6 +43,7 @@ let
     ./checks/shortcuts.nix
     ./checks/tabs.nix
     ./checks/sound.nix
+    ./checks/spec.nix
     ./checks/spend.nix
     ./checks/terminal.nix
     ./checks/timers.nix

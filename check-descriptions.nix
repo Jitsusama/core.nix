@@ -3396,6 +3396,11 @@
     written is put back as it read, its failure said in the journal, the shut launcher keeping
     the looks it read
   '';
+  the-launcher-reads-spec-from-its-daemon = ''
+    the launcher's Spec reads what the cadence-spec daemon serves: the head as the daemon says it,
+    1 out of spec with the alert glyph, its axes in the order served, each a step in, and the out
+    axis holding its reading
+  '';
   the-launcher-reads-on-where-the-reader-left = ''
     the reader's Recent merges each file the reader kept a place in by when it was left, newest
     first, with the files the shared list gives, each once and none open now, read once the reader

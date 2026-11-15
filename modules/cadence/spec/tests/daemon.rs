@@ -83,7 +83,11 @@ fn a_watch_of_spec_is_served_the_rows_cadence_makes() {
     });
     let daemon = started("served", &format!("echo '{printed}'"));
     let held = watched(&daemon);
-    assert_eq!(held["head:spec"]["said"], "1 out of spec", "{held:?}");
+    assert_eq!(held["head:spec"]["kind"], "head", "{held:?}");
+    assert_eq!(
+        held["head:spec"]["head"]["said"], "1 out of spec",
+        "{held:?}"
+    );
     assert_eq!(held["row:spec:scale"]["row"]["name"], "Scale", "{held:?}");
     assert_eq!(asked(daemon.folder()).trim(), "axes --served words.json");
 }

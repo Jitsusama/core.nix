@@ -52,7 +52,9 @@
 # $XDG_RUNTIME_DIR/daemons/cadence-spec.sock in the shell's daemon interface,
 # asking `cadence axes --served` for the rows at most every five minutes
 # and only while Spec is watched, so the launcher rereads no file (Joel,
-# 2026-11-10: "the daemons need to be the data layer").
+# 2026-11-10: "the daemons need to be the data layer"). Spec.qml is that
+# place, a row on the launcher's home saying how many axes are out.
+{ quickshell }:
 {
   config,
   lib,
@@ -119,6 +121,7 @@ in
   # A machine still setting the orchestrator by its old name, a word the
   # glossary replaces, keeps working, told to rename it.
   imports = [
+    quickshell
     (lib.mkRenamedOptionModule
       [ "jitsusama" "cadence" "steward" ]
       [ "jitsusama" "cadence" "orchestrator" ]
@@ -300,6 +303,13 @@ in
       };
       Install.WantedBy = [ "default.target" ];
     };
+    # Spec in the launcher, on its home after Agents: the axes the daemon
+    # serves, its head saying how many are out.
+    jitsusama.quickshell.launcher.providers.spec = {
+      order = 54;
+      source = ./Spec.qml;
+    };
+
     # Its socket, held by systemd whether or not the daemon runs, so the
     # shell asking while it starts waits on it rather than finding none.
     systemd.user.sockets.cadence-spec = {

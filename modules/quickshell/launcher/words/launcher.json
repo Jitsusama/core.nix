@@ -12,7 +12,8 @@
         "jobs",
         "runs",
         "spend",
-        "agents:budgets"
+        "agents:budgets",
+        "agents:spec"
       ],
       "ask": "which session?",
       "empty": "No sessions running.",

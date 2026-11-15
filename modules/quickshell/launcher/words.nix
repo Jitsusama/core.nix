@@ -63,6 +63,7 @@ let
     "slack" = ./words/slack.json;
     "slides" = ./words/slides.json;
     "sound" = ./words/sound.json;
+    "spec" = ./words/spec.json;
     "spend" = ./words/spend.json;
     "spotify" = ./words/spotify.json;
     "stopwatch" = ./words/stopwatch.json;
