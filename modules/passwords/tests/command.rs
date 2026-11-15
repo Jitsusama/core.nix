@@ -101,6 +101,37 @@ fn the_daemon_says_nothing_of_its_own_on_the_shells_pipe() {
 }
 
 #[test]
+fn each_command_answers_a_help_of_its_own() {
+    for command in ["keys", "completion", "daemon"] {
+        let said = passwords(&[command, "--help"]);
+        assert_eq!(said.status.code(), Some(0), "{command} --help failed");
+        let shown = text(&said.stdout);
+        assert!(
+            shown.starts_with(&format!("passwords {command}  ")),
+            "{command} --help answered another's help: {shown}"
+        );
+        assert_eq!(
+            text(&passwords(&["help", command]).stdout),
+            shown,
+            "help {command} doesn't answer as {command} --help"
+        );
+    }
+}
+
+#[test]
+fn a_word_past_what_a_command_takes_is_refused() {
+    for words in [&["keys", "everything"][..], &["daemon", "a", "b", "c"]] {
+        let said = passwords(words);
+        assert_eq!(said.status.code(), Some(64), "{words:?} wasn't refused");
+        assert!(
+            said.stdout.is_empty(),
+            "{words:?} said something: {:?}",
+            text(&said.stdout)
+        );
+    }
+}
+
+#[test]
 fn a_mistyped_command_names_the_nearest() {
     let said = passwords(&["kyes"]);
     assert_eq!(

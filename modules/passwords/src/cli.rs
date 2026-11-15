@@ -30,13 +30,9 @@ pub enum Command {
     /// What a bare run shows, having no state of its own to show.
     Brief,
     Keys,
-    Help,
     /// zsh's completion itself.
     Completion,
 }
-
-/// The commands as they're typed, to suggest the nearest of.
-const COMMANDS: [&str; 4] = ["keys", "completion", "daemon", "help"];
 
 /// The commands that reached an entry or a secret through the daemon's
 /// socket, before the daemon answered the shell alone, each refused by
@@ -46,9 +42,14 @@ const GONE: [&str; 10] = [
     "find", "list", "details", "show", "copy", "code", "let-in", "health", "audit", "names",
 ];
 
-/// The command line's help, which the kit answers `--help` with.
+/// The command line's help, which the kit answers `--help` with, each
+/// command's own help in it, so the kit answers `passwords keys --help`
+/// and refuses a word no command answers to before `parse` reads it.
+/// The commands that are gone are declared unlisted and taking any
+/// words, so the kit hands them to `parse` whole, which refuses each by
+/// name: the kit's own refusal of a word too many would say it back.
 pub fn help() -> Help {
-    Help::new(
+    let help = Help::new(
         "passwords",
         "1Password's SSH keys; passwords are in the launcher alone",
     )
@@ -57,23 +58,66 @@ pub fn help() -> Help {
         "passwords keys --json",
         "the same for a program, as passwords.keys/1",
     )
-    .command(
-        "keys",
-        "the keys 1Password's SSH agent holds, which ssh and git don't use",
+    .subcommand(
+        Help::new(
+            "keys",
+            "the keys 1Password's SSH agent holds, which ssh and git don't use",
+        )
+        .example("passwords keys", "each key's type, size and fingerprint")
+        .example(
+            "passwords keys --json",
+            "the same for a program, as passwords.keys/1",
+        )
+        .exit(Exit::Failed, "the agent didn't list its keys")
+        .exit(Exit::Unavailable, "1Password's SSH agent isn't answering"),
     )
-    .command("completion zsh", "zsh's completion")
-    .command(
-        "daemon MANAGERS [WORDS]",
-        "the daemon holding each entry, which the shell runs as its own child",
+    .subcommand(
+        Help::new("completion", "zsh's completion")
+            .argument("zsh", "the shell it's written for, the only one")
+            .example("passwords completion zsh", "the completion zsh loads")
+            .exit(Exit::Usage, "asked for a shell but zsh"),
     )
-    .command("help", "this")
-    .exit(Exit::Failed, "the agent didn't list its keys")
-    .exit(
-        Exit::Usage,
-        "asked wrongly, or for an entry, which no command reaches",
+    .subcommand(
+        Help::new(
+            "daemon",
+            "the daemon holding each entry, which the shell runs as its own child",
+        )
+        .argument("MANAGERS", "the managers it reads entries from")
+        .argument(
+            "[WORDS]",
+            "the launcher's words, which its rows are said in",
+        )
+        .example(
+            "passwords daemon MANAGERS WORDS",
+            "as the shell runs it, answering on its own pipe",
+        )
+        .exit(Exit::Failed, "it couldn't keep its memory to itself")
+        .exit(Exit::Config, "the managers can't be read"),
+    );
+    GONE.iter()
+        .fold(help, |help, command| help.subcommand(gone_help(command)))
+        .exit(Exit::Failed, "the agent didn't list its keys")
+        .exit(
+            Exit::Usage,
+            "asked wrongly, or for an entry, which no command reaches",
+        )
+        .exit(Exit::Unavailable, "1Password's SSH agent isn't answering")
+        .exit(Exit::Config, "daemon: the managers can't be read")
+}
+
+/// The help of a command that reached an entry before, which no command
+/// does now.
+fn gone_help(command: &str) -> Help {
+    Help::new(
+        command,
+        "reads no entry any more; passwords are in the launcher",
     )
-    .exit(Exit::Unavailable, "1Password's SSH agent isn't answering")
-    .exit(Exit::Config, "daemon: the managers can't be read")
+    .argument(
+        "WORDS...",
+        "read by nothing, since no command reaches an entry",
+    )
+    .exit(Exit::Usage, "always, since every agent runs as Joel")
+    .unlisted()
 }
 
 /// The command line asked wrongly: what was wrong, and where to read how.
@@ -124,7 +168,6 @@ pub fn parse(args: &[String]) -> Result<Command, Failure> {
             }
         },
         "keys" => none(Command::Keys)?,
-        "help" => Command::Help,
         "completion" => match rest {
             ["zsh"] => Command::Completion,
             _ => {
@@ -133,7 +176,9 @@ pub fn parse(args: &[String]) -> Result<Command, Failure> {
         },
         other if GONE.contains(&other) => return Err(gone(other)),
         other => {
-            return Err(flags::unknown("command", other, &COMMANDS).try_this("passwords --help"));
+            let help = help();
+            return Err(flags::unknown("command", other, &help.command_names())
+                .try_this("passwords --help"));
         }
     };
     Ok(command)
@@ -153,8 +198,6 @@ fn written(said: io::Result<()>) -> Result<(), Failure> {
 /// Answers one command but the daemon, which `main` runs itself.
 pub fn run(context: &Context, command: &Command) -> Result<(), Failure> {
     match command {
-        Command::Help if context.format().is_json() => written(context.answer(&help().json())),
-        Command::Help => written(context.say(&help().text(&context.out, context.room))),
         Command::Brief => written(context.say(&help().brief(&context.out, context.room))),
         Command::Completion => written(context.say(include_str!("completion.zsh"))),
         Command::Keys => keys::run(context),
@@ -189,7 +232,6 @@ mod tests {
     fn each_command_is_read_with_what_it_takes() {
         assert_eq!(command(""), Command::Brief);
         assert_eq!(command("keys"), Command::Keys);
-        assert_eq!(command("help"), Command::Help);
         assert_eq!(command("completion zsh"), Command::Completion);
         assert_eq!(
             command("daemon managers.json"),
@@ -277,10 +319,16 @@ mod tests {
     #[test]
     fn the_help_fits_sixty_columns_and_says_each_exit() {
         let help = help();
-        for width in [60, MEASURE] {
-            let said = help.text(&Pen::plain(), Room::Cells(width));
-            let wide = said.lines().find(|line| line.chars().count() > width);
-            assert_eq!(wide, None, "a line of help passes {width} columns");
+        for each in std::iter::once(&help).chain(&help.subs) {
+            for width in [60, MEASURE] {
+                let said = each.text(&Pen::plain(), Room::Cells(width));
+                let wide = said.lines().find(|line| line.chars().count() > width);
+                assert_eq!(
+                    wide, None,
+                    "a line of {}'s help passes {width} columns",
+                    each.name
+                );
+            }
         }
         let exits: Vec<u8> = help
             .every_exit()
