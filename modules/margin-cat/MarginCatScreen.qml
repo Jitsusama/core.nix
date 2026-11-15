@@ -148,6 +148,13 @@ PanelWindow {
     property int leaning: 0
     property int leaningTo: 0
     onLeaningChanged: say()
+    // Where across its cells the pointer was last seen, so a swat after
+    // one crossing it reaches toward the side it left by; the way its paw
+    // is out, 0 while it isn't (MarginCat.swatting); and when it last was.
+    property real across: 0
+    property int swatting: 0
+    property real swattedAt: 0
+    onSwattingChanged: say()
     // When niri showed each frame of the walk under way, how long the
     // shell took to draw each, and how many niri never showed, said
     // once it sits (MarginCat.walked). Kept as plain arrays, pushed
@@ -187,8 +194,9 @@ PanelWindow {
         : Paths.marks(MarginMarks.drawn, modelData.width, Theme.gap)
     // What it's drawn as: a pose of its walk, turned the way it
     // goes and the way it climbs, leaning into a pointer, or the
-    // scope's, sitting, asleep or stretching.
-    readonly property var drawn: leaning !== 0 ? MarginCat.leaning(leaning, Theme.pixels)
+    // scope's, sitting, asleep or stretching, or swatting after one.
+    readonly property var drawn: swatting !== 0 ? MarginCat.swatting(swatting, Theme.pixels)
+        : leaning !== 0 ? MarginCat.leaning(leaning, Theme.pixels)
         : pose ? MarginCat.quartered(
             MarginCat.turned(Theme.pixels[pose] ?? window.scene.drawing, facing), turn)
         : window.scene.drawing
@@ -907,6 +915,7 @@ PanelWindow {
     function felt(at: point, across: real): void {
         const moved = MarginCat.strokes(pointer, at, still ? Date.now() - stillSince : -1);
         pointer = { x: at.x, y: at.y };
+        window.across = across;
         if (moved && leaning === 0 && !petting.running) {
             leaningTo = MarginCat.leansTo(across, size);
             petting.restart();
@@ -915,29 +924,43 @@ PanelWindow {
         }
     }
 
-    // The pointer gone from it: a pet not yet come never comes, and a
-    // lean is held a moment before it sits again.
+    // The pointer gone from it: a pet not yet come never comes, though
+    // one that only crossed it may have it swat after it, and a lean is
+    // held a moment before it sits again. A swat under way plays out.
     function unfelt(): void {
         pointer = null;
-        if (leaning === 0)
-            petting.stop();
-        else
+        if (swatting !== 0)
+            return;
+        const crossed = leaning === 0 && petting.running && still;
+        if (leaning !== 0) {
             petting.restart();
+        } else if (MarginCat.swats(crossed, Date.now() - swattedAt, window.scene.asleep,
+            Math.random())) {
+            swatting = MarginCat.leansTo(across, size);
+            swattedAt = Date.now();
+            petting.restart();
+        } else {
+            petting.stop();
+        }
     }
 
-    // No pet coming and no lean, as it sets off or dozes.
+    // No pet coming, no lean and no swat, as it sets off or dozes.
     function unpetted(): void {
         petting.stop();
         leaning = 0;
+        swatting = 0;
     }
 
-    // Its one timer for a pet: run only while a pointer comes onto it or
-    // leaves it, never at rest.
+    // Its one timer for a pet and a swat: run only while a pointer comes
+    // onto it or leaves it, and for a swat's paw, never at rest.
     Timer {
         id: petting
-        interval: window.leaning === 0 ? MarginCat.PETS : MarginCat.PETTED
+        interval: window.swatting !== 0 ? MarginCat.SWATS
+            : window.leaning === 0 ? MarginCat.PETS : MarginCat.PETTED
         onTriggered: {
-            if (window.leaning !== 0)
+            if (window.swatting !== 0)
+                window.swatting = 0;
+            else if (window.leaning !== 0)
                 window.leaning = 0;
             else if (hand.hovered && window.still && !window.scene.asleep)
                 window.leaning = window.leaningTo;
@@ -973,6 +996,7 @@ PanelWindow {
             asleep: window.scene.asleep,
             stretching: window.scene.stretching,
             leaning: window.leaning,
+            swatting: window.swatting,
             walk: going === null || stepped === null ? null : {
                 t: Math.round(walker.elapsedTime * 10000) / 10,
                 beat: stepped.beat,
@@ -1054,8 +1078,10 @@ PanelWindow {
             Rectangle {
                 required property var modelData
 
-                // A lean to its left starts a cell out (MarginCat.leansOut).
-                x: (modelData.x - MarginCat.leansOut(window.leaning)) * window.cell
+                // A lean to its left starts a cell out (MarginCat.leansOut),
+                // and a swat to its left three (MarginCat.swatsOut).
+                x: (modelData.x - MarginCat.leansOut(window.leaning)
+                    - MarginCat.swatsOut(window.swatting)) * window.cell
                 y: modelData.y * window.cell
                 width: modelData.across * window.cell
                 height: window.cell
