@@ -112,13 +112,13 @@ function sinceKey(now, taken, done) {
 // agents taking 595 was said by no span (Joel's journal, 2026-11-14 09:39).
 function actSaid(one, drawn, keyDone, collected) {
     const ms = (from, to) => Math.round(to - from);
-    const took = ms(one.heard, drawn);
-    return `launcher: what ${one.key || "a key"} changed in ${one.name} took ${took} ms `
+    const all = ms(one.heard, drawn);
+    return `launcher: what ${one.key || "a key"} changed in ${one.name} took ${all} ms `
         + `to its frame: its work took ${ms(one.heard, keyDone)} ms; ${one.by} told it `
         + `${ms(one.heard, one.at)} ms after the key, its turn came ${ms(one.at, one.done)} ms `
         + `later, its refresh began ${ms(one.done, one.begun)} ms after that and was drawn `
         + `${ms(one.begun, drawn)} ms after it; the collector ran `
-        + `${ms(one.collected, collected)} ms of the ${took}`;
+        + `${ms(one.collected, collected)} ms of the ${all}`;
 }
 
 // The timer rang: the refresh it waited for is taken.
