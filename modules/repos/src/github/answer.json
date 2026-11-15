@@ -253,9 +253,7 @@
   "errors": [
     {
       "type": "NOT_FOUND",
-      "path": [
-        "r1"
-      ],
+      "path": ["r1"],
       "locations": [
         {
           "line": 3,

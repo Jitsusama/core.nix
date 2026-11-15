@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::model::{Change, Checks, ChecksState, GitHubChange, Record, Review, Source};
+use crate::when;
 
 /// The schema of what a refresh saw, which a reading checks before
 /// trusting its shape.
@@ -26,7 +27,8 @@ pub const SCHEMA: &str = "repos.github/1";
 pub const PER_QUERY: usize = 25;
 
 /// How many open changes are read for each repository: the ones updated
-/// last, since those are the ones in play.
+/// last, since those are the ones in play. Past it, a repository is busier
+/// than a list of its changes helps with, and GitHub's own page is for it.
 const CHANGES: usize = 50;
 
 /// How many checks are read for each change.
@@ -41,7 +43,8 @@ pub struct Seen {
     /// Each repository's open changes, by the key the disk gives it, the
     /// one updated last first.
     pub changes: BTreeMap<String, Vec<Change>>,
-    /// Why a repository, or GitHub itself, couldn't be read, for a person.
+    /// Why a repository, or GitHub itself, couldn't be read, for a person,
+    /// each opening with the repository's key where it's one.
     #[serde(default)]
     pub unread: Vec<String>,
 }
@@ -94,7 +97,6 @@ pub fn query(asked: &[Asked]) -> String {
 fragment open on Repository {{
   pullRequests(states: OPEN, first: {CHANGES},
       orderBy: {{field: UPDATED_AT, direction: DESC}}) {{
-    totalCount
     nodes {{
       number title url isDraft headRefName baseRefName headRefOid updatedAt
       author {{ login }}
@@ -152,15 +154,6 @@ pub fn parse(answer: &Value, asked: &[Asked]) -> (BTreeMap<String, Vec<Change>>,
             .filter_map(change)
             .collect();
         read.sort_by_key(|change| std::cmp::Reverse(change.updated_at));
-        if let Some(total) = open["totalCount"].as_u64()
-            && total > read.len() as u64
-        {
-            unread.push(format!(
-                "{}: the {} of its {total} open changes updated last",
-                one.key,
-                read.len()
-            ));
-        }
         changes.insert(one.key.clone(), read);
     }
     (changes, unread)
@@ -186,7 +179,7 @@ fn change(node: &Value) -> Option<Change> {
         branch: node["headRefName"].as_str()?.to_owned(),
         base: node["baseRefName"].as_str()?.to_owned(),
         commit: node["headRefOid"].as_str().map(str::to_owned),
-        updated_at: node["updatedAt"].as_str().and_then(seconds_of)?,
+        updated_at: node["updatedAt"].as_str().and_then(when::seconds_of)?,
         checks: checks(rollup),
         review: review(&node["reviewDecision"]),
         github: Some(GitHubChange {
@@ -258,8 +251,8 @@ enum Outcome {
 fn outcome(said: &str) -> Outcome {
     match said {
         "SUCCESS" | "NEUTRAL" | "SKIPPED" => Outcome::Passed,
-        "FAILURE" | "ERROR" | "CANCELLED" | "TIMED_OUT" | "ACTION_REQUIRED"
-        | "STARTUP_FAILURE" | "STALE" => Outcome::Failed,
+        "FAILURE" | "ERROR" | "CANCELLED" | "TIMED_OUT" | "ACTION_REQUIRED" | "STARTUP_FAILURE"
+        | "STALE" => Outcome::Failed,
         _ => Outcome::Pending,
     }
 }
@@ -274,32 +267,63 @@ fn review(decision: &Value) -> Review {
     }
 }
 
-/// The seconds since the epoch of a time as GitHub says one,
-/// `2026-11-15T15:10:03Z`, always in UTC; none for any other shape.
-pub fn seconds_of(time: &str) -> Option<u64> {
-    let time = time.strip_suffix('Z')?;
-    let (date, clock) = time.split_once('T')?;
-    let mut date = date.splitn(3, '-').map(str::parse::<i64>);
-    let (year, month, day) = (date.next()?.ok()?, date.next()?.ok()?, date.next()?.ok()?);
-    let clock = clock.split_once('.').map_or(clock, |(whole, _)| whole);
-    let mut clock = clock.splitn(3, ':').map(str::parse::<i64>);
-    let (hour, minute, second) = (clock.next()?.ok()?, clock.next()?.ok()?, clock.next()?.ok()?);
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
-        return None;
+/// What GitHub says of each of `asked`, `PER_QUERY` at a time, each query
+/// put through `ask`, which answers GitHub's answer. An answer with no
+/// data at all, as for a token GitHub refuses, ends the refresh, so what
+/// the last one saw is kept rather than written over with nothing.
+pub fn refresh(
+    asked: &[Asked],
+    now: u64,
+    mut ask: impl FnMut(&str) -> Result<Value, String>,
+) -> Result<Seen, String> {
+    let mut seen = Seen {
+        schema: SCHEMA.to_owned(),
+        read_at: now,
+        changes: BTreeMap::new(),
+        unread: Vec::new(),
+    };
+    for some in asked.chunks(PER_QUERY) {
+        let answer = ask(&query(some))?;
+        if !answer["data"].is_object() {
+            let why = answer["errors"][0]["message"].as_str();
+            return Err(format!(
+                "GitHub answered no data: {}",
+                why.unwrap_or("no reason given")
+            ));
+        }
+        let (changes, unread) = parse(&answer, some);
+        seen.changes.extend(changes);
+        seen.unread.extend(unread);
     }
-    let seconds = days_from_civil(year, month, day) * 86_400 + hour * 3600 + minute * 60 + second;
-    u64::try_from(seconds).ok()
+    Ok(seen)
 }
 
-/// The days from 1970 to a date (Howard Hinnant's algorithm, counting
-/// years from March so a leap day falls last).
-fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-    let year = if month <= 2 { year - 1 } else { year };
-    let era = year.div_euclid(400);
-    let of_era = year - era * 400;
-    let of_year = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
-    let of_era_days = of_era * 365 + of_era / 4 - of_era / 100 + of_year;
-    era * 146_097 + of_era_days - 719_468
+/// GitHub's answer to `query`, asked with `token`.
+pub fn post(token: &str, query: &str) -> Result<Value, String> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .timeout_global(Some(std::time::Duration::from_secs(60)))
+        .user_agent("repos")
+        .build()
+        .into();
+    let body = serde_json::json!({ "query": query }).to_string();
+    let mut answer = agent
+        .post("https://api.github.com/graphql")
+        .header("Authorization", format!("bearer {token}"))
+        .content_type("application/json")
+        .send(body)
+        .map_err(|why| format!("can't reach GitHub: {why}"))?;
+    let status = answer.status();
+    let text = answer
+        .body_mut()
+        .read_to_string()
+        .map_err(|why| format!("GitHub's answer didn't arrive whole: {why}"))?;
+    let said: Value = serde_json::from_str(&text).unwrap_or_default();
+    if status.as_u16() != 200 {
+        let why = said["message"].as_str().unwrap_or("no reason given");
+        return Err(format!("GitHub refused the query ({status}): {why}"));
+    }
+    Ok(said)
 }
 
 /// The record with what a refresh saw of GitHub: each repository's open

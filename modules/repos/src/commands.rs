@@ -14,17 +14,41 @@ pub fn help() -> Help {
         "[<name>]",
         "a repository's name in any case, owner/name, or its key",
     )
+    .argument(
+        "[changes]",
+        "after a name: its open changes, with their checks and review",
+    )
     .argument("[trees]", "after a name: every tree cut from it")
+    .command(
+        "refresh",
+        "asks GitHub after each repository's open changes, as a timer does",
+    )
     .example(
         "repos",
-        "each repository as a line: its trees, checkouts and remote",
+        "each repository as a line: its changes, trees and checkouts",
     )
     .example("repos core.nix", "one repository in full")
+    .example(
+        "repos core.nix changes",
+        "its open changes, updated last first",
+    )
     .example("repos core.nix trees", "every tree of it, newest first")
     .example("repos --json", "the whole record, as repos.repositories/1")
+    .example(
+        "repos refresh",
+        "GitHub's part now, rather than at the timer's next",
+    )
     .exit(
         Exit::Usage,
         "two repositories go by that name, or the words are unknown",
     )
     .exit(Exit::NotFound, "no repository goes by that name")
+    .exit(
+        Exit::Unavailable,
+        "refresh: neither the GitHub broker nor GitHub answered",
+    )
+    .exit(
+        Exit::Config,
+        "there's nowhere to look, or to keep GitHub's part",
+    )
 }

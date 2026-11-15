@@ -4,12 +4,17 @@
 //! ```text
 //! repos                     every repository as a line of a table
 //! repos NAME                one in full: its remote, trunk and checkouts
+//! repos NAME changes        its open changes, with their checks and review
 //! repos NAME trees          every tree cut from it, the newest first
+//! repos refresh             asks GitHub after each one's open changes
 //! ```
 //!
 //! It takes the shape every command of ours does (docs/commands.md),
 //! through the terminal kit. Where to look comes from `REPOS_ROOTS`, which
 //! its Home Manager module sets from `jitsusama.repos.roots`, else ~/src.
+//! What GitHub was last seen to hold is kept in the state folder, where
+//! `repos refresh`, on a timer, writes it and every reading merges it in
+//! (the crate's github.rs says why).
 
 mod commands;
 mod views;
@@ -19,8 +24,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use repos::model::Record;
+use repos::broker;
+use repos::github::{self, Seen};
+use repos::model::{Record, Source};
 use repos::read::{self, Reading};
+use repos::when::Clock;
 use serde_json::Value;
 use terminal_kit::{Context, Exit, Failure};
 
@@ -35,11 +43,18 @@ fn run(context: &Context) -> Result<(), Failure> {
     let home = home();
     let home = home.as_deref();
     let now = now();
+    let clock = Clock::here(now);
     match words.as_slice() {
+        ["refresh"] => {
+            let seen = refresh(home, now)?;
+            show(context, &views::seen_json(&seen), || {
+                views::seen(&seen, &context.out)
+            })
+        }
         [] => {
             let record = record(home, now)?;
             show(context, &views::repositories_json(&record), || {
-                views::repositories(&record, now, home, &context.out, context.room)
+                views::repositories(&record, &clock, home, &context.out, context.room)
             })
         }
         [name] => {
@@ -48,14 +63,30 @@ fn run(context: &Context) -> Result<(), Failure> {
             show(
                 context,
                 &views::repository_json(&record, repository),
-                || views::repository(repository, now, home, &context.out, context.room),
+                || {
+                    views::repository(
+                        &record,
+                        repository,
+                        &clock,
+                        home,
+                        &context.out,
+                        context.room,
+                    )
+                },
             )
+        }
+        [name, "changes" | "change"] => {
+            let record = record(home, now)?;
+            let repository = views::find(&record, name)?;
+            show(context, &views::changes_json(&record, repository), || {
+                views::changes(&record, repository, &clock, &context.out, context.room)
+            })
         }
         [name, "trees" | "tree"] => {
             let record = record(home, now)?;
             let repository = views::find(&record, name)?;
             show(context, &views::trees_json(&record, repository), || {
-                views::trees(repository, now, home, &context.out, context.room)
+                views::trees(repository, &clock, home, &context.out, context.room)
             })
         }
         _ => {
@@ -135,8 +166,31 @@ fn machine() -> String {
         .unwrap_or_else(|| "this machine".to_owned())
 }
 
-/// The record, read from the disk now.
+/// The record, read from the disk now, with what GitHub was last seen to
+/// hold where a refresh has asked it.
 fn record(home: Option<&Path>, now: u64) -> Result<Record, Failure> {
+    let mut record = disk(home, now)?;
+    let Ok(file) = seen_file(home) else {
+        return Ok(record);
+    };
+    // No file means no refresh has run here, as on a machine with no
+    // GitHub broker, and the record is the disk's alone.
+    if let Ok(text) = std::fs::read_to_string(&file) {
+        match serde_json::from_str::<Seen>(&text) {
+            Ok(seen) if seen.schema == github::SCHEMA => github::merge(&mut record, &seen),
+            _ => record.sources.push(Source {
+                name: "github".to_owned(),
+                what: "each repository's open changes and their checks".to_owned(),
+                read_at: None,
+                unread: vec![format!("{} isn't a refresh's record", file.display())],
+            }),
+        }
+    }
+    Ok(record)
+}
+
+/// The record as the disk alone says it.
+fn disk(home: Option<&Path>, now: u64) -> Result<Record, Failure> {
     let roots = roots(home)?;
     let machine = machine();
     Ok(read::read(&Reading {
@@ -145,4 +199,57 @@ fn record(home: Option<&Path>, now: u64) -> Result<Record, Failure> {
         machine: &machine,
         now,
     }))
+}
+
+/// Where a refresh keeps what it saw: `$XDG_STATE_HOME/repos/github.json`,
+/// else under ~/.local/state.
+fn seen_file(home: Option<&Path>) -> Result<PathBuf, Failure> {
+    let state = std::env::var_os("XDG_STATE_HOME")
+        .filter(|state| !state.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| home.map(|home| home.join(".local/state")));
+    state
+        .map(|state| state.join("repos/github.json"))
+        .ok_or_else(|| {
+            Failure::new(Exit::Config, "there's nowhere to keep what GitHub holds")
+                .because("neither XDG_STATE_HOME nor HOME is set")
+        })
+}
+
+/// Asks GitHub, through the machine's broker, after each repository's open
+/// changes, and keeps what it saw, written whole or not at all.
+fn refresh(home: Option<&Path>, now: u64) -> Result<Seen, Failure> {
+    let unreached =
+        |why: String| Failure::new(Exit::Unavailable, "repos couldn't ask GitHub").because(why);
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|runtime| !runtime.is_empty())
+        .ok_or_else(|| {
+            Failure::new(Exit::Config, "there's no GitHub broker to ask")
+                .because("XDG_RUNTIME_DIR isn't set")
+        })?;
+    let socket = PathBuf::from(runtime).join("github-broker.sock");
+    let token = broker::token(&socket)
+        .map_err(|why| unreached(why).try_this("systemctl --user status github-broker.socket"))?;
+    let record = disk(home, now)?;
+    let seen = github::refresh(&github::asked(&record), now, |query| {
+        github::post(&token, query)
+    })
+    .map_err(unreached)?;
+    let file = seen_file(home)?;
+    keep(&file, &seen).map_err(|why| {
+        Failure::new(Exit::Failed, "repos couldn't keep what GitHub holds")
+            .because(format!("{}: {why}", file.display()))
+    })?;
+    Ok(seen)
+}
+
+/// `seen` written to `file` through a file beside it, renamed over it, so
+/// a reading never finds half of one.
+fn keep(file: &Path, seen: &Seen) -> io::Result<()> {
+    if let Some(folder) = file.parent() {
+        std::fs::create_dir_all(folder)?;
+    }
+    let beside = file.with_extension(format!("json.{}", std::process::id()));
+    std::fs::write(&beside, serde_json::to_vec(seen).map_err(io::Error::other)?)?;
+    std::fs::rename(&beside, file)
 }

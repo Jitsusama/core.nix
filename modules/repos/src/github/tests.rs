@@ -34,7 +34,10 @@ fn parsed() -> (BTreeMap<String, Vec<Change>>, Vec<String>) {
 }
 
 fn busy() -> Vec<Change> {
-    parsed().0.remove("github:someone/once-quiet").expect("the busy one")
+    parsed()
+        .0
+        .remove("github:someone/once-quiet")
+        .expect("the busy one")
 }
 
 fn repository(key: &str) -> Repository {
@@ -101,11 +104,7 @@ fn a_repository_the_app_cannot_see_is_said_to_be_unread() {
     assert!(!changes.contains_key("github:someone/private"));
     assert_eq!(
         unread,
-        [
-            "github:someone/private: GitHub's App can't see it, or it's gone",
-            "github:Jitsusama/core.nix: the 3 of its 35 open changes updated last",
-            "github:someone/once-quiet: the 3 of its 12584 open changes updated last",
-        ]
+        ["github:someone/private: GitHub's App can't see it, or it's gone"]
     );
 }
 
@@ -120,7 +119,10 @@ fn a_change_running_no_checks_says_none() {
         [Some(4783), Some(4725), Some(4782)]
     );
     let first = &core[0];
-    assert_eq!(first.title, "Let the Merge Net Finish Its Round When a New Build Is Installed");
+    assert_eq!(
+        first.title,
+        "Let the Merge Net Finish Its Round When a New Build Is Installed"
+    );
     assert_eq!(first.branch, "jitsusama/net-hands-over-between-rounds");
     assert_eq!(first.base, "main");
     assert_eq!(first.author.as_deref(), Some("Jitsusama"));
@@ -187,13 +189,34 @@ fn a_query_refused_whole_says_why() {
 }
 
 #[test]
-fn github_s_times_read_as_seconds() {
-    assert_eq!(seconds_of("2026-11-15T15:10:03Z"), Some(1_794_755_403));
-    assert_eq!(seconds_of("2024-02-29T23:59:59Z"), Some(1_709_251_199));
-    assert_eq!(seconds_of("1970-01-01T00:00:00.250Z"), Some(0));
-    assert_eq!(seconds_of("2026-11-15T15:10:03+01:00"), None);
-    assert_eq!(seconds_of("2026-13-01T00:00:00Z"), None);
-    assert_eq!(seconds_of("yesterday"), None);
+fn a_refresh_asks_a_few_dozen_at_a_time() {
+    let many: Vec<Asked> = (0..=PER_QUERY)
+        .map(|at| one(&format!("someone/r{at}")))
+        .collect();
+    let mut queries = Vec::new();
+    let seen = refresh(&many, 7, |query| {
+        queries.push(query.matches(": repository(").count());
+        Ok(serde_json::json!({ "data": {} }))
+    })
+    .expect("it refreshes");
+    assert_eq!(queries, [PER_QUERY, 1]);
+    assert_eq!(seen.read_at, 7);
+    assert_eq!(seen.unread.len(), PER_QUERY + 1);
+}
+
+#[test]
+fn a_refresh_github_answers_without_data_keeps_nothing() {
+    let refused = refresh(&asked_after(), 7, |_| {
+        Ok(serde_json::json!({
+            "errors": [{ "message": "Bad credentials" }]
+        }))
+    });
+    assert_eq!(
+        refused,
+        Err("GitHub answered no data: Bad credentials".to_owned())
+    );
+    let unreached = refresh(&asked_after(), 7, |_| Err("can't reach GitHub".to_owned()));
+    assert_eq!(unreached, Err("can't reach GitHub".to_owned()));
 }
 
 #[test]
@@ -212,7 +235,7 @@ fn a_refresh_merged_gives_each_repository_its_changes_and_github_a_source() {
     let github = record.sources.last().expect("GitHub as a source");
     assert_eq!(github.name, "github");
     assert_eq!(github.read_at, Some(1_794_755_410));
-    assert_eq!(github.unread.len(), 3);
+    assert_eq!(github.unread.len(), 1);
 }
 
 #[test]
