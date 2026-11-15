@@ -381,6 +381,43 @@ def test_a_chord_into_a_place_makes_only_its_rows(shell: Shell) -> None:
     assert not made, f"opening into Windows, other sources made rows: {made}"
 
 
+def test_a_viewers_command_line_makes_no_rows(shell: Shell) -> None:
+    """A viewer's command line, as : in swayimg opens it, makes no source's rows as it opens.
+
+    The line hides every row, yet it opened finding home, and every source home names made its
+    rows for it: Joel's two at 23:43 made 84 and 38, and took 110 and 75 ms to their frames
+    (2026-11-14). A try a closing's spots landed in counts nothing of the opening's, so it's
+    closed, its own spots waited for, and made again.
+    """
+    for _ in range(REOPENINGS_TRIED):
+        began = shell.mark()
+        timed = latest(openings(shell))
+        before = json.loads(shell.as_account(shell.ipc("made")))["rows"]
+        told("command-line swayimg 1 picture.png")
+        each: list[Json] = []
+
+        def timed_after(_: Json) -> bool:
+            each[:] = openings(shell)
+            return latest(each) > timed
+
+        shell.launcher_until(timed_after)
+        after = json.loads(shell.as_account(shell.ipc("made")))["rows"]
+        said, _ = shell.said_since(began)
+        if not any(line.startswith(SPOTS_MADE_SHUT) for line in said):
+            break
+        closing = shell.mark()
+        shell.close_launcher()
+        shell.reported(SPOTS_MADE_SHUT[0], lambda _: True, closing)
+    else:
+        pytest.fail(f"a closing's spots were made as each of {REOPENINGS_TRIED} tries opened")
+    opening = each[-1]
+    print(f"a viewer's line opened in {opening.get('took')} ms: {opening}", flush=True)
+    made = {name: rows - before.get(name, 0) for name, rows in after.items()
+            if rows > before.get(name, 0)}
+    assert not made, f"opening a viewer's command line, sources made rows: {made}: {opening}"
+    assert opening["rows"] == 0, f"a viewer's command line made rows before its frame: {opening}"
+
+
 def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) -> None:
     """The first chord after a restart, with home kept as the shell started, makes only its rows.
 
