@@ -82,7 +82,7 @@
         "locked": "not while the screen is locked",
         "changed": "it changed since it was shown; read it again",
         "unread": "read it before you release it",
-        "lasts": "a week, for this command from any tree of {repository} on main",
+        "lasts": "a week, from any tree of {repository} on main",
         "granted": "standing yes",
         "grantNote": "{command}, from {repository}",
         "anyTree": "any tree of {repository} on main",

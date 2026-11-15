@@ -174,7 +174,8 @@ pub enum Ask {
         id: Value,
         said: Value,
     },
-    /// Asks' Revoke It on a standing yes, as its row's act says it.
+    /// Asks' Forget It on a standing yes, which the daemon's wire calls
+    /// a revoke.
     Revoke {
         id: Value,
         said: Value,
