@@ -153,7 +153,7 @@ fn a_head_whose_change_main_took_rebased_counts_as_merged() {
     let change = write("a\nb\nC\nd\ne\n", "change");
     git_in(&repo, &["checkout", "-q", &base]);
     write("a\nB\nc\nd\ne\n", "moved");
-    git_in(&repo, &["cherry-pick", "-q", &change]);
+    git_in(&repo, &["cherry-pick", &change]);
     let main = git_in(&repo, &["rev-parse", "HEAD"]);
     git_in(&repo, &["update-ref", "refs/remotes/origin/main", &main]);
     git_in(&repo, &["checkout", "-q", &base]);

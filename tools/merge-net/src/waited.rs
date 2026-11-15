@@ -145,7 +145,11 @@ mod tests {
         waited.write(&path).unwrap();
         let read = Waited::read(&path);
         fs::remove_dir_all(&folder).unwrap();
-        assert_eq!(read.since(Some("old"), None, NOW), NOW, "a hold past keeping stood");
+        assert_eq!(
+            read.since(Some("old"), None, NOW),
+            NOW,
+            "a hold past keeping stood"
+        );
         assert_eq!(
             read.since(Some("new"), None, NOW),
             NOW - 60,
