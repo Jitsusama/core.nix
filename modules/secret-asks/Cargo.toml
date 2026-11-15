@@ -16,6 +16,10 @@ inotify = { version = "0.11", default-features = false }
 # The one form every daemon's rows take (../ready-rows).
 ready-rows = { path = "../ready-rows" }
 serde_json = "1"
+# Each commit on a forge's main hashed as git names it, so no pack or
+# commit-graph in a tree's objects can say which bytes a commit is; the
+# collision-detecting SHA-1 git itself uses, so a crafted pair is refused.
+sha1-checked = { version = "0.10", default-features = false }
 # The digest a yes carries back, of everything the line showed.
 sha2 = "0.10"
 

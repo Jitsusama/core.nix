@@ -15,10 +15,23 @@
 //!
 //! Where its history is kept is read from files alone, git never run: its
 //! own checkout, a worktree git vouches for, or a `.git` it wouldn't.
+//!
+//! Whether a tree's commit is on a forge's main is walked by the daemon
+//! itself, from the commit the forge names, over each commit's own bytes
+//! hashed as git names them. Anything that commits can write a tree's
+//! objects, and git takes a pack's index, a multi-pack index or a
+//! commit-graph at its word for which bytes a commit is and what its
+//! parents are, so only a hash says a commit is the one the forge named.
 
+use std::collections::{HashSet, VecDeque};
+use std::fmt::Write as _;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use sha1_checked::CollisionResult;
+use sha2::{Digest, Sha256};
 
 /// The tree as git says it, or that it isn't one.
 #[derive(Clone, Debug, PartialEq)]
@@ -191,6 +204,16 @@ impl Made {
         let made = Made(folder);
         std::fs::create_dir(made.0.join("refs")).ok()?;
         std::fs::write(made.0.join("HEAD"), format!("{commit}\n")).ok()?;
+        // A repository that names its objects by SHA-256 says so in its
+        // config, which this folder has none of but this.
+        if Format::of(commit)? == Format::Sha256 {
+            std::fs::write(
+                made.0.join("config"),
+                "[core]\n\trepositoryformatversion = 1\n\
+                 [extensions]\n\tobjectformat = sha256\n",
+            )
+            .ok()?;
+        }
         Some(made)
     }
 }
@@ -239,26 +262,193 @@ pub fn origin(git: &Path, path: &Path) -> Option<String> {
     .filter(|url| !url.is_empty())
 }
 
+/// How many commits back from a forge's main a tree's commit is looked
+/// for. Past it the commit is taken as not on main, and the ask waits on
+/// Joel as it would with no standing yes.
+const WALKED: usize = 200_000;
+
+/// The most a commit's bytes may be, past which it's taken as no commit
+/// git made, so a forged size can't have the daemon hold gigabytes.
+const LONGEST: usize = 1 << 20;
+
+/// How a repository names its objects, told by how long a name is.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Format {
+    Sha1,
+    Sha256,
+}
+
+impl Format {
+    /// The format `name` is a whole name in, as git writes one.
+    fn of(name: &str) -> Option<Format> {
+        let hex = name
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+        match (hex, name.len()) {
+            (true, 40) => Some(Format::Sha1),
+            (true, 64) => Some(Format::Sha256),
+            _ => None,
+        }
+    }
+
+    /// The name git gives a commit of `body`, or none for SHA-1 bytes
+    /// that are half of a crafted collision, which git itself refuses.
+    fn name(self, body: &[u8]) -> Option<String> {
+        let header = format!("commit {}\0", body.len());
+        let hash = match self {
+            Format::Sha1 => {
+                let mut hasher = sha1_checked::Sha1::new();
+                Digest::update(&mut hasher, header.as_bytes());
+                Digest::update(&mut hasher, body);
+                match hasher.try_finalize() {
+                    CollisionResult::Ok(hash) => hash.to_vec(),
+                    CollisionResult::Mitigated(_) | CollisionResult::Collision(_) => return None,
+                }
+            }
+            Format::Sha256 => Sha256::new()
+                .chain_update(header.as_bytes())
+                .chain_update(body)
+                .finalize()
+                .to_vec(),
+        };
+        Some(hash.iter().fold(String::new(), |mut hex, byte| {
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        }))
+    }
+}
+
 /// Whether the tree `tree` read at `path` has its code all on its
 /// origin's default branch: nothing uncommitted, and its commit one that
-/// `main`, the commit the forge says the branch is, holds. Whether it
-/// does is asked over a git folder made for the read, as status is, of
-/// the tree's own objects: a forge's commit the tree hasn't fetched
-/// holds nothing it can say, and the ask waits on Joel.
+/// `main`, the commit the forge says the branch is, comes from. The
+/// commits are read from the tree's own objects over a git folder made
+/// for the read, as status is, and walked here, each hashed: a forge's
+/// commit the tree hasn't fetched, or bytes that aren't the commit they
+/// were asked for, hold nothing it can say, and the ask waits on Joel.
 pub fn landed(git: &Path, path: &Path, tree: &Tree, main: &str) -> bool {
     let (Some(commit), Some(0)) = (tree.commit.as_deref(), tree.uncommitted) else {
+        return false;
+    };
+    let Some(format) = Format::of(commit).filter(|format| Format::of(main) == Some(*format)) else {
         return false;
     };
     let (Some(places), Some(made)) = (places(git, path), Made::new(commit)) else {
         return false;
     };
-    git_command(git)
+    // cat-file reads no commit-graph, but it's turned off all the same, so
+    // no later change to what cat-file reads can bring one in.
+    let Ok(mut reading) = git_command(git)
         .env("GIT_DIR", &made.0)
         .env("GIT_OBJECT_DIRECTORY", &places.objects)
-        .args(["merge-base", "--is-ancestor", commit, main])
-        .stdout(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
+        .args(["-c", "core.commitGraph=false", "cat-file", "--batch"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+    else {
+        return false;
+    };
+    let found = reading
+        .stdin
+        .take()
+        .zip(reading.stdout.take())
+        .is_some_and(|(asks, says)| {
+            let batch = Batch {
+                asks,
+                says: BufReader::new(says),
+            };
+            walked(format, main, commit, batch, WALKED)
+        });
+    // Its input is closed by now, so it ends of itself; this only makes
+    // sure it has before the made folder goes.
+    let _ = reading.kill();
+    let _ = reading.wait();
+    found
+}
+
+/// A cat-file batch: what it's asked, and what it says back.
+struct Batch<A: Write, S: BufRead> {
+    asks: A,
+    says: S,
+}
+
+/// Whether `commit` is `main` or comes from it, within `limit` commits,
+/// each asked of `batch`: only the parents of bytes that hash to the name
+/// asked for are followed.
+fn walked<A: Write, S: BufRead>(
+    format: Format,
+    main: &str,
+    commit: &str,
+    mut batch: Batch<A, S>,
+    limit: usize,
+) -> bool {
+    let mut next = VecDeque::from([main.to_owned()]);
+    let mut seen = HashSet::from([main.to_owned()]);
+    while let Some(name) = next.pop_front() {
+        if name == commit {
+            return true;
+        }
+        let body = match asked(&mut batch.asks, &mut batch.says, &name) {
+            Some(Said::Commit(body)) if format.name(&body).as_deref() == Some(name.as_str()) => {
+                body
+            }
+            Some(Said::Commit(_) | Said::None) => continue,
+            None => return false,
+        };
+        for parent in parents(&body).filter(|parent| Format::of(parent) == Some(format)) {
+            if seen.len() >= limit {
+                return false;
+            }
+            if seen.insert(parent.to_owned()) {
+                next.push_back(parent.to_owned());
+            }
+        }
+    }
+    false
+}
+
+/// What a cat-file batch says an object is.
+enum Said {
+    /// A commit, of these bytes.
+    Commit(Vec<u8>),
+    /// Missing from the tree's objects, or no commit.
+    None,
+}
+
+/// What a cat-file batch says of the object `name`, or none where it
+/// can't be read on from, the walk then ending.
+fn asked(asks: &mut impl Write, says: &mut impl BufRead, name: &str) -> Option<Said> {
+    writeln!(asks, "{name}").ok()?;
+    asks.flush().ok()?;
+    let mut header = String::new();
+    says.read_line(&mut header).ok()?;
+    let mut words = header.split_whitespace();
+    if words.next() != Some(name) {
+        return None;
+    }
+    let (Some(kind), Some(size)) = (words.next(), words.next()) else {
+        // "missing", where the tree's objects don't hold it.
+        return Some(Said::None);
+    };
+    let size = size.parse::<usize>().ok().filter(|size| *size <= LONGEST)?;
+    let mut body = vec![0; size + 1];
+    says.read_exact(&mut body).ok()?;
+    // The batch ends each object with a newline of its own.
+    body.pop();
+    Some(if kind == "commit" {
+        Said::Commit(body)
+    } else {
+        Said::None
+    })
+}
+
+/// The parents a commit of `body` names, read as git reads them: the
+/// lines straight after its tree's.
+fn parents(body: &[u8]) -> impl Iterator<Item = &str> {
+    let mut lines = body.split(|byte| *byte == b'\n');
+    let tree = lines.next().is_some_and(|line| line.starts_with(b"tree "));
+    lines
+        .take_while(move |line| tree && line.starts_with(b"parent "))
+        .filter_map(|line| std::str::from_utf8(&line[b"parent ".len()..]).ok())
 }
 
 /// The tree at `path`, asked of the git at `git`.
@@ -313,6 +503,119 @@ mod tests {
         std::fs::write(own.join("commondir"), "../..\n").unwrap();
         std::fs::write(own.join("gitdir"), format!("{}\n", back.display())).unwrap();
         (common, own)
+    }
+
+    /// A commit's bytes, from `parents`, in either format.
+    fn commit(tree: &str, parents: &[&str]) -> Vec<u8> {
+        let parents = parents.iter().fold(String::new(), |mut lines, name| {
+            let _ = writeln!(lines, "parent {name}");
+            lines
+        });
+        format!(
+            "tree {tree}\n{parents}author t <t@example.com> 0 +0000\n\
+             committer t <t@example.com> 0 +0000\n\na commit\n"
+        )
+        .into_bytes()
+    }
+
+    /// A cat-file batch that says `objects` back, by name, in the order
+    /// they're asked for.
+    fn batch(objects: &[(&str, &[u8])]) -> Batch<Vec<u8>, std::io::Cursor<Vec<u8>>> {
+        let mut says = Vec::new();
+        for (name, body) in objects {
+            says.extend_from_slice(format!("{name} commit {}\n", body.len()).as_bytes());
+            says.extend_from_slice(body);
+            says.push(b'\n');
+        }
+        Batch {
+            asks: Vec::new(),
+            says: std::io::Cursor::new(says),
+        }
+    }
+
+    /// Three commits, each the last's parent: the first, its child, and
+    /// main, with their names.
+    fn chain() -> [(String, Vec<u8>); 3] {
+        let first = commit(EMPTY_TREE, &[]);
+        let first_name = Format::Sha1.name(&first).unwrap();
+        let child = commit(EMPTY_TREE, &[&first_name]);
+        let child_name = Format::Sha1.name(&child).unwrap();
+        let main = commit(EMPTY_TREE, &[&child_name]);
+        let main_name = Format::Sha1.name(&main).unwrap();
+        [(first_name, first), (child_name, child), (main_name, main)]
+    }
+
+    #[test]
+    fn a_commit_is_named_as_git_names_it_in_either_format() {
+        assert_eq!(
+            Format::Sha1.name(&commit(EMPTY_TREE, &[])).as_deref(),
+            Some("8b811f0ececd1a5d2a5f777ed3cdd589d316ca34"),
+            "a SHA-1 commit isn't named as git hash-object names it"
+        );
+        let empty = "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321";
+        assert_eq!(
+            Format::Sha256.name(&commit(empty, &[])).as_deref(),
+            Some("f8c36ef475e9e7697821b57aa182738fa9b6d268abdb4b097d43bbd753cdd465"),
+            "a SHA-256 commit isn't named as git hash-object names it"
+        );
+        assert_eq!(Format::of(empty), Some(Format::Sha256), "a long name");
+        assert_eq!(Format::of(EMPTY_TREE), Some(Format::Sha1), "a short name");
+        assert_eq!(
+            Format::of(&EMPTY_TREE.to_uppercase()),
+            None,
+            "git writes lower case"
+        );
+    }
+
+    #[test]
+    fn a_commit_is_found_back_from_main_through_commits_that_hash_right() {
+        let [(first, _), (child, child_body), (main, main_body)] = chain();
+        let asked = batch(&[(&main, &main_body), (&child, &child_body)]);
+        assert!(
+            walked(Format::Sha1, &main, &first, asked, WALKED),
+            "main's grandparent wasn't found"
+        );
+    }
+
+    #[test]
+    fn bytes_that_arent_the_commit_asked_for_are_never_followed() {
+        let [(first, _), (child, child_body), (main, _)] = chain();
+        // What a forged pack would say main is: a commit naming the
+        // unlanded one as its parent, under main's name.
+        let forged = commit(EMPTY_TREE, &[&first]);
+        let asked = batch(&[(&main, &forged), (&child, &child_body)]);
+        assert!(
+            !walked(Format::Sha1, &main, &first, asked, WALKED),
+            "a parent of bytes that aren't main's was followed"
+        );
+    }
+
+    #[test]
+    fn past_its_limit_a_walk_finds_nothing() {
+        let [(first, _), (child, child_body), (main, main_body)] = chain();
+        let asked = batch(&[(&main, &main_body), (&child, &child_body)]);
+        assert!(
+            !walked(Format::Sha1, &main, &first, asked, 1),
+            "a walk went past its limit"
+        );
+    }
+
+    #[test]
+    fn only_the_lines_straight_after_a_commits_tree_are_its_parents() {
+        let parent = "8b811f0ececd1a5d2a5f777ed3cdd589d316ca34";
+        let named =
+            format!("tree {EMPTY_TREE}\nparent {parent}\nauthor t\n\nparent {EMPTY_TREE}\n");
+        assert_eq!(
+            parents(named.as_bytes()).collect::<Vec<_>>(),
+            [parent],
+            "a parent line elsewhere was read as one"
+        );
+        let late = format!("tree {EMPTY_TREE}\nauthor t\nparent {parent}\n");
+        assert_eq!(
+            parents(late.as_bytes()).count(),
+            0,
+            "a parent line after the author was read as one"
+        );
     }
 
     #[test]
