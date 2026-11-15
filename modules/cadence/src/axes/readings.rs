@@ -521,7 +521,19 @@ fn joined<T>(thread: std::thread::ScopedJoinHandle<'_, T>) -> T {
 
 /// Where cadence keeps what it can make again: `$XDG_CACHE_HOME`, else
 /// `~/.cache`.
-fn cache_home() -> PathBuf {
+/// The account's runtime folder, where daemons keep what they serve.
+pub(super) fn runtime_dir() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR").map_or_else(
+        || {
+            use std::os::unix::fs::MetadataExt;
+            let uid = fs::metadata("/proc/self").map_or(0, |m| m.uid());
+            PathBuf::from(format!("/run/user/{uid}"))
+        },
+        PathBuf::from,
+    )
+}
+
+pub(super) fn cache_home() -> PathBuf {
     std::env::var_os("XDG_CACHE_HOME").map_or_else(
         || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"),
         PathBuf::from,
@@ -564,14 +576,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(
-        || {
-            use std::os::unix::fs::MetadataExt;
-            let uid = fs::metadata("/proc/self").map_or(0, |m| m.uid());
-            PathBuf::from(format!("/run/user/{uid}"))
-        },
-        PathBuf::from,
-    );
+    let runtime = runtime_dir();
     let (messages, landings, harness, machine, plans, counted) = std::thread::scope(|s| {
         let messages = s.spawn(|| {
             messages::read(

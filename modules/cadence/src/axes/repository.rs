@@ -57,6 +57,25 @@ fn hosted(config: &str) -> Option<Hosted> {
     })
 }
 
+/// The first-parent logs of core's, the harness's and the machine
+/// repository's mains, newest first as `%H %ct %s` lines, for `cadence
+/// hour`, which counts what each landed; read side by side, as the axes
+/// read them, from the same mirrors and the same kept log.
+pub fn mains(folder: &Path, now: i64) -> [String; 3] {
+    let runtime = super::readings::runtime_dir();
+    let kept = super::readings::cache_home().join("cadence/repository.json");
+    std::thread::scope(|s| {
+        let core = s.spawn(|| landings::gather(folder, &runtime, now).main);
+        let harness = s.spawn(|| landings::gather_harness(now).main);
+        let machine = gather(now, &kept).main;
+        [
+            core.join().unwrap_or_default(),
+            harness.join().unwrap_or_default(),
+            machine,
+        ]
+    })
+}
+
 /// Reads the machine repository's main as last fetched, never fetching,
 /// and update-to-main's looks at it, from the journal.
 #[must_use]

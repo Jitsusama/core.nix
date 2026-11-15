@@ -50,6 +50,7 @@ mod day;
 mod findings;
 mod gate;
 mod health;
+mod hour;
 mod idle;
 mod judge;
 mod machine;
@@ -121,6 +122,7 @@ fn asked(context: &Context) -> Result<(), Failure> {
         "axes" => axes::run(rest),
         "review" => axes::review::run(rest),
         "owe" => owe::run(rest, now_ms() / 1000),
+        "hour" => hour::run(rest),
         _ => Err(Failure::new(Exit::Usage, "cadence takes its command first")
             .because(format!("{command} came before it"))
             .try_this("cadence --help")),

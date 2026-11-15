@@ -18,6 +18,7 @@ pub fn help() -> Help {
     .subcommand(units())
     .subcommand(axes())
     .subcommand(review())
+    .subcommand(hour())
     .subcommand(owe())
     .exit(Exit::Usage, "it was asked wrongly")
     .exit(Exit::Failed, "its records couldn't be read or kept")
@@ -108,6 +109,15 @@ fn review() -> Help {
         .option("--to ADDRESS", "who it's sent to, again for each")
         .exit(Exit::Usage, "a flag it doesn't take, or one with no value")
         .exit(Exit::Failed, "the week couldn't be read or sent")
+}
+
+fn hour() -> Help {
+    Help::new("hour", "the hour against its targets, and its drag")
+        .example("cadence hour", "the hour's card, its drag filed")
+        .example("cadence hour --to O", "and the card sent to O")
+        .option("--to ADDRESS", "who the card is sent to")
+        .exit(Exit::Usage, "a flag it doesn't take, or one with no value")
+        .exit(Exit::Failed, "the hour couldn't be read, kept or sent")
 }
 
 fn owe() -> Help {

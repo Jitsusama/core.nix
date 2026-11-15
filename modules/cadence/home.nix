@@ -42,6 +42,11 @@
 # axes and Joel's pains disagree) to the orchestrator and to the owner
 # `owners` names for `review`.
 #
+# Each hour at ten past, `cadence hour` measures what shipped, what broke,
+# what slipped and how clean the code is against their targets, names the
+# one biggest drag and files it with its owner in findings.jsonl, says
+# whether last hour's moved, and sends the card to the orchestrator.
+#
 # cadence-spec (./spec) serves the axes to the launcher's Spec place over
 # $XDG_RUNTIME_DIR/daemons/cadence-spec.sock in the shell's daemon interface,
 # asking `cadence axes --served` for the rows at most every five minutes
@@ -287,6 +292,41 @@ in
         DirectoryMode = "0700";
       };
       Install.WantedBy = [ "sockets.target" ];
+    };
+    systemd.user.services.cadence-hour = {
+      Unit.Description = "Measures the hour's shipping, quality and clean zones";
+      Service = {
+        Type = "oneshot";
+        ExecStart = lib.escapeShellArgs (
+          [
+            (lib.getExe package)
+            "hour"
+          ]
+          ++ lib.optionals (cfg.orchestrator != null) [
+            "--to"
+            cfg.orchestrator
+          ]
+        );
+        # git for the three mains, and journalctl for update-to-main's
+        # looks at them, as the axes read them.
+        Environment = [
+          "PATH=${
+            lib.makeBinPath [
+              pkgs.git
+              pkgs.systemd
+            ]
+          }"
+        ];
+        Slice = "background.slice";
+      };
+    };
+    systemd.user.timers.cadence-hour = {
+      Unit.Description = "Measures the hour at ten past each hour";
+      Timer = {
+        OnCalendar = "*-*-* *:10:00";
+        AccuracySec = "30s";
+      };
+      Install.WantedBy = [ "timers.target" ];
     };
     systemd.user.timers.cadence-review = {
       Unit.Description = "Reviews the week each Friday evening";
