@@ -141,7 +141,31 @@ fn ports(device: &Device, pen: &Pen, room: Room) -> Vec<String> {
             ]
         })
         .collect();
-    layout::table_in(&PORTS, &rows, pen, room, &[4, 3])
+    telling(&PORTS, &rows, pen, room, &[4, 3])
+}
+
+/// A table of only the columns that say something: one goes when every
+/// row leaves it empty, as down ports leave their speed. The first
+/// column names each row, so it stays.
+fn telling(
+    columns: &[(&str, Align)],
+    rows: &[Vec<String>],
+    pen: &Pen,
+    room: Room,
+    gives_way: &[usize],
+) -> Vec<String> {
+    let says = |place: usize| place == 0 || rows.iter().any(|row| !row[place].is_empty());
+    let kept: Vec<usize> = (0..columns.len()).filter(|&place| says(place)).collect();
+    let columns: Vec<(&str, Align)> = kept.iter().map(|&place| columns[place]).collect();
+    let rows: Vec<Vec<String>> = rows
+        .iter()
+        .map(|row| kept.iter().map(|&place| row[place].clone()).collect())
+        .collect();
+    let gives_way: Vec<usize> = gives_way
+        .iter()
+        .filter_map(|place| kept.iter().position(|kept| kept == place))
+        .collect();
+    layout::table_in(&columns, &rows, pen, room, &gives_way)
 }
 
 const RADIOS: [(&str, Align); 6] = [
@@ -161,9 +185,11 @@ fn radios(device: &Device, pen: &Pen, room: Room) -> Vec<String> {
         .radios
         .iter()
         .map(|radio| {
+            // A radio named by its band says it once.
+            let band = radio.band.clone().filter(|band| *band != radio.name);
             vec![
                 radio.name.clone(),
-                radio.band.clone().unwrap_or_default(),
+                band.unwrap_or_default(),
                 figure(radio.channel),
                 figure(radio.width_mhz),
                 figure(radio.busy_pct),
@@ -171,7 +197,7 @@ fn radios(device: &Device, pen: &Pen, room: Room) -> Vec<String> {
             ]
         })
         .collect();
-    layout::table_in(&RADIOS, &rows, pen, room, &[5, 1, 3])
+    telling(&RADIOS, &rows, pen, room, &[5, 1, 3])
 }
 
 /// A serialized enum's words: `access-point` as `access point`.
@@ -192,19 +218,20 @@ fn at(end: &End) -> Option<String> {
 
 /// The links' columns, and the order they give way in: where the link
 /// sits on the other device, then on this one, then its channel. The
-/// other device, the medium and the speed always stay.
-const LINKS: [(&str, Align); 6] = [
+/// other device, the medium, the speed and the signal always stay.
+const LINKS: [(&str, Align); 7] = [
     ("linked to", Align::Left),
     ("medium", Align::Left),
     ("channel", Align::Right),
     ("here", Align::Left),
     ("there", Align::Left),
     ("mbit/s", Align::Right),
+    ("signal dbm", Align::Right),
 ];
 const LINKS_GIVE_WAY: [usize; 3] = [4, 3, 2];
 
 /// The devices this one links to, each a line of a table: the other
-/// device, how, where on each, and at what speed.
+/// device, how, where on each, at what speed and how strong a signal.
 fn links(network: &Network, device: &Device, pen: &Pen, room: Room) -> Vec<String> {
     let named = |id: &str| {
         network
@@ -227,13 +254,14 @@ fn links(network: &Network, device: &Device, pen: &Pen, room: Room) -> Vec<Strin
                 at(here).unwrap_or_default(),
                 at(there).unwrap_or_default(),
                 figure(link.speed_mbps),
+                figure(link.signal_dbm),
             ]
         })
         .collect();
     if rows.is_empty() {
         return Vec::new();
     }
-    layout::table_in(&LINKS, &rows, pen, room, &LINKS_GIVE_WAY)
+    telling(&LINKS, &rows, pen, room, &LINKS_GIVE_WAY)
 }
 
 /// A cable line's channels one way, as a table headed by the way.
@@ -261,6 +289,18 @@ fn channels(way: &str, channels: &[Channel], active: &str, pen: &Pen, room: Room
         hertz.map(|hertz| format!("{:.1}", hertz as f64 / 1e6))
     };
     let tenths = |value: Option<f64>| value.map(|value| format!("{value:.1}"));
+    // Each kind together, in the order the modem first lists it, then by
+    // the number it gives each, the ones it numbers none last; the modem
+    // lists them in the order they locked.
+    let kind_at = |kind: &str| channels.iter().position(|each| each.kind == kind);
+    let mut channels: Vec<&Channel> = channels.iter().collect();
+    channels.sort_by_key(|channel| {
+        (
+            kind_at(&channel.kind),
+            channel.channel.is_none(),
+            channel.channel,
+        )
+    });
     let rows: Vec<Vec<String>> = channels
         .iter()
         .map(|channel| {
@@ -278,7 +318,7 @@ fn channels(way: &str, channels: &[Channel], active: &str, pen: &Pen, room: Room
             ]
         })
         .collect();
-    layout::table_in(&columns, &rows, pen, room, &[3, 7, 4, 2, 9])
+    telling(&columns, &rows, pen, room, &[3, 7, 4, 2, 9])
 }
 
 /// The modem's event log, newest first, its message cut last.
@@ -454,6 +494,85 @@ mod tests {
         assert!(
             lines.get(head + 11).is_none_or(|line| line.is_empty()),
             "the Study has 10 links: {text}"
+        );
+    }
+
+    #[test]
+    fn a_column_saying_nothing_new_in_any_row_is_left_out() {
+        let network = network();
+        let study = find(&network, "Study").expect("the study's eero");
+        let text = device(&network, study, now(), &Pen::plain(), Room::Cells(200));
+        let head = |label: &str| {
+            text.lines()
+                .find(|line| line.starts_with(label))
+                .unwrap_or_else(|| panic!("no table opens with {label}: {text}"))
+        };
+        // Both ports are down, so neither says a speed or a duplex.
+        assert_eq!(
+            head("PORT").split_whitespace().collect::<Vec<_>>(),
+            ["PORT", "KIND", "LINK"],
+            "{text}"
+        );
+        // Each radio is named by its band.
+        assert!(!head("RADIO").contains("BAND"), "{text}");
+    }
+
+    #[test]
+    fn columns_that_happen_to_agree_both_stay() {
+        let columns = [
+            ("channel", Align::Left),
+            ("corrected", Align::Right),
+            ("uncorrectable", Align::Right),
+        ];
+        let rows = [vec!["1".to_owned(), "0".to_owned(), "0".to_owned()]];
+        let table = telling(&columns, &rows, &Pen::plain(), Room::Cells(80), &[]);
+        assert!(
+            table[0].ends_with("UNCORRECTABLE"),
+            "a column equal to its neighbour went: {table:?}"
+        );
+    }
+
+    #[test]
+    fn a_modems_channels_go_by_kind_then_number() {
+        let network = network();
+        let modem = find(&network, "Modem").expect("the modem");
+        let text = device(&network, modem, now(), &Pen::plain(), Room::Cells(200));
+        let numbers: Vec<&str> = text
+            .lines()
+            .skip_while(|line| !line.starts_with("DOWN"))
+            .skip(1)
+            .take_while(|line| !line.is_empty())
+            .map(|line| line.split_whitespace().next().unwrap_or_default())
+            .collect();
+        let expected: Vec<String> = (1..=16).map(|n| n.to_string()).collect();
+        assert_eq!(numbers[..16], expected, "{text}");
+        assert_eq!(numbers[16..], ["ofdm", "ofdm"], "{text}");
+        let up: Vec<&str> = text
+            .lines()
+            .skip_while(|line| !line.starts_with("UP"))
+            .skip(1)
+            .take_while(|line| !line.is_empty())
+            .map(|line| line.split_whitespace().nth(1).unwrap_or_default())
+            .collect();
+        assert_eq!(
+            up,
+            ["atdma", "atdma", "atdma", "atdma", "ofdma", "ofdma"],
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_link_says_its_signal_where_its_source_measured_one() {
+        let network = network();
+        let study = find(&network, "Study").expect("the study's eero");
+        let text = device(&network, study, now(), &Pen::plain(), Room::Cells(200));
+        let phone = text
+            .lines()
+            .find(|line| line.starts_with("phone 1 "))
+            .expect("the study links to a phone");
+        assert!(
+            phone.trim_end().ends_with("-69"),
+            "the phone's signal isn't last on its line: {phone}"
         );
     }
 
