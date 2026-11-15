@@ -128,6 +128,10 @@ function joined(top, inside) {
     return out;
 }
 
+// How many more picks than any other a row needs to hold what's typed, so
+// one stray pick, or one more than another's, moves nothing.
+const LEAD = 2;
+
 // The tier of a name starting with what's typed, between one typed whole
 // and one whose later word starts with it.
 const NAME_START = 0.5;
@@ -215,10 +219,6 @@ function says(text, typed) {
     const query = plainly(typed);
     return query !== "" && query.split(" ").every(word => words.includes(word));
 }
-
-// How many more picks than any other a row needs to hold what's typed, so
-// one stray pick, or one more than another's, moves nothing.
-const LEAD = 2;
 
 // Whether a pick for `asked` counts for `query`: one for exactly it, and
 // when both are one word, one for a word it starts, as "slack" for "sl".

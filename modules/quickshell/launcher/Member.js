@@ -73,7 +73,7 @@ function copied(row, fields) {
 // rows (2026-11-12), so a slow key says whose rows it spent on. Each kind
 // is made together and timed once, so timing costs nothing a row.
 function madeByKind(rows, sortOf, copy, clock) {
-    const made = new Array(rows.length);
+    const each = new Array(rows.length);
     const at = Object.create(null);
     rows.forEach((row, index) => {
         const sort = sortOf(row);
@@ -86,9 +86,9 @@ function madeByKind(rows, sortOf, copy, clock) {
     for (const sort of Object.keys(at)) {
         const began = clock();
         for (const index of at[sort]) {
-            made[index] = copy(rows[index]);
+            each[index] = copy(rows[index]);
         }
         took[sort] = clock() - began;
     }
-    return { made, took };
+    return { made: each, took };
 }
