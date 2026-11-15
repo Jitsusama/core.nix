@@ -117,6 +117,26 @@ ShellRoot {
                 side: "Kitty \u00b7 workspace 2, 3rd column, 2nd down"
                 glyph: "$"
             }
+            // A noun's words after its name narrowing round it: they give way
+            // by whole items from their last, to none, before the name gives a
+            // letter, and its kind stays at the edge (VKCF3Z, 2026-11-14
+            // [04792410]: the side, then the note, and only then the name).
+            Choice {
+                id: noteSome
+                width: 400
+                name: "Sanderling Notes"
+                kind: "window"
+                side: "Foot \u00b7 workspace 2"
+                glyph: "$"
+            }
+            Choice {
+                id: noteNone
+                width: 350
+                name: "Sanderling Notes"
+                kind: "window"
+                side: "Foot \u00b7 workspace 2"
+                glyph: "$"
+            }
             // A side that fits beside its name, as Inkscape's copied picture's
             // does, with less room to spare than a glyph's column, which the
             // side's share once took from it a second time.
@@ -1158,6 +1178,12 @@ ShellRoot {
             expect("a name too long even alone keeps its program whole beside it",
                 JSON.stringify(cut(texts)) === JSON.stringify([partsShared.name])
                     && texts.some(t => t.text === "Kitty" && !t.truncated), said(texts));
+            expect("a noun's words give way from their last before its name",
+                partsSaid(noteSome) === "$ | Sanderling Notes | Foot | window"
+                    && partsCut(noteSome) === 0, partsSaid(noteSome));
+            expect("and go whole before its name gives a letter",
+                partsSaid(noteNone) === "$ | Sanderling Notes | window"
+                    && partsCut(noteNone) === 0, partsSaid(noteNone));
             texts = apart(sideWins, sideWins.width);
             const nameCut = texts.find(t => t.text === sideWins.name);
             const nameWide = nameCut === undefined ? 0 : nameCut.to - nameCut.from;
