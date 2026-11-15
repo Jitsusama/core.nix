@@ -75,6 +75,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use daemon_serve::serve::{self, Shared};
 use inotify::{Inotify, WatchDescriptor, WatchMask, Watches};
 use serde_json::json;
+use terminal_kit::{Exit, Failure, Help};
 
 use acts::Acts;
 use interface::DOMAIN;
@@ -788,8 +789,51 @@ fn wake(daemon: &mut Daemon, woken: &Receiver<Woken>) -> io::Result<()> {
     }
 }
 
+/// What `to-do --help` says, as its unit runs it.
+fn help() -> Help {
+    Help::new("to-do", "finds what clears each of Joel's to-dos by itself")
+        .example(
+            "to-do WAITING VERDICTS SIGNINS CORE --socket SOCKET",
+            "and the rest, as its unit runs it",
+        )
+        .option(
+            "--root DIR",
+            "where the machine's files are read, / by default",
+        )
+        .option(
+            "--follower UNIT",
+            "update-to-main's follower, none to read no journal",
+        )
+        .option("--git GIT", "the git it runs")
+        .option("--journalctl JOURNALCTL", "the journalctl it runs")
+        .option(
+            "--systemctl SYSTEMCTL",
+            "the systemctl it asks, none to ask nothing",
+        )
+        .option("--socket SOCKET", "where it answers the shell")
+        .option("--looks LOOKS", "the harness's looks, with --socket")
+        .option(
+            "--settled SETTLED",
+            "the file of Joel's word, with --socket",
+        )
+        .option("--words WORDS", "the launcher's words, with --socket")
+        .exit(Exit::Usage, "it wasn't given its four folders and files")
+        .exit(Exit::Failed, "it couldn't hear its folders or serve")
+}
+
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        serve(&context.args)
+    })
+}
+
+/// Finds and serves until it's stopped, as its `args` say.
+///
+/// # Errors
+///
+/// 64 without its four folders and files, and 1 when it can't hear
+/// them or serve.
+fn serve(args: &[String]) -> Result<(), Failure> {
     let mut positional = Vec::new();
     let mut root = PathBuf::from("/");
     let mut socket = None;
@@ -824,12 +868,11 @@ fn main() -> ExitCode {
         }
     }
     let [waiting, verdicts, signins, core] = positional.as_slice() else {
-        eprintln!(
-            "usage: to-do WAITING VERDICTS SIGNINS CORE [--root DIR] [--follower UNIT|none] \
-             [--git GIT] [--journalctl JOURNALCTL] [--systemctl SYSTEMCTL|none] \
-             [--socket SOCKET [--looks LOOKS] [--settled SETTLED] [--words WORDS]]"
-        );
-        return ExitCode::from(64);
+        return Err(Failure::new(
+            Exit::Usage,
+            "to-do needs its waiting, verdicts, sign-ins and core",
+        )
+        .try_this("to-do --help"));
     };
     let paths = Paths {
         waiting: waiting.clone(),
@@ -841,11 +884,6 @@ fn main() -> ExitCode {
         settled: settled.filter(|_| socket.is_some()),
         words: words.filter(|_| socket.is_some()),
     };
-    match run(paths, core.clone(), follower, tools, socket) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("<3>{error}");
-            ExitCode::FAILURE
-        }
-    }
+    run(paths, core.clone(), follower, tools, socket)
+        .map_err(|error| Failure::new(Exit::Failed, "to-do stopped").because(error.to_string()))
 }

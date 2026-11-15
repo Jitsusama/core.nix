@@ -2,8 +2,9 @@
 # Its rows take the form every daemon's do (../ready-rows), it serves with
 # the serving side every daemon shares (../daemon-serve), and its socket's
 # tests ask it with a crate every daemon's tests share (../daemon-client),
-# so the source is cut from the modules folder holding all four, and built
-# from this one.
+# and it starts as every command of ours does (../terminal-kit), so the
+# source is cut from the modules folder holding all five, and built from
+# this one.
 {
   lib,
   rustPlatform,
@@ -25,6 +26,8 @@ rustPlatform.buildRustPackage rec {
       ../daemon-serve/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/machine";

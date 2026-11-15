@@ -67,6 +67,7 @@ mod told;
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{Instant, SystemTime};
 
@@ -82,6 +83,7 @@ use programs::{command, entry, xdg};
 use programs::{tab_rows, taken_rows};
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure, Help};
 
 use heard::{heard, notice};
 use named::read_named;
@@ -167,30 +169,58 @@ struct Shared {
     windows: PathBuf,
 }
 
-fn main() {
-    let mut args = std::env::args().skip(1);
+/// What `programs --help` says, as its unit runs it.
+fn help() -> Help {
+    Help::new(
+        "programs",
+        "holds what's installed and what each program had open",
+    )
+    .example("programs SOCKET SOURCES WORDS", "as its unit runs it")
+    .example("programs SOCKET SOURCES", "making no rows, as a test does")
+    .exit(Exit::Usage, "it was given no socket or no sources")
+    .exit(Exit::Failed, "it couldn't listen on its socket")
+    .exit(Exit::Config, "its sources couldn't be read")
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        serve(&context.args)
+    })
+}
+
+/// Reads and serves until it's stopped, over the socket, sources and
+/// words it's `given`.
+///
+/// # Errors
+///
+/// 64 without a socket and sources, 78 when the sources can't be read,
+/// and 1 when it can't listen.
+fn serve(given: &[String]) -> Result<(), Failure> {
+    let mut args = given.iter().cloned();
     let (Some(socket), Some(listed)) = (args.next(), args.next()) else {
-        eprintln!("usage: programs SOCKET SOURCES [WORDS]");
-        std::process::exit(64);
+        return Err(
+            Failure::new(Exit::Usage, "programs needs its socket and its sources")
+                .try_this("programs --help"),
+        );
     };
-    let sources: Vec<Source> = match std::fs::read_to_string(&listed)
+    let sources: Vec<Source> = std::fs::read_to_string(&listed)
         .map_err(|why| why.to_string())
         .and_then(|text| serde_json::from_str(&text).map_err(|why| why.to_string()))
-    {
-        Ok(sources) => sources,
-        Err(why) => {
-            eprintln!("<3>couldn't read the sources in {listed}: {why}");
-            std::process::exit(66);
-        }
-    };
+        .map_err(|why| {
+            Failure::new(
+                Exit::Config,
+                format!("programs can't read the sources in {listed}"),
+            )
+            .because(why)
+        })?;
     let socket = PathBuf::from(socket);
-    let listener = match listen(&socket) {
-        Ok(listener) => listener,
-        Err(why) => {
-            eprintln!("<3>couldn't listen on {}: {why}", socket.display());
-            std::process::exit(71);
-        }
-    };
+    let listener = listen(&socket).map_err(|why| {
+        Failure::new(
+            Exit::Failed,
+            format!("programs can't listen on {}", socket.display()),
+        )
+        .because(why.to_string())
+    })?;
     let folders = xdg::folders_here();
     let vocabulary = taken::vocabulary(args.next()).unwrap_or_default();
     let notify = Notify::new()

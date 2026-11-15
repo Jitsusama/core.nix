@@ -83,6 +83,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
@@ -99,6 +100,7 @@ use machine::{
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure, Help};
 
 /// How often what's watched is read.
 const EVERY: Duration = Duration::from_secs(1);
@@ -530,32 +532,92 @@ struct Shared {
     woken: Condvar,
 }
 
-fn main() {
-    let mut args = std::env::args().skip(1);
+/// What `machine --help` says, as its unit runs it.
+fn help() -> Help {
+    Help::new(
+        "machine",
+        "holds how this machine is doing ready for the shell",
+    )
+    .example(
+        "machine SOCKET --words FILE --numbers FILE",
+        "as its unit runs it, reading the kernel under /",
+    )
+    .example(
+        "machine SOCKET ROOT",
+        "reading the kernel's files under ROOT, as a test does",
+    )
+    .option(
+        "--words FILE",
+        "the launcher's words, without which it makes no rows",
+    )
+    .option("--numbers FILE", "how numbers group and point")
+    .exit(Exit::Usage, "it was given no socket")
+    .exit(Exit::Failed, "it couldn't listen on its socket")
+}
+
+/// Where it serves, what it reads under, and the words its rows say.
+struct Args {
+    socket: PathBuf,
+    root: Root,
+    words: Option<String>,
+    numbers: Option<String>,
+}
+
+/// What it was started with.
+///
+/// # Errors
+///
+/// Asked wrongly, 64, when it's given no socket.
+fn args(given: &[String]) -> Result<Args, Failure> {
+    let mut given = given.iter();
     let mut named = Vec::new();
     let (mut words, mut numbers) = (None, None);
-    while let Some(arg) = args.next() {
+    while let Some(arg) = given.next() {
         match arg.as_str() {
-            "--words" => words = args.next(),
-            "--numbers" => numbers = args.next(),
-            _ => named.push(arg),
+            "--words" => words = given.next().cloned(),
+            "--numbers" => numbers = given.next().cloned(),
+            _ => named.push(arg.clone()),
         }
     }
     let mut named = named.into_iter();
-    let Some(socket) = named.next() else {
-        eprintln!("usage: machine SOCKET [ROOT] [--words FILE] [--numbers FILE]");
-        std::process::exit(64);
-    };
-    let root = Root::new(named.next().unwrap_or_else(|| "/".to_owned()));
-    let socket = PathBuf::from(socket);
+    let socket = named.next().ok_or_else(|| {
+        Failure::new(Exit::Usage, "machine needs the socket it serves on")
+            .try_this("machine --help")
+    })?;
+    Ok(Args {
+        socket: PathBuf::from(socket),
+        root: Root::new(named.next().unwrap_or_else(|| "/".to_owned())),
+        words,
+        numbers,
+    })
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        serve(args(&context.args)?)
+    })
+}
+
+/// Reads and serves until it's stopped.
+///
+/// # Errors
+///
+/// 1 when it can't listen on its socket.
+fn serve(args: Args) -> Result<(), Failure> {
+    let Args {
+        socket,
+        root,
+        words,
+        numbers,
+    } = args;
     let words = worded(words.as_deref(), numbers.as_deref());
-    let listener = match listen(&socket) {
-        Ok(listener) => listener,
-        Err(why) => {
-            eprintln!("<3>couldn't listen on {}: {why}", socket.display());
-            std::process::exit(71);
-        }
-    };
+    let listener = listen(&socket).map_err(|why| {
+        Failure::new(
+            Exit::Failed,
+            format!("machine can't listen on {}", socket.display()),
+        )
+        .because(why.to_string())
+    })?;
     let (heard, watches) = mpsc::channel();
     let shared = started(&root, words, heard);
     {
