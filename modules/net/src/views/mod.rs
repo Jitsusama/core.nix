@@ -494,6 +494,7 @@ mod tests {
             modem["at"].as_str().is_some_and(|at| at.ends_with('Z')),
             "{modem}"
         );
-        assert!(devices_json(&network())["collected_at"].is_string());
+        let devices = devices_json(&network());
+        assert!(devices["collected_at"].is_string(), "{devices}");
     }
 }
