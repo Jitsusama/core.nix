@@ -25,8 +25,12 @@ pub const BOOT_ID: &str = "/proc/sys/kernel/random/boot_id";
 /// Keeps the mark at `mark`, naming `boot`, and makes sure it's on the disk
 /// before the image is written.
 pub fn keep(mark: &Path, boot: &str) -> io::Result<()> {
-    let _ = (mark, boot);
-    Ok(())
+    if let Some(folder) = mark.parent() {
+        fs::create_dir_all(folder)?;
+    }
+    let mut file = File::create(mark)?;
+    file.write_all(boot.trim().as_bytes())?;
+    file.sync_all()
 }
 
 /// Takes the mark away, as nothing is lost once the machine is back.
@@ -40,8 +44,7 @@ pub fn forget(mark: &Path) -> io::Result<()> {
 /// Whether the mark at `mark` was kept by a start other than `boot`'s: an
 /// image written then never came back.
 pub fn lost(mark: &Path, boot: &str) -> bool {
-    let _ = (mark, boot);
-    false
+    fs::read_to_string(mark).is_ok_and(|kept| kept.trim() != boot.trim())
 }
 
 /// Why this start didn't read the image back, from what it logged.
@@ -61,8 +64,21 @@ impl Why {
     /// Reads this start's log, a line each.
     #[must_use]
     pub fn from_log(said: &[String]) -> Self {
-        let _ = said;
-        Self::Unsaid
+        let any = |words: &[&str]| {
+            said.iter()
+                .any(|line| words.iter().any(|word| line.contains(word)))
+        };
+        if any(&[
+            "Failed to load image",
+            "Image mismatch",
+            "Could not resume from",
+        ]) {
+            Self::Refused
+        } else if any(&["Finished Clear Stale Hibernate Storage Info"]) {
+            Self::Elsewhere
+        } else {
+            Self::Unsaid
+        }
     }
 
     /// The words the log line gives it.
@@ -79,8 +95,27 @@ impl Why {
 /// The notice's title and body: what happened, why, and where to look.
 #[must_use]
 pub fn said(why: Why) -> (String, String) {
-    let _ = why;
-    (String::new(), String::new())
+    let opening = match why {
+        Why::Refused => {
+            "The laptop found the image it hibernated to but couldn't read it back, so it \
+             started afresh."
+        }
+        Why::Elsewhere => {
+            "The laptop started another system than the one that hibernated, which couldn't \
+             read its image, so it started afresh."
+        }
+        Why::Unsaid => {
+            "The laptop started afresh before reading back the image it hibernated to: the \
+             power may have gone, or it was held off."
+        }
+    };
+    (
+        "Your work couldn't come back".to_owned(),
+        format!(
+            "{opening} What was open when it hibernated is gone. \
+             journalctl -b -u hibernate-unlock-lost says more."
+        ),
+    )
 }
 
 #[cfg(test)]
@@ -114,10 +149,22 @@ mod tests {
     #[test]
     fn the_start_says_why_it_didnt_read_the_image_back() {
         let cases = [
-            (vec!["PM: hibernation: Failed to load image, recovering."], Why::Refused),
-            (vec!["PM: Image mismatch: architecture specific data"], Why::Refused),
-            (vec!["Could not resume from '/dev/dm-0' (254:0:533760)."], Why::Refused),
-            (vec!["Finished Clear Stale Hibernate Storage Info."], Why::Elsewhere),
+            (
+                vec!["PM: hibernation: Failed to load image, recovering."],
+                Why::Refused,
+            ),
+            (
+                vec!["PM: Image mismatch: architecture specific data"],
+                Why::Refused,
+            ),
+            (
+                vec!["Could not resume from '/dev/dm-0' (254:0:533760)."],
+                Why::Refused,
+            ),
+            (
+                vec!["Finished Clear Stale Hibernate Storage Info."],
+                Why::Elsewhere,
+            ),
             (
                 vec!["Clear Stale Hibernate Storage Info skipped, unmet condition check"],
                 Why::Unsaid,
@@ -125,7 +172,11 @@ mod tests {
             (vec![], Why::Unsaid),
         ];
         for (said, why) in cases {
-            assert_eq!(Why::from_log(&lines(&said)), why, "{said:?} read as the wrong why");
+            assert_eq!(
+                Why::from_log(&lines(&said)),
+                why,
+                "{said:?} read as the wrong why"
+            );
         }
     }
 

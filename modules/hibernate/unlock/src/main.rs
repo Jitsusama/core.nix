@@ -8,6 +8,7 @@
 //! hibernate-unlock rescue [<why>...]
 //! hibernate-unlock fits
 //! hibernate-unlock restoring
+//! hibernate-unlock lost
 //! ```
 //!
 //! It takes the shape every command of ours does (docs/commands.md),
@@ -64,6 +65,10 @@
 //! `restoring` runs in the initrd just before the image is read, keeping
 //! when in an EFI variable, so that once the machine is back the hook says
 //! how long the restore took (restored.rs).
+//!
+//! `lost` runs at each start, and when the last image written never came
+//! back, tells whoever signs in, once, that their work couldn't come back
+//! and why (lost.rs).
 
 mod fits;
 mod floors;
@@ -531,6 +536,10 @@ fn before(action: &str) {
     if !writes_an_image(action) {
         return;
     }
+    let boot = fs::read_to_string(lost::BOOT_ID).unwrap_or_default();
+    if let Err(error) = lost::keep(Path::new(lost::MARK), &boot) {
+        eprintln!("hibernate-unlock: couldn't mark the image as written: {error}");
+    }
     match floors::lift(Path::new(CGROUPS), Path::new(FLOORS)) {
         Ok(0) => {}
         Ok(lifted) => eprintln!("hibernate-unlock: set {lifted} memory floors aside for the image"),
@@ -593,6 +602,9 @@ fn logged_since_before() -> Vec<String> {
 /// After the machine is back, let the locks go if it came back through the
 /// disk prompt, and rescue a hibernation that never went off.
 fn after(action: &str, disks: &[String]) {
+    if let Err(error) = lost::forget(Path::new(lost::MARK)) {
+        eprintln!("hibernate-unlock: couldn't take the image's mark away: {error}");
+    }
     match floors::restore(Path::new(CGROUPS), Path::new(FLOORS)) {
         Ok(0) => {}
         Ok(restored) => eprintln!("hibernate-unlock: put {restored} memory floors back"),
@@ -759,6 +771,63 @@ fn say_to_each_session(notice: &Notice) {
     }
 }
 
+/// At a start, when the last image written never came back, says why at
+/// once, then tells each seated user once a graphical session is up, and
+/// takes the mark away. It waits as long as the start runs, and stops
+/// waiting should a new hibernation's return take the mark first.
+fn tell_of_a_lost_image() {
+    let mark = Path::new(lost::MARK);
+    let boot = fs::read_to_string(lost::BOOT_ID).unwrap_or_default();
+    if !lost::lost(mark, &boot) {
+        return;
+    }
+    let logged: Vec<String> = said("journalctl", &["--boot", "--output=cat", "--no-pager"])
+        .unwrap_or_default()
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    let why = lost::Why::from_log(&logged);
+    eprintln!(
+        "hibernate-unlock: the last hibernation's image never came back: {}",
+        why.word()
+    );
+    while mark.exists() && !signed_in() {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+    }
+    if !mark.exists() {
+        return;
+    }
+    // The session's own services, its notices among them, start just
+    // after it does.
+    std::thread::sleep(std::time::Duration::from_secs(5));
+    let (title, body) = lost::said(why);
+    say_to_each_session(&Notice { title, body });
+    if let Err(error) = lost::forget(mark) {
+        eprintln!("hibernate-unlock: couldn't take the image's mark away: {error}");
+    }
+}
+
+/// Whether a user at a seat has a graphical session up.
+fn signed_in() -> bool {
+    let sessions = said("loginctl", &["list-sessions", "--json=short"])
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or(Value::Null);
+    seated(&sessions).iter().any(|user| {
+        let machine = format!("--machine={user}@.host");
+        said(
+            "systemctl",
+            &[
+                &machine,
+                "--user",
+                "is-active",
+                "--quiet",
+                "graphical-session.target",
+            ],
+        )
+        .is_some()
+    })
+}
+
 /// What the rescue ten seconds after a rollback does.
 fn rescue_now(why: &Why) {
     let tried_again = Path::new(TRIED_AGAIN).exists();
@@ -917,6 +986,14 @@ fn help() -> Help {
         .example("hibernate-unlock restoring", "what the initrd runs")
         .exit(Exit::Done, NEVER_FAILS),
     )
+    .subcommand(
+        Help::new(
+            "lost",
+            "tells whoever signs in of an image that never came back",
+        )
+        .example("hibernate-unlock lost", "what each start runs")
+        .exit(Exit::Done, NEVER_FAILS),
+    )
     .exit(Exit::Failed, "the image wouldn't fit")
 }
 
@@ -946,6 +1023,7 @@ fn main() -> ExitCode {
             [what, why @ ..] if what == "rescue" => rescue_now(&Why::from_args(why)),
             [what] if what == "fits" => return fits_now(context),
             [what] if what == "restoring" => restoring(),
+            [what] if what == "lost" => tell_of_a_lost_image(),
             _ => {
                 return Err(Failure::new(Exit::Usage, "that isn't one of its commands")
                     .try_this("hibernate-unlock --help"));
