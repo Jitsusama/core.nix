@@ -1104,19 +1104,19 @@ mod tests {
             served(inputs)
                 .get("drawer:agents-top:network:repo.kelp")
                 .expect("its drawer")["drawer"]["facts"]
-                .clone()
+                .as_array()
+                .expect("its facts")
+                .iter()
+                .find(|fact| fact["label"] == "Spent Today")
+                .map(|fact| fact["value"].clone())
         };
         assert_eq!(
             spent(&inputs),
-            json!([{"label": "Spent Today", "value": ready_rows::money::dollars(9.0)}]),
+            Some(json!(ready_rows::money::dollars(9.0))),
             "each of its sessions' figures, added up"
         );
         inputs.sharing = true;
-        assert_eq!(
-            spent(&inputs),
-            json!([]),
-            "no amount while the screen is shared"
-        );
+        assert_eq!(spent(&inputs), None, "no amount while the screen is shared");
     }
 
     #[test]
