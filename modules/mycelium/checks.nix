@@ -93,6 +93,14 @@ let
       file = "/run/host/said.json";
     };
   };
+  # A machine whose strictly fenced sessions build remotely, and no other.
+  strictly = declaredAs {
+    fence.strict = {
+      builders = [ "remote" ];
+      forges = [ ];
+      secrets = [ ];
+    };
+  };
   hosting = declaredAs {
     hosts = [
       {
@@ -424,7 +432,7 @@ in
   # declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, a held session's outlives isn't each system's, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, a held session's outlives isn't each system's, a fence it doesn't say is written, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
@@ -441,6 +449,16 @@ in
         && (declared mac).outlives == [ ]
         && !((declared linux) ? within)
         && !((declared linux) ? hosts)
+        && !((declared linux) ? fence)
+        && (
+          strictly.fence or null == {
+            strict = {
+              builders = [ "remote" ];
+              forges = [ ];
+              secrets = [ ];
+            };
+          }
+        )
         && (
           inVm.within or null == {
             machine = "host-machine";
