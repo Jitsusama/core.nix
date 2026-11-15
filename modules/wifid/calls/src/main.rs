@@ -269,6 +269,10 @@ mod tests {
         let listener = UnixListener::bind(&socket).expect("a socket");
         let wifid = thread::spawn(move || {
             let (stream, _) = listener.accept().expect("a connection");
+            // It hears the ask before refusing it, as wifid does: answering
+            // and closing unheard could break the pipe under the ask.
+            let mut ask = String::new();
+            BufReader::new(&stream).read_line(&mut ask).expect("an ask");
             let refused = json!({"id": 1, "error": {"code": "bad-ask", "message": "no"}});
             writeln!(&stream, "{refused}").expect("answered");
         });
