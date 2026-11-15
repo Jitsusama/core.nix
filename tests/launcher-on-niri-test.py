@@ -1579,6 +1579,12 @@ def test_the_command_line_draws_no_line_chosen_until_tab_chooses_one(shell: Shel
         lambda shown: (shown["command"] or {}).get("chosen") == 0
         and shown["command"].get("drawnChosen") == 0
     )
+    shell.send_key("ctrl-e")
+    shell.launcher_until(lambda shown: (shown["command"] or {}).get("chosen") == -1)
+    shell.send_chars("l")
+    shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "l")
+    command = shell.showing()["command"]
+    assert command["drawnChosen"] == -1, f"a line was drawn chosen once typed: {command}"
     shell.send_key("esc")
     shell.close_launcher()
 
