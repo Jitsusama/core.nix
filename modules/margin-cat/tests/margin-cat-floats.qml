@@ -162,6 +162,17 @@ QtObject {
             [names(moved)[0], ends(named(moved, "falls")), names(moved).slice(-2)],
             ["rides", [346, 7, 346, 291], ["falls", "lands"]]);
 
+        // Drawn under the windows, but over them standing on a floating
+        // one, which the tiled window behind would hide it on.
+        const floating = { left: 300, top: 300, width: 400, floats: true };
+        const tiled = { left: 16, top: 16, width: 600, floats: false };
+        expect("on a floating window it's drawn over the tiled ones",
+            MarginCat.above(floating, false), true);
+        expect("leaving it, it goes under them on the first drawing",
+            MarginCat.above(floating, true), false);
+        expect("anywhere else it's drawn under the windows",
+            [MarginCat.above(tiled, false), MarginCat.above(null, false)], [false, false]);
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length > 0 ? 1 : 0);

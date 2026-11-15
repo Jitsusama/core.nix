@@ -178,6 +178,18 @@ function behind(frame, kind) {
     return Math.round(HEARS + frame + (kind === "resize" ? RESIZES : 0));
 }
 
+// Whether it's drawn over the windows rather than under them: only while
+// its `seat`, the column it sits on, is a floating window's, which sits in
+// front of the tiled windows, so the one behind would hide it (Joel,
+// 2026-11-13 18:59), and not once it's `leaving` that seat. Anywhere else
+// it's under them, so a window passing in front of it covers it rather
+// than wearing it on its face, however late the shell hears niri: on top,
+// a loaded machine showed it on a sliding window's face for two to four
+// frames (VKCF3Z, 3fe38ef5).
+function above(seat, leaving) {
+    return seat?.floats === true && !leaving;
+}
+
 // A drawing given a quarter turn, clockwise for `turn` 1 and back for -1,
 // cell for cell, so a climbing cat stays as sharp as a walking one.
 function quartered(drawing, turn) {
