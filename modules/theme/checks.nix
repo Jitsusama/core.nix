@@ -258,13 +258,13 @@
   theme-json-says-which-marks-turn =
     let
       home = account workstation;
-      marks = (builtins.fromJSON home.xdg.configFile."jitsusama/theme.json".text).marks;
+      inherit ((builtins.fromJSON home.xdg.configFile."jitsusama/theme.json".text)) marks;
       turned = lib.attrNames (lib.filterAttrs (_: mark: mark.turned or null == true) marks);
-      unsaid = lib.attrNames (lib.filterAttrs (_: mark: !(mark ? turned)) marks);
+      unsaid = toString (lib.length (lib.attrNames (lib.filterAttrs (_: m: !(m ? turned)) marks)));
     in
     holds "theme-json-says-which-marks-turn"
-      "theme.json turns ${builtins.toJSON turned}, and says nothing of ${toString (lib.length unsaid)}."
-      (turned == [ "shapeDownTriangle" ] && unsaid == [ ]);
+      "theme.json turns ${builtins.toJSON turned}, and says nothing of ${unsaid} marks."
+      (turned == [ "shapeDownTriangle" ] && unsaid == "0");
 
   # Picking another theme changes everything the account draws: the desktop
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
