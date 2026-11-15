@@ -419,8 +419,10 @@ fn shown(device: &Device) -> Vec<String> {
 /// net's words, so its section leaves them out by name; the rest go by
 /// value, through `shown`. A receiver's reads are its receiver block, but
 /// for its transport's own word, and its rendering service's description
-/// and the devices inside its own are left to `--json`.
-const SAID: [&str; 16] = [
+/// and the devices inside its own are left to `--json`. A printer's
+/// counters and settings are left there too, since its printer block
+/// says what they'd bury.
+const SAID: [&str; 18] = [
     "id",
     "location",
     "model",
@@ -437,6 +439,8 @@ const SAID: [&str; 16] = [
     "GetMediaInfo",
     "GetPositionInfo",
     "deviceList",
+    "ProductConfigDyn",
+    "ProductUsageDyn",
 ];
 
 /// The most items a list may hold and still be a fact on one line; a
@@ -444,10 +448,17 @@ const SAID: [&str; 16] = [
 /// `--json` gives whole.
 const LIST_AT_MOST: usize = 4;
 
+/// The lists of records a source's section reads field by field, since
+/// they hold its own words for what the role's block says in net's: a
+/// printer's statuses, as HP names them. Every other list of records is a
+/// table the page would bury its facts under, so it's left to `--json`.
+const READ_BY_FIELD: [&str; 1] = ["Status"];
+
 /// A source's fields as labels and words, a nested field labelled by the
-/// path to it: `backhaul upstream`. What a fact can't say on a line, a
-/// list of records or a series, and what the source left empty, are left
-/// to `--json`.
+/// path to it: `backhaul upstream`. A list of flat records named in
+/// `READ_BY_FIELD` reads as each field's values in turn. What a fact
+/// can't say on a line, any other list of records or a series, and what
+/// the source left empty, are left to `--json`.
 fn flatten(path: &str, value: &Value, out: &mut Vec<(String, String)>) {
     let label = |key: &str| {
         let key = key.replace('_', " ");
@@ -465,15 +476,46 @@ fn flatten(path: &str, value: &Value, out: &mut Vec<(String, String)>) {
         }
         Value::Array(items) => {
             let records = items.iter().any(|item| item.is_object() || item.is_array());
-            if !items.is_empty() && items.len() <= LIST_AT_MOST && !records {
+            if items.is_empty() || items.len() > LIST_AT_MOST {
+            } else if !records {
                 let words: Vec<String> = items.iter().map(scalar).collect();
                 out.push((path.to_owned(), words.join(", ")));
+            } else if let Some(fields) = flat_records(items).filter(|_| {
+                READ_BY_FIELD
+                    .iter()
+                    .any(|name| path == *name || path.ends_with(&format!(" {name}")))
+            }) {
+                for field in fields {
+                    let words: Vec<String> = items
+                        .iter()
+                        .filter_map(|item| item.get(&field))
+                        .map(scalar)
+                        .collect();
+                    out.push((label(&field), words.join(", ")));
+                }
             }
         }
         Value::Null => {}
         Value::String(words) if words.is_empty() => {}
         _ => out.push((path.to_owned(), scalar(value))),
     }
+}
+
+/// The fields of records that hold only words and figures, in the order
+/// first met, or none when a record holds more than that.
+fn flat_records(items: &[Value]) -> Option<Vec<String>> {
+    let mut fields: Vec<String> = Vec::new();
+    for item in items {
+        for (key, value) in item.as_object()? {
+            if value.is_object() || value.is_array() {
+                return None;
+            }
+            if !fields.contains(key) {
+                fields.push(key.clone());
+            }
+        }
+    }
+    Some(fields)
 }
 
 fn scalar(value: &Value) -> String {

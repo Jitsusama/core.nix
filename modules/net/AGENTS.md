@@ -139,7 +139,9 @@ width without a terminal; tables and facts come from the terminal kit.
   printer's ink, what it's doing and the pages it has printed, then what
   each source says that those didn't, in the source's words. A list of
   records or a series of readings is left to `--json`, which keeps every
-  source's detail whole.
+  source's detail whole, but for a printer's statuses, read field by
+  field as HP names them; its usage counters and settings are left there
+  too.
 
 A name is matched in any case, and any of a device's addresses or its
 id always works. eero can give two devices one name, so a shared name
