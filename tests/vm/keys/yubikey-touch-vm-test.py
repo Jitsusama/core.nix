@@ -35,6 +35,17 @@ ASKINGS = [
     pytest.param("sudo-by-touch", id="sudo"),
 ]
 
+# Each asked from a text console of its own, since a console signed out of isn't asking for a
+# login again by the time the next would sign in.
+AT_CONSOLES = [
+    pytest.param("run0", "2", id="run0"),
+    pytest.param("sudo-by-touch", "4", id="sudo"),
+]
+OVER_SSH = [
+    pytest.param("run0", "3", id="run0"),
+    pytest.param("sudo-by-touch", "5", id="sudo"),
+]
+
 
 class Seat:
     """The person signed in at the seat, with a key plugged in and enrolled for them."""
@@ -165,19 +176,19 @@ def test_the_password_is_asked_unless_unlocked(seat: Seat, word: str | None, ask
     seat.types_the_password(made)
 
 
-@pytest.mark.parametrize("asking", ASKINGS)
-def test_a_text_console_is_asked_for_the_password(seat: Seat, asking: str) -> None:
+@pytest.mark.parametrize(("asking", "tty"), AT_CONSOLES)
+def test_a_text_console_is_asked_for_the_password(seat: Seat, asking: str, tty: str) -> None:
     """From a text console signed in beside the unlocked desktop, only the password lets in."""
     seat.lock_says("unlocked")
-    seat.signs_in_at("2")
+    seat.signs_in_at(tty)
     made, before = seat.run0(asking)
     seat.asked_for_the_password(made, before)
     seat.types_the_password(made)
     seat.signs_out()
 
 
-@pytest.mark.parametrize("asking", ASKINGS)
-def test_an_ssh_login_is_asked_for_the_password(seat: Seat, asking: str) -> None:
+@pytest.mark.parametrize(("asking", "tty"), OVER_SSH)
+def test_an_ssh_login_is_asked_for_the_password(seat: Seat, asking: str, tty: str) -> None:
     """From an ssh login, with the desktop unlocked, only the password lets in.
 
     ssh is made from a text console, whose screen shows polkit's prompt, so the password is
@@ -191,12 +202,12 @@ def test_an_ssh_login_is_asked_for_the_password(seat: Seat, asking: str) -> None
         " || ssh-keygen -q -t ed25519 -N \"\" -f ~/.ssh/id_ed25519'",
         "su someone -c 'cp ~/.ssh/id_ed25519.pub ~/.ssh/authorized_keys'",
     )
-    seat.signs_in_at("3")
+    seat.signs_in_at(tty)
     made, before = seat.run0(
         f"ssh -t -o StrictHostKeyChecking=no -o BatchMode=yes localhost {asking}"
     )
     seat.asked_for_the_password(made, before)
-    machine.wait_until_tty_matches("3", r"Password:\s*\Z", timeout=ANSWERING.seconds)
+    machine.wait_until_tty_matches(tty, r"Password:\s*\Z", timeout=ANSWERING.seconds)
     seat.types_the_password(made)
     seat.signs_out()
 
