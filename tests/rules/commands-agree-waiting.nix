@@ -40,10 +40,6 @@
     "kit"
     "helps"
   ];
-  launcher-say = [
-    "kit"
-    "helps"
-  ];
   location = [
     "kit"
     "exits"

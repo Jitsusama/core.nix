@@ -1,7 +1,7 @@
 # `launcher`, the launcher in a terminal, built from this directory, its
-# tests run as it builds. What it asks, how it inks and its words are given
-# where it's installed (../home.nix), so this builds the same whatever the
-# theme. Its source reaches up to modules/ for the terminal kit, the
+# tests run as it builds. What it asks and its words are given where it's
+# installed (../home.nix), and it reads the theme as it runs, so this builds
+# the same whatever the theme. Its source reaches up to modules/ for the terminal kit, the
 # shape every command of ours takes, and builds from its own folder there.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage rec {
