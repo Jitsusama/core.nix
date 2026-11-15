@@ -27,7 +27,9 @@
 // process, to $XDG_RUNTIME_DIR/quickshell-lock-holder first, and empties it
 // first when let go: that's how a new shell knows the lock is its niri's,
 // since the directory outlives a session while the account lingers, and a
-// lock a crashed niri held mustn't lock the next one.
+// lock a crashed niri held mustn't lock the next one. It tells logind too,
+// as the session's LockedHint, which readers that can't see the marker ask:
+// polkit's rules, and anything asking `loginctl show-session`.
 pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
@@ -107,6 +109,41 @@ Scope {
 
     readonly property string niri: Quickshell.env("NIRI_SOCKET") ?? ""
 
+    // What logind is to be told, and what it was last sent: a lock let go
+    // while the last word is on its way is sent once that one ends, so
+    // logind always ends on what the screens show.
+    property bool hinted: false
+
+    function mark(locked) {
+        marker.setText(locked ? "locked\n" : "unlocked\n");
+        hinted = locked;
+        if (!logind.running)
+            logind.send();
+    }
+
+    // The shell runs as a service rather than in the session, so `auto`
+    // names the account's graphical session, the one the screens belong to.
+    Process {
+        id: logind
+        property bool sent: false
+        function send() {
+            sent = root.hinted;
+            command = [
+                "busctl", "call", "org.freedesktop.login1",
+                "/org/freedesktop/login1/session/auto", "org.freedesktop.login1.Session",
+                "SetLockedHint", "b", sent ? "true" : "false"
+            ];
+            running = true;
+        }
+        onExited: code => {
+            if (code !== 0)
+                console.warn(`lock: logind wasn't told it's ${sent ? "locked" : "unlocked"}`
+                    + `, busctl ended with ${code}`);
+            if (sent !== root.hinted)
+                send();
+        }
+    }
+
     // A shell started while its niri holds the lock locks again, and niri
     // hands it the screens at once. Otherwise it says it's unlocked, since a
     // marker left by a shell that died says nothing about this one.
@@ -114,7 +151,7 @@ Scope {
         if (niri !== "" && holder.text().trim() === niri)
             lock();
         else
-            marker.setText("unlocked\n");
+            mark(false);
     }
 
     Connections {
@@ -134,10 +171,10 @@ Scope {
             root.held = sessionLock.secure && sessionLock.locked;
             if (sessionLock.secure) {
                 holder.setText(`${root.niri}\n`);
-                marker.setText("locked\n");
+                root.mark(true);
             } else {
                 holder.setText("");
-                marker.setText("unlocked\n");
+                root.mark(false);
             }
             Report.say(`${sessionLock.secure ? "secured" : "released"} lock`);
             // Said to the journal each time, so a lock that stops coming

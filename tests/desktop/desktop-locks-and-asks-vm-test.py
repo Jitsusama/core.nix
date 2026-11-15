@@ -65,17 +65,29 @@ def test_the_lock_screen_takes_only_the_right_password(desktop: Desktop) -> None
     desktop.as_account("qs ipc call lock isLocked | grep -q false")
 
 
+def hinted(desktop: Desktop, locked: str) -> None:
+    """Wait for logind to say the account's graphical session is locked or not, as polkit asks."""
+    session = f"$(loginctl show-user {desktop.account} --property=Display --value)"
+    desktop.machine.wait_until_succeeds(
+        f'[ "$(loginctl show-session {session} --property=LockedHint --value)" = {locked} ]',
+        timeout=10,
+    )
+
+
 def test_lock_screen_returns_once_the_lock_is_drawn(desktop: Desktop) -> None:
     """What locks before the machine sleeps returns only once niri has drawn the lock.
 
-    So nothing else shows on waking.
+    So nothing else shows on waking. Logind is told each time, for polkit's rules.
     """
     desktop.as_account(f"grep -qx unlocked {LOCKED}")
+    hinted(desktop, "no")
     desktop.as_account("lock-screen")
     desktop.as_account(f"grep -qx locked {LOCKED}")
+    hinted(desktop, "yes")
     with desktop.told("released lock"):
         desktop.machine.send_chars(f"{desktop.values['secret']}\n")
     desktop.as_account(f"grep -qx unlocked {LOCKED}")
+    hinted(desktop, "no")
 
 
 def test_the_lock_lets_go_without_its_password_when_released(desktop: Desktop) -> None:
