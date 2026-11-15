@@ -100,7 +100,7 @@ use machine::{
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
-use terminal_kit::{Exit, Failure, Help};
+use terminal_kit::{Exit, Failure, Help, flags};
 
 /// How often what's watched is read.
 const EVERY: Duration = Duration::from_secs(1);
@@ -551,9 +551,15 @@ fn help() -> Help {
         "the launcher's words, without which it makes no rows",
     )
     .option("--numbers FILE", "how numbers group and point")
-    .exit(Exit::Usage, "it was given no socket")
+    .exit(
+        Exit::Usage,
+        "it was given no socket, or a flag or word it doesn't take",
+    )
     .exit(Exit::Failed, "it couldn't listen on its socket")
 }
+
+/// The flags its unit may hand it, each with a file.
+const FLAGS: [&str; 2] = ["--words", "--numbers"];
 
 /// Where it serves, what it reads under, and the words its rows say.
 struct Args {
@@ -569,24 +575,38 @@ struct Args {
 ///
 /// Asked wrongly, 64, when it's given no socket.
 fn args(given: &[String]) -> Result<Args, Failure> {
+    let wrongly = |what: String| Failure::new(Exit::Usage, what).try_this("machine --help");
     let mut given = given.iter();
     let mut named = Vec::new();
     let (mut words, mut numbers) = (None, None);
     while let Some(arg) = given.next() {
-        match arg.as_str() {
-            "--words" => words = given.next().cloned(),
-            "--numbers" => numbers = given.next().cloned(),
-            _ => named.push(arg.clone()),
-        }
+        let held = match arg.as_str() {
+            "--words" => &mut words,
+            "--numbers" => &mut numbers,
+            flag if flag.starts_with('-') => {
+                return Err(flags::unknown("option", flag, &FLAGS).try_this("machine --help"));
+            }
+            word => {
+                named.push(word.to_owned());
+                continue;
+            }
+        };
+        let value = given
+            .next()
+            .ok_or_else(|| wrongly(format!("{arg} needs a file")))?;
+        *held = Some(value.clone());
     }
     let mut named = named.into_iter();
-    let socket = named.next().ok_or_else(|| {
-        Failure::new(Exit::Usage, "machine needs the socket it serves on")
-            .try_this("machine --help")
-    })?;
+    let socket = named
+        .next()
+        .ok_or_else(|| wrongly("machine needs the socket it serves on".to_owned()))?;
+    let root = named.next().unwrap_or_else(|| "/".to_owned());
+    if let Some(extra) = named.next() {
+        return Err(wrongly(format!("machine takes no word like {extra}")));
+    }
     Ok(Args {
         socket: PathBuf::from(socket),
-        root: Root::new(named.next().unwrap_or_else(|| "/".to_owned())),
+        root: Root::new(root),
         words,
         numbers,
     })
