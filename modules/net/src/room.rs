@@ -166,13 +166,26 @@ fn concerns(network: &Network) -> Vec<Concern> {
     for device in &network.devices {
         for radio in &device.radios {
             if let Some(busy) = radio.busy_pct.filter(|busy| *busy >= BUSY_PCT) {
+                // The channel tells two radios called "5 GHz high" apart
+                // for a reader who knows only what their eero app shows.
+                let channel = radio
+                    .channel
+                    .map(|channel| format!(", on channel {channel},"))
+                    .unwrap_or_default();
+                let busiest = match (radio.busiest_pct, radio.busiest_at) {
+                    (Some(most), Some(at)) if most > busy => format!(
+                        "; {most}% at its busiest, {} ago",
+                        span(network.collected_at.saturating_sub(at))
+                    ),
+                    _ => String::new(),
+                };
                 concerns.push(Concern {
                     kind: ConcernKind::Busy,
                     device: device.id.clone(),
                     on: Some(radio.name.clone()),
                     other: None,
                     says: format!(
-                        "{} {} radio is busy {busy}% of the time",
+                        "{} {} radio{channel} is busy {busy}% of the time{busiest}",
                         possessive(&device.name),
                         radio.name
                     ),
@@ -187,7 +200,11 @@ fn concerns(network: &Network) -> Vec<Concern> {
             (Medium::Wifi, Some(signal), _) if signal <= WEAK_DBM => Some((
                 ConcernKind::Weak,
                 link.a.radio.clone(),
-                format!("{near} reaches {far} at {signal} dBm"),
+                format!(
+                    "{near} has a weak signal to {far}: {} dBm, and from {} down its speed falls",
+                    dbm(signal),
+                    dbm(WEAK_DBM)
+                ),
             )),
             (Medium::Ethernet, _, Some(speed)) if speed < GIGABIT => Some((
                 ConcernKind::Slow,
@@ -214,6 +231,25 @@ fn concerns(network: &Network) -> Vec<Concern> {
         concerns.extend(ceiling(network, internet, "up", |path| path.up.as_ref()));
     }
     concerns
+}
+
+/// A span of the day in words: minutes under two hours, hours after.
+fn span(seconds: u64) -> String {
+    let minutes = seconds / 60;
+    match minutes {
+        1 => "1 minute".to_owned(),
+        0..120 => format!("{minutes} minutes"),
+        _ => format!("{} hours", minutes / 60),
+    }
+}
+
+/// A signal in dBm as it's written, with a true minus.
+fn dbm(signal: i32) -> String {
+    if signal < 0 {
+        format!("\u{2212}{}", signal.unsigned_abs())
+    } else {
+        signal.to_string()
+    }
 }
 
 /// The modem's downstream channel that lost far more than every other, if
@@ -249,6 +285,24 @@ fn lost(network: &Network) -> Option<Concern> {
         .as_ref()
         .and_then(|internet| internet.provider.as_deref())
         .unwrap_or("the provider");
+    // With the day's readings it says whether the count still climbs,
+    // which is what the provider would ask first.
+    let lately = device
+        .modem
+        .as_ref()
+        .and_then(|modem| modem.lately_s)
+        .zip(channel.lost_lately);
+    let after = match lately {
+        Some((over, 0)) => format!(
+            ", and none in the last {}, so it isn't climbing now",
+            span(over)
+        ),
+        Some((over, recent)) => format!(
+            ", {recent} of them in the last {}; {provider} can check the line",
+            span(over)
+        ),
+        None => format!("; if that keeps climbing, {provider} can check the line"),
+    };
     Some(Concern {
         kind: ConcernKind::Lost,
         device: device.id.clone(),
@@ -256,8 +310,7 @@ fn lost(network: &Network) -> Option<Concern> {
         other: None,
         says: format!(
             "The modem's {which} has lost {most} pieces of data it couldn't repair since the \
-             modem started, against at most {others} on any other; if that keeps climbing, \
-             {provider} can check the line"
+             modem started, against at most {others} on any other{after}"
         ),
     })
 }
@@ -336,8 +389,10 @@ fn tenths(mbps: f64) -> f64 {
     (mbps * 10.0).round() / 10.0
 }
 
+/// The golden record and ways to set its figures, shared with the day's
+/// tests in src/history.rs, which work concerns out over it too.
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     use crate::model::{ConcernKind, Device, End, Internet, Link, Medium};
@@ -346,7 +401,7 @@ mod tests {
 
     /// The golden record as the sources said it, before any working out,
     /// with the internet as eero last measured it.
-    fn network() -> Network {
+    pub(crate) fn network() -> Network {
         let mut network: Network = serde_json::from_str(RECORD).expect("the record reads");
         for device in &mut network.devices {
             device.path = None;
@@ -362,7 +417,7 @@ mod tests {
         network
     }
 
-    fn device<'a>(network: &'a Network, id: &str) -> &'a Device {
+    pub(crate) fn device<'a>(network: &'a Network, id: &str) -> &'a Device {
         network
             .devices
             .iter()
@@ -447,7 +502,7 @@ mod tests {
         assert_eq!(up.unmeasured, 2, "the backhaul and the internet");
     }
 
-    /// Sets a node's 5 GHz high radio busy this share of the time.
+    /// Sets what one of the modem's downstream channels has lost.
     fn lost(network: &mut Network, channel: u32, count: u64) {
         let modem = network
             .devices
@@ -463,7 +518,8 @@ mod tests {
         channel.uncorrectable = Some(count);
     }
 
-    fn busy(network: &mut Network, node: &str, pct: u32) {
+    /// Sets a node's 5 GHz high radio busy this share of the time.
+    pub(crate) fn busy(network: &mut Network, node: &str, pct: u32) {
         let radio = network
             .devices
             .iter_mut()
@@ -503,7 +559,10 @@ mod tests {
             .iter()
             .find(|concern| concern.kind == ConcernKind::Busy)
             .expect("Hall's radio is busy");
-        assert_eq!(hall.says, "Hall's 5 GHz high radio is busy 64% of the time");
+        assert_eq!(
+            hall.says,
+            "Hall's 5 GHz high radio, on channel 149, is busy 64% of the time"
+        );
     }
 
     #[test]
@@ -580,7 +639,7 @@ mod tests {
             .expect("the renamed node's radio is busy");
         assert_eq!(
             busy.says,
-            "Upstairs' 5 GHz high radio is busy 64% of the time"
+            "Upstairs' 5 GHz high radio, on channel 149, is busy 64% of the time"
         );
     }
 
@@ -596,7 +655,11 @@ mod tests {
         assert_eq!(weak.len(), 1, "only the -75 dBm laptop: {weak:?}");
         assert_eq!(weak[0].device, "mac:02:00:00:00:00:0e");
         assert_eq!(weak[0].other.as_deref(), Some("eero:2002"));
-        assert_eq!(weak[0].says, "laptop computer 1 reaches Study at -75 dBm");
+        assert_eq!(
+            weak[0].says,
+            "laptop computer 1 has a weak signal to Study: \u{2212}75 dBm, and from \u{2212}70 \
+             down its speed falls"
+        );
     }
 
     #[test]

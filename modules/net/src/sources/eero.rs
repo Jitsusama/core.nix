@@ -182,6 +182,8 @@ fn radio(radio: &Value) -> Radio {
             .get("power_dbm")
             .and_then(Value::as_i64)
             .and_then(|power| i32::try_from(power).ok()),
+        busiest_pct: None,
+        busiest_at: None,
     }
 }
 
@@ -310,6 +312,8 @@ fn client_device(client: &Value, read_at: Option<u64>) -> Device {
                 width_mhz: client.get("rx").and_then(|rx| number(rx, "width_mhz")),
                 busy_pct: None,
                 power_dbm: None,
+                busiest_pct: None,
+                busiest_at: None,
             }]
         } else {
             Vec::new()

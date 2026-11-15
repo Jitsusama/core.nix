@@ -169,6 +169,7 @@ fn modem(pages: &Pages, now: u64) -> Modem {
                 ..line
             })
             .collect(),
+        lately_s: None,
     }
 }
 
@@ -186,6 +187,7 @@ fn single_carrier_down(row: &Value) -> Channel {
         corrected: whole(row, "correcteds"),
         uncorrectable: whole(row, "uncorrect"),
         active: true,
+        lost_lately: None,
     }
 }
 
@@ -203,6 +205,7 @@ fn ofdm_down(row: &Value) -> Channel {
         corrected: whole(row, "correcteds"),
         uncorrectable: whole(row, "uncorrect"),
         active: text(row, "plclock").map(str::trim) == Some("YES"),
+        lost_lately: None,
     }
 }
 
@@ -218,6 +221,7 @@ fn single_carrier_up(row: &Value) -> Channel {
         corrected: None,
         uncorrectable: None,
         active: true,
+        lost_lately: None,
     }
 }
 
@@ -237,6 +241,7 @@ fn ofdma_up(row: &Value) -> Channel {
         corrected: None,
         uncorrectable: None,
         active,
+        lost_lately: None,
     }
 }
 

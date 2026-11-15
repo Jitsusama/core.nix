@@ -47,9 +47,16 @@ switch, the receiver and the printer are net's alone, and `eero` keeps only what
   map's gold), a Wi-Fi link at -70 dBm or weaker, a cable under a gigabit,
   the internet as a chokepoint, said once each way, or a modem channel that
   lost 100 or more it couldn't repair and ten times any other's.
+- What the day says, from net's own readings (`src/history.rs`): each
+  radio's `busiest_pct` and `busiest_at`, and the modem's `lately_s` with
+  each downstream channel's `lost_lately`, counted from the earliest
+  reading since the modem last started and only once that reaches back an
+  hour. The busy and lost concerns say them when they're known.
 
 A figure keeps its unit in its key (`speed_mbps`, `power_dbmv`, `up_s`),
-and one a source doesn't give is `null`, never a guess. `src/model.rs`
+and one a source doesn't give is `null`, never a guess. The day's figures
+are left out until net has readings for them, so a record without a day
+reads as it did before them. `src/model.rs`
 holds the types, and its tests hold the record to them both ways.
 
 ## The Daemon
@@ -57,6 +64,13 @@ holds the types, and its tests hold the record to them both ways.
 `net daemon`, the user service `net-daemon` in background.slice, reads
 each source once a minute and writes the record whole, through
 `network.json.new` and a rename, so a view never reads half of one.
+Each minute it also appends the figures that swing, each channel's losses
+and each radio's busy share, to `$XDG_STATE_HOME/net/day.jsonl`, and
+reads the last day of them back before writing the record. The file is
+trimmed to the day about once an hour, through `day.jsonl.new` and a
+rename, and a line that doesn't parse is skipped, so a crash costs a
+minute. It survives a restart, and a file that can't be kept costs only
+what net says of the day.
 
 - eero: the eero daemon's record, `$XDG_RUNTIME_DIR/eero/home-network.json`,
   never eero's cloud, which keeps one reader. `src/sources/eero.rs` maps

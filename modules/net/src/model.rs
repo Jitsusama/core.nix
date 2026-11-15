@@ -212,6 +212,14 @@ pub struct Radio {
     pub width_mhz: Option<u32>,
     pub busy_pct: Option<u32>,
     pub power_dbm: Option<i32>,
+    /// Its busiest share over the last day, from net's own readings, and
+    /// when; left out until net has read it. Like the two below, it's
+    /// left out of the record while unknown, so a record without a day
+    /// stays its own size.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub busiest_pct: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub busiest_at: Option<u64>,
 }
 
 /// A cable or a radio link between two devices.
@@ -263,6 +271,11 @@ pub struct Modem {
     pub upstream: Vec<Channel>,
     /// The modem's event log, newest first.
     pub log: Vec<LogEntry>,
+    /// How far back each downstream channel's `lost_lately` counts, in
+    /// seconds: net's earliest reading in the last day since the modem
+    /// last started, and none until that reaches back an hour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lately_s: Option<u64>,
 }
 
 /// What a receiver says it's doing.
@@ -323,6 +336,9 @@ pub struct Channel {
     pub uncorrectable: Option<u64>,
     /// Down: whether it's locked. Up: whether it's in use.
     pub active: bool,
+    /// How many of `uncorrectable` it lost over the modem's `lately_s`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lost_lately: Option<u64>,
 }
 
 /// One line of a device's event log.

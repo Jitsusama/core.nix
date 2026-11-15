@@ -2,7 +2,8 @@
 # each vendor's own source (src/main.rs says how). Its daemon reads the
 # eero daemon's record and the cable modem's status pages once a minute and
 # keeps $XDG_RUNTIME_DIR/net/network.json, the record every view of net
-# reads (tests/network.json is its shape). It listens on nothing, and its
+# reads (tests/network.json is its shape), and keeps a day of the figures
+# that swing in $XDG_STATE_HOME/net/day.jsonl. It listens on nothing, and its
 # only requests are plain reads of the modem's pages on the home network,
 # so it's background work, in background.slice, behind everything Joel
 # uses. Away from home the modem doesn't answer, and the record says so.
