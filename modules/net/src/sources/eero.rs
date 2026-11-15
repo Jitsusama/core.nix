@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 
 use crate::model::{
     Device, End, Internet, Link, LinkState, Medium, Port, PortKind, Radio, Role, Source,
-    SourceState,
+    SourceState, Speed,
 };
 use crate::time;
 
@@ -155,6 +155,7 @@ fn node_device(node: &Value, read_at: Option<u64>) -> Device {
         modem: None,
         receiver: None,
         printer: None,
+        speed: None,
         path: None,
         detail: detail(node),
     }
@@ -321,9 +322,49 @@ fn client_device(client: &Value, read_at: Option<u64>) -> Device {
         modem: None,
         receiver: None,
         printer: None,
+        speed: speed(client),
         path: None,
         detail: detail(client),
     }
+}
+
+/// How fast a client carries data, from eero's speed now and its history:
+/// readings five minutes apart over the last hour, as times beside each
+/// way's figures. The busiest is the earliest of equal readings, and none
+/// is said where eero gave neither way.
+fn speed(client: &Value) -> Option<Speed> {
+    let now = client.get("speed");
+    let now = |way| now.and_then(|now| now.get(way)).and_then(Value::as_f64);
+    let history = client.get("history");
+    let at: Vec<Option<u64>> = history
+        .map(|history| list(history, "at"))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|at| at.as_str().and_then(time::parse))
+        .collect();
+    let busiest = |way| {
+        history
+            .map(|history| list(history, way))
+            .unwrap_or_default()
+            .into_iter()
+            .zip(&at)
+            .filter_map(|(mbps, at)| Some((mbps.as_f64()?, (*at)?)))
+            .fold(None, |most: Option<(f64, u64)>, (mbps, at)| match most {
+                Some((top, _)) if top >= mbps => most,
+                _ => Some((mbps, at)),
+            })
+    };
+    let (down, up) = (busiest("down_mbps"), busiest("up_mbps"));
+    let speed = Speed {
+        down_mbps: now("down_mbps"),
+        up_mbps: now("up_mbps"),
+        busiest_down_mbps: down.map(|(mbps, _)| mbps),
+        busiest_down_at: down.map(|(_, at)| at),
+        busiest_up_mbps: up.map(|(mbps, _)| mbps),
+        busiest_up_at: up.map(|(_, at)| at),
+    };
+    (speed.down_mbps.is_some() || speed.up_mbps.is_some() || down.is_some() || up.is_some())
+        .then_some(speed)
 }
 
 /// A client's addresses, the one eero reaches it by first, since eero's
@@ -466,11 +507,44 @@ mod tests {
                     "address": "10.0.0.20",
                     "addresses": ["10.0.122.1", "10.0.0.20", "fe80::1"],
                     "band": "5 GHz", "channel": 52, "signal_dbm": -55,
-                    "rx": {"mbps": 1080.6}
+                    "rx": {"mbps": 1080.6},
+                    "speed": {"down_mbps": 1.5, "up_mbps": 0.25},
+                    "history": {
+                        "at": ["2026-11-07T22:44:43Z", "2026-11-07T22:49:43Z",
+                               "2026-11-07T22:54:43Z"],
+                        "down_mbps": [20.5, 20.5, 1.5],
+                        "up_mbps": [null, 0.5, 0.25]
+                    }
                 }]
             })),
             1_794_092_100,
         )
+    }
+
+    #[test]
+    fn a_clients_speed_is_eeros_now_and_its_busiest_in_the_hour() {
+        let laptop = &laptop_at_home().devices[1];
+        assert_eq!(
+            laptop.speed,
+            Some(Speed {
+                down_mbps: Some(1.5),
+                up_mbps: Some(0.25),
+                busiest_down_mbps: Some(20.5),
+                busiest_down_at: Some(1_794_091_483),
+                busiest_up_mbps: Some(0.5),
+                busiest_up_at: Some(1_794_091_783),
+            }),
+            "the earliest of equal readings is the busiest, and a gap is skipped"
+        );
+    }
+
+    #[test]
+    fn a_node_has_no_speed_of_its_own() {
+        assert_eq!(
+            laptop_at_home().devices[0].speed,
+            None,
+            "eero counts no speed for a node"
+        );
     }
 
     #[test]

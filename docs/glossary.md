@@ -495,7 +495,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | path | a device's way to the internet: the devices its traffic crosses, in order, up to the modem | | net's `path` |
 | room | how much a link or the internet can still carry: a cable's speed, or a radio link's less the time its radio is busy | | net's `room_mbps` |
 | chokepoint | the hop on a path with least room, one each way | bottleneck | net's `down`, `up` |
-| concern | something on the home network worth a look, worked out from its figures: a busy radio, a weak signal, a slow cable, or the internet as a chokepoint | | net's `concerns` |
+| concern | something on the home network worth a look, worked out from its figures: a busy radio, a weak signal, a slow cable, a modem channel losing data, a device using most of the internet one way, or the internet as a chokepoint | | net's `concerns` |
 | outage | a time the internet was down | downtime | |
 | update | the home network's firmware installing itself, at the hour it's set to, apart from the machine's update | | the eero's `update_hour` |
 | radio | a Wi-Fi or Bluetooth transmitter on one band: the machine's card's or adapter's, or one of a node's | | `bluetooth:powered` |

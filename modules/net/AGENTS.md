@@ -32,7 +32,9 @@ Apple TV are net's alone, and `eero` keeps only what's eero's.
   out, and why.
 - `devices`: each device's generic fields, its ports and radios, a
   role's own block (a modem's channels and log, a receiver's volume and
-  what it's doing, a printer's ink and what it's doing), and `detail`, every
+  what it's doing, a printer's ink and what it's doing), a client's `speed`
+  each way as eero counts it, now and at its busiest in eero's last hour
+  with when, and `detail`, every
   field each source gives about it in the source's own words.
 - `links`: a cable or a radio link, port to port or radio to radio; the
   map is drawn from these.
@@ -46,8 +48,10 @@ Apple TV are net's alone, and `eero` keeps only what's eero's.
   with no figure (eero gives Wi-Fi backhaul only as bars) is counted in
   `unmeasured`, never guessed. A concern is a radio busy 50% or more (the
   map's gold), a Wi-Fi link at -70 dBm or weaker, a cable under a gigabit,
-  the internet as a chokepoint, said once each way, or a modem channel that
-  lost 100 or more it couldn't repair and ten times any other's.
+  the internet as a chokepoint, said once each way, a modem channel that
+  lost 100 or more it couldn't repair and ten times any other's, or a
+  device using 80% or more of the internet's speed one way, which fills
+  it for every other.
 - What the day says, from net's own readings (`src/history.rs`): each
   radio's `busiest_pct` and `busiest_at`, and the modem's `lately_s` with
   each downstream channel's `lost_lately`, counted from the earliest

@@ -126,6 +126,7 @@ fn device(pages: &Pages, now: u64) -> Device {
         modem: Some(modem(pages, now)),
         receiver: None,
         printer: None,
+        speed: None,
         path: None,
         detail: detail(pages),
     }

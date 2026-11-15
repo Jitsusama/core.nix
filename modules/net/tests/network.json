@@ -2513,6 +2513,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.45",
@@ -2639,6 +2647,14 @@
           "room_mbps": 11.93,
           "unmeasured": 1
         }
+      },
+      "speed": {
+        "down_mbps": 0.1453838,
+        "up_mbps": 0.0976319,
+        "busiest_down_mbps": 0.2616908,
+        "busiest_down_at": 1794090883,
+        "busiest_up_mbps": 0.1757374,
+        "busiest_up_at": 1794090883
       },
       "detail": {
         "eero": {
@@ -2767,6 +2783,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.31",
@@ -2886,6 +2910,14 @@
           "room_mbps": 11.93,
           "unmeasured": 1
         }
+      },
+      "speed": {
+        "down_mbps": 1.2238973,
+        "up_mbps": 0.0239604,
+        "busiest_down_mbps": 2.2030151,
+        "busiest_down_at": 1794090883,
+        "busiest_up_mbps": 0.0431287,
+        "busiest_up_at": 1794090883
       },
       "detail": {
         "eero": {
@@ -3015,6 +3047,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0022339,
+        "up_mbps": 0.0033066,
+        "busiest_down_mbps": 0.004021,
+        "busiest_down_at": 1794090883,
+        "busiest_up_mbps": 0.0059519,
+        "busiest_up_at": 1794090883
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.25",
@@ -3142,6 +3182,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.112",
@@ -3262,6 +3310,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.33",
@@ -3381,6 +3437,14 @@
           "room_mbps": 11.93,
           "unmeasured": 1
         }
+      },
+      "speed": {
+        "down_mbps": 11.452299,
+        "up_mbps": 9.8644349,
+        "busiest_down_mbps": 20.6141382,
+        "busiest_down_at": 1794090883,
+        "busiest_up_mbps": 17.7559828,
+        "busiest_up_at": 1794090883
       },
       "detail": {
         "eero": {
@@ -3509,6 +3573,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0001323,
+        "up_mbps": 0.0001064,
+        "busiest_down_mbps": 0.0002381,
+        "busiest_down_at": 1794090883,
+        "busiest_up_mbps": 0.0001915,
+        "busiest_up_at": 1794090883
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.30",
@@ -3635,6 +3707,14 @@
           "room_mbps": 11.93,
           "unmeasured": 1
         }
+      },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
       },
       "detail": {
         "eero": {
@@ -3763,6 +3843,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.28",
@@ -3883,6 +3971,14 @@
           "unmeasured": 1
         }
       },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.40",
@@ -4002,6 +4098,14 @@
           "room_mbps": 11.93,
           "unmeasured": 1
         }
+      },
+      "speed": {
+        "down_mbps": 0.1296713,
+        "up_mbps": 0.0145117,
+        "busiest_down_mbps": 0.1556056,
+        "busiest_down_at": 1794091483,
+        "busiest_up_mbps": 0.017414,
+        "busiest_up_at": 1794091483
       },
       "detail": {
         "eero": {
@@ -4128,6 +4232,14 @@
           "unmeasured": 0
         }
       },
+      "speed": {
+        "down_mbps": 0.0000982,
+        "up_mbps": 0.0001537,
+        "busiest_down_mbps": 0.0001768,
+        "busiest_down_at": 1794090883,
+        "busiest_up_mbps": 0.0002767,
+        "busiest_up_at": 1794090883
+      },
       "detail": {
         "eero": {
           "address": "10.0.0.99",
@@ -4247,6 +4359,14 @@
           "room_mbps": 11.93,
           "unmeasured": 0
         }
+      },
+      "speed": {
+        "down_mbps": 0.0,
+        "up_mbps": 0.0,
+        "busiest_down_mbps": 0.0,
+        "busiest_down_at": 1794090583,
+        "busiest_up_mbps": 0.0,
+        "busiest_up_at": 1794090583
       },
       "detail": {
         "eero": {
@@ -6841,6 +6961,11 @@
       "device": "modem",
       "on": "downstream channel 16",
       "says": "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair since the modem started, against at most 18 on any other; if that keeps climbing, Example ISP can check the line"
+    },
+    {
+      "kind": "fills",
+      "device": "mac:02:00:00:00:00:08",
+      "says": "unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s"
     },
     {
       "kind": "ceiling",

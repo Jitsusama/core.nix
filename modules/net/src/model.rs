@@ -95,6 +95,9 @@ pub enum ConcernKind {
     Slow,
     /// The internet is the narrowest hop on some device's path.
     Ceiling,
+    /// A device using most of the internet's speed one way, so every other
+    /// device waits behind it.
+    Fills,
     /// One of the modem's downstream channels lost far more than the
     /// others, which points at noise on its frequency.
     Lost,
@@ -155,6 +158,9 @@ pub struct Device {
     /// A printer's own figures, on a device with the printer role.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printer: Option<Printer>,
+    /// How fast it carries data each way, on a device eero counts it for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed: Option<Speed>,
     /// Everything each source gives about the device, in its own words.
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub detail: Map<String, Value>,
@@ -201,6 +207,19 @@ pub enum PortKind {
 pub enum LinkState {
     Up,
     Down,
+}
+
+/// How fast a device carries data each way, in megabits a second, as eero
+/// counts it: now, and at its busiest in the hour eero keeps, at five-minute
+/// steps, with when. A way eero gave nothing for is null.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Speed {
+    pub down_mbps: Option<f64>,
+    pub up_mbps: Option<f64>,
+    pub busiest_down_mbps: Option<f64>,
+    pub busiest_down_at: Option<u64>,
+    pub busiest_up_mbps: Option<f64>,
+    pub busiest_up_at: Option<u64>,
 }
 
 /// A Wi-Fi radio on one band.
