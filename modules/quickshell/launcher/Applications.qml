@@ -853,8 +853,7 @@ Provider {
     // there, and the right arrow steps into what else can be done to one.
     // Without that collection in the launcher, there's none to hold.
     function notices(entry, same) {
-        const past = (provider.launcher?.sources ?? [])
-            .find(source => typeof source.sentBy === "function") ?? null;
+        const past = provider.hooking.sentBy[0] ?? null;
         const { count, unread } = past ? sentCount(past, entry, same) : { count: 0, unread: 0 };
         if (count === 0)
             return [];
@@ -903,8 +902,7 @@ Provider {
 
     // Shortcuts, which says which layer is whose, or null where there's none.
     function keyMap() {
-        return (provider.launcher?.sources ?? [])
-            .find(source => typeof source.layerOf === "function") ?? null;
+        return provider.hooking.layerOf[0] ?? null;
     }
 
     // The name of the layer of its own keys, or "" for none.
@@ -1105,8 +1103,7 @@ Provider {
     // as it is by a note that reads it once for all it counts.
     function keepsRecent(entry, given) {
         return provider.sourceOf(entry) !== null || provider.recents.of(entry.id).length > 0
-            || (provider.launcher?.sources ?? []).some(other => other !== provider
-                && typeof other.keepsRecentOf === "function" && other.keepsRecentOf(entry.id))
+            || provider.hooking.keepsRecentOf.some(other => other.keepsRecentOf(entry.id))
             || (given ?? givenRecent(entry.id)).length > 0;
     }
 
@@ -1366,6 +1363,21 @@ Provider {
             .filter(said => said !== "").join(" \u00b7 ");
     }
 
+    // The other providers holding each hook a program's making asks, found
+    // as the launcher's sources change rather than on every making: a step
+    // into Programs looked through every source for each hook of each
+    // program it asked, about 1,500 lookups a step in the keys lab
+    // (2026-11-15).
+    readonly property var hooking: ["keepsRecentOf", "layerOf", "programActs", "programFacts",
+        "programOpen", "recentOf", "sentBy"]
+        .reduce((held, hook) => Object.assign(held, { [hook]: provider.holders(hook) }), {})
+
+    // The other providers with the hook `hook`, looked for now.
+    function holders(hook) {
+        return (provider.launcher?.sources ?? [])
+            .filter(other => other !== provider && typeof other[hook] === "function");
+    }
+
     // The providers that say a program's note, found once rather than as
     // each program's row is read.
     readonly property var noting: (provider.launcher?.sources ?? [])
@@ -1374,8 +1386,7 @@ Provider {
     // What every other provider with the hook `hook` gives `program`, each
     // provider's answer timed by its name while a making is (`making`).
     function hooked(hook, program) {
-        return (provider.launcher?.sources ?? [])
-            .filter(other => other !== provider && typeof other[hook] === "function")
+        return (provider.hooking[hook] ?? provider.holders(hook))
             .reduce((rows, other) => rows.concat(Program.timed(making.parts,
                 other.settings?.name ?? hook, provider.now, () => other[hook](program))), []);
     }
