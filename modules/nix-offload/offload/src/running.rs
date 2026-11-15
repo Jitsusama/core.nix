@@ -180,7 +180,7 @@ pub fn stable_digest(parts: &[&[u8]]) -> u64 {
 /// gone by `now`, in seconds since 1970.
 pub fn alone(state: &Path, me: u32, at: &Twin, now: impl Fn() -> u64) -> Alone {
     alone_saying(state, me, at, now, SAY_EVERY, &mut |said| {
-        eprintln!("{said}")
+        eprintln!("{said}");
     })
 }
 
@@ -211,7 +211,10 @@ fn alone_saying(
         return Alone::Unheld;
     };
     match lock.try_lock() {
-        Ok(()) => return Alone::Held(Held { file, _lock: lock }),
+        Ok(()) => {
+            take_away_left(&twins, &file);
+            return Alone::Held(Held { file, _lock: lock });
+        }
         Err(fs::TryLockError::WouldBlock) => {}
         Err(fs::TryLockError::Error(_)) => return Alone::Unheld,
     }
@@ -252,6 +255,34 @@ fn alone_saying(
                 "nix-offload: this still waits on {} at {commit}; stop that one to go on",
                 going()
             ));
+        }
+    }
+}
+
+/// How long a lock no run holds is kept: a day, far past any run's, so
+/// one taken away is one a run killed with SIGKILL left behind.
+const LEFT_FOR: Duration = Duration::from_hours(24);
+
+/// Take away each lock in `twins` but `mine` that's older than
+/// [`LEFT_FOR`] and that no run holds, since a killed run never removes
+/// its own and they gather one per commit.
+fn take_away_left(twins: &Path, mine: &Path) {
+    let Ok(entries) = fs::read_dir(twins) else {
+        return;
+    };
+    for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+        let old = fs::metadata(&path)
+            .and_then(|meta| meta.modified())
+            .is_ok_and(|at| at.elapsed().is_ok_and(|age| age > LEFT_FOR));
+        if path == mine || !old {
+            continue;
+        }
+        let unheld = fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .is_ok_and(|left| left.try_lock().is_ok());
+        if unheld {
+            let _ = fs::remove_file(&path);
         }
     }
 }
@@ -395,7 +426,7 @@ mod tests {
         let state = tempfile::tempdir().unwrap();
         let twins = state.path().join("nix-offload/twins");
         fs::create_dir_all(&twins).unwrap();
-        let two_days_ago = SystemTime::now() - Duration::from_secs(2 * 24 * 3600);
+        let two_days_ago = SystemTime::now() - Duration::from_hours(48);
         let left = |name: &str, when: SystemTime| {
             let file = fs::File::create(twins.join(name)).unwrap();
             file.set_modified(when).unwrap();
