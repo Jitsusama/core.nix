@@ -468,6 +468,23 @@ QtObject {
         expect("its own field over its making's", Member.copied(row("a", "A", { tier: 1 }),
             { tier: 4 }).tier, 1);
 
+        // A row found again by the next letter, from the same choice over
+        // the same fields, is the very row made last time, so the launcher's
+        // row showing it has nothing new to read: made afresh, every row
+        // kept across a letter ran each of its bindings again, as many as
+        // the rows' laying took (the keys lab's "co", 2026-11-15).
+        const chosen = row("mail", "Mail");
+        const making = { grade: 1, tier: 1, kept: false };
+        const first = Member.copiedAgain(undefined, chosen, making);
+        expect("found again alike, the row made last time",
+            Member.copiedAgain(first, chosen, { grade: 1, tier: 1, kept: false }).made
+                === first.made, true);
+        expect("found again otherwise, made afresh", [
+            Member.copiedAgain(first, chosen, { grade: 2, tier: 1, kept: false }).made.grade,
+            Member.copiedAgain(first, row("mail", "Mail"), making).made === first.made,
+            Member.copiedAgain(first, chosen, { grade: 1, tier: 1 }).made === first.made
+        ], [2, false, false]);
+
         // A key named as Object's own is a key like any other, so a thing
         // named so is one row, said as what it threw where it throws so a
         // failure doesn't end the run.

@@ -217,6 +217,11 @@ Scope {
     property var answer: null
     // What the search found, below an answer's rows.
     property var found: []
+    // What the last search of what's typed made each row it found from, by
+    // the row's key (Member.js's copiedAgain), so the next letter finding
+    // it alike shows the same row, and nothing reading it runs again. Only
+    // the last search's, so it holds no row the rows shown don't.
+    property var madeLast: ({})
 
     function answering(letters, fresh) {
         if (held.length > 0 && category !== null)
@@ -6187,15 +6192,22 @@ Scope {
             // Made a kind at a time, so a slow key's line says whose rows
             // its making spent on; an answer's rows say no kind. Each
             // choice's getters are copied unread (Member.js's copied), so
-            // what a row holds is read only for the rows drawn.
-            const making = Member.madeByKind(ordered, f => f.choice.what || "answer",
-                f => Member.copied(f.choice, {
+            // what a row holds is read only for the rows drawn, and one
+            // found alike by the last search is the row it made.
+            const madeBefore = root.madeLast;
+            const madeNow = Object.create(null);
+            const making = Member.madeByKind(ordered, f => f.choice.what || "answer", f => {
+                const again = Member.copiedAgain(madeBefore[f.choice.key], f.choice, {
                     byWord: f.byWord === true,
                     times: (learned[f.choice.key] ?? { times: 0 }).times,
                     grade: f.grade,
                     tier: f.tier,
                     kept: !!learned[f.choice.key]
-                }), () => Date.now());
+                });
+                madeNow[f.choice.key] = again;
+                return again.made;
+            }, () => Date.now());
+            root.madeLast = madeNow;
             const made = making.made;
             const madeAll = Date.now();
             const spots = spotted(letters);
@@ -12220,6 +12232,13 @@ Scope {
                             // What each kept row is, in the order they stand,
                             // so keeping them never reads the model back.
                             property var keptKeys: []
+                            // Each kept row's mark, in the order they stand,
+                            // given as it's put in and kept while it stays
+                            // (RowsKept.marked); the row each mark shows now;
+                            // and how many marks have been given.
+                            property var keptMarks: []
+                            property var rowOf: ({})
+                            property int marksGiven: 0
                             // How many rows the last keeping drew afresh, and
                             // how long laying them out took, which a key's
                             // showing says beside its own time, or null
@@ -12249,9 +12268,19 @@ Scope {
                                 const steps = RowsKept.steps(list.keptKeys, keys, root.rows);
                                 list.afresh = RowsKept.whole(list.keptKeys, steps);
                                 list.keptKeys = keys;
+                                let given = list.marksGiven;
+                                const marking = RowsKept.marked(list.keptMarks, steps,
+                                    () => given++);
+                                list.marksGiven = given;
+                                list.keptMarks = marking.marks;
+                                const rowOf = Object.create(null);
+                                marking.marks.forEach((mark, at) => {
+                                    rowOf[mark] = rows[at];
+                                });
                                 if (steps.length === 0) {
                                     root.washedBy = root.words;
                                     list.rows = rows;
+                                    list.rowOf = rowOf;
                                     list.keptLast = { fresh: 0, laying: 0 };
                                     return true;
                                 }
@@ -12259,6 +12288,7 @@ Scope {
                                     rowsKept.remove(step.remove, step.count);
                                 root.washedBy = root.words;
                                 list.rows = rows;
+                                list.rowOf = rowOf;
                                 // Whenever rows go and others come, those
                                 // let go are laid aside before the new ones
                                 // are put in, so those are given them: a
@@ -12284,12 +12314,15 @@ Scope {
                                 // after, every row of a step in from home
                                 // was laid out again for it.
                                 root.rowsPlaced(false);
+                                let puts = 0;
                                 for (const step of steps.filter(one => one.remove === undefined)) {
-                                    if (step.move !== undefined)
+                                    if (step.move !== undefined) {
                                         rowsKept.move(step.move, step.to, 1);
-                                    else
+                                    } else {
+                                        const marks = marking.given[puts++];
                                         rowsKept.insert(step.insert,
-                                            step.keys.map(key => ({ key })));
+                                            step.keys.map((key, at) => ({ key, mark: marks[at] })));
+                                    }
                                 }
                                 // Laid out now rather than at the next frame,
                                 // so the rows drawn stand where they will and
@@ -12533,15 +12566,25 @@ Scope {
                                 // long its rows took (root.feltRow).
                                 readonly property real feltBegun: KeyTimes.now()
                                 required property int index
-                                // What it says now, read by its place, so a
-                                // row kept across a refresh says the new. A
+                                required property int mark
+                                // What it says now, read by its mark, so a
+                                // row kept across a refresh says the new, and
+                                // one found again as it was (Member.js's
+                                // copiedAgain) is the same row, which nothing
+                                // reading it hears as a change. Read by its
+                                // place, each row another's going or coming
+                                // shifted read a row not its own, then its own
+                                // again, every binding on it run twice: the
+                                // keys lab's "co" showed one row new in 40 to
+                                // 67 ms, 6 to 12 of it laying (2026-11-15). A
                                 // row let go has no place (Qt gives it -1)
                                 // until it's destroyed, a moment later, and
                                 // says what it last said till then, since
                                 // read by a place it hasn't, it said nothing
                                 // and every binding on it failed.
                                 readonly property var modelData: !entry.aside
-                                    && entry.index >= 0 ? list.rows[entry.index] : entry.said
+                                    && entry.index >= 0 ? list.rowOf[entry.mark] ?? entry.said
+                                    : entry.said
                                 property var said: ({})
                                 onModelDataChanged: {
                                     if (!entry.aside && entry.index >= 0)
