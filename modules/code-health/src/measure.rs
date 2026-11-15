@@ -6,7 +6,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-use crate::{lints, notes, reached, terraform};
+use crate::{lints, notes, reached, stale, terraform};
 
 /// A file of the repository: its path from the folder read, and its text.
 pub struct File {
@@ -161,6 +161,10 @@ pub fn measure(paths: &[String], files: &[File]) -> Health {
     let bare = notes::without_notes(paths, files);
     let count = bare.len();
     health.put("folders-without-notes", bare, count);
+
+    let gone = stale::stale(paths, files);
+    let count = gone.len();
+    health.put("stale-paths", gone, count);
 
     if let Some((named, lines)) = vm_test_lines(&code) {
         health.put("vm-test-lines", named, lines);
@@ -632,12 +636,15 @@ mod tests {
             file("src/orphan.rs", "\n"),
             file("docs/a.md", "# A\n"),
             file("docs/b.md", "# B\n"),
+            file("src/lib.rs", "//! Beside src/words/gone.json.\n"),
+            file("src/words/README.md", "# Words\n"),
         ];
         let health = measure(&paths(&files), &files);
         for (measure, named) in [
             ("lints-off", "biome.json: noVoid"),
             ("unreached-files", "src/orphan.rs"),
             ("folders-without-notes", "docs"),
+            ("stale-paths", "src/lib.rs:1: src/words/gone.json"),
         ] {
             assert_eq!(health.named[measure], [named], "{measure} misread");
             assert!(

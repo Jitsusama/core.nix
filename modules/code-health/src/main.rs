@@ -48,6 +48,7 @@ mod merges;
 mod notes;
 mod options;
 mod reached;
+mod stale;
 mod terraform;
 mod terraform_docs;
 mod terraform_tests;
