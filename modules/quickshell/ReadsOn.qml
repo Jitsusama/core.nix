@@ -11,6 +11,7 @@
 // ruling, 2026-10-30: a long value slides exactly as a long name does).
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Effects
 import "Measures.js" as Measures
 import "Reading.js" as Reading
 
@@ -60,11 +61,14 @@ Item {
     // How far past their room the words run, when they do.
     readonly property real over: Math.max(0, words.implicitWidth - width)
     readonly property bool scrolls: reading && over > 0
+    // How wide each end's fade is, and so how far short of the room's right
+    // edge the words' end stops, clear of it.
+    readonly property real fade: Theme.space.rung.mark
     // A reading pace of twelve characters a second, held between soft
     // ends (Reading.js). A short rest to see how they start, and a longer
     // one at their end to read that (Joel, 2026-10-29: the slide stuttered,
     // was too slow, and started and stopped abruptly).
-    readonly property var slide: Reading.slide(over, 12 * figure)
+    readonly property var slide: Reading.slide(over + fade, 12 * figure)
     readonly property int restFirst: Math.round(500 * Theme.motion.slowdown)
     readonly property int restLast: Math.round(1000 * Theme.motion.slowdown)
     // Whether the words are off their start: from the moment they slide out
@@ -113,38 +117,138 @@ Item {
         font: words.font
     }
 
-    Text {
-        id: words
-        x: room.restAt
-        width: room.moving ? implicitWidth : room.restWidth
-        text: room.text
-        textFormat: room.format
-        elide: room.moving ? Text.ElideNone : Text.ElideRight
-        color: room.color
-        font.family: room.level.family
-        font.italic: room.level.italic
-        font.pointSize: room.level.pointSize
-        font.weight: room.level.weight
-        font.variableAxes: room.level.variableAxes
-        font.features: room.level.features
+    // The words as they're seen. While they move, they fade out over a mark
+    // at each end of their room, rather than end cut through a letter there
+    // (VKCF3Z, 2026-11-14: a glyph clipped at both ends of a selected long
+    // name). The layer is made only then, so words at rest, and a shut
+    // launcher, cost nothing. What they're seen through stands beside
+    // them, never inside, or it would be drawn into what it masks. It holds
+    // the room's plain words and clips as the room does, since the launcher
+    // reads both from a word's parent to say how a word reads and where it
+    // is cut (Launcher.qml's wordsIn).
+    Item {
+        id: seen
+        readonly property string plain: room.plain
+        width: room.width
+        height: room.height
+        clip: room.clip
+        layer.enabled: room.moving && room.fadedBy !== null
+        layer.effect: MultiEffect {
+            maskEnabled: true
+            maskSource: room.fadedBy
+            // The mask's alpha read smoothly from none to whole, not as a cut.
+            // Qt passes it through a smoothstep topped at the threshold times
+            // one more than the spread, its foot the spread below that
+            // (qquickmultieffect.cpp), so a threshold of a half and a spread
+            // of one run it from 0 to 1. At the default threshold of 0, any
+            // alpha at all passes whole, and the fade is a cut again.
+            maskThresholdMin: 0.5
+            maskSpreadAtMin: 1
+        }
 
-        // Made once there's a find to wash, beneath the letters, and kept
-        // while the words stand, washing nothing while nothing's found:
-        // a row's finds come and go with the keys typed, and making it
-        // again was 12 to 36 ms of a key's frame (prof6, 2026-11-11).
-        Loader {
-            id: wash
-            anchors.fill: parent
-            z: -1
-            active: room.washMade
-            sourceComponent: Wash {
-                text: room.plain
-                runs: room.finds
-                font: words.font
-                cut: words.truncated
-                selected: room.washedSelected
+        Text {
+            id: words
+            x: room.restAt
+            width: room.moving ? implicitWidth : room.restWidth
+            text: room.text
+            textFormat: room.format
+            elide: room.moving ? Text.ElideNone : Text.ElideRight
+            color: room.color
+            font.family: room.level.family
+            font.italic: room.level.italic
+            font.pointSize: room.level.pointSize
+            font.weight: room.level.weight
+            font.variableAxes: room.level.variableAxes
+            font.features: room.level.features
+
+            // Made once there's a find to wash, beneath the letters, and
+            // kept while the words stand, washing nothing while nothing's
+            // found: a row's finds come and go with the keys typed, and
+            // making it again was 12 to 36 ms of a key's frame (prof6,
+            // 2026-11-11).
+            Loader {
+                id: wash
+                anchors.fill: parent
+                z: -1
+                active: room.washMade
+                sourceComponent: Wash {
+                    text: room.plain
+                    runs: room.finds
+                    font: words.font
+                    cut: words.truncated
+                    selected: room.washedSelected
+                }
             }
         }
+    }
+
+    // What the words are seen through while they move: whole across their
+    // room but for a fade at each end. At their start their first letter
+    // stands at the room's left edge, so its fade comes in only as they
+    // slide off it, over the slide's soft start, and goes again as they
+    // glide back, so no letter dims or brightens at once.
+    component Fades: Item {
+        id: fadesMade
+        // Where along the room each end's fade gives way to the whole.
+        readonly property real edge: room.fade / Math.max(room.width, 2 * room.fade)
+        // How far in from each end the words are whole.
+        readonly property real whole: room.width * edge
+        // Covers the left fade while the words are at their start.
+        readonly property Item cover: startCover
+        width: room.width
+        height: room.height
+        visible: false
+        layer.enabled: true
+
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop {
+                    position: 0
+                    color: "transparent"
+                }
+                GradientStop {
+                    position: fadesMade.edge
+                    color: "white"
+                }
+                GradientStop {
+                    position: 1 - fadesMade.edge
+                    color: "white"
+                }
+                GradientStop {
+                    position: 1
+                    color: "transparent"
+                }
+            }
+        }
+        Rectangle {
+            id: startCover
+            width: room.fade
+            height: parent.height
+            color: "white"
+        }
+    }
+    readonly property Fades fadedBy: fades.item as Fades
+    Loader {
+        id: fades
+        active: room.moving
+        sourceComponent: Fades {}
+    }
+    OpacityAnimator {
+        id: fadeIn
+        target: room.fadedBy?.cover ?? null
+        to: 0
+        duration: Math.round(1000 * Theme.motion.slowdown * room.slide.ramp)
+        easing.type: Easing.InQuad
+    }
+    OpacityAnimator {
+        id: fadeOut
+        target: room.fadedBy?.cover ?? null
+        to: 1
+        duration: slideBack.duration
+        easing.type: Easing.BezierSpline
+        easing.bezierCurve: Theme.motion.curve
     }
 
     // Animators, which move the words on the render thread, so the slide
@@ -172,6 +276,8 @@ Item {
         resting.stop();
         slideOut.stop();
         slideBack.stop();
+        fadeIn.stop();
+        fadeOut.stop();
         words.x = room.restAt;
         room.moving = false;
     }
@@ -182,13 +288,14 @@ Item {
             if (room.outward)
                 room.moving = true;
             (room.outward ? slideOut : slideBack).start();
+            (room.outward ? fadeIn : fadeOut).start();
         }
     }
     XAnimator {
         id: slideOut
         target: words
         from: room.restAt
-        to: -room.over
+        to: -room.over - room.fade
         duration: Math.round(1000 * Theme.motion.slowdown * room.slide.seconds)
         easing.type: Easing.BezierSpline
         easing.bezierCurve: room.slide.curve

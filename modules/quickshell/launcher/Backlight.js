@@ -1,28 +1,13 @@
 // What the machine daemon says of the screen's backlight and the room's
 // sensor (modules/machine's light.rs), in plain JavaScript so a check can
-// run it in Qt's own engine, as the shell does, for the Brightness and
-// Room Light a step into a screen holds. A screen's drawer says the light
-// as the windows daemon serves it (modules/windows, light.rs).
+// run it in Qt's own engine, as the shell does, for the Brightness a step
+// into a screen holds. A screen's drawer and its Room Light say the light
+// as the windows daemon serves it (modules/windows, light.rs and
+// light/room.rs).
 .pragma library
-.import "Numbers.js" as Numbers
 .import "Order.js" as Order
 
 const PERCENT = 100;
-// Lux are said in lux, and from a thousand in klx, a thousand each; a
-// reading from where its three digits round to a thousand, so 999.6 reads
-// "1.00 klx" rather than "1,000 lx".
-const LUX = "lx";
-const KILOLUX = "klx";
-const KILO = 1000;
-const ROUNDS_TO_KILO = 999.5;
-
-// The room's light as it's measured, to three significant digits with
-// its zeros kept: "28.5 lx", "5.20 lx", "1.24 klx" (VKCF3Z, 2026-11-08).
-function reading(lux, group, point) {
-    return lux >= ROUNDS_TO_KILO
-        ? `${Numbers.significant(lux / KILO, group, point)} ${KILOLUX}`
-        : `${Numbers.significant(lux, group, point)} ${LUX}`;
-}
 
 // The first of a kind of the machine daemon's records (light.rs), by its
 // device's name as the kernel lists them, or null with none.

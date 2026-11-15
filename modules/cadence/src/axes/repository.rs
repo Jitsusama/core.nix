@@ -120,13 +120,16 @@ pub fn gather(now: i64, kept: &Path) -> Sources {
     });
     let built = built(&journal);
     let commits: BTreeSet<&str> = built.iter().map(|(_, c)| c.as_str()).collect();
-    let times = if commits.is_empty() {
-        String::new()
-    } else {
+    let times_at = kept.with_file_name("built-times.txt");
+    let (mut times, unknown) =
+        known_times(&commits, &fs::read_to_string(&times_at).unwrap_or_default());
+    if !unknown.is_empty() {
         let mut args = vec!["log", "--no-walk=unsorted", "--format=%H %ct"];
-        args.extend(commits);
-        git(&args)
-    };
+        args.extend(unknown);
+        times.push_str(&git(&args));
+    }
+    // Kept for the next read; a failure only costs it git again.
+    let _ = fs::write(&times_at, &times);
     Sources {
         looks: looks(&log.main, &built, &times),
         main: log.main,
@@ -213,6 +216,31 @@ fn keep_log(kept: &Path, at: &str, log: &Log) {
         let _ = fs::create_dir_all(folder);
     }
     let _ = fs::write(kept, all.to_string());
+}
+
+/// The kept times, `<sha> <seconds>` a line, of the built commits still
+/// wanted, and the built commits git has yet to be asked about. A commit's
+/// time never changes, and asking git for each one's walked the machine
+/// repository's packs every run: about 90 MB read each hour and each time
+/// Spec looked, on 14 November.
+fn known_times<'a>(commits: &BTreeSet<&'a str>, kept: &str) -> (String, Vec<&'a str>) {
+    let mut known = String::new();
+    let mut seen = BTreeSet::new();
+    for line in kept.lines() {
+        if let Some((sha, _)) = line.split_once(' ')
+            && commits.contains(sha)
+            && seen.insert(sha)
+        {
+            known.push_str(line);
+            known.push('\n');
+        }
+    }
+    let unknown = commits
+        .iter()
+        .copied()
+        .filter(|c| !seen.contains(c))
+        .collect();
+    (known, unknown)
 }
 
 /// Main's commit as last fetched, from the command update-to-main runs.
@@ -450,6 +478,21 @@ mod tests {
         let looks = looks(main, &built, "x1 50\nx3 90");
         let named: Vec<(i64, &str)> = looks.iter().map(|l| (l.at, l.core.as_str())).collect();
         assert_eq!(named, vec![(100, "m1"), (300, "m2")]);
+    }
+
+    #[test]
+    fn only_a_built_commit_with_no_kept_time_asks_git() {
+        let commits: BTreeSet<&str> = ["aa", "bb"].into();
+        assert_eq!(
+            known_times(&commits, "aa 100\nzz 900\n"),
+            ("aa 100\n".to_owned(), vec!["bb"]),
+            "a kept time is used, a new commit asked about, one no longer built dropped"
+        );
+        assert_eq!(
+            known_times(&BTreeSet::new(), "aa 100\n"),
+            (String::new(), Vec::new()),
+            "nothing built wants nothing"
+        );
     }
 
     #[test]

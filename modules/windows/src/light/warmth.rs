@@ -14,25 +14,13 @@
 use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
 
-use super::{Light, Warmth, Words, runs};
+use super::{Inside, Light, Warmth, Words, runs};
 use crate::screens::{PLACE, key};
 
 /// The switches inside the Warmth, by the vocabulary's id of each, and
 /// the act the machine daemon knows it by with what that act takes.
 const NIGHT_LIGHT: (&str, &str, &str) = ("night-light", "night-light", "on");
 const FOLLOW_THE_ROOM: (&str, &str, &str) = ("follow-room", "follow-the-room", "follows");
-
-/// The screen the Warmth is served inside: its connector's name, its
-/// row's key, a part's name as the vocabulary names it (`displays:<id>`),
-/// the numbers' grouping, and the time now, in milliseconds since the
-/// epoch, which says whether the night is under way.
-pub struct Inside<'a> {
-    pub name: &'a str,
-    pub screen: &'a str,
-    pub named: &'a dyn Fn(&str) -> String,
-    pub numbers: &'a Numbers,
-    pub now: u64,
-}
 
 impl Warmth {
     /// Whether the night under way holds the moment `now`.

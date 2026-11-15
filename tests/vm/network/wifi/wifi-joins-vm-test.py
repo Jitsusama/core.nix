@@ -321,3 +321,37 @@ def test_trusting_it_from_the_shell_turns_on_mdns_and_the_card_stays_on_it(
     wifid.stayed_on(since)
     wifid.refused("Trust", {"name": "Roadside Inn", "trusted": True}, "Declared")
     wifid.refused("Trust", {"name": "Nowhere", "trusted": True}, "NotSaved")
+
+
+def test_a_card_whose_access_point_carries_slowly_moves_to_another_of_its_network(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """A card whose access point carries slowly moves to another of its network it hears."""
+    # Lantern's second, as loud as the first, so it's heard well enough to try: both are set
+    # alike, since the first's own power isn't the 20 dBm the second can be set to.
+    machine.succeed("systemctl start lantern-two")
+    for radio in ("wlan0", "wlan5"):
+        machine.succeed(f"ip netns exec air iw dev {radio} set txpower fixed 2000")
+    machine.wait_until_succeeds(
+        "wpa_cli -i wlan2 scan >/dev/null;"
+        " wpa_cli -i wlan2 scan_results | grep -q 02:00:00:00:05:00",
+        timeout=timedelta(seconds=30),
+    )
+    # What each of Lantern's access points is heard at, since one heard over 6 dB fainter than
+    # the first isn't tried.
+    machine.log(machine.succeed("wpa_cli -i wlan2 scan_results | grep Lantern"))
+    assert wifid.hears("Lantern"), "wifid should hear Lantern with its second access point up"
+    # Each answer from the first comes 200 ms late, five times the slowness worth a try.
+    machine.succeed("ip netns exec air tc qdisc add dev wlan0 root netem delay 200ms")
+    # The choice is made with the figures, once a minute, so this waits up to two.
+    wifid.says("wlan2 moved to 02:00:00:00:05:00, as asked", timeout=timedelta(seconds=150))
+    machine.succeed(
+        "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
+        " | grep -qE '^wlan2 tries 02:00:00:00:05:00, as [0-9a-f:]+ carried [0-9.]+ ms at p95'"
+    )
+    machine.wait_until_succeeds(
+        "wpa_cli -i wlan2 status | grep -qx bssid=02:00:00:00:05:00",
+        timeout=timedelta(seconds=30),
+    )
+    wifid.holds_address("10.42.0.")
+    machine.succeed("ip netns exec air tc qdisc del dev wlan0 root")

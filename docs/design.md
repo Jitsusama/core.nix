@@ -869,8 +869,13 @@ slow and started and stopped abruptly). What a row says at its right,
 cut to its share, reads on the same way, by the same piece, and never
 opens the drawer to be read (VKCF3Z, 2026-10-30). With both cut they
 take turns, the name first and then what it says, so only one thing
-moves at a time. Nothing reads on unseen: a closed launcher keeps its
-selection, but its rows rest at their start until it opens again.
+moves at a time. While it moves, its words fade out over a mark at each
+end of their room rather than end cut through a letter, and its end stops
+a mark short of the edge, clear of the fade; the fade at its start comes
+in only as it slides off it, and goes as it glides back, so no letter
+dims at once (VKCF3Z, 2026-11-14). At rest it's drawn as it always is,
+with no fade to pay for. Nothing reads on unseen: a closed launcher keeps
+its selection, but its rows rest at their start until it opens again.
 
 **Text that doesn't fit reads at a glance** (Joel, 2026-11-11: "i hate
 gross line wraps, particularly wheen they make it hard to parse

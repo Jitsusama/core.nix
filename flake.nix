@@ -668,12 +668,13 @@
           packages = [
             pkgs.cargo
             pkgs.clippy
-            # code-health's tests run these three over Terraform.
+            # code-health's tests run these three over Terraform, tflint
+            # with Google's rules, as the program itself does.
             pkgs.opentofu
             pkgs.rust-analyzer
             pkgs.rustc
             pkgs.rustfmt
-            pkgs.tflint
+            (pkgs.tflint.withPlugins (plugins: [ plugins.tflint-ruleset-google ]))
             pkgs.trivy
             (pkgs.callPackage ./tools/changed-checks/package.nix { })
             (pkgs.callPackage ./tools/merge-net/package.nix { })

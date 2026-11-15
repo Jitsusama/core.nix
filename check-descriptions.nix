@@ -549,8 +549,8 @@
     code-health counts a repository's long files and crowded folders without their reasons, its
     suppressions in each language's own way, its lines repeated from elsewhere and its tests in
     quarantine, the lint rules its configs turn off, its files nothing reaches, its folders with
-    no note, its VM test lines, and its Terraform not as tofu fmt writes it, what tflint finds,
-    what trivy finds insecure, what tofu validate refuses, what has no description or README and
+    no note, its VM test lines, and its Terraform not as tofu fmt writes it, what tflint finds
+    held to all its own rules and Google's, what trivy finds insecure, what tofu validate refuses, what has no description or README and
     what no tofu test tests, from a ref's files, and writes the day's figures as cadence reads
     them, and the hour's against each target, the hour before and the owner
   '';
@@ -1954,7 +1954,9 @@
     into one, says a source running is answering before anything asks it, never waits on a source
     signed out, asks one back from a sign-out, or from saying later, again about everyone watched
     it hasn't said once it says who someone is, starts a source that stops again and asks it about
-    everyone watched, says a get nothing answered in time isn't ready, and refuses an ask or a kind it doesn't know
+    everyone watched, says a get nothing answered in time isn't ready, serves someone a source
+    says the same of as it did before it was started again, and refuses an ask or a kind it
+    doesn't know
   '';
   people-passes-clippy = ''
     clippy finds nothing in the people daemon or its tests
@@ -4739,7 +4741,9 @@
   vm-wifi-joins = ''
     wifid joins the networks it's given, off the frequencies Nix avoids on each, finds sign-ins
     and sessions ending, measures how well the access point it's on carries, hears an account say
-    a call is on and names who said it, tells the shell what it hears in detail, chooses a network the launcher saved first, and trusts one when asked
+    a call is on and names who said it, tells the shell what it hears in detail, chooses a network
+    the launcher saved first, trusts one when asked, and moves a card whose access point carries
+    slowly to another of its network
   '';
   vm-wifi-joins-when-asked = ''
     the shell has wifid sign in, join with a password or an account, leave, save and switch the

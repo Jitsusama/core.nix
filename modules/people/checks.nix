@@ -21,7 +21,8 @@ onLinux {
   # waited on, and once back, as one that said later is once it answers,
   # is asked again about everyone watched it hasn't said, one that stops
   # is started again and asked again about everyone watched, a get nothing
-  # answers in time is not ready, and an ask or a kind it doesn't know is
+  # answers in time is not ready, one started again serves someone said
+  # the same of as it did before, and an ask or a kind it doesn't know is
   # refused. Stand-in sources in the
   # shell answer for the real ones.
   people-holds-everyone-ready = pkgs.callPackage ./package.nix { };

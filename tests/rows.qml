@@ -527,6 +527,15 @@ ShellRoot {
         return null;
     }
 
+    // Whether an item stands within another, at any depth.
+    function within(item, outer) {
+        for (let up = item.parent; up !== null; up = up.parent) {
+            if (up === outer)
+                return true;
+        }
+        return false;
+    }
+
     // A row's texts keep inside it and clear of each other.
     function apart(row, edge) {
         const texts = drawn(row, []).sort((a, b) => a.from - b.from);
@@ -1611,14 +1620,36 @@ ShellRoot {
         property var rest: null
         property bool named: false
         property bool sided: false
+        // Whether the name was seen at its end, clear of its room's fade.
+        property bool cleared: false
         property int left: 30000 / interval
 
         function where() {
             const texts = root.drawn(taking, []);
             const name = texts.find(t => t.text === taking.name);
             const side = texts.find(t => t.text === taking.side);
+            const reads = root.readsOn(taking, taking.name);
+            // The words stand in what's seen of them, which is layered while
+            // they move, beside the mask rather than around it.
+            const seen = reads.children.find(child =>
+                child.children.some(grand => grand.text === reads.text)) ?? reads;
+            const words = seen.children.find(child => child.text === reads.text);
+            const faded = reads.fadedBy;
             return { name: name.from, side: side.from, ended: name.truncated,
-                resting: root.readsOn(taking, taking.name)?.moving !== true };
+                resting: reads.moving !== true,
+                layered: seen.layer.enabled || reads.layer.enabled,
+                // Whether the mask is drawn into what it masks, so masks none
+                // of it: the room layered around it, or it within the words.
+                maskWithin: reads.layer.enabled
+                    || (faded !== null && root.within(faded, seen)),
+                // Whether what holds the words says their plain words and
+                // clips as the room does, as the launcher reads a word's
+                // parent for both (Launcher.qml's wordsIn).
+                heldAsRoom: words.parent.plain === reads.plain
+                    && words.parent.clip === reads.clip,
+                fade: reads.fade, whole: faded?.whole ?? null,
+                startCovered: faded?.cover.opacity ?? null,
+                endsAt: words.x + words.implicitWidth, room: reads.width };
         }
         function begin() {
             turns.rest = turns.where();
@@ -1630,22 +1661,39 @@ ShellRoot {
             const sideMoved = now.side < turns.rest.side - 1;
             turns.left -= 1;
             let failed = "";
+            // At its end, the name's last letter stands a fade short of
+            // its room's edge, and its start's fade has come in.
+            const atEnd = nameMoved && Math.abs(now.endsAt - (now.room - now.fade)) < 0.5;
             if (nameMoved && sideMoved)
                 failed = "a row's name and what it is both moved at once";
             else if (now.resting && !now.ended)
                 failed = "a selected name at rest cut through a letter, not in its ellipsis";
+            else if (!now.heldAsRoom)
+                failed = "a name's words are held by what doesn't say how they read or clip";
+            else if (now.resting && (now.layered || now.whole !== null))
+                failed = "a name at rest is drawn through a layer or a mask";
+            else if (!now.resting && (!now.layered || Math.abs(now.whole - now.fade) > 0.5))
+                failed = "a name reading on isn't seen through a fade a mark wide at its ends";
+            else if (!now.resting && now.maskWithin)
+                failed = "a name's fade is drawn into the words it fades, so fades none";
+            else if (nameMoved && now.endsAt > now.room - now.fade + 0.5)
+                failed = "a name read on to its end leaves its last letter in the fade";
+            else if (atEnd && now.startCovered !== 0)
+                failed = "a name at its end has no fade at its start";
             else if (sideMoved && !turns.named)
                 failed = "what a row is read on before its name";
             else if (turns.left === 0)
-                failed = `a cut row didn't read on in turn: name ${turns.named}, side ${sideMoved}`;
+                failed = `a cut row didn't read on in turn: name ${turns.named}, side ${sideMoved}`
+                    + `, its name's end clear of the fade ${turns.cleared}`;
             turns.named = turns.named || nameMoved;
             turns.sided = turns.sided || sideMoved;
+            turns.cleared = turns.cleared || atEnd;
             if (failed !== "") {
                 const from = JSON.stringify(turns.rest);
                 console.warn(`FAIL ${failed}: ${JSON.stringify(now)} from ${from}`);
                 turns.stop();
                 Qt.callLater(() => Qt.exit(1));
-            } else if (turns.named && turns.sided && root.blinkHeld) {
+            } else if (turns.named && turns.sided && turns.cleared && root.blinkHeld) {
                 turns.stop();
                 Qt.callLater(() => Qt.exit(0));
             }

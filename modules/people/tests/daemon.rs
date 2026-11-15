@@ -9,8 +9,8 @@
 //! drawer ready; one found says how they stand as one listed does, by
 //! every source; those listed are asked ahead of while they're watched,
 //! each source's entry saying how it has them stand; what's held is known
-//! by key with no source asked; and an ask or kind it doesn't know is
-//! refused.
+//! by key with no source asked; one started again serves the same record
+//! as before; and an ask or kind it doesn't know is refused.
 //!
 //! Long because every case runs the one daemon over its socket with the
 //! same stand-in sources and the same running harness, which a split would
@@ -220,13 +220,38 @@ fn a_get_is_a_step_in_answered_by_every_source_within_its_patience() {
         .ask(&json!({"id": 2, "ask": "get", "keys": ["person:Ada@Example.com"], "patience": 5000}));
     assert_eq!(
         said["records"],
-        json!([{"key": "person:ada@example.com", "kind": "person", "heard": said["records"][0]["heard"],
+        json!([{"key": "person:ada@example.com", "kind": "person", "said": said["records"][0]["said"],
                 "sources": {"slack": {"name": "ada", "way": "step"}}}])
     );
     assert_eq!(said["waiting"], json!([]));
     assert_eq!(running.asked("slack"), ["ada@example.com"]);
     let said = client.ask(&json!({"id": 3, "ask": "list"}));
     assert_eq!(said["records"].as_array().map(Vec::len), Some(1));
+}
+
+// A daemon started again, as a switch starts it, serves someone whose
+// source says the same as it served them before, its stamp too, so the
+// shell holds the record it held and makes none of their rows again.
+#[test]
+fn a_daemon_started_again_serves_the_same_record() {
+    let served = |name: &str| {
+        let running = Running::with(name, &[("slack", KNOWING)]);
+        let mut client = running.client();
+        client.ask(&json!({"id": 1, "ask": "hello", "client": "test", "version": 1}));
+        client.ask(
+            &json!({"id": 2, "ask": "get", "keys": ["person:ada@example.com"], "patience": 5000}),
+        )["records"]
+            .clone()
+    };
+    let first = served("first");
+    // Past a millisecond, so a record stamped by the clock it was heard
+    // at, as each once was, would be served differently.
+    std::thread::sleep(Duration::from_millis(5));
+    assert_eq!(
+        served("again"),
+        first,
+        "served differently once started again"
+    );
 }
 
 #[test]

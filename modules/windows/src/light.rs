@@ -187,6 +187,8 @@ pub struct Words {
     warmth: BTreeMap<String, String>,
     /// The mark of each of Warmth's switches, by its id after `displays:`.
     glyphs: BTreeMap<&'static str, String>,
+    /// What the Room Light's bar runs between (`displays:room`'s said).
+    room: String,
     /// How a switch stands, as Variable Refresh's says it.
     on: String,
     off: String,
@@ -249,6 +251,7 @@ impl Words {
             said,
             warmth,
             glyphs,
+            room: word("displays:room", &["said", "hears"], "hears"),
             on: word("displays:variable", &["said", "on"], "on"),
             off: word("displays:variable", &["said", "off"], "off"),
         }
@@ -653,6 +656,20 @@ pub fn facts(seen: &Seen, screen: &Screen, words: &Words) -> Vec<Value> {
     facts
 }
 
+/// The screen a row of the light is served inside: its connector's name,
+/// its row's key, a part's name as the vocabulary names it
+/// (`displays:<id>`), the numbers' grouping, and the time now, in
+/// milliseconds since the epoch, which says whether the night is under
+/// way.
+pub struct Inside<'a> {
+    pub name: &'a str,
+    pub screen: &'a str,
+    pub named: &'a dyn Fn(&str) -> String,
+    pub numbers: &'a Numbers,
+    pub now: u64,
+}
+
+pub mod room;
 pub mod warmth;
 
 // Its warmth record is the screens' cases' too.

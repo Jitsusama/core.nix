@@ -8,16 +8,22 @@
 //! So wifid measures the one it's on, and keeps what it measured of each,
 //! to choose between them. Each card echoes its gateway once a second, as
 //! a sampler did to find that, and logs its access point's figures each
-//! minute.
+//! minute. Each minute too it asks the card's chooser (choose.rs) whether
+//! another of the network's access points would carry better, and moves
+//! the card as the roam act does.
 
 use std::collections::{HashMap, VecDeque};
 
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tokio::time::{Duration, Instant, MissedTickBehavior, interval};
 
+use crate::acts;
+use crate::air::Heard;
 use crate::calling::Calling;
+use crate::choose::{Choice, Chooser, Other};
 use crate::echo::Echoer;
 use crate::nl80211::{Nl80211, Station};
+use crate::service::Ask;
 use crate::state::{Joined, State};
 
 /// How far back an access point's figures reach: long enough for a p95 of
@@ -122,8 +128,13 @@ const TOLD: Duration = Duration::from_secs(60);
 
 /// Measures the access point each card is on, for as long as wifid runs,
 /// and logs each one's figures every minute, saying when a call was on.
-pub async fn follow(state: watch::Receiver<State>, calling: watch::Receiver<Calling>) {
+pub async fn follow(
+    state: watch::Receiver<State>,
+    calling: watch::Receiver<Calling>,
+    asks: mpsc::Sender<Ask>,
+) {
     let mut echoers: HashMap<String, Echoer> = HashMap::new();
+    let mut choosers: HashMap<String, Chooser> = HashMap::new();
     let mut kernel: Option<Nl80211> = None;
     let mut measures = Measures::default();
     let mut each = interval(EACH);
@@ -143,9 +154,17 @@ pub async fn follow(state: watch::Receiver<State>, calling: watch::Receiver<Call
             _ = told.tick() => {
                 let (now, joined) = (Instant::now(), state.borrow().joined());
                 let call = calling.borrow().on(now);
+                choosers.retain(|card, _| joined.iter().any(|on| on.card == *card));
                 for on in joined {
-                    if let Some(measured) = measures.of(&on.point, now) {
-                        println!("<6>{}", said(&on, &measured, call));
+                    let Some(carried) = measures.of(&on.point, now) else {
+                        continue;
+                    };
+                    println!("<6>{}", said(&on, &carried, call));
+                    let around = state.borrow().around(&on.card);
+                    let chooser = choosers.entry(on.card.clone()).or_default();
+                    let figures = (&on, &carried);
+                    if let Some(to) = chosen(chooser, now, figures, &around, &measures, call) {
+                        tokio::spawn(roam(asks.clone(), state.clone(), on.card, to));
                     }
                 }
             }
@@ -209,13 +228,66 @@ fn counted(station: &Station) -> Option<Counts> {
     })
 }
 
+/// Asks a card's chooser where it should be, from what it's on carried and
+/// what it hears of its network, and says why where it moves.
+fn chosen(
+    chooser: &mut Chooser,
+    now: Instant,
+    (on, measured): (&Joined, &Measured),
+    around: &[Heard],
+    lately: &Measures,
+    call: bool,
+) -> Option<String> {
+    let signal = around.iter().find(|heard| heard.bssid == on.point)?.signal;
+    let others: Vec<Other> = around
+        .iter()
+        .filter(|heard| heard.bssid != on.point)
+        .map(|heard| Other {
+            point: heard.bssid.clone(),
+            signal: heard.signal,
+            busy: heard.radio.load.map(|load| load.busy),
+            measured: lately.of(&heard.bssid, now),
+        })
+        .collect();
+    match chooser.choose(now, (&on.point, measured, signal), &others, call) {
+        Choice::Stay => None,
+        Choice::Try(to) => {
+            println!(
+                "<6>{} tries {to}, as {} carried {} at p95 with {:.1}% lost",
+                on.card,
+                on.point,
+                ms(measured.p95),
+                measured.lost
+            );
+            Some(to)
+        }
+        Choice::Back(to) => {
+            println!(
+                "<6>{} goes back to {to}, as {} carried worse",
+                on.card, on.point
+            );
+            Some(to)
+        }
+    }
+}
+
+/// Moves a card to the access point chosen as the roam act does, looking
+/// for it first where it's gone unheard.
+async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String, to: String) {
+    if let Err(refused) = acts::roam(&asks, air, &to).await {
+        eprintln!("<4>{card} couldn't move to {to}: {refused:?}");
+    }
+}
+
+/// A span of time in milliseconds, as logged.
+fn ms(time: Option<Duration>) -> String {
+    time.map_or("none".into(), |time| {
+        format!("{:.1} ms", time.as_secs_f64() * 1000.0)
+    })
+}
+
 /// An access point's figures, as logged, and whether a call was on.
 fn said(on: &Joined, measured: &Measured, call: bool) -> String {
-    let ms = |time: Option<Duration>| {
-        time.map_or("none".into(), |time| {
-            format!("{:.1} ms", time.as_secs_f64() * 1000.0)
-        })
-    };
     let signal = measured
         .signal
         .map_or("unread".into(), |signal| format!("{signal} dBm"));

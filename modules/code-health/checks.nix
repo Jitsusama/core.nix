@@ -57,8 +57,8 @@
   # quality standard has them, it names each lint rule a config turns off,
   # each file nothing reaches, each folder that says nothing of what it
   # holds and each VM test's lines; and of its Terraform, each file not as
-  # tofu fmt writes it, each finding of tflint's, a workspace it can't
-  # load among them, each of trivy's security findings, with the real
+  # tofu fmt writes it, each finding of tflint's, held to all its own
+  # rules and Google's, a workspace it can't load among them, each of trivy's security findings, with the real
   # tools, each error tofu validate finds, each variable or output with
   # no description, and each workspace with no README or no tofu test.
   code-health-counts-what-got-messier = pkgs.callPackage ./package.nix { };
