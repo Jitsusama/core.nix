@@ -1,0 +1,14 @@
+# asker-says: what a process asking for Joel's password says about itself,
+# the quest and session an agent runs under, for polkit's prompt (src/main.rs
+# says how, and what it never reads).
+[package]
+name = "asker-says"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde_json = "1.0"
+# Its help, answer and failures take the shape every command of ours does.
+terminal-kit = { path = "../../terminal-kit" }

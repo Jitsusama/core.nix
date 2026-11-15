@@ -210,6 +210,28 @@ function asker(cmdline, actionId) {
     return command(words(cmdline)) || owner(actionId);
 }
 
+// A quest's id as the harness gives it, its short last.
+const questShape = /^QEST-\d{8}-(?<short>[A-Z0-9]{6})$/u;
+
+// What the asking process says of itself, from asker-says's answer: the
+// quest it says it runs under, by its short, as its own word, since any
+// process can say any quest, so it's never proof of who asks; the command
+// above it stays what's judged. Nothing for no answer, one not parsed, a
+// process that says none, or a quest not in the harness's shape, which
+// asker-says leaves out too, so no process puts words of its own here
+// (ISXEG8, 2026-11-15).
+function says(answer) {
+    let said = null;
+    try {
+        said = JSON.parse(answer);
+    } catch (_error) {
+        return "";
+    }
+    const quest = questShape.exec(said?.quest ?? "");
+    // Read by index, since Qt's engine has no named groups' object.
+    return quest ? `It says it's from ${quest[1]}.` : "";
+}
+
 // Text as rich text shows it, as written: a command is the asker's to
 // choose, so a tag in it would otherwise restyle the prompt or hide words.
 function plain(text) {

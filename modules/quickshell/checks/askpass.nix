@@ -7,6 +7,7 @@
   graphical,
   lib,
   noFonts,
+  passesClippy,
   pkgs,
   shellFolderLint,
   ...
@@ -44,6 +45,16 @@
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml polkit.qml
       touch $out
     '';
+
+  # asker-says's tests run as it builds: the quest and session a process
+  # says of itself, read by those two names alone, from it or its nearest
+  # parent that says them, and a secret beside them never said.
+  asker-says-only-what-a-process-says = pkgs.callPackage ../asker-says/package.nix { };
+
+  # clippy finds nothing in asker-says, its tests included.
+  asker-says-passes-clippy = passesClippy "asker-says-passes-clippy" (
+    pkgs.callPackage ../asker-says/package.nix { }
+  );
 
   # The askpass asks a shell that restarted mid-prompt again, and refuses
   # once none has answered for a while, rather than holding ssh-tpm-agent

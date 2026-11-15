@@ -12,6 +12,9 @@ Floating {
     // Who asks, as Polkit.js says it, and the account whose password it is.
     property string asker
     property string who
+    // What the asking process says of itself, its quest, as Polkit.js's
+    // says words it; none when it says nothing.
+    property string said
     // Why, or what went wrong once it's failed, in the alert.
     property string reason
     property bool failed: false
@@ -41,7 +44,9 @@ Floating {
             asked: `${asker} needs\u00a0${owner}'s\u00a0password`
             askedOpens: card.asker.charAt(0)
             askedOpensIn: Theme.mono.family
-            reason: card.reason
+            // What it says of itself comes first, under the command it's
+            // said of, then why, as lines of one saying.
+            reason: [card.said, card.reason].filter(line => line !== "").join("\n")
             reasonColour: card.failed ? Theme.alert : Theme.level.words.colour
         }
 

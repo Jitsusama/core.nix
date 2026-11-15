@@ -174,6 +174,26 @@ QtObject {
                 failures.push(`${what} pid was ${got}, not ${wanted}`);
         }
 
+        // What the asking process says of itself, as asker-says answers it:
+        // its quest by the short its id ends in, said as its own word, and
+        // nothing for a process that says none, an answer not come, or one
+        // not in the harness's shape (ISXEG8, 2026-11-15).
+        const answer = quest => JSON.stringify({ schema: "asker-says.says/1", quest: quest,
+            session: "0f3a9c2e-4b7d-4e1a-9c3f-a1b2c3d4e5f6", by: 42 });
+        const sayings = [
+            ["a quest's", answer("QEST-20261110-H6EDLC"), "It says it's from H6EDLC."],
+            ["no quest's", answer(null), ""],
+            ["a misshapen quest's", answer("QEST-20261110-<b>JOEL</b>"), ""],
+            ["no answer's", "", ""],
+            ["a broken answer's", "{\"quest\":", ""]
+        ];
+        for (const [what, said, wanted] of sayings) {
+            asked++;
+            const got = Polkit.says(said);
+            if (got !== wanted)
+                failures.push(`${what} saying was "${got}", not "${wanted}"`);
+        }
+
         // A command is shown as written, never read as rich text.
         const tagged = Polkit.plain("run0 echo '<b>a</b> & b'");
         asked++;
