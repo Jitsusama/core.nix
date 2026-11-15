@@ -264,6 +264,12 @@ async fn looked(
         .map(|ended| ended.is_ok())
 }
 
+/// Has every card look, as the scan act does; the chooser asks this of a
+/// card hearing no other access point of its network (moves.rs).
+pub(crate) async fn look(asks: &mpsc::Sender<Ask>) -> Result<(), Refused> {
+    once(asks, |done| Ask::Scan { done }).await
+}
+
 /// Asks the main loop one thing and waits for its answer.
 async fn once(
     asks: &mpsc::Sender<Ask>,

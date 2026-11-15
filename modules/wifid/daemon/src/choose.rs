@@ -90,6 +90,8 @@ pub enum Choice {
     Try(String),
     /// Go back to the access point the trial left, which carried better.
     Back(String),
+    /// Look for another access point of the network, none being heard.
+    Look,
 }
 
 /// What's been chosen lately, to keep the card from hunting.
@@ -310,6 +312,41 @@ mod tests {
             Choice::Try(HALL.into()),
             "119 ms at p95 is worth a try"
         );
+    }
+
+    #[test]
+    fn one_carrying_badly_and_hearing_no_other_looks_for_one() {
+        let mut chooser = Chooser::default();
+        let (badly, well) = (carried(52, 0.0), carried(15, 0.0));
+        let now = Instant::now();
+
+        let carrying_well = chooser.choose(now, (DESK, &well, -50, CH52), &[], false);
+        let calling = chooser.choose(now, (DESK, &badly, -50, CH52), &[], true);
+        let looking = chooser.choose(now, (DESK, &badly, -50, CH52), &[], false);
+
+        assert_eq!(
+            carrying_well,
+            Choice::Stay,
+            "one carrying well needs no other"
+        );
+        assert_eq!(calling, Choice::Stay, "no look in a call, as no move");
+        assert_eq!(looking, Choice::Look, "52 ms at p95 is worth a look");
+    }
+
+    #[test]
+    fn a_look_for_another_is_asked_again_only_once_settled() {
+        let mut chooser = Chooser::default();
+        let badly = carried(52, 0.0);
+        let start = Instant::now();
+        let first = chooser.choose(start, (DESK, &badly, -50, CH52), &[], false);
+
+        let soon = start + Duration::from_secs(60);
+        let soon = chooser.choose(soon, (DESK, &badly, -50, CH52), &[], false);
+        let later = chooser.choose(start + SETTLE, (DESK, &badly, -50, CH52), &[], false);
+
+        assert_eq!(first, Choice::Look, "the first look is asked");
+        assert_eq!(soon, Choice::Stay, "a minute on, it isn't asked again");
+        assert_eq!(later, Choice::Look, "once settled, it is");
     }
 
     #[test]
