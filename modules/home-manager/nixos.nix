@@ -31,9 +31,19 @@ in
   # every login waits for, so that waits instead. The greeter shows while
   # the accounts are set up, a login still finds its files in place, and the
   # manager no longer reads the account's units while they're being linked.
+  #
+  # A switch restarts some changed units and waits on them before it starts
+  # the ones it stopped, and home-manager asks to be restarted that way. So
+  # an account's setup hanging on its own units kept every service the switch
+  # had stopped down: on 14 November, a keyboard's layout, the VPN and Wi-Fi,
+  # for minutes. Set up with the ones the switch starts instead, the account
+  # is set up beside them, and they run again in seconds however long it
+  # takes. Stopping its unit stops nothing, since it only says the account
+  # was set up.
   systemd.services = lib.mkMerge [
     (lib.genAttrs (map (lib.removeSuffix ".service") homes) (_: {
       before = lib.mkForce [ ];
+      stopIfChanged = lib.mkForce true;
     }))
     { "user@".after = homes; }
   ];
