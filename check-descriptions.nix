@@ -1606,6 +1606,9 @@
   niri-cursor-has-its-shapes = ''
     the cursor theme niri names has the shapes programs ask for
   '';
+  niri-hears-the-copilot-key = ''
+    the Copilot key types, in the keymap niri builds, the key its dictation bind names
+  '';
   niri-is-asked-for-full-range = ''
     niri's unit asks for full-range RGB on a screen whose EDID takes it, by the name its patch reads
   '';
