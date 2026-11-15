@@ -720,7 +720,7 @@ mod tests {
         let stereo = find(&network, "Stereo").expect("the stereo");
         for room in ROOMS {
             let text = device(&network, stereo, now(), &Pen::plain(), room);
-            fits(&text, room);
+            assert_eq!(layout::overrun(&text, room), None);
             assert!(text.contains("RECEIVER"), "its block has no label: {text}");
             assert!(
                 text.contains("27 of 100"),
