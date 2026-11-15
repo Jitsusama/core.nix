@@ -191,6 +191,27 @@ def changed_under_words(shell: Shell, word: str, count: int, folder: Path) -> li
     return said
 
 
+def changed_instead(
+    shell: Shell,
+    word: str,
+    rounds: int,
+    folder: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> int:
+    """Given LAB_CHANGES, print each round's changes under the word, and give the rounds left.
+
+    Its rounds are the run's, so none are left for typing; without it, all of them are.
+    """
+    changes = int(os.environ.get("LAB_CHANGES", "0"))
+    if changes == 0:
+        return rounds
+    for round_ in range(rounds):
+        for line in changed_under_words(shell, word, changes, folder) or ["none"]:
+            with capsys.disabled():
+                print(f"lab-changes {round_} {word!r}: {line}", flush=True)
+    return 0
+
+
 def tallied(
     round_: int,
     word: str,
@@ -429,12 +450,7 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
         # Typed once untimed first, as the openings' lab opens once, for what a fresh shell
         # pays only once: its first search compiles what Joel's has run since he logged in.
         typed_from_home(shell, words[0])
-        if changes := int(os.environ.get("LAB_CHANGES", "0")):
-            for round_ in range(rounds):
-                for line in changed_under_words(shell, words[0], changes, tmp_path) or ["none"]:
-                    with capsys.disabled():
-                        print(f"lab-changes {round_} {words[0]!r}: {line}", flush=True)
-            rounds = 0
+        rounds = changed_instead(shell, words[0], rounds, tmp_path, capsys)
         if step:
             stepped_from_home(shell, step)
         for round_ in range(rounds):
