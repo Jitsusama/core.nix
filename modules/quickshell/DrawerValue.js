@@ -62,20 +62,65 @@ function identifierWords(said) {
 }
 
 // How many of a drawer's acts, `widths` wide, stand on each line of `wide`
-// with `apart` between two.
+// with `apart` between two: as few lines as hold them in their order, none
+// broken inside, split as evenly by width as they go. A lone act on a line
+// is a gross wrap, "Close" under "↵Talk Go To Pause Stop" (VKCF3Z,
+// 448f6cc6), so none stands alone where another split has none; then no
+// line is wider than the one above, Return's act leading the longer; then
+// the widest line is as short as it can be. One wider than the line stands
+// on its own, as does one that can share it with neither neighbour, and a
+// line of one act is never held wider than the line above, since it
+// stands as it must.
 function actLines(widths, wide, apart) {
-    const counts = [];
-    let used = Infinity;
-    for (const one of widths) {
-        if (used + apart + one <= wide) {
-            counts[counts.length - 1] += 1;
-            used += apart + one;
-        } else {
-            counts.push(1);
-            used = one;
+    const across = (from, to) => widths.slice(from, to).reduce((sum, one) => sum + one, 0)
+        + apart * (to - from - 1);
+    let fewest = 0;
+    for (let at = 0, from = 0; at < widths.length; at += 1) {
+        if (at === 0 || across(from, at + 1) > wide) {
+            fewest += 1;
+            from = at;
         }
     }
-    return counts;
+    let best = null;
+    const cut = (from, left, counts) => {
+        if (left === 0) {
+            if (from === widths.length) {
+                best = better(scored(counts), best);
+            }
+            return;
+        }
+        for (let to = from + 1; to <= widths.length - left + 1; to += 1) {
+            if (to - from === 1 || across(from, to) <= wide) {
+                cut(to, left - 1, counts.concat([to - from]));
+            }
+        }
+    };
+    const scored = counts => {
+        const lines = counts.map((count, at) => {
+            const from = counts.slice(0, at).reduce((sum, one) => sum + one, 0);
+            return across(from, from + count);
+        });
+        return {
+            counts,
+            rank: [
+                counts.filter(count => count === 1).length,
+                lines.some((line, at) => at > 0 && counts[at] > 1 && line > lines[at - 1])
+                    ? 1 : 0,
+                Math.max(...lines)
+            ]
+        };
+    };
+    cut(0, fewest, []);
+    return best?.counts ?? [];
+}
+
+// The split ranked first of two, the earlier where they rank alike.
+function better(split, best) {
+    if (best === null) {
+        return split;
+    }
+    const at = split.rank.findIndex((one, which) => one !== best.rank[which]);
+    return at >= 0 && split.rank[at] < best.rank[at] ? split : best;
 }
 
 // A list alone in a value, as its one line no wider than `wide`: every

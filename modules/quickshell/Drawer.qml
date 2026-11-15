@@ -360,6 +360,33 @@ Floating {
     // One with no name says nothing, and is left out.
     readonly property var acts: shown ? (shown.acts ?? [])
         .filter(act => act && String(act.name ?? "") !== "") : []
+    // How wide each act is drawn, its key and its name a tie apart, in the
+    // face they're drawn in.
+    readonly property var actWidths: {
+        void factFace.font;
+        const measure = widthIn(factFace);
+        return acts.map(act => {
+            const key = String(act.key ?? "");
+            return Math.ceil((key === "" ? 0 : measure(key) + Theme.space.rung.tie)
+                + measure(String(act.name)));
+        });
+    }
+    // How many acts stand on each line, split evenly with none alone where
+    // that can be (DrawerValue.actLines), and where along its line each
+    // stands, its line's number with it.
+    readonly property var actsLaid: Value.actLines(actWidths, actsShown.width,
+        Theme.space.rung.apart)
+    readonly property var actPlaces: {
+        const places = [];
+        actsLaid.forEach((count, line) => {
+            let x = 0;
+            for (let at = places.length, end = places.length + count; at < end; at += 1) {
+                places.push({ x, line });
+                x += actWidths[at] + Theme.space.rung.apart;
+            }
+        });
+        return places;
+    }
     // Its nerdy bits (the spec's part 7), `nerd: [{ label, value }]`: every
     // identifier, raw figure and whole long text behind its facts, which
     // never stand among them, folded under one line until za opens them.
@@ -2598,13 +2625,16 @@ Floating {
 
                 // Its acts, a run on one line where it fits: each the key
                 // it's done by, muted, then a tie and its name in the
-                // action's ink, the acts apart by the run's rung, and one
-                // that won't fit starting the next line, so none breaks
-                // inside. Each line takes a pitch, so what follows keeps
-                // the card's beat.
-                Flow {
+                // action's ink, the acts apart by the run's rung. Those
+                // that won't fit one line split evenly over as few as hold
+                // them, none broken inside and none alone on a line where
+                // that can be (actsLaid), rather than as many to a line as
+                // fit. Each line takes a pitch, so what follows keeps the
+                // card's beat.
+                Item {
                     id: actsShown
                     width: parent.width
+                    height: drawer.actsLaid.length * drawer.pitch
                     visible: drawer.acts.length > 0
                     // Every act's key and name, for the keys' lines.
                     function texts() {
@@ -2625,8 +2655,9 @@ Floating {
                             readonly property Item keyWords: keyText
                             readonly property Item nameWords: nameText
                             readonly property bool keyed: String(modelData.key ?? "") !== ""
+                            x: drawer.actPlaces[index]?.x ?? 0
+                            y: (drawer.actPlaces[index]?.line ?? 0) * drawer.pitch
                             width: nameText.x + nameText.implicitWidth
-                                + (index < drawer.acts.length - 1 ? Theme.space.rung.apart : 0)
                             height: drawer.pitch
 
                             PageText {
