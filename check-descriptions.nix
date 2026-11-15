@@ -594,7 +594,8 @@
     disk's stand-in, at those widths, exiting 0 with no line past the edge and no wrap losing
     its inset or parting a figure; and each subcommand a command's help lists, at every depth,
     answers --help, -h and help before it with help of its own, not its parent's, and a word
-    no subcommand answers to exits 64; but the points each still waits on
+    no subcommand answers to exits 64; and no command's source pads a column to a width by
+    hand rather than through the kit's tables; but the points each still waits on
   '';
   console-font-passes-clippy = ''
     clippy finds nothing in the console's font tool or its tests

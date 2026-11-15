@@ -25,7 +25,12 @@ src/main.rs, its src/bin or a [[bin]] it declares. It agrees when:
   json` both answer help/1 named `PROG SUB`, with an example and its exits,
   unlike its parent's; `PROG SUB -h` reads unlike its parent's; and a word
   no subcommand answers to is refused with 64 where no name could stand
-  (docs/commands.md, Subcommands).
+  (docs/commands.md, Subcommands);
+- tables: its source pads no word to a width by hand, as `{:<10}` or
+  `{name:>width$}` do, since columns padded so line up only while what's
+  in them stays short and never fit the terminal; the kit's tables align
+  them and give way to the width. A zero fill, as `{:0<3}`, sets a
+  figure's digits rather than a column, so it's left alone.
 
 A script is a command too: a program a Nix file outside the tests builds
 with writeShellApplication or writeShellScriptBin, named by the wrapper, or
@@ -78,7 +83,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-POINTS = ("kit", "exits", "inks", "helps", "fits", "subcommands")
+POINTS = ("kit", "exits", "inks", "helps", "fits", "subcommands", "tables")
 
 # The points a script is held to: the kit is a Rust crate, so it keeps the
 # rest by hand.
@@ -92,6 +97,7 @@ FIXES = {
     "helps": "declare its help with terminal_kit::Help and give the check its package",
     "fits": "set its words with the kit's Help and layout, which fit the width",
     "subcommands": "declare each subcommand with Help::subcommand, its own help in it",
+    "tables": "set its columns with the kit's layout::table_in, which aligns and fits them",
 }
 
 # The code a word no command answers to is refused with.
@@ -161,6 +167,13 @@ EXITS = re.compile(r"\bprocess::exit\s*\(|\bExitCode::from\s*\(")
 
 # An escape sequence spelled in Rust source, by any of its usual spellings.
 ESCAPES = re.compile(r"\\x1[bB]\[|\\u\{1[bB]\}\[|\\033\[|\\e\[")
+
+# A word padded to a width in a format string, by an alignment with any
+# fill but zero, or by a bare width, either a number or a named one.
+PADS = re.compile(r"\{[\w.]*:(?:[^0{}]?[<>^]|[+#]?(?=[1-9]))(?:\d+|[A-Za-z_]\w*\$)[^{}]*\}")
+
+# How many of a command's paddings its failure names.
+PADS_NAMED = 3
 
 # Crates that draw colour their own way, around the kit's decision.
 COLOUR_CRATES = ("anstyle", "ansi_term", "colored", "console", "owo-colors", "termcolor", "yansi")
@@ -692,6 +705,9 @@ def broken(command: Command, runs: dict[str, Run]) -> dict[str, list[str]]:
     colours = sorted(used & set(COLOUR_CRATES))
     if ESCAPES.search(code) or colours:
         out["inks"] = [f"it takes {', '.join(colours)}"] if colours else []
+    pads = sorted(set(PADS.findall(code)))
+    if pads:
+        out["tables"] = [f"its source pads by hand, as {', '.join(pads[:PADS_NAMED])}"]
     if command.name in runs:
         out |= run_breaks(command.name, runs[command.name])
     else:

@@ -22,6 +22,8 @@
     "exits"
     "helps"
   ];
+  collector = [ "tables" ];
+  disk-guard = [ "tables" ];
   eero = [ "inks" ];
   guide = [
     "exits"
@@ -30,6 +32,7 @@
   health = [
     "exits"
     "helps"
+    "tables"
   ];
   jobs-broker = [
     "kit"
@@ -97,6 +100,7 @@
     "kit"
     "exits"
     "helps"
+    "tables"
   ];
   passwords-1password = [
     "kit"
@@ -141,11 +145,13 @@
     "exits"
     "helps"
   ];
+  shaper = [ "tables" ];
   shell-preview = [
     "kit"
     "exits"
     "helps"
   ];
+  spend-watch = [ "tables" ];
   switch-system-as-root = [ "helps" ];
   switch-system-known = [ "helps" ];
   systemd-run = [ "helps" ];
