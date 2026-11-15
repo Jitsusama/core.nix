@@ -4,7 +4,8 @@
 //! whole. When the later gate's change merges first, the earlier one,
 //! which may be most of the way through, is the one that pays. So `ready`
 //! holds a change back while a gate that started before its own, and
-//! shares one of its files, still runs.
+//! shares one of its files, still runs, and for [`GRACE`] after it passes,
+//! while its change merges (`finished`).
 //!
 //! nix-offload says each gate going in `nix-offload/running` under XDG's
 //! state folder, and keeps when each passed gate started in its record of
@@ -111,8 +112,35 @@ pub fn finished(
     kept: &dyn Fn(&str) -> Option<(u64, u64)>,
     merged: &dyn Fn(&str) -> Option<bool>,
 ) -> Vec<Gate> {
-    let _ = (trees, now, kept, merged);
-    Vec::new()
+    trees
+        .iter()
+        .filter_map(|(folder, head)| {
+            let (started, kept) = kept(head)?;
+            let fresh = now.saturating_sub(kept) < GRACE;
+            (fresh && merged(head) == Some(false)).then(|| Gate {
+                pid: 0,
+                ticks: 0,
+                commit: head.clone(),
+                folder: folder.clone(),
+                started,
+            })
+        })
+        .collect()
+}
+
+/// Whether origin's main holds `commit`, as git says in the asking tree,
+/// which shares its store with the others; nothing where git can't tell,
+/// as of a commit it hasn't got.
+fn on_main(commit: &str) -> Option<bool> {
+    let ran = Command::new("git")
+        .args(["merge-base", "--is-ancestor", commit, "refs/remotes/origin/main"])
+        .output()
+        .ok()?;
+    match ran.status.code() {
+        Some(0) => Some(true),
+        Some(1) => Some(false),
+        _ => None,
+    }
 }
 
 /// What a gate holding a change back shares with it.
@@ -218,10 +246,18 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
                 .collect(),
         )
     };
-    let held = ahead(&gates, &asking, now, &place, &alive, &touched)?;
+    let mut gates = gates;
+    gates.extend(finished(&heads(&places), now, &passed_at, &on_main));
+    let going = |gate: &Gate| gate.pid == 0 || alive(gate);
+    let held = ahead(&gates, &asking, now, &place, &going, &touched)?;
+    let state = if held.gate.pid == 0 {
+        "passed and keeps its turn while it merges"
+    } else {
+        "still runs"
+    };
     let said = format!(
         "merge-net: the gate in {} at {}, which counts as started {} minutes before this \
-         one's, as its tree's first gate did, still runs and changes {} too; merging first \
+         one's, as its tree's first gate did, {state} and changes {} too; merging first \
          would leave its pass stale, so merge again once it ends, which needs no new run \
          here unless it merges first and moves these; this one waits at most {} more \
          minutes, then goes first",
@@ -232,6 +268,24 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
         (PATIENCE.saturating_sub(now.saturating_sub(kept))).div_ceil(60)
     );
     Some((said, held.shared))
+}
+
+/// Each tree a place is kept for, with its head, where git can read it.
+fn heads(places: &Places) -> Vec<(PathBuf, String)> {
+    places
+        .trees()
+        .filter_map(|folder| {
+            let head = git_in(folder, &["rev-parse", "HEAD"])?;
+            Some((folder.to_path_buf(), head.trim().to_owned()))
+        })
+        .collect()
+}
+
+/// When the gate that passed at `commit` started, and when its pass was
+/// kept, from nix-offload's record of it.
+fn passed_at(commit: &str) -> Option<(u64, u64)> {
+    let started = started(&crate::ready::record(commit))?;
+    Some((started, kept_at(&[commit], &crate::ready::record)?))
 }
 
 /// Whether `gate`'s change and the one at `head` gave `file`, one of the

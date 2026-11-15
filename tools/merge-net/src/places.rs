@@ -52,6 +52,11 @@ impl Places {
             .map_or(started, |place| (*place).min(started))
     }
 
+    /// The trees a place is kept for.
+    pub fn trees(&self) -> impl Iterator<Item = &Path> {
+        self.0.keys().map(PathBuf::as_path)
+    }
+
     /// Give up the places kept past [`KEPT`] by `now`, and those of trees
     /// that, as `stands` says, are gone.
     pub fn tidy(&mut self, now: u64, stands: &dyn Fn(&Path) -> bool) {
