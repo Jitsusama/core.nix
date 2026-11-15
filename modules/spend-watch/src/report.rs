@@ -381,15 +381,38 @@ pub fn cut(picture: &Picture, period: Period, cut: Cut, top: usize) -> Report {
 /// spend no log knows have no session, and a session that spent less than
 /// a cent says nothing.
 pub fn by_session(picture: &Picture, period: Period) -> std::collections::BTreeMap<String, String> {
+    spent_by_session(picture, period)
+        .into_iter()
+        .map(|(session, spent)| {
+            (
+                session,
+                crate::money::maybe_about(dollars(spent.dollars), spent.estimated),
+            )
+        })
+        .collect()
+}
+
+/// What a pi session spent, as a figure rather than words: its dollars
+/// and whether any of them was estimated.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Spent {
+    pub dollars: f64,
+    pub estimated: bool,
+}
+
+/// What each pi session has spent in a period, by its whole id, as
+/// `by_session` says it but as figures, so the launcher's Agents can add
+/// up the sessions of a network, each once, and say the sum as these
+/// are said (ready-rows' money), rather than adding up words. A session
+/// that spent less than a cent is left out, as there.
+pub fn spent_by_session(
+    picture: &Picture,
+    period: Period,
+) -> std::collections::BTreeMap<String, Spent> {
     sessions_spent(picture, period)
         .into_iter()
         .filter(|(_, (dollars_spent, _))| *dollars_spent >= 0.005)
-        .map(|(session, (dollars_spent, estimated))| {
-            (
-                session,
-                crate::money::maybe_about(dollars(dollars_spent), estimated),
-            )
-        })
+        .map(|(session, (dollars, estimated))| (session, Spent { dollars, estimated }))
         .collect()
 }
 

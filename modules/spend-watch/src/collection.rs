@@ -184,6 +184,11 @@ pub struct Collection {
     /// launcher's Agents to say beside it. While the screen is shared the
     /// shell shows none of it.
     pub sessions: BTreeMap<String, String>,
+    /// What each pi session spent today, as `sessions` says it but as
+    /// figures, its dollars and whether any were estimated, for the
+    /// launcher's Agents to add up a network's sessions, each once. While
+    /// the screen is shared it says none of it.
+    pub sessions_spent: BTreeMap<String, report::Spent>,
     /// How today stands on AI spend's own row, wherever it's listed: its
     /// dollars with their period, as All AI Spend says them, and how that
     /// is against usual, "$412 today" (VKCF3Z, 2026-11-08). While the
@@ -1111,6 +1116,7 @@ pub fn collection(
             .map(|(id, (_, shown))| (id, shown))
             .collect(),
         sessions: report::by_session(picture, Period::Today),
+        sessions_spent: report::spent_by_session(picture, Period::Today),
         today: today_said(picture),
         agents_today: report::by_sessions(picture, Period::Today),
         sessions_today: report::today_by_session(picture),
@@ -1226,6 +1232,7 @@ pub fn held(shape: i64) -> Collection {
         summary_rows,
         reports: BTreeMap::from([("summary".to_owned(), summary)]),
         sessions: BTreeMap::new(),
+        sessions_spent: BTreeMap::new(),
         today: String::new(),
         agents_today: String::new(),
         sessions_today: BTreeMap::new(),
@@ -1554,6 +1561,19 @@ mod tests {
                 ("01a1271f-aaaa".to_owned(), crate::money::dollars(12.5)),
                 ("01a1271f-bbbb".to_owned(), crate::money::dollars(3.25)),
             ])
+        );
+        // The same as figures, for a network's sessions to be added up.
+        let spent = |dollars| report::Spent {
+            dollars,
+            estimated: false,
+        };
+        assert_eq!(
+            serde_json::to_value(&collected).unwrap()["sessionsSpent"],
+            serde_json::json!({
+                "01a1271f-aaaa": spent(12.5),
+                "01a1271f-bbbb": spent(3.25),
+            }),
+            "each session's spend as a figure"
         );
         // Every session's together, from the same sum, so it agrees.
         assert_eq!(collected.agents_today, crate::money::dollars(15.75));
