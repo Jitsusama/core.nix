@@ -11,15 +11,46 @@
 //! its system does. A failure there fails the run. A Mac that doesn't
 //! answer can't hold up a merge for as long as it's away, so the run
 //! passes, and its record keeps that the Mac's comparison was skipped, for
-//! the net to run once the Mac is back.
+//! the net to run once the Mac is back. So does one that answers and then
+//! takes past [`LONGEST`], or stops answering before it ends, and one
+//! under `--lent-only`, which keeps a fenced session's commit off every
+//! machine that builds as the person, as a Mac nearby does.
 
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use super::wanted;
 
 /// The system a Mac builds for.
 pub const SYSTEM: &str = "aarch64-darwin";
+
+/// How long a Mac's comparison may take before it's ended and kept as
+/// skipped, so one that stalls never holds a gate. On 15 November a Mac
+/// evaluated and built its whole set of 205 checks, nothing kept, in 8
+/// minutes; a change's comparison builds a few of them, after an
+/// evaluation of each side on a lent builder, which may take as long as
+/// any run's (`EVALUATING_LONGEST`).
+pub const LONGEST: Duration = Duration::from_mins(20);
+
+/// [`LONGEST`], or as many seconds as `NIX_OFFLOAD_MAC_LONGEST` says, as a
+/// test asks.
+pub fn longest() -> Duration {
+    std::env::var("NIX_OFFLOAD_MAC_LONGEST")
+        .ok()
+        .and_then(|seconds| seconds.parse().ok())
+        .map_or(LONGEST, Duration::from_secs)
+}
+
+/// `took`, as a person reads it: in minutes when it's whole minutes.
+pub fn said(took: Duration) -> String {
+    let seconds = took.as_secs();
+    if seconds >= 60 && seconds.is_multiple_of(60) {
+        format!("{} minutes", seconds / 60)
+    } else {
+        format!("{seconds} seconds")
+    }
+}
 
 /// The files a Mac's checks take in, by name wherever they are: what a
 /// module gives a Mac or both systems, the checks themselves, and what
@@ -90,7 +121,7 @@ pub fn joins(arguments: &[String]) -> bool {
 pub fn for_a_mac(arguments: &[String]) -> Vec<String> {
     let mut mac = arguments.to_vec();
     match mac.iter().position(|word| word == "--system") {
-        Some(at) if at + 1 < mac.len() => mac[at + 1] = SYSTEM.to_owned(),
+        Some(at) if at + 1 < mac.len() => SYSTEM.clone_into(&mut mac[at + 1]),
         _ => mac.extend(["--system".to_owned(), SYSTEM.to_owned()]),
     }
     mac
@@ -148,6 +179,20 @@ mod tests {
         ] {
             assert!(!joins(&words(apart)), "a run of {apart} was joined");
         }
+    }
+
+    #[test]
+    fn a_bound_is_said_in_minutes_when_whole() {
+        assert_eq!(
+            said(LONGEST),
+            "20 minutes",
+            "the bound wasn't said in minutes"
+        );
+        assert_eq!(
+            said(Duration::from_secs(3)),
+            "3 seconds",
+            "a test's bound wasn't said"
+        );
     }
 
     #[test]

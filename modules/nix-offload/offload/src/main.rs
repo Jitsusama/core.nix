@@ -668,9 +668,15 @@ fn here_refused(asked: &there::Asked) -> Option<ExitCode> {
 /// The person's machines nearby, none under `--lent-only`: a machine
 /// nearby is one of the person's, which builds as them.
 fn nearby() -> Vec<there::Nearby> {
+    if there::lent_only() {
+        return Vec::new();
+    }
+    nearby_listed()
+}
+
+/// The person's machines nearby, as listed, `--lent-only` or not.
+fn nearby_listed() -> Vec<there::Nearby> {
     fs::read_to_string(config().join("nix-offload/nearby"))
-        .ok()
-        .filter(|_| !there::lent_only())
         .map(|text| there::nearby(&text))
         .unwrap_or_default()
 }
@@ -1544,22 +1550,16 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         }
         return not_taken("no builder or evaluator answered");
     };
-    // A change a Mac's checks read passes only once their comparison on a
-    // Mac does, or is kept as skipped while the Mac is away
-    // (`changed/mac.rs`), so its pass waits for that.
-    let mac = if finished.status == 0 {
-        on_a_mac(arguments, &folder, waiting)
-    } else {
-        OnAMac::Unasked
-    };
-    if let OnAMac::Failed(code) = mac {
+    if let Err(code) = kept_after_a_mac(
+        &passed,
+        at.as_ref(),
+        arguments,
+        &folder,
+        &finished,
+        started,
+        waiting,
+    ) {
         return code;
-    }
-    if let (0, Some(at), Some(printed)) = (finished.status, &at, &finished.printed) {
-        kept_passing(&passed, at, arguments, printed, started);
-        if let OnAMac::Skipped(because) = &mac {
-            passed.keep_skipped(at, &changed::mac::for_a_mac(arguments), because);
-        }
     }
     if runs_again(replayed.as_deref(), finished.status) {
         // The replay ended, so it goes unsaid and lets its work go first.
@@ -1594,14 +1594,43 @@ enum OnAMac {
     Failed(ExitCode),
 }
 
+/// Keeps that a changed-checks run with `arguments`, started at `started`
+/// and ended as `finished`, passed at `at`, once a Mac's comparison joining
+/// it has passed or is kept as skipped beside it (`changed/mac.rs`). A
+/// Mac's failure is the run's, and nothing is kept.
+fn kept_after_a_mac(
+    passed: &passed::Passed,
+    at: Option<&passed::At>,
+    arguments: &[String],
+    folder: &Path,
+    finished: &Finished,
+    started: u64,
+    waiting: there::Waiting,
+) -> Result<(), ExitCode> {
+    if finished.status != 0 {
+        return Ok(());
+    }
+    let mac = on_a_mac(arguments, folder, waiting);
+    if let OnAMac::Failed(code) = mac {
+        return Err(code);
+    }
+    if let (Some(at), Some(printed)) = (at, &finished.printed) {
+        kept_passing(passed, at, arguments, printed, started);
+        if let OnAMac::Skipped(because) = &mac {
+            passed.keep_skipped(at, &changed::mac::for_a_mac(arguments), because);
+        }
+    }
+    Ok(())
+}
+
 /// A Mac's comparison of the change in `folder`, joining a run with
 /// `arguments` that passed, when a Mac nearby builds for its system and
 /// the change touches a file its checks read (`changed/mac.rs`). It goes
-/// as any run for a Mac's system goes: named on a lent builder, built on
-/// the Mac.
+/// as any run for a Mac's system goes, named on a lent builder and built
+/// on the Mac, in a run of its own, ended past [`changed::mac::longest`].
 fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnAMac {
     use changed::mac;
-    let macs: Vec<there::Nearby> = nearby()
+    let macs: Vec<there::Nearby> = nearby_listed()
         .into_iter()
         .filter(|machine| machine.systems.iter().any(|system| system == mac::SYSTEM))
         .collect();
@@ -1615,28 +1644,97 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
     let Some(read) = touched.iter().find(|path| mac::reads(path)) else {
         return OnAMac::Unasked;
     };
-    let Some(answering) = macs
-        .iter()
-        .find(|machine| machines::answers(&machine.address))
-    else {
-        let names: Vec<&str> = macs.iter().map(|machine| machine.host.as_str()).collect();
-        let because = format!("{} nearby doesn't answer", names.join(", "));
+    let skipped = |because: String| {
         eprintln!(
             "nix-offload: {read} is read by a Mac's checks, and {because}, so their \
-             comparison is kept as skipped, for the net to run once it's back"
+             comparison is kept as skipped, for the net to run once it may"
         );
-        return OnAMac::Skipped(because);
+        OnAMac::Skipped(because)
+    };
+    if there::lent_only() {
+        return skipped("--lent-only keeps the change off a Mac nearby".to_owned());
+    }
+    let answering = |machine: &&there::Nearby| machines::answers(&machine.address);
+    let Some(mac) = macs.iter().find(answering) else {
+        let names: Vec<&str> = macs.iter().map(|machine| machine.host.as_str()).collect();
+        return skipped(format!("{} nearby doesn't answer", names.join(", ")));
     };
     eprintln!(
         "nix-offload: {read} is read by a Mac's checks, so they're compared on {} too",
-        answering.host
+        mac.host
     );
-    let compared = changed_there(&mac::for_a_mac(arguments), waiting, false);
-    if compared == ExitCode::SUCCESS {
-        return OnAMac::Passed;
+    let longest = mac::longest();
+    match compared_within(&mac::for_a_mac(arguments), waiting, longest) {
+        Some(0) => OnAMac::Passed,
+        None => skipped(format!(
+            "{}'s comparison ran past {}",
+            mac.host,
+            mac::said(longest)
+        )),
+        // Ending so would tell this run's caller nothing took it, and to
+        // run it all on this machine.
+        Some(status)
+            if status == i32::from(changed::NOT_TAKEN) || status == i32::from(changed::UNBUILT) =>
+        {
+            skipped(format!("no builder took {}'s comparison", mac.host))
+        }
+        // A Mac that went as it compared left its build to a builder that
+        // can't build for it, so the failure says nothing of the change.
+        Some(_) if !answering(&mac) => {
+            skipped(format!("{} stopped answering as it compared", mac.host))
+        }
+        Some(status) => {
+            eprintln!("nix-offload: a Mac's checks didn't pass, so this run's pass isn't kept");
+            OnAMac::Failed(ExitCode::from(u8::try_from(status).unwrap_or(1)))
+        }
     }
-    eprintln!("nix-offload: a Mac's checks didn't pass, so this run's pass isn't kept");
-    OnAMac::Failed(compared)
+}
+
+/// How a changed-checks run with `arguments`, in a run of this program of
+/// its own, ended, or none when it ran past `longest` and was ended.
+fn compared_within(
+    arguments: &[String],
+    waiting: there::Waiting,
+    longest: Duration,
+) -> Option<i32> {
+    let mut comparing = Command::new("/proc/self/exe");
+    comparing.arg("there");
+    if !waiting.asks {
+        comparing.arg("--never-ask");
+    }
+    let spawned = comparing
+        .arg("--changed")
+        .args(arguments)
+        .stdin(Stdio::null())
+        // What this run names is its own run's, so the Mac's is only said.
+        .stdout(Stdio::from(std::io::stderr()))
+        .process_group(0)
+        .spawn();
+    let mut comparing = match spawned {
+        Ok(comparing) => comparing,
+        Err(error) => {
+            eprintln!("nix-offload: couldn't start a Mac's comparison: {error}");
+            return Some(1);
+        }
+    };
+    let began = Instant::now();
+    loop {
+        match comparing.try_wait() {
+            Ok(Some(ended)) => return Some(ended.code().unwrap_or(1)),
+            Ok(None) if began.elapsed() < longest => {
+                // Asked each second: a comparison takes minutes, so a
+                // second more past its end is nothing.
+                thread::sleep(Duration::from_secs(1));
+            }
+            _ => {
+                let group = i32::try_from(comparing.id()).unwrap_or(i32::MAX);
+                // SAFETY: killpg only signals the group the comparison leads.
+                unsafe { libc::killpg(group, libc::SIGKILL) };
+                let _ = comparing.wait();
+                return None;
+            }
+        }
+    }
 }
 
 /// Whether a run that ended with `status`, of the change `replayed` as

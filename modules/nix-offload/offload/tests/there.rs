@@ -2633,6 +2633,16 @@ impl Changed {
         self.run_with(&[], arguments, Path::new(NO_SECOND))
     }
 
+    /// `run`, with a Mac's comparison bounded to `seconds`.
+    fn run_bounded(&self, seconds: u64, arguments: &[&str]) -> (Output, Option<String>) {
+        self.ran(
+            &[],
+            arguments,
+            Path::new(NO_SECOND),
+            &[("NIX_OFFLOAD_MAC_LONGEST", &seconds.to_string())],
+        )
+    }
+
     /// `run`, with `before` given ahead of `--changed`.
     fn run_after(&self, before: &[&str], arguments: &[&str]) -> (Output, Option<String>) {
         self.run_with(before, arguments, Path::new(NO_SECOND))
@@ -2665,6 +2675,17 @@ impl Changed {
         arguments: &[&str],
         more: &Path,
     ) -> (Output, Option<String>) {
+        self.ran(before, arguments, more, &[])
+    }
+
+    /// `run_with`, with `settings` in its environment besides.
+    fn ran(
+        &self,
+        before: &[&str],
+        arguments: &[&str],
+        more: &Path,
+        settings: &[(&str, &str)],
+    ) -> (Output, Option<String>) {
         let given = self.bin.join("ssh-was-given");
         let _ = fs::remove_file(&given);
         let ran = there_command(&self.bin, &self.offload, self.folder.path())
@@ -2676,6 +2697,7 @@ impl Changed {
             .env("NIX_OFFLOAD_MORE_DIR", more)
             .env("GIT_CONFIG_GLOBAL", &self.config)
             .env("GIT_CONFIG_NOSYSTEM", "1")
+            .envs(settings.iter().copied())
             .output()
             .unwrap();
         let sent = fs::read_to_string(&given)
@@ -3322,6 +3344,112 @@ fn a_macs_checks_failing_fail_the_run_and_keep_no_pass() {
     assert!(
         !kept.iter().any(|line| line["run"].is_array()),
         "no run's pass is kept: {kept:?}"
+    );
+}
+
+/// The one line kept as skipped at `commit`, which the test expects.
+fn skipped_at(changed: &Changed, commit: &str) -> serde_json::Value {
+    let kept = changed.kept_at(commit);
+    let skipped: Vec<_> = kept
+        .iter()
+        .filter(|line| line["skipped"].is_array())
+        .cloned()
+        .collect();
+    assert_eq!(skipped.len(), 1, "one skip wasn't kept: {kept:?}");
+    assert!(
+        kept.iter()
+            .any(|line| line["run"] == serde_json::json!(GATE)),
+        "the gate's pass wasn't kept beside it: {kept:?}"
+    );
+    skipped[0].clone()
+}
+
+#[test]
+fn a_mac_that_stalls_is_ended_and_kept_as_skipped() {
+    // A Mac's comparison comes after the gate's own, so one that stalls
+    // would hold the gate, and every merge behind it, for as long.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    let head = changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("holds-mac"), "60").unwrap();
+
+    let asked = std::time::Instant::now();
+    let (ran, _) = changed.run_bounded(3, &GATE);
+    assert!(
+        asked.elapsed() < std::time::Duration::from_secs(45),
+        "the stalled Mac held the gate {:?}",
+        asked.elapsed()
+    );
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let skipped = skipped_at(&changed, &head);
+    assert_eq!(
+        skipped["because"], "mac's comparison ran past 3 seconds",
+        "{skipped}"
+    );
+}
+
+#[test]
+fn a_mac_that_stops_answering_as_it_compares_is_kept_as_skipped() {
+    // A Mac that sleeps mid-comparison leaves its build to the lent
+    // builder, which can't build for it, so its failure says nothing of
+    // the change.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    let head = changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("holds-mac"), "3").unwrap();
+    fs::write(changed.bin.join("fails-on-mac"), "").unwrap();
+
+    let ran = std::thread::scope(|scope| {
+        let running = scope.spawn(|| changed.run(&GATE).0);
+        // The Mac goes once its build has started there, which the
+        // stand-in ssh writes down as it's asked; looked for often, since
+        // the build is held only 3 s.
+        while !changed
+            .sent_to("mac")
+            .iter()
+            .any(|line| line.contains("nix build"))
+        {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        drop(answering);
+        running.join().unwrap()
+    });
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let skipped = skipped_at(&changed, &head);
+    assert_eq!(
+        skipped["because"], "mac stopped answering as it compared",
+        "{skipped}"
+    );
+}
+
+#[test]
+fn a_gate_kept_to_the_lent_builders_keeps_a_macs_comparison_as_skipped() {
+    // A fenced session writes its commits, and a Mac nearby builds as the
+    // person, so its gate never sends one there; the net compares it once
+    // a gate that may has run.
+    if option_env!("NIX_OFFLOAD_CHANGED_CHECKS").is_none() {
+        panic!("built without a changed-checks of its own, which package.nix gives it");
+    }
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    let head = changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+
+    let (ran, _) = changed.run_after(&["--lent-only"], &GATE);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(
+        changed.sent_to("mac").is_empty(),
+        "nothing went to the Mac: {ran:?}"
+    );
+    let skipped = skipped_at(&changed, &head);
+    assert_eq!(
+        skipped["because"], "--lent-only keeps the change off a Mac nearby",
+        "{skipped}"
     );
 }
 
