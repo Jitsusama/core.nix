@@ -329,8 +329,8 @@
     "at": 1794736626,
     "commit": "2c22e6094aa171140e1525a07c163b0e076033a3",
     "due": "2026-11-17",
-    "owner_pr": 1632,
-    "reason": "failed, then passed, at 2c22e6094aa1; the launcher's sessions are Y2YBTS's, and #1632 added the newest of these subtests",
+    "owner_pr": 4797,
+    "reason": "failed, then passed, at 2c22e6094aa1; #4797 freed the agents slice's subtest, which lost its title, and owns these four, which fail otherwise",
     "subtests": [
       "test_agents_puts_back_the_windows_that_reopen_themselves",
       "test_agents_reopens_each_session_where_it_sat",
