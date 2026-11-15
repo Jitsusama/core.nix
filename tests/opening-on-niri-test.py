@@ -1385,6 +1385,56 @@ def test_an_opening_the_shell_asks_itself_is_timed(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_super_n_draws_the_notices_on_screen_from_what_was_kept(shell: Shell) -> None:
+    """Super+N with notices on screen draws them from what it kept, as they stand now.
+
+    It opened them whole every time, as no chord's place does: Joel's at 09:14 took 146 ms to
+    its frame and was presented 167 ms from the ask (2026-11-15). One come since its last
+    opening is listed, and it lands on the one in front, in normal, once it's filled in. With
+    the same ones on screen, it draws the rows it kept, building none: listed afresh each time,
+    its frame took a median 24 ms against home's 6 (a lab of 10 a side, 2026-11-15).
+    """
+    for summary in ["Godwit", "Whimbrel"]:
+        with shell.told(f"shows card {summary}"):
+            shell.as_account(f"notify-send --expire-time=60000 '{summary}' 'on screen'")
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    shell.take_notices()
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["rows"] == ["Godwit", "Whimbrel"])
+    shell.close_launcher()
+    with shell.told("shows card Curlew"):
+        shell.as_account("notify-send --expire-time=60000 'Curlew' 'come since'")
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    timed = latest(openings(shell))
+    shell.take_notices()
+    opening = presented_after(shell, timed + 1)
+    assert opening.get("kept"), f"Super+N wasn't drawn from what was kept: {opening}"
+    assert opening["into"] == "onScreen", f"the opening wasn't into those on screen: {opening}"
+    shell.launcher_ready()
+    landed_on_godwit = ["Godwit", "Whimbrel", "Curlew"]
+    shell.launcher_until(
+        lambda shown: (
+            shown["rows"] == landed_on_godwit
+            and (shown["selected"] or {}).get("name") == "Godwit"
+            and shown["mode"] == "normal"
+        )
+    )
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    timed = latest(openings(shell))
+    before = int(json.loads(shell.as_account(shell.ipc("made")))["built"])
+    shell.take_notices()
+    opening = presented_after(shell, timed + 1)
+    built = int(json.loads(shell.as_account(shell.ipc("made")))["built"]) - before
+    assert opening.get("kept"), f"Super+N again wasn't drawn from what was kept: {opening}"
+    assert built == 0, f"Super+N with the same notices on screen built {built} rows"
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["rows"] == landed_on_godwit)
+    shell.close_launcher()
+    shell.as_account("qs ipc call notices putAway")
+    shell.notices_gone()
+
+
 def test_a_kept_opening_wakes_its_sources_a_frame_apart(shell: Shell) -> None:
     """A kept opening's sources wake a few a frame once it's filled in, home's first row's first.
 
