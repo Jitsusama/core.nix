@@ -40,6 +40,13 @@ function apart(at) {
     return at.height + Math.max(1, Math.round(at.height * 0.1 * ratio)) / ratio;
 }
 
+// Where it drops in from, coming from `place` above the screen: no
+// higher than a little over it, so what's out of sight is cut short; and
+// `place` itself on the screen.
+function dropsFrom(place, at) {
+    return { x: place.x, y: Math.max(place.y, -(DROPS_FROM + 1) * at.tall) };
+}
+
 // A move between workspaces, `at.way` 1 to the one below, from `from` on
 // `at.was`'s tiles to its seat `to` on `at.now`'s, as MarginCatPaths.js's
 // moves() takes it. Going down it's walked as one screen; with nowhere to
@@ -126,8 +133,7 @@ function catches(x, now, at) {
 // and on to its seat `to`, timed: null where there's no way on from there.
 function below(foot, lands, to, at) {
     const now = Paths.columns(at.now, 0);
-    const top = Math.max(foot.y - at.lift, -(DROPS_FROM + 1) * at.tall);
-    const way = Ways.begun(at, { x: foot.x, y: top });
+    const way = Ways.begun(at, dropsFrom({ x: foot.x, y: foot.y - at.lift }, at));
     way.facing = Math.sign(lands.x - foot.x) || Math.sign(to.x - foot.x) || at.facing || 1;
     Ways.leap(way, lands, 0, "drops");
     if (lands.kind === "side") {
@@ -184,6 +190,8 @@ function joined(from, best, old) {
         beats.push(Object.assign({}, beat, { begins: beat.begins + drops,
             ends: beat.ends + drops }));
     }
+    // Till it drops into sight it can find its way again from where it
+    // set off (MarginCatPaths.js's replans()).
     return { from, to: after.to, facing: after.facing, stride: after.stride, beats,
-        ends: after.ends + drops, cell: old.cell };
+        ends: after.ends + drops, cell: old.cell, drops };
 }

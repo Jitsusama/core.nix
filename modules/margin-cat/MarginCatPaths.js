@@ -437,9 +437,13 @@ function moves(from, to, at) {
 // shows is still its hold, or until it takes a step. One told of its
 // slide later than its hold lasts, on a screen drawing slowly, is still
 // where it began, and cut short there it would walk without ever having
-// moved (Y2YBTS, 2026-11-14, a0cd2ad5).
+// moved (Y2YBTS, 2026-11-14, a0cd2ad5). One walked down as one screen
+// (MarginCatStacked.js) finds it again till it drops into sight, since
+// what's unseen of it is never drawn, so cut short it would set off from
+// above the screen.
 function replans(route, t, stepped) {
-    return !stepped || t + (route.ahead ?? 0) < route.beats[0].ends;
+    const ahead = t + (route.ahead ?? 0);
+    return !stepped || ahead < route.beats[0].ends || ahead < (route.drops ?? 0);
 }
 
 // A move `route` planned again `t` ms into its hold, its seat just said:

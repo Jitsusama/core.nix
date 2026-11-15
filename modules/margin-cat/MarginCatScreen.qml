@@ -482,9 +482,12 @@ PanelWindow {
         turn = 0;
         halt();
         sat = wanted;
-        // Its hold done over an empty workspace, it falls to the floor.
-        if (there === null && emptied && place !== null)
+        // Its hold done over an empty workspace, it falls to the floor,
+        // from just over the screen where it rode the old one off the top.
+        if (there === null && emptied && place !== null) {
+            place = Stacked.dropsFrom(place, { tall: size });
             floors();
+        }
         else
             place = there;
     }
