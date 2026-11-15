@@ -156,7 +156,7 @@ fn at(address: &str, url: &str) -> String {
 
 /// Where a receiver's system information is asked, from its list of
 /// Sony's own actions.
-pub fn system(action_list: &str) -> Option<String> {
+pub fn system(action_list: &str, _address: &str) -> Option<String> {
     let (_, list) = xml::read(action_list)?;
     let actions = match list.get("action")? {
         Value::Array(actions) => actions.iter().collect(),
@@ -240,8 +240,9 @@ fn heard(mac: String, answers: &Answers) -> Found {
     let words = |text: &str| text.to_lowercase().replace('_', " ");
     let receiver = Receiver {
         volume: said("GetVolume", "CurrentVolume").and_then(|volume| volume.parse().ok()),
+        loudest: None,
         muted: said("GetMute", "CurrentMute").map(|muted| muted != "0"),
-        state: said("GetTransportInfo", "CurrentTransportState").map(words),
+        state: said("GetTransportInfo", "CurrentTransportState").map(doing),
         medium: said("GetMediaInfo", "PlayMedium").map(words),
         track: said("GetPositionInfo", "TrackURI")
             .or_else(|| said("GetMediaInfo", "CurrentURI"))
@@ -253,6 +254,11 @@ fn heard(mac: String, answers: &Answers) -> Found {
         receiver,
         detail: Value::Object(detail),
     }
+}
+
+/// What a transport is doing, in plain words, from `UPnP`'s state.
+fn doing(state: &str) -> String {
+    state.to_lowercase().replace('_', " ")
 }
 
 #[cfg(test)]
@@ -279,6 +285,7 @@ pub mod tests {
             "GetTransportInfo",
             "GetMediaInfo",
             "GetPositionInfo",
+            "RenderingControl",
             "ActionList",
             "getSystemInformation",
         ]
@@ -328,6 +335,7 @@ pub mod tests {
                 "GetTransportInfo",
                 "GetMediaInfo",
                 "GetPositionInfo",
+                "RenderingControl",
                 "ActionList",
             ],
             "the reads asked changed"
@@ -348,19 +356,83 @@ pub mod tests {
             soap.body
         );
         assert_eq!(
-            asks[5].url, "http://10.0.0.60:50001/cers/ActionList.xml",
+            asks[5].url, "http://10.0.0.60:8080/RenderingControl/desc.xml",
+            "the volume's scale isn't asked of its service's description"
+        );
+        assert!(asks[5].soap.is_none(), "a service's description was posted to");
+        assert_eq!(
+            asks[6].url, "http://10.0.0.60:50001/cers/ActionList.xml",
             "the action list isn't where the description says"
         );
-        assert!(asks[5].soap.is_none(), "the action list was posted to");
+        assert!(asks[6].soap.is_none(), "the action list was posted to");
+    }
+
+    #[test]
+    fn a_url_naming_another_host_is_never_asked() {
+        let description = answers()["description"]
+            .replace(
+                "<controlURL>/RenderingControl/ctrl</controlURL>",
+                "<controlURL>http://10.9.9.9/RenderingControl/ctrl</controlURL>",
+            )
+            .replace(
+                "<SCPDURL>/RenderingControl/desc.xml</SCPDURL>",
+                "<SCPDURL>http://10.0.0.60@10.9.9.9/desc.xml</SCPDURL>",
+            )
+            .replace(
+                "<controlURL>/AVTransport/ctrl</controlURL>",
+                "<controlURL>http://10.0.0.60:52323/AVTransport/ctrl</controlURL>",
+            )
+            .replace(
+                "http://10.0.0.60:50001/cers/ActionList.xml",
+                "http://10.9.9.9:50001/cers/ActionList.xml",
+            );
+        let asks = asks(&description, ADDRESS);
+        let names: Vec<&str> = asks.iter().map(|ask| ask.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["GetTransportInfo", "GetMediaInfo", "GetPositionInfo"],
+            "a URL on another host was asked, or one on the receiver wasn't"
+        );
+        assert_eq!(
+            asks[0].url, "http://10.0.0.60:52323/AVTransport/ctrl",
+            "another port on the receiver itself wasn't asked"
+        );
     }
 
     #[test]
     fn the_system_information_is_where_the_action_list_says() {
         assert_eq!(
-            system(&answers()["ActionList"]).as_deref(),
+            system(&answers()["ActionList"], ADDRESS).as_deref(),
             Some("http://10.0.0.60:50001/cers/getSystemInformation"),
             "the system information wasn't found"
         );
+    }
+
+    #[test]
+    fn a_system_information_on_another_host_is_never_asked() {
+        let list = answers()["ActionList"].replace(
+            "http://10.0.0.60:50001/cers/getSystemInformation",
+            "http://10.9.9.9:50001/cers/getSystemInformation",
+        );
+        assert_eq!(
+            system(&list, ADDRESS),
+            None,
+            "a URL on another host was asked"
+        );
+    }
+
+    #[test]
+    fn each_transport_state_reads_in_plain_words() {
+        for (state, words) in [
+            ("PLAYING", "playing"),
+            ("PAUSED_PLAYBACK", "paused"),
+            ("STOPPED", "stopped"),
+            ("NO_MEDIA_PRESENT", "nothing to play"),
+            ("TRANSITIONING", "starting"),
+            ("X_DMR_BUFFERING", "x dmr buffering"),
+        ] {
+            assert_eq!(doing(state), words, "{state} reads wrong");
+        }
     }
 
     #[test]
@@ -381,9 +453,10 @@ pub mod tests {
             found.receiver,
             Receiver {
                 volume: Some(27),
+                loudest: Some(100),
                 muted: Some(false),
-                state: Some("no media present".into()),
-                medium: Some("none".into()),
+                state: Some("nothing to play".into()),
+                medium: None,
                 track: None,
             },
             "its receiver block is wrong"
@@ -402,6 +475,11 @@ pub mod tests {
             found.detail["getSystemInformation"]["generation"],
             json!("2013"),
             "its system information wasn't kept"
+        );
+        assert_eq!(
+            found.detail["GetTransportInfo"]["CurrentTransportState"],
+            json!("NO_MEDIA_PRESENT"),
+            "its transport's own state wasn't kept"
         );
     }
 

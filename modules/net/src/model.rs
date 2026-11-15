@@ -262,11 +262,15 @@ pub struct Modem {
 pub struct Receiver {
     /// Its volume, on its own scale.
     pub volume: Option<u32>,
+    /// The top of its volume's scale, as its rendering service describes
+    /// it.
+    pub loudest: Option<u32>,
     pub muted: Option<bool>,
-    /// What its transport is doing, in `UPnP`'s words: playing, stopped or
-    /// no media present.
+    /// What its transport is doing, in plain words: playing, paused,
+    /// stopped or nothing to play. `UPnP`'s own word stays in its detail.
     pub state: Option<String>,
-    /// What it plays from, as it names it: none, network.
+    /// What it plays from, as it names it, such as network; none while it
+    /// plays from nothing.
     pub medium: Option<String>,
     /// Where what it plays comes from, while it plays.
     pub track: Option<String>,

@@ -630,10 +630,21 @@ mod tests {
             let text = device(&network, stereo, now(), &Pen::plain(), room);
             fits(&text, room);
             assert!(text.contains("RECEIVER"), "its block has no label: {text}");
-            assert!(text.contains("27"), "its volume isn't shown: {text}");
             assert!(
-                text.contains("no media present"),
+                text.contains("27 of 100"),
+                "its volume isn't shown on its scale: {text}"
+            );
+            assert!(
+                text.contains("nothing to play"),
                 "what it's doing isn't shown: {text}"
+            );
+            assert!(
+                !text.contains("playing from"),
+                "it plays from nothing, yet says so: {text}"
+            );
+            assert!(
+                text.contains("NO_MEDIA_PRESENT"),
+                "its transport's own word isn't in Sony's section: {text}"
             );
             assert!(text.contains("STR-DN1050"), "its model isn't shown: {text}");
         }
