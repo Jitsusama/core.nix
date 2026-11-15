@@ -1,0 +1,60 @@
+{
+  "things": [
+    {
+      "id": "code:repository",
+      "in": "code",
+      "name": "Repository",
+      "verb": "open",
+      "glyph": "branch",
+      "said": {
+        "kind": "repository",
+        "tree": "1 tree",
+        "trees": "{count} trees",
+        "local": "no remote"
+      }
+    },
+    {
+      "id": "code:key",
+      "in": "code",
+      "name": "Key"
+    },
+    {
+      "id": "code:trunk",
+      "in": "code",
+      "name": "Trunk"
+    },
+    {
+      "id": "code:checkout",
+      "in": "code",
+      "name": "Checkout"
+    },
+    {
+      "id": "code:branch",
+      "in": "code",
+      "name": "Branch"
+    },
+    {
+      "id": "code:remote",
+      "in": "code",
+      "name": "Remote"
+    },
+    {
+      "id": "verb:code:page",
+      "command": "open",
+      "argument": "page",
+      "in": "code:repository",
+      "name": "Open Its Page",
+      "verb": "open",
+      "glyph": "web"
+    },
+    {
+      "id": "verb:code:path",
+      "command": "yank",
+      "argument": "path",
+      "in": "code:repository",
+      "name": "Copy Its Path",
+      "verb": "copy",
+      "glyph": "link"
+    }
+  ]
+}

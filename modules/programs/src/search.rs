@@ -10,13 +10,14 @@
 //! says (`also`), since niri's binds are the shell's. Those alike in score
 //! keep the order the rows are served in, open programs first. Chrome's
 //! open pages and its bookmarks are found the same way, by their name or
-//! by their site and folder, so the shell ranks none of them either. What
+//! by their site and folder, so the shell ranks none of them either, and
+//! Code's repositories by their name, owner, key and checkouts' paths. What
 //! was taken is searched by taken.rs, newest first as Capture's Recent
 //! lists it.
 
 use std::collections::BTreeMap;
 
-use programs::{bookmark_rows, tab_rows};
+use programs::{bookmark_rows, code_rows, tab_rows};
 use ready_rows::fuzzy::{self, Item, Typed, runs};
 use ready_rows::kept::Kept;
 use serde_json::{Map, Value, json};
@@ -40,6 +41,7 @@ pub fn answer(
         PLACE => programs(daemon, id, words),
         tab_rows::PLACE => sites(&daemon.tabs, id, words),
         bookmark_rows::PLACE => sites(&daemon.bookmarks, id, words),
+        code_rows::PLACE => sites(&daemon.code, id, words),
         taken::PLACE => taken::search(shared, daemon, id, words, most.unwrap_or(taken::FOUND)),
         _ => json!({
             "id": id, "words": words,

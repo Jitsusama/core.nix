@@ -16,7 +16,7 @@ daemon-serve = { path = "../daemon-serve" }
 # A picture sent as pixels, written as a file the history keeps.
 png = "0.18"
 # The desktop's data folders, where its entries are (../programs).
-programs = { path = "../programs" }
+programs = { path = "../programs", default-features = false }
 # The one form every daemon's rows take, kept so one row moving sends one
 # (../ready-rows).
 ready-rows = { path = "../ready-rows" }

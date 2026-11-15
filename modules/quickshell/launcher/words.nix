@@ -22,6 +22,7 @@ let
     "capture" = ./words/capture.json;
     "characters" = ./words/characters.json;
     "clipboard" = ./words/clipboard.json;
+    "code" = ./words/code.json;
     "computer" = ./words/computer.json;
     "displays" = ./words/displays.json;
     "docs" = ./words/docs.json;

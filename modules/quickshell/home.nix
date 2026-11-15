@@ -604,6 +604,7 @@ let
     cameras = ./launcher/Cameras.qml;
     spend = ./launcher/Spend.qml;
     agents = ./launcher/Agents.qml;
+    code = ./launcher/Code.qml;
     orchestrators = ./launcher/Orchestrators.qml;
     quests = ./launcher/Quests.qml;
     queue = ./launcher/Queue.qml;
@@ -1495,6 +1496,13 @@ in
       agents = {
         order = 109;
         source = "agents";
+        weight = 0.9;
+      };
+      # Every repository on the machine, once each, as the programs daemon
+      # reads them with the repos library.
+      code = {
+        order = 109;
+        source = "code";
         weight = 0.9;
       };
       # What Agents knows of the orchestrators: who they are, the talks
