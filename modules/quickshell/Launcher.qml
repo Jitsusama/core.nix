@@ -10576,9 +10576,6 @@ Scope {
     // timed and its record made, since a frame drawn at the card's size
     // can be presented before the fill's second frame times it.
     property real presentedAt: -1
-    // And which frame that was, whose times say where it went after its
-    // swap: the shell's GPU work, then niri's frames (Presented.shownSaid).
-    property int presentedShown: -1
     property bool presentedTimed: false
     // Whether the journal has said niri gives no presentation times, said
     // once a shell: without them no opening, key or change says when niri
@@ -10601,7 +10598,6 @@ Scope {
         presentedFromChord = false;
         presentedFrame = -1;
         presentedAt = -1;
-        presentedShown = -1;
         presentedTimed = false;
         surface.FramePresentation.ask();
     }
@@ -10637,10 +10633,10 @@ Scope {
             surface.FramePresentation.ask();
             return;
         }
-        presentedAt = at;
-        presentedShown = frame;
-        if (!presentedTimed)
+        if (!presentedTimed) {
+            presentedAt = at;
             return;
+        }
         presentedSaid(Math.round(at - presentedFrom));
     }
     function frameDiscarded(frame) {
@@ -10664,11 +10660,8 @@ Scope {
         if (last)
             openingsTimed = openingsTimed.slice(0, -1)
                 .concat([Object.assign({}, last, { presented: ms })]);
-        const shown = ms >= 0 && presentedShown > 0
-            ? Presented.shownSaid(surface.FramePresentation.timesOf(presentedShown), presentedAt)
-            : "";
         console.info(ms >= 0
-            ? `launcher: opening presented ${ms} ms from ${from}${shown}`
+            ? `launcher: opening presented ${ms} ms from ${from}`
             : "launcher: opening closed before niri presented it");
         presentedFill("presented");
     }

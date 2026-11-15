@@ -20,14 +20,6 @@ happened. The GUI thread hears afterRendering and frameSwapped queued,
 once it's free, so a frame timed by them includes however long the GUI
 thread was busy after the sync.
 
-For a frame asked about, timesOf also says when the GPU finished the
-work the frame's context had been given by its swap, from a native fence
-(EGL_ANDROID_native_fence_sync) made just after the swap and read for
-the time the kernel stamped as it signalled, and the refresh the
-compositor gave with its feedback. The compositor waits on the frame's
-buffer before it can show it, so the time after a swap is told apart
-into the client's GPU work and the compositor's frames after it.
-
 ---
 diff --git a/src/wayland/CMakeLists.txt b/src/wayland/CMakeLists.txt
 index 7bd6c15..b8881e0 100644
@@ -76,28 +68,20 @@ new file mode 100644
 index 0000000..4b3f5c5
 --- /dev/null
 +++ b/src/wayland/presentation/qml.cpp
-@@ -0,0 +1,360 @@
+@@ -0,0 +1,261 @@
 +#include "qml.hpp"
-+#include <algorithm>
-+#include <array>
 +#include <cstdint>
 +#include <ctime>
 +#include <utility>
 +
-+#include <linux/sync_file.h>
 +#include <private/qwaylandwindow_p.h>
 +#include <qcoreapplication.h>
 +#include <qobject.h>
-+#include <qopenglcontext.h>
-+#include <qopenglcontext_platform.h>
-+#include <qopenglfunctions.h>
 +#include <qpointer.h>
 +#include <qquickwindow.h>
 +#include <qtmetamacros.h>
 +#include <qwayland-presentation-time.h>
 +#include <qwaylandclientextension.h>
-+#include <sys/ioctl.h>
-+#include <unistd.h>
 +
 +#include "../../window/proxywindow.hpp"
 +#include "../../window/windowinterface.hpp"
@@ -142,7 +126,7 @@ index 0000000..4b3f5c5
 +    uint32_t secondsHigh,
 +    uint32_t secondsLow,
 +    uint32_t nanoseconds,
-+    uint32_t refresh,
++    uint32_t /*refresh*/,
 +    uint32_t /*sequenceHigh*/,
 +    uint32_t /*sequenceLow*/,
 +    uint32_t /*flags*/
@@ -160,12 +144,12 @@ index 0000000..4b3f5c5
 +		at += milliseconds(ours) - milliseconds(theirs);
 +	}
 +
-+	this->finish(at, static_cast<double>(refresh) / 1e6);
++	this->finish(at);
 +}
 +
-+void Feedback::wp_presentation_feedback_discarded() { this->finish(-1, 0); }
++void Feedback::wp_presentation_feedback_discarded() { this->finish(-1); }
 +
-+void Feedback::finish(double at, double refresh) {
++void Feedback::finish(double at) {
 +	auto done = std::move(this->done);
 +	// Freed after this event's handler has returned, as it still runs in it.
 +	QMetaObject::invokeMethod(
@@ -173,7 +157,7 @@ index 0000000..4b3f5c5
 +	    [this]() { delete this; },
 +	    Qt::QueuedConnection
 +	);
-+	if (done) done(at, refresh);
++	if (done) done(at);
 +}
 +
 +} // namespace impl
@@ -185,58 +169,6 @@ index 0000000..4b3f5c5
 +	timespec now {};
 +	clock_gettime(CLOCK_MONOTONIC, &now);
 +	return impl::milliseconds(now);
-+}
-+
-+// EGL_ANDROID_native_fence_sync's names, resolved through the context Qt
-+// made rather than linked, so its own EGL is the one asked.
-+constexpr unsigned int NATIVE_FENCE = 0x3144;
-+constexpr int32_t ATTRIBUTES_END = 0x3038;
-+using CreateSync = void* (*) (void* display, unsigned int type, const int32_t* attributes);
-+using DupFence = int32_t (*)(void* display, void* sync);
-+using DestroySync = unsigned int (*)(void* display, void* sync);
-+
-+// A sync file that signals once the GPU has done everything the current
-+// context was given, the frame just swapped among it, or -1 where the
-+// context isn't EGL's or its driver makes no such fence.
-+int gpuFence() {
-+	auto* context = QOpenGLContext::currentContext();
-+	auto* egl = context ? context->nativeInterface<QNativeInterface::QEGLContext>() : nullptr;
-+	if (!egl) return -1;
-+
-+	// NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
-+	auto create = reinterpret_cast<CreateSync>(context->getProcAddress("eglCreateSyncKHR"));
-+	auto dup = reinterpret_cast<DupFence>(context->getProcAddress("eglDupNativeFenceFDANDROID"));
-+	auto destroy = reinterpret_cast<DestroySync>(context->getProcAddress("eglDestroySyncKHR"));
-+	// NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
-+	if (!create || !dup || !destroy) return -1;
-+
-+	auto* display = egl->display();
-+	const std::array<int32_t, 1> attributes {ATTRIBUTES_END};
-+	auto* sync = create(display, NATIVE_FENCE, attributes.data());
-+	if (!sync) return -1;
-+	// The fence has a file only once it's been flushed to the GPU.
-+	context->functions()->glFlush();
-+	auto fd = dup(display, sync);
-+	destroy(display, sync);
-+	return fd < 0 ? -1 : fd;
-+}
-+
-+// When the sync file `fd` signalled, in monotonic milliseconds as the
-+// kernel stamped it, or 0 while it hasn't or it can't say.
-+double fenceSignalled(int fd) {
-+	std::array<sync_fence_info, 8> fences {};
-+	sync_file_info info {};
-+	info.num_fences = static_cast<uint32_t>(fences.size());
-+	// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-+	info.sync_fence_info = reinterpret_cast<uint64_t>(fences.data());
-+	// NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
-+	if (ioctl(fd, SYNC_IOC_FILE_INFO, &info) != 0 || info.status != 1) return 0;
-+
-+	uint64_t latest = 0;
-+	for (size_t i = 0; i < std::min<size_t>(info.num_fences, fences.size()); i++) {
-+		latest = std::max<uint64_t>(latest, fences.at(i).timestamp_ns);
-+	}
-+	return static_cast<double>(latest) / 1e6;
 +}
 +
 +} // namespace
@@ -269,12 +201,6 @@ index 0000000..4b3f5c5
 +	impl::Presentation::instance();
 +
 +	if (window->backingWindow()) this->onWindowConnected();
-+}
-+
-+FramePresentation::~FramePresentation() {
-+	for (auto& times: this->drawn) {
-+		if (times.fence >= 0) close(times.fence);
-+	}
 +}
 +
 +bool FramePresentation::available() { return impl::Presentation::instance() != nullptr; }
@@ -345,25 +271,7 @@ index 0000000..4b3f5c5
 +	    {"rendering", times.rendering},
 +	    {"rendered", times.rendered},
 +	    {"swapped", times.swapped},
-+	    {"gpuDone", times.gpuDone},
-+	    {"refresh", times.refresh},
 +	};
-+}
-+
-+// Read once the compositor has answered, when it has shown the frame or
-+// never will, so its buffer's GPU work, which it waits on, is done.
-+void FramePresentation::answered(int frame, double refresh) {
-+	auto at = static_cast<size_t>(frame) % this->drawn.size();
-+	QMutexLocker lock(&this->drawnLock);
-+	auto& times = this->drawn.at(at);
-+	if (times.frame != frame) return;
-+
-+	times.refresh = refresh;
-+	if (times.fence >= 0) {
-+		times.gpuDone = fenceSignalled(times.fence);
-+		close(times.fence);
-+		times.fence = -1;
-+	}
 +}
 +
 +void FramePresentation::onBeforeSynchronizing() { this->drawing.synchronizing = monotonicNow(); }
@@ -378,10 +286,7 @@ index 0000000..4b3f5c5
 +	if (this->drawing.frame > 0) {
 +		auto at = static_cast<size_t>(this->drawing.frame) % this->drawn.size();
 +		QMutexLocker lock(&this->drawnLock);
-+		auto& times = this->drawn.at(at);
-+		// A frame never answered gives its fence back as its place is taken.
-+		if (times.fence >= 0) close(times.fence);
-+		times = this->drawing;
++		this->drawn.at(at) = this->drawing;
 +	}
 +}
 +
@@ -389,17 +294,8 @@ index 0000000..4b3f5c5
 +	auto swapped = monotonicNow();
 +	if (this->drawing.frame > 0) {
 +		auto at = static_cast<size_t>(this->drawing.frame) % this->drawn.size();
-+		// Made only for a frame asked about, as few are, outside the lock,
-+		// since it flushes the context.
-+		auto fence = this->drawing.asked ? gpuFence() : -1;
 +		QMutexLocker lock(&this->drawnLock);
-+		auto& times = this->drawn.at(at);
-+		if (times.frame == this->drawing.frame) {
-+			times.swapped = swapped;
-+			times.fence = fence;
-+		} else if (fence >= 0) {
-+			close(fence);
-+		}
++		if (this->drawn.at(at).frame == this->drawing.frame) this->drawn.at(at).swapped = swapped;
 +	}
 +	// A frame rendered without a sync, as one only exposed again is, says no
 +	// sync rather than the last frame's.
@@ -411,7 +307,6 @@ index 0000000..4b3f5c5
 +	this->drawing.frame = frame;
 +	this->drawing.rendering = monotonicNow();
 +	if (!this->asked.exchange(false)) return;
-+	this->drawing.asked = true;
 +
 +	auto* manager = impl::Presentation::instance();
 +	auto* window = this->mWindow ? dynamic_cast<QWaylandWindow*>(this->mWindow->handle()) : nullptr;
@@ -427,13 +322,11 @@ index 0000000..4b3f5c5
 +	}
 +
 +	auto self = QPointer(this);
-+	auto done = [self, frame](double at, double refresh) {
++	new impl::Feedback(manager->feedback(surface), manager->clock(), [self, frame](double at) {
 +		if (!self) return;
-+		self->answered(frame, refresh);
 +		if (at < 0) emit self->discarded(frame);
 +		else emit self->presented(frame, at);
-+	};
-+	new impl::Feedback(manager->feedback(surface), manager->clock(), done);
++	});
 +}
 +
 +} // namespace qs::wayland::presentation
@@ -442,7 +335,7 @@ new file mode 100644
 index 0000000..1e911f1
 --- /dev/null
 +++ b/src/wayland/presentation/qml.hpp
-@@ -0,0 +1,176 @@
+@@ -0,0 +1,162 @@
 +#pragma once
 +
 +#include <array>
@@ -491,9 +384,8 @@ index 0000000..1e911f1
 +class Feedback: public QtWayland::wp_presentation_feedback {
 +public:
 +	// Given the time it was shown on CLOCK_MONOTONIC in milliseconds, or -1
-+	// when it never was, and the compositor's refresh in milliseconds, or 0
-+	// where it gave none.
-+	using Done = std::function<void(double at, double refresh)>;
++	// when it never was.
++	using Done = std::function<void(double at)>;
 +
 +	Feedback(struct ::wp_presentation_feedback* object, clockid_t clock, Done done);
 +	~Feedback() override;
@@ -512,7 +404,7 @@ index 0000000..1e911f1
 +	void wp_presentation_feedback_discarded() override;
 +
 +private:
-+	void finish(double at, double refresh);
++	void finish(double at);
 +
 +	clockid_t clock;
 +	Done done;
@@ -547,8 +439,6 @@ index 0000000..1e911f1
 +
 +public:
 +	explicit FramePresentation(ProxyWindowBase* window);
-+	~FramePresentation() override;
-+	Q_DISABLE_COPY_MOVE(FramePresentation);
 +
 +	[[nodiscard]] static bool available();
 +	[[nodiscard]] int framesBegun() const { return this->begun; }
@@ -561,12 +451,8 @@ index 0000000..1e911f1
 +	/// sync, ended it, began rendering, ended it and was swapped, each read on
 +	/// the render thread as it happened, in monotonic milliseconds, so a
 +	/// frame's time is its own however late the GUI thread hears its swap.
-+	/// For a frame asked about, once the compositor has answered, `gpuDone`
-+	/// says when the GPU finished what its swap gave it, as the kernel
-+	/// stamped its fence, and `refresh` the compositor's refresh in
-+	/// milliseconds. Empty before it's rendered and once it's older than the
-+	/// last sixteen; a time it had no such step for, or hasn't reached yet,
-+	/// is 0.
++	/// Empty before it's rendered and once it's older than the last sixteen;
++	/// a time it had no such step for, or hasn't reached yet, is 0.
 +	Q_INVOKABLE QVariantMap timesOf(int frame) const;
 +
 +	static FramePresentation* qmlAttachedProperties(QObject* object);
@@ -590,8 +476,6 @@ index 0000000..1e911f1
 +	void onAfterSynchronizing();
 +	void onAfterRendering();
 +	void onFrameSwapped();
-+	// On the GUI thread, as the compositor answers a frame asked about.
-+	void answered(int frame, double refresh);
 +
 +	struct Times {
 +		int frame = 0;
@@ -600,11 +484,6 @@ index 0000000..1e911f1
 +		double rendering = 0;
 +		double rendered = 0;
 +		double swapped = 0;
-+		double gpuDone = 0;
-+		double refresh = 0;
-+		// The sync file for its GPU work, held until the compositor answers.
-+		int fence = -1;
-+		bool asked = false;
 +	};
 +
 +	QPointer<ProxyWindowBase> proxyWindow;
