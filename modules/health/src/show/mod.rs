@@ -9,6 +9,8 @@ use std::fmt::Write as _;
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
+use terminal_kit::Pen;
+use terminal_kit::layout::{self, Room};
 
 pub use asked::asked;
 
@@ -35,23 +37,40 @@ pub(super) const SHOWN: usize = 10;
 /// How many of the day's most painful interactions open `health`.
 const PAINS: usize = 3;
 
-/// The day, a line a kind, the worst kind first.
+/// The day, a line a kind, the worst kind first. Each line is a fact, its
+/// label muted beside it, and one too long for the room goes on under its
+/// own words; into a pipe each stays one line.
 #[must_use]
-pub fn day(day: &Day) -> String {
+pub fn day(day: &Day, pen: &Pen, room: Room) -> String {
     let mut out = format!("health, {}{}\n", day.date, until(day.to));
+    for line in layout::facts(&as_facts(&said_of(day)), "", pen, room) {
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
+}
+
+/// The facts as `layout::facts` takes them, every one known.
+fn as_facts<'a>(said: &'a [(&'static str, String)]) -> Vec<(&'static str, Option<&'a str>)> {
+    said.iter()
+        .map(|(label, line)| (*label, Some(line.as_str())))
+        .collect()
+}
+
+/// What the day says, as labelled lines, in the order they're shown.
+fn said_of(day: &Day) -> Vec<(&'static str, String)> {
+    let mut said = Vec::new();
     for pain in day.feel.iter().take(PAINS) {
-        let _ = writeln!(
-            out,
-            "feel      {}, {}",
-            clock(pain.at * 1_000_000),
-            feel::said(pain)
-        );
+        said.push((
+            "feel",
+            format!("{}, {}", clock(pain.at * 1_000_000), feel::said(pain)),
+        ));
     }
     if let Some(line) = day.launcher.summed() {
-        let _ = writeln!(out, "feel      the launcher: {line}");
+        said.push(("feel", format!("the launcher: {line}")));
     }
     if let Some(line) = typing::said(&day.typing) {
-        let _ = writeln!(out, "feel      {line}");
+        said.push(("feel", line));
     }
     let mut kinds: Vec<(Kind, Vec<(&String, &Thing)>)> = KINDS
         .iter()
@@ -60,59 +79,63 @@ pub fn day(day: &Day) -> String {
         .collect();
     kinds.sort_by_key(|(_, things)| std::cmp::Reverse(total(things)));
     if kinds.is_empty() {
-        out.push_str("nothing said a warning\n");
+        said.push(("warnings", "none".to_owned()));
     }
     for (kind, things) in kinds {
         let (name, worst) = things[0];
-        let _ = writeln!(
-            out,
-            "{:<9} {}; worst: {name}, {}",
+        said.push((
             kind.name(),
-            counted(&total(&things), things.len()),
-            counted(&worst.badness(), 0)
-        );
+            format!(
+                "{}; worst: {name}, {}",
+                counted(&total(&things), things.len()),
+                counted(&worst.badness(), 0)
+            ),
+        ));
     }
     for boot in boots_of(day) {
         if let Some(took) = boot.shutdown() {
             let at = clock(boot.stopping.unwrap_or_default());
-            let _ = writeln!(out, "shutdown  {}, asked at {at}", seconds(took));
+            said.push(("shutdown", format!("{}, asked at {at}", seconds(took))));
         }
         if let Some(took) = boot.to_ready() {
-            let _ = writeln!(
-                out,
-                "boot      {} to a ready launcher, at {}; your password's {} aside",
-                seconds(took),
-                clock(boot.started),
-                seconds(boot.password())
-            );
+            said.push((
+                "boot",
+                format!(
+                    "{} to a ready launcher, at {}; your password's {} aside",
+                    seconds(took),
+                    clock(boot.started),
+                    seconds(boot.password())
+                ),
+            ));
         }
     }
-    if let Some(line) = the_dead(&day.agents) {
-        let _ = writeln!(out, "agents    {line}");
-    }
-    if let Some(line) = day.asks.said() {
-        let _ = writeln!(out, "asks      {line}");
-    }
-    if let Some(line) = day.launches.said() {
-        let _ = writeln!(out, "launches  {line}");
-    }
-    if let Some(line) = disk::said(&day.disks) {
-        let _ = writeln!(out, "disks     {line}");
-    }
+    let lines = [
+        ("agents", the_dead(&day.agents)),
+        ("asks", day.asks.said()),
+        ("launches", day.launches.said()),
+        ("disks", disk::said(&day.disks)),
+    ];
+    said.extend(
+        lines
+            .into_iter()
+            .filter_map(|(label, line)| line.map(|line| (label, line))),
+    );
     for (name, held) in &day.memory {
         if held.most_kib > 0 {
-            let _ = writeln!(
-                out,
-                "memory    {name}: {}; largest {}, oldest {}; at most {} at {}",
-                holding(held),
-                memory::size(held.largest_kib),
-                memory::age(held.oldest),
-                memory::size(held.most_kib),
-                clock(held.most_at)
-            );
+            said.push((
+                "memory",
+                format!(
+                    "{name}: {}; largest {}, oldest {}; at most {} at {}",
+                    holding(held),
+                    memory::size(held.largest_kib),
+                    memory::age(held.oldest),
+                    memory::size(held.most_kib),
+                    clock(held.most_at)
+                ),
+            ));
         }
     }
-    out
+    said
 }
 
 /// The agents gone without parking, how many mid-turn and how long the
@@ -323,6 +346,11 @@ mod tests {
         super::asked(day, words, &Pen::plain(), Room::Cells(100))
     }
 
+    /// The day, uninked, into a pipe, where no line is wrapped.
+    fn day(day: &Day) -> String {
+        super::day(day, &Pen::plain(), Room::Unbounded)
+    }
+
     fn thing(kind: Kind, lines: u64, errors: u64, crashes: u64, his: u64) -> Thing {
         Thing {
             kind: Some(kind),
@@ -376,10 +404,38 @@ mod tests {
     }
 
     #[test]
+    fn the_day_fits_its_width_and_each_line_hangs_under_its_words() {
+        let mut felt = a_day();
+        felt.launcher.took(
+            "launcher: 4 drawers in home presented a median 42 ms from the key, the slowest \
+             134 ms, the p99 134 ms, 3 within 50 ms",
+        );
+        let narrow = super::day(&felt, &Pen::plain(), Room::Cells(60));
+        let lines: Vec<&str> = narrow.lines().collect();
+        assert!(
+            lines.iter().all(|line| layout::width(line) <= 60),
+            "a line passes 60 cells: {narrow}"
+        );
+        let launcher = lines
+            .iter()
+            .position(|line| line.starts_with("feel      the launcher: "))
+            .unwrap_or_else(|| panic!("the launcher has a line: {narrow}"));
+        assert!(
+            lines[launcher + 1].starts_with("          ")
+                && !lines[launcher + 1][10..].starts_with(' '),
+            "the launcher's words don't go on under their own: {narrow}"
+        );
+        assert_eq!(
+            lines[0], "health, 2026-11-12",
+            "the day's head isn't one of its facts: {narrow}"
+        );
+    }
+
+    #[test]
     fn an_empty_day_says_so() {
         assert_eq!(
             day(&Day::new("2026-11-12")),
-            "health, 2026-11-12\nnothing said a warning\n"
+            "health, 2026-11-12\nwarnings  none\n"
         );
     }
 
