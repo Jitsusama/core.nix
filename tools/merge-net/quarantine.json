@@ -182,18 +182,6 @@
     "test": "the-launcher-answers-whats-typed-on-niri"
   },
   {
-    "at": 1794468889,
-    "commit": "dd21b75e8c65f6847ad9ff3a7e8a54a902417fa0",
-    "due": "2026-11-16",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
-    "owner_pr": 3542,
-    "reason": "failed, then passed, at dd21b75e8c65",
-    "subtests": [
-      "test_quickshell_warned_of_nothing_as_the_screens_came_and_went"
-    ],
-    "test": "vm-screens-keep-the-launcher"
-  },
-  {
     "at": 1794478078,
     "commit": "1c6f5f46964301dcd2d1889ccbbc127c00db041b",
     "due": "2026-11-16",
