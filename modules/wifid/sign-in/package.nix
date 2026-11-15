@@ -1,7 +1,8 @@
 # wifid's sign-in window, built from the workspace beside wifid itself but
 # as a package of its own, so the machine's wifid never carries WebKit.
-# Its tests run as it builds. The daemon beside it names ../../ready-rows,
-# and cargo reads every member, so the source reaches that too.
+# Its tests run as it builds. The daemon beside it names ../../ready-rows
+# and ../../terminal-kit, and cargo reads every member, so the source
+# reaches those too.
 {
   lib,
   rustPlatform,
@@ -23,6 +24,8 @@ rustPlatform.buildRustPackage rec {
       ./.
       ../../ready-rows/Cargo.toml
       ../../ready-rows/src
+      ../../terminal-kit/Cargo.toml
+      ../../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/wifid";
