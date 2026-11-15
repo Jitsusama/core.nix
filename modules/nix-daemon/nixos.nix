@@ -160,11 +160,21 @@ let
     "2.34"
     "2.35"
   ];
+  # The daemon's process for a connection, killing its build hook with a
+  # timer behind SIGTERM and stopped mid-wait, ended in std::terminate: five
+  # builds went down with their connections from 22:27 on
+  # 14 November to 03:53 on 15 November. The patch joins the timer however
+  # the kill returns. It was written against 2.35 alone, so any other Nix
+  # goes without it and a-stopped-kill-joins-its-timer fails until it's
+  # carried there.
+  joinedVersions = [ "2.35" ];
+  version = lib.versions.majorMinor pkgs.nix.version;
   nix =
-    if
-      pkgs.nix ? appendPatches && builtins.elem (lib.versions.majorMinor pkgs.nix.version) patchedVersions
-    then
-      pkgs.nix.appendPatches [ ./untrusted-named-impure-env.patch ]
+    if pkgs.nix ? appendPatches && builtins.elem version patchedVersions then
+      pkgs.nix.appendPatches (
+        [ ./untrusted-named-impure-env.patch ]
+        ++ lib.optional (builtins.elem version joinedVersions) ./pid-kill-joins-its-timer.patch
+      )
     else
       pkgs.nix;
   vmFirst = pkgs.callPackage ./vm-first/package.nix { };
