@@ -42,10 +42,15 @@ in
   ];
 
   boot.kernel.sysctl = {
-    # A swapped page read back from the pool costs about a tenth of reading
-    # the disk, which the kernel's formula makes 180: 10x + x = 200. Those
-    # that reach the disk are the coldest, read back least.
-    "vm.swappiness" = 180;
+    # The kernel's formula makes 180 for a pool read back ten times cheaper
+    # than the disk, but it weighs only the cost of a read, not whose page it
+    # is. Two trials under agents' full load on 14 November set 60 against
+    # 180: at 60 Joel's session read pages back from swap an eighth to a third
+    # as often (4,915 against 38,184 major faults, then 1,456 against 4,583)
+    # and his apps a quarter to a half as often (20,596 against 87,014, then
+    # 10,723 against 20,099), with the machine as a whole about even. At 180
+    # the kernel swaps his idle windows out ahead of agents' file cache.
+    "vm.swappiness" = 60;
 
     # The pool has no seek to amortize, so read back only the page that was
     # asked for.
@@ -140,7 +145,7 @@ in
   # find 64 KB together eight times on 14 November, for Wi-Fi's queues among
   # others. Each unit writes its instance and only a value the rules list:
   # `systemctl start memory-watermarks@100`, `memory-hugepages@madvise`,
-  # `memory-lru-gen@n`, `memory-swappiness@60`, `memory-page-cluster@3`
+  # `memory-lru-gen@n`, `memory-swappiness@100`, `memory-page-cluster@3`
   # (2^3 pages at most), `memory-compaction@40` or
   # `memory-min-free@131072` (in KiB). The most one can do is
   # make reclaim worse until it's put back, never reach another setting. A
