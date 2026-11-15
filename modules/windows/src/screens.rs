@@ -630,9 +630,10 @@ pub fn rows(
                 "note": note,
                 "drawer": drawer(name, output, desk.get(name.as_str()).unwrap_or(&Value::Null),
                     lit_by(name), words),
-                "held": {"output": name, "standing": stands, "builtIn": built_in(name),
-                    "niri": output, "line": line,
-                    "follows": desk.get(name.as_str()).is_some_and(facts::follows)},
+                // Whether its place holds the Brightness, read or not, so
+                // the shell watches it ahead and sets the light there.
+                "held": {"output": name, "standing": stands, "niri": output, "line": line,
+                    "lights": holds == Some(name.as_str())},
                 "acts": acts,
             })
         })

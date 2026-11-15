@@ -69,21 +69,20 @@ QtObject {
         check(failures, 'and one not served is no switch',
             Screens.switchOf(rows, "displays:follow-room"), null);
 
-        // The Brightness the windows daemon serves says which screen holds
-        // it and the share it read, which :set brightness and a typed
+        // The Brightness the windows daemon serves says the share it read, which :set brightness and a typed
         // "brightness 40" say; none while it's being read, and nothing
         // with no Brightness served.
         const brightness = (held, side) => ({ key: "row:displays:setting:DP-1:brightness",
             thing: "displays:DP-1:brightness", kind: "setting",
             parent: "row:displays:display:DP-1", held: held, side: side,
             acts: [{ key: "verb:more", step: "rows" }] });
-        check(failures, 'a Brightness served says the screen holding it and its share',
+        check(failures, 'a Brightness served says its share',
             Screens.brightnessOf([rows[0], brightness({ share: 60 }, [{ said: "60%" }]),
                 level(100)]),
-            { screen: "row:displays:display:DP-1", share: 60, said: "60%" });
+            { share: 60, said: "60%" });
         check(failures, 'and no share while it\'s read, saying nothing at first',
             Screens.brightnessOf([brightness({}, [])]),
-            { screen: "row:displays:display:DP-1", share: null, said: "" });
+            { share: null, said: "" });
         check(failures, 'then that it isn\'t read yet',
             Screens.brightnessOf([brightness({}, [{ said: "not read yet" }])])?.said,
             "not read yet");

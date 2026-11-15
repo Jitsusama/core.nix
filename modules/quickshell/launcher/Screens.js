@@ -23,18 +23,16 @@ function brightening(rows, share) {
     return null;
 }
 
-// The Brightness served among `rows` (light/brightness.rs): the row's
-// key of the screen whose place holds it, the share it read, or null
-// while it's being read, so no old level is said as now, and what its
-// side says: the share, nothing in its first second, then that it isn't
-// read yet; or null while none is served.
+// The Brightness served among `rows` (light/brightness.rs): the share
+// it read, or null while it's being read, so no old level is said as
+// now, and what its side says: the share, nothing in its first second,
+// then that it isn't read yet; or null while none is served.
 const BRIGHTNESS = /^displays:[^:]+:brightness$/;
 function brightnessOf(rows) {
     for (const row of rows) {
         if (row?.kind === "setting" && BRIGHTNESS.test(row.thing ?? "")) {
             const share = row.held?.share;
             return {
-                screen: row.parent,
                 share: typeof share === "number" ? share : null,
                 said: (row.side ?? []).map(each => each.said).join(" ")
             };

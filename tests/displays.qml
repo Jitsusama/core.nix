@@ -67,7 +67,7 @@ ShellRoot {
             order: order, name: said, glyph: "display", hue: "machine", depth: 0,
             side: lit ? [] : [{ said: "off" }],
             note: lit ? "2880 \u00d7 1800 \u00b7 60 Hz \u00b7 scale 2\u00d7" : "off",
-            held: { output: name, standing: lit ? "lit" : "off", builtIn: name === "eDP-1",
+            held: { output: name, standing: lit ? "lit" : "off", lights: name === "eDP-1" && lit,
                 niri: root.niri(name, name === "eDP-1" ? "LG Display" : "Dell Inc.",
                     name === "eDP-1" ? "0x07C6" : "U2723QE", lit) },
             acts: [act]
@@ -272,9 +272,9 @@ ShellRoot {
             JSON.stringify(acted.map(ask => [ask.do, ask.output])) === '[["on","DP-1"]]',
             JSON.stringify(acted));
         Expect.expect("and niri nothing", Niri.asked.length === 0, JSON.stringify(Niri.asked));
-        // The panel holds the Brightness the daemon serves inside it, at
-        // the share it read.
-        Expect.expect("the panel holds the Brightness served inside it, at its share",
+        // The panel's row says it holds the Brightness, which the daemon
+        // serves inside it at the share it read.
+        Expect.expect("the panel's row says it holds the Brightness, served at its share",
             displays.backlitKey === "row:displays:display:eDP-1"
                 && displays.servedBrightness?.share === 50,
             JSON.stringify([displays.backlitKey, displays.servedBrightness]));
