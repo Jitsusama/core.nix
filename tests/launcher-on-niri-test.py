@@ -2271,6 +2271,28 @@ def test_a_step_into_programs_asks_no_rows_acts_twice_as_it_weighs_their_keys(
     assert read == rows, f"weighing the rows' keys read {read} rows' acts for {rows} rows"
 
 
+def test_a_program_selected_in_programs_is_asked_its_acts_alone_once(shell: Shell) -> None:
+    """Moving onto a program in Programs asks it once whether its acts lie on its row.
+
+    The foot's keys, whether Return steps in and whether it leads elsewhere each asked the
+    selection, and a program answers by making its whole step (Applications.qml's
+    startsOnly): 90 times over 11 steps into Programs in the keys lab, 154 ms of their
+    showing under Qt's profiler (2026-11-15).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    stepped_into_programs(shell)
+    launcher_on_niri.weighed_held_still(shell)
+    shown = shell.showing()
+    asked, selected = cast("int", shown["actsAsked"]), (shown["selected"] or {}).get("name")
+    shell.send_key("down")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") != selected)
+    shell.held_still()
+    asked = cast("int", shell.showing()["actsAsked"]) - asked
+    shell.close_launcher()
+    assert asked <= 1, f"moving onto the next program asked rows' acts alone {asked} times"
+
+
 def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) -> None:
     """A key's frame is timed as it's swapped, before the drawer waiting on that frame is made.
 

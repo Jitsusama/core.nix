@@ -486,7 +486,15 @@ profiler on the shell and prints the bindings, handlers and functions that
 took the most of their own time in the launcher's searches and in each of
 their parts, before, lists, rows and answers, as the key's line splits them.
 The profiler is asked for its trace while the shell still runs, since a
-shell stopped as it records sends none. The home it types into
+shell stopped as it records sends none. Given `LAB_STEP`, a place by name,
+it steps into it from home after each round's words, and given
+`LAB_PROGRAMS`, installs that many programs first, as the lab does; a
+step's showing is profiled apart as `search-step`, from when it lives its
+rows on, and said by whole time too, so what calls the dear functions is
+named. Into Programs with 21, about half its showing was the selection
+asked whether its acts lie on its row, each time making its whole step
+(2026-11-15). The profiler stretches what it times, so a cut's figures
+come from runs without it. The home it types into
 holds this niri's few windows and programs, where Joel's holds about a
 thousand rows, so its rows part runs smaller than his. The lab's shell says
 its reports, which Joel's doesn't, and two are said on a key, about 3 ms

@@ -1760,7 +1760,9 @@ Scope {
         const weighing = actsWeighing.rows;
         if (weighing !== null && weighing.has(row))
             return weighing.get(row);
-        const alone = row.actsOnly === true && (partsOfRows[row.key] ?? []).length === 0;
+        if (weighing === null && root.open && row === root.selected)
+            return root.selectedActsAlone;
+        const alone = root.actsAloneAsked(row);
         if (weighing !== null) {
             weighing.set(row, alone);
             actsRead += 1;
@@ -1774,6 +1776,24 @@ Scope {
     // into Programs under load (vm-desktop-keeps-pace, 2026-11-14). Plain,
     // so setting it wakes no binding.
     readonly property var actsWeighing: ({ rows: null })
+    // Whether a row holds its acts alone, asked of it afresh, and counted
+    // (actsAsked) for the check that the selection is asked once.
+    function actsAloneAsked(row) {
+        root.actsAsked.alone += 1;
+        return row.actsOnly === true && (partsOfRows[row.key] ?? []).length === 0;
+    }
+    // How many times a row was asked afresh whether it holds its acts
+    // alone. A plain field, so counting inside a binding that asked wakes
+    // no binding.
+    readonly property var actsAsked: ({ alone: 0 })
+    // Whether the selection holds its acts alone, asked once a selection
+    // while the launcher is open: the foot's keys, whether Return steps in
+    // and whether it leads elsewhere each asked it afresh, and a program
+    // answers by making its whole step (Applications.qml's startsOnly), 20
+    // times on moving onto the next in Programs (2026-11-15). Bound rather
+    // than kept, so it's asked again as anything the answer read changes.
+    readonly property bool selectedActsAlone: root.open && root.selected !== null
+        && root.actsAloneAsked(root.selected)
     // How many times weighings read a row's acts alone, and how many rows
     // they asked of, for the check that each row's is read once a weighing.
     property int actsRead: 0
@@ -8354,6 +8374,9 @@ Scope {
             // how many rows they asked of.
             actsRead: root.actsRead,
             actsRowsAsked: root.actsRowsAsked,
+            // How many times a row was asked afresh whether it holds its
+            // acts alone (actsAloneAsked).
+            actsAsked: root.actsAsked.alone,
             // How many times a key listed a list shown lately again.
             listedAgain: root.listedAgain,
             typed: root.typed,
