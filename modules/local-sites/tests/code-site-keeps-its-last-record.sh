@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Checks the code site's writer against a stand-in for repos: while repos
-# can't read the disk, the writer ends well, says so in a line and leaves the
+# fails, the writer ends well, says so in a line and leaves the
 # last record as it was, with nothing of its own left beside it; once repos
 # answers, its record replaces the last one whole, readable by the server.
 # usage: code-site-keeps-its-last-record.sh <code-site.sh> <coreutils bin>
@@ -13,7 +13,7 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/bin" "$work/site"
 
 # The stand-in answers as repos --json does, or, while $work/down exists, as
-# it does when a root can't be read, having written half a record first.
+# it does when its answer can't be written whole, half a record out first.
 cat > "$work/bin/repos" << EOF
 #!$BASH
 if [ "\$*" != "--json" ]; then
@@ -22,8 +22,8 @@ if [ "\$*" != "--json" ]; then
 fi
 if [ -e "$work/down" ]; then
   printf '{"schema":"repos.repositories/1",'
-  echo "repos: couldn't read /home/joel/src: permission denied" >&2
-  exit 74
+  echo "repos: couldn't write its answer: broken pipe" >&2
+  exit 1
 fi
 echo '{"schema":"repos.repositories/1","repositories":[{"name":"core.nix"}]}'
 EOF

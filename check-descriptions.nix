@@ -606,8 +606,8 @@
     own owner
   '';
   code-site-keeps-its-last-record = ''
-    the code site's writer, while repos can't read the disk, ends well in one line and leaves the
-    last record as it was, and once repos answers replaces it whole, readable by the server
+    the code site's writer, while repos fails, ends well in one line and leaves the last record as
+    it was, and once repos answers replaces it whole, readable by the server
   '';
   collector-keeps-what-it-is-sent = ''
     the collector reads a span it was sent back at its moment and in its trace, and keeps what a
