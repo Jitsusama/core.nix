@@ -1052,6 +1052,7 @@ Floating {
         id: factFace
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize
+        readonly property var measured: drawer.measurerOf(factFace)
     }
     // The title's face, as it's drawn, script and all, to tell which of its
     // words are too wide for a line alone (Identifier.titleBreaks).
@@ -1068,6 +1069,7 @@ Floating {
         font.pointSize: drawer.listsKeys ? Theme.level.note.pointSize
             : Theme.level.figure.pointSize * drawer.scriptGrown
         font.features: drawer.listsKeys ? ({}) : Theme.level.figure.features
+        readonly property var measured: drawer.measurerOf(valueFace)
     }
     // A nerdy bit's value's face, at Figure, whatever the facts' are.
     FontMetrics {
@@ -1147,6 +1149,7 @@ Floating {
         font.family: Theme.level.figure.family
         font.pointSize: Theme.level.figure.pointSize
         font.features: Theme.level.figure.features
+        readonly property var measured: drawer.measurerOf(latinFace)
     }
     // A value that's words with no figure in them, as "no sunset today",
     // in the face words are read in, as a notice's are.
@@ -1155,6 +1158,7 @@ Floating {
         font.family: Theme.level.words.family
         font.pointSize: Theme.level.words.pointSize
         font.variableAxes: Theme.level.words.variableAxes
+        readonly property var measured: drawer.measurerOf(wordsFace)
     }
     // An identifier (`identifies: true`), a node, a serial or a bus name, in
     // the Name face, as a row's name is, so it reads as something to copy
@@ -1164,6 +1168,20 @@ Floating {
         font.family: Theme.level.name.family
         font.pointSize: Theme.level.name.pointSize
         font.weight: Theme.level.name.weight
+        readonly property var measured: drawer.measurerOf(nameFace)
+    }
+    // How wide words are in one of the faces above, its `measured`, which
+    // the facts' laying and lines ask of each, and how many widths they
+    // asked and how many reached the face, for the check that a drawer
+    // shown again measures little anew. The counts are a plain object's,
+    // as a binding asks them.
+    readonly property var widths: ({ asked: 0, made: 0 })
+    function measurerOf(face) {
+        return words => {
+            widths.asked += 1;
+            widths.made += 1;
+            return face.advanceWidth(words);
+        };
     }
     // The face a fact's value is measured and drawn in (DrawerPage.js's
     // faceOf).
@@ -1191,15 +1209,15 @@ Floating {
         void nameFace.font;
         void figureInk.advanceWidth;
         const room = column.width - labelsGap;
-        const most = room - valueFace.advanceWidth("00000000");
+        const most = room - valueFace.measured("00000000");
         // Its value as it would stand in `beside`, a list with a tail as the
         // line it's drawn on there (DrawerValue.besideText).
         const valueWidth = (fact, beside) => {
             if (fact.value === null || fact.value === undefined)
                 return 0;
             const face = faceOf(fact);
-            const said = Value.besideText(fact, beside, text => face.advanceWidth(text));
-            return face.advanceWidth(unbroken(said)) + figureLeast(fact);
+            const said = Value.besideText(fact, beside, face.measured);
+            return face.measured(unbroken(said)) + figureLeast(fact);
         };
         const named = facts.filter(fact => fact && fact.heading === undefined && !proseFact(fact));
         const moment = [].concat(...groups.map(group => group.facts));
@@ -1244,7 +1262,7 @@ Floating {
                 x += Theme.space.rung.apart - Theme.space.rung.tie;
             for (const said of keys) {
                 runs.push({ said, x });
-                x += factFace.advanceWidth(said) + Theme.space.rung.tie;
+                x += factFace.measured(said) + Theme.space.rung.tie;
             }
         });
         return runs;
@@ -1254,9 +1272,9 @@ Floating {
     function nameWidth(fact) {
         const runs = runsOf(fact);
         if (runs.length === 0)
-            return factFace.advanceWidth(fact?.label ?? "");
+            return factFace.measured(fact?.label ?? "");
         const last = runs[runs.length - 1];
-        return last.x + factFace.advanceWidth(last.said);
+        return last.x + factFace.measured(last.said);
     }
     // How many of its facts take more than a line, a name or a value
     // wrapped, for the launcher to report when asked: a key list's take one.
@@ -1326,7 +1344,7 @@ Floating {
     // it's drawn on (valueDrawn; Y2YBTS, 2026-11-09). A drawer with no
     // value known yet has nothing to say this of, so it says no.
     function valuesWhole() {
-        const fits = row => word => faceOf(row.modelData).advanceWidth(word) <= row.valueWide;
+        const fits = row => word => faceOf(row.modelData).measured(word) <= row.valueWide;
         const known = drawnRows().filter(row => row.known);
         const laid = row => valueDrawn(row).split("\n");
         return known.length > 0 && known.every(row => row.modelData.identifies === true
@@ -1344,7 +1362,7 @@ Floating {
     // any other as itemsKept does. Its `value` is still what's copied.
     function valueDrawn(fact) {
         const data = fact.modelData;
-        const width = text => faceOf(data).advanceWidth(text);
+        const width = faceOf(data).measured;
         if (!fact.known) {
             return "\u2026";
         }
@@ -1414,8 +1432,8 @@ Floating {
     // marks rather than draw past the frame (VKCF3Z, 2026-11-08 and 09), as
     // DrawerValue.identifierLines lays it; a line that fits is held whole.
     function identifierKept(words, face, wide) {
-        return Value.identifierLines(words, wide, text => face.advanceWidth(text))
-            .map(line => face.advanceWidth(line) <= wide ? line.replace(/ /g, "\u00a0") : line)
+        return Value.identifierLines(words, wide, face.measured)
+            .map(line => face.measured(line) <= wide ? line.replace(/ /g, "\u00a0") : line)
             .join("\n");
     }
 
@@ -1425,8 +1443,8 @@ Floating {
     // wider than its room still wraps by its words, never running past the
     // edge.
     function itemsKept(words, face, wide) {
-        return Figure.runLines(unbroken(words), wide, text => face.advanceWidth(text))
-            .map(line => face.advanceWidth(line) <= wide ? line.replace(/ /g, "\u00a0") : line)
+        return Figure.runLines(unbroken(words), wide, face.measured)
+            .map(line => face.measured(line) <= wide ? line.replace(/ /g, "\u00a0") : line)
             .join("\n");
     }
 
@@ -2300,7 +2318,7 @@ Floating {
                                 void face.font;
                                 // A value and its figure are two runs of one
                                 // thing, apart as Meter's figure and stroke.
-                                return valueFrom + (known ? face.advanceWidth(
+                                return valueFrom + (known ? face.measured(
                                     drawer.unbroken(modelData.value)) : 0)
                                     + Theme.space.rung.apart;
                             }

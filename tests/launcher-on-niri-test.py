@@ -1984,6 +1984,38 @@ def test_the_drawers_fact_rows_are_kept_between_programs_and_steps(shell: Shell)
     assert made <= lacked, f"{made} fact rows made where {lacked} were missing, holding {held}"
 
 
+def test_a_drawer_shown_again_measures_little_anew(shell: Shell) -> None:
+    """Programs' drawers shown a second time measure few of the widths their facts ask.
+
+    A program's drawer measured its facts' words in their faces about 160 times each time it
+    was given, though under one in a hundred were words it hadn't measured: 2 of the 5 ms a
+    Chrome drawer took to show offscreen, where Joel's took up to 14 (2026-11-14). So each
+    face keeps the widths it has measured, and the same drawers shown again ask it, not Qt.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    rounds = []
+    for _ in range(2):
+        before = laid_out(shell)
+        stepped_into_programs(shell)
+        # Down to the last and back: the test's account has three programs, the Foot terminal's.
+        for key in "jjkk":
+            title = shell.showing()["drawer"]["title"]
+            shell.send_chars(key)
+            shell.launcher_until(functools.partial(drawer_moved, title))
+        after = laid_out(shell)
+        rounds.append({count: int(after[count]) - int(before[count])
+                       for count in ("widthsAsked", "widthsMade")})  # fmt: skip
+        stepped_out(shell)
+    shell.close_launcher()
+    again = rounds[1]
+    # Else the drawers asked no widths, and this proves nothing.
+    assert again["widthsAsked"] > 0, f"widths asked and measured by each round: {rounds}"
+    assert again["widthsMade"] * 4 < again["widthsAsked"], (
+        f"widths asked and measured by each round: {rounds}"
+    )
+
+
 DRAWER_SAID = re.compile(
     r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: a median (\d+) ms '
     r"before it followed, (\d+) until its frame began and (\d+) from its frame's start"
