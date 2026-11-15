@@ -377,18 +377,6 @@
     "test": "vm-desktop-keeps-copies"
   },
   {
-    "at": 1794702911,
-    "commit": "a52af4357be29c48580dbc6ecc5cc07e1ad3e61d",
-    "due": "2026-11-16",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
-    "owner_pr": 4577,
-    "reason": "failed, then passed, at a52af4357be2",
-    "subtests": [
-      "test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts"
-    ],
-    "test": "the-launcher-answers-whats-typed-on-niri"
-  },
-  {
     "at": 1794709157,
     "commit": "25e508c84df2ad15f66044c588f1529630a3b870",
     "due": "2026-11-17",
@@ -417,20 +405,6 @@
       "test_swipes_on_the_touchscreen_move_through_the_workspaces_not_the_window"
     ],
     "test": "vm-desktop-starts-clean"
-  },
-  {
-    "at": 1794723405,
-    "commit": "79d804bc87b2789f36216e9928e1351d54feba9b",
-    "due": "2026-11-17",
-    "due_why": "two days after its listing, the date the net gives; its owner reruns it on an idle builder by 2026-11-17 23:59 UTC and takes it off if it holds, or fixes it",
-    "owner_pr": 4577,
-    "reason": "failed, then passed, at 79d804bc87b2",
-    "subtests": [
-      "test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin",
-      "test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray",
-      "test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is"
-    ],
-    "test": "vm-desktop-minds-the-margin"
   },
   {
     "at": 1794727050,
