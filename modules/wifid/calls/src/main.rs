@@ -3,7 +3,7 @@
 //! stall the call while it does.
 //!
 //! ```text
-//! wifid-calls [/run/wifid/rows]
+//! wifid-calls
 //! ```
 //!
 //! It reads `pw-dump --monitor` as pause-for-calls does, counting a call as
@@ -15,6 +15,10 @@
 //! wifid's daemon). It says nothing is on as it starts, so a call said on
 //! before it last stopped holds nothing. It ends when PipeWire goes, for
 //! systemd to start it again.
+//!
+//! It takes its help, exits and failures from the terminal kit
+//! (docs/commands.md); it answers nothing, since what it does is wifid's
+//! state.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -26,6 +30,10 @@ use std::time::{Duration, Instant};
 
 use calls::{Call, Recording};
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure, Help};
+
+/// wifid's rows socket, which the wifi group may reach.
+const ROWS: &str = "/run/wifid/rows";
 
 /// How often a call still on is said again, well inside wifid's lapse.
 const AGAIN: Duration = Duration::from_secs(60);
@@ -103,22 +111,41 @@ fn sooner(one: Option<Duration>, other: Option<Duration>) -> Option<Duration> {
     }
 }
 
+fn help() -> Help {
+    Help::new("wifid-calls", "tells wifid when a call is on")
+        .example("wifid-calls", "what its user service runs")
+        .exit(
+            Exit::Unavailable,
+            "PipeWire went, or pw-dump wouldn't start",
+        )
+}
+
 fn main() -> ExitCode {
-    let socket = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "/run/wifid/rows".into());
-    let Ok(mut dump) = Command::new("pw-dump")
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        if let Some(word) = context.args.first() {
+            return Err(
+                Failure::new(Exit::Usage, format!("it takes no words, not {word}"))
+                    .try_this("wifid-calls --help"),
+            );
+        }
+        listen()
+    })
+}
+
+/// Follows PipeWire's graph until it goes, telling wifid as calls start
+/// and end; it never ends well, since it's meant to run on.
+fn listen() -> Result<(), Failure> {
+    let gone = |what: &str| Failure::new(Exit::Unavailable, what.to_owned());
+    let mut dump = Command::new("pw-dump")
         .arg("--monitor")
         .arg("--no-colors")
         .stdout(Stdio::piped())
         .spawn()
-    else {
-        eprintln!("wifid-calls: pw-dump wouldn't start");
-        return ExitCode::FAILURE;
-    };
-    let Some(out) = dump.stdout.take() else {
-        return ExitCode::FAILURE;
-    };
+        .map_err(|error| gone("pw-dump wouldn't start").because(error.to_string()))?;
+    let out = dump
+        .stdout
+        .take()
+        .ok_or_else(|| gone("pw-dump gave nothing to read"))?;
 
     // pw-dump's arrays are read on a thread of their own, so the waits for
     // a call to start or end, or to be said again, can run out between
@@ -139,9 +166,9 @@ fn main() -> ExitCode {
     loop {
         let now = Instant::now();
         if let Some(said) = teller.tell(on(call), now)
-            && let Err(why) = tell(Path::new(&socket), said)
+            && let Err(why) = tell(Path::new(ROWS), said)
         {
-            eprintln!("wifid-calls: couldn't tell wifid: {why}");
+            eprintln!("<4>couldn't tell wifid: {why}");
         }
         let next = match sooner(call.due(now), teller.due(now)) {
             Some(wait) => heard.recv_timeout(wait),
@@ -157,8 +184,7 @@ fn main() -> ExitCode {
         call.step(recording.any(), Instant::now());
     }
     let _ = dump.wait();
-    eprintln!("wifid-calls: pw-dump ended");
-    ExitCode::FAILURE
+    Err(gone("PipeWire went"))
 }
 
 #[cfg(test)]

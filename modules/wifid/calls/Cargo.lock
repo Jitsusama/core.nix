@@ -209,6 +209,7 @@ dependencies = [
  "calls",
  "serde_json",
  "tempfile",
+ "terminal-kit",
 ]
 
 [[package]]
