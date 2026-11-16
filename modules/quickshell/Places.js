@@ -95,7 +95,7 @@ function placed(places, screens, inUse) {
         return Object.assign({}, one.at, {
             output: inUse,
             workspace: after[one.gone] + one.at.workspace,
-            away: { screen: one.gone, workspace: one.at.workspace }
+            away: { screen: one.gone, workspace: one.at.workspace, output: one.at.output }
         });
     });
 }
@@ -104,22 +104,27 @@ function placed(places, screens, inUse) {
 // it's connected again. `away` holds, by each such screen's description (or
 // its connector, for a place kept before screens were named so), the
 // workspaces given in its place, by niri's id, each with the number it was
-// kept at there. The moves go lowest kept number first; their order there
-// is the windows daemon's to put back, as Joel last had it. One gone already
-// isn't moved, and one on the screen already is marked (`there`) and left.
-// `home` names the screens connected again, which are done with.
+// kept at there and the connector it left (`output`), when known. The moves
+// go lowest kept number first; their order there is the windows daemon's to
+// put back, as Joel last had it. One gone already isn't moved, and one on
+// the screen already is marked (`there`) and left. Of two screens alike, as
+// two monitors of one model without serials are, each goes to the connector
+// it left, since niri lists its screens in no set order, and the first
+// alike listed may be the one it waited on. `home` names the screens
+// connected again, which are done with.
 function homeward(away, screens, workspaces) {
     const moves = [];
     const home = [];
     for (const screen of Object.keys(away ?? {}).sort()) {
-        const output = Object.keys(screens ?? {})
-            .find(name => screens[name] === screen || name === screen);
-        if (output !== undefined) {
+        const alike = Object.keys(screens ?? {})
+            .filter(name => screens[name] === screen || name === screen);
+        if (alike.length > 0) {
             home.push(screen);
             const ranked = away[screen]
                 .filter(one => workspaces.some(each => each.id === one.id))
                 .sort((a, b) => a.workspace - b.workspace);
             for (const one of ranked) {
+                const output = alike.includes(one.output) ? one.output : alike[0];
                 const now = workspaces.find(each => each.id === one.id);
                 moves.push(now.output === output ? { output, id: one.id, there: true }
                     : { output, id: one.id });

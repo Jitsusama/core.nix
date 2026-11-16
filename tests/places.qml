@@ -102,8 +102,8 @@ QtObject {
         expect("a gone screen's place says where it belongs",
             Places.placed(docked, { "DP-4": monitor }, "DP-4").map(at => at.away ?? null), [
                 null, null,
-                { screen: panel, workspace: 2 },
-                { screen: panel, workspace: 1 }
+                { screen: panel, workspace: 2, output: "eDP-1" },
+                { screen: panel, workspace: 1, output: "eDP-1" }
             ]);
 
         // The monitor comes after the reopen began: the workspaces given
@@ -128,6 +128,19 @@ QtObject {
             });
         expect("a screen still gone keeps its workspaces waiting",
             Places.homeward(away, { "eDP-1": panel }, workspaces), { moves: [], home: [] });
+
+        // Two screens alike, as two monitors of one model without serials
+        // are, and as a VM's are: the workspace goes back to the connector
+        // it left, however niri lists them, rather than staying on its alike
+        // there as if home (vm-screens-keep-places flaked so, 2026-11-16).
+        const qemu = "Red Hat, Inc. QEMU Monitor Unknown";
+        const left = { [qemu]: [{ id: 21, workspace: 2, output: "Virtual-2" }] };
+        const onTheOther = [{ id: 21, output: "Virtual-1" }];
+        const wanted = { moves: [{ output: "Virtual-2", id: 21 }], home: [qemu] };
+        expect("a workspace goes back to the alike screen it left, listed first",
+            Places.homeward(left, { "Virtual-1": qemu, "Virtual-2": qemu }, onTheOther), wanted);
+        expect("a workspace goes back to the alike screen it left, listed last",
+            Places.homeward(left, { "Virtual-2": qemu, "Virtual-1": qemu }, onTheOther), wanted);
 
         // Windows that reopen themselves, matched by program and title,
         // else the first of that program, each kept window used once.
