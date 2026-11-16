@@ -900,10 +900,11 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
 
     It's never put anywhere it didn't get to (WCJQSG, 2bd7c7c6): its first place said after
     the second move is made is a step from its last before, or both are off the screen, where
-    neither is seen, and the second move is one of its own, back the other way. A step of the first move said as the second is made may come
-    after the mark, and is a step on too. Under load the first may not yet have left its seat,
-    and the cat says it sits there before the second's first step (2026-11-14), so the
-    second is waited for by its own steps rather than by where it sits.
+    neither is seen, and the second move is one of its own, back the other way. A step of the
+    first move said as the second is made may come after the mark, and is a step on too. Under
+    load the first may not yet have left its seat, and the cat says it sits there before the
+    second's first step (2026-11-14), so the second is waited for by its own steps rather than
+    by where it sits.
     """
     since = shell.mark()
     upper = shell.opened("a workspace moved back to")
