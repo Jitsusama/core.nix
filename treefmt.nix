@@ -104,13 +104,6 @@ in
     # which home-builds-from-its-rows reads and the web skill's probes walk
     # in a browser, as every site's page is.
     "modules/local-sites/home/index.html"
-    # The mycelium map's drawing, its page and its styles, served as they
-    # were written by hand before the map was fed live: they come under
-    # biome as the drawing is rewritten in TypeScript on the kit, as the
-    # system page was, and their lines go then.
-    "modules/mycelium/site/view.js"
-    "modules/mycelium/site/index.html"
-    "modules/mycelium/site/site.css"
     # Word lists, one per line: a dictionary, glyphs, paths and check names.
     "*.txt"
     "*.add"

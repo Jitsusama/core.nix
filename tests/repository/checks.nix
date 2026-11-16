@@ -63,9 +63,9 @@
   # Quickshell's JavaScript lacks some of the language's newer methods, which
   # qmllint lets through and the shell fails on only as it runs, so the
   # shell's code calls none of them, in Quickshell's module and in every
-  # module that gives the shell a file. Spotify's Escape script and the
-  # mycelium map's drawing run in a browser, which has them, so they alone
-  # are left out (tests/repository/the-desktop-speaks-its-javascript.sh).
+  # module that gives the shell a file. Spotify's Escape script runs in
+  # Spotify's own browser, which has them, so it alone is left out
+  # (tests/repository/the-desktop-speaks-its-javascript.sh).
   the-desktop-speaks-its-javascript =
     pkgs.runCommandLocal "the-desktop-speaks-its-javascript" { nativeBuildInputs = [ pkgs.ripgrep ]; }
       ''
