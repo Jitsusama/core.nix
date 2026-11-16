@@ -85,15 +85,6 @@
     "test": "vm-desktop-looks-vi"
   },
   {
-    "at": 1794538359,
-    "commit": "b2be6ae26c8fcb7f68b687145bafcbceec102640",
-    "due": "2026-11-17",
-    "owner_pr": 4884,
-    "owner_session": "80ECO2",
-    "reason": "failed, then passed, at b2be6ae26c8f",
-    "test": "vm-joel-comes-first"
-  },
-  {
     "at": 1794614356,
     "commit": "5782337e6e457780754e6e5684e6c69bd92827dd",
     "due": "2026-11-15",

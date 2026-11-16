@@ -4904,9 +4904,10 @@
   '';
   vm-joel-comes-first = ''
     on an eighth of the laptop's memory, with agents' sessions, their work and shared work each under
-    its slice's ceiling and walking what it holds, a stand-in shell in session.slice drops no
-    frame of 16 ms through a fetch in agents.slice and a grep and three commands in jobs.slice
-    bursting until together they pass memory by a fifth, as at 12 November's 16:33 freeze
+    its slice's ceiling and walking what it holds, a stand-in shell in session.slice waits no
+    more than a frame's 16 ms on memory, and no program reclaims for itself, through a fetch in
+    agents.slice and a grep and three commands in jobs.slice bursting until together they pass
+    memory by a fifth, as at 12 November's 16:33 freeze
   '';
   vm-idle-sleep-comes-only-on-battery = ''
     a machine left idle on the charger stays awake, and sleeps once the charger is unplugged, even
