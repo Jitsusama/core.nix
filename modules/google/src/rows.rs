@@ -445,6 +445,22 @@ mod tests {
         }
     }
 
+    /// A mail copied to Grace Hopper that carries two files.
+    fn carrying(id: &str, at: i64) -> Mail {
+        let mut carrying = one(id, at);
+        carrying.cc = "Grace Hopper".into();
+        carrying.attachments = ["plan.pdf", "notes.txt"]
+            .map(|name| File {
+                name: name.into(),
+                kind: "application/pdf".into(),
+                size: 2_048,
+                runs: false,
+                bytes: Bytes::Asked("x".into()),
+            })
+            .to_vec();
+        carrying
+    }
+
     #[test]
     fn mails_words_are_read_from_the_vocabulary_or_the_lack_is_said() {
         assert_eq!(words().untitled, "Mail Without a Subject");
@@ -605,17 +621,7 @@ mod tests {
 
     #[test]
     fn its_drawer_says_whom_it_came_from_and_went_to_when_and_what_it_carries() {
-        let mut carrying = one("a", 1_000);
-        carrying.cc = "Grace Hopper".into();
-        carrying.attachments = ["plan.pdf", "notes.txt"]
-            .map(|name| File {
-                name: name.into(),
-                kind: "application/pdf".into(),
-                size: 2_048,
-                runs: false,
-                bytes: Bytes::Asked("x".into()),
-            })
-            .to_vec();
+        let carrying = carrying("a", 1_000);
         let rows = mail(std::slice::from_ref(&carrying), &words());
         assert_eq!(
             rows[0]["drawer"], "drawer:mail:a",
@@ -697,17 +703,7 @@ mod tests {
         let mut untitled = one("u", 1_000);
         untitled.subject = String::new();
         untitled.from = String::new();
-        let mut carrying = one("c", 2_000);
-        carrying.cc = "Grace Hopper".into();
-        carrying.attachments = ["plan.pdf", "notes.txt"]
-            .map(|name| File {
-                name: name.into(),
-                kind: "application/pdf".into(),
-                size: 2_048,
-                runs: false,
-                bytes: Bytes::Asked("x".into()),
-            })
-            .to_vec();
+        let mut carrying = carrying("c", 2_000);
         let mut held = vec![untitled, carrying.clone()];
         for (at, went) in [1, 2, 5].into_iter().enumerate() {
             let mut sent = one(&format!("s{at}"), 3_000);

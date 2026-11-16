@@ -673,29 +673,7 @@ mod tests {
     }
 
     fn document(id: &str, title: &str) -> crate::drive::Document {
-        crate::drive::Document {
-            id: id.into(),
-            title: title.into(),
-            kind: crate::drive::Is::Document,
-            link: format!("https://docs.google.com/document/d/{id}/edit"),
-            viewed: Some(5_000),
-            changed: Some(4_000),
-            owner: Some("Ada Lovelace".into()),
-            mime: "application/vnd.google-apps.document".into(),
-            size: None,
-            created: None,
-            changed_by: None,
-            changed_by_me: None,
-            shared_with_me: None,
-            shared_by: None,
-            shared: false,
-            starred: false,
-            drive: None,
-            about: None,
-            across: None,
-            down: None,
-            lasts: None,
-        }
+        crate::drive::Document::plan(id, title, crate::drive::Is::Document)
     }
 
     #[test]

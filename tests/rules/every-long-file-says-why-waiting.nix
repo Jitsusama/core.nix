@@ -12,8 +12,6 @@
   "modules/git-engine/src/odb.rs"
   "modules/git-engine/src/status.rs"
   "modules/google/src/api.rs"
-  "modules/google/src/calendar.rs"
-  "modules/google/src/drive.rs"
   "modules/google/src/watch.rs"
   "modules/google/tests/stand_in.rs"
   "modules/hibernate/unlock/src/main.rs"

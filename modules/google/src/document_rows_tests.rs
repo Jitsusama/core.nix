@@ -10,29 +10,7 @@ fn words() -> Words {
 }
 
 fn document(id: &str, kind: Is) -> Document {
-    Document {
-        id: id.into(),
-        title: "Plan".into(),
-        kind,
-        link: format!("https://docs.google.com/document/d/{id}/edit"),
-        viewed: Some(5_000),
-        changed: Some(4_000),
-        owner: Some("Ada Lovelace".into()),
-        mime: "application/vnd.google-apps.document".into(),
-        size: None,
-        created: None,
-        changed_by: None,
-        changed_by_me: None,
-        shared_with_me: None,
-        shared_by: None,
-        shared: false,
-        starred: false,
-        drive: None,
-        about: None,
-        across: None,
-        down: None,
-        lasts: None,
-    }
+    Document::plan(id, "Plan", kind)
 }
 
 #[test]
