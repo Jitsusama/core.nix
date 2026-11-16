@@ -12,8 +12,9 @@ const NOW: u64 = 1_800_000_000;
 const MIDNIGHT: u64 = NOW - 10 * HOUR;
 
 /// The machine's declared owners: kestrel-co for work, jsama for the
-/// personal realm, and shared listed for both.
-const DECLARED: &str = "work=Kestrel-Co,shared personal=jsama,SHARED";
+/// personal realm, and shared listed for both, as one word, since systemd
+/// splits an unquoted `Environment=` at whitespace.
+const DECLARED: &str = "work=Kestrel-Co,shared;personal=jsama,SHARED";
 
 fn login() -> Declared {
     Declared::login(Some("JSama".into())).expect("a login")
@@ -85,6 +86,27 @@ fn only_the_realms_own_owners_count_matched_as_github_matches_them() {
     assert!(
         !Owners::of(DECLARED, "elsewhere").hold("github:kestrel-co/tool"),
         "a realm the machine didn't list held another's owner"
+    );
+}
+
+#[test]
+fn owners_with_whitespace_among_them_count_nowhere() {
+    // What systemd hands over of a value it split is part of it, so a
+    // realm's owners may have gone missing; none is trusted.
+    for split in [
+        "work=Kestrel-Co,shared personal=jsama,SHARED",
+        "personal=jsama,SHARED ",
+        "personal=jsama,\tSHARED",
+    ] {
+        let personal = Owners::of(split, "personal");
+        assert!(
+            !personal.hold("github:jsama/tool") && !personal.hold("github:shared/tool"),
+            "owners declared with whitespace counted: {split:?}"
+        );
+    }
+    assert!(
+        Owners::of(DECLARED, "personal").hold("github:jsama/tool"),
+        "owners declared as one word didn't count"
     );
 }
 
