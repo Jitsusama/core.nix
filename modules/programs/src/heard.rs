@@ -2,19 +2,46 @@
 //! it runs: the folders of entries and of file kinds, the profile links a
 //! data folder is reached through, each source's file and folders, and the
 //! session folder of a profile whose open pages a source reads, and that
-//! profile's own folder, for its bookmark files. A
-//! part of the daemon's own (main.rs), kept apart from how it answers, so
-//! neither file grows past reading.
+//! profile's own folder, for its bookmark files; and where every thread
+//! that hears a change starts (`hear`). A part of the daemon's own
+//! (main.rs), kept apart from how it answers, so neither file grows past
+//! reading.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
+use std::thread;
 
 use programs::bookmark_rows;
 use programs::notify::Notify;
 use programs::xdg;
 
-use super::{Run, Shared, bookmarks, entries_changed, lock, read_named, start, tabs, watched};
+use super::{
+    Run, Shared, agents, bookmarks, code, entries_changed, lock, read_named, rows, start, tabs,
+    watched,
+};
+
+/// Starts the threads that hear what changes: these folders, the windows
+/// and agents daemons beside this one by `socket`, and the watches, for
+/// Code's files. All begin before the socket answers, so no change after
+/// a first answer goes unheard.
+pub fn hear(shared: &Arc<Shared>, socket: &Path) {
+    if let Some(notify) = &shared.notify {
+        let folders = heard(shared, notify);
+        let shared = Arc::clone(shared);
+        thread::spawn(move || notice(&shared, &folders));
+    }
+    {
+        let shared = Arc::clone(shared);
+        thread::spawn(move || rows::hear(&shared, &shared.windows));
+    }
+    {
+        let shared = Arc::clone(shared);
+        let agents = agents::socket(socket);
+        thread::spawn(move || agents::hear(&shared, &agents));
+    }
+    code::follow(shared);
+}
 
 /// What a watched folder is to this daemon; one can be more than one.
 #[derive(Default)]
