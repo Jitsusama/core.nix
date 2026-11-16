@@ -136,7 +136,10 @@ pub fn own_of(said: &Value) -> Option<Own> {
             place: text_of(said, "place"),
             words: text_of(said, "words"),
             most: number("most").and_then(|most| usize::try_from(most).ok()),
-            within: None,
+            within: said
+                .get("within")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
         })),
         "changed" => Some(Own::Changed {
             keys: strings(said, "keys")

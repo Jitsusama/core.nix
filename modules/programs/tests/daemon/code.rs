@@ -222,8 +222,10 @@ fn whats_typed_in_open_a_file_by_name_finds_its_files_by_name_or_folder() {
     let guide = format!("{find}:{}/docs/guide.md", checkout.display());
     client.changed(&guide);
     let mut typed = |words: &str, most: Option<u64>| {
-        client.ask(&json!({"id": 2, "ask": "search", "place": "code", "words": words,
-            "within": find, "most": most}))
+        client.ask(
+            &json!({"id": 2, "ask": "search", "place": "code", "words": words,
+            "within": find, "most": most}),
+        )
     };
     let said = typed("guide", None);
     assert_eq!(
