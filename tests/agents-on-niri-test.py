@@ -3211,18 +3211,16 @@ def in_agents(shell: Shell) -> None:
 def carried(shell: Shell) -> Iterator[None]:
     """Keep two carries for one case: Listening Quest's arrived here, Paused Quest's to go.
 
-    Each case's own, so no other case's rows count a carry; gone again after it.
+    Each case's own, so no other case's rows count a carry. The node may keep the carry back
+    it was asked for after, so the next case lays its own file whole rather than wait on none.
     """
     kept(
         ordered("LISTEN", 120, **{"from": "tern", "to": here(), "why": "it needs the camera"}),
         ordered("PAUSED", 60, **{"from": here(), "to": "tern", "why": "tern sits idle"}),
     )
     yield
-    CARRIES.unlink()
+    CARRIES.unlink(missing_ok=True)
     touched("LISTEN")
-    in_agents(shell)
-    shell.launcher_until(lambda shown: "Carried" not in shown["rows"])
-    shell.close_launcher()
 
 
 @pytest.mark.usefixtures("carried", "at_shots_scale")
@@ -3232,7 +3230,7 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     """Carried lists each carry where it went, by whom and why; Return carries one back.
 
     An arrived carry offers Carry Back alone, asked of the node; one about to go offers
-    nothing, and a carry back the node refuses says why in place (DCU5J4, items 1 and 2).
+    nothing, and Carry Back says so in place while the node is asked (DCU5J4, items 1 and 2).
     """
     in_agents(shell)
     shell.launcher_until(lambda shown: "Carried" in shown["rows"])
@@ -3252,14 +3250,23 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
         f"carried to {here()} by Orchestrating Quest \u00b7 it needs the camera"
     ), arrived
     assert arrived["told"][:1] == ["\u21b5 carry back"], arrived
-    since = shell.mark()
+    # One Return asks the node, and the row says so in place while it's asked; how the
+    # node's answer ends it is tests/carry-back.qml's, since tern is no machine here.
     began = time.monotonic()
     shell.send_key("ret")
-    # Tern is no machine this one links to, so the node refuses it, and says why.
-    shell.reported("not become carry:s-listen:", lambda why: why.split(": ", 1)[-1] != "", since)
+    shell.launcher_until(lambda shown: shown["selected"]["side"] == "carrying back")
     took = round((time.monotonic() - began) * 1000)
-    logging.getLogger(__name__).info("LAB Carry Back's refusal was said %s ms on", took)
-    shoot("agents-carried-refused")
+    logging.getLogger(__name__).info("LAB Carry Back was said in place %s ms on", took)
+    shoot("agents-carrying-back")
+
+
+def in_to_read(shell: Shell) -> None:
+    """Open For You and step into To Read, where what asks nothing of Joel waits."""
+    in_for_you(shell)
+    shell.launcher_until(lambda shown: "To Read" in shown["rows"])
+    shell.down_to("To Read")
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["held"] == ["now", "For You", "To Read"])
 
 
 def test_a_carry_under_way_waits_quietly_in_for_you_and_goes_as_it_arrives(
@@ -3278,12 +3285,14 @@ def test_a_carry_under_way_waits_quietly_in_for_you_and_goes_as_it_arrives(
         in_agents(shell)
         shell.launcher_until(lambda shown: "Carried" in shown["rows"])
         shell.close_launcher()
-        in_for_you(shell)
+        in_to_read(shell)
         # Afloat Quest's session runs nowhere yet, so its carry is on its way.
         shell.launcher_until(
             lambda shown: {"Paused Quest", "A Session on Its Way"} <= set(shown["rows"])
         )
+        shell.close_launcher()
         lay("AFLOAT", "Afloat Quest", {"orchestratedBy": "BOSSES", "state": "listening"})
+        in_to_read(shell)
         shell.launcher_until(
             lambda shown: (
                 "Paused Quest" in shown["rows"]
@@ -3292,7 +3301,7 @@ def test_a_carry_under_way_waits_quietly_in_for_you_and_goes_as_it_arrives(
             )
         )
     finally:
-        CARRIES.unlink()
+        CARRIES.unlink(missing_ok=True)
         (PRESENCE / "afloat.json").unlink(missing_ok=True)
         touched("LISTEN")
 
