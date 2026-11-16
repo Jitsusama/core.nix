@@ -341,5 +341,21 @@
     "owner_session": "orchestrator",
     "reason": "failed, then passed, at 467f7109b3c3",
     "test": "vm-desktop-keeps-pace"
+  },
+  {
+    "at": 1794841205,
+    "commit": "2c12c3c9f8be5869c79ed19e4c268da713b95c76",
+    "due": "2026-11-18",
+    "owner_pr": 4953,
+    "owner_session": "orchestrator",
+    "reason": "has been broken since #4953, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "subtests": [
+      "test_a_terminal_programs_drawer_is_shot_at_each_scale",
+      "test_chromes_page_and_its_download_are_shot_at_each_scale",
+      "test_passwords_and_a_copy_are_shot_at_each_scale",
+      "test_shortcuts_over_google_are_shot_at_each_scale",
+      "test_the_vms_are_shot_at_each_scale"
+    ],
+    "test": "vm-desktop-looks-programs"
   }
 ]
