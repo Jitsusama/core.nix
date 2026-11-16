@@ -23,24 +23,6 @@
     tests = ../../../tests/screens-off-on-niri-test.py;
   };
 
-  # Where the Brightness Screens serves stands, as tests/screens.qml holds
-  # launcher/Screens.js to in Qt's own engine; a screen's ways, what :setl
-  # power and unplugged do with them, and what the place's :set line asks,
-  # are the windows daemon's.
-  the-launcher-asks-the-served-light =
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    pkgs.runCommandLocal "the-launcher-asks-the-served-light" { } ''
-      cp ${../../../tests/screens.qml} screens.qml
-      cp ${../launcher/Screens.js} Screens.js
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml screens.qml
-      touch $out
-    '';
-
   # The launcher tells how the desk light is lit and sets it, and the
   # brightness bar hears its changes but not a camera lighting it; with no
   # light, its row stays and says why (tests/desk-light.qml), over a
@@ -138,9 +120,12 @@
     '';
 
   # The launcher's Screens draws each screen's row as the windows daemon
-  # serves it, makes again only the row a change names, and asks the daemon
-  # a screen's Return rather than niri (tests/displays.qml), with the
-  # daemon and niri stood in.
+  # serves it, makes again only the row a change names, asks the daemon a
+  # screen's Return rather than niri, and says the Brightness as the
+  # place's line serves it (tests/displays.qml), with the daemon and niri
+  # stood in. A screen's ways, what :setl power and unplugged do with
+  # them, and what the place's :set line serves, are the windows daemon's,
+  # tested beside it.
   the-launcher-remakes-only-the-screens-that-changed =
     let
       # niri as Screens still asks it, a change to a screen answered.

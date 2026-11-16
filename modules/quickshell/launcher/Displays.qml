@@ -41,8 +41,8 @@
 // reads while a screen is watched ahead (modules/windows, light.rs), so
 // the shell reads neither the lights nor a file for them: which screen
 // holds the Brightness is its served row's, and the share :set
-// brightness and "brightness 40" say the Brightness's (Screens.js's
-// brightnessOf).
+// brightness and "brightness 40" say, and what they say while it's read,
+// the place's line serves (screens/line.rs's place).
 //
 // The backlight daemon warms every screen at night from sunset to
 // sunrise, and toward the room's light where its sensor sees colour, and
@@ -66,7 +66,6 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Hearing.js" as Hearing
 import "Order.js" as Order
-import "Screens.js" as Screens
 import "Seen.js" as Seen
 
 Provider {
@@ -162,17 +161,16 @@ Provider {
         return "";
     }
 
-    // The rows served, placed or not, for what the : line asks of them.
-    function servedRows() {
-        return ready.keys.map(key => ready.served(key));
-    }
-
-    // The Brightness the windows daemon serves (Screens.js's
-    // brightnessOf): the share it read, or null while it's read; null
-    // while none is served.
+    // The Brightness as the place's line serves it: the share read, or
+    // null while it's read, so no old level is said as now, and what its
+    // row says beside it, the share, nothing in its first second, then
+    // that it isn't read yet; null while none is served.
     readonly property var servedBrightness: {
-        void ready.placings;
-        return Screens.brightnessOf(servedRows());
+        const served = placeLine.brightness ?? null;
+        return served === null ? null : {
+            share: typeof served.now === "number" ? served.now : null,
+            said: served.said ?? ""
+        };
     }
     // Whether a share has been read since the shell started, until when
     // the screen holding the Brightness is watched ahead, as the shell's

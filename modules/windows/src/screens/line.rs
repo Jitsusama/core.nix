@@ -159,7 +159,11 @@ const SLEEP: &str = "displays:sleep";
 ///   first, while that row is served.
 /// - `brightness` is the Brightness's share, or null while it's read,
 ///   from none to all, with the ask its levels make lacking only the
-///   share typed; offered only while a screen holds the Brightness.
+///   share typed, and what its row says beside it, which a typed
+///   "brightness 40" says as its note: the share, nothing in its first
+///   second, then that it isn't read yet, as Screens.js's brightnessOf
+///   found it until 15 November 2026; offered only while a screen holds
+///   the Brightness.
 /// - `nightlight` and `warmth` say how the Warmth's switch stands, the
 ///   way it doesn't stand its Return's ask, which always asks the other
 ///   way, so turning it the way it stands asks nothing; each offered
@@ -192,10 +196,16 @@ pub fn place(rows: &[Value]) -> Map<String, Value> {
         if let Some(ask) = ask.as_object_mut() {
             ask.remove("share");
         }
+        let said: Vec<&str> = held["side"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|each| each["said"].as_str())
+            .collect();
         line.insert(
             BRIGHTNESS.to_owned(),
             json!({"kind": "number", "least": 0, "most": 100,
-                "now": held["held"]["share"], "ask": ask}),
+                "now": held["held"]["share"], "said": said.join(" "), "ask": ask}),
         );
     }
     for (name, key) in SWITCHES {
