@@ -394,8 +394,10 @@ def test_a_shut_launcher_takes_no_step_only_it_shows(desktop: Desktop) -> None:
     (2026-11-10). Skipping their sorting still parsed each change, and none of 56 a minute
     moved what a shut launcher reads (2026-11-11), so the shell asks the node to send a change
     only as that moves. Turning between working and listening moves it, since the shut foot
-    counts those working (mycelium #201), so these sessions keep theirs. Opened, it takes them.
-    It runs before the arrows, which want them taken.
+    counts those working (mycelium #201), so these sessions keep theirs. Opened into Agents, it
+    takes them; opened onto On or home, which show no session's step, it doesn't, since that
+    catch-up cost Joel's openings 44 to 90 ms (2026-11-15). It runs before the arrows, which want
+    them taken.
     """
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
@@ -416,6 +418,9 @@ def test_a_shut_launcher_takes_no_step_only_it_shows(desktop: Desktop) -> None:
         desktop.as_account("qs ipc call launcher toggle")
         try:
             desktop.launcher_ready()
+            desktop.down_to("Agents")
+            desktop.step_in()
+            desktop.launcher_until(lambda shown: len(shown["held"]) == 1)
             retry(lambda _: sorts(desktop)["taken"] > after["taken"], REACHING)
         finally:
             desktop.close_launcher()

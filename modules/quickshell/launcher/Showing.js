@@ -363,6 +363,20 @@ function fact(one) {
     return out;
 }
 
+// Whether a session is on screen: Agents held open at any depth, a
+// session's row among the rows shown (as a search finds one at home), or
+// a session's drawer held open. Agents' daemon makes its rows itself and
+// says no kind of them, so being inside Agents is what counts there. Only
+// a session's row says its step and how full it is, which pi's source
+// holds back while none is shown (PiSource.qml), so opening On or a
+// notice hears none of it. Whether each works is heard regardless.
+const SESSION = "session";
+const AGENTS = "collection:agents";
+function sessionShown(rows, held) {
+    return held.some(holding => holding?.row?.key === AGENTS || holding?.row?.kind === SESSION)
+        || rows.some(row => row?.kind === SESSION);
+}
+
 // Styled text's words, its tags taken away and its entities read.
 function unstyled(text) {
     return text.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "")

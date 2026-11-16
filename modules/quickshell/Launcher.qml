@@ -1187,6 +1187,11 @@ Scope {
     // for the walk too.
     property bool cataloguing: false
 
+    // Whether Agents, a session's row or its drawer is on screen (Showing.js),
+    // so pi's source catches up on what it held back only then, not
+    // inside an opening of On or a notice (shell.qml).
+    readonly property bool sessionShown: Showing.sessionShown(matches, held)
+
     // The place a line from outside opened this opening into, by `qs ipc
     // call launcher collection` or the launcher's socket, which any process
     // of the account's can write; empty once it closes. A place that asks
