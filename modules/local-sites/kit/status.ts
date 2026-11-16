@@ -34,7 +34,7 @@ function said(standing: Standing): string {
 /** Says `standing` in `element`, and marks it with the state. */
 function show(element: HTMLElement, standing: Standing): void {
   element.textContent = said(standing);
-  element.dataset.state = standing.state;
+  element.dataset["state"] = standing.state;
 }
 
 export { clockTime, said, show };

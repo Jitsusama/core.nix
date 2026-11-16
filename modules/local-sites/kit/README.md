@@ -14,4 +14,15 @@ a site's compiled imports land.
 | `switch.css`  | the switch's styles                                           |
 | `tests/`      | each of them tried against a stand-in socket and clock        |
 
+The `tests/` folder holds a test for each script but `theme.ts`, which has
+none yet, and the stand-ins they share, `stand-in.ts`
+for a feed's socket and `hands.ts` for a clock moved by hand. Node runs them
+as the kit builds.
+
+The kit is typechecked with `noPropertyAccessFromIndexSignature`, so a field
+a record may lack is read as `record["field"]` and only a declared one as
+`record.field`. A site extending its `tsconfig.json` takes the flag too;
+the system, forage and network pages turn it off for now, until their reads
+are moved over by their owners.
+
 [site]: ../site.nix

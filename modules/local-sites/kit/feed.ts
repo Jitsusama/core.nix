@@ -118,7 +118,11 @@ function browserSocket(url: string): Socket {
 
 /** The watch's ask, with only what the page narrowed it by. */
 function asked(watching: Watching): string {
-  const ask: { [field: string]: unknown } = { id: WATCH, ask: "watch", kind: watching.kind };
+  const ask: { id: number; ask: string; kind: string; keys?: unknown; fields?: unknown } = {
+    id: WATCH,
+    ask: "watch",
+    kind: watching.kind,
+  };
   if (watching.keys !== undefined) {
     ask.keys = watching.keys;
   }
@@ -130,8 +134,8 @@ function asked(watching: Watching): string {
 
 /** What an error answer says, as a reason. */
 function refusal(error: unknown): string {
-  if (isObject(error) && typeof error.message === "string") {
-    return error.message;
+  if (isObject(error) && typeof error["message"] === "string") {
+    return error["message"];
   }
   return "the feed refused the watch";
 }
@@ -219,12 +223,12 @@ class Follower {
     const answer = answerIn(data);
     if (typeof answer === "string") {
       this.#hearing.problem(answer);
-    } else if (answer.id === WATCH) {
+    } else if (answer["id"] === WATCH) {
       this.#heard(answer);
-    } else if (answer.id !== HELLO) {
+    } else if (answer["id"] !== HELLO) {
       this.#hearing.problem(`an answer to no ask of this page: ${JSON.stringify(answer)}`);
-    } else if (answer.error !== undefined) {
-      this.#refused(answer.error);
+    } else if (answer["error"] !== undefined) {
+      this.#refused(answer["error"]);
     }
   }
 
@@ -234,14 +238,16 @@ class Follower {
 
   /** An answer to the watch: a refusal, a state the server says, or records. */
   #heard(answer: Fields): void {
-    const { state } = answer;
-    if (answer.error !== undefined) {
-      this.#refused(answer.error);
+    const state = answer["state"];
+    if (answer["error"] !== undefined) {
+      this.#refused(answer["error"]);
     } else if (state === "connecting" || state === "live") {
       this.#stand({ state, since: this.#clock.now() });
     } else if (state === "broken") {
-      const reason = typeof answer.reason === "string" ? answer.reason : "its daemon didn't answer";
-      const since = typeof answer.since === "number" ? answer.since : this.#clock.now();
+      const told = answer["reason"];
+      const reason = typeof told === "string" ? told : "its daemon didn't answer";
+      const at = answer["since"];
+      const since = typeof at === "number" ? at : this.#clock.now();
       this.#stand({ state, since, reason });
     } else {
       const moved = this.held.took(answer);

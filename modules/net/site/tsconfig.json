@@ -1,4 +1,9 @@
 {
   "extends": "../../local-sites/kit/tsconfig.json",
+  "compilerOptions": {
+    // The page reads a record's fields as it did before the kit read them
+    // by key, until its owner turns this on with the page's own reads.
+    "noPropertyAccessFromIndexSignature": false
+  },
   "include": ["*.ts"]
 }

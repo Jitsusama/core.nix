@@ -76,6 +76,46 @@ it("a broken daemon is said with the server's reason and time", () => {
   assert.deepEqual(stood.at(-1), { state: "broken", since: 42, reason: "nobody.sock isn't there" });
 });
 
+it("a broken daemon the server gives no words or time for is still said", () => {
+  const { socket, clock, stood } = followed();
+  socket().tell({ id: 2, state: "broken", reason: 7, since: "then" });
+  assert.deepEqual(
+    stood.at(-1),
+    { state: "broken", since: clock.now(), reason: "its daemon didn't answer" },
+    "a reason or time not in its shape gives way to the page's own",
+  );
+});
+
+it("a refusal without a message is said in the page's words", () => {
+  const { socket, stood } = followed();
+  socket().tell({ id: 2, error: { code: "refused" } });
+  assert.equal(stood.at(-1)?.reason, "the feed refused the watch", "the page's own words");
+});
+
+it("a watch narrowed by keys asks for those keys", () => {
+  const sockets: StandIn[] = [];
+  const ignored = (): void => undefined;
+  follow(
+    { feed: "node", kind: "cell", keys: ["cell:A"] },
+    { moved: ignored, stands: ignored, problem: ignored },
+    {
+      clock: new Hands(),
+      page: "http://sites.localhost:8484/mycelium/",
+      connect: (url) => {
+        const socket = new StandIn(url);
+        sockets.push(socket);
+        return socket;
+      },
+    },
+  );
+  sockets[0]?.onopen?.();
+  assert.deepEqual(
+    sockets[0]?.sent.at(-1),
+    { id: 2, ask: "watch", kind: "cell", keys: ["cell:A"] },
+    "the keys, and no fields",
+  );
+});
+
 it("a refused watch is said broken with the refusal", () => {
   const { socket, stood } = followed();
   socket().tell({ id: 2, error: { code: "refused", message: "no kind called cell" } });

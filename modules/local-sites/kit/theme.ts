@@ -30,15 +30,15 @@ function keep(choice: Choice): void {
 /** Shows the page in `choice`. */
 function wear(choice: Choice): void {
   if (choice === "system") {
-    delete document.documentElement.dataset.theme;
+    document.documentElement.removeAttribute("data-theme");
   } else {
-    document.documentElement.dataset.theme = choice;
+    document.documentElement.dataset["theme"] = choice;
   }
 }
 
 /** Wires the switch's radios in `document`, its kept choice checked. */
 function themeSwitch(): void {
-  const kept = document.documentElement.dataset.theme;
+  const kept = document.documentElement.dataset["theme"];
   const now: Choice = isChoice(kept) ? kept : "system";
   for (const radio of document.querySelectorAll<HTMLInputElement>(".switch input[type=radio]")) {
     radio.checked = radio.value === now;

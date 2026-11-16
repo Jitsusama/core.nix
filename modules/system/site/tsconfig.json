@@ -1,4 +1,9 @@
 {
   "extends": "../../local-sites/kit/tsconfig.json",
+  "compilerOptions": {
+    // The page is being redrawn, so it reads a record's fields as it did
+    // until the redesign lands and turns this on with it.
+    "noPropertyAccessFromIndexSignature": false
+  },
   "include": ["*.ts"]
 }

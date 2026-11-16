@@ -53,7 +53,7 @@ function sayHow(): void {
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
   asof.textContent = `${now === undefined ? "Reaching the node." : said(now)}${trouble}`;
-  asof.dataset.state = now?.state ?? "connecting";
+  asof.dataset["state"] = now?.state ?? "connecting";
   // The drawing's own look for a map that isn't now.
   asof.classList.toggle("stale", now?.state === "stale" || now?.state === "broken");
 }

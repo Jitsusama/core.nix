@@ -7,6 +7,9 @@
     "types": [],
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    // A field a record may lack is read as record["field"] and a declared one
+    // as record.field, so a reading of what a daemon sent says it's a lookup.
+    "noPropertyAccessFromIndexSignature": true,
     "exactOptionalPropertyTypes": true,
     "noImplicitOverride": true,
     "noImplicitReturns": true,
