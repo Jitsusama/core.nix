@@ -309,6 +309,10 @@ pub struct Tools {
     pub curl: PathBuf,
     /// macOS's pmset, which says how a Mac is powered; none on Linux.
     pub pmset: Option<PathBuf>,
+    /// What reads a unit's journal, for the last lines of one a switch
+    /// failed on; none on a Mac.
+    #[serde(default)]
+    pub journalctl: Option<PathBuf>,
 }
 
 /// How a command is run in an account's login session (src/session.rs).
