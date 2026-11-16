@@ -407,6 +407,8 @@ off.
 | warm | of an offload builder for VM tests, holding what they need, having built it as it stood; a fresh one is cold | primed | `there::warm`, `--warm` |
 | offload builder | a builder elsewhere lent to the machine while its queue has builds one could take, and given back once idle | remote builder | `nix-offload` |
 | gate | a commit's changed checks run on a machine that keeps the pass a merge reads; a Mac, with no way to the builders, asks another machine for one through mycelium | gate run | `nix-offload ask`, `nix-offload answer` |
+
+| elsewhere | another machine of the realm with room that an agent's heavy job of a kind opted in runs on while this one is crowded, given a copy of the job's folder and sending its output back | | the `elsewhere` program, `jitsusama.elsewhere` |
 | slice | a share of the machine's processor, memory and disk that a group of programs runs in | | a systemd `.slice` |
 | agents' slice | the slice agents' sessions run in, beside Joel's programs rather than among them | | `agents.slice` |
 | power profile | how hard the processor and firmware run: performance, balanced or power saver | thermal mode, platform profile | power-profiles-daemon |

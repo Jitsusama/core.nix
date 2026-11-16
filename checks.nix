@@ -650,6 +650,7 @@ gather {
     ./modules/disk-loss-panic/checks.nix
     ./modules/disko/checks.nix
     ./modules/eero/checks.nix
+    ./modules/elsewhere/checks.nix
     ./modules/ergodox/checks.nix
     ./modules/file-link-keys/checks.nix
     ./modules/firmware-notice/checks.nix

@@ -193,6 +193,7 @@
         direnv = ./modules/direnv/home.nix;
         disk-guard = ./modules/disk-guard/home.nix;
         eero = ./modules/eero/home.nix;
+        elsewhere = ./modules/elsewhere/home.nix;
         ergodox = moduleFrom ./modules/ergodox/home.nix { inherit qmk lufa printf; };
         fd = ./modules/fd/home.nix;
         file-link-keys = ./modules/file-link-keys/home.nix;

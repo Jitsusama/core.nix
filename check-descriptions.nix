@@ -806,6 +806,20 @@
     colouring only on a terminal, each view's JSON is the record's own slice, and a watch draws
     its view again from each model the socket tells it
   '';
+  elsewhere-passes-clippy = ''
+    clippy finds nothing in elsewhere or its tests
+  '';
+  elsewhere-reads-what-a-machine-declares = ''
+    the machines and kinds of job a machine repository declares reach elsewhere's settings in the
+    words it reads, and an account declaring none has it on its path and sends nothing
+  '';
+  elsewhere-sends-only-from-a-crowded-machine = ''
+    elsewhere runs a job in a far copy of its folder only while this machine is over on its
+    processor or memory and the far one isn't, after its kind's setup, bringing back what the
+    kind names and ending with the far job's own code; a machine with room keeps the job, an
+    unreached machine ends 69, and a program its kind doesn't allow is refused before anything
+    runs
+  '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
   '';
