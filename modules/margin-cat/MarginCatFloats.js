@@ -279,16 +279,16 @@ function aStep(way, to, at) {
 }
 
 // Whether a leap or hop from `way` to `to` would have no arc to show: a
-// step (aStep()), or no room on the screen over its higher end for the
-// apex, max(STEPS cells, a third of the height crossed), where the leap
-// is held at the screen's edge. It steps up or down within its walk
-// then, paws moving, where a leap glided at the screen's edge in a
-// leap's pose for 350 ms (VKCF3Z 299fb911, the GPU rig at 120 Hz,
-// 2026-11-16). Only up to its own height: a taller one keeps its leap,
-// flattened at the edge, rather than walk up a wall.
+// step (aStep()), or one whose apex, RISES cells over its higher end,
+// would be off the screen, where Ways.leap holds it flat at the edge.
+// It steps up or down within its walk then, paws moving, where a leap
+// glided at the screen's edge in a leap's pose for 350 ms (VKCF3Z
+// 299fb911, the GPU rig at 120 Hz, 2026-11-16). Only up to its own
+// height: a taller one keeps its leap, flattened at the edge, rather
+// than walk up a wall.
 function steps(way, to, at) {
     const crossed = Math.abs(to.y - way.y);
-    const apex = Math.min(way.y, to.y) - Math.max(STEPS * at.cell, crossed / 3);
+    const apex = Math.min(way.y, to.y) - RISES * at.cell;
     return aStep(way, to, at) || (crossed <= at.tall + 1e-6 && apex < -1e-6);
 }
 
