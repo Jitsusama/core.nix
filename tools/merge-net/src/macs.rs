@@ -185,7 +185,11 @@ mod tests {
             Some("bbbb"),
             "a Mac's comparison check didn't give back the base it was named for"
         );
-        assert_eq!(base_of("vm-boots"), None, "a VM test was read as a comparison");
+        assert_eq!(
+            base_of("vm-boots"),
+            None,
+            "a VM test was read as a comparison"
+        );
     }
 
     #[test]

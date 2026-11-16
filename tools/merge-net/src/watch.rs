@@ -1245,7 +1245,7 @@ fn hand_skipped_macs(
     head: &str,
 ) -> Result<(), String> {
     for merge in world.merges(base, head)? {
-        if world.mac_skipped(&merge) && merge.is_empty() {
+        if world.mac_skipped(&merge) {
             let check = crate::macs::check(&world.parent(&merge)?);
             settler.hand(Job::Mac { merge, check });
         }
@@ -2873,7 +2873,8 @@ mod tests {
         round(&world, &state, "s").unwrap();
         let kept: Vec<Value> = state.settling();
         assert!(
-            kept.iter().any(|job| job["kind"] == "mac" && job["merge"] == "m1"),
+            kept.iter()
+                .any(|job| job["kind"] == "mac" && job["merge"] == "m1"),
             "a Mac's comparison no Mac took wasn't kept to try again: {kept:?}"
         );
         assert!(
