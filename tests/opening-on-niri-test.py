@@ -1434,6 +1434,38 @@ def test_super_n_draws_the_notices_on_screen_from_what_was_kept(shell: Shell) ->
     shell.notices_gone()
 
 
+def test_the_first_super_n_after_a_restart_draws_the_notices_from_what_was_kept(
+    shell: Shell,
+) -> None:
+    """The first Super+N since the shell started draws the notices on screen as later ones do.
+
+    Only a place Super+N had opened before was kept, so each shell's first opened whole: all 6
+    of Joel's took 44 to 119 ms to the frame, and all 7 later ones 13 to 42, most often just
+    as a notice had chimed after a switch (2026-11-15 18:13 to 2026-11-16 13:13).
+    """
+    shell.restart()
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    with shell.told("shows card Dunlin"):
+        shell.as_account("notify-send --expire-time=60000 'Dunlin' 'after a start'")
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    timed = latest(openings(shell))
+    shell.take_notices()
+    opening = presented_after(shell, timed + 1)
+    assert opening.get("into") == "onScreen", f"the opening wasn't into those on screen: {opening}"
+    assert opening.get("kept"), f"the first Super+N since the start was made whole: {opening}"
+    shell.launcher_ready()
+    shell.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["Dunlin"]
+            and (shown["selected"] or {}).get("name") == "Dunlin"
+            and shown["mode"] == "normal"
+        )
+    )
+    shell.close_launcher()
+    shell.as_account("qs ipc call notices putAway")
+    shell.notices_gone()
+
+
 def test_a_kept_opening_wakes_its_sources_a_frame_apart(shell: Shell) -> None:
     """A kept opening's sources wake a few a frame once it's filled in, home's first row's first.
 
