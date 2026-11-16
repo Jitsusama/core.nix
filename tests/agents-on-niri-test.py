@@ -3164,10 +3164,15 @@ def here() -> str:
 
 
 def touched(address: str) -> None:
-    """Lay a session's presence again as it stands, a moment on, so the node judges it anew."""
+    """Lay a session's presence again, its state said to have begun now, so the node reads anew.
+
+    The node reads its carries again only as a session it holds changes, and a presence's
+    `at` alone is none of a session's, so its `since` moves.
+    """
     path = PRESENCE / f"{address.lower()}.json"
     record = json.loads(path.read_text())
     record["at"] = datetime.now(UTC).isoformat()
+    record["since"] = record["at"]
     laid = path.with_suffix(".tmp")
     laid.write_text(json.dumps(record))
     laid.rename(path)
@@ -3248,10 +3253,12 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     ), arrived
     assert arrived["told"][:1] == ["\u21b5 carry back"], arrived
     since = shell.mark()
-    took = presented_after(shell, "ret")
-    logging.getLogger(__name__).info("LAB Carry Back was presented %s ms on", took)
+    began = time.monotonic()
+    shell.send_key("ret")
     # Tern is no machine this one links to, so the node refuses it, and says why.
     shell.reported("not become carry:s-listen:", lambda why: why.split(": ", 1)[-1] != "", since)
+    took = round((time.monotonic() - began) * 1000)
+    logging.getLogger(__name__).info("LAB Carry Back's refusal was said %s ms on", took)
     shoot("agents-carried-refused")
 
 
