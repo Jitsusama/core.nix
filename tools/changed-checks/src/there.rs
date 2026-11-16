@@ -119,11 +119,11 @@ mod tests {
     fn a_builder_is_lent_while_the_store_names_an_ssh_store() {
         let folder = crate::scratch::Scratch::new("there-lent");
         fs::create_dir_all(&folder).expect("a folder");
-        assert!(!lent(&folder));
+        assert!(!lent(&folder), "a builder was lent with no store named");
         fs::write(folder.join("store"), "").expect("written");
-        assert!(!lent(&folder));
+        assert!(!lent(&folder), "a builder was lent with an empty store");
         fs::write(folder.join("store"), "ssh-ng://far?ssh-key=/k\n").expect("written");
-        assert!(lent(&folder));
+        assert!(lent(&folder), "an ssh store didn't lend the builder");
     }
 
     #[test]
@@ -160,6 +160,9 @@ mod tests {
         ]
         .join("\n");
         assert_eq!(last_of(&journal, "github:o/r/a").expect("found")["sent"], 3);
-        assert!(last_of(&journal, "github:o/r/c").is_none());
+        assert!(
+            last_of(&journal, "github:o/r/c").is_none(),
+            "a flake never built was found in the journal"
+        );
     }
 }

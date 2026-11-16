@@ -19,7 +19,11 @@ fn asked_only_to_name_them_it_names_each_check_the_change_moved_and_builds_nothi
         text(&ran.stdout),
         "added    new\nchanged  a\nchanged  vm-x\nremoved  gone\n"
     );
-    assert!(text(&ran.stderr).contains("checks at 0123456789ab with the working tree"));
+    assert!(
+        text(&ran.stderr).contains("checks at 0123456789ab with the working tree"),
+        "the run didn't say it checks the base with the working tree: {}",
+        text(&ran.stderr)
+    );
     assert_eq!(stand_in.built(), "");
 }
 
@@ -239,7 +243,11 @@ fn a_pushed_commit_is_built_on_the_lent_builder_and_anything_else_here() {
         let ran = asked();
         assert!(ran.status.success(), "{}", text(&ran.stderr));
         assert_eq!(stand_in.built(), here, "{why}");
-        assert!(text(&ran.stderr).contains(&format!("building here, since {why}")));
+        assert!(
+            text(&ran.stderr).contains(&format!("building here, since {why}")),
+            "the run didn't say it built here since {why}: {}",
+            text(&ran.stderr)
+        );
         fs::write(stand_in.path(step), "").expect("written");
     }
 
@@ -264,7 +272,11 @@ fn a_pushed_commit_is_built_on_the_lent_builder_and_anything_else_here() {
     let ran = asked();
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(stand_in.built(), here, "taken by no builder");
-    assert!(text(&ran.stderr).contains("since no builder took the build there"));
+    assert!(
+        text(&ran.stderr).contains("since no builder took the build there"),
+        "the run didn't say no builder took the build: {}",
+        text(&ran.stderr)
+    );
     fs::remove_file(stand_in.path("unsent")).expect("cleared");
     fs::remove_file(stand_in.path("built")).expect("cleared");
 
@@ -273,7 +285,11 @@ fn a_pushed_commit_is_built_on_the_lent_builder_and_anything_else_here() {
     let ran = asked();
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(stand_in.built(), here, "refused there");
-    assert!(text(&ran.stderr).contains("since nix-offload couldn't take the build there"));
+    assert!(
+        text(&ran.stderr).contains("since nix-offload couldn't take the build there"),
+        "the run didn't say nix-offload refused the build: {}",
+        text(&ran.stderr)
+    );
 }
 
 #[test]

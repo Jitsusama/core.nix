@@ -331,9 +331,12 @@ mod tests {
 
     #[test]
     fn a_list_that_isnt_one_is_refused() {
-        assert!(parse("{}").is_err());
-        assert!(parse(r#"[{"reason": "r"}]"#).is_err());
-        assert!(parse("not json").is_err());
+        assert!(parse("{}").is_err(), "an object was read as the list");
+        assert!(
+            parse(r#"[{"reason": "r"}]"#).is_err(),
+            "an entry naming no test was read"
+        );
+        assert!(parse("not json").is_err(), "text that isn't JSON was read");
     }
 
     #[test]
@@ -343,8 +346,14 @@ mod tests {
             find(&list, "vm-a").map(|held| held.listings[0].owner),
             Some(Some(12))
         );
-        assert!(find(&list, "vm-a.gallery").is_some());
-        assert!(find(&list, "vm-ab").is_none());
-        assert!(find(&list, "vm-c").is_none());
+        assert!(
+            find(&list, "vm-a.gallery").is_some(),
+            "a part of a held test wasn't held"
+        );
+        assert!(
+            find(&list, "vm-ab").is_none(),
+            "a test whose name only begins with a held one's was held"
+        );
+        assert!(find(&list, "vm-c").is_none(), "a test not listed was held");
     }
 }

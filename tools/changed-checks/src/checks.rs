@@ -697,8 +697,16 @@ mod tests {
             found,
             Ok(derivations(&[("a", Some("a.drv")), ("broken", None)]))
         );
-        assert!(path.exists());
-        assert!(!path.with_extension("writing").exists());
+        assert!(
+            path.exists(),
+            "what it found wasn't kept at {}",
+            path.display()
+        );
+        assert!(
+            !path.with_extension("writing").exists(),
+            "the half-written copy beside {} was left behind",
+            path.display()
+        );
     }
 
     #[test]
@@ -738,7 +746,8 @@ mod tests {
         assert!(
             found
                 .iter()
-                .all(|found| *found == Ok(derivations(&[("a", Some("a.drv"))])))
+                .all(|found| *found == Ok(derivations(&[("a", Some("a.drv"))]))),
+            "a run didn't get the one evaluation's checks: {found:?}"
         );
     }
 
@@ -747,7 +756,11 @@ mod tests {
         let scratch = Scratch::new("failed");
         let path = scratch.join("abc-x86_64-linux.json");
         assert_eq!(kept(&path, || Err("no".to_owned())), Err("no".to_owned()));
-        assert!(!path.exists());
+        assert!(
+            !path.exists(),
+            "a failed evaluation was kept at {}",
+            path.display()
+        );
     }
 
     #[test]

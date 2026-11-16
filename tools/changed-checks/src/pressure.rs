@@ -86,16 +86,28 @@ mod tests {
 
     #[test]
     fn a_stall_past_the_queues_limit_is_one() {
-        assert!(stalled(PRESSED));
-        assert!(!stalled(CALM));
-        assert!(stalled("some avg10=10.00 avg60=0 avg300=0 total=1\n"));
+        assert!(
+            stalled(PRESSED),
+            "a stalled workstation wasn't read as a stall"
+        );
+        assert!(!stalled(CALM), "a calm machine was read as a stall");
+        assert!(
+            stalled("some avg10=10.00 avg60=0 avg300=0 total=1\n"),
+            "a stall at the limit wasn't read as one"
+        );
     }
 
     #[test]
     fn what_cant_be_read_is_no_stall() {
-        assert!(!stalled(""));
-        assert!(!stalled("full avg10=99.00 avg60=0 avg300=0 total=1\n"));
-        assert!(!stalled("some avg10=lots\n"));
+        assert!(!stalled(""), "nothing read was a stall");
+        assert!(
+            !stalled("full avg10=99.00 avg60=0 avg300=0 total=1\n"),
+            "a full line without a some line was a stall"
+        );
+        assert!(
+            !stalled("some avg10=lots\n"),
+            "an unreadable figure was a stall"
+        );
     }
 
     #[test]
@@ -118,6 +130,9 @@ mod tests {
         let read = readings(&proc, &cgroups);
 
         assert_eq!(read, [CALM, PRESSED]);
-        assert!(read.iter().any(|text| stalled(text)));
+        assert!(
+            read.iter().any(|text| stalled(text)),
+            "the work group's stall wasn't seen: {read:?}"
+        );
     }
 }

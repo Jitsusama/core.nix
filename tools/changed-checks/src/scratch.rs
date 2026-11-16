@@ -51,7 +51,11 @@ mod tests {
         std::fs::create_dir_all(scratch.join("deep/er")).expect("made");
         let made = scratch.to_path_buf();
         drop(scratch);
-        assert!(!made.exists());
+        assert!(
+            !made.exists(),
+            "{} was left when its test ended",
+            made.display()
+        );
     }
 
     #[test]
@@ -62,7 +66,11 @@ mod tests {
             std::fs::create_dir_all(scratch.join("deep")).expect("made");
             panic!("the test failed");
         });
-        assert!(failed.is_err());
-        assert!(!made.exists());
+        assert!(failed.is_err(), "the failing test didn't fail");
+        assert!(
+            !made.exists(),
+            "{} was left when its test failed",
+            made.display()
+        );
     }
 }
