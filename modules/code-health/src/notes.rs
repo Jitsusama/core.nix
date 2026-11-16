@@ -11,21 +11,14 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::measure::{File, extension, is_note};
+use crate::measure::{File, RUN_BY_NAME, extension, is_note};
 
 /// How a comment opens, in the languages a folder's entry is written in.
 const COMMENTS: &[&str] = &["#", "//", "/*", "\"\"\"", "--", "<!--"];
 
-/// The files a folder is entered from, whose opening comment can be its
-/// note.
+/// The files a folder is entered from besides those a tool runs by name,
+/// whose opening comment can be its note.
 const ENTRIES: &[&str] = &[
-    "main.rs",
-    "lib.rs",
-    "mod.rs",
-    "build.rs",
-    "flake.nix",
-    "default.nix",
-    "shell.nix",
     "home.nix",
     "nixos.nix",
     "darwin.nix",
@@ -33,9 +26,6 @@ const ENTRIES: &[&str] = &[
     "checks.nix",
     "Cargo.toml",
     "pyproject.toml",
-    "index.ts",
-    "index.js",
-    "__init__.py",
 ];
 
 /// Every folder of `paths` saying nothing of what it holds, the whole
@@ -77,7 +67,10 @@ pub fn without_notes(paths: &[String], files: &[File]) -> Vec<String> {
             let noted = names.iter().any(|name| is_note(name));
             let entered = names.iter().any(|name| {
                 let stem = name.rsplit_once('.').map_or(*name, |(stem, _)| stem);
-                let entry = ENTRIES.contains(name) || stem == last || names.len() == 1;
+                let entry = RUN_BY_NAME.contains(name)
+                    || ENTRIES.contains(name)
+                    || stem == last
+                    || names.len() == 1;
                 entry && opens(&inside(name))
             });
             let beside = if parent.is_empty() {

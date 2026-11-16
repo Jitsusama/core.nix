@@ -11,22 +11,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::measure::{File, extension, is_code};
-
-/// The files a tool runs by their name alone, so nothing need name them.
-const ENTRIES: &[&str] = &[
-    "main.rs",
-    "lib.rs",
-    "mod.rs",
-    "build.rs",
-    "flake.nix",
-    "default.nix",
-    "shell.nix",
-    "index.ts",
-    "index.js",
-    "__init__.py",
-    "conftest.py",
-];
+use crate::measure::{File, RUN_BY_NAME, extension, is_code};
 
 /// Every code file in `paths` that no file of `files` reaches.
 pub fn unreached(paths: &[String], files: &[File]) -> Vec<String> {
@@ -61,7 +46,7 @@ fn run_as_it_is(path: &str, crates: &HashSet<&str>) -> bool {
     let (above, last) = split(folder);
     let in_crate = matches!(last, "tests" | "benches" | "examples") && crates.contains(above)
         || (last == "bin" && split(above).1 == "src");
-    ENTRIES.contains(&name) || test || in_crate
+    RUN_BY_NAME.contains(&name) || name == "conftest.py" || test || in_crate
 }
 
 /// A path's folder and its last part, the folder of a top file being `""`.
