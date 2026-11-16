@@ -244,6 +244,7 @@
         chrome-session = pkgs.callPackage ../../modules/chrome/session/package.nix { };
         claude-plan-feed = pkgs.callPackage ../../modules/spend-watch/feeds/claude/package.nix { };
         claude-statusline = pkgs.callPackage ../../modules/claude/statusline/package.nix { };
+        clipboard-history = pkgs.callPackage ../../modules/quickshell/clipboard/package.nix { };
         clock-follows = pkgs.callPackage ../../modules/quickshell/clock-follows/package.nix { };
         code-health = pkgs.callPackage ../../modules/code-health/package.nix { };
         collector = pkgs.callPackage ../../modules/collector/package.nix { };
@@ -274,6 +275,7 @@
         lid-docked = pkgs.callPackage ../../modules/lid/docked/package.nix { };
         load-proof = pkgs.callPackage ../../modules/load-proof/package.nix { };
         local-sites = pkgs.callPackage ../../modules/local-sites/package.nix { };
+        location = pkgs.callPackage ../../modules/quickshell/whereabouts/package.nix { };
         loopback-holders = pkgs.callPackage ../../modules/v4l2loopback/holders/package.nix { };
         machine = pkgs.callPackage ../../modules/machine/package.nix { };
         meaning = dictation;

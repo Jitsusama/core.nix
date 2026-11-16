@@ -20,6 +20,9 @@ pub struct Walked<'a> {
     /// The words, each alias put as the name it stands for, so the body
     /// reads one spelling of each.
     pub words: Vec<String>,
+    /// Whether each level above the deepest took names before the next,
+    /// which an old word typed before them, as `location set`, didn't.
+    named: Vec<bool>,
 }
 
 impl Walked<'_> {
@@ -40,14 +43,15 @@ impl Walked<'_> {
 
     /// The path as a help's title says it: each level above the deepest
     /// with the arguments it takes before the next, since a subcommand
-    /// under a name needs one. The deepest's own are its help's to list.
+    /// under a name needs one, unless the next was reached before them.
+    /// The deepest's own are its help's to list.
     fn titled(&self) -> String {
-        let above = self.chain.len().saturating_sub(1);
         self.chain
             .iter()
             .enumerate()
             .flat_map(|(at, help)| {
-                let needs = if at < above { &help.arguments[..] } else { &[] };
+                let named = self.named.get(at).copied().unwrap_or(false);
+                let needs = if named { &help.arguments[..] } else { &[] };
                 std::iter::once(help.name.as_str())
                     .chain(needs.iter().map(|argument| argument.name.as_str()))
             })
@@ -111,6 +115,7 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
     let mut walked = Walked {
         chain: vec![root],
         words: args.to_vec(),
+        named: Vec::new(),
     };
     let mut filled = 0;
     let mut value_next = false;
@@ -146,6 +151,7 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
         if let Some(sub) = old.or_else(|| here.subs.iter().find(answers)) {
             walked.words[at].clone_from(&sub.name);
             typed.push(sub.name.clone());
+            walked.named.push(filled > 0 || old.is_none());
             walked.chain.push(sub);
             filled = 0;
             continue;
@@ -380,6 +386,34 @@ mod tests {
             path("findings burn:s1"),
             "spend findings",
             "a name alone is still a name"
+        );
+    }
+
+    /// A daemon started with its names first, as `location SOCKET ROOT`,
+    /// keeps its commands as unlisted subcommands, so `location set`
+    /// reaches set's help, titled as typed, with no name before it.
+    #[test]
+    fn an_old_word_before_a_name_is_titled_without_the_name() {
+        let help = Help::new("location", "where the laptop is")
+            .argument("SOCKET", "where it answers")
+            .argument("ROOT", "whose zone it says")
+            .subcommand(
+                Help::new("set", "pins here")
+                    .argument("PIN", "the pin's file")
+                    .argument("WORDS...", "the town")
+                    .unlisted(),
+            );
+        let walked = walk(&help, &words("set pin.json Halifax")).expect("set");
+        assert_eq!(
+            walked.shown().name,
+            "location set",
+            "set's title asked for the names it was typed before"
+        );
+        let walked = walk(&help, &words("location.sock /")).expect("the daemon");
+        assert_eq!(
+            walked.path(),
+            "location",
+            "the daemon's names read as a command"
         );
     }
 
