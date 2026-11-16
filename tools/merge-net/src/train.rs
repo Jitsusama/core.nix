@@ -492,10 +492,23 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        if !gate(&checkout, &log) {
-            way(&root, &Ended::Otherwise);
-            red(&root, &candidate, &log, &done.merged, &mut splitting);
-            continue;
+        match gate(&checkout, &log) {
+            Gated::Passed => {}
+            Gated::Red => {
+                way(&root, &Ended::Otherwise);
+                red(&root, &candidate, &log, &done.merged, &mut splitting);
+                continue;
+            }
+            Gated::Unsent => {
+                // The riders stay aboard: the next ready of any of them
+                // starts the train again, once a builder may take it.
+                println!(
+                    "merge-net: no builder took the candidate at {}, so its riders wait \
+                     aboard for the next ready",
+                    short(&candidate)
+                );
+                return Ok(ExitCode::SUCCESS);
+            }
         }
         match land(&checkout, &git, &candidate, &mergings, &done.merged) {
             Landing::Landed(landed) => {
@@ -634,31 +647,33 @@ enum Gated {
     Unsent,
 }
 
-/// How a gate that exited `code` ended.
+/// How a gate that exited `code` ended. Exits 75 and 69 are nix-offload's
+/// for a run no builder or evaluator took: on 16 November, while the
+/// machine's uploads were held, one made a rider fall that broke nothing.
 fn gated(code: Option<i32>) -> Gated {
-    if code == Some(0) {
-        Gated::Passed
-    } else {
-        Gated::Red
+    match code {
+        Some(0) => Gated::Passed,
+        Some(crate::watch::UNSENT | 69) => Gated::Unsent,
+        _ => Gated::Red,
     }
 }
 
-/// Run the gate in `checkout`, its words going to `log`: whether it passed.
-fn gate(checkout: &Path, log: &Path) -> bool {
+/// Run the gate in `checkout`, its words going to `log`: how it ended.
+fn gate(checkout: &Path, log: &Path) -> Gated {
     let Ok(words) = fs::File::create(log) else {
-        return false;
+        return Gated::Red;
     };
     let Ok(errors) = words.try_clone() else {
-        return false;
+        return Gated::Red;
     };
-    Command::new("nix-offload")
+    let ran = Command::new("nix-offload")
         .args(["there", "--lent-only", "--changed"])
         .current_dir(checkout)
         .env_remove("SSH_AUTH_SOCK")
         .stdout(words)
         .stderr(errors)
-        .status()
-        .is_ok_and(|status| status.success())
+        .status();
+    ran.map_or(Gated::Red, |status| gated(status.code()))
 }
 
 /// How a passed candidate's push to main went.
