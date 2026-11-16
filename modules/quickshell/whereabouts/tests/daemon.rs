@@ -1,6 +1,7 @@
 //! The daemon over its socket, with a root and files of its own and no
 //! GeoClue to ask: hello says it's location's; a watch is answered with
-//! where it kept the laptop and the clock's zone the root's link names;
+//! where it kept the laptop and the clock's zone the root's link names,
+//! and health says the names a kept here was given answer;
 //! the link changed, clock-follows' move written, and a pin set and then
 //! taken away are each said to the watch as they happen; Location's rows,
 //! worded from the launcher's words, are told only to a watch of their
@@ -11,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use daemon_client::{Client, Daemon};
+use daemon_client::{Client, Daemon, until};
 use serde_json::{Value, json};
 
 /// Where the laptop was kept before the daemon started, found by Wi-Fi.
@@ -127,6 +128,17 @@ fn hello_says_it_is_locations_and_what_it_asks() {
         json!({"state": "answering", "reason": ""}),
         "health says the clock's state and its reason: {health}"
     );
+}
+
+#[test]
+fn a_here_kept_named_says_its_names_answer() {
+    // A here named before a restart is asked no name again until the
+    // laptop moves, so health would otherwise say "starting" for good.
+    let running = Running::new("named");
+    until("health never said the kept names answer", || {
+        let health = running.client().ask(&json!({"id": "h", "ask": "health"}));
+        health["sources"]["names"] == json!({"state": "answering", "reason": ""})
+    });
 }
 
 #[test]
