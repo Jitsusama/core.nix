@@ -293,6 +293,18 @@ fn own(
     })
 }
 
+/// Follows the node: every kind of record it holds that Agents reads.
+fn follow_node(node: &Path, to: &mpsc::Sender<Heard>) {
+    sources::follow(node.to_owned(), "session", Heard::Sessions, to.clone());
+    sources::follow(node.to_owned(), "job", Heard::Jobs, to.clone());
+    sources::follow(node.to_owned(), "quest", Heard::Quests, to.clone());
+    sources::follow(node.to_owned(), "talk", Heard::Talks, to.clone());
+    sources::follow(node.to_owned(), "team", Heard::Teams, to.clone());
+    sources::follow(node.to_owned(), "network", Heard::Networks, to.clone());
+    sources::follow(node.to_owned(), "carry", Heard::Carries, to.clone());
+    sources::follow(node.to_owned(), "landing", Heard::Landings, to.clone());
+}
+
 /// Follows the windows daemon: its windows, its workspaces, and Screens'
 /// rows alone, for what each screen is, since a place names its screen
 /// by that rather than by a connector a dock can change.
@@ -425,14 +437,7 @@ fn serve(args: Args) -> Result<(), Failure> {
         }
     }
     if let Some(node) = args.node {
-        sources::follow(node.clone(), "session", Heard::Sessions, to.clone());
-        sources::follow(node.clone(), "job", Heard::Jobs, to.clone());
-        sources::follow(node.clone(), "quest", Heard::Quests, to.clone());
-        sources::follow(node.clone(), "talk", Heard::Talks, to.clone());
-        sources::follow(node.clone(), "team", Heard::Teams, to.clone());
-        sources::follow(node.clone(), "network", Heard::Networks, to.clone());
-        sources::follow(node.clone(), "carry", Heard::Carries, to.clone());
-        sources::follow(node, "landing", Heard::Landings, to.clone());
+        follow_node(&node, &to);
     }
     sources::follow(args.to_do, "to-do", Heard::ToDos, to.clone());
     follow_windows(&args.windows, &to);
