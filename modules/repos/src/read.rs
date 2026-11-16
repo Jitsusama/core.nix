@@ -85,6 +85,7 @@ pub fn read(reading: &Reading) -> Record {
                 trunk,
                 written_at,
                 checkouts,
+                changes: Vec::new(),
             }
         })
         .collect();
@@ -102,6 +103,8 @@ pub fn read(reading: &Reading) -> Record {
         sources: vec![Source {
             name: "git".to_owned(),
             what: "each checkout's and tree's own git files".to_owned(),
+            read_at: None,
+            unread: Vec::new(),
         }],
         repositories,
     }

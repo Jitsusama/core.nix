@@ -20,6 +20,10 @@ happened. The GUI thread hears afterRendering and frameSwapped queued,
 once it's free, so a frame timed by them includes however long the GUI
 thread was busy after the sync.
 
+For a frame asked about, timesOf also says the refresh the compositor
+gave with its feedback. Presentation times lie on the refresh grid, so
+the time from a swap to the screen counts as whole compositor frames.
+
 ---
 diff --git a/src/wayland/CMakeLists.txt b/src/wayland/CMakeLists.txt
 index 7bd6c15..b8881e0 100644
@@ -68,7 +72,7 @@ new file mode 100644
 index 0000000..4b3f5c5
 --- /dev/null
 +++ b/src/wayland/presentation/qml.cpp
-@@ -0,0 +1,261 @@
+@@ -0,0 +1,272 @@
 +#include "qml.hpp"
 +#include <cstdint>
 +#include <ctime>
@@ -126,7 +130,7 @@ index 0000000..4b3f5c5
 +    uint32_t secondsHigh,
 +    uint32_t secondsLow,
 +    uint32_t nanoseconds,
-+    uint32_t /*refresh*/,
++    uint32_t refresh,
 +    uint32_t /*sequenceHigh*/,
 +    uint32_t /*sequenceLow*/,
 +    uint32_t /*flags*/
@@ -144,12 +148,12 @@ index 0000000..4b3f5c5
 +		at += milliseconds(ours) - milliseconds(theirs);
 +	}
 +
-+	this->finish(at);
++	this->finish(at, static_cast<double>(refresh) / 1e6);
 +}
 +
-+void Feedback::wp_presentation_feedback_discarded() { this->finish(-1); }
++void Feedback::wp_presentation_feedback_discarded() { this->finish(-1, 0); }
 +
-+void Feedback::finish(double at) {
++void Feedback::finish(double at, double refresh) {
 +	auto done = std::move(this->done);
 +	// Freed after this event's handler has returned, as it still runs in it.
 +	QMetaObject::invokeMethod(
@@ -157,7 +161,7 @@ index 0000000..4b3f5c5
 +	    [this]() { delete this; },
 +	    Qt::QueuedConnection
 +	);
-+	if (done) done(at);
++	if (done) done(at, refresh);
 +}
 +
 +} // namespace impl
@@ -271,7 +275,16 @@ index 0000000..4b3f5c5
 +	    {"rendering", times.rendering},
 +	    {"rendered", times.rendered},
 +	    {"swapped", times.swapped},
++	    {"refresh", times.refresh},
 +	};
++}
++
++// Kept as the compositor answers, before QML hears of it, so timesOf has it.
++void FramePresentation::answered(int frame, double refresh) {
++	auto at = static_cast<size_t>(frame) % this->drawn.size();
++	QMutexLocker lock(&this->drawnLock);
++	auto& times = this->drawn.at(at);
++	if (times.frame == frame) times.refresh = refresh;
 +}
 +
 +void FramePresentation::onBeforeSynchronizing() { this->drawing.synchronizing = monotonicNow(); }
@@ -322,11 +335,13 @@ index 0000000..4b3f5c5
 +	}
 +
 +	auto self = QPointer(this);
-+	new impl::Feedback(manager->feedback(surface), manager->clock(), [self, frame](double at) {
++	auto done = [self, frame](double at, double refresh) {
 +		if (!self) return;
++		self->answered(frame, refresh);
 +		if (at < 0) emit self->discarded(frame);
 +		else emit self->presented(frame, at);
-+	});
++	};
++	new impl::Feedback(manager->feedback(surface), manager->clock(), done);
 +}
 +
 +} // namespace qs::wayland::presentation
@@ -335,7 +350,7 @@ new file mode 100644
 index 0000000..1e911f1
 --- /dev/null
 +++ b/src/wayland/presentation/qml.hpp
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,168 @@
 +#pragma once
 +
 +#include <array>
@@ -384,8 +399,9 @@ index 0000000..1e911f1
 +class Feedback: public QtWayland::wp_presentation_feedback {
 +public:
 +	// Given the time it was shown on CLOCK_MONOTONIC in milliseconds, or -1
-+	// when it never was.
-+	using Done = std::function<void(double at)>;
++	// when it never was, and the compositor's refresh in milliseconds, or 0
++	// where it gave none.
++	using Done = std::function<void(double at, double refresh)>;
 +
 +	Feedback(struct ::wp_presentation_feedback* object, clockid_t clock, Done done);
 +	~Feedback() override;
@@ -404,7 +420,7 @@ index 0000000..1e911f1
 +	void wp_presentation_feedback_discarded() override;
 +
 +private:
-+	void finish(double at);
++	void finish(double at, double refresh);
 +
 +	clockid_t clock;
 +	Done done;
@@ -451,8 +467,10 @@ index 0000000..1e911f1
 +	/// sync, ended it, began rendering, ended it and was swapped, each read on
 +	/// the render thread as it happened, in monotonic milliseconds, so a
 +	/// frame's time is its own however late the GUI thread hears its swap.
-+	/// Empty before it's rendered and once it's older than the last sixteen;
-+	/// a time it had no such step for, or hasn't reached yet, is 0.
++	/// For a frame asked about, once the compositor has answered, `refresh`
++	/// is its refresh in milliseconds. Empty before it's rendered and once
++	/// it's older than the last sixteen; a time it had no such step for, or
++	/// hasn't reached yet, is 0.
 +	Q_INVOKABLE QVariantMap timesOf(int frame) const;
 +
 +	static FramePresentation* qmlAttachedProperties(QObject* object);
@@ -476,6 +494,8 @@ index 0000000..1e911f1
 +	void onAfterSynchronizing();
 +	void onAfterRendering();
 +	void onFrameSwapped();
++	// On the GUI thread, as the compositor answers a frame asked about.
++	void answered(int frame, double refresh);
 +
 +	struct Times {
 +		int frame = 0;
@@ -484,6 +504,7 @@ index 0000000..1e911f1
 +		double rendering = 0;
 +		double rendered = 0;
 +		double swapped = 0;
++		double refresh = 0;
 +	};
 +
 +	QPointer<ProxyWindowBase> proxyWindow;

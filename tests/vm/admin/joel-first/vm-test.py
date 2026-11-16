@@ -7,6 +7,11 @@ its slice, the sessions and the build using theirs over and over. A stand-in she
 frame every 16 ms in session.slice, and a few seconds in, a fetch in agents.slice and a grep and
 three smaller commands in jobs.slice burst for more, as they did. As then, every slice stays
 under its own ceiling, and together they pass memory by a fifth.
+
+Each run says, beside its frames, how long the session waited on memory and on a processor, and
+how much of the processors' time went to the kernel or to the builder's other work. On 15
+November three runs had frames up to 133 ms late while the session waited 0 ms on memory, and the
+burst kept the four processors 60% in the kernel, reclaiming and swapping for the other slices.
 """
 
 from __future__ import annotations
@@ -110,6 +115,27 @@ def stalls(machine: BaseMachine) -> int:
     return int(machine.succeed("awk '/^allocstall_/ { n += $2 } END { print n + 0 }' /proc/vmstat"))
 
 
+def waited(machine: BaseMachine) -> dict[str, int]:
+    """Give how long, in microseconds, the whole session has waited on memory and a processor."""
+    read = f"cat {ACCOUNT}/session.slice/memory.pressure {ACCOUNT}/session.slice/cpu.pressure"
+    totals = [int(line.split("total=")[1]) for line in machine.succeed(read).splitlines()]
+    return {"memory": totals[1], "processor": totals[3]}
+
+
+def processors(machine: BaseMachine) -> list[int]:
+    """Give the processors' time so far, in ticks, as /proc/stat's first line counts it."""
+    return [int(ticks) for ticks in machine.succeed("head -1 /proc/stat").split()[1:]]
+
+
+def spent(before: list[int], after: list[int]) -> str:
+    """Say what share of the processors' time between the two went to the kernel and the host."""
+    ticks = [later - earlier for earlier, later in zip(before, after, strict=True)]
+    # user, nice, system, idle, iowait, irq, softirq, steal
+    kernel = ticks[2] + ticks[5] + ticks[6]
+    every = sum(ticks)
+    return f"{100 * kernel // every}% kernel, {100 * ticks[7] // every}% taken by the host"
+
+
 @pytest.fixture(scope="module")
 def loaded(machine: BaseMachine, values: dict[str, Any]) -> Account:
     """Give alice's account holding what the laptop's slices held before the burst."""
@@ -133,6 +159,8 @@ def test_the_shell_draws_on_time_through_a_burst_of_work(loaded: Account) -> Non
     machine = loaded.machine
     result = f"{RUNTIME}/frames.json"
     before = stalls(machine)
+    waited_before = waited(machine)
+    ticks_before = processors(machine)
     loaded.run(
         "shell",
         "session.slice",
@@ -150,7 +178,14 @@ def test_the_shell_draws_on_time_through_a_burst_of_work(loaded: Account) -> Non
         slice_: loaded.used(slice_)
         for slice_ in ("session.slice", "app.slice", "agents.slice", "jobs.slice")
     }
-    said = f"{frames}, {stalls(machine) - before} reclaims by programs themselves, {held} MiB"
+    ticks = spent(ticks_before, processors(machine))
+    waited_after = waited(machine)
+    session = {kind: (waited_after[kind] - total) // 1000 for kind, total in waited_before.items()}
+    said = (
+        f"{frames}, the session waited {session['memory']} ms on memory and "
+        f"{session['processor']} ms on a processor, {ticks}, "
+        f"{stalls(machine) - before} reclaims by programs themselves, {held} MiB"
+    )
     print(f"the shell's frames: {said}")
     assert frames["frames"] >= DRAWING * 50, f"the shell drew too few frames: {said}"
     assert frames["worst"] <= LATEST, f"a frame came past {LATEST} ms: {said}"

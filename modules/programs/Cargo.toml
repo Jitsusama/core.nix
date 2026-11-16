@@ -26,8 +26,9 @@ ready-rows = { path = "../ready-rows" }
 # with no process started: the library alone, not its program.
 chrome-session = { path = "../chrome/session", default-features = false }
 # Every repository on the machine, read from git's own files as Code's
-# rows are made, the library alone: no process is started for a read.
-repos = { path = "../repos", optional = true }
+# rows are made, the library alone: no process is started for a read, and
+# GitHub is never asked, which the repos command does.
+repos = { path = "../repos", optional = true, default-features = false }
 
 [features]
 default = ["daemon"]
