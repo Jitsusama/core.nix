@@ -1305,7 +1305,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # The machine's niri, with its patches, rather than nixpkgs's, through
         # the wrapper its session starts it by.
         program = "${config.security.wrapperDir}/niri-compositor";
-        environment.WLR_RENDERER = "pixman";
+        environment = {
+          WLR_RENDERER = "pixman";
+        }
+        # Where the session keeps X11's cookie, which niri's unit has from
+        # the user manager on a machine and Cage doesn't, so the satellite
+        # lets in only a client holding it, as on a machine. Only where
+        # keeps-copies tries X11 for a secret, so no other area moves.
+        // lib.optionalAttrs (area == "keeps-copies") {
+          XAUTHORITY = "/run/user/1000/xwayland-auth";
+        };
       };
       # A switch starts tty1's getty, which Cage's unit conflicts with, so
       # it stops Cage and the session in it; greetd, which a machine runs,

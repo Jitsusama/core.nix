@@ -351,6 +351,12 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
 
 def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> None:
     """A fenced command reads no secret copy through X11, where Joel's own client does."""
+    # niri imports its X11 display as a session does, run as its child so
+    # it holds what niri set; the session's start here imports only the rest.
+    desktop.as_account("niri msg action spawn -- systemctl --user import-environment DISPLAY")
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("systemctl --user show-environment | grep -q '^DISPLAY='")
+    )
     # The script says each case it tried, and fails naming the one that
     # let the secret through (modules/pi/tests).
     said = desktop.as_account(f"{desktop.values['fence_keeps_x11']} 2>&1; echo ended $?")
