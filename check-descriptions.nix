@@ -1539,7 +1539,8 @@
   '';
   mycelium-links-what-a-machine-names = ''
     a workstation in a realm runs mycelium's node there, dialling each machine it names, over SSH
-    or through a provider's program, as a user service on Linux signing in with the agents' key,
+    or through a provider's program, and asking each provider's program it names what it could
+    make, as a user service on Linux signing in with the agents' key,
     or the key its realm names, and an agent on a Mac whose sessions sign commits with that key,
     finding the system's ssh before the account's programs; one naming none runs it dialling nothing, and one in no realm has neither a realm nor a node
   '';
