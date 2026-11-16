@@ -3,14 +3,19 @@
 # sandboxed display. Each sits in a runtime folder of its own, which the
 # fence binds read-only, so a fence holding the folder still reaches a socket
 # made anew, and no fenced command replaces one for another session's to
-# reach. Nothing here is reached until the harness binds it in.
+# reach. Nothing here is reached until the harness binds it in. And
+# pi-fence, which runs one command in that same fence for a caller outside
+# pi, such as the mycelium node starting an agent's run.
 { lib, pkgs, ... }:
 let
   clipboardDoor = pkgs.callPackage ./clipboard-door/package.nix { };
   fenceDisplay = pkgs.callPackage ./fence-display/package.nix { };
+  fenceRun = pkgs.callPackage ./fence-run/package.nix { };
 in
 {
   config = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+    home.packages = [ fenceRun ];
+
     # The clipboard the agent fence lets in, at %t/pi-clipboard/door.sock:
     # the door sets and reads both selections through the compositor's
     # data-control protocol, so a fenced command's copy or paste never

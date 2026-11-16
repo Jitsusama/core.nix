@@ -715,6 +715,7 @@ gather {
     ./modules/pi/agent-proxy/checks.nix
     ./modules/pi/clipboard-door/checks.nix
     ./modules/pi/fence-display/checks.nix
+    ./modules/pi/fence-run/checks.nix
     ./modules/pi/github-door/checks.nix
     ./modules/pi-keys/checks.nix
     ./modules/pi-packages/checks.nix
