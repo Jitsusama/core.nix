@@ -1112,6 +1112,11 @@
   hibernate-unlock-passes-clippy = ''
     clippy finds nothing in hibernate-unlock or its tests
   '';
+  home-builds-from-its-rows = ''
+    the local sites' home lists each site from its row in sites.json, the settled apart and every
+    name escaped, strips each page that asks after its skip link, and changes nothing on a second
+    run
+  '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi
     sessions started outside a terminal as it weighs windows

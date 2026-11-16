@@ -4,7 +4,14 @@
 # site, and each site is a folder under it, reached at
 # http://sites.localhost:8484/<site>/ (a browser sends any .localhost name
 # to the machine itself). The sites are what sessions write, so they're
-# state, never a Nix value; only the server is declared.
+# state, never a Nix value; only the server and the home's builder are
+# declared.
+#
+# The home is built from sites.json, a row per site, which sessions write:
+# home/home.py writes the list, its llms.txt and Markdown twin, and each
+# page's strip, and copies the home's own scripts and styles in beside
+# them. It runs whenever sites.json changes and at every switch, so a
+# changed builder reaches the home without anyone running it.
 #
 # Two sites are live. mycelium/ maps the realm as it stands, from a
 # now.json beside it that a timer rewrites every 20 seconds from what the
@@ -24,13 +31,32 @@
 let
   root = "%h/.local/share/jitsusama/sites";
   realm = config.jitsusama.mycelium.realm or null;
+  build = lib.escapeShellArgs [
+    (lib.getExe pkgs.python3)
+    "${./home/home.py}"
+    "${./home}"
+    "${config.xdg.dataHome}/jitsusama/sites"
+  ];
 in
 {
-  systemd.user.paths.network-site = {
-    Unit.Description = "Watches net's record for the network site";
-    Path.PathChanged = "%t/net/network.json";
-    Install.WantedBy = [ "paths.target" ];
+  systemd.user.paths = {
+    network-site = {
+      Unit.Description = "Watches net's record for the network site";
+      Path.PathChanged = "%t/net/network.json";
+      Install.WantedBy = [ "paths.target" ];
+    };
+    local-sites-home = {
+      Unit.Description = "Watches the sites' record for the home";
+      Path.PathChanged = "${root}/sites.json";
+      Install.WantedBy = [ "paths.target" ];
+    };
   };
+
+  # A switch builds the home too, since a changed builder or page changes
+  # no file the path unit watches. A run that changes nothing writes nothing.
+  home.activation.localSitesHome = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${build}
+  '';
 
   systemd.user.services = {
     # A copy put in place by a rename, so the page never reads half of one.
@@ -43,6 +69,15 @@ in
           "${lib.getExe' pkgs.coreutils "cp"} %t/net/network.json ${root}/network/network.json.new"
           "${lib.getExe' pkgs.coreutils "mv"} -f ${root}/network/network.json.new ${root}/network/network.json"
         ];
+        Slice = "background.slice";
+      };
+    };
+
+    local-sites-home = {
+      Unit.Description = "Builds the home of Joel's local sites from its record";
+      Service = {
+        Type = "oneshot";
+        ExecStart = build;
         Slice = "background.slice";
       };
     };

@@ -1,0 +1,165 @@
+/* The home of Joel's local sites, built by home.py from sites.json: one list, a site a row,
+   its name in the mono with its date at the right, its kind, then what it is and asks in the
+   serif; what's turned down or settled sits below under Kept for Reference. */
+
+body {
+  margin: 0;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--apart) var(--groups);
+  padding: var(--items) var(--inset);
+  border-bottom: 1px solid var(--rule);
+}
+
+.mark {
+  color: var(--accent);
+}
+
+.head h1 {
+  margin: 0;
+  font-size: var(--step-title);
+}
+
+.keys {
+  margin: 0 0 0 auto;
+  font: 400 0.85rem / 1.4 var(--mono);
+  color: var(--muted);
+}
+
+main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: var(--frames) var(--inset);
+}
+
+.lede {
+  font-style: italic;
+  line-height: 1.6;
+  margin: 0 0 var(--groups);
+}
+
+.sites {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sites a {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--tie) var(--items);
+  padding: var(--apart) var(--items);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--text);
+  min-height: 44px;
+}
+
+.sites a:focus-visible,
+.sites a[aria-current="true"] {
+  background: var(--selection);
+  outline: none;
+}
+
+.sites a:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.name {
+  font: 500 1rem / 1.4 var(--mono);
+  color: var(--strong);
+}
+
+.when {
+  font: 400 0.85rem / 1.6 var(--mono);
+  color: var(--muted);
+  grid-row: 1;
+  grid-column: 2;
+}
+
+.kind {
+  grid-column: 1 / -1;
+  font: 500 0.72rem / 1.4 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.what {
+  grid-column: 1 / -1;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.asks {
+  grid-column: 1 / -1;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.asks::before {
+  content: "Asks: ";
+  font: 500 0.85rem / 1.5 var(--mono);
+  color: var(--accent);
+}
+
+.shelf {
+  margin: var(--frames) 0 var(--apart);
+  padding: 0 var(--items);
+  font: 500 0.78rem / 1.4 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.keypanel {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--text);
+  padding: var(--inset);
+}
+
+.keypanel dl div {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: var(--items);
+  padding: var(--tie) 0;
+}
+
+.keypanel dd {
+  margin: 0;
+}
+
+/* The head's three-way switch, light, as the system is, or dark, as on every site of his. */
+.switch {
+  flex: none;
+  display: flex;
+  gap: var(--tie);
+}
+
+.switch button {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.switch button[aria-checked="true"] {
+  color: var(--strong);
+  border-color: var(--rule);
+}
+
+.switch svg {
+  width: 20px;
+  height: 20px;
+}

@@ -100,6 +100,10 @@ in
     "*.nft"
     "*.bt"
     "*.jq"
+    # The local sites' home page, a shell its builder writes the list into,
+    # which home-builds-from-its-rows reads and the web skill's probes walk
+    # in a browser, as every site's page is.
+    "modules/local-sites/home/index.html"
     # Word lists, one per line: a dictionary, glyphs, paths and check names.
     "*.txt"
     "*.add"
@@ -144,10 +148,12 @@ in
     excludes = [
       "modules/quickshell/Fuzzy.js"
       "modules/chrome/open-tabs/extension/*.js"
+      "modules/local-sites/home/*.js"
     ];
   };
 
-  # Chrome's open-tabs extension, read by biome as the browser runs it.
+  # Chrome's open-tabs extension and the local sites' home, read by biome as
+  # the browser runs them.
   settings.formatter.browser-javascript-lint = {
     command = pkgs.lib.getExe pkgs.biome;
     options = [
@@ -156,7 +162,10 @@ in
       "--max-diagnostics=none"
       "--config-path=biome.jsonc"
     ];
-    includes = [ "modules/chrome/open-tabs/extension/*.js" ];
+    includes = [
+      "modules/chrome/open-tabs/extension/*.js"
+      "modules/local-sites/home/*.js"
+    ];
   };
 
   # The web kit's CSS, read by biome as a browser reads it.

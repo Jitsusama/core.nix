@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en-CA" data-kind="interface">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your sites.</title>
+<meta name="description" content="The sites made for you on this laptop, in one place: mocks, tours and records, each saying what it is and what it asks of you.">
+<meta property="og:title" content="Your sites">
+<meta property="og:description" content="The sites made for you on this laptop, in one place: mocks, tours and records, each saying what it is and what it asks of you.">
+<meta property="og:type" content="website">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="@dark-ground@">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="@light-ground@">
+<script>
+  try {
+    const t = localStorage.getItem("theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
+<link rel="icon" href="launcher-shape/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="kit/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="kit/theme.css">
+<link rel="stylesheet" href="kit/base.css">
+<link rel="stylesheet" href="home.css">
+<link rel="alternate" type="text/markdown" href="index.md">
+</head>
+<body>
+
+<a class="skip" href="#sites">Skip to the sites</a>
+
+<header class="head">
+  <svg class="mark" width="28" height="28" viewBox="-1 -1 14 14" aria-hidden="true">
+    <path d="M2 0H10V3H2Z M0 5H3V8H9V5H12V12H0Z" fill="currentColor"/>
+  </svg>
+  <h1>Your sites</h1>
+  <p class="keys"><kbd>j</kbd> <kbd>k</kbd> move, <kbd>Return</kbd> opens, and <kbd>?</kbd> lists every key</p>
+  <div class="switch" role="radiogroup" aria-label="Theme">
+    <button type="button" role="radio" aria-checked="false" tabindex="-1" data-choice="light" aria-label="Light" title="Light">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <button type="button" role="radio" aria-checked="true" tabindex="0" data-choice="system" aria-label="Match System" title="Match System">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor"/></svg>
+    </button>
+    <button type="button" role="radio" aria-checked="false" tabindex="-1" data-choice="dark" aria-label="Dark" title="Dark">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="main">
+  <p class="lede">Everything made just for you lives here, on this laptop, newest first. Anything shared with other people goes on Quick instead.</p>
+  <ul class="sites" id="sites" aria-label="Sites">
+  </ul>
+</main>
+
+<dialog class="keypanel" id="keys" aria-labelledby="keys-h">
+  <h2 id="keys-h">Keys</h2>
+  <dl>
+    <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next site, previous site</dd></div>
+    <div><dt><kbd>gg</kbd> <kbd>G</kbd></dt><dd>First site, last site</dd></div>
+    <div><dt><kbd>Return</kbd></dt><dd>Open the site</dd></div>
+    <div><dt><kbd>?</kbd></dt><dd>Show or hide this list</dd></div>
+  </dl>
+</dialog>
+
+<script src="home.js" defer></script>
+<script src="theme.js" defer></script>
+</body>
+</html>
