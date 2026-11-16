@@ -23,6 +23,7 @@ const MERGES: &str = "2000";
 pub struct Main {
     place: HashMap<String, usize>,
     quarantined: BTreeSet<(String, String)>,
+    fetched: Option<i64>,
 }
 
 impl Main {
@@ -43,7 +44,16 @@ impl Main {
             ],
         )
         .unwrap_or_default();
-        Self::of(&merges, quarantine)
+        let main = Self::of(&merges, quarantine);
+        let fetched = fs::metadata(core.join("FETCH_HEAD"))
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+            .and_then(|at| i64::try_from(at.as_secs()).ok());
+        match fetched {
+            Some(at) => main.fetched(at),
+            None => main,
+        }
     }
 
     /// Main from `git rev-list`'s lines, newest first, and the quarantine's
@@ -69,7 +79,20 @@ impl Main {
                     .map(move |subtest| (test.clone(), subtest.to_owned()))
             })
             .collect();
-        Self { place, quarantined }
+        Self {
+            place,
+            quarantined,
+            fetched: None,
+        }
+    }
+
+    /// Main as the mirror held it when last fetched at `at`.
+    #[must_use]
+    pub fn fetched(self, at: i64) -> Self {
+        Self {
+            fetched: Some(at),
+            ..self
+        }
     }
 
     /// Where a result sits: by its merge's place on main, then by when the
@@ -77,6 +100,16 @@ impl Main {
     /// so its results sort last.
     fn key(&self, commit: &str, at: i64) -> (usize, i64) {
         (self.place.get(commit).copied().unwrap_or(usize::MAX), at)
+    }
+
+    /// Whether a result at `commit`, kept at `at`, was run on something
+    /// other than main: a commit the mirror didn't hold though it fetched
+    /// after the result, such as merge-net's trial of a revert. On 16
+    /// November two such failures read as main's newest.
+    fn elsewhere(&self, commit: &str, at: i64) -> bool {
+        !self.place.is_empty()
+            && !self.place.contains_key(commit)
+            && self.fetched.is_some_and(|fetched| at < fetched)
     }
 }
 
@@ -88,11 +121,14 @@ struct Run {
     log: String,
 }
 
-/// The checks still failing on main that last passed before a merge in
-/// the day before `now`, from the net's `results.jsonl`: a check whose
-/// newest result on main failed where the one before it passed. A stalled
-/// run proves nothing either way, so it's left out. `failed` reads the
-/// subtests a run's log says failed.
+/// The checks a merge broke that still fail on main, from the net's
+/// `results.jsonl`: a check whose every run on main since its last pass
+/// failed, the newest in the day before `now`. The net runs a failure
+/// again before it judges it, so one failure alone isn't yet a break: on
+/// 16 November a card counted vm-desktop-looks-vi four seconds after its
+/// one failure, minutes before its subtest passed alone. A stalled run
+/// proves nothing either way, so it's left out. `failed` reads what a
+/// run's log says failed.
 #[must_use]
 pub fn broken(
     text: &str,
@@ -110,8 +146,12 @@ pub fn broken(
         ) else {
             continue;
         };
+        let commit = result["commit"].as_str().unwrap_or_default();
+        if main.elsewhere(commit, at) {
+            continue;
+        }
         by_check.entry(check.to_owned()).or_default().push(Run {
-            key: main.key(result["commit"].as_str().unwrap_or_default(), at),
+            key: main.key(commit, at),
             at,
             passed,
             log: result["log"].as_str().unwrap_or_default().to_owned(),
@@ -122,16 +162,8 @@ pub fn broken(
     }
     let failing: Vec<String> = by_check
         .iter()
-        .filter_map(|(check, runs)| {
-            let [.., before, last] = alive(runs, failed) else {
-                return None;
-            };
-            (before.passed
-                && !last.passed
-                && last.at > now - DAY
-                && !answered(check, last, &by_check, main, failed))
-            .then(|| check.clone())
-        })
+        .filter(|(check, runs)| still_broken(check, runs, now, &by_check, main, failed))
+        .map(|(check, _)| check.clone())
         .collect();
     Measure {
         key: "broken".to_owned(),
@@ -144,37 +176,68 @@ pub fn broken(
     }
 }
 
-/// A check's runs without the newest that the VM died under: like a stall,
-/// such a run proves nothing, so the run before it decides. Only the newest
-/// failures' logs are read, so an hour opens a few logs, not thousands.
-fn alive<'a>(runs: &'a [Run], failed: &dyn Fn(&str) -> Failures) -> &'a [Run] {
-    let mut runs = runs;
-    while let [rest @ .., last] = runs {
-        if last.passed || last.log.is_empty() || !failed(&last.log).died {
-            break;
-        }
-        runs = rest;
-    }
-    runs
-}
-
-/// Whether main has answered a check's last failure since. A subtest's is
-/// answered by its whole test passing after it, which ran it again. A whole
-/// test's is answered when each subtest its log says failed is quarantined,
-/// or passed alone after it. A log that names no failed subtest answers
-/// nothing, so the check still counts.
-fn answered(
+/// Whether `check`, whose runs are `runs` in main's order, is broken: every
+/// run since its last pass failed, the newest in the day before `now`; the
+/// net ran it again, or its subtests alone, and that failed too; and main
+/// hasn't answered its newest real failure. A run its VM died under counts
+/// as a failure, so a merge that kills the VM still counts, but it answers
+/// nothing and names no subtest. Logs are read only for a check that's
+/// failed twice since passing, newest first, so an hour opens a few.
+fn still_broken(
     check: &str,
-    last: &Run,
+    runs: &[Run],
+    now: i64,
     by_check: &BTreeMap<String, Vec<Run>>,
     main: &Main,
     failed: &dyn Fn(&str) -> Failures,
+) -> bool {
+    let Some(newest) = runs.last().filter(|run| !run.passed && run.at > now - DAY) else {
+        return false;
+    };
+    let Some(pass) = runs.iter().rposition(|run| run.passed) else {
+        return false;
+    };
+    let since = &runs[pass + 1..];
+    let alone = by_check
+        .iter()
+        .filter(|(name, _)| {
+            name.split_once("::")
+                .is_some_and(|(whole, _)| whole == check)
+        })
+        .flat_map(|(_, ran)| ran)
+        .filter(|run| !run.passed && run.key > runs[pass].key)
+        .count();
+    if since.len() + alone < 2 {
+        return false;
+    }
+    if check.contains("::") {
+        return !answered(check, newest, &[], by_check, main);
+    }
+    let real = since
+        .iter()
+        .rev()
+        .filter(|run| !run.log.is_empty())
+        .map(|run| (run, failed(&run.log)))
+        .find(|(_, read)| !read.died);
+    real.is_none_or(|(run, read)| !answered(check, run, &read.subtests, by_check, main))
+}
+
+/// Whether main has answered a check's failure `last` since. A subtest's is
+/// answered by its whole test passing after it, which ran it again. A whole
+/// test's is answered when each of `subtests`, those its log says failed,
+/// is quarantined or passed alone after it. A log that names no failed
+/// subtest answers nothing, so the check still counts.
+fn answered(
+    check: &str,
+    last: &Run,
+    subtests: &[String],
+    by_check: &BTreeMap<String, Vec<Run>>,
+    main: &Main,
 ) -> bool {
     let passed_after = |runs: &[Run]| runs.iter().any(|run| run.passed && run.key > last.key);
     if let Some((whole, _)) = check.split_once("::") {
         return by_check.get(whole).is_some_and(|runs| passed_after(runs));
     }
-    let subtests = failed(&last.log).subtests;
     !subtests.is_empty()
         && subtests.iter().all(|subtest| {
             main.quarantined
@@ -187,18 +250,38 @@ fn answered(
         })
 }
 
-/// The subtests a VM test's log says failed, from pytest's closing lines,
-/// `FAILED <file>::<subtest> - <why>`, but those its VM died under.
+/// One of pytest's closing lines, `FAILED <file>::<subtest> - <why>` or
+/// `ERROR ...`: the subtest, whether it failed rather than erred, and
+/// whether its VM went away under it.
+struct Closing<'a> {
+    subtest: &'a str,
+    failed: bool,
+    lost: bool,
+}
+
+/// The closing lines in `log`.
+fn closing(log: &str) -> impl Iterator<Item = Closing<'_>> {
+    log.lines().filter_map(|line| {
+        let (failed, rest) = [("FAILED ", true), ("ERROR ", false)]
+            .into_iter()
+            .find_map(|(mark, failed)| Some((failed, line.split_once(mark)?.1)))?;
+        let named = rest.split_whitespace().next()?;
+        let (_, subtest) = named.rsplit_once("::")?;
+        Some(Closing {
+            subtest,
+            failed,
+            lost: rest[named.len()..].starts_with(BROKEN_PIPE),
+        })
+    })
+}
+
+/// The subtests a VM test's log says failed on their own checks, from
+/// pytest's closing lines, not those its VM went away under.
 #[must_use]
 pub fn failed_subtests(log: &str) -> Vec<String> {
-    let mut found: Vec<String> = log
-        .lines()
-        .filter(|line| !line.contains(BROKEN_PIPE))
-        .filter_map(|line| {
-            let (_, rest) = line.split_once("FAILED ")?;
-            let (_, subtest) = rest.split_whitespace().next()?.rsplit_once("::")?;
-            Some(subtest.to_owned())
-        })
+    let mut found: Vec<String> = closing(log)
+        .filter(|line| line.failed && !line.lost)
+        .map(|line| line.subtest.to_owned())
         .collect();
     found.sort();
     found.dedup();
@@ -213,27 +296,23 @@ pub struct Failures {
     pub died: bool,
 }
 
-/// What pytest says of a subtest whose VM went away under it: the test
-/// driver's pipe to the machine broke, so nothing the subtest checked
-/// failed. On 16 November 20 of the net's logs failed only so.
-const BROKEN_PIPE: &str = "BrokenPipeError";
+/// What pytest says of a subtest pending when the test driver lost its
+/// machine, as merge-net reads it: nothing the subtest checked failed. On
+/// 16 November 20 of the net's logs failed only so.
+const BROKEN_PIPE: &str = " - BrokenPipeError";
 
 /// What `log` says failed. The VM died when every subtest pytest closes
-/// with as failed or erred did so on a broken pipe.
+/// with as failed or erred went so on a broken pipe.
 #[must_use]
 pub fn failures(log: &str) -> Failures {
-    let closing: Vec<&str> = log
-        .lines()
-        .filter(|line| {
-            ["FAILED ", "ERROR "].iter().any(|mark| {
-                line.split_once(mark)
-                    .is_some_and(|(_, rest)| rest.contains("::"))
-            })
-        })
-        .collect();
+    let (mut any, mut lost) = (false, true);
+    for line in closing(log) {
+        any = true;
+        lost &= line.lost;
+    }
     Failures {
         subtests: failed_subtests(log),
-        died: !closing.is_empty() && closing.iter().all(|line| line.contains(BROKEN_PIPE)),
+        died: any && lost,
     }
 }
 
@@ -271,7 +350,12 @@ mod tests {
         .to_string();
         let text = [
             result("broke", "", -900, true, ""),
+            result("broke", "", -120, false, ""),
             result("broke", "", -60, false, ""),
+            result("held", "", -900, true, ""),
+            result("held", "", -600, false, ""),
+            result("held", "", -300, false, ""),
+            result("held", "", -60, false, ""),
             result("always", "", -900, false, ""),
             result("always", "", -60, false, ""),
             result("stalled", "", -900, true, ""),
@@ -284,12 +368,40 @@ mod tests {
             result("later::sub", "", -900, true, ""),
             result("later", "", -600, true, ""),
             result("later::sub", "", -300, false, ""),
+            result("later::sub", "", -200, false, ""),
         ]
         .join("\n");
         assert_eq!(
             broken(&text, NOW, "D5QEKR", &Main::default(), &none).behind,
-            ["broke", "later::sub"],
-            "only those a merge broke: a subtest's fail gives way to its whole test passing since"
+            ["broke", "held", "later::sub"],
+            "only those a merge broke, however many runs failed since: a subtest's fail gives \
+             way to its whole test passing since"
+        );
+    }
+
+    #[test]
+    fn a_failure_the_net_has_not_run_again_is_not_yet_broken() {
+        let failed = |log: &str| Failures {
+            subtests: if log == "real.log" {
+                vec!["test_v".to_owned()]
+            } else {
+                Vec::new()
+            },
+            died: false,
+        };
+        let text = [
+            result("once", "", -900, true, ""),
+            result("once", "", -60, false, "real.log"),
+            result("alone", "", -900, true, ""),
+            result("alone", "", -600, false, "real.log"),
+            result("alone::test_v", "", -300, false, ""),
+        ]
+        .join("\n");
+        assert_eq!(
+            broken(&text, NOW, "D5QEKR", &Main::default(), &failed).behind,
+            ["alone"],
+            "a failure counted before the net ran it again, or one its subtest failed again \
+             alone didn't"
         );
     }
 
@@ -300,14 +412,37 @@ mod tests {
             result("stale", "c1", -900, true, ""),
             result("stale", "c3", -600, true, ""),
             result("stale", "c2", -60, false, ""),
+            result("stale", "c2", -30, false, ""),
             result("broke", "c2", -900, true, ""),
             result("broke", "c3", -600, false, ""),
+            result("broke", "c3", -300, false, ""),
         ]
         .join("\n");
         assert_eq!(
             broken(&text, NOW, "D5QEKR", &main, &none).behind,
             ["broke"],
             "a failure kept late for an older merge counted though a newer one passed"
+        );
+    }
+
+    #[test]
+    fn a_commit_the_mirror_fetched_past_without_it_is_not_mains() {
+        let main = Main::of("c2\nc1\n", "[]").fetched(NOW - 120);
+        let text = [
+            result("trial", "c1", -900, true, ""),
+            result("trial", "c2", -800, true, ""),
+            result("trial", "revert-trial", -600, false, ""),
+            result("trial", "revert-trial", -300, false, ""),
+            result("unfetched", "c2", -800, true, ""),
+            result("unfetched", "c3", -90, false, ""),
+            result("unfetched", "c3", -60, false, ""),
+        ]
+        .join("\n");
+        assert_eq!(
+            broken(&text, NOW, "D5QEKR", &main, &none).behind,
+            ["unfetched"],
+            "a commit the mirror fetched past without it, like a revert's trial, counted as \
+             main's, or a merge newer than the fetch didn't"
         );
     }
 
@@ -331,13 +466,17 @@ mod tests {
         let text = [
             result("held", "", -900, true, ""),
             result("held", "", -600, false, "held.log"),
+            result("held", "", -550, false, "held.log"),
             result("half", "", -900, true, ""),
             result("half", "", -600, false, "half.log"),
+            result("half", "", -550, false, "half.log"),
             result("flaky", "", -900, true, ""),
             result("flaky", "", -600, false, "flaky.log"),
+            result("flaky", "", -550, false, "flaky.log"),
             result("flaky::test_g::test_f", "", -300, true, ""),
             result("unread", "", -900, true, ""),
             result("unread", "", -600, false, "gone.log"),
+            result("unread", "", -550, false, "gone.log"),
         ]
         .join("\n");
         assert_eq!(
@@ -368,8 +507,12 @@ mod tests {
             result("answered", "", -600, false, "real.log"),
             result("answered::test_v", "", -400, true, ""),
             result("answered", "", -300, false, "died.log"),
-            result("died", "", -900, true, ""),
-            result("died", "", -60, false, "died.log"),
+            result("killed", "", -900, true, ""),
+            result("killed", "", -600, false, "died.log"),
+            result("killed", "", -60, false, "died.log"),
+            result("under", "", -900, true, ""),
+            result("under", "", -600, false, "died.log"),
+            result("under", "", -300, false, "real.log"),
             result("unanswered", "", -900, true, ""),
             result("unanswered", "", -600, false, "real.log"),
             result("unanswered", "", -300, false, "died.log"),
@@ -377,8 +520,9 @@ mod tests {
         .join("\n");
         assert_eq!(
             broken(&text, NOW, "D5QEKR", &Main::default(), &failed).behind,
-            ["unanswered"],
-            "a run the VM died under was taken for the newest failure, or hid a real one"
+            ["killed", "unanswered", "under"],
+            "a run the VM died under answered a failure, or hid one, or a merge that kills \
+             the VM every time didn't count"
         );
     }
 
@@ -388,9 +532,13 @@ mod tests {
                     run> ERROR vm-pytest-v/x-vm-test.py::test_b - BrokenPipeError: [Errno 32]\n";
         let mixed = "run> FAILED vm-pytest-v/x-vm-test.py::test_a - AssertionError: no\n\
                      run> FAILED vm-pytest-v/x-vm-test.py::test_b - BrokenPipeError: [Errno 32]\n";
+        let erred = "run> FAILED vm-pytest-v/x-vm-test.py::test_a - BrokenPipeError: [Errno 32]\n\
+                     run> ERROR vm-pytest-v/x-vm-test.py::test_a - RuntimeError: no machine\n";
+        let quoted =
+            "run> FAILED vm-pytest-v/x-vm-test.py::test_a - AssertionError: BrokenPipeError\n";
         assert_eq!(
-            (failures(died), failures(mixed)),
-            (
+            [died, mixed, erred, quoted].map(failures),
+            [
                 Failures {
                     subtests: Vec::new(),
                     died: true
@@ -399,8 +547,17 @@ mod tests {
                     subtests: vec!["test_a".to_owned()],
                     died: false
                 },
-            ),
-            "a broken pipe was read as a subtest's own failure, or a real one as the VM dying"
+                Failures {
+                    subtests: Vec::new(),
+                    died: false
+                },
+                Failures {
+                    subtests: vec!["test_a".to_owned()],
+                    died: false
+                },
+            ],
+            "a broken pipe was read as a subtest's own failure, or a real failure or error, \
+             or one quoting a broken pipe, as the VM dying"
         );
     }
 
