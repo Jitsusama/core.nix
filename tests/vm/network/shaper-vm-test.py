@@ -339,13 +339,36 @@ def replugged(on_eth2: Connection) -> Replugged:
 
 
 def test_jobs(connection: Connection) -> None:
-    """The account's work goes in bulk, both ways, and leaves marked CS1 for the radio."""
+    """The account's work goes in bulk, both ways, and leaves marked CS1 for the radio.
+
+    A session, a command's scope seven cgroups deep, leaves marked as itself, so agents'
+    CAKE takes its flows as one; work with no session leaves unmarked, keeping CAKE's own.
+    """
+    client = connection.client
     connection.server.succeed(
         "nft add table inet seen",
         "nft add chain inet seen input '{ type filter hook input priority 0; }'",
         "nft add rule inet seen input tcp dport 5201 ip dscp cs1 counter",
     )
+    client.succeed(
+        "nft add table inet seen",
+        "nft add chain inet seen out '{ type filter hook postrouting priority 100; }'",
+        "nft add counter inet seen session",
+        "nft add rule inet seen out tcp dport 5201 meta mark and 0xffffff00 == 0x400"
+        " counter name session",
+    )
+
+    def sessions() -> int:
+        counted = client.succeed("nft list counter inet seen session")
+        return int(counted.split("packets ", 1)[1].split()[0])
+
     connection.lands("bulk", "jobs.slice", connection.upload)
+    assert sessions() == 0, "work with no session left marked as one"
+    connection.lands("bulk", "jobs-work-unranked.slice", connection.upload)
+    assert sessions() > 0, "a session's work left unmarked"
+    assert "xor 0x00000400 baseclass 800:1" in client.succeed(
+        "tc filter show dev eth1 parent 5:"
+    ), "agents' CAKE doesn't take a session's mark as its flow"
     rules = json.loads(connection.server.succeed("nft -j list chain inet seen input"))
     counted = sum(
         e["counter"]["packets"]
@@ -596,6 +619,9 @@ def test_tunnel(tunnel: Connection) -> None:
     """Inside a tunnel, the same classes reach its own queues, both ways."""
     inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
     tunnel.lands("bulk", "jobs.slice", inner, dev="wg0")
+    assert "xor 0x00000400 baseclass 800:1" in tunnel.client.succeed(
+        "tc filter show dev wg0 parent 2:"
+    ), "the tunnel's CAKE doesn't take a session's mark as its flow"
     tunnel.lands("best effort", "app.slice", inner, dev="wg0")
     inner_down = f"exec 3<>/dev/tcp/10.9.0.2/5202; {BIN}/cat <&3 > /dev/null"
     back = tunnel.ifb("wg0")

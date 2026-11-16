@@ -142,12 +142,16 @@ pub fn vpn_rate(link_kbit: u64) -> u64 {
 
 /// A VPN's queue: CAKE alone at its root, under the same handle as a
 /// connection's, so the priority nftables gives a packet names its tin there
-/// too. A VPN reaches nothing local, so it needs no HTB.
-pub fn vpn(dev: &str, kbit: u64) -> Vec<String> {
-    cmd(&format!(
-        "tc qdisc replace dev {dev} root handle 2: \
-         cake bandwidth {kbit}kbit diffserv4 ack-filter overhead {VPN_OVERHEAD}"
-    ))
+/// too, taking each of an agent's sessions inside as one flow. A VPN
+/// reaches nothing local, so it needs no HTB.
+pub fn vpn(dev: &str, kbit: u64) -> Vec<Vec<String>> {
+    vec![
+        cmd(&format!(
+            "tc qdisc replace dev {dev} root handle 2: \
+             cake bandwidth {kbit}kbit diffserv4 ack-filter overhead {VPN_OVERHEAD}"
+        )),
+        crate::lanes::sessions(dev, "2:"),
+    ]
 }
 
 fn vpn_ingress_cake(kbit: u64) -> String {
@@ -746,10 +750,13 @@ mod tests {
 
     #[test]
     fn a_vpns_cake_sits_at_its_root_under_the_connections_handle() {
+        let cake = "tc qdisc replace dev wg0 root handle 2: \
+                    cake bandwidth 9000kbit diffserv4 ack-filter overhead 80";
+        let sessions = crate::lanes::sessions("wg0", "2:");
         assert_eq!(
-            vpn("wg0", 9_000).join(" "),
-            "tc qdisc replace dev wg0 root handle 2: \
-             cake bandwidth 9000kbit diffserv4 ack-filter overhead 80"
+            vpn("wg0", 9_000),
+            [cmd(cake), sessions],
+            "each session one flow"
         );
         assert!(vpn_ours(r#"[{"kind":"cake","handle":"2:","root":true}]"#));
         assert!(!vpn_ours(

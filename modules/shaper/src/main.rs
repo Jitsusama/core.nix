@@ -1048,11 +1048,8 @@ fn follow_vpns(
             ifb: ifb.clone(),
             mark: vpn_mark(name),
         };
-        if !qdisc::vpn_ours(&json) || moved(was_up, up) {
-            match sh(&qdisc::vpn(name, up)) {
-                Ok(_) => kept.up = up,
-                Err(e) => eprintln!("{e}"),
-            }
+        if (!qdisc::vpn_ours(&json) || moved(was_up, up)) && run_all(qdisc::vpn(name, up)) {
+            kept.up = up;
         }
         if straight {
             if qdisc::turned(&json)
