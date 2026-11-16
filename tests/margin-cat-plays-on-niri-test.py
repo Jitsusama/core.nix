@@ -336,30 +336,27 @@ def behind_its_edge(yarn: Json, size: float) -> bool:
     return bool(yarn["x"] < yarn["within"]["left"] or yarn["x"] + size > yarn["within"]["right"])
 
 
-def rolled_behind(frames: list[Json], size: float, *, last: bool) -> Json | None:
-    """Give where the yarn was as it came (or, `last`, as it went), or None where it was behind.
+def came_behind(frames: list[Json], size: float) -> Json | None:
+    """Give where the yarn was as it came, or None where it came from behind its edge.
 
     The yarn rolls on the cat's clock, so a frame drawn late finds it a few pixels on: a loaded
     builder's 50 ms frame showed it first 5 px out from its edge, though it rolled from behind
-    it (2026-11-16, at d6345e9). So where its first frame (or its last) isn't behind the edge,
-    it rolls the yarn back (or on) at its own pace to the frame before (or after) it, or to the
-    play's start where it shows from the play's first frame, and only a yarn that wasn't
-    behind the edge then either came, or went, in open space.
+    it (2026-11-16, at d6345e9). So where its first frame isn't behind the edge, it rolls the
+    yarn back at its own pace to the frame before it, or to the play's start where it shows
+    from the play's first frame, and only a yarn that wasn't behind the edge then came in open
+    space. Rolled back at its first two frames' pace, an easing yarn lands short of its true
+    start, so one that started in open space stays there. Its going needs no such roll, since
+    a play reports no frame after the yarn's last.
     """
     shown = [at for at, frame in enumerate(frames) if frame["walk"]["yarn"]]
-    edge, beside, along = (shown[-1], 1, -1) if last else (shown[0], -1, 1)
+    edge = shown[0]
     yarn: Json = frames[edge]["walk"]["yarn"]
     if behind_its_edge(yarn, size):
         return None
-    near, after = edge + beside, edge + along
-    if not 0 <= after < len(frames) or after not in shown:
+    after = edge + 1
+    if after not in shown:
         return yarn
-    if 0 <= near < len(frames):
-        then = frames[near]["walk"]["t"]
-    elif not last:
-        then = 0
-    else:
-        return yarn
+    then = frames[edge - 1]["walk"]["t"] if edge > 0 else 0
     now, later = frames[edge]["walk"]["t"], frames[after]["walk"]["t"]
     if later == now:
         return yarn
@@ -381,10 +378,9 @@ def test_away_it_bats_a_ball_of_yarn_off_and_walks_back(shell: Shell) -> None:
     seen = [at["walk"]["yarn"] for at in frames if at["walk"]["yarn"]]
     assert seen, f"the yarn was never shown: {frames}"
     size = frames[0]["size"]
-    came = rolled_behind(frames, size, last=False)
+    came = came_behind(frames, size)
     assert came is None, f"the yarn came from nowhere: {came}"
-    went = rolled_behind(frames, size, last=True)
-    assert went is None, f"the yarn went in open space: {went}"
+    assert behind_its_edge(seen[-1], size), f"the yarn went in open space: {seen[-1]}"
     assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
 
 
