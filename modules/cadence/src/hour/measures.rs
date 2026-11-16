@@ -8,9 +8,11 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 mod broken;
+mod locked;
 mod misses;
 
 pub use broken::{Main, broken, failed_in};
+pub use locked::read as unlocked;
 pub use misses::checked;
 
 const DAY: i64 = 86_400;

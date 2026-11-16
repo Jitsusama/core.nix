@@ -31,10 +31,11 @@ use lines::{figure, shown_lines};
 use measures::{Class, Measure, drag};
 
 /// Who moves the measures no file names an owner for: the merge net's
-/// rules and its quarantine are cadence's keeper's, and the net that
-/// finds a broken check is its own owner's.
+/// rules and its quarantine are cadence's keeper's, the net that finds a
+/// broken check is its own owner's, and core's lock is the bumps' keeper's.
 const NET_RULES: &str = "80ECO2";
 const NET: &str = "D5QEKR";
+const BUMPS: &str = "0FX11G";
 
 /// How many hours a drag may stay unmoved before the orchestrator is
 /// asked to steer it.
@@ -167,6 +168,7 @@ fn gather(
         landed(&core_log, &harness_log, &machine_log, now),
     ];
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
+    all.extend(measures::unlocked(&core, checkouts, now, BUMPS));
     if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {
         all.push(Measure {
             key: "commit-to-merge".to_owned(),
