@@ -922,8 +922,11 @@ Scope {
             const name = Words.of(id).provider ?? id;
             const source = sources.find(one => one.settings.name === name) ?? null;
             const stamp = source !== null ? root.changesIn[name] ?? 0 : -1;
-            const shape = source !== null && (source.spotsStamp ?? "") !== ""
-                ? source.spotsStamp : null;
+            // A stamp held, as Displays' is, or worked out as it's asked,
+            // as Sound's is, since holding it cost each record it heard.
+            const told = typeof source?.spotsStamp === "function" ? source.spotsStamp()
+                : source?.spotsStamp;
+            const shape = source !== null && (told ?? "") !== "" ? told : null;
             const own = typeof source?.spotsStampOf === "function";
             const before = root.spotsKept[where];
             // Closing, its make, where it says one, else any change.
