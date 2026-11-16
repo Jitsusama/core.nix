@@ -5,12 +5,14 @@
 //! ```text
 //! system          a line for each part and each machine, and where to go deeper
 //! system --json   the whole record, as system.view/1
+//! system serve    the record held ready on its socket (serve.rs)
 //! ```
 //!
 //! It takes the shape every command of ours does (docs/commands.md),
 //! through the terminal kit.
 
 mod ask;
+mod serve;
 mod views;
 
 use std::io;
@@ -35,10 +37,19 @@ fn help() -> Help {
         "a line for each part and each machine, and where each goes deeper",
     )
     .example("system --json", "the whole record, as system.view/1")
+    .example(
+        "system serve --socket SOCKET",
+        "the record held ready there for the views, read again every 15 s",
+    )
     .exit(Exit::Usage, "the words are unknown")
 }
 
 fn run(context: &Context) -> Result<(), Failure> {
+    if let [serve, rest @ ..] = context.args.as_slice()
+        && serve == "serve"
+    {
+        return serve::run(rest);
+    }
     if !context.args.is_empty() {
         return Err(
             Failure::new(Exit::Usage, "system doesn't know those words").try_this("system --help")
@@ -61,7 +72,7 @@ fn run(context: &Context) -> Result<(), Failure> {
 }
 
 /// The system as each owner says it now.
-fn read() -> System {
+pub(crate) fn read() -> System {
     let [machines, health, net, repos]: [_; 4] = ask::all(&[
         &["mycelium", "machines"],
         &["mycelium", "health"],

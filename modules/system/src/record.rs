@@ -96,6 +96,52 @@ impl System {
             "parts": self.parts.iter().map(part_json).collect::<Vec<_>>(),
         })
     }
+
+    /// The record split as the daemon holds it, in the shell's daemon
+    /// interface: the whole's `summary`, a `part` record for each part and
+    /// one for each thing in a part, a `machine` for now. Each holds only
+    /// what changes with it, so a part that stands as it stood isn't told
+    /// again when another moves; only the summary says when it was read.
+    pub fn records(&self) -> Vec<Value> {
+        let summary = json!({
+            "key": "summary",
+            "kind": "summary",
+            "schema": "system.view/1",
+            "machine": self.machine,
+            "read_at": self.read_at,
+            "health": self.health().word(),
+            "parts": self.parts.iter().map(|part| part.name).collect::<Vec<_>>(),
+        });
+        let parts = self.parts.iter().map(|part| {
+            let mut said = part_json(part);
+            said["key"] = json!(format!("part:{}", part.name));
+            said["kind"] = json!("part");
+            said["things"] = part.things.iter().map(thing_key).collect();
+            said
+        });
+        let things = self.parts.iter().flat_map(|part| {
+            part.things.iter().map(move |thing| {
+                json!({
+                    "key": thing_key(thing),
+                    "kind": thing.kind,
+                    "name": thing.name,
+                    "part": part.name,
+                    "health": thing.health.word(),
+                    "says": thing.says,
+                })
+            })
+        });
+        std::iter::once(summary)
+            .chain(parts)
+            .chain(things)
+            .collect()
+    }
+}
+
+/// A thing's key, its kind and its name, as the daemon interface keys a
+/// record and VKCF3Z's home addresses name one.
+fn thing_key(thing: &Thing) -> Value {
+    json!(format!("{}:{}", thing.kind, thing.name))
 }
 
 fn part_json(part: &Part) -> Value {
@@ -141,6 +187,59 @@ mod tests {
             read_at: "2026-11-15T19:00:00Z".to_owned(),
             parts,
         }
+    }
+
+    fn machine(name: &str, health: Health) -> Thing {
+        Thing {
+            kind: "machine",
+            name: name.to_owned(),
+            health,
+            says: format!("{name} says so"),
+        }
+    }
+
+    #[test]
+    fn the_daemon_holds_a_summary_then_each_part_then_each_thing() {
+        let mut machines = part("machines", Health::Watch);
+        machines.things = vec![
+            machine("studio", Health::Watch),
+            machine("laptop", Health::Good),
+        ];
+        let records = system(vec![machines, part("code", Health::Good)]).records();
+        let keys: Vec<&str> = records
+            .iter()
+            .filter_map(|record| record["key"].as_str())
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "summary",
+                "part:machines",
+                "part:code",
+                "machine:studio",
+                "machine:laptop"
+            ]
+        );
+        assert_eq!(records[0]["health"], "watch", "the summary says the whole");
+        assert_eq!(records[0]["parts"], json!(["machines", "code"]));
+        assert_eq!(
+            records[1]["things"],
+            json!(["machine:studio", "machine:laptop"]),
+            "a part names its things by their keys rather than saying them twice"
+        );
+        assert_eq!(records[3]["part"], "machines");
+        assert_eq!(records[3]["says"], "studio says so");
+    }
+
+    #[test]
+    fn only_the_summary_says_when_it_was_read() {
+        let records = system(vec![part("network", Health::Good)]).records();
+        assert_eq!(records[0]["read_at"], "2026-11-15T19:00:00Z");
+        assert!(
+            records[1].get("read_at").is_none(),
+            "a part that stands as it stood mustn't be told again: {}",
+            records[1]
+        );
     }
 
     #[test]

@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "daemon-serve"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -89,6 +96,7 @@ dependencies = [
 name = "system"
 version = "0.1.0"
 dependencies = [
+ "daemon-serve",
  "serde_json",
  "terminal-kit",
 ]
