@@ -40,18 +40,23 @@ impl Waited {
         Self(said)
     }
 
-    /// Keep `now` as when the change `patch` was first held, unless an
-    /// earlier hold is kept.
-    pub fn held(&mut self, patch: &str, now: u64) {
+    /// Keep `now` as when the change `patch` in `tree` was first held,
+    /// unless an earlier hold is kept.
+    pub fn held(&mut self, patch: Option<&str>, tree: &Path, now: u64) {
+        let _ = tree;
+        let Some(patch) = patch else {
+            return;
+        };
         let first = self.0.entry(patch.to_owned()).or_insert(now);
         *first = (*first).min(now);
     }
 
-    /// When the change `patch`, whose pass was `kept`, waits from by `now`:
-    /// its first hold kept within [`KEPT`], or now, as it is held for the
-    /// first time. A change whose patch couldn't be read waits from its
-    /// pass, as before holds were kept.
-    pub fn since(&self, patch: Option<&str>, kept: Option<u64>, now: u64) -> u64 {
+    /// When the change `patch` in `tree`, whose pass was `kept`, waits from
+    /// by `now`: its first hold kept within [`KEPT`], or now, as it is held
+    /// for the first time. A change whose patch couldn't be read waits from
+    /// its pass, as before holds were kept.
+    pub fn since(&self, patch: Option<&str>, tree: &Path, kept: Option<u64>, now: u64) -> u64 {
+        let _ = tree;
         let Some(patch) = patch else {
             return kept.unwrap_or(now);
         };
@@ -101,12 +106,16 @@ mod tests {
 
     const NOW: u64 = 1_794_750_000;
 
+    fn tree(name: &str) -> PathBuf {
+        PathBuf::from(format!("/trees/{name}"))
+    }
+
     #[test]
     fn a_change_rebased_onto_an_old_pass_waits_from_its_first_hold() {
         // #4721: its pass kept two hours before, it was held for the first
         // time now, so it waits its whole patience.
         let waited = Waited::default();
-        let since = waited.since(Some("4721"), Some(NOW - 2 * 60 * 60), NOW);
+        let since = waited.since(Some("4721"), &tree("a"), Some(NOW - 2 * 60 * 60), NOW);
         assert_eq!(
             since, NOW,
             "a change held for the first time waited from its old pass, not from now"
@@ -118,26 +127,46 @@ mod tests {
         // #4738: first held, then rebased again and again, each rebase a new
         // pass kept a minute before it asked again.
         let mut waited = Waited::default();
-        waited.held("4738", NOW - PATIENCE - 60);
-        waited.held("4738", NOW - 120);
-        let since = waited.since(Some("4738"), Some(NOW - 60), NOW);
+        waited.held(Some("4738"), &tree("a"), NOW - PATIENCE - 60);
+        waited.held(Some("4738"), &tree("a"), NOW - 120);
+        let since = waited.since(Some("4738"), &tree("a"), Some(NOW - 60), NOW);
         assert_eq!(
             since,
             NOW - PATIENCE - 60,
             "a change rebased since it was first held started its wait again"
         );
         assert_eq!(
-            waited.since(None, Some(NOW - 60), NOW),
+            waited.since(None, &tree("b"), Some(NOW - 60), NOW),
             NOW - 60,
             "a change whose patch couldn't be read didn't wait from its pass"
         );
     }
 
     #[test]
+    fn a_change_whose_patch_changed_keeps_waiting_from_its_tree_s_first_hold() {
+        // #5026 on 16 November: first held under one patch id at 09:38,
+        // then under another once it was rebased with a new diff at 10:13,
+        // so its wait started again, and it had waited since 09:20.
+        let mut waited = Waited::default();
+        waited.held(Some("5026-first"), &tree("machine-share"), NOW - PATIENCE - 60);
+        let since = waited.since(Some("5026-edited"), &tree("machine-share"), Some(NOW), NOW);
+        assert_eq!(
+            since,
+            NOW - PATIENCE - 60,
+            "a change whose patch changed in its tree started its wait again"
+        );
+        assert_eq!(
+            waited.since(Some("other"), &tree("elsewhere"), None, NOW),
+            NOW,
+            "a change in another tree waited from another change's hold"
+        );
+    }
+
+    #[test]
     fn holds_past_keeping_are_given_up_and_the_rest_written_whole() {
         let mut waited = Waited::default();
-        waited.held("old", NOW - KEPT);
-        waited.held("new", NOW - 60);
+        waited.held(Some("old"), &tree("old"), NOW - KEPT);
+        waited.held(Some("new"), &tree("new"), NOW - 60);
         waited.tidy(NOW);
         let folder = std::env::temp_dir().join(format!("waited-{}", std::process::id()));
         fs::create_dir_all(&folder).unwrap();
@@ -146,12 +175,12 @@ mod tests {
         let read = Waited::read(&path);
         fs::remove_dir_all(&folder).unwrap();
         assert_eq!(
-            read.since(Some("old"), None, NOW),
+            read.since(Some("old"), &tree("old"), None, NOW),
             NOW,
             "a hold past keeping stood"
         );
         assert_eq!(
-            read.since(Some("new"), None, NOW),
+            read.since(Some("new"), &tree("new"), None, NOW),
             NOW - 60,
             "a hold within keeping was lost in writing"
         );
