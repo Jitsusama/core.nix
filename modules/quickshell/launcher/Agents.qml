@@ -1570,6 +1570,7 @@ Provider {
     // or null once it has ended.
     function landerOf(one) {
         const here = Sessions.running.concat(Sessions.parked);
+        provider.tally.sought += here.length;
         return here.find(session => one.session.id !== ""
             && session.presence?.session === one.session.id)
             ?? here.find(session => session.address === one.session.address) ?? null;
@@ -1742,11 +1743,35 @@ Provider {
             return session !== null && Sessions.running.includes(session)
                 && provider.windowedOf(session);
         };
+        // The sessions as they stand while these rows are kept, found by
+        // id and by address as landerOf finds them, the first of each
+        // winning: each landing's way looked for its session among all of
+        // Joel's, twice, then among those running, 2,600 times a build, so
+        // each To Try Return, which reads a landing, spent 40 ms of its
+        // 87 remaking Landed's ways (2026-11-15).
+        const here = Sessions.running.concat(Sessions.parked);
+        provider.tally.sought += here.length;
+        const byId = new Map();
+        const byAddress = new Map();
+        here.forEach(session => {
+            const id = session.presence?.session;
+            if (!byId.has(id))
+                byId.set(id, session);
+            if (!byAddress.has(session.address))
+                byAddress.set(session.address, session);
+        });
+        const running = new Set(Sessions.running);
+        const windowedNow = one => {
+            const session = (one.session.id !== "" ? byId.get(one.session.id) : undefined)
+                ?? byAddress.get(one.session.address) ?? null;
+            return session !== null && running.has(session) && provider.windowedOf(session);
+        };
         const toChange = one => () => Niri.spawn(["xdg-open", one.url]);
         const toSession = one => () => Sessions.goTo(provider.landerOf(one));
         // Where Return takes it: the change, else its session, else nowhere
-        // but read.
-        const goes = one => one.url !== "" ? "change" : windowed(one) ? "session" : "";
+        // but read, its session found as it stands now unless told how.
+        const goes = (one, windowedBy = windowed) => one.url !== "" ? "change"
+            : windowedBy(one) ? "session" : "";
         const parts = one => [
             one.url !== "" ? act("change", { later: true, run: toChange(one) }) : null,
             windowed(one) ? act("session", { later: true, run: toSession(one) }) : null,
@@ -1800,7 +1825,7 @@ Provider {
             verbs: () => parts(one)
         }, provider.landingShows(one)));
         return one => {
-            const way = goes(one);
+            const way = goes(one, windowedNow);
             return provider.keptAlike(landedKeeping, one.key, [one, way, today],
                 () => landing(one, way));
         };
