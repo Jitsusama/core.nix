@@ -595,6 +595,7 @@ fn install(link: &str, ifb: &str, (up, split): (u64, &lanes::Split), down: u64, 
     let held = sh(&words(&format!("tc -j qdisc show dev {link}"))).unwrap_or_default();
     let back = sh(&words(&format!("tc -j qdisc show dev {ifb}"))).unwrap_or_default();
     let turned = if lanes::laned(&held) && qdisc::ours(&back) {
+        eprintln!("taking back the queues {link} kept through a restart");
         run_all(lanes::adopt(link, ifb, (up, split), down));
         qdisc::turned(&held)
     } else {
@@ -1525,10 +1526,15 @@ fn mbit(kbit: u64) -> String {
 /// Whether systemd is restarting `unit`. When it can't say, it isn't, so
 /// the queues go as on any stop.
 fn restarting(unit: &str) -> bool {
-    sh(&words(&format!(
-        "systemctl list-jobs --no-legend --plain --full {unit}"
-    )))
-    .is_ok_and(|jobs| restart::pending(&jobs, unit))
+    let mut ask = words("systemctl list-jobs --no-legend --plain --full");
+    ask.push(unit.to_string());
+    match sh(&ask) {
+        Ok(jobs) => restart::pending(&jobs, unit),
+        Err(why) => {
+            eprintln!("systemd couldn't say whether {unit} restarts, so its queues go: {why}");
+            false
+        }
+    }
 }
 
 /// Takes every queue the shaper made away, for when it stops.
