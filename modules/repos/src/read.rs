@@ -18,7 +18,9 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use crate::keys::{self, Key};
-use crate::model::{Checkout, Head, Record, Remote, Repository, SCHEMA, Source, Tree, TreeKind};
+use crate::model::{
+    Checkout, Head, Record, Remote, Repository, SCHEMA, Source, Tree, TreeKind, Upstream,
+};
 use crate::reftable::{self, Ref};
 
 /// How deep a `.git` is looked for under a root: in
@@ -175,9 +177,9 @@ fn checkout(common: &Path, home: Option<&Path>) -> Found {
     } else {
         common.parent().unwrap_or(common).to_path_buf()
     };
-    let refs = Refs::of(common);
-    let remotes = remotes(&fs::read_to_string(common.join("config")).unwrap_or_default());
-    let mut remotes = remotes;
+    let config = fs::read_to_string(common.join("config")).unwrap_or_default();
+    let refs = Refs::of(common, &config);
+    let mut remotes = remotes(&config);
     // The remote the key comes from goes first: origin, else the first.
     if let Some(at) = remotes.iter().position(|remote| remote.name == "origin") {
         let origin = remotes.remove(at);
@@ -284,13 +286,18 @@ fn head(git_dir: &Path, refs: &Refs) -> Option<Head> {
         };
     }
     Some(match at {
-        Ref::Symbolic(name) => Head {
-            branch: Some(name.strip_prefix("refs/heads/").unwrap_or(&name).to_owned()),
-            commit: refs.commit(&name),
-        },
+        Ref::Symbolic(name) => {
+            let branch = name.strip_prefix("refs/heads/").unwrap_or(&name).to_owned();
+            Head {
+                upstream: refs.upstream(&branch),
+                branch: Some(branch),
+                commit: refs.commit(&name),
+            }
+        }
         Ref::Commit(commit) => Head {
             branch: None,
             commit: Some(commit),
+            upstream: None,
         },
     })
 }
@@ -340,15 +347,17 @@ fn trunk(refs: &Refs, remote: Option<&str>) -> Option<String> {
 }
 
 /// A checkout's refs: its loose files and its packed-refs, or the stack
-/// of tables a reftable checkout keeps them in (reftable.rs).
+/// of tables a reftable checkout keeps them in (reftable.rs), and the
+/// branch each of its branches follows, from its config.
 struct Refs {
     common: PathBuf,
     packed: HashMap<String, String>,
     table: Option<HashMap<String, Ref>>,
+    follows: HashMap<String, Follows>,
 }
 
 impl Refs {
-    fn of(common: &Path) -> Self {
+    fn of(common: &Path, config: &str) -> Self {
         let tables = common.join("reftable");
         let table = tables
             .is_dir()
@@ -364,7 +373,26 @@ impl Refs {
             common: common.to_path_buf(),
             packed,
             table,
+            follows: follows(config),
         }
+    }
+
+    /// The branch `branch` follows, and where it is here: a remote's as
+    /// last fetched, or with `remote = .`, one of the checkout's own.
+    fn upstream(&self, branch: &str) -> Option<Upstream> {
+        let follows = self.follows.get(branch)?;
+        let merged = follows.merge.strip_prefix("refs/heads/")?;
+        let (name, at) = if follows.remote == "." {
+            (merged.to_owned(), follows.merge.clone())
+        } else {
+            let name = format!("{}/{merged}", follows.remote);
+            let at = format!("refs/remotes/{name}");
+            (name, at)
+        };
+        Some(Upstream {
+            commit: self.commit(&at),
+            branch: name,
+        })
     }
 
     /// A ref as the checkout keeps it.
@@ -441,6 +469,46 @@ fn remotes(config: &str) -> Vec<Remote> {
         });
     }
     remotes
+}
+
+/// What a branch's section in a checkout's config says it follows.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Follows {
+    remote: String,
+    merge: String,
+}
+
+/// Each branch the config gives both a remote and a branch to merge,
+/// with them. A key said twice takes its last value, as git does.
+fn follows(config: &str) -> HashMap<String, Follows> {
+    let mut follows: HashMap<String, Follows> = HashMap::new();
+    let mut current: Option<String> = None;
+    for line in config.lines() {
+        let line = line.trim();
+        if line.starts_with(['#', ';']) || line.is_empty() {
+            continue;
+        }
+        if let Some(section) = line.strip_prefix('[') {
+            let section = section.split(']').next().unwrap_or_default().trim();
+            current = section
+                .split_once(char::is_whitespace)
+                .filter(|(kind, _)| kind.eq_ignore_ascii_case("branch"))
+                .map(|(_, name)| name.trim().trim_matches('"').to_owned());
+            continue;
+        }
+        let (Some(branch), Some((key, value))) = (&current, line.split_once('=')) else {
+            continue;
+        };
+        let value = value.trim().trim_matches('"').to_owned();
+        let entry = follows.entry(branch.clone()).or_default();
+        match key.trim().to_ascii_lowercase().as_str() {
+            "remote" => entry.remote = value,
+            "merge" => entry.merge = value,
+            _ => {}
+        }
+    }
+    follows.retain(|_, follows| !follows.remote.is_empty() && !follows.merge.is_empty());
+    follows
 }
 
 #[cfg(test)]

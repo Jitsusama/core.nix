@@ -89,6 +89,7 @@ fn a_name_restates_its_branch_or_commit_give_or_take_a_word() {
     let at = |branch: Option<&str>| Head {
         branch: branch.map(str::to_owned),
         commit: Some("0123456789abcdef".to_owned()),
+        upstream: None,
     };
     for (name, branch) in [
         ("jitsusama-change-0", Some("jitsusama/change-0")),

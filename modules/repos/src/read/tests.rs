@@ -361,6 +361,92 @@ fn remotes_are_read_in_their_order_with_their_first_address() {
 }
 
 #[test]
+fn each_head_knows_the_branch_it_follows_and_where_that_is() {
+    let src = place("upstream");
+    let checkout = src.join("core.nix");
+    checkout_at(
+        &checkout,
+        Some("https://github.com/Jitsusama/core.nix"),
+        100,
+    );
+    let common = checkout.join(".git");
+    write(
+        &common.join("config"),
+        "[core]\n\tbare = false\n\
+         [remote \"origin\"]\n\turl = https://github.com/Jitsusama/core.nix\n\
+         [branch \"main\"]\n\tremote = origin\n\tmerge = refs/heads/main\n\
+         [branch \"feature\"]\n\tRemote = \"origin\"\n\tmerge = refs/heads/feature\n\
+         [branch \"local\"]\n\tremote = .\n\tmerge = refs/heads/main\n\
+         [branch \"gone\"]\n\tremote = origin\n\tmerge = refs/heads/gone\n",
+    );
+    write(
+        &common.join("packed-refs"),
+        &format!("# pack-refs with: peeled\n{OTHER} refs/remotes/origin/main\n"),
+    );
+    write(
+        &common.join("refs/remotes/origin/feature"),
+        &format!("{COMMIT}\n"),
+    );
+    for branch in ["feature", "local", "gone", "untracked"] {
+        write(
+            &common.join("refs/heads").join(branch),
+            &format!("{COMMIT}\n"),
+        );
+        tree_at(
+            &common,
+            branch,
+            &src.join(branch),
+            &format!("ref: refs/heads/{branch}"),
+            200,
+        );
+    }
+    let record = reading(&[src], None);
+    let checkout = &record.repositories[0].checkouts[0];
+    let upstream = |head: &Head| {
+        head.upstream
+            .as_ref()
+            .map(|upstream| (upstream.branch.clone(), upstream.commit.clone()))
+    };
+    assert_eq!(
+        upstream(checkout.head.as_ref().expect("a head")),
+        Some(("origin/main".to_owned(), Some(OTHER.to_owned()))),
+        "the checkout's main doesn't follow origin's, from packed-refs: {checkout:#?}"
+    );
+    let trees: BTreeMap<String, Option<(String, Option<String>)>> = checkout
+        .trees
+        .iter()
+        .map(|tree| (tree.head.said(), upstream(&tree.head)))
+        .collect();
+    assert_eq!(
+        trees,
+        BTreeMap::from([
+            (
+                "feature".to_owned(),
+                Some(("origin/feature".to_owned(), Some(COMMIT.to_owned())))
+            ),
+            ("gone".to_owned(), Some(("origin/gone".to_owned(), None))),
+            (
+                "local".to_owned(),
+                Some(("main".to_owned(), Some(COMMIT.to_owned())))
+            ),
+            ("untracked".to_owned(), None),
+        ]),
+        "{checkout:#?}"
+    );
+}
+
+#[test]
+fn a_snapshot_follows_nothing() {
+    let src = place("upstream-snapshot");
+    let checkout = src.join("x");
+    checkout_at(&checkout, Some("https://github.com/a/x"), 100);
+    tree_at(&checkout.join(".git"), "s", &src.join("s"), COMMIT, 200);
+    let record = reading(&[src], None);
+    let tree = &record.repositories[0].checkouts[0].trees[0];
+    assert_eq!(tree.head.upstream, None, "{tree:#?}");
+}
+
+#[test]
 fn a_path_is_said_from_home() {
     let home = Path::new("/home/someone");
     assert_eq!(

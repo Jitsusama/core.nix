@@ -275,6 +275,7 @@ mod tests {
             head: Head {
                 branch: Some("work".to_owned()),
                 commit: None,
+                upstream: None,
             },
             present,
             written_at: Some(10),
@@ -288,6 +289,7 @@ mod tests {
             head: (!bare).then(|| Head {
                 branch: Some("main".to_owned()),
                 commit: None,
+                upstream: None,
             }),
             written_at: Some(20),
             trees,

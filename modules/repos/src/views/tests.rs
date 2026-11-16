@@ -39,6 +39,7 @@ pub(super) fn tree(path: &str, branch: Option<&str>, present: bool, ago: u64) ->
         head: Head {
             branch: branch.map(str::to_owned),
             commit: Some("0123456789abcdef0123456789abcdef01234567".to_owned()),
+            upstream: None,
         },
         present,
         written_at: Some(NOW - ago),
@@ -76,6 +77,7 @@ fn checkout(path: &str, trees: Vec<Tree>, ago: u64) -> Checkout {
         head: Some(Head {
             branch: Some("main".to_owned()),
             commit: None,
+            upstream: None,
         }),
         written_at: Some(NOW - ago),
         trees,
