@@ -269,7 +269,8 @@ impl<'a> Settler<'a> {
                 lock(&self.writing)
             }
         };
-        self.state.say("nothing writes the hold now, so this leaves");
+        self.state
+            .say("nothing writes the hold now, so this leaves");
         end()
     }
 
