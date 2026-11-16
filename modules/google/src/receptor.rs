@@ -19,7 +19,8 @@
 //! `MYCELIUM_ACCOUNT`, is said in it: the address Google gives as the
 //! primary calendar's id must be that one, so a personal account signed
 //! in here is never counted into the work realm. With none declared, or
-//! another signed in, nothing is said.
+//! another signed in, no counts are said: receptors said before are said
+//! off once, with none, so the map stops drawing what they last read.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -64,6 +65,8 @@ pub enum Reading {
     /// Google refused the sign-in, or couldn't be reached; the counts are
     /// what it last said.
     Failing,
+    /// It no longer reads for the realm, its counts none.
+    Off,
 }
 
 impl Reading {
@@ -72,6 +75,7 @@ impl Reading {
             Self::Reading => "reading",
             Self::Quiet => "quiet",
             Self::Failing => "failing",
+            Self::Off => "off",
         }
     }
 }
@@ -158,6 +162,31 @@ pub struct Receptors {
     program: PathBuf,
     realm: String,
     account: Option<String>,
+}
+
+/// What came of telling the receptors once, or why it failed.
+pub type Spoken = Result<Spoke, String>;
+
+/// Whether the receptors fell silent with what `came`, having been said
+/// as of what `was`: the declared account gone, or another signed in. The
+/// node would draw each as it last was until three of its rounds passed,
+/// so they're said off once, at once.
+pub fn fell_silent(was: Option<&Spoken>, came: &Spoken) -> bool {
+    let silent = |spoken: &Spoken| matches!(spoken, Ok(Spoke::NoAccount | Spoke::NotItsAccount));
+    silent(came) && was.is_some_and(|was| !silent(was))
+}
+
+/// What each receptor says as it falls silent: off, its counts none.
+fn silent() -> Vec<Told> {
+    [Source::Mail, Source::Calendar]
+        .map(|source| Told {
+            source,
+            reading: Reading::Off,
+            hour: 0,
+            today: 0,
+            addressed: 0,
+        })
+        .to_vec()
 }
 
 /// What came of telling the receptors.
@@ -260,6 +289,16 @@ impl Receptors {
             pid.to_string(),
         ];
         words.into_iter().map(OsString::from).collect()
+    }
+
+    /// Says each receptor off, its counts none: no account's mail or
+    /// meetings, so nothing of the account signed in instead.
+    ///
+    /// # Errors
+    ///
+    /// When mycelium can't be run, or refuses what it's told.
+    pub fn fall_silent(&self, every: Duration, pid: u32) -> Result<(), String> {
+        self.say(&silent(), every, pid)
     }
 
     /// Says how each receptor stands, the next said within `every`.
@@ -511,6 +550,80 @@ mod tests {
         assert_eq!(
             counts, ["4294967295"; 3],
             "a count past u32 wasn't held to it"
+        );
+    }
+
+    #[test]
+    fn falling_silent_says_each_source_off_and_counts_nothing() {
+        let receptors = Receptors::named(
+            Some("/nix/store/x-mycelium/bin/mycelium".into()),
+            Some("work".into()),
+        )
+        .unwrap();
+        let said: Vec<Vec<String>> = silent()
+            .into_iter()
+            .map(|one| {
+                receptors
+                    .arguments(one, Duration::from_secs(60), 4242)
+                    .into_iter()
+                    .map(|word| word.into_string().unwrap())
+                    .collect()
+            })
+            .collect();
+        let off = |source: &str| {
+            [
+                "--realm",
+                "work",
+                "receptors",
+                "say",
+                source,
+                "--state",
+                "off",
+                "--hour",
+                "0",
+                "--today",
+                "0",
+                "--addressed",
+                "0",
+                "--every",
+                "60",
+                "--pid",
+                "4242",
+            ]
+            .map(str::to_owned)
+            .to_vec()
+        };
+        assert_eq!(
+            said,
+            [off("mail"), off("calendar")],
+            "falling silent didn't say each source off with no counts"
+        );
+    }
+
+    #[test]
+    fn the_receptors_fall_silent_only_as_they_stop_being_said() {
+        let said: Spoken = Ok(Spoke::Said);
+        let failed: Spoken = Err("mycelium refused".to_owned());
+        let cases = [
+            (Some(&said), Ok(Spoke::NotItsAccount), true),
+            (Some(&said), Ok(Spoke::NoAccount), true),
+            (Some(&failed), Ok(Spoke::NotItsAccount), true),
+            (Some(&said), Ok(Spoke::Said), false),
+            (Some(&said), Err("gone".to_owned()), false),
+            (None, Ok(Spoke::NotItsAccount), false),
+            (None, Ok(Spoke::NoAccount), false),
+        ];
+        for (was, came, silent) in &cases {
+            assert_eq!(
+                fell_silent(*was, came),
+                *silent,
+                "after {was:?}, {came:?} was judged wrongly"
+            );
+        }
+        let not_its: Spoken = Ok(Spoke::NotItsAccount);
+        assert!(
+            !fell_silent(Some(&not_its), &Ok(Spoke::NotItsAccount)),
+            "receptors already silent were said off again"
         );
     }
 

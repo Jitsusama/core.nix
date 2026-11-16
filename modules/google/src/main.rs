@@ -71,7 +71,7 @@ use google::calendar::Answer;
 use google::daemon::Daemon;
 use google::files::Places;
 use google::mail::Tidy;
-use google::receptor::{Receptors, Spoke};
+use google::receptor::{Receptors, Spoke, Spoken, fell_silent};
 use google::rows::Vocabulary;
 use google::saves;
 use google::state::{Standing, State};
@@ -104,8 +104,9 @@ fn help() -> Help {
 
 /// Says how the mail and calendar receptors stand in what `watch` holds,
 /// the next said within `wait`, telling the journal only when what came
-/// of it changes, so a node that's gone isn't said once a minute. The
-/// journal never names the account.
+/// of it changes, so a node that's gone isn't said once a minute. Once
+/// they fall silent, having been said, each is said off once. The journal
+/// never names the account.
 fn say(receptors: &Receptors, watch: &Watch, wait: Duration, spoke: &mut Option<Spoken>) {
     let now = Zoned::now();
     let came = receptors.tell(
@@ -115,6 +116,11 @@ fn say(receptors: &Receptors, watch: &Watch, wait: Duration, spoke: &mut Option<
         wait,
         std::process::id(),
     );
+    if fell_silent(spoke.as_ref(), &came)
+        && let Err(why) = receptors.fall_silent(wait, std::process::id())
+    {
+        eprintln!("<4>couldn't say the receptors off: {why}");
+    }
     if spoke.as_ref() != Some(&came) {
         match &came {
             Ok(Spoke::Said) => eprintln!("<6>saying the receptors"),
@@ -130,9 +136,6 @@ fn say(receptors: &Receptors, watch: &Watch, wait: Duration, spoke: &mut Option<
         *spoke = Some(came);
     }
 }
-
-/// What came of the last telling.
-type Spoken = Result<Spoke, String>;
 
 fn main() -> ExitCode {
     terminal_kit::main(
