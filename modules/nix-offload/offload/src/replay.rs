@@ -49,6 +49,12 @@ const APART: [&str; 3] = [
     "modules/quickshell/checks/imports.nix",
 ];
 
+/// Files no build reads, so their move on main reaches no check: the net's
+/// quarantine list, which the net, changed-checks and run-subtests read
+/// from main, and merge-net's package leaves out of its source. On 16
+/// November a move to it sent a gate back to evaluating every check.
+const READ_BY_NONE: [&str; 1] = ["tools/merge-net/quarantine.json"];
+
 /// Who wrote and committed a commit, and when, given again as they were,
 /// so the same change replayed onto the same main is the same commit, and
 /// a pass kept for it is found again.
@@ -81,7 +87,8 @@ pub fn kept_in(listing: &str, system: &str) -> HashSet<String> {
 
 /// Why a change touching `change` can't be checked on a base that differs
 /// from its own by `moved`, or none: a file reaching every check moved, or
-/// one beside the change's in a folder it touches. A file the change
+/// one beside the change's in a folder it touches, unless no build reads
+/// it. A file the change
 /// touches itself is enough applied cleanly going `forward`, onto a main
 /// holding its own base; going back, only one whose lines `merge-net
 /// ready` reads apart is, since ready refuses a pass of the rest over it,
@@ -93,13 +100,18 @@ pub fn refusal(
     forward: bool,
     crates: &Crates,
 ) -> Option<String> {
+    let moved: Vec<String> = moved
+        .iter()
+        .filter(|file| !READ_BY_NONE.contains(&file.as_str()))
+        .cloned()
+        .collect();
     if let Some(file) = moved
         .iter()
         .find(|file| EVERYWHERE.contains(&file.as_str()))
     {
         return Some(format!("main moved {file}, which every check reads"));
     }
-    if !forward && let Some(file) = crates.beside(change, moved).first() {
+    if !forward && let Some(file) = crates.beside(change, &moved).first() {
         return Some(format!(
             "main moved {file}, in a crate the change's crates read or are read by"
         ));
