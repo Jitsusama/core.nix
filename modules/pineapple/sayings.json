@@ -38,6 +38,48 @@
       "verdict": "stop-asked"
     },
     {
+      "name": "a program named with an underscore is no ask either",
+      "platform": "slack",
+      "author": "U0OTHER002",
+      "text": "<@U0JOEL0001> can we disable the datadog_agent on example-shop?",
+      "verdict": "nothing"
+    },
+    {
+      "name": "words for his agents apart by a slash still ask",
+      "platform": "slack",
+      "author": "U0OTHER002",
+      "text": "<@U0JOEL0001> please stop your agents/bots, they keep pushing",
+      "verdict": "stop-asked"
+    },
+    {
+      "name": "words for his agents joined to each other still ask",
+      "platform": "slack",
+      "author": "U0OTHER002",
+      "text": "<@U0JOEL0001> stop the AI-bots now",
+      "verdict": "stop-asked"
+    },
+    {
+      "name": "a word for his agents run into dots still asks",
+      "platform": "slack",
+      "author": "U0OTHER002",
+      "text": "<@U0JOEL0001> can you halt your agents...they keep pushing",
+      "verdict": "stop-asked"
+    },
+    {
+      "name": "a word for his agents run into a double dash still asks",
+      "platform": "slack",
+      "author": "U0OTHER002",
+      "text": "<@U0JOEL0001> pause the bots--please",
+      "verdict": "stop-asked"
+    },
+    {
+      "name": "a program named in words still asks, leaning toward telling him",
+      "platform": "slack",
+      "author": "U0OTHER002",
+      "text": "<@U0JOEL0001> why disable the guest agent on the hosts?",
+      "verdict": "stop-asked"
+    },
+    {
       "name": "wondering whether the safe word still works",
       "platform": "slack",
       "author": "U0OTHER001",
