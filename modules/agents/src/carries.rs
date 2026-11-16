@@ -126,7 +126,8 @@ fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &W
         "place": PLACE, "parent": parent, "kind": "carry", "name": name, "glyph": "agent",
         "hue": "program", "depth": 1, "side": side, "note": note, "acts": back(record),
         "held": {"address": text(record, "address"), "state": text(record, "state"),
-            "from": text(record, "from"), "to": to, "quest": text(record, "quest")},
+            "from": text(record, "from"), "to": to, "quest": text(record, "quest"),
+            "at": text(record, "at")},
     })
 }
 
@@ -336,6 +337,10 @@ mod tests {
             "back to where it came from, asked of the node as it stands"
         );
         assert_eq!(made[1]["held"]["quest"], "QEST-20261115-HARBOR");
+        assert_eq!(
+            made[1]["held"]["at"], "2026-11-16T01:00:00Z",
+            "when it was made, which For You weighs a carry under way by"
+        );
         for state in ["ordered", "carrying", "refused", "back", "paused"] {
             let other = record("HARBOR", "2026-11-16T01:00:00Z", state);
             let made = rows(&[&other], &top(), &words());
