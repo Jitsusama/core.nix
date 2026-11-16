@@ -90,10 +90,14 @@
   }
   const names = [...byName.keys()].sort((one, other) => other.length - one.length);
   const escaped = names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
-  const mention = new RegExp(
-    `(?<![\\p{L}\\p{N}_/.-])(?:${escaped.join("|")})(?![\\p{L}\\p{N}_/-]|\\.[\\p{L}\\p{N}])`,
-    "gu",
-  );
+  // A name is part of a longer one when a letter, a slash or a dash joins it
+  // on either side, a dot before it, or a dot and a letter after it. So is a
+  // name just after an ellipsis (U+2026): it's the tail of a long name a page
+  // shortened in its middle. One before an ellipsis still counts, since
+  // prose may trail off after a whole name.
+  const before = "(?<![\\p{L}\\p{N}_/.\u2026-])";
+  const after = "(?![\\p{L}\\p{N}_/-]|\\.[\\p{L}\\p{N}])";
+  const mention = new RegExp(`${before}(?:${escaped.join("|")})${after}`, "gu");
 
   const blocks = "p, li, tr, dt, dd, h1, h2, h3, h4, h5, h6, figcaption, caption, summary, "
     + "blockquote, [role='row'], [role='treeitem'], [role='listitem']";
