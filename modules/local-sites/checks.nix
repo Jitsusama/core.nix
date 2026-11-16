@@ -34,6 +34,25 @@ in
     };
   };
 
+  # The forage page typechecks on the kit and builds, its tests passing
+  # (modules/mycelium/forage/tests), on the same plain looks.
+  forage-site-holds = sites.localSite {
+    name = "forage";
+    src = ../mycelium/forage;
+    webKit = pkgs.emptyDirectory;
+    tint = "program";
+    looks = {
+      dark = {
+        background = "black";
+        program = "white";
+      };
+      light = {
+        background = "white";
+        program = "black";
+      };
+    };
+  };
+
   # The home's builder lists each site from its row, settled ones apart,
   # strips each page that asks, and changes nothing on a second run
   # (tests/home-builds-from-its-rows.sh).

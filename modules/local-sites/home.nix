@@ -143,15 +143,44 @@ in
         # Its emphasis, as its styles mark it, in the machines' hue.
         tint = "machine";
       };
+    }
+    // lib.optionalAttrs (realm != null) {
+      # What each of this machine's cells is for, from its node's forage
+      # records (modules/mycelium/forage), in the programs' hue.
+      forage = sites.localSite {
+        name = "forage";
+        src = ../mycelium/forage;
+        inherit webKit;
+        tint = "program";
+      };
     };
     # The system daemon's summary, its parts and their things
     # (modules/system), each told whole: a page shows all of each.
-    feeds.system = {
-      socket = "daemons/system.sock";
-      kinds = {
-        summary = { };
-        part = { };
-        machine = { };
+    feeds = {
+      system = {
+        socket = "daemons/system.sock";
+        kinds = {
+          summary = { };
+          part = { };
+          machine = { };
+        };
+      };
+    }
+    // lib.optionalAttrs (realm != null) {
+      # The realm's node on this machine, of which a page reads only each
+      # cell's forage: its purpose, standing, documents and lineage, and
+      # never what passes between cells.
+      node = {
+        socket = "mycelium/${realm}.sock";
+        kinds.forage.fields = [
+          "cell"
+          "machine"
+          "quest"
+          "purpose"
+          "status"
+          "documents"
+          "lineage"
+        ];
       };
     };
   };

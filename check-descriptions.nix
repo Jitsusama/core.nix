@@ -2854,6 +2854,11 @@
     parts in the summary's order with their machines, a part or machine not told said rather than
     drawn, the whole said worst first, and a record's words reaching the page as text only
   '';
+  forage-site-holds = ''
+    the forage page typechecks on the kit at its strictest and builds, its tests passing: each
+    cell's forage under the cell that started it, even in a ring, plans first with their steps
+    added up, how many cells have no purpose written, and a record it can't read said, not dropped
+  '';
   talk-to-opens-only-on-whom-it-names = ''
     the launcher's talkTo opens a talk on the first word it's given alone: a session's address in
     either case, the void's on its line, a network told apart as having no one to talk to, and
