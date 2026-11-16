@@ -11,6 +11,7 @@
 //! step alone moved sends nothing.
 
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
 use serde_json::{Value, json};
 
@@ -31,6 +32,9 @@ pub const SUMMARY: &str = "summary:agents";
 #[derive(Debug, Default)]
 pub struct Served {
     records: BTreeMap<String, Value>,
+    /// Landed's records as last taken, which a making serving the same
+    /// again leaves served without reading them (`take`).
+    landed: Rc<Vec<Value>>,
 }
 
 /// What a making moved: the records that read differently, whole, and
@@ -61,8 +65,9 @@ pub struct Made {
     /// Each session Recent lists, a whole record (recent.rs).
     recent: Vec<Value>,
     /// Each landing Landed lists, and how many landed each day, whole
-    /// records (landed.rs).
-    landed: Vec<Value>,
+    /// records (landed.rs), shared with the making they were made in, so
+    /// one that made none afresh serves the same (inputs.rs's landed).
+    landed: Rc<Vec<Value>>,
     /// Each closed orchestrator, a whole record (closed.rs).
     closed: Vec<Value>,
     /// Which window each session here is in, a whole record (windows.rs).
@@ -95,7 +100,7 @@ impl Made {
 
     /// The same, with every landing Landed lists beside its rows.
     #[must_use]
-    pub fn with_landed(self, landed: Vec<Value>) -> Self {
+    pub fn with_landed(self, landed: Rc<Vec<Value>>) -> Self {
         Self { landed, ..self }
     }
 
@@ -209,7 +214,7 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
         drawers: Vec::new(),
         reopens: Vec::new(),
         recent: Vec::new(),
-        landed: Vec::new(),
+        landed: Rc::default(),
         closed: Vec::new(),
         windows: Vec::new(),
         wants: Vec::new(),
@@ -293,8 +298,18 @@ impl Served {
         self.records.values()
     }
 
+    /// Landed's records as last served.
+    pub fn landed(&self) -> &Rc<Vec<Value>> {
+        &self.landed
+    }
+
     /// Takes a making in place of the last, each row given its `order`
-    /// against what it had before, answering what moved.
+    /// against what it had before, answering what moved. Landed's records
+    /// the last making served too stay as they are, unread: there were
+    /// 4,997 of them on Joel's laptop, 2.9 MB, and reading each against
+    /// itself about once a second, as sessions moved, was a quarter of
+    /// the daemon's work while it kept 49% of a core busy (perf,
+    /// 2026-11-16).
     pub fn take(&mut self, made: Made) -> Moved {
         let was: Vec<Option<i64>> = made
             .rows
@@ -321,7 +336,6 @@ impl Served {
             .into_iter()
             .chain(made.reopens)
             .chain(made.recent)
-            .chain(made.landed)
             .chain(made.closed)
             .chain(made.windows)
             .chain(made.wants)
@@ -330,6 +344,21 @@ impl Served {
             if let Some(key) = whole["key"].as_str() {
                 records.insert(key.to_owned(), whole);
             }
+        }
+        let mut kept = Vec::new();
+        if Rc::ptr_eq(&made.landed, &self.landed) {
+            for key in made.landed.iter().filter_map(|whole| whole["key"].as_str()) {
+                if let Some(whole) = self.records.remove(key) {
+                    kept.push((key.to_owned(), whole));
+                }
+            }
+        } else {
+            for whole in made.landed.iter() {
+                if let Some(key) = whole["key"].as_str() {
+                    records.insert(key.to_owned(), whole.clone());
+                }
+            }
+            self.landed = made.landed;
         }
         let gone = self
             .records
@@ -342,6 +371,7 @@ impl Served {
             .filter(|(key, record)| self.records.get(*key) != Some(record))
             .map(|(_, record)| record.clone())
             .collect();
+        records.extend(kept);
         self.records = records;
         Moved { changed, gone }
     }
@@ -427,6 +457,29 @@ mod tests {
                 .get(SUMMARY)
                 .map(|one| one["summary"]["said"].clone()),
             Some(json!("1 working"))
+        );
+    }
+
+    #[test]
+    fn landings_made_once_stay_served_until_made_anew() {
+        let landing = |at: &str| json!({"key": format!("landed:{at}"), "kind": "landed"});
+        let once = Rc::new(vec![landing("o#1"), landing("o#2")]);
+        let mut served = Served::default();
+        let first = served.take(made(&[], "").with_landed(Rc::clone(&once)));
+        assert_eq!(first.changed.len(), 3, "both landings and the summary");
+        let again = served.take(made(&[row("P", "working")], "").with_landed(Rc::clone(&once)));
+        assert_eq!(
+            (again.changed.len(), again.gone.len()),
+            (1, 0),
+            "only the new row moved; the landings stay served"
+        );
+        assert!(served.get("landed:o#2").is_some(), "a landing kept over");
+        let anew = served
+            .take(made(&[row("P", "working")], "").with_landed(Rc::new(vec![landing("o#1")])));
+        assert_eq!(
+            (anew.changed.len(), anew.gone),
+            (0, vec!["landed:o#2".to_owned()]),
+            "made anew, the one no longer landed goes and the same one moves nothing"
         );
     }
 
