@@ -1,0 +1,15 @@
+# Your home network, now
+
+> A live, read-only map of Joel's home network, floor by floor: each
+> eero with how busy its radios are, every device on it with its address
+> and signal, the switch, the modem and the internet, and each device's
+> route to the internet with where it runs out of room.
+
+- [The page](index.html): the map, walked by keyboard or pointer, with
+  each device's details and every device as a tree beside it.
+- [The page as text](index.md): how to read the map, its keys, and what
+  the data holds.
+- The data: net's records of the network, which the page watches live
+  over the sites' server at /feed/net. An agent on the machine runs
+  `net --json` itself.
+- [All his sites](../llms.txt): the home this page sits in.
