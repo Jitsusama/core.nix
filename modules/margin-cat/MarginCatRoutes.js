@@ -13,11 +13,15 @@
 // the search finds the quickest run of them to its seat, keeping near the
 // straight line there, as a cat makes for where it's going.
 .pragma library
+.import "MarginCat.js" as MarginCat
 
 // Its pace, in its cells a second, walking a ledge or a top or climbing
 // a side, which it does at the pace it walks (Joel, 2026-11-13 17:22, by
-// WCJQSG fc3f716a: at 320 a climb "seems accelerated").
-const WALKS = 120;
+// WCJQSG fc3f716a: at 320 a climb "seems accelerated"): the walker's own
+// cap on a long way, so a route planned here is timed as it's walked, and
+// one way down or up is weighed against another as the walker would take
+// it.
+const WALKS = MarginCat.HURRIES;
 // What a leap costs, crouch and landing and all, in ms: across a gap
 // between two of a column's windows or two columns, and over an edge onto
 // a ledge or a side.
