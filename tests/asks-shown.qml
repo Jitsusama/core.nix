@@ -1,6 +1,6 @@
 // How long a secret ask's line was on Joel's screen when he said yes, as
 // the yes tells the daemon, run in Qt's own JavaScript engine, the one the
-// shell runs it in. The `the-asks-say-how-long-each-line-was-shown` check
+// shell runs it in. The `the-asks-say-how-long-each-was-shown` check
 // copies modules/secret-asks/Shown.js and tests/lib/Expect.js beside this
 // file and runs `qml -platform offscreen asks-shown.qml` over asks made up
 // here in the form the daemon serves them.

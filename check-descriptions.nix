@@ -3035,11 +3035,16 @@
     burst, never while notices are held or with no sound set, and his safe word knocks even while
     held
   '';
-  the-asks-say-how-long-each-line-was-shown = ''
+  the-asks-say-how-long-each-was-shown = ''
     a yes says how long since its line's frame reached the screen this opening, counted from the
     first and again from a changed line's, and says no time for a line never presented, for the
     line as it was, for another ask's or while the launcher is walked from outside, so the daemon
     refuses it unread; a no is sent as served
+  '';
+  the-asks-say-how-long-each-was-shown-over-passwords = ''
+    over Passwords' connection, a first Return on an ask only arms, a yes says how long since a
+    frame presented its line selected, noted again as the launcher reopens on it, a changed line
+    says no time until presented, and a yes walked from outside the launcher is never sent
   '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,

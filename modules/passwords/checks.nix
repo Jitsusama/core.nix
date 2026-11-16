@@ -139,7 +139,7 @@ onLinux {
   # which draws this daemon's secret asks, how it says a line was shown,
   # or the ready rows it acts through, so no IPC says yes to an ask; the
   # launcher's own do and run, walked from outside, say no time shown
-  # (the-asks-say-how-long-each-line-was-shown), which the daemon refuses.
+  # (the-asks-say-how-long-each-was-shown), which the daemon refuses.
   the-passwords-answer-no-ipc =
     let
       read = map builtins.readFile [
