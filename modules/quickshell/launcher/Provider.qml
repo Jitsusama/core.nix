@@ -497,8 +497,12 @@ Scope {
     // counts too many says which rows they were and when. The launcher
     // writes shut and walked here as they change, since a row made in a
     // binding that read its open or cataloguing would be made again by
-    // every opening.
-    readonly property var tally: ({ rows: 0, looked: 0, lately: [], shut: true, walked: false })
+    // every opening. Agents counts the sessions it looks through to find
+    // each landing's (`sought`), for the check that a landing read finds
+    // them once rather than once a landing.
+    readonly property var tally: ({
+        rows: 0, looked: 0, sought: 0, lately: [], shut: true, walked: false
+    })
     readonly property int tallyKept: 16
     function tallied(fields) {
         tally.rows += 1;

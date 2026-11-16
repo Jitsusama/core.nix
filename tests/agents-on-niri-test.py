@@ -2000,6 +2000,11 @@ def landings_looked(shell: Shell) -> int:
     return int(json.loads(shell.as_account(shell.ipc("made")))["looked"]["agents"])
 
 
+def sessions_sought(shell: Shell) -> int:
+    """Give how many sessions Agents has looked through to find its landings' own."""
+    return int(json.loads(shell.as_account(shell.ipc("made")))["sought"]["agents"])
+
+
 def made_lately(shell: Shell) -> str:
     """Say the last rows Agents made, each marked shut or walked as the launcher was then."""
     lately = json.loads(shell.as_account(shell.ipc("made")))["lately"]["agents"]
@@ -3006,3 +3011,39 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
     shoot("replied")
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def test_a_landing_read_finds_each_landings_session_in_one_look(shell: Shell) -> None:
+    """A landing read keeps Landed's rows again looking through the sessions once, not each time.
+
+    Reading one changes the landings, so each is kept again, and each looked for its session
+    among all of Joel's: 2,600 landings by about 120 sessions took 40 of the 87 ms To Try's
+    Return spent to its frame (2026-11-15). It's the module's last case, since the landing
+    it reads, two days old, then reads as read.
+    """
+    # The cases before laid sessions of their own, so Agents' first rows are theirs by now.
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["agents"] and "Landed" in shown["rows"])
+    shell.down_to("Landed")
+    shell.step_in()
+    earliest = "Earlier change 0."
+    shell.launcher_until(lambda shown: earliest in shown["rows"])
+    shell.down_to(earliest)
+    launcher_on_niri.weighed_held_still(shell)
+    looked, sought = landings_looked(shell), sessions_sought(shell)
+    # It goes nowhere, so normal's Return reads it and keeps the launcher.
+    shell.normal()
+    shell.send_key("ret")
+    deadline = time.monotonic() + 10
+    while landings_looked(shell) == looked:
+        assert time.monotonic() < deadline, "reading a landing kept no landing again"
+        time.sleep(0.1)
+    launcher_on_niri.weighed_held_still(shell)
+    # Each keeping looks at every landing and through the sessions once, where looking for
+    # each landing's own looked through them all again; the row selected looks its own up
+    # live a few times besides, as its verbs are read.
+    looked = landings_looked(shell) - looked
+    sought = sessions_sought(shell) - sought
+    times = sought / len(held_by_node())
+    assert times < looked / 2, f"keeping {looked} landings looked through the sessions {times}x"
