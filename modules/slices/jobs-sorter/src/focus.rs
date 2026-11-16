@@ -1000,11 +1000,11 @@ mod tests {
         let then = Instant::now();
         let pi = Some(Path::new("/cg/agents.slice/mycelium-pi-b.scope"));
         let at = |seconds| then + Duration::from_secs(seconds);
-        assert!(stands(pi, then, at(4), |_| true));
+        assert!(stands(pi, then, at(4), |_| true), "there, and found 4 s ago");
         assert!(!stands(pi, then, at(5), |_| true), "looked for again");
         assert!(!stands(pi, then, at(0), |_| false), "gone, so at once");
         assert!(stands(None, then, at(4), |_| false), "none, kept");
-        assert!(!stands(None, then, at(5), |_| false));
+        assert!(!stands(None, then, at(5), |_| false), "none, looked for again");
     }
 
     #[test]
