@@ -467,6 +467,86 @@ fn twice(stands: &str, newest: &str, earlier: &str, shared: &[String]) -> String
 /// Whether `commit`, a head on `main` with no run of its own, is ready by
 /// an earlier commit of the same change, saying what to do when it isn't.
 fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result<ExitCode, String> {
+    let Judged {
+        stands,
+        behind,
+        files,
+        before,
+    } = judged(commit, main, on_main)?;
+    match before {
+        ready::Before::Twice(newest, earlier, shared) => {
+            let said = twice(&stands, &newest, &earlier, &shared);
+            return Ok(may_merge(commit, main, &[&newest, &earlier], &files, &said));
+        }
+        ready::Before::Clean(checked) => {
+            let said = format!(
+                "ready: {stands} and changed-checks built what it named at {}, the same \
+                 change, whose files main hasn't moved since",
+                short(&checked)
+            );
+            return Ok(may_merge(commit, main, &[&checked], &files, &said));
+        }
+        ready::Before::Shares(checked, shared) => {
+            let passes = |said: &str| may_merge(commit, main, &[commit, &checked], &files, said);
+            let quarantine = git(&["show", &format!("{commit}:{}", world::QUARANTINE)]);
+            let quarantine = quarantine.unwrap_or_default();
+            if let Some(said) = lists::say(commit, &shared, &quarantine, &passes) {
+                return Ok(said);
+            }
+            if behind {
+                return Ok(rebase_over(commit, main, &checked, &shared));
+            }
+            // Its run again keeps the place this pass's gate had.
+            turn::keep_place(&[commit, &checked]);
+            answers::keep(commit, answers::Verdict::Regate, &shared);
+            eprintln!(
+                "merge-net: the same change passed at {}, but main has since moved {}; {}",
+                short(&checked),
+                shared.join(", "),
+                run_again(commit)
+            );
+        }
+        ready::Before::Unchecked => eprintln!(
+            "merge-net: no changed-checks run that built what it named passed at {}, or at \
+             an earlier commit of the same change; run changed-checks there, committed so \
+             it's sent, and merge again",
+            short(commit)
+        ),
+    }
+    Ok(ExitCode::FAILURE)
+}
+
+/// The record of the run that passed at an earlier commit of `commit`'s
+/// change and speaks for it on `main` as `ready` takes one, since main
+/// hasn't moved its files or the crates beside them, so `needs` at a
+/// rebased head reads what that run named rather than evaluating again.
+fn earlier_pass(commit: &str, main: &str) -> Option<String> {
+    let on_main = |base: &str| {
+        Command::new("git")
+            .args(["merge-base", "--is-ancestor", base, main])
+            .status()
+            .is_ok_and(|status| status.success())
+    };
+    let ready::Before::Clean(checked) = judged(commit, main, &on_main).ok()?.before else {
+        return None;
+    };
+    Some(ready::record(&checked))
+}
+
+/// What `ready` knows of a head's change from its earlier commits: where
+/// the head stands, whether it's behind main, its files, and which earlier
+/// run speaks for it.
+struct Judged {
+    stands: String,
+    behind: bool,
+    files: Vec<String>,
+    before: ready::Before,
+}
+
+/// What `ready` knows of `commit`, a head on `main` with no run of its
+/// own, from the earlier commits of its change, `on_main` saying whether
+/// a run's base is on main.
+fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result<Judged, String> {
     // The change is what the head adds to the main it branched from, which
     // is main itself unless the head is behind it.
     let branched = git(&["merge-base", main, commit])?;
@@ -527,54 +607,22 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         Some(naming)
     };
     let candidates = ready::speakers(commit, behind, &candidates(commit, main, &files)?);
-    let mut before = ready::checked_before(&candidates, &ready::record, on_main, &same);
-    if let ready::Before::Twice(newest, earlier, shared) = before {
-        if names_gone(&newest).is_some_and(|naming| naming.is_empty()) {
-            let said = twice(&stands, &newest, &earlier, &shared);
-            return Ok(may_merge(commit, main, &[&newest, &earlier], &files, &said));
-        }
+    let before = match ready::checked_before(&candidates, &ready::record, on_main, &same) {
         // Main renamed or deleted a path one side names, which neither
         // run saw, so it runs again as a change checked once would.
-        before = ready::Before::Shares(newest, shared);
-    }
-    match before {
-        ready::Before::Clean(checked) => {
-            let said = format!(
-                "ready: {stands} and changed-checks built what it named at {}, the same \
-                 change, whose files main hasn't moved since",
-                short(&checked)
-            );
-            return Ok(may_merge(commit, main, &[&checked], &files, &said));
+        ready::Before::Twice(newest, _, shared)
+            if !names_gone(&newest).is_some_and(|naming| naming.is_empty()) =>
+        {
+            ready::Before::Shares(newest, shared)
         }
-        ready::Before::Shares(checked, shared) => {
-            let passes = |said: &str| may_merge(commit, main, &[commit, &checked], &files, said);
-            let quarantine = git(&["show", &format!("{commit}:{}", world::QUARANTINE)]);
-            let quarantine = quarantine.unwrap_or_default();
-            if let Some(said) = lists::say(commit, &shared, &quarantine, &passes) {
-                return Ok(said);
-            }
-            if behind {
-                return Ok(rebase_over(commit, main, &checked, &shared));
-            }
-            // Its run again keeps the place this pass's gate had.
-            turn::keep_place(&[commit, &checked]);
-            answers::keep(commit, answers::Verdict::Regate, &shared);
-            eprintln!(
-                "merge-net: the same change passed at {}, but main has since moved {}; {}",
-                short(&checked),
-                shared.join(", "),
-                run_again(commit)
-            );
-        }
-        ready::Before::Twice(..) => unreachable!("a change checked twice was judged above"),
-        ready::Before::Unchecked => eprintln!(
-            "merge-net: no changed-checks run that built what it named passed at {}, or at \
-             an earlier commit of the same change; run changed-checks there, committed so \
-             it's sent, and merge again",
-            short(commit)
-        ),
-    }
-    Ok(ExitCode::FAILURE)
+        before => before,
+    };
+    Ok(Judged {
+        stands,
+        behind,
+        files,
+        before,
+    })
 }
 
 /// Say where the net is: the head it last passed, what it looked at last,

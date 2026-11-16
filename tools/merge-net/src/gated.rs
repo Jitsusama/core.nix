@@ -61,20 +61,34 @@ pub fn named(
         .last()
 }
 
-/// What moved from `base` at the head, and how it was learned: from the
-/// head's `record` when the working tree is `clean`, since a run there saw
-/// only the commit, and otherwise by `asking` changed-checks.
-pub fn moved(
+/// What a run that passed already named as moved from `base` for the
+/// head, and whose run it was, when the working tree is `clean`, since a
+/// run saw only the commit: the head's own `record`, or else the record
+/// `earlier` finds of an earlier commit of the same change.
+pub fn kept(
     record: &str,
     clean: bool,
     base: &str,
     before: &dyn Fn(&str) -> bool,
+    earlier: impl FnOnce() -> Option<String>,
+) -> Option<(String, Asked)> {
+    if !clean {
+        return None;
+    }
+    let _ = earlier;
+    named(record, base, crate::SYSTEM, before).map(|said| (said, Asked::Gate))
+}
+
+/// What moved from `base` at the head, and how it was learned: from what
+/// a run that passed `kept`, and otherwise by `asking` changed-checks.
+pub fn moved(
+    kept: Option<(String, Asked)>,
     asking: impl FnOnce() -> Option<String>,
 ) -> (Option<String>, Asked) {
-    if clean && let Some(said) = named(record, base, crate::SYSTEM, before) {
-        return (Some(said), Asked::Gate);
+    match kept {
+        Some((said, how)) => (Some(said), how),
+        None => (asking(), Asked::Changed),
     }
-    (asking(), Asked::Changed)
 }
 
 /// How a `needs` learned what moved.
@@ -82,6 +96,8 @@ pub fn moved(
 pub enum Asked {
     /// From a run that passed at the head.
     Gate,
+    /// From a run that passed at an earlier commit of the same change.
+    Earlier,
     /// From changed-checks, which evaluated.
     Changed,
     /// It asked nothing, needing no answer.
@@ -92,6 +108,7 @@ impl Asked {
     fn said(self) -> &'static str {
         match self {
             Self::Gate => "gate",
+            Self::Earlier => "earlier",
             Self::Changed => "changed",
             Self::Nothing => "none",
         }
@@ -209,7 +226,8 @@ mod tests {
     fn a_clean_head_a_gate_passed_at_asks_for_no_evaluation() {
         let record = run("\"--system\",\"x86_64-linux\"", "changed  vm-a\\n");
         let mut asked = 0;
-        let (said, how) = moved(&record, true, BASE, &before, || {
+        let at_head = kept(&record, true, BASE, &before, || None);
+        let (said, how) = moved(at_head, || {
             asked += 1;
             Some("changed  vm-z\n".to_owned())
         });
@@ -218,13 +236,37 @@ mod tests {
             (Some("changed  vm-a\n"), Asked::Gate, 0),
             "changed-checks was asked to evaluate what the gate at the head already named"
         );
-        let (said, how) = moved(&record, false, BASE, &before, || {
-            Some("changed  vm-z\n".to_owned())
-        });
+        let edited = kept(&record, false, BASE, &before, || Some(record.clone()));
+        let (said, how) = moved(edited, || Some("changed  vm-z\n".to_owned()));
         assert_eq!(
             (said.as_deref(), how),
             (Some("changed  vm-z\n"), Asked::Changed),
             "a tree with edits the gate never saw was answered from the gate"
+        );
+    }
+
+    #[test]
+    fn a_rebased_head_is_answered_by_its_change_s_earlier_pass() {
+        // On 16 November #5018's gate passed at f8b9be72; rebased over
+        // main moving none of its files, needs at the new head had no run
+        // of its own and evaluated every check again for ten minutes.
+        let earlier = run("\"--system\",\"x86_64-linux\"", "changed  vm-a\\n");
+        let mut asked = 0;
+        let rebased = kept("", true, BASE, &before, || Some(earlier.clone()));
+        let (said, how) = moved(rebased, || {
+            asked += 1;
+            Some("changed  vm-z\n".to_owned())
+        });
+        assert_eq!(
+            (said.as_deref(), how, asked),
+            (Some("changed  vm-a\n"), Asked::Earlier, 0),
+            "a rebased head evaluated what its change's earlier pass already named"
+        );
+        let none_earlier = kept("", true, BASE, &before, || None);
+        assert_eq!(
+            moved(none_earlier, || Some("changed  vm-z\n".to_owned())),
+            (Some("changed  vm-z\n".to_owned()), Asked::Changed),
+            "a head with no pass of its change's wasn't asked of changed-checks"
         );
     }
 
