@@ -310,6 +310,31 @@
       "name": "Machines"
     },
     {
+      "id": "agents:carried",
+      "in": "agents",
+      "name": "Carried",
+      "said": {
+        "ordered": "about to go",
+        "carrying": "on its way",
+        "arrived": "arrived",
+        "refused": "refused",
+        "back": "back",
+        "refusedCountOne": "1 refused",
+        "refusedCount": "{count} refused",
+        "underWayCountOne": "1 on its way",
+        "underWayCount": "{count} on their way",
+        "arrivedCountOne": "1 arrived",
+        "arrivedCount": "{count} arrived",
+        "backCountOne": "1 back",
+        "backCount": "{count} back",
+        "to": "carried to {machine} by {by}",
+        "refusedTo": "refused to go to {machine}",
+        "note": "{lead} \u00b7 {why}",
+        "ended": "A Session That Ended",
+        "someone": "an orchestrator"
+      }
+    },
+    {
       "id": "agents:standing",
       "in": "agents",
       "name": "Standing"
