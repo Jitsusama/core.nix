@@ -3287,6 +3287,9 @@ def test_now_says_a_degraded_work_network_within_its_line_and_steps_to_its_row(
         )
         line = next(name for name in shell.showing()["rows"] if name.startswith("Work Network"))
         shell.down_to(line)
+        # The Date's drawer goes in as the cursor leaves it, and its facts break out of it while
+        # it goes (2026-11-16), so the card is judged once it's gone, the line alone in view.
+        shell.launcher_until(lambda shown: not (shown["drawer"] or {}).get("out"))
         broke = json.loads(shell.as_account(shell.ipc("contained")))
         assert broke == [], f"what broke out of Now's card: {broke}"
         shell.step_in()
