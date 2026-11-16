@@ -59,9 +59,8 @@ SESSIONS = 300
 CHANGING = 10
 BEAT = 0.3
 PEOPLE = 2000
-# As many sessions as Joel's on 2026-11-09, one moving its step and turning between working and
-# listening each beat, and how many such moves the shut launcher hears before saying it took
-# none.
+# As many sessions as Joel's on 2026-11-09, one moving its step each beat as it keeps working or
+# listening, and how many such moves the shut launcher hears before saying it took none.
 WORKING = 113
 STEPS = 20
 CROWD = "/run/user/1000/crowd"
@@ -387,18 +386,20 @@ def stepped(desktop: Desktop) -> int:
 
 
 def test_a_shut_launcher_takes_no_step_only_it_shows(desktop: Desktop) -> None:
-    """With the launcher shut, sessions moving their steps and standing wake the shell not at all.
+    """With the launcher shut, sessions moving only their steps wake the shell not at all.
 
     Joel's 113 sessions changed 26 times in 30 s, 21 of them only in their step and usage, and
     each cost his closed shell's main thread 20 to 370 ms (2026-11-09); of the rest, a quarter
     of all his changes turned only between working and listening, at about 50 ms each
     (2026-11-10). Skipping their sorting still parsed each change, and none of 56 a minute
     moved what a shut launcher reads (2026-11-11), so the shell asks the node to send a change
-    only as that moves. Opened, it takes them. It runs before the arrows, which want them taken.
+    only as that moves. Turning between working and listening moves it, since the shut foot
+    counts those working (mycelium #201), so these sessions keep theirs. Opened, it takes them.
+    It runs before the arrows, which want them taken.
     """
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    working = f"{desktop.values['stand_in_sessions']} {PI_PRESENCE} {WORKING} 1 {BEAT}"
+    working = f"{desktop.values['stand_in_sessions']} {PI_PRESENCE} {WORKING} 1 {BEAT} still"
     desktop.as_account(f"systemd-run --user --collect --quiet --unit=working-sessions {working}")
     try:
         # Every session is heard of before counting, since a new one is taken as it comes: they're

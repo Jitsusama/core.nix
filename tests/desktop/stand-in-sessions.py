@@ -7,9 +7,10 @@ of them again, in turn, each moving its step and flipping between working and li
 shell hears sessions change as often as Joel's own do (2026-11-08: his openings heard Agents
 change 27 to 75 times in their first three seconds, and made 3,424 to 8,291 of its rows). It
 says when it has written them on its standard output, and takes its records away when it's
-stopped, so no later test finds them.
+stopped, so no later test finds them. Given `still` last, each keeps working or listening as it
+was and moves only its step, since a shut launcher hears the flip, which its foot counts.
 
-Usage: stand-in-sessions FOLDER COUNT CHANGING BEAT_SECONDS
+Usage: stand-in-sessions FOLDER COUNT CHANGING BEAT_SECONDS [still]
 """
 
 import json
@@ -71,6 +72,7 @@ def main() -> None:
         int(sys.argv[3]),
         float(sys.argv[4]),
     )
+    still = sys.argv[5:] == ["still"]
     folder.mkdir(parents=True, exist_ok=True)
     whose = owner()
     busy = [at % 2 == 0 for at in range(count)]
@@ -90,7 +92,8 @@ def main() -> None:
             time.sleep(beat)
             for _ in range(changing):
                 at = turn % count
-                busy[at] = not busy[at]
+                if not still:
+                    busy[at] = not busy[at]
                 write(folder, at, record(at, busy=busy[at], whose=whose, step=turn))
                 turn += 1
     finally:
