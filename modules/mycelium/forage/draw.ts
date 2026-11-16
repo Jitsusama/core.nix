@@ -72,10 +72,11 @@ function purposeOf(forage: Forage): string {
 /**
  * Marks words the quest `quest` wrote, shown as written, so a page check
  * reads them as its words rather than the page's: a purpose can quote a
- * path, an id or a repository it never links.
+ * path, an id or a repository it never links. A record naming no quest
+ * still holds a quest's words, so it says so.
  */
 function saidBy(quest: string): string {
-  return ` data-said-by="${escaped(quest)}"`;
+  return ` data-said-by="${escaped(quest === "" ? "its quest" : quest)}"`;
 }
 
 /** Where `forage`'s purpose is its quest's own words, the mark saying so. */
@@ -202,7 +203,7 @@ function documentRow(document: Document, quest: string): string {
           (_, at) => `<path class="${at < on ? "gill" : "gill dim"}" d="M${2 + at * 5} 8V1"/>`,
         ).join("")}</svg>`;
   return `    <li class="doc">
-      <span class="named"${saidBy(quest)}>${escaped(document.title)}</span>
+      <span class="named"${document.title === document.id ? "" : saidBy(quest)}>${escaped(document.title)}</span>
       <span class="said">${escaped(document.kind)} · ${escaped(staged(document.stage))}</span>
       <span class="steps">${gills}<span>${escaped(come(document.ticked, all))}</span></span>
     </li>`;
