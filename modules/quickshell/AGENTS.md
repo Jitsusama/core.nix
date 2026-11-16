@@ -87,7 +87,13 @@ machine, one path through each connection.
   What it shows is asked the same way, by `show`, walked by
   `launcher/Showing.js`'s rules. `talkTo` and a session's address opens
   Agents' Talk to it, its field empty for Joel, as a cell on the realm's
-  map asks; whom it names is `launcher/TalkTo.js`'s.
+  map asks; whom it names is `launcher/TalkTo.js`'s. `network` and a
+  network's name opens Agents' Networks on its row, selected, walked by
+  the rows Return would take.
+- [`mycelium-link/`][mycelium-link]: the Rust program a `mycelium:` link
+  runs, through the desktop entry home.nix declares: `mycelium:cell/<ADDRESS>`
+  asks `talkTo`, and `mycelium:network/<name>` asks `network`, carrying the
+  name alone, and nothing for a second link within a few seconds.
 - [`in-a-terminal/`][terminal]: `launcher`, a Rust program printing any
   place, row or drawer the launcher holds, as text or as JSON, from the
   shell's `show`, so every integration has a command line at once; zsh
@@ -180,6 +186,7 @@ another.
 [terminal]: in-a-terminal/
 [launcher]: launcher/
 [maths]: maths/
+[mycelium-link]: mycelium-link/
 [pieces]: pieces/
 [provider]: launcher/Provider.qml
 [words]: launcher/words/README.md

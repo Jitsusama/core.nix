@@ -757,6 +757,11 @@ let
   # chord reads nothing from the disk (launcher-say/src/main.rs says why).
   launcherSay = pkgs.callPackage ./launcher-say/package.nix { };
 
+  # What a mycelium: link opens in the launcher: the realm's map links each
+  # cell and network so, and the browser hands the link to the entry below
+  # (mycelium-link/src/main.rs says what it lets through).
+  myceliumLink = pkgs.callPackage ./mycelium-link/package.nix { };
+
   # What the shell weighs, part by part, read from outside it so its own
   # thread pays nothing (shell-weighs/src/main.rs says how).
   shellWeighs = pkgs.callPackage ./shell-weighs/package.nix { };
@@ -1860,6 +1865,21 @@ in
     # services keep systemd's own limit.
     home.sessionVariables.SYSTEMD_BUS_TIMEOUT = "2min";
 
+    # Where a browser sends a mycelium: link, found by what it opens; it
+    # stays out of the launcher's own list of programs.
+    home.file."${config.xdg.dataHome}/applications/mycelium-link.desktop" = {
+      force = true;
+      text = ''
+        [Desktop Entry]
+        Type=Application
+        Name=Mycelium Link
+        Comment=Open a cell or network of the realm's map in the launcher
+        Exec=${lib.getExe myceliumLink} %u
+        MimeType=x-scheme-handler/mycelium;
+        NoDisplay=true
+      '';
+    };
+
     xdg.configFile =
       lib.genAttrs (map (file: "quickshell/${file}") qml) (path: {
         source = ./. + "/${lib.removePrefix "quickshell/" path}";
@@ -1881,6 +1901,13 @@ in
         ) providers
       )
       // {
+        # niri's own list of defaults, which only a desktop's may hold, since
+        # the browser keeps rewriting the account's mimeapps.list; other
+        # modules' lines join these, and their group with this one.
+        "niri-mimeapps.list".text = ''
+          [Default Applications]
+          x-scheme-handler/mycelium=mycelium-link.desktop
+        '';
         # Read by Words.qml as it's written, so a name is said once.
         "quickshell/launcher/words.json".text = builtins.toJSON launcher.words;
         # Which places the launcher has on, by the names they're turned on

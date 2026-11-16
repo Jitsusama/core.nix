@@ -1467,7 +1467,9 @@ Scope {
     // Talk, Agents, its foot saying once that it didn't talk and why. Only the
     // first word said names anyone (TalkTo.js), so nothing else said is ever
     // typed into the field. Says what it did as JSON, as run does, nobody
-    // here as an id the catalogue hasn't.
+    // here as an id the catalogue hasn't. It opens only from closed, and
+    // what it opens holds Joel's first keys back (inUse, Prompt.qml's
+    // linked), as a link from a page must.
     function talkTo(said) {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         const talk = agents ? agents.talkFor(said) : null;
@@ -1475,21 +1477,70 @@ Scope {
         console.info(`launcher: asked from outside to talk to ${JSON.stringify(whom)}`);
         if (whom.to === "none")
             return { error: `the launcher has nothing called ${whom.said}` };
+        if (inUse())
+            return inUseSaid;
         if (whom.to === "void") {
-            const shown = open;
-            open = false;
-            runOnceGone(talk.act, shown);
+            talkLine.openLinked();
             return { done: true, said: talk.act.name };
         }
         if (whom.to === "network") {
             const leadless = agents.leadless();
             toldThat(leadless.what, leadless.why);
             into("agents");
+            prompt.linked();
             return { done: false, said: `${leadless.what}: ${leadless.why}` };
         }
         into("agents");
         ask(talk.act);
+        prompt.linked();
         return { done: true, said: `${talk.act.name} \u203a ${talk.act.chip}` };
+    }
+
+    // Whether Joel has the launcher or the void's line up, which a mycelium: link, asking
+    // talkTo or network, never opens over: what he's typed, and where he is, stay as they are,
+    // and the link opens nothing (ISXEG8's ruling, 2026-11-15 [dd375f5e]). A link opens either
+    // only from closed, holding his first keys back (Prompt.qml's linked).
+    function inUse() {
+        return open || talkLine.up;
+    }
+    readonly property var inUseSaid: ({
+            done: false,
+            said: "the launcher is in use, so the link opened nothing"
+        })
+
+    // Opens Agents' Networks on the row of the network `said` names, selected, as `qs ipc call
+    // launcher network` asks, the way a network on the realm's map does (XUBK2E, 2026-11-15
+    // [2b5c927a]): stepped into as Return on Networks, and on the fold it's under, would step,
+    // so - climbs back out the same way. Only the first word said names one (Agents'
+    // networkWalk). Says what it did as JSON, as talkTo does, a name no network has as an id
+    // the catalogue hasn't, opening nothing.
+    function showNetwork(said) {
+        const agents = collections.find(one => one.settings.name === "agents") ?? null;
+        const walk = agents ? agents.networkWalk(said) : { name: String(said ?? ""), rows: [] };
+        console.info(`launcher: asked from outside to show the network ${walk.name}`);
+        if (walk.rows.length === 0)
+            return { error: `the launcher has nothing called ${walk.name}` };
+        if (inUse())
+            return inUseSaid;
+        // Walked as the catalogue's run walks a place, since Agents makes the rows a step
+        // finds only while the launcher is open or walked from outside.
+        const trail = ["collection:agents"].concat(walk.rows.slice(0, -1).map(row => steadyId(row)));
+        const spot = steadyId(walk.rows[walk.rows.length - 1]);
+        cataloguing = true;
+        try {
+            freshen();
+            open = true;
+            goTo({ trail: trail, spot: spot });
+        } finally {
+            cataloguing = false;
+        }
+        prompt.linked();
+        if (!Reached.reached(held.map(step => steadyId(step.row)), trail))
+            return { done: false, said: `${walk.name} didn't open` };
+        // Its row may come a read later, so the cursor lands on it then.
+        landOn = row => steadyId(row) === spot;
+        landed();
+        return { done: true, said: `opened ${walk.rows.map(row => row.name).join(" \u203a ")}` };
     }
 
     function catalogueRunWalked(id, words) {
@@ -7572,6 +7623,12 @@ Scope {
             return JSON.stringify(root.talkTo(address));
         }
 
+        // Opens Agents' Networks on a network's row by its name, selected,
+        // as a step in and down to it would (root's showNetwork).
+        function network(name: string): string {
+            return JSON.stringify(root.showNetwork(name));
+        }
+
         // What a place or a row shows, its drawer and the rows inside it,
         // for `launcher show` in a terminal, as JSON: the path's steps
         // joined by a "\u203a", each a row's name or its steady id, and
@@ -9460,6 +9517,9 @@ Scope {
     }
 
     onOpenChanged: {
+        // A link's hold on the first keys lasts only the opening it made.
+        if (!open)
+            prompt.unlinked();
         tallyMarked();
         // An opening's selection rests anew, never on the last opening's.
         restsOn = null;
