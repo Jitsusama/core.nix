@@ -3972,7 +3972,9 @@
         // A clause is kept whole on its line: a count never parts from
         // what it counts.
         const shown = what ? `<button type="button" class="count" data-count="${what}" aria-controls="panel">${esc(words)}</button>` : `<span class="clause">${esc(words)}</span>`;
-        return i === clauses.length - 1 ? `<em>${shown}.</em>` : shown;
+        // The full stop stands outside, so #status-words holds the counts
+        // alone, as the page's test reads them.
+        return i === clauses.length - 1 ? `<em>${shown}</em>` : shown;
       })
       .join(", ");
     if (sentence !== sentenceShown) {
