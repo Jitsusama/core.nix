@@ -70,7 +70,7 @@ mod taken;
 mod told;
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak, mpsc};
 use std::time::{Instant, SystemTime};
@@ -286,27 +286,32 @@ fn serve(given: &[String]) -> Result<(), Failure> {
         let shared = Arc::downgrade(&shared);
         move || shared.upgrade().map_or(json!({}), |shared| health(&shared))
     }));
-    if let Some(notify) = &shared.notify {
-        // Its folders are watched before the socket answers, so no
-        // change after a first answer goes unheard.
-        let folders = heard(&shared, notify);
-        let shared = Arc::clone(&shared);
-        std::thread::spawn(move || notice(&shared, &folders));
-    }
-    {
-        let shared = Arc::clone(&shared);
-        std::thread::spawn(move || rows::hear(&shared, &shared.windows));
-    }
-    {
-        let shared = Arc::clone(&shared);
-        let agents = agents::socket(&socket);
-        std::thread::spawn(move || agents::hear(&shared, &agents));
-    }
-    follow_watches(&shared);
+    hear(&shared, &socket);
     accept(shared.served(), listener);
     loop {
         std::thread::park();
     }
+}
+
+/// Starts the threads that hear what changes: the folders, the windows
+/// and agents daemons beside this one, and the watches. All begin before
+/// the socket answers, so no change after a first answer goes unheard.
+fn hear(shared: &Arc<Shared>, socket: &Path) {
+    if let Some(notify) = &shared.notify {
+        let folders = heard(shared, notify);
+        let shared = Arc::clone(shared);
+        std::thread::spawn(move || notice(&shared, &folders));
+    }
+    {
+        let shared = Arc::clone(shared);
+        std::thread::spawn(move || rows::hear(&shared, &shared.windows));
+    }
+    {
+        let shared = Arc::clone(shared);
+        let agents = agents::socket(socket);
+        std::thread::spawn(move || agents::hear(&shared, &agents));
+    }
+    follow_watches(shared);
 }
 
 /// Hears each watch begin or end, on a thread of its own, and hands the

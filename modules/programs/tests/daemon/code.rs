@@ -57,7 +57,8 @@ fn every_repository_is_a_row_of_codes_in_a_first_watchs_answer() {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|record| record["kind"] == "row")
+        // Its Open a File by Name row is inside it, not one of Code's own.
+        .filter(|record| record["kind"] == "row" && record["row"]["parent"].is_null())
         .count();
     assert_eq!(
         rows, 1,
