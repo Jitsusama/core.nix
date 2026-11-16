@@ -378,7 +378,7 @@
       networks: (s.groups || []).filter((g) => counted.has(g)),
       leads: now.teams.filter((t) => t.lead === s.id).map((t) => lower(t.key)),
     }));
-    return { at: now.at, networks: [...teams, ...shared], cells, machines: now.machines, messages: now.messages, waits: now.waits };
+    return { at: now.at, networks: [...teams, ...shared], cells, machines: now.machines, messages: now.messages, waits: now.waits, balance: now.balance };
   };
 
   const model = (raw) => {
@@ -489,7 +489,7 @@
       .map((n) => ({ key: n.name, shape: n.shape, short: n.short || n.name, title: n.title, cells: n.cells.map((a) => byAddress.get(a)).filter(Boolean) }))
       .filter((n) => n.cells.length >= 2);
     const repositories = new Set(cells.map((s) => s.repo).filter(Boolean)).size || shared.filter((n) => n.shape === "repository").length;
-    return { at: now.at, hubs, cells, byAddress, byId, shared, machines: now.machines, messages: now.messages || [], judged: Array.isArray(now.waits), repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, shared, machines: now.machines, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, repositories };
   };
 
   // ---- Places that never move. ----
@@ -2723,6 +2723,49 @@
     return `<li class="row still"><span class="what"><span class="name">The machine</span><span class="fact">${verdictMark(v)}: ${esc(bits.join("; ") || "nothing said")}</span></span></li>`;
   };
 
+  // The realm's balance, as the balance service reads it each minute: how
+  // much of the realm's work each machine carries, and what it holds wrong
+  // over most of the last ten minutes. Said in the words `mycelium balance`
+  // says it in. A held flag is worth watching, never a fault: placing is
+  // the realm's, not the machine's.
+  const loadWords = (load) => (typeof load === "number" ? `${Math.round(load * 100)}%` : "");
+  const STANDS_WORDS = { over: "over its limits", room: "with room for more", full: "with no room for more" };
+  const shareWords = (share) => {
+    const stands = share.over ? STANDS_WORDS.over : share.room ? STANDS_WORDS.room : STANDS_WORDS.full;
+    const load = loadWords(share.load);
+    const each = typeof share.busy_per_core === "number" ? `, ${Number(share.busy_per_core.toFixed(2))} busy a core` : "";
+    const sessions = typeof share.busy === "number" ? `; ${plural(share.busy, "cell")} busy and ${NUMBER.format(share.idle || 0)} idle${each}` : "";
+    return `${load ? `${load} loaded, ` : ""}${stands}${sessions}`;
+  };
+  const heldFlags = () => (Array.isArray(current.balance?.held) ? current.balance.held.filter((f) => f && typeof f.flag === "string") : []);
+  const flagNames = (f) => [f.hot, f.cool, f.machine].filter(Boolean);
+  // In a machine's own drawer, `self` is that machine, said as "it".
+  const flagWords = (f, self = null) => {
+    const its = (name) => (name === self ? "its" : `${name}'s`);
+    if (f.flag === "hot_while_cool" && f.hot === self) return `it is over while ${f.cool} has room, so new work should go to ${f.cool}`;
+    if (f.flag === "hot_while_cool" && f.cool === self) return `${f.hot} is over while this has room, so new work should come here`;
+    if (f.flag === "hot_while_cool") return `${f.hot} is over while ${f.cool} has room, so new work should go to ${f.cool}`;
+    if (f.flag === "stranded" && f.spent === "memory") return `${its(f.machine)} memory is nearly all used while its processors idle`;
+    if (f.flag === "stranded") return `${its(f.machine)} processors are spent while half its memory or more is free`;
+    if (f.flag === "stale") return `${its(f.machine)} facts are too old to place by`;
+    if (f.flag === "imbalanced") return "the machines' loads are uneven, so new work leans to the least loaded";
+    return f.flag.replace(/_/g, " ");
+  };
+  const machineShareRow = (x) => {
+    if (!x.share) return "";
+    const held = heldFlags().filter((f) => flagNames(f).includes(x.name));
+    const bits = [shareWords(x.share), ...held.map((f) => flagWords(f, x.name))];
+    return `<li class="row still"><span class="what"><span class="name">Its share</span><span class="fact">${verdictMark(held.length ? 1 : 0)}: ${esc(bits.join("; "))}</span></span></li>`;
+  };
+  const balanceRow = () => {
+    if (!current.balance) return "";
+    const loads = current.machines.filter((x) => x.share && loadWords(x.share.load)).map((x) => `${x.name} ${loadWords(x.share.load)}`);
+    if (loads.length < 2) return "";
+    const held = heldFlags();
+    const said = held.length ? held.map((f) => flagWords(f)) : ["even"];
+    return `<li class="row still"><span class="what"><span class="name">The balance</span><span class="fact">${verdictMark(held.length ? 1 : 0)}: ${esc(`${said.join("; ")}; loads ${loads.join(", ")}`)}</span></span></li>`;
+  };
+
   // What holds others up, oldest first, said as plainly as the node knows it.
   const heldRow = (s) => {
     const o = s.owes[0];
@@ -2883,7 +2926,7 @@
       glance(
         esc("Every cell you run, the networks they work in and the machines they run on."),
         esc(groupDoing(m.cells)),
-        `<ul class="rows health">${levels.join("")}${levels.length > 1 ? healthRow("All together", m.cells) : ""}</ul>`,
+        `<ul class="rows health">${levels.join("")}${levels.length > 1 ? healthRow("All together", m.cells) : ""}${balanceRow()}</ul>`,
       ) +
       (asks.length
         ? `<p class="asks-line">${asks.length === 1 ? "One needs" : `${asks.length} need`} you:</p><ul class="rows">${asks.map(cellRow).join("")}</ul>`
@@ -2961,7 +3004,7 @@
       glance(
         esc(`Runs ${plural(cells.length, "cell")}, feeding ${feeds.length ? plural(feeds.length, "network") : "no network"}${lone ? `, with ${NUMBER.format(lone)} working alone` : ""}.`),
         esc(groupDoing(cells)),
-        `<ul class="rows health">${machineHealth(x)}${healthRow(`Its ${plural(cells.length, "cell")}`, cells)}</ul>`,
+        `<ul class="rows health">${machineHealth(x)}${machineShareRow(x)}${healthRow(`Its ${plural(cells.length, "cell")}`, cells)}</ul>`,
       ) +
       faultLine(cells) +
       // Its home as a device is the network page, which knows it by name.
