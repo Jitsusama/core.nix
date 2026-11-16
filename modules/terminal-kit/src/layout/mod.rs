@@ -689,6 +689,9 @@ mod tests {
             vec!["1".into(), "up".into(), "1000".into(), "full".into()],
             vec!["2".into(), "down".into(), String::new(), String::new()],
             vec!["3".into(), String::new(), String::new(), String::new()],
+            // A figure last on its line still sits flush right, under its
+            // column's others.
+            vec!["4".into(), "up".into(), "10".into(), String::new()],
         ];
         assert_eq!(
             table(&columns, &rows, &Pen::plain()),
@@ -697,7 +700,9 @@ mod tests {
                 "1     up     1000  full",
                 "2     down",
                 "3",
-            ]
+                "4     up       10",
+            ],
+            "a row doesn't end at its last word, or a figure left its column"
         );
     }
 
