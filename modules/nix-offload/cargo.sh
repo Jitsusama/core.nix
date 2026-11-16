@@ -10,12 +10,9 @@ set -euo pipefail
 # Asked with no words, a nix-offload that knows `cargo` runs what it's
 # named, here true; an older one refuses, as it would the real run, so
 # a machine not yet switched to it keeps its cargo working.
-knows() {
+if [ -n "${PI_CODING_AGENT:-}" ] && [ -z "${WORK_RUNS_ELSEWHERE:-}" ] &&
 	command -v nix-offload >/dev/null 2>&1 &&
-		nix-offload cargo --cargo @true@ -- >/dev/null 2>&1
-}
-
-if [ -n "${PI_CODING_AGENT:-}" ] && [ -z "${WORK_RUNS_ELSEWHERE:-}" ] && knows; then
+	nix-offload cargo --cargo @true@ -- >/dev/null 2>&1; then
 	exec nix-offload cargo --cargo @cargo@ -- "$@"
 fi
 exec @cargo@ "$@"
