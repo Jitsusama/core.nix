@@ -30,6 +30,7 @@ mod daemon;
 mod history;
 pub mod model;
 mod room;
+mod serve;
 mod sources;
 mod switch_reader;
 mod time;
@@ -149,7 +150,7 @@ fn record() -> Result<Network, Failure> {
             "there's no record of the home network yet",
         )
         .because(format!("{}: {error}", path.display()))
-        .try_this("systemctl --user status net-daemon")
+        .try_this("systemctl --user status net")
     })?;
     let unreadable = |why: String| {
         Failure::new(Exit::Unavailable, "the home network's record can't be read").because(why)

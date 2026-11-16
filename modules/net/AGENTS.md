@@ -71,9 +71,27 @@ holds the types, and its tests hold the record to them both ways.
 
 ## The Daemon
 
-`net daemon`, the user service `net-daemon` in background.slice, reads
+`net daemon`, the user service `net` in background.slice, reads
 each source once a minute and writes the record whole, through
 `network.json.new` and a rename, so a view never reads half of one.
+It serves the same record on `$XDG_RUNTIME_DIR/daemons/net.sock`, which
+systemd holds for it, in the daemon interface every daemon speaks
+([docs/daemons.md][daemons]), through daemon-serve. Each round hands
+daemon-serve the record split by kind ([`src/serve.rs`][serve]), so a
+watch is told only what moved:
+
+- `device:<id>`: a device whole, its roles, radios, ports, speed and path.
+- `link:<a>|<b>`, its ends sorted: a link whole, with `crossings`, how
+  many devices' routes to the internet cross it. It counts routes, not
+  traffic, since eero gives no figure for what a link carries.
+- `source:<name>`: how each vendor's source stands, with its reason.
+- `internet`: the one record of the internet beyond the modem.
+- `concern:<concern>:<device>[:<on>][:<other>]`: what's worth a look, its
+  own kind as `concern`, since `kind` is the record's.
+
+The record's `collected_at` isn't served: a device and a source carry
+their own `read_at`, and the internet its `measured_at`. Health says each
+source's state, with its reason when it isn't answering.
 Each minute it also appends the figures that swing, each channel's losses
 and each radio's busy share, to `$XDG_STATE_HOME/net/day.jsonl`, and
 reads the last day of them back before writing the record. The file is
@@ -197,7 +215,7 @@ one's id follows and is what's offered. An unknown one is refused (66)
 with the nearest. `--json` answers
 `net.network/1`, `net.devices/1` or `net.device/1`, each time in RFC
 3339 (docs/commands.md). No record yet ends 69, pointing at
-`systemctl --user status net-daemon`.
+`systemctl --user status net`.
 
 ## The Uplink
 
@@ -232,4 +250,6 @@ diff before committing it. `cargo` runs from the dev shell:
 `direnv exec ../.. cargo test` here.
 
 [record]: tests/network.json
+[daemons]: ../../docs/daemons.md
+[serve]: src/serve.rs
 [contract]: contract/README.md

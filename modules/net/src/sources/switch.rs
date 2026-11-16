@@ -2,8 +2,8 @@
 //! server shows once signed in (contract/switch/ holds a real one's,
 //! redacted). Each page writes its figures as JavaScript arrays, which
 //! `parse` reads into the switch's status. The reader that signs in runs
-//! apart from net-daemon, since the switch's password lets its holder
-//! change the switch; it hands net-daemon only the status, as a report,
+//! apart from net's daemon, since the switch's password lets its holder
+//! change the switch; it hands net's daemon only the status, as a report,
 //! and `read` turns the report into one device with the switch role.
 //!
 //! A figure the pages don't give is `None`, and the status stays whole
@@ -49,7 +49,7 @@ pub fn plainly(page: &str) -> &str {
 /// Each page's text, by its name.
 pub type Pages = BTreeMap<String, String>;
 
-/// What the reader hands net-daemon: how the switch answered, and its
+/// What the reader hands net's daemon: how the switch answered, and its
 /// status when it did. Never its password or its sign-in.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Report {

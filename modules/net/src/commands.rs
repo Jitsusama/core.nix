@@ -94,13 +94,13 @@ fn switch_reader() -> Help {
     .exit(Exit::Failed, "the report can't be written")
 }
 
-/// The collector: what `net-daemon.service` runs.
+/// The collector: what `net.service` runs.
 fn daemon() -> Help {
     Help::new(
         "daemon",
-        "read every source in turn and keep the record the views draw",
+        "read every source in turn, keep the record the views draw and serve it",
     )
-    .example("net daemon", "what net-daemon.service runs")
+    .example("net daemon", "what net.service runs")
     .exit(Exit::Failed, "the record can't be written")
     .exit(Exit::Config, "XDG_RUNTIME_DIR isn't set")
 }
