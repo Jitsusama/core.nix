@@ -134,6 +134,10 @@ in
       );
       ExecStopPost = "${pkgs.coreutils}/bin/rm -f %t/daemons/calls.sock";
       Slice = "background.slice";
+      # What's said on a call is Joel's alone, so whatever the daemon makes
+      # is closed to others even where it doesn't say a mode itself
+      # (private.rs says the modes of each call's folder and files).
+      UMask = "0077";
       CacheDirectory = "call-transcripts";
       Restart = "on-failure";
       RestartSec = 5;
