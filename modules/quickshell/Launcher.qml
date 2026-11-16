@@ -9251,8 +9251,13 @@ Scope {
             askedToOpen();
         if (!open && !opening && intoKept(name, true))
             landsOnFill = { wanted: wanted, normal: normal };
-        else
+        else {
+            // Asked again while a kept one is still to fill, it opens
+            // whole here, so the fill never comes to land it: left, a
+            // later chord's fill would land on this one's row.
+            landsOnFill = null;
             into(name);
+        }
         landingOn(wanted, normal);
         if (asked)
             askDone();
@@ -9397,9 +9402,9 @@ Scope {
     // listed as they stand (`fresh`), or null where it can't be, when it
     // opens whole. Warming keeps only the places chords open, and Super+N
     // opens a place Now leads to, so the first Super+N after each start
-    // was made whole: all 6 of Joel's, 44 to 119 ms to the frame, while
-    // the 7 after drew from what was kept in 13 to 42 (2026-11-15 18:13
-    // to 11-16 11:15). Nothing is told it opened, as nothing is for a
+    // was made whole: all 8 of Joel's, 44 to 228 ms to the frame, while
+    // the 10 after drew from what was kept in 13 to 42 (2026-11-15 18:13
+    // to 11-16 14:50). Nothing is told it opened, as nothing is for a
     // kept place, so the notices aren't seen until the fill steps in.
     function ledKept(name) {
         const { leading, rows } = leadingTo(name) ?? { leading: null, rows: [] };

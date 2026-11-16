@@ -1439,9 +1439,9 @@ def test_the_first_super_n_after_a_restart_draws_the_notices_from_what_was_kept(
 ) -> None:
     """The first Super+N since the shell started draws the notices on screen as later ones do.
 
-    Only a place Super+N had opened before was kept, so each shell's first opened whole: all 6
-    of Joel's took 44 to 119 ms to the frame, and all 7 later ones 13 to 42, most often just
-    as a notice had chimed after a switch (2026-11-15 18:13 to 2026-11-16 13:13).
+    Only a place Super+N had opened before was kept, so each shell's first opened whole: all 8
+    of Joel's took 44 to 228 ms to the frame, and all 10 later ones 13 to 42, most often just
+    as a notice had chimed after a switch (2026-11-15 18:13 to 2026-11-16 14:50).
     """
     shell.restart()
     shell.launcher_until(lambda shown: shown.get("kept"))
