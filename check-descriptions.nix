@@ -3110,9 +3110,8 @@
     asks again rather than closing, and each question is answered by a pi of its own
   '';
   the-launcher-asks-the-served-light = ''
-    a Brightness share typed asks what a served level asks, its first step kept lit, the Brightness
-    served says its screen and share, none while it's read, and the Warmth's switches ask only to
-    turn the other way
+    the Brightness served says its screen and share, none while it's read, and nothing while only
+    its levels are served
   '';
   every-command-row-has-a-drawer = ''
     every command the launcher offers says in its drawer, under the place that lists it or

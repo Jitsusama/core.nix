@@ -551,8 +551,9 @@ fn warmth_rows(shown: &[(&String, &Value)], seen: &Seen, words: &Words) -> Vec<V
 
 /// How many screens there are, and how many are on, as the place's row
 /// says beside its name: "2 screens" with every one on, else "1 of 2
-/// on", a screen dark by name not among them.
-pub fn summary(outputs: &BTreeMap<String, Value>, words: &Words) -> Value {
+/// on", a screen dark by name not among them; and the : line's :set
+/// options for the place, from the `rows` served (line.rs's `place`).
+pub fn summary(outputs: &BTreeMap<String, Value>, rows: &[Value], words: &Words) -> Value {
     let count = outputs.len();
     let on = outputs
         .values()
@@ -570,6 +571,7 @@ pub fn summary(outputs: &BTreeMap<String, Value>, words: &Words) -> Value {
         "kind": "summary",
         "summary": {"place": PLACE, "count": count, "on": on,
             "said": said.replace("{count}", &count.to_string())},
+        "line": line::place(rows),
     })
 }
 

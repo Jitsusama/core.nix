@@ -424,10 +424,9 @@ fn refresh(served: &Served, daemon: &mut Daemon) {
             now: now_ms(),
             looked: light.looking,
         };
-        rows.take(
-            screens::rows(outputs, desk, desktop.output(), *each, &seen, words),
-            vec![screens::summary(outputs, words)],
-        );
+        let made = screens::rows(outputs, desk, desktop.output(), *each, &seen, words);
+        let summary = screens::summary(outputs, &made, words);
+        rows.take(made, vec![summary]);
         records.extend(rows.all().cloned());
     }
     served.change(records, sources(daemon));
@@ -659,8 +658,14 @@ fn light_done(shared: &Shared, id: &Value, said: &Value) -> Value {
         Some(act @ "follow-the-room") => {
             json!({"id": id, "ask": "act", "act": act, "follows": said["follows"]})
         }
+        // A share of none leaves the screen black, so the least asked is
+        // one, as the : line's :set brightness=0 takes it (line.rs's
+        // `place`), and as the shell held it until 15 November 2026.
         Some(act @ "brightness") => {
-            json!({"id": id, "ask": "act", "act": act, "share": said["share"]})
+            let share = said["share"]
+                .as_u64()
+                .map_or_else(|| said["share"].clone(), |share| json!(share.max(1)));
+            json!({"id": id, "ask": "act", "act": act, "share": share})
         }
         _ => {
             let why = format!("no light act {} here", said["do"]);

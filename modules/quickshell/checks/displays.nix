@@ -23,10 +23,10 @@
     tests = ../../../tests/screens-off-on-niri-test.py;
   };
 
-  # What the : line's Brightness and the Warmth's switches ask of the rows
-  # Screens serves, as tests/screens.qml holds launcher/Screens.js to in
-  # Qt's own engine; a screen's ways, and what :setl power and unplugged
-  # do with them, are the windows daemon's.
+  # Where the Brightness Screens serves stands, as tests/screens.qml holds
+  # launcher/Screens.js to in Qt's own engine; a screen's ways, what :setl
+  # power and unplugged do with them, and what the place's :set line asks,
+  # are the windows daemon's.
   the-launcher-asks-the-served-light =
     let
       qt = pkgs.qt6.qtdeclarative;

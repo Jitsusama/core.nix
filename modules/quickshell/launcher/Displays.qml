@@ -56,7 +56,10 @@
 // the session's bus and keeps, then the room's white, the night's sunset
 // and sunrise and its white, each time said by the shell's clock.
 // "screen warmth" asks it, and the : line's :set nightlight and :set
-// warmth ask what its switches ask (switchOption).
+// warmth ask what its switches ask. The place's : line, :set screens,
+// brightness, nightlight and warmth, is the daemon's too, served on its
+// summary (screens/line.rs's place), so the shell only offers what it
+// serves (placeOptions).
 import qs
 import Quickshell
 import QtQuick
@@ -109,39 +112,55 @@ Provider {
         return out;
     }
 
-    // :set brightness=60 sets the screen as its Brightness levels do, asking
-    // the windows daemon what they ask (brighten), on a machine with a
-    // backlight, while its Brightness is served; :set nightlight and
-    // nonightlight turn the night light on
-    // and off, and :set nowarmth gives the screens their own white by day,
-    // as the Warmth's switches do, while each is served. :set
-    // noscreens turns every screen off, doing Turn Every Screen Off's act;
-    // they are on whenever the launcher can be seen, so screens alone does
-    // nothing.
-    setOptions: Object.assign({
-        screens: {
-            kind: "switch",
-            now: () => true,
-            set: to => {
-                const sleep = ready.served("row:displays:sleep")?.acts?.[0];
-                if (!to && sleep)
-                    ready.act("row:displays:sleep", sleep);
-                return "";
-            }
+    // The place's : line as the windows daemon serves it on its summary
+    // (screens/line.rs's place): :set brightness=60 sets the screen as its
+    // Brightness levels do, while it's served; :set nightlight and
+    // nonightlight turn the night light on and off, and :set nowarmth
+    // gives the screens their own white by day, as the Warmth's switches
+    // do, while each is served; :set noscreens turns every screen off,
+    // doing Turn Every Screen Off's act. Each says how it stands as served.
+    readonly property var placeLine: {
+        void ready.placings;
+        return ready.held["summary:displays"]?.line ?? {};
+    }
+    setOptions: placeOptions(placeLine)
+
+    // The : line's options for `served`, the place's line, each asking the
+    // way the daemon serves for it (placeWay).
+    function placeOptions(served) {
+        const line = name => provider.placeLine[name] ?? null;
+        const options = {};
+        for (const [name, one] of Object.entries(served)) {
+            const set = (to, change, later) => provider.placeWay(name, to, later);
+            options[name] = one.kind === "number"
+                ? { kind: "number", least: one.least, most: one.most,
+                    now: () => line(name)?.now ?? 0, set: set }
+                : { kind: "switch", now: () => line(name)?.now === true, set: set };
         }
-    }, servedBrightness === null ? {} : {
-        brightness: {
-            kind: "number",
-            least: 0,
-            most: 100,
-            now: () => provider.servedBrightness?.share ?? 0,
-            set: (to, change, later) => {
-                provider.brighten(to, later);
-                return "";
-            }
+        return options;
+    }
+
+    // What :set's option `name` turned `to` asks, as the daemon serves it:
+    // a number its ask at the share typed; a switch's way, the ask its
+    // row's Return makes, or the act of a row by key, done as Return does
+    // it, so Turn Every Screen Off closes the launcher first. A way not
+    // served asks nothing, as turning a switch the way it stands.
+    function placeWay(name, to, later) {
+        const served = placeLine[name] ?? null;
+        if (served?.kind === "number") {
+            brighten(to, later);
+            return "";
         }
-    }, switchOption("nightlight", "displays:night-light"),
-        switchOption("warmth", "displays:follow-room"))
+        const way = served?.ways?.[to ? "on" : "off"] ?? null;
+        if (way?.ask) {
+            lineAsked(way.ask, later, name);
+        } else if (way?.act) {
+            const act = (ready.served(way.row)?.acts ?? []).find(one => one.key === way.act);
+            if (act)
+                ready.act(way.row, act);
+        }
+        return "";
+    }
 
     // The rows served, placed or not, for what the : line asks of them.
     function servedRows() {
@@ -163,25 +182,6 @@ Provider {
     onServedBrightnessChanged: {
         if (servedBrightness?.share !== null && servedBrightness?.share !== undefined)
             lightReadOnce = true;
-    }
-
-    // The : line's option `name` for the served switch whose act is `act`,
-    // offered only while it's served: it says how the switch stands, and
-    // turning it the other way asks what its Return asks (Screens.js's
-    // switchOf).
-    function switchOption(name, act) {
-        if (Screens.switchOf(servedRows(), act) === null)
-            return {};
-        return { [name]: {
-            kind: "switch",
-            now: () => Screens.switchOf(provider.servedRows(), act)?.on ?? false,
-            set: (to, change, later) => {
-                const ask = Screens.switchOf(provider.servedRows(), act)?.asked(to) ?? null;
-                if (ask !== null)
-                    provider.lineAsked(ask, later, name);
-                return "";
-            }
-        } };
     }
 
     // A change made to a screen here says nothing in niri's stream, nor
@@ -206,12 +206,13 @@ Provider {
 
     // Sets the screen to a share, for :set brightness= and "brightness
     // 40", asking the windows daemon what its Brightness levels ask, at
-    // that share (Screens.js's brightening), so it goes as a level's
-    // Return does; nothing is asked while no level is served.
+    // that share, as the place's line serves it, so it goes as a level's
+    // Return does; the daemon keeps it lit at least a little. Nothing is
+    // asked while no Brightness is served.
     function brighten(share, later) {
-        const ask = Screens.brightening(servedRows(), share);
+        const ask = placeLine.brightness?.ask ?? null;
         if (ask !== null)
-            lineAsked(ask, later, `brightness ${ask.share}`);
+            lineAsked(Object.assign({}, ask, { share: share }), later, `brightness ${share}`);
     }
 
     // Asks the windows daemon what a served row's Return asks, for the

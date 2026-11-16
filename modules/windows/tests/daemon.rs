@@ -878,11 +878,16 @@ fn a_brightness_level_is_asked_of_the_machine_daemon_as_the_keys_set_it() {
         json!({"id": 5, "done": true}),
         "the level was answered otherwise"
     );
+    // :set brightness=0 asks none, which would leave the screen black.
+    client.ask(&json!({"id": 6, "ask": "light", "do": "brightness", "share": 0}));
     let asked = running.machine.asked.lock().unwrap().clone();
     let acts: Vec<&Value> = asked.iter().filter(|one| one["ask"] == "act").collect();
     assert_eq!(
         acts,
-        vec![&json!({"id": 5, "ask": "act", "act": "brightness", "share": 40})],
+        vec![
+            &json!({"id": 5, "ask": "act", "act": "brightness", "share": 40}),
+            &json!({"id": 6, "ask": "act", "act": "brightness", "share": 1}),
+        ],
         "the machine daemon was asked otherwise: {asked:?}"
     );
 }
