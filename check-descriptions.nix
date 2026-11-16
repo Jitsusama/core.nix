@@ -778,6 +778,11 @@
     lists things sorts by its kind's order with no A to Z made by hand, through Order.sorted, which
     keeps rows alike in the order they came where Qt's own sort shuffles them
   '';
+  each-live-page-opens-with-the-strip = ''
+    every live page opens with the strip localSite writes, once, straight after its skip link,
+    linking home one folder up and saying only that it's an app; and a page carrying a strip of
+    its own fails its build, saying which page
+  '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM, one with no TPM with Joel's key on his YubiKey and
     the agents' key in a file served where the TPM's would be, and a Mac through its Secure
@@ -861,6 +866,10 @@
   '';
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
+  '';
+  every-lock-agrees-with-its-manifests = ''
+    every Cargo.lock names each dependency its crates' manifests take, and none they dropped, as
+    cargo locks them
   '';
   every-long-file-says-why = ''
     every code file past 800 lines and folder of more than 40 entries says why it stays whole, but
@@ -1563,6 +1572,11 @@
     a machine in a realm reads each minute how evenly its home realm's machines carry their work,
     keeping each reading in mycelium's state, in the agents' slice on Linux and as an agent on a
     Mac; a further realm's balance isn't read, nor any on a machine in no realm
+  '';
+  mycelium-shows-the-builders = ''
+    the home realm's node on Linux is given nix-offload's standing, beside and lent lists of Nix
+    builders and the folder each lender's health is in, so it shows them beside the machines; a
+    further realm's node and a Mac's are given none
   '';
   mycelium-signs-a-macs-links-with-the-enclave = ''
     a Mac's node signs its links in with the agents' key from the Secure Enclave, through that

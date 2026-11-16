@@ -3,7 +3,9 @@
 # its TypeScript on the kit at its strictest, runs its tests if it has any,
 # compiles it to the browser's modules, and lays it out with its page, its
 # twins and the theme's web kit. Each look's ground and tint fill the page's
-# theme-color and its favicon, the two places a site can't name a role.
+# theme-color and its favicon, the two places a site can't name a role. Each
+# page gets the strip every one of Joel's sites opens with, written here
+# rather than carried by each page, so no app's copy says more than its kind.
 # usage: site.sh <tsc> <node> <kit> <site> <name> <web kit> <out>
 #   <dark ground> <light ground> <dark tint> <light tint>
 set -euo pipefail
@@ -37,6 +39,36 @@ for page in "${out}"/*.html "${out}"/*.svg; do
   [[ -f ${page} ]] || continue
   sed -i -e "s|@dark-ground@|${dark_ground}|g" -e "s|@light-ground@|${light_ground}|g" \
     -e "s|@dark-tint@|${dark_tint}|g" -e "s|@light-tint@|${light_tint}|g" "${page}"
+done
+
+# The strip, in the block the home writes into the pages it may change, so
+# both read alike and strip.css styles both. It says only that the page is
+# an app: the page's own line says how live it is, and a word here that read
+# as how it stands would contradict that line when the feed broke. It goes
+# straight after the skip link, so the skip link stays the first thing a Tab
+# reaches. A site is served one folder deep (site.nix says why), so home is
+# one folder up.
+strip="${work}/strip.html"
+cat >"${strip}" <<'STRIP'
+
+<!-- sites strip: localSite writes this -->
+<link rel="stylesheet" href="../strip.css">
+<nav class="sites-strip" aria-label="Your sites"><a href="../">All your sites</a>
+<span>App</span></nav>
+<!-- /sites strip -->
+STRIP
+for page in "${out}"/*.html; do
+  [[ -f ${page} ]] || continue
+  if grep -q 'sites-strip' "${page}"; then
+    echo "${page##*/} carries its own strip; localSite writes it, so take it out" >&2
+    exit 1
+  fi
+  skips=$(grep -c '<a class="skip"' "${page}" || true)
+  if [[ ${skips} != 1 ]]; then
+    echo "${page##*/} has ${skips} skip links, and the strip goes after its one" >&2
+    exit 1
+  fi
+  sed -i -e "/<a class=\"skip\"/r ${strip}" "${page}"
 done
 cp -r "${web}" "${out}/kit"
 chmod -R u+w "${out}/kit"

@@ -323,6 +323,29 @@ in
         && !(apart.systemd.user.services ? mycelium-balance)
       );
 
+  # The home realm's node on Linux shows the Nix builders nix-offload's
+  # lists name beside the machines, the lent one among them, by the folder
+  # its lender keeps its health in; a further realm's node shows none, as
+  # they are the machine's, and a Mac's, with no lists, is given none.
+  mycelium-shows-the-builders =
+    holds "mycelium-shows-the-builders"
+      "Linux's home realm node isn't given nix-offload's standing, beside and lent lists and the lent builder's health, a further realm's node is, or a Mac's node is."
+      (
+        lib.hasInfix (lib.escapeShellArgs [
+          "--builders"
+          "standing=/run/nix-offload-lines/machines-with-standing"
+          "--builders"
+          "beside=/run/nix-offload-lines/machines-beside"
+          "--lent-builders"
+          "lent=/run/nix-offload-lines/machines-for-anything"
+          "--lent-health"
+          "/run/{host}/health.json"
+        ]) linuxNode
+        && !(lib.hasInfix "--builders" otherNode)
+        && !(lib.elem "--builders" macNode)
+        && !(lib.elem "--lent-builders" macNode)
+      );
+
   # A Mac's node signs its links in with the agents' key from the Secure
   # Enclave, through that key's own library and no agent, since the login
   # session's one may ask for an approval nobody is there to give; one
@@ -375,7 +398,7 @@ in
         )) otherNode
         && bothLinux.mycelium-other.Service.Environment == [ "SSH_AUTH_SOCK=%t/other-link.sock" ]
         && bothLinux.mycelium-other.Unit.Wants == [ "other-link.socket" ]
-        && lib.hasSuffix "--realm home node --ssh one --serves /home/someone/.config/mycelium/serves-home.json" (
+        && lib.hasInfix "--realm home node --ssh one --serves /home/someone/.config/mycelium/serves-home.json" (
           toString bothLinux.mycelium.Service.ExecStart
         )
         && bothLinux.mycelium.Service.Environment == [ "SSH_AUTH_SOCK=%t/agent-signing.sock" ]
