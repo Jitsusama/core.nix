@@ -1582,13 +1582,18 @@ def test_networks_never_rests_with_a_row_or_a_heading_cut(shell: Shell) -> None:
     """Where Networks' rows overflow the card, each step leaves no row or heading cut.
 
     A view rests on a row's top and draws only what's wholly in it, a heading only with its
-    first row (VKCF3Z, c09d8222), and the gutter numbers only the rows it draws.
+    first row (VKCF3Z, c09d8222), and the gutter numbers only the rows it draws. A row is whole
+    when what it draws fits: its ground selected, its words otherwise (VKCF3Z, 889f9a7d), so
+    harbour, whose words fit above the foot though its ground wouldn't, is drawn at the top.
     """
     opened(shell)
     shell.down_to("Networks")
     shell.step_in()
     shell.launcher_until(lambda shown: shown["selected"]["name"] == "core.nix")
     shell.normal()
+    top = shell.showing()
+    assert top["drawnRows"] == 2, top
+    assert top["gutter"]["numbers"] == ["1", "2"], top
     steps = [("j", "harbour"), ("j", "machines"), ("k", "harbour"), ("k", "core.nix")]
     for key, name in [*steps, ("G", "machines"), ("gg", "core.nix")]:
 
