@@ -14,7 +14,8 @@ cargo=$2
 knowing=$(mktemp -d)
 cat >"$knowing/nix-offload" <<EOF
 #!$BASH
-if [ "\$#" = 4 ] && [ "\$1" = cargo ]; then exec "\$3"; fi
+if [ "\$1" != cargo ] || [ "\$2" != --cargo ] || [ "\$4" != -- ]; then exit 64; fi
+if [ "\$#" = 4 ]; then exec "\$3"; fi
 printf '%s\n' nix-offload "\$@"
 EOF
 older=$(mktemp -d)
@@ -25,8 +26,12 @@ chmod +x "$knowing/nix-offload" "$older/nix-offload"
 expect() {
 	local what=$1 wanted=$2
 	shift 2
-	local said
-	said=$("$@")
+	local said code=0
+	said=$("$@") || code=$?
+	if [ "$code" != 0 ]; then
+		printf '%s: the shim exited %s, saying:\n%s\n' "$what" "$code" "$said" >&2
+		exit 1
+	fi
 	if [ "$said" != "$wanted" ]; then
 		printf '%s, but it said:\n%s\nwhere it should have said:\n%s\n' \
 			"$what" "$said" "$wanted" >&2
