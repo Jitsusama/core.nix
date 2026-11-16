@@ -40,7 +40,8 @@
   # look's ask under its why, offers its choices, each answered by a steer
   # to the session that left it or its quest's, and gathers what other
   # sources give it, as Passwords' one to-do, weighed beside the rest or
-  # done, as tests/for-you.qml holds ForYou.js and Looks.js to it in Qt's
+  # done, and finds the cell a look leads to, its own session or one on its
+  # quest, as tests/for-you.qml holds ForYou.js and Looks.js to it in Qt's
   # own engine.
   for-you-weighs-what-needs-joel =
     let
