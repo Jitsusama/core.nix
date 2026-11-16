@@ -606,9 +606,9 @@ struct Ranks {
     /// Each held or kept window's scope, by niri's id for it, or when it was last
     /// looked for and not found.
     found: HashMap<u64, Result<PathBuf, std::time::Instant>>,
-    /// The scopes of each held or kept window's pis, by niri's id for it,
-    /// with when they were looked for.
-    pis: HashMap<u64, (Vec<PathBuf>, std::time::Instant)>,
+    /// The scope of each held or kept window's pi, by niri's id for it,
+    /// with when it was last looked for ([`pi_of`]).
+    pis: HashMap<u64, (Option<PathBuf>, std::time::Instant)>,
     /// The window with the focus whose memory was last asked back, so
     /// it's asked once each time the focus comes to it ([`swap_in`]).
     reading: Option<u64>,
@@ -713,13 +713,6 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
     ranks.found.retain(|id, _| looked_for(id));
     ranks.pis.retain(|id, _| looked_for(id));
     let mut scopes: Option<Vec<PathBuf>> = None;
-    let list = || -> Vec<PathBuf> {
-        windows
-            .under
-            .iter()
-            .flat_map(|slice| homes(slice, windows.prefixes))
-            .collect()
-    };
     // What each kitty drawing a window not found by its app id says it
     // shows, asked once a look, as its answer runs to megabytes.
     let mut kitties: HashMap<u32, Vec<kitty::Shown>> = HashMap::new();
@@ -736,7 +729,13 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
             Some(Ok(scope)) if scope.exists() => Some(scope.clone()),
             Some(Err(when)) if now.saturating_duration_since(*when) < LOOK_AGAIN => None,
             _ => {
-                let all = scopes.get_or_insert_with(list);
+                let all = scopes.get_or_insert_with(|| {
+                    windows
+                        .under
+                        .iter()
+                        .flat_map(|slice| homes(slice, windows.prefixes))
+                        .collect()
+                });
                 let unit = focus::scope_of(window, &started_with(all), windows.pis)
                     .map(str::to_owned)
                     .or_else(|| {
@@ -757,43 +756,13 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
                 scope
             }
         };
-        let pis = match ranks.pis.get(&window.id) {
-            _ if known.is_none() => Vec::new(),
-            Some((found, when))
-                if found.iter().all(|scope| scope.exists())
-                    && (!found.is_empty() || now.saturating_duration_since(*when) < LOOK_AGAIN) =>
-            {
-                found.clone()
-            }
-            _ => {
-                let theirs: Vec<PathBuf> = scopes
-                    .get_or_insert_with(list)
-                    .iter()
-                    .filter(|scope| {
-                        unit_of(scope).is_some_and(|unit| focus::runs_a_pi(unit, windows.pis))
-                    })
-                    .cloned()
-                    .collect();
-                let started = started_with(&theirs);
-                let found: Vec<PathBuf> = focus::pis_of(window, &started, windows.pis)
-                    .into_iter()
-                    .filter_map(|unit| {
-                        theirs
-                            .iter()
-                            .find(|scope| unit_of(scope) == Some(unit))
-                            .cloned()
-                    })
-                    .collect();
-                ranks.pis.insert(window.id, (found.clone(), now));
-                found
-            }
-        };
+        let pi = pi_of(window.id, known.as_deref(), windows, &mut ranks.pis, now);
         if holds {
             held.extend(known.clone());
-            held.extend(pis.iter().cloned());
+            held.extend(pi.clone());
         }
         kept.extend(known);
-        kept.extend(pis);
+        kept.extend(pi);
     }
     ranks.spared = following
         .within(now, keep::SPARED_FOR)
@@ -803,8 +772,8 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
                 Some(Ok(scope)) => Some(scope),
                 _ => None,
             };
-            let pis = ranks.pis.get(&window.id).map(|(pis, _)| pis.as_slice());
-            own.into_iter().chain(pis.unwrap_or_default())
+            let pi = ranks.pis.get(&window.id).and_then(|(pi, _)| pi.as_ref());
+            own.into_iter().chain(pi)
         })
         .filter_map(|scope| unit_of(scope).map(str::to_owned))
         .collect();
@@ -814,6 +783,53 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
     held.iter()
         .filter_map(|scope| Some(scope.file_name()?.to_str()?.to_owned()))
         .collect()
+}
+
+/// The scope of the pi of `window`, whose own scope is `own`, as last
+/// found, looked for again once it's gone and every [`LOOK_AGAIN`], as
+/// a shell in the window may attach to another session.
+fn pi_of(
+    window: u64,
+    own: Option<&Path>,
+    windows: &Windows,
+    found: &mut HashMap<u64, (Option<PathBuf>, std::time::Instant)>,
+    now: std::time::Instant,
+) -> Option<PathBuf> {
+    let Some(own) = own else {
+        found.remove(&window);
+        return None;
+    };
+    if let Some((pi, when)) = found.get(&window)
+        && pi.as_deref().is_none_or(Path::exists)
+        && now.saturating_duration_since(*when) < LOOK_AGAIN
+    {
+        return pi.clone();
+    }
+    let pi = beside(own, windows);
+    found.insert(window, (pi.clone(), now));
+    pi
+}
+
+/// The scope, in any watched slice, of the pi whose held session a
+/// process in the window's scope `own` attaches to ([`focus::attached_to`]).
+fn beside(own: &Path, windows: &Windows) -> Option<PathBuf> {
+    let procs = fs::read_to_string(own.join("cgroup.procs")).ok()?;
+    procs
+        .lines()
+        .filter_map(|pid| fs::read(format!("/proc/{pid}/cmdline")).ok())
+        .filter_map(|cmdline| focus::attached_to(&cmdline))
+        .find_map(|id| {
+            windows
+                .under
+                .iter()
+                .flat_map(|slice| {
+                    windows
+                        .pis
+                        .iter()
+                        .map(|prefix| slice.join(format!("{prefix}{id}.scope")))
+                })
+                .find(|scope| scope.exists())
+        })
 }
 
 /// Holds each of `held` not held yet and gives back each held no longer,
@@ -916,17 +932,17 @@ fn read_back(at: Option<focus::Window>, ranks: &mut Ranks) {
     let first = fs::read_to_string(scope.join("cgroup.procs"))
         .ok()
         .and_then(|procs| procs.lines().next().map(str::to_owned));
-    // Each pi's scope is read back by its mycelium, which carries the
-    // window's app id where the pi doesn't, so the reader knows it as
-    // the window's.
-    let pis = ranks
+    // The pi's scope is read back by its holder, which carries the
+    // window's app id where the pi doesn't, so the reader knows it as the
+    // window's; a session attached again in another window carries its
+    // first one's, and the reader refuses it. The pi goes first, as it's
+    // what Joel waits on.
+    let pi = ranks
         .pis
         .get(&window.id)
-        .map(|(pis, _)| pis.as_slice())
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|scope| started_by(scope, &window.app_id));
-    for pid in first.into_iter().chain(pis) {
+        .and_then(|(pi, _)| pi.as_deref())
+        .and_then(|pi| started_by(pi, &window.app_id));
+    for pid in pi.into_iter().chain(first) {
         start_reading_back(&pid);
     }
 }

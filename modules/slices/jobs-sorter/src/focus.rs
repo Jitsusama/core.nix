@@ -352,7 +352,8 @@ impl Recent {
 /// window's own, or else the one scope of a kitty that draws it alone.
 /// Two started with the same, as a shell started again could leave, are
 /// neither. A scope under one of `pis`, a session's pi, is never the
-/// window's own, though it's started with its app id ([`pis_of`]).
+/// window's own, though its holder is started with its app id
+/// ([`attached_to`]).
 pub fn scope_of<'a>(
     window: &Window,
     scopes: &'a [(String, Vec<String>)],
@@ -375,27 +376,51 @@ pub fn scope_of<'a>(
         .collect())
 }
 
-/// The scopes, under one of `pis`, of the pis a window's session runs:
-/// those started with its app id. Mycelium starts each session's pi from
-/// the window in a scope of its own beside the window's, which holds
-/// little but mycelium, so a hold on the window's scope alone lifts
-/// nothing Joel waits on: on 16 November no pi's scope weighed over 100
-/// while a held window's weighed 1000, and a turn he waited on queued 78 s
-/// for a processor in 475.
-pub fn pis_of<'a>(
-    window: &Window,
-    scopes: &'a [(String, Vec<String>)],
-    pis: &[String],
-) -> Vec<&'a str> {
-    scopes
-        .iter()
-        .filter(|(unit, apps)| runs_a_pi(unit, pis) && apps.contains(&window.app_id))
-        .map(|(unit, _)| unit.as_str())
-        .collect()
+/// The held session a `mycelium attach` names, from its command line's
+/// bytes, as `attach ID` or `holds ID attach`: its pi runs in the scope
+/// under a `--weigh` prefix and that id, which the window's own scope
+/// holds only the attach for, so a hold on the window's scope alone lifts
+/// nothing Joel waits on. On 16 November no pi's scope weighed over 100
+/// while the window he was at weighed 1000, and a turn he waited on queued
+/// 78 s for a processor in 475. The id, not the app id the holder carries,
+/// ties the two, since an agent may start a scope with any environment,
+/// and a session attached again keeps the app id of its first window.
+/// A conversation a host holds (`--host`, `--session`) has no pi scope.
+pub fn attached_to(cmdline: &[u8]) -> Option<String> {
+    let words: Vec<&[u8]> = cmdline
+        .split(|byte| *byte == 0)
+        .filter(|word| !word.is_empty())
+        .collect();
+    let program = words.first()?;
+    if program.rsplit(|byte| *byte == b'/').next() != Some(b"mycelium") {
+        return None;
+    }
+    let at = words.iter().position(|word| *word == b"attach")?;
+    let mut id = (at >= 2 && words[at - 2] == b"holds").then(|| words[at - 1]);
+    let mut rest = words[at + 1..].iter();
+    while let Some(word) = rest.next() {
+        match *word {
+            b"--host" | b"--session" => return None,
+            b"--realm" | b"--socket" => {
+                rest.next();
+            }
+            option if option.starts_with(b"--host=") || option.starts_with(b"--session=") => {
+                return None;
+            }
+            option if option.starts_with(b"-") => {}
+            named if id.is_none() => id = Some(named),
+            _ => return None,
+        }
+    }
+    let id = id?;
+    let named = |byte: &u8| byte.is_ascii_alphanumeric() || *byte == b'-' || *byte == b'_';
+    id.iter()
+        .all(named)
+        .then(|| String::from_utf8_lossy(id).into_owned())
 }
 
 /// Whether `unit` is a session's pi's scope, as one of `pis` begins it.
-pub fn runs_a_pi(unit: &str, pis: &[String]) -> bool {
+fn runs_a_pi(unit: &str, pis: &[String]) -> bool {
     pis.iter().any(|prefix| unit.starts_with(prefix.as_str()))
 }
 
@@ -767,7 +792,7 @@ mod tests {
     }
 
     #[test]
-    fn a_session_windows_pi_runs_beside_it_started_with_its_app_id() {
+    fn a_pis_scope_started_with_a_windows_app_id_is_never_the_window() {
         let scopes = [
             (
                 "kitty-3864-2.scope".to_owned(),
@@ -776,6 +801,10 @@ mod tests {
             (
                 "mycelium-pi-3c08f64e.scope".to_owned(),
                 vec!["pi-session.7".to_owned()],
+            ),
+            (
+                "mycelium-pi-forged.scope".to_owned(),
+                vec!["pi-session.7".to_owned(), "pi-session.9".to_owned()],
             ),
             (
                 "kitty-3864-5.scope".to_owned(),
@@ -800,18 +829,67 @@ mod tests {
         assert_eq!(
             scope_of(&window("pi-session.7"), &scopes, &pis),
             Some("kitty-3864-2.scope"),
-            "its pi's scope is no second window"
+            "its pi's scope, and one an agent made, are no second window"
         );
         assert_eq!(
-            pis_of(&window("pi-session.7"), &scopes, &pis),
-            ["mycelium-pi-3c08f64e.scope"],
-            "its pi runs in a scope of its own, which mycelium started from the window"
+            scope_of(&window("pi-session.9"), &scopes, &pis),
+            Some("kitty-3864-6.scope")
         );
         assert_eq!(
-            pis_of(&window("pi-session.9"), &scopes, &pis),
-            [] as [&str; 0],
-            "a window whose pi hasn't started"
+            scope_of(&window("pi-session.7"), &scopes, &[]),
+            None,
+            "without the pis' prefix, two started with one app id are neither"
         );
+    }
+
+    #[test]
+    fn a_windows_pi_is_found_by_the_held_session_its_attach_names() {
+        let line = |words: &[&str]| words.join("\0").into_bytes();
+        for (words, id) in [
+            (
+                &["mycelium", "--realm", "work", "attach", "67c3ecff"][..],
+                "67c3ecff",
+            ),
+            (
+                &["/nix/store/x/bin/mycelium", "attach", "67c3ecff"],
+                "67c3ecff",
+            ),
+            (
+                &["mycelium", "attach", "--realm", "work", "67c3ecff"],
+                "67c3ecff",
+            ),
+            (&["mycelium", "holds", "67c3ecff", "attach"], "67c3ecff"),
+        ] {
+            assert_eq!(
+                attached_to(&line(words)).as_deref(),
+                Some(id),
+                "{words:?} names its held session"
+            );
+        }
+        for (what, words) in [
+            (
+                "a host's conversation",
+                &[
+                    "mycelium",
+                    "attach",
+                    "--host",
+                    "work-background",
+                    "--session",
+                    "01a1d752",
+                ][..],
+            ),
+            ("a holder", &["mycelium", "holder", "--id", "67c3ecff"]),
+            ("another program", &["sh", "attach", "67c3ecff"]),
+            ("an id with a slash", &["mycelium", "attach", "../x"]),
+            ("two ids", &["mycelium", "holds", "a", "attach", "b"]),
+            ("no id", &["mycelium", "attach"]),
+        ] {
+            assert_eq!(
+                attached_to(&line(words)),
+                None,
+                "{what} was read as a held session"
+            );
+        }
     }
 
     #[test]
