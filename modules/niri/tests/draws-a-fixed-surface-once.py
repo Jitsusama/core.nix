@@ -254,7 +254,8 @@ def settled(folder: Path, name: str) -> Image.Image:
 
 def main() -> None:
     """Switch workspaces with the square shown, and fail on any shot showing it anywhere else."""
-    folder = Path(sys.argv[1])
+    # niri writes a screenshot only to an absolute path.
+    folder = Path(sys.argv[1]).absolute()
     folder.mkdir(parents=True, exist_ok=True)
     named = os.environ.get("NIRI_FIXED_TO_OUTPUT", "").split(",")[0]
     if not named:
