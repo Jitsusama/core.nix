@@ -384,6 +384,28 @@ def found(shell: Shell, typed: str, name: str) -> Json:
     return cast("Json", shell.showing()["selected"])
 
 
+def test_to_trys_first_return_after_a_start_makes_no_landings_row_anew(shell: Shell) -> None:
+    """To Try's first Return after the shell starts finds Landed's rows kept as it started.
+
+    Landed's rows were made only as a step first passed through it, so each first To Try
+    Return after a switch made all of Joel's 2,600 landings' rows, 350 to 376 ms of its work,
+    against 34 to 50 ms for each later one (his journal, 2026-11-15). It's the module's first
+    case, so no case before it has stepped into Landed.
+    """
+    launcher_on_niri.warmed(shell)
+    shell.reported("landings kept as the shell started", lambda _: True, shell.launched)
+    in_for_you(shell)
+    shell.launcher_until(lambda shown: "To Try" in shown["rows"])
+    shell.down_to("To Try")
+    shell.step_in()
+    shell.launcher_until(lambda shown: TRY_FIRST in shown["rows"])
+    shell.down_to(TRY_FIRST)
+    before = made_by_agents(shell)
+    walked_into_landed(shell)
+    made = made_by_agents(shell) - before
+    assert made < len(LANDINGS), f"To Try's first Return made {made} rows: {made_lately(shell)}"
+
+
 def test_a_listening_sessions_return_asks_what_to_say_and_its_acts_stay_inside(
     shell: Shell,
 ) -> None:

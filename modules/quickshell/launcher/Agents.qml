@@ -38,6 +38,7 @@
 import qs
 import Quickshell
 import QtQuick
+import KeyTimes
 import "../Fuzzy.js" as Fuzzy
 import "../Places.js" as Places
 import "../SessionTalks.js" as Said
@@ -120,8 +121,45 @@ Provider {
     // rows held it on Joel's laptop (his journal, 2026-11-11 23:10;
     // RCTRF8's d181771a).
     onWarmingChanged: {
-        if (provider.warming)
-            laidOut();
+        if (!provider.warming)
+            return;
+        laidOut();
+        landedWarming.from = 0;
+        landedWarming.start();
+    }
+
+    // Landed's rows are kept as the shell starts too, a few milliseconds a
+    // frame while the launcher's shut, so the first step through Landed
+    // finds them kept, as every later one does. Made by that step instead,
+    // each of Joel's first To Try Returns after a switch made all 2,600 of
+    // them, 350 to 376 ms of its work against 34 to 50 for each later one
+    // (his journal, 2026-11-15). The launcher open, it waits: what it hasn't
+    // kept by then is made as it's wanted, as before.
+    Timer {
+        id: landedWarming
+
+        property int from: 0
+        readonly property real budget: 8
+
+        interval: 16
+        repeat: true
+        onTriggered: {
+            if (provider.launcher?.open)
+                return;
+            const began = KeyTimes.now();
+            const all = provider.landings;
+            const kept = provider.landedKept(String(Calendars.today ?? ""));
+            let at = from;
+            while (at < all.length && KeyTimes.now() - began < budget) {
+                kept(all[at]);
+                at += 1;
+            }
+            from = at;
+            if (at < all.length)
+                return;
+            stop();
+            Report.say(`landings kept as the shell started: ${all.length}`);
+        }
     }
 
     // Talk to It on a served row, asking for Joel's words as the tree's
@@ -1665,9 +1703,12 @@ Provider {
     // Return (2026-11-14). A plain object, written in place, so keeping
     // them notifies nothing.
     readonly property var landedWhole: ({ rows: null, of: [] })
-    readonly property var landed: {
-        if (!readNow)
-            return madeBefore("landed", null);
+
+    // What keeps a landing's row in Landed for the day `today` names: the
+    // row kept while the landing, where its Return goes and the day are the
+    // same, else made anew. Landed's rows read and the warm below both keep
+    // them through it, so a row warmed is the row Landed shows.
+    function landedKept(today) {
         const read = one => provider.readLanding(one.key);
         const act = (id, fields) => thing(Object.assign({
             key: `verb:agents:landed:${id}`,
@@ -1704,27 +1745,31 @@ Provider {
                 glyph: Words.glyph("verb:agents:landed:try")
             }) : null
         ].filter(row => row !== null);
-        const landing = one => thing(Object.assign({
+        // Where it goes, `way`, is worked out once as it's kept, and again
+        // only as its Return runs, when its session may have gone: each
+        // working out looks for its session among all of Joel's, and a row
+        // had worked it out five times.
+        const landing = (one, way) => thing(Object.assign({
             thing: true,
             key: `agents:landed:${one.key}`,
             // What it asks Joel to do where it asks anything, else what
             // landed, as the daemon names it (landed.rs), the same here
             // and in For You.
             name: one.name ?? one.what,
-            verb: Words.verb(`verb:agents:landed:${goes(one) || "read"}`),
+            verb: Words.verb(`verb:agents:landed:${way || "read"}`),
             glyph: Words.glyph("agents:landed"),
             hue: "action",
             // Its drawer shown is it read (`landingDrawn`).
             readsLanding: one.key,
-            later: goes(one) !== "",
+            later: way !== "",
             // Read where it goes nowhere, which keeps the launcher, as a
             // setting's change does, so the next landing is under the cursor.
-            stays: goes(one) === "",
+            stays: way === "",
             // Landings going the same way say the same keys where they
             // aren't selected, so the foot weighs one of a run for all
             // (Pacing.toWeigh): weighing each of 2,600 took 270 to 355 ms
             // of every step into Landed, most of To Try's Return.
-            keysAlike: `landing:${goes(one)}`,
+            keysAlike: `landing:${way}`,
             run: () => {
                 if (goes(one) === "change")
                     toChange(one)();
@@ -1734,6 +1779,16 @@ Provider {
             },
             verbs: () => parts(one)
         }, provider.landingShows(one)));
+        return one => {
+            const way = goes(one);
+            return provider.keptAlike(landedKeeping, one.key, [one, way, today],
+                () => landing(one, way));
+        };
+    }
+
+    readonly property var landed: {
+        if (!readNow)
+            return madeBefore("landed", null);
         const words = Words.of("agents:landed");
         return thingRow({
             key: "agents:landed",
@@ -1757,9 +1812,9 @@ Provider {
             if (landedWhole.rows !== null
                 && of.every((part, at) => part === landedWhole.of[at]))
                 return landedWhole.rows;
+            const kept = provider.landedKept(today);
             provider.keepingBegun(landedKeeping);
-            const rows = landings.map(one => provider.keptAlike(landedKeeping, one.key,
-                [one, goes(one), today], () => landing(one)));
+            const rows = landings.map(kept);
             provider.keptOnly(landedKeeping);
             // Each landing looked at is counted, as Windows counts each window it
             // hears, for the check that Landed read again looks at none.
