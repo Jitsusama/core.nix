@@ -116,8 +116,6 @@
   "modules/git-engine/src/pattern.rs" = 16;
   "modules/git-engine/src/wildmatch.rs" = 5;
   "modules/google/src/account.rs" = 3;
-  "modules/google/src/calendar.rs" = 5;
-  "modules/google/src/drive.rs" = 3;
   "modules/google/src/files.rs" = 7;
   "modules/google/src/mail.rs" = 8;
   "modules/google/src/meet.rs" = 4;
