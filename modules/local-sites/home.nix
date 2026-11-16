@@ -175,6 +175,20 @@ in
           machine = { };
         };
       };
+      # net's devices, the links between them, the sources it read them from,
+      # the internet and the concerns worth a look (modules/net/src/serve.rs),
+      # each told whole: the map draws all of each. The upload's use, which
+      # net reads only while it's watched, isn't the page's to ask for.
+      net = {
+        socket = "daemons/net.sock";
+        kinds = {
+          device = { };
+          link = { };
+          source = { };
+          internet = { };
+          concern = { };
+        };
+      };
     }
     // lib.optionalAttrs (realm != null) {
       # The realm's node on this machine, of which a page reads only each
@@ -191,20 +205,6 @@ in
           "documents"
           "lineage"
         ];
-      };
-    };
-    # net's devices, the links between them, the sources it read them from,
-    # the internet and the concerns worth a look (modules/net/src/serve.rs),
-    # each told whole: the map draws all of each. The upload's use, which
-    # net reads only while it's watched, isn't the page's to ask for.
-    feeds.net = {
-      socket = "daemons/net.sock";
-      kinds = {
-        device = { };
-        link = { };
-        source = { };
-        internet = { };
-        concern = { };
       };
     };
   };
