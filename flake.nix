@@ -623,6 +623,14 @@
       lib.everyTestFunctionLivesOnce =
         pkgs: pkgs.callPackage ./tests/rules/every-test-function-lives-once.nix { };
 
+      # How a repository built on core keeps each Cargo.lock agreeing with its
+      # crates' manifests, as core does: `core.lib.everyLockAgreesWithItsManifests
+      # pkgs { src = ./.; waiting = [ ... ]; }` is a check that fails on a lock
+      # missing a dependency a manifest gained, or holding one it dropped, and on
+      # a waiting lock once it agrees.
+      lib.everyLockAgreesWithItsManifests =
+        pkgs: pkgs.callPackage ./tests/rules/every-lock-agrees-with-its-manifests.nix { };
+
       # How a repository built on core holds its daemons to docs/daemons.md's
       # convention, as core does: `core.lib.daemonsAgree pkgs { src = ./.; home
       # = ...; waiting = { ... }; }` is a check that fails on a daemon the

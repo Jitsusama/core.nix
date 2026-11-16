@@ -867,6 +867,10 @@
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
   '';
+  every-lock-agrees-with-its-manifests = ''
+    every Cargo.lock names each dependency its crates' manifests take, and none they dropped, as
+    cargo locks them
+  '';
   every-long-file-says-why = ''
     every code file past 800 lines and folder of more than 40 entries says why it stays whole, but
     those still waiting to be split

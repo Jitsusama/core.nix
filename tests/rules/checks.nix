@@ -94,6 +94,15 @@
     src = ../..;
     waiting = import ./every-test-function-lives-once-waiting.nix;
   };
+
+  # A Cargo.lock names each dependency its crates' manifests take, since Nix
+  # builds them offline but not locked: a lock left behind a manifest passes
+  # there, rewritten in the sandbox, while every cargo run beside it rewrites
+  # it in the working tree. Every lock agreed when the rule came in, so none
+  # waits.
+  every-lock-agrees-with-its-manifests = self.lib.everyLockAgreesWithItsManifests pkgs {
+    src = ../..;
+  };
 }
 # The example laptop is a NixOS machine, which a Mac doesn't evaluate.
 // onLinux {
