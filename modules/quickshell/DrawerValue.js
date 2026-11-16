@@ -81,20 +81,9 @@ function actLines(widths, wide, apart) {
             from = at;
         }
     }
-    let best = null;
-    const cut = (from, left, counts) => {
-        if (left === 0) {
-            if (from === widths.length) {
-                best = better(scored(counts), best);
-            }
-            return;
-        }
-        for (let to = from + 1; to <= widths.length - left + 1; to += 1) {
-            if (to - from === 1 || across(from, to) <= wide) {
-                cut(to, left - 1, counts.concat([to - from]));
-            }
-        }
-    };
+    // Declared before cut, which reads it: Qt's engine warns of a name
+    // read above its declaration, and the shell is held to warning of
+    // nothing.
     const scored = counts => {
         const lines = counts.map((count, at) => {
             const from = counts.slice(0, at).reduce((sum, one) => sum + one, 0);
@@ -109,6 +98,20 @@ function actLines(widths, wide, apart) {
                 Math.max(...lines)
             ]
         };
+    };
+    let best = null;
+    const cut = (from, left, counts) => {
+        if (left === 0) {
+            if (from === widths.length) {
+                best = better(scored(counts), best);
+            }
+            return;
+        }
+        for (let to = from + 1; to <= widths.length - left + 1; to += 1) {
+            if (to - from === 1 || across(from, to) <= wide) {
+                cut(to, left - 1, counts.concat([to - from]));
+            }
+        }
     };
     cut(0, fewest, []);
     return best?.counts ?? [];
