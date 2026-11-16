@@ -77,11 +77,23 @@ in
         After = [ "github-broker.socket" ];
         Wants = [ "github-broker.socket" ];
         ConditionPathExists = "%t/github-broker.sock";
+        # Three tries in two minutes before it counts as failed, as set
+        # out under RestartForceExitStatus.
+        StartLimitIntervalSec = "2min";
+        StartLimitBurst = 3;
       };
       Service = {
         Type = "oneshot";
         ExecStart = "${lib.getExe wrapped} refresh";
         Slice = "background.slice";
+        # Exit 69 (unavailable) is GitHub or the broker out of reach, which
+        # is mostly a moment's blip: on 16 November one failed name lookup
+        # failed the unit, and the next run, five minutes on, was clean.
+        # So it's tried again twice, 30 seconds apart, and an outage that
+        # lasts still fails the unit within a minute. Any other failure,
+        # such as GitHub refusing, fails it at once, as before.
+        RestartForceExitStatus = "69";
+        RestartSec = "30s";
       };
     };
     systemd.user.timers.repos-refresh = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
