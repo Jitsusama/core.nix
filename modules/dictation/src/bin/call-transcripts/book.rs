@@ -134,7 +134,16 @@ impl Record {
                     .read_to_string(&mut text)
                     .map_err(|_| Unreadable)?;
             }
-            Err(why) if why.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            // A folder with no record yet, or a file beside the calls'
+            // folders, holds no call.
+            Err(why)
+                if matches!(
+                    why.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) =>
+            {
+                return Ok(None);
+            }
             Err(_) => return Err(Unreadable),
         }
         if !u64::try_from(text.len()).is_ok_and(|read| read <= LARGEST_META) {
@@ -413,7 +422,10 @@ mod tests {
         let calls = tempfile::tempdir().unwrap();
         let good = json!({"key": "call:at:1", "started": 1, "ended": 2, "title": ""});
         planted(calls.path(), "good", good.to_string().as_bytes());
-        assert!(!Book::read(calls.path()).failing());
+        assert!(
+            !Book::read(calls.path()).failing(),
+            "a sound record reads as failing"
+        );
         let large = json!({
             "key": "call:at:2", "started": 2, "ended": 3, "title": "a".repeat(70 * 1024),
         });
@@ -423,7 +435,7 @@ mod tests {
             read.record("call:at:2").is_none(),
             "a record past 64 KiB is read"
         );
-        assert!(read.failing());
+        assert!(read.failing(), "a record past 64 KiB isn't counted failing");
         std::fs::remove_dir_all(calls.path().join("large")).unwrap();
         for (name, meta) in [
             ("cut", &b"{\"key\": \"call:at:3\", \"start"[..]),
@@ -445,8 +457,14 @@ mod tests {
         let calls = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(calls.path().join("elsewhere")).unwrap();
         std::fs::write(calls.path().join("notes.md"), "# Notes\n").unwrap();
-        assert!(!Book::read(calls.path()).failing());
-        assert!(!Book::read(&calls.path().join("none yet")).failing());
+        assert!(
+            !Book::read(calls.path()).failing(),
+            "a folder with no record, or a file beside them, reads as failing"
+        );
+        assert!(
+            !Book::read(&calls.path().join("none yet")).failing(),
+            "no calls folder yet reads as failing"
+        );
     }
 
     #[test]
@@ -454,7 +472,10 @@ mod tests {
         let calls = tempfile::tempdir().unwrap();
         let file = calls.path().join("a file");
         std::fs::write(&file, "").unwrap();
-        assert!(Book::read(&file).failing());
+        assert!(
+            Book::read(&file).failing(),
+            "a calls folder that can't be listed reads as sound"
+        );
     }
 
     #[test]
