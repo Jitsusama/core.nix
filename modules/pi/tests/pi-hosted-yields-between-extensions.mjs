@@ -61,8 +61,12 @@ const loadWatchingTurns = async () => {
   globalThis.steps = [];
   let watching = true;
   const turn = () => {
-    if (!watching) return;
-    if (globalThis.steps.at(-1) !== "turn") globalThis.steps.push("turn");
+    if (!watching) {
+      return;
+    }
+    if (globalThis.steps.at(-1) !== "turn") {
+      globalThis.steps.push("turn");
+    }
     setImmediate(turn);
   };
   setImmediate(turn);
