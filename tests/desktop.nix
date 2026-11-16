@@ -1372,13 +1372,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # second, twice what the port carries; in looks-programs that held niri's
       # drawing for 21 s at a time, so the launcher it opened over Chrome never
       # had the keys (16 November, both stalls inside the waits that failed).
-      # Only warnings go there in those areas; the journal keeps the rest,
-      # where the tests read it.
-      services.journald.settings.Journal.MaxLevelConsole = lib.mkIf (lib.elem area [
-        "keeps-pace"
-        "launcher-keeps-up"
-        "looks-programs"
-      ]) (lib.mkForce "warning");
+      # The cat walks in every area, and the shell reports in each, so only
+      # warnings go there in all of them; the journal keeps the rest, where
+      # the tests read it, and no area reads the console.
+      services.journald.settings.Journal.MaxLevelConsole = lib.mkForce "warning";
       # The workstation's daemon collects garbage while under 10 GiB is free
       # (modules/nix-daemon), and this machine's store is 2 GiB of tmpfs over
       # the builder's, where only the system's own closure is registered. So

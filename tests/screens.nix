@@ -283,7 +283,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         systemd.user.services.swayidle-away.Install.WantedBy = lib.mkForce [ ];
       };
       # As in the greeter test: debug lines copied to the serial console make
-      # journald fall behind, and PID 1 drops lines it won't take.
+      # journald fall behind, and PID 1 drops lines it won't take. Info stays,
+      # unlike the desktop's areas, since the sleep's subtests wait on the
+      # console for the kernel's "PM: suspend entry", an info line.
       services.journald.settings.Journal.MaxLevelConsole = lib.mkForce "info";
     };
 
