@@ -297,18 +297,6 @@
     "test": "vm-desktop-keeps-pace"
   },
   {
-    "at": 1794841205,
-    "commit": "2c12c3c9f8be5869c79ed19e4c268da713b95c76",
-    "due": "2026-11-18",
-    "owner_session": "Y2YBTS",
-    "reason": "fails now and then without #4953 too: the launcher opens over a Chrome window just started, but niri never gives it the keys; the other three subtests the net named failed only by losing the machine",
-    "subtests": [
-      "test_chromes_page_and_its_download_are_shot_at_each_scale",
-      "test_shortcuts_over_google_are_shot_at_each_scale"
-    ],
-    "test": "vm-desktop-looks-programs"
-  },
-  {
     "at": 1794842295,
     "commit": "a4dad8c98727dc60da9965b811f5231d9b39ff1a",
     "due": "2026-11-17",
