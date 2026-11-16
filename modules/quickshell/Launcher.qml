@@ -9225,6 +9225,10 @@ Scope {
             askedToOpen();
         if (!open && !opening)
             openChord = name;
+        // Opened whole, a kept Super+N still to fill never is, so its
+        // landing goes with it rather than landing a later fill on its row
+        // (filled takes its own before it opens whole here).
+        landsOnFill = null;
         intoWhole(name);
         keepPlace(name);
         if (asked)
@@ -9254,13 +9258,8 @@ Scope {
             askedToOpen();
         if (!open && !opening && intoKept(name, true))
             landsOnFill = { wanted: wanted, normal: normal };
-        else {
-            // Asked again while a kept one is still to fill, it opens
-            // whole here, so the fill never comes to land it: left, a
-            // later chord's fill would land on this one's row.
-            landsOnFill = null;
+        else
             into(name);
-        }
         landingOn(wanted, normal);
         if (asked)
             askDone();
@@ -9329,8 +9328,12 @@ Scope {
     // (`listedNow`), a place a source leads to is listed as it stands
     // (ledListing) rather than drawn as kept.
     function intoKept(name, listedNow) {
+        // Checked first, so a place made to be kept (ledKept) isn't listed
+        // for an opening that goes whole anyway and lists it again.
+        if (!homeHeld || parting !== "")
+            return false;
         const kept = placesKept[name] ?? (listedNow === true ? ledKept(name) : null);
-        if (!kept || !homeHeld || parting !== "" || kept.under !== keptUnder(name))
+        if (!kept || kept.under !== keptUnder(name))
             return false;
         const source = collections.find(one => one.settings.name === name) ?? null;
         const listed = source?.keptListed === true ? keptListing(source)
@@ -10453,14 +10456,13 @@ Scope {
         // A place a chord opened, opened whole now, as its chord would.
         const place = openInto;
         if (place !== "") {
+            const lands = landsOnFill;
             fillStepping = true;
             try {
                 into(place);
             } finally {
                 fillStepping = false;
             }
-            const lands = landsOnFill;
-            landsOnFill = null;
             if (lands !== null)
                 landingOn(lands.wanted, lands.normal);
         } else {
