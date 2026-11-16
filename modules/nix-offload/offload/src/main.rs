@@ -1725,6 +1725,18 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
         let names: Vec<&str> = macs.iter().map(|machine| machine.host.as_str()).collect();
         return skipped(format!("{} nearby doesn't answer", names.join(", ")));
     };
+    // A Mac with no room waits rather than take more: its comparison is
+    // owed, and the net runs it once the Mac has room.
+    match there::load_of(mac, &scratch(), "ssh") {
+        Ok(Some(load)) if load.over() => {
+            return skipped(format!(
+                "{} has no room, at load {:.0} on {} processors",
+                mac.host, load.minute, load.cores
+            ));
+        }
+        Err(why) => return skipped(why),
+        Ok(_) => {}
+    }
     eprintln!(
         "nix-offload: {read} is read by a Mac's checks, so they're compared on {} too",
         mac.host
