@@ -23,7 +23,7 @@ const MERGES: &str = "2000";
 pub struct Main {
     place: HashMap<String, usize>,
     quarantined: BTreeSet<(String, String)>,
-    fetched: Option<i64>,
+    window: Option<(i64, i64)>,
 }
 
 impl Main {
@@ -36,35 +36,39 @@ impl Main {
             &[
                 "-C",
                 &core.to_string_lossy(),
-                "rev-list",
+                "log",
                 "--first-parent",
                 "-n",
                 MERGES,
+                "--format=%H %ct",
                 "main",
             ],
         )
         .unwrap_or_default();
-        let main = Self::of(&merges, quarantine);
-        let fetched = fs::metadata(core.join("FETCH_HEAD"))
-            .and_then(|meta| meta.modified())
-            .ok()
-            .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
-            .and_then(|at| i64::try_from(at.as_secs()).ok());
-        match fetched {
-            Some(at) => main.fetched(at),
-            None => main,
-        }
+        Self::of(&merges, quarantine)
     }
 
-    /// Main from `git rev-list`'s lines, newest first, and the quarantine's
-    /// JSON.
+    /// Main from `git log`'s lines, newest first, each a merge and when it
+    /// was made, and the quarantine's JSON. Lines without their times leave
+    /// main's window unknown.
     #[must_use]
     pub fn of(merges: &str, quarantine: &str) -> Self {
-        let place = merges
+        let read: Vec<(&str, Option<i64>)> = merges
             .lines()
+            .filter_map(|line| {
+                let mut words = line.split_whitespace();
+                Some((words.next()?, words.next().and_then(|at| at.parse().ok())))
+            })
+            .collect();
+        let window = match (read.first(), read.last()) {
+            (Some((_, Some(head))), Some((_, Some(oldest)))) => Some((*oldest, *head)),
+            _ => None,
+        };
+        let place = read
+            .iter()
             .rev()
             .enumerate()
-            .map(|(at, commit)| (commit.trim().to_owned(), at))
+            .map(|(at, (commit, _))| ((*commit).to_owned(), at))
             .collect();
         let list: Vec<Value> = serde_json::from_str(quarantine).unwrap_or_default();
         let quarantined = list
@@ -82,34 +86,34 @@ impl Main {
         Self {
             place,
             quarantined,
-            fetched: None,
-        }
-    }
-
-    /// Main as the mirror held it when last fetched at `at`.
-    #[must_use]
-    pub fn fetched(self, at: i64) -> Self {
-        Self {
-            fetched: Some(at),
-            ..self
+            window,
         }
     }
 
     /// Where a result sits: by its merge's place on main, then by when the
-    /// net kept it. A merge the mirror doesn't hold yet is newer than it,
-    /// so its results sort last.
+    /// net kept it. A merge main doesn't hold sorts last, as one the mirror
+    /// hasn't fetched yet, unless its result is older than the oldest merge
+    /// read, when it's one past them and sorts first.
     fn key(&self, commit: &str, at: i64) -> (usize, i64) {
-        (self.place.get(commit).copied().unwrap_or(usize::MAX), at)
+        let unheld = match self.window {
+            Some((oldest, _)) if at <= oldest => 0,
+            _ => usize::MAX,
+        };
+        (self.place.get(commit).copied().unwrap_or(unheld), at)
     }
 
     /// Whether a result at `commit`, kept at `at`, was run on something
-    /// other than main: a commit the mirror didn't hold though it fetched
-    /// after the result, such as merge-net's trial of a revert. On 16
-    /// November two such failures read as main's newest.
+    /// other than main: a commit main doesn't hold though the result came
+    /// between the oldest merge read and main's head, such as merge-net's
+    /// trial of a revert. On 16 November two such failures read as main's
+    /// newest. A result after main's head may be a merge the mirror hasn't
+    /// fetched, and one before the oldest a merge past those read, so both
+    /// are kept.
     fn elsewhere(&self, commit: &str, at: i64) -> bool {
-        !self.place.is_empty()
-            && !self.place.contains_key(commit)
-            && self.fetched.is_some_and(|fetched| at < fetched)
+        !self.place.contains_key(commit)
+            && self
+                .window
+                .is_some_and(|(oldest, head)| oldest < at && at < head)
     }
 }
 
@@ -213,13 +217,18 @@ fn still_broken(
     if check.contains("::") {
         return !answered(check, newest, &[], by_check, main);
     }
-    let real = since
+    for (died, run) in since
         .iter()
         .rev()
         .filter(|run| !run.log.is_empty())
-        .map(|run| (run, failed(&run.log)))
-        .find(|(_, read)| !read.died);
-    real.is_none_or(|(run, read)| !answered(check, run, &read.subtests, by_check, main))
+        .enumerate()
+    {
+        let read = failed(&run.log);
+        if !read.died {
+            return died >= 2 || !answered(check, run, &read.subtests, by_check, main);
+        }
+    }
+    true
 }
 
 /// Whether main has answered a check's failure `last` since. A subtest's is
@@ -259,12 +268,17 @@ struct Closing<'a> {
     lost: bool,
 }
 
-/// The closing lines in `log`.
+/// The closing lines in `log`: those that open with the mark, or whose
+/// builder's prefix, up to its first `> `, is followed by it, as pytest
+/// prints them. A guest's console line that only holds a mark is none.
 fn closing(log: &str) -> impl Iterator<Item = Closing<'_>> {
     log.lines().filter_map(|line| {
-        let (failed, rest) = [("FAILED ", true), ("ERROR ", false)]
-            .into_iter()
-            .find_map(|(mark, failed)| Some((failed, line.split_once(mark)?.1)))?;
+        let bodies = [Some(line), line.split_once("> ").map(|(_, body)| body)];
+        let (failed, rest) = bodies.into_iter().flatten().find_map(|body| {
+            [("FAILED ", true), ("ERROR ", false)]
+                .into_iter()
+                .find_map(|(mark, failed)| Some((failed, body.strip_prefix(mark)?)))
+        })?;
         let named = rest.split_whitespace().next()?;
         let (_, subtest) = named.rsplit_once("::")?;
         Some(Closing {
@@ -364,6 +378,7 @@ mod tests {
             result("mended", "", -60, true, ""),
             result("whole::sub", "", -900, true, ""),
             result("whole::sub", "", -600, false, ""),
+            result("whole::sub", "", -500, false, ""),
             result("whole", "", -300, true, ""),
             result("later::sub", "", -900, true, ""),
             result("later", "", -600, true, ""),
@@ -390,8 +405,10 @@ mod tests {
             died: false,
         };
         let text = [
+            result("once::test_v", "", -950, false, ""),
             result("once", "", -900, true, ""),
             result("once", "", -60, false, "real.log"),
+            result("oncemore::test_v", "", -30, false, ""),
             result("alone", "", -900, true, ""),
             result("alone", "", -600, false, "real.log"),
             result("alone::test_v", "", -300, false, ""),
@@ -426,9 +443,13 @@ mod tests {
     }
 
     #[test]
-    fn a_commit_the_mirror_fetched_past_without_it_is_not_mains() {
-        let main = Main::of("c2\nc1\n", "[]").fetched(NOW - 120);
+    fn a_commit_main_does_not_hold_within_the_merges_read_is_not_mains() {
+        let merges = format!("c2 {}\nc1 {}\n", NOW - 120, NOW - 1000);
+        let main = Main::of(&merges, "[]");
         let text = [
+            result("ancient", "gone", -2000, true, ""),
+            result("ancient", "c2", -800, false, ""),
+            result("ancient", "c2", -700, false, ""),
             result("trial", "c1", -900, true, ""),
             result("trial", "c2", -800, true, ""),
             result("trial", "revert-trial", -600, false, ""),
@@ -440,9 +461,10 @@ mod tests {
         .join("\n");
         assert_eq!(
             broken(&text, NOW, "D5QEKR", &main, &none).behind,
-            ["unfetched"],
-            "a commit the mirror fetched past without it, like a revert's trial, counted as \
-             main's, or a merge newer than the fetch didn't"
+            ["ancient", "unfetched"],
+            "a commit main doesn't hold within the merges read, like a revert's trial, \
+             counted as main's, or a merge newer than main's head, or a pass older than the \
+             merges read, didn't"
         );
     }
 
@@ -495,6 +517,10 @@ mod tests {
                     subtests: vec!["test_v".to_owned()],
                     died: false,
                 },
+                "other.log" => Failures {
+                    subtests: vec!["test_w".to_owned()],
+                    died: false,
+                },
                 "died.log" => Failures {
                     subtests: Vec::new(),
                     died: true,
@@ -510,6 +536,15 @@ mod tests {
             result("killed", "", -900, true, ""),
             result("killed", "", -600, false, "died.log"),
             result("killed", "", -60, false, "died.log"),
+            result("killed_after", "", -900, true, ""),
+            result("killed_after", "", -600, false, "real.log"),
+            result("killed_after::test_v", "", -500, true, ""),
+            result("killed_after", "", -400, false, "died.log"),
+            result("killed_after", "", -300, false, "died.log"),
+            result("newest", "", -900, true, ""),
+            result("newest", "", -600, false, "real.log"),
+            result("newest::test_v", "", -500, true, ""),
+            result("newest", "", -400, false, "other.log"),
             result("under", "", -900, true, ""),
             result("under", "", -600, false, "died.log"),
             result("under", "", -300, false, "real.log"),
@@ -520,9 +555,10 @@ mod tests {
         .join("\n");
         assert_eq!(
             broken(&text, NOW, "D5QEKR", &Main::default(), &failed).behind,
-            ["killed", "unanswered", "under"],
+            ["killed", "killed_after", "newest", "unanswered", "under"],
             "a run the VM died under answered a failure, or hid one, or a merge that kills \
-             the VM every time didn't count"
+             the VM every time didn't count, even after an answered flake, or an older real \
+             failure decided rather than the newest"
         );
     }
 
@@ -536,8 +572,12 @@ mod tests {
                      run> ERROR vm-pytest-v/x-vm-test.py::test_a - RuntimeError: no machine\n";
         let quoted =
             "run> FAILED vm-pytest-v/x-vm-test.py::test_a - AssertionError: BrokenPipeError\n";
+        let guest = "run> client # ERROR x-vm-test.py::test_a - boom\n\
+                     run> FAILED vm-pytest-v/x-vm-test.py::test_a - BrokenPipeError: [Errno 32]\n";
+        let says_failed =
+            "run> ERROR vm-pytest-v/x-vm-test.py::test_a - RuntimeError: FAILED a::b\n";
         assert_eq!(
-            [died, mixed, erred, quoted].map(failures),
+            [died, mixed, erred, quoted, guest, says_failed, ""].map(failures),
             [
                 Failures {
                     subtests: Vec::new(),
@@ -555,9 +595,16 @@ mod tests {
                     subtests: vec!["test_a".to_owned()],
                     died: false
                 },
+                Failures {
+                    subtests: Vec::new(),
+                    died: true
+                },
+                Failures::default(),
+                Failures::default(),
             ],
             "a broken pipe was read as a subtest's own failure, or a real failure or error, \
-             or one quoting a broken pipe, as the VM dying"
+             or one quoting a broken pipe, or a log with no closing line, as the VM dying, \
+             or the guest's console as pytest's closing lines"
         );
     }
 
