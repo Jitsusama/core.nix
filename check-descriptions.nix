@@ -3939,7 +3939,8 @@
     and keeps the kernel's with no account
   '';
   the-passwords-answer-no-ipc = ''
-    nothing of the Passwords place nor the daemon interface it asks through answers the shell's IPC
+    nothing of the Passwords place, the daemon interface it asks through, nor Asks, how it says a
+    line was shown and the ready rows it acts through answers the shell's IPC
   '';
   the-passwords-place-copies-through-its-daemon-on-niri = ''
     on a nested niri, the Passwords place runs the passwords daemon as the shell's own child and

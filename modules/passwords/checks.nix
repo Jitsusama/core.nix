@@ -135,7 +135,11 @@ onLinux {
   # Nothing of the Passwords place, nor the daemon interface it asks its
   # daemon through, answers the shell's IPC, so no `qs ipc call` another
   # process makes reaches a secret or lets a manager in, now or once
-  # something is added: only Joel's keys in the launcher do.
+  # something is added: only Joel's keys in the launcher do. Nor do Asks,
+  # which draws this daemon's secret asks, how it says a line was shown,
+  # or the ready rows it acts through, so no IPC says yes to an ask; the
+  # launcher's own do and run, walked from outside, say no time shown
+  # (the-asks-say-how-long-each-line-was-shown), which the daemon refuses.
   the-passwords-answer-no-ipc =
     let
       read = map builtins.readFile [
@@ -143,6 +147,9 @@ onLinux {
         ./Copied.qml
         ./Clearing.qml
         ../quickshell/Daemon.qml
+        ../quickshell/launcher/ReadyRows.qml
+        ../secret-asks/Asks.qml
+        ../secret-asks/Shown.js
       ];
     in
     holds "the-passwords-answer-no-ipc"
