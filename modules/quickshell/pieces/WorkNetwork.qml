@@ -41,7 +41,9 @@ Piece {
         // Network is a place, not a collection, so it's walked into from
         // home as Machines' rows walk into Computer (goTo): opened into by
         // name as a collection is, it found none, and Return left Joel at
-        // home (2026-11-16).
+        // home (2026-11-16). It stays, since a walk keeps the launcher open
+        // where it lands rather than opening it again.
+        stays: true,
         run: shell => shell.launcher.goTo({ trail: ["category:network"], spot: "answer:warp" })
     }]
     // Said as it starts or stops ailing, so a test sees the piece apart
