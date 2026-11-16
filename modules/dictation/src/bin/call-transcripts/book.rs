@@ -453,6 +453,36 @@ mod tests {
     }
 
     #[test]
+    fn a_record_linked_from_elsewhere_or_a_pipe_is_skipped_at_once_and_failing() {
+        let calls = tempfile::tempdir().unwrap();
+        let elsewhere = calls.path().join("elsewhere.json");
+        let sound = json!({"key": "call:at:5", "started": 5, "ended": 6, "title": ""});
+        std::fs::write(&elsewhere, sound.to_string()).unwrap();
+        std::fs::create_dir_all(calls.path().join("linked")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, calls.path().join("linked").join(META)).unwrap();
+        std::fs::create_dir_all(calls.path().join("piped")).unwrap();
+        let made = std::process::Command::new("mkfifo")
+            .arg(calls.path().join("piped").join(META))
+            .status()
+            .unwrap();
+        assert!(made.success(), "mkfifo made no pipe: {made}");
+        // Read on its own thread, so a read that waits on the pipe fails
+        // here rather than hanging the run.
+        let (told, heard) = std::sync::mpsc::channel();
+        let folder = calls.path().to_owned();
+        std::thread::spawn(move || {
+            let read = Book::read(&folder);
+            let _ = told.send((read.failing(), read.starts().collect::<Vec<_>>()));
+        });
+        let read = heard.recv_timeout(std::time::Duration::from_secs(10));
+        assert_eq!(
+            read,
+            Ok((true, vec![])),
+            "a linked record or a pipe was read, or waited on"
+        );
+    }
+
+    #[test]
     fn a_folder_with_no_record_or_no_calls_folder_is_no_failure() {
         let calls = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(calls.path().join("elsewhere")).unwrap();
