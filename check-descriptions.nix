@@ -1922,6 +1922,10 @@
     noise, and that mix cleaned by DeepFilterNet out of 5, and marks the voice alone at least
     half a mark quieter in the background and better overall than with the noise
   '';
+  noise-cancelled-scores-with-the-trials-models = ''
+    noise-cancelled's service is given the same models folder as Choose by Ear's trial, holding
+    the scorer beside the cleaner, so each call can be scored after it ends
+  '';
   noise-cancelled-switches-to-the-new-one = ''
     a switch restarts noise-cancelled after it reloads the units, so the microphones offered are
     never the old program's

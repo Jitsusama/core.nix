@@ -30,6 +30,22 @@
         ) == "AF_UNIX"
       );
 
+  # After each call the service scores what every cleaner would have made
+  # of it, so it needs the scorer's model beside the cleaner's, as the
+  # trial has them. Given the cleaner's folder alone, every call's score
+  # failed to load and no call was judged.
+  noise-cancelled-scores-with-the-trials-models =
+    let
+      services = (account graphical).systemd.user.services;
+      words = service: pkgs.lib.splitString " " (toString service.Service.ExecStart);
+    in
+    holds "noise-cancelled-scores-with-the-trials-models"
+      "noise-cancelled serve is given another models folder than the trial, so it can't score a call."
+      (
+        builtins.elemAt (words services.noise-cancelled) 2
+        == builtins.elemAt (words services.noise-cancelled-trial) 3
+      );
+
   # Whatever else a machine refuses it for, Choose by Ear never records
   # during a call, which it would cut into.
   noise-cancelled-trial-waits-out-a-call =

@@ -61,8 +61,8 @@
 let
   cfg = config.jitsusama.noise-cancelled;
   dictation = pkgs.callPackage ../dictation/package.nix { };
-  model = pkgs.callPackage ./model.nix { };
-  # The trial's models: the cleaner's, and the scorer's beside it.
+  # The cleaner's models and the scorer's beside them, which both the
+  # trial and the service read: the service scores each call after it.
   models = pkgs.callPackage ./models.nix { };
   # Where a pick by ear is kept, in the account's state folder (%S).
   chosen = "%S/noise-cancelled/cleaner";
@@ -160,7 +160,7 @@ in
     Service = {
       ExecStart = lib.concatStringsSep " " [
         "${dictation}/bin/noise-cancelled serve"
-        "${model}"
+        "${models}"
         cfg.cleaner
         "${chosen}"
         "${refusals}"
