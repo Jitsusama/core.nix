@@ -277,6 +277,30 @@ in
       touch $out
     '';
 
+  # Wi-Fi's block-ack session data holds a reorder buffer per receive
+  # queue, an order-5 block that fragmented memory refused four times in
+  # a day, each refusal leaving the link without aggregation. So it may
+  # come from vmalloc (wifi-reorder-buffer-falls-back-to-vmalloc), and as
+  # kfree() on vmalloc's memory corrupts the slab, no file that handles
+  # the session frees it that way (tests/every-reorder-buffer-may-be-vmalloc.sh).
+  wifi-sessions-survive-fragmented-memory =
+    let
+      mld = "drivers/net/wireless/intel/iwlwifi/mld";
+      files = map (file: "${mld}/${file}") [
+        "agg.c"
+        "mac80211.c"
+        "mld.c"
+        "rx.c"
+        "sta.c"
+      ];
+    in
+    pkgs.runCommandLocal "wifi-sessions-survive-fragmented-memory" { } ''
+      cd ${kernelSource files}
+      ${lib.getExe pkgs.bash} ${./tests/every-reorder-buffer-may-be-vmalloc.sh} \
+        ${lib.escapeShellArgs files}
+      touch $out
+    '';
+
   # A model runs on the NPU only once its compiler has turned it into the
   # NPU's program, and the driver looks for the compiler in its own
   # directory, so both have to be in the graphics driver directory that
