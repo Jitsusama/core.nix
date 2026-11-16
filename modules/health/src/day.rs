@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::agents::Agents;
 use crate::asks::Asks;
 use crate::busy::Busy;
+use crate::defunct::Defunct;
 use crate::disk::Disks;
 use crate::feel::Pain;
 use crate::journal::{Entry, Mark, Whose};
@@ -127,6 +128,9 @@ pub struct Day {
     /// Whose work kept the processors busy, by the hour.
     #[serde(default)]
     pub busy: Busy,
+    /// The most defunct children one parent left at a look, and who.
+    #[serde(default)]
+    pub defunct: Defunct,
     /// When the kernel said its last line, in microseconds, so a report's
     /// later lines are known by following it closely. It isn't kept, since
     /// each start reads the day's kernel lines again.
@@ -350,7 +354,7 @@ impl Day {
 
     /// Take from a day kept before this run what the journals don't say
     /// again: the sessions' tallies, how far each log was read, the
-    /// memory the watched programs held, and the disks.
+    /// memory the watched programs held, the disks and the defunct.
     pub fn resume(&mut self, kept: Self) {
         if kept.date != self.date {
             return;
@@ -360,6 +364,7 @@ impl Day {
         self.agents = kept.agents;
         self.disks = kept.disks;
         self.busy = kept.busy;
+        self.defunct = kept.defunct;
         self.things.extend(
             kept.things
                 .into_iter()

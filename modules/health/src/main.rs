@@ -21,14 +21,16 @@
 //! And each half minute it keeps what every pi session and the shell hold
 //! in memory and swap, by how long each has run, so one that grows as it
 //! ages shows, and counts the agents that died: a session whose presence
-//! says busy or listening though its process is gone. Each five minutes
+//! says busy or listening though its process is gone, and the most
+//! defunct children one parent left unreaped. Each five minutes
 //! it weighs whose work kept the processors busy, each quest's sessions and
 //! commands, his apps' slice and each of the machine's services, by the
 //! hour.
 //! It keeps the day in `~/.local/state/health/<date>.json`, with the
 //! figures cadence day holds it to beside the tally: the slowest boot and
 //! shutdown, each kind's errors, the minutes lost, the most each watched
-//! program held and the agents that died.
+//! program held, the agents that died and the most defunct children
+//! under one parent.
 //!
 //! `health` reads that file: the day's three most painful interactions,
 //! then one line a kind, the worst first, naming its worst thing.
@@ -50,6 +52,7 @@ mod agents;
 mod asks;
 mod busy;
 mod day;
+mod defunct;
 mod disk;
 mod feel;
 mod figures;

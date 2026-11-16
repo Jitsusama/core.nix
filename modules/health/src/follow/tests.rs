@@ -296,6 +296,51 @@ fn memory_is_minded_and_kept_through_a_restart() {
 }
 
 #[test]
+fn defunct_children_are_minded_and_kept_through_a_restart() {
+    let into = tempfile::tempdir().expect("a folder");
+    let proc = tempfile::tempdir().expect("a stand-in /proc");
+    fs::write(proc.path().join("uptime"), "100.0 1.0\n").expect("uptime");
+    let process = |pid: u32, parent: u32, state: char, started_by: &str| {
+        let path = proc.path().join(pid.to_string());
+        fs::create_dir_all(&path).expect("a process");
+        fs::write(path.join("cmdline"), started_by).expect("its command");
+        fs::write(
+            path.join("stat"),
+            format!("{pid} (x) {state} {parent} 1 1\n"),
+        )
+        .expect("stat");
+    };
+    process(7, 1, 'S', "pi\0");
+    for child in 20..23 {
+        process(child, 7, 'Z', "");
+    }
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC).minding(proc.path());
+    follower.mind(NOON);
+    fs::remove_dir_all(proc.path().join("20")).expect("one is reaped");
+    follower.mind(NOON + 1);
+    follower.write().expect("the day is written");
+    let kept: serde_json::Value =
+        serde_json::from_slice(&fs::read(into.path().join("2026-11-12.json")).expect("the day"))
+            .expect("as JSON");
+    assert_eq!(
+        kept["defunct"],
+        serde_json::json!({"most": 3, "pid": 7, "command": "pi", "at": NOON / 1_000_000}),
+        "the day's most, its parent and when, in seconds, as cadence reads it"
+    );
+    assert_eq!(
+        kept["figures"]["defunct.most-under-one-parent"],
+        serde_json::json!(3.0),
+        "and the figure cadence holds to its bar"
+    );
+
+    let mut again = Follower::new("2026-11-12", into.path(), TimeZone::UTC)
+        .minding(proc.path())
+        .resuming(read(into.path(), "2026-11-12"));
+    again.mind(NOON + 2);
+    assert_eq!(again.day.defunct.most, 3, "a restart keeps the day's most");
+}
+
+#[test]
 fn a_reported_crash_of_the_day_is_counted_once() {
     let into = tempfile::tempdir().expect("a folder");
     let reports = tempfile::tempdir().expect("a reports folder");
