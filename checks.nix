@@ -665,7 +665,6 @@ gather {
     ./modules/guide/checks.nix
     ./modules/health/checks.nix
     ./modules/hibernate/checks.nix
-    ./modules/home-manager/checks.nix
     ./modules/inkscape/checks.nix
     ./modules/inlyne/checks.nix
     ./modules/ir-camera/checks.nix
@@ -736,6 +735,7 @@ gather {
     ./modules/rhythm/checks.nix
     ./modules/sccache/checks.nix
     ./modules/screen-text/checks.nix
+    ./modules/sd-switch/checks.nix
     ./modules/secret-asks/checks.nix
     ./modules/session-backup/checks.nix
     ./modules/shaper/checks.nix

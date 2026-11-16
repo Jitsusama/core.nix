@@ -13,6 +13,7 @@
     nixosModules.nftables
     nixosModules.nixpkgs
     nixosModules.openssh
+    nixosModules.sd-switch
     nixosModules.systemd
     nixosModules.zsh
   ];
