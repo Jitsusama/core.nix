@@ -67,6 +67,7 @@ mod speed;
 mod start;
 mod stats;
 mod units;
+mod unrun;
 mod watch;
 
 use std::collections::BTreeMap;
