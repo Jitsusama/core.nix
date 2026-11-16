@@ -217,7 +217,7 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
     if phrase_anywhere {
         return found(Verdict::Waved(Waved::Quoted), Vec::new());
     }
-    if tagged && asks_to_stop(&words) {
+    if tagged && asks_to_stop(&words, &own) {
         return found(Verdict::StopAsked, Vec::new());
     }
     found(Verdict::Nothing, Vec::new())
@@ -287,25 +287,71 @@ fn is_urgent(own: &str, words: &[String]) -> bool {
     own.contains('!') || shouted || words.iter().any(|word| URGENT.contains(&word.as_str()))
 }
 
+/// The words for stopping, as a plain ask to stop says one.
+const STOPPING: [&str; 9] = [
+    "stop", "halt", "kill", "pause", "cease", "shut", "disable", "freeze", "rogue",
+];
+
+/// The words for what Joel's agents are, as a plain ask to stop names them.
+const AGENTS: [&str; 11] = [
+    "robot",
+    "robots",
+    "bot",
+    "bots",
+    "agent",
+    "agents",
+    "ai",
+    "automation",
+    "skynet",
+    "swarm",
+    "rogue",
+];
+
 /// Whether a saying asks Joel to stop his agents in plain words: a word
-/// for stopping beside a word for what his agents are.
-fn asks_to_stop(words: &[String]) -> bool {
-    const STOPPING: [&str; 9] = [
-        "stop", "halt", "kill", "pause", "cease", "shut", "disable", "freeze", "rogue",
-    ];
-    const AGENTS: [&str; 11] = [
-        "robot",
-        "robots",
-        "bot",
-        "bots",
-        "agent",
-        "agents",
-        "ai",
-        "automation",
-        "skynet",
-        "swarm",
-        "rogue",
-    ];
-    let has = |list: &[&str]| words.iter().any(|word| list.contains(&word.as_str()));
-    has(&STOPPING) && has(&AGENTS)
+/// for stopping beside a word for what his agents are. A word for them
+/// inside a program's name, as google-guest-agent, names the program
+/// rather than his agents: the first saying ever heard this way asked why
+/// he'd disable one, and would have told his phone. Joel asked to lean
+/// toward telling him when unsure, so only a name joined as a program's
+/// is passed over: one written in words, as "the guest agent", asks.
+fn asks_to_stop(words: &[String], own: &str) -> bool {
+    let ours = |word: &String| STOPPING.contains(&word.as_str()) || AGENTS.contains(&word.as_str());
+    let plain: Vec<String> = joined_words(own)
+        .into_iter()
+        .filter(|name| name.len() == 1 || name.iter().all(ours))
+        .flatten()
+        .collect();
+    words.iter().any(|word| STOPPING.contains(&word.as_str()))
+        && plain.iter().any(|word| AGENTS.contains(&word.as_str()))
+}
+
+/// The words of `text` in lower case, those joined by a lone dash or
+/// underscore with letters on both sides held together, as a program's
+/// name is written: google-guest-agent is one, while "agents/bots",
+/// "agents...they" and "agents--please" are words apart.
+fn joined_words(text: &str) -> Vec<Vec<String>> {
+    let chars: Vec<char> = text.to_lowercase().chars().collect();
+    let mut names = Vec::new();
+    let mut name = Vec::new();
+    let mut at = 0;
+    while at < chars.len() {
+        if !chars[at].is_alphanumeric() {
+            at += 1;
+            continue;
+        }
+        let start = at;
+        while at < chars.len() && chars[at].is_alphanumeric() {
+            at += 1;
+        }
+        name.push(chars[start..at].iter().collect());
+        let joined = at + 1 < chars.len()
+            && matches!(chars[at], '-' | '_')
+            && chars[at + 1].is_alphanumeric();
+        if joined {
+            at += 1;
+        } else {
+            names.push(std::mem::take(&mut name));
+        }
+    }
+    names
 }
