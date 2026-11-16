@@ -432,6 +432,17 @@ every-test-function-lives-once = core.lib.everyTestFunctionLivesOnce pkgs {
 };
 ```
 
+Its Cargo.lock files name what its crates' manifests take, as core's do,
+through a tenth:
+
+```nix
+every-lock-agrees-with-its-manifests = core.lib.everyLockAgreesWithItsManifests pkgs {
+  src = ./.;
+  # The locks, by path, that disagree while each is refreshed.
+  waiting = [ ];
+};
+```
+
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:
 

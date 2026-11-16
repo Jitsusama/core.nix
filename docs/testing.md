@@ -635,6 +635,14 @@ more in a second test file, whatever its name there, reading a Rust file's
 wait, counted by file, in
 `tests/rules/every-test-function-lives-once-waiting.nix`.
 
+A Cargo.lock names every dependency its crates' manifests take, since Nix
+builds a crate offline but not locked: a lock left behind its manifest
+passes there, rewritten in the sandbox, while each cargo run beside it
+rewrites it in the working tree. `every-lock-agrees-with-its-manifests`
+holds each lock to the manifests it reaches by path, as cargo locks them:
+an optional dependency of a crate outside the workspace may be locked or
+not, since it follows features the rule doesn't read.
+
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and
 enrolled, the disk is bound to the TPM and a PIN, the passphrase is wiped,
