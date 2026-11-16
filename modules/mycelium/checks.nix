@@ -423,6 +423,21 @@ in
   # the home realm's node alone, so nothing is heard twice.
   # The node wakes with every session it carries, so it runs in their
   # slice, every realm's alike, rather than among Joel's programs.
+  # The locked node takes each flag its service is given, so a flag set
+  # ahead of the mycelium that reads it fails here, not as the node starts.
+  mycelium-node-takes-its-flags =
+    let
+      flags = lib.unique (lib.filter (lib.hasPrefix "--") (lib.splitString " " linuxNode));
+      mycelium = lib.getExe self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
+    in
+    pkgs.runCommandLocal "mycelium-node-takes-its-flags" { } ''
+      ${mycelium} node --help > help
+      for flag in ${lib.escapeShellArgs flags}; do
+        grep -q -e "$flag\b" help || { echo "mycelium node doesn't take $flag"; exit 1; }
+      done
+      touch $out
+    '';
+
   # The swarm's teams complete in a real zsh, asked of a stand-in node
   # (tests/completion.zsh).
   mycelium-completes-its-teams-in-zsh =
