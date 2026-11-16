@@ -245,6 +245,20 @@ function held(hand, at) {
         y: Math.min(Math.max(y, 0), at.height - at.tall) };
 }
 
+// Whether a screen's cat wants every tile of the workspaces it crosses,
+// its ways being over them: while it's on its way to another column or
+// workspace, `going` (unless a scene's walk `handsBack`), `moving` or
+// `resting` before it sets off, and while it's `holding` in Joel's hand,
+// since it falls onto whichever is under where he lets go (the GPU rig,
+// 2026-11-16: knowing only its own, it fell past a lower top to the
+// floor). At rest, and on a scene's wander, which stays over its own
+// window, only the tile under it is, so the shut shell hears no other
+// (2026-11-12: watching every tile made it hear each of 20 resizes).
+function travels(cat) {
+    return (!!cat.going && !cat.handsBack) || !!cat.moving || !!cat.resting
+        || !!cat.holding;
+}
+
 // A drawing given a quarter turn, clockwise for `turn` 1 and back for -1,
 // cell for cell, so a climbing cat stays as sharp as a walking one.
 function quartered(drawing, turn) {

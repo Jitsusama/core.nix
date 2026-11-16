@@ -201,15 +201,15 @@ PanelWindow {
         : pose ? MarginCat.quartered(
             MarginCat.turned(Theme.pixels[pose] ?? window.scene.drawing, facing), turn)
         : window.scene.drawing
-    // Whether it's on its way to another column or workspace, waiting
-    // to set off or going, while which every tile of the workspaces it
-    // crosses is wanted, its ways being over them, and as which it wants
-    // them; at rest, and on a scene's wander, which stays over its own
-    // window, only the tile under it is, so the shut shell hears no
-    // other (2026-11-12: watching every tile made it hear each of 20
-    // resizes).
-    readonly property bool travels: (going !== null && !handsBack) || moving !== null
-        || resting.running
+    // Whether it wants every tile it crosses (MarginCat.travels), and as
+    // which it wants them.
+    readonly property bool travels: MarginCat.travels({
+        going: going !== null,
+        handsBack,
+        moving: moving !== null,
+        resting: resting.running,
+        holding
+    })
     property string wantsAs: ""
     // Wanted once the change is done: niri's windows notify as they're
     // wanted, and set it going or moving again inside the change, a

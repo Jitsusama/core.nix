@@ -142,5 +142,13 @@ QtObject {
             [Drawings.poses.scruffed?.length, Drawings.poses.scruffed?.every(row =>
                 row.length === 8)],
             [8, true]);
+        // The GPU rig, 2026-11-16: wanting only its own tile while held, it
+        // knew no column under Joel's hand and fell past a lower top.
+        expect("every tile is wanted while it's held, as while it travels, and only then",
+            [MarginCat.travels({ holding: true }), MarginCat.travels({ going: true }),
+                MarginCat.travels({ going: true, handsBack: true }),
+                MarginCat.travels({ moving: true }), MarginCat.travels({ resting: true }),
+                MarginCat.travels({})],
+            [true, true, false, true, true, false]);
     }
 }
