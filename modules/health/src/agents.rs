@@ -1,7 +1,8 @@
 //! The agents that died: a pi session whose presence still says it's busy
 //! or listening, though the process that wrote it is gone. A session put
-//! down parks, and says so; one that crashed, was killed or lost its
-//! window leaves its last word behind, and nothing else tells of it.
+//! down parks, and says so, and one shut down for good says when it
+//! ended; one that crashed, was killed or lost its window leaves its last
+//! word behind, and nothing else tells of it.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -150,7 +151,10 @@ fn gone_from(presences: &Path, alive: impl Fn(&Value) -> bool) -> Looked {
             looked.running.insert(session.to_owned());
             continue;
         }
-        if state == "parked" {
+        // A session shut down for good, by a quit, a closed tab or a new
+        // session, says when it ended; an older harness never says so.
+        let ended = said.get("ended").is_some_and(|ended| !ended.is_null());
+        if state == "parked" || ended {
             continue;
         }
         let Some(at) = said["at"]
@@ -343,6 +347,27 @@ mod tests {
             "",
         );
         assert_eq!(asked, Looked::default(), "none judged from ps");
+    }
+
+    #[test]
+    fn a_session_that_says_it_ended_did_not_die() {
+        let presences = tempfile::tempdir().expect("the presences");
+        let proc = tempfile::tempdir().expect("a stand-in /proc");
+        // A session shut down for good says when, as a quit or a closed
+        // tab writes it; an older harness writes no such word.
+        let said = concat!(
+            r#"{"session":"closed","state":"listening","#,
+            r#""at":"2026-11-12T05:16:23.062Z","ended":"2026-11-12T05:16:24.001Z","#,
+            r#""owner":{"pid":13,"startTicks":1}}"#
+        );
+        fs::write(presences.path().join("closed.json"), said).expect("a presence");
+        presence(presences.path(), "crashed", "listening", 14, 1, BOOT);
+        let looked = look(presences.path(), proc.path());
+        assert_eq!(
+            looked.gone.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["crashed"],
+            "only the one that never said it ended: {looked:?}"
+        );
     }
 
     #[test]
