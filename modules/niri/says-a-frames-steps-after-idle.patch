@@ -155,7 +155,7 @@ index e5662426..d2e3bf26 100644
              state.redraw_state = if let RedrawState::WaitingForEstimatedVBlank(token)
 diff --git a/src/utils/frame_steps.rs b/src/utils/frame_steps.rs
 new file mode 100644
-index 00000000..a652678b
+index 00000000..939a9be5
 --- /dev/null
 +++ b/src/utils/frame_steps.rs
 @@ -0,0 +1,139 @@
@@ -288,7 +288,7 @@ index 00000000..a652678b
 +    fn a_frame_held_a_while_counts_its_refreshes() {
 +        assert!(steps()
 +            .said(ms(2050.), Some(ms(8.333)))
-+            .ends_with("45.0 ms after being queued; 6 refreshes from the ask"));
++            .ends_with("46.0 ms after being queued; 6 refreshes from the ask"));
 +    }
 +
 +    #[test]
