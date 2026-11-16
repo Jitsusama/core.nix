@@ -144,6 +144,33 @@ fn a_change_is_checked_where_main_moved_its_own_files_as_ready_takes() {
 }
 
 #[test]
+fn a_change_is_checked_where_main_moved_only_what_no_build_reads() {
+    // On 16 November a gate fell back to evaluating every check because
+    // main had moved the net's quarantine list beside a merge-net change,
+    // though the net reads that list from main and no build holds it.
+    let change = ["tools/merge-net/src/main.rs".to_owned()];
+    let quarantine = ["tools/merge-net/quarantine.json".to_owned()];
+    let none = Crates::default();
+    for forward in [false, true] {
+        assert_eq!(
+            refusal(&quarantine, &change, forward, &none),
+            None,
+            "refused over a list no build reads"
+        );
+    }
+    assert!(
+        refusal(
+            &["tools/merge-net/src/kit.rs".to_owned()],
+            &change,
+            false,
+            &none
+        )
+        .is_some(),
+        "main moving merge-net's own code beside the change still refuses"
+    );
+}
+
+#[test]
 fn a_main_head_with_no_change_on_it_is_never_replayed() {
     // On 15 November keep-main's keep of a new main head, whose base is
     // the head itself, went onto the older kept head instead, which had
