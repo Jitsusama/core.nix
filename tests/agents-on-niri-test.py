@@ -3230,7 +3230,8 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     """Carried lists each carry where it went, by whom and why; Return carries one back.
 
     An arrived carry offers Carry Back alone, asked of the node; one about to go only opens,
-    offering no Carry Back, and Carry Back says so in place while the node is asked (DCU5J4, items 1 and 2).
+    offering no Carry Back, and Carry Back says so in place while the node is asked (DCU5J4,
+    items 1 and 2).
     """
     in_agents(shell)
     shell.launcher_until(lambda shown: "Carried" in shown["rows"])
