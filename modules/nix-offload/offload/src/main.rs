@@ -806,6 +806,14 @@ fn there(arguments: &[String]) -> ExitCode {
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     let nearby = nearby();
     let (near, left) = there::shared(&asked, &nearby, machines::answers);
+    let (left, owed) = there::owed(left, &nearby, &this_system());
+    if !owed.is_empty() {
+        eprintln!(
+            "nix-offload: no machine nearby that builds for {} answers, and a lent builder \
+             can't, so it's left unbuilt, owed for when one does",
+            owed.join(", ")
+        );
+    }
     let (mut status, left) = built_nearby(&near, left, &dir, &scratch, &journal);
     let (vm_dirs, vm_parts, left) = vm_apart_from(left, &vm_dir);
     // The rest goes to a second builder while the first is full, when a
@@ -839,6 +847,11 @@ fn there(arguments: &[String]) -> ExitCode {
         if status == 0 {
             status = ran.status;
         }
+    }
+    // What's owed hasn't passed, so the run says it's unbuilt, as a
+    // changed run with no builder does, and isn't kept.
+    if status == 0 && !owed.is_empty() {
+        status = i32::from(changed::UNBUILT);
     }
     // Which of a build that failed passed isn't known, so only a whole
     // that passed is kept.
@@ -4592,6 +4605,8 @@ exit 0
         }
     }
 
+    // Only a lender proves its builders, and only Linux runs one.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_lent_builder_failing_two_proofs_in_a_row_is_named_nowhere_and_given_back() {
         let _heard = unstopped();
@@ -4660,6 +4675,8 @@ exit 0
         assert_eq!(said["consecutiveFailures"], 2);
     }
 
+    // Only a lender proves its builders, and only Linux runs one.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_lent_builder_that_answers_its_proofs_stays() {
         let _heard = unstopped();
@@ -4701,6 +4718,8 @@ exit 0
     // uplink beside them was too full to take a copy. One that builds but
     // can't carry is named nowhere, but kept warm rather than given back
     // to be lent cold over the same way.
+    // Only a lender proves its builders, and only Linux runs one.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_lent_builder_that_builds_but_cant_carry_a_copy_is_named_nowhere_but_kept() {
         let _heard = unstopped();
