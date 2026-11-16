@@ -6,10 +6,19 @@
 //! `..`, a hidden name (a writer's half-made `.now.XXXX`), or a link in
 //! the documents leading out of them is refused, as the server before
 //! this one refused it.
+//!
+//! A mount is the whole of its site but for one file: its `homes.json`,
+//! where the things it's home to are listed for every other site to link
+//! to. Those change with the site's data, which Nix never builds, so a
+//! timer writes them into the documents under the site's name, and a
+//! mount without its own is answered with those.
 
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
+
+/// The one file a mount may be answered with from the documents.
+const HOMES: &str = "homes.json";
 
 /// What a path found.
 #[derive(Debug, PartialEq, Eq)]
@@ -38,7 +47,12 @@ pub fn find(config: &Config, path: &str) -> Found {
     }
     let (root, rest, guarded) = match parts.split_first() {
         Some((first, rest)) if config.mounts.contains_key(*first) => {
-            (config.mounts[*first].as_path(), rest, false)
+            let mount = config.mounts[*first].as_path();
+            if *rest == [HOMES] && !mount.join(HOMES).is_file() {
+                (config.documents.as_path(), &parts[..], true)
+            } else {
+                (mount, rest, false)
+            }
         }
         _ => (config.documents.as_path(), &parts[..], true),
     };
@@ -133,9 +147,20 @@ mod tests {
             std::env::temp_dir().join(format!("local-sites-files-{name}-{}", std::process::id()));
         let documents = top.join("sites");
         let kit = top.join("kit");
-        for folder in [documents.join("mycelium"), kit.clone()] {
+        let code = top.join("code");
+        for folder in [
+            documents.join("mycelium"),
+            documents.join("code"),
+            kit.clone(),
+            code.clone(),
+        ] {
             fs::create_dir_all(folder).expect("a folder");
         }
+        // A live site's homes, written beside its old record in the
+        // documents, where its mount holds neither.
+        fs::write(documents.join("code/homes.json"), "written").expect("its homes");
+        fs::write(documents.join("code/repos.json"), "old").expect("its old record");
+        fs::write(code.join("index.html"), "grove").expect("its page");
         fs::write(documents.join("mycelium/index.html"), "map").expect("a page");
         fs::write(documents.join("mycelium/.now.x1"), "half").expect("a half-made file");
         fs::write(top.join("secret"), "no").expect("a file outside");
@@ -144,7 +169,7 @@ mod tests {
             listen: "127.0.0.1:8484".parse().expect("an address"),
             names: vec!["localhost".to_owned()],
             documents,
-            mounts: BTreeMap::from([("kit".to_owned(), kit)]),
+            mounts: BTreeMap::from([("kit".to_owned(), kit), ("code".to_owned(), code)]),
             feeds: BTreeMap::new(),
         };
         Folders { config, top }
@@ -161,6 +186,35 @@ mod tests {
         assert_eq!(
             find(&folders.config, "/kit/theme.css"),
             Found::File(folders.top.join("kit/theme.css"))
+        );
+    }
+
+    #[test]
+    fn a_mount_without_its_homes_answers_with_the_documents_ones() {
+        let folders = folders("homes");
+        assert_eq!(
+            find(&folders.config, "/code/homes.json"),
+            Found::File(folders.config.documents.join("code/homes.json"))
+        );
+    }
+
+    #[test]
+    fn a_mount_holding_its_own_homes_answers_with_them() {
+        let folders = folders("own-homes");
+        fs::write(folders.top.join("code/homes.json"), "built").expect("its own homes");
+        assert_eq!(
+            find(&folders.config, "/code/homes.json"),
+            Found::File(folders.top.join("code/homes.json"))
+        );
+    }
+
+    #[test]
+    fn a_mount_without_any_other_file_is_missing_it() {
+        let folders = folders("mount-missing");
+        assert_eq!(
+            find(&folders.config, "/code/repos.json"),
+            Found::Missing,
+            "a mount fell back to the documents for a file other than its homes"
         );
     }
 
