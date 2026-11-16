@@ -53,9 +53,7 @@
 //!
 //! With `--door`, a new Nix evaluation or build under a cgroup waits while
 //! memory is short, and through a call `--calls`' pw-dump hears, as
-//! `src/door.rs` and `src/calls.rs` say why and how. Through such a call,
-//! build.slice and jobs.slice are held to a quarter of the processors, as
-//! `src/brake.rs` says why and how.
+//! `src/door.rs` and `src/calls.rs` say why and how.
 //!
 //! With `--revive`, a cgroup gives memory back when the kernel's reclaim
 //! thread gives up, as `src/revive.rs` says why and how.
@@ -90,7 +88,6 @@
 //! --help` names every flag (src/cli.rs): asked wrongly ends 64, and a
 //! sorter that can't read or sort the cgroups 1.
 
-mod brake;
 mod calls;
 mod cli;
 mod door;
@@ -1846,7 +1843,6 @@ fn run(settings: &Settings) -> Result<(), String> {
             rank_for_memory(&looking, &mut ranks, &mut warned);
         }
         watch_door(&mut doorway, &root, settings.door.as_deref(), now);
-        brake_for_calls(&mut doorway);
         pass = pass.wrapping_add(1);
         sorter.finish(&alive, now);
     }
@@ -1856,8 +1852,6 @@ fn run(settings: &Settings) -> Result<(), String> {
 struct Doorway {
     door: door::Door,
     calls: Option<calls::Calls>,
-    /// Whether builds and jobs are braked for a call (src/brake.rs).
-    braked: bool,
 }
 
 impl Doorway {
@@ -1866,55 +1860,7 @@ impl Doorway {
         Doorway {
             door: door::Door::default(),
             calls: pw_dump.map(calls::Calls::follow),
-            braked: false,
         }
-    }
-}
-
-/// Holds builds and jobs to a quarter of the processors while a call is
-/// on, and lets them go once it ends, as src/brake.rs says. A slice that
-/// couldn't be set is tried again on the next look.
-fn brake_for_calls(doorway: &mut Doorway) {
-    let calling = doorway
-        .calls
-        .as_mut()
-        .is_some_and(|calls| calls.on(std::time::Instant::now()));
-    let processors = std::thread::available_parallelism().map_or(1, usize::from);
-    let Some(quota) = brake::wanted(calling, doorway.braked, processors) else {
-        return;
-    };
-    let mut all = true;
-    for (manager, slice) in brake::BRAKED {
-        let set = Command::new("busctl")
-            .args(brake::quota_call(manager, slice, quota))
-            .stdout(Stdio::null())
-            .output();
-        match set {
-            Ok(output) if output.status.success() => {}
-            Ok(output) => {
-                all = false;
-                eprintln!(
-                    "Couldn't set {slice}'s quota for a call: {}",
-                    String::from_utf8_lossy(&output.stderr).trim()
-                );
-            }
-            Err(error) => {
-                all = false;
-                eprintln!("Couldn't run busctl to set {slice}'s quota for a call: {error}");
-            }
-        }
-    }
-    if all {
-        doorway.braked = calling;
-        eprintln!(
-            "{} builds and jobs, {}.",
-            if calling { "Braked" } else { "Let go of" },
-            if calling {
-                "a call on"
-            } else {
-                "the call over"
-            }
-        );
     }
 }
 
