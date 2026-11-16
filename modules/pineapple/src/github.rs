@@ -16,15 +16,14 @@ use serde_json::Value;
 
 use crate::Context;
 
-/// The site any account in the world may comment on, GitHub's own, as its
-/// reader names it. A site of a company's own is commented on only by its
-/// staff, so there who wrote something isn't asked about.
-const OPEN_TO_ANYONE: &str = "github";
-
 /// How GitHub says a writer is the repository's own: its owner, a member
 /// of the organization owning it, or a collaborator on it. Only they may
 /// stop Joel's agents on GitHub (Joel's orchestrator, 16 November).
 const ITS_OWN: [&str; 3] = ["OWNER", "MEMBER", "COLLABORATOR"];
+
+/// What GitHub lets Joel's sign-in do in a repository he works in, any
+/// one of which is enough: push to it, maintain it or run it.
+const WORKS_IN: [&str; 3] = ["push", "maintain", "admin"];
 
 /// Seconds in a day.
 const DAY: u64 = 86_400;
@@ -111,9 +110,9 @@ pub struct Said {
     pub author: String,
     /// Whether a bot or an app said it.
     pub by_bot: bool,
-    /// Whether it was said on a site open to anyone, by a writer GitHub
-    /// doesn't name as the repository's own, or doesn't name at all.
-    pub outsider: bool,
+    /// Whether GitHub names its writer the repository's own; one it says
+    /// nothing of isn't, so a missing field can't let a stranger in.
+    pub own: bool,
     /// What it says, as GitHub keeps it.
     pub text: String,
     /// When it was said, in seconds since the epoch.
@@ -190,15 +189,19 @@ fn by_bot(user: &Value) -> bool {
             .is_some_and(|login| login.ends_with(".gserviceaccount.com"))
 }
 
-/// Whether what `one` says was written by an outsider: on a site open to
-/// anyone, a writer GitHub doesn't call the repository's own. A writer it
-/// says nothing of counts as an outsider there, so a missing field can't
-/// let a stranger in.
-fn outsider(one: &Value, thread: &Thread) -> bool {
-    thread.site == OPEN_TO_ANYONE
-        && !one["author_association"]
-            .as_str()
-            .is_some_and(|said| ITS_OWN.contains(&said))
+/// Whether GitHub names `one`'s writer the repository's own.
+fn own(one: &Value) -> bool {
+    one["author_association"]
+        .as_str()
+        .is_some_and(|said| ITS_OWN.contains(&said))
+}
+
+/// Whether Joel works in a repository, as GitHub's answer for it says to
+/// his sign-in. Anyone may make a repository, own it and mention him
+/// there, so its own count only in one he works in.
+#[must_use]
+pub fn works_in(repo: &Value) -> bool {
+    WORKS_IN.iter().any(|may| repo["permissions"][may] == true)
 }
 
 /// What an answer holds that was said on `thread`: for an opening, the
@@ -226,7 +229,7 @@ fn opening(answer: &Value, thread: &Thread) -> Option<Said> {
         link: answer["html_url"].as_str()?.to_owned(),
         author: answer["user"]["login"].as_str()?.to_owned(),
         by_bot: by_bot(&answer["user"]),
-        outsider: outsider(answer, thread),
+        own: own(answer),
         text: format!("{title}\n\n{body}"),
         at: seconds(answer["created_at"].as_str()?)?,
     })
@@ -248,7 +251,7 @@ fn one_said(one: &Value, thread: &Thread, kind: Kind) -> Option<Said> {
         link: one["html_url"].as_str()?.to_owned(),
         author: one["user"]["login"].as_str()?.to_owned(),
         by_bot: by_bot(&one["user"]),
-        outsider: outsider(one, thread),
+        own: own(one),
         text: text.to_owned(),
         at,
     })
@@ -475,7 +478,7 @@ mod tests {
     }
 
     #[test]
-    fn on_github_only_the_repositorys_own_are_insiders_and_elsewhere_all() {
+    fn only_the_repositorys_own_are_its_own_and_joel_works_where_he_may_push() {
         let by = |association: Option<&str>| {
             let mut one = json!({"id": 1, "body": "pineapple override",
                 "html_url": "https://code.example.com/x",
@@ -486,14 +489,9 @@ mod tests {
             }
             json!([one])
         };
-        let outsider_on = |thread: &Thread, association| {
-            said(&by(association), thread, Kind::Comment)[0].outsider
-        };
+        let own_one = |association| said(&by(association), &pull(), Kind::Comment)[0].own;
         for own in ["OWNER", "MEMBER", "COLLABORATOR"] {
-            assert!(
-                !outsider_on(&pull(), Some(own)),
-                "{own} is the repository's own"
-            );
+            assert!(own_one(Some(own)), "{own} is the repository's own");
         }
         for stranger in [
             "CONTRIBUTOR",
@@ -501,30 +499,27 @@ mod tests {
             "FIRST_TIMER",
             "NONE",
         ] {
+            assert!(!own_one(Some(stranger)), "{stranger} isn't");
+        }
+        assert!(!own_one(None), "nor is a writer GitHub says nothing of");
+        for may in ["push", "maintain", "admin"] {
             assert!(
-                outsider_on(&pull(), Some(stranger)),
-                "{stranger} is an outsider"
+                works_in(&json!({"permissions": {"pull": true, may: true}})),
+                "Joel works where he may {may}"
             );
         }
         assert!(
-            outsider_on(&pull(), None),
-            "a writer GitHub says nothing of is an outsider there"
+            !works_in(&json!({"permissions": {"pull": true, "push": false}})),
+            "not where he may only read, as anyone's own public repository"
         );
-        let elsewhere = Thread {
-            site: "code".to_owned(),
-            ..pull()
-        };
-        assert!(
-            !outsider_on(&elsewhere, Some("NONE")) && !outsider_on(&elsewhere, None),
-            "on a site of a company's own, nobody is"
-        );
+        assert!(!works_in(&json!({})), "nor where GitHub says nothing");
         let opening = json!({"title": "Stop", "body": "pineapple override",
             "html_url": "https://code.example.com/example/shop/pull/12",
             "user": {"login": "colleague", "type": "User"}, "author_association": "NONE",
             "created_at": "2023-11-14T22:13:20Z"});
         assert!(
-            said(&opening, &pull(), Kind::Opening)[0].outsider,
-            "an opening by a stranger is an outsider's too"
+            !said(&opening, &pull(), Kind::Opening)[0].own,
+            "an opening is read for its writer's standing too"
         );
     }
 

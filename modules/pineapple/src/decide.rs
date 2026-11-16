@@ -235,6 +235,34 @@ mod tests {
         assert_eq!(lunch.verdict, Verdict::Nothing, "nothing stays nothing");
         let own = outsider("U0JOEL0001", "pineapple override");
         assert!(own.stops(), "Joel's own stop stands wherever he says it");
+        let bot = heard_from("B0BOT00001", true, true, "<@U0JOEL0001> pineapple override");
+        assert_eq!(
+            bot.verdict,
+            Verdict::Waved(Waved::Bot),
+            "an outsider's bot is still told as a bot's"
+        );
+    }
+
+    #[test]
+    fn a_stop_on_an_issue_naming_nothing_narrower_reaches_its_repository() {
+        let heard = Heard {
+            platform: Platform::Slack,
+            author: "U0OTHER001".to_owned(),
+            by_bot: false,
+            outsider: false,
+            text: "<@U0JOEL0001> pineapple override".to_owned(),
+            context: Context {
+                repo: Some("example/shop".to_owned()),
+                ..Context::default()
+            },
+        };
+        let stop = decide(&heard, &joel());
+        assert_eq!(
+            stop.reaches,
+            [Target::Repo("example/shop".to_owned())],
+            "its repository, not everything"
+        );
+        assert!(!stop.fell_back, "a repository is narrower than everything");
     }
 
     #[test]

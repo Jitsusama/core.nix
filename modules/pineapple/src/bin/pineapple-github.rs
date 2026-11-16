@@ -18,9 +18,10 @@
 //! "pineapple resume" said there ends only stops written in shadow, since
 //! his agents post as his GitHub account all day and one could forge it;
 //! his press in the launcher resumes the rest. Since any account may
-//! comment on GitHub, only a repository's owner, its organization's
-//! members and its collaborators stop him there; anyone else's words go
-//! in the log alone.
+//! comment on GitHub, and own a repository to mention him in, only a
+//! repository's owner, its organization's members and its collaborators
+//! stop him there, and only on one he works in; anyone else's words go in
+//! the log alone.
 //!
 //! A round spends Joel's rate limit, which gh and his agents share: two
 //! requests, and two to four more for each pull request or issue that
@@ -41,10 +42,9 @@
 //! there that changed, and what he says is known by his address. A pull
 //! request he only commented on isn't read there.
 //!
-//! How far it has read is kept in judged-<site>.json: from when, and the
-//! keys of what it judged, so a restart neither judges anything twice nor
-//! misses what was said while it was down. Starting with nothing kept, it
-//! begins ten minutes back rather than judging GitHub's whole history.
+//! How far it has read is kept as src/progress.rs says. Starting with
+//! nothing kept, it begins ten minutes back rather than judging GitHub's
+//! whole history.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -52,6 +52,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::gate::Gate;
 use pineapple::github::{self, Kind, Said, Thread, found, notified, worth_judging};
+use pineapple::progress::{self, Judged};
 use pineapple::record::{self, Source};
 use pineapple::resume;
 use pineapple::{Context, Heard, Joel, Platform, Reply, Target, Verdict, decide};
@@ -116,13 +117,6 @@ const MILLIS: u64 = 1000;
 
 /// Microseconds in a second.
 const MICROS: u128 = 1_000_000;
-
-/// How far it has read: from `since`, in seconds, the keys of what it
-/// judged, newest last.
-struct Judged {
-    since: u64,
-    keys: Vec<String>,
-}
 
 /// What it says of itself, set as help and read by the check.
 fn help() -> Help {
@@ -309,12 +303,6 @@ fn a_site(name: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
-/// What it keeps of how far it has read on a site, beside the Slack
-/// reader's.
-fn judged_file(site: &str) -> String {
-    format!("judged-{site}.json")
-}
-
 /// A site's name as Joel reads it.
 fn shown(site: &str) -> String {
     if site == SITE {
@@ -392,7 +380,7 @@ fn read_sites() -> Vec<(String, u64)> {
 /// The reader, which runs until its service stops it.
 fn run(how: &Run) -> Result<(), Failure> {
     let state = state();
-    let mut judged = read_judged(&state, &how.site).unwrap_or_else(|| Judged {
+    let mut judged = progress::read(&state, &how.site).unwrap_or_else(|| Judged {
         since: seconds().saturating_sub(LOOK_BACK),
         keys: Vec::new(),
     });
@@ -616,9 +604,11 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
             return;
         }
     };
+    // Where anyone may comment: GitHub's own, however its site is named.
+    let open = how.authored_by.is_none() || how.origin == GITHUB;
     let mut heard = Vec::new();
     for thread in &threads {
-        match said_on(github, thread, &since) {
+        match said_on(github, thread, &since, open) {
             Ok(found) => heard.extend(found),
             Err(Unread::Gone(why)) => eprintln!("<4>{} can't be read: {why}", thread.key()),
             Err(Unread::Failed(why)) => {
@@ -627,35 +617,40 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
             }
         }
     }
-    heard.retain(|(said, ..)| {
+    heard.retain(|(said, _, _, _)| {
         said.at >= from && !judged.keys.contains(&said.key) && worth_judging(&said.text, &login)
     });
-    heard.sort_by_key(|(said, ..)| said.at);
+    heard.sort_by_key(|(said, _, _, _)| said.at);
     // Where logins are addresses, what Joel says is by his address.
     let joel = Joel {
         slack_ids: Vec::new(),
         logins: vec![login],
         emails: how.authored_by.iter().cloned().collect(),
     };
-    for (said, thread, context) in heard {
-        judge(state, &joel, &said, &thread, context, how.shadow);
+    for (said, thread, context, outsider) in heard {
+        let place = (&thread, context, outsider);
+        judge(state, &joel, &said, place, how.shadow);
         judged.keys.push(said.key);
     }
     judged.since = began;
     let over = judged.keys.len().saturating_sub(KEPT);
     judged.keys.drain(..over);
-    write_judged(state, &how.site, judged);
+    progress::write(state, &how.site, judged, millis());
 }
 
-/// What was said on a pull request or issue since `since`, each with it
-/// and the place it's about. Reviews can't be asked for by time, so all
-/// are read and the round keeps those since.
+/// What was said on a pull request or issue since `since`, each with it,
+/// the place it's about and whether an outsider said it: where anyone may
+/// comment (`open`), a writer not the repository's own, or anyone on a
+/// repository Joel doesn't work in. Reviews can't be asked for by time,
+/// so all are read and the round keeps those since.
 fn said_on(
     github: &GitHub<'_>,
     thread: &Thread,
     since: &str,
-) -> Result<Vec<(Said, Thread, Context)>, Unread> {
+    open: bool,
+) -> Result<Sayings, Unread> {
     let base = format!("/repos/{}", thread.repo);
+    let works_in = !open || github::works_in(&github.get(&base, &[])?);
     let number = thread.number;
     let opened = github.get(&format!("{base}/issues/{number}"), &[])?;
     let opening = format!(
@@ -679,19 +674,26 @@ fn said_on(
     }
     Ok(found
         .into_iter()
-        .map(|said| (said, thread.clone(), context.clone()))
+        .map(|said| {
+            let outsider = open && !(works_in && said.own);
+            (said, thread.clone(), context.clone(), outsider)
+        })
         .collect())
 }
 
+/// What a round hears: each saying, with where and whether by an outsider.
+type Sayings = Vec<(Said, Thread, Context, bool)>;
+
 /// One thing said, judged on the pull request or issue it was said on,
 /// and written down.
-fn judge(state: &Path, joel: &Joel, said: &Said, thread: &Thread, context: Context, shadow: bool) {
+fn judge(state: &Path, joel: &Joel, said: &Said, place: (&Thread, Context, bool), shadow: bool) {
+    let (thread, context, outsider) = place;
     let decision = decide(
         &Heard {
             platform: Platform::Markdown,
             author: said.author.clone(),
             by_bot: said.by_bot,
-            outsider: said.outsider,
+            outsider,
             text: said.text.clone(),
             context,
         },
@@ -751,35 +753,6 @@ fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str)
             Ok(ids) => eprintln!("<5>Joel resumed {}: {link}", ids.join(", ")),
             Err(error) => eprintln!("<3>couldn't resume what Joel named: {error}"),
         }
-    }
-}
-
-fn read_judged(state: &Path, site: &str) -> Option<Judged> {
-    let text = std::fs::read_to_string(state.join(judged_file(site))).ok()?;
-    let kept: Value = serde_json::from_str(&text).ok()?;
-    let since = kept.get("since").and_then(Value::as_u64)?;
-    let keys = kept
-        .get("keys")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(str::to_owned)
-        .collect();
-    Some(Judged { since, keys })
-}
-
-/// Keeps how far it has read, and when GitHub was read, through a file
-/// renamed into place.
-fn write_judged(state: &Path, site: &str, judged: &Judged) {
-    let kept = json!({ "since": judged.since, "keys": judged.keys, "read_at": millis() });
-    let path = state.join(judged_file(site));
-    let written = path.with_extension("new");
-    let wrote = std::fs::create_dir_all(state)
-        .and_then(|()| std::fs::write(&written, kept.to_string()))
-        .and_then(|()| std::fs::rename(&written, &path));
-    if let Err(error) = wrote {
-        eprintln!("<3>couldn't keep how far it has read: {error}");
     }
 }
 

@@ -538,7 +538,8 @@ fn judge(
             platform: Platform::Slack,
             author: message.author.clone(),
             by_bot: message.by_bot,
-            // Only his colleagues can tag him in Slack.
+            // Slack says no standing to weigh; a shared channel's guests
+            // are judged as anyone there is.
             outsider: false,
             text: message.text.clone(),
             context,

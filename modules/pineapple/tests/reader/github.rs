@@ -9,7 +9,9 @@
 //! by searching for what Joel opened, its keys its own, from far enough
 //! back that a search's lagging index misses nothing, and never for more
 //! repositories than its searches allow. On GitHub, where any account may
-//! comment, a stranger's stop is only logged; a collaborator's stands.
+//! comment, a stranger's stop is only logged; a collaborator's stands,
+//! but even an owner's is only logged in a repository Joel can't push to,
+//! and a site of a company's own weighs no writer's standing.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -82,6 +84,9 @@ fn answer_with(line: &str, now: u64, comments: &[Value]) -> Value {
         return json!([{"subject": {"type": "PullRequest",
             "url": "https://api.example.com/repos/example/shop/pulls/12"},
             "repository": {"full_name": "example/shop"}}]);
+    }
+    if line.contains(" /repos/example/shop ") {
+        return json!({"full_name": "example/shop", "permissions": {"pull": true, "push": true}});
     }
     if line.contains(" /repos/example/shop/issues/12/comments?") {
         return Value::Array(comments.to_vec());
@@ -261,6 +266,50 @@ fn github_a_strangers_stop_is_only_logged_and_a_collaborators_stands() {
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
+/// What GitHub would answer when a stranger mentions Joel on an issue in
+/// a repository of their own, which they own and he may only read.
+fn in_a_strangers_own(line: &str, now: u64) -> Value {
+    if line.contains(" /notifications?") {
+        return json!([{"subject": {"type": "Issue",
+            "url": "https://api.example.com/repos/stranger/trap/issues/1"},
+            "repository": {"full_name": "stranger/trap"}}]);
+    }
+    if line.contains(" /repos/stranger/trap ") {
+        return json!({"full_name": "stranger/trap", "permissions": {"pull": true, "push": false}});
+    }
+    if line.contains(" /repos/stranger/trap/issues/1/comments?") {
+        let stop = format!("@{LOGIN} pineapple override");
+        return json!([commented(1, "stranger", "OWNER", &stop, (now, 90))]);
+    }
+    if line.contains(" /repos/stranger/trap/issues/1 ") {
+        return json!({"title": "Hello", "body": "",
+            "html_url": "https://code.example.com/stranger/trap/issues/1",
+            "user": {"login": "stranger", "type": "User"},
+            "author_association": "OWNER", "created_at": stamp(now - 3600)});
+    }
+    answer_with(line, now, &[])
+}
+
+#[test]
+fn github_an_owners_stop_in_a_repository_joel_cant_push_to_is_only_logged() {
+    let (origin, _) = answering(in_a_strangers_own);
+    let home = home();
+    let mut reader = github_reader(&home, &origin, &["--live"]);
+    until_decided(&home, 1);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+
+    let said = decisions(&home);
+    assert_eq!(
+        each(&said, "verdict"),
+        ["waved:outsider"],
+        "anyone may own a repository and mention him there"
+    );
+    assert_eq!(each(&said, "tell"), ["log"], "and it sounds nothing");
+    assert!(only_stop(&home).is_err(), "nor is any stop kept");
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
 #[test]
 fn github_a_round_its_rate_limit_refuses_is_read_again_not_skipped() {
     let refused = Arc::new(AtomicBool::new(false));
@@ -338,7 +387,8 @@ fn github_a_second_page_of_notifications_is_read_too() {
 
 /// What a site with no notifications would answer, where logins are
 /// addresses: Joel's one pull request, example/shop#12, and on it a
-/// colleague's stop, a check's, and Joel's own resume.
+/// colleague's stop, a check's, and Joel's own resume, each by a writer
+/// GitHub would call a stranger, which such a site doesn't weigh.
 fn by_address(line: &str, now: u64) -> Value {
     if line.contains(" /search/issues?") {
         return json!({"items": [{"number": 12, "pull_request": {},
@@ -351,21 +401,21 @@ fn by_address(line: &str, now: u64) -> Value {
         line,
         now,
         &[
-            comment(
+            commented(
                 1,
                 "colleague@example.com",
+                "NONE",
                 &format!("@{LOGIN} pineapple override"),
-                now,
-                90,
+                (now, 90),
             ),
-            comment(
+            commented(
                 2,
                 "checks@example.iam.gserviceaccount.com",
+                "NONE",
                 "pineapple override",
-                now,
-                80,
+                (now, 80),
             ),
-            comment(3, "joel@example.com", "pineapple resume", now, 70),
+            commented(3, "joel@example.com", "NONE", "pineapple resume", (now, 70)),
         ],
     )
 }
