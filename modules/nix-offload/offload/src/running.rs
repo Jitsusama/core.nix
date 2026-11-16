@@ -341,6 +341,9 @@ mod tests {
         );
     }
 
+    // A process's start is read from /proc, which only Linux has, and so
+    // are these three.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_run_finds_its_twin_going_and_nothing_else() {
         let state = tempfile::tempdir().unwrap();
@@ -529,6 +532,7 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_run_is_said_while_it_goes_and_not_after() {
         let state = tempfile::tempdir().unwrap();
@@ -563,6 +567,7 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_process_s_start_is_read_and_none_for_one_gone() {
         let pid = std::process::id();

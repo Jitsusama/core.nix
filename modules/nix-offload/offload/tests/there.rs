@@ -1,5 +1,9 @@
 //! `nix-offload there` run as a caller runs it, with stand-ins for ssh and
-//! nix on its PATH that record what they were given.
+//! nix on its PATH that record what they were given. `there` is run from
+//! Linux, the lenders' and builders' side, where a Mac only asks a gate of
+//! it, and its stand-ins read /proc and lean on Linux's tools, so these run
+//! there alone.
+#![cfg(target_os = "linux")]
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -89,6 +93,11 @@ case "$2" in
     exit 0 ;;
   # Whether changed-checks keeps a base evaluated there: the base
   # kept-<host> names. Asked before a run, so it's kept apart from it.
+  # How busy a Mac is, as load-<host> says, asked before its comparison.
+  *"sysctl -n vm.loadavg hw.ncpu"*)
+    [ -f "$here/unreached-$1" ] && exit 255
+    cat "$here/load-$1" 2>/dev/null
+    exit 0 ;;
   *"test -e \""*/changed-checks/*)
     [ -f "$here/unreached-$1" ] && exit 255
     printf '%s\n' "$1" >> "$here/asked-kept"
@@ -3394,8 +3403,11 @@ fn a_changed_run_for_a_system_only_a_machine_nearby_builds_is_named_then_built_t
     );
 }
 
-/// What a Linux gate run asks, as a session's gate does.
-const GATE: [&str; 4] = ["--build", "--no-vm", "--system", "x86_64-linux"];
+/// What a Linux gate run asks, as a session's gate does, naming no system.
+const GATE: [&str; 2] = ["--build", "--no-vm"];
+
+/// The gate's run as it's kept, naming the system it ran for.
+const GATE_KEPT: [&str; 4] = ["--build", "--no-vm", "--system", "x86_64-linux"];
 
 #[test]
 fn a_change_a_macs_checks_read_is_compared_on_the_mac_too() {
@@ -3407,6 +3419,8 @@ fn a_change_a_macs_checks_read_is_compared_on_the_mac_too() {
     changed.mac_at(answering.local_addr().unwrap());
     let head = changed.touching("modules/zsh/home.nix");
     fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    // Busy, but within its room.
+    fs::write(changed.bin.join("load-mac"), "{ 30.10 28.00 25.00 }\n12\n").unwrap();
 
     let (ran, _) = changed.run(&GATE);
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -3431,8 +3445,73 @@ fn a_change_a_macs_checks_read_is_compared_on_the_mac_too() {
     let kept = changed.kept_at(&head);
     assert!(
         kept.iter()
-            .any(|line| line["run"] == serde_json::json!(GATE)),
+            .any(|line| line["run"] == serde_json::json!(GATE_KEPT)),
         "the gate's pass is kept once the Mac's passed: {kept:?}"
+    );
+}
+
+#[test]
+fn a_change_a_macs_checks_read_waits_while_the_mac_has_no_room_kept_as_skipped() {
+    // On 16 November seven gates sent their comparisons to a Mac at load
+    // 110 to 130 on 12 processors, and its person's own build missed twice.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    let head = changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("load-mac"), "{ 120.98 88.31 65.93 }\n12\n").unwrap();
+
+    let (ran, _) = changed.run(&GATE);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = fs::read_to_string(changed.bin.join("ssh-sent")).unwrap();
+    assert!(
+        !sent.contains("aarch64-darwin"),
+        "nothing went for a Mac: {sent}"
+    );
+    let because = "mac has no room, at load 121 on 12 processors";
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(because),
+        "it never said why it waited: {ran:?}"
+    );
+    let kept = changed.kept_at(&head);
+    assert!(
+        kept.iter().any(|line| line["because"] == because),
+        "the comparison wasn't kept as skipped and owed: {kept:?}"
+    );
+}
+
+#[test]
+fn a_run_naming_its_system_is_compared_for_that_system_alone() {
+    // On 16 November a run asked with `--system x86_64-linux` still built
+    // 21 derivations on a Mac that was asked to take none.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    let head = changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("load-mac"), "{ 1.00 1.00 1.00 }\n12\n").unwrap();
+
+    let (ran, _) = changed.run(&GATE_KEPT);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let lent = changed.sent_to("nix-offload");
+    assert!(
+        !lent.iter().any(|line| line.contains("aarch64-darwin")),
+        "the lent builder was asked for a Mac's checks: {lent:?}"
+    );
+    let mac = changed.sent_to("mac");
+    assert!(
+        !mac.iter().any(|line| line.contains("nix build")),
+        "the Mac was asked to build: {mac:?}"
+    );
+    let kept = changed.kept_at(&head);
+    assert!(
+        kept.iter().all(|line| line["skipped"].is_null()),
+        "a Mac's comparison was kept as owed, though none was asked: {kept:?}"
+    );
+    assert!(
+        kept.iter()
+            .any(|line| line["run"] == serde_json::json!(GATE_KEPT)),
+        "its own pass wasn't kept: {kept:?}"
     );
 }
 
@@ -3501,7 +3580,7 @@ fn a_change_a_macs_checks_read_passes_while_the_mac_is_away_kept_as_skipped() {
     );
     assert!(
         kept.iter()
-            .any(|line| line["run"] == serde_json::json!(GATE)),
+            .any(|line| line["run"] == serde_json::json!(GATE_KEPT)),
         "and the gate's pass beside it: {kept:?}"
     );
 }
@@ -3537,7 +3616,7 @@ fn skipped_at(changed: &Changed, commit: &str) -> serde_json::Value {
     assert_eq!(skipped.len(), 1, "one skip wasn't kept: {kept:?}");
     assert!(
         kept.iter()
-            .any(|line| line["run"] == serde_json::json!(GATE)),
+            .any(|line| line["run"] == serde_json::json!(GATE_KEPT)),
         "the gate's pass wasn't kept beside it: {kept:?}"
     );
     skipped[0].clone()

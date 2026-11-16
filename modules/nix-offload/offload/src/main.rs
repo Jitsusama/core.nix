@@ -1514,6 +1514,8 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         return not_taken("this folder can't be read");
     };
     let given = arguments;
+    // A run naming its system is compared for that system alone.
+    let named = changed::wanted(given).system.is_some();
     let arguments: &[String] = &with_system(arguments);
     let more_dir = more_dir();
     let source = match there::source(&folder, &scratch, None, there::Sends::Changes) {
@@ -1594,7 +1596,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         &passed,
         at.as_ref(),
         arguments,
-        &folder,
+        (!named).then_some(folder.as_path()),
         &finished,
         started,
         waiting,
@@ -1657,12 +1659,13 @@ fn passed_already(passed: &passed::Passed, at: Option<&passed::At>, arguments: &
 /// Keeps that a changed-checks run with `arguments`, started at `started`
 /// and ended as `finished`, passed at `at`, once a Mac's comparison joining
 /// it has passed or is kept as skipped beside it (`changed/mac.rs`). A
-/// Mac's failure is the run's, and nothing is kept.
+/// Mac's failure is the run's, and nothing is kept. With no `folder`, as
+/// for a run that named its system, no Mac is asked.
 fn kept_after_a_mac(
     passed: &passed::Passed,
     at: Option<&passed::At>,
     arguments: &[String],
-    folder: &Path,
+    folder: Option<&Path>,
     finished: &Finished,
     started: u64,
     waiting: there::Waiting,
@@ -1670,7 +1673,9 @@ fn kept_after_a_mac(
     if finished.status != 0 {
         return Ok(());
     }
-    let mac = on_a_mac(arguments, folder, waiting);
+    let mac = folder.map_or(OnAMac::Unasked, |folder| {
+        on_a_mac(arguments, folder, waiting)
+    });
     if let OnAMac::Failed(code) = mac {
         return Err(code);
     }
@@ -1725,6 +1730,18 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
         let names: Vec<&str> = macs.iter().map(|machine| machine.host.as_str()).collect();
         return skipped(format!("{} nearby doesn't answer", names.join(", ")));
     };
+    // A Mac with no room waits rather than take more: its comparison is
+    // owed, and the net runs it once the Mac has room.
+    match there::load_of(mac, &scratch(), "ssh") {
+        Ok(Some(load)) if load.over() => {
+            return skipped(format!(
+                "{} has no room, at load {:.0} on {} processors",
+                mac.host, load.minute, load.cores
+            ));
+        }
+        Err(why) => return skipped(why),
+        Ok(_) => {}
+    }
     eprintln!(
         "nix-offload: {read} is read by a Mac's checks, so they're compared on {} too",
         mac.host
@@ -4353,6 +4370,9 @@ exit 3
         status
     }
 
+    // Lending, and so handing a builder over, is Linux's alone, as are the
+    // two after this.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_builder_handed_over_as_the_service_ends_is_named_until_the_next_start_holds_it() {
         // On 13 November a switch restarted both lenders while builds ran
@@ -4400,6 +4420,7 @@ exit 3
         end(&mut lent.helper);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_start_that_cant_take_back_what_was_handed_over_names_it_nowhere_first() {
         let _heard = unstopped();
@@ -4766,6 +4787,7 @@ exit 1
 {"at":9,"event":"ended","name":"lend-5","seconds":4}
 "#;
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_builder_a_start_cant_take_back_is_kept_while_its_way_carries_builds() {
         let _heard = unstopped();

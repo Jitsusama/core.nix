@@ -82,7 +82,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::held;
 use crate::kept;
@@ -4043,6 +4044,95 @@ pub fn fetches(machine: &Nearby, asked: &Asked, scratch: &Path, ssh: &str) -> bo
         );
     }
     fetched
+}
+
+/// How busy a Mac nearby is: its load over the last minute and its
+/// processors, as its `sysctl` says them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Load {
+    pub minute: f64,
+    pub cores: u32,
+}
+
+/// Runnable work for each processor past which a Mac has no room. On 16
+/// November seven gates' comparisons went to a Mac at load 110 to 130 on
+/// 12 processors, and its person's own build, which needs it under 40,
+/// missed twice; its builder sessions are kept under 36, three a core.
+const ROOM_PER_CORE: f64 = 3.0;
+
+/// The longest a Mac takes to say its load. One too busy to answer in
+/// this has no room either.
+const LOAD_PATIENCE: Duration = Duration::from_secs(30);
+
+impl Load {
+    /// Read from `sysctl -n vm.loadavg hw.ncpu`, as `{ 120.98 88.31 65.93 }`
+    /// then `12`, or none when it says something else.
+    pub fn parse(said: &str) -> Option<Load> {
+        let mut lines = said.lines();
+        let averages = lines.next()?;
+        let minute = averages
+            .split_whitespace()
+            .find_map(|word| word.parse::<f64>().ok())?;
+        let cores = lines
+            .next()?
+            .trim()
+            .parse::<u32>()
+            .ok()
+            .filter(|&cores| cores > 0)?;
+        Some(Load { minute, cores })
+    }
+
+    /// Whether the Mac has no room for a comparison.
+    pub fn over(self) -> bool {
+        self.minute > f64::from(self.cores) * ROOM_PER_CORE
+    }
+}
+
+/// A Mac nearby's load, `Err` saying why when it took past
+/// [`LOAD_PATIENCE`] to say it, and `Ok(None)` when it said nothing a
+/// load reads from, which leaves the comparison to go as before.
+pub fn load_of(machine: &Nearby, scratch: &Path, ssh: &str) -> Result<Option<Load>, String> {
+    if fs::create_dir_all(scratch).is_err() {
+        return Ok(None);
+    }
+    let said = mine(scratch, "load.log");
+    let spawned = reaching(ssh, &said)
+        .args(["-o", "ConnectTimeout=20"])
+        .arg(&machine.host)
+        .arg(far("sysctl -n vm.loadavg hw.ncpu"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn();
+    let Ok(mut asking) = spawned else {
+        return Ok(None);
+    };
+    let began = Instant::now();
+    let answered = loop {
+        match asking.try_wait() {
+            Ok(Some(_)) => break true,
+            // Asked each tenth of a second: an idle Mac says it at once.
+            Ok(None) if began.elapsed() < LOAD_PATIENCE => {
+                thread::sleep(Duration::from_millis(100));
+            }
+            _ => break false,
+        }
+    };
+    let _ = fs::remove_file(&said);
+    if !answered {
+        let _ = asking.kill();
+        let _ = asking.wait();
+        return Err(format!(
+            "{} took past {} s to say its load",
+            machine.host,
+            LOAD_PATIENCE.as_secs()
+        ));
+    }
+    let mut out = String::new();
+    if let Some(mut stdout) = asking.stdout.take() {
+        let _ = std::io::Read::read_to_string(&mut stdout, &mut out);
+    }
+    Ok(Load::parse(&out))
 }
 
 /// `part` put back with `rest`, what was left for the lent builder or

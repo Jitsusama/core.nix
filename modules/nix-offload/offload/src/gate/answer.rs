@@ -622,5 +622,7 @@ pub fn answer(arguments: &[String], state: &Path) -> ExitCode {
     ExitCode::from(exit)
 }
 
-#[cfg(test)]
+// A gate is answered on Linux alone, so its folder refuses to open
+// anywhere else, and so would every test here.
+#[cfg(all(test, target_os = "linux"))]
 mod tests;
