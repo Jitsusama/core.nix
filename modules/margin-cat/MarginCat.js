@@ -306,8 +306,10 @@ function leansOut(way) {
 // elsewhere, gone before a pet would lean it in, has it bat after it about
 // one time in three, its paw back down SWATS ms on, never twice within
 // SWATS_APART ms, so it plays rather than nags, and never as it dozes,
-// which only a pet wakes it from.
-const SWATS = 200;
+// which only a pet wakes it from. The hold at full reach is two 60 Hz
+// frames under 200 ms, so with the 83 ms the screen takes to show it and
+// take it away the paw is back within 250 ms of showing (VKCF3Z, 38d40d08).
+const SWATS = 166;
 const SWATS_APART = 20000;
 
 // Whether a pointer that `crossed` the cat, SINCE ms after its last swat,
