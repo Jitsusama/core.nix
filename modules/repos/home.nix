@@ -8,6 +8,11 @@
 # sign-in instead (src/gh.rs says how narrowly). A second timer counts how
 # far each head is from the branch it follows, with git, and keeps the
 # counts for every reading to merge in too (src/upstreams.rs says why).
+#
+# On Linux it's also a daemon, holding the record ready over
+# $XDG_RUNTIME_DIR/daemons/repos.sock in the shell's daemon interface, read
+# again as git writes, for the local sites' Code page (src/serve.rs says
+# how).
 {
   config,
   lib,
@@ -126,6 +131,43 @@ in
         OnUnitActiveSec = "5min";
       };
       Install.WantedBy = [ "timers.target" ];
+    };
+
+    # In background.slice: it reads the disk as git writes, which agents
+    # do all day, and a view a moment behind costs Joel nothing.
+    systemd.user.services.repos = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "Holds every repository ready for its views, read again as git writes";
+        # Restarted after a switch reloads the units, it comes back as the
+        # new one.
+        X-SwitchMethod = "restart";
+        # Its socket is systemd's, handed to it as it starts.
+        Requires = [ "repos.socket" ];
+        After = [ "repos.socket" ];
+      };
+      Service = {
+        # Run by its name, so ps -ef reads repos rather than a store path
+        # (docs/daemons.md, Shown). The wrapper would exec it under its own
+        # path, so it runs bare, given the wrapper's settings here.
+        ExecStart = "@${lib.getExe repos} repos serve";
+        Environment = lib.mapAttrsToList (name: value: ''"${name}=${value}"'') settings;
+        Restart = "on-failure";
+        RestartSec = 5;
+        Slice = "background.slice";
+      };
+      Install.WantedBy = [ "default.target" ];
+    };
+
+    # Its socket, held by systemd whether or not the daemon runs, so a view
+    # asking while it starts waits on it rather than finding no socket.
+    systemd.user.sockets.repos = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit.Description = "Where the views ask the repos daemon";
+      Socket = {
+        ListenStream = "%t/daemons/repos.sock";
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+      };
+      Install.WantedBy = [ "sockets.target" ];
     };
   };
 }

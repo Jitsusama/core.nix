@@ -21,8 +21,9 @@ use repos::when::Clock;
 
 mod trees;
 
+pub(crate) use trees::change_at;
 pub use trees::trees;
-use trees::{change_at, tree_census, trees_of, trees_table};
+use trees::{tree_census, trees_of, trees_table};
 
 /// How many trees, and how many changes, one repository's page lists, the
 /// newest; the rest are `repos NAME trees`'s and `repos NAME changes`'s.
@@ -601,7 +602,7 @@ fn quoted(name: &str) -> String {
 const TIMES: [&str; 4] = ["counted_at", "read_at", "updated_at", "written_at"];
 
 /// A value as an answer says it: each time in RFC 3339.
-fn answered(value: Value) -> Value {
+pub(crate) fn answered(value: Value) -> Value {
     match value {
         Value::Object(fields) => Value::Object(
             fields

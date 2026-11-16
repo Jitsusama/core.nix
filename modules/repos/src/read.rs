@@ -49,16 +49,32 @@ pub struct Reading<'a> {
 
 /// Every repository under the roots, each once.
 pub fn read(reading: &Reading) -> Record {
+    let found = commons(reading.roots)
+        .iter()
+        .map(|common| checkout(common, reading.home))
+        .collect::<Vec<_>>();
+    assemble(reading, found)
+}
+
+/// Each checkout's own git folder under the roots, found by walking them,
+/// which follows every tree found under a root back to its checkout; the
+/// daemon walks only at its pace (serve.rs).
+pub fn commons(roots: &[PathBuf]) -> BTreeSet<PathBuf> {
     let mut commons = BTreeSet::new();
-    for root in reading.roots {
+    for root in roots {
         let root = fs::canonicalize(root).unwrap_or_else(|_| root.clone());
         let mut found = Vec::new();
         walk(&root, 0, &mut found);
         commons.extend(found.iter().filter_map(|folder| common_dir(folder)));
     }
+    commons
+}
+
+/// The record of checkouts each read by `checkout`, gathered into their
+/// repositories.
+pub fn assemble(reading: &Reading, found: impl IntoIterator<Item = Found>) -> Record {
     let mut repositories: BTreeMap<String, (Key, Vec<Found>)> = BTreeMap::new();
-    for common in &commons {
-        let found = checkout(common, reading.home);
+    for found in found {
         repositories
             .entry(found.key.key.clone())
             .or_insert_with(|| (found.key.clone(), Vec::new()))
@@ -162,15 +178,17 @@ fn common_dir(folder: &Path) -> Option<PathBuf> {
 }
 
 /// One checkout as it was read, with what its repository takes from it.
-struct Found {
+#[derive(Debug, Clone)]
+pub struct Found {
     checkout: Checkout,
     remotes: Vec<Remote>,
     trunk: Option<String>,
     key: Key,
 }
 
-/// One checkout, read: itself, its remotes, its trunk and its key.
-fn checkout(common: &Path, home: Option<&Path>) -> Found {
+/// One checkout, read from its own git folder, as `commons` finds them:
+/// itself, its remotes, its trunk and its key.
+pub fn checkout(common: &Path, home: Option<&Path>) -> Found {
     let bare = common.file_name().is_none_or(|name| name != ".git");
     let folder = if bare {
         common.to_path_buf()

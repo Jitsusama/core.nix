@@ -8,6 +8,7 @@
 //! repos NAME trees          every tree cut from it, the newest first
 //! repos refresh             asks GitHub after each one's open changes
 //! repos count               counts how far each head is from its branch
+//! repos serve               the record held ready on its socket (serve.rs)
 //! ```
 //!
 //! It takes the shape every command of ours does (docs/commands.md),
@@ -23,6 +24,13 @@
 //! (the crate's upstreams.rs).
 
 mod commands;
+// The daemon hears the disk through inotify, so it's Linux's alone.
+#[cfg(target_os = "linux")]
+mod feed;
+#[cfg(target_os = "linux")]
+mod heard;
+#[cfg(target_os = "linux")]
+mod serve;
 mod views;
 
 use std::collections::BTreeSet;
@@ -59,6 +67,7 @@ fn run(context: &Context) -> Result<(), Failure> {
                 views::seen(&seen, &context.out)
             })
         }
+        ["serve"] => serve(home),
         ["count"] => {
             let counted = count(home, now)?;
             show(context, &views::counting_json(&counted), || {
@@ -108,6 +117,19 @@ fn run(context: &Context) -> Result<(), Failure> {
                 .try_this("repos --help"))
         }
     }
+}
+
+/// The daemon, for as long as it runs (serve.rs).
+#[cfg(target_os = "linux")]
+fn serve(home: Option<&Path>) -> Result<(), Failure> {
+    serve::run(home)
+}
+
+/// The daemon, which hears the disk through inotify, so isn't served
+/// here.
+#[cfg(not(target_os = "linux"))]
+fn serve(_home: Option<&Path>) -> Result<(), Failure> {
+    Err(Failure::new(Exit::Usage, "repos serve runs on Linux alone").try_this("repos"))
 }
 
 /// The answer as JSON when asked for, and otherwise the view laid out.
@@ -184,13 +206,19 @@ fn machine() -> String {
 /// hold where a refresh has asked it.
 fn record(home: Option<&Path>, now: u64) -> Result<Record, Failure> {
     let mut record = disk(home, now)?;
+    kept(home, &mut record);
+    Ok(record)
+}
+
+/// Merges into a record read from the disk what GitHub was last seen to
+/// hold and the last counts, as every view of the record takes them.
+fn kept(home: Option<&Path>, record: &mut Record) {
     if let Some(file) = github::seen_file(home) {
-        github::merge_kept(&mut record, &file);
+        github::merge_kept(record, &file);
     }
     if let Some(file) = upstreams::counted_file(home) {
-        upstreams::merge_kept(&mut record, &file);
+        upstreams::merge_kept(record, &file);
     }
-    Ok(record)
 }
 
 /// Counts how far each head the disk holds is from its upstream, taking
