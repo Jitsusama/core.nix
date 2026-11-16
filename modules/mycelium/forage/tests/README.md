@@ -7,6 +7,9 @@ run by Node's own test runner when the local sites build the page.
   started it, even across machines or in a ring; documents plans first, with
   their steps added up; what can't be read said while the rest still draws;
   the counts of cells and of those with no purpose written; and the find.
+- `draw.test.ts` tries which words the page marks as its quests' own: a
+  written purpose and a document's title, never the page's own words for
+  what's missing.
 
 Each test builds the records it reads, so none needs a browser or a node.
 The page as drawn is walked by keys alone in a headless browser until the
