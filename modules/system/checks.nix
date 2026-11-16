@@ -33,11 +33,12 @@
       (
         linux.systemd.user.sockets.system.Socket.ListenStream == linux.jitsusama.mycelium.healthSocket
         && agent.enable
-        && lib.drop 1 words == [
-          "serve"
-          "--socket"
-          mac.jitsusama.mycelium.healthSocket
-        ]
+        &&
+          lib.drop 1 words == [
+            "serve"
+            "--socket"
+            mac.jitsusama.mycelium.healthSocket
+          ]
         && lib.hasPrefix "${mac.xdg.stateHome}/" mac.jitsusama.mycelium.healthSocket
         && agent.config.KeepAlive
         && agent.config.ProcessType == "Background"
