@@ -1040,14 +1040,11 @@
   };
 
   const machineClass = (x) => (near && !near.machines.has(x.name) ? "machine far" : "machine");
-  const machineMarkup = (x, [mx, my], count) => {
-    const off = x.state !== "ready";
-    return (
-      `<g class="${machineClass(x)}" data-key="m:${esc(x.name)}" data-level="${TOP_LEVEL}" data-within="" transform="translate(${mx},${my})">` +
-      (off ? `<circle class="m-dormant m-off" r="${MACHINE_R}"/>` : `<circle class="m-membrane" r="${MACHINE_R}"/><circle class="m-machine" r="${count ? 11 : 7}"/>`) +
-      `</g>`
-    );
-  };
+  // A machine's mark is its name, boxed, drawn with the words on the map;
+  // here it keeps only the place the keys and the walk stand on.
+  const machineMarkup = (x, [mx, my]) =>
+    `<g class="${machineClass(x)}" data-key="m:${esc(x.name)}" data-level="${TOP_LEVEL}" data-within="" transform="translate(${mx},${my})">` +
+    `<circle class="m-hit" r="${MACHINE_R}"/></g>`;
 
   // Each phase of a redraw is measured under its own name, so where the
   // time goes at any size reads from outside, layout included.
@@ -1277,10 +1274,8 @@
       lineShapes.push(line);
       cords.push({ tag: "path", ...inked("m-link", () => false), line });
     }
-    const counts = new Map();
-    for (const s of m.cells) counts.set(s.machine, (counts.get(s.machine) || 0) + 1);
     if (!marks) {
-      m.machines.forEach((x) => nodes.push(machineMarkup(x, L.machines.get(x.name), counts.get(x.name) || 0)));
+      m.machines.forEach((x) => nodes.push(machineMarkup(x, L.machines.get(x.name))));
       for (const h of m.hubs.values()) nodes.push(hubMarkup(h, L.at.get(h.key)));
       for (const s of m.cells) if (pos.has(s.id) && !isFolded(s)) nodes.push(cellMarkup(s, pos.get(s.id)));
     }
@@ -1337,14 +1332,24 @@
     }
     const counts = new Map();
     for (const s of m.cells) counts.set(s.machine, (counts.get(s.machine) || 0) + 1);
+    // A machine's name is its mark, so it shows whatever is open, faded
+    // when the choice doesn't touch it, and says what it carries only then.
     for (const x of m.machines) {
-      if (near && !near.machines.has(x.name) && `m:${x.name}` !== pointed) continue;
+      const key = `m:${x.name}`;
+      const far = near && !near.machines.has(x.name) && key !== pointed;
+      const off = x.state !== "ready";
+      const strong = key === pointed || (chosen?.kind === "machine" && chosen.id === x.name);
+      const mark = { key, kind: "machine", mark: true, off, strong, rank: -1, at: L.machines.get(x.name), r: MACHINE_R, name: [x.name], mono: true, far };
+      if (far) {
+        out.push({ ...mark, sub: off ? "off" : "" });
+        continue;
+      }
       const p = x.pressure;
       const n = counts.get(x.name) || 0;
       const nets = capped ? [...m.hubs.values()].filter((h) => !h.within && h.machine === x.name).length : 0;
       const carried = nets ? `${plural(n, "cell")} \u00b7 ${plural(nets, "network")}` : plural(n, "cell");
       const sub = x.state !== "ready" ? "off" : p ? `${carried} \u00b7 cpu ${Math.round(p.cpu)}%` : carried;
-      out.push({ key: `m:${x.name}`, kind: "machine", rank: 2, at: L.machines.get(x.name), r: MACHINE_R, out: [0, 1], name: [x.name], sub, mono: true, far: near && !near.machines.has(x.name) });
+      out.push({ ...mark, sub });
     }
     // One tier of names at a time, so the map is never a wall of words:
     // the whole map names machines and networks; a cell is named only when
@@ -1370,17 +1375,25 @@
     }
     const open = chosen && { cell: "c", net: "h", machine: "m" }[chosen.kind];
     const openKey = open && `${open}:${chosen.id}`;
-    for (const l of out) if (l.key === pointed || l.key === openKey) l.rank = 0;
+    for (const l of out) if (!l.mark && (l.key === pointed || l.key === openKey)) l.rank = 0;
     out.sort((a, b) => a.rank - b.rank || busier(a.busy, b.busy));
     // A machine open can touch hundreds of networks: only the busiest of
-    // them keep a name, after what is open and what is pointed at.
-    if (near && out.length > NAMES_OPEN) out.length = NAMES_OPEN;
+    // them keep a name, after the machines' marks and what is open and
+    // pointed at.
+    if (near && out.length > NAMES_OPEN) out.length = Math.max(NAMES_OPEN, out.filter((l) => l.mark).length);
     labels = out;
     labelsEl.innerHTML = out
       .map((l) => {
         const name = l.name.map((t, j) => `<tspan x="0" dy="${j ? LINE : 0}">${esc(t)}</tspan>`).join("");
-        const sub = l.sub ? `<text class="t-sub" y="${(l.name.length - 1) * LINE + 18}">${esc(l.sub)}</text>` : "";
-        return `<g class="tag t-${l.kind}${l.far ? " far" : ""}${l.strong ? " strong" : ""}${foundSet.has(l.key) ? " match" : ""}" data-name="${esc(l.key)}"><rect class="t-plate" rx="3"/><text class="t-name${l.mono ? " mono" : ""}">${name}</text>${sub}</g>`;
+        const below = (l.name.length - 1) * LINE + (l.mark ? MARK_SUB_Y : NAME_SUB_Y);
+        const sub = l.sub ? `<text class="t-sub" y="${below}">${esc(l.sub)}</text>` : "";
+        const here = l.mark && l.key === pointed && pointing();
+        const cls = `tag t-${l.kind}${l.mark ? " t-mark" : ""}${here ? " here" : ""}${l.off ? " off" : ""}${l.far ? " far" : ""}${l.strong ? " strong" : ""}${foundSet.has(l.key) ? " match" : ""}`;
+        // A mark takes the pointer itself, and its box is drawn round its
+        // name alone, so what it carries hangs outside it.
+        const mark = l.mark ? ` data-mark="${esc(l.key)}"` : "";
+        const box = l.mark ? '<rect class="t-box"/>' : "";
+        return `<g class="${cls}" data-name="${esc(l.key)}"${mark}><rect class="t-plate" rx="${l.mark ? 0 : 3}"/>${box}<text class="t-name${l.mono ? " mono" : ""}">${name}</text>${sub}</g>`;
       })
       .join("");
     measureLabels();
@@ -1402,18 +1415,26 @@
       const key = boxKey(l);
       if (!boxCache.has(key)) {
         const { x, y, width, height } = nodes[i].getBBox();
-        boxCache.set(key, { x, y, width, height });
+        const n = labels[i].mark && nodes[i].querySelector(".t-name").getBBox();
+        boxCache.set(key, { x, y, width, height, name: n && { x: n.x, y: n.y, width: n.width, height: n.height } });
       }
       return boxCache.get(key);
     });
+    const fit = (rect, [x, y, w, h]) => {
+      rect.setAttribute("x", x.toFixed(1));
+      rect.setAttribute("y", y.toFixed(1));
+      rect.setAttribute("width", w.toFixed(1));
+      rect.setAttribute("height", h.toFixed(1));
+    };
     boxes.forEach((b, i) => {
-      const box = [b.x - PLATE_PAD, b.y - PLATE_PAD, b.width + 2 * PLATE_PAD, b.height + 2 * PLATE_PAD];
-      labels[i].box = box;
-      const plate = nodes[i].querySelector(".t-plate");
-      plate.setAttribute("x", box[0].toFixed(1));
-      plate.setAttribute("y", box[1].toFixed(1));
-      plate.setAttribute("width", box[2].toFixed(1));
-      plate.setAttribute("height", box[3].toFixed(1));
+      const l = labels[i];
+      const padded = (r, pad) => [r.x - pad, r.y - pad, r.width + 2 * pad, r.height + 2 * pad];
+      l.box = padded(b, l.mark ? MARK_PAD : PLATE_PAD);
+      if (l.mark) {
+        l.markBox = padded(b.name, MARK_PAD);
+        fit(nodes[i].querySelector(".t-box"), l.markBox);
+      }
+      fit(nodes[i].querySelector(".t-plate"), l.mark ? l.markBox : l.box);
     });
   };
   const NAMES_OPEN = 12; // the most names on the map once something is open
@@ -1424,6 +1445,12 @@
     return 0;
   };
   const PLATE_PAD = 3;
+  // A machine's box stands clear of its name by this much, and what it
+  // carries hangs this far under the name, past the box; another name's
+  // carriage sits closer.
+  const MARK_PAD = 6;
+  const MARK_SUB_Y = 26;
+  const NAME_SUB_Y = 18;
   const CELL_NAMED_PX = 15; // a cell's radius on screen once it is named
   const HUB_NAMES_MOST = 40; // networks named once folding starts, busiest first
 
@@ -1542,6 +1569,7 @@
     const nodes = labelsEl.children;
     const [w, h] = size();
     const taken = [];
+    const cuts = [];
     const circles = circlesOnScreen(w, h);
     const lines = linesOnScreen(w, h);
     for (let i = 0; i < labels.length; i++) {
@@ -1550,6 +1578,26 @@
       const sx = l.at[0] * k + tx;
       const sy = l.at[1] * k + ty;
       const [bx, by, bw, bh] = l.box;
+      // A machine's mark stands on its point, its box centred there, so
+      // its cords run to the box's edge; marks come first, so every name
+      // keeps clear of them.
+      if (l.mark) {
+        const [nx, ny, nw, nh] = l.markBox;
+        const [dx, dy] = [sx - nx - nw / 2, sy - ny - nh / 2];
+        const placed = [bx + dx, by + dy, bw, bh];
+        if (placed[0] > w || placed[1] > h || placed[0] + bw < 0 || placed[1] + bh < 0) {
+          hide(g);
+          continue;
+        }
+        g.removeAttribute("visibility");
+        g.removeAttribute("display");
+        taken.push(placed);
+        // Its cords stop at the box's hairline itself, not short of it as
+        // they do round a name, and what it carries reads by its halo.
+        cuts.push([nx + dx + KNOCK_PX, ny + dy + KNOCK_PX, nw - 2 * KNOCK_PX, nh - 2 * KNOCK_PX]);
+        g.setAttribute("transform", `translate(${dx.toFixed(1)},${dy.toFixed(1)})`);
+        continue;
+      }
       // Names come with depth, as on a map: a cell that needs him is named
       // once it is drawn large enough to read as its own, so the whole
       // view names only machines, networks and where the keys are.
@@ -1608,6 +1656,7 @@
       g.removeAttribute("visibility");
       g.removeAttribute("display");
       taken.push(boxOf(spot));
+      cuts.push(boxOf(spot));
       g.setAttribute("transform", `translate(${(spot[0] - bx).toFixed(1)},${(spot[1] - by).toFixed(1)})`);
     }
     // Only a plate over a line is knocked out, since elsewhere a knock-out
@@ -1616,7 +1665,7 @@
     // The pieces asked about are chords of curves, so the reach is wider
     // than the knock-out by what a curve may bow off its chord.
     const reach = ([x, y, bw, bh]) => [x - KNOCK_REACH_PX, y - KNOCK_REACH_PX, bw + 2 * KNOCK_REACH_PX, bh + 2 * KNOCK_REACH_PX];
-    const cutting = taken.filter((b) => linesUnder(lines, reach(b)) > 0);
+    const cutting = cuts.filter((b) => linesUnder(lines, reach(b)) > 0);
     const sameBox = (a, b) => a.every((v, j) => Math.abs(v - b[j]) < KNOCK_SAME_PX);
     const same = cutting.length === knocks.length && cutting.every((b) => knocks.some((o) => sameBox(b, o)));
     if (same) return;
@@ -1668,7 +1717,10 @@
     markHere();
     markFound();
     drawTrail();
-    ring.setAttribute("visibility", p && pointing() ? "visible" : "hidden");
+    // On a machine the keys ring its box, which is its mark, not its point.
+    const onMark = pointed?.[0] === "m";
+    for (const g of labelsEl.querySelectorAll(".t-mark")) g.classList.toggle("here", onMark && pointing() && g.dataset.mark === pointed);
+    ring.setAttribute("visibility", p && pointing() && !onMark ? "visible" : "hidden");
     if (!p) return;
     ring.setAttribute("transform", `translate(${p[0].toFixed(1)},${p[1].toFixed(1)})`);
     for (const c of ring.children) c.setAttribute("r", String((sizes.get(pointed) || R) + 6));
@@ -2118,11 +2170,14 @@
     const top = at ? Math.min(Math.max(y + PEEK_GAP, 0), Math.max(h - ph, 0)) : Math.max(y, 0);
     peekEl.style.transform = `translate(${Math.max(left, 0).toFixed(0)}px, ${top.toFixed(0)}px)`;
   };
+  // The key of the mark under the pointer: a disc on the map, or a
+  // machine's boxed name among the words.
+  const keyUnder = (el) => el?.closest?.("[data-key]")?.dataset.key || el?.closest?.("[data-mark]")?.dataset.mark || null;
   // What the pointer is over, as a peek would name it: a hub or machine,
   // a line that opens a network, or a network's ground.
   const peekUnder = (e, line) => {
-    const node = e.target.closest?.("[data-key]");
-    if (node) return node.dataset.key[0] === "c" ? null : choiceOf(node.dataset.key);
+    const node = keyUnder(e.target);
+    if (node) return node[0] === "c" ? null : choiceOf(node);
     if (line) return line.opens.kind === "net" || line.opens.kind === "machine" ? line.opens : null;
     const box = svg.getBoundingClientRect();
     const ground = groundAt((e.clientX - box.left - tx) / k, (e.clientY - box.top - ty) / k);
@@ -2155,7 +2210,7 @@
     if (!last) {
       const g = e.target.closest?.(".cell");
       const id = g ? current?.byAddress.get(g.dataset.key.slice(2))?.id : null;
-      const line = e.target.closest?.("[data-key]") ? null : lineUnder(e);
+      const line = keyUnder(e.target) ? null : lineUnder(e);
       svg.classList.toggle("on-line", !!line);
       const box = view.getBoundingClientRect();
       showPeek(peekUnder(e, line), [e.clientX - box.left, e.clientY - box.top]);
@@ -2196,13 +2251,13 @@
     if (pointers.size < 2) pinch = null;
     if (e.type === "pointerup" && !dragged && pointers.size === 0) {
       const hit = document.elementFromPoint(e.clientX, e.clientY);
-      const node = hit?.closest?.("[data-key]");
+      const node = keyUnder(hit);
       // A network's ground opens the network; empty map lets go.
       const box = svg.getBoundingClientRect();
       const ground = node ? null : groundAt((e.clientX - box.left - tx) / k, (e.clientY - box.top - ty) / k);
       // A line opens what it carries, before the ground it may cross.
       const line = node ? null : lineUnder(e);
-      const key = node?.dataset.key || (!line && ground && `h:${ground}`);
+      const key = node || (!line && ground && `h:${ground}`);
       if (key) {
         pointed = key;
         visit(choiceOf(key));
@@ -2954,6 +3009,7 @@
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane m-asks" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>Needs you, or stuck: its ring says so, and its name shows as you come close</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-waits" r="13"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A question waiting: a dashed ring round a cell asked something three minutes or more ago that ${m.judged ? "hasn't answered it yet" : "has said nothing since"}, wider the more questions and the older the first; a network holding any is ringed round its ground</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-holds" d="M0,-14V14"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A hold standing: a wall drawn across a cell that asked the others to put something off until it says it's over</dd></div>` +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cord" d="M-14,0H-9M9,0H14" style="--w:2px"/><rect class="m-box" x="-9" y="-6" width="18" height="12"/></svg></dt><dd>A machine: its name in a hairline box, its cords leaving the box's edge; the box is dashed while the machine is off</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-hub" r="12"/><path class="m-hub-shape" d="${SHAPES.square(6)}"/></svg></dt><dd>An orchestration's hub, known by its shape; a click on its ground opens it</dd></div>` +
       (m.cells.length > FOLD_OVER
         ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-colony folded" r="12"/><circle class="m-hub" r="7"/></svg></dt><dd>A folded network: drawn too small to read, or off the map, so its cells wait in its ground until you come closer or open it</dd></div>`
@@ -3535,7 +3591,8 @@
   const openTo = (key) => {
     for (let up = treeUp(key); up; up = treeUp(up)) expanded.add(up);
   };
-  const MACHINE_GLYPH = `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><circle class="m-membrane" r="10"/><circle class="m-machine" r="5.5"/></svg>`;
+  // A machine's mark in small: its box, a cord leaving each side.
+  const MACHINE_GLYPH = `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-cord" d="M-12,0H-7M7,0H12" style="--w:1.5px"/><rect class="m-box" x="-7" y="-5" width="14" height="10"/></svg>`;
   const TWISTY = `<svg class="twisty" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5L7 5L3 8.5"/></svg>`;
   const treeRow = perReading((key) => {
     const m = current;
