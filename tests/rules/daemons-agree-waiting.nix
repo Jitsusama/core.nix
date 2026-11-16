@@ -25,10 +25,7 @@
     "shown"
     "speaks"
   ];
-  google = [
-    "shown"
-    "speaks"
-  ];
+  google = [ "shown" ];
   meaning = [
     "held"
     "shown"

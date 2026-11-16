@@ -87,6 +87,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "daemon-serve"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "defmt"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -190,6 +197,7 @@ dependencies = [
 name = "google"
 version = "0.1.0"
 dependencies = [
+ "daemon-serve",
  "inotify",
  "jiff",
  "ready-rows",

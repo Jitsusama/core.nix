@@ -11,8 +11,8 @@
 rustPlatform.buildRustPackage {
   pname = "google";
   version = "0.1.0";
-  # The ready-rows crate and the terminal kit it names by path come beside
-  # it, and it builds from its own folder within.
+  # The ready-rows crate, the terminal kit and daemon-serve it names by path
+  # come beside it, and it builds from its own folder within.
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -22,6 +22,8 @@ rustPlatform.buildRustPackage {
       # Cargo's tests alone: the shell script beside them is checks.nix's,
       # and a change to it rebuilds nothing the machine runs.
       (lib.fileset.fileFilter (file: file.hasExt "rs") ./tests)
+      ../daemon-serve/Cargo.toml
+      ../daemon-serve/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
       ../terminal-kit/Cargo.toml
