@@ -179,8 +179,9 @@ in
       );
 
   # A workstation in a realm runs the node in it, dialling each machine it
-  # names: a user service on Linux, an agent on a Mac. One that names none
-  # runs it dialling nothing, since its node still holds its sessions and
+  # names, over SSH or through a provider's program, in its home realm and
+  # in each further one: a user service on Linux, an agent on a Mac. One
+  # that names none runs it dialling nothing, since its node still holds its sessions and
   # starts what others ask of it, and one in no realm has neither a realm
   # nor a node. On Linux the node signs in with the agents' key, which asks
   # nothing, unless its realm names a key of its own; on a Mac what it
@@ -188,9 +189,25 @@ in
   # touch this one's sensor.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links don't each get dialled in its realm, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
+        && lib.hasInfix "--ssh one --ssh two --via cell:cell-1 --serves" (
+          toString
+            (linux (links // { vias = [ "cell:cell-1" ]; })).systemd.user.services.mycelium.Service.ExecStart
+        )
+        && lib.hasInfix "--ssh two --via cell:cell-2 --serves" (
+          toString
+            (linux (
+              both
+              // {
+                alsoJoins.other = {
+                  links = [ "two" ];
+                  vias = [ "cell:cell-2" ];
+                };
+              }
+            )).systemd.user.services.mycelium-other.Service.ExecStart
+        )
         && linuxAgent == [ "SSH_AUTH_SOCK=%t/agent-signing.sock" ]
         &&
           (linux (links // { signsInWith = "personal-link"; }))
