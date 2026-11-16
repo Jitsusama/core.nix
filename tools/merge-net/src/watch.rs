@@ -1255,7 +1255,11 @@ fn hand_skipped_macs(
     for merge in world.merges(base, head)? {
         if world.mac_skipped(&merge) {
             let check = crate::macs::check(&world.parent(&merge)?);
-            settler.hand(Job::Mac { merge, check });
+            settler.hand(Job::Mac {
+                merge,
+                check,
+                since: crate::state::now(),
+            });
         }
     }
     Ok(())

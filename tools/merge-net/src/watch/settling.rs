@@ -26,7 +26,7 @@ use super::{
     fixed_forward, list_flaky_unless_mended, listed_on_main, lock, pr_of, revert_and_tell,
     same_drv, search, settle,
 };
-use crate::state::{State, short};
+use crate::state::{State, now, short};
 
 /// Something a round found that takes longer than its tests to settle.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,8 +54,12 @@ pub enum Job {
     },
     /// Compare a Mac's checks at `merge`, whose gate skipped it, as the
     /// `check` naming the merge's first parent (`macs.rs`), and revert it
-    /// if it fails twice.
-    Mac { merge: String, check: String },
+    /// if it fails twice; handed at `since`, in seconds since the epoch.
+    Mac {
+        merge: String,
+        check: String,
+        since: u64,
+    },
 }
 
 impl Job {
@@ -88,8 +92,12 @@ impl Job {
             Self::Forward { head, newest, test } => {
                 json!({ "kind": "forward", "head": head, "newest": newest, "test": test })
             }
-            Self::Mac { merge, check } => {
-                json!({ "kind": "mac", "merge": merge, "test": check })
+            Self::Mac {
+                merge,
+                check,
+                since,
+            } => {
+                json!({ "kind": "mac", "merge": merge, "test": check, "since": since })
             }
         }
     }
@@ -115,11 +123,17 @@ impl Job {
             "mac" => Some(Self::Mac {
                 merge: text("merge")?,
                 check: text("test")?,
+                since: kept["since"].as_u64().unwrap_or_else(now),
             }),
             _ => None,
         }
     }
 }
+
+/// How long a Mac's comparison no Mac takes is tried before it's told as
+/// unrun: a day, since a Mac away overnight is usual, and its owner can
+/// still compare it by hand.
+const UNRUN: u64 = 24 * 60 * 60;
 
 /// How many searches waiting for room may ask main's newest head at once
 /// whether it fixed their test.
@@ -387,8 +401,13 @@ impl<'a> Settler<'a> {
         if let Job::Forward { head, newest, test } = job {
             return self.forward(head, newest, test);
         }
-        if let Job::Mac { merge, check } = job {
-            return self.mac(merge, check);
+        if let Job::Mac {
+            merge,
+            check,
+            since,
+        } = job
+        {
+            return self.mac(merge, check, *since);
         }
         if listed_on_main(world, job.head(), job.test()) || self.held_for(job.test()) {
             return self.end(job.test(), || Ok(()));
@@ -450,10 +469,22 @@ impl<'a> Settler<'a> {
 
     /// Compare a Mac's checks at `merge` as `check`, and revert the merge
     /// if they fail twice there. One no Mac took is kept, and the next
-    /// round takes it up again.
-    fn mac(&self, merge: &str, check: &str) -> Result<(), String> {
+    /// round takes it up again, until it was handed `UNRUN` ago: then it's
+    /// told as a finding naming its PR, and let go.
+    fn mac(&self, merge: &str, check: &str, since: u64) -> Result<(), String> {
         let (world, state) = (self.world, self.state);
         match attempt(world, state, merge, check) {
+            Outcome::Unsent if now().saturating_sub(since) >= UNRUN => {
+                state.say(&format!(
+                    "no Mac took {check} at {} in a day: told, and let go",
+                    short(merge)
+                ));
+                let unrun = json!({
+                    "kind": "mac-unrun", "test": check, "commit": merge,
+                    "owner_pr": pr_of(&world.subject(merge)), "since": since, "at": now(),
+                });
+                self.end(check, || state.find(&unrun).map(|_| ()))
+            }
             Outcome::Unsent => {
                 state.say(&format!(
                     "no Mac took {check} at {}: it's tried again next round",
