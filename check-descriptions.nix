@@ -2609,8 +2609,8 @@
     clippy finds nothing in record-window or its tests
   '';
   releases-wait-for-the-passwords-place = ''
-    a release listed while the launcher's Passwords place is off has the daemon answer no asks
-    and leaves Asks out of the launcher, and the machine is warned that releases need the place on
+    a release listed while the launcher's Passwords place is off leaves Asks out of the launcher,
+    and the machine is warned that releases need the place on
   '';
   reopening-finds-each-screen = ''
     Reopen Them All puts each session back on its own screen, found by its maker, model and serial

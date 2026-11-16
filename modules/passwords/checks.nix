@@ -123,9 +123,9 @@ onLinux {
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
       );
   # A release listed while the Passwords place is off answers nothing:
-  # the daemon isn't told it answers asks, Asks isn't in the launcher to
-  # draw what it would serve, and the machine is warned that releases need
-  # the place on, rather than binding Asks to a place with no daemon.
+  # the place runs no daemon, Asks isn't in the launcher to draw what it
+  # would serve, and the machine is warned that releases need the place
+  # on, rather than binding Asks to a place with no daemon.
   releases-wait-for-the-passwords-place =
     let
       home = account (bareNixos [
@@ -139,10 +139,9 @@ onLinux {
       providers = home.jitsusama.quickshell.launcher.providers;
     in
     holds "releases-wait-for-the-passwords-place"
-      "A release listed with the Passwords place off still asks the daemon to answer, draws Asks, or warns of nothing."
+      "A release listed with the Passwords place off still draws Asks, or warns of nothing."
       (
         (providers.passwords.off or false)
-        && !(providers.passwords.answersAsks or true)
         && !(providers.asks.enable or false)
         && lib.any (lib.hasInfix "jitsusama.passwords.releases") home.warnings
       );

@@ -96,8 +96,10 @@ let
   );
   # The launcher's vocabulary, which the daemon says its rows in.
   words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
-  # Whether the daemon answers secret asks: once a release is listed, and
-  # only while the place is on, since an off place's daemon never runs.
+  # Whether secret asks are answered and drawn: once a release is listed,
+  # and only while the place is on, since an off place's daemon never runs.
+  # Read only outside the place's own settings, which Nix merges by reading
+  # each, so one reading the place's off would wait on itself.
   answersAsks =
     config.jitsusama.passwords.releases != [ ]
     && !(config.jitsusama.quickshell.launcher.providers.passwords.off or false);
@@ -261,10 +263,10 @@ in
         shows = if manager.shows == null then "" else manager.shows;
         fills = if manager.fills == null then "" else manager.fills;
       }) managers;
-      # Its daemon answers secret asks once one is listed and the place is
-      # on, and serves them on the place's own connection, which Asks
-      # draws them over.
-      inherit answersAsks;
+      # Its daemon answers secret asks once one is listed, and serves them
+      # on the place's own connection, which Asks draws them over; an off
+      # place runs no daemon, so it needn't say the place is on.
+      answersAsks = config.jitsusama.passwords.releases != [ ];
       # The daemon the place runs as its own child, for the shell's life.
       daemon = [
         (lib.getExe passwords)
