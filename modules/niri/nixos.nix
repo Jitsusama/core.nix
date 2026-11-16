@@ -222,6 +222,16 @@
     # (sandbox-sees-no-idle.patch) dispatches its global in niri, as
     # smithay's macro would, hiding it from those clients. It adds no
     # setting either.
+    #
+    # The launcher's frame reached the screen a median 6 refreshes after
+    # the shell's swap at 120 Hz, though niri's code queues a redraw as a
+    # layer surface commits and renders it at once, so where the time
+    # goes can't be read from the code. The patch
+    # (says-a-frames-steps-after-idle.patch, made on the rest) says at
+    # debug, for each frame after 100 ms idle, when its redraw was asked,
+    # how long its render waited and took, and how long it waited for the
+    # screen once queued, by the clock the shell's own times use. It adds
+    # no setting.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -259,6 +269,7 @@
         ./render-deadline-action.patch
         ./sandboxed-windows-stay-behind.patch
         ./sandbox-sees-no-idle.patch
+        ./says-a-frames-steps-after-idle.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
