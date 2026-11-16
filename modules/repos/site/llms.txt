@@ -1,0 +1,14 @@
+# Code
+
+> A live, read-only view of every repository on Joel's machine: which of
+> its trees are being written, which of its changes wait and on what, the
+> cells at work in each, and what's worth a look.
+
+- [The page](index.html): the grove, the repositories as a list walked by
+  keyboard or pointer, and the one the cursor is on beside them.
+- [The page as text](index.md): how to read it, the keys, and what the
+  data holds.
+- The data: the repos daemon's records, which the page watches live over
+  the sites' server at /feed/repos. An agent on the machine runs
+  `repos --json` itself, or loads the repos skill.
+- [All his sites](../llms.txt): the home this page sits in.

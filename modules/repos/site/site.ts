@@ -1,0 +1,500 @@
+// Code, live: every repository on the machine as the repos daemon holds it,
+// drawn as a grove above the list of them, with the one the cursor is on
+// open beside the list. It watches the daemon's reading, repositories,
+// checkouts, trees and changes over the sites' server, so the page moves the
+// moment git writes, and reads the cells at work from the mycelium's map
+// while the page is seen. Nothing under the reader moves unless they moved
+// it: each repository keeps its place, and the cursor stays where it was.
+
+import { follow, type Standing } from "../../local-sites/kit/feed.ts";
+import { listen, toggle } from "../../local-sites/kit/keys.ts";
+import { Held } from "../../local-sites/kit/records.ts";
+import { themeSwitch } from "../../local-sites/kit/theme.ts";
+import { addressed, landing, outward, type Place } from "./address.ts";
+import { drawer, groveOfTrees, rows } from "./draw.ts";
+import { footOf, headOf, worst } from "./head.ts";
+import {
+  type Feed,
+  type Grove,
+  groveOf,
+  growing,
+  KINDS,
+  type Repository,
+  type Season,
+  stepped,
+} from "./model.ts";
+import { type Mycelium, watchMycelium } from "./mycelium.ts";
+import { copyFolder, element, markRows, markTree, write } from "./page.ts";
+
+const title = element("#title", HTMLHeadingElement);
+const lede = element("#lede", HTMLParagraphElement);
+const stand = element("#grove", HTMLDivElement);
+const list = element("#list", HTMLDivElement);
+const opened = element("#open", HTMLDivElement);
+const asof = element("#asof", HTMLParagraphElement);
+const find = element("#find", HTMLInputElement);
+const keys = element("#keys", HTMLDialogElement);
+
+// What each kind's watch holds: an empty one until its follow, below, gives
+// the Held it folds each answer into, so the grove reads every kind at once.
+const held: { -readonly [kind in keyof Feed]: Held } = {
+  reading: new Held(),
+  repository: new Held(),
+  checkout: new Held(),
+  tree: new Held(),
+  change: new Held(),
+};
+const standings = new Map<string, Standing>();
+const heard = new Map<string, string>();
+let mycelium: Mycelium = { cells: [], home: undefined, homes: new Map() };
+
+let place: Place = "every";
+let query = "";
+let grove: Grove | undefined;
+let cursor: string | null = null;
+// The tree the cursor is on once Joel has stepped into the repository.
+let inner: string | null = null;
+const unfolded = new Map<string, Set<Season>>();
+
+/** The repositories the list shows: the place's, narrowed by what's found. */
+function shown(): readonly Repository[] {
+  if (grove === undefined) {
+    return [];
+  }
+  const inPlace = place === "growing" ? growing(grove) : grove.repositories;
+  const words = query.trim().toLowerCase();
+  return words === ""
+    ? inPlace
+    : inPlace.filter((each) => `${each.owner ?? ""}/${each.name}`.toLowerCase().includes(words));
+}
+
+const current = (): Repository | undefined =>
+  grove?.repositories.find((each) => each.key === cursor);
+
+function sayWhen(): void {
+  const now = worst(standings.values());
+  asof.textContent = footOf(grove, now, heard.values());
+  asof.dataset["state"] = now?.state ?? "connecting";
+}
+
+/** The headline and its lede: how things stand, then what's worth a look. */
+function drawHero(at: Grove): void {
+  const head = headOf(at);
+  write(title, head.title);
+  write(lede, head.lede);
+  document.title = head.tab;
+}
+
+function drawPlaces(): void {
+  for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-place]")) {
+    if (link.closest(".places") !== null) {
+      link.setAttribute("aria-current", String(link.dataset["place"] === place));
+    }
+  }
+  if (grove !== undefined) {
+    element("#n-every", HTMLSpanElement).textContent =
+      grove.repositories.length.toLocaleString("en-CA");
+    element("#n-growing", HTMLSpanElement).textContent =
+      growing(grove).length.toLocaleString("en-CA");
+  }
+}
+
+/** Marks the cursor's repository in the grove and the list, and follows it. */
+function select(scroll = true): void {
+  markRows(cursor, scroll);
+}
+
+function drawOpen(): void {
+  const open = current();
+  if (open === undefined || grove === undefined) {
+    write(opened, '<p class="quiet">Step onto a repository to open it here.</p>');
+    return;
+  }
+  if (inner !== null && !open.trees.some((each) => each.path === inner)) {
+    inner = null;
+  }
+  write(
+    opened,
+    drawer(
+      open,
+      grove,
+      { now: Date.now(), home: mycelium.home, homes: mycelium.homes },
+      unfolded.get(open.key) ?? new Set(),
+    ),
+  );
+  markInner(false);
+}
+
+/** Marks the tree the cursor is on inside the open repository. */
+function markInner(focus: boolean): void {
+  markTree(opened, inner, focus);
+}
+
+function draw(): void {
+  grove = groveOf(held, mycelium.cells, Date.now());
+  sayWhen();
+  if (grove === undefined) {
+    return;
+  }
+  drawHero(grove);
+  drawPlaces();
+  if (cursor === null || !grove.repositories.some((each) => each.key === cursor)) {
+    cursor = shown()[0]?.key ?? grove.repositories[0]?.key ?? null;
+  }
+  // A link in the drawer that a move redraws is gone, so focus stays in the drawer.
+  const wasIn = opened.contains(document.activeElement);
+  write(stand, groveOfTrees(grove));
+  drawList();
+  drawOpen();
+  if (wasIn && inner !== null) {
+    markInner(true);
+  } else if (wasIn && !opened.contains(document.activeElement)) {
+    opened.focus({ preventScroll: true });
+  }
+}
+
+function drawList(): void {
+  write(list, rows(shown(), Date.now(), query));
+  select(false);
+}
+
+let pending = false;
+/** Draws once for every record a frame brings, so a burst draws once. */
+function soon(): void {
+  if (!pending) {
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      draw();
+      land();
+    });
+  }
+}
+
+for (const kind of KINDS) {
+  held[kind] = follow(
+    { feed: "repos", kind },
+    {
+      moved: soon,
+      stands: (now) => {
+        standings.set(kind, now);
+        heard.delete(kind);
+        sayWhen();
+      },
+      problem: (what) => {
+        heard.set(kind, `${kind}: ${what}`);
+        sayWhen();
+      },
+    },
+  ).held;
+}
+
+watchMycelium((now) => {
+  mycelium = now;
+  soon();
+});
+
+// ---- Where the address lands, and where it follows the cursor. ----
+
+let landed = "";
+/** Puts the cursor where the address says: a repository, or a tree in one. */
+function land(): void {
+  if (grove === undefined || location.hash === landed) {
+    return;
+  }
+  const hash = location.hash;
+  const at = landing(hash, grove);
+  if (at === undefined) {
+    return;
+  }
+  landed = hash;
+  if (at.kind === "place") {
+    ({ place } = at);
+    drawPlaces();
+    drawList();
+  } else if (at.kind === "repository") {
+    choose(at.key, null);
+  } else {
+    // A tree in a folded season opens its season, so the cursor is seen where it lands.
+    const open = unfolded.get(at.key) ?? new Set<Season>();
+    open.add(at.season);
+    unfolded.set(at.key, open);
+    choose(at.key, at.path);
+  }
+}
+
+/**
+ * Widens the list until it shows `key`, so the list and the grove never hold different
+ * cursors: the find is let go first, then the place opens to every repository.
+ */
+function reveal(key: string): void {
+  const holds = (): boolean => shown().some((each) => each.key === key);
+  if (holds()) {
+    return;
+  }
+  query = "";
+  find.value = "";
+  if (!holds()) {
+    place = "every";
+  }
+  drawPlaces();
+  drawList();
+}
+
+/** Moves the cursor to `key`, inside it to `tree`, and the address with it. */
+function choose(key: string, tree: string | null): void {
+  cursor = key;
+  inner = tree;
+  reveal(key);
+  select();
+  drawOpen();
+  if (tree === null) {
+    list.focus({ preventScroll: true });
+  } else {
+    markInner(true);
+  }
+  follows();
+}
+
+/** Says where the cursor is in the address, so a reload or a link lands there. */
+function follows(): void {
+  const open = current();
+  if (open === undefined) {
+    return;
+  }
+  const address = addressed(open, inner);
+  if (location.hash !== address) {
+    history.replaceState(null, "", address);
+    landed = address;
+  }
+}
+
+globalThis.addEventListener("hashchange", land);
+
+// ---- Keys. ----
+
+/** Steps the cursor through `among` by `by`, in the list or inside a repository. */
+function step(by: number, among: readonly Repository[] = shown()): void {
+  if (inner !== null) {
+    const trees = [...opened.querySelectorAll<HTMLElement>(".tree")].map(
+      (each) => each.dataset["path"] ?? "",
+    );
+    inner = trees[stepped(trees.indexOf(inner), by, trees.length)] ?? inner;
+    markInner(true);
+    follows();
+    return;
+  }
+  const at = among.findIndex((each) => each.key === cursor);
+  const next = among[stepped(at, by, among.length)];
+  if (next !== undefined) {
+    cursor = next.key;
+    select();
+    drawOpen();
+    follows();
+  }
+}
+
+/** Walks the grove, which holds every repository, widening the list to follow it. */
+function walk(by: number): void {
+  if (inner !== null || grove === undefined) {
+    return;
+  }
+  const among = grove.repositories;
+  const next =
+    among[
+      stepped(
+        among.findIndex((each) => each.key === cursor),
+        by,
+        among.length,
+      )
+    ];
+  if (next !== undefined) {
+    cursor = next.key;
+    reveal(next.key);
+    select();
+    drawOpen();
+    follows();
+  }
+  stand.focus({ preventScroll: true });
+}
+
+/** Lets go of a find left in place once Joel has stepped out of its field. */
+function letGo(): void {
+  if (query !== "") {
+    query = "";
+    find.value = "";
+    drawList();
+  }
+}
+
+function goIn(): void {
+  const first = opened.querySelector<HTMLElement>(".tree")?.dataset["path"];
+  if (inner === null && first !== undefined) {
+    inner = first;
+    markInner(true);
+    follows();
+  }
+}
+
+function goOut(): void {
+  if (inner !== null) {
+    inner = null;
+    markInner(false);
+    list.focus();
+    follows();
+  }
+}
+
+/** Opens or folds the open repository's resting and gone trees. */
+function fold(): void {
+  const open = current();
+  if (open === undefined) {
+    return;
+  }
+  const seasons = unfolded.get(open.key) ?? new Set<Season>();
+  const shut = !seasons.has("resting");
+  for (const season of ["resting", "gone"] as const) {
+    if (shut) {
+      seasons.add(season);
+    } else {
+      seasons.delete(season);
+    }
+  }
+  unfolded.set(open.key, seasons);
+  // Redrawing the drawer replaces the tree that held focus, so focus goes back to it, or to
+  // the list when the cursor stood on a tree that has just folded away.
+  const inside = opened.contains(document.activeElement);
+  drawOpen();
+  if (inside && inner !== null && opened.querySelector(".tree[aria-current=true]") !== null) {
+    markInner(true);
+  } else if (inside) {
+    inner = null;
+    markInner(false);
+    list.focus({ preventScroll: true });
+    follows();
+  }
+}
+
+/** Copies the tree's folder, or the repository's first checkout's, and says so. */
+function copy(): void {
+  const open = current();
+  const path = inner ?? open?.checkouts[0]?.path;
+  if (path !== undefined) {
+    copyFolder(path, asof);
+  }
+}
+
+/** Opens the tree's change, or the repository where its remote keeps it. */
+function openOut(): void {
+  const open = current();
+  if (open === undefined) {
+    return;
+  }
+  const url = outward(open, inner);
+  if (url !== undefined) {
+    globalThis.open(url, "_blank", "noopener");
+  }
+}
+
+listen({
+  help: keys,
+  actions: {
+    j: () => step(1),
+    ArrowDown: () => step(1),
+    k: () => step(-1),
+    ArrowUp: () => step(-1),
+    g: () => step(Number.NEGATIVE_INFINITY),
+    Home: () => step(Number.NEGATIVE_INFINITY),
+    G: () => step(Number.POSITIVE_INFINITY),
+    End: () => step(Number.POSITIVE_INFINITY),
+    l: () => walk(1),
+    ArrowRight: () => walk(1),
+    h: () => walk(-1),
+    ArrowLeft: () => walk(-1),
+    Enter: goIn,
+    "-": goOut,
+    z: fold,
+    y: copy,
+    o: openOut,
+    Escape: letGo,
+    "/": () => {
+      find.focus();
+      find.select();
+    },
+  },
+  // The rows and trees are the cursor, not controls of their own; a link in a tree is.
+  answersAt: (target) => {
+    const control = target.closest("a, button, select, summary");
+    return control === null || control.matches("#grove a, #list a");
+  },
+});
+
+find.addEventListener("input", () => {
+  query = find.value;
+  drawList();
+});
+find.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === "Escape") {
+    event.preventDefault();
+    const first = shown()[0];
+    if (event.key === "Enter" && first !== undefined) {
+      cursor = first.key;
+      select();
+      drawOpen();
+      follows();
+    }
+    list.focus();
+  }
+});
+
+for (const region of [stand, list]) {
+  region.addEventListener("click", (event) => {
+    const option = event.target instanceof Element ? event.target.closest("[role=option]") : null;
+    if (!(option instanceof HTMLElement) || option.dataset["key"] === undefined) {
+      return;
+    }
+    event.preventDefault();
+    choose(option.dataset["key"], null);
+  });
+}
+
+opened.addEventListener("click", (event) => {
+  const tree = event.target instanceof Element ? event.target.closest(".tree") : null;
+  if (
+    tree instanceof HTMLElement &&
+    event.target instanceof Element &&
+    event.target.closest("a") === null
+  ) {
+    inner = tree.dataset["path"] ?? null;
+    markInner(true);
+    follows();
+  }
+});
+
+/** Shows the place a link in the places row names. */
+function toPlace(event: Event): void {
+  if (!(event.currentTarget instanceof HTMLAnchorElement)) {
+    return;
+  }
+  event.preventDefault();
+  place = event.currentTarget.dataset["place"] === "growing" ? "growing" : "every";
+  drawPlaces();
+  drawList();
+  list.focus();
+}
+
+for (const link of document.querySelectorAll<HTMLAnchorElement>(".places [data-place]")) {
+  link.addEventListener("click", toPlace);
+}
+
+for (const key of document.querySelectorAll<HTMLElement>(".head .keys kbd[data-key]")) {
+  key.addEventListener("click", () => {
+    if (key.dataset["key"] === "?") {
+      toggle(keys);
+    } else {
+      list.focus();
+    }
+  });
+}
+
+themeSwitch();
