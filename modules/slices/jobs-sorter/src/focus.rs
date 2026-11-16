@@ -387,12 +387,15 @@ pub fn scope_of<'a>(
 /// and a session attached again keeps the app id of its first window.
 /// A conversation a host holds (`--host`, `--session`) has no pi scope,
 /// and a line with any word but those, as a command a session runs after
-/// `--` would add, names none, so a window's command can't choose which
-/// pi is held.
+/// `--` would add, names none. A window started with `holds add` names no
+/// id at all; its holder does ([`holding`]).
 pub fn attached_to(cmdline: &[u8]) -> Option<String> {
+    // Only the last word ends in a NUL; an empty word between is mycelium's
+    // too, as `--realm ""` is, and dropping it would shift what follows.
     let words: Vec<&[u8]> = cmdline
+        .strip_suffix(&[0])
+        .unwrap_or(cmdline)
         .split(|byte| *byte == 0)
-        .filter(|word| !word.is_empty())
         .collect();
     let (program, rest) = words.split_first()?;
     if program.rsplit(|byte| *byte == b'/').next() != Some(b"mycelium") {
@@ -406,14 +409,45 @@ pub fn attached_to(cmdline: &[u8]) -> Option<String> {
         [b"holds", id, b"attach", rest @ ..] => (*id, rest),
         _ => return None,
     };
-    if !options(rest)?.is_empty() {
+    if !options(rest)?.is_empty() || id.starts_with(b"-") {
         return None;
     }
     let named = |byte: &u8| byte.is_ascii_alphanumeric() || *byte == b'-' || *byte == b'_';
-    id.iter()
-        .all(named)
-        .then(|| String::from_utf8_lossy(id).into_owned())
+    (!id.is_empty() && id.iter().all(named)).then(|| String::from_utf8_lossy(id).into_owned())
 }
+
+/// The held session a window's `mycelium holds add` or `hold` started,
+/// from the command line of one of its children: mycelium's holder, which
+/// names the id the window's own line doesn't, as on 16 November 18 of the
+/// 45 windows running mycelium did.
+pub fn holding(cmdline: &[u8]) -> Option<String> {
+    let program = cmdline.split(|byte| *byte == 0).next()?;
+    if program.rsplit(|byte| *byte == b'/').next() != Some(b"mycelium") {
+        return None;
+    }
+    crate::sessions::holder_id(cmdline)
+}
+
+/// The processes in a window's scope that its kitty, `kitty`, started,
+/// from each one's pid, parent and name: its own children, as the
+/// launcher's `exec mycelium` is, and a shell's it started, as an attach
+/// Joel types is. A pi's commands run below the pi, so whatever they
+/// spell their command lines as, none names the window's session.
+pub fn kittys_own(procs: &[(u32, u32, &str)], kitty: u32) -> Vec<u32> {
+    let a_shell = |pid: u32| {
+        procs
+            .iter()
+            .any(|(own, parent, name)| *own == pid && *parent == kitty && SHELLS.contains(name))
+    };
+    procs
+        .iter()
+        .filter(|(_, parent, _)| *parent == kitty || a_shell(*parent))
+        .map(|(pid, ..)| *pid)
+        .collect()
+}
+
+/// The shells a window's kitty starts, whose children it ran as Joel's.
+const SHELLS: [&str; 3] = ["zsh", "bash", "sh"];
 
 /// The words past those of mycelium's options that name no conversation,
 /// `--realm` and `--socket`, or none if another option comes first.
@@ -470,7 +504,7 @@ pub fn stands(
 pub const PI_AGAIN: Duration = Duration::from_secs(5);
 
 /// Whether `unit` is a session's pi's scope, as one of `pis` begins it.
-fn runs_a_pi(unit: &str, pis: &[String]) -> bool {
+pub fn runs_a_pi(unit: &str, pis: &[String]) -> bool {
     pis.iter().any(|prefix| unit.starts_with(prefix.as_str()))
 }
 
@@ -921,6 +955,10 @@ mod tests {
                 &["mycelium", "attach", "--realm=work", "67c3ecff"],
                 "67c3ecff",
             ),
+            (
+                &["mycelium", "--realm", "", "attach", "67c3ecff"],
+                "67c3ecff",
+            ),
         ] {
             assert_eq!(
                 attached_to(&line(words)).as_deref(),
@@ -956,6 +994,12 @@ mod tests {
                 &["mycelium", "attach", "--host", "work-background"],
             ),
             ("its help", &["mycelium", "attach", "--help"]),
+            ("its help, held", &["mycelium", "holds", "--help", "attach"]),
+            ("options' end, held", &["mycelium", "holds", "--", "attach"]),
+            (
+                "the launcher's start, which names no id",
+                &["mycelium", "--realm", "work", "holds", "add", "--", "pi"],
+            ),
             (
                 "a word past the id",
                 &["mycelium", "attach", "67c3", "extra"],
@@ -967,6 +1011,60 @@ mod tests {
                 "{what} was read as a held session"
             );
         }
+    }
+
+    #[test]
+    fn a_launcher_windows_pi_is_found_by_the_holder_it_started() {
+        let line = |words: &[&str]| {
+            let mut line = words.join("\0").into_bytes();
+            line.push(0);
+            line
+        };
+        assert_eq!(
+            holding(&line(&[
+                "/nix/store/x/bin/mycelium",
+                "--realm",
+                "work",
+                "holder",
+                "--id",
+                "008742c2",
+                "--folder",
+                "/home/j",
+                "--",
+                "pi",
+            ]))
+            .as_deref(),
+            Some("008742c2")
+        );
+        assert_eq!(
+            holding(&line(&["sh", "holder", "--id", "008742c2"])),
+            None,
+            "only mycelium holds a session"
+        );
+    }
+
+    #[test]
+    fn only_what_a_windows_kitty_or_its_shell_started_names_its_session() {
+        let procs = [
+            (10, 3864, "mycelium"),
+            (11, 3864, "zsh"),
+            (12, 11, "mycelium"),
+            (13, 3864, "pi"),
+            (14, 13, "bash"),
+            (15, 14, "mycelium"),
+            (16, 12, "mycelium"),
+            (17, 1, "mycelium"),
+        ];
+        assert_eq!(
+            kittys_own(&procs, 3864),
+            [10, 11, 12, 13],
+            "a pi's commands, and what they start, are none of the window's own"
+        );
+        assert_eq!(
+            kittys_own(&[(12, 11, "mycelium"), (11, 13, "zsh")], 3864),
+            Vec::<u32>::new(),
+            "a shell the kitty didn't start"
+        );
     }
 
     #[test]
@@ -998,13 +1096,19 @@ mod tests {
     #[test]
     fn a_windows_pi_stands_while_its_scope_does_for_five_seconds() {
         let then = Instant::now();
-        let pi = Some(Path::new("/cg/agents.slice/mycelium-pi-b.scope"));
+        let scope = Path::new("/cg/agents.slice/mycelium-pi-b.scope");
+        let pi = Some(scope);
         let at = |seconds| then + Duration::from_secs(seconds);
-        assert!(stands(pi, then, at(4), |_| true), "there, and found 4 s ago");
-        assert!(!stands(pi, then, at(5), |_| true), "looked for again");
-        assert!(!stands(pi, then, at(0), |_| false), "gone, so at once");
+        let there = |path: &Path| path == scope;
+        let gone = |path: &Path| path != scope;
+        assert!(stands(pi, then, at(4), there), "there, and found 4 s ago");
+        assert!(!stands(pi, then, at(5), there), "looked for again");
+        assert!(!stands(pi, then, at(0), gone), "gone, so at once");
         assert!(stands(None, then, at(4), |_| false), "none, kept");
-        assert!(!stands(None, then, at(5), |_| false), "none, looked for again");
+        assert!(
+            !stands(None, then, at(5), |_| false),
+            "none, looked for again"
+        );
     }
 
     #[test]

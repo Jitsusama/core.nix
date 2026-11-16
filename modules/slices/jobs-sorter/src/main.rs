@@ -756,7 +756,7 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
                 scope
             }
         };
-        let pi = pi_of(window.id, known.as_deref(), windows, &mut ranks.pis, now);
+        let pi = pi_of(window, known.as_deref(), windows, &mut ranks.pis, now);
         if holds {
             held.extend(known.clone());
             held.extend(pi.clone());
@@ -786,38 +786,73 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
 }
 
 /// The scope of the pi of `window`, whose own scope is `own`, as last
-/// found while it stands ([`focus::stands`]), or looked for again.
+/// found while it stands ([`focus::stands`]), or looked for again. A
+/// session's window with none is said once a time it's looked for, as a
+/// mycelium spelling its command lines anew would leave every pi unheld.
 fn pi_of(
-    window: u64,
+    window: &focus::Window,
     own: Option<&Path>,
     windows: &Windows,
     found: &mut HashMap<u64, (Option<PathBuf>, std::time::Instant)>,
     now: std::time::Instant,
 ) -> Option<PathBuf> {
     let Some(own) = own else {
-        found.remove(&window);
+        found.remove(&window.id);
         return None;
     };
-    if let Some((pi, when)) = found.get(&window)
+    let last = found.get(&window.id);
+    if let Some((pi, when)) = last
         && focus::stands(pi.as_deref(), *when, now, Path::exists)
     {
         return pi.clone();
     }
-    let pi = beside(own, windows);
-    found.insert(window, (pi.clone(), now));
+    let pi = beside(own, window.pid, windows);
+    if pi.is_none() && window.session() && last.is_none_or(|(pi, _)| pi.is_some()) {
+        eprintln!(
+            "Holding {} alone: no pi found beside it.",
+            unit_of(own).unwrap_or_default()
+        );
+    }
+    found.insert(window.id, (pi.clone(), now));
     pi
 }
 
-/// The scope, in any watched slice, of the pi whose held session a
-/// process in the window's scope `own` attaches to ([`focus::attached_to`]).
-fn beside(own: &Path, windows: &Windows) -> Option<PathBuf> {
-    let procs = fs::read_to_string(own.join("cgroup.procs")).ok()?;
-    let ids: Vec<String> = procs
-        .lines()
-        .filter_map(|pid| fs::read(format!("/proc/{pid}/cmdline")).ok())
-        .filter_map(|cmdline| focus::attached_to(&cmdline))
+/// The scope, in any watched slice, of the pi whose held session a process
+/// the window's kitty, `kitty`, started in its scope `own` attaches to or
+/// holds ([`focus::kittys_own`]).
+fn beside(own: &Path, kitty: u32, windows: &Windows) -> Option<PathBuf> {
+    let procs = samples(own);
+    let named: Vec<(u32, u32, &str)> = procs
+        .iter()
+        .map(|proc| (proc.pid, proc.ppid, proc.comm.as_str()))
+        .collect();
+    let ids: Vec<String> = focus::kittys_own(&named, kitty)
+        .into_iter()
+        .filter_map(|pid| {
+            let cmdline = fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+            focus::attached_to(&cmdline).or_else(|| {
+                children(pid)
+                    .filter_map(|child| fs::read(format!("/proc/{child}/cmdline")).ok())
+                    .find_map(|cmdline| focus::holding(&cmdline))
+            })
+        })
         .collect();
     focus::pi_scope(&ids, windows.under, windows.pis, Path::exists)
+}
+
+/// The processes `pid` started, as each of its threads' children says.
+fn children(pid: u32) -> impl Iterator<Item = String> {
+    fs::read_dir(format!("/proc/{pid}/task"))
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|task| fs::read_to_string(task.path().join("children")).ok())
+        .flat_map(|children| {
+            children
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
 }
 
 /// Holds each of `held` not held yet and gives back each held no longer,
@@ -920,11 +955,11 @@ fn read_back(at: Option<focus::Window>, ranks: &mut Ranks) {
     let first = fs::read_to_string(scope.join("cgroup.procs"))
         .ok()
         .and_then(|procs| procs.lines().next().map(str::to_owned));
-    // The pi's scope is read back by its holder, which carries the
-    // window's app id where the pi doesn't, so the reader knows it as the
-    // window's; a session attached again in another window carries its
-    // first one's, and the reader refuses it. The pi goes first, as it's
-    // what Joel waits on.
+    // The pi's scope is read back by its holder, which carries the app id
+    // of the window that started it, as a launcher's window did, where the
+    // pi doesn't, so the reader knows it as the window's; a session
+    // attached again in another window carries its first one's, and the
+    // reader refuses it. The pi goes first, as it's what Joel waits on.
     let pi = ranks
         .pis
         .get(&window.id)
@@ -1080,10 +1115,16 @@ fn weigh_windows(windows: &Windows, ranks: &mut Ranks) {
 /// orchestrators last counted. A failure is said once, and tried again on
 /// the next look.
 fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &mut Ranks) {
+    // Only a window's own scope says which host Joel views: a pi's holds
+    // its agents' commands, which may spell themselves as anything.
     let viewers: Vec<String> = windows
         .under
         .iter()
-        .flat_map(|slice| held.iter().map(|unit| slice.join(unit)))
+        .flat_map(|slice| {
+            held.iter()
+                .filter(|unit| !focus::runs_a_pi(unit, windows.pis))
+                .map(|unit| slice.join(unit))
+        })
         .flat_map(|scope| samples(&scope))
         .filter_map(|proc| {
             let words = fs::read(format!("/proc/{}/cmdline", proc.pid)).ok()?;
