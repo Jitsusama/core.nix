@@ -582,14 +582,13 @@ def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
         desktop.as_account("rm -rf ~/warp-cli")
 
 
-# A session sits under the one orchestrating it, a step in, its glyph where its orchestrator's
-# name starts, with no line, box or fold; typed, every row is at no depth, whom it's under
-# leading its note; and an orchestrator says what its whole orchestration spent today
-# (QEST-20261026-15J7N3's agents-tree-look.md). The orchestrator listens while an owner under it
-# runs a builder that works, so the orchestration stands with those working: the owner, its
-# builder, and one paused beside the builder. The two others under the orchestrator only listen,
-# so they fold into one row after its own (VKCF3Z, 2026-11-06), while the owner's one paused
-# stays a row, since folding one saves none.
+# Agents leads with one row per orchestration, which says what all of it spent today, and its
+# sessions sit a step in, behind Ctrl+] (#3884); typed, every row is at no depth, whom it's
+# under leading its note. The orchestrator listens while an owner under it runs a builder that
+# works, so the orchestration stands with those working: the owner, its builder, and one paused
+# beside the builder. The two others under the orchestrator only listen, so they fold into one
+# row after the owner (VKCF3Z, 2026-11-06), while the owner's one paused stays a row, since
+# folding one saves none.
 ORCHESTRATION = [
     # address, title, whom it's under, how it stands
     ("TESTQA", "A quest of its own & whole", None, "listening"),
@@ -602,7 +601,8 @@ ORCHESTRATION = [
 # The fold's row, by what it says, and the sessions it holds.
 FOLD = "2 listening"
 FOLDED = ["The Other One Under It", "One More Under It"]
-TREE = {"TESTQA": 0, "TESTQC": 1, "TESTQD": 2, "TESTQE": 2, FOLD: 1}
+# What the orchestrator's row says all of it spent, once every session's spend is read.
+ALL_SPENT = "$14.20 in all"
 SPENT = {
     "v": 2,
     "sessions": {"01a1face-test": "$3.10", "01a1face-qd": "$5.10"},
@@ -791,7 +791,12 @@ def side_gives_way_whole(row: Json, title: str, said: str, scale: str) -> None:
 
 
 def into_agents(desktop: Desktop) -> None:
-    """Open the launcher into Agents, once it lists every session of the orchestration."""
+    """Open the launcher into Agents, once the orchestrator's row says what all of it spent.
+
+    The row is served once the orchestrator's record is read, and its sessions' spend lands
+    after, so at first it says its own alone ($3.10, in the net's runs of 16 November).
+    """
+    title = ORCHESTRATION[0][1]
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("agents")
@@ -800,26 +805,67 @@ def into_agents(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == ["agents"]
-            and sum(in_orchestration(thing) for thing in shown["things"]) == len(TREE)
+            and any(
+                title in thing["reads"] and ALL_SPENT in thing["reads"] for thing in shown["things"]
+            )
         )
     )
 
 
-def orchestrator_says_whose_spend_is_whose(desktop: Desktop) -> None:
-    """Inside the orchestrator, what all of it spent, then its own and its sessions'."""
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.type_in("testqa", selecting="A quest of its own & whole")
+def into_orchestration(desktop: Desktop, shot: str) -> None:
+    """Step into the orchestration from its row, and shoot its acts, then its sessions.
+
+    Ctrl+] holds its acts, Talk first, and after them its sessions: the owner, a row of its
+    own since it has sessions under it, then the two only listening, folded into one.
+    """
+    title = ORCHESTRATION[0][1]
+    desktop.down_to(title)
     desktop.follow()
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
-    for name, side in [
-        ("Spent Today", "$14.20 in all"),
-        ("Its Own", "$3.10"),
-        ("Its Sessions", "$11.10"),
-    ]:
-        desktop.down_to(name)
-        assert desktop.showing()["selected"]["side"] == side, desktop.showing()["selected"]
-    desktop.close_launcher()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["agents", title]
+            and shown["rows"][:4] == ["Talk", "Go To", "Pause", "Close"]
+        )
+    )
+    desktop.shoot(f"launcher-agents-acts-at-{shot}")
+    rows = orchestration_drawn(desktop)
+    order = [address_of(row) for row in rows]
+    assert order == ["TESTQC", FOLD], f"at {shot} the orchestration holds {order}"
+    reads = {address_of(row): row["reads"] for row in rows}
+    # One idle is listening, never waiting.
+    assert "listening" in reads["TESTQC"], f"at {shot}: {reads}"
+    assert "waiting" not in " ".join(reads.values()), f"at {shot}: {reads}"
+    desktop.shoot(f"launcher-agents-orchestration-at-{shot}")
+    fold_steps_in(desktop, shot)
+
+
+def into_the_owner(desktop: Desktop, shot: str) -> None:
+    """Step into the owner, and shoot its builder working and its one paused.
+
+    Each says what it spent itself, never what all of it did, which is the orchestrator's
+    alone to say.
+    """
+    titles = {address: title for address, title, _, _ in ORCHESTRATION}
+    desktop.down_to(titles["TESTQC"])
+    desktop.follow()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"][-1:] == [titles["TESTQC"]]
+            and all(titles[one] in shown["rows"] for one in ("TESTQD", "TESTQE"))
+        )
+    )
+    rows = orchestration_drawn(desktop)
+    reads = {address_of(row): row["reads"] for row in rows}
+    assert "$5.10" in reads["TESTQD"], f"at {shot}: {reads}"
+    assert "in all" not in reads["TESTQD"], f"at {shot}: {reads}"
+    assert "paused" in reads["TESTQE"], f"at {shot}: {reads}"
+    # Short of room, a side gives way whole, the state first; beside a tier 2 figure, as the
+    # builder's 84% full, how it stands outlasts the money.
+    builder = next(row for row in rows if address_of(row) == "TESTQD")
+    side_gives_way_whole(builder, titles["TESTQD"], "84% full \u00b7 working", shot)
+    desktop.shoot(f"launcher-agents-owner-at-{shot}")
+    figures_in_the_drawer(desktop, titles["TESTQD"], shot)
+    desktop.step_out()
 
 
 def orchestrators_drawer_names_its_repo(desktop: Desktop, title: str, shot: str) -> None:
@@ -875,44 +921,12 @@ def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     assert drawer["laidOneWay"], f"at {shot} its facts mix beside and under: {drawer}"
     # How it stands is its row's, so Doing says its step alone.
     assert drawer["values"][0] == "edit Drawer.qml", f"at {shot}: {drawer}"
-    # Its whole glance is on its first screen, even this short one's, what its quest is about
-    # running to about 290 letters as every real session's does.
-    said = str(drawer.get("moreSays") or "")
-    assert not said, f"at {shot} its glance hides {said}: {drawer}"
+    # Its whole glance is on its first screen, even this short one's. What its quest is about
+    # runs to about 290 letters, as every real session's does, and may be cut at the foot with
+    # how many more there are, since the ruling holds the glance, not the words (VKCF3Z,
+    # 2026-11-05; at 2 the acts' line takes room, 16 November).
+    assert drawer["drawnFacts"] == glance, f"at {shot} its glance hides some: {drawer}"
     desktop.shoot(f"launcher-agents-figures-at-{shot}")
-
-
-def returns_said_in_the_foot(desktop: Desktop, titles: dict[str, str], shot: str) -> None:
-    """Shoot the foot on a working, a listening and a paused row, then one's acts.
-
-    Return does each state's harmless act, which the foot says before it's pressed
-    (VKCF3Z, 2026-11-06): talk to one listening, resume one paused. A step in holds every
-    act in its fixed order, whatever Return does. From the find, a Return that changes
-    something only lands first, and its foot names the act it leads to all the same
-    (VKCF3Z, 2026-11-07), so the paused row's foot is kept there too.
-    """
-    desktop.down_to(titles["TESTQE"])
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("told", [])[:1] == ["\u21b5 resume"]
-    )
-    desktop.shoot(f"launcher-agents-returns-paused-found-at-{shot}")
-    desktop.normal()
-    feet = [("TESTQD", "working", "\u21b5 go to"), ("TESTQC", "listening", "\u21b5 talk")]
-    for address, stands, said in [*feet, ("TESTQE", "paused", "\u21b5 resume")]:
-        desktop.down_to(titles[address])
-
-        def foot_says(shown: Json, said: str = said) -> bool:
-            """Say whether the selected row's foot says Return's act."""
-            told = (shown["selected"] or {}).get("told", [])
-            return any(str(one).startswith(said) for one in told)
-
-        desktop.launcher_until(foot_says)
-        desktop.shoot(f"launcher-agents-returns-{stands}-at-{shot}")
-    desktop.down_to(titles["TESTQC"])
-    desktop.follow()
-    desktop.launcher_until(lambda shown: "Talk" in shown["rows"][:2])
-    desktop.shoot(f"launcher-agents-acts-at-{shot}")
-    desktop.step_out()
 
 
 def fold_steps_in(desktop: Desktop, shot: str) -> None:
@@ -930,11 +944,14 @@ def fold_steps_in(desktop: Desktop, shot: str) -> None:
 
 
 def closed_stand_last(desktop: Desktop, shot: str) -> None:
-    """Shoot the closed orchestrators at the tree's end, one on the cursor, one at rest.
+    """Shoot the closed orchestrators behind Closed, one on the cursor, one at rest.
 
     Each is dimmed, says it's closed, and what all of it spent only where it spent today;
     Return reopens it.
     """
+    desktop.down_to("Closed")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["held"] == ["agents", "Closed"])
     desktop.down_to("Lamplight")
     desktop.launcher_until(
         lambda shown: (
@@ -945,40 +962,6 @@ def closed_stand_last(desktop: Desktop, shot: str) -> None:
     rows = desktop.showing()["rows"]
     assert rows.index("Lamplight") + 1 == rows.index("Beacon"), f"at {shot}: {rows}"
     desktop.shoot(f"launcher-agents-closed-at-{shot}")
-
-
-def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str) -> None:
-    """Shoot a session's Close on the cursor, then its ask, which says what stays.
-
-    Close ends the session, so Return puts it on the command line and a fresh Return asks,
-    naming the session by its address and what of it stays (VKCF3Z, 2026-11-06). A Return
-    more would close it, as a row armed does, and the foot says so; Escape leaves it running.
-    """
-    desktop.down_to(title)
-    desktop.follow()
-    desktop.launcher_until(lambda shown: "Close" in shown["rows"])
-    desktop.down_to("Close")
-    desktop.shoot(f"launcher-agents-close-at-{shot}")
-    # The second Return waits out the first's, which the launcher takes for the same press
-    # doubled while it's fresh, and so runs nothing.
-    desktop.line("close")
-    asked = f"Close {address}? Its folder stays."
-    with desktop.told("ask ready"), desktop.told(f"asked {asked}"):
-        desktop.machine.send_key("ret")
-    # The ask takes the whole head, so what it closes is read, its path given way.
-    shown = desktop.showing()
-    drawn = shown["questionShown"]
-    assert drawn.startswith(f"Close {address}?"), f"at {shot} the ask lost its subject: {drawn}"
-    assert shown["questionWhole"], f"at {shot} the ask was cut: {drawn}"
-    assert shown["hints"] == ["\u21b5 confirm"], f"at {shot} the foot said {shown['hints']}"
-    # The line leads with the ask, no glyph before it, since it isn't a find while it asks.
-    laid = desktop_session.laid_out(desktop)
-    leading = min(laid["field"], key=lambda word: word["x"])
-    assert leading["text"].startswith("Close"), f"at {shot} the line leads {leading}"
-    desktop.shoot(f"launcher-agents-close-asks-at-{shot}")
-    with desktop.told("answered no"):
-        desktop.machine.send_key("esc")
-    desktop.launcher_until(lambda shown: shown["question"] == "")
     desktop.step_out()
 
 
@@ -1089,64 +1072,34 @@ def a_quest_offers_to_orchestrate(desktop: Desktop, shot: str) -> None:
     desktop.step_out()
 
 
-def glyphs_stand_on_names(rows: list[Json], titles: dict[str, str], scale: str) -> None:
-    """Hold each row's glyph where the name above it starts, the first word a row draws."""
-    words = {address_of(row): row["words"] for row in rows}
-    under = [("TESTQC", "TESTQA"), ("TESTQD", "TESTQC"), ("TESTQE", "TESTQC"), (FOLD, "TESTQA")]
-    for one, above in under:
-        glyph = words[one][0]["starts"]
-        name = next(w["starts"] for w in words[above] if w["text"] == titles[above])
-        assert abs(glyph - name) <= 1, (
-            f"at {scale} {one}'s glyph is at {glyph}, not on {above}'s name at {name}"
-        )
-
-
 def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """A session sits a step in under its orchestrator, its glyph on its name; flat once typed."""
+    """A session sits a step in under its orchestrator's row, which says what all of it spent.
+
+    Return's harmless act on each state, Close's ask and the paused row's ink are proven on
+    nested niri (an-agents-return-does-its-harmless-act-on-niri); here the rows are the real
+    daemon's, from each session's record and spend, and each step is kept as a picture.
+    """
+    title = ORCHESTRATION[0][1]
     orchestrated(desktop)
     try:
         for scale in at_each_scale:
             at_scale(desktop, scale)
             into_agents(desktop)
-            rows = orchestration_drawn(desktop)
-            order = [address_of(row) for row in rows]
-            assert order == list(TREE), f"at {scale} the orchestration reads {order}"
-            depths = {address_of(row): row["depth"] for row in rows}
-            assert depths == TREE, f"at {scale} the steps in are {depths}"
-            titles = {address: title for address, title, _, _ in ORCHESTRATION}
-            titles[FOLD] = FOLD
-            glyphs_stand_on_names(rows, titles, scale)
-            # Short of room, a side gives way whole, the state first, before a name gives up
-            # a letter, and what it cost stays, never slid from its left. Beside a tier 2
-            # figure, as the builder's 84% full, how it stands outlasts the money instead.
-            costs = {"TESTQA": "$14.20 in all", "TESTQD": "84% full \u00b7 working"}
-            for row in rows:
-                one = address_of(row)
-                side_gives_way_whole(row, titles[one], costs.get(one, ""), scale)
-            # The orchestrator says what all of it spent; one under it, its own. One idle
-            # is listening, never waiting.
-            reads = {address_of(row): row["reads"] for row in rows}
-            assert "$14.20 in all" in reads["TESTQA"], reads
-            assert "$5.10" in reads["TESTQD"], reads
-            assert "in all" not in reads["TESTQD"], reads
-            assert "listening" in reads["TESTQC"], reads
-            assert "paused" in reads["TESTQE"], reads
-            # And its glyph is muted, never the live rows' colour (#2052), its name in text.
-            inks = {address_of(row): row["words"][0]["ink"] for row in rows}
-            assert inks["TESTQE"] != inks["TESTQC"], f"at {scale} paused looks live: {inks}"
-            assert "waiting" not in " ".join(reads.values()), reads
             shot = scale.replace(".", "-")
-            desktop.shoot(f"launcher-agents-tree-at-{shot}")
-            orchestrators_drawer_names_its_repo(desktop, titles["TESTQA"], shot)
-            figures_in_the_drawer(desktop, titles["TESTQD"], shot)
-            returns_said_in_the_foot(desktop, titles, shot)
-            fold_steps_in(desktop, shot)
-            close_asks_what_stays(desktop, titles["TESTQC"], "TESTQC", shot)
+            laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+            row = next(row for row in laid["rows"] if title in row["reads"])
+            # Short of room, a side gives way whole, the state first, before a name gives up
+            # a letter, and what it cost stays, never slid from its left.
+            side_gives_way_whole(row, title, ALL_SPENT, scale)
+            desktop.shoot(f"launcher-agents-top-at-{shot}")
+            orchestrators_drawer_names_its_repo(desktop, title, shot)
+            into_orchestration(desktop, shot)
+            into_the_owner(desktop, shot)
+            desktop.step_out()
             after_the_sessions(desktop, shot)
             desktop.close_launcher()
-        orchestrator_says_whose_spend_is_whose(desktop)
         # Typed, the builder ranks flat, at no depth, whom it's under leading its note,
         # which the foot says for the row selected.
         desktop.as_account("qs ipc call launcher toggle")
