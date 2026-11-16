@@ -43,6 +43,9 @@ if TYPE_CHECKING:
 # More pages than the internet's drawer takes at either of Joel's scales, so a paging that
 # never reaches its end fails rather than going on.
 INTERNET_PAGES = 20
+# More rows than the Home Network lists, so stepping down to one that isn't there fails rather
+# than going on.
+MOST_ROWS_STEPPED = 40
 # What warp asks warp-cli, each answered by the contract's file of the same name.
 WARP_QUESTIONS = ("status", "tunnel-stats", "settings", "dns-stats")
 
@@ -64,13 +67,36 @@ def home_network_plate(desktop: Desktop, scale: str, title: str) -> None:
     assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
 
 
+def moved_from(at: int, shown: Json) -> bool:
+    """Say whether the launcher's cursor has left the row it was on."""
+    return bool(shown["current"] != at)
+
+
+def stepped_down_to_beyond_the_named(desktop: Desktop, name: str) -> None:
+    """Step the cursor down a row at a time until the row named is selected.
+
+    The launcher's showing names its first twenty rows, so a row past them is reached by
+    stepping, each step waiting for the selection to move before the next.
+    """
+    for _ in range(MOST_ROWS_STEPPED):
+        selected = (desktop.showing()["selected"] or {}).get("name")
+        if selected == name:
+            return
+        at = desktop.showing()["current"]
+        desktop.next_row()
+        desktop.launcher_until(partial(moved_from, at))
+    selected = (desktop.showing()["selected"] or {}).get("name")
+    assert selected == name, f"stepping down never reached {name!r}; it stopped on {selected!r}"
+
+
 def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
     """Hold the Home Network to the eero daemon's record, and each thing's plate whole.
 
-    The record the stand-in serves (tests/desktop.nix) reaches the place: the internet first,
-    then the gateway node with its devices under it, and each node after the one it hangs from.
-    A node's, a device's and a profile's plates lay their facts out one way, every name and value
-    whole, at both of Joel's scales. WARP, beside it in Network, is shot at each scale too.
+    The record the stand-in serves (tests/desktop.nix) reaches the place: the map first, warning
+    with what net finds, then the internet, then the gateway node with its devices under it, and
+    each node after the one it hangs from. A device's step in opens the map on it first. A node's,
+    a device's and a profile's plates lay their facts out one way, every name and value whole, at
+    both of Joel's scales. WARP, beside it in Network, is shot at each scale too.
     """
     desktop.machine.wait_until_succeeds(
         desktop.in_session('test -S "$XDG_RUNTIME_DIR/eero/socket"'),
@@ -87,11 +113,13 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
         desktop.step_in()
         desktop.launcher_until(
             lambda shown: (
-                shown["rows"][:4] == ["Internet", "Hall", "generic 3", "phone 1"]
+                shown["rows"][:4] == ["Map", "Internet", "Hall", "generic 3"]
                 and "Den" in shown["rows"]
                 and shown["rows"].index("Den") < shown["rows"].index("Study")
             )
         )
+        desktop.shoot(f"launcher-home-network-map-at-{at}")
+        desktop.down_to("Internet")
         home_network_plate(desktop, scale, "Internet")
         desktop.shoot(f"launcher-home-network-at-{at}")
         the_internet_paged_through(desktop, at)
@@ -101,7 +129,13 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
         desktop.down_to("unknown computer 1")
         home_network_plate(desktop, scale, "unknown computer 1")
         desktop.shoot(f"launcher-home-network-device-at-{at}")
-        desktop.down_to("profile 1")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Show It on the Map"])
+        desktop.shoot(f"launcher-home-network-device-acts-at-{at}")
+        desktop.step_out()
+        # The Map row puts the profile 21st, past the twenty rows the launcher's showing names,
+        # so down_to can't count to it: the cursor steps down from the device until it's there.
+        stepped_down_to_beyond_the_named(desktop, "profile 1")
         home_network_plate(desktop, scale, "profile 1")
         desktop.shoot(f"launcher-home-network-profile-at-{at}")
         desktop.close_launcher()
