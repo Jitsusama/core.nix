@@ -11,7 +11,10 @@
 // only who sent, to whom and when, which is all the feed passes of them.
 // What waits on the mesh, each question still waiting on a peer and each
 // hold still standing, is the node's own judgement (its `unanswered` kind),
-// read likewise without its words.
+// read likewise without its words. The ties between cells, each pair that
+// talked in the last day, are the node's too (its `tie` kind): how many
+// messages each end sent and of what kinds, never where they went nor what
+// they said, with a strength the map fades to now.
 
 import { type Fields, type Held, isObject, text } from "../../local-sites/kit/records.ts";
 
@@ -24,6 +27,16 @@ const LATEST_MESSAGES = 20;
  * service has stopped and its last reading would only look current.
  */
 const BALANCE_FRESH_MS = 180_000;
+
+/**
+ * How long a tie's strength takes to halve, as the node grows it: two
+ * hours, its own `HALF_LIFE`, so a tie said as it stood at its last
+ * message reads as it stands now.
+ */
+const TIE_HALF_LIFE_MS = 2 * 3_600_000;
+
+/** What joins a tie's two ends in its key, which no cell's name holds. */
+const TIE_SEPARATOR = "~";
 
 /**
  * The node's records, a watch's for each kind the map reads. The balance is
@@ -39,6 +52,22 @@ interface Heard {
   readonly message: Held;
   readonly balance?: Held;
   readonly unanswered?: Held | undefined;
+  readonly tie?: Held | undefined;
+}
+
+/**
+ * Two cells that talked in the last day: their names, the one that sorts
+ * first first; when the last message between them was sent; how many each
+ * sent in the last hour and the day, in the order of `ends`; the kinds
+ * their messages were; and the tie's strength as it stands now.
+ */
+interface Tie {
+  readonly ends: readonly [string, string];
+  readonly at: string;
+  readonly hour: unknown;
+  readonly today: unknown;
+  readonly intents: unknown;
+  readonly strength: number;
 }
 
 /**
@@ -82,6 +111,7 @@ interface Now {
   readonly messages: readonly Message[];
   readonly balance: Balance | null;
   readonly waits: readonly Wait[] | null;
+  readonly ties: readonly Tie[] | null;
 }
 
 /**
@@ -184,6 +214,42 @@ function waitsOf(held: Held | undefined): Wait[] | null {
   return waits.sort((one, other) => one.since.localeCompare(other.since));
 }
 
+/** A tie's two ends from its key, when it is a pair's and not a cell's own. */
+function endsOf(key: string): [string, string] | undefined {
+  const ends = key.slice(key.indexOf(":") + 1).split(TIE_SEPARATOR);
+  const [first, second] = ends;
+  return ends.length === 2 && first && second ? [first, second] : undefined;
+}
+
+/**
+ * The ties between cells, the strongest first, each faded from its last
+ * message to `at`; none at all when the node serves nothing of them. A
+ * cell's own talk, keyed by its name alone, is no tie.
+ */
+function tiesOf(held: Held | undefined, at: number): Tie[] | null {
+  if (held === undefined) {
+    return null;
+  }
+  const ties: Tie[] = [];
+  for (const record of held.all()) {
+    const ends = endsOf(record.key);
+    const heard = record["heard"];
+    const strength = record["strength"];
+    if (ends !== undefined && typeof heard === "number" && typeof strength === "number") {
+      const faded = strength * 0.5 ** (Math.max(at - heard, 0) / TIE_HALF_LIFE_MS);
+      ties.push({
+        ends,
+        at: new Date(heard).toISOString(),
+        hour: record["hour"] ?? [0, 0],
+        today: record["today"] ?? [0, 0],
+        intents: record["intents"] ?? [],
+        strength: Math.round(faded * 1000) / 1000,
+      });
+    }
+  }
+  return ties.sort((one, other) => other.strength - one.strength);
+}
+
 /**
  * The newest balance reading held, when it is fresh at `at`: each machine's node
  * serves its own, so the newest wins, and one dated further ahead than a reading
@@ -258,10 +324,11 @@ function nowOf(heard: Heard, at: number): Now {
     messages: messagesOf(heard.message),
     balance: balanceOf(reading),
     waits: waitsOf(heard.unanswered),
+    ties: tiesOf(heard.tie, at),
   };
   // Every field is untyped JSON from the node, and plain keeps its shape.
   return plain(now) as Now;
 }
 
-export type { Balance, Heard, Message, Now, Wait };
+export type { Balance, Heard, Message, Now, Tie, Wait };
 export { BALANCE_FRESH_MS, LATEST_MESSAGES, nowOf };

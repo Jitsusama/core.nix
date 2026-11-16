@@ -358,8 +358,11 @@ in
       # latest reading whole, for each machine's share of the work; and of
       # what waits on the mesh, each question waiting and hold standing,
       # who sent it, where and since when, and whom or until when it
-      # waits, never its words either. Of each murmur the murmurs page
-      # reads only what it draws, not the machine it was said on.
+      # waits, never its words either. Of each tie between two cells, when
+      # they last talked, how much each said and of what kinds, and how
+      # strong it stood then, never where it went. Of each murmur the
+      # murmurs page reads only what it draws, not the machine it was said
+      # on.
       node = {
         socket = "mycelium/${realm}.sock";
         kinds = {
@@ -414,6 +417,13 @@ in
             "re"
             "waiting_on"
             "until"
+          ];
+          tie.fields = [
+            "heard"
+            "hour"
+            "today"
+            "intents"
+            "strength"
           ];
         };
       };

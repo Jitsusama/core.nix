@@ -14,6 +14,8 @@
 // watched apart: a node serves the one only where the balance service runs
 // and the other only once it is new enough, so the map neither waits for
 // them nor says them as trouble, and draws without them until they come.
+// The ties between cells are watched apart for the same reason: a node too
+// old to serve them draws its talk from the latest messages, as before.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
@@ -165,6 +167,7 @@ function watch(kind: Kind): Held {
 }
 
 const waits = watchApart("unanswered");
+const ties = watchApart("tie");
 
 // What each watch holds, filled as its records arrive: the drawing reads these
 // and never a copy, since a copy would stay as it was first told. What waits
@@ -178,6 +181,9 @@ const heard: Heard = {
   balance: watchApart("balance").held,
   get unanswered() {
     return waits.answered() ? waits.held : undefined;
+  },
+  get tie() {
+    return ties.answered() ? ties.held : undefined;
   },
 };
 
