@@ -9,7 +9,7 @@
 //! scrolls, as Neovim's is. The window marks it with a rule in the margin.
 use std::path::{Path, PathBuf};
 
-use crate::painter::numbers::f64_of;
+use crate::numbers::f64_of;
 use crate::place::Block;
 use crate::text::Line;
 

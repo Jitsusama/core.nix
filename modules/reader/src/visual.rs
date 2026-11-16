@@ -16,7 +16,7 @@ use std::time::Instant;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 
 use crate::keys::Act;
-use crate::painter::numbers::f32_of;
+use crate::numbers::f32_of;
 use crate::select::{Kind, Motion, Object, Selection};
 use crate::{
     App, FLASH, SCROLL_OFF_LINES, baseline, ex, gl, keys_logged, line_pt, moves, prompt, select,

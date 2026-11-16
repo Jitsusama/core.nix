@@ -2,8 +2,8 @@
 //! drawn above the page, and the line a reading says on.
 
 use super::{Drawn, ReadsOn, STAND_IN, covers, ground, painted, phase};
+use crate::numbers::{f32_of, f32_of_whole, ms_of_ns};
 use crate::painter::Key;
-use crate::painter::numbers::{f32_of, f32_of_whole, ms_of_ns};
 use crate::{App, baseline, gl, keys_logged, place, prompt, reading, run_delay_ns, whole};
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use std::time::Instant;

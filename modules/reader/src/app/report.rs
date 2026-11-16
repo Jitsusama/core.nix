@@ -2,7 +2,7 @@
 //! one refresh interval.
 
 use super::{Drawn, memory};
-use crate::painter::numbers::{f64_of, ms_of_ns, usize_of};
+use crate::numbers::{f64_of, ms_of_ns, usize_of};
 use crate::{App, Measure};
 
 impl App {

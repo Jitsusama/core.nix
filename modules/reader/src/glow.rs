@@ -13,7 +13,7 @@ use typst::visualize::{
     Color, Geometry, Gradient, Paint, RadialGradient, RatioOrAngle, RelativeTo,
 };
 
-use crate::painter::numbers::{f32_of, f64_of, usize_of};
+use crate::numbers::{f32_of, f64_of, usize_of};
 
 /// A band's glow, taken out of its frame: a rect filled with a radial
 /// gradient relative to itself, where the band's frame places it.

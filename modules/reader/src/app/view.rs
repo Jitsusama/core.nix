@@ -2,7 +2,7 @@
 //! edges, the cursor and the jumps between places.
 
 use super::{FLICK, JUMP_UNTIL, REFERENCE_SCALE, SCROLL_UNTIL, Spot, ZOOM_UNTIL, covers, phase};
-use crate::painter::numbers::{f32_of, f64_of, i32_of, u32_of, usize_of};
+use crate::numbers::{f32_of, f64_of, i32_of, u32_of, usize_of};
 use crate::{App, SCROLL_OFF_LINES, line_pt, motion, moves, search};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::time::Instant;

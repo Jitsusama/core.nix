@@ -10,7 +10,7 @@ use std::time::Instant;
 use typst_layout::{Page, PagedDocument};
 
 use crate::eyebrow::about;
-use crate::painter::numbers::ms_of_ns;
+use crate::numbers::ms_of_ns;
 use crate::walk::{self, Costs, Pieces};
 use crate::world::PageWorld;
 
