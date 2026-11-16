@@ -8,7 +8,10 @@
 // moves, since a whole map redraws for each, and none while the tab is
 // hidden: idle means zero, and the latest is handed over as it shows again.
 // Nothing is drawn until every kind has answered once, so the first map is
-// never one with its machines or its messages missing.
+// never one with its machines or its messages missing. The balance, each
+// machine's share of the realm's work, is watched apart: a node serves it
+// only where the balance service runs, so the map neither waits for it nor
+// says it as trouble, and draws without it until it comes.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
@@ -109,6 +112,16 @@ const heard: Heard = {
   cell: watch("cell"),
   machine: watch("machine"),
   message: watch("message"),
+  balance: follow(
+    { feed: "node", kind: "balance" },
+    {
+      moved: owe,
+      // Its standing and its trouble are the map's only once it is served
+      // everywhere; until then a machine without it just draws no share.
+      stands: () => undefined,
+      problem: () => undefined,
+    },
+  ).held,
 };
 
 document.addEventListener("visibilitychange", () => {

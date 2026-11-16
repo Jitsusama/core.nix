@@ -212,9 +212,11 @@ in
       # The realm's node on this machine. The forage page reads only each
       # cell's purpose, standing, documents and lineage. The map reads its
       # networks and cells whole, as `mycelium networks` draws them; of
-      # each machine only what the map draws; and of each message only who
-      # sent it, how and where, never its words. Of each murmur the murmurs
-      # page reads only what it draws, not the machine it was said on.
+      # each machine only what the map draws; of each message only who
+      # sent it, how and where, never its words; and the balance service's
+      # latest reading whole, for each machine's share of the work. Of each
+      # murmur the murmurs page reads only what it draws, not the machine it
+      # was said on.
       node = {
         socket = "mycelium/${realm}.sock";
         kinds = {
@@ -259,6 +261,7 @@ in
             "purpose"
             "settled"
           ];
+          balance = { };
         };
       };
     };

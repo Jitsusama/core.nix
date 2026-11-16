@@ -1618,7 +1618,8 @@
     the mycelium map typechecks on the kit at its strictest and builds, its tests passing: the
     networks and cells as the command prints them, machines' cells left out, two cells sharing a
     title kept apart, each machine's room and reach flattened, only the latest messages' senders
-    and groups, and a cut title's ellipsis as three full stops
+    and groups, a cut title's ellipsis as three full stops, and each machine's share of the work
+    from the balance's latest reading, none when it is past three minutes old or not served
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node, reads live in
@@ -1633,8 +1634,8 @@
     sessions to restore, its runs of subagents and reviews, what its sessions landed, and the talks
     in its steer inboxes,
     from the realm's own folders, and the home realm's alone the machine's waiting, verdicts and
-    queue, the queue's jobs and the queue whole from the login's runtime folder, and the void's
-    answers whole, a line each, each keyed as
+    queue, the queue's jobs and the queue whole from the login's runtime folder, the void's
+    answers whole, a line each, and the balance service's latest reading whole, each keyed as
     the launcher reads it; and each node restarts when what it serves changes, since it reads
     that only as it starts
   '';

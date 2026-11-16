@@ -222,7 +222,8 @@ let
   # talks in its sessions' steer inboxes, a record each of its lines;
   # and on the home realm's node the machine's
   # waiting, verdicts and queue, and every answer the void has heard, a
-  # line each, which no realm owns, so nothing is heard twice. The queue is in the login's runtime folder, which the node
+  # line each, which no realm owns, so nothing is heard twice, and the
+  # balance service's latest reading, as that realm is the one it reads. The queue is in the login's runtime folder, which the node
   # finds, as a Mac's differs by account: each job, and the queue whole as
   # how the machine stands, named for it. A file not written yet is served
   # as holding nothing.
@@ -286,6 +287,12 @@ let
       };
       void-answers = {
         file = "${state}/void/answers.jsonl";
+        whole = true;
+      };
+      # The balance service's latest reading of the realm it reads, kept
+      # whole each minute, so the map draws each machine's share of it.
+      balance = {
+        file = "${state}/mycelium/balance/now.json";
         whole = true;
       };
     };
