@@ -233,9 +233,11 @@ in
   # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, the home realm's node doesn't write how it would ease the machine or a further realm's does, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
+        && lib.hasInfix "--health-socket %t/daemons/system.sock --eases" linuxNode
+        && !(lib.hasInfix "--eases" otherNode)
         && lib.hasInfix "--ssh one --ssh two --via /bin/cell:cell-1 --serves" (viaNode "/bin/cell:cell-1")
         && lib.all (wrong: !(builtins.tryEval (viaNode wrong)).success) [
           "cell:cell-1"
@@ -283,6 +285,7 @@ in
             "${(mac links).xdg.configHome}/mycelium/serves-personal.json"
             "--health-socket"
             "${(mac links).xdg.stateHome}/daemons/system.sock"
+            "--eases"
           ]
         && (mac links).launchd.agents.mycelium.enable
         && (mac links).launchd.agents.mycelium.config.EnvironmentVariables.SIGN_AS == "agent"
@@ -572,7 +575,7 @@ in
         in
         lib.hasInfix (lib.concatStringsSep " " health) linuxNode
         && lib.hasSuffix (lib.concatStringsSep " " health) otherNode
-        && lib.hasSuffix "--health-socket ${macSocket}" (toString macNode)
+        && lib.hasInfix "--health-socket ${macSocket}" (toString macNode)
         && lib.hasSuffix "--health-socket ${macSocket}" (
           toString (mac both).launchd.agents.mycelium-other.config.ProgramArguments
         )

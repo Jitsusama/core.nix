@@ -1571,7 +1571,8 @@
     or through a provider's program, and asking each provider's program it names what it could
     make, as a user service on Linux signing in with the agents' key,
     or the key its realm names, and an agent on a Mac whose sessions sign commits with that key,
-    finding the system's ssh before the account's programs; one naming none runs it dialling nothing, and one in no realm has neither a realm nor a node
+    finding the system's ssh before the account's programs; the home realm's node writes how it
+    would ease the machine, and a further realm's doesn't; one naming none runs it dialling nothing, and one in no realm has neither a realm nor a node
   '';
   mycelium-watches-its-balance = ''
     a machine in a realm reads each minute how evenly its home realm's machines carry their work,
