@@ -2610,7 +2610,8 @@
   '';
   releases-wait-for-the-passwords-place = ''
     a release listed while the launcher's Passwords place is off leaves Asks out of the launcher,
-    and the machine is warned that releases need the place on
+    and the machine is warned that releases need the place on; once it is on, Asks is drawn over
+    the place's daemon with the clock its yes is timed by, and nothing warns
   '';
   reopening-finds-each-screen = ''
     Reopen Them All puts each session back on its own screen, found by its maker, model and serial
