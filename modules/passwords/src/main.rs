@@ -132,6 +132,9 @@ struct ManagersFile {
     /// none, and a yes stands for nothing past its ask.
     #[serde(default)]
     forges: Vec<String>,
+    /// The gh whose token GitHub is asked with, so a private repository's
+    /// main is said too; none, and GitHub is asked as nobody.
+    gh: Option<PathBuf>,
 }
 
 /// The managers as rows name them, from the same file.
@@ -401,6 +404,7 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) -> boo
                     .journal
                     .unwrap_or_else(|| PathBuf::from(secret_asks::reading::JOURNAL)),
                 forges: given.forges,
+                gh: given.gh,
                 least_shown_ms: Some(secret_asks::engine::LEAST_SHOWN_MS),
                 says_commits: true,
             },

@@ -75,6 +75,9 @@ let
       # The forge a yes may stand for: a clean tree whose origin is a
       # repository on it, at a commit its main holds, as GitHub says.
       forges = [ "https://github.com/" ];
+      # The gh whose token GitHub is asked with, so a private repository's
+      # main is said too: its store path, which no agent can repoint.
+      gh = lib.getExe config.programs.gh.package;
       # The programs an ask may run, and its PATH: the system's and the
       # account's own, as home-manager puts them in /etc/profiles. Never
       # `~/.nix-profile`, a link the account owns, which an agent could

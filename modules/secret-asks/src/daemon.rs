@@ -65,6 +65,8 @@ pub struct Config {
     /// The forges a yes may stand for, each a URL its repositories' origins
     /// start with; none, and a yes stands for nothing past its ask.
     pub forges: Vec<String>,
+    /// The gh whose token GitHub is asked with, where one's given.
+    pub gh: Option<PathBuf>,
 }
 
 /// What the experiment releases, and how: its one item, read by op, into
@@ -147,6 +149,7 @@ pub fn run(config: Config) -> ExitCode {
                 words: config.words,
                 journal: config.journal,
                 forges: config.forges,
+                gh: config.gh,
                 least_shown_ms: None,
                 says_commits: false,
             },

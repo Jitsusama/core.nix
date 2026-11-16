@@ -79,6 +79,10 @@ in
             # repository on it, at a commit its main holds, as GitHub says.
             "--forge"
             "https://github.com/"
+            # The gh whose token GitHub is asked with, so a private
+            # repository's main is said too.
+            "--gh"
+            (lib.getExe config.programs.gh.package)
           ]
           ++ lib.optionals (settings.account != null) [
             "--account"

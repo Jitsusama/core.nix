@@ -15,6 +15,10 @@
 //! without a row. A yes taken leaves a mark
 //! beside the ask until it's answered, so an ask a restart cut off while
 //! it ran is ended rather than released twice.
+//!
+//! Long because what's read before the asks lock is taken, what's done
+//! under it, and what's checked again once it's let go are one ordering,
+//! which reads true only when it's seen whole.
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -161,6 +165,9 @@ pub struct Setting {
     /// serves is granted, and covered only where that forge says its
     /// default branch holds the tree's commit. None grants nothing.
     pub forges: Vec<String>,
+    /// The gh whose token GitHub is asked with, so a private repository's
+    /// main is said too; none, and GitHub is asked as nobody.
+    pub gh: Option<PathBuf>,
 }
 
 /// The asks held, by id, and what to tell when they change.
@@ -180,7 +187,11 @@ impl Engine {
     /// An engine holding no asks yet, which tells `changed` each time its
     /// rows may have moved.
     pub fn new(setting: Setting, releaser: Box<dyn Releaser>, changed: Sender<()>) -> Engine {
-        let forge = Forge::new(setting.git.clone(), setting.forges.clone());
+        let forge = Forge::new(
+            setting.git.clone(),
+            setting.forges.clone(),
+            setting.gh.clone(),
+        );
         Engine {
             setting,
             releaser,
@@ -363,7 +374,9 @@ impl Engine {
 
     /// Takes in every ask file not yet held, releasing at once each a
     /// grant covers, and lets go of each waiting ask whose file was taken
-    /// away.
+    /// away. Each new ask is read, and its forge asked, before the asks
+    /// are held, so a slow forge holds no yes or no up meanwhile
+    /// (ISXEG8, 15 November).
     pub fn look(self: &Arc<Self>) {
         let ids: Vec<String> = std::fs::read_dir(&self.setting.asks)
             .map(|entries| {
@@ -376,12 +389,13 @@ impl Engine {
             })
             .unwrap_or_default();
         let now = now_ms();
-        let mut held = self.held();
-        held.retain(|id, one| one.state != State::Waiting || ids.contains(id));
-        for id in ids {
-            if held.contains_key(&id) {
-                continue;
-            }
+        let known: Vec<String> = {
+            let mut held = self.held();
+            held.retain(|id, one| one.state != State::Waiting || ids.contains(id));
+            held.keys().cloned().collect()
+        };
+        let mut fresh = Vec::new();
+        for id in ids.into_iter().filter(|id| !known.contains(id)) {
             match self.read(&id) {
                 Err(why) => self.answered(&id, "refused", &format!("not an ask: {why}")),
                 Ok(ask) => {
@@ -393,33 +407,28 @@ impl Engine {
                         self.answered(&id, "ended", "ended unanswered");
                     } else {
                         let tree = self.tree_of(&ask, now);
-                        if tree.landed == Some(true) && self.mark(&id) {
-                            let mut one = Held {
-                                ask,
-                                tree,
-                                state: State::Waiting,
-                                since_ms: now,
-                            };
-                            self.release_by_grant(&mut one, now);
-                            held.insert(id, one);
-                            continue;
-                        }
-                        eprintln!(
-                            "<6>secret-asks: {id} asked by {} for {} to run {:?} in {}",
-                            ask.session, ask.item, ask.argv, ask.tree
-                        );
-                        held.insert(
-                            id,
-                            Held {
-                                ask,
-                                tree,
-                                state: State::Waiting,
-                                since_ms: now,
-                            },
-                        );
+                        fresh.push((id, ask, tree));
                     }
                 }
             }
+        }
+        let mut held = self.held();
+        for (id, ask, tree) in fresh {
+            let mut one = Held {
+                ask,
+                tree,
+                state: State::Waiting,
+                since_ms: now,
+            };
+            if one.tree.landed == Some(true) && self.mark(&id) {
+                self.release_by_grant(&mut one, now);
+            } else {
+                eprintln!(
+                    "<6>secret-asks: {id} asked by {} for {} to run {:?} in {}",
+                    one.ask.session, one.ask.item, one.ask.argv, one.ask.tree
+                );
+            }
+            held.insert(id, one);
         }
     }
 
@@ -442,22 +451,35 @@ impl Engine {
 
     /// Releases each ask still waiting that a grant just made covers, so
     /// a yes to one doesn't leave its twins from other trees waiting on
-    /// him; answers whether any was.
-    fn release_covered(self: &Arc<Self>, held: &mut BTreeMap<String, Held>) -> bool {
+    /// him. Their trees are read, and the forge asked, with the asks let
+    /// go, and each is released only if it still waits as it was read.
+    fn release_covered(self: &Arc<Self>) {
         let now = now_ms();
-        let mut any = false;
-        for one in held.values_mut() {
-            if one.state != State::Waiting {
-                continue;
-            }
-            let tree = self.tree_of(&one.ask, now);
-            if tree.landed == Some(true) && self.mark(&one.ask.id) {
+        let waiting: Vec<Ask> = self
+            .held()
+            .values()
+            .filter(|one| one.state == State::Waiting)
+            .map(|one| one.ask.clone())
+            .collect();
+        let covered: Vec<(Ask, Tree)> = waiting
+            .into_iter()
+            .map(|ask| {
+                let tree = self.tree_of(&ask, now);
+                (ask, tree)
+            })
+            .filter(|(_, tree)| tree.landed == Some(true))
+            .collect();
+        let mut held = self.held();
+        for (ask, tree) in covered {
+            if let Some(one) = held.get_mut(&ask.id)
+                && one.state == State::Waiting
+                && one.ask == ask
+                && self.mark(&ask.id)
+            {
                 one.tree = tree;
                 self.release_by_grant(one, now);
-                any = true;
             }
         }
-        any
     }
 
     /// Ends each ask past its ten minutes, and lets go of each row
@@ -514,6 +536,17 @@ impl Engine {
             return self.refusal("refused", "no such ask", "gone");
         };
         let id = id.to_owned();
+        // The ask as it stands, and its tree, are read before the asks
+        // are held, since its forge may be asked, and a slow one would
+        // hold every other answer up.
+        let read = self
+            .read(&id)
+            .ok()
+            .filter(|ask| self.releaser.refused(ask).is_none())
+            .map(|ask| {
+                let tree = self.tree_of(&ask, now_ms());
+                (ask, tree)
+            });
         let mut held = self.held();
         let Some(one) = held.get_mut(&id) else {
             return self.refusal("refused", "no such ask", "gone");
@@ -525,11 +558,9 @@ impl Engine {
             self.reading(&one.ask, Outcome::Locked, said);
             return self.refusal("refused", "the screen is locked", "locked");
         }
-        let now = match self.read(&id) {
-            Ok(ask) if self.releaser.refused(&ask).is_none() => ask,
-            _ => return self.refusal("refused", "the ask is gone", "gone"),
+        let Some((now, tree)) = read else {
+            return self.refusal("refused", "the ask is gone", "gone");
         };
-        let tree = self.tree_of(&now, now_ms());
         let digest = row::digest_lasting(&now, &tree, self.lasts(&now, &tree).as_deref());
         if Some(digest.as_str()) != said["digest"].as_str() {
             self.reading(&one.ask, Outcome::Changed, said);
@@ -570,10 +601,10 @@ impl Engine {
             }
             _ => false,
         };
-        if granted {
-            self.release_covered(&mut held);
-        }
         drop(held);
+        if granted {
+            self.release_covered();
+        }
         self.reading(&ask, Outcome::Released, said);
         self.changed();
         let engine = Arc::clone(self);
