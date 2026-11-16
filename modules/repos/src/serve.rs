@@ -71,8 +71,19 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
         machine: crate::machine(),
         found: BTreeMap::new(),
     };
+    let (tell, told) = mpsc::channel();
+    let mut heard = Heard::start(tell).map_err(|why| deaf(&why.to_string()))?;
+    let kept: Vec<PathBuf> = [github::seen_file(home), upstreams::counted_file(home)]
+        .into_iter()
+        .flatten()
+        .collect();
+    // A folder is always watched before it's read, so what git writes
+    // while it's read is heard and read again rather than lost until the
+    // pace; and it's listening only once it's watching, so a view that
+    // reaches the socket is told everything from then on.
+    let mut folders = Folders::new();
     let mut began = Instant::now();
-    let record = timed(&took, || disk.read_whole());
+    let mut record = timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept));
     shared.change(feed::records(&record), feed::sources(&record));
     let listener = serve::listen(&socket).map_err(|why| {
         let socket = socket.display();
@@ -80,31 +91,23 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
             .because(why.to_string())
     })?;
     serve::accept(Arc::clone(&shared), listener);
-    let (tell, told) = mpsc::channel();
-    let mut heard = Heard::start(tell).map_err(|why| deaf(&why.to_string()))?;
-    let kept: Vec<PathBuf> = [github::seen_file(home), upstreams::counted_file(home)]
-        .into_iter()
-        .flatten()
-        .collect();
-    let mut folders = heard::folders(disk.found.keys(), &kept);
-    heard.follow(&folders, |_| true);
+    // The pace keeps its own time, so agents writing more often than it
+    // comes never put off the reading that finds new clones.
+    let mut whole = Instant::now();
     loop {
         watched.store(heard.watched(), Ordering::Relaxed);
-        let record = match told.recv_timeout(PACE) {
-            Ok(moved) => {
+        record = match told.recv_timeout(PACE.saturating_sub(whole.elapsed())) {
+            Ok(moved) if whole.elapsed() < PACE => {
                 let moved = settle(&told, moved, began)?;
                 began = Instant::now();
-                let record = timed(&took, || disk.read_again(&moved));
-                follow_again(&mut folders, &disk, &moved);
+                follow_again(&mut folders, &moved);
                 heard.follow(&folders, |of| moved.contains(of));
-                record
+                timed(&took, || disk.read_again(&moved))
             }
-            Err(RecvTimeoutError::Timeout) => {
+            Ok(_) | Err(RecvTimeoutError::Timeout) => {
                 began = Instant::now();
-                let record = timed(&took, || disk.read_whole());
-                folders = heard::folders(disk.found.keys(), &kept);
-                heard.follow(&folders, |_| true);
-                record
+                whole = began;
+                timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept))
             }
             Err(RecvTimeoutError::Disconnected) => return Err(deaf("inotify stopped")),
         };
@@ -121,9 +124,13 @@ struct Disk<'a> {
 }
 
 impl Disk<'_> {
-    /// Walks the roots for every checkout and reads each.
-    fn read_whole(&mut self) -> Record {
-        self.found = read::commons(&self.roots)
+    /// Walks the roots for every checkout, watches each one's folders and
+    /// the kept files, then reads each, so a write while it reads is heard.
+    fn read_whole(&mut self, heard: &mut Heard, folders: &mut Folders, kept: &[PathBuf]) -> Record {
+        let commons = read::commons(&self.roots);
+        *folders = heard::folders(commons.iter(), kept);
+        heard.follow(folders, |_| true);
+        self.found = commons
             .into_iter()
             .map(|common| {
                 let found = read::checkout(&common, self.home);
@@ -165,13 +172,14 @@ impl Disk<'_> {
     }
 }
 
-/// The folders to watch once the checkouts that `moved` are read again:
-/// theirs named afresh, everyone else's as they were.
-fn follow_again(folders: &mut Folders, disk: &Disk, moved: &BTreeSet<Of>) {
+/// The folders to watch before the checkouts that `moved` are read again:
+/// theirs named afresh while they're still there, everyone else's as
+/// they were.
+fn follow_again(folders: &mut Folders, moved: &BTreeSet<Of>) {
     folders.retain(|_, watch| !moved.contains(&watch.of) || watch.of == Of::Kept);
     for of in moved {
         if let Of::Checkout(common) = of
-            && disk.found.contains_key(common)
+            && common.is_dir()
         {
             folders.extend(heard::checkout(common));
         }

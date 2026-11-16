@@ -147,8 +147,10 @@ in
       };
       Service = {
         # Run by its name, so ps -ef reads repos rather than a store path
-        # (docs/daemons.md, Shown); the wrapper sets where it looks.
-        ExecStart = "@${lib.getExe wrapped} repos serve";
+        # (docs/daemons.md, Shown). The wrapper would exec it under its own
+        # path, so it runs bare, given the wrapper's settings here.
+        ExecStart = "@${lib.getExe repos} repos serve";
+        Environment = lib.mapAttrsToList (name: value: ''"${name}=${value}"'') settings;
         Restart = "on-failure";
         RestartSec = 5;
         Slice = "background.slice";
