@@ -17,12 +17,13 @@
 //! told is which checkouts moved, and the daemon reads only those again.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 
-use inotify::{Inotify, WatchDescriptor, WatchMask, Watches};
+use inotify::{EventMask, Inotify, WatchDescriptor, WatchMask, Watches};
 
 /// Whose a watched folder is: a checkout's, by its own git folder, or the
 /// timers', whose kept files every reading merges in.
@@ -41,6 +42,39 @@ pub struct Watch {
 
 /// The folders to watch, by path.
 pub type Folders = BTreeMap<PathBuf, Watch>;
+
+/// One of inotify's events, as far as it says what moved: a name written
+/// in a watched folder (none for the folder itself), or the kernel's queue
+/// overflowing, when the events it dropped are lost.
+#[derive(Debug)]
+pub enum Told<'a> {
+    Moved(&'a Watch, Option<&'a OsStr>),
+    Overflowed,
+}
+
+/// Whose folders moved, by `events`: each watch's whose heeded name was
+/// written, or whose folder itself went. A queue overflowing tells every
+/// watch `held`, since a fetch writing thousands of refs at once would
+/// otherwise go unread until the daemon's pace came round.
+pub fn told<'a>(
+    events: impl IntoIterator<Item = Told<'a>>,
+    held: impl IntoIterator<Item = &'a Watch>,
+) -> BTreeSet<Of> {
+    let mut moved = BTreeSet::new();
+    for event in events {
+        match event {
+            Told::Moved(watch, name) => {
+                if name.is_none_or(|name| watch.folder.heeds(&name.to_string_lossy())) {
+                    moved.insert(watch.of.clone());
+                }
+            }
+            Told::Overflowed => {
+                return held.into_iter().map(|watch| watch.of.clone()).collect();
+            }
+        }
+    }
+    moved
+}
 
 /// What a watched folder is, which says the names in it that matter.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -211,17 +245,15 @@ impl Heard {
                     let held = lock(&hearing);
                     // A watch given back is no longer held, so what's
                     // still on its way from it, its own end included, is
-                    // passed over; a folder going is always heeded.
-                    let moved: BTreeSet<Of> = events
-                        .into_iter()
-                        .filter_map(|event| {
-                            let watch = held.get(&event.wd)?;
-                            event
-                                .name
-                                .is_none_or(|name| watch.folder.heeds(&name.to_string_lossy()))
-                                .then(|| watch.of.clone())
-                        })
-                        .collect();
+                    // passed over; a folder going is always heeded. An
+                    // overflow comes on no watch of its own.
+                    let events = events.into_iter().filter_map(|event| {
+                        if event.mask.contains(EventMask::Q_OVERFLOW) {
+                            return Some(Told::Overflowed);
+                        }
+                        Some(Told::Moved(held.get(&event.wd)?, event.name))
+                    });
+                    let moved = told(events, held.values());
                     drop(held);
                     if !moved.is_empty() && tell.send(moved).is_err() {
                         return;

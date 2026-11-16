@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use super::{Folder, Folders, Heard, Of, Watch, folders};
+use std::ffi::OsStr;
+
+use super::{Folder, Folders, Heard, Of, Told, Watch, folders, told};
 
 /// A folder of the test's own, emptied first, so no two tests share one.
 fn place(name: &str) -> PathBuf {
@@ -142,6 +144,38 @@ fn a_branch_landing_is_told_as_its_checkouts_and_an_index_written_is_not() {
         .expect("a branch landing is heard");
     assert_eq!(moved, BTreeSet::from([Of::Checkout(git.clone())]));
     fs::remove_dir_all(&at).expect("cleaned");
+}
+
+#[test]
+fn a_queue_overflowing_tells_every_watch_held_since_what_it_dropped_is_unknown() {
+    let core = Watch {
+        folder: Folder::Git,
+        of: Of::Checkout(PathBuf::from("/src/core.nix/.git")),
+    };
+    let world = Watch {
+        folder: Folder::Refs,
+        of: Of::Checkout(PathBuf::from("/src/world/.git")),
+    };
+    let kept = Watch {
+        folder: Folder::Kept(BTreeSet::from(["github.json".to_owned()])),
+        of: Of::Kept,
+    };
+    let held = [&core, &world, &kept];
+
+    let quiet = told([Told::Moved(&core, Some(OsStr::new("index")))], held);
+    assert_eq!(quiet, BTreeSet::new(), "the index written is not heeded");
+    let overflowed = told(
+        [
+            Told::Moved(&core, Some(OsStr::new("index"))),
+            Told::Overflowed,
+        ],
+        held,
+    );
+    assert_eq!(
+        overflowed,
+        BTreeSet::from([core.of.clone(), world.of.clone(), Of::Kept]),
+        "an overflow tells every checkout held and the timers' files"
+    );
 }
 
 #[test]
