@@ -540,10 +540,10 @@
     layoutKey = key;
     const disc = new Map([...room].map(([k, r]) => [k, discRadius(r)]));
     // Each machine's networks take one arc of the ring, clockwise from the
-    // top, the right-hand machine's first, so its cords never cross the
-    // middle and a machine opened is the arc it carries.
+    // top, the top machine's first, so its cords never cross the middle
+    // and a machine opened is the arc it carries.
     const machineAt = new Map(m.machines.map((x, i) => [x.name, i]));
-    const arc = (h) => -(machineAt.get(h.machine) ?? -1);
+    const arc = (h) => machineAt.get(h.machine) ?? m.machines.length;
     const tops = [...m.hubs.values()].filter((h) => !h.within).sort((a, b) => Boolean(a.alone) - Boolean(b.alone) || arc(a) - arc(b) || collate(a.name, b.name));
     const familyWidth = (h) => {
       const kids = h.children.reduce((sum, c) => sum + familyWidth(c) + GAP, 0);
@@ -570,17 +570,22 @@
         place(c, x + Math.cos(ca) * d, y + Math.sin(ca) * d, ca);
       });
     };
-    let used = 0;
+    // The machines stand in a column, so the first machine's arc is turned
+    // to sit over it, at the top, and the last one's comes round below.
+    const firstRun = tops.findIndex((h) => h.machine !== tops[0]?.machine);
+    const lead = widths.slice(0, firstRun < 0 ? widths.length : firstRun).reduce((a, b) => a + b, 0);
+    let used = -lead / 2;
     tops.forEach((h, i) => {
       const a = -Math.PI / 2 + ((used + widths[i] / 2) / total) * 2 * Math.PI;
       used += widths[i];
       const d = ring + disc.get(h.key);
       place(h, Math.cos(a) * d, Math.sin(a) * d, a);
     });
-    // Machines stand apart in proportion to the ring, so at the whole
-    // map's scale two of them never read as one dot.
+    // Machines stand in a column, apart in proportion to the ring, since a
+    // machine's mark is its name, wide and short: a row of them would
+    // need several times the room to keep their boxes apart.
     const step = Math.max(MACHINE_STEP, ring * MACHINE_SPREAD);
-    const machines = new Map(m.machines.map((x, i) => [x.name, [(i - (m.machines.length - 1) / 2) * step, 0]]));
+    const machines = new Map(m.machines.map((x, i) => [x.name, [0, (i - (m.machines.length - 1) / 2) * step]]));
     // Once a machine's cords bundle, the ring is too wide for a row of
     // machines at its middle to be told apart: each machine carrying
     // networks moves out to the middle of its own arc, so its trunks start
@@ -1332,14 +1337,15 @@
     }
     const counts = new Map();
     for (const s of m.cells) counts.set(s.machine, (counts.get(s.machine) || 0) + 1);
-    // A machine's name is its mark, so it shows whatever is open, faded
-    // when the choice doesn't touch it, and says what it carries only then.
+    // A machine's name is its mark, so it shows in full whatever is open,
+    // as a hub's disc does; only when the choice touches it does it say
+    // what it carries.
     for (const x of m.machines) {
       const key = `m:${x.name}`;
       const far = near && !near.machines.has(x.name) && key !== pointed;
       const off = x.state !== "ready";
       const strong = key === pointed || (chosen?.kind === "machine" && chosen.id === x.name);
-      const mark = { key, kind: "machine", mark: true, off, strong, rank: -1, at: L.machines.get(x.name), r: MACHINE_R, name: [x.name], mono: true, far };
+      const mark = { key, kind: "machine", mark: true, off, strong, rank: -1, at: L.machines.get(x.name), r: MACHINE_R, name: [x.name], mono: true };
       if (far) {
         out.push({ ...mark, sub: off ? "off" : "" });
         continue;
@@ -1389,11 +1395,13 @@
         const sub = l.sub ? `<text class="t-sub" y="${below}">${esc(l.sub)}</text>` : "";
         const here = l.mark && l.key === pointed && pointing();
         const cls = `tag t-${l.kind}${l.mark ? " t-mark" : ""}${here ? " here" : ""}${l.off ? " off" : ""}${l.far ? " far" : ""}${l.strong ? " strong" : ""}${foundSet.has(l.key) ? " match" : ""}`;
+        const words = `<text class="t-name${l.mono ? " mono" : ""}">${name}</text>`;
+        if (!l.mark) return `<g class="${cls}" data-name="${esc(l.key)}"><rect class="t-plate" rx="3"/>${words}${sub}</g>`;
         // A mark takes the pointer itself, and its box is drawn round its
-        // name alone, so what it carries hangs outside it.
-        const mark = l.mark ? ` data-mark="${esc(l.key)}"` : "";
-        const box = l.mark ? '<rect class="t-box"/>' : "";
-        return `<g class="${cls}" data-name="${esc(l.key)}"${mark}><rect class="t-plate" rx="${l.mark ? 0 : 3}"/>${box}<text class="t-name${l.mono ? " mono" : ""}">${name}</text>${sub}</g>`;
+        // name alone, so what it carries hangs outside it: the box and the
+        // counts are two names, and the cords between them run free.
+        const counts = l.sub ? `<text class="t-sub" y="${below}" data-name="${esc(l.key)} counts">${esc(l.sub)}</text>` : "";
+        return `<g class="${cls}" data-mark="${esc(l.key)}"><g data-name="${esc(l.key)}"><rect class="t-plate" rx="0"/><rect class="t-box"/>${words}</g>${counts}</g>`;
       })
       .join("");
     measureLabels();
@@ -1416,7 +1424,9 @@
       if (!boxCache.has(key)) {
         const { x, y, width, height } = nodes[i].getBBox();
         const n = labels[i].mark && nodes[i].querySelector(".t-name").getBBox();
-        boxCache.set(key, { x, y, width, height, name: n && { x: n.x, y: n.y, width: n.width, height: n.height } });
+        const s = labels[i].mark && nodes[i].querySelector(".t-sub")?.getBBox();
+        const plain = (r) => r && { x: r.x, y: r.y, width: r.width, height: r.height };
+        boxCache.set(key, { x, y, width, height, name: plain(n), sub: plain(s) });
       }
       return boxCache.get(key);
     });
@@ -1432,6 +1442,7 @@
       l.box = padded(b, l.mark ? MARK_PAD : PLATE_PAD);
       if (l.mark) {
         l.markBox = padded(b.name, MARK_PAD);
+        l.subBox = b.sub ? padded(b.sub, PLATE_PAD) : null;
         fit(nodes[i].querySelector(".t-box"), l.markBox);
       }
       fit(nodes[i].querySelector(".t-plate"), l.mark ? l.markBox : l.box);
@@ -1564,12 +1575,39 @@
     g.setAttribute("display", "none");
   };
 
+  // Zoomed out past where the machines' column holds their boxes apart,
+  // the marks stack, each just under the one above, the stack kept
+  // centred on the column; each mark's shift, in screen px.
+  const MARK_GAP = 4;
+  const stackMarks = () => {
+    const shifts = new Map();
+    const marks = labels
+      .filter((l) => l.mark)
+      .map((l) => ({ l, top: l.at[1] * k + ty - l.markBox[3] / 2 - (l.markBox[1] - l.box[1]), x: l.at[0] * k + tx }))
+      .sort((a, b) => a.top - b.top);
+    let moved = 0;
+    const placed = [];
+    for (const one of marks) {
+      const [, , bw, bh] = one.l.box;
+      const left = one.x - bw / 2;
+      const under = placed.filter((p) => p.left < left + bw && left < p.left + p.w).reduce((most, p) => Math.max(most, p.bottom + MARK_GAP), -Infinity);
+      const top = Math.max(one.top, under);
+      shifts.set(one.l.key, top - one.top);
+      moved += top - one.top;
+      placed.push({ left, w: bw, bottom: top + bh });
+    }
+    const mean = moved / Math.max(1, marks.length);
+    if (moved) for (const [key, s] of shifts) shifts.set(key, s - mean);
+    return shifts;
+  };
+
   // Where each label sits on screen, after every pan or zoom.
   const placeLabels = () => {
     const nodes = labelsEl.children;
     const [w, h] = size();
     const taken = [];
     const cuts = [];
+    const stacked = stackMarks();
     const circles = circlesOnScreen(w, h);
     const lines = linesOnScreen(w, h);
     for (let i = 0; i < labels.length; i++) {
@@ -1583,7 +1621,7 @@
       // keeps clear of them.
       if (l.mark) {
         const [nx, ny, nw, nh] = l.markBox;
-        const [dx, dy] = [sx - nx - nw / 2, sy - ny - nh / 2];
+        const [dx, dy] = [sx - nx - nw / 2, sy - ny - nh / 2 + (stacked.get(l.key) || 0)];
         const placed = [bx + dx, by + dy, bw, bh];
         if (placed[0] > w || placed[1] > h || placed[0] + bw < 0 || placed[1] + bh < 0) {
           hide(g);
@@ -1592,9 +1630,11 @@
         g.removeAttribute("visibility");
         g.removeAttribute("display");
         taken.push(placed);
-        // Its cords stop at the box's hairline itself, not short of it as
-        // they do round a name, and what it carries reads by its halo.
-        cuts.push([nx + dx + KNOCK_PX, ny + dy + KNOCK_PX, nw - 2 * KNOCK_PX, nh - 2 * KNOCK_PX]);
+        // Its cords stop just short of the box's hairline, as they do round
+        // a name, and the counts under it are cleared too, so no cord runs
+        // through them.
+        cuts.push([nx + dx, ny + dy, nw, nh]);
+        if (l.subBox) cuts.push([l.subBox[0] + dx, l.subBox[1] + dy, l.subBox[2], l.subBox[3]]);
         g.setAttribute("transform", `translate(${dx.toFixed(1)},${dy.toFixed(1)})`);
         continue;
       }

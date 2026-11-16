@@ -8,8 +8,10 @@ Nothing on it acts on the network.
 
 ## How to Read It
 
-- **Machines are the roots.** Each machine is a ringed mark with its name
-  and how busy it is. A dashed link joins machines on the same network.
+- **Machines are the roots.** Each machine's mark is its name in a
+  hairline box, its cords leaving the box's edge, with how busy it is
+  under it; the box is dashed while the machine is off. A dashed link
+  joins machines on the same network.
 - **Three kinds of line, each with its own look.** What hangs from what
   is solid and neutral: cords and hyphae. What is shared is a run of
   dots in the colour of what is shared. Talk is the one solid colour,
