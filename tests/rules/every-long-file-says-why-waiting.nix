@@ -87,7 +87,6 @@
   "tests/program-controls.qml"
   "tests/query-keys.qml"
   "tests/rows.qml"
-  "tools/changed-checks/tests/changed_checks.rs"
   "tools/merge-net/src/watch.rs"
   "tools/merge-net/src/world.rs"
 ]
