@@ -1551,6 +1551,8 @@ mod tests {
     // disk guard's did for minutes on 8 November, so a proof that built
     // there passes once its output comes back, however long this store
     // keeps it waiting.
+    // Only a lender proves its builders, and only Linux runs one.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_builder_beside_passes_once_its_proof_comes_back_whatever_holds_this_store() {
         let dir = tempfile::tempdir().unwrap();

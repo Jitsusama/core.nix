@@ -4605,6 +4605,8 @@ exit 0
         }
     }
 
+    // Only a lender proves its builders, and only Linux runs one.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_lent_builder_failing_two_proofs_in_a_row_is_named_nowhere_and_given_back() {
         let _heard = unstopped();
@@ -4673,6 +4675,8 @@ exit 0
         assert_eq!(said["consecutiveFailures"], 2);
     }
 
+    // Only a lender proves its builders, and only Linux runs one.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_lent_builder_that_answers_its_proofs_stays() {
         let _heard = unstopped();
@@ -4714,6 +4718,8 @@ exit 0
     // uplink beside them was too full to take a copy. One that builds but
     // can't carry is named nowhere, but kept warm rather than given back
     // to be lent cold over the same way.
+    // Only a lender proves its builders, and only Linux runs one.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_lent_builder_that_builds_but_cant_carry_a_copy_is_named_nowhere_but_kept() {
         let _heard = unstopped();

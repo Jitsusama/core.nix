@@ -1576,6 +1576,7 @@ mod tests {
 
     /// Whether the builder beside `line` names is left out, once the proof
     /// due at `now` has ended, waiting at most 5 s.
+    #[cfg(target_os = "linux")]
     fn left_out(kept: &mut Vec<(String, Keeper)>, line: &str, nix: &str, now: Instant) -> bool {
         let heard = |kept: &Vec<(String, Keeper)>| {
             kept.first().map(|(_, keeper)| {
@@ -1706,6 +1707,8 @@ mod tests {
         );
     }
 
+    // Only a lender proves its builders, and only Linux runs one.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_builder_beside_failing_two_proofs_in_a_row_is_left_out_until_one_passes() {
         let dir = tempfile::tempdir().expect("a folder");
@@ -1766,6 +1769,8 @@ mod tests {
 
     // On 9 November the work Mac's builder had 6 GB free, and every check
     // sent there failed for room while its proofs passed.
+    // Only a lender proves its builders, and only Linux runs one.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_builder_beside_under_the_floor_is_left_out_until_it_has_room() {
         let dir = tempfile::tempdir().expect("a folder");
@@ -1870,6 +1875,8 @@ mod tests {
 
     // The same builder sat full until a person freed it, since nothing
     // here could.
+    // Only a lender proves its builders, and only Linux runs one.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_full_builder_beside_is_freed_by_the_program_it_names() {
         let dir = tempfile::tempdir().expect("a folder");

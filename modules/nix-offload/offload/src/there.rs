@@ -4861,6 +4861,7 @@ mod tests {
     /// What a run sent far says while it runs for `seconds`, and how long
     /// it took, on a builder whose `ps` names `uids` as running and whose
     /// Nix runs `most` builds at once, asked about every second.
+    #[cfg(target_os = "linux")]
     fn said_far(seconds: u32, uids: &str, most: &str) -> (String, Duration) {
         let folder = tempfile::tempdir().unwrap();
         let bin = folder.path().join("bin");
@@ -4888,6 +4889,8 @@ mod tests {
         )
     }
 
+    // What's said there runs on a lent builder, which is Linux.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_run_sent_to_a_full_builder_says_it_may_wait_there_for_room() {
         // On 8 November the net's VM test said "building on the lent
@@ -5006,6 +5009,8 @@ mod tests {
         assert!(busy(""), "an unread pressure kept building here");
     }
 
+    // A Mac has no pressure to read, so it never builds here while idle.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_build_here_ends_once_this_machine_grows_busy() {
         let folder = tempfile::tempdir().expect("a folder");
