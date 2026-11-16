@@ -375,6 +375,31 @@ in
       touch $out
     '';
 
+  # The shell hears the system daemon's parts, by name, as the daemon tells
+  # them, and holds none once the daemon is gone, so no old judgement reads
+  # as current (tests/system-parts.qml), over a stand-in for the daemon.
+  the-shell-hears-the-systems-parts =
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # case, or sets what Quickshell runs it with.
+    pkgs.runCommandLocal "the-shell-hears-the-systems-parts" { } ''
+      mkdir -p runtime/daemons && chmod -R 700 runtime
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/Watch.js} Watch.js
+      ${copied [
+        "Daemon.qml"
+        "SystemParts.qml"
+      ]}
+      cp ${singleton "Report.qml" ''
+        function say(text) { }
+      ''} Report.qml
+      cp ${../../../tests/system-parts.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # The rows drawn are told where they stand only when it changes, so a
   # refresh in the place they stay in redraws none of them:
   # tests/rows-place.qml holds launcher/RowsPlace.js to it in Qt's own engine.

@@ -3367,6 +3367,11 @@
     its own; a part worth a look says the daemon's own side, the first item kept longest, its mark
     and side in the warning's role, or the alert's when bad, and its foot the whole sentence
   '';
+  the-shell-hears-the-systems-parts = ''
+    the shell watches the system daemon's parts and holds each by its name, the summary aside; a
+    part told anew replaces the one held, a part let go is gone, and once the daemon goes no part
+    is held and the daemon reads as unheard
+  '';
   the-launcher-opens-on-what-it-kept-on-niri = ''
     on niri, an opening draws home as the closed launcher left it, each row saying what it said and
     no row made before its frame; a viewer's command line opens with no source's rows made at
