@@ -113,6 +113,8 @@ fragment open on Repository {{
       number title url isDraft headRefName baseRefName headRefOid updatedAt
       author {{ login }}
       reviewDecision
+      reviewRequests(first: {REVIEWERS}) {{ nodes {{ requestedReviewer {{
+        ... on User {{ login }} }} }} }}
       commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{
         contexts(first: {CHECKS}) {{ nodes {{ __typename
           ... on CheckRun {{ name status conclusion }}
@@ -214,8 +216,13 @@ fn change(node: &Value) -> Option<Change> {
 /// Whose review a change asks, by login: people alone, since a team
 /// asked answers as a reviewer with no login.
 fn asked_of(requests: &Value) -> Vec<String> {
-    let _ = (requests, REVIEWERS);
-    Vec::new()
+    requests["nodes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|request| request["requestedReviewer"]["login"].as_str())
+        .map(str::to_owned)
+        .collect()
 }
 
 /// What a change's checks say, each named once: a check run by its name

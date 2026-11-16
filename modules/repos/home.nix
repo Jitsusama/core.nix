@@ -13,6 +13,13 @@
 # $XDG_RUNTIME_DIR/daemons/repos.sock in the shell's daemon interface, read
 # again as git writes, for the local sites' Code page (src/serve.rs says
 # how).
+#
+# Each refresh also says to the machine's realm, as its GitHub receptor, how
+# many open changes ask the declared login's review, counting only the
+# owners declared for that realm (src/receptor.rs). Both come from here
+# alone, never from a file repos reads, and a machine declaring no realm or
+# no login says nothing.
+{ mycelium }:
 {
   config,
   lib,
@@ -21,7 +28,26 @@
 }:
 let
   repos = pkgs.callPackage ./package.nix { };
-  inherit (config.jitsusama.repos) roots throughGh;
+  inherit (config.jitsusama.repos)
+    roots
+    throughGh
+    receptorLogin
+    receptorOwners
+    ;
+  realm = config.jitsusama.mycelium.realm or null;
+  # What the refresh's unit gives it to say the receptor with, set in the
+  # unit alone rather than as the command's defaults, so what is counted is
+  # what the machine declares. Every realm's owners are given, so an owner
+  # declared for two is counted in neither.
+  myceliumProgram = lib.getExe mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  owner = lib.types.strMatching "[A-Za-z0-9._-]+";
+  owned = name: owners: "${name}=${lib.concatStringsSep "," owners}";
+  receptor = lib.optionals (realm != null && receptorLogin != null) [
+    "MYCELIUM=${myceliumProgram}"
+    "MYCELIUM_REALM=${realm}"
+    "REPOS_RECEPTOR_LOGIN=${receptorLogin}"
+    "REPOS_RECEPTOR_OWNERS=${lib.concatStringsSep " " (lib.mapAttrsToList owned receptorOwners)}"
+  ];
   # The command's settings, as defaults a caller may still set for one
   # run. gh is named only where a machine lists repositories for it, so
   # it's never asked elsewhere.
@@ -71,6 +97,31 @@ in
     '';
   };
 
+  options.jitsusama.repos.receptorLogin = lib.mkOption {
+    type = lib.types.nullOr (lib.types.strMatching "[A-Za-z0-9](-?[A-Za-z0-9])*");
+    default = null;
+    example = "someone";
+    description = ''
+      The GitHub login whose asked reviews the GitHub receptor counts, as
+      GitHub matches logins, case aside. None by default, and with none the
+      receptor is never said.
+    '';
+  };
+
+  options.jitsusama.repos.receptorOwners = lib.mkOption {
+    type = lib.types.attrsOf (lib.types.listOf owner);
+    default = { };
+    example = {
+      work = [ "some-company" ];
+      personal = [ "someone" ];
+    };
+    description = ''
+      The GitHub owners whose repositories each realm's receptor counts, by
+      realm. A machine counts only its own realm's, and an owner listed
+      under two realms is counted in neither.
+    '';
+  };
+
   config = {
     home.packages = [ wrapped ];
     # How agents are to ask it, and the Code words to answer in.
@@ -101,6 +152,7 @@ in
         # such as GitHub refusing, fails it at once, as before.
         RestartForceExitStatus = "69";
         RestartSec = "30s";
+        Environment = receptor;
       };
     };
     systemd.user.timers.repos-refresh = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {

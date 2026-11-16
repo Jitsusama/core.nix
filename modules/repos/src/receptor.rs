@@ -64,8 +64,11 @@ impl Owners {
     /// Whether the repository keyed `key` is one of these owners', its
     /// owner matched as GitHub matches one, ASCII case aside.
     pub fn hold(&self, key: &str) -> bool {
-        let _ = (key, &self.0);
-        false
+        let owner = key
+            .strip_prefix("github:")
+            .and_then(|path| path.split_once('/'))
+            .map(|(owner, _)| owner);
+        owner.is_some_and(|owner| self.0.iter().any(|one| one.eq_ignore_ascii_case(owner)))
     }
 }
 

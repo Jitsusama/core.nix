@@ -109,9 +109,21 @@ fn the_changes_asking_the_declared_login_are_counted_by_hour_and_day() {
         ],
         &[],
     );
-    let told = told(&seen, &Owners::of(DECLARED, "work"), &login(), NOW, MIDNIGHT);
+    let told = told(
+        &seen,
+        &Owners::of(DECLARED, "work"),
+        &login(),
+        NOW,
+        MIDNIGHT,
+    );
     assert_eq!(
-        (told.source, told.state, told.hour, told.today, told.addressed),
+        (
+            told.source,
+            told.state,
+            told.hour,
+            told.today,
+            told.addressed
+        ),
         (Source::GitHub, State::Reading, 1, 2, 3)
     );
 }
@@ -132,14 +144,31 @@ fn no_receptor_is_said_without_all_the_machine_declares() {
     let program = || Some(OsString::from("/nix/store/x-mycelium/bin/mycelium"));
     let declared = || Some(OsString::from(DECLARED));
     let taken = [
-        (program(), Some("work".into()), Some("jsama".into()), declared()),
+        (
+            program(),
+            Some("work".into()),
+            Some("jsama".into()),
+            declared(),
+        ),
         (program(), Some("work".into()), None, declared()),
-        (program(), Some("work".into()), Some("not a login".into()), declared()),
+        (
+            program(),
+            Some("work".into()),
+            Some("not a login".into()),
+            declared(),
+        ),
         (program(), Some("work".into()), Some("jsama".into()), None),
         (program(), None, Some("jsama".into()), declared()),
-        (Some("mycelium".into()), Some("work".into()), Some("jsama".into()), declared()),
+        (
+            Some("mycelium".into()),
+            Some("work".into()),
+            Some("jsama".into()),
+            declared(),
+        ),
     ]
-    .map(|(program, realm, login, owners)| Receptor::named(program, realm, login, owners).is_some());
+    .map(|(program, realm, login, owners)| {
+        Receptor::named(program, realm, login, owners).is_some()
+    });
     assert_eq!(
         taken,
         [true, false, false, false, false, false],
@@ -165,12 +194,33 @@ fn mycelium_is_given_fixed_words_and_counts_never_what_a_change_says() {
     assert_eq!(
         said,
         [
-            "--realm", "work", "receptors", "say", "github", "--state", "reading", "--hour",
-            "1", "--today", "1", "--addressed", "1", "--every", "300", "--pid", "4242",
+            "--realm",
+            "work",
+            "receptors",
+            "say",
+            "github",
+            "--state",
+            "reading",
+            "--hour",
+            "1",
+            "--today",
+            "1",
+            "--addressed",
+            "1",
+            "--every",
+            "300",
+            "--pid",
+            "4242",
         ],
         "mycelium was given more than fixed words and counts"
     );
-    for word in [planted, "kestrel-co", "a-repository-named-loudly", "jsama", "osprey"] {
+    for word in [
+        planted,
+        "kestrel-co",
+        "a-repository-named-loudly",
+        "jsama",
+        "osprey",
+    ] {
         assert!(
             !said.iter().any(|said| said.contains(word)),
             "{word} reached mycelium: {said:?}"
@@ -183,7 +233,7 @@ fn the_day_begins_at_a_minute_on_or_before_now_within_a_day() {
     for now in [NOW, NOW + 59, NOW + 12 * HOUR + 1] {
         let began = midnight(now);
         assert!(
-            began <= now && now - began < 24 * HOUR && began % 60 == 0,
+            began <= now && now - began < 24 * HOUR && began.is_multiple_of(60),
             "the day of {now} began at {began}"
         );
     }
