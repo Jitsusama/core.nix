@@ -43,6 +43,7 @@ pub mod github;
 mod judge;
 pub mod peer;
 pub mod phone;
+pub mod progress;
 pub mod record;
 pub mod reply;
 pub mod resume;

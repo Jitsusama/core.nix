@@ -128,6 +128,11 @@ pub enum Waved {
     Quoted,
     /// Written by a bot or an app.
     Bot,
+    /// Written where any account may comment, by one that isn't the
+    /// repository's own: neither its owner, a member of its owner's
+    /// organization nor a collaborator (Joel's orchestrator, 16
+    /// November), so a stranger can't stop his agents, nor sound an alert.
+    Outsider,
 }
 
 impl fmt::Display for Verdict {
@@ -151,6 +156,7 @@ impl fmt::Display for Waved {
             Self::TalkedAbout => "talked-about",
             Self::Quoted => "quoted",
             Self::Bot => "bot",
+            Self::Outsider => "outsider",
         })
     }
 }

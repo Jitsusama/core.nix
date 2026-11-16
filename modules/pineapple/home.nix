@@ -2,10 +2,11 @@
 # GitHub, and any site speaking GitHub's API that a machine names in
 # jitsusama.pineapple.sites, through Joel's own sign-ins, only read. Slack
 # is live since Joel read two days of its shadow log: its stops stand, it
-# answers where asked, and it tells his phone. GitHub and each named site
-# are in shadow, their stops written down with nothing acting on them:
-# GitHub because anyone in the world may comment on a public repository's
-# thread, and a site until its own are read and the machine says it's live
+# answers where asked, and it tells his phone. GitHub is live too, where
+# only a repository's owner, its organization's members and its
+# collaborators stop him, since anyone in the world may comment there.
+# Each named site is in shadow, its stops written down with nothing acting
+# on them, until its own are read and the machine says it's live
 # (src/lib.rs says how the pieces fit). A machine signed in to Slack as Joel
 # imports it.
 {
@@ -169,7 +170,7 @@ in
           Slice = "background.slice";
           # Shown in ps by its name, not its store path (docs/daemons.md).
           # Without --live it only writes down what it would do; taking the
-          # word out is the way back to shadow.
+          # word out, with its check's, is the way back to shadow.
           ExecStart = "@${lib.getExe pineapple} pineapple-slack run --live";
           # The keyring's reader, run each round, so a sign-in made or renewed
           # while it runs is read without a restart. With none, it says so in
@@ -185,19 +186,19 @@ in
 
       # The same reader for GitHub (src/bin/pineapple-github.rs): every minute,
       # the pull requests and issues Joel takes part in that changed, and
-      # what was said on them, only asked, in shadow. Its stops go where the
+      # what was said on them, only asked. Its stops go where the
       # Slack reader's do, so the launcher, the harness and his phone take
       # them alike; it answers nobody on GitHub.
       systemd.user.services.pineapple-github = {
         Unit = {
-          Description = "Reads GitHub for the safe word that stops Joel's agents, in shadow";
+          Description = "Reads GitHub for the safe word that stops Joel's agents";
           X-SwitchMethod = "restart";
         };
         Service = {
           Slice = "background.slice";
-          # In shadow until Joel says who on GitHub may stop his agents,
-          # since any account may comment where he takes part.
-          ExecStart = "@${pineapple}/bin/pineapple-github pineapple-github run";
+          # Live, where only the repository's own stop him (src/github.rs);
+          # taking --live out, with its check's, is the way back to shadow.
+          ExecStart = "@${pineapple}/bin/pineapple-github pineapple-github run --live";
           # Run each round, so a sign-in renewed while it runs is read without
           # a restart; with none, it says so and reads nothing.
           Environment = [ "SIGN_IN_KEYRING=${githubSignIn}" ];

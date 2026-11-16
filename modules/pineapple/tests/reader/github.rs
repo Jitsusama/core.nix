@@ -8,7 +8,11 @@
 //! list's later pages are read too. A site with no notifications is read
 //! by searching for what Joel opened, its keys its own, from far enough
 //! back that a search's lagging index misses nothing, and never for more
-//! repositories than its searches allow.
+//! repositories than its searches allow. A site of a company's own weighs
+//! no writer's standing; who may stop Joel on GitHub itself, where any
+//! account may comment, is in standing.rs.
+
+mod standing;
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -28,9 +32,18 @@ use super::{
 /// The stand-in's Joel on GitHub.
 const LOGIN: &str = "joel.example";
 
-/// One comment on example/shop#12, said `ago` seconds before `now`.
+/// One comment on example/shop#12, said `ago` seconds before `now` by a
+/// collaborator on it.
 fn comment(id: u64, by: &str, body: &str, now: u64, ago: u64) -> Value {
+    commented(id, by, "COLLABORATOR", body, (now, ago))
+}
+
+/// One comment on example/shop#12 by a writer GitHub names as
+/// `association` to the repository, said `ago` seconds before `now`.
+fn commented(id: u64, by: &str, association: &str, body: &str, when: (u64, u64)) -> Value {
+    let (now, ago) = when;
     json!({"id": id, "body": body, "user": {"login": by, "type": "User"},
+        "author_association": association,
         "html_url": format!("https://code.example.com/example/shop/pull/12#c{id}"),
         "created_at": stamp(now - ago), "updated_at": stamp(now - ago)})
 }
@@ -73,6 +86,9 @@ fn answer_with(line: &str, now: u64, comments: &[Value]) -> Value {
             "url": "https://api.example.com/repos/example/shop/pulls/12"},
             "repository": {"full_name": "example/shop"}}]);
     }
+    if line.contains(" /repos/example/shop ") {
+        return json!({"full_name": "example/shop", "permissions": {"pull": true, "push": true}});
+    }
     if line.contains(" /repos/example/shop/issues/12/comments?") {
         return Value::Array(comments.to_vec());
     }
@@ -80,11 +96,11 @@ fn answer_with(line: &str, now: u64, comments: &[Value]) -> Value {
         return json!({"title": "Make checkout faster", "body": "",
             "html_url": "https://code.example.com/example/shop/pull/12",
             "user": {"login": "colleague", "type": "User"},
-            "created_at": stamp(now - 3600)});
+            "author_association": "MEMBER", "created_at": stamp(now - 3600)});
     }
     if line.contains(" /repos/example/shop/pulls/12/reviews?") {
         return json!([{"id": 9, "body": format!("@{LOGIN} can you please STOP your robots?"),
-            "user": {"login": "colleague2", "type": "User"},
+            "user": {"login": "colleague2", "type": "User"}, "author_association": "OWNER",
             "html_url": "https://code.example.com/example/shop/pull/12#r9",
             "submitted_at": stamp(now - 60)}]);
     }
@@ -270,7 +286,8 @@ fn github_a_second_page_of_notifications_is_read_too() {
 
 /// What a site with no notifications would answer, where logins are
 /// addresses: Joel's one pull request, example/shop#12, and on it a
-/// colleague's stop, a check's, and Joel's own resume.
+/// colleague's stop, a check's, and Joel's own resume, each by a writer
+/// GitHub would call a stranger, which such a site doesn't weigh.
 fn by_address(line: &str, now: u64) -> Value {
     if line.contains(" /search/issues?") {
         return json!({"items": [{"number": 12, "pull_request": {},
@@ -283,21 +300,21 @@ fn by_address(line: &str, now: u64) -> Value {
         line,
         now,
         &[
-            comment(
+            commented(
                 1,
                 "colleague@example.com",
+                "NONE",
                 &format!("@{LOGIN} pineapple override"),
-                now,
-                90,
+                (now, 90),
             ),
-            comment(
+            commented(
                 2,
                 "checks@example.iam.gserviceaccount.com",
+                "NONE",
                 "pineapple override",
-                now,
-                80,
+                (now, 80),
             ),
-            comment(3, "joel@example.com", "pineapple resume", now, 70),
+            commented(3, "joel@example.com", "NONE", "pineapple resume", (now, 70)),
         ],
     )
 }

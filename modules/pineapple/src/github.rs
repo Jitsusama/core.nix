@@ -16,6 +16,15 @@ use serde_json::Value;
 
 use crate::Context;
 
+/// How GitHub says a writer is the repository's own: its owner, a member
+/// of the organization owning it, or a collaborator on it. Only they may
+/// stop Joel's agents on GitHub (Joel's orchestrator, 16 November).
+const ITS_OWN: [&str; 3] = ["OWNER", "MEMBER", "COLLABORATOR"];
+
+/// What GitHub lets Joel's sign-in do in a repository he works in, any
+/// one of which is enough: push to it, maintain it or run it.
+const WORKS_IN: [&str; 3] = ["push", "maintain", "admin"];
+
 /// Seconds in a day.
 const DAY: u64 = 86_400;
 
@@ -49,7 +58,9 @@ impl Thread {
     }
 
     /// What a stop said on it is about: a pull request is itself; an issue
-    /// is what its opening names, else its repository.
+    /// is what its opening names. Its repository goes with it, but alone
+    /// isn't a place: an issue naming nothing narrower stops everything,
+    /// and Joel is told it fell back (src/scope.rs).
     #[must_use]
     pub fn context(&self, opening: &str) -> Context {
         if self.pull {
@@ -101,6 +112,9 @@ pub struct Said {
     pub author: String,
     /// Whether a bot or an app said it.
     pub by_bot: bool,
+    /// Whether GitHub names its writer the repository's own; one it says
+    /// nothing of isn't, so a missing field can't let a stranger in.
+    pub own: bool,
     /// What it says, as GitHub keeps it.
     pub text: String,
     /// When it was said, in seconds since the epoch.
@@ -177,6 +191,21 @@ fn by_bot(user: &Value) -> bool {
             .is_some_and(|login| login.ends_with(".gserviceaccount.com"))
 }
 
+/// Whether GitHub names `one`'s writer the repository's own.
+fn own(one: &Value) -> bool {
+    one["author_association"]
+        .as_str()
+        .is_some_and(|said| ITS_OWN.contains(&said))
+}
+
+/// Whether Joel works in a repository, as GitHub's answer for it says to
+/// his sign-in. Anyone may make a repository, own it and mention him
+/// there, so its own count only in one he works in.
+#[must_use]
+pub fn works_in(repo: &Value) -> bool {
+    WORKS_IN.iter().any(|may| repo["permissions"][may] == true)
+}
+
 /// What an answer holds that was said on `thread`: for an opening, the
 /// pull request or issue itself; else a list of what `kind` names. One
 /// that can't be read whole, or a review with no words, is let go.
@@ -202,6 +231,7 @@ fn opening(answer: &Value, thread: &Thread) -> Option<Said> {
         link: answer["html_url"].as_str()?.to_owned(),
         author: answer["user"]["login"].as_str()?.to_owned(),
         by_bot: by_bot(&answer["user"]),
+        own: own(answer),
         text: format!("{title}\n\n{body}"),
         at: seconds(answer["created_at"].as_str()?)?,
     })
@@ -223,6 +253,7 @@ fn one_said(one: &Value, thread: &Thread, kind: Kind) -> Option<Said> {
         link: one["html_url"].as_str()?.to_owned(),
         author: one["user"]["login"].as_str()?.to_owned(),
         by_bot: by_bot(&one["user"]),
+        own: own(one),
         text: text.to_owned(),
         at,
     })
@@ -266,12 +297,20 @@ pub fn next_page(link: &str) -> Option<&str> {
 }
 
 /// Whether GitHub refused for its rate limit rather than because what
-/// was asked is gone: a 429, or a 403 saying none is left or when to ask
-/// again. Joel's limit is shared with gh and every agent signed in as him,
-/// so it runs out, and a round it stops has to be tried again whole.
+/// was asked is gone: a 429, or a 403 saying none is left, when to ask
+/// again, or in its message that it is a rate limit, since a secondary
+/// limit may come with neither header. Joel's limit is shared with gh and
+/// every agent signed in as him, so it runs out, and a round it stops has
+/// to be tried again whole.
 #[must_use]
-pub fn rate_limited(status: u16, remaining: Option<&str>, retry_after: bool) -> bool {
-    status == 429 || (status == 403 && (remaining == Some("0") || retry_after))
+pub fn rate_limited(
+    status: u16,
+    remaining: Option<&str>,
+    retry_after: bool,
+    message: &str,
+) -> bool {
+    let says_so = message.to_ascii_lowercase().contains("rate limit");
+    status == 429 || (status == 403 && (remaining == Some("0") || retry_after || says_so))
 }
 
 /// A time as GitHub reads one in `since`.
@@ -449,6 +488,52 @@ mod tests {
     }
 
     #[test]
+    fn only_the_repositorys_own_are_its_own_and_joel_works_where_he_may_push() {
+        let by = |association: Option<&str>| {
+            let mut one = json!({"id": 1, "body": "pineapple override",
+                "html_url": "https://code.example.com/x",
+                "user": {"login": "colleague", "type": "User"},
+                "created_at": "2023-11-14T22:13:20Z"});
+            if let Some(association) = association {
+                one["author_association"] = json!(association);
+            }
+            json!([one])
+        };
+        let own_one = |association| said(&by(association), &pull(), Kind::Comment)[0].own;
+        for own in ["OWNER", "MEMBER", "COLLABORATOR"] {
+            assert!(own_one(Some(own)), "{own} is the repository's own");
+        }
+        for stranger in [
+            "CONTRIBUTOR",
+            "FIRST_TIME_CONTRIBUTOR",
+            "FIRST_TIMER",
+            "NONE",
+        ] {
+            assert!(!own_one(Some(stranger)), "{stranger} isn't");
+        }
+        assert!(!own_one(None), "nor is a writer GitHub says nothing of");
+        for may in ["push", "maintain", "admin"] {
+            assert!(
+                works_in(&json!({"permissions": {"pull": true, may: true}})),
+                "Joel works where he may {may}"
+            );
+        }
+        assert!(
+            !works_in(&json!({"permissions": {"pull": true, "push": false}})),
+            "not where he may only read, as anyone's own public repository"
+        );
+        assert!(!works_in(&json!({})), "nor where GitHub says nothing");
+        let opening = json!({"title": "Stop", "body": "pineapple override",
+            "html_url": "https://code.example.com/example/shop/pull/12",
+            "user": {"login": "colleague", "type": "User"}, "author_association": "NONE",
+            "created_at": "2023-11-14T22:13:20Z"});
+        assert!(
+            !said(&opening, &pull(), Kind::Opening)[0].own,
+            "an opening is read for its writer's standing too"
+        );
+    }
+
+    #[test]
     fn an_opening_is_its_title_and_description() {
         let answer = json!({"title": "Stop", "body": "pineapple override",
             "html_url": "https://code.example.com/example/shop/pull/12",
@@ -499,11 +584,19 @@ mod tests {
 
     #[test]
     fn a_rate_limit_is_told_from_something_gone() {
-        assert!(rate_limited(429, None, false), "too many requests");
-        assert!(rate_limited(403, Some("0"), false), "none left");
-        assert!(rate_limited(403, Some("12"), true), "a secondary limit");
-        assert!(!rate_limited(403, Some("12"), false), "not his to read");
-        assert!(!rate_limited(404, Some("0"), false), "gone");
+        let secondary = "You have exceeded a secondary rate limit";
+        assert!(rate_limited(429, None, false, ""), "too many requests");
+        assert!(rate_limited(403, Some("0"), false, ""), "none left");
+        assert!(rate_limited(403, Some("12"), true, ""), "a secondary limit");
+        assert!(
+            rate_limited(403, Some("12"), false, secondary),
+            "one said only in words"
+        );
+        assert!(
+            !rate_limited(403, Some("12"), false, "Must have push access"),
+            "not his to read"
+        );
+        assert!(!rate_limited(404, Some("0"), false, "Not Found"), "gone");
     }
 
     #[test]
