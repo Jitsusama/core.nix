@@ -171,8 +171,15 @@ fn how_far_a_counting_kept_a_checkout_behind_is_said_beside_its_repository() {
     std::fs::write(git.join("HEAD"), "ref: refs/heads/main\n").unwrap();
     std::fs::write(git.join("refs/heads/main"), format!("{head}\n")).unwrap();
     std::fs::create_dir_all(git.join("refs/remotes/origin")).unwrap();
-    std::fs::write(git.join("refs/remotes/origin/main"), format!("{upstream}\n")).unwrap();
-    git_in(&running.path("src/alpha"), &["config", "branch.main.remote", "origin"]);
+    std::fs::write(
+        git.join("refs/remotes/origin/main"),
+        format!("{upstream}\n"),
+    )
+    .unwrap();
+    git_in(
+        &running.path("src/alpha"),
+        &["config", "branch.main.remote", "origin"],
+    );
     git_in(
         &running.path("src/alpha"),
         &["config", "branch.main.merge", "refs/heads/main"],

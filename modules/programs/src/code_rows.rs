@@ -2,8 +2,9 @@
 //! machine (docs/glossary.md's Code words), each listed once however many
 //! checkouts of it lie on the disk, as `repos` reads them
 //! (modules/repos). The one written to last comes first, said beside it
-//! by how many changes are open on its remote, how many trees are cut
-//! from it and when git last wrote in it; it's found by its name, its
+//! by how many changes are open on its remote, how far the checkout
+//! written to last is behind the branch it follows (as repos' timer last
+//! counted), how many trees are cut from it and when git last wrote in it; it's found by its name, its
 //! owner and its key. Return opens its page where a remote keeps it on
 //! GitHub or GitLab, else copies its checkout's path; inside are Open Its
 //! Page, Open Its Open Changes (while any are), Copy Its Path and New
@@ -15,7 +16,7 @@
 //! in and opened by Return in its default program; its drawer names its
 //! key, its trunk and the checkout written to last, at its branch.
 
-use repos::model::{Checkout, Record, Repository};
+use repos::model::{COUNTED_TO, Checkout, Head, Record, Repository};
 use repos::read::shown;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -109,6 +110,19 @@ impl Words {
 
     fn changes_open(&self, count: usize) -> String {
         Words::count(&self.change, &self.changes, count)
+    }
+
+    /// How far a head is behind the branch it follows, where it's been
+    /// counted and is: `100+` past the count's end; none when it's even
+    /// or only ahead.
+    fn behind(&self, head: &Head) -> Option<String> {
+        let count = head.upstream.as_ref()?.count?.behind;
+        let far = match count {
+            0 => return None,
+            COUNTED_TO.. => format!("{COUNTED_TO}+"),
+            count => count.to_string(),
+        };
+        Some(self.behind.replace("{count}", &far))
     }
 
     fn count(one: &str, many: &str, count: usize) -> String {
@@ -244,6 +258,13 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
     if !repository.changes.is_empty() {
         side.push(json!({"said": words.changes_open(repository.changes.len())}));
     }
+    let checkout = worked_in(repository);
+    if let Some(behind) = checkout
+        .and_then(|checkout| checkout.head.as_ref())
+        .and_then(|head| words.behind(head))
+    {
+        side.push(json!({"said": behind}));
+    }
     if trees > 0 {
         side.push(json!({"said": words.counted(trees)}));
     }
@@ -251,7 +272,6 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
         let ms = i64::try_from(written.saturating_mul(1000)).unwrap_or(i64::MAX);
         side.push(json!({"at": ms, "as": "came", "keep": 1}));
     }
-    let checkout = worked_in(repository);
     let path = checkout.map(|checkout| checkout.path.clone());
     let paths: Vec<String> = repository
         .checkouts
@@ -342,8 +362,7 @@ fn drawer(
 mod tests {
     use super::*;
     use repos::model::{
-        COUNTED_TO, Change, Checks, ChecksState, Count, Head, Remote, Review, SCHEMA, Tree,
-        TreeKind, Upstream,
+        Change, Checks, ChecksState, Count, Remote, Review, SCHEMA, Tree, TreeKind, Upstream,
     };
 
     fn words() -> Words {
