@@ -269,8 +269,9 @@ fn own(
             }
             return Some(answer);
         }
-        // Joel's Not Now on what a session asks him, by its address: kept
-        // for an hour, which the want's record says, ringing for nothing.
+        // Joel's Not Now on the ask a session's row showed him, refused
+        // once it asks anew: kept for an hour, which the want's record
+        // says, ringing for nothing.
         if let Some(named) = wants.put_off(said) {
             return Some(match named {
                 Ok(known) => {
@@ -361,7 +362,10 @@ fn started(words: Words, paths: &Paths) -> Inputs {
         kept_places: KeptPlaces::read(&paths.kept_places)
             .unwrap_or_else(|| KeptPlaces::from_shell(&paths.shells)),
         fed_back: feedback::kept(&paths.landed.with_file_name(FEEDBACK)),
-        put_off: PutOff::read(&paths.kept.with_file_name(wants::PUT_OFF_FILE)),
+        put_off: PutOff::read(
+            &paths.kept.with_file_name(wants::PUT_OFF_FILE),
+            clock::now_ms(),
+        ),
         ..Inputs::default()
     }
 }

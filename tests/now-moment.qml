@@ -1042,8 +1042,10 @@ ShellRoot {
         Sessions.knowns = { WANTB: "WANTB question@1" };
         const askedB = forYou().find(row => row.key === "on:waiting:want:WANTB");
         const putOffB = askedB.verbs().find(act => act.key.startsWith("verb:on:waiting:notNow:"));
-        putOffB.run();
         Sessions.knowns = { WANTB: "WANTB question@2" };
+        // The row Joel read, pressed after the session asked anew, names
+        // what it showed, so the daemon can refuse it.
+        putOffB.run();
         const askedAnew = forYou().find(row => row.key === "on:waiting:want:WANTB");
         askedAnew.verbs().find(act => act.key.startsWith("verb:on:waiting:notNow:")).run();
         expect("a plain ask's Put It Off names the ask its row shows, last and staying",
@@ -1198,6 +1200,7 @@ ShellRoot {
             own: true, choices: [{ value: "push", label: "Yes, push it",
                 description: "Its checks passed at its head.", recommended: true },
             { value: "wait", label: "Not yet", description: "", recommended: false }] } } };
+        Sessions.knowns = { WANTE: "WANTE question@1" };
         const row = forYou().find(one => one.key === "on:waiting:want:WANTE");
         expect("a want with answers says how many",
             row?.side === "needs your answer \u00b7 2 choices", JSON.stringify(row?.side));
@@ -1244,9 +1247,11 @@ ShellRoot {
             JSON.stringify(agents.answered[2]));
         inside[4].run();
         expect("Put It Off asks the daemon to put off its session's want, staying open",
-            JSON.stringify(Sessions.putOffAsked) === '["WANTE "]' && inside[4].stays === true,
+            JSON.stringify(Sessions.putOffAsked) === '["WANTE WANTE question@1"]'
+                && inside[4].stays === true,
             JSON.stringify(Sessions.putOffAsked));
         Sessions.putOffAsked = [];
+        Sessions.knowns = {};
         // A yes asked of him, as the harness's approval gate asks it once
         // its want carries Yes and No, is answered in its row the same way.
         Sessions.wanting = [{ address: "WANTF", title: "Session F", presence: {

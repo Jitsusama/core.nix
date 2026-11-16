@@ -63,9 +63,9 @@ impl Wants {
     }
 
     /// Who the want `{ "ask": "not-now", "address", "known" }` names is
-    /// (`known`), refused where its session wants nothing, or where it asks
-    /// other than the `known` Joel saw, which still needs him; None for any
-    /// other ask.
+    /// (`known`), refused where it names no ask Joel saw, where its session
+    /// wants nothing, or where it asks other than the `known` he saw, which
+    /// still needs him; None for any other ask.
     pub fn put_off(&self, said: &Value) -> Option<Result<String, String>> {
         if said["ask"] != "not-now" {
             return None;
@@ -74,7 +74,9 @@ impl Wants {
         if address.is_empty() {
             return Some(Err("not-now names no session's address".to_owned()));
         }
-        let seen = said["known"].as_str().filter(|seen| !seen.is_empty());
+        let Some(seen) = said["known"].as_str().filter(|seen| !seen.is_empty()) else {
+            return Some(Err("not-now names no ask Joel saw".to_owned()));
+        };
         let held = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         let known = held
             .iter()
@@ -83,7 +85,7 @@ impl Wants {
             .map(str::to_owned);
         Some(match (known, seen) {
             (None, _) => Err(format!("{address} wants nothing of Joel to put off")),
-            (Some(known), Some(seen)) if known != seen => Err(format!(
+            (Some(known), seen) if known != seen => Err(format!(
                 "{address} asks something new, which still needs Joel"
             )),
             (Some(known), _) => Ok(known),
@@ -106,16 +108,20 @@ pub const PUT_OFF_FILE: &str = "wants-put-off.json";
 pub struct PutOff(BTreeMap<String, u128>);
 
 impl PutOff {
-    /// What `path` keeps, or none put off when it isn't there or can't be
-    /// read whole.
-    pub fn read(path: &Path) -> Self {
+    /// What `path` keeps at `now_ms`, each held at most an hour from then
+    /// whatever the file says or the clock did, or none put off when it
+    /// isn't there or can't be read whole.
+    pub fn read(path: &Path, now_ms: u128) -> Self {
         let said: Value = fs::read(path)
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or(Value::Null);
         let kept = said.as_object().map(|by| {
             by.iter()
-                .filter_map(|(known, until)| Some((known.clone(), u128::from(until.as_u64()?))))
+                .filter_map(|(known, until)| {
+                    let until = u128::from(until.as_u64()?).min(now_ms + PUT_OFF_FOR_MS);
+                    Some((known.clone(), until))
+                })
                 .collect()
         });
         Self(kept.unwrap_or_default())
@@ -143,12 +149,9 @@ impl PutOff {
         self.0.insert(known.to_owned(), now_ms + PUT_OFF_FOR_MS);
     }
 
-    /// Whether the want `known` is put off at `now_ms`: never past an hour
-    /// from now, whatever the file says or the clock did.
+    /// Whether the want `known` is put off at `now_ms`.
     pub fn holds(&self, known: &str, now_ms: u128) -> bool {
-        self.0
-            .get(known)
-            .is_some_and(|until| *until > now_ms && *until <= now_ms + PUT_OFF_FOR_MS)
+        self.0.get(known).is_some_and(|until| *until > now_ms)
     }
 
     /// How long from `now_ms` until the soonest want still put off needs
@@ -158,7 +161,7 @@ impl PutOff {
     pub fn wait(&self, now_ms: u128) -> Option<Duration> {
         self.0
             .values()
-            .filter(|until| **until > now_ms && **until <= now_ms + PUT_OFF_FOR_MS)
+            .filter(|until| **until > now_ms)
             .min()
             .map(|until| Duration::from_millis(u64::try_from(until - now_ms).unwrap_or(u64::MAX)))
             .map(|wait| wait.min(Duration::from_mins(1)))
@@ -387,10 +390,6 @@ mod tests {
             Some(Duration::from_mins(1)),
             "a minute at most, lest a sleep carry the wait past its hour"
         );
-        assert!(
-            !put_off.holds("BUOY approval-1", 0),
-            "never held past an hour from now, whatever the clock did"
-        );
         assert_eq!(
             put_off.wait(PUT_OFF_FOR_MS + 600_000),
             None,
@@ -405,10 +404,20 @@ mod tests {
             .join(format!("agents-put-off-{}", std::process::id()))
             .join(PUT_OFF_FILE);
         put_off.write(&path).expect("kept");
-        assert_eq!(PutOff::read(&path), put_off, "read back as it was written");
+        assert_eq!(
+            PutOff::read(&path, PUT_OFF_FOR_MS),
+            put_off,
+            "read back as it was written"
+        );
+        let stepped_back = PutOff::read(&path, 0);
+        assert!(
+            stepped_back.holds("KELP approval-2", PUT_OFF_FOR_MS - 1)
+                && !stepped_back.holds("KELP approval-2", PUT_OFF_FOR_MS),
+            "read with the clock stepped back, held only an hour from then"
+        );
         let _ = fs::remove_dir_all(path.parent().expect("its folder"));
         assert_eq!(
-            PutOff::read(&path),
+            PutOff::read(&path, 0),
             PutOff::default(),
             "and none when there's no file"
         );
@@ -426,22 +435,25 @@ mod tests {
             .iter(),
         );
         assert_eq!(
-            held.put_off(&json!({"ask": "not-now", "address": "skiff"})),
+            held.put_off(&json!({"ask": "not-now", "address": "skiff",
+                "known": "SKIFF approval-1"})),
             Some(Ok("SKIFF approval-1".to_owned())),
-            "by its address, whatever its case"
+            "the ask Joel saw, by its address whatever its case"
         );
         assert!(
             matches!(
-                held.put_off(&json!({"ask": "not-now", "address": "BUOY"})),
+                held.put_off(&json!({"ask": "not-now", "address": "SKIFF"})),
+                Some(Err(_))
+            ),
+            "one naming no ask he saw is refused"
+        );
+        assert!(
+            matches!(
+                held.put_off(&json!({"ask": "not-now", "address": "BUOY",
+                    "known": "BUOY approval-1"})),
                 Some(Err(_))
             ),
             "a session wanting nothing is refused"
-        );
-        assert_eq!(
-            held.put_off(&json!({"ask": "not-now", "address": "SKIFF",
-                "known": "SKIFF approval-1"})),
-            Some(Ok("SKIFF approval-1".to_owned())),
-            "as the ask Joel saw"
         );
         assert!(
             matches!(

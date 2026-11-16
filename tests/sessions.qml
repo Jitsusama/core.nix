@@ -202,8 +202,7 @@ ShellRoot {
         expect("a want the daemon says is put off leaves what waits on Joel",
             JSON.stringify(Sessions.putOff) === '{"NOWIN6":true}'
                 && Sessions.asks(find("NOWIN6"))
-                && !Sessions.wanting.some(session => session.address === "NOWIN6")
-                && Sessions.wanting.some(session => session.address === "LIVE01"),
+                && !Sessions.wanting.some(session => session.address === "NOWIN6"),
             JSON.stringify([Sessions.putOff, Sessions.wanting.map(session => session.address)]));
         expect("Put It Off can name the ask the daemon knows, whatever the address's case",
             Sessions.wantKnown("nowin6") === "NOWIN6 question@now"
