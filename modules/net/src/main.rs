@@ -18,6 +18,7 @@
 //! net devices [NAME]              every device, or one in full (views.rs)
 //! net daemon                      keep the home network's record
 //! net switch-reader ADDRESS       read the switch for the daemon (switch_reader.rs)
+//! net uplink                      who filled this machine's uplink just now (uplink/)
 //! ```
 //!
 //! It takes the shape every command of ours does (docs/commands.md),
@@ -32,13 +33,14 @@ mod room;
 mod sources;
 mod switch_reader;
 mod time;
+mod uplink;
 mod views;
 mod xml;
 
 use std::io;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use model::{Network, SCHEMA};
 use serde_json::Value;
@@ -56,6 +58,13 @@ fn run(context: &Context) -> Result<(), Failure> {
         ["daemon"] => daemon::run().map_err(|why| Failure::new(Exit::Failed, why)),
         ["switch-reader", address] => {
             switch_reader::run(address).map_err(|why| Failure::new(Exit::Failed, why))
+        }
+        ["uplink"] => {
+            let report = uplink_now()?;
+            let answer = serde_json::to_value(&report).unwrap_or(Value::Null);
+            show(context, &answer, || {
+                views::uplink(&report, &context.out, context.room)
+            })
         }
         [] => {
             let network = record()?;
@@ -95,6 +104,27 @@ fn show(context: &Context, answer: &Value, view: impl FnOnce() -> String) -> Res
                 .because(error.to_string()))
         }
     })
+}
+
+/// How long `net uplink` watches before it says who sent what: long
+/// enough for a model request or two to land in it, short enough to wait.
+const UPLINK_WINDOW: Duration = Duration::from_secs(5);
+
+/// Who filled the uplink over the last `UPLINK_WINDOW`. Reading the
+/// sockets needs no privilege, but another user's have no owner to name.
+fn uplink_now() -> Result<uplink::Report, Failure> {
+    let unreadable = |error: io::Error| {
+        Failure::new(Exit::Failed, "the kernel's socket list can't be read")
+            .because(error.to_string())
+    };
+    let earlier = uplink::sample().map_err(unreadable)?;
+    std::thread::sleep(UPLINK_WINDOW);
+    let later = uplink::sample().map_err(unreadable)?;
+    Ok(uplink::report(
+        &earlier,
+        &later,
+        &mut uplink::Owners::default(),
+    ))
 }
 
 /// The time now, in seconds since the epoch, as the record's times are.

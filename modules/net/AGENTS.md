@@ -199,6 +199,27 @@ with the nearest. `--json` answers
 3339 (docs/commands.md). No record yet ends 69, pointing at
 `systemctl --user status net-daemon`.
 
+## The Uplink
+
+`net uplink` says who filled this machine's own uplink over the last
+5 s, which no device's record can: Joel asked on 2026-11-15 why so much
+goes up, and the answer was by process and destination, which only this
+machine's sockets hold. `src/uplink/` reads every TCP socket and what it
+has sent from the kernel's socket diagnostics over netlink (`diag.rs`),
+not by running `ss`, since a program per sample is the slow way and the
+daemon will sample often. It finds each socket's process through
+`/proc/*/fd`, once per new socket (`owners.rs`), and tells two things
+apart (`purpose.rs`): what the bytes are for (agent sessions' model
+requests, builder tunnels, image pushes, backups, git, other) from the
+process and its cgroup, and whose they are, Joel's apps or the agents'
+slices, from where systemd placed it. A peer on this network never
+reaches the uplink, so it's left out. What the sockets don't hold, UDP
+such as QUIC, headers and a VPN's own wrapping, is said as unattributed
+rather than spread over the rest, and another user's sockets, root's
+included, have no owner to read and say so. `--json` answers
+`net.uplink/1`, with Joel's share and the agents' to the nearest 5% for
+a glance to show.
+
 ## Changing It
 
 [`contract/`][contract] holds a real modem's pages and a real switch's,

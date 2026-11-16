@@ -10,9 +10,11 @@
 mod carried;
 mod device;
 mod said;
+mod uplink;
 
 use carried::carried;
 pub use device::device;
+pub use uplink::uplink;
 
 use serde_json::{Map, Value, json};
 use terminal_kit::layout::{self, Align, ITEMS, Room};

@@ -14,6 +14,9 @@ jiff = { version = "0.2", default-features = false, features = ["std"] }
 # An Apple TV's AirPlay answer, a binary property list; its serde half
 # isn't needed, since the answer is walked into JSON by hand.
 plist = { version = "1.10", default-features = false }
+# The kernel's socket diagnostics over netlink, for who fills the uplink
+# (src/uplink/diag.rs); std has no netlink socket.
+libc = "0.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"
 # The shape every command of ours takes: help, the answer's form, the
