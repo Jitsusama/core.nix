@@ -688,7 +688,9 @@ pub fn evaluated(
     // The far side ends once its ssh does, but an ssh whose caller was
     // ended went on alone: on 8 November two sat under the account's
     // manager for over an hour after theirs were gone.
+    // A Mac has no such signal; it only ever asks, never evaluates.
     // SAFETY: prctl is async-signal-safe and touches only the child.
+    #[cfg(target_os = "linux")]
     unsafe {
         command.pre_exec(|| {
             if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) == 0 {

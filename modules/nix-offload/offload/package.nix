@@ -1,6 +1,8 @@
 # nix-offload, which lends the machine a builder while its queue holds
 # builds back, built from this directory, its tests run as it builds.
 {
+  bubblewrap,
+  cacert,
   callPackage,
   coreutils,
   dash,
@@ -36,6 +38,15 @@ rustPlatform.buildRustPackage {
     # the same core as nix-offload, never the one its commit names
     # (src/changed.rs).
     NIX_OFFLOAD_CHANGED_CHECKS = lib.getExe changed-checks;
+    # A gate's answer runs git from the store, and checks the forge's
+    # certificate against these, inside a fence that has nothing else of
+    # the machine's (src/gate/fence.rs).
+    NIX_OFFLOAD_GIT = lib.getExe git;
+    NIX_OFFLOAD_CACERT = "${cacert}/etc/ssl/certs/ca-bundle.crt";
+  }
+  # The fence a gate's answer runs git in, which only Linux has.
+  // lib.optionalAttrs stdenv.hostPlatform.isLinux {
+    NIX_OFFLOAD_BWRAP = lib.getExe bubblewrap;
   }
   # Each upload runs in a scope of its own, whose memory bounds the cache
   # its reads of the store fill (src/there.rs).
