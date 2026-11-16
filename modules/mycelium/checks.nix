@@ -567,14 +567,14 @@ in
           ];
           linuxWords = service: lib.splitString " " (toString service.Service.ExecStart);
         in
-        lib.hasSuffix (lib.concatStringsSep " " health) linuxNode
+        lib.hasInfix (lib.concatStringsSep " " health) linuxNode
         && lib.hasSuffix (lib.concatStringsSep " " health) otherNode
         && !(lib.elem "--health-socket" macNode)
         && !(lib.elem "--health-socket" (mac both).launchd.agents.mycelium-other.config.ProgramArguments)
         && !(lib.elem "--health-socket" (
           linuxWords (linux (links // { healthSocket = null; })).systemd.user.services.mycelium
         ))
-        && lib.hasSuffix "--health-socket /run/elsewhere.sock" (
+        && lib.hasInfix "--health-socket /run/elsewhere.sock" (
           toString
             (linux (links // { healthSocket = "/run/elsewhere.sock"; }))
             .systemd.user.services.mycelium.Service.ExecStart
