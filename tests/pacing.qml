@@ -747,7 +747,7 @@ QtObject {
         let made = {};
         for (const making of [1, 2, 1])
             made = Pacing.drawerMade(made, "home", making);
-        check(failures, "one whose kind makes in under 3 ms comes in the key's frame",
+        check(failures, "one whose kind makes in a millisecond or two comes in the key's frame",
             Pacing.drawerJoinsKey(made, "home", false), true);
         check(failures, "never while a key is held",
             Pacing.drawerJoinsKey(made, "home", true), false);
@@ -756,11 +756,19 @@ QtObject {
         // For You's drawers made in 4 to 7 ms on Joel's machine, and 71 of
         // his 74 drawers on 16 November came the frame after, a median of
         // 72 ms from the key against his keys' 43.
+        // Its rows' keys all begin on:, so they're one kind.
+        const forYou = Pacing.drawerKind("on:waitingOnYou", { key: "on:waiting:want:KQL3KB" });
         let looks = {};
         for (const making of [6, 5, 7, 4])
-            looks = Pacing.drawerMade(looks, "on look", making);
+            looks = Pacing.drawerMade(looks, forYou, making);
         check(failures, "one made in 4 to 7 ms, as For You's are, comes in the key's frame",
-            Pacing.drawerJoinsKey(looks, "on look", false), true);
+            Pacing.drawerJoinsKey(looks, forYou, false), true);
+        // The line falls at 8: a median just under comes in the key's
+        // frame, and one at 8 the frame after.
+        check(failures, "a median of 7.5 ms comes in the key's frame",
+            Pacing.drawerJoinsKey({ dear: [7, 8] }, "dear", false), true);
+        check(failures, "and a median of 8 ms the frame after",
+            Pacing.drawerJoinsKey({ dear: [8, 8, 8] }, "dear", false), false);
         // A place's rows are of many kinds: home's people and commands make
         // theirs in a millisecond, its programs' in 10 to 114, so one of
         // Slack's came in its key's frame after 49 ms making (2026-11-12).

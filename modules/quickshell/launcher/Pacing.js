@@ -161,10 +161,12 @@ function frameSwapped(acts) {
 // comes in the key's own frame, decided from the makings kept before it's
 // made, never by timing it there; a kind not yet made, or dearer, comes
 // the frame after, as does any while a key is held, so the highlight never
-// waits on it long (VKCF3Z, 2026-11-12, d4c660a6). It was 3 ms until For
-// You's drawers, made in 4 to 7, came the frame after in 71 of Joel's 74
-// that day, each a median of 72 ms from its key (Y2YBTS, 2026-11-16);
-// Slack's, made in over 20, still come after. `makings` holds each kind's
+// waits on it long (VKCF3Z, 2026-11-12, d4c660a6). The median bounds a
+// kind's usual cost, not every making: one dear row of a cheap kind still
+// holds its key's frame that once, and raises the median after. It was
+// 3 ms until For You's drawers, made in 4 to 7, came the frame after in 71
+// of Joel's 74 that day, each a median of 72 ms from its key (Y2YBTS,
+// 2026-11-16); Slack's, made in over 20, still come after. `makings` holds each kind's
 // last eight, in ms, and is never changed.
 const drawerMakingsKept = 8;
 const drawerJoinsUnder = 8;
