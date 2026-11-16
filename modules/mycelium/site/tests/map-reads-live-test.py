@@ -5,7 +5,8 @@ stand-in node (modules/local-sites/tests/stand_in_daemon.py) holding a small
 realm under test names, node.json. It must say it's live with the realm drawn,
 follow a change within its pace, say broken when the node stops and live again
 when it's back, say stale when the server goes, and pass the web-design
-skill's page checks at a phone's width and a desk's in both looks. Any error
+skill's page checks and the map's own (site-checks.js) at a phone's width and
+a desk's in both looks. Any error
 the page logs fails it, since that is how the map froze on "reading" unseen.
 The server, the browser and the tab are modules/local-sites/tests/live_page.py's.
 """
@@ -117,7 +118,7 @@ def test_a_server_that_goes_is_said_stale(mycelium_page: Page, mycelium_served: 
 
 @pytest.mark.parametrize("look", LOOKS)
 @pytest.mark.parametrize("size", SIZES)
-def test_the_map_passes_the_skills_page_checks(
+def test_the_map_passes_the_skills_page_checks_and_its_own(
     browser: Browser, mycelium_served: Served, size: tuple[int, int], look: str
 ) -> None:
     root, _ = mycelium_served
@@ -125,4 +126,7 @@ def test_the_map_passes_the_skills_page_checks(
     the_map_stands(opened.page, "live")
     expect(opened.page.locator("#status-words"), "the map didn't draw").to_have_text(COUNTED)
     opened.passes_the_skills_checks()
+    # The map's own, after the skill's, since it opens things through the hash.
+    found = opened.page.evaluate((HERE / "site-checks.js").read_text())
+    assert found == [], f"site-checks.js at {size} in the {look} look found {found}"
     opened.close()
