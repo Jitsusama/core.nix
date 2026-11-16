@@ -73,14 +73,26 @@ it("the parts come in the summary's order, each with its things", () => {
   assert.deepEqual(system.unread, []);
 });
 
-it("a part or thing not told yet is said, and the rest drawn", () => {
+it("a part not told yet is said, a thing not told yet left out, and the rest drawn", () => {
   const { summary, part, machine } = told(
     records.filter((record) => record.key !== "machine:osprey" && record.key !== "part:code"),
   );
   const system = systemOf(summary, part, machine);
   assert.ok(system);
-  assert.equal(system.parts.length, 1);
-  assert.deepEqual(system.unread, ["machine:osprey wasn't told", "part:code wasn't told"]);
+  assert.deepEqual(
+    system.parts.map((each) => [each.part, each.things.map((thing) => thing.name)]),
+    [["machines", ["kestrel"]]],
+  );
+  assert.deepEqual(system.unread, ["part:code wasn't told"]);
+});
+
+it("the daemon's not read is read as unread", () => {
+  const { summary, part, machine } = told(
+    records.map((record) =>
+      record.key === "part:code" ? { ...record, health: "not read" } : record,
+    ),
+  );
+  assert.equal(systemOf(summary, part, machine)?.parts[1]?.health, "unread");
 });
 
 it("a health the page doesn't know is read as not read", () => {

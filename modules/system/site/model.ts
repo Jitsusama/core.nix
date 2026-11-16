@@ -45,7 +45,13 @@ interface System {
   readonly unread: readonly string[];
 }
 
-const HEALTHS: ReadonlySet<string> = new Set(["good", "watch", "bad", "unread"]);
+/** Each health by the word the daemon says it in (modules/system's Health::word). */
+const HEALTHS: ReadonlyMap<string, Health> = new Map([
+  ["good", "good"],
+  ["watch", "watch"],
+  ["bad", "bad"],
+  ["not read", "unread"],
+]);
 
 const NAMES: { readonly [part: string]: string } = {
   machines: "Machines",
@@ -62,14 +68,9 @@ const WORDS: { readonly [health in Health]: string } = {
   unread: "Not read",
 };
 
-/** Whether `value` is one of the healths the daemon words. */
-function isHealth(value: string): value is Health {
-  return HEALTHS.has(value);
-}
-
-/** `value` as a health, or unread when it isn't one. */
+/** The health the daemon's word `value` says, or unread when it says none. */
 function healthOf(value: string | undefined): Health {
-  return value !== undefined && isHealth(value) ? value : "unread";
+  return (value === undefined ? undefined : HEALTHS.get(value)) ?? "unread";
 }
 
 /** The part's name as the page says it. */
@@ -85,12 +86,19 @@ function and(words: readonly string[]): string {
   return `${words.slice(0, -1).join(", ")} and ${words.at(-1) ?? ""}`;
 }
 
-/** The thing `key` names, read from its record. */
+/**
+ * The thing `key` names, read from its record. A thing not told yet is left
+ * out unsaid: its part and its record are two watches, so a new machine can
+ * reach its part one push before its own record arrives.
+ */
 function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
   const record = held.get(key);
-  const name = record === undefined ? undefined : text(record, "name");
-  if (record === undefined || name === undefined) {
-    unread.push(`${key} wasn't told`);
+  if (record === undefined) {
+    return undefined;
+  }
+  const name = text(record, "name");
+  if (name === undefined) {
+    unread.push(`${key} has no name`);
     return undefined;
   }
   return {

@@ -52,7 +52,7 @@ anything.
 
 The system daemon holds three kinds of record. The `summary` has
 `machine`, `read_at` (RFC 3339, UTC), `health` (good, watch, bad or
-unread) and `parts`, the part names in order. Each `part:<name>` has
+not read) and `parts`, the part names in order. Each `part:<name>` has
 `part` (machines, mycelium, network or code), `health`, `says`,
 `things` (the keys of its things) and `deeper`: `command`, `site`
 (from the sites' root) and `launcher` (its path there). Each
