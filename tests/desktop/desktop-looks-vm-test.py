@@ -806,8 +806,7 @@ def into_agents(desktop: Desktop) -> None:
         lambda shown: (
             shown["held"] == ["agents"]
             and any(
-                title in thing["reads"] and ALL_SPENT in thing["reads"]
-                for thing in shown["things"]
+                title in thing["reads"] and ALL_SPENT in thing["reads"] for thing in shown["things"]
             )
         )
     )
