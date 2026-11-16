@@ -214,7 +214,7 @@ function behindResize(frame, began) {
 // front of whatever it was carried over, the one exception to the rule
 // above (VKCF3Z, 9ead6710); then, landed from his hand and not walked
 // since, by the ledge it `landed` on, floating or not; else as above()
-// says by its seat.
+// says by its seat, `leaving` it, or a leg `aboard` a floating window.
 function inFront(now) {
     if (now.holds || now.falls) {
         return true;
@@ -222,7 +222,7 @@ function inFront(now) {
     if (now.landed) {
         return now.landed.floats === true;
     }
-    return above(now.seat, now.leaving);
+    return above(now.seat, now.leaving, now.aboard);
 }
 
 // How far a press on the cat moves, in logical pixels, before it picks the

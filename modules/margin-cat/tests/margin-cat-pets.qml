@@ -136,8 +136,9 @@ QtObject {
                 MarginCat.inFront({ landed: tiled, seat: floating }),
                 MarginCat.inFront({ landed: floating, seat: tiled }),
                 MarginCat.inFront({ landed: null, seat: floating }),
-                MarginCat.inFront({ seat: floating, leaving: true })],
-            [true, true, false, true, true, false]);
+                MarginCat.inFront({ seat: floating, leaving: true }),
+                MarginCat.inFront({ seat: tiled, leaving: true, aboard: true })],
+            [true, true, false, true, true, false, true]);
         expect("its scruffed drawing hangs whole, as wide as it sits",
             [Drawings.poses.scruffed?.length, Drawings.poses.scruffed?.every(row =>
                 row.length === 8)],
