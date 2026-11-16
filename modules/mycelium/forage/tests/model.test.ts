@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { foragesOf, headline, holds, keeps, lede, steps } from "../model.ts";
+import { foragesOf, headline, holds, keeps, lede, startedFrom, steps } from "../model.ts";
 
 const plan = {
   id: "PLAN-20261116-HOVERS",
@@ -83,6 +83,21 @@ it("cells that started each other in a ring each still show once", () => {
     ]),
   );
   assert.deepEqual(forages.map((each) => each.cell).sort(), ["KESTRL", "OSPREY"]);
+});
+
+it("the cells a cell started are those naming it their starter, by address, never itself", () => {
+  const { forages } = foragesOf(
+    told([
+      forage("TERNAA", { lineage: { started_by: "KESTRL" } }),
+      forage("KESTRL", { lineage: { started_by: "KESTRL" } }),
+      forage("OSPREY", { lineage: { started_by: "SKIFFS" } }),
+      forage("SKIFFS", { lineage: { started_by: "KESTRL" } }),
+    ]),
+  );
+  // Given in any order, they still come by address.
+  assert.deepEqual(startedFrom([...forages].reverse(), "KESTRL"), ["SKIFFS", "TERNAA"]);
+  assert.deepEqual(startedFrom(forages, "SKIFFS"), ["OSPREY"]);
+  assert.deepEqual(startedFrom(forages, "TERNAA"), []);
 });
 
 it("documents come plans first, and their steps add up", () => {

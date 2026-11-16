@@ -1,9 +1,4 @@
 {
   "extends": "../../local-sites/kit/tsconfig.json",
-  "compilerOptions": {
-    // Forage reads a record's fields as it did until its own change turns
-    // this on, so nothing here waits on its owner's work in flight.
-    "noPropertyAccessFromIndexSignature": false
-  },
   "include": ["*.ts"]
 }

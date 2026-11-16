@@ -14,7 +14,7 @@ import type { Held } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { command, escaped, floorOf, forageRow, onMap, panelOf } from "./draw.ts";
-import { type Forage, foragesOf, headline, holds, lede } from "./model.ts";
+import { type Forage, foragesOf, headline, holds, lede, startedFrom } from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
 function element<T extends Element>(selector: string, kind: new () => T): T {
@@ -56,7 +56,15 @@ let hollowOnly = false;
 /** The cell `hash` names, as #cell=<address>. */
 function cellIn(hash: string): string | null {
   const named = CELL_HASH.exec(hash)?.[1];
-  return named === undefined ? null : decodeURIComponent(named);
+  if (named === undefined) {
+    return null;
+  }
+  try {
+    return decodeURIComponent(named);
+  } catch {
+    // A stray % in an address typed by hand names no cell.
+    return null;
+  }
 }
 
 /** The cells the find leaves, in the list's order. */
@@ -76,7 +84,7 @@ function sayWhen(): void {
   const problems = [...unread, ...(heard === undefined ? [] : [heard])];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
   asof.textContent = `${standing === undefined ? "Reaching the mycelium node." : said(standing)}${trouble}`;
-  asof.dataset.state = standing?.state ?? "connecting";
+  asof.dataset["state"] = standing?.state ?? "connecting";
   if (!given && standing?.state === "broken") {
     title.textContent = "Nothing to draw yet.";
     ledeLine.textContent =
@@ -90,7 +98,7 @@ function select(): void {
   // Only the row leaving the cursor and the row taking it change, so a step
   // costs the same whether the list holds five cells or ten thousand.
   for (const row of list.querySelectorAll<HTMLElement>('[aria-selected="true"]')) {
-    if (row.dataset.cell !== cursor) {
+    if (row.dataset["cell"] !== cursor) {
       row.setAttribute("aria-selected", "false");
     }
   }
@@ -101,17 +109,107 @@ function select(): void {
     row.scrollIntoView({ block: "nearest" });
   }
   for (const mark of floor.querySelectorAll<SVGRectElement>("rect[data-cell]")) {
-    mark.classList.toggle("on", mark.dataset.cell === cursor);
+    mark.classList.toggle("on", mark.dataset["cell"] === cursor);
   }
   if (cursor !== null && location.hash !== `#cell=${encodeURIComponent(cursor)}`) {
     history.replaceState(null, "", `#cell=${encodeURIComponent(cursor)}`);
   }
 }
 
+// The cell the panel last drew. A new cell's panel opens at its top; a live
+// redraw of the same one keeps where it was scrolled to and what had focus, so
+// a link reached with Tab is still the one Return follows.
+let drawnPanel: string | undefined;
+
+/** What the panel can focus: its links and its copy button. */
+const FOCUSABLE = "a, button";
+
+/**
+ * Where a control stands in the panel: the fact it sits in, by its term,
+ * the cell it links to, if any, and its place among the fact's controls.
+ * The term tells a ring's Started by link from its Started link to the same
+ * cell.
+ */
+interface Place {
+  readonly fact: string | undefined;
+  readonly cell: string | undefined;
+  readonly at: number;
+}
+
+/** The fact `term` names in the panel, or the whole panel for none. */
+function factOf(term: string | undefined): Element | undefined {
+  if (term === undefined) {
+    return panel;
+  }
+  return [...panel.querySelectorAll(".facts > div")].find(
+    (fact) => fact.querySelector("dt")?.textContent === term,
+  );
+}
+
+/** Where `focused` stands in the panel, or none when it isn't there. */
+function placeOf(focused: Element | null): Place | undefined {
+  if (!(focused instanceof HTMLElement && panel.contains(focused))) {
+    return undefined;
+  }
+  const fact = focused.closest(".facts > div");
+  const term = fact?.querySelector("dt")?.textContent ?? undefined;
+  const controls = [...(fact ?? panel).querySelectorAll(FOCUSABLE)];
+  return { fact: term, cell: focused.dataset["cell"], at: controls.indexOf(focused) };
+}
+
+/**
+ * The control at `place` in the redrawn panel: a link to the same cell in
+ * the same fact, or the control at the same place there. A cell no longer
+ * named there is none, rather than another cell's link.
+ */
+function refound(place: Place): HTMLElement | undefined {
+  const controls = [...(factOf(place.fact)?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])];
+  if (place.cell !== undefined) {
+    return controls.find((control) => control.dataset["cell"] === place.cell);
+  }
+  return controls[place.at];
+}
+
 function drawPanel(): void {
   const open = current();
+  const focused = placeOf(document.activeElement);
   panel.innerHTML =
-    open === undefined ? "" : panelOf(open, new Set(forages.map((each) => each.cell)));
+    open === undefined
+      ? ""
+      : panelOf(open, new Set(forages.map((each) => each.cell)), startedFrom(forages, open.cell));
+  if (open?.cell !== drawnPanel) {
+    drawnPanel = open?.cell;
+    panel.scrollTop = 0;
+  } else if (focused !== undefined) {
+    refound(focused)?.focus({ preventScroll: true });
+  }
+}
+
+/**
+ * Opens `cell`, pressed in the panel, on the floor, stepped up to or named
+ * in the address. A find or the view of cells without purpose that would
+ * hide it ends first, and only the one that does, so the cursor lands on
+ * the cell asked for rather than the list's first row. When neither hides
+ * it, only the rows and panel the step touches are redrawn.
+ */
+function openCell(cell: string): void {
+  const forage = forages.find((each) => each.cell === cell);
+  if (forage === undefined) {
+    return;
+  }
+  cursor = cell;
+  if (shown().includes(forage)) {
+    select();
+    drawPanel();
+    return;
+  }
+  if (!holds(forage, sought)) {
+    finder.value = "";
+    finder.hidden = true;
+    sought = "";
+  }
+  hollowOnly = hollowOnly && forage.purpose === "";
+  draw();
 }
 
 function draw(): void {
@@ -191,10 +289,8 @@ function move(by: number): void {
 /** Steps to the cell that started the one the cursor is on, when it is drawn. */
 function up(): void {
   const by = current()?.startedBy;
-  if (by !== undefined && shown().some((each) => each.cell === by)) {
-    cursor = by;
-    select();
-    drawPanel();
+  if (by !== undefined) {
+    openCell(by);
   }
 }
 
@@ -292,9 +388,8 @@ listen({
 
 addEventListener("hashchange", () => {
   const named = cellIn(location.hash);
-  if (named !== null && named !== cursor && forages.some((each) => each.cell === named)) {
-    cursor = named;
-    draw();
+  if (named !== null && named !== cursor) {
+    openCell(named);
   }
 });
 
@@ -303,7 +398,7 @@ list.addEventListener("click", (event) => {
   if (!(row instanceof HTMLElement)) {
     return;
   }
-  cursor = row.dataset.cell ?? cursor;
+  cursor = row.dataset["cell"] ?? cursor;
   select();
   drawPanel();
   list.focus();
@@ -320,8 +415,10 @@ panel.addEventListener("click", (event) => {
   const starter = event.target.closest("a[data-cell]");
   if (starter instanceof HTMLAnchorElement) {
     event.preventDefault();
-    cursor = starter.dataset.cell ?? cursor;
-    draw();
+    const cell = starter.dataset["cell"];
+    if (cell !== undefined) {
+      openCell(cell);
+    }
     list.focus();
   }
 });
@@ -332,7 +429,7 @@ title.addEventListener("click", (event) => {
     return;
   }
   event.preventDefault();
-  hollowOnly = asked.dataset.show === "without";
+  hollowOnly = asked.dataset["show"] === "without";
   draw();
   list.focus();
 });
@@ -342,9 +439,10 @@ floor.addEventListener("click", (event) => {
   if (!(mark instanceof SVGRectElement)) {
     return;
   }
-  cursor = mark.dataset.cell ?? cursor;
-  hollowOnly = hollowOnly && forages.some((each) => each.cell === cursor && each.purpose === "");
-  draw();
+  const cell = mark.dataset["cell"];
+  if (cell !== undefined) {
+    openCell(cell);
+  }
   list.focus();
 });
 
@@ -352,11 +450,11 @@ themeSwitch();
 
 for (const key of document.querySelectorAll<HTMLElement>(".hero .keys kbd[data-key]")) {
   key.addEventListener("click", () => {
-    if (key.dataset.key === "?") {
+    if (key.dataset["key"] === "?") {
       toggle(keys);
-    } else if (key.dataset.key === "/") {
+    } else if (key.dataset["key"] === "/") {
       find();
-    } else if (key.dataset.key === "Enter") {
+    } else if (key.dataset["key"] === "Enter") {
       goDeeper();
     } else {
       list.focus();
