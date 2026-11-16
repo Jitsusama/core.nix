@@ -223,20 +223,6 @@ fn cmd(words: &str) -> Vec<String> {
     words.split_whitespace().map(str::to_string).collect()
 }
 
-/// A filter on the CAKE at `parent` that sends each of an agent's sessions
-/// as one flow, so one on eight connections takes no more than another on
-/// one. nftables marks a session's packets 0x401 to 0x4ff (shaper.nft says
-/// how), and the xor makes that queue 2 to 256; every other mark, none
-/// included, names a queue past CAKE's 1,024, which CAKE leaves to its own
-/// hashing. The class's major is past CAKE's hosts too, so it leaves those
-/// its own as well.
-pub fn sessions(dev: &str, parent: &str) -> Vec<String> {
-    cmd(&format!(
-        "tc filter replace dev {dev} parent {parent} protocol all prio 1 handle 1 \
-         flow map key mark and 0x7ff xor 0x400 baseclass 800:1"
-    ))
-}
-
 /// The connection's rate on 1:2, and the three classes under it at
 /// `split`, as tc commands that `verb` each class: replace or change.
 fn classes(verb: &str, dev: &str, rate: u64, split: &Split) -> Vec<Vec<String>> {
@@ -259,9 +245,8 @@ fn classes(verb: &str, dev: &str, rate: u64, split: &Split) -> Vec<Vec<String>> 
 /// CAKE keeps CAKE's handle, 2:, so the priority nftables gives a packet
 /// names its tin there, as on a VPN, whose CAKE is its root. Agents' bulk,
 /// 2:1, is sent to theirs by a filter. HTB puts the VPN's packets, given
-/// 1:4, in its class itself, and agents' CAKE takes each session as one
-/// flow. Every command replaces, and each filter has a handle, so running
-/// them again makes nothing twice.
+/// 1:4, in its class itself. Every command replaces, and the filter has a
+/// handle, so running them again makes nothing twice.
 pub fn tree(dev: &str, rate: u64, split: &Split) -> Vec<Vec<String>> {
     let mut all = classes("replace", dev, rate, split);
     all.extend([
@@ -278,7 +263,6 @@ pub fn tree(dev: &str, rate: u64, split: &Split) -> Vec<Vec<String>> {
             "tc filter replace dev {dev} parent 1: protocol all prio 1 handle 1 \
              basic match meta(priority eq 0x20001) classid 1:5"
         )),
-        sessions(dev, "5:"),
     ]);
     all
 }
@@ -698,8 +682,6 @@ mod tests {
             "tc qdisc replace dev wlan0 parent 1:5 handle 5: cake besteffort nat ack-filter",
             "tc filter replace dev wlan0 parent 1: protocol all prio 1 handle 1 \
              basic match meta(priority eq 0x20001) classid 1:5",
-            "tc filter replace dev wlan0 parent 5: protocol all prio 1 handle 1 \
-             flow map key mark and 0x7ff xor 0x400 baseclass 800:1",
         ] {
             assert!(has(line), "no `{line}` in {all:#?}");
         }
