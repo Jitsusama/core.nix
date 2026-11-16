@@ -3446,7 +3446,7 @@ fn a_change_a_macs_checks_read_is_compared_on_the_mac_too() {
 #[test]
 fn a_change_a_macs_checks_read_waits_while_the_mac_has_no_room_kept_as_skipped() {
     // On 16 November seven gates sent their comparisons to a Mac at load
-    // 110 to 130 on 12 processors, and Joel's own build there missed twice.
+    // 110 to 130 on 12 processors, and its person's own build missed twice.
     let changed = Changed::new();
     let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     changed.mac_at(answering.local_addr().unwrap());

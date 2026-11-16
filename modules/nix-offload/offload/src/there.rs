@@ -4056,7 +4056,7 @@ pub struct Load {
 
 /// Runnable work for each processor past which a Mac has no room. On 16
 /// November seven gates' comparisons went to a Mac at load 110 to 130 on
-/// 12 processors, and Joel's own build there, which needs it under 40,
+/// 12 processors, and its person's own build, which needs it under 40,
 /// missed twice; its builder sessions are kept under 36, three a core.
 const ROOM_PER_CORE: f64 = 3.0;
 
