@@ -86,10 +86,45 @@ function preparesEveryRun(heard, sessionOf, { dropsCarriedTools = false } = {}) 
   };
 }
 
-// A session with that one extension, answering from the faux provider through
-// the agent the host builds, so each request's messages, prompt and offered
-// tools are kept. It has no tools unless given some by name.
-async function openPreparedSession({ tools, dropsCarriedTools } = {}) {
+// A tool active only when named or restored, as an MCP server's tools are,
+// whose extension registers it at load or, when told, only later, as one
+// whose server is still connecting.
+const LATE_TOOL = {
+  name: "late",
+  label: "late",
+  description: "A tool that registers late",
+  parameters: { type: "object", properties: {} },
+  defaultActive: false,
+  execute: async () => ({ content: [{ type: "text", text: "late" }], details: {} }),
+};
+
+function registersLate({ atLoad }) {
+  let register;
+  return {
+    registerNow: () => register(),
+    extension: {
+      name: "registers-late",
+      factory: (pi) => {
+        register = () => pi.registerTool(LATE_TOOL);
+        if (atLoad) {
+          register();
+        }
+      },
+    },
+  };
+}
+
+// A session with that one extension and any others given, answering from the
+// faux provider through the agent the host builds, so each request's
+// messages, prompt and offered tools are kept. It has no tools unless given
+// some by name, or told to restore its transcript's as pi does by default.
+async function openPreparedSession({
+  tools,
+  dropsCarriedTools,
+  restoresTools = false,
+  sessionManager,
+  extensions = [],
+} = {}) {
   const cwd = mkdtempSync(join(tmpdir(), "pi-host-runs-"));
   const agentDir = join(cwd, "agent");
   const settingsManager = SettingsManager.inMemory();
@@ -105,17 +140,20 @@ async function openPreparedSession({ tools, dropsCarriedTools } = {}) {
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
-    extensionFactories: [preparesEveryRun(heard, () => session, { dropsCarriedTools })],
+    extensionFactories: [
+      preparesEveryRun(heard, () => session, { dropsCarriedTools }),
+      ...extensions,
+    ],
   });
   await resourceLoader.reload();
   ({ session } = await createAgentSession({
     cwd,
     agentDir,
     model: faux.getModel(),
-    sessionManager: SessionManager.inMemory(cwd),
+    sessionManager: sessionManager ?? SessionManager.inMemory(cwd),
     settingsManager,
     resourceLoader,
-    ...(tools ? { tools } : { noTools: "all" }),
+    ...(tools ? { tools } : restoresTools ? {} : { noTools: "all" }),
     createAgent: (options) =>
       new Agent({
         ...options,
@@ -236,6 +274,61 @@ it("a handler's edit to a carried run's tools decides what the provider is offer
       requests[1].tools,
       [],
       "the carried run offers none, as its handler chose, as a prompt's run would",
+    );
+  } finally {
+    close();
+  }
+});
+
+// A conversation whose transcript holds the late tool, recorded by a prompt's
+// run while that tool was at hand.
+async function transcriptWithLateTool() {
+  const first = await openPreparedSession({
+    tools: [LATE_TOOL.name],
+    extensions: [registersLate({ atLoad: true }).extension],
+  });
+  try {
+    first.faux.setResponses([fauxAssistantMessage("answered with late at hand")]);
+    await promptRun(first.session, "typed words");
+    assert.deepEqual(first.session.getActiveToolNames(), [LATE_TOOL.name]);
+    return first.session.sessionManager;
+  } finally {
+    first.close();
+  }
+}
+
+async function reopenWithLateTool(sessionManager) {
+  const late = registersLate({ atLoad: false });
+  const opened = await openPreparedSession({
+    restoresTools: true,
+    sessionManager,
+    extensions: [late.extension],
+  });
+  return { ...opened, registerLate: late.registerNow };
+}
+
+it("a restored tool that registers before any run becomes active", async () => {
+  const { session, registerLate, close } = await reopenWithLateTool(await transcriptWithLateTool());
+  try {
+    registerLate();
+    assert.deepEqual(session.getActiveToolNames(), [LATE_TOOL.name]);
+  } finally {
+    close();
+  }
+});
+
+it("a carried run, as a prompt's, leaves a restored tool that registers after it starts inactive", async () => {
+  const { session, faux, registerLate, close } = await reopenWithLateTool(
+    await transcriptWithLateTool(),
+  );
+  try {
+    faux.setResponses([fauxAssistantMessage("answered as carried")]);
+    await deadline(session.runForHost(() => session.agent.prompt(userMessage("carried on"))));
+    registerLate();
+    assert.deepEqual(
+      session.getActiveToolNames(),
+      [],
+      "the run recorded its loadout, so a tool registering after it is not restored into it",
     );
   } finally {
     close();
