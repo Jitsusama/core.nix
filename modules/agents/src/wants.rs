@@ -337,9 +337,10 @@ mod tests {
                 .map(|one| (one["putOff"].clone(), one["rings"].clone()))
                 .collect()
         };
+        // Served oldest asked first, SKIFF's, saying no time, before it.
         assert_eq!(
             said(1_000),
-            [(json!(true), json!(false)), (json!(false), json!(true))],
+            [(json!(false), json!(true)), (json!(true), json!(false))],
             "the one put off says so and rings for nothing, and the other is as it was"
         );
         assert_eq!(
@@ -361,7 +362,7 @@ mod tests {
         put_off.put("SKIFF question-1", 600_000);
         assert_eq!(
             put_off.wait(600_000),
-            Some(Duration::from_millis(3_000_000)),
+            Some(Duration::from_secs(3_000)),
             "the soonest still put off is waited for"
         );
         assert_eq!(

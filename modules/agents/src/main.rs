@@ -324,8 +324,10 @@ fn soonest(one: Option<Duration>, other: Option<Duration>) -> Option<Duration> {
 /// error once nothing can be said any more.
 fn hear(
     heard: &mpsc::Receiver<Heard>,
-    wait: Option<Duration>,
+    still: &Still,
+    put_off: &PutOff,
 ) -> Result<Vec<Heard>, RecvTimeoutError> {
+    let wait = soonest(still.wait(Instant::now()), put_off.wait(clock::now_ms()));
     let first = match wait {
         None => Some(heard.recv().map_err(|_| RecvTimeoutError::Disconnected)?),
         Some(wait) => match heard.recv_timeout(wait) {
@@ -458,15 +460,7 @@ fn serve(args: Args) -> Result<(), Failure> {
     let mut inputs = started(words, &paths);
     let mut served = Served::default();
     let mut still = Still::default();
-    // Waiting too for a want put off to need Joel again, so its record is
-    // made anew as its hour ends.
-    while let Ok(said) = hear(
-        &heard,
-        soonest(
-            still.wait(Instant::now()),
-            inputs.put_off.wait(clock::now_ms()),
-        ),
-    ) {
+    while let Ok(said) = hear(&heard, &still, &inputs.put_off) {
         for one in said {
             if one.moves_places() {
                 still.moved(Instant::now());
