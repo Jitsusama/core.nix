@@ -346,7 +346,14 @@ async fn follow(
         .as_deref()
         .and_then(Fix::read)
         .filter(|fix| !fix.hand);
-    shared.change(|known| known.here.clone_from(&last));
+    shared.change(|known| {
+        known.here.clone_from(&last);
+        // A here kept with its names is asked none again until the laptop
+        // moves, so the names it holds stand answered rather than starting.
+        if last.as_ref().is_some_and(|fix| !fix.unnamed()) {
+            known.names = Some(json!({"state": "answering"}));
+        }
+    });
     pin_holds(shared, files, &mut last);
     loop {
         let why = match geoclue_followed(shared, files, &mut last, &mut pins).await {
