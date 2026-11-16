@@ -112,11 +112,12 @@ Provider {
     readonly property bool answersAsks: settings.answersAsks === true
     readonly property var asksLink: answersAsks ? daemon : null
 
-    // Whether the place is off, as it is until agents are fenced off Joel's
-    // runtime folder and Wayland: every agent runs as his uid, so a daemon
-    // his manager let in would answer any of them (2026-11-10, Joel: "we
-    // can't have a password backdoor here"). It then holds one row, saying
-    // so and opening the browser his manager's own extension fills in.
+    // Whether the place is off, as `off = true` takes it back off where
+    // agents aren't fenced off Joel's runtime folder and Wayland: every
+    // agent runs as his uid, so a daemon his manager let in would answer
+    // any of them (2026-11-10, Joel: "we can't have a password backdoor
+    // here"). It then holds one row, saying so and opening the browser his
+    // manager's own extension fills in.
     readonly property bool off: settings.off === true
     // Whether the launcher is walked from outside it, as `qs ipc call
     // launcher run`, `doing` and `show` walk it for any process of the

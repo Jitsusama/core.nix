@@ -1165,13 +1165,6 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # build sandbox (modules/meaning/checks.nix).
         systemd.user.services.meaning.Service.ExecStart =
           lib.mkForce "${standInMeaning} %t/daemons/meaning.sock %t/meaning-means.json";
-        # The place is off on a real machine until agents are fenced
-        # (modules/passwords/home.nix), and copies nothing; on here, where
-        # none runs and no secret is real, copying through wl-copy.
-        jitsusama.quickshell.launcher.providers.passwords = lib.mkIf walksPasswords {
-          off = lib.mkForce false;
-          copier = lib.getExe' pkgs.wl-clipboard "wl-copy";
-        };
         # Passwords walked with 1Password's own manager, run by the shell's
         # passwords daemon, asking the stand-in for op in place of the
         # one 1Password's app would answer.

@@ -4742,16 +4742,12 @@
     launcher goes, its foot saying 1Password offers to fill it, and a walk from outside the
     launcher finding no entry and asking nothing, with a stand-in for 1Password's manager
   '';
-  the-passwords-place-off-gives-the-shell-no-daemon = ''
-    while the launcher's Passwords place is off, the shell's own config names no passwords daemon
-    command, so rewriting the off setting gives the shell nothing to run
-  '';
   the-passwords-place-off-goes-into-its-drawer-on-niri = ''
     on a nested niri, the Passwords place off with no password manager set up holds its one row,
     whose Return, with nothing to open, puts the keys in its drawer, which says why
   '';
   the-passwords-place-says-why-its-off-on-niri = ''
-    on a nested niri, with the Passwords place off as the module leaves it, Home's Passwords row
+    on a nested niri, with the Passwords place turned off, Home's Passwords row
     and the place's one row each have a drawer saying why it's off and that Return opens a
     stand-in Chrome, where 1Password's extension fills in sign-ins
   '';

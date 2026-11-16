@@ -249,10 +249,8 @@ in
     jitsusama.quickshell.launcher.providers.passwords = {
       order = 48;
       source = ./Passwords.qml;
-      # Off, reaching no daemon, until agents are fenced off Joel's runtime
-      # folder and Wayland; the checks that walk it turn it on, where no
-      # agent runs and no secret is real.
-      off = true;
+      # On, now that agents are fenced off Joel's runtime folder and
+      # Wayland; `off = true` here takes it back off, reaching no daemon.
       # Copies go through wl-copy, by its full path, as a sensitive offer
       # niri hands no fenced agent.
       copier = lib.getExe' pkgs.wl-clipboard "wl-copy";
@@ -298,8 +296,8 @@ in
     warnings = lib.optional (config.jitsusama.passwords.releases != [ ] && !answersAsks) ''
       jitsusama.passwords.releases lists releases, but the launcher's
       Passwords place is off, so no secret ask is answered or drawn until
-      jitsusama.quickshell.launcher.providers.passwords.off is lib.mkForce false,
-      since this module already sets it to true.
+      jitsusama.quickshell.launcher.providers.passwords.off is no longer set
+      to true.
     '';
   };
 }

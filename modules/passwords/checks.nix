@@ -103,8 +103,7 @@ onLinux {
   # daemon itself, with 1Password's manager, and nothing else can: there's
   # no unit and no socket for it, and it copies through wl-copy by its
   # full path, now that niri keeps a sensitive copy from fenced agents.
-  # The place stays off until Passwords is signed off as safe to turn on,
-  # and the provider knows 1Password's program.
+  # The place is on, and the provider knows 1Password's program.
   passwords-runs-each-password-manager =
     let
       home = account graphical;
@@ -119,7 +118,7 @@ onLinux {
         && !(home.systemd.user.sockets ? passwords)
         && lib.hasPrefix "/nix/store/" (provider.copier or "")
         && lib.hasSuffix "/bin/wl-copy" (provider.copier or "")
-        && (provider.off or false)
+        && !(provider.off or false)
         && home.jitsusama.passwords.managers ? "1password"
         && lib.any (lib.hasSuffix "/op") home.jitsusama.passwords.managers."1password".command
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
@@ -144,10 +143,8 @@ onLinux {
             ];
           }
         ]);
-      off = releasing { };
-      on = releasing {
-        jitsusama.quickshell.launcher.providers.passwords.off = lib.mkForce false;
-      };
+      off = releasing { jitsusama.quickshell.launcher.providers.passwords.off = true; };
+      on = releasing { };
       offProviders = off.jitsusama.quickshell.launcher.providers;
       onProviders = on.jitsusama.quickshell.launcher.providers;
     in
@@ -163,18 +160,6 @@ onLinux {
         && on.xdg.configFile ? "quickshell/launcher/Shown.js"
         && !lib.any (lib.hasInfix "jitsusama.passwords.releases") on.warnings
       );
-  # While the place is off, the shell's own config names no passwords
-  # daemon, so an unfenced process that rewrites the off setting finds
-  # nothing for the shell to run. It closes that one setting, not Joel's
-  # session: such a process can still start the daemon itself, as it can
-  # today, until the agent fence covers every session.
-  the-passwords-place-off-gives-the-shell-no-daemon =
-    let
-      shellConfig = (account graphical).xdg.configFile."quickshell/Providers.qml".text;
-    in
-    holds "the-passwords-place-off-gives-the-shell-no-daemon"
-      "The shell's config names the passwords daemon while the Passwords place is off."
-      (!lib.hasInfix "/bin/passwords" shellConfig);
   # Nothing of the Passwords place, nor the daemon interface it asks its
   # daemon through, answers the shell's IPC, so no `qs ipc call` another
   # process makes reaches a secret or lets a manager in, now or once
