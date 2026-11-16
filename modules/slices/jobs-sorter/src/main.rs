@@ -589,6 +589,9 @@ struct Windows<'a> {
     focus: Option<&'a focus::Following>,
     /// The prefix of the pi hosts' units, when they're ranked.
     hosts: Option<&'a str>,
+    /// The prefixes of the scopes a session window's pi runs in beside it
+    /// (`--weigh`), held with the window ([`focus::pis_of`]).
+    pis: &'a [String],
 }
 
 /// How each window ranks, as last set: its weight, whether it's kept as
@@ -603,6 +606,9 @@ struct Ranks {
     /// Each held or kept window's scope, by niri's id for it, or when it was last
     /// looked for and not found.
     found: HashMap<u64, Result<PathBuf, std::time::Instant>>,
+    /// The scopes of each held or kept window's pis, by niri's id for it,
+    /// with when they were looked for.
+    pis: HashMap<u64, (Vec<PathBuf>, std::time::Instant)>,
     /// The window with the focus whose memory was last asked back, so
     /// it's asked once each time the focus comes to it ([`swap_in`]).
     reading: Option<u64>,
@@ -698,13 +704,22 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
     } else {
         Vec::new()
     };
-    ranks.found.retain(|id, _| {
+    let looked_for = |id: &u64| {
         wanted
             .iter()
             .chain(&in_memory)
             .any(|window| window.id == *id)
-    });
+    };
+    ranks.found.retain(|id, _| looked_for(id));
+    ranks.pis.retain(|id, _| looked_for(id));
     let mut scopes: Option<Vec<PathBuf>> = None;
+    let list = || -> Vec<PathBuf> {
+        windows
+            .under
+            .iter()
+            .flat_map(|slice| homes(slice, windows.prefixes))
+            .collect()
+    };
     // What each kitty drawing a window not found by its app id says it
     // shows, asked once a look, as its answer runs to megabytes.
     let mut kitties: HashMap<u32, Vec<kitty::Shown>> = HashMap::new();
@@ -721,14 +736,8 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
             Some(Ok(scope)) if scope.exists() => Some(scope.clone()),
             Some(Err(when)) if now.saturating_duration_since(*when) < LOOK_AGAIN => None,
             _ => {
-                let all = scopes.get_or_insert_with(|| {
-                    windows
-                        .under
-                        .iter()
-                        .flat_map(|slice| homes(slice, windows.prefixes))
-                        .collect()
-                });
-                let unit = focus::scope_of(window, &started_with(all))
+                let all = scopes.get_or_insert_with(list);
+                let unit = focus::scope_of(window, &started_with(all), windows.pis)
                     .map(str::to_owned)
                     .or_else(|| {
                         let shown = kitties.entry(window.pid).or_insert_with(|| {
@@ -748,18 +757,56 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
                 scope
             }
         };
+        let pis = match ranks.pis.get(&window.id) {
+            _ if known.is_none() => Vec::new(),
+            Some((found, when))
+                if found.iter().all(|scope| scope.exists())
+                    && (!found.is_empty() || now.saturating_duration_since(*when) < LOOK_AGAIN) =>
+            {
+                found.clone()
+            }
+            _ => {
+                let theirs: Vec<PathBuf> = scopes
+                    .get_or_insert_with(list)
+                    .iter()
+                    .filter(|scope| {
+                        unit_of(scope).is_some_and(|unit| focus::runs_a_pi(unit, windows.pis))
+                    })
+                    .cloned()
+                    .collect();
+                let started = started_with(&theirs);
+                let found: Vec<PathBuf> = focus::pis_of(window, &started, windows.pis)
+                    .into_iter()
+                    .filter_map(|unit| {
+                        theirs
+                            .iter()
+                            .find(|scope| unit_of(scope) == Some(unit))
+                            .cloned()
+                    })
+                    .collect();
+                ranks.pis.insert(window.id, (found.clone(), now));
+                found
+            }
+        };
         if holds {
             held.extend(known.clone());
+            held.extend(pis.iter().cloned());
         }
         kept.extend(known);
+        kept.extend(pis);
     }
     ranks.spared = following
         .within(now, keep::SPARED_FOR)
         .iter()
-        .filter_map(|window| match ranks.found.get(&window.id) {
-            Some(Ok(scope)) => Some(scope.file_name()?.to_str()?.to_owned()),
-            _ => None,
+        .flat_map(|window| {
+            let own = match ranks.found.get(&window.id) {
+                Some(Ok(scope)) => Some(scope),
+                _ => None,
+            };
+            let pis = ranks.pis.get(&window.id).map(|(pis, _)| pis.as_slice());
+            own.into_iter().chain(pis.unwrap_or_default())
         })
+        .filter_map(|scope| unit_of(scope).map(str::to_owned))
         .collect();
     set_holds(&held, &kept, ranks);
     set_in_memory(&kept, ranks);
@@ -851,8 +898,9 @@ fn set_in_memory(kept: &[PathBuf], ranks: &mut Ranks) {
 }
 
 /// Asks, once each time the focus comes to a session window whose scope is
-/// found, for the window's swapped memory to be read back, through the
-/// root unit that may (`src/swap_in.rs`), which checks it all again itself.
+/// found, for the swapped memory of the window and its pis to be read back,
+/// through the root unit that may (`src/swap_in.rs`), which checks it all
+/// again itself.
 fn read_back(at: Option<focus::Window>, ranks: &mut Ranks) {
     let Some(window) = at else {
         ranks.reading = None;
@@ -865,12 +913,45 @@ fn read_back(at: Option<focus::Window>, ranks: &mut Ranks) {
         return;
     };
     ranks.reading = Some(window.id);
-    let Some(pid) = fs::read_to_string(scope.join("cgroup.procs"))
+    let first = fs::read_to_string(scope.join("cgroup.procs"))
         .ok()
-        .and_then(|procs| procs.lines().next().map(str::to_owned))
-    else {
-        return;
-    };
+        .and_then(|procs| procs.lines().next().map(str::to_owned));
+    // Each pi's scope is read back by its mycelium, which carries the
+    // window's app id where the pi doesn't, so the reader knows it as
+    // the window's.
+    let pis = ranks
+        .pis
+        .get(&window.id)
+        .map(|(pis, _)| pis.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|scope| started_by(scope, &window.app_id));
+    for pid in first.into_iter().chain(pis) {
+        start_reading_back(&pid);
+    }
+}
+
+/// The first process in `scope` started with `app_id`.
+fn started_by(scope: &Path, app_id: &str) -> Option<String> {
+    fs::read_to_string(scope.join("cgroup.procs"))
+        .ok()?
+        .lines()
+        .find(|pid| {
+            fs::read(format!("/proc/{pid}/environ"))
+                .ok()
+                .and_then(|environ| focus::app_id(&environ))
+                .is_some_and(|id| id == app_id)
+        })
+        .map(str::to_owned)
+}
+
+/// A scope's unit, from its path.
+fn unit_of(scope: &Path) -> Option<&str> {
+    scope.file_name()?.to_str()
+}
+
+/// Starts reading back the swapped memory of `pid`'s scope.
+fn start_reading_back(pid: &str) {
     let unit = format!("memory-swap-in@{pid}.service");
     match Command::new("systemctl")
         .args(["start", "--no-block", &unit])
@@ -930,6 +1011,7 @@ fn weigh_windows(windows: &Windows, ranks: &mut Ranks) {
         weight,
         focus: _,
         hosts: _,
+        pis: _,
     } = *windows;
     if let Some(prefix) = windows.hosts {
         rank_hosts(windows, prefix, &held, ranks);
@@ -1807,6 +1889,7 @@ fn run(settings: &Settings) -> Result<(), String> {
                     weight: settings.low_weight,
                     focus: following.as_ref(),
                     hosts: settings.hosts.as_deref(),
+                    pis: &settings.weigh,
                 };
                 rest(watch, settings.every, &windows, &mut ranks);
             }

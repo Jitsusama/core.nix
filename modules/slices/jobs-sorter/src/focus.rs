@@ -351,12 +351,17 @@ impl Recent {
 /// app ids its processes were started with: the one started with the
 /// window's own, or else the one scope of a kitty that draws it alone.
 /// Two started with the same, as a shell started again could leave, are
-/// neither.
-pub fn scope_of<'a>(window: &Window, scopes: &'a [(String, Vec<String>)]) -> Option<&'a str> {
+/// neither. A scope under one of `pis`, a session's pi, is never the
+/// window's own, though it's started with its app id ([`pis_of`]).
+pub fn scope_of<'a>(
+    window: &Window,
+    scopes: &'a [(String, Vec<String>)],
+    pis: &[String],
+) -> Option<&'a str> {
     let one = |found: Vec<&'a str>| (found.len() == 1).then(|| found[0]);
     let started: Vec<&str> = scopes
         .iter()
-        .filter(|(_, apps)| apps.contains(&window.app_id))
+        .filter(|(unit, apps)| apps.contains(&window.app_id) && !runs_a_pi(unit, pis))
         .map(|(unit, _)| unit.as_str())
         .collect();
     if !started.is_empty() {
@@ -368,6 +373,30 @@ pub fn scope_of<'a>(window: &Window, scopes: &'a [(String, Vec<String>)]) -> Opt
         .map(|(unit, _)| unit.as_str())
         .filter(|unit| unit.starts_with(&own))
         .collect())
+}
+
+/// The scopes, under one of `pis`, of the pis a window's session runs:
+/// those started with its app id. Mycelium starts each session's pi from
+/// the window in a scope of its own beside the window's, which holds
+/// little but mycelium, so a hold on the window's scope alone lifts
+/// nothing Joel waits on: on 16 November no pi's scope weighed over 100
+/// while a held window's weighed 1000, and a turn he waited on queued 78 s
+/// for a processor in 475.
+pub fn pis_of<'a>(
+    window: &Window,
+    scopes: &'a [(String, Vec<String>)],
+    pis: &[String],
+) -> Vec<&'a str> {
+    scopes
+        .iter()
+        .filter(|(unit, apps)| runs_a_pi(unit, pis) && apps.contains(&window.app_id))
+        .map(|(unit, _)| unit.as_str())
+        .collect()
+}
+
+/// Whether `unit` is a session's pi's scope, as one of `pis` begins it.
+pub fn runs_a_pi(unit: &str, pis: &[String]) -> bool {
+    pis.iter().any(|prefix| unit.starts_with(prefix.as_str()))
 }
 
 /// The app id a process was started with, from its environment's bytes.
@@ -718,7 +747,7 @@ mod tests {
                 pid,
                 title: String::new(),
             };
-            scope_of(&window, &scopes).map(str::to_owned)
+            scope_of(&window, &scopes, &[]).map(str::to_owned)
         };
         assert_eq!(
             find("pi-session.46", 2684).as_deref(),
@@ -735,6 +764,54 @@ mod tests {
             "two started with one app id"
         );
         assert_eq!(find("pi-session.99", 2684), None, "one kitty, many scopes");
+    }
+
+    #[test]
+    fn a_session_windows_pi_runs_beside_it_started_with_its_app_id() {
+        let scopes = [
+            (
+                "kitty-3864-2.scope".to_owned(),
+                vec!["pi-session.7".to_owned()],
+            ),
+            (
+                "mycelium-pi-3c08f64e.scope".to_owned(),
+                vec!["pi-session.7".to_owned()],
+            ),
+            (
+                "kitty-3864-5.scope".to_owned(),
+                vec!["pi-session.8".to_owned()],
+            ),
+            (
+                "mycelium-pi-9a1d.scope".to_owned(),
+                vec!["pi-session.8".to_owned()],
+            ),
+            (
+                "kitty-3864-6.scope".to_owned(),
+                vec!["pi-session.9".to_owned()],
+            ),
+        ];
+        let pis = ["mycelium-pi-".to_owned()];
+        let window = |app_id: &str| Window {
+            id: 1,
+            app_id: app_id.into(),
+            pid: 3864,
+            title: String::new(),
+        };
+        assert_eq!(
+            scope_of(&window("pi-session.7"), &scopes, &pis),
+            Some("kitty-3864-2.scope"),
+            "its pi's scope is no second window"
+        );
+        assert_eq!(
+            pis_of(&window("pi-session.7"), &scopes, &pis),
+            ["mycelium-pi-3c08f64e.scope"],
+            "its pi runs in a scope of its own, which mycelium started from the window"
+        );
+        assert_eq!(
+            pis_of(&window("pi-session.9"), &scopes, &pis),
+            [] as [&str; 0],
+            "a window whose pi hasn't started"
+        );
     }
 
     #[test]
