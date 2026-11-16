@@ -1,185 +1,331 @@
-/* What each cell is for: this machine's cells as a list, each set in under
-   the cell that started it, with its purpose and how far its plans have
-   come, and beside it the cell the cursor is on, with its documents. An
-   interface to keep open, set as the system page sets its own, since one
-   leads to the other. */
+/* Forage: the forest floor cut through, loam for the ground and fresh-cap
+   cream for what speaks; hyphae in the map's own ink for who split from
+   whom; one glow of foxfire, the kit's accent ring, only where the keys are.
+
+   What each cell is for: the cells standing on this machine, said first in
+   one sentence over a drawing of the floor, then listed, each under the
+   cell it split from, with its purpose and how far its plans have come,
+   and beside the list the cell the cursor is on. An interface to keep
+   open: the sentence and the drawing are the overview, the panel the
+   detail, and nothing moves under the reader but the cursor. */
 
 :root {
-  /* The program hue marks the site's emphasis: a cell is a program at
-     work. */
+  /* A cell is a program at work, so the program hue is the site's tint;
+     the map's hyphae ink is shared so the two pages read as one world. */
   --tint: var(--program);
-  --list: min(46rem, 54vw);
+  --tint-word: color-mix(in oklab, var(--tint) 60%, var(--strong));
+  --hyphae: color-mix(in oklab, var(--muted) 70%, var(--rule));
+  --list: minmax(0, 46rem);
+  --open: minmax(20rem, 30rem);
 }
 
-body {
+code {
+  font-size: 0.92em;
+}
+
+/* ---- The first screen: the crest, the sentence, and where it stands. ---- */
+
+.hero {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  min-block-size: 100dvh;
+  justify-items: center;
+  gap: var(--items);
+  padding: calc(var(--groups) * 2) var(--inset) var(--groups);
+  text-align: center;
 }
 
-@media (min-width: 60rem) and (min-height: 34rem) {
-  html,
-  body {
-    block-size: 100dvh;
-    overflow: hidden;
-  }
+.crest {
+  inline-size: min(15rem, 70vw);
+  block-size: auto;
+  overflow: visible;
 }
 
-.stage code {
-  font-size: inherit;
+.eyebrow {
+  margin: 0;
+  color: var(--tint-word);
+  font: var(--label-weight) var(--step-small) / 1.5 var(--label-face);
+  font-feature-settings: var(--mono-features);
+  letter-spacing: var(--label-tracking);
+  text-transform: lowercase;
 }
 
-/* ---- The head. ---- */
-
-.head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--mark) var(--groups);
-  padding: var(--mark) var(--inset);
-  border-block-end: 1px solid var(--rule);
+.eyebrow span {
+  color: var(--strong);
 }
 
-.mark {
-  color: var(--tint);
-  flex: none;
+.headline {
+  max-inline-size: 18ch;
+  margin: 0;
+  color: var(--strong);
+  font-family: var(--title-face);
+  font-size: var(--step-hero);
+  font-weight: 560;
+  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
+  line-height: 1.02;
+  letter-spacing: -0.01em;
 }
 
-.head h1 {
-  font-size: var(--step-large);
-  line-height: 1.2;
-}
-
-/* Every word on the page clears 7:1, so the title's tint is deepened
-   toward the strong ink, as the other sites' are. */
-.head h1 em {
-  color: color-mix(in oklab, var(--tint) 60%, var(--strong));
-}
-
-.head .keys {
-  margin-inline-start: auto;
-  color: var(--text);
-  font-size: var(--step-small);
-  visibility: hidden;
-}
-
-.js .head .keys {
-  visibility: visible;
-}
-
-.head .keys kbd {
-  cursor: pointer;
-}
-
-/* ---- The stage: the cells and the one open. ---- */
-
-.stage {
-  display: grid;
-  grid-template-columns: var(--list) minmax(0, 1fr);
-  min-block-size: 0;
-}
-
-.stage:focus {
+.headline:focus {
   outline: none;
 }
 
-.whole {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  min-block-size: 0;
-  border-inline-end: 1px solid var(--rule);
+.headline em {
+  display: inline-block;
+  color: var(--tint-word);
+  font-style: italic;
+  font-weight: 420;
 }
 
-/* The one focal point: the cells in a sentence, set large. */
+.headline a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--hyphae);
+  text-underline-offset: 0.12em;
+}
+
+.headline a:hover {
+  text-decoration-color: currentColor;
+}
+
 .lede {
-  display: grid;
+  max-inline-size: 33rem;
+  margin: 0;
+  color: var(--text);
+  font-family: var(--voice-face);
+  font-size: var(--step-large);
+  font-style: italic;
+  font-weight: var(--voice-weight);
+  font-variation-settings: "SOFT" var(--voice-soft), "WONK" var(--voice-wonk);
+  line-height: 1.4;
+}
+
+.standing {
+  display: flex;
+  align-items: center;
   gap: var(--mark);
-  padding: var(--groups) var(--inset) var(--items);
+  min-block-size: 44px;
+  margin: 0;
 }
 
-.verdict {
-  max-inline-size: var(--measure, 38rem);
-  color: var(--strong);
-  font-size: var(--step-section);
-  font-weight: var(--title-weight);
-  font-variation-settings: "SOFT" 100, "WONK" 1;
-  line-height: 1.2;
-}
-
-.here {
+.asof {
   color: var(--text);
   font-size: var(--step-small);
 }
 
+/* The keys said once, quietly, inside the composition, beside the theme. */
+.ways {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--mark) var(--groups);
+  margin-block-start: var(--mark);
+  color: var(--text);
+  font-size: var(--step-small);
+}
+
+.ways .keys {
+  margin: 0;
+  max-inline-size: 40rem;
+  visibility: hidden;
+}
+
+.js .ways .keys {
+  visibility: visible;
+}
+
+.ways kbd {
+  cursor: pointer;
+}
+
+/* ---- The floor cut through: the one drawing, leading the first screen.
+   Before the node speaks it holds the crest; then the cells themselves. ---- */
+
+.floor {
+  display: grid;
+  justify-items: center;
+  gap: var(--mark);
+  inline-size: 100%;
+  margin: 0 0 var(--items);
+}
+
+.drawn {
+  display: grid;
+  justify-items: center;
+  inline-size: 100%;
+}
+
+.drawn svg:not(.crest) {
+  display: block;
+  inline-size: min(100%, var(--w, 30rem));
+  block-size: auto;
+  overflow: visible;
+}
+
+.legend {
+  max-inline-size: 36rem;
+  color: var(--text);
+  font-size: var(--step-small);
+  font-style: italic;
+  margin: calc(-1 * var(--mark)) 0 var(--items);
+}
+
+.ground {
+  fill: none;
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.hypha {
+  fill: none;
+  stroke: var(--hyphae);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+/* A cell whose purpose is written is a whole compartment; one without is
+   hollow and dashed, so the fault is told by shape before colour. */
+rect.whole {
+  fill: var(--tint);
+  stroke: var(--tint);
+  stroke-width: 1.5;
+}
+
+rect.hollow {
+  fill: var(--background);
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 2.5;
+}
+
+.drawn rect[data-cell] {
+  cursor: pointer;
+}
+
+.drawn rect.on {
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-dasharray: none;
+}
+
+.cap {
+  fill: var(--strong);
+}
+
+.stalk {
+  fill: none;
+  stroke: var(--strong);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.gill {
+  fill: none;
+  stroke: var(--background);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.gill.dim {
+  stroke: color-mix(in oklab, var(--strong) 70%, var(--background));
+}
+
+.drawn text {
+  fill: var(--text);
+  font: italic 400 14px var(--serif);
+}
+
+.drawn .substrate {
+  fill: var(--strong);
+  font: var(--label-weight) 13px var(--label-face);
+  letter-spacing: 0.12em;
+  text-transform: lowercase;
+}
+
+/* The standing line's glyph: a cap, lit while the page is live and
+   hollow once it isn't, drawn after the floor's marks it borrows from. */
+
+.glyph {
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex: none;
+}
+
+.glyph .cap {
+  fill: var(--tint);
+}
+
+.glyph .stalk {
+  fill: none;
+  stroke: var(--hyphae);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.standing:has([data-state="stale"]) .glyph .cap,
+.standing:has([data-state="broken"]) .glyph .cap {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 2;
+}
+
+/* ---- The work: the cells, and the one open beside them. ---- */
+
+.work {
+  display: grid;
+  grid-template-columns: var(--list) var(--open);
+  justify-content: center;
+  align-items: start;
+  gap: 0 calc(var(--groups) * 1.5);
+  padding: var(--groups) var(--inset) calc(var(--groups) * 2);
+  border-block-start: 1px solid var(--rule);
+}
+
+.part {
+  margin: 0 0 var(--items);
+  color: var(--strong);
+  font-family: var(--title-face);
+  font-size: var(--step-title);
+  font-weight: 560;
+  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
+}
+
+.part em {
+  color: var(--tint-word);
+  font-weight: 420;
+}
+
 .find {
+  inline-size: 100%;
   min-block-size: 44px;
+  margin-block-end: var(--items);
   padding: 0 var(--mark);
-  background: var(--sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: none;
+  border: 0;
+  border-block-end: 1px solid var(--rule);
   color: var(--strong);
   font: inherit;
 }
 
 .find:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 1px;
-}
-
-@supports (text-wrap: balance) {
-  .verdict {
-    text-wrap: balance;
-  }
-}
-
-@supports (text-wrap: pretty) {
-  .cells .purpose {
-    text-wrap: pretty;
-  }
-}
-
-@supports (scrollbar-gutter: stable) {
-  .cells {
-    scrollbar-gutter: stable;
-  }
-
-  /* On a small screen the page scrolls, not the list. */
-  @media (max-width: 60rem), (max-height: 34rem) {
-    .cells {
-      scrollbar-gutter: auto;
-    }
-  }
-}
-
-.foot {
-  padding: var(--tie) var(--inset);
-  border-block-start: 1px solid var(--rule);
-}
-
-.asof {
-  color: var(--text);
-  font: 400 var(--step-small) / 1.4 var(--mono);
-  font-feature-settings: var(--mono-features);
-  min-block-size: 44px;
-  display: flex;
-  align-items: center;
+  outline: none;
+  border-block-end: var(--ring) solid var(--accent);
 }
 
 .hint,
 .none {
-  padding: var(--items) var(--inset);
+  padding: var(--items) 0;
   color: var(--text);
+  font-style: italic;
 }
 
-/* A cell's row: its name and how far it has come on one line, its purpose
-   under them and what it keeps under that, set in a step for each cell
-   above it that started it, so a cell's own sit under it as a tree's do. */
+/* A cell's row: its mark in the gutter, then its name and how far it has
+   come, its purpose as the line to read and what it keeps under that, set
+   in a step for each cell it split from, hanging from the hyphae's ink. */
 .cells {
   margin: 0;
   padding: 0;
-  min-block-size: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   border-block-start: 1px solid var(--rule);
 }
 
@@ -188,66 +334,84 @@ body {
 }
 
 .cells [role="option"] {
-  --step: min(calc(var(--depth, 0) * 1.25rem), 5rem);
+  --step: min(calc(var(--depth, 0) * 1.5rem), 6rem);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "name come"
-    "purpose purpose"
-    "keeps keeps";
-  gap: var(--tie) var(--mark);
+  grid-template-columns: 1.25rem 6.5rem 3.5rem minmax(0, 1fr);
+  gap: 0 var(--items);
   align-items: baseline;
   min-block-size: 44px;
-  padding: var(--items) var(--inset) var(--items) calc(var(--inset) + var(--step));
+  padding: var(--items) var(--mark) var(--items) calc(var(--mark) + var(--step));
+  border-block-end: 1px solid var(--edge);
   color: var(--text);
   cursor: pointer;
 }
 
-/* The cells a cell started hang from a rule down its edge. */
-.cells [role="option"][style*="--depth:0"] {
-  border-block-start: 1px solid var(--edge);
-}
-
 .cells [role="option"]:not([style*="--depth:0"]) {
-  background-image: linear-gradient(var(--rule), var(--rule));
+  background-image: linear-gradient(var(--hyphae), var(--hyphae));
   background-size: 1px 100%;
-  background-position: calc(var(--inset) + var(--step) - 0.6rem) 0;
+  background-position: calc(var(--step) - 0.5rem) 0;
   background-repeat: no-repeat;
 }
 
-.cells [role="option"]:hover {
-  background-color: var(--sunken);
+.cells .mk {
+  align-self: start;
+  display: flex;
+  padding-block-start: 0.4em;
+}
+
+.cm {
+  inline-size: 1.25rem;
+  block-size: 0.625rem;
+  overflow: visible;
 }
 
 .cells .name {
-  grid-area: name;
   color: var(--strong);
-  font-weight: 500;
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+  font-size: var(--step-small);
+  overflow-wrap: anywhere;
 }
 
 .cells .come {
-  grid-area: come;
   color: var(--text);
   font: 400 var(--step-small) / 1.4 var(--mono);
   font-feature-settings: var(--mono-features);
+  text-align: end;
+}
+
+.cells .line {
+  display: grid;
+  gap: var(--tie);
 }
 
 .cells .purpose {
-  grid-area: purpose;
-  max-inline-size: var(--measure, 38rem);
   color: var(--strong);
 }
 
 .cells .keeps {
-  grid-area: keeps;
   color: var(--text);
   font-size: var(--step-small);
 }
 
 /* A cell with no purpose written says so in its own words, set in the
-   note's italic so it reads as a gap, not a purpose. */
+   voice's italic so it reads as a gap, not a purpose. */
 .quiet {
+  color: var(--text);
   font-style: italic;
+}
+
+@supports (text-wrap: pretty) {
+  .cells .purpose,
+  .lede {
+    text-wrap: pretty;
+  }
+}
+
+@supports (text-wrap: balance) {
+  .headline {
+    text-wrap: balance;
+  }
 }
 
 /* ---- The cursor, after every row's own look, which it marks. ---- */
@@ -256,40 +420,61 @@ body {
   background-color: var(--selection);
 }
 
-.cells [aria-selected="true"] * {
+.cells [aria-selected="true"] .quiet {
   color: var(--strong);
 }
 
-/* Focus on the list rings the cell it's on, and a bar down the list's
-   edge says the list itself holds the keys. */
-.cells:focus-visible {
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-
 .cells:focus-visible [aria-selected="true"] {
-  outline: 3px solid var(--accent);
-  outline-offset: -3px;
+  outline: var(--ring) solid var(--accent);
+  outline-offset: 0;
 }
 
 /* ---- Small screens: the cells over the cell open. ---- */
 
-@media (max-width: 60rem), (max-height: 34rem) {
-  .stage {
+@media (max-width: 64rem) {
+  .work {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .whole {
-    border-inline-end: 0;
-    border-block-end: 1px solid var(--rule);
+  .cells [role="option"] {
+    grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+    grid-template-areas:
+      "mk name come"
+      ". line line";
   }
 
-  .panel-body {
-    overflow: visible;
+  .cells .mk {
+    grid-area: mk;
+  }
+
+  .cells .name {
+    grid-area: name;
+  }
+
+  .cells .come {
+    grid-area: come;
+  }
+
+  .cells .line {
+    grid-area: line;
+    padding-block-start: var(--tie);
   }
 }
 
 @media (forced-colors: active) {
+  rect.whole {
+    fill: CanvasText;
+    stroke: CanvasText;
+  }
+
+  rect.hollow {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+
+  .drawn rect.on,
   .cells [aria-selected="true"] {
     outline: 2px solid Highlight;
+    stroke: Highlight;
   }
 }
