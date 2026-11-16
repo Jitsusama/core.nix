@@ -11,6 +11,8 @@ pub mod run;
 pub mod terminal;
 pub mod view;
 
+use terminal_kit::ink::Pen;
+
 /// A row or a column as a terminal takes one: the low 16 bits of where it
 /// is, all a screen has, so one past them wraps round as it always has.
 fn cell(at: usize) -> u16 {
@@ -80,12 +82,15 @@ pub struct Theme {
     /// Each mark by name, as drawn here: the mark, or on a console its
     /// stand-in.
     marks: Vec<(String, String)>,
+    /// What draws each role: the terminal kit's pen, given the roles'
+    /// codes, so the guide spells no escape of its own.
+    pen: Pen,
 }
 
 impl Theme {
     /// From the roles and marks as theme.nix writes them.
     pub fn from(roles: &str, marks: &str, console: bool) -> Theme {
-        let roles = roles
+        let roles: Vec<(Role, String)> = roles
             .split_whitespace()
             .filter_map(|pair| pair.split_once('='))
             .filter_map(|(name, code)| {
@@ -106,7 +111,13 @@ impl Theme {
                 ))
             })
             .collect();
-        Theme { roles, marks }
+        let pen = Pen::coded(terminal_kit::ink::Ink::sixteen(), roles_coded(&roles));
+        Theme { roles, marks, pen }
+    }
+
+    /// A span's words as the terminal draws them, in its role's colour.
+    pub fn drawn(&self, span: &Span) -> String {
+        self.pen.role(span.role.name(), &span.text)
     }
 
     /// The theme this build was given.
@@ -189,6 +200,13 @@ pub fn span(role: Role, text: impl Into<String>) -> Span {
         role,
         text: text.into(),
     }
+}
+
+fn roles_coded(roles: &[(Role, String)]) -> Vec<(&'static str, &str)> {
+    roles
+        .iter()
+        .map(|(role, code)| (role.name(), code.as_str()))
+        .collect()
 }
 
 /// A line's text without its roles, as a test reads it.
