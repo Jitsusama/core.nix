@@ -57,7 +57,7 @@ the most it carried in eero's last hour, with when, in Mbit/s.
 | Arrows, h j k l   | Walk the map to the nearest device that way  |
 | Return            | Open the device the keys rest on             |
 | -                 | Step out to the eero it hangs from           |
-| Escape            | Let go of the opened device                  |
+| Escape            | Close the details of the opened device       |
 | Shift+arrows      | Scroll the map                               |
 | i, +, o           | Zoom in and out                              |
 | 0                 | Fit the map to the room                      |
