@@ -5040,8 +5040,11 @@ Scope {
         // timed in the opening's line: open is already true by then, so only
         // the ask held until its frame tells them apart. Timed again, each of
         // Joel's "→ On Screen" took its opening's frame, a median 110 ms,
-        // the slowest place in his journal (2026-11-14).
-        if (openAsked < 0)
+        // the slowest place in his journal (2026-11-14). One a fill takes
+        // is the fill's, timed in its line (filledSaid): each Super+N
+        // drawn from what was kept said a "→ On Screen" of its fill's
+        // frame too (Joel, 2026-11-16, 14:50 to 15:44).
+        if (openAsked < 0 && !fillStepping)
             keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
         return went();
     }
@@ -10426,6 +10429,8 @@ Scope {
     // it reads wakes, home is found again where its rows stand, and its
     // drawer comes. A key or a click before its first frame is drawn does
     // this first, so it acts on what's there now, never on what was kept.
+    // While a fill opens its place whole, whose steps are its own (step).
+    property bool fillStepping: false
     function filled(by) {
         if (!opening || open)
             return;
@@ -10448,7 +10453,12 @@ Scope {
         // A place a chord opened, opened whole now, as its chord would.
         const place = openInto;
         if (place !== "") {
-            into(place);
+            fillStepping = true;
+            try {
+                into(place);
+            } finally {
+                fillStepping = false;
+            }
             const lands = landsOnFill;
             landsOnFill = null;
             if (lands !== null)
