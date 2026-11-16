@@ -51,29 +51,29 @@ mod tests {
 
     #[test]
     fn its_own_names_on_its_own_port_are_hosted() {
-        assert!(door().hosts("sites.localhost:8484"));
+        assert!(door().hosts("sites.localhost:8484"), "its first name");
         assert!(
             door().hosts("Sites.Localhost:8484"),
             "a name's case is the browser's"
         );
-        assert!(door().hosts("127.0.0.1:8484"));
+        assert!(door().hosts("127.0.0.1:8484"), "its address as a name");
     }
 
     #[test]
     fn another_name_another_port_or_none_is_not() {
         assert!(!door().hosts("evil.example:8484"), "a rebound name");
-        assert!(!door().hosts("sites.localhost:9000"));
+        assert!(!door().hosts("sites.localhost:9000"), "another port");
         assert!(!door().hosts("sites.localhost"), "no port");
     }
 
     #[test]
     fn only_its_own_pages_are_admitted_to_a_feed() {
-        assert!(door().admits("http://sites.localhost:8484"));
+        assert!(door().admits("http://sites.localhost:8484"), "its own page");
         assert!(
             !door().admits("https://sites.localhost:8484"),
             "it serves no https"
         );
-        assert!(!door().admits("http://evil.example"));
+        assert!(!door().admits("http://evil.example"), "a stranger's page");
         assert!(!door().admits("null"), "a file or a sandboxed frame");
     }
 }

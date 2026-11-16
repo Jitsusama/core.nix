@@ -103,7 +103,9 @@ fn answer(
     }
 }
 
-/// The server, stopped and its folder taken away once it's dropped.
+/// The server, stopped and its folder taken away once it's dropped, and
+/// a test failed whose server had already ended under it, since a server
+/// that dies serves nothing and must not pass for one that refused.
 struct Served {
     child: Child,
     port: u16,
@@ -113,9 +115,15 @@ struct Served {
 
 impl Drop for Served {
     fn drop(&mut self) {
+        let ended = self.child.try_wait().ok().flatten();
         let _ = self.child.kill();
         let _ = self.child.wait();
         let _ = std::fs::remove_dir_all(&self.folder);
+        if let Some(status) = ended
+            && !thread::panicking()
+        {
+            panic!("the server ended under the test: {status}");
+        }
     }
 }
 
