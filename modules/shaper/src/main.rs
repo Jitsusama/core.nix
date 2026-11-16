@@ -638,6 +638,7 @@ fn run(options: &Options) -> Result<(), Failure> {
     let mut last_sessions: Option<Instant> = None;
     let mut last_resent: Option<(u64, Instant)> = None;
     let mut heard: BTreeMap<String, Heard> = BTreeMap::new();
+    let mut up_tins = qdisc::TinRates::default();
     let mut primary: Option<String> = None;
     let mut call = Call::default();
     let mut live = options.one_way.then(|| {
@@ -675,7 +676,7 @@ fn run(options: &Options) -> Result<(), Failure> {
         (sets.bulk5, sets.typed5) = classes::by_typing(&options.cgroups, &sessions);
         sets.calling = call.heed(now, &options.users);
         let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
-        read_vpns(&vpns.0, &mut heard, rides);
+        read_vpns(&vpns.0, (&mut heard, &mut up_tins), rides, t);
         let text = classes::transaction(TABLE, &sets, &reach);
         if text != filled || last_fill.is_none_or(|at| now - at >= Duration::from_secs(5)) {
             last_fill = Some(now);
@@ -707,7 +708,13 @@ fn run(options: &Options) -> Result<(), Failure> {
                 keep(&mut memory, s);
             }
         }
-        let heard = live.as_ref().and_then(live::Live::heard);
+        let heard = live
+            .as_ref()
+            .and_then(live::Live::heard)
+            .map(|(link, mut h)| {
+                h.up_tins_kbit = up_tins.kbit();
+                (link, h)
+            });
         write_status(&options.runtime, &shaped, heard.as_ref());
         thread::sleep(STEP);
     }
@@ -808,19 +815,31 @@ fn since(before: Option<u64>, now: u64) -> u64 {
     before.map_or(0, |b| now.saturating_sub(b))
 }
 
-/// Counts each VPN's CAKE at every step: whether any held a queue, and
-/// what they dropped, are counted to the primary uplink they ride, whose
-/// queue it is.
+/// Counts each VPN's CAKE at every step, at `t` seconds: whether any held
+/// a queue, and what they dropped, are counted to the primary uplink they
+/// ride, whose queue it is, and what each of their tins sent to `tins`.
+/// The VPN's tins are read rather than the uplink's, where the tunnel's
+/// packets all wait in best effort, whatever class they carry.
 fn read_vpns(
     vpns: &BTreeMap<String, Vpn>,
-    heard: &mut BTreeMap<String, Heard>,
+    (heard, tins): (&mut BTreeMap<String, Heard>, &mut qdisc::TinRates),
     primary: Option<&mut Shaped>,
+    t: f64,
 ) {
     heard.retain(|name, _| vpns.contains_key(name));
     let mut read = (0, 0);
     let mut dropped = 0;
+    let mut sent: Vec<u64> = Vec::new();
     for name in vpns.keys() {
         let json = sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default();
+        let these: Vec<u64> = qdisc::tins(&json).iter().map(|tin| tin.bytes).collect();
+        if sent.is_empty() {
+            sent = these;
+        } else if these.len() == sent.len() {
+            sent.iter_mut()
+                .zip(these)
+                .for_each(|(all, one)| *all += one);
+        }
         let h = heard.entry(name.clone()).or_default();
         if let Some(now) = qdisc::holding(&json) {
             let queued = qdisc::queued(h.held.replace(now), now);
@@ -830,6 +849,7 @@ fn read_vpns(
             dropped += since(h.drops.replace(now), now);
         }
     }
+    tins.take(sent, t);
     if let Some(s) = primary {
         s.vpn_reads.0 += read.0;
         s.vpn_reads.1 += read.1;

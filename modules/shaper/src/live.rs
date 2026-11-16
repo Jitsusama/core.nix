@@ -53,6 +53,12 @@ pub struct Heard {
     /// second's limit and delay are to be judged as.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trial: Option<Tuning>,
+    /// What each of the VPN's tins sent up over the last second, in
+    /// kbit/s: each class's share of the upload, read where the tunnel's
+    /// classes still show. The shaper fills it in, beside what the
+    /// controller heard.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub up_tins_kbit: Option<crate::qdisc::Tins>,
 }
 
 /// What a link joining `network` starts its upload at, in kbit/s: the
@@ -209,6 +215,7 @@ impl Follow {
             up_limit: self.controller.up.limit(),
             plateau: self.controller.up.learned().plateau,
             trial: self.trial,
+            up_tins_kbit: None,
         };
         Some((link, heard))
     }

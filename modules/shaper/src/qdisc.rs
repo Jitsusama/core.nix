@@ -278,6 +278,60 @@ pub fn tins(json: &str) -> Vec<Tin> {
 /// daemon sends, in CAKE's tin order (bulk, best effort, video, voice).
 const VIDEO: usize = 2;
 
+/// What each of CAKE's four tins sent a second, in kbit/s, in diffserv4's
+/// order: each class's share of what a device sends.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Tins {
+    pub bulk: u64,
+    pub best: u64,
+    pub video: u64,
+    pub voice: u64,
+}
+
+/// Follows what CAKE's tins have sent, for each tin's rate over the last
+/// second or more: a step comes every 200 ms, too short to read a rate by.
+#[derive(Debug, Default)]
+pub struct TinRates {
+    then: Option<(Vec<u64>, f64)>,
+    kbit: Option<Tins>,
+}
+
+impl TinRates {
+    /// Takes the bytes each tin has sent, `sent`, at `at` seconds.
+    pub fn take(&mut self, sent: Vec<u64>, at: f64) {
+        if sent.len() != 4 {
+            *self = Self::default();
+            return;
+        }
+        let Some((was, then)) = &self.then else {
+            self.then = Some((sent, at));
+            return;
+        };
+        let seconds = at - then;
+        if seconds < 1.0 {
+            return;
+        }
+        // A CAKE made again counts from nothing, so what it sent since
+        // reads as nothing for that second rather than a rate past u64.
+        let kbit = |tin: usize| {
+            let bits = float(sent[tin].saturating_sub(was[tin]) * 8);
+            whole(bits / 1_000.0 / seconds)
+        };
+        self.kbit = Some(Tins {
+            bulk: kbit(0),
+            best: kbit(1),
+            video: kbit(2),
+            voice: kbit(3),
+        });
+        self.then = Some((sent, at));
+    }
+
+    /// Each tin's rate over the last second read, once there is one.
+    pub fn kbit(&self) -> Option<Tins> {
+        self.kbit
+    }
+}
+
 /// The bulk tin of the CAKE in `tc -s -j qdisc show dev`, the first in
 /// its order.
 pub fn bulk(json: &str) -> Option<Tin> {
@@ -403,6 +457,44 @@ impl RealTime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_tin_s_rate_is_what_it_sent_over_a_second() {
+        let mut rates = TinRates::default();
+        rates.take(vec![0, 1_000, 2_000, 3_000], 10.0);
+        assert_eq!(rates.kbit(), None, "one read has no rate");
+        rates.take(vec![500_000, 251_000, 2_000, 15_500], 10.6);
+        assert_eq!(rates.kbit(), None, "under a second has no rate yet");
+        rates.take(vec![500_000, 251_000, 2_000, 15_500], 12.0);
+        assert_eq!(
+            rates.kbit(),
+            Some(Tins {
+                bulk: 2_000,
+                best: 1_000,
+                video: 0,
+                voice: 50,
+            })
+        );
+    }
+
+    #[test]
+    fn a_cake_made_again_counts_nothing_rather_than_a_wrapped_rate() {
+        let mut rates = TinRates::default();
+        rates.take(vec![9_000_000; 4], 0.0);
+        rates.take(vec![125_000, 0, 0, 0], 1.0);
+        assert_eq!(rates.kbit(), Some(Tins::default()));
+        rates.take(vec![250_000, 0, 0, 0], 2.0);
+        assert_eq!(rates.kbit().map(|t| t.bulk), Some(1_000));
+    }
+
+    #[test]
+    fn no_cake_with_four_tins_says_no_rate() {
+        let mut rates = TinRates::default();
+        rates.take(vec![0; 4], 0.0);
+        rates.take(vec![125_000; 4], 1.0);
+        rates.take(Vec::new(), 2.0);
+        assert_eq!(rates.kbit(), None);
+    }
 
     #[test]
     fn a_vpn_leaves_the_connection_s_bulk_its_sixteenth() {
