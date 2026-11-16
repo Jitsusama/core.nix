@@ -41,7 +41,7 @@ const { SettingsManager } = await load(`${core}/settings-manager.${extension}`);
 const { DefaultResourceLoader } = await load(`${core}/resource-loader.${extension}`);
 const { Agent } = await load(`${root}/node_modules/@earendil-works/pi-agent-core/dist/index.js`);
 const compat = await load(`${root}/node_modules/@earendil-works/pi-ai/dist/compat.js`);
-const { fauxAssistantMessage } = await load(
+const { fauxAssistantMessage, getCurrentTools } = await load(
   `${root}/node_modules/@earendil-works/pi-ai/dist/index.js`,
 );
 
@@ -60,7 +60,8 @@ function deadline(promise) {
 
 // An extension that adds a section to every run it prepares, returns a
 // message for a carried run, and notes each run it hears start and settle.
-function preparesEveryRun(heard, sessionOf) {
+// Told to, it takes every tool from a carried run by editing its options.
+function preparesEveryRun(heard, sessionOf, { dropsCarriedTools = false } = {}) {
   return {
     name: "prepares-every-run",
     factory: (pi) => {
@@ -72,6 +73,9 @@ function preparesEveryRun(heard, sessionOf) {
           resident: "kept for every run",
         };
         if (event.messageType === "continue") {
+          if (dropsCarriedTools) {
+            event.systemPromptOptions.selectedTools = [];
+          }
           return { message: { customType: "carried-note", content: CARRIED_NOTE } };
         }
       });
@@ -83,8 +87,9 @@ function preparesEveryRun(heard, sessionOf) {
 }
 
 // A session with that one extension, answering from the faux provider through
-// the agent the host builds, so each request's messages and prompt are kept.
-async function openPreparedSession() {
+// the agent the host builds, so each request's messages, prompt and offered
+// tools are kept. It has no tools unless given some by name.
+async function openPreparedSession({ tools, dropsCarriedTools } = {}) {
   const cwd = mkdtempSync(join(tmpdir(), "pi-host-runs-"));
   const agentDir = join(cwd, "agent");
   const settingsManager = SettingsManager.inMemory();
@@ -100,7 +105,7 @@ async function openPreparedSession() {
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
-    extensionFactories: [preparesEveryRun(heard, () => session)],
+    extensionFactories: [preparesEveryRun(heard, () => session, { dropsCarriedTools })],
   });
   await resourceLoader.reload();
   ({ session } = await createAgentSession({
@@ -110,12 +115,17 @@ async function openPreparedSession() {
     sessionManager: SessionManager.inMemory(cwd),
     settingsManager,
     resourceLoader,
-    noTools: "all",
+    ...(tools ? { tools } : { noTools: "all" }),
     createAgent: (options) =>
       new Agent({
         ...options,
         streamFn: (model, request, streamOptions) => {
-          requests.push({ messages: request.messages, prompt: session.systemPrompt });
+          requests.push({
+            messages: request.messages,
+            prompt: session.systemPrompt,
+            // The model is offered the tools the transcript's system messages add up to.
+            tools: getCurrentTools(request.messages).map((tool) => tool.name),
+          });
           return compat.streamSimple(model, request, { ...streamOptions, apiKey: "faux" });
         },
       }),
@@ -204,6 +214,29 @@ it("a handler's message for a carried run waits for the next prompt", async () =
     );
     await promptRun(session, "next words");
     assert.ok(requestTexts(requests[1]).includes(CARRIED_NOTE), "it comes with the next prompt");
+  } finally {
+    close();
+  }
+});
+
+it("a handler's edit to a carried run's tools decides what the provider is offered", async () => {
+  const { session, faux, requests, close } = await openPreparedSession({
+    tools: ["read"],
+    dropsCarriedTools: true,
+  });
+  try {
+    faux.setResponses([
+      fauxAssistantMessage("answered as typed"),
+      fauxAssistantMessage("answered as carried"),
+    ]);
+    await promptRun(session, "typed words");
+    await deadline(session.runForHost(() => session.agent.prompt(userMessage("carried on"))));
+    assert.deepEqual(requests[0].tools, ["read"], "a prompt's run offers the session's tool");
+    assert.deepEqual(
+      requests[1].tools,
+      [],
+      "the carried run offers none, as its handler chose, as a prompt's run would",
+    );
   } finally {
     close();
   }

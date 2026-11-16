@@ -68,6 +68,8 @@ in
 
   config = {
     home.packages = [ wrapped ];
+    # How agents are to ask it, and the Code words to answer in.
+    home.file.".pi/agent/skills/repos/SKILL.md".source = ./SKILL.md;
 
     # The refresh asks only through the broker's socket, so a machine
     # without one skips it rather than failing every five minutes.
