@@ -58,7 +58,7 @@
   "modules/quickshell/tests/imports-installed.sh" = 2;
   "modules/quickshell/tests/qml-compiles.sh" = 2;
   "modules/quickshell/tests/stand-ins/spend-session.sh" = 3;
-  "modules/reader/tests/reader-takes-its-keys.sh" = 120;
+  "modules/reader/tests/reader-takes-its-keys.sh" = 119;
   "modules/screen-text/tests/a-screenshot-is-found-by-its-words.sh" = 2;
   "modules/secure-enclave-signing/se-keys.sh" = 7;
   "modules/signing/tests/signing-program.sh" = 21;

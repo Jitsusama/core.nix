@@ -42,7 +42,6 @@
   "modules/quickshell/timekeeping/src/candm.rs"
   "modules/quickshell/timers/src/lib.rs"
   "modules/quickshell/timers/src/main.rs"
-  "modules/reader/tests/reader-takes-its-keys.sh"
   "modules/shaper/src/main.rs"
   "modules/shaper/src/oneway.rs"
   "modules/shaper/src/rate.rs"
