@@ -64,11 +64,10 @@ pub struct Held {
 
 /// `cadence hour [--to ADDRESS] [--checkout NAME=PATH]... [--realm NAME]...`:
 /// prints the hour's card, and sends it to the address given, the
-/// orchestrator's. Only a run sending the card keeps the hour and owes its
-/// drag to the owners; one without `--to` is a look, keeping nothing. Each
-/// checkout is another repository whose main says
-/// which of the misses' checks merged, beside core's and the harness's;
-/// each realm's node says whether a machine is crowded beside one with room.
+/// orchestrator's; one without `--to` is a look, keeping nothing. Each
+/// checkout is another repository whose main says which of the misses'
+/// checks merged, beside core's and the harness's; each realm's node says
+/// whether a machine is crowded beside one with room.
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let mut to = None;
     let mut checkouts = Vec::new();
@@ -114,8 +113,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     );
     print!("{card}");
     // A look by hand lacks the timer's checkouts, so it can read a closed
-    // miss as open: only the run sending the card keeps the hour, owes its
-    // drag and tells the owners.
+    // miss as open: only the run sending the card keeps the hour and owes.
     let Some(to) = to else {
         return Ok(());
     };
