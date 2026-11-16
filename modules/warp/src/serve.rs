@@ -348,11 +348,21 @@ fn listen_loop<A: Ask>(shared: &Shared<A>) {
 /// waits before one is tried again, while the link's two-second reads
 /// carry on for whoever watches it.
 fn ask_instead<A: Ask>(shared: &Shared<A>) {
-    let said = standing(shared.cli.ask(&["status"]));
+    let (said, figures) = asked_instead(shared.cli.ask(&["status"]));
     if !lock(&shared.held).watches.is_empty() {
-        stand(shared, &said, Evidence::default());
+        stand(shared, &said, figures);
     }
     std::thread::sleep(LISTEN_AGAIN);
+}
+
+/// How WARP stands as a status asked says it, and the evidence its
+/// reason carries, as a listening warp-cli's line would, so a degraded
+/// episode says WARP's figures whether or not one listens.
+fn asked_instead(said: Result<Said, Unasked>) -> (Value, Evidence) {
+    let figures = said
+        .as_ref()
+        .map_or_else(|_| Evidence::default(), |said| evidence(&said.text));
+    (standing(said), figures)
 }
 
 /// How WARP stands as one status ask says it, in the words a listening

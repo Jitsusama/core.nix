@@ -247,6 +247,28 @@ fn a_status_asked_says_how_warp_stands_or_why_it_cant() {
 }
 
 #[test]
+fn a_status_asked_keeps_the_figures_a_degraded_reason_carries() {
+    let (said, figures) = asked_instead(Ok(Said {
+        ok: true,
+        text: contract::file("status.degraded.json"),
+    }));
+    assert_eq!(
+        said,
+        json!({"status": "Connected", "reason": "NetworkDegraded"})
+    );
+    assert_eq!(
+        figures,
+        Evidence {
+            rtt_ms: Some(170),
+            loss_percent: Some(5.370_822_4),
+        },
+        "where nothing listens, the status asked still says WARP's figures"
+    );
+    let (_, none) = asked_instead(Err(Unasked::Missing("warp-cli".into())));
+    assert_eq!(none, Evidence::default(), "no answer, no figures");
+}
+
+#[test]
 fn a_state_watch_is_told_the_status_asked_where_nothing_listens() {
     let socket = serving_listened("unlistened", None, Arc::new(AtomicBool::new(false)));
     let mut client = Client::new(&socket);
