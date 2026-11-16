@@ -1,0 +1,51 @@
+A host gives the event loop a turn before each extension's import and each
+factory.
+
+A host runs every conversation on one thread, and each conversation loads
+every extension its folder has. Importing an extension and running its
+factory is mostly synchronous, and the load awaited only microtasks between
+them, so a whole load held the thread while every other conversation
+waited: on the soak's days 2 and 3, opening the conversations held it 1.0
+to 2.0 s, and each of 20 reloads over 1 s.
+
+Yield to the loop with setImmediate before each import and before each
+factory, so the longest hold is one extension's import or one factory. The
+extensions load in the same order, one at a time, as before.
+
+Apply only to the host's private pi build; ordinary interactive pi stays
+unchanged.
+
+--- a/packages/coding-agent/src/core/extensions/loader.ts
++++ b/packages/coding-agent/src/core/extensions/loader.ts
+@@ -766,6 +766,16 @@
+ 	return extension;
+ }
+ 
++// pi-host: one host runs many conversations on one thread, and each loads every extension
++// its folder has. Importing one and running its factory is mostly synchronous, and awaiting
++// them yields only to microtasks, so on the soak's days 2 and 3 a host opening its
++// conversations held the thread 1.0 to 2.0 s, and each of 20 reloads over 1 s, while every other
++// conversation waited. Yield to the event loop before each import and each factory, so the
++// longest hold is one extension's import or one factory.
++function yieldToLoop(): Promise<void> {
++	return new Promise((resolve) => setImmediate(resolve));
++}
++
+ async function loadExtension(
+ 	extensionPath: string,
+ 	cwd: string,
+@@ -776,12 +786,14 @@
+ 	const resolvedPath = resolvePath(extensionPath, cwd, { normalizeUnicodeSpaces: true });
+ 
+ 	try {
++		await yieldToLoop();
+ 		const factory = await loadExtensionModule(resolvedPath, cacheToken);
+ 		time(`${extensionPath} module import`, "extensions");
+ 		if (!factory) {
+ 			return { extension: null, error: `Extension does not export a valid factory function: ${extensionPath}` };
+ 		}
+ 
++		await yieldToLoop();
+ 		const extension = await initializeExtension(factory, extensionPath, resolvedPath, cwd, eventBus, runtime);
+ 		Object.defineProperty(extension, madeBy, { value: factory });
+ 

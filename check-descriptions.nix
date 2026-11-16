@@ -2236,6 +2236,11 @@
     jiti's own order does, and evaluates each extension's modules afresh for each folder and after
     a reload
   '';
+  pi-hosted-yields-between-extensions = ''
+    pi built with the host's patches, applied exactly, gives the event loop a turn before it
+    imports each extension and before it runs each factory, and still loads every extension in
+    the order it was given
+  '';
   pi-hosted-screen-reaches-its-viewers = ''
     pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
     through a hosted screen's viewers' terminals, sends a viewer who joins late the images
