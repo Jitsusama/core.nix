@@ -5,6 +5,7 @@
 
 use std::time::{Duration, SystemTime};
 
+use daemon_client::until;
 use serde_json::json;
 
 use super::Running;
@@ -78,6 +79,14 @@ fn a_shot_watched_ahead_again_is_answered_whole_from_its_preview_held() {
     ahead.send(&json!({"id": "ahead", "ask": "watch", "kind": ["row"], "keys": [first]}));
     while ahead.changed(&first)["row"]["drawer"]["facts"][2] != dimensions {}
     drop(ahead);
+    // Let go before the new shot is made, or a loaded daemon can make its
+    // rows with the first still ahead and have nothing more to tell.
+    until("the watch ahead wasn't let go", || {
+        running
+            .client()
+            .ask(&json!({"id": "health", "ask": "health"}))["watches"]
+            == 1
+    });
     // A new shot makes the rows again with nothing ahead, so the first's
     // drawer says only what the list does.
     std::fs::write(running.path("shots/2026-11-11 01-00-00.png"), "shot").unwrap();
