@@ -140,19 +140,20 @@ pub fn network(net: &Answer) -> Part {
                 .iter()
                 .filter(|concern| concern.get("kind").and_then(Value::as_str) != Some("ceiling"))
                 .filter_map(|concern| concern.get("says").and_then(Value::as_str))
-                .map(unstopped)
                 .collect()
         })
         .unwrap_or_default();
     let mut side = words.clone();
     if let Some(first) = looks.first() {
         worst = worst.max(Health::Watch);
-        words.push(match looks.len() {
-            1 => (*first).to_owned(),
-            more => format!("{first}; and {} more worth a look", more - 1),
-        });
+        words.push((*first).to_owned());
+        match looks.len() - 1 {
+            0 => {}
+            1 => words.push("1 more is worth a look".to_owned()),
+            more => words.push(format!("{more} more are worth a look")),
+        }
         // Net words its first look best, and orders them so.
-        side.push(lowered(first));
+        side.push(lowered(unstopped(first)));
         if looks.len() > 1 {
             side.push(format!("and {} more worth a look", looks.len() - 1));
         }
@@ -166,7 +167,14 @@ pub fn network(net: &Answer) -> Part {
     Part {
         name: "network",
         health: worst,
-        says: words.join("; "),
+        // Net says each look as a sentence that may hold its own
+        // semicolons, so the network is said in sentences too, and a look
+        // never runs into what follows it. A count alone is said bare, as
+        // the other parts say theirs.
+        says: match words.as_slice() {
+            [holds] => holds.clone(),
+            _ => sentences(&words),
+        },
         side: side_of(side),
         holds: Some(holds),
         things: Vec::new(),
@@ -263,10 +271,28 @@ fn lowered(said: &str) -> String {
     }
 }
 
-/// An owner's sentence without its one closing stop, so it joins others.
-/// Net words each look as a sentence, and the join supplies the stop.
+/// An owner's sentence as an item of a list, without its closing full
+/// stop. An ellipsis is kept whole.
 fn unstopped(said: &str) -> &str {
-    said.strip_suffix('.').unwrap_or(said)
+    match said.strip_suffix('.') {
+        Some(rest) if !rest.ends_with('.') => rest,
+        _ => said,
+    }
+}
+
+/// Clauses said as sentences, each ended once: an owner's may end its own.
+fn sentences(clauses: &[String]) -> String {
+    clauses
+        .iter()
+        .map(|clause| {
+            if clause.ends_with(['.', '?', '!']) {
+                clause.clone()
+            } else {
+                format!("{clause}.")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A count and its noun, in the singular for one.
@@ -410,7 +436,7 @@ mod tests {
         )));
         assert_eq!(part.health, Health::Watch);
         assert_eq!(
-            part.says, "Main Floor's radio is busy; and 1 more worth a look; 3 devices",
+            part.says, "Main Floor's radio is busy. 1 more is worth a look. 3 devices.",
             "the internet's ceiling is how the network is, not a look"
         );
         assert_eq!(
@@ -421,26 +447,37 @@ mod tests {
     }
 
     #[test]
-    fn a_look_nets_words_end_is_joined_without_its_stop() {
+    fn nets_sentences_stay_whole_and_stop_once() {
+        let busy = "Hall's 5 GHz radio, on channel 36, is busy 60% of the time; \
+                    80% at its busiest, 20 hours ago.";
         let part = network(&Ok(net(
             &[("eero", "answering")],
             &[
-                ("stale", "The eero last answered 20 hours ago."),
+                ("busy", busy),
                 ("weak", "iphone has a weak signal."),
+                ("slow", "The modem is slow."),
             ],
         )));
         assert_eq!(
-            part.says, "The eero last answered 20 hours ago; and 1 more worth a look; 3 devices",
-            "net's sentence loses its stop where it joins the others"
+            part.says,
+            format!("{busy} 2 more are worth a look. 3 devices."),
+            "net's own semicolon stays inside its sentence, which ends once"
         );
         assert_eq!(
             part.side,
             [
-                "the eero last answered 20 hours ago",
-                "and 1 more worth a look"
+                "Hall's 5 GHz radio, on channel 36, is busy 60% of the time; \
+                 80% at its busiest, 20 hours ago",
+                "and 2 more worth a look"
             ],
             "an item of a side carries no stop"
         );
+        let alone = network(&Ok(net(&[("eero", "answering")], &[("weak", "Wait...")])));
+        assert_eq!(
+            alone.says, "Wait... 3 devices.",
+            "a single look, its ellipsis whole"
+        );
+        assert_eq!(alone.side, ["Wait..."]);
     }
 
     #[test]
@@ -469,7 +506,7 @@ mod tests {
             &[],
         )));
         assert_eq!(part.health, Health::Bad);
-        assert_eq!(part.says, "modem and hp aren't answering; 3 devices");
+        assert_eq!(part.says, "modem and hp aren't answering. 3 devices.");
         let calm = network(&Ok(net(&[("eero", "answering")], &[("ceiling", "")])));
         assert_eq!(
             (calm.health, calm.says.as_str()),
