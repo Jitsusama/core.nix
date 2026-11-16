@@ -1,0 +1,17 @@
+# What Each Cell Is For
+
+> A live, read-only view of every cell on this machine that works on a
+> quest: the purpose its quest states, the cell that started it, and how
+> far the plans, research, briefs and reports it keeps have come.
+
+- [The page](index.html): the cells, each under the cell that started
+  it, walked by keyboard or pointer, with the cell the cursor is on
+  beside them.
+- [The page as text](index.md): how to read it, the keys, and what the
+  data holds.
+- The data: the mycelium node's `forage` records, which the page
+  watches live over the sites' server at /feed/node. An agent on the
+  machine runs `mycelium forage -o json` itself, which gathers every
+  machine's cells, not only this one's.
+- [The map](../mycelium/): every cell and the networks they share.
+- [All his sites](../llms.txt): the home this page sits in.

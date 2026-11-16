@@ -1,0 +1,295 @@
+/* What each cell is for: this machine's cells as a list, each set in under
+   the cell that started it, with its purpose and how far its plans have
+   come, and beside it the cell the cursor is on, with its documents. An
+   interface to keep open, set as the system page sets its own, since one
+   leads to the other. */
+
+:root {
+  /* The program hue marks the site's emphasis: a cell is a program at
+     work. */
+  --tint: var(--program);
+  --list: min(46rem, 54vw);
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-block-size: 100dvh;
+}
+
+@media (min-width: 60rem) and (min-height: 34rem) {
+  html,
+  body {
+    block-size: 100dvh;
+    overflow: hidden;
+  }
+}
+
+.stage code {
+  font-size: inherit;
+}
+
+/* ---- The head. ---- */
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mark) var(--groups);
+  padding: var(--mark) var(--inset);
+  border-block-end: 1px solid var(--rule);
+}
+
+.mark {
+  color: var(--tint);
+  flex: none;
+}
+
+.head h1 {
+  font-size: var(--step-large);
+  line-height: 1.2;
+}
+
+/* Every word on the page clears 7:1, so the title's tint is deepened
+   toward the strong ink, as the other sites' are. */
+.head h1 em {
+  color: color-mix(in oklab, var(--tint) 60%, var(--strong));
+}
+
+.head .keys {
+  margin-inline-start: auto;
+  color: var(--text);
+  font-size: var(--step-small);
+  visibility: hidden;
+}
+
+.js .head .keys {
+  visibility: visible;
+}
+
+.head .keys kbd {
+  cursor: pointer;
+}
+
+/* ---- The stage: the cells and the one open. ---- */
+
+.stage {
+  display: grid;
+  grid-template-columns: var(--list) minmax(0, 1fr);
+  min-block-size: 0;
+}
+
+.stage:focus {
+  outline: none;
+}
+
+.whole {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-block-size: 0;
+  border-inline-end: 1px solid var(--rule);
+}
+
+/* The one focal point: the cells in a sentence, set large. */
+.lede {
+  display: grid;
+  gap: var(--mark);
+  padding: var(--groups) var(--inset) var(--items);
+}
+
+.verdict {
+  max-inline-size: var(--measure, 38rem);
+  color: var(--strong);
+  font-size: var(--step-section);
+  font-weight: var(--title-weight);
+  font-variation-settings: "SOFT" 100, "WONK" 1;
+  line-height: 1.2;
+}
+
+.here {
+  color: var(--text);
+  font-size: var(--step-small);
+}
+
+.find {
+  min-block-size: 44px;
+  padding: 0 var(--mark);
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--strong);
+  font: inherit;
+}
+
+.find:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@supports (text-wrap: balance) {
+  .verdict {
+    text-wrap: balance;
+  }
+}
+
+@supports (text-wrap: pretty) {
+  .cells .purpose {
+    text-wrap: pretty;
+  }
+}
+
+@supports (scrollbar-gutter: stable) {
+  .cells {
+    scrollbar-gutter: stable;
+  }
+
+  /* On a small screen the page scrolls, not the list. */
+  @media (max-width: 60rem), (max-height: 34rem) {
+    .cells {
+      scrollbar-gutter: auto;
+    }
+  }
+}
+
+.foot {
+  padding: var(--tie) var(--inset);
+  border-block-start: 1px solid var(--rule);
+}
+
+.asof {
+  color: var(--text);
+  font: 400 var(--step-small) / 1.4 var(--mono);
+  font-feature-settings: var(--mono-features);
+  min-block-size: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.hint,
+.none {
+  padding: var(--items) var(--inset);
+  color: var(--text);
+}
+
+/* A cell's row: its name and how far it has come on one line, its purpose
+   under them and what it keeps under that, set in a step for each cell
+   above it that started it, so a cell's own sit under it as a tree's do. */
+.cells {
+  margin: 0;
+  padding: 0;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-block-start: 1px solid var(--rule);
+}
+
+.cells:focus {
+  outline: none;
+}
+
+.cells [role="option"] {
+  --step: min(calc(var(--depth, 0) * 1.25rem), 5rem);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "name come"
+    "purpose purpose"
+    "keeps keeps";
+  gap: var(--tie) var(--mark);
+  align-items: baseline;
+  min-block-size: 44px;
+  padding: var(--items) var(--inset) var(--items) calc(var(--inset) + var(--step));
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* The cells a cell started hang from a rule down its edge. */
+.cells [role="option"][style*="--depth:0"] {
+  border-block-start: 1px solid var(--edge);
+}
+
+.cells [role="option"]:not([style*="--depth:0"]) {
+  background-image: linear-gradient(var(--rule), var(--rule));
+  background-size: 1px 100%;
+  background-position: calc(var(--inset) + var(--step) - 0.6rem) 0;
+  background-repeat: no-repeat;
+}
+
+.cells [role="option"]:hover {
+  background-color: var(--sunken);
+}
+
+.cells .name {
+  grid-area: name;
+  color: var(--strong);
+  font-weight: 500;
+}
+
+.cells .come {
+  grid-area: come;
+  color: var(--text);
+  font: 400 var(--step-small) / 1.4 var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.cells .purpose {
+  grid-area: purpose;
+  max-inline-size: var(--measure, 38rem);
+  color: var(--strong);
+}
+
+.cells .keeps {
+  grid-area: keeps;
+  color: var(--text);
+  font-size: var(--step-small);
+}
+
+/* A cell with no purpose written says so in its own words, set in the
+   note's italic so it reads as a gap, not a purpose. */
+.quiet {
+  font-style: italic;
+}
+
+/* ---- The cursor, after every row's own look, which it marks. ---- */
+
+.cells [aria-selected="true"] {
+  background-color: var(--selection);
+}
+
+.cells [aria-selected="true"] * {
+  color: var(--strong);
+}
+
+/* Focus on the list rings the cell it's on, and a bar down the list's
+   edge says the list itself holds the keys. */
+.cells:focus-visible {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.cells:focus-visible [aria-selected="true"] {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* ---- Small screens: the cells over the cell open. ---- */
+
+@media (max-width: 60rem), (max-height: 34rem) {
+  .stage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .whole {
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--rule);
+  }
+
+  .panel-body {
+    overflow: visible;
+  }
+}
+
+@media (forced-colors: active) {
+  .cells [aria-selected="true"] {
+    outline: 2px solid Highlight;
+  }
+}
