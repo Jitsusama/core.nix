@@ -89,34 +89,7 @@ let
   linking = cfg.links != [ ] || cfg.vias != [ ] || cfg.providers != [ ];
   serving = cfg.realm != null;
   agentsKey = config.systemd.user.sockets ? agent-signing;
-  # Only the fences a machine says run here, in mycelium's shape. An
-  # agent's `mycelium run` in a fenced or strict one starts through the
-  # fence's launcher, on Linux alone, since a Mac has no Landlock; one
-  # unfenced takes none, as no agent asks as unfenced.
-  fenced = lib.mapAttrs (kind: doors: doors // runsIn kind) (
-    lib.filterAttrs (_: doors: doors != null) (
-      lib.optionalAttrs (cfg.declares != null) cfg.declares.fence
-    )
-  );
-  runsIn =
-    kind:
-    lib.optionalAttrs (isLinux && cfg.fenceRuns != null && kind != "none") {
-      runs = cfg.fenceRuns;
-    };
-  # What the machine declares, in mycelium's words.
-  declaration = builtins.toJSON (
-    {
-      inherit (cfg.declares) reach outlives taints;
-      probes = lib.mapAttrs (
-        _: probe: if builtins.isList probe then { run = probe; } else { connect = probe; }
-      ) cfg.declares.probes;
-      costs_money = cfg.declares.costsMoney;
-    }
-    // lib.optionalAttrs (cfg.agents != { }) { inherit (cfg) agents; }
-    // lib.optionalAttrs (cfg.declares.within != null) { inherit (cfg.declares) within; }
-    // lib.optionalAttrs (cfg.declares.hosts != [ ]) { inherit (cfg.declares) hosts; }
-    // lib.optionalAttrs (fenced != { }) { fence = fenced; }
-  );
+  declaration = import ./declared.nix { inherit lib isLinux; } cfg;
   # The node reads the declaration from the store, where only root writes,
   # never from the account's config folder: anything running as the account
   # could repoint that link and widen how agents' commands run.
