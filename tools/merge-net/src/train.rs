@@ -111,8 +111,7 @@ pub fn riders(root: &Path) -> Vec<Rider> {
 /// The rider at `head`, if it rides.
 #[must_use]
 pub fn rider_at(root: &Path, head: &str) -> Option<Rider> {
-    let _ = (root, head);
-    None
+    riders(root).into_iter().find(|rider| rider.head == head)
 }
 
 /// Why the rider at `head` fell off, if it did.
@@ -224,7 +223,7 @@ const DESCRIBED: &str = "merge-net's train merges the changes that passed togeth
 #[must_use]
 pub fn offer(head: &str, branch: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
-    let boarded = riders(&root).iter().any(|waiting| waiting.head == head);
+    let boarded = rider_at(&root, head).is_some();
     match seat(boarded, fell(&root, head)) {
         Seat::Fell(_) => return None,
         Seat::Rides => {}
@@ -250,6 +249,17 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
         short(head),
         folder(&root).display()
     ))
+}
+
+/// What `ready` says of the change at `head` while it rides, the train
+/// started again if it stopped; nothing when it doesn't ride. Judged as if
+/// it didn't, a rider behind a main that moved its files would be told to
+/// rebase, and the push would take it off the train and to its back.
+#[must_use]
+pub fn riding(head: &str) -> Option<String> {
+    let root = crate::state::State::from_env().root;
+    let rider = rider_at(&root, head)?;
+    offer(head, &rider.branch)
 }
 
 /// Why the change at `head` fell off the train, as `ready` says it beside

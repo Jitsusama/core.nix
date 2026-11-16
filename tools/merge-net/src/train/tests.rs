@@ -41,7 +41,11 @@ fn a_head_aboard_is_found_riding_and_no_other_is() {
         Some(rider("b2", 20)),
         "a head aboard wasn't found riding, so ready would judge it as if it didn't"
     );
-    assert_eq!(rider_at(&root, "c3"), None, "a head never aboard was found riding");
+    assert_eq!(
+        rider_at(&root, "c3"),
+        None,
+        "a head never aboard was found riding"
+    );
     fs::remove_dir_all(&root).unwrap();
 }
 
