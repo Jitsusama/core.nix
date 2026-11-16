@@ -353,5 +353,17 @@
       "test_away_it_wanders_and_a_key_brings_it_back"
     ],
     "test": "the-margin-cat-plays-more-the-less-he-types-on-niri"
+  },
+  {
+    "at": 1794849317,
+    "commit": "8213d198a802746ea1634186cd295d7b71ca88e7",
+    "due": "2026-11-18",
+    "owner_pr": 4953,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 8213d198a802",
+    "subtests": [
+      "test_quickshell_warned_of_nothing_as_the_screens_came_and_went"
+    ],
+    "test": "vm-screens-keep-the-launcher"
   }
 ]
