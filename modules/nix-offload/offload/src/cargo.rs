@@ -195,7 +195,7 @@ pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> ExitCode {
     };
     let what = subcommand(words).map_or("", |(_, subcommand)| subcommand);
     match way {
-        Way::As => exited(Command::new(real).args(words).exec()),
+        Way::As => exited(&Command::new(real).args(words).exec()),
         Way::Turn(why) => turn(real, words, what, why),
         Way::There => {
             eprintln!(
@@ -239,18 +239,18 @@ fn turn(real: &str, words: &[String], what: &str, why: &str) -> ExitCode {
         .is_ok_and(|status| status.success());
     if night_shift {
         exited(
-            Command::new("night-shift")
+            &Command::new("night-shift")
                 .args(["turn", "cargo", "--", real])
                 .args(words)
                 .exec(),
         )
     } else {
-        exited(Command::new(real).args(words).exec())
+        exited(&Command::new(real).args(words).exec())
     }
 }
 
 /// What a failed exec ends with, said.
-fn exited(error: std::io::Error) -> ExitCode {
+fn exited(error: &std::io::Error) -> ExitCode {
     eprintln!("nix-offload: cargo couldn't start: {error}");
     ExitCode::from(69)
 }
