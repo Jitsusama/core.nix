@@ -922,10 +922,11 @@ def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     assert drawer["laidOneWay"], f"at {shot} its facts mix beside and under: {drawer}"
     # How it stands is its row's, so Doing says its step alone.
     assert drawer["values"][0] == "edit Drawer.qml", f"at {shot}: {drawer}"
-    # Its whole glance is on its first screen, even this short one's, what its quest is about
-    # running to about 290 letters as every real session's does.
-    said = str(drawer.get("moreSays") or "")
-    assert not said, f"at {shot} its glance hides {said}: {drawer}"
+    # Its whole glance is on its first screen, even this short one's. What its quest is about
+    # runs to about 290 letters, as every real session's does, and may be cut at the foot with
+    # how many more there are, since the ruling holds the glance, not the words (VKCF3Z,
+    # 2026-11-05; at 2 the acts' line takes room, 16 November).
+    assert drawer["drawnFacts"] == glance, f"at {shot} its glance hides some: {drawer}"
     desktop.shoot(f"launcher-agents-figures-at-{shot}")
 
 

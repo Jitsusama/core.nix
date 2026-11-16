@@ -122,32 +122,6 @@
     "test": "vm-joel-comes-first"
   },
   {
-    "at": 1794557415,
-    "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
-    "due": "2026-11-17",
-    "due_why": "Agents leads with one row per orchestration since #3884, so the orchestration's tree is a step in from it, not on Agents itself; its owner moves the case's steps into the orchestration by 2026-11-17 23:59 UTC",
-    "owner_pr": 3956,
-    "owner_session": "80ECO2",
-    "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
-    "subtests": [
-      "test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent"
-    ],
-    "test": "vm-desktop-looks"
-  },
-  {
-    "at": 1794582283,
-    "commit": "b7a81d60bf2144b8873172e83bd4aa19fb38414d",
-    "due": "2026-11-15",
-    "owner_pr": 3956,
-    "owner_session": "PN2VZC",
-    "reason": "failed twice at fe9f6ae1bd4d, and at b7a81d60bf21 after it",
-    "subtests": [
-      "test_the_budgets_stand_behind_one_row_at_each_scale",
-      "test_the_home_network_and_nearby_list_whats_around_at_each_scale"
-    ],
-    "test": "vm-desktop-looks"
-  },
-  {
     "at": 1794580528,
     "commit": "b7a81d60bf2144b8873172e83bd4aa19fb38414d",
     "due": "2026-11-15",
