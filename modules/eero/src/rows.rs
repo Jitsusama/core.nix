@@ -313,10 +313,11 @@ fn map_row(map: &Map, words: &Words) -> Value {
 
 /// The map opened on a device, inside its row. net names a device eero
 /// counts by its mac (modules/net's sources/eero.rs), which the page
-/// takes after its address's # and reads back as the device's name. Its
+/// takes as its address's `#device=`, encoded as a link writes it, and
+/// reads back as the device's name (One Home's form, SKILL.md). Its
 /// thing is the device's own, so each device's is told apart.
 fn on_the_map(device: &Device, page: &str, words: &Words) -> Value {
-    let fragment = format!("mac:{}", device.mac).replace(':', "%3A");
+    let fragment = format!("device=mac:{}", device.mac).replace(':', "%3A");
     json!({
         "key": key(&format!("device:{}:map", device.mac)),
         "thing": format!("{DEVICE_ON_MAP}:{}", device.mac), "place": PLACE,

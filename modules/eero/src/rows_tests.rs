@@ -154,15 +154,15 @@ fn each_device_holds_on_the_map_opening_the_page_on_it() {
     let device = key(&format!("device:{mac}"));
     let inside: Vec<&Value> = rows.iter().filter(|row| row["parent"] == device).collect();
     // net names a device eero counts by its mac, which the page takes
-    // after its address's #, its colons written as a link writes them.
-    let fragment = format!("mac:{mac}").replace(':', "%3A");
+    // as its address's device=, its colons written as a link writes them.
+    let fragment = format!("device=mac:{mac}").replace(':', "%3A");
     assert_eq!(
         inside
             .iter()
             .map(|row| (&row["name"], &row["kind"], &row["glyph"], &row["acts"]))
             .collect::<Vec<_>>(),
         [(
-            &json!("On the Map"),
+            &json!("Show It on the Map"),
             &json!("act"),
             &json!("web"),
             &json!([{"key": DEVICE_ON_MAP, "open": format!("{PAGE}#{fragment}")}])

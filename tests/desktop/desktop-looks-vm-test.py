@@ -130,7 +130,7 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
         home_network_plate(desktop, scale, "unknown computer 1")
         desktop.shoot(f"launcher-home-network-device-at-{at}")
         desktop.step_in()
-        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["On the Map"])
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Show It on the Map"])
         desktop.shoot(f"launcher-home-network-device-acts-at-{at}")
         desktop.step_out()
         # The Map row puts the profile 21st, past the twenty rows the launcher's showing names,
