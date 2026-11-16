@@ -209,6 +209,42 @@ function behindResize(frame, began) {
         ? Math.round(HEARS + 2 * frame + began) : behind(frame, "resize");
 }
 
+// Whether it's drawn over the windows, `now` as the screen has it: while
+// Joel's hand `holds` it and as it `falls` from his hand, since it's in
+// front of whatever it was carried over, the one exception to the rule
+// above (VKCF3Z, 9ead6710); then, landed from his hand and not walked
+// since, by the ledge it `landed` on, floating or not; else as above()
+// says by its seat.
+function inFront(now) {
+    if (now.holds || now.falls) {
+        return true;
+    }
+    if (now.landed) {
+        return now.landed.floats === true;
+    }
+    return above(now.seat, now.leaving);
+}
+
+// How far a press on the cat moves, in logical pixels, before it picks the
+// cat up: a shorter press stays a click, which rolls its yarn in (VKCF3Z,
+// 9ead6710). The screen's drag handler takes it as its threshold.
+const LIFTS = 4;
+
+// The cell of its scruffed drawing Joel's hand holds it by, between its
+// ears over the back of its neck, so it hangs below the pointer.
+const SCRUFF = { x: 3, y: 0 };
+
+// Where its box is as Joel's `hand` holds it, { x, y } in the screen's
+// logical pixels: its scruff cell's middle under the pointer, kept wholly
+// on a screen `across` by `height`, its art's `cell` and its `wide` and
+// `tall` as a walk takes them.
+function held(hand, at) {
+    const x = hand.x - (SCRUFF.x + 0.5) * at.cell;
+    const y = hand.y - (SCRUFF.y + 0.5) * at.cell;
+    return { x: Math.min(Math.max(x, 0), at.across - at.wide),
+        y: Math.min(Math.max(y, 0), at.height - at.tall) };
+}
+
 // A drawing given a quarter turn, clockwise for `turn` 1 and back for -1,
 // cell for cell, so a climbing cat stays as sharp as a walking one.
 function quartered(drawing, turn) {

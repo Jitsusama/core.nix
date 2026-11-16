@@ -38,6 +38,7 @@ QtObject {
         pounce(expect);
         hop(expect);
         clicks(expect);
+        drops(expect);
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
@@ -319,6 +320,56 @@ QtObject {
                 [fetched, played, short, back].every(one =>
                     shortest(frames(one), frame => frame.pose) >= 33
                     && shortest(frames(one), frame => frame.yarn.pose) >= 33)], [true, true]);
+    }
+
+    // Let go of by Joel's hand (VKCF3Z, 9ead6710; Joel, 2026-11-12: "i
+    // want to be able to also use my mouse to engage with my animals."):
+    // it falls in its falling drawing, never rising, to the nearest edge
+    // under it, or the floor, lands and flicks an ear, and sits there. A
+    // window across 0 to 400 from 100 to 300, a cell of air over each top.
+    function drops(expect) {
+        const top = { left: 0, right: 400, top: 100, bottom: 300, rows: [{ top: 100, bottom: 300 }] };
+        const lower = { left: 0, right: 400, top: 100, bottom: 500,
+            rows: [{ top: 100, bottom: 300, id: 1 }, { top: 320, bottom: 500, id: 2 }] };
+        const from = (x, y) => sat({ seat: { x, y }, air: 1 });
+        const gap = Games.drop(from(100, 20), [top], []);
+        const falling = during(gap, "falls");
+        expect("let go over a window, it falls onto its top, lands and flicks an ear",
+            [gap.beats.map(each => each.name), gap.to, gap.landsOn],
+            [["falls", "lands", "looks"], { x: 100, y: 91 }, { floats: false, id: null }]);
+        expect("falling the whole way, straight down and never up",
+            [falling.every(frame => frame.pose === "falling"),
+                falling.every(frame => frame.x === 100),
+                falling.every((frame, i) => i === 0 || frame.y >= falling[i - 1].y)],
+            [true, true, true]);
+        expect("over a window's face, onto the next window's top, never up onto its own",
+            [Games.drop(from(100, 150), [lower], []).to, Games.drop(from(100, 150), [lower], [])
+                .landsOn, Games.drop(from(100, 150), [top], []).to],
+            [{ x: 100, y: 311 }, { floats: false, id: 2 }, { x: 100, y: 592 }]);
+        expect("two pixels under a top, it scrambles up nothing and falls to the floor",
+            [Games.drop(from(100, 93), [top], []).to, Games.drop(from(100, 93), [top], []).landsOn],
+            [{ x: 100, y: 592 }, null]);
+        expect("over a floating window, onto its top",
+            [Games.drop(from(100, 20), [top], [{ left: 50, right: 300, top: 60, bottom: 200,
+                id: 9 }]).to, Games.drop(from(100, 20), [top], [{ left: 50, right: 300,
+                top: 60, bottom: 200, id: 9 }]).landsOn], [{ x: 100, y: 51 }, { floats: true, id: 9 }]);
+        expect("let go on a top, it only lands and flicks an ear",
+            Games.drop(from(100, 91), [top], []).beats.map(each => each.name), ["lands", "looks"]);
+        // From the top of the screen to its floor, at 60 Hz: a fall past a
+        // third of the screen's height moves its first cell from rest
+        // within 100 ms, and on every frame from 200 ms, when it falls a
+        // cell a frame, never a cut, each step no more
+        // than the fastest fall goes, 54 heights a second, and a cell for
+        // whole cells.
+        const long = Games.drop(from(100, 0), [], []);
+        const ys = Array.from({ length: Math.floor(long.beats[0].ends / (1000 / 60)) + 1 },
+            (_, i) => Games.frame(long, i * (1000 / 60)).y);
+        const moving = ys.slice(Math.ceil(200 / (1000 / 60)));
+        expect("a long fall moves every frame, as far each as the fastest fall goes",
+            [ys.indexOf(1) * (1000 / 60) < 100, moving.every((y, i) => i === 0 || y > moving[i - 1]),
+                moving.every((y, i) => i === 0 || y - moving[i - 1] <= 54 * 8 / 60 + 1),
+                long.to.y],
+            [true, true, true, 592]);
     }
 
     // A hop a cell straight up from a crouch, landing crouched where it sat
