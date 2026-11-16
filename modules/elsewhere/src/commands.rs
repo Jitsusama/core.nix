@@ -25,7 +25,7 @@ pub fn help() -> Help {
 fn run() -> Help {
     Help::new(
         "run",
-        "runs a job here, or elsewhere when mycelium places it there",
+        "runs a job here, or by mycelium where it's placed, its tracked files carried by PI_QUEST's handover; one that can't go runs here",
     )
     .example(
         "elsewhere run model-check -- tla-rs Spec.tla",
@@ -44,11 +44,13 @@ fn run() -> Help {
     )
     .exit(
         Exit::Failed,
-        "its tree couldn't be copied, or the job didn't start",
+        "the job couldn't be left in the quest's handover, or didn't start",
     )
-    .exit(Exit::Usage, "asked wrongly")
+    .exit(
+        Exit::Usage,
+        "no kind, no command after --, or an option it doesn't take",
+    )
     .exit(Exit::NotFound, "no kind goes by that name")
-    .exit(Exit::Unavailable, "the far machine couldn't be reached")
     .exit(
         Exit::Refused,
         "the job's program isn't one its kind may start",
@@ -73,6 +75,7 @@ fn kinds() -> Help {
         "kinds",
         "the kinds of job it may send, and what each starts",
     )
+    .alias("kind")
     .example("elsewhere kinds --json", "as JSON")
     .exit(Exit::Config, "its settings can't be read")
 }
@@ -82,6 +85,7 @@ fn kinds() -> Help {
 pub fn wrongly(args: &[String], problem: impl Into<String>) -> Failure {
     let named = match args.first().map(String::as_str) {
         Some(command @ ("run" | "where" | "kinds")) => format!("elsewhere {command} --help"),
+        Some("kind") => "elsewhere kinds --help".to_owned(),
         _ => "elsewhere --help".to_owned(),
     };
     Failure::new(Exit::Usage, problem).try_this(named)

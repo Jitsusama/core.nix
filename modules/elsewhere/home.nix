@@ -50,12 +50,12 @@ let
           "repository"
         ];
         default = "folder";
-        description = "Whether the job's folder goes with it, or the repository holding it.";
+        description = "Whether the tracked files of the job's folder go with it, or those of the repository holding it. Hidden files, keys, certificates and build output never do.";
       };
       excludes = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
-        description = "What isn't copied, as rsync's --exclude reads it.";
+        description = "What of the tracked files doesn't travel: a path from the tree's top when it starts with /, else a name at any depth.";
       };
       bringsBack = lib.mkOption {
         type = lib.types.listOf lib.types.str;
@@ -82,12 +82,12 @@ in
     machines = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
-      description = "The machines a job may go to, as ssh and mycelium name them; one mycelium places it on elsewhere is refused.";
+      description = "The machines a job may go to, as mycelium names them; one mycelium places it on elsewhere stays here.";
     };
     scratch = lib.mkOption {
       type = lib.types.str;
       default = ".cache/elsewhere";
-      description = "The folder under a far machine's home a job's copy goes in.";
+      description = "The folder under a far machine's home a job's copy runs in, taken away once it ends.";
     };
     realm = lib.mkOption {
       type = lib.types.nullOr lib.types.str;

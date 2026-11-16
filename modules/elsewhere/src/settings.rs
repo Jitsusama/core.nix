@@ -1,5 +1,5 @@
-//! What elsewhere is told: the machines it may send to, in the order it
-//! tries them, the folder under each machine's home its copies go in, and
+//! What elsewhere is told: the machines it may send to, the first taken
+//! by `--there`, the folder under each machine's home its copies run in, and
 //! each kind of job it may send. A machine repository writes them, through
 //! home.nix, to `$XDG_CONFIG_HOME/elsewhere/settings.json`, since which
 //! machines a realm holds and what each needs to run a kind are its
@@ -30,7 +30,8 @@ pub struct Kind {
     /// putting the kind's programs on its path.
     pub setup: String,
     pub copies: Copies,
-    /// What isn't copied, as rsync's `--exclude` reads it.
+    /// What of the tracked files doesn't travel: a path from the tree's
+    /// top when it starts with `/`, else a name at any depth.
     pub excludes: Vec<String>,
     /// What's copied back once the job ends, relative to its folder.
     pub brings_back: Vec<String>,
@@ -48,15 +49,13 @@ pub struct Settings {
     /// The machines it may send to; a placement on any other stays here.
     /// `--there` takes the first.
     pub machines: Vec<String>,
-    /// The folder under a far machine's home its copies go in.
+    /// The folder under a far machine's home its copies run in.
     pub scratch: String,
     /// The realm mycelium is asked about, or the one it's set to.
     pub realm: Option<String>,
     pub kinds: BTreeMap<String, Kind>,
-    /// The programs it runs to ask and to copy, on its path unless named.
+    /// The mycelium it asks and sends by, on its path unless named.
     pub mycelium: String,
-    pub ssh: String,
-    pub rsync: String,
 }
 
 impl Default for Settings {
@@ -67,8 +66,6 @@ impl Default for Settings {
             realm: None,
             kinds: BTreeMap::new(),
             mycelium: "mycelium".to_owned(),
-            ssh: "ssh".to_owned(),
-            rsync: "rsync".to_owned(),
         }
     }
 }
@@ -94,8 +91,6 @@ pub fn read(text: &str) -> Result<Settings, String> {
     for (key, slot) in [
         ("scratch", &mut settings.scratch),
         ("mycelium", &mut settings.mycelium),
-        ("ssh", &mut settings.ssh),
-        ("rsync", &mut settings.rsync),
     ] {
         if let Some(text) = value.get(key).and_then(Value::as_str) {
             text.clone_into(slot);
@@ -184,7 +179,10 @@ mod tests {
             settings.scratch, ".cache/elsewhere",
             "the scratch didn't default"
         );
-        assert_eq!(settings.ssh, "ssh", "ssh wasn't the one on the path");
+        assert_eq!(
+            settings.mycelium, "mycelium",
+            "mycelium wasn't the one on the path"
+        );
     }
 
     #[test]

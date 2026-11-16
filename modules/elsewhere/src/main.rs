@@ -9,19 +9,22 @@
 //!
 //! A job is sent only by its kind, opted in by name in the settings
 //! (src/settings.rs): a kind names the programs its jobs may start, a
-//! setup that puts them on the far machine's path, and what's copied
-//! there and back. `elsewhere run KIND -- COMMAND` asks `mycelium place`
-//! where the kind's work fits (src/room.rs), so one score weighs every
-//! machine's load, and either becomes the command here or copies its
-//! tree to the far machine and runs it there (src/far.rs), passing its
-//! output and its code through untouched, so a caller can't tell where it
-//! ran but by the line it says on stderr. When to run a job is its
-//! caller's business, such as night-shift's turn; where is this one's.
+//! setup that puts them on the far machine's path, and what's brought
+//! back. `elsewhere run KIND -- COMMAND` asks `mycelium place` where the
+//! kind's work fits (src/room.rs), so one score weighs every machine's
+//! load, and either becomes the command here or sends it by mycelium
+//! alone (src/far.rs): its tracked files through the quest's handover,
+//! the job through `mycelium run`, which fences an agent's run where it
+//! lands. Its output and its code pass through untouched, so a caller
+//! can't tell where it ran but by the line it says on stderr. When to run
+//! a job is its caller's business, such as night-shift's turn; where is
+//! this one's.
 //!
-//! A job ssh can't reach the machine for ends 69, saying how to run it
-//! here; one that exits 255 itself reads the same, since that's ssh's own
-//! code. Interrupted, the far job is left to end when it next writes to
-//! the link ssh closed.
+//! A job that can't go runs here, saying why: with no quest to carry it,
+//! outside a repository, past what a shared folder carries, or where
+//! mycelium doesn't run it far, as it refuses an agent's run on a machine
+//! that declares no way to fence one. Interrupted, `mycelium run` stops
+//! the far job too.
 
 mod commands;
 mod far;
@@ -36,13 +39,16 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use terminal_kit::layout::{self, Row};
-use terminal_kit::{Context, Exit, Failure};
+use terminal_kit::{Context, Exit, Failure, flags};
 
 fn main() -> ExitCode {
     terminal_kit::main(&commands::help(), env!("CARGO_PKG_VERSION"), |context| {
         let args = &context.args;
         match args.first().map(String::as_str) {
-            None | Some("kinds") if args.len() <= 1 => kinds(context, &settings()?),
+            None | Some("kinds" | "kind") if args.len() <= 1 => kinds(context, &settings()?),
+            None | Some("kinds" | "kind") => {
+                Err(commands::wrongly(args, "kinds takes no more words"))
+            }
             Some("where") if args.len() == 2 => {
                 let settings = settings()?;
                 let kind = named(&settings, &args[1])?;
@@ -53,11 +59,10 @@ fn main() -> ExitCode {
                     &place(&settings, kind, false, false),
                 )
             }
+            Some("where") => Err(commands::wrongly(args, "where takes one kind")),
             Some("run") => run(context, &settings()?),
-            _ => Err(commands::wrongly(
-                args,
-                "elsewhere takes run, where or kinds",
-            )),
+            Some(other) => Err(flags::unknown("command", other, &["run", "where", "kinds"])
+                .try_this("elsewhere --help")),
         }
     })
 }
@@ -245,14 +250,15 @@ struct Asked {
     command: Vec<String>,
 }
 
-fn parse(args: &[String]) -> Result<Asked, String> {
+fn parse(args: &[String]) -> Result<Asked, Failure> {
+    let wrongly = |problem: &str| commands::wrongly(args, problem);
     let split = args
         .iter()
         .position(|arg| arg == "--")
-        .ok_or("elsewhere run takes the job's command after --")?;
+        .ok_or_else(|| wrongly("elsewhere run takes the job's command after --"))?;
     let command = args[split + 1..].to_vec();
     if command.is_empty() {
-        return Err("the job's command is empty".into());
+        return Err(wrongly("no command after --"));
     }
     let mut asked = Asked {
         kind: String::new(),
@@ -264,28 +270,31 @@ fn parse(args: &[String]) -> Result<Asked, String> {
         match word.as_str() {
             "--here" => asked.here = true,
             "--there" => asked.there = true,
-            option if option.starts_with('-') => return Err(format!("run takes no {option}")),
+            option if option.starts_with('-') => {
+                return Err(flags::unknown("option", option, &["--here", "--there"])
+                    .try_this("elsewhere run --help"));
+            }
             kind if asked.kind.is_empty() => kind.clone_into(&mut asked.kind),
             extra => {
-                return Err(format!(
+                return Err(wrongly(&format!(
                     "run takes one kind, not {} and {extra}",
                     asked.kind
-                ));
+                )));
             }
         }
     }
     if asked.kind.is_empty() {
-        return Err("run takes the job's kind before --".into());
+        return Err(wrongly("run takes the job's kind before --"));
     }
     if asked.here && asked.there {
-        return Err("run takes --here or --there, not both".into());
+        return Err(wrongly("run takes --here or --there, not both"));
     }
     Ok(asked)
 }
 
 fn run(context: &Context, settings: &Settings) -> Result<(), Failure> {
     let args = &context.args;
-    let asked = parse(args).map_err(|problem| commands::wrongly(args, problem))?;
+    let asked = parse(args)?;
     let kind = named(settings, &asked.kind)?;
     let program = Path::new(&asked.command[0])
         .file_name()
@@ -309,77 +318,182 @@ fn run(context: &Context, settings: &Settings) -> Result<(), Failure> {
         if place.why != Why::Told {
             eprintln!("{} runs here: {}", asked.kind, because(&place));
         }
-        let error = Command::new(&asked.command[0])
-            .args(&asked.command[1..])
-            .exec();
-        return Err(
-            Failure::new(Exit::Failed, format!("can't start {}", asked.command[0]))
-                .because(error.to_string()),
-        );
+        return Err(here_now(&asked.command));
     };
     eprintln!("{} runs on {machine}: {}", asked.kind, because(&place));
-    there(settings, kind, &asked, machine)
-}
-
-fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Result<(), Failure> {
-    let folder = std::env::current_dir().map_err(|error| {
-        Failure::new(Exit::Failed, "can't tell which folder it's in").because(error.to_string())
-    })?;
-    let root = far::root(kind, &folder).map_err(|problem| {
-        Failure::new(Exit::Failed, "can't tell which tree to copy").because(problem)
-    })?;
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    let copy = far::copy(&root, &folder, &home, &settings.scratch);
-    let unreached = |what: &str| {
-        Failure::new(
-            Exit::Unavailable,
-            format!("couldn't reach {machine} to {what}"),
-        )
-        .because("ssh couldn't connect or log in")
-        .try_this(format!(
-            "elsewhere run {} --here -- {}",
-            asked.kind,
-            words(&asked.command)
-        ))
-    };
-    let failed = |problem: String| {
-        Failure::new(Exit::Failed, format!("couldn't copy to {machine}")).because(problem)
-    };
-    match far::step(&settings.rsync, &far::sending(&copy, kind, machine)).map_err(failed)? {
-        far::Ended::Done => {}
-        far::Ended::Unreached => return Err(unreached("copy the job's tree")),
-        far::Ended::Code(code) => return Err(failed(format!("rsync ended {code}"))),
-    }
-    let line = far::line(&copy, kind, &asked.command);
-    let ended = far::step(&settings.ssh, &far::running(machine, &line))
-        .map_err(|problem| Failure::new(Exit::Failed, "the job didn't start").because(problem))?;
-    if ended == far::Ended::Unreached {
-        return Err(unreached("run the job"));
-    }
-    for path in &kind.brings_back {
-        let (args, into) = far::bringing(&copy, path, machine);
-        let brought = fs::create_dir_all(&into)
-            .map_err(|error| error.to_string())
-            .and_then(|()| far::step(&settings.rsync, &args));
-        if brought != Ok(far::Ended::Done) {
-            eprintln!("couldn't bring {path} back from {machine}");
-        }
-    }
-    match ended {
-        far::Ended::Code(code) => Err(Failure::passed(
+    match there(settings, kind, &asked, machine)? {
+        Sent::Ended(0) => Ok(()),
+        Sent::Ended(code) => Err(Failure::passed(
             code,
             format!("{} ended {code} on {machine}", asked.command[0]),
         )),
-        _ => Ok(()),
+        Sent::Stayed(why) => {
+            eprintln!("{} runs here: {why}", asked.kind);
+            Err(here_now(&asked.command))
+        }
     }
 }
 
-fn words(command: &[String]) -> String {
-    command
-        .iter()
-        .map(|word| far::quoted(word))
-        .collect::<Vec<_>>()
-        .join(" ")
+/// Becomes the job here, or says why it couldn't.
+fn here_now(command: &[String]) -> Failure {
+    let error = Command::new(&command[0]).args(&command[1..]).exec();
+    Failure::new(Exit::Failed, format!("can't start {}", command[0])).because(error.to_string())
+}
+
+/// How a job sent away ended: with its code there, or kept here, and why.
+enum Sent {
+    Ended(u8),
+    Stayed(String),
+}
+
+/// Sends the job to `machine` by the quest's handover and `mycelium run`,
+/// or says why it stays.
+fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Result<Sent, Failure> {
+    let Some(quest) = std::env::var("PI_QUEST")
+        .ok()
+        .filter(|quest| far::plain_quest(quest))
+    else {
+        return Ok(Sent::Stayed(
+            "no quest's handover is here to carry it".to_owned(),
+        ));
+    };
+    let folder = std::env::current_dir().map_err(|error| {
+        Failure::new(Exit::Failed, "can't tell which folder it's in").because(error.to_string())
+    })?;
+    let gathered = far::root(kind, &folder)
+        .and_then(|root| far::gathered(&root, kind).map(|files| (root, files)));
+    let (root, files) = match gathered {
+        Ok(gathered) => gathered,
+        Err(why) => return Ok(Sent::Stayed(why)),
+    };
+    let within = folder
+        .strip_prefix(&root)
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
+    let id = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos())
+    );
+    let job = Job {
+        handover: far::scratches().join(&quest).join(far::HANDOVER).join(&id),
+        quest,
+        id,
+        root,
+        files,
+        within,
+        folder,
+    };
+    let sent = send(settings, kind, asked, machine, &job);
+    // Whatever's left is spent once the job ends here; one that won't go
+    // is no reason to fail a job that ran.
+    let _ = fs::remove_dir_all(&job.handover);
+    sent
+}
+
+/// A job on its way: the quest carrying it, its id there, the tree its
+/// files are from and its folder within it, and where in the quest's
+/// handover it's left.
+struct Job {
+    quest: String,
+    id: String,
+    root: PathBuf,
+    files: Vec<(String, u64)>,
+    within: PathBuf,
+    folder: PathBuf,
+    handover: PathBuf,
+}
+
+/// Leaves the job in the handover, shares the quest, runs the job by
+/// mycelium and brings back what it made.
+fn send(
+    settings: &Settings,
+    kind: &Kind,
+    asked: &Asked,
+    machine: &str,
+    job: &Job,
+) -> Result<Sent, Failure> {
+    let (quest, id) = (job.quest.as_str(), job.id.as_str());
+    far::left(&job.root, &job.files, &job.handover).map_err(|error| {
+        Failure::new(
+            Exit::Failed,
+            "couldn't leave the job in the quest's handover",
+        )
+        .because(error.to_string())
+    })?;
+    // Shared to the machine and waited for where both ends' mycelium can;
+    // otherwise shared, and the far line waits for the files to cross.
+    let shared = mycelium(settings, &["share", quest, "--to", machine, "--wait"])
+        || mycelium(settings, &["share", quest]);
+    if !shared {
+        return Ok(Sent::Stayed(format!("mycelium couldn't share {quest}")));
+    }
+    let script = far::script(
+        quest,
+        id,
+        &settings.scratch,
+        &job.within,
+        kind,
+        &asked.command,
+    );
+    let need = format!("machine={machine}");
+    let mut run = Command::new(&settings.mycelium);
+    run.args(["run", "--need", &need]);
+    if let Some(realm) = &settings.realm {
+        run.args(["--realm", realm]);
+    }
+    let child = run
+        .args(["--", "sh", "-c", &script])
+        .stdout(std::process::Stdio::piped())
+        .spawn();
+    let mut child = match child {
+        Ok(child) => child,
+        Err(error) => {
+            return Ok(Sent::Stayed(format!(
+                "{} didn't start: {error}",
+                settings.mycelium
+            )));
+        }
+    };
+    let started = child.stdout.take().is_some_and(|out| far::relay(out, id));
+    let status = child.wait().map_err(|error| {
+        Failure::new(Exit::Failed, "lost the far job").because(error.to_string())
+    })?;
+    let code = ended(status);
+    if !started {
+        return Ok(Sent::Stayed(format!(
+            "mycelium didn't run it on {machine}, ending {code}"
+        )));
+    }
+    if let Err(why) = far::bring_back(&job.handover, &job.folder, &kind.brings_back) {
+        eprintln!("couldn't bring back what it made on {machine}: {why}");
+    }
+    Ok(Sent::Ended(code))
+}
+
+/// Whether mycelium, asked `words`, says yes.
+fn mycelium(settings: &Settings, words: &[&str]) -> bool {
+    let mut ask = Command::new(&settings.mycelium);
+    ask.args(words);
+    if let Some(realm) = &settings.realm {
+        ask.args(["--realm", realm]);
+    }
+    ask.stdout(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+/// The code a process ended with, or 128 and the signal that ended it.
+fn ended(status: std::process::ExitStatus) -> u8 {
+    use std::os::unix::process::ExitStatusExt;
+    match (status.code(), status.signal()) {
+        (Some(code), _) => u8::try_from(code).unwrap_or(1),
+        (None, signal) => 128u8.saturating_add(
+            signal
+                .and_then(|signal| u8::try_from(signal).ok())
+                .unwrap_or(0),
+        ),
+    }
 }

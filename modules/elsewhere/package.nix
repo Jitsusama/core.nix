@@ -1,7 +1,11 @@
 # elsewhere, built from this directory, its tests run as it builds. It takes
 # its shape from the terminal kit (../terminal-kit), so the source is cut
 # from the modules folder holding both, and built from this one.
-{ lib, rustPlatform }:
+{
+  git,
+  lib,
+  rustPlatform,
+}:
 rustPlatform.buildRustPackage rec {
   pname = "elsewhere";
   version = "0.1.0";
@@ -18,6 +22,8 @@ rustPlatform.buildRustPackage rec {
   };
   sourceRoot = "${src.name}/elsewhere";
   cargoLock.lockFile = ./Cargo.lock;
+  # The tests track a job's files, since only tracked files travel.
+  nativeCheckInputs = [ git ];
   meta = {
     description = "Runs a heavy job wherever mycelium places it";
     license = lib.licenses.mit;

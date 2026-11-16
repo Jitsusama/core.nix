@@ -12,10 +12,12 @@
 }:
 onLinux {
   # elsewhere's tests run as it builds, against a stand-in realm: a job
-  # mycelium places far runs in a far copy of its folder, after its kind's
-  # setup, and brings back what the kind names; the far job's code is its
-  # own; a job placed here stays; an unreached machine ends 69 and a
-  # program its kind doesn't allow is refused before anything runs.
+  # mycelium places far goes by the quest's handover and mycelium's run,
+  # never ssh or rsync, runs in a far copy of its tracked files alone after
+  # its kind's setup, and brings back what the kind names; the far job's
+  # code is its own; a job placed here, with no quest or that mycelium
+  # doesn't run far stays; a program its kind doesn't allow is refused
+  # before anything runs.
   elsewhere-goes-where-mycelium-places-it = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in elsewhere, its tests included.
   elsewhere-passes-clippy = passesClippy "elsewhere-passes-clippy" (

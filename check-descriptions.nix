@@ -814,11 +814,13 @@
     words it reads, and an account declaring none has it on its path and sends nothing
   '';
   elsewhere-goes-where-mycelium-places-it = ''
-    elsewhere asks mycelium to place a job with its kind's needs and how long it lasts, and runs
-    it in a far copy of its folder when mycelium places it on a machine it may send to, after its
-    kind's setup, bringing back what the kind names and ending with the far job's own code; a job
-    placed here, refused or placed on a machine it may not send to stays, an unreached machine
-    ends 69, and a program its kind doesn't allow is refused before anything runs
+    elsewhere asks mycelium to place a job with its kind's needs and how long it lasts, and when
+    mycelium places it on a machine it may send to, sends only its tracked files, never a hidden
+    file, key or excluded path, through the quest's handover and runs it by mycelium run, never
+    ssh or rsync, after its kind's setup, bringing back what the kind names and ending with the
+    far job's own code; a job placed here, refused, with no quest or one mycelium doesn't run far
+    runs here saying why, a program its kind doesn't allow is refused before anything runs, and a
+    command asked wrongly says what it takes
   '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
