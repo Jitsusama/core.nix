@@ -216,8 +216,8 @@ in
   # (modules/mycelium/site/tests/map-reads-live-test.py): live with the realm
   # drawn, a cell moving and another going, broken while the node is away
   # and live once it's back, stale once the server goes, the web-design
-  # skill's page checks passing at two widths in both looks, and nothing
-  # logged. Chromium builds only on Linux.
+  # skill's page checks and the map's own (site-checks.js) passing at two
+  # widths in both looks, and nothing logged. Chromium builds only on Linux.
   mycelium-site-reads-live =
     let
       python = pkgs.python3.withPackages (python: [
