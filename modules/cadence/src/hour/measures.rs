@@ -303,9 +303,29 @@ pub fn reverts(text: &str, now: i64, owner: &str) -> Measure {
 /// that could go elsewhere waits on the one machine instead.
 #[must_use]
 pub fn crowded(answers: &[String], owner: &str) -> Measure {
-    let crowded: Vec<String> = answers
+    let read: Vec<_> = answers
         .iter()
-        .flat_map(|answer| crate::elsewhere::crowded(answer))
+        .filter_map(|answer| crate::elsewhere::crowded(answer))
+        .collect();
+    // An hour no node named its machines in judged nothing, and a quiet 0
+    // would read as met: that hid the builders' line for an hour on 16
+    // November.
+    if read.is_empty() {
+        return Measure {
+            key: "crowded".to_owned(),
+            class: Class::Ship,
+            says: "machines over their room while another has room \
+                   (no realm's node named its machines)"
+                .to_owned(),
+            now: 0.0,
+            target: None,
+            owner: owner.to_owned(),
+            behind: Vec::new(),
+        };
+    }
+    let crowded: Vec<String> = read
+        .into_iter()
+        .flatten()
         .map(|m| {
             format!(
                 "{} is over its room ({}) while {} has room",
@@ -477,6 +497,22 @@ mod tests {
                 vec!["laptop is over its room (memory, cpu) while mac has room".to_owned()]
             ),
             "a machine over its room beside one with room wasn't counted and named"
+        );
+    }
+
+    #[test]
+    fn an_hour_no_node_named_its_machines_in_is_unjudged_and_says_so() {
+        let builders_only = r#"{"Ok":{"Builders":[{"name":"lent"}]}}"#;
+        let m = crowded(&[builders_only.to_owned(), "not json".to_owned()], "OWNER");
+        assert_eq!(
+            (
+                m.target,
+                m.says.contains("no realm's node named its machines")
+            ),
+            (None, true),
+            "an hour with no machines read passed as none crowded: {} at {:?}",
+            m.says,
+            m.target
         );
     }
 

@@ -26,14 +26,8 @@ pub struct Failing {
 /// update failed; none when the answer doesn't parse.
 #[must_use]
 pub fn failing_elsewhere(answer: &str, this: &str) -> Vec<Failing> {
-    let Ok(said) = serde_json::from_str::<serde_json::Value>(answer) else {
-        return Vec::new();
-    };
-    let machines = said["Ok"]["Machines"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-    machines
+    machines(answer)
+        .unwrap_or_default()
         .iter()
         .filter(|m| m["name"].as_str().is_some_and(|name| name != this))
         .filter_map(|m| {
@@ -77,16 +71,11 @@ pub struct Crowded {
 }
 
 /// The machines in a `mycelium machines` answer over their room while
-/// another has room; none when the answer doesn't parse.
+/// another has room; `None` when no document in it names the machines,
+/// so an answer that went unread isn't taken for an hour none was crowded.
 #[must_use]
-pub fn crowded(answer: &str) -> Vec<Crowded> {
-    let Ok(said) = serde_json::from_str::<serde_json::Value>(answer) else {
-        return Vec::new();
-    };
-    let machines = said["Ok"]["Machines"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+pub fn crowded(answer: &str) -> Option<Vec<Crowded>> {
+    let machines = machines(answer)?;
     let words = |list: &serde_json::Value| -> Vec<String> {
         list.as_array()
             .map(|list| {
@@ -109,19 +98,32 @@ pub fn crowded(answer: &str) -> Vec<Crowded> {
         .filter_map(|m| m["name"].as_str().map(str::to_owned))
         .collect();
     if roomy.is_empty() {
-        return Vec::new();
+        return Some(Vec::new());
     }
-    machines
-        .iter()
-        .filter_map(|m| {
-            let over = words(&m["room"]["over"]);
-            (!over.is_empty()).then(|| Crowded {
-                machine: m["name"].as_str().unwrap_or_default().to_owned(),
-                over,
-                roomy: roomy.clone(),
+    Some(
+        machines
+            .iter()
+            .filter_map(|m| {
+                let over = words(&m["room"]["over"]);
+                (!over.is_empty()).then(|| Crowded {
+                    machine: m["name"].as_str().unwrap_or_default().to_owned(),
+                    over,
+                    roomy: roomy.clone(),
+                })
             })
-        })
-        .collect()
+            .collect(),
+    )
+}
+
+/// The machines a `mycelium machines` answer names; `None` when no document
+/// in it does. The answer is a document a line, the builders' following the
+/// machines' once a machine names builders (16 November), so each document
+/// is read until one holds the machines.
+fn machines(answer: &str) -> Option<Vec<serde_json::Value>> {
+    serde_json::Deserializer::from_str(answer)
+        .into_iter::<serde_json::Value>()
+        .map_while(Result::ok)
+        .find_map(|said| said["Ok"]["Machines"].as_array().cloned())
 }
 
 #[cfg(test)]
@@ -145,7 +147,7 @@ mod tests {
             machine("also-over", r#""io""#, 4),
         );
         assert_eq!(
-            crowded(&answer),
+            crowded(&answer).unwrap_or_default(),
             [
                 Crowded {
                     machine: "laptop".into(),
@@ -172,13 +174,13 @@ mod tests {
         );
         assert_eq!(
             crowded(&answer),
-            [],
+            Some(Vec::new()),
             "a machine was named crowded with no other machine having room"
         );
         assert_eq!(
             crowded("not json"),
-            [],
-            "an answer that doesn't parse named one"
+            None,
+            "an answer that doesn't parse was read as one naming machines"
         );
     }
 
@@ -216,5 +218,35 @@ mod tests {
         );
         assert_eq!(failing_elsewhere("not json", "here"), []);
         assert_eq!(failing_elsewhere(r#"{"Err":"no node"}"#, "here"), []);
+    }
+
+    #[test]
+    fn the_machines_are_read_past_the_builders_line_after_them() {
+        let machines = format!(
+            r#"{{"Ok":{{"Machines":[{},{}]}}}}"#,
+            machine("laptop", r#""cpu""#, 0),
+            machine("mac", "", 10),
+        );
+        let builders = r#"{"Ok":{"Builders":[{"name":"lent"}]}}"#;
+        let answer = format!("{machines}\n{builders}\n");
+        assert_eq!(
+            crowded(&answer).map(|c| c.len()),
+            Some(1),
+            "the builders' line after the machines' made the whole answer unreadable"
+        );
+        assert_eq!(
+            crowded(&format!("{builders}\n{machines}")).map(|c| c.len()),
+            Some(1),
+            "a builders' line before the machines' hid them"
+        );
+        let failed = answer.replace(
+            r#""name":"mac","#,
+            r#""name":"mac","updated":{"at":"2026-11-15T04:14:23Z","step":"failed","why":"x"},"#,
+        );
+        assert_eq!(
+            failing_elsewhere(&failed, "laptop").len(),
+            1,
+            "the builders' line hid another machine's failed update"
+        );
     }
 }
