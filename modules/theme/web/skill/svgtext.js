@@ -56,7 +56,9 @@
   const paint = (element) => {
     const style = getComputedStyle(element);
     if (element instanceof SVGElement) {
-      if (!shapes.has(element.localName) || style.fill === "none") return null;
+      if (!shapes.has(element.localName) || style.fill === "none") {
+        return null;
+      }
       const colour = rgba(style.fill);
       colour[3] *= Number.parseFloat(style.fillOpacity || "1") * opacity(element);
       return colour[3] > 0 ? colour : null;
@@ -67,7 +69,9 @@
   const page = () => {
     for (const element of [document.body, document.documentElement]) {
       const colour = rgba(getComputedStyle(element).backgroundColor);
-      if (colour[3] > 0) return colour;
+      if (colour[3] > 0) {
+        return colour;
+      }
     }
     return [255, 255, 255, 1];
   };
@@ -89,12 +93,18 @@
     const layers = [];
     for (const element of beneath) {
       const colour = paint(element);
-      if (!colour) continue;
+      if (!colour) {
+        continue;
+      }
       layers.push(colour);
-      if (colour[3] >= 1) break;
+      if (colour[3] >= 1) {
+        break;
+      }
     }
     let ground = page();
-    for (const colour of layers.reverse()) ground = over(colour, ground);
+    for (const colour of layers.reverse()) {
+      ground = over(colour, ground);
+    }
     const style = getComputedStyle(text);
     const ink = rgba(style.fill);
     ink[3] *= Number.parseFloat(style.fillOpacity || "1") * opacity(text);
@@ -112,7 +122,8 @@
   reach.remove();
   for (const element of document.querySelectorAll("img, object, embed")) {
     const source = element.getAttribute("src") || element.getAttribute("data") || "";
-    if (/\.svg(\?|#|$)/i.test(source) && element.getBoundingClientRect().width > 64) {
+    const drawn = new URL(source, document.baseURI).pathname.toLowerCase().endsWith(".svg");
+    if (drawn && element.getBoundingClientRect().width > 64) {
       faults.push(
         `the drawing ${source} sits in an ${element.localName}, where its words can't be ` +
           "measured: put the SVG in the page inline",
