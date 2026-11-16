@@ -79,7 +79,7 @@ function sayWhen(): void {
   }
   standingWords.textContent =
     words.length === 0 ? "Reaching the system daemon." : `${words.join(" · ")}.`;
-  standingLine.dataset.state = now?.state ?? "connecting";
+  standingLine.dataset["state"] = now?.state ?? "connecting";
   const problems = [...(system?.unread ?? []), ...heard.values()];
   note.textContent = problems.length > 0 ? `Couldn't read: ${problems.join("; ")}.` : "";
 }
@@ -94,7 +94,7 @@ function land(row: HTMLAnchorElement | undefined): void {
   if (row === undefined) {
     return;
   }
-  cursor = row.dataset.row ?? null;
+  cursor = row.dataset["row"] ?? null;
   row.focus();
   row.scrollIntoView({ block: "nearest" });
 }
@@ -117,7 +117,7 @@ function drawParts(read: System): void {
     return;
   }
   const now = rows();
-  const same = now.find((row) => row.dataset.row === cursor);
+  const same = now.find((row) => row.dataset["row"] === cursor);
   (same ?? now[Math.min(focused, now.length - 1)])?.focus({ preventScroll: true });
 }
 
@@ -146,9 +146,9 @@ function redraw(into: Element, drawn: string, before: string, attribute: string)
 
 /** Marks the place of the part the cursor is in, so the top says where Joel is. */
 function markPlace(): void {
-  const here = document.activeElement?.closest<HTMLElement>("[data-part]")?.dataset.part;
+  const here = document.activeElement?.closest<HTMLElement>("[data-part]")?.dataset["part"];
   for (const place of places.querySelectorAll<HTMLAnchorElement>("a[data-place]")) {
-    if (place.dataset.place === here) {
+    if (place.dataset["place"] === here) {
       place.setAttribute("aria-current", "location");
     } else {
       place.removeAttribute("aria-current");
@@ -211,12 +211,12 @@ function move(by: number): void {
 
 /** Puts the cursor on the heading of the part at `index`, counted from one. */
 function toPart(index: number): void {
-  land(rows().filter((row) => row.dataset.row?.startsWith("part:"))[index - 1]);
+  land(rows().filter((row) => row.dataset["row"]?.startsWith("part:"))[index - 1]);
 }
 
 /** The part the cursor is in, or the first. */
 function partHere(): Part | undefined {
-  const at = document.activeElement?.closest<HTMLElement>("[data-part]")?.dataset.part;
+  const at = document.activeElement?.closest<HTMLElement>("[data-part]")?.dataset["part"];
   return system?.parts.find((part) => part.part === at) ?? system?.parts[0];
 }
 
@@ -258,8 +258,8 @@ listen({
 });
 
 list.addEventListener("focusin", (event) => {
-  if (event.target instanceof HTMLAnchorElement && event.target.dataset.row !== undefined) {
-    cursor = event.target.dataset.row;
+  if (event.target instanceof HTMLAnchorElement && event.target.dataset["row"] !== undefined) {
+    cursor = event.target.dataset["row"];
   }
   markPlace();
 });
@@ -273,14 +273,14 @@ for (const into of [outlook, places]) {
     }
     event.preventDefault();
     const part = link.hash.slice("#part-".length);
-    land(rows().find((row) => row.dataset.row === `part:${part}`));
+    land(rows().find((row) => row.dataset["row"] === `part:${part}`));
   });
 }
 
 list.addEventListener("click", (event) => {
   const button = event.target instanceof Element ? event.target.closest(".copy") : null;
-  if (button instanceof HTMLButtonElement && button.dataset.command !== undefined) {
-    copy(button.dataset.command);
+  if (button instanceof HTMLButtonElement && button.dataset["command"] !== undefined) {
+    copy(button.dataset["command"]);
   }
 });
 
@@ -291,13 +291,13 @@ title.addEventListener("click", (event) => {
     return;
   }
   event.preventDefault();
-  const to = link.dataset.to;
+  const to = link.dataset["to"];
   const all = rows();
   const first =
     to === "look"
       ? all.find((row) => row.closest(".part.watch, .part.bad") !== null && !row.closest("h2"))
       : to === "unread"
-        ? all.find((row) => row.dataset.health === "unread")
+        ? all.find((row) => row.dataset["health"] === "unread")
         : all[0];
   land(first ?? all[0]);
 });
