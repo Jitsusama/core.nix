@@ -53,8 +53,10 @@ pub struct Served {
     /// Landed's records as last taken, which a making serving the same
     /// again leaves served without reading them (`take`).
     landed: Rc<Vec<Value>>,
-    /// The same, by key.
-    landed_records: BTreeMap<String, Value>,
+    /// Where each of Landed's records is in `landed`, by key: an index
+    /// rather than a copy, which held 24 MB more than the daemon had
+    /// before (2026-11-16).
+    landed_at: BTreeMap<String, usize>,
 }
 
 /// What a making moved: the records that read differently, whole, and
@@ -312,12 +314,13 @@ impl Served {
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.records
             .get(key)
-            .or_else(|| self.landed_records.get(key))
+            .or_else(|| Some(&self.landed[*self.landed_at.get(key)?]))
     }
 
     /// Every record as last served, Landed's last.
     pub fn all(&self) -> impl Iterator<Item = &Value> {
-        self.records.values().chain(self.landed_records.values())
+        let landed = self.landed_at.values().map(|at| &self.landed[*at]);
+        self.records.values().chain(landed)
     }
 
     /// Landed's records as last served.
@@ -378,15 +381,26 @@ impl Served {
         let mut moved = between(&self.records, &records);
         self.records = records;
         if !Rc::ptr_eq(&made.landed, &self.landed) {
-            let landed: BTreeMap<String, Value> = made
+            let landed_at: BTreeMap<String, usize> = made
                 .landed
                 .iter()
-                .filter_map(|whole| Some((whole["key"].as_str()?.to_owned(), whole.clone())))
+                .enumerate()
+                .filter_map(|(at, whole)| Some((whole["key"].as_str()?.to_owned(), at)))
                 .collect();
-            let more = between(&self.landed_records, &landed);
-            moved.changed.extend(more.changed);
-            moved.gone.extend(more.gone);
-            self.landed_records = landed;
+            let was = |key: &str| Some(&self.landed[*self.landed_at.get(key)?]);
+            moved.changed.extend(
+                landed_at
+                    .iter()
+                    .filter(|(key, at)| was(key) != Some(&made.landed[**at]))
+                    .map(|(_, at)| made.landed[*at].clone()),
+            );
+            moved.gone.extend(
+                self.landed_at
+                    .keys()
+                    .filter(|key| !landed_at.contains_key(*key))
+                    .cloned(),
+            );
+            self.landed_at = landed_at;
             self.landed = made.landed;
         }
         moved
