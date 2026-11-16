@@ -305,9 +305,7 @@ def test_away_it_wanders_and_a_key_brings_it_back(shell: Shell) -> None:
     shell.reported(
         SITS,
         lambda said: (
-            (at := placed(said)) is not None
-            and not walking(at)
-            and abs(at["x"] - goes[0]) <= 1
+            (at := placed(said)) is not None and not walking(at) and abs(at["x"] - goes[0]) <= 1
         ),
         since,
         STROLLS,
@@ -338,7 +336,7 @@ def behind_its_edge(yarn: Json, size: float) -> bool:
     return bool(yarn["x"] < yarn["within"]["left"] or yarn["x"] + size > yarn["within"]["right"])
 
 
-def rolled_behind(frames: list[Json], size: float, last: bool) -> Json | None:
+def rolled_behind(frames: list[Json], size: float, *, last: bool) -> Json | None:
     """Give where the yarn was as it came (or, `last`, as it went), or None where it was behind.
 
     The yarn rolls on the cat's clock, so a frame drawn late finds it a few pixels on: a loaded
@@ -350,7 +348,7 @@ def rolled_behind(frames: list[Json], size: float, last: bool) -> Json | None:
     """
     shown = [at for at, frame in enumerate(frames) if frame["walk"]["yarn"]]
     edge, beside, along = (shown[-1], 1, -1) if last else (shown[0], -1, 1)
-    yarn = frames[edge]["walk"]["yarn"]
+    yarn: Json = frames[edge]["walk"]["yarn"]
     if behind_its_edge(yarn, size):
         return None
     near, after = edge + beside, edge + along
