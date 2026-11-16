@@ -784,7 +784,8 @@ in
             # that too does it wait, frozen as it starts, five minutes at
             # most. Through a call, which pw-dump hears as a program
             # recording a microphone, three eighths stay, and nothing held
-            # or ranked comes into the call.
+            # or ranked comes into the call; build.slice and jobs.slice
+            # are held to a quarter of the processors till it ends.
             "--door"
             "jobs.slice"
             "--calls"
