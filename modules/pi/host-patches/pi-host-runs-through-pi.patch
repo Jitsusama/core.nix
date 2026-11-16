@@ -15,8 +15,9 @@ settle at its end. A message a handler returns waits for the next prompt,
 as a nextTurn message does, so none lands between a tool call and its
 result. A handler's edit of selectedTools goes into the live tool loadout,
 as a prompt's run applies it, so the model is offered what the handler
-chose. hostRuns marks a runtime that has it. Nothing in pi calls it, so a
-pi no host drives behaves as before.
+chose, and restored tools not yet registered are dropped, as a prompt's
+run drops them. hostRuns marks a runtime that has it. Nothing in pi calls
+it, so a pi no host drives behaves as before.
 
 Its hunk sits on _startRun's own ending, so a pi whose run lifecycle moved
 fails to apply here rather than in a host. Apply only to the host's private
@@ -33,7 +34,7 @@ pi build; ordinary interactive pi stays unchanged.
  	readonly agent: SessionAgent;
  	readonly sessionManager: SessionManager;
  	readonly settingsManager: SettingsManager;
-@@ -1990,6 +1992,60 @@
+@@ -1990,6 +1992,63 @@
  			this._runSystemPromptOptions = undefined;
  			this._flushPendingBashMessages();
  			this._flushPendingCustomMessages();
@@ -67,6 +68,9 @@ pi build; ordinary interactive pi stays unchanged.
 +				result.systemPromptOptions.selectedTools.some((name, index) => name !== selectedToolsBefore[index]);
 +			if (handlerEditedTools) this._applyToolLoadout(result.systemPromptOptions.selectedTools);
 +			result.systemPromptOptions.selectedTools = this.getActiveToolNames();
++			// As a prompt's prepared run does, drop restored tools that have not registered by now: the
++			// run records its loadout, so one registering later is not put back into it.
++			this._pendingToolNames.clear();
 +			for (const msg of result.messages) {
 +				this._pendingNextTurnMessages.push({
 +					role: "custom",
