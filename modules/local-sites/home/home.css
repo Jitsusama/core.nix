@@ -256,10 +256,23 @@ main {
   inline-size: 4rem;
   block-size: 1.5rem;
   margin: 0 auto var(--frames);
-  background: var(--leaf);
   opacity: 0.6;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 24'%3E%3Cpath d='M4 12h56' stroke='black' stroke-width='1.4' stroke-linecap='round'/%3E%3Cpath d='M24 12c-5-6-11-7-16-5 4 5 10 6 16 5zM40 12c5 6 11 7 16 5-4-5-10-6-16-5z'/%3E%3Ccircle cx='32' cy='12' r='3'/%3E%3C/svg%3E")
-    center / contain no-repeat;
+}
+
+/* The sprigs are drawn by a mask over a fill; a browser without masks
+   shows the beds' space and no block of colour. */
+@supports (mask: none) {
+  .bed + .bed::before {
+    background: var(--leaf);
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 24'%3E%3Cpath d='M4 12h56' stroke='black' stroke-width='1.4' stroke-linecap='round'/%3E%3Cpath d='M24 12c-5-6-11-7-16-5 4 5 10 6 16 5zM40 12c5 6 11 7 16 5-4-5-10-6-16-5z'/%3E%3Ccircle cx='32' cy='12' r='3'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+  }
+
+  .sites a::before {
+    background: var(--tint);
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 14'%3E%3Cpath d='M1 7h12' stroke='black' stroke-width='1.6' stroke-linecap='round'/%3E%3Cpath d='M13 7c2-4 5-6 8-6-1 4-4 6-8 6zM13 7c2 4 5 6 8 6-1-4-4-6-8-6z'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+  }
 }
 
 .bed h2 {
@@ -302,9 +315,6 @@ main {
   inset-inline-start: 0;
   inline-size: 1.1rem;
   block-size: 0.7rem;
-  background: var(--tint);
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 14'%3E%3Cpath d='M1 7h12' stroke='black' stroke-width='1.6' stroke-linecap='round'/%3E%3Cpath d='M13 7c2-4 5-6 8-6-1 4-4 6-8 6zM13 7c2 4 5 6 8 6-1-4-4-6-8-6z'/%3E%3C/svg%3E")
-    center / contain no-repeat;
   opacity: 0;
   translate: -0.4rem 0;
   transition:
