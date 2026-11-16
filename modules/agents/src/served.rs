@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::figures::Item;
 use crate::row::{Row, Shown};
@@ -347,7 +347,15 @@ impl Served {
         for (mut row, order) in made.rows.into_iter().zip(spaced(&was)) {
             row["order"] = json!(order);
             let key = row["key"].as_str().unwrap_or("").to_owned();
-            records.insert(key.clone(), json!({"key": key, "kind": "row", "row": row}));
+            // Built by hand, since `json!` would write the row out anew
+            // rather than move it: 7% of the daemon's work (perf,
+            // 2026-11-16).
+            let record = Map::from_iter([
+                ("key".to_owned(), json!(key)),
+                ("kind".to_owned(), json!("row")),
+                ("row".to_owned(), row),
+            ]);
+            records.insert(key, Value::Object(record));
         }
         records.insert(
             SUMMARY.to_owned(),
