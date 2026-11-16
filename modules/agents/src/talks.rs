@@ -195,6 +195,20 @@ mod tests {
     }
 
     #[test]
+    fn what_joel_said_is_his_words_without_what_the_line_attached() {
+        let talk = folded(&record(
+            "light",
+            "t1",
+            &json!([{"stage": "delivered",
+                "text": "keep watch\n\nAttached:\n- window: kitty: ~/src\n- clipboard: lamp"}]),
+        ));
+        assert_eq!(
+            talk.words, "keep watch",
+            "only what he said, never the window it went with"
+        );
+    }
+
+    #[test]
     fn each_sessions_talks_are_its_newest_first_and_only_those_that_said_something() {
         let said = |at: &str| json!([{"at": at, "stage": "delivered", "text": "words"}]);
         let records = [

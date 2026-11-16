@@ -363,6 +363,29 @@ mod tests {
     }
 
     #[test]
+    fn what_joel_asked_is_his_words_without_what_the_line_attached() {
+        let with = "is the beacon lit?\n\nAttached:\n- window: kitty: ~/src";
+        let talks = [
+            talk("BEACON", "talk-1", &[delivered(with), replied("Yes.")]),
+            talk("LAMPLT", "talk-1", &[delivered(with)]),
+        ];
+        let asked: Vec<String> = answers(talks.iter(), &|_| true)
+            .into_iter()
+            .map(|one| one.asked)
+            .chain(
+                waiting(talks.iter(), &|_| true)
+                    .into_iter()
+                    .map(|one| one.asked),
+            )
+            .collect();
+        assert_eq!(
+            asked,
+            ["is the beacon lit?", "is the beacon lit?"],
+            "answered or waiting, only what he asked, never the window it went with"
+        );
+    }
+
+    #[test]
     fn a_talk_still_being_answered_or_failed_is_none() {
         let talks = [
             talk(
