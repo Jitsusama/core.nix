@@ -77,11 +77,13 @@ struct Heard {
 }
 
 /// Every vocabulary asked for, where they may be read from, the map of
-/// the network if there's one to open, and what net last said of it.
+/// the network if there's one to open, what net last said of it, and the
+/// worst the rows held were all made with, once they were.
 pub struct Vocabularies {
     store: PathBuf,
     map: Option<Mapped>,
     heard: Option<Heard>,
+    made_with: Option<Option<String>>,
     held: HashMap<Said, Vocabulary>,
 }
 
@@ -99,6 +101,7 @@ impl Vocabularies {
             store,
             map: None,
             heard: None,
+            made_with: None,
             held: HashMap::new(),
         }
     }
@@ -136,6 +139,12 @@ impl Vocabularies {
         };
         self.hear();
         vocabulary.make(network, self.map_now().as_ref());
+        // Only the first vocabulary sets what the rows were made with:
+        // one asked for later may hear a newer worst than those before
+        // it, and they're still to be made again with it.
+        if self.held.is_empty() {
+            self.made_with = Some(self.worst_heard());
+        }
         self.held.insert(said.clone(), vocabulary);
         Ok(said)
     }
@@ -150,6 +159,7 @@ impl Vocabularies {
     pub fn make(&mut self, network: &HomeNetwork) -> HashMap<Said, Made> {
         self.hear();
         // Heard once for every vocabulary, so each says the same.
+        self.made_with = Some(self.worst_heard());
         let map = self.map.as_ref().map(|map| rows::Map {
             page: &map.page,
             worst: self.heard.as_ref().and_then(|heard| heard.worst.as_deref()),
@@ -186,11 +196,20 @@ impl Vocabularies {
     /// Whether net's record says a different worst than the rows were
     /// last made with, as `make` would read it now. net writes its record
     /// each minute, and it's read again only once it's written anew, a
-    /// look at its time costing far less than reading it whole.
+    /// look at its time costing far less than reading it whole. It's
+    /// held against what the rows were made with rather than what was
+    /// last heard, since a vocabulary asked for between looks hears too.
     pub fn net_moved(&mut self) -> bool {
-        let was = self.heard.as_ref().map(|heard| heard.worst.clone());
+        if self.map.is_none() {
+            return false;
+        }
         self.hear();
-        was != self.heard.as_ref().map(|heard| heard.worst.clone())
+        self.made_with != Some(self.worst_heard())
+    }
+
+    /// The worst net was last heard to find, if it was heard.
+    fn worst_heard(&self) -> Option<String> {
+        self.heard.as_ref().and_then(|heard| heard.worst.clone())
     }
 
     /// Hears net's record again, if it's been written since it was last

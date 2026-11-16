@@ -387,6 +387,49 @@ fn the_map_row_follows_net_when_the_network_stays_the_same() {
 }
 
 #[test]
+fn the_map_row_follows_net_though_a_new_vocabulary_heard_it_first() {
+    // A shell after a switch asks for its new words the minute net
+    // writes, so the new vocabulary is made with net's new worst first.
+    let record = folder("heard-first").join("network.json");
+    let start = std::time::SystemTime::now();
+    let lost = json!([{"kind": "lost", "says": "The modem has lost 878"}]);
+    net_says(&record, &lost, start);
+    let (listeners, words, mut stream, mut reader) =
+        serving_mapped("heard-first", Some(record.clone()));
+    listeners.send(&home());
+    let watch = |stream: &mut UnixStream, words: &str| {
+        ask(
+            stream,
+            &json!({"id": "map", "ask": "watch", "kind": "row", "words": words,
+                "keys": ["row:eero:map"]}),
+        );
+    };
+    watch(&mut stream, &words);
+    read(&mut reader);
+
+    let newer = Path::new(&words).with_file_name("newer-words.json");
+    fs::copy(&words, &newer).expect("the newer words are kept");
+    net_says(&record, &json!([]), start + Duration::from_secs(1));
+    let (mut later, mut later_reader) = connected(&folder("heard-first").join("socket"));
+    watch(&mut later, &newer.display().to_string());
+    let first = read(&mut later_reader);
+    assert!(
+        first["records"][0]["row"].get("state").is_none(),
+        "the new words are made with net cleared: {first}"
+    );
+
+    assert!(
+        listeners.follow_net(),
+        "the rows made before are still made with the old worst"
+    );
+    let told = read(&mut reader);
+    assert!(
+        told["changed"][0]["row"].get("state").is_none(),
+        "the first watch hears net cleared it: {told}"
+    );
+}
+
+#[test]
 fn an_unwatched_row_watch_is_told_nothing_more() {
     let (listeners, words, mut stream, mut reader) = serving("unwatched");
     listeners.send(&home());
