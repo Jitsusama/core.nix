@@ -40,14 +40,15 @@ case "$from" in
 esac
 "#;
 
-/// A stand-in realm of the test's own: this machine, crowded or not, and
-/// a far one with room.
+/// A stand-in realm of the test's own: this machine and a far one, with
+/// mycelium placing work on the far one or here, and keeping what it was
+/// asked in `asked`.
 struct Realm {
     root: PathBuf,
 }
 
 impl Realm {
-    fn new(crowded: bool) -> Self {
+    fn new(placed_far: bool) -> Self {
         static NEXT: AtomicU32 = AtomicU32::new(0);
         let root = std::env::temp_dir().join(format!(
             "elsewhere-{}-{}",
@@ -61,15 +62,15 @@ impl Realm {
         let realm = Realm { root };
         realm.program("ssh", SSH);
         realm.program("rsync", RSYNC);
-        realm.program("mycelium", "#!/bin/sh\ncat \"$REALM/machines.json\"\n");
-        let over = if crowded { r#"["cpu"]"# } else { "[]" };
+        realm.program(
+            "mycelium",
+            "#!/bin/sh\necho \"$@\" > \"$REALM/asked\"\ncat \"$REALM/placed.json\"\n",
+        );
+        let machine = if placed_far { "far".to_owned() } else { here() };
         fs::write(
-            realm.root.join("machines.json"),
+            realm.root.join("placed.json"),
             format!(
-                r#"{{"Ok":{{"Machines":[
-                {{"name":"{}","state":"ready","room":{{"over":{over}}}}},
-                {{"name":"far","state":"ready","room":{{"over":[]}}}}]}}}}"#,
-                here()
+                r#"{{"Ok":{{"Placement":{{"placed":{{"machine":"{machine}","passed":[]}}}}}}}}"#
             ),
         )
         .unwrap();
@@ -97,6 +98,8 @@ impl Realm {
                 "programs": ["sh"],
                 "setup": "FROM_SETUP=set; export FROM_SETUP",
                 "brings_back": ["out"],
+                "needs": ["reach=home"],
+                "lasts": "5m",
             }},
         });
         fs::write(
@@ -155,7 +158,7 @@ fn far_copy(realm: &Realm) -> PathBuf {
 }
 
 #[test]
-fn a_crowded_machine_runs_the_job_in_a_far_copy_and_brings_back_its_output() {
+fn a_job_placed_far_runs_in_a_far_copy_and_brings_back_its_output() {
     let realm = Realm::new(true);
     fs::write(realm.folder().join("Spec.tla"), "spec\n").unwrap();
     let output = realm.check(
@@ -177,6 +180,11 @@ fn a_crowded_machine_runs_the_job_in_a_far_copy_and_brings_back_its_output() {
     assert!(
         err.contains("check runs on far"),
         "it didn't say where the job ran: {err}"
+    );
+    assert_eq!(
+        fs::read_to_string(realm.root.join("asked")).ok().as_deref(),
+        Some("place --need reach=home --lasts 5m\n"),
+        "mycelium wasn't asked to place the kind as it says it needs"
     );
     assert_eq!(
         fs::read_to_string(realm.folder().join("out/n"))
@@ -204,7 +212,7 @@ fn a_far_job_s_failure_is_its_own_code() {
 }
 
 #[test]
-fn a_machine_with_room_runs_the_job_here() {
+fn a_job_placed_here_runs_here() {
     let realm = Realm::new(false);
     let output = realm.check(&[], "pwd");
     let (out, err) = said(&output);
@@ -212,7 +220,7 @@ fn a_machine_with_room_runs_the_job_here() {
     assert_eq!(
         fs::canonicalize(out.trim()).ok(),
         fs::canonicalize(realm.folder()).ok(),
-        "a machine with room sent the job away: {err}"
+        "a job placed here was sent away: {err}"
     );
     assert!(
         err.contains("check runs here"),
@@ -282,7 +290,7 @@ fn where_and_kinds_say_it_as_json() {
         place["machine"], "far",
         "where didn't name the far machine: {out}"
     );
-    assert_eq!(place["because"], "crowded", "where didn't say why: {out}");
+    assert_eq!(place["because"], "placed", "where didn't say why: {out}");
     let (out, err) = said(&realm.run(&["kinds", "--json"]));
     let kinds: serde_json::Value = serde_json::from_str(&out).expect(&err);
     assert_eq!(

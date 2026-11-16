@@ -1,5 +1,5 @@
-# elsewhere runs an agent's heavy job on another machine of the realm while
-# this one is crowded (src/main.rs says how).
+# elsewhere runs an agent's heavy job on whichever machine of the realm
+# mycelium places it (src/main.rs says how).
 [package]
 name = "elsewhere"
 version = "0.1.0"

@@ -19,7 +19,7 @@ rustPlatform.buildRustPackage rec {
   sourceRoot = "${src.name}/elsewhere";
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Runs a heavy job on a machine with room while this one is crowded";
+    description = "Runs a heavy job wherever mycelium places it";
     license = lib.licenses.mit;
     mainProgram = "elsewhere";
     platforms = lib.platforms.unix;

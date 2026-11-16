@@ -1,46 +1,28 @@
-//! Where a job goes, from what mycelium says of the realm's machines: here
-//! while this machine has room in its processor and memory, else the
-//! first machine it may send to that's ready and has room in both, else
-//! here after all, since a job waiting its turn on a crowded machine still
-//! ends, and one sent to a crowded far machine only moves the crowd.
+//! Where a job goes, from mycelium's placement: wherever `mycelium place`
+//! puts work of its kind, when that's this machine or one it may send to,
+//! else here, since a job waiting its turn on a crowded machine still
+//! ends, and one sent somewhere it wasn't opted in to only moves trouble.
 //!
-//! Processor and memory alone decide, rather than mycelium's placement,
-//! because the jobs sent are test suites and model checks, which want
-//! both, and placement weighs other things: at 17:02 on 15 November it
-//! named the Mac while the Mac's processor was over and this machine's
-//! was not, for this machine's filling disk.
+//! The placement decides rather than a rule of elsewhere's own, because it
+//! is the one score that sees the whole realm's load: on 15 November a
+//! placer counting only its own sessions saw a fraction of one machine's
+//! load (placement research, 15 November). A kind says what a machine
+//! must be for it (`needs`) and how long its jobs run (`lasts`), in
+//! place's own words.
 
 use serde_json::Value;
 
-/// One machine, as mycelium's `machines` says it.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Machine {
-    pub name: String,
-    /// `ready` when its node answers and it takes work.
-    pub state: String,
-    /// What it's over on: `cpu`, `memory` or `io`, as mycelium's measure
-    /// of its pressure says.
-    pub over: Vec<String>,
-    /// Its processor's pressure, the share of time work waited for it.
-    pub cpu: Option<f64>,
-}
-
-impl Machine {
-    fn crowded(&self) -> bool {
-        self.over.iter().any(|it| it == "cpu" || it == "memory")
-    }
-}
-
 /// Why a job goes where it goes.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Why {
-    /// This machine has room in its processor and memory.
-    Room,
-    /// This machine is crowded, and the far one isn't.
-    Crowded,
-    /// This machine is crowded, and so is every machine it may send to,
-    /// or none is ready.
-    NoneHasRoom,
+    /// mycelium placed it on this machine.
+    PlacedHere,
+    /// mycelium placed it on a machine it may send to.
+    Placed,
+    /// mycelium placed it on the machine named, which it may not send to.
+    NotAllowed(String),
+    /// mycelium fits it nowhere, for the reasons given.
+    Refused(String),
     /// It may send to no machine.
     NoMachines,
     /// mycelium couldn't say, for the reason given.
@@ -53,9 +35,10 @@ impl Why {
     /// The word for it in JSON.
     pub fn word(&self) -> &'static str {
         match self {
-            Why::Room => "room",
-            Why::Crowded => "crowded",
-            Why::NoneHasRoom => "none-has-room",
+            Why::PlacedHere => "placed-here",
+            Why::Placed => "placed",
+            Why::NotAllowed(_) => "not-allowed",
+            Why::Refused(_) => "refused",
             Why::NoMachines => "no-machines",
             Why::NotHeard(_) => "not-heard",
             Why::Told => "told",
@@ -64,186 +47,205 @@ impl Why {
 }
 
 /// Where a job goes: `None` is here.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Place {
     pub machine: Option<String>,
     pub why: Why,
 }
 
-/// The machines mycelium's `machines` answers, or what's wrong with it.
-pub fn machines(text: &str) -> Result<Vec<Machine>, String> {
-    let value: Value = serde_json::from_str(text).map_err(|error| error.to_string())?;
-    let Some(list) = value.pointer("/Ok/Machines").and_then(Value::as_array) else {
-        let said = value
-            .pointer("/Err")
-            .map_or_else(|| text.trim().to_owned(), Value::to_string);
-        return Err(format!("mycelium answered no machines: {said}"));
-    };
-    Ok(list.iter().map(machine).collect())
+/// What `mycelium place` answers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Placement {
+    /// The machine the work goes to.
+    Placed(String),
+    /// No machine fits, each with why, in mycelium's words.
+    Refused(Vec<String>),
 }
 
-fn machine(value: &Value) -> Machine {
-    let text = |pointer: &str| {
-        value
-            .pointer(pointer)
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-    };
-    Machine {
-        name: text("/name").to_owned(),
-        state: text("/state").to_owned(),
-        over: value
-            .pointer("/room/over")
-            .and_then(Value::as_array)
-            .map(|over| {
-                over.iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default(),
-        cpu: value.pointer("/room/pressure/cpu").and_then(Value::as_f64),
+/// The arguments asking `mycelium place` for a kind that `needs` these
+/// (`kind=value` each) and whose jobs last `lasts`, when it says.
+pub fn asking(needs: &[String], lasts: Option<&str>) -> Vec<String> {
+    let mut args = vec!["place".to_owned()];
+    for need in needs {
+        args.extend(["--need".to_owned(), need.clone()]);
     }
+    if let Some(lasts) = lasts {
+        args.extend(["--lasts".to_owned(), lasts.to_owned()]);
+    }
+    args
 }
 
-/// Where a job goes from `here`, among `machines`, sending only to those
-/// in `allowed`, the first with room taken.
-pub fn decide(here: &str, machines: &[Machine], allowed: &[String]) -> Place {
+/// The placement mycelium's `place` answers, or what's wrong with it.
+pub fn placement(text: &str) -> Result<Placement, String> {
+    let value: Value = serde_json::from_str(text).map_err(|error| error.to_string())?;
+    if let Some(machine) = value
+        .pointer("/Ok/Placement/placed/machine")
+        .and_then(Value::as_str)
+    {
+        return Ok(Placement::Placed(machine.to_owned()));
+    }
+    if let Some(misses) = value
+        .pointer("/Ok/Placement/refused/misses")
+        .and_then(Value::as_array)
+    {
+        return Ok(Placement::Refused(misses.iter().map(miss).collect()));
+    }
+    let said = value
+        .pointer("/Err")
+        .map_or_else(|| text.trim().to_owned(), Value::to_string);
+    Err(format!("mycelium placed nothing: {said}"))
+}
+
+/// One machine that didn't fit, as `NAME: why, why`.
+fn miss(value: &Value) -> String {
+    let name = value
+        .pointer("/machine")
+        .and_then(Value::as_str)
+        .unwrap_or("a machine");
+    let because: Vec<String> = value
+        .pointer("/because")
+        .and_then(Value::as_array)
+        .map(|reasons| reasons.iter().map(Value::to_string).collect())
+        .unwrap_or_default();
+    format!("{name}: {}", because.join(", "))
+}
+
+/// Where a job goes from `here`, given mycelium's `placement`, sending
+/// only to machines in `allowed`.
+pub fn decide(here: &str, placement: &Placement, allowed: &[String]) -> Place {
     let stays = |why| Place { machine: None, why };
     if allowed.is_empty() {
         return stays(Why::NoMachines);
     }
-    let Some(this) = machines.iter().find(|it| it.name == here) else {
-        return stays(Why::NotHeard(format!("mycelium doesn't know {here}")));
-    };
-    if !this.crowded() {
-        return stays(Why::Room);
+    match placement {
+        Placement::Placed(machine) if machine == here => stays(Why::PlacedHere),
+        Placement::Placed(machine) if allowed.contains(machine) => Place {
+            machine: Some(machine.clone()),
+            why: Why::Placed,
+        },
+        Placement::Placed(machine) => stays(Why::NotAllowed(machine.clone())),
+        Placement::Refused(misses) => stays(Why::Refused(misses.join("; "))),
     }
-    allowed
-        .iter()
-        .filter(|name| name.as_str() != here)
-        .find_map(|name| machines.iter().find(|it| &it.name == name))
-        .filter(|far| far.state == "ready" && !far.crowded())
-        .map_or_else(
-            || stays(Why::NoneHasRoom),
-            |far| Place {
-                machine: Some(far.name.clone()),
-                why: Why::Crowded,
-            },
-        )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Machine, Place, Why, decide, machines};
-
-    fn machine(name: &str, state: &str, over: &[&str]) -> Machine {
-        Machine {
-            name: name.to_owned(),
-            state: state.to_owned(),
-            over: over.iter().map(|it| (*it).to_owned()).collect(),
-            cpu: None,
-        }
-    }
+    use super::{Place, Placement, Why, asking, decide, placement};
 
     fn allowed(names: &[&str]) -> Vec<String> {
         names.iter().map(|it| (*it).to_owned()).collect()
     }
 
-    #[test]
-    fn a_job_stays_while_this_machine_has_room() {
-        let realm = [
-            machine("here", "ready", &["io"]),
-            machine("far", "ready", &[]),
-        ];
-        let place = decide("here", &realm, &allowed(&["far"]));
-        assert_eq!(
-            place.machine, None,
-            "a job left a machine with room: {place:?}"
-        );
-        assert_eq!(place.why, Why::Room, "it stayed for the wrong reason");
+    fn placed(machine: &str) -> Placement {
+        Placement::Placed(machine.to_owned())
     }
 
     #[test]
-    fn a_crowded_machine_sends_to_the_first_far_one_with_room() {
-        let realm = [
-            machine("here", "ready", &["cpu"]),
-            machine("busy", "ready", &["cpu"]),
-            machine("far", "ready", &[]),
-        ];
-        let place = decide("here", &realm, &allowed(&["far", "busy"]));
+    fn a_job_mycelium_places_here_stays() {
+        let place = decide("here", &placed("here"), &allowed(&["far"]));
+        assert_eq!(
+            place,
+            Place {
+                machine: None,
+                why: Why::PlacedHere
+            },
+            "a job placed here didn't stay"
+        );
+    }
+
+    #[test]
+    fn a_job_placed_on_a_machine_it_may_send_to_goes_there() {
+        let place = decide("here", &placed("far"), &allowed(&["near", "far"]));
         assert_eq!(
             place,
             Place {
                 machine: Some("far".into()),
-                why: Why::Crowded
+                why: Why::Placed
             },
-            "a crowded machine didn't send to the far one with room"
+            "a job placed on a machine it may send to didn't go"
         );
     }
 
     #[test]
-    fn a_crowded_machine_keeps_a_job_no_far_one_can_take() {
-        for realm in [
-            vec![
-                machine("here", "ready", &["cpu"]),
-                machine("far", "ready", &["cpu"]),
-            ],
-            vec![
-                machine("here", "ready", &["memory"]),
-                machine("far", "ready", &["memory"]),
-            ],
-            vec![
-                machine("here", "ready", &["cpu"]),
-                machine("far", "unreached", &[]),
-            ],
-            vec![machine("here", "ready", &["cpu"])],
-        ] {
-            let place = decide("here", &realm, &allowed(&["far"]));
-            assert_eq!(
-                place.machine, None,
-                "a job went to a machine without room: {realm:?}"
-            );
-            assert_eq!(
-                place.why,
-                Why::NoneHasRoom,
-                "it stayed for the wrong reason"
-            );
-        }
+    fn a_job_placed_where_it_may_not_go_stays() {
+        let place = decide("here", &placed("stranger"), &allowed(&["far"]));
+        assert_eq!(
+            place,
+            Place {
+                machine: None,
+                why: Why::NotAllowed("stranger".into())
+            },
+            "a job went to a machine it wasn't opted in to"
+        );
     }
 
     #[test]
-    fn a_machine_mycelium_doesnt_know_keeps_its_jobs() {
-        let place = decide("here", &[machine("far", "ready", &[])], &allowed(&["far"]));
+    fn a_job_mycelium_fits_nowhere_or_with_nowhere_to_go_stays() {
+        let refused = decide(
+            "here",
+            &Placement::Refused(vec!["far: lacks".into()]),
+            &allowed(&["far"]),
+        );
+        assert_eq!(refused.machine, None, "a refused job left: {refused:?}");
         assert_eq!(
-            place.machine, None,
-            "a job left a machine mycelium didn't know"
+            refused.why,
+            Why::Refused("far: lacks".into()),
+            "a refused job lost mycelium's reasons"
         );
-        assert!(
-            matches!(place.why, Why::NotHeard(_)),
-            "it stayed as {:?}",
-            place.why
-        );
-        let none = decide("here", &[machine("here", "ready", &["cpu"])], &[]);
+        let none = decide("here", &placed("far"), &[]);
         assert_eq!(
-            none.why,
-            Why::NoMachines,
-            "a job with nowhere to go said {:?}",
-            none.why
+            none,
+            Place {
+                machine: None,
+                why: Why::NoMachines
+            },
+            "a job with no machine to go to was sent"
         );
+    }
+
+    #[test]
+    fn a_kind_asks_in_place_s_own_words() {
+        assert_eq!(
+            asking(&["system=darwin".into(), "reach=home".into()], Some("2h")),
+            [
+                "place",
+                "--need",
+                "system=darwin",
+                "--need",
+                "reach=home",
+                "--lasts",
+                "2h"
+            ],
+            "a kind's needs and length weren't asked as place takes them"
+        );
+        assert_eq!(asking(&[], None), ["place"], "a plain kind asked more");
     }
 
     #[test]
     fn mycelium_s_answer_is_read_as_it_writes_it() {
-        let text = r#"{"Ok":{"Machines":[{"name":"far","state":"ready",
-            "room":{"pressure":{"cpu":84.7},"over":["cpu"]}}]}}"#;
-        let read = machines(text).expect("mycelium's answer wasn't read");
-        assert_eq!(read[0].over, ["cpu"], "what it's over on was lost");
-        assert_eq!(read[0].cpu, Some(84.7), "its processor's pressure was lost");
-        let refused = machines(r#"{"Err":"no node"}"#).expect_err("an error read as machines");
+        let text = r#"{"Ok":{"Placement":{"placed":{"machine":"far",
+            "passed":[{"machine":"here","because":[{"lacks":{"system":"linux"}}]}]}}}}"#;
+        assert_eq!(
+            placement(text),
+            Ok(placed("far")),
+            "a placement wasn't read"
+        );
+        let refused = placement(
+            r#"{"Ok":{"Placement":{"refused":{"misses":[
+            {"machine":"far","because":[{"lacks":{"machine":"x"}}]}]}}}}"#,
+        )
+        .expect("a refusal wasn't read");
+        let Placement::Refused(misses) = refused else {
+            panic!("a refusal read as {refused:?}");
+        };
         assert!(
-            refused.contains("no node"),
-            "mycelium's error was lost: {refused}"
+            misses[0].starts_with("far: ") && misses[0].contains("lacks"),
+            "a miss lost its machine or reason: {misses:?}"
+        );
+        let error = placement(r#"{"Err":"no node"}"#).expect_err("an error read as placed");
+        assert!(
+            error.contains("no node"),
+            "mycelium's error was lost: {error}"
         );
     }
 }

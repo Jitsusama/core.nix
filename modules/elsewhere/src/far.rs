@@ -193,6 +193,8 @@ mod tests {
             copies: Copies::Folder,
             excludes: vec!["/target".into()],
             brings_back: Vec::new(),
+            needs: Vec::new(),
+            lasts: None,
         }
     }
 

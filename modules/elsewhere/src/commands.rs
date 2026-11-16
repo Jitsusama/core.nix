@@ -7,43 +7,40 @@ use terminal_kit::{Exit, Failure, Help};
 /// What elsewhere and its commands say they are, do and end with, as
 /// `--help` shows it.
 pub fn help() -> Help {
-    Help::new(
-        "elsewhere",
-        "runs a heavy job on a machine with room while this one is crowded",
-    )
-    .example(
-        "elsewhere run model-check -- tla-rs -workers 8 Spec.tla",
-        "on a far machine while this one is crowded",
-    )
-    .example(
-        "elsewhere where model-check",
-        "where it would run now, and why",
-    )
-    .example("elsewhere kinds", "the kinds of job it may send")
-    .subcommand(run())
-    .subcommand(place())
-    .subcommand(kinds())
+    Help::new("elsewhere", "runs a heavy job wherever mycelium places it")
+        .example(
+            "elsewhere run model-check -- tla-rs -workers 8 Spec.tla",
+            "here or on a far machine, as mycelium places it",
+        )
+        .example(
+            "elsewhere where model-check",
+            "where it would run now, and why",
+        )
+        .example("elsewhere kinds", "the kinds of job it may send")
+        .subcommand(run())
+        .subcommand(place())
+        .subcommand(kinds())
 }
 
 fn run() -> Help {
     Help::new(
         "run",
-        "runs a job here, or elsewhere while this machine is crowded",
+        "runs a job here, or elsewhere when mycelium places it there",
     )
     .example(
         "elsewhere run model-check -- tla-rs Spec.tla",
-        "wherever there's room",
+        "wherever mycelium places it",
     )
     .example(
         "elsewhere run model-check --here -- tla-rs Spec.tla",
-        "here, whatever the room",
+        "here, wherever it's placed",
     )
     .argument("KIND", "the kind of job, as its settings name it")
     .argument("COMMAND...", "the job, after --")
-    .option("--here", "runs it here, whatever the room")
+    .option("--here", "runs it here, without asking mycelium")
     .option(
         "--there",
-        "sends it to the first machine, whatever the room",
+        "sends it to the first machine, without asking mycelium",
     )
     .exit(
         Exit::Failed,

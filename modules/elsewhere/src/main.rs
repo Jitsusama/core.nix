@@ -1,5 +1,5 @@
-//! Runs an agent's heavy job on another machine of the realm while this
-//! one is crowded, so one laptop doesn't carry the realm's work alone.
+//! Runs an agent's heavy job on whichever machine of the realm mycelium
+//! places it, so one laptop doesn't carry the realm's work alone.
 //!
 //! On 15 November one machine's processor stayed over for hours while
 //! another in its realm had room: agents' commands, test suites and model
@@ -10,8 +10,9 @@
 //! A job is sent only by its kind, opted in by name in the settings
 //! (src/settings.rs): a kind names the programs its jobs may start, a
 //! setup that puts them on the far machine's path, and what's copied
-//! there and back. `elsewhere run KIND -- COMMAND` asks mycelium where the
-//! room is (src/room.rs) and either becomes the command here or copies its
+//! there and back. `elsewhere run KIND -- COMMAND` asks `mycelium place`
+//! where the kind's work fits (src/room.rs), so one score weighs every
+//! machine's load, and either becomes the command here or copies its
 //! tree to the far machine and runs it there (src/far.rs), passing its
 //! output and its code through untouched, so a caller can't tell where it
 //! ran but by the line it says on stderr. When to run a job is its
@@ -45,7 +46,12 @@ fn main() -> ExitCode {
             Some("where") if args.len() == 2 => {
                 let settings = settings()?;
                 let kind = named(&settings, &args[1])?;
-                place_view(context, &args[1], kind, &place(&settings, false, false))
+                place_view(
+                    context,
+                    &args[1],
+                    kind,
+                    &place(&settings, kind, false, false),
+                )
             }
             Some("run") => run(context, &settings()?),
             _ => Err(commands::wrongly(
@@ -115,9 +121,9 @@ fn here() -> String {
     name.split('.').next().unwrap_or_default().to_owned()
 }
 
-/// Where a job goes now: here when told to `stay`, the first machine when
-/// told to `send`, otherwise wherever mycelium's machines say.
-fn place(settings: &Settings, stay: bool, send: bool) -> Place {
+/// Where a job of `kind` goes now: here when told to `stay`, the first
+/// machine when told to `send`, otherwise wherever mycelium places it.
+fn place(settings: &Settings, kind: &Kind, stay: bool, send: bool) -> Place {
     let told = |machine: Option<&String>| Place {
         machine: machine.cloned(),
         why: Why::Told,
@@ -129,16 +135,16 @@ fn place(settings: &Settings, stay: bool, send: bool) -> Place {
         return told(Some(first));
     }
     let mut ask = Command::new(&settings.mycelium);
-    ask.arg("machines");
+    ask.args(room::asking(&kind.needs, kind.lasts.as_deref()));
     if let Some(realm) = &settings.realm {
         ask.args(["--realm", realm]);
     }
     let heard = ask
         .output()
         .map_err(|error| format!("{} didn't start: {error}", settings.mycelium))
-        .and_then(|output| room::machines(&String::from_utf8_lossy(&output.stdout)));
+        .and_then(|output| room::placement(&String::from_utf8_lossy(&output.stdout)));
     match heard {
-        Ok(machines) => room::decide(&here(), &machines, &settings.machines),
+        Ok(placement) => room::decide(&here(), &placement, &settings.machines),
         Err(problem) => Place {
             machine: None,
             why: Why::NotHeard(problem),
@@ -150,9 +156,15 @@ fn place(settings: &Settings, stay: bool, send: bool) -> Place {
 fn because(place: &Place) -> String {
     let here = here();
     match &place.why {
-        Why::Room => format!("{here} has room"),
-        Why::Crowded => format!("{here} is crowded"),
-        Why::NoneHasRoom => format!("{here} is crowded, and so is every machine it may send to"),
+        Why::PlacedHere => format!("mycelium placed it on {here}"),
+        Why::Placed => match &place.machine {
+            Some(machine) => format!("mycelium placed it on {machine}"),
+            None => "mycelium placed it".to_owned(),
+        },
+        Why::NotAllowed(machine) => {
+            format!("mycelium placed it on {machine}, which it may not send to")
+        }
+        Why::Refused(misses) => format!("mycelium fits it nowhere: {misses}"),
         Why::NoMachines => "it may send to no machine".to_owned(),
         Why::NotHeard(problem) => format!("mycelium couldn't say: {problem}"),
         Why::Told => "as told".to_owned(),
@@ -292,7 +304,7 @@ fn run(context: &Context, settings: &Settings) -> Result<(), Failure> {
         return Err(Failure::new(Exit::Config, "there's no machine to send to")
             .try_this("jitsusama.elsewhere.machines in the machine's home-manager settings"));
     }
-    let place = place(settings, asked.here, asked.there);
+    let place = place(settings, kind, asked.here, asked.there);
     let Some(machine) = &place.machine else {
         if place.why != Why::Told {
             eprintln!("{} runs here: {}", asked.kind, because(&place));

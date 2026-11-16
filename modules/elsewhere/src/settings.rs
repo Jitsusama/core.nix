@@ -34,12 +34,19 @@ pub struct Kind {
     pub excludes: Vec<String>,
     /// What's copied back once the job ends, relative to its folder.
     pub brings_back: Vec<String>,
+    /// What a machine must be to take a job of it, as `mycelium place
+    /// --need` reads it, such as `system=darwin`.
+    pub needs: Vec<String>,
+    /// How long its jobs run, as `mycelium place --lasts` reads it, so
+    /// none goes to a machine leaving sooner.
+    pub lasts: Option<String>,
 }
 
 /// Everything elsewhere is told.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
-    /// The machines it may send to, the first with room taken.
+    /// The machines it may send to; a placement on any other stays here.
+    /// `--there` takes the first.
     pub machines: Vec<String>,
     /// The folder under a far machine's home its copies go in.
     pub scratch: String,
@@ -133,6 +140,10 @@ fn kind(name: &str, value: &Value) -> Result<Kind, String> {
         copies,
         excludes: list("excludes")?,
         brings_back: list("brings_back")?,
+        needs: list("needs")?,
+        lasts: Some(text("lasts"))
+            .filter(|it| !it.is_empty())
+            .map(str::to_owned),
     })
 }
 
@@ -165,6 +176,10 @@ mod tests {
             "a kind didn't copy its folder by default"
         );
         assert!(check.setup.is_empty(), "a kind had a setup it wasn't given");
+        assert!(
+            check.needs.is_empty() && check.lasts.is_none(),
+            "a kind asked mycelium for what it wasn't given"
+        );
         assert_eq!(
             settings.scratch, ".cache/elsewhere",
             "the scratch didn't default"

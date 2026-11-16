@@ -1,5 +1,5 @@
-# elsewhere runs an agent's heavy job on another machine of the realm while
-# this one is crowded (src/main.rs says how). Importing it puts it on the
+# elsewhere runs an agent's heavy job on whichever machine of the realm
+# mycelium places it (src/main.rs says how). Importing it puts it on the
 # account's path; a machine repository says where it may send and which
 # kinds of job, since which machines a realm holds is its own business:
 #
@@ -9,11 +9,12 @@
 #       description = "a TLA+ model check";
 #       programs = [ "tla-rs" ];
 #       setup = ''PATH="$HOME/.local/bin:$PATH"'';
+#       lasts = "30m";
 #     };
 #   };
 #
-# and `elsewhere run model-check -- tla-rs Spec.tla` runs on far while this
-# machine's processor or memory is over and far's isn't, and here otherwise.
+# and `elsewhere run model-check -- tla-rs Spec.tla` runs on far when
+# `mycelium place` puts the work there, and here otherwise.
 {
   config,
   lib,
@@ -61,6 +62,18 @@ let
         default = [ ];
         description = "What's copied back once the job ends, relative to its folder.";
       };
+      needs = lib.mkOption {
+        type = lib.types.listOf (lib.types.strMatching "[a-z]+=.+");
+        default = [ ];
+        example = [ "system=darwin" ];
+        description = "What a machine must be to take a job of this kind, as `mycelium place --need` reads it.";
+      };
+      lasts = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "30m";
+        description = "How long its jobs run, as `mycelium place --lasts` reads it, so none goes to a machine leaving sooner.";
+      };
     };
   };
 in
@@ -69,7 +82,7 @@ in
     machines = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
-      description = "The machines a job may go to, as ssh and mycelium name them, the first with room taken.";
+      description = "The machines a job may go to, as ssh and mycelium name them; one mycelium places it on elsewhere is refused.";
     };
     scratch = lib.mkOption {
       type = lib.types.str;
@@ -99,6 +112,8 @@ in
           setup
           copies
           excludes
+          needs
+          lasts
           ;
         brings_back = kind.bringsBack;
       }) settings.kinds;
