@@ -56,14 +56,20 @@ system --json | jq -c '{health, parts: [.parts[] | {part, health, says}]}'
 ## How Each Part Is Judged
 
 - **Machines.** One out of reach, or with a nearly or critically full
-  disk, is bad. One short of room (memory, processor, disk time), with a
-  filling disk, or on battery at 20% or less, is worth a look. Another
+  disk, is bad. One with a filling disk, or on battery at 20% or less
+  off the charger, is worth a look. Being short of room (memory,
+  processor, disk time) is said but never worth a look: agents' builds
+  hold the processor nearly all day, which the person can't act on, and
+  memory waits for a day measured to tell a held shortage from a spike.
+  Each machine's record carries its own `side`, worded for a row ("filling
+  disk, 40 GB free"), its worst first. Another
   machine whose own health says its code is failing is bad, and one
   whose code wants a look is worth a look; its node carries that word
   in its machine record. Only code is taken from it, since the network,
   machines and mycelium are the same whole read from every machine.
-- **Mycelium.** A link that isn't up is bad. Presences left by sessions
-  whose processes are gone are worth a look.
+- **Mycelium.** A link that isn't up is bad. A session whose process is
+  gone is an agent's leftover, said in what the part holds ("3 sessions
+  gone") and never worth a look.
 - **Network.** A source that isn't answering is bad. Any other concern the
   network names, but its ceiling, is worth a look.
 - **Code.** Good whenever `repos` answers. A tree git still lists whose

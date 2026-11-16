@@ -107,16 +107,45 @@ fn name_of(said: &Value) -> &str {
     said.get("name").and_then(Value::as_str).unwrap_or("")
 }
 
+/// What a machine's line says, in the order it's found, and what in it is
+/// worth a look: how bad, with the words for a row's side, which names no
+/// machine and so drops the verb ("filling disk" for "has a filling
+/// disk").
+#[derive(Default)]
+struct Said {
+    line: Vec<String>,
+    looks: Vec<(Health, String, String)>,
+}
+
+impl Said {
+    /// Something the line says that is no look.
+    fn say(&mut self, words: String) {
+        self.line.push(words);
+    }
+
+    /// Something worth a look, as the line says it and as a side does.
+    fn look(&mut self, health: Health, said: String, side: String) {
+        self.line.push(said.clone());
+        self.looks.push((health, said, side));
+    }
+}
+
 /// One machine: whether a link reaches it, what it's short of, its disk,
 /// its battery, what its own health says of its own parts and its
 /// sessions, each said only when it's worth saying, with the words of
 /// what is worth a look in it.
+///
+/// Being short of room is said but never worth a look: agents' builds
+/// hold the processor nearly all day, which isn't Joel's to act on, and
+/// memory waits for a day measured to tell a held shortage from a spike.
 fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thing, Vec<String>) {
-    let mut health = Health::Good;
-    let mut words = Vec::new();
+    let mut words = Said::default();
     if said.get("state").and_then(Value::as_str) == Some("unreachable") {
-        health = Health::Bad;
-        words.push("is out of reach".to_owned());
+        words.look(
+            Health::Bad,
+            "is out of reach".to_owned(),
+            "out of reach".to_owned(),
+        );
     }
     let over: Vec<&str> = said
         .pointer("/room/over")
@@ -129,64 +158,77 @@ fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thin
         })
         .unwrap_or_default();
     if !over.is_empty() {
-        health = health.max(Health::Watch);
-        words.push(format!("is short of {}", and(&over)));
+        words.say(format!("is short of {}", and(&over)));
     }
     let free = said
         .get("disk_free")
         .and_then(Value::as_f64)
         .map(|bytes| format!("{:.0} GB free", bytes / GIGABYTE));
-    match said.get("disk_band").and_then(Value::as_str) {
-        Some("filling") => {
-            health = health.max(Health::Watch);
-            words.push(free.map_or("has a filling disk".to_owned(), |free| {
-                format!("has a filling disk, {free}")
-            }));
-        }
-        Some("nearly-full" | "critically-full") => {
-            health = Health::Bad;
-            words.push(free.map_or("has a nearly full disk".to_owned(), |free| {
-                format!("has a nearly full disk, {free}")
-            }));
-        }
-        _ => {}
+    let disk = |band: &str| {
+        free.as_ref().map_or(format!("{band} disk"), |free| {
+            format!("{band} disk, {free}")
+        })
+    };
+    let band = match said.get("disk_band").and_then(Value::as_str) {
+        Some("filling") => Some((Health::Watch, disk("filling"))),
+        Some("nearly-full" | "critically-full") => Some((Health::Bad, disk("nearly full"))),
+        _ => None,
+    };
+    if let Some((health, side)) = band {
+        words.look(health, format!("has a {side}"), side);
     }
     let on_battery = said.pointer("/power/on_battery").and_then(Value::as_bool) == Some(true);
     if let Some(charge) = said.pointer("/power/charge").and_then(Value::as_u64)
         && on_battery
         && charge <= LOW_CHARGE
     {
-        health = health.max(Health::Watch);
-        words.push(format!("is on battery at {charge}%"));
+        let side = format!("on battery at {charge}%");
+        words.look(Health::Watch, format!("is {side}"), side);
     }
     for part in ITS_OWN {
         match own.and_then(|own| own.pointer(&format!("/parts/{part}"))?.as_str()) {
-            Some("watch") => {
-                health = health.max(Health::Watch);
-                words.push(format!("says its {part} wants a look"));
-            }
-            Some("bad") => {
-                health = Health::Bad;
-                words.push(format!("says its {part} is failing"));
-            }
+            Some("watch") => words.look(
+                Health::Watch,
+                format!("says its {part} wants a look"),
+                format!("{part} wants a look"),
+            ),
+            Some("bad") => words.look(
+                Health::Bad,
+                format!("says its {part} is failing"),
+                format!("{part} failing"),
+            ),
             _ => {}
         }
     }
-    let looks = words.clone();
-    if words.is_empty() {
-        words.push("is ready".to_owned());
+    let Said {
+        mut line,
+        mut looks,
+    } = words;
+    let health = looks
+        .iter()
+        .map(|(health, ..)| *health)
+        .max()
+        .unwrap_or(Health::Good);
+    let named: Vec<String> = looks.iter().map(|(_, said, _)| said.clone()).collect();
+    // The side says the worst first; a sort that keeps ties in place keeps
+    // the rest in the order they were found.
+    looks.sort_by(|(a, ..), (b, ..)| b.cmp(a));
+    let side = side_of(looks.into_iter().map(|(.., side)| side).collect());
+    if line.is_empty() {
+        line.push("is ready".to_owned());
     }
     if let Some(sessions) = sessions {
-        words.push(format!("runs {}", sessions_said(sessions)));
+        line.push(format!("runs {}", sessions_said(sessions)));
     }
     let thing = Thing {
         kind: "machine",
         name: name_of(said).to_owned(),
         health,
-        says: words.join(", "),
+        says: line.join(", "),
+        side,
         address: None,
     };
-    (thing, looks)
+    (thing, named)
 }
 
 /// A resource a node says a machine is short of, in Joel's words for it.
@@ -212,7 +254,8 @@ fn sessions_said(sessions: &Value) -> String {
 }
 
 /// The mycelium, from `mycelium health`: its links, its sessions, and the
-/// presences left behind by sessions whose process has gone.
+/// presences left behind by sessions whose process has gone, which it
+/// holds rather than judges.
 pub fn mycelium(health: &Answer) -> Part {
     let deeper = Deeper {
         command: "mycelium networks",
@@ -243,14 +286,6 @@ pub fn mycelium(health: &Answer) -> Part {
         .get("deadPresences")
         .and_then(Value::as_u64)
         .unwrap_or(0);
-    if dead > 0 {
-        worst = worst.max(Health::Watch);
-        words.push(count(
-            dead,
-            "session says it runs with its process gone",
-            "sessions say they run with their processes gone",
-        ));
-    }
     // What it holds, its sessions and links, is for the drawer.
     let side = words.clone();
     let machines = said.get("sessions").and_then(Value::as_object);
@@ -268,6 +303,12 @@ pub fn mycelium(health: &Answer) -> Part {
         "{busy} busy and {idle} idle sessions on {}",
         count(across as u64, "machine", "machines")
     )];
+    // A session whose process has gone is an agent's leftover, as a gone
+    // tree is, which Joel can't act on from Agents: it's held, never a
+    // look.
+    if dead > 0 {
+        held.push(count(dead, "session gone", "sessions gone"));
+    }
     if down.is_empty() && !links.is_empty() {
         held.push(format!("{} up", count(links.len() as u64, "link", "links")));
     }
@@ -520,8 +561,56 @@ mod tests {
         );
         assert_eq!(
             part.side,
-            ["laptop is short of memory and processor, has a filling disk, 279 GB free"],
-            "a side leaves out what the machine runs"
+            ["laptop has a filling disk, 279 GB free"],
+            "a side leaves out what the machine runs and what it's short of"
+        );
+        assert_eq!(
+            part.things[0].side,
+            ["filling disk, 279 GB free"],
+            "a machine's own side is worded for a row's side"
+        );
+        assert!(part.things[1].side.is_empty(), "a ready machine has none");
+    }
+
+    #[test]
+    fn a_machine_short_of_room_alone_is_ready() {
+        let part = machines(
+            &Ok(realm(&[laptop(&["memory", "cpu", "io"], "healthy")])),
+            &Err(String::new()),
+        );
+        assert_eq!(
+            part.health,
+            Health::Good,
+            "agents' builds fill the processor nearly all day, which isn't Joel's to act on"
+        );
+        assert_eq!(part.says, "1 machine ready");
+        assert_eq!(part.side, NO_LOOK);
+        assert_eq!(
+            part.things[0].says, "is short of memory, processor and disk time",
+            "what it's short of is still said"
+        );
+        assert!(part.things[0].side.is_empty(), "{:?}", part.things[0].side);
+    }
+
+    #[test]
+    fn a_machines_side_says_its_worst_first() {
+        let mut studio = laptop(&[], "healthy");
+        studio["name"] = json!("studio");
+        studio["power"] = json!({"on_battery": true, "charge": 12});
+        studio["health"] = json!({"parts": {"code": "bad"}});
+        let part = machines(
+            &Ok(realm(&[laptop(&[], "healthy"), studio])),
+            &Err(String::new()),
+        );
+        assert_eq!(part.things[0].name, "studio");
+        assert_eq!(
+            part.things[0].says,
+            "is on battery at 12%, says its code is failing"
+        );
+        assert_eq!(
+            part.things[0].side,
+            ["code failing", "on battery at 12%"],
+            "the bad before the worth a look"
         );
     }
 
@@ -656,26 +745,29 @@ mod tests {
     }
 
     #[test]
-    fn a_link_down_is_bad_and_a_dead_presence_worth_a_look() {
+    fn a_link_down_is_bad_and_a_dead_session_only_held() {
         let mut said = said_health();
         said["deadPresences"] = json!(7);
-        assert_eq!(mycelium(&Ok(said.clone())).health, Health::Watch);
+        let held = mycelium(&Ok(said.clone()));
+        assert_eq!(
+            held.health,
+            Health::Good,
+            "a dead session is an agent's leftover, which Joel can't act on from Agents"
+        );
+        assert_eq!(held.side, NO_LOOK);
+        assert_eq!(
+            held.holds.as_deref(),
+            Some("57 busy and 34 idle sessions on 2 machines; 7 sessions gone; 1 link up")
+        );
         said["links"][0]["state"] = json!("unreachable");
         let part = mycelium(&Ok(said));
         assert_eq!(part.health, Health::Bad);
         assert!(
-            part.says
-                .starts_with("the link to studio is down; 7 sessions say"),
+            part.says.starts_with("the link to studio is down; 57 busy"),
             "{}",
             part.says
         );
-        assert_eq!(
-            part.side,
-            [
-                "the link to studio is down",
-                "7 sessions say they run with their processes gone"
-            ]
-        );
+        assert_eq!(part.side, ["the link to studio is down"]);
     }
 
     fn net(states: &[(&str, &str)], concerns: &[(&str, &str)]) -> Value {
