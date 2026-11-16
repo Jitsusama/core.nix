@@ -142,6 +142,12 @@ pub fn parse(
     let mut unread = Vec::new();
     let mut said = BTreeSet::new();
     for error in answer["errors"].as_array().into_iter().flatten() {
+        if within_review_requests(error) {
+            // A reviewer GitHub won't name, as a team may be to the App's
+            // token, leaves its change and repository read; it's only a
+            // reviewer with no login, which counts for nobody.
+            continue;
+        }
         let why = error["message"].as_str().unwrap_or("no reason given");
         let one = error["path"][0]
             .as_str()
@@ -175,6 +181,15 @@ pub fn parse(
         changes.insert(one.key.clone(), read);
     }
     (changes, unread)
+}
+
+/// Whether `error` is about one change's review requests alone, under a
+/// repository GitHub otherwise answered.
+fn within_review_requests(error: &Value) -> bool {
+    error["path"].as_array().is_some_and(|path| {
+        path.iter()
+            .any(|step| step.as_str() == Some("reviewRequests"))
+    })
 }
 
 /// Why GitHub couldn't see a repository, said for a person: one the App
