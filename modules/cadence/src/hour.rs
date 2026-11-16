@@ -178,6 +178,21 @@ fn today(now: i64) -> String {
         .unwrap_or_default()
 }
 
+/// A measure for the card's and the owing's tests, said as "`key` said"
+/// and owned by `OWNER`.
+#[cfg(test)]
+fn measure(key: &str, class: Class, now: f64, target: Option<f64>) -> Measure {
+    Measure {
+        key: key.to_owned(),
+        class,
+        says: format!("{key} said"),
+        now,
+        target,
+        owner: "OWNER".to_owned(),
+        behind: Vec::new(),
+    }
+}
+
 /// The changes the three mains landed in the hour, shown unjudged: an
 /// hour's count swings with the clock, so no one target holds for it.
 fn landed(core: &str, harness: &str, machine: &str, now: i64) -> Measure {

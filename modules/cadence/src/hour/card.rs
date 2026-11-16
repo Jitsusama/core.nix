@@ -208,19 +208,8 @@ fn miss_words(line: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
+    use super::super::measure;
     use super::*;
-
-    fn measure(key: &str, class: Class, now: f64, target: Option<f64>) -> Measure {
-        Measure {
-            key: key.to_owned(),
-            class,
-            says: format!("{key} said"),
-            now,
-            target,
-            owner: "OWNER".to_owned(),
-            behind: Vec::new(),
-        }
-    }
 
     fn held(key: &str, now: f64, unmoved: u32) -> Kept {
         Kept {

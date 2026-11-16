@@ -165,19 +165,8 @@ pub fn file(
 
 #[cfg(test)]
 mod tests {
+    use super::super::measure;
     use super::*;
-
-    fn measure(key: &str, class: Class, now: f64, target: Option<f64>) -> Measure {
-        Measure {
-            key: key.to_owned(),
-            class,
-            says: format!("{key} said"),
-            now,
-            target,
-            owner: "OWNER".to_owned(),
-            behind: Vec::new(),
-        }
-    }
 
     #[test]
     fn a_drag_is_filed_once_with_its_owner_and_closes_once_back_in() {
