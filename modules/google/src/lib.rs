@@ -10,7 +10,8 @@
 //! shell asks (ask.rs), what Joel saves into Drive (saves.rs), the Meet
 //! calls Joel is in (meet.rs), the account as it stands (watch.rs), and
 //! everyone its meetings and mail name, for People (people.rs), and the
-//! ready rows as each place's were last told (ready.rs).
+//! ready rows as each place's were last told (ready.rs), and how much
+//! mail and how many meetings there are, for the mycelium (receptor.rs).
 
 pub mod account;
 pub mod api;
@@ -32,6 +33,7 @@ pub mod mail;
 pub mod meet;
 pub mod people;
 pub mod ready;
+pub mod receptor;
 pub mod rows;
 pub mod saves;
 pub mod state;
