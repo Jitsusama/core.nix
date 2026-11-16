@@ -952,7 +952,9 @@ PanelWindow {
         void Niri.revision;
         return window.scene.shared || Niri.overview ? null : tile(sat);
     }
-    readonly property bool above: MarginCat.above(seatedOn, departing)
+    // Over them too on each leg of a walk aboard a floating window, onto
+    // it, along it or off it, from that leg's first drawing to its end.
+    readonly property bool above: MarginCat.above(seatedOn, departing, stepped?.aboard)
     onAboveChanged: say()
     WlrLayershell.layer: above ? WlrLayer.Top : WlrLayer.Bottom
     WlrLayershell.namespace: "cat"

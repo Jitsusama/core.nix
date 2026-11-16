@@ -413,6 +413,11 @@ function onward(way, to, at) {
         follows(way, stops, cols, at.marks);
     }
     seats(way, plan ?? to, stays ? [] : cols, at.marks);
+    // Along a floating window's top, it's over the tiled windows behind
+    // the whole way (MarginCat.above).
+    if (stays) {
+        Floats.aboard(way, legs);
+    }
     return way;
 }
 
