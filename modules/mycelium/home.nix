@@ -292,7 +292,13 @@ let
   servesFile = realm: "${config.xdg.configHome}/mycelium/serves-${realm}.json";
   realms = lib.optional serving cfg.realm ++ lib.attrNames cfg.alsoJoins;
   builders = import ./builders.nix;
-  node = nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ] ++ lib.optionals isLinux builders;
+  # The home realm's node writes, as it judges the machine, the carry it
+  # would make to ease it, and makes none, so a day of those lines can be read
+  # before it may act; a further realm's sessions aren't its to move.
+  node =
+    nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
+    ++ [ "--eases" ]
+    ++ lib.optionals isLinux builders;
   # Where the harness and mycelium keep a realm that isn't the home one.
   apartIn = realm: [
     "--state"

@@ -1562,6 +1562,10 @@
     entry, a stream and a deleted file, and mpv started as Resume starts it plays on from there,
     and as Play From the Start does, from its start
   '';
+  mycelium-node-takes-its-flags = ''
+    the mycelium core locks takes every flag a workstation's node is started with, so a flag
+    can't reach the node's service before the mycelium that reads it
+  '';
   mycelium-completes-its-teams-in-zsh = ''
     mycelium swarm completes in zsh with its acts and the teams the line's realm's node names, a
     team after an act, an act after a team, and nothing for the words said to one
@@ -1571,7 +1575,9 @@
     or through a provider's program, and asking each provider's program it names what it could
     make, as a user service on Linux signing in with the agents' key,
     or the key its realm names, and an agent on a Mac whose sessions sign commits with that key,
-    finding the system's ssh before the account's programs; one naming none runs it dialling nothing, and one in no realm has neither a realm nor a node
+    finding the system's ssh before the account's programs; the home realm's node writes how it
+    would ease the machine, and a further realm's doesn't; one naming none runs it dialling
+    nothing, and one in no realm has neither a realm nor a node
   '';
   mycelium-watches-its-balance = ''
     a machine in a realm reads each minute how evenly its home realm's machines carry their work,
