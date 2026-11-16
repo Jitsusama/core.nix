@@ -39,6 +39,9 @@ pub struct Words {
     /// `{count} changes`.
     change: String,
     changes: String,
+    /// How far its checkout's branch has fallen behind the branch it
+    /// follows: `{count} behind`.
+    behind: String,
     /// The labels of its drawer's facts.
     key: String,
     trunk: String,
@@ -88,6 +91,7 @@ impl Words {
             local: said("local"),
             change: said("change"),
             changes: said("changes"),
+            behind: said("behind"),
             key: name("code:key"),
             trunk: name("code:trunk"),
             checkout: name("code:checkout"),
@@ -337,13 +341,17 @@ fn drawer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use repos::model::{Change, Checks, ChecksState, Head, Remote, Review, SCHEMA, Tree, TreeKind};
+    use repos::model::{
+        COUNTED_TO, Change, Checks, ChecksState, Count, Head, Remote, Review, SCHEMA, Tree,
+        TreeKind, Upstream,
+    };
 
     fn words() -> Words {
         Words::read(&json!({"things": [
             {"id": "code:repository", "said": {
                 "kind": "repository", "tree": "1 tree", "trees": "{count} trees",
                 "local": "no remote", "change": "1 change", "changes": "{count} changes",
+                "behind": "{count} behind",
             }},
             {"id": "code:key", "name": "Key"},
             {"id": "code:trunk", "name": "Trunk"},
@@ -488,6 +496,65 @@ mod tests {
                 "open": "https://github.com/Jitsusama/core.nix/pulls",
             }),
             "its open changes weren't offered after its page"
+        );
+    }
+
+    /// Core with the checkout written to last this far from its branch,
+    /// where it's been counted.
+    fn apart(count: Option<Count>) -> Repository {
+        let mut repository = core();
+        if let Some(head) = repository.checkouts[0].head.as_mut() {
+            head.commit = Some("a".repeat(40));
+            head.upstream = Some(Upstream {
+                branch: "origin/main".to_owned(),
+                commit: Some("b".repeat(40)),
+                count,
+            });
+        }
+        repository
+    }
+
+    #[test]
+    fn a_checkout_behind_its_branch_says_how_far_after_its_open_changes() {
+        let mut repository = apart(Some(Count {
+            behind: 3,
+            ahead: 1,
+        }));
+        repository.changes = vec![change("one")];
+        let rows = rows(&record(vec![repository]), None, &words());
+        assert_eq!(
+            rows[0]["side"],
+            json!([
+                {"said": "1 change"},
+                {"said": "3 behind"},
+                {"said": "3 trees"},
+                {"at": 1_700_000_000_000_i64, "as": "came", "keep": 1},
+            ]),
+            "how far its checkout is behind wasn't said after its open changes"
+        );
+    }
+
+    #[test]
+    fn past_the_counts_end_it_says_as_much_and_even_or_uncounted_says_nothing() {
+        let far = apart(Some(Count {
+            behind: COUNTED_TO,
+            ahead: 0,
+        }));
+        let ahead = apart(Some(Count {
+            behind: 0,
+            ahead: 2,
+        }));
+        let rows = rows(&record(vec![far, ahead, apart(None)]), None, &words());
+        assert_eq!(rows[0]["side"][0], json!({"said": "100+ behind"}));
+        assert_eq!(
+            rows[1]["side"][0],
+            json!({"said": "3 trees"}),
+            "a checkout only ahead said it was behind"
+        );
+        assert_eq!(
+            rows[2]["side"][0],
+            json!({"said": "3 trees"}),
+            "a checkout not yet counted said how far it was"
         );
     }
 

@@ -1,10 +1,10 @@
 //! Code's rows over the socket: every repository under the roots, each
 //! once, in a first watch's own answer; a repository cloned since told to
 //! a later watch, read behind it; the rows searched by owner; the open
-//! changes a refresh kept, said beside their repository; a checkout's
-//! files served inside Open a File by Name while it's ahead, and gone
-//! once it isn't; and New Terminal Here started by a stand-in for niri
-//! as it's asked.
+//! changes a refresh kept, and how far a counting kept its checkout
+//! behind, said beside their repository; a checkout's files served
+//! inside Open a File by Name while it's ahead, and gone once it isn't;
+//! and New Terminal Here started by a stand-in for niri as it's asked.
 
 use std::path::Path;
 use std::process::Command;
@@ -157,6 +157,39 @@ fn a_checkouts_files_are_served_inside_open_a_file_by_name_only_while_its_ahead(
     assert!(
         client.gone().contains(&json!(guide)),
         "a file's row stayed once Open a File by Name wasn't ahead"
+    );
+}
+
+#[test]
+fn how_far_a_counting_kept_a_checkout_behind_is_said_beside_its_repository() {
+    let running = Running::new("code-behind");
+    cloned(&running, "alpha", "git@github.com:someone/alpha.git");
+    // Its branch and the one it follows, at commits named by hand, since
+    // a reading takes them from the refs alone and never opens a commit.
+    let git = running.path("src/alpha/.git");
+    let (head, upstream) = ("a".repeat(40), "b".repeat(40));
+    std::fs::write(git.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+    std::fs::write(git.join("refs/heads/main"), format!("{head}\n")).unwrap();
+    std::fs::create_dir_all(git.join("refs/remotes/origin")).unwrap();
+    std::fs::write(git.join("refs/remotes/origin/main"), format!("{upstream}\n")).unwrap();
+    git_in(&running.path("src/alpha"), &["config", "branch.main.remote", "origin"]);
+    git_in(
+        &running.path("src/alpha"),
+        &["config", "branch.main.merge", "refs/heads/main"],
+    );
+    let kept = running.path("state/repos/upstreams.json");
+    std::fs::create_dir_all(kept.parent().unwrap()).unwrap();
+    let counted = json!({"schema": "repos.upstreams/1", "counted_at": 40,
+        "counts": {format!("{upstream}...{head}"): {"behind": 3, "ahead": 0}}});
+    std::fs::write(&kept, counted.to_string()).unwrap();
+    let mut client = running.client();
+    let answer = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "code"}));
+    let alpha = row_of(&answer, "row:code:github:someone/alpha")
+        .unwrap_or_else(|| panic!("a first watch isn't answered with Code's rows: {answer}"));
+    assert_eq!(
+        alpha["row"]["side"][0],
+        json!({"said": "3 behind"}),
+        "how far a counting kept its checkout behind isn't said beside it: {alpha}"
     );
 }
 

@@ -12,7 +12,8 @@
         "trees": "{count} trees",
         "local": "no remote",
         "change": "1 change",
-        "changes": "{count} changes"
+        "changes": "{count} changes",
+        "behind": "{count} behind"
       }
     },
     {
