@@ -9,6 +9,11 @@
 // next, and one that ends leaves its seed empty. A click centres on a cell
 // or a hub and says what it is in the panel beside the map.
 // Read-only: nothing here acts on the network.
+//
+// Long because it is the drawing as it was served by hand, brought in whole
+// so the map moves to the feed without changing what it draws; it is split
+// by what changes for one reason as it is rewritten in TypeScript on the
+// kit (modules/mycelium/site/README.md says what remains).
 (() => {
   // The most time between two readings while the node moves: site.ts hands
   // one over at most this often, and a message heard is flown over it.
@@ -182,7 +187,7 @@
   };
 
   // A session's short name: the one its window goes by ("Git upkeep" of
-  // "π - Git upkeep - dotfiles"), else its project's title cut short where
+  // "π - Git upkeep - kestrel"), else its project's title cut short where
   // the window's own was cut mid-word.
   const shortName = (s) => {
     const parts = (s.window || "").split(" - ");
@@ -651,7 +656,9 @@
   let groundsAt = [];
   const inks = new Map();
   const dashOf = (v) => (v === "none" ? [] : v.split(/[\s,]+/).map(parseFloat).filter(Number.isFinite));
-  const paintOf = (v) => (v === "none" || v === "transparent" || v === "rgba(0, 0, 0, 0)" ? null : v);
+  // A computed paint of no opacity is none: the browser writes its alpha
+  // last, so a clear one ends ", 0)".
+  const paintOf = (v) => (v === "none" || v === "transparent" || v.endsWith(", 0)") ? null : v);
   // A cell's inks depend on its own classes too (chosen, far, hovered),
   // so its probe wears them on a parent group, as the marks once did.
   const inkOf = (tag, cls, parent = "") => {
@@ -688,7 +695,44 @@
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", relook);
   matchMedia("(forced-colors: active)").addEventListener("change", relook);
 
+  // Lines stop short of every name shown, as a map knocks its lines out
+  // round its words, so a name reads whole wherever it had to sit. The
+  // boxes are the plates placeLabels put on screen, in screen px; discs
+  // are never knocked out, since a plate never sits over a mark.
+  const KNOCK_PX = 3;
+  let knocks = [];
+  let paintedKnocks = null;
+  const knockedOut = ([x, y, bw, bh], px, py) => px > x - KNOCK_PX && px < x + bw + KNOCK_PX && py > y - KNOCK_PX && py < y + bh + KNOCK_PX;
+  // One clip holds as many holes as overlap none of each other, since an
+  // even-odd hole inside a hole would draw again; holes that do overlap go
+  // in a further clip, and clips intersect, so what is left lies outside
+  // every plate. A stack of one clip per plate cost a large paint tenfold.
+  const clipKnocks = (g, w, h) => {
+    const holes = knocks.map(([x, y, bw, bh]) => [x - KNOCK_PX, y - KNOCK_PX, bw + 2 * KNOCK_PX, bh + 2 * KNOCK_PX]);
+    const clips = [];
+    for (const hole of holes) {
+      const free = clips.find((c) => !c.some((o) => overlap(o, hole)));
+      if (free) free.push(hole);
+      else clips.push([hole]);
+    }
+    for (const c of clips) {
+      const p = new Path2D();
+      p.rect(-GROUND_PAD, -GROUND_PAD, w + 2 * GROUND_PAD, h + 2 * GROUND_PAD);
+      for (const hole of c) p.rect(...hole);
+      g.clip(p, "evenodd");
+    }
+  };
+  // A placing that moved the plates after this frame's paint paints
+  // again, once, before the browser shows the frame; a caller that
+  // places and then paints costs nothing more.
+  const knocksMoved = () => {
+    queueMicrotask(() => {
+      if (paintedKnocks !== knocks) paintGround();
+    });
+  };
+
   const paintGround = () => {
+    paintedKnocks = knocks;
     const [w, h] = size();
     const dpr = window.devicePixelRatio || 1;
     const [pw, ph] = [Math.round(w * dpr), Math.round(h * dpr)];
@@ -726,6 +770,13 @@
         }
         open = null;
       };
+      // A layer is all discs or all lines, so the knock-outs clip a line
+      // layer once rather than once per ink.
+      const knocked = knocks.length > 0 && layer[0]?.tag === "path";
+      if (knocked) {
+        g.save();
+        clipKnocks(g, w, h);
+      }
       for (const s of layer) {
         let shape;
         if (s.tag === "circle") {
@@ -759,6 +810,7 @@
         shape();
       }
       finish();
+      if (knocked) g.restore();
     }
     g.globalAlpha = 1;
     g.setLineDash([]);
@@ -768,7 +820,11 @@
   // outside (the web-design kit's map.js): each cord, hypha and talk arc
   // the canvas has on screen, as a polyline in the viewport's CSS pixels,
   // worked out fresh on each call from the lines the name placer avoids.
+  // Where a line is knocked out round a name, it is said as two, ending
+  // either side, since nothing is drawn there.
   const LINE_STEPS = 8;
+  const LINE_STEP_PX = 3; // the most a said line moves between points
+  const lineSteps = (xs, ys) => Math.max(LINE_STEPS, Math.ceil((Math.hypot(xs[1] - xs[0], ys[1] - ys[0]) + Math.hypot(xs[2] - xs[1], ys[2] - ys[1])) / LINE_STEP_PX));
   groundEl.dataset.lines = "";
   groundEl.lines = () => {
     const box = groundEl.getBoundingClientRect();
@@ -778,13 +834,20 @@
       const xs = [p[0], c[0], q[0]].map((x) => x * k + tx);
       const ys = [p[1], c[1], q[1]].map((y) => y * k + ty);
       if (Math.max(...xs) < 0 || Math.max(...ys) < 0 || Math.min(...xs) > w || Math.min(...ys) > h) continue;
-      const line = [];
-      for (let i = 0; i <= LINE_STEPS; i++) {
-        const t = i / LINE_STEPS;
+      const steps = knocks.length ? lineSteps(xs, ys) : LINE_STEPS;
+      let line = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
         const u = 1 - t;
-        line.push({ x: box.left + u * u * xs[0] + 2 * u * t * xs[1] + t * t * xs[2], y: box.top + u * u * ys[0] + 2 * u * t * ys[1] + t * t * ys[2] });
+        const [x, y] = [u * u * xs[0] + 2 * u * t * xs[1] + t * t * xs[2], u * u * ys[0] + 2 * u * t * ys[1] + t * t * ys[2]];
+        if (knocks.some((b) => knockedOut(b, x, y))) {
+          if (line.length > 1) out.push(line);
+          line = [];
+          continue;
+        }
+        line.push({ x: box.left + x, y: box.top + y });
       }
-      out.push(line);
+      if (line.length > 1) out.push(line);
     }
     return out;
   };
@@ -1148,7 +1211,8 @@
       const a = L.angle.get(h.key);
       const n = countsOf(h.cells);
       const sub = [plural(h.cells.length, "cell"), ...["asks", "stuck"].filter((s) => n[s]).map((s) => `${n[s]} ${STANDING_WORD[s]}`)].join(" \u00b7 ");
-      out.push({ key: `h:${h.key}`, kind: "hub", rank: 1, at: L.at.get(h.key), r: HUB_R, disc: L.disc.get(h.key), out: [Math.cos(a), Math.sin(a)], name: lines(clipped(h.name), 22), sub, far: near && !near.hubs.has(h.key) });
+      const busy = [n.asks, n.stuck, n.moving, h.cells.length];
+      out.push({ key: `h:${h.key}`, kind: "hub", rank: 1, busy, at: L.at.get(h.key), r: HUB_R, disc: L.disc.get(h.key), out: [Math.cos(a), Math.sin(a)], name: lines(clipped(h.name), 22), sub, far: near && !near.hubs.has(h.key) });
     }
     const counts = new Map();
     for (const s of m.cells) counts.set(s.machine, (counts.get(s.machine) || 0) + 1);
@@ -1183,8 +1247,13 @@
       const sought = key === `c:${m.byId.get(hover)?.address}` || foundSet.has(key);
       out.push({ key, kind: "cell", rank: strong ? 0 : sought ? 2 : 4, at: p, r: R, out: [1, 0], name: [clipped(s.short)], sub, strong });
     }
-    for (const l of out) if (l.key === pointed) l.rank = 0;
-    out.sort((a, b) => a.rank - b.rank);
+    const open = chosen && { cell: "c", net: "h", machine: "m" }[chosen.kind];
+    const openKey = open && `${open}:${chosen.id}`;
+    for (const l of out) if (l.key === pointed || l.key === openKey) l.rank = 0;
+    out.sort((a, b) => a.rank - b.rank || busier(a.busy, b.busy));
+    // A machine open can touch hundreds of networks: only the busiest of
+    // them keep a name, after what is open and what is pointed at.
+    if (near && out.length > NAMES_OPEN) out.length = NAMES_OPEN;
     labels = out;
     labelsEl.innerHTML = out
       .map((l) => {
@@ -1225,6 +1294,13 @@
       plate.setAttribute("width", box[2].toFixed(1));
       plate.setAttribute("height", box[3].toFixed(1));
     });
+  };
+  const NAMES_OPEN = 12; // the most names on the map once something is open
+  // Busiest first: asks, then stuck, then moving, then the most cells.
+  const busier = (a, b) => {
+    if (!a || !b) return 0;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return b[i] - a[i];
+    return 0;
   };
   const PLATE_PAD = 3;
   const CELL_NAMED_PX = 15; // a cell's radius on screen once it is named
@@ -1413,7 +1489,21 @@
       taken.push(boxOf(spot));
       g.setAttribute("transform", `translate(${(spot[0] - bx).toFixed(1)},${(spot[1] - by).toFixed(1)})`);
     }
+    // Only a plate over a line is knocked out, since elsewhere a knock-out
+    // cuts nothing, and the ground paints again only when those plates
+    // change: at thousands of cells a paint for nothing costs every press.
+    // The pieces asked about are chords of curves, so the reach is wider
+    // than the knock-out by what a curve may bow off its chord.
+    const reach = ([x, y, bw, bh]) => [x - KNOCK_REACH_PX, y - KNOCK_REACH_PX, bw + 2 * KNOCK_REACH_PX, bh + 2 * KNOCK_REACH_PX];
+    const cutting = taken.filter((b) => linesUnder(lines, reach(b)) > 0);
+    const sameBox = (a, b) => a.every((v, j) => Math.abs(v - b[j]) < KNOCK_SAME_PX);
+    const same = cutting.length === knocks.length && cutting.every((b) => knocks.some((o) => sameBox(b, o)));
+    if (same) return;
+    knocks = cutting;
+    knocksMoved();
   };
+  const KNOCK_SAME_PX = 0.5;
+  const KNOCK_REACH_PX = 8;
 
   // ---- The pointer: where the keys have walked to. ----
 
@@ -1654,8 +1744,8 @@
 
   const frame = () => {
     world.setAttribute("transform", `translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})`);
-    paintGround();
     placeLabels();
+    paintGround();
     refold();
   };
 
