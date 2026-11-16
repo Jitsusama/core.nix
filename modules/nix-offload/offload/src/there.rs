@@ -5706,8 +5706,11 @@ mod tests {
         assert_eq!(unbuilt, words("checks.aarch64-darwin.b"));
 
         let (left, unbuilt) = owed(Some(darwin), &machines, "aarch64-darwin");
-        assert!(unbuilt.is_empty(), "a Mac's own system is built where it is");
-        assert!(left.is_some());
+        assert!(
+            unbuilt.is_empty(),
+            "a Mac's own system is built where it is"
+        );
+        assert!(left.is_some(), "a Mac's own system was left unasked");
     }
 
     #[test]
