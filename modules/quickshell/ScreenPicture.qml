@@ -37,10 +37,14 @@ Image {
         // again then.
         if (name === "")
             return;
+        // niri may answer after the picture has gone with its screen's
+        // window, when there's nothing left to set.
         Niri.request("Outputs", answer => {
-            picture.outputScale = Pixels.scaleOf(answer?.Outputs, name);
+            if (picture)
+                picture.outputScale = Pixels.scaleOf(answer?.Outputs, name);
         }, () => {
-            picture.outputScale = null;
+            if (picture)
+                picture.outputScale = null;
         });
     }
 
