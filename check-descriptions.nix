@@ -4397,6 +4397,12 @@
     has that service running again within 45 s, while home-manager's setup of the account still
     waits on the unit
   '';
+  vm-a-fenced-run-stays-fenced = ''
+    an agent's run, started through the launcher a fenced or strict fence declares, as the node starts
+    it, works in its folder but reaches none of the user bus, the display, the node, an SSH agent and
+    an abstract X socket the account reaches outside, reads no key or GitHub sign-in, writes nothing
+    outside its folder, and runs nothing in a folder that is home or holds it
+  '';
   vm-a-focused-window-reads-its-swap-back = ''
     an administrator's memory-swap-in@ reads back what swap holds of a pid's scope when it belongs to
     the session window niri says has the focus, once a window in 30 s; never another window's, a
