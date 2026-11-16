@@ -1893,8 +1893,9 @@ fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
     let due = doorway.brake.due(calling, now);
     for place in lost.iter().filter(|place| !due.contains(place)) {
         eprintln!(
-            "Found {} let go again mid-call, so it's braked again once 30 s have passed.",
-            brake::BRAKED[*place].1
+            "Found {} let go again mid-call, so it's braked again once {} s have passed.",
+            brake::BRAKED[*place].1,
+            brake::AGAIN.as_secs()
         );
     }
     if due.is_empty() {
@@ -1913,16 +1914,6 @@ fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
                 if lost.contains(&place) {
                     eprintln!("Found {slice} let go mid-call, and braked it again.");
                 }
-            }
-            // A let-go refused on a slice that holds no quota, as polkit
-            // refuses build.slice to an account outside wheel, stands let
-            // go, rather than being asked again for good.
-            Ok(_)
-                if !calling
-                    && braked_cpu_max(place, account)
-                        .is_some_and(|cpu_max| !brake::holds(&cpu_max, u64::MAX)) =>
-            {
-                doorway.brake.set(place, false);
             }
             Ok(output) => {
                 doorway.brake.failed(place, calling, now);

@@ -41,7 +41,7 @@ const UNLIMITED: u64 = u64::MAX;
 /// How long a slice that couldn't be set waits to be tried again, so a
 /// refusal costs two busctl runs and two journal lines a minute rather
 /// than a second.
-const AGAIN: Duration = Duration::from_secs(30);
+pub const AGAIN: Duration = Duration::from_secs(30);
 
 /// A quota of a quarter of `processors`, rounded up, in microseconds of
 /// processor time each second, as systemd's `CPUQuotaPerSecUSec` takes.
@@ -295,6 +295,19 @@ mod tests {
             [0, 1],
             "a slice whose let-go failed was taken as let go"
         );
+        // Nor does a brake that failed hold back the let-go once the call
+        // ends.
+        brake.failed(0, true, now);
+        assert_eq!(
+            brake.due(false, now),
+            [0],
+            "a failed brake held back the let-go"
+        );
+        assert_eq!(
+            brake.due(true, now),
+            [1],
+            "a failed brake was tried again at once"
+        );
     }
 
     // On 16 November both slices read max mid-call, and nothing set them
@@ -344,7 +357,9 @@ mod tests {
             "it wasn't set again once it waited"
         );
         brake.set(1, true);
-        let later = soon + AGAIN + AGAIN;
+        // Cleared again a whole wait after the last time, it's set again at
+        // once.
+        let later = soon + AGAIN;
         assert_eq!(
             brake.check(read, QUOTA, later),
             [1],
@@ -359,13 +374,13 @@ mod tests {
         cpu_max.borrow_mut()[0] = Some("800000 100000\n");
         cpu_max.borrow_mut()[1] = None;
         assert_eq!(
-            brake.check(read, QUOTA, soon + AGAIN),
+            brake.check(read, QUOTA, later),
             [0],
             "a raised quota passed as held, or an unread one as lost"
         );
         brake.set(0, false);
         asked.borrow_mut().clear();
-        let _ = brake.check(read, QUOTA, soon + AGAIN);
+        let _ = brake.check(read, QUOTA, later);
         assert_eq!(*asked.borrow(), [1], "a slice the brake let go was read");
         assert_eq!(
             cgroup(0, Path::new("/c"), Path::new("/c/u")),
