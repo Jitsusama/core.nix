@@ -12,6 +12,9 @@ Each run says, beside its frames, how long the session waited on memory and on a
 how much of the processors' time went to the kernel or to the builder's other work. On 15
 November three runs had frames up to 133 ms late while the session waited 0 ms on memory, and the
 burst kept the four processors 60% in the kernel, reclaiming and swapping for the other slices.
+Over 11 runs to 16 November the worst frame did not follow the session's processor wait, and
+programs never reclaimed themselves, so each run also says what kswapd and zswap did, and the
+stand-in says what its worst frame's process ran, waited for and faulted in.
 """
 
 from __future__ import annotations
@@ -58,6 +61,9 @@ BURST_AFTER = 5
 # 12 November the worst came 108 ms and 34 ms late in two runs; with the
 # floors and ceilings fitted, 5.6 ms.
 LATEST = 16
+# The kernel's reclaim and zswap counts each run says it did through the burst:
+# kswapd's pages scanned and taken back, and zswap's pages stored and loaded.
+WATCHED = ("pgscan_kswapd", "pgsteal_kswapd", "zswpout", "zswpin")
 
 READS = {
     "pushed": SHARED_READ,
@@ -122,6 +128,20 @@ def waited(machine: BaseMachine) -> dict[str, int]:
     return {"memory": totals[1], "processor": totals[3]}
 
 
+def reclaiming(machine: BaseMachine) -> dict[str, int]:
+    """Give the kernel's reclaim and zswap work so far, kswapd's processor time in ticks."""
+    ticks = "for p in $(pgrep '^kswapd'); do cat /proc/$p/stat; done"
+    # A kernel thread's name has no spaces, so utime and stime are the 14th and 15th fields.
+    kswapd = sum(
+        int(fields[13]) + int(fields[14])
+        for fields in (line.split() for line in machine.succeed(ticks).splitlines())
+    )
+    lines = machine.succeed("cat /proc/vmstat").splitlines()
+    pairs = (line.split() for line in lines)
+    counts = {name: int(count) for name, count in pairs if name in WATCHED}
+    return {"kswapd": kswapd, **counts}
+
+
 def processors(machine: BaseMachine) -> list[int]:
     """Give the processors' time so far, in ticks, as /proc/stat's first line counts it."""
     return [int(ticks) for ticks in machine.succeed("head -1 /proc/stat").split()[1:]]
@@ -161,6 +181,7 @@ def test_the_shell_draws_on_time_through_a_burst_of_work(loaded: Account) -> Non
     before = stalls(machine)
     waited_before = waited(machine)
     ticks_before = processors(machine)
+    reclaimed_before = reclaiming(machine)
     loaded.run(
         "shell",
         "session.slice",
@@ -179,12 +200,16 @@ def test_the_shell_draws_on_time_through_a_burst_of_work(loaded: Account) -> Non
         for slice_ in ("session.slice", "app.slice", "agents.slice", "jobs.slice")
     }
     ticks = spent(ticks_before, processors(machine))
+    reclaimed = {
+        kind: count - reclaimed_before.get(kind, 0) for kind, count in reclaiming(machine).items()
+    }
     waited_after = waited(machine)
     session = {kind: (waited_after[kind] - total) // 1000 for kind, total in waited_before.items()}
     said = (
         f"{frames}, the session waited {session['memory']} ms on memory and "
         f"{session['processor']} ms on a processor, {ticks}, "
-        f"{stalls(machine) - before} reclaims by programs themselves, {held} MiB"
+        f"{stalls(machine) - before} reclaims by programs themselves, {held} MiB, "
+        f"the kernel's own reclaim and zswap: {reclaimed}"
     )
     print(f"the shell's frames: {said}")
     assert frames["frames"] >= DRAWING * 50, f"the shell drew too few frames: {said}"
