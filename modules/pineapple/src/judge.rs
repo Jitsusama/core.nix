@@ -217,7 +217,7 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
     if phrase_anywhere {
         return found(Verdict::Waved(Waved::Quoted), Vec::new());
     }
-    if tagged && asks_to_stop(&words) {
+    if tagged && asks_to_stop(&words, &own) {
         return found(Verdict::StopAsked, Vec::new());
     }
     found(Verdict::Nothing, Vec::new())
@@ -288,8 +288,11 @@ fn is_urgent(own: &str, words: &[String]) -> bool {
 }
 
 /// Whether a saying asks Joel to stop his agents in plain words: a word
-/// for stopping beside a word for what his agents are.
-fn asks_to_stop(words: &[String]) -> bool {
+/// for stopping beside a word for what his agents are. A word for them
+/// inside a name joined by marks, as google-guest-agent or ai-platform,
+/// names a program rather than his agents: the first saying ever heard
+/// this way asked why he'd disable one, and would have told his phone.
+fn asks_to_stop(words: &[String], own: &str) -> bool {
     const STOPPING: [&str; 9] = [
         "stop", "halt", "kill", "pause", "cease", "shut", "disable", "freeze", "rogue",
     ];
@@ -306,6 +309,19 @@ fn asks_to_stop(words: &[String]) -> bool {
         "swarm",
         "rogue",
     ];
-    let has = |list: &[&str]| words.iter().any(|word| list.contains(&word.as_str()));
-    has(&STOPPING) && has(&AGENTS)
+    let plain = plain_words(own);
+    words.iter().any(|word| STOPPING.contains(&word.as_str()))
+        && plain.iter().any(|word| AGENTS.contains(&word.as_str()))
+}
+
+/// The words of `own` standing alone, leaving out each piece whose letters
+/// are joined by a mark, such as a dash, slash, dot or underscore, inside
+/// it, since such a piece is a name; marks around a word, as in "agents?",
+/// leave it standing.
+fn plain_words(own: &str) -> Vec<String> {
+    own.split_whitespace()
+        .map(|piece| piece.trim_matches(|c: char| !c.is_alphanumeric()))
+        .filter(|piece| !piece.contains(['-', '_', '/', '.', ':', '@', '|']))
+        .flat_map(tokens)
+        .collect()
 }

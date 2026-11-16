@@ -24,6 +24,20 @@
       "verdict": "stop-asked"
     },
     {
+      "name": "a program named for an agent, asked about, is no ask to stop his",
+      "platform": "slack",
+      "author": "U0OTHER002",
+      "text": "<@U0JOEL0001> why do you want to disable google-guest-agent / os-login on the hosts?",
+      "verdict": "nothing"
+    },
+    {
+      "name": "asked to stop his agents, with a name beside them, still asks",
+      "platform": "slack",
+      "author": "U0OTHER002",
+      "text": "<@U0JOEL0001> please disable your agents on example-shop, they keep pushing",
+      "verdict": "stop-asked"
+    },
+    {
       "name": "wondering whether the safe word still works",
       "platform": "slack",
       "author": "U0OTHER001",
