@@ -326,7 +326,9 @@ mod tests {
         Aside::start(command)
     }
 
-    /// Whether `pid` runs: a zombie only waits to be reaped.
+    /// Whether `pid` runs: a zombie only waits to be reaped. Linux says
+    /// so in /proc, which the build's sandbox always has.
+    #[cfg(target_os = "linux")]
     fn runs(pid: &str) -> bool {
         std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
             !stat
@@ -336,6 +338,19 @@ mod tests {
                 .trim_start()
                 .starts_with('Z')
         })
+    }
+
+    /// Whether `pid` runs: a zombie only waits to be reaped. A Mac has no
+    /// /proc, so its own ps says, by the path macOS keeps it at.
+    #[cfg(not(target_os = "linux"))]
+    fn runs(pid: &str) -> bool {
+        Command::new("/bin/ps")
+            .args(["-o", "stat=", "-p", pid])
+            .output()
+            .is_ok_and(|told| {
+                let stat = String::from_utf8_lossy(&told.stdout);
+                told.status.success() && !stat.trim_start().starts_with('Z')
+            })
     }
 
     /// What `file` holds once something has written it, within 10 s.
