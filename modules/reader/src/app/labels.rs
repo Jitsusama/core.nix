@@ -1,7 +1,9 @@
 //! The keys list and the links' labels: shown, scrolled and drawn, a label
 //! typed to follow its link, and a prompt's answer taken.
 
+use super::drawing::size_of;
 use super::{Landing, desktop_open, painted};
+use crate::painter::numbers::{f32_of, f32_of_whole};
 use crate::{App, keys, keys_logged, links, page, prompt};
 
 impl App {
@@ -79,22 +81,17 @@ impl App {
     /// Space ?'s key list, centred, as his which-key, on whole pixels so its
     /// type is sharp; taller than the window, from its top down as far as
     /// it's scrolled.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_precision_loss,
-        reason = "GL places in f32, and the list and the window are a few thousand pixels"
-    )]
     pub(crate) fn draw_keys(&mut self) {
-        let screen = self.screen_px() as f32;
+        let screen = f32_of(self.screen_px());
         let Some(gl) = self.gl.as_ref() else { return };
         if self.keys_shown
             && let Some(canvas) = painted(gl, &mut self.keys_canvas, self.keys_set.take())
         {
-            let (width, height) = (canvas.width as f32, canvas.height as f32);
-            let x = ((gl.width as f32 - width) / 2.0).round().max(0.0);
+            let (width, height) = size_of(canvas);
+            let x = ((f32_of_whole(gl.width) - width) / 2.0).round().max(0.0);
             let y = if height > screen {
                 let most = height - screen;
-                -(self.keys_scroll as f32).clamp(0.0, most).round()
+                -f32_of(self.keys_scroll).clamp(0.0, most).round()
             } else {
                 ((screen - height) / 2.0).round()
             };
@@ -105,11 +102,6 @@ impl App {
     /// g x's labels, each over its link's first letters with its letters'
     /// baseline on the link's, on whole pixels so its letters are sharp; a
     /// newly set batch is painted first.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_precision_loss,
-        reason = "points and pixels as f32, as GL takes them, within a page's few hundred thousand"
-    )]
     pub(crate) fn draw_labels(&mut self) {
         if self.labelling.is_none() {
             return;
@@ -131,8 +123,8 @@ impl App {
         }
         if let Some((_, shown)) = self.labelling.as_ref() {
             for (link, (canvas, baseline_px)) in shown.iter().zip(&self.label_canvases) {
-                let (width, height) = (canvas.width as f32, canvas.height as f32);
-                let x = (link.left_pt * px).round() as f32 + left;
+                let (width, height) = size_of(canvas);
+                let x = f32_of((link.left_pt * px).round()) + left;
                 let y = links::label_top(link, *baseline_px, px, offset);
                 gl.draw(canvas, x, y, width, height);
             }

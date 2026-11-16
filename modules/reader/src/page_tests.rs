@@ -1,4 +1,5 @@
 use super::{Setter, Width};
+use crate::painter::numbers::i32_of;
 
 /// The measure and spread a window this many points wide sets.
 fn width(window_pt: f64) -> (f64, f64) {
@@ -219,14 +220,7 @@ fn baselines(name: &str, markdown: &str, from: &str, to: &str) -> (f64, Vec<f64>
 fn steps(pitch: f64, lines: &[f64]) -> Vec<i64> {
     lines
         .windows(2)
-        .map(|pair| {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "a step of a few pitches, rounded"
-            )]
-            let hundredths = ((pair[1] - pair[0]) / pitch * 100.0).round() as i64;
-            hundredths
-        })
+        .map(|pair| i64::from(i32_of(((pair[1] - pair[0]) / pitch * 100.0).round())))
         .collect()
 }
 

@@ -1,10 +1,10 @@
 use super::*;
+use crate::painter::numbers::f64_of;
 
 /// A line of the page at `baseline`, its characters 6 pt wide each.
-#[expect(clippy::cast_precision_loss, reason = "a line's few characters")]
 fn line(baseline: f64, text: &str) -> Line {
     let spans = (0..text.chars().count())
-        .map(|i| (i as f64 * 6.0, (i + 1) as f64 * 6.0))
+        .map(|i| (f64_of(i) * 6.0, f64_of(i + 1) * 6.0))
         .collect();
     Line {
         x_pt: 0.0,

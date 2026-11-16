@@ -13,6 +13,8 @@ use typst::visualize::{
     Color, Geometry, Gradient, Paint, RadialGradient, RatioOrAngle, RelativeTo,
 };
 
+use crate::painter::numbers::{f32_of, f64_of, usize_of};
+
 /// A band's glow, taken out of its frame: a rect filled with a radial
 /// gradient relative to itself, where the band's frame places it.
 pub struct Glow {
@@ -188,28 +190,19 @@ impl Glow {
         zq >= fr * fr && zp > cr * cr
     }
 
-    /// The painted shade nearest a point along the glow.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "t is within 0 and 1, so its shade is within the table"
-    )]
+    /// The painted shade nearest a point along the glow: t is within 0 and
+    /// 1, so its shade is within the table.
     fn shade(&self, t: f64) -> tiny_skia::PremultipliedColorU8 {
-        self.shades[(t * f64::from(SHADES) + 0.5) as usize]
+        self.shades[usize_of(t * f64::from(SHADES) + 0.5)]
     }
 
     /// The glow's colour at a point along it, premultiplied in 8 bits as
-    /// the canvas holds it.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "t is within 0 and 1, so its step is within the table"
-    )]
+    /// the canvas holds it: t is within 0 and 1, so its step is within the
+    /// table.
     fn color(&self, t: f64) -> tiny_skia::PremultipliedColorU8 {
         let at = t * f64::from(STEPS);
-        let i = (at.floor() as usize).min(STEPS as usize - 1);
-        #[expect(clippy::cast_precision_loss, reason = "a step is a thousand at most")]
-        let frac = (at - i as f64) as f32;
+        let i = usize_of(at.floor()).min(STEPS as usize - 1);
+        let frac = f32_of(at - f64_of(i));
         let (a, b) = (self.table[i], self.table[i + 1]);
         let mix = |k: usize| a[k] + (b[k] - a[k]) * frac;
         tiny_skia::Color::from_rgba(mix(0), mix(1), mix(2), mix(3))

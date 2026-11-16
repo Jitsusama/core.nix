@@ -31,24 +31,17 @@ impl App {
                 outline.rows[outline.chosen].words
             );
         }
-        prompt.ask(prompt::Ask {
-            serial: 0,
-            keys: false,
-            labels: Vec::new(),
-            outline: outline
-                .shown()
-                .map(|(row, chosen)| (row.level, row.words.clone(), chosen))
-                .collect(),
-            menu: None,
-            note: String::new(),
-            mark: "",
-            typed: String::new(),
-            cursor: false,
-            count: None,
-            width_pt: f64::from(gl.width) / px_per_pt,
+        let rows = outline
+            .shown()
+            .map(|(row, chosen)| (row.level, row.words.clone(), chosen))
+            .collect();
+        prompt.ask(prompt::Ask::list(
+            rows,
+            None,
+            f64::from(gl.width) / px_per_pt,
             px_per_pt,
-            page: self.width,
-        });
+            self.width,
+        ));
     }
 
     /// Puts gO's outline away.

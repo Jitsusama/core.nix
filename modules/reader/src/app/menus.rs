@@ -93,34 +93,24 @@ impl App {
             .map(|entry| menu::notation(&entry.command, &entry.short))
             .chain(menu.lines.iter().map(|line| line.called.clone()))
             .collect();
-        prompt.ask(prompt::Ask {
-            serial: 0,
-            keys: false,
-            labels: Vec::new(),
-            outline: Vec::new(),
-            menu: Some(prompt::Menu {
-                lines: menu
-                    .shown()
-                    .map(|(line, chosen)| {
-                        (
-                            line.called.clone(),
-                            line.title.clone(),
-                            line.key.clone(),
-                            chosen,
-                        )
-                    })
-                    .collect(),
-                all,
-            }),
-            note: String::new(),
-            mark: "",
-            typed: String::new(),
-            cursor: false,
-            count: None,
-            width_pt: f64::from(gl.width) / px_per_pt,
+        let lines = menu
+            .shown()
+            .map(|(line, chosen)| {
+                (
+                    line.called.clone(),
+                    line.title.clone(),
+                    line.key.clone(),
+                    chosen,
+                )
+            })
+            .collect();
+        prompt.ask(prompt::Ask::list(
+            Vec::new(),
+            Some(prompt::Menu { lines, all }),
+            f64::from(gl.width) / px_per_pt,
             px_per_pt,
-            page: self.width,
-        });
+            self.width,
+        ));
     }
 
     /// Puts the menu away with the command line.

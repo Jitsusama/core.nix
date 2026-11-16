@@ -9,6 +9,9 @@ use smithay_client_toolkit::reexports::calloop::channel::Sender;
 use typst_layout::Page;
 
 use crate::tiles;
+use numbers::{f32_of, u32_of};
+
+pub mod numbers;
 
 /// A band's height in device pixels: small enough that uploading one costs
 /// a sliver of a frame, and a screen holds four or so.
@@ -103,13 +106,8 @@ impl Painter {
     }
 
     /// How many bands cover the page at a zoom.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "a band's number and size are whole pixels within a page's few hundred thousand"
-    )]
     pub fn bands(&self, zoom: u32) -> u32 {
-        (self.height_px(zoom) / f64::from(BAND_PX)).ceil() as u32
+        u32_of((self.height_px(zoom) / f64::from(BAND_PX)).ceil())
     }
 
     /// Draws a band and sends it back; the asker doesn't wait.
@@ -118,10 +116,6 @@ impl Painter {
     }
 
     /// Draws a band of a page that isn't shown yet, as `version`.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "a band's number and size are whole pixels within a page's few hundred thousand"
-    )]
     pub fn ask_from(&self, page: Arc<Page>, version: u32, key: Key) {
         let done = self.done.clone();
         let scale = self.scale(key.zoom);
@@ -129,7 +123,7 @@ impl Painter {
             let start = Instant::now();
             let height_pt = f64::from(BAND_PX) / scale;
             let top_pt = f64::from(key.index) * height_pt;
-            let pixmap = tiles::draw(&page, top_pt, height_pt, scale as f32);
+            let pixmap = tiles::draw(&page, top_pt, height_pt, f32_of(scale));
             let band = Band {
                 key,
                 version,

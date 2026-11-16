@@ -2,6 +2,20 @@ use super::tables::is_figure;
 use super::{Costs, Pieces, picture_kind, program};
 use crate::world::PageWorld;
 
+/// The Typst program a page called notes walks to, set for a whole
+/// window, with nothing of it set before.
+fn walked(world: &PageWorld, markdown: &str) -> String {
+    program(
+        markdown,
+        "notes",
+        None,
+        &Pieces::new(),
+        world,
+        crate::page::Width::whole(),
+        &mut Costs::default(),
+    )
+}
+
 #[test]
 fn without_mitex_an_equation_shows_as_written_and_the_page_still_sets() {
     let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
@@ -22,17 +36,7 @@ fn without_mitex_an_equation_shows_as_written_and_the_page_still_sets() {
 #[test]
 fn a_title_opening_the_page_has_the_eyebrow_over_it_and_its_lede_after() {
     let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
-    let walk = |markdown: &str| {
-        program(
-            markdown,
-            "notes",
-            None,
-            &Pieces::new(),
-            &world,
-            crate::page::Width::whole(),
-            &mut Costs::default(),
-        )
-    };
+    let walk = |markdown: &str| walked(&world, markdown);
     let titled = walk("# Title\n\nThe lede.\n\nThe words.\n");
     assert!(
         titled.contains("#about(titled: true)[#\"notes\"]"),
@@ -146,17 +150,7 @@ fn a_quote_and_an_alert_hold_only_their_words() {
 #[test]
 fn a_picture_alone_is_a_figure_and_one_among_words_stays_in_its_line() {
     let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
-    let walk = |markdown: &str| {
-        program(
-            markdown,
-            "notes",
-            None,
-            &Pieces::new(),
-            &world,
-            crate::page::Width::whole(),
-            &mut Costs::default(),
-        )
-    };
+    let walk = |markdown: &str| walked(&world, markdown);
     let alone = walk("![What it shows](missing.png)\n");
     assert!(
         alone.contains("#alone[#picture(\"What it shows\")][]"),
@@ -170,17 +164,7 @@ fn a_picture_alone_is_a_figure_and_one_among_words_stays_in_its_line() {
 #[test]
 fn a_page_ends_with_its_mark_after_its_last_word() {
     let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
-    let walk = |markdown: &str| {
-        program(
-            markdown,
-            "notes",
-            None,
-            &Pieces::new(),
-            &world,
-            crate::page::Width::whole(),
-            &mut Costs::default(),
-        )
-    };
+    let walk = |markdown: &str| walked(&world, markdown);
     let words = walk("First.\n\n---\n\nLast words.\n");
     assert!(words.contains("#rule()"), "{words}");
     assert!(

@@ -31,12 +31,12 @@ fn quoting_keeps_what_is_typed() {
     assert_eq!(quoted(r#"a "b" \c"#), r#""a \"b\" \\c""#);
 }
 
-/// The key list set for a window this many points wide: its width and
-/// height in points.
-fn key_list_set(width_pt: f64) -> (f64, f64) {
+/// A Typst source set on the reader's own world, every error it gives told
+/// if it fails.
+fn compiled(source: &str) -> PagedDocument {
     let mut world = page::new_world();
-    world.set_main(&key_list(width_pt));
-    let document = typst::compile::<PagedDocument>(&world)
+    world.set_main(source);
+    typst::compile::<PagedDocument>(&world)
         .output
         .unwrap_or_else(|errors| {
             panic!(
@@ -46,7 +46,13 @@ fn key_list_set(width_pt: f64) -> (f64, f64) {
                     .map(|e| e.message.to_string())
                     .collect::<Vec<_>>()
             )
-        });
+        })
+}
+
+/// The key list set for a window this many points wide: its width and
+/// height in points.
+fn key_list_set(width_pt: f64) -> (f64, f64) {
+    let document = compiled(&key_list(width_pt));
     let size = document.pages()[0].frame.size();
     (size.x.to_pt(), size.y.to_pt())
 }
@@ -91,19 +97,7 @@ fn the_key_list_sets_its_lines_on_the_pitch_and_its_spaces_by_rung() {
     let pt = |px: f64| px * crate::theme::PT_A_PX;
     let (pitch, beat) = (pt(space.pitch), pt(space.beat));
     let rung = &space.rung;
-    let mut world = page::new_world();
-    world.set_main(&key_list(1920.0));
-    let document = typst::compile::<PagedDocument>(&world)
-        .output
-        .unwrap_or_else(|errors| {
-            panic!(
-                "{:?}",
-                errors
-                    .iter()
-                    .map(|e| e.message.to_string())
-                    .collect::<Vec<_>>()
-            )
-        });
+    let document = compiled(&key_list(1920.0));
     let page = &document.pages()[0].frame;
     let (mut texts, mut rects) = (Vec::new(), Vec::new());
     drawn(page, (0.0, 0.0), &mut texts, &mut rects);
@@ -212,19 +206,7 @@ fn the_key_list_takes_two_columns_where_they_fit_and_one_where_not() {
 
 #[test]
 fn labels_set_one_page_each_in_the_themes_ink() {
-    let mut world = page::new_world();
-    world.set_main(&labels(&["a".into(), "sd".into()]));
-    let document = typst::compile::<PagedDocument>(&world)
-        .output
-        .unwrap_or_else(|errors| {
-            panic!(
-                "{:?}",
-                errors
-                    .iter()
-                    .map(|e| e.message.to_string())
-                    .collect::<Vec<_>>()
-            )
-        });
+    let document = compiled(&labels(&["a".into(), "sd".into()]));
     assert_eq!(document.pages().len(), 2);
 }
 
@@ -254,11 +236,7 @@ fn a_labels_letters_stand_on_its_links_baseline_within_a_pixel() {
             "{link:?}"
         );
     }
-    let mut world = page::new_world();
-    world.set_main(&labels(&["x".into(), "sd".into()]));
-    let document = typst::compile::<PagedDocument>(&world)
-        .output
-        .expect("the labels set");
+    let document = compiled(&labels(&["x".into(), "sd".into()]));
     // Scales 1.5 and 2, at their own size and zoomed, and the view's
     // top anywhere between two pixels.
     for scale in [1.5, 2.0] {
@@ -344,19 +322,7 @@ fn the_prompts_row_sets_its_words_and_its_count_on_one_baseline() {
         ),
         ("the command line", ask(":", "b", true, None, "Tab choose")),
     ] {
-        let mut world = page::new_world();
-        world.set_main(&source(&asked));
-        let document = typst::compile::<PagedDocument>(&world)
-            .output
-            .unwrap_or_else(|errors| {
-                panic!(
-                    "{:?}",
-                    errors
-                        .iter()
-                        .map(|e| e.message.to_string())
-                        .collect::<Vec<_>>()
-                )
-            });
+        let document = compiled(&source(&asked));
         let (mut texts, mut rects) = (Vec::new(), Vec::new());
         drawn(
             &document.pages()[0].frame,
@@ -435,19 +401,7 @@ fn keeps_the_ladder(what: &str, ask: &dyn Fn(f64) -> String, rows: usize, chosen
     let mark = space.rung.mark * crate::theme::PT_A_PX;
     for scale in [2.0_f64, 1.5] {
         let px = scale / crate::theme::PT_A_PX;
-        let mut world = page::new_world();
-        world.set_main(&ask(px));
-        let document = typst::compile::<PagedDocument>(&world)
-            .output
-            .unwrap_or_else(|errors| {
-                panic!(
-                    "{:?}",
-                    errors
-                        .iter()
-                        .map(|e| e.message.to_string())
-                        .collect::<Vec<_>>()
-                )
-            });
+        let document = compiled(&ask(px));
         let frame = &document.pages()[0].frame;
         let (mut texts, mut rects) = (Vec::new(), Vec::new());
         drawn(frame, (0.0, 0.0), &mut texts, &mut rects);
@@ -486,8 +440,7 @@ fn keeps_the_ladder(what: &str, ask: &dyn Fn(f64) -> String, rows: usize, chosen
             baselines[0],
             hair[3]
         );
-        #[expect(clippy::cast_precision_loss, reason = "a few rows")]
-        let tall = hair[3] + 2.0 * beat + rows as f64 * row;
+        let tall = hair[3] + 2.0 * beat + f64_of(rows) * row;
         assert!(
             near(frame.size().y.to_pt(), tall),
             "{at}: it stands {} pt, not {tall}",
@@ -581,19 +534,7 @@ fn a_chosen_row_too_long_for_the_outline_sets_its_words_whole_where_its_room_is(
         px_per_pt: 2.0,
         page: crate::page::Width::WHOLE,
     };
-    let mut world = page::new_world();
-    world.set_main(&outline(&ask));
-    let document = typst::compile::<PagedDocument>(&world)
-        .output
-        .unwrap_or_else(|errors| {
-            panic!(
-                "{:?}",
-                errors
-                    .iter()
-                    .map(|e| e.message.to_string())
-                    .collect::<Vec<_>>()
-            )
-        });
+    let document = compiled(&outline(&ask));
     let pages = document.pages();
     assert_eq!(
         pages.len(),

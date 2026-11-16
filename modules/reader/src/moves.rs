@@ -9,6 +9,7 @@
 //! scrolls, as Neovim's is. The window marks it with a rule in the margin.
 use std::path::{Path, PathBuf};
 
+use crate::painter::numbers::f64_of;
 use crate::place::Block;
 use crate::text::Line;
 
@@ -322,11 +323,7 @@ pub fn source_line(blocks: &[Block], n: usize) -> Option<f64> {
     let height = blocks
         .get(at + 1)
         .map_or(0.0, |next| next.top_pt - block.top_pt);
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "a file's line numbers, far fewer than f64 holds exactly"
-    )]
-    let into = (n - from) as f64 / (to - from + 1) as f64;
+    let into = f64_of(n - from) / f64_of(to - from + 1);
     Some(block.top_pt + height * into)
 }
 
@@ -379,18 +376,7 @@ pub fn written_paths(line: &Line) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn line(baseline_pt: f64, text: &str) -> Line {
-        Line {
-            x_pt: 0.0,
-            tail_x_pt: 0.0,
-            baseline_pt,
-            size_pt: 10.0,
-            cap_pt: 7.0,
-            text: text.into(),
-            spans: text.chars().map(|_| (0.0, 1.0)).collect(),
-        }
-    }
+    use crate::text::test_line as line;
 
     /// The eyebrow's label, the words and a section's heading, at the
     /// theme's sizes: the rule beside each is the page's pitch tall,
