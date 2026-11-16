@@ -99,7 +99,8 @@
     + "blockquote, [role='row'], [role='treeitem'], [role='listitem']";
   const skipped = "script, style, pre, title, [aria-hidden='true'], [data-map], [data-said-by], "
     + "nav.sites-strip";
-  const word = /^\p{Ll}+$/u;
+  // Lower-case letters alone: each one changes when raised to a capital.
+  const isWord = (name) => [...name].every((letter) => letter !== letter.toUpperCase());
   const setAsName = "code, kbd, samp, a[href]";
   const homeOf = (thing) => place(thing.address);
   const linksTo = (element, home) => {
@@ -118,7 +119,7 @@
     }
     for (const found of text.textContent.matchAll(mention)) {
       const name = found[0];
-      if (word.test(name) && holder.closest(setAsName) === null) {
+      if (isWord(name) && holder.closest(setAsName) === null) {
         continue;
       }
       const homes = byName.get(name).map(homeOf);
