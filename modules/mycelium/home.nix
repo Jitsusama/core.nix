@@ -89,10 +89,20 @@ let
   linking = cfg.links != [ ] || cfg.vias != [ ] || cfg.providers != [ ];
   serving = cfg.realm != null;
   agentsKey = config.systemd.user.sockets ? agent-signing;
-  # Only the fences a machine says run here, in mycelium's shape.
-  fenced = lib.filterAttrs (_: doors: doors != null) (
-    lib.optionalAttrs (cfg.declares != null) cfg.declares.fence
+  # Only the fences a machine says run here, in mycelium's shape. An
+  # agent's `mycelium run` in a fenced or strict one starts through the
+  # fence's launcher, on Linux alone, since a Mac has no Landlock; one
+  # unfenced takes none, as no agent asks as unfenced.
+  fenced = lib.mapAttrs (kind: doors: doors // runsIn kind) (
+    lib.filterAttrs (_: doors: doors != null) (
+      lib.optionalAttrs (cfg.declares != null) cfg.declares.fence
+    )
   );
+  runsIn =
+    kind:
+    lib.optionalAttrs (isLinux && cfg.fenceRuns != null && kind != "none") {
+      runs = cfg.fenceRuns;
+    };
   name = lib.types.strMatching "[a-z0-9-]+";
   # A machine a provider's program reaches, as `PROGRAM:PLACE`: the program
   # by its absolute path, since a Mac's agent runs the node with PATH
@@ -635,6 +645,19 @@ in
         joins, for whatever starts one, such as the launcher. Each realm's
         node tells only its own. It is declared with the rest, so a machine
         declaring nothing says none, and whatever starts a session picks.
+      '';
+    };
+    # Internal, so no machine widens it: the fence's own launcher sets it,
+    # and a test its stand-in.
+    fenceRuns = lib.mkOption {
+      type = lib.types.nullOr (lib.types.listOf lib.types.str);
+      default = null;
+      internal = true;
+      description = ''
+        The words an agent's `mycelium run` is put after to run in its
+        fence here, the first a program in the Nix store, as each fenced
+        and strict fence the machine declares says them; null until the
+        fence ships its launcher, so every agent's run is refused.
       '';
     };
   };
