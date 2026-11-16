@@ -64,7 +64,9 @@ pub struct Held {
 
 /// `cadence hour [--to ADDRESS] [--checkout NAME=PATH]... [--realm NAME]...`:
 /// prints the hour's card, and sends it to the address given, the
-/// orchestrator's. Each checkout is another repository whose main says
+/// orchestrator's. Only a run sending the card keeps the hour and owes its
+/// drag to the owners; one without `--to` is a look, keeping nothing. Each
+/// checkout is another repository whose main says
 /// which of the misses' checks merged, beside core's and the harness's;
 /// each realm's node says whether a machine is crowded beside one with room.
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
@@ -111,6 +113,12 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         &format!("{} tomorrow", clock(now + DAY)),
     );
     print!("{card}");
+    // A look by hand lacks the timer's checkouts, so it can read a closed
+    // miss as open: only the run sending the card keeps the hour, owes its
+    // drag and tells the owners.
+    let Some(to) = to else {
+        return Ok(());
+    };
     let ledger_at = folder.join("findings.jsonl");
     let mut ledger = findings::read(&ledger_at);
     let told = file(&mut ledger, &measures, &today(now), now);
@@ -122,9 +130,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     for (owner, text) in told.into_iter().filter(|(owner, _)| !owner.is_empty()) {
         mesh.send(&message(&owner, "finding", text))?;
     }
-    if let Some(to) = to {
-        mesh.send(&message(to, "fyi", card))?;
-    }
+    mesh.send(&message(to, "fyi", card))?;
     Ok(())
 }
 

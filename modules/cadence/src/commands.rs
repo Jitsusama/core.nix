@@ -117,13 +117,16 @@ fn review() -> Help {
 
 fn hour() -> Help {
     Help::new("hour", "the hour against its targets, and its drag")
-        .example("cadence hour", "the hour's card, its drag filed")
-        .example("cadence hour --to O", "and the card sent to O")
+        .example("cadence hour", "the hour's card, a look that keeps nothing")
+        .example("cadence hour --to O", "the card sent to O, its drag owed")
         .example(
             "cadence hour --checkout mycelium=~/src/mycelium",
             "and a check named there closes once it merges",
         )
-        .option("--to ADDRESS", "who the card is sent to")
+        .option(
+            "--to ADDRESS",
+            "who the card is sent to; only then is the hour kept",
+        )
         .option(
             "--checkout NAME=PATH",
             "a repository whose main says what merged",
