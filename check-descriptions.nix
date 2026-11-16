@@ -2610,6 +2610,10 @@
     memory and the processors have room and the disk isn't stalling, a queue unread or gone quiet
     holding nothing back
   '';
+  repos-is-told-every-realms-owners = ''
+    the refresh's unit gives repos every realm's declared owners as one word that systemd passes
+    whole, on a machine declaring two realms that list one owner in both
+  '';
   repos-passes-clippy = ''
     clippy finds nothing in repos or its tests
   '';

@@ -38,7 +38,9 @@ let
   # What the refresh's unit gives it to say the receptor with, set in the
   # unit alone rather than as the command's defaults, so what is counted is
   # what the machine declares. Every realm's owners are given, so an owner
-  # declared for two is counted in neither.
+  # declared for two is counted in neither, joined by ';' into one word,
+  # since home-manager writes each item unquoted and systemd splits an
+  # unquoted one at whitespace, which would lose a realm's owners.
   myceliumProgram = lib.getExe mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
   owner = lib.types.strMatching "[A-Za-z0-9._-]+";
   owned = name: owners: "${name}=${lib.concatStringsSep "," owners}";
@@ -46,7 +48,7 @@ let
     "MYCELIUM=${myceliumProgram}"
     "MYCELIUM_REALM=${realm}"
     "REPOS_RECEPTOR_LOGIN=${receptorLogin}"
-    "REPOS_RECEPTOR_OWNERS=${lib.concatStringsSep " " (lib.mapAttrsToList owned receptorOwners)}"
+    "REPOS_RECEPTOR_OWNERS=${lib.concatStringsSep ";" (lib.mapAttrsToList owned receptorOwners)}"
   ];
   # The command's settings, as defaults a caller may still set for one
   # run. gh is named only where a machine lists repositories for it, so
@@ -126,6 +128,17 @@ in
     home.packages = [ wrapped ];
     # How agents are to ask it, and the Code words to answer in.
     home.file.".pi/agent/skills/repos/SKILL.md".source = ./SKILL.md;
+
+    # A realm's name, like an owner's, holds no whitespace, ';' or '=', so
+    # it can't break the one word every realm's owners are given in.
+    assertions = [
+      {
+        assertion = lib.all (name: builtins.match "[A-Za-z0-9._-]+" name != null) (
+          lib.attrNames receptorOwners
+        );
+        message = "jitsusama.repos.receptorOwners names a realm with more than letters, digits, '.', '_' or '-'.";
+      }
+    ];
 
     # The refresh asks only through the broker's socket, so a machine
     # without one skips it rather than failing every five minutes.

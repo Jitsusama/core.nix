@@ -38,10 +38,16 @@ pub struct Owners(Vec<String>);
 
 impl Owners {
     /// The owners `declared` lists for `realm`, as `realm=owner,owner`
-    /// separated by spaces, less any it lists for another realm too.
+    /// separated by `;`, less any it lists for another realm too. It's one
+    /// word, since systemd splits an unquoted `Environment=` at whitespace,
+    /// so a value holding any is part of one, a realm's owners perhaps
+    /// lost, and holds nobody.
     pub fn of(declared: &str, realm: &str) -> Self {
+        if declared.contains(char::is_whitespace) {
+            return Self(Vec::new());
+        }
         let listed: Vec<(&str, Vec<&str>)> = declared
-            .split_whitespace()
+            .split(';')
             .filter_map(|one| one.split_once('='))
             .map(|(realm, owners)| (realm, owners.split(',').filter(|o| !o.is_empty()).collect()))
             .collect();
