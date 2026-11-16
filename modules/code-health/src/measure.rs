@@ -39,6 +39,21 @@ pub const NAMED: usize = 200;
 /// as the daemons-agree check keeps it.
 pub const DAEMONS_WAITING: &str = "tests/rules/daemons-agree-waiting.nix";
 
+/// The files a tool runs by their name alone, so nothing need name them
+/// to reach them (reached.rs), and a folder is entered from (notes.rs).
+pub const RUN_BY_NAME: &[&str] = &[
+    "main.rs",
+    "lib.rs",
+    "mod.rs",
+    "build.rs",
+    "flake.nix",
+    "default.nix",
+    "shell.nix",
+    "index.ts",
+    "index.js",
+    "__init__.py",
+];
+
 /// The extensions of the files counted as code.
 const CODE: &[&str] = &[
     "bash", "c", "cc", "cjs", "cpp", "go", "h", "js", "lua", "mjs", "nix", "py", "qml", "rb", "rs",
