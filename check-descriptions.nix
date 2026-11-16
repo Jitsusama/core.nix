@@ -1564,6 +1564,11 @@
     keeping each reading in mycelium's state, in the agents' slice on Linux and as an agent on a
     Mac; a further realm's balance isn't read, nor any on a machine in no realm
   '';
+  mycelium-shows-the-builders = ''
+    the home realm's node on Linux is given nix-offload's standing, beside and lent lists of Nix
+    builders and the folder each lender's health is in, so it shows them beside the machines; a
+    further realm's node and a Mac's are given none
+  '';
   mycelium-signs-a-macs-links-with-the-enclave = ''
     a Mac's node signs its links in with the agents' key from the Secure Enclave, through that
     key's own library and no agent, so the login session's agent never asks for an approval;
