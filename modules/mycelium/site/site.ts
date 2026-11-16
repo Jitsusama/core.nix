@@ -16,7 +16,7 @@
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
-import { type Heard, nowOf } from "./model.ts";
+import { BALANCE_FRESH_MS, type Heard, nowOf } from "./model.ts";
 
 /** The least time between two readings handed to the drawing. */
 const FLOOR_MS = 2000;
@@ -41,6 +41,7 @@ const unread = new Map<Kind, string>();
 let handed = Number.NEGATIVE_INFINITY;
 let waiting: number | undefined;
 let owed = false;
+let expires: number | undefined;
 
 /** The worst of the four watches' states, the one the map says. */
 function standing(): Standing | undefined {
@@ -66,7 +67,15 @@ function handOver(): void {
   waiting = undefined;
   owed = false;
   handed = Date.now();
-  document.dispatchEvent(new CustomEvent(NOW_EVENT, { detail: nowOf(heard, handed) }));
+  const now = nowOf(heard, handed);
+  document.dispatchEvent(new CustomEvent(NOW_EVENT, { detail: now }));
+  // A drawn balance goes stale with nothing else moving, as when its service
+  // stops, so draw again the moment it does.
+  globalThis.clearTimeout(expires);
+  expires =
+    now.balance === null
+      ? undefined
+      : globalThis.setTimeout(owe, Date.parse(now.balance.at) + BALANCE_FRESH_MS - handed + 1);
 }
 
 /** Hands a reading over once the floor allows, and while the tab shows. */

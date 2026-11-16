@@ -134,7 +134,11 @@ function messagesOf(held: Held): Message[] {
   return told.slice(-LATEST_MESSAGES);
 }
 
-/** The newest balance reading held, when it is fresh at `at`. */
+/**
+ * The newest balance reading held, when it is fresh at `at`: each machine's node
+ * serves its own, so the newest wins, and one dated further ahead than a reading
+ * may age is a wrong clock, never fresh.
+ */
 function latestReading(held: Held | undefined, at: number): Fields | undefined {
   let latest: Fields | undefined;
   let latestAt = Number.NEGATIVE_INFINITY;
@@ -145,7 +149,7 @@ function latestReading(held: Held | undefined, at: number): Fields | undefined {
       latestAt = when;
     }
   }
-  return at - latestAt <= BALANCE_FRESH_MS ? latest : undefined;
+  return Math.abs(at - latestAt) <= BALANCE_FRESH_MS ? latest : undefined;
 }
 
 /** Each machine's share of the realm's work in `reading`, by its name. */
@@ -209,4 +213,4 @@ function nowOf(heard: Heard, at: number): Now {
 }
 
 export type { Balance, Heard, Message, Now };
-export { LATEST_MESSAGES, nowOf };
+export { BALANCE_FRESH_MS, LATEST_MESSAGES, nowOf };

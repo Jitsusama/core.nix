@@ -246,17 +246,41 @@ it("a fresh balance reading gives each machine its share and the map what's held
   });
 });
 
-it("a balance reading past three minutes old, with no time, or none, is no share at all", () => {
+it("a balance reading past three minutes old, ahead of the clock, with no time, or none, is no share at all", () => {
   const { at: _at, ...timeless } = reading(0);
-  for (const heard of [
-    toldBalance([skiff], [reading(181_000)]),
-    toldBalance([skiff], [timeless]),
-    toldBalance([skiff], []),
-    told([skiff]),
-  ]) {
+  for (const [why, heard] of [
+    ["181 s old", toldBalance([skiff], [reading(181_000)])],
+    ["181 s ahead", toldBalance([skiff], [reading(-181_000)])],
+    ["no time", toldBalance([skiff], [timeless])],
+    ["no reading", toldBalance([skiff], [])],
+    ["no balance watch", told([skiff])],
+  ] as const) {
     const now = nowOf(heard, AT);
-    assert.deepEqual([now.machines.map((machine) => machine.share), now.balance], [[null], null]);
+    assert.deepEqual(
+      [now.machines.map((machine) => machine.share), now.balance],
+      [[null], null],
+      why,
+    );
   }
+});
+
+it("a balance reading 179 s old, or as far ahead, still gives its shares", () => {
+  for (const ago of [179_000, -179_000]) {
+    const now = nowOf(toldBalance([skiff], [reading(ago)]), AT);
+    assert.notEqual(now.balance, null, `${ago} ms`);
+  }
+});
+
+it("of the readings each machine's node serves, the newest is the one drawn", () => {
+  const older = { ...reading(90_000), key: "balance:tern", imbalance: 0.3 };
+  const now = nowOf(toldBalance([skiff], [reading(30_000), older]), AT);
+  assert.equal(now.balance?.imbalance, 0.06);
+});
+
+it("a reading of one machine has no spread, and one that holds nothing holds none", () => {
+  const { held: _held, ...alone } = { ...reading(0), imbalance: null };
+  const now = nowOf(toldBalance([skiff], [alone]), AT);
+  assert.deepEqual([now.balance?.imbalance, now.balance?.held], [null, []]);
 });
 
 it("a machine the balance doesn't name has no share, and the others keep theirs", () => {
