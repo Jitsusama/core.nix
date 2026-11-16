@@ -286,8 +286,12 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     let mut gates = gates;
     gates.extend(finished(&heads(&places), now, &passed_at, &on_main));
     let queue = Queue::of(&here, patch.as_deref(), ours, &gates, &crates, now);
-    if let Some(held) = queue.holds(patch.as_deref(), ours, &crates, now) {
-        return Some(held);
+    let waited_for = now.saturating_sub(waits_from);
+    if let Some((said, shared)) = queue.holds(patch.as_deref(), ours, &crates, now, waited_for) {
+        keep_held(&mut waited, patch.as_deref(), &file, now);
+        let left = PATIENCE.saturating_sub(waited_for).div_ceil(60);
+        let said = format!("{said}; this one waits at most {left} more minutes, then goes first");
+        return Some((said, shared));
     }
     let touched = |gate: &Gate| {
         if !kit::by_start(queue.ours, queue.role_of(gate)) {
@@ -302,13 +306,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     };
     let going = |gate: &Gate| gate.pid == 0 || alive(gate);
     let held = ahead(&gates, &asking, now, &place, &going, &touched)?;
-    if let Some(patch) = &patch {
-        waited.held(patch, now);
-        waited.tidy(now);
-        if let Err(error) = waited.write(&file) {
-            eprintln!("merge-net: this hold wasn't kept, so its wait starts again: {error}");
-        }
-    }
+    keep_held(&mut waited, patch.as_deref(), &file, now);
     let state = if held.gate.pid == 0 {
         "passed and keeps its turn while it merges"
     } else {
@@ -387,16 +385,18 @@ impl Queue {
 
     /// Why the change `patch` changing `ours` waits in the kit's queue,
     /// and the files of ours that read or change the kit, or nothing when
-    /// it needn't. A reader held so keeps which change it waits for, so
-    /// it's owed its turn once that one merges.
+    /// it needn't, having `waited` since its first hold. A reader held so
+    /// keeps which change it waits for, so it's owed its turn once that one
+    /// merges.
     fn holds(
         &self,
         patch: Option<&str>,
         ours: &[String],
         crates: &Crates,
         now: u64,
+        waited: u64,
     ) -> Option<(String, Vec<String>)> {
-        let held = kit::behind(self.ours, &self.going, &|gate| self.role_of(gate), 0)?;
+        let held = kit::behind(self.ours, &self.going, &|gate| self.role_of(gate), waited)?;
         let kit_files = [format!("{}Cargo.toml", kit::KIT)];
         let shared = if self.ours == kit::Role::Kit {
             ours.iter()
@@ -462,9 +462,29 @@ pub fn waits_to_run(commit: &str) -> Option<String> {
     if queue.ours != kit::Role::Kit {
         return None;
     }
+    let waits_from = Waited::read(&crate::waited::file()).since(patch.as_deref(), None, now);
     queue
-        .holds(patch.as_deref(), &ours, &crates, now)
+        .holds(
+            patch.as_deref(),
+            &ours,
+            &crates,
+            now,
+            now.saturating_sub(waits_from),
+        )
         .map(|(said, _)| said)
+}
+
+/// Keep `now` in `waited`, written to `file`, as when the change `patch`
+/// was first held, so its [`PATIENCE`] counts from its first hold.
+fn keep_held(waited: &mut Waited, patch: Option<&str>, file: &Path, now: u64) {
+    let Some(patch) = patch else {
+        return;
+    };
+    waited.held(patch, now);
+    waited.tidy(now);
+    if let Err(error) = waited.write(file) {
+        eprintln!("merge-net: this hold wasn't kept, so its wait starts again: {error}");
+    }
 }
 
 /// What a gate changing `theirs` shares with a change to `ours`: the files

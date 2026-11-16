@@ -15,7 +15,10 @@
 //! is owed its turn, so no change to the kit holds it again, and the next
 //! change to the kit waits for it instead, while its gate goes or its pass
 //! keeps its turn. Otherwise a queue of six changes to the kit, back to
-//! back, would hold a reader for hours.
+//! back, would hold a reader for hours. Either waits at most
+//! [`crate::turn::PATIENCE`] from its first hold, then goes first: at 00:30
+//! on 16 November a reader that had passed was held about 70 minutes behind
+//! a change to the kit still gating.
 //!
 //! Which reader waited behind which change to the kit is kept in
 //! `kit-owed.json` in the net's state, by the reader's patch id, so a
@@ -67,13 +70,18 @@ pub fn role(files: &[String], crates: &Crates, owed: bool) -> Role {
 /// pass, that a change of role `asking` waits for in the kit's queue,
 /// `role_of` saying each gate's role: the earliest change to the kit, for a
 /// reader not yet owed; the earliest owed reader, for a change to the kit.
+/// One that has `waited` [`crate::turn::PATIENCE`] waits for none, as
+/// behind any gate sharing its files: a hold lasts 20 minutes at most.
 #[must_use]
 pub fn behind<'a>(
     asking: Role,
     going: &'a [Gate],
     role_of: &dyn Fn(&Gate) -> Role,
-    _waited: u64,
+    waited: u64,
 ) -> Option<&'a Gate> {
+    if waited >= crate::turn::PATIENCE {
+        return None;
+    }
     let waits_for = match asking {
         Role::Reader { owed: false } => Role::Kit,
         Role::Kit => Role::Reader { owed: true },
