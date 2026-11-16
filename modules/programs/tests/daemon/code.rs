@@ -5,8 +5,9 @@
 //! behind, said beside their repository; a checkout's files served
 //! inside Open a File by Name while it's ahead, gone once it isn't, and
 //! found there by name or folder as they're typed; New Terminal Here
-//! started by a stand-in for niri as it's asked; and Pull bringing a
-//! checkout forward by fast-forward alone, saying why where it won't.
+//! and Edit Here started by a stand-in for niri as they're asked; and
+//! Pull bringing a checkout forward by fast-forward alone, saying why
+//! where it won't.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -471,7 +472,9 @@ fn new_terminal_here_has_niri_start_kitty_in_the_checkout() {
         "New Terminal Here was refused: {said}"
     );
     let asked = || std::fs::read_to_string(running.path("niri.asked"));
-    until("niri wasn't asked to start a terminal", || asked().is_ok());
+    until("niri wasn't asked to start a terminal", || {
+        asked().is_ok_and(|line| line.ends_with('\n'))
+    });
     assert_eq!(
         asked().unwrap(),
         "msg action spawn -- kitty --directory /src/alpha\n",
@@ -484,12 +487,43 @@ fn edit_here_has_niri_start_neovim_in_the_checkout() {
     let running = Running::new("code-edit");
     let mut client = running.client();
     let said = client.ask(&json!({"id": 1, "ask": "code:edit", "path": "/src/alpha"}));
-    assert!(said.get("error").is_none(), "Edit Here was refused: {said}");
-    let asked = || std::fs::read_to_string(running.path("niri.asked"));
-    until("niri wasn't asked to start an editor", || asked().is_ok());
     assert_eq!(
-        asked().unwrap(),
-        "msg action spawn -- kitty --directory /src/alpha nvim .\n",
-        "niri wasn't asked to start Neovim on the checkout in a kitty of its own"
+        said["asked"], "editor",
+        "Edit Here wasn't answered as an editor: {said}"
+    );
+    let asked = || std::fs::read_to_string(running.path("niri.argv"));
+    until("niri wasn't asked to start an editor", || {
+        asked().is_ok_and(|words| words.ends_with("\n\n"))
+    });
+    let asked = asked().unwrap();
+    let words: Vec<&str> = asked.lines().collect();
+    assert_eq!(
+        words[..9],
+        [
+            "msg",
+            "action",
+            "spawn",
+            "--",
+            "kitty",
+            "--directory",
+            "/src/alpha",
+            "bash",
+            "-c"
+        ],
+        "niri wasn't asked to start a shell in a kitty of its own in the checkout"
+    );
+    let script = words[9];
+    assert!(
+        script.starts_with(r#"cd -- "$0" && "#) && script.contains("direnv export bash"),
+        "the shell doesn't step into the checkout and load its .envrc: {script}"
+    );
+    assert!(
+        script.ends_with("exec nvim .; }"),
+        "the shell doesn't become Neovim on the checkout: {script}"
+    );
+    assert_eq!(
+        words[10..],
+        ["/src/alpha", ""],
+        "the shell wasn't told the checkout"
     );
 }
