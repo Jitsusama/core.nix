@@ -1856,8 +1856,8 @@ fn run(settings: &Settings) -> Result<(), String> {
 struct Doorway {
     door: door::Door,
     calls: Option<calls::Calls>,
-    /// Whether builds and jobs are braked for a call (src/brake.rs).
-    braked: bool,
+    /// Where builds and jobs stand braked for a call (src/brake.rs).
+    brake: brake::Brake,
 }
 
 impl Doorway {
@@ -1866,53 +1866,51 @@ impl Doorway {
         Doorway {
             door: door::Door::default(),
             calls: pw_dump.map(calls::Calls::follow),
-            braked: false,
+            brake: brake::Brake::default(),
         }
     }
 }
 
 /// Holds builds and jobs to a quarter of the processors while a call is
 /// on, and lets them go once it ends, as src/brake.rs says. A slice that
-/// couldn't be set is tried again on the next look.
+/// couldn't be set is tried again once it has waited.
 fn brake_for_calls(doorway: &mut Doorway) {
-    let calling = doorway
-        .calls
-        .as_mut()
-        .is_some_and(|calls| calls.on(std::time::Instant::now()));
-    let processors = std::thread::available_parallelism().map_or(1, usize::from);
-    let Some(quota) = brake::wanted(calling, doorway.braked, processors) else {
+    let now = std::time::Instant::now();
+    let calling = doorway.calls.as_mut().is_some_and(|calls| calls.on(now));
+    let due = doorway.brake.due(calling, now);
+    if due.is_empty() {
         return;
-    };
-    let mut all = true;
-    for (manager, slice) in brake::BRAKED {
+    }
+    let processors = std::thread::available_parallelism().map_or(1, usize::from);
+    let quota = brake::quota_for(calling, processors);
+    for place in due {
+        let (manager, slice) = brake::BRAKED[place];
         let set = Command::new("busctl")
             .args(brake::quota_call(manager, slice, quota))
             .stdout(Stdio::null())
             .output();
         match set {
-            Ok(output) if output.status.success() => {}
+            Ok(output) if output.status.success() => doorway.brake.set(place, calling),
             Ok(output) => {
-                all = false;
+                doorway.brake.failed(place, now);
                 eprintln!(
                     "Couldn't set {slice}'s quota for a call: {}",
                     String::from_utf8_lossy(&output.stderr).trim()
                 );
             }
             Err(error) => {
-                all = false;
+                doorway.brake.failed(place, now);
                 eprintln!("Couldn't run busctl to set {slice}'s quota for a call: {error}");
             }
         }
     }
-    if all {
-        doorway.braked = calling;
+    if doorway.brake.stands(calling) {
         eprintln!(
-            "{} builds and jobs, {}.",
-            if calling { "Braked" } else { "Let go of" },
+            "{}.",
             if calling {
-                "a call on"
+                "Braked builds and jobs, a call on"
             } else {
-                "the call over"
+                "Let go of builds and jobs, no call on"
             }
         );
     }

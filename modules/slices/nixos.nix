@@ -821,6 +821,19 @@ in
               (lib.getExe config.programs.niri.package)
             ]
           );
+        # A sorter stopping mid-call lets go of the brake it set, since a
+        # sorter that isn't back before the call ends can't; a restart
+        # mid-call brakes again on its first look.
+        ExecStopPost = [
+          (
+            "-${config.systemd.package}/bin/systemctl --user"
+            + " set-property --runtime jobs.slice CPUQuota="
+          )
+          (
+            "-${config.systemd.package}/bin/systemctl --no-ask-password"
+            + " set-property --runtime build.slice CPUQuota="
+          )
+        ];
         Restart = "on-failure";
         RestartSec = 5;
       };
