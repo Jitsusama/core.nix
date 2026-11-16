@@ -19,7 +19,7 @@ const BOOT: Boot = Boot {
     ticks: 100.0,
 };
 
-fn now() -> f64 {
+pub fn now() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -57,68 +57,48 @@ fn offers_using(
     ran: &BTreeMap<String, f64>,
     uses: &Uses,
 ) -> Vec<Offer> {
-    surveyed(config, processes, finished, ran, uses, now()).0
-}
-
-/// What a survey offers at `at`, in wall seconds.
-fn offers_at(config: &Config, at: f64) -> Vec<Offer> {
     surveyed(
         config,
-        &[],
-        &|_| false,
-        &BTreeMap::new(),
-        &Uses::default(),
-        at,
+        processes,
+        finished,
+        ran,
+        uses,
+        (now(), Sizes::default()),
     )
     .0
 }
 
-/// What a survey offers, and how many times it walked a root for targets
-/// and installs.
+/// What a survey offers at `at`, in wall seconds.
+fn offers_at(config: &Config, at: f64) -> Vec<Offer> {
+    offers_sized(config, at, Sizes::default()).0
+}
+
+/// What a survey offers at `at` after earlier ones sized what `sizes`
+/// holds, and what it leaves sized for the next.
+pub fn offers_sized(config: &Config, at: f64, sizes: Sizes) -> (Vec<Offer>, Sizes) {
+    let none = BTreeMap::new();
+    let (found, _, sizes) = surveyed(
+        config,
+        &[],
+        &|_| false,
+        &none,
+        &Uses::default(),
+        (at, sizes),
+    );
+    (found, sizes)
+}
+
+/// What a survey at `at` offers after earlier ones sized what `sizes`
+/// holds, how many times it walked a root for targets and installs, and
+/// what it leaves sized for the next.
 fn surveyed(
     config: &Config,
     processes: &[Process],
     finished: &dyn Fn(&Path) -> bool,
     ran: &BTreeMap<String, f64>,
     uses: &Uses,
-    at: f64,
-) -> (Vec<Offer>, usize) {
-    let (found, walked, _) = surveyed_after(
-        config,
-        &Earlier {
-            processes,
-            finished,
-            ran,
-            uses,
-        },
-        at,
-        Sizes::default(),
-    );
-    (found, walked)
-}
-
-/// What a survey is told of the machine around it.
-struct Earlier<'a> {
-    processes: &'a [Process],
-    finished: &'a dyn Fn(&Path) -> bool,
-    ran: &'a BTreeMap<String, f64>,
-    uses: &'a Uses,
-}
-
-/// What a survey offers after earlier ones sized what `sizes` holds, how
-/// many times it walked a root, and what it leaves sized for the next.
-fn surveyed_after(
-    config: &Config,
-    earlier: &Earlier,
-    at: f64,
-    sizes: Sizes,
+    (at, sizes): (f64, Sizes),
 ) -> (Vec<Offer>, usize, Sizes) {
-    let Earlier {
-        processes,
-        finished,
-        ran,
-        uses,
-    } = *earlier;
     let awake = Awake::default();
     let mut finished = |dir: &Path| finished(dir);
     let said = BTreeMap::new();
@@ -289,13 +269,13 @@ fn a_root_targets_and_installs_share_is_walked_once() {
            "installs": {{ "kind": "installs", "roots": ["{0}"] }}"#,
         roots.display()
     ));
-    let (found, walked) = surveyed(
+    let (found, walked, _) = surveyed(
         &config,
         &[],
         &|_| true,
         &BTreeMap::new(),
         &Uses::default(),
-        now(),
+        (now(), Sizes::default()),
     );
     assert_eq!(walked, 1);
     assert_eq!(find(&found, &target).candidate.class, Class::Target);
@@ -661,59 +641,6 @@ fn a_browser_profile_in_a_quest_at_works_scratch_is_spent_once_at_rest() {
     assert_eq!(spent.candidate.class, Class::Temp);
     assert!(spent.candidate.spent);
     assert_eq!(spent.action, Action::Entry { root: tmp.clone() });
-}
-
-#[test]
-fn a_quests_old_scratch_is_sized_again_only_once_written_again() {
-    let home = tempfile::tempdir().unwrap();
-    let home = real(home.path());
-    let quests = dir(&home.join("quests"));
-    file(
-        &quests.join("QEST-20200101-ABCDEF/README.md"),
-        "---\nid: QEST-20200101-ABCDEF\nstatus: active\nupdated: 2020-01-01\n---\n# At work\n",
-    );
-    let workspaces = dir(&home.join("workspaces"));
-    let tmp = dir(&workspaces.join("QEST-20200101-ABCDEF/tmp"));
-    let run = dir(&tmp.join("run"));
-    file(&run.join("log"), &"x".repeat(20_000));
-    let config = config(&format!(
-        r#""workspaces": {{ "kind": "workspaces", "path": "{}", "quests": "{}" }}"#,
-        workspaces.display(),
-        quests.display()
-    ));
-    let earlier = Earlier {
-        processes: &[],
-        finished: &|_| false,
-        ran: &BTreeMap::new(),
-        uses: &Uses::default(),
-    };
-    let later = now() + 7.0 * 3_600.0;
-    let (found, _, sizes) = surveyed_after(&config, &earlier, later, Sizes::default());
-    let first = find(&found, &run).candidate.size;
-    assert!(first > 0, "the run's log wasn't counted: {found:?}");
-    assert_eq!(sizes.walked, 1, "the run wasn't sized once");
-    let (found, _, sizes) = surveyed_after(&config, &earlier, later + 60.0, sizes);
-    assert_eq!(sizes.walked, 1, "a run unwritten since was walked again");
-    assert_eq!(
-        find(&found, &run).candidate.size,
-        first,
-        "a run known unwritten since changed its size"
-    );
-    file(&run.join("more"), &"y".repeat(20_000));
-    // Dated a minute on, since a build's clock may not tick between the
-    // two writes.
-    fs::File::options()
-        .write(true)
-        .open(run.join("more"))
-        .unwrap()
-        .set_modified(std::time::SystemTime::now() + Duration::from_secs(60))
-        .unwrap();
-    let (found, _, sizes) = surveyed_after(&config, &earlier, later + 120.0, sizes);
-    assert_eq!(sizes.walked, 2, "a run written since wasn't sized again");
-    assert!(
-        find(&found, &run).candidate.size > first,
-        "a run written since kept its old size"
-    );
 }
 
 #[test]
