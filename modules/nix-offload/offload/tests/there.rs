@@ -1721,6 +1721,32 @@ fn a_copy_up_that_loses_its_builder_is_cut_soon_and_sent_again_once_one_stands()
     assert!(!said.contains("nix log"), "{said}");
 }
 
+#[test]
+fn a_run_that_gives_its_copy_longer_is_heard_ahead_of_the_cut() {
+    // On 16 November a 267 MB copy up behind a full uplink was cut four
+    // times at 15 s, the run's own ServerAliveCountMax read after the
+    // copy's, where ssh keeps the first value it reads.
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
+    let ran = there_command(folder.path(), &offload, folder.path())
+        .env("NIX_OFFLOAD_VM_DIR", "/nonexistent/nix-offload-vm")
+        .env("NIX_SSHOPTS", "-o ServerAliveCountMax=40")
+        .args(["-L", "/nix/store/aaaa-x.drv"])
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sshopts = fs::read_to_string(folder.path().join("nix-sshopts")).unwrap();
+    assert_eq!(
+        sshopts.trim_end(),
+        "-o ServerAliveCountMax=40 -o ServerAliveInterval=5 -o ServerAliveCountMax=3",
+        "the run's own options didn't reach its copy first"
+    );
+}
+
 /// ssh as a nearby machine answers: it adds its last two words to a
 /// record, keeps whatever it was sent, and exits as `status` says.
 const NEARBY_SSH: &str = r#"#!/bin/sh
