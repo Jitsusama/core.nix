@@ -17,7 +17,9 @@
 //! are and their conversation are found, once a run, not how they are,
 //! and only while no step-in is waiting, a search every few seconds, so
 //! asking ahead about everyone People lists stays inside Slack's limits
-//! and never holds up a step-in.
+//! and never holds up a step-in. When Slack says it's over its limit, it
+//! is asked nothing until the wait it named is over: whoever it refused
+//! stays first ahead, and a step-in meanwhile says what's known.
 //!
 //! Once Slack refuses the sign-in, the line `{"signedOut":true}` is said
 //! and nobody more is asked about. With no sign-in in CREDENTIALS, the
@@ -138,7 +140,8 @@ fn answer(credentials: PathBuf, origin: String) {
         } else if ahead.is_empty() {
             heard.recv().ok()
         } else {
-            match heard.recv_timeout(wait) {
+            // Slack's own wait, when it asked for one, outlasts the pace.
+            match heard.recv_timeout(asker.slack.quiet().map_or(wait, |left| left.max(wait))) {
                 Ok(line) => Some(line),
                 Err(RecvTimeoutError::Timeout) => None,
                 Err(RecvTimeoutError::Disconnected) => {
@@ -164,6 +167,14 @@ fn answer(credentials: PathBuf, origin: String) {
                 asker.step_in(&line.trim().to_lowercase())
             }
         } else {
+            if let Some(left) = asker.slack.quiet().filter(|_| !ahead.is_empty()) {
+                // With the shell gone nothing can come meanwhile, so the
+                // wait is slept out before asking the rest.
+                if ended {
+                    std::thread::sleep(left);
+                }
+                continue;
+            }
             let Some(email) = ahead.pop_front() else {
                 if ended || line_ended(&heard) {
                     break;
@@ -171,6 +182,10 @@ fn answer(credentials: PathBuf, origin: String) {
                 continue;
             };
             let said = asker.ahead(&email);
+            // Refused for Slack's limit, they're asked again once it's over.
+            if asker.slack.quiet().is_some() {
+                ahead.push_front(email);
+            }
             wait = match asker.slack.searched() {
                 0 => SETTLE,
                 searches => PACE * searches,

@@ -503,7 +503,10 @@ fn asked_to_wait_it_asks_nothing_until_then_and_drops_nobody_ahead() {
     assert!(said.contains(&GRACE_WHO.to_owned()), "{said:?}");
     let heard = stand_in.heard();
     let waited = heard[1].at.duration_since(heard[0].at);
-    assert!(waited >= Duration::from_millis(1900), "asked again after {waited:?}");
+    assert!(
+        waited >= Duration::from_millis(1900),
+        "asked again after {waited:?}"
+    );
     forget(&path);
 }
 
