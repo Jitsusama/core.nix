@@ -7,7 +7,9 @@
 // the first frame presented its line selected, in that opening; a line
 // still selected as the launcher opens again is noted from that opening's
 // first frame, so Joel's yes then says it too. A yes for a line that
-// changed says no time until a frame presents it as it is now. A yes walked
+// changed says no time until a frame presents it as it is now, and a frame
+// asked for a line left before it came counts for nothing. Release It from
+// the right arrow's verbs counts from its ask's own line. A yes walked
 // from outside the launcher is never sent, and a no goes as served. It
 // exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
@@ -75,6 +77,8 @@ ShellRoot {
 
         property bool open: false
         property var selected: null
+        // The rows stepped into, the last the one whose verbs are listed.
+        property var held: []
         property bool cataloguing: false
         property int openingsDrawn: 0
         readonly property var sources: [passwords]
@@ -139,9 +143,12 @@ ShellRoot {
             shown();
             reopened();
             left();
+            moved();
             changed();
+            stepped();
             outside();
             refused();
+            drawn();
             console.info("every case held");
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
@@ -169,6 +176,7 @@ ShellRoot {
 
     function reopened() {
         stage.open = false;
+        same("closing the launcher forgets every line's frame", asks.seen, {});
         stage.opened();
         stage.present(700);
         row().run();
@@ -186,6 +194,18 @@ ShellRoot {
             last().shown >= 100 && last().shown < 700, true);
     }
 
+    function moved() {
+        stage.selected = null;
+        stage.selected = row();
+        stage.selected = null;
+        stage.present(900);
+        stage.selected = row();
+        row().run();
+        same("a frame asked for a line left before it came counts for nothing",
+            last().shown, undefined);
+        stage.present(100);
+    }
+
     function changed() {
         link.tell("d2");
         stage.selected = row();
@@ -196,6 +216,16 @@ ShellRoot {
         row().run();
         same("and counts from the frame that does",
             last().shown >= 600 && last().shown < 700, true);
+    }
+
+    function stepped() {
+        stage.held = [{ row: row() }];
+        stage.selected = row().verbs()[0];
+        row().verbs()[0].run();
+        same("Release It from the right arrow's verbs counts from its ask's line",
+            last().shown >= 600 && last().shown < 5000, true);
+        stage.held = [];
+        stage.selected = row();
     }
 
     function outside() {
@@ -211,5 +241,15 @@ ShellRoot {
         row().verbs()[1].run();
         same("a no goes as served, saying no time", [last().ask, last().shown, last().digest],
             ["refuse", undefined, "d2"]);
+    }
+
+    // A frame drawing the selected row as it was says nothing of the ask as
+    // it's served now, before the row drawn is made again.
+    function drawn() {
+        link.tell("d3");
+        stage.present(400);
+        row().run();
+        same("a frame of the row as it was drawn times no yes for the ask as it is now",
+            [last().digest, last().shown], ["d3", undefined]);
     }
 }
