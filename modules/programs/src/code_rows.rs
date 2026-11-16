@@ -252,9 +252,7 @@ fn drawer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use repos::model::{
-        Change, Checks, ChecksState, Head, Remote, Review, SCHEMA, Tree, TreeKind,
-    };
+    use repos::model::{Change, Checks, ChecksState, Head, Remote, Review, SCHEMA, Tree, TreeKind};
 
     fn words() -> Words {
         Words::read(&json!({"things": [
