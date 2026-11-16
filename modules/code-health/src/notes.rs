@@ -29,8 +29,10 @@ const ENTRIES: &[&str] = &[
 ];
 
 /// Every folder of `paths` saying nothing of what it holds, the whole
-/// repository's as `.`.
-pub fn without_notes(paths: &[String], files: &[File]) -> Vec<String> {
+/// repository's as `.`. When `roots` names the folders the paths were read
+/// from, as `git::roots` gives them, the folders above those weren't read,
+/// so they aren't counted.
+pub fn without_notes(paths: &[String], files: &[File], roots: &[String]) -> Vec<String> {
     let texts: HashMap<&str, &str> = files
         .iter()
         .map(|file| (file.path.as_str(), file.text.as_str()))
@@ -52,9 +54,15 @@ pub fn without_notes(paths: &[String], files: &[File]) -> Vec<String> {
             .get(path)
             .is_some_and(|text| opens_with_comment(path, text))
     };
+    let above_a_root = |folder: &str| {
+        roots
+            .iter()
+            .any(|root| folder.is_empty() || root.starts_with(&format!("{folder}/")))
+    };
     folders
         .into_iter()
         .filter(|(folder, _)| !folder.split('/').any(|part| part.starts_with('.')))
+        .filter(|(folder, _)| !above_a_root(folder))
         .filter(|(folder, names)| {
             let inside = |name: &str| {
                 if folder.is_empty() {
@@ -111,7 +119,7 @@ mod tests {
 
     fn bare(files: &[File]) -> Vec<String> {
         let paths: Vec<String> = files.iter().map(|file| file.path.clone()).collect();
-        without_notes(&paths, files)
+        without_notes(&paths, files, &[])
     }
 
     #[test]
@@ -164,5 +172,23 @@ mod tests {
             file("b.rs", "\n"),
         ];
         assert_eq!(bare(&files), ["."]);
+    }
+
+    #[test]
+    fn the_folders_above_the_roots_read_are_not_counted() {
+        let files = [
+            file("areas/zone/lab/README.md", "# The lab\n"),
+            file("areas/zone/lab/tests/a.tf", "a = 1\n"),
+            file("areas/zone/lab/tests/b.tf", "b = 1\n"),
+            file("areas/zone/live/main.tf", "c = 1\n"),
+            file("areas/zone/live/more.tf", "d = 1\n"),
+        ];
+        let paths: Vec<String> = files.iter().map(|file| file.path.clone()).collect();
+        let roots = ["areas/zone/lab".to_owned(), "areas/zone/live".to_owned()];
+        assert_eq!(
+            without_notes(&paths, &files, &roots),
+            ["areas/zone/lab/tests", "areas/zone/live"],
+            "a folder above the roots was counted, or one in them was missed"
+        );
     }
 }
