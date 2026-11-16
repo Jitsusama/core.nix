@@ -2000,10 +2000,15 @@ Provider {
     // copy. Each row is kept while its carry row reads the same, among
     // For You's own (forYouKeeping), so it's asked only as that's made.
     function carriesUnderWay() {
+        // The rows first, since asking them is what tells forYou of each
+        // change: the group alone, asked before any carry came, told it
+        // nothing, so For You never showed one until something else moved
+        // (the carries' niri case, 2026-11-16).
+        const carries = top.rows("row:agents-top:carried");
         const group = top.rowAt("row:agents-top:carried");
         if (!group)
             return [];
-        return top.rows("row:agents-top:carried").map(made => ({
+        return carries.map(made => ({
             made,
             waits: CarryBack.underWay(top.served(top.madeOf[made.key]))
         })).filter(one => one.waits !== null).map(one => ({
