@@ -49,9 +49,24 @@ let
     ]
     ++ config.jitsusama.mypy.packages python
   );
+  # Only a folder's Python, so an edit to anything else in it rebuilds no
+  # mypy; a fileset takes only a path, so a folder named as a string, which
+  # the sandboxed check couldn't read, is refused as Nix reads it.
+  pythonOf =
+    folder:
+    "${lib.fileset.toSource {
+      root = folder;
+      fileset = lib.fileset.fileFilter (file: file.hasExt "py") folder;
+    }}";
   mypy = pkgs.callPackage ./mypy.nix {
     inherit python;
-    typesPath = "${driverNames}:${vmHelpers}";
+    typesPath = lib.concatStringsSep ":" (
+      [
+        "${driverNames}"
+        "${vmHelpers}"
+      ]
+      ++ map pythonOf config.jitsusama.mypy.paths
+    );
   };
 in
 {
@@ -64,6 +79,17 @@ in
     '';
   };
 
+  options.jitsusama.mypy.paths = lib.mkOption {
+    type = lib.types.listOf lib.types.path;
+    default = [ ];
+    description = ''
+      Folders of a repository's own Python modules that its scripts import
+      by name from outside their own folder, put on mypy's path. treefmt
+      hands mypy only the files that changed, so a script that changed
+      alone still finds what it imports.
+    '';
+  };
+
   config = {
     projectRootFile = "flake.nix";
 
@@ -71,9 +97,10 @@ in
     # (package.nix).
     package = pkgs.callPackage ./package.nix { };
 
-    # mypy reads every script at once, from a Python carrying the libraries
-    # they import and the test driver's types, so their types are checked
-    # too.
+    # mypy reads the scripts treefmt hands it, every one or only those that
+    # changed, from a Python carrying the libraries they import, with the
+    # test driver's types and the folders a repository names on its path,
+    # so what a script imports is checked too.
     settings.formatter.mypy = {
       command = lib.getExe mypy;
       options = [
