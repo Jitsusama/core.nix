@@ -14,10 +14,8 @@ import json
 import re
 import shlex
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
-import desktop_session
-import pytest
 from desktop_session import (
     FOLLOWED_THE_ROOM,
     LAUNCHER_OPEN,
@@ -29,18 +27,11 @@ from desktop_session import (
 
 if TYPE_CHECKING:
     from desktop_session import Desktop
-    from test_driver.machine import BaseMachine
 
 # How long a meter, a bar or a notice may take to go, once shown.
 GOING = timedelta(seconds=10)
 # How long a unit may take to say what's wanted after boot, or a picture to be painted.
 SAYING = timedelta(seconds=30)
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 def gone(desktop: Desktop, namespace: str) -> None:

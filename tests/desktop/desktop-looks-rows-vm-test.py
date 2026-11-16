@@ -17,10 +17,7 @@ import json
 from typing import TYPE_CHECKING
 
 import desktop_session
-
-# pytest finds a fixture by its name in the test's module, so the looks areas' desktop and
-# scales are brought here.
-from looks_session import NEAR, at_each_scale, at_scale, bottom_set, desktop, drawn, plate_shown  # noqa: F401
+from looks_session import NEAR, at_scale, bottom_set, plate_shown
 
 if TYPE_CHECKING:
     from desktop_session import Desktop, Json

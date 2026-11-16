@@ -20,26 +20,17 @@ opening comment says what the test proves. Every test asks for the desktop, star
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
-import desktop_session
-import pytest
 from desktop_session import STARTING
 
 if TYPE_CHECKING:
     from desktop_session import Desktop
-    from test_driver.machine import BaseMachine
 
 # The sessions' windows the test opens in the sessions' kitty, by their titles.
 TITLES = ("Session one", "Session two")
 # A window of the sessions' kitty, asked over its own socket as the shell asks.
 IN_SESSIONS = "kitten @ --to unix:$XDG_RUNTIME_DIR/pi-sessions/kitty.sock launch --type=os-window"
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 # How long the slow unit's stop takes (tests/desktop.nix).

@@ -16,10 +16,8 @@ import math
 import re
 import shlex
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
-import desktop_session
-import pytest
 from desktop_session import KEY_PACE, LAUNCHER_OPEN, NOTICES, retry
 from PIL import Image, ImageChops, ImageStat
 
@@ -27,13 +25,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 # The scales Joel's screens are drawn at, as niri spells them.

@@ -13,9 +13,8 @@ from __future__ import annotations
 import json
 import time
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
-import desktop_session
 import pytest
 from desktop_session import (
     CAP_SYS_NICE,
@@ -28,7 +27,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop
-    from test_driver.machine import BaseMachine
 
 # How long a meter, a bar or a notice may take to go, once shown.
 GOING = timedelta(seconds=10)
@@ -38,12 +36,6 @@ SAYING = timedelta(seconds=30)
 # the test says its time never ended it: 2 seconds paced at most four
 # times, with room for su to start and end.
 CUT_OFF = timedelta(seconds=60)
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 def test_the_machine_boots_without_an_ordering_cycle(desktop: Desktop) -> None:

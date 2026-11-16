@@ -27,16 +27,12 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-
-# pytest finds a fixture by its name in the test's module, so the stand-in Google's is
-# imported for Drive's test to ask for.
-from desktop_session import LAUNCHER_OPEN, google, retry  # noqa: F401
+from desktop_session import LAUNCHER_OPEN, retry
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
 
 # The scales Joel's screens are drawn at, as niri spells them.
 JOELS_SCALES = ("1.5", "2")
@@ -114,12 +110,6 @@ GOOGLE_WINDOWS = [
     ("chrome-mail.google.com__-Default", "Inbox - joel@example.com - Gmail", "Mail", "mail"),
     ("google-chrome", "Notes - Google Docs - Google Chrome", "Docs", "docs-tab"),
 ]
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 @pytest.fixture

@@ -38,10 +38,9 @@ from desktop_session import (
 from PIL import Image, ImageChops
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
 
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
 
 # How long after the last Reopen Them All begins each session, at the least.
 REOPEN_PACE_MS = 2000
@@ -64,17 +63,8 @@ IN_SESSIONS = "kitten @ --to unix:$XDG_RUNTIME_DIR/pi-sessions/kitty.sock launch
 SESSIONS_KITTY = "pi-sessions/kitty[.]sock"
 
 
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
-
-
-@pytest.fixture(autouse=True)
-def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone."""
-    yield
-    desktop.launcher_left_closed()
+# Each test closes the launcher after it, so one failing with it open fails alone.
+pytestmark = pytest.mark.usefixtures("launcher_closed_after")
 
 
 # One walk, as its subtest was: each step starts where the last left it.

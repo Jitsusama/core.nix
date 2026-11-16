@@ -19,15 +19,13 @@ import re
 import shlex
 from typing import TYPE_CHECKING, Any, cast
 
-import desktop_session
 import pytest
 from desktop_session import LAUNCHER_OPEN, ROWS_LOOKED_AT, STARTING, charged
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
 
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
 
 # Enough rows for a screen's moves to go a screen and more: the launcher shows eight at once.
 MANY_ROWS = 20
@@ -42,17 +40,8 @@ LIVES_MOST = 3000
 FOLLOWS = 3
 
 
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
-
-
-@pytest.fixture(autouse=True)
-def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone."""
-    yield
-    desktop.launcher_left_closed()
+# Each test closes the launcher after it, so one failing with it open fails alone.
+pytestmark = pytest.mark.usefixtures("launcher_closed_after")
 
 
 def placed(foot: list[Json]) -> set[tuple[str, int]]:

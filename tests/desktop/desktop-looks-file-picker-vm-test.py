@@ -17,16 +17,10 @@ from datetime import timedelta
 from functools import partial
 from typing import TYPE_CHECKING
 
-# pytest finds a fixture by its name in the test's module, so the looks areas' desktop and
-# scales are brought here.
-from looks_session import (  # noqa: F401
+from looks_session import (
     NEAR,
-    at_each_scale,
     at_scale,
     body_line,
-    chose,
-    desktop,
-    drawn,
     on_the_beat,
     on_the_pitch,
     plate_shown,

@@ -24,23 +24,15 @@ from typing import TYPE_CHECKING, Any
 
 import desktop_session
 import pytest
-
-# pytest finds a fixture by its name in the test's module, so the stand-in Google's is
-# brought here.
-from desktop_session import LAUNCHER_OPEN, NOTICES, google  # noqa: F401
-
-# pytest finds a fixture by its name in the test's module, so the looks areas' desktop and
-# scales are brought here.
-from looks_session import (  # noqa: F401
+from desktop_session import NOTICES
+from looks_session import (
     BEAT,
     NEAR,
     PITCH,
     TITLE_LEADING,
-    at_each_scale,
     at_scale,
     body_line,
     bottom_set,
-    desktop,
     on_the_beat,
     plate_shown,
     room_beside_the_card,

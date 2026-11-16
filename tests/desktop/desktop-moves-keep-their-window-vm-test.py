@@ -25,10 +25,9 @@ import json
 import shlex
 import tarfile
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import desktop_session
-import pytest
 from desktop_session import (
     PI_PRESENCE,
     SHELL_STARTS,
@@ -40,7 +39,6 @@ from PIL import Image, ImageChops
 
 if TYPE_CHECKING:
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
 
 # Where the move's frames are recorded, what the recorder says, and the frames taken out.
 RECORDING = "/run/user/1000/move.mkv"
@@ -57,12 +55,6 @@ HOLDS = "$XDG_RUNTIME_DIR/mycelium/harbour.held"
 STEP = dt.timedelta(seconds=60)
 # The words Joel types on past the window's last start, so keys typed into it are seen too.
 TYPED_PAST = 20
-
-
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
 def test_a_session_moving_into_its_host_keeps_its_window_and_every_key(

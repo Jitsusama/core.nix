@@ -12,33 +12,20 @@ own still open, so any test runs alone.
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
-import desktop_session
 import pytest
 from desktop_session import PICTURE_COLOURS, SIGNING, STARTING, retry
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from desktop_session import Desktop
-    from test_driver.machine import BaseMachine
 
 # Where lock-screen and the shell say whether the screens are locked.
 LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
 
 
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
-
-
-@pytest.fixture(autouse=True)
-def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone."""
-    yield
-    desktop.launcher_left_closed()
+# Each test closes the launcher after it, so one failing with it open fails alone.
+pytestmark = pytest.mark.usefixtures("launcher_closed_after")
 
 
 def test_the_lock_screen_takes_only_the_right_password(desktop: Desktop) -> None:

@@ -17,17 +17,12 @@ import shlex
 import time
 from typing import TYPE_CHECKING, Any, cast
 
-import desktop_session
 import pytest
-
-# pytest finds a fixture by its name in the test's module, so the stand-in Google's is
-# brought here.
 from desktop_session import (
     LAUNCHER_OPEN,
     NOTICES,
     SHELL_STARTS,
     STARTING,
-    google,  # noqa: F401
     now_rows,
     repeating,
 )
@@ -36,20 +31,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
-    from test_driver.machine import BaseMachine
 
 
-@pytest.fixture(scope="module")
-def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
-    """Give the desktop, started once a run."""
-    return desktop_session.started(machine, cast("desktop_session.Values", values))
-
-
-@pytest.fixture(autouse=True)
-def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone."""
-    yield
-    desktop.launcher_left_closed()
+# Each test closes the launcher after it, so one failing with it open fails alone.
+pytestmark = pytest.mark.usefixtures("launcher_closed_after")
 
 
 @pytest.mark.usefixtures("google")

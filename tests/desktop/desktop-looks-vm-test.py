@@ -24,14 +24,9 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
-
-# pytest finds a fixture by its name in the test's module, so the looks areas' desktop and
-# scales are brought here.
-from looks_session import (  # noqa: F401
-    at_each_scale,
+from looks_session import (
     at_scale,
     changed_from,
-    desktop,
     drawn,
     plate_shown,
     pressed,
