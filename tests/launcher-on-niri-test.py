@@ -1592,6 +1592,60 @@ def test_the_command_line_draws_no_line_chosen_until_tab_chooses_one(shell: Shel
     shell.close_launcher()
 
 
+# How many rows the launcher's room holds (Launcher.qml's tall), which a menu scrolls past.
+ROOM_ROWS = 8
+
+
+def test_the_command_lines_menu_makes_its_rows_once_and_keeps_them(shell: Shell) -> None:
+    """A second : rebinds the menu's rows rather than making them again, even a launch later.
+
+    Each row is a Choice, about 3 ms to make, so a menu remade on every : spent most of Joel's
+    48 to 72 ms on the key (his journal, 15 November) making rows it had made before.
+    """
+
+    def menu_open() -> Json:
+        shell.normal()
+        shell.send_chars(":")
+        shell.launcher_until(lambda shown: bool((shown["command"] or {}).get("menu")))
+        command: Json = shell.showing()["command"]
+        return command
+
+    def chosen(at: int) -> Callable[[Json], bool]:
+        def drawn(shown: Json) -> bool:
+            command = shown["command"] or {}
+            return bool(command.get("chosen") == at and command.get("drawnChosen") == at)
+
+        return drawn
+
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    made = menu_open()["rowsMade"]
+    assert made > 0, "the menu's rows are not counted"
+    broke = json.loads(shell.as_account(shell.ipc("contained")))
+    assert broke == [], f"the menu's words broke out of their room: {broke}"
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["command"] is None)
+    again = menu_open()
+    assert again["rowsMade"] == made, f"a second : made rows again: {made} then {again}"
+    shell.send_key("esc")
+    shell.close_launcher()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    later = menu_open()
+    assert later["rowsMade"] == made, f"a : a launch later made rows again: {made} then {later}"
+    # A menu longer than the room scrolls its kept rows to the line Tab chooses, drawn chosen.
+    shell.send_chars("set ")
+    shell.launcher_until(lambda shown: len((shown["command"] or {}).get("menu") or []) > ROOM_ROWS)
+    lines = len(shell.showing()["command"]["menu"])
+    for at in range(lines):
+        shell.send_key("tab")
+        shell.launcher_until(chosen(at))
+    broke = json.loads(shell.as_account(shell.ipc("contained")))
+    assert broke == [], f"the scrolled menu's words broke out of their room: {broke}"
+    shell.send_key("esc")
+    shell.close_launcher()
+
+
 def head_title(shell: Shell) -> tuple[int, int]:
     """Give where the head's Title starts and where the word before it, its cell's, starts."""
     field = laid_out(shell)["field"]
