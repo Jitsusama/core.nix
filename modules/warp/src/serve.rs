@@ -13,7 +13,8 @@
 //! with what's held only while it's that fresh, and otherwise with
 //! nothing until the read it sets off, so an hour-old link is never shown
 //! as now. Where the shaper's status is named, each read carries what waits
-//! on the way through the VPN as `said.waiting` (waiting.rs), read with it.
+//! on the way through the VPN as `said.waiting`, and what holds the upload
+//! to what as `said.held` (waiting.rs), read with it.
 //! A get reads afresh where what's held is older. `act` switches
 //! WARP, `connect` or `disconnect`, as `warp connect` does, and answers
 //! with what that printed.
@@ -593,6 +594,7 @@ fn read<A: Ask>(shared: &Shared<A>) {
         && record.contains_key("status")
     {
         record.insert("waiting".to_owned(), crate::waiting::heard(&shaper.status));
+        record.insert("held".to_owned(), crate::waiting::held(&shaper.status));
     }
     let link = json!({
         "key": KEY,

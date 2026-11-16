@@ -272,15 +272,27 @@ function run(failures, fromRoot) {
         slowed({ status: "Connected", reason: "NetworkDegraded" }, { waiting_ms: 120 }), null);
     machine("nor is a way down slow",
         slowed({ status: "Disconnected", reason: "NoNetwork" }, { waiting_ms: 120 }), null);
-    const shapedParts = WarpWaiting.among(linked.parts,
-        { running: true, through_ms: 103, at_rest_ms: 28 }, {}, warpSaid)
+    // What the shaper holds the upload to, and why, in its own words
+    // (modules/shaper/src/why.rs), which warp's daemon passes on as `held`.
+    const why = "the VPN waited 75 ms inside its tunnel, so its own queue is held to 87% of "
+        + "its lane; held so for 2 min";
+    const held = { kbit: 7416, why };
+    const upload = told => WarpWaiting.among([], { held: told }, {}, warpSaid)[0] ?? null;
+    machine("the upload says the rate it's held to, noted why",
+        upload(held), figure("upload", "7.42 Mb/s", why, "7.42 Mb/s"));
+    machine("an upload held to no rate is unlimited, still noted why",
+        upload({ kbit: null, why: "no queue has stood on this network yet" }),
+        figure("upload", "unlimited", "no queue has stood on this network yet", ""));
+    machine("no reason from the shaper says nothing of the upload", upload(null), null);
+    const linkSaid = { waiting: { running: true, through_ms: 103, at_rest_ms: 28 }, held };
+    const shapedParts = WarpWaiting.among(linked.parts, linkSaid, {}, warpSaid)
         .map(each => each.id);
-    machine("Waiting follows the Round Trip",
-        shapedParts.slice(shapedParts.indexOf("latency"), shapedParts.indexOf("latency") + 2),
-        ["latency", "waiting"]);
+    machine("Waiting follows the Round Trip, and Upload follows Waiting",
+        shapedParts.slice(shapedParts.indexOf("latency"), shapedParts.indexOf("latency") + 3),
+        ["latency", "waiting", "upload"]);
     machine("with no tunnel timed, Waiting comes before Through",
         WarpWaiting.among([figure("state", "connected"), figure("through", "WARP")],
-            { running: false }, {}, warpSaid).map(each => each.id),
+            { waiting: { running: false } }, {}, warpSaid).map(each => each.id),
         ["state", "waiting", "through"]);
     // The Work Network's own drawer, on its row in Network: whose link it
     // is, a lead saying how it stands and for how long, the facts that say
@@ -291,8 +303,7 @@ function run(failures, fromRoot) {
     const hour = 3_600_000;
     const stood = (status, reason, since) => ({ key: "warp:state", kind: "warp-state",
         read_at_ms: 10 * hour, since_ms: since, said: { status, reason } });
-    const shapedLink = { parts: WarpWaiting.among(linked.parts,
-        { running: true, through_ms: 103, at_rest_ms: 28 }, {}, warpSaid) };
+    const shapedLink = { parts: WarpWaiting.among(linked.parts, linkSaid, {}, warpSaid) };
     const drawerOf = (state, link = shapedLink) => WarpDrawer.drawer(
         { parts: link.parts, record: warp, stood: state, now: 13 * hour },
         { said: warpSaid, tells: vocabulary.find(thing => thing.id === "warp").tells });
@@ -304,6 +315,7 @@ function run(failures, fromRoot) {
                 { id: "state", value: "connected" },
                 { id: "latency", value: "127 ms" },
                 { id: "waiting", value: "75 ms" },
+                { id: "upload", value: "7.42 Mb/s" },
                 { id: "through", value: "WARP" }
             ],
             nerd: [

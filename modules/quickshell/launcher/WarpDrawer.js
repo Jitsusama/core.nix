@@ -12,8 +12,8 @@
 
 // The parts the drawer says, in this order, by the ids Warp.js gives
 // them: how it stands, how long a round trip takes and what waits on
-// it, and what carries it.
-const FACTS = ["state", "latency", "waiting", "through"];
+// it, what the upload is held to, and what carries it.
+const FACTS = ["state", "latency", "waiting", "upload", "through"];
 
 // The parts that are warp-cli's own words, set in the nerdy bits: how
 // it's set and who for. WARP's reason joins them from its record; its

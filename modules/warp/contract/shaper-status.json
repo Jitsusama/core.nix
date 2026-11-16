@@ -44,7 +44,8 @@
       "vpn_ms": 103.12174000000002,
       "vpn_base_ms": 27.66719,
       "up_limit": 7416,
-      "plateau": 8068.16677578061
+      "plateau": 8068.16677578061,
+      "why": "Upload 7.4 Mbit/s: the VPN waited 75 ms inside its tunnel, so its own queue is held to 87% of its lane; held so for 2 min."
     }
   }
 ]

@@ -427,6 +427,7 @@
         "through": "WARP",
         "waiting": "{through} through it \u00b7 {rest} at rest",
         "nothingWaiting": "none",
+        "unlimited": "unlimited",
         "unknown": "unknown",
         "shaperOff": "the shaper isn't running",
         "unheard": "its last question went unanswered",

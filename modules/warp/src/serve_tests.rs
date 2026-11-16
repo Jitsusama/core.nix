@@ -427,6 +427,10 @@ fn the_link_says_what_waits_through_it_as_the_shaper_heard() {
         said["waiting"],
         json!({"running": true, "through_ms": 103.121_740_000_000_02, "at_rest_ms": 27.667_19})
     );
+    assert_eq!(
+        said["held"]["kbit"], 7416,
+        "the link didn't say what holds its upload"
+    );
 }
 
 #[test]
