@@ -209,6 +209,65 @@ function behindResize(frame, began) {
         ? Math.round(HEARS + 2 * frame + began) : behind(frame, "resize");
 }
 
+// Whether it's drawn over the windows, `now` as the screen has it: while
+// Joel's hand `holds` it and as it `falls` from his hand, since it's in
+// front of whatever it was carried over, the one exception to the rule
+// above (VKCF3Z, 9ead6710); then, landed from his hand and not walked
+// since, by the ledge it `landed` on, floating or not; else as above()
+// says by its seat, `leaving` it, or a leg `aboard` a floating window.
+function inFront(now) {
+    if (now.holds || now.falls) {
+        return true;
+    }
+    if (now.landed) {
+        return now.landed.floats === true;
+    }
+    return above(now.seat, now.leaving, now.aboard);
+}
+
+// How far a press on the cat moves, in logical pixels, before it picks the
+// cat up: a shorter press stays a click, which rolls its yarn in (VKCF3Z,
+// 9ead6710). The screen's drag handler takes it as its threshold.
+const LIFTS = 4;
+
+// The cell of its scruffed drawing Joel's hand holds it by, between its
+// ears over the back of its neck, so it hangs below the pointer.
+const SCRUFF = { x: 3, y: 0 };
+
+// Where its box is as Joel's `hand` holds it, { x, y } in the screen's
+// logical pixels: its scruff cell's middle under the pointer, kept wholly
+// on a screen `across` by `height`, its art's `cell` and its `wide` and
+// `tall` as a walk takes them.
+function held(hand, at) {
+    const x = hand.x - (SCRUFF.x + 0.5) * at.cell;
+    const y = hand.y - (SCRUFF.y + 0.5) * at.cell;
+    return { x: Math.min(Math.max(x, 0), at.across - at.wide),
+        y: Math.min(Math.max(y, 0), at.height - at.tall) };
+}
+
+// The pose Joel's hand gives it, by the theme's name: scruffed while
+// it's `holding`, and falling once it's `dropping` from his hand until
+// its walk has `stepped`, the drop's first step being a fall's, so no
+// frame between shows it sitting in the air (the GPU rig, 2026-11-16);
+// null otherwise, its walk or its seat saying.
+function fromHand(holding, dropping, stepped) {
+    return holding ? "scruffed" : dropping && stepped === null ? "falling" : null;
+}
+
+// Whether a screen's cat wants every tile of the workspaces it crosses,
+// its ways being over them: while it's on its way to another column or
+// workspace, `going` (unless a scene's walk `handsBack`), `moving` or
+// `resting` before it sets off, and while it's `holding` in Joel's hand,
+// since it falls onto whichever is under where he lets go (the GPU rig,
+// 2026-11-16: knowing only its own, it fell past a lower top to the
+// floor). At rest, and on a scene's wander, which stays over its own
+// window, only the tile under it is, so the shut shell hears no other
+// (2026-11-12: watching every tile made it hear each of 20 resizes).
+function travels(cat) {
+    return (!!cat.going && !cat.handsBack) || !!cat.moving || !!cat.resting
+        || !!cat.holding;
+}
+
 // A drawing given a quarter turn, clockwise for `turn` 1 and back for -1,
 // cell for cell, so a climbing cat stays as sharp as a walking one.
 function quartered(drawing, turn) {

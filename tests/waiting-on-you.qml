@@ -30,7 +30,7 @@ QtObject {
             updated: "2026-10-26T20:26:12.665Z",
             quest: "QEST-20260924-19AMVE",
             items: [{ id: "publish-pp-1802", title: "Publish profiles-processor#1802",
-                when: "now", minutes: 2, ready: true, window: "π - Aquifer - karst" }]
+                when: "now", minutes: 2, ready: true, window: "π - Cistern - karst" }]
         },
         "/state/mission/waiting/2HN63P.json": {
             updated: "2026-10-26T14:20:00Z",
@@ -59,8 +59,8 @@ QtObject {
             updated: "2026-10-30T19:40:00Z",
             quest: "QEST-20261030-WJATIN",
             items: [
-                { id: "deploy-v3", quest: "QEST-20261030-WJATIN",
-                    title: "Send the Deploy v3 Update", why: "It goes out in his name.",
+                { id: "dispatch", quest: "QEST-20261030-WJATIN",
+                    title: "Send the Dispatch Update", why: "It goes out in his name.",
                     minutes: 3, doneWhen: { by: "person" }, ready: true,
                     owner: { session: "s1", address: "WJATIN" },
                     raisedAt: "2026-10-30T19:30:00Z", steps: ["Read it", "Send it"] },
@@ -79,7 +79,7 @@ QtObject {
     })
 
     readonly property var active: ({
-        "QEST-20260924-19AMVE": { status: "active", title: "Aquifer" },
+        "QEST-20260924-19AMVE": { status: "active", title: "Cistern" },
         "QEST-20261011-2HN63P": { status: "active", title: "Guests" },
         "QEST-20261025-M4RL61": { status: "active", title: "Hardware" },
         "QEST-20261025-QGB4ON": { status: "active", title: "Calls" },
@@ -122,7 +122,7 @@ QtObject {
         // them.
         const today = Waiting.sorted(served(files), active, unsaid, unfound);
         expect("now is what Joel can do now, timed first, then quickest", ids(today.now),
-            ["call", "publish-pp-1802", "deploy-v3"]);
+            ["call", "publish-pp-1802", "dispatch"]);
         expect("later is what he can't yet, quickest first", ids(today.later),
             ["keys", "guest-mics", "suspend-sitting", "reboot-sitting", "tuple-pointer"]);
         expect("a when of now is ready where no ready is given",
@@ -157,7 +157,7 @@ QtObject {
             { items: found.items });
         const verdicted = Waiting.sorted(served(files), active, unsaid, found);
         expect("one found done is gone, one found ready is for now", ids(verdicted.now),
-            ["publish-pp-1802", "deploy-v3", "keys"]);
+            ["publish-pp-1802", "dispatch", "keys"]);
         expect("and says what found it", verdicted.now[2].verdict.how, { signal: "device:dock" });
 
         // When the node heard a record is said by nothing here, so it's
@@ -196,8 +196,8 @@ QtObject {
         expect("a check watches it", Waiting.watched(item("keys"), {}), true);
         expect("a signal does", Waiting.watched(item("call"), {}), true);
         expect("only Joel's word, with its session gone, nobody does",
-            Waiting.watched(item("deploy-v3"), {}), false);
-        expect("its session live does", Waiting.watched(item("deploy-v3"), { WJATIN: true }),
+            Waiting.watched(item("dispatch"), {}), false);
+        expect("its session live does", Waiting.watched(item("dispatch"), { WJATIN: true }),
             true);
         expect("an older file's by its file's address",
             Waiting.watched(item("publish-pp-1802"), { "19AMVE": true }), true);
@@ -211,7 +211,7 @@ QtObject {
         expect("a retired one's too",
             ids(Waiting.sorted(served(files), with_(active,
                 { "QEST-20260924-19AMVE": { status: "retired" } }), unsaid, unfound).now),
-            ["call", "deploy-v3"]);
+            ["call", "dispatch"]);
         expect("and one gone from the index",
             ids(Waiting.sorted(served(files), with_(active,
                 { "QEST-20261011-2HN63P": null }), unsaid, unfound).later),
@@ -246,25 +246,25 @@ QtObject {
             { "QEST-20260924-19AMVE:publish-pp-1802": at });
         expect("one done is gone",
             ids(Waiting.sorted(served(files), active, finished, unfound).now),
-            ["call", "deploy-v3"]);
+            ["call", "dispatch"]);
         expect("and stays gone when its file is said again",
             ids(Waiting.sorted(served(with_(files, { "/state/mission/waiting/19AMVE.json":
                 with_(files["/state/mission/waiting/19AMVE.json"],
                     { updated: "2026-10-26T21:00:00Z" }) })), active, finished, unfound).now),
-            ["call", "deploy-v3"]);
+            ["call", "dispatch"]);
         const deploy = today.now[2];
         const putOff = Waiting.settle(finished, deploy, "notNow", at);
         expect("what's done before stays done", Object.keys(putOff.done).length, 1);
         const off = Waiting.sorted(served(files), active, putOff, unfound);
         expect("one put off leaves now", ids(off.now), ["call"]);
-        expect("for Later, in its turn", ids(off.later).slice(0, 2), ["deploy-v3", "keys"]);
+        expect("for Later, in its turn", ids(off.later).slice(0, 2), ["dispatch", "keys"]);
         expect("saying it was put off", off.later[0].putOff, true);
         const wjatin = "/state/mission/waiting/WJATIN.json";
         const resaid = with_(files, { [wjatin]: with_(files[wjatin], { items: [
             with_(files[wjatin].items[0], { steps: ["Read it", "Fix it", "Send it"] })
         ] }) });
         expect("and comes back when its owner says something new of it",
-            ids(Waiting.sorted(served(resaid), active, putOff, unfound).now), ["deploy-v3"]);
+            ids(Waiting.sorted(served(resaid), active, putOff, unfound).now), ["dispatch"]);
         expect("nothing served is nothing waiting",
             Waiting.sorted(Waiting.served(null), active, null, null).now.length, 0);
 

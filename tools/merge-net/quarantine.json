@@ -349,5 +349,30 @@
       "test_quickshell_warned_of_nothing_as_the_screens_came_and_went"
     ],
     "test": "vm-screens-keep-the-launcher"
+  },
+  {
+    "at": 1794852163,
+    "commit": "ac023ad18b90c76c292a7d0cb43627a191db1a44",
+    "due": "2026-11-17",
+    "due_why": "Its owner makes the turn land before Return's mark is taken, or waits for it to, and takes it off, by 2026-11-17 23:00 UTC",
+    "owner_pr": 5011,
+    "owner_session": "Y2YBTS",
+    "reason": "failed #5025's replay onto 80f33ec0 on a builder running 15 builds, a turn 0.36 s before Return drawn as its act, with #5025 not touching For You; passed about 30 runs since 08:23 and on #5025's own base in the same rerun",
+    "subtests": [
+      "test_a_session_turning_beside_return_into_for_you_draws_nothing"
+    ],
+    "test": "an-agents-return-does-its-harmless-act-on-niri"
+  },
+  {
+    "at": 1794854023,
+    "commit": "aeac109e3fb236c6bf47ad7f580969d3e547c5e3",
+    "due": "2026-11-18",
+    "owner_pr": 4952,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at aeac109e3fb2",
+    "subtests": [
+      "test_a_session_its_host_releases_carries_on_as_plain_pi_in_its_window"
+    ],
+    "test": "vm-desktop-moves-keep-their-window"
   }
 ]

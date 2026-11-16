@@ -33,6 +33,7 @@ fn each_subcommand_answers_its_own_help_before_it_reads_a_word() {
         (&["watch", "--help"], "merge-net watch", "--follow"),
         (&["status", "--help"], "merge-net status", "status"),
         (&["run-again", "--help"], "merge-net run-again", "COMMIT"),
+        (&["ride", "--help"], "merge-net ride", "train"),
     ] {
         let output = ran(asked);
         let help = said(&output.stdout);
@@ -89,6 +90,7 @@ fn a_subcommand_short_of_its_word_or_given_one_too_many_is_refused() {
         &["run-again"],
         &["watch", "--from"],
         &["status", "now"],
+        &["ride", "now"],
     ] {
         let output = ran(asked);
         assert_eq!(

@@ -171,6 +171,13 @@ constrain".
   so little on it. What carries to other surfaces is that restraint, an
   accent left where the keys go and colour left on glyphs, never its
   layout, its marks or its single column.
+- **The garden of his sites.** Of the Your Sites home, redrawn as a walled
+  garden at dusk: "I love this page!" (2026-11-16). One centred axis under
+  a drawn seedling, a serif title with an italic turn, beds of sites by
+  kind parted by hairlines, the chosen row a sprig and gold ink rather than
+  a fill, and one metaphor carried through every mark. What carries is the
+  whimsy held to one idea and drawn thin, and selection said by ink, never
+  a box. The web-design skill's rulings say it in full.
 
 ## What He's Turned Down
 
@@ -229,8 +236,8 @@ constrain".
   there and what it asks of him; sources, identifiers and numbered rules
   stay one step away, in a record for agents. docs/design.md's Written for
   Joel says how.
-- **Sites for him on a shared host.** "we need to not creeeeeate quick sites
-  for stuff like luancher shapes ... we can run them locally though as just
+- **Sites for him on a shared host.** "we need to not creeeeeate [shared]
+  sites for stuff like luancher shapes ... we can run them locally though as just
   standard sites, that is awesome" (2026-11-11). A mock, a tour, a record or
   anything else just for him lives on his machine under one local home, as
   the web-design skill's Where a Site Lives says; a shared host is only for

@@ -66,7 +66,9 @@ answers: every later choice is judged against them.
    pictures: a proposal or an essay starts from `proposal.md`, a guided
    walk from `tour.md`, a site of several pages with a live proof from
    `site-of-pages.md`, an interface or anything worked in all day from
-   `tracker.md`. Where another skill layers the real sites' studies over
+   `tracker.md`, and a home, an index or a list of places from the
+   Your Sites home itself (`modules/local-sites/home/`, in `rulings.md`'s
+   What He's Loved). Where another skill layers the real sites' studies over
    these, read those too. Read `what-went-wrong.md` once, so you know the
    page you must not build.
 2. **Choose the world's materials**, from `language.md`: the tint and the

@@ -253,5 +253,21 @@ animals."
   it eyes it"
 - Held by `margin-cat-games.qml`: "the cat's eyes follow it, it walks up to it and bats it on"
 - Held by `margin-cat-games.qml`: "the cat never on the yarn"
+- Held by `margin-cat-pets.qml`: "held by the scruff, it hangs under the pointer, wholly on the
+  screen"
+- Held by `margin-cat-pets.qml`: "its scruffed drawing hangs whole, as wide as it sits"
+- Held by `margin-cat-pets.qml`: "over the windows held and falling, then by its landing, then
+  its seat"
+- Held by `margin-cat-games.qml`: "let go over a window, it falls onto its top, lands and flicks
+  an ear"
+- Held by `margin-cat-games.qml`: "falling the whole way, straight down and never up"
+- Held by `margin-cat-games.qml`: "over a window's face, onto the next window's top, never up
+  onto its own"
+- Held by `margin-cat-games.qml`: "two pixels under a top, it scrambles up nothing and falls to
+  the floor"
+- Held by `margin-cat-games.qml`: "over a floating window, onto its top"
+- Held by `margin-cat-games.qml`: "let go on a top, it only lands and flicks an ear"
+- Held by `margin-cat-games.qml`: "a long fall moves every frame, as far each as the fastest
+  fall goes"
 
 [design]: ../../docs/design.md

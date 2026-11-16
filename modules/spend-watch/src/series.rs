@@ -1100,7 +1100,7 @@ mod tests {
         budgeted(&history, "me", H + 2, "anthropic", Some(""), 10.0);
         budgeted(&history, "r1", H + 1, "anthropic", None, 4.0);
         budgeted(&history, "r1", H + 2, "anthropic", None, 2.0);
-        budgeted(&history, "r2", H + 1, "anthropic", Some("aquifer"), 1.0);
+        budgeted(&history, "r2", H + 1, "anthropic", Some("cistern"), 1.0);
         run(&history, "council", "me", H, 9.0, &["r1", "r2"]);
         let pieces = Inputs::read(&history, &declared(), H, H + 3)
             .unwrap()
@@ -1111,7 +1111,7 @@ mod tests {
         };
         // The run's $9 less its logs' $7 stands at its start, as delta's.
         assert_eq!(at(H), [("delta".into(), 12.0)]);
-        assert_eq!(at(H + 1), [("aquifer".into(), 1.0), ("delta".into(), 4.0)]);
+        assert_eq!(at(H + 1), [("cistern".into(), 1.0), ("delta".into(), 4.0)]);
         assert_eq!(at(H + 2), [("proxy".into(), 12.0)]);
     }
 

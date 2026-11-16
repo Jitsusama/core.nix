@@ -119,14 +119,17 @@ function grabbed(place, cols, at) {
 
 // What it lands on falling from `place`: the nearest ledge of `cols`
 // below it, a column's top or the gap between two of its windows, or
-// the screen's bottom; or one a little above it, which it scrambles up
-// onto.
-function under(place, cols, at) {
+// the screen's bottom; or one a little above it, `scrambles` cells at most
+// (SCRAMBLES unsaid), which it scrambles up onto. Let go of by Joel's
+// hand it scrambles up nothing, since nothing let go rises (VKCF3Z,
+// 9ead6710).
+function under(place, cols, at, scrambles) {
+    const up = (scrambles ?? SCRAMBLES) * at.cell;
     let found = { kind: "floor", c: -1, x: place.x, y: Routes.floor(at), row: 0, how: "falls" };
     for (const [c, column] of cols.entries()) {
         if (place.x < column.right && place.x + at.wide > column.left) {
             for (const ledge of Routes.ledges(column, at)) {
-                if (ledge.y >= place.y - SCRAMBLES * at.cell && ledge.y < found.y) {
+                if (ledge.y >= place.y - up && ledge.y < found.y) {
                     found = { kind: "ledge", c, x: place.x, y: ledge.y, row: ledge.row,
                         how: "falls" };
                 }

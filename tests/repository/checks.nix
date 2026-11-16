@@ -145,6 +145,11 @@
         "omni-refs-4tw"
         "developer & ai"
         "#inv-"
+        "aquifer"
+        "acceluary"
+        "deploy v3"
+        "burke libbey"
+        "bruckmayer"
       ];
     in
     pkgs.runCommandLocal "stands-alone" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''

@@ -10,6 +10,7 @@
 // Imported as Games.
 .pragma library
 .import "MarginCat.js" as MarginCat
+.import "MarginCatFalls.js" as Falls
 .import "MarginCatWays.js" as Ways
 
 // How long each of its beats lasts, in ms at the theme's pace: the yarn
@@ -280,6 +281,36 @@ function chase(at, yarn, side, chance) {
     }
     return played("chase", way, toward, {
         within: yarn.within ?? within, tracks, rests: { x: restsAt, facing: restsFacing }
+    });
+}
+
+// Let go of by Joel's hand at `at.seat`, `at` as play() takes it with its
+// `air` under it (Joel, 2026-11-12: "i want to be able to also use my
+// mouse to engage with my animals."): on the instant, it twists from its
+// held drawing into the falling one and falls, as a leap's last third
+// does, straight down to the nearest edge under it of `cols` (columns())
+// or of the `floats` (MarginCatFloats.js's of()), a window's top or the
+// gap between two, or to the screen's bottom, never rising to one; then
+// lands, flicks an ear, and sits where it landed, for the keys to walk it
+// on from (VKCF3Z, 9ead6710). Over a window's face, that's the next
+// window's top or the floor. `landsOn` says what it landed on, a column's
+// window or a floating one, `floats` or not, with its window's `id`, or
+// null for the floor.
+function drop(at, cols, floats) {
+    const ledges = (cols ?? []).concat((floats ?? []).map(one => ({
+        left: one.left, right: one.right, top: one.top, bottom: one.bottom,
+        rows: [{ top: one.top, bottom: one.bottom, id: one.id }], floats: true
+    })));
+    const lands = Falls.under(at.seat, ledges, at, 0);
+    const way = Ways.begun(Object.assign({}, at, { facing: 0 }), at.seat);
+    if (lands.y > at.seat.y + 1e-6) {
+        Ways.falls(way, { x: at.seat.x, y: lands.y });
+    }
+    Ways.holds(way, "lands", MarginCat.LANDS);
+    Ways.holds(way, "looks", LOOKS);
+    return Object.assign(played("drop", way, 0), {
+        landsOn: lands.c < 0 ? null : { floats: ledges[lands.c].floats === true,
+            id: ledges[lands.c].rows[lands.row]?.id ?? null }
     });
 }
 

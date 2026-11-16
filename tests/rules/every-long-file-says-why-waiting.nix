@@ -11,7 +11,6 @@
   "modules/disk-guard/tests/guard/daemon.rs"
   "modules/git-engine/src/odb.rs"
   "modules/git-engine/src/status.rs"
-  "modules/google/tests/stand_in.rs"
   "modules/hibernate/unlock/src/main.rs"
   "modules/litra/litra.rs"
   "modules/machine/src/main.rs"

@@ -1,0 +1,334 @@
+{
+  "domain": "node",
+  "kinds": {
+    "machine": [
+      {
+        "key": "machine:kestrel",
+        "name": "kestrel",
+        "state": "ready",
+        "model_name": "Workstation",
+        "os": "NixOS 26.05",
+        "system": "linux",
+        "cpu": { "cores": 16, "model": "A processor" },
+        "memory": 68719476736,
+        "disk": 2000000000000,
+        "disk_free": 900000000000,
+        "disk_band": "roomy",
+        "power": { "on_battery": false, "charge": 90 },
+        "room": {
+          "memory_available": 40000000000,
+          "pressure": { "cpu": 12.5, "memory": 0, "io": 0 },
+          "over": []
+        },
+        "declared": { "reach": ["internet", "home"], "leaves_at": null },
+        "measured_at": "2026-11-16T12:00:00Z"
+      },
+      {
+        "key": "machine:osprey",
+        "name": "osprey",
+        "state": "ready",
+        "model_name": "Laptop",
+        "os": "macOS 26.6",
+        "system": "macos",
+        "cpu": { "cores": 12, "model": "Another processor" },
+        "memory": 51539607552,
+        "disk": 1000000000000,
+        "disk_free": 180000000000,
+        "disk_band": "filling",
+        "power": { "on_battery": true, "charge": 64 },
+        "room": {
+          "memory_available": 30000000000,
+          "pressure": { "cpu": 81, "memory": 0, "io": 0 },
+          "over": ["cpu"]
+        },
+        "declared": { "reach": ["internet"], "leaves_at": null },
+        "measured_at": "2026-11-16T12:00:00Z"
+      }
+    ],
+    "network": [
+      {
+        "key": "network:machines",
+        "name": "machines",
+        "shape": "machines",
+        "short": "machines",
+        "title": "the realm's machines",
+        "within": null,
+        "glyph": null,
+        "machines": ["kestrel", "osprey"],
+        "cells": ["kestrel", "osprey"],
+        "counts": { "dormant": 1, "moving": 3, "needs-you": 1, "quiet": 3, "stuck": 1 }
+      },
+      {
+        "key": "network:orchestration.skiff1",
+        "name": "orchestration.skiff1",
+        "shape": "orchestration",
+        "short": "skiff",
+        "title": "Rig the Skiff for the Season",
+        "within": null,
+        "glyph": "square",
+        "machines": ["kestrel", "osprey"],
+        "cells": ["SKIFF1", "TERN01", "TERN02", "GULL01"],
+        "counts": { "dormant": 0, "moving": 2, "needs-you": 1, "quiet": 1, "stuck": 0 }
+      },
+      {
+        "key": "network:orchestration.tern01",
+        "name": "orchestration.tern01",
+        "shape": "orchestration",
+        "short": "sails",
+        "title": "Mend the Sails",
+        "within": "orchestration.skiff1",
+        "glyph": "circle",
+        "machines": ["kestrel"],
+        "cells": ["TERN01", "TERN03"],
+        "counts": { "dormant": 0, "moving": 1, "needs-you": 0, "quiet": 1, "stuck": 0 }
+      },
+      {
+        "key": "network:orchestration.heron1",
+        "name": "orchestration.heron1",
+        "shape": "orchestration",
+        "short": "harbour",
+        "title": "Chart the Harbour",
+        "within": null,
+        "glyph": "triangle",
+        "machines": ["osprey"],
+        "cells": ["HERON1", "HERON2"],
+        "counts": { "dormant": 1, "moving": 0, "needs-you": 0, "quiet": 0, "stuck": 1 }
+      },
+      {
+        "key": "network:repo.harbour",
+        "name": "repo.harbour",
+        "shape": "repository",
+        "short": "harbour",
+        "title": null,
+        "within": null,
+        "glyph": null,
+        "machines": ["kestrel", "osprey"],
+        "cells": ["SKIFF1", "TERN02", "HERON1"],
+        "counts": { "dormant": 0, "moving": 2, "needs-you": 0, "quiet": 0, "stuck": 1 }
+      },
+      {
+        "key": "network:quest.skiff1.tern02",
+        "name": "quest.skiff1.tern02",
+        "shape": "project",
+        "short": "tern02",
+        "title": "Mend the Sails",
+        "within": null,
+        "glyph": null,
+        "machines": ["kestrel"],
+        "cells": ["TERN02", "GULL01"],
+        "counts": { "dormant": 0, "moving": 1, "needs-you": 1, "quiet": 0, "stuck": 0 }
+      },
+      {
+        "key": "network:outside.calls",
+        "name": "outside.calls",
+        "shape": "outside",
+        "short": "calls",
+        "title": "Calls",
+        "within": null,
+        "glyph": null,
+        "machines": ["kestrel"],
+        "cells": ["calls@kestrel"],
+        "counts": { "dormant": 0, "moving": 0, "needs-you": 0, "quiet": 0, "stuck": 0 }
+      }
+    ],
+    "cell": [
+      {
+        "key": "cell:SKIFF1",
+        "id": "01a1a877-0000-7000-8000-000000000001",
+        "name": "SKIFF1",
+        "type": "session",
+        "machine": "kestrel",
+        "quest": "QEST-20261101-SKIFF1",
+        "repo": "harbour",
+        "cwd": "/home/tester/src/harbour",
+        "since": "2026-11-16T09:00:00Z",
+        "title": "Rig the Skiff for the Season",
+        "window": "π - Rig The Skiff - harbour",
+        "standing": "moving",
+        "doing": "Run the harbour's checks",
+        "asks": null,
+        "plan": null,
+        "leads": ["orchestration.skiff1"],
+        "networks": ["orchestration.skiff1", "repo.harbour"],
+        "usage": {
+          "cost_today": 3.5,
+          "context": { "limit": 1000000, "used": 120000 },
+          "turns_today": 40,
+          "last_turn": "2026-11-16T11:59:00Z"
+        }
+      },
+      {
+        "key": "cell:TERN01",
+        "id": "01a1a877-0000-7000-8000-000000000002",
+        "name": "TERN01",
+        "type": "session",
+        "machine": "kestrel",
+        "quest": "QEST-20261102-TERN01",
+        "repo": "harbour",
+        "cwd": "/home/tester/src/harbour",
+        "since": "2026-11-16T09:10:00Z",
+        "title": "Mend the Sails",
+        "window": "π - Mend The Sails - harbour",
+        "standing": "moving",
+        "doing": "Stitch the jib",
+        "asks": null,
+        "plan": null,
+        "leads": ["orchestration.tern01"],
+        "networks": ["orchestration.skiff1", "orchestration.tern01"],
+        "usage": {
+          "cost_today": 1.25,
+          "context": { "limit": 1000000, "used": 80000 },
+          "turns_today": 12,
+          "last_turn": "2026-11-16T11:58:00Z"
+        }
+      },
+      {
+        "key": "cell:TERN02",
+        "id": "01a1a877-0000-7000-8000-000000000003",
+        "name": "TERN02",
+        "type": "session",
+        "machine": "kestrel",
+        "quest": "QEST-20261103-TERN02",
+        "repo": "harbour",
+        "cwd": "/home/tester/src/harbour",
+        "since": "2026-11-16T09:20:00Z",
+        "title": "Mend the Sails",
+        "window": "π - Mend The Sails - harbour",
+        "standing": "needs-you",
+        "doing": "Ask which thread to use",
+        "asks": "Which thread: the waxed or the plain?",
+        "plan": null,
+        "leads": [],
+        "networks": ["orchestration.skiff1", "repo.harbour", "quest.skiff1.tern02"],
+        "usage": {
+          "cost_today": 0.75,
+          "context": { "limit": 1000000, "used": 40000 },
+          "turns_today": 6,
+          "last_turn": "2026-11-16T11:50:00Z"
+        }
+      },
+      {
+        "key": "cell:TERN03",
+        "id": "01a1a877-0000-7000-8000-000000000004",
+        "name": "TERN03",
+        "type": "session",
+        "machine": "kestrel",
+        "quest": "QEST-20261104-TERN03",
+        "repo": null,
+        "cwd": "/home/tester",
+        "since": "2026-11-16T09:30:00Z",
+        "title": "Count the Cleats",
+        "window": null,
+        "standing": "quiet",
+        "doing": null,
+        "asks": null,
+        "plan": null,
+        "leads": [],
+        "networks": ["orchestration.tern01"],
+        "usage": {
+          "cost_today": 0.1,
+          "context": { "limit": 1000000, "used": 10000 },
+          "turns_today": 2,
+          "last_turn": "2026-11-16T10:00:00Z"
+        }
+      },
+      {
+        "key": "cell:GULL01",
+        "id": "01a1a877-0000-7000-8000-000000000005",
+        "name": "GULL01",
+        "type": "session",
+        "machine": "osprey",
+        "quest": "QEST-20261105-GULL01",
+        "repo": null,
+        "cwd": "/Users/tester",
+        "since": "2026-11-16T09:40:00Z",
+        "title": "Paint the Hull",
+        "window": "π - Paint The Hull - tester",
+        "standing": "quiet",
+        "doing": null,
+        "asks": null,
+        "plan": null,
+        "leads": [],
+        "networks": ["orchestration.skiff1", "quest.skiff1.tern02"],
+        "usage": {
+          "cost_today": 0.5,
+          "context": { "limit": 1000000, "used": 30000 },
+          "turns_today": 4,
+          "last_turn": "2026-11-16T11:00:00Z"
+        }
+      },
+      {
+        "key": "cell:HERON1",
+        "id": "01a1a877-0000-7000-8000-000000000006",
+        "name": "HERON1",
+        "type": "session",
+        "machine": "osprey",
+        "quest": "QEST-20261106-HERON1",
+        "repo": "harbour",
+        "cwd": "/Users/tester/src/harbour",
+        "since": "2026-11-16T08:00:00Z",
+        "title": "Chart the Harbour",
+        "window": "π - Chart The Harbour - harbour",
+        "standing": "stuck",
+        "doing": "Wait on the tide tables",
+        "asks": null,
+        "plan": null,
+        "leads": ["orchestration.heron1"],
+        "networks": ["orchestration.heron1", "repo.harbour"],
+        "usage": {
+          "cost_today": 2,
+          "context": { "limit": 1000000, "used": 500000 },
+          "turns_today": 30,
+          "last_turn": "2026-11-16T11:30:00Z"
+        }
+      },
+      {
+        "key": "cell:HERON2",
+        "id": "01a1a877-0000-7000-8000-000000000007",
+        "name": "HERON2",
+        "type": "session",
+        "machine": "osprey",
+        "quest": "QEST-20261107-HERON2",
+        "repo": null,
+        "cwd": "/Users/tester",
+        "since": "2026-11-15T08:00:00Z",
+        "title": "Sound the Channel",
+        "window": null,
+        "standing": "dormant",
+        "doing": null,
+        "asks": null,
+        "plan": null,
+        "leads": [],
+        "networks": ["orchestration.heron1"],
+        "usage": { "cost_today": 0, "context": null, "turns_today": 0, "last_turn": null }
+      },
+      {
+        "key": "cell:calls@kestrel",
+        "name": "calls@kestrel",
+        "type": "receptor",
+        "machine": "kestrel",
+        "since": "2026-11-16T08:00:00Z",
+        "title": "Calls",
+        "state": "quiet",
+        "counts": { "addressed": 0, "hour": 0, "today": 0 },
+        "networks": ["outside.calls"]
+      }
+    ],
+    "message": [
+      {
+        "key": "message:1",
+        "at": "2026-11-16T11:58:00Z",
+        "from": "TERN01",
+        "intent": "finding",
+        "groups": ["peer.skiff1"]
+      },
+      {
+        "key": "message:2",
+        "at": "2026-11-16T11:59:00Z",
+        "from": "TERN02",
+        "intent": "question",
+        "groups": ["orchestration.skiff1"]
+      }
+    ]
+  }
+}
