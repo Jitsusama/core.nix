@@ -17,6 +17,7 @@ use jiff::tz::TimeZone;
 use crate::agents;
 use crate::busy;
 use crate::day::{Day, Kind};
+use crate::defunct;
 use crate::disk;
 use crate::feel;
 use crate::figures;
@@ -218,7 +219,8 @@ impl Follower {
         }
     }
 
-    /// Keep what each watched program's copies hold now, at `at`.
+    /// Keep what each watched program's copies hold now, at `at`, and the
+    /// parent of the most defunct children.
     pub fn mind(&mut self, at: i64) {
         if self.proc.is_none() && !self.asks_ps {
             return;
@@ -240,6 +242,11 @@ impl Follower {
                 .or_default()
                 .saw(at, &copies);
         }
+        let worst = self
+            .proc
+            .as_deref()
+            .map_or_else(defunct::asked, defunct::look);
+        self.day.defunct.saw(at, worst.as_ref());
         self.changed = true;
     }
 

@@ -55,7 +55,7 @@ pub fn side(name: &str) -> Side {
 /// seconds, each kind's errors, his crashes and ours, the minutes lost in the day's worst
 /// moments, in all and by place, with the turns he stopped and the agents
 /// he corrected in them, the most each watched program held, the agents
-/// that died, and the asks for a secret: shown, said yes to unread, asked
+/// that died, the most defunct children under one parent, and the asks for a secret: shown, said yes to unread, asked
 /// again, avoidable; and the most any disk was in use, and each by its
 /// mount, when a guard said any; each part of
 /// the launcher's median, p99, slowest and share past its bar, the same of
@@ -103,6 +103,10 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
         );
     }
     figures.insert("agents.died".to_owned(), day.agents.died.len() as f64);
+    figures.insert(
+        "defunct.most-under-one-parent".to_owned(),
+        day.defunct.most as f64,
+    );
     let asks = &day.asks;
     figures.insert("asks.shown".to_owned(), asks.shown as f64);
     figures.insert("asks.unread-yeses".to_owned(), asks.unread_yeses as f64);
