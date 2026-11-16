@@ -437,9 +437,13 @@ function moves(from, to, at) {
 // shows is still its hold, or until it takes a step. One told of its
 // slide later than its hold lasts, on a screen drawing slowly, is still
 // where it began, and cut short there it would walk without ever having
-// moved (Y2YBTS, 2026-11-14, a0cd2ad5).
+// moved (Y2YBTS, 2026-11-14, a0cd2ad5). One walked down as one screen
+// (MarginCatStacked.js) finds it again till it drops into sight, since
+// what's unseen of it is never drawn, so cut short it would set off from
+// above the screen.
 function replans(route, t, stepped) {
-    return !stepped || t + (route.ahead ?? 0) < route.beats[0].ends;
+    const ahead = t + (route.ahead ?? 0);
+    return !stepped || ahead < route.beats[0].ends || ahead < (route.drops ?? 0);
 }
 
 // A move `route` planned again `t` ms into its hold, its seat just said:
@@ -458,7 +462,23 @@ function holdsOn(route, t) {
 }
 
 // Where a way has it `t` ms in (MarginCatWays.js's frame), and a move as
-// far ahead as it was told of late.
+// far ahead as it was told of late; one walked as one screen
+// (MarginCatStacked.js) where niri's slide has the ground it's on.
 function frame(route, t) {
-    return Ways.frame(route, t + (route.ahead ?? 0));
+    const at = Ways.frame(route, t + (route.ahead ?? 0));
+    const off = view(route, t);
+    return off === 0 ? at : Object.assign(at, { y: at.y + off });
+}
+
+// How far down the screen niri's slide still has a move's ground `t` ms
+// in, in pixels, where it's walked as one screen: the workspace it left
+// as far as the slide hasn't taken it, and so the one it goes to, which
+// its way is laid over. None once the slide's done, or for any other way.
+function view(route, t) {
+    const stacked = route.stacked;
+    if (!stacked) {
+        return 0;
+    }
+    const slid = MarginCat.slid(t + (route.ahead ?? 0), stacked.spring);
+    return slid >= 1 - stacked.spring.epsilon ? 0 : stacked.lift * (1 - slid);
 }

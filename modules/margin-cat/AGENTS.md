@@ -12,6 +12,7 @@ layout for it. The scripts work out everything it does, so the Qt cases in
 | `MarginCat.js`       | how lively it is, its plays, niri's spring, its drawings |
 | `MarginCatPaths.js`  | its way to a seat: a walk, or a move between workspaces  |
 | `MarginCatRoutes.js` | the stops a way goes by: tops, sides, gaps and the floor |
+| `MarginCatStacked.js` | a move down a workspace walked as one screen             |
 | `MarginCatWays.js`   | a way's legs as beats in time, and where it is at a time |
 | `MarginCatFalls.js`  | what it does as the window under it moves or goes        |
 | `MarginCatFloats.js` | floating windows' tops as stops                          |
@@ -75,8 +76,18 @@ walk to the right, climb down the right side, drop down and grab with its
 claws on the top of the window below, climb up, and then walk over."
 
 - Held by `margin-cat.qml`: "down a workspace to a window under another, never gliding"
-- Owed since 2026-11-14: one path through the workspaces stacked as one screen, down and up,
-  arriving where that path crosses the screen's edge.
+- Held by `margin-cat-one-screen.qml`: "the drop ends in a grab at a top's corner in its reach"
+- Held by `margin-cat-one-screen.qml`: "with no corner in its reach, the drop lands on the top
+  under it, never the floor"
+- Held by `margin-cat-one-screen.qml`: "it comes in at the top over the gap, mid-drop"
+- Held by `margin-cat-one-screen.qml`: "it comes in at the bottom beside a side, mid-leap"
+- Held by `margin-cat-one-screen.qml`: "the leap up ends hanging on a side's foot, never its
+  underside"
+- Held by `margin-cat-one-screen.qml`: "up from a top under the crack above, it leaps from there
+  straight up it"
+- Held by `margin-cat-one-screen.qml`: "up with no side over any top, it comes in at the nearest
+  side's foot, unmoved"
+- Held by `margin-cat-one-screen.qml`: "told late, never ahead of niri's slide into its window"
 
 ### Climb, Path and Leap About the Windows
 
@@ -113,7 +124,7 @@ are held to an insanely high quality"
 Joel, 2026-11-13 17:22: "Going up the side of a window should be at the same
 speed roughly as walking on top, it seems accelerated in the video"
 
-- Held by `margin-cat-journeys.qml`: "} climbs at ${Math.round("
+- Held by `margin-cat-journeys.qml`: "it climbs a side at about its walking pace, within a fifth"
 
 ### Believable Routes
 
@@ -156,10 +167,22 @@ closes or loses focus"
 
 - Held by `margin-cat-floats.qml`: "onto a floating window it drops straight down from the top
   over it"
-- Held by `margin-cat-floats.qml`: "off it, it crouches and leaps straight up onto the ledge in reach"
+- Held by `margin-cat-floats.qml`: "off it, it crouches and leaps straight up onto the ledge
+  in reach"
 - Held by `margin-cat-floats.qml`: "its window closed, it leaps up at once, never thinking or
   walking first"
 - Held by `margin-cat-floats.qml`: "on a floating window it's drawn over the tiled ones"
+- Owed since 2026-11-13: its floating window's focus gone, it waits two seconds, then leaps up
+  off it; the wait is the screen's, which no Qt case reaches yet.
+
+### Unobtrusive and Cute
+
+Joel, 2026-11-11 22:55, by P9R1KI: "i think having something crawl around
+my screen in a way that is unobtrusive and cute is fun. i think making sure
+the way things look on screen is joyful but not distracting is fun."
+
+- Held by `margin-cat.qml`: "while he types it's mild"
+- Held by `margin-cat.qml`: "each play short, under two and a half seconds"
 
 ### Never Skid
 

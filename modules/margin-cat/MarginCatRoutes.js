@@ -411,3 +411,40 @@ function up(from, to, cols, at) {
 function route(stop, to, cols, at) {
     return quickest([{ stop, ms: 0, back: null }], { from: stop, to }, cols, at);
 }
+
+// The quickest way from `stop` to the foot of each side of `cols` on the
+// screen, where it can drop off a workspace into the one below
+// (MarginCatStacked.js), or with `heads` to the head of each, where it
+// leaps up off one into the one above: each as { stops, ms }, its stops
+// beginning with `stop` and ending at the foot or head, and what it takes
+// in ms.
+function feet(stop, cols, at, heads) {
+    const found = [];
+    const done = {};
+    const open = [{ stop, ms: 0, back: null }];
+    const foot = one => one.kind === "side" && (heads
+        ? one.row === 0 && near(one.y, cols[one.c].rows[0].top - at.tall)
+        : one.row === cols[one.c].rows.length - 1 && near(one.y, cols[one.c].bottom - at.tall));
+    while (open.length > 0) {
+        open.sort((one, other) => one.ms - other.ms);
+        const here = open.shift();
+        const id = key(here.stop);
+        if (done[id]) {
+            continue;
+        }
+        done[id] = true;
+        if (foot(here.stop)) {
+            const stops = [];
+            for (let link = here; link; link = link.back) {
+                stops.unshift(link.stop);
+            }
+            found.push({ stops, ms: here.ms });
+        }
+        for (const step of next(here.stop, cols, at)) {
+            if (!done[key(step.stop)]) {
+                open.push({ stop: step.stop, ms: here.ms + step.ms, back: here });
+            }
+        }
+    }
+    return found;
+}

@@ -85,6 +85,7 @@ QtObject {
         const lit = at.marks;
         const ink = { left: lit.from + 4, top: 4, width: lit.to - lit.from - 8, height: 8 };
         const wrong = [];
+        const climbs = [];
         // No drawing alone (RSCH-20261113-24R2QV, finding 4): outside a
         // ride, each pose it's seen in holds two frames at 60 Hz or more,
         // but its first and its last, which go on from and into what's
@@ -125,7 +126,7 @@ QtObject {
                 && pace(beat) > 0).map(pace);
             for (const beat of journey.beats.filter(one => one.kind === "climbs" && seenOn(one)))
                 if (walks.some(walked => Math.abs(pace(beat) - walked) > walked / 5))
-                    wrong.push(`${said} climbs at ${Math.round(pace(beat))} cells a second, `
+                    climbs.push(`${said} climbs at ${Math.round(pace(beat))} cells a second, `
                         + `walking at ${walks.map(Math.round).join(", ")}`);
             // Every fall straight down onto what's under it, never across
             // the air (Joel, 2026-11-13 17:22, by WCJQSG fc3f716a: "it
@@ -192,6 +193,8 @@ QtObject {
         }
         expect("150 journeys thrown at it", made, 150);
         expect("each ends on its seat, every frame of it a cat's", wrong.slice(0, 5), []);
+        expect("it climbs a side at about its walking pace, within a fifth",
+            climbs.slice(0, 5), []);
     }
 
     // `tiles` changed as niri changes them: a column grown or shrunk, a
