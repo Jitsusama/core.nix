@@ -9,6 +9,7 @@
 // terminal gathers every machine's.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
+import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
@@ -176,14 +177,6 @@ function copy(): void {
   );
 }
 
-function toggleKeys(): void {
-  if (keys.open) {
-    keys.close();
-  } else {
-    keys.showModal();
-  }
-}
-
 function find(): void {
   finder.hidden = false;
   finder.focus();
@@ -222,7 +215,7 @@ finder.addEventListener("keydown", (event) => {
 });
 
 /** What each key does in the list. */
-const ACTIONS: { readonly [key: string]: () => void } = {
+const ACTIONS: Actions = {
   j: () => move(1),
   ArrowDown: () => move(1),
   k: () => move(-1),
@@ -239,35 +232,18 @@ const ACTIONS: { readonly [key: string]: () => void } = {
   Enter: goDeeper,
 };
 
-/** Whether `target` is somewhere Joel types, whose keys are its own. */
-function typing(target: Element): boolean {
-  return target.closest("input, textarea, [contenteditable]") !== null;
-}
-
-function pressed(event: KeyboardEvent): void {
-  const target = event.target instanceof Element ? event.target : document.body;
-  if (event.altKey || event.ctrlKey || event.metaKey || typing(target)) {
-    return;
-  }
-  if (event.key === "?" || event.key === "F1") {
-    toggleKeys();
-    event.preventDefault();
-    return;
-  }
-  // The keys are the page's wherever focus is, but on another control,
-  // whose own keys come first.
-  const action = ACTIONS[event.key];
-  if (keys.open || action === undefined || target.closest("a, button, summary") !== null) {
-    return;
-  }
-  action();
-  event.preventDefault();
-  if (event.key !== "/" && document.activeElement !== list) {
-    list.focus();
-  }
-}
-
-addEventListener("keydown", pressed);
+// The keys are the page's wherever focus is, but on another control, whose
+// own keys come first; after one, the list holds the keys again, but while
+// the find is open.
+listen({
+  help: keys,
+  actions: ACTIONS,
+  afterwards: () => {
+    if (document.activeElement !== finder && document.activeElement !== list) {
+      list.focus();
+    }
+  },
+});
 
 addEventListener("hashchange", () => {
   const named = cellIn(location.hash);
@@ -310,7 +286,7 @@ themeSwitch();
 for (const key of document.querySelectorAll<HTMLElement>(".head .keys kbd[data-key]")) {
   key.addEventListener("click", () => {
     if (key.dataset.key === "?") {
-      toggleKeys();
+      toggle(keys);
     } else if (key.dataset.key === "/") {
       find();
     } else if (key.dataset.key === "Enter") {
