@@ -38,8 +38,11 @@ Piece {
         glyph: Words.glyph("warp"),
         name: Words.name("warp"),
         verb: "show",
-        run: shell => shell.launcher.intoOn("network",
-            row => row.asker?.settings?.name === "warp")
+        // Network is a place, not a collection, so it's walked into from
+        // home as Machines' rows walk into Computer (goTo): opened into by
+        // name as a collection is, it found none, and Return left Joel at
+        // home (2026-11-16).
+        run: shell => shell.launcher.goTo({ trail: ["category:network"], spot: "answer:warp" })
     }]
     // Said as it starts or stops ailing, so a test sees the piece apart
     // from what's made of it.

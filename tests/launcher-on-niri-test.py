@@ -3265,7 +3265,7 @@ def test_now_says_a_degraded_work_network_within_its_line_and_steps_to_its_row(
     piece carries its context, WARP's figures, the hour and what's behind it, some 170
     characters under Now's line, which the launcher's own measure of what broke out of its
     card judges (Y2YBTS, 2026-11-16). Return then steps into Network onto the Work Network's
-    row, as Super+N's does (pieces/WorkNetwork.qml).
+    row, walked into from home as a machine's row walks into Computer (pieces/WorkNetwork.qml).
     """
     said = warp_said()
     contract = Path(os.environ["WARP_CONTRACT"])
