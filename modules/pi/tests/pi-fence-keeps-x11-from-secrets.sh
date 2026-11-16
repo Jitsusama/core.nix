@@ -32,7 +32,7 @@ XAUTHORITY=$(sed -n 's/^XAUTHORITY=//p' <<< "$session")
 export XAUTHORITY
 [ -n "$display" ] || fail "niri opened no X11 display"
 [ -n "$XAUTHORITY" ] || fail "the session names no X11 cookie"
-runtime=${XDG_RUNTIME_DIR:?Joel's session names no runtime folder}
+runtime="${XDG_RUNTIME_DIR:?the session names no runtime folder}"
 
 # The satellite is offered niri's clipboard only while one of its windows
 # holds the keyboard, as any Wayland client is, and then holds it for every
