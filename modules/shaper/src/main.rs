@@ -54,7 +54,7 @@ use memory::{Held, Memory};
 use probe::{Echo, Probes};
 use rate::{Bounds, Controller, Direction, Settings, State, float};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -186,6 +186,9 @@ fn asked(context: &Context) -> Result<(), Failure> {
             let unit = match rest {
                 [] => None,
                 [flag, unit] if flag == "--unless-restarting" => Some(unit),
+                [flag] if flag == "--unless-restarting" => {
+                    return Err(wrongly("stop", format!("{flag} takes the unit's name")));
+                }
                 [flag, ..] => {
                     return Err(wrongly("stop", format!("{flag} isn't a flag it takes")));
                 }
@@ -755,6 +758,7 @@ fn run(options: &Options) -> Result<(), Failure> {
     // What the controller heard and held each second, which the
     // recorder's lines can't say, kept for a replay (src/trace.rs).
     let mut traces = trace::Writer::new(&options.state.join("heard"));
+    let mut swept = false;
     loop {
         let now = Instant::now();
         let t = (now - began).as_secs_f64();
@@ -769,6 +773,12 @@ fn run(options: &Options) -> Result<(), Failure> {
             primary = order.first().cloned();
             let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
             follow_vpns(&mut vpns, &options.vpns, rides, (up_tins.kbit(), t));
+            // A restart left the old shaper's queues; once this one has
+            // taken up the links and VPNs it shapes, the rest go.
+            if !swept {
+                swept = true;
+                sweep(&held(&shaped, &vpns.0));
+            }
             for (name, s) in &mut shaped {
                 if primary.as_ref() != Some(name) {
                     s.share_lanes((0.0, lanes::Agents::default()), t);
@@ -1517,11 +1527,29 @@ fn restarting(unit: &str) -> bool {
 
 /// Takes every queue the shaper made away, for when it stops.
 fn stop() {
+    sweep(&BTreeSet::new());
+}
+
+/// The links, VPNs and IFBs the shaper holds now.
+fn held(shaped: &BTreeMap<String, Shaped>, vpns: &BTreeMap<String, Vpn>) -> BTreeSet<String> {
+    let links = shaped.iter().map(|(name, s)| (name, &s.ifb));
+    let tunnels = vpns.iter().map(|(name, v)| (name, &v.ifb));
+    links
+        .chain(tunnels)
+        .flat_map(|(name, ifb)| [name.clone(), ifb.clone()])
+        .collect()
+}
+
+/// Takes away every queue the shaper made but on the devices `kept`.
+fn sweep(kept: &BTreeSet<String>) {
     let Ok(devices) = fs::read_dir("/sys/class/net") else {
         return;
     };
     for device in devices.flatten() {
         let name = device.file_name().to_string_lossy().to_string();
+        if kept.contains(&name) {
+            continue;
+        }
         if name.starts_with("shaper") {
             let _ = sh(&words(&format!("ip link del {name}")));
             continue;

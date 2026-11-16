@@ -722,7 +722,13 @@ def restart_keeps_the_queues(on_eth2: Connection) -> None:
     is lost, and the modem's queue never fills while none are there.
     """
     client = on_eth2.client
+    # A switch restarts it only while the unit says so; otherwise it stops the old and starts
+    # the new, and the stop takes every queue away.
+    client.succeed("grep -q X-StopIfChanged=false /etc/systemd/system/shaper.service")
     client.succeed(on_eth2.upload)
+    # An IFB the new shaper won't take up, as a VPN gone from its list leaves.
+    client.succeed("ip link add shaperfff type ifb")
+    since = client.succeed("date +%s").strip()
 
     def sent() -> int:
         """Give the bytes eth2's root HTB has sent."""
@@ -741,6 +747,12 @@ def restart_keeps_the_queues(on_eth2: Connection) -> None:
     assert "bare" not in bare, "a restart left a link unshaped while it ran"
     assert on_eth2.shaped("eth2"), "a restart left eth2 without its lanes"
     assert sent() >= before, "a restart made the queues afresh rather than keeping them"
+    said = client.succeed(f"journalctl -u shaper.service --since @{since} --no-pager")
+    assert "is restarting, so its queues stay" in said, said
+    client.wait_until_fails("ip link show shaperfff", timeout=SHAPING)
+    assert "RTNETLINK" not in said and "Error:" not in said, (
+        f"taking the queues back failed: {said}"
+    )
 
 
 @pytest.mark.usefixtures("tunnel")

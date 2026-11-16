@@ -95,12 +95,13 @@ pub fn install(
 }
 
 /// Turns what a link or a VPN receives round through its IFB, the class
-/// copied from the connection to the packet on the way.
+/// copied on the way. Its handle is matchall's own first, so a restart's
+/// shaper replaces the filter it found rather than failing on it.
 pub fn turn(dev: &str, ifb: &str) -> Vec<Vec<String>> {
     vec![
         cmd(&format!("tc qdisc replace dev {dev} handle ffff: ingress")),
         cmd(&format!(
-            "tc filter replace dev {dev} parent ffff: protocol all prio 1 matchall \
+            "tc filter replace dev {dev} parent ffff: protocol all prio 1 handle 1 matchall \
              action ctinfo cpmark {OWN_MASK:#x} pipe action mirred egress redirect dev {ifb}"
         )),
     ]
@@ -658,7 +659,7 @@ mod tests {
             all,
             [
                 "tc qdisc replace dev enp1 handle ffff: ingress",
-                "tc filter replace dev enp1 parent ffff: protocol all prio 1 matchall \
+                "tc filter replace dev enp1 parent ffff: protocol all prio 1 handle 1 matchall \
                  action ctinfo cpmark 0xf000000 pipe action mirred egress redirect dev shaper3",
             ],
             "the turn's commands"

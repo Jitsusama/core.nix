@@ -240,6 +240,7 @@ mod tests {
             (&["run", "--vpns"], "shaper run --help"),
             (&["status", "--runtime"], "shaper status --help"),
             (&["stop", "--now"], "shaper stop --help"),
+            (&["stop", "--unless-restarting"], "shaper stop --help"),
             (&["record", "--sideways"], "shaper record --help"),
             (&["replay"], "shaper replay --help"),
             (&["day", "--sideways"], "shaper day --help"),

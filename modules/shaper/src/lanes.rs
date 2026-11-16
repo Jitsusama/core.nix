@@ -288,13 +288,18 @@ pub fn change(dev: &str, rate: u64, split: &Split) -> Vec<Vec<String>> {
     classes("change", dev, rate, split)
 }
 
-/// Takes back a link's lanes and its IFB's CAKE as a restart left them,
-/// at new rates, changing each in place: HTB refuses a change to its root,
-/// and making them afresh would drop what they hold.
+/// Takes back a link's lanes and its IFB as a restart left them: every
+/// class, queue and filter `qdisc::install` puts on is replaced in place,
+/// so a new version's layout lands, but not the two root HTBs. HTB
+/// refuses a change to its root, and making one afresh drops everything
+/// under it, so a root's own default stays as the old shaper made it.
 pub fn adopt(link: &str, ifb: &str, (rate, split): (u64, &Split), down: u64) -> Vec<Vec<String>> {
-    let mut all = change(link, rate, split);
-    all.push(crate::qdisc::change_down(ifb, down));
-    all
+    let root =
+        |c: &Vec<String>| c.get(1).is_some_and(|w| w == "qdisc") && c.iter().any(|w| w == "root");
+    crate::qdisc::install(link, ifb, (rate, split), down)
+        .into_iter()
+        .filter(|c| !root(c))
+        .collect()
 }
 
 /// Whether a connection's queues, from `tc -j qdisc show dev`, hold the
@@ -690,14 +695,16 @@ mod tests {
             "a change moves only the four classes: {changed:#?}"
         );
         let adopted = words(&adopt("wlan0", "shaper3", (10_000, &split), 80_000));
+        let installed = words(&crate::qdisc::install(
+            "wlan0",
+            "shaper3",
+            (10_000, &split),
+            80_000,
+        ));
+        let roots: Vec<&String> = installed.iter().filter(|c| !adopted.contains(c)).collect();
         assert!(
-            adopted.len() == 5 && adopted.iter().all(|c| c.contains(" change dev ")),
-            "adopting made or replaced something, dropping what it held: {adopted:#?}"
-        );
-        assert!(
-            adopted[4].starts_with("tc qdisc change dev shaper3")
-                && adopted[4].contains("80000kbit"),
-            "adopting left the download's rate: {adopted:#?}"
+            roots.len() == 2 && roots.iter().all(|c| c.contains(" root handle 1: htb")),
+            "adopting puts on all but the two root HTBs, which drop what they hold: {roots:#?}"
         );
     }
 
