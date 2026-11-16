@@ -1508,10 +1508,10 @@
     team after an act, an act after a team, and nothing for the words said to one
   '';
   mycelium-links-what-a-machine-names = ''
-    a workstation in a realm runs mycelium's node there, dialling each machine it names, as a user
-    service on Linux signing in with the agents' key, or the key its realm names, and an agent on a
-    Mac whose sessions sign commits with that key; one naming none runs it dialling nothing, and
-    one in no realm has neither a realm nor a node
+    a workstation in a realm runs mycelium's node there, dialling each machine it names, over SSH
+    or through a provider's program, as a user service on Linux signing in with the agents' key,
+    or the key its realm names, and an agent on a Mac whose sessions sign commits with that key;
+    one naming none runs it dialling nothing, and one in no realm has neither a realm nor a node
   '';
   mycelium-signs-a-macs-links-with-the-enclave = ''
     a Mac's node signs its links in with the agents' key from the Secure Enclave, through that
