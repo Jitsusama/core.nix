@@ -14,6 +14,7 @@
 //! as earned when the upload's own delay was over `CAUSE_MS` as it was
 //! made: the nearest to proof a record allows, and said as such.
 
+use crate::oneway::ANCHOR_HOLD;
 use crate::rate::{float, whole};
 use crate::replay::{Rates, Second, Stay};
 use serde::Serialize;
@@ -173,7 +174,7 @@ impl Spells {
                         spells.end();
                     }
                     spells.second(at, s, holding, anchor);
-                    spells.cut(at, holding, answered.up, s.up_delay_ms);
+                    spells.cut(at, (holding, answered.up), s.up_delay_ms, anchor);
                 }
                 _ => spells.end(),
             }
@@ -204,9 +205,21 @@ impl Spells {
         *low = (*low).min(least);
     }
 
-    fn cut(&mut self, at: f64, before: Option<u64>, after: Option<u64>, delay_ms: Option<f64>) {
+    /// Counts a fall from `before` to `after` as a cut, unless it lands at
+    /// or over the anchor's hold: a trial over the line falling back to
+    /// the hold holds nothing back.
+    fn cut(
+        &mut self,
+        at: f64,
+        rates: (Option<u64>, Option<u64>),
+        delay_ms: Option<f64>,
+        anchor: u64,
+    ) {
+        let (before, after) = rates;
         let Some(to) = after else { return };
-        if before.is_some_and(|from| float(to) >= CUT * float(from)) {
+        if before.is_some_and(|from| float(to) >= CUT * float(from))
+            || float(to) >= ANCHOR_HOLD * float(anchor)
+        {
             return;
         }
         self.bar.cuts += 1;
@@ -371,6 +384,25 @@ mod tests {
         assert_eq!(bar.breaches[0].from_s, NOV16 + 11, "when it began: {bar:?}");
         let hold = bar.busy_hold.expect("it was busy");
         assert!((hold - 0.375).abs() < 1e-9, "held at 4.5 of 12: {hold}");
+    }
+
+    #[test]
+    fn a_trial_falling_back_to_the_hold_is_no_cut() {
+        let s = stay(200, 9_000.0, |_| 2.0);
+        let rates = held(
+            |t| match t {
+                0..20 => Some(10_800),
+                20..40 => Some(15_300),
+                40..100 => Some(10_800),
+                _ => Some(9_500),
+            },
+            200,
+        );
+        let bar = at_home(&s, &rates, 12_000);
+        assert_eq!(
+            bar.cuts, 1,
+            "15.3 back to the 10.8 hold holds nothing back; 10.8 to 9.5 does: {bar:?}"
+        );
     }
 
     #[test]
