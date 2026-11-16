@@ -1,10 +1,10 @@
 /* Forage: the forest floor cut through, loam for the ground and fresh-cap
-   cream for what speaks; hyphae in the map's own ink for who split from
+   cream for what speaks; hyphae in the map's own ink for who started
    whom; one glow of foxfire, the kit's accent ring, only where the keys are.
 
    What each cell is for: the cells standing on this machine, said first in
    one sentence over a drawing of the floor, then listed, each under the
-   cell it split from, with its purpose and how far its plans have come,
+   cell that started it, with its purpose and how far its plans have come,
    and beside the list the cell the cursor is on. An interface to keep
    open: the sentence and the drawing are the overview, the panel the
    detail, and nothing moves under the reader but the cursor. */
@@ -322,7 +322,7 @@ rect.hollow {
 
 /* A cell's row: its mark in the gutter, then its name and how far it has
    come, its purpose as the line to read and what it keeps under that, set
-   in a step for each cell it split from, hanging from the hyphae's ink. */
+   in a step for each cell above that started it, hanging from the hyphae's ink. */
 .cells {
   margin: 0;
   padding: 0;

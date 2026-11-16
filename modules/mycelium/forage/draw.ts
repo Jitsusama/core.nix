@@ -2,7 +2,7 @@
 // its marks in the gutter, and the panel of the cell the cursor is on. On
 // the floor each cell is a compartment along its hypha, whole when its
 // purpose is written and hollow when it isn't, so a cell without purpose
-// is told by its shape and never by colour alone; a cell split from
+// is told by its shape and never by colour alone; a cell started by
 // another branches below it, and a cap rises over a cell whose plans have
 // landed steps, its gills lit as they land. Every word read from a record
 // is escaped before it reaches the page, and how far a plan has come is
@@ -88,7 +88,7 @@ function compartment(forage: Forage): string {
   return `<svg class="cm" viewBox="0 0 20 10" aria-hidden="true"><rect class="${kind}" x="1" y="1" width="18" height="8" rx="4"/></svg>`;
 }
 
-/** `forage`'s row in the list of cells, set in by how deep it split. */
+/** `forage`'s row in the list of cells, set in by how deep it was started. */
 function forageRow(forage: Forage): string {
   const { ticked, all } = steps(forage);
   const quiet = forage.purpose === "" ? " quiet" : "";
@@ -130,7 +130,7 @@ function cap(x: number, y: number, ticked: number, all: number): string {
 /**
  * The floor cut through: the ground, the hyphae under it and each cell a
  * compartment along them, `cursor`'s ringed. Each top cell starts a hypha
- * of its own on the main line; a cell split from another branches down
+ * of its own on the main line; a cell started by another branches down
  * from it. `substrate` names the machine the cells stand on.
  */
 function floorOf(forages: readonly Forage[], cursor: string | null, substrate: string): string {
@@ -207,8 +207,8 @@ ${forage.documents.map(documentRow).join("\n")}
 </section>`;
 }
 
-/** The cell `forage` split from, linked to that cell's row when it is drawn here. */
-function splitFrom(forage: Forage, here: ReadonlySet<string>): string {
+/** The cell that started `forage`, linked to that cell's row when it is drawn here. */
+function startedBy(forage: Forage, here: ReadonlySet<string>): string {
   const by = forage.startedBy;
   if (by === undefined) {
     return "Nothing; it started on its own";
@@ -232,7 +232,7 @@ ${documentsOf(forage)}
   <h4 id="ties-title">Where It Grows</h4>
   <dl class="facts">
     <div><dt>Its quest</dt><dd><code>${escaped(forage.quest)}</code>${forage.status === "" ? "" : ` ${escaped(forage.status)}`}</dd></div>
-    <div><dt>Split from</dt><dd>${splitFrom(forage, here)}</dd></div>
+    <div><dt>Started by</dt><dd>${startedBy(forage, here)}</dd></div>
     <div><dt>Under the quest</dt><dd>${forage.parent === undefined ? "None" : `<code>${escaped(forage.parent)}</code>`}</dd></div>
     <div><dt>Stands on</dt><dd>${escaped(forage.machine)}</dd></div>
     <div><dt>In a terminal</dt><dd><code><a href="${MYCELIUM_HOME}">mycelium</a> forage ${escaped(forage.cell)}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>

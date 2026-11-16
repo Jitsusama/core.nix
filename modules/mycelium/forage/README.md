@@ -3,7 +3,7 @@
 The forage page, served at `http://sites.localhost:8484/forage/` and drawn
 live from the mycelium node's forage records through the local sites'
 `/feed/node`. It shows what each of this machine's cells is for: the
-purpose its quest states, the cell it split from and how far the plans,
+purpose its quest states, the cell that started it and how far the plans,
 research, briefs and reports it keeps have come. It is built on the local
 sites' kit by [`site.nix`][site], which leaves this note behind.
 
