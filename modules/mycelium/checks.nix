@@ -575,8 +575,9 @@ in
           linuxWords (linux (links // { healthSocket = null; })).systemd.user.services.mycelium
         ))
         && lib.hasSuffix "--health-socket /run/elsewhere.sock" (
-          toString (linux (links // { healthSocket = "/run/elsewhere.sock"; }))
-          .systemd.user.services.mycelium.Service.ExecStart
+          toString
+            (linux (links // { healthSocket = "/run/elsewhere.sock"; }))
+            .systemd.user.services.mycelium.Service.ExecStart
         )
       );
 
