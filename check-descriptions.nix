@@ -2336,7 +2336,7 @@
   pineapple-github-starts-with-the-sign-in = ''
     the reader of GitHub for the safe word starts at login, reads Joel's GitHub sign-in through gh,
     comes back after a switch and a failure, runs in the background slice, reads as its own name
-    in ps and runs live
+    in ps and stays in shadow
   '';
   pineapple-judges-each-saying = ''
     every saying in sayings.json is judged the safe word, a resume, an ask to stop or a near miss as

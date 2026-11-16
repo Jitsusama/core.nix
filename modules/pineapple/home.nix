@@ -1,11 +1,13 @@
 # The safe word that stops Joel's agents, read where it's said: Slack and
 # GitHub, and any site speaking GitHub's API that a machine names in
 # jitsusama.pineapple.sites, through Joel's own sign-ins, only read. Slack
-# and GitHub are live since Joel read two days of their shadow logs: their
-# stops stand, Slack answers where asked, and both tell his phone. A named
-# site is in shadow, its stops written down with nothing acting on them, until
-# its own are read and the machine says it's live (src/lib.rs says how the
-# pieces fit). A machine signed in to Slack as Joel imports it.
+# is live since Joel read two days of its shadow log: its stops stand, it
+# answers where asked, and it tells his phone. GitHub and each named site
+# are in shadow, their stops written down with nothing acting on them:
+# GitHub because anyone in the world may comment on a public repository's
+# thread, and a site until its own are read and the machine says it's live
+# (src/lib.rs says how the pieces fit). A machine signed in to Slack as Joel
+# imports it.
 {
   config,
   lib,
@@ -32,7 +34,7 @@ let
   # the pull requests Joel opened in the repositories named, since such a
   # site has no notifications to read (src/bin/pineapple-github.rs). A site
   # stays in shadow until a machine says it's live, each once Joel has read
-  # two days of its own, as Slack and GitHub went live after theirs.
+  # two days of its own, as Slack went live after its own.
   siteReader =
     name: site:
     lib.nameValuePair "pineapple-${name}" {
@@ -183,18 +185,19 @@ in
 
       # The same reader for GitHub (src/bin/pineapple-github.rs): every minute,
       # the pull requests and issues Joel takes part in that changed, and
-      # what was said on them, only asked. Its stops go where the
+      # what was said on them, only asked, in shadow. Its stops go where the
       # Slack reader's do, so the launcher, the harness and his phone take
       # them alike; it answers nobody on GitHub.
       systemd.user.services.pineapple-github = {
         Unit = {
-          Description = "Reads GitHub for the safe word that stops Joel's agents";
+          Description = "Reads GitHub for the safe word that stops Joel's agents, in shadow";
           X-SwitchMethod = "restart";
         };
         Service = {
           Slice = "background.slice";
-          # As Slack's: without --live it only writes down what it would do.
-          ExecStart = "@${pineapple}/bin/pineapple-github pineapple-github run --live";
+          # In shadow until Joel says who on GitHub may stop his agents,
+          # since any account may comment where he takes part.
+          ExecStart = "@${pineapple}/bin/pineapple-github pineapple-github run";
           # Run each round, so a sign-in renewed while it runs is read without
           # a restart; with none, it says so and reads nothing.
           Environment = [ "SIGN_IN_KEYRING=${githubSignIn}" ];
