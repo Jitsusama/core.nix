@@ -633,8 +633,8 @@ impl Inputs {
         let mut made = top::rows(rows, &known, &self.words);
         let networks: Vec<&Value> = self.networks.records().map(|(_, one)| one).collect();
         let after = networks::rows(&networks, &made, &self.words);
-        let carries: Vec<&Value> = self.carries.records().map(|(_, one)| one).collect();
-        let carried = carries::rows(&carries, &made, &self.words);
+        let kept: Vec<&Value> = self.carries.records().map(|(_, one)| one).collect();
+        let carried = carries::rows(&kept, &made, &self.words);
         made.extend(after);
         made.extend(carried);
         made
