@@ -48,7 +48,7 @@ impl Why {
 /// `for_s` how long, in seconds, the reason has held.
 pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> String {
     let rate = limit.map_or_else(|| "unlimited".to_owned(), |kbit| mbit(lossless(kbit)));
-    let held = format!("{} {}", plural(for_s), "held");
+    let held = format!("held so for {}", plural(for_s));
     match why {
         Why::Unmeasured => format!("Upload {rate}: no queue has stood on this network yet."),
         Why::Unanswered => {
@@ -167,9 +167,13 @@ mod tests {
         assert_eq!(
             line(true),
             "Upload 9.1 Mbit/s: the line's delay stood 22 ms, so it was cut, and that eased it; \
-             1 s held."
+             held so for 1 s."
         );
-        assert!(!line(false).contains("eased"));
+        assert!(
+            !line(false).contains("eased"),
+            "a cut that eased nothing said it did: {}",
+            line(false)
+        );
     }
 
     #[test]
@@ -191,7 +195,13 @@ mod tests {
 
     #[test]
     fn a_reason_s_numbers_moving_keeps_its_kind() {
-        assert!(Why::Far { delay_ms: 1.0 }.same_kind(Why::Far { delay_ms: 90.0 }));
-        assert!(!Why::Far { delay_ms: 1.0 }.same_kind(Why::Vpn { delay_ms: 1.0 }));
+        assert!(
+            Why::Far { delay_ms: 1.0 }.same_kind(Why::Far { delay_ms: 90.0 }),
+            "a far delay that moved started its span again"
+        );
+        assert!(
+            !Why::Far { delay_ms: 1.0 }.same_kind(Why::Vpn { delay_ms: 1.0 }),
+            "a far delay and the VPN's queue read as one reason"
+        );
     }
 }

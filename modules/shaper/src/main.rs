@@ -28,6 +28,7 @@ mod icmp;
 mod links;
 mod live;
 mod memory;
+mod networks;
 mod oneway;
 mod probe;
 mod proof;
@@ -654,7 +655,7 @@ fn run(options: &Options) -> Result<(), Failure> {
             options
                 .networks
                 .as_deref()
-                .map(live::anchors)
+                .map(networks::anchors)
                 .unwrap_or_default(),
         );
         live
