@@ -8,10 +8,8 @@ use std::time::Instant;
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
 use typst_layout::Page;
 
+use crate::numbers::{f32_of, u32_of};
 use crate::tiles;
-use numbers::{f32_of, u32_of};
-
-pub mod numbers;
 
 /// A band's height in device pixels: small enough that uploading one costs
 /// a sliver of a frame, and a screen holds four or so.

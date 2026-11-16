@@ -1,5 +1,5 @@
 use super::{Setter, Width};
-use crate::painter::numbers::i32_of;
+use crate::numbers::i32_of;
 
 /// The measure and spread a window this many points wide sets.
 fn width(window_pt: f64) -> (f64, f64) {

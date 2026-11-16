@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use typst::layout::{Frame, FrameItem, Point};
 use typst::model::Destination;
 
-use crate::painter::numbers::f32_of;
+use crate::numbers::f32_of;
 
 /// A link's first piece on the page, in points from the page's top left,
 /// and what it points at as written.

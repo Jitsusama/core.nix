@@ -3,7 +3,7 @@
 //! it.
 
 use super::{Incoming, Landing, Reset, STAND_IN};
-use crate::painter::numbers::u32_of;
+use crate::numbers::u32_of;
 use crate::painter::{BAND_PX, Band, Key};
 use crate::theme::PT_A_PX;
 use crate::{

@@ -1,5 +1,5 @@
 use super::*;
-use crate::painter::numbers::f64_of;
+use crate::numbers::f64_of;
 
 /// A line of the page at `baseline`, its characters 6 pt wide each.
 fn line(baseline: f64, text: &str) -> Line {

@@ -32,6 +32,7 @@ mod links;
 mod menu;
 mod motion;
 mod moves;
+mod numbers;
 mod outline;
 mod page;
 mod painter;

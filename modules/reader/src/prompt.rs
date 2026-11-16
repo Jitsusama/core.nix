@@ -10,8 +10,8 @@ use std::sync::mpsc;
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
 use typst_layout::PagedDocument;
 
+use crate::numbers::f64_of;
 use crate::page;
-use crate::painter::numbers::f64_of;
 
 /// The prompt's row: Space's xxxl, the pitch of a prompt's row, as 36 pt
 /// at 0.75 pt a logical pixel.

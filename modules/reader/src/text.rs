@@ -4,7 +4,7 @@
 //! hyphenation broke is found across the break, as it reads.
 use typst::layout::{Frame, FrameItem, Point};
 
-use crate::painter::numbers::f64_of;
+use crate::numbers::f64_of;
 
 /// A run of set text and where it sits, in points from the page's top left.
 pub struct Run {

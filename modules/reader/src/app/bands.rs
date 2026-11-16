@@ -6,6 +6,7 @@ use super::{
     ASKED_AT_ONCE, FIRST_FRAME_AT_MOST, LOADING_AT_ONCE, LOOKS_AGAIN_AFTER, Loading, RESIZE_UNTIL,
     STAND_IN, STAND_INS_AT_ONCE, covers, memory, phase,
 };
+use crate::numbers::{f32_of, u32_of};
 use crate::painter::{BAND_PX, Key};
 use crate::{App, Feedback, motion, page, prompt};
 use smithay_client_toolkit::compositor::FrameCallbackData;
@@ -16,12 +17,8 @@ use std::time::Instant;
 impl App {
     /// Whether the view shows no ground: its bands at any zoom, stand-in
     /// included, cover it down to the page's end.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     pub(crate) fn covered(&self) -> bool {
-        let screen = self.screen_px() as f32;
+        let screen = f32_of(self.screen_px());
         let mut spans: Vec<(f32, f32)> = self
             .textures
             .iter()
@@ -30,7 +27,7 @@ impl App {
                 let foot = if self.stale.contains(k) && self.held_pt.is_none() {
                     let ratio = self.level() * 1000.0 / f64::from(k.zoom);
                     let settled = self.settled_pt * self.painter.scale(k.zoom) * ratio;
-                    (settled - self.offset) as f32
+                    f32_of(settled - self.offset)
                 } else {
                     top + height
                 };
@@ -38,7 +35,7 @@ impl App {
             })
             .filter(|(top, foot)| foot > top)
             .collect();
-        let page_end = (self.end_px() - self.offset) as f32;
+        let page_end = f32_of(self.end_px() - self.offset);
         covers(&mut spans, screen.min(page_end))
     }
 
@@ -49,16 +46,11 @@ impl App {
 
     /// The bands a view whose top is at `top` lacks, each as its index and
     /// whether it is asked, waiting to upload, or not asked at all.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     fn missing_at(&self, top: f64) -> Vec<(u32, &'static str)> {
         let key = self.zoom_key();
         let band = f64::from(BAND_PX) * self.level() * 1000.0 / f64::from(key);
-        let first = (top / band).floor().max(0.0) as u32;
-        let last = ((top + self.screen_px()) / band).ceil() as u32;
+        let first = u32_of((top / band).floor().max(0.0));
+        let last = u32_of(((top + self.screen_px()) / band).ceil());
         (first..last.min(self.painter.bands(key)))
             .filter_map(|index| {
                 let k = Key { zoom: key, index };
@@ -168,18 +160,13 @@ impl App {
         }
     }
 
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     fn ask_for_bands_at(&mut self, top: f64) {
         let key = self.zoom_key();
         let ratio = self.level() * 1000.0 / f64::from(key);
         let screen = self.screen_px();
         let band = f64::from(BAND_PX) * ratio;
-        let first = ((top - screen) / band).floor().max(0.0) as u32;
-        let last = (((top + 2.0 * screen) / band).ceil() as u32).min(self.painter.bands(key));
+        let first = u32_of(((top - screen) / band).floor().max(0.0));
+        let last = u32_of(((top + 2.0 * screen) / band).ceil()).min(self.painter.bands(key));
         let middle = (top + screen / 2.0) / band;
         let mut wanted: Vec<u32> = (first..last).collect();
         wanted.sort_by(|a, b| {
@@ -205,14 +192,10 @@ impl App {
     }
 
     /// Where a band sits on screen now: its top and height in device pixels.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     pub(crate) fn placed(&self, key: Key, height: u32) -> (f32, f32) {
         let ratio = self.level() * 1000.0 / f64::from(key.zoom);
         let top = f64::from(key.index) * f64::from(BAND_PX) * ratio - self.offset;
-        (top as f32, (f64::from(height) * ratio) as f32)
+        (f32_of(top), f32_of(f64::from(height) * ratio))
     }
 
     /// Takes in the textures the loader has finished: a saved page's to
@@ -354,22 +337,18 @@ impl App {
 
     /// Lets go of bands well out of view, and of other zooms' once this
     /// zoom's cover the view.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "the view is measured in f64 pixels and points, and a band, a buffer or a zoom is a whole number within a screen's or a page's few hundred thousand"
-    )]
     pub(crate) fn evict(&mut self, covered: bool) {
         let Some(gl) = self.gl.as_ref() else { return };
         let key = self.zoom_key();
-        let screen = self.screen_px() as f32;
+        let screen = f32_of(self.screen_px());
         // A held jump's start and landing are in play as much as the view,
         // or the bands it waits for would be let go as they arrive.
         let views: Vec<f32> = match &self.jump {
             Some(jump) if jump.moving.is_none() => {
                 vec![
                     0.0,
-                    (jump.from - self.offset) as f32,
-                    (jump.to - self.offset) as f32,
+                    f32_of(jump.from - self.offset),
+                    f32_of(jump.to - self.offset),
                 ]
             }
             _ => vec![0.0],

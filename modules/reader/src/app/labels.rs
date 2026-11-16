@@ -3,7 +3,7 @@
 
 use super::drawing::size_of;
 use super::{Landing, desktop_open, painted};
-use crate::painter::numbers::{f32_of, f32_of_whole};
+use crate::numbers::{f32_of, f32_of_whole};
 use crate::{App, keys, keys_logged, links, page, prompt};
 
 impl App {

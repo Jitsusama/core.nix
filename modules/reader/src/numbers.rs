@@ -1,9 +1,7 @@
 //! The reader's conversions between number types, each said once with why
 //! the numbers it takes fit what it gives, rather than a lint silenced at
 //! every cast. Each is the bare cast, inlined, so it costs what the cast
-//! did, and the glow's painting calls two of them once a pixel. They sit
-//! under the painter for now, the pixels' module, until the crate's root
-//! can name them beside the others.
+//! did, and the glow's painting calls two of them once a pixel.
 
 /// A length or a place in points or pixels as f32, as GL and tiny-skia
 /// take them: a page is a few hundred thousand pixels at most, far inside
@@ -71,6 +69,30 @@ pub fn u32_of(x: f64) -> u32 {
 )]
 pub fn i32_of(x: f64) -> i32 {
     x as i32
+}
+
+/// A size or a name as GL takes them, i32 from u32: a texture or a
+/// window is a few thousand pixels, and GL's names for a filter or a wrap
+/// are small, all far below 2^31, past which the cast would wrap.
+#[inline]
+#[expect(
+    clippy::cast_possible_wrap,
+    reason = "a texture's or window's pixels and GL's names are far below 2^31"
+)]
+pub fn gl_i32(n: u32) -> i32 {
+    n as i32
+}
+
+/// A colour's channel, 0 to 1, as the byte a pixel holds: clamped and
+/// rounded first, so it is always within 0 to 255.
+#[inline]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the channel is clamped to 0 to 1 and rounded, so the byte holds it"
+)]
+pub fn byte_of(channel: f32) -> u8 {
+    (channel.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
 /// A place in a table, any fraction dropped as the cast drops it: within

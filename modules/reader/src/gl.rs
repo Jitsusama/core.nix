@@ -11,6 +11,7 @@ use wayland_client::Proxy;
 use wayland_client::protocol::wl_surface::WlSurface;
 
 use crate::blend::{Blend, Recolour};
+use crate::numbers::{byte_of, f32_of_whole, gl_i32, i32_of};
 use crate::worker::{Jobs, Worker};
 
 const VERTEX: &str = r"#version 300 es
@@ -117,10 +118,6 @@ impl<T> Loader<T> {
 
 /// Makes a texture of a band's pixels on the current context, and a fence
 /// after it, flushed so the GPU starts on it now.
-#[expect(
-    clippy::cast_possible_wrap,
-    reason = "GL takes sizes and places as i32 and f32; a texture or window is a few thousand pixels at most"
-)]
 unsafe fn make<T>(
     gl: &glow::Context,
     job: &Job<T>,
@@ -135,22 +132,22 @@ unsafe fn make<T>(
             (glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE),
             (glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE),
         ] {
-            gl.tex_parameter_i32(glow::TEXTURE_2D, name, value as i32);
+            gl.tex_parameter_i32(glow::TEXTURE_2D, name, gl_i32(value));
         }
         gl.tex_storage_2d(
             glow::TEXTURE_2D,
             1,
             glow::RGBA8,
-            job.width as i32,
-            job.height as i32,
+            gl_i32(job.width),
+            gl_i32(job.height),
         );
         gl.tex_sub_image_2d(
             glow::TEXTURE_2D,
             0,
             0,
             0,
-            job.width as i32,
-            job.height as i32,
+            gl_i32(job.width),
+            gl_i32(job.height),
             glow::RGBA,
             glow::UNSIGNED_BYTE,
             glow::PixelUnpackData::Slice(Some(&job.pixels)),
@@ -482,10 +479,6 @@ impl Gl {
 
     /// An empty texture to paint again and again, as the prompt is: made
     /// once, since making one is what costs.
-    #[expect(
-        clippy::cast_possible_wrap,
-        reason = "GL takes sizes and places as i32 and f32; a texture or window is a few thousand pixels at most"
-    )]
     pub fn canvas(&self, width: u32, height: u32) -> Result<Texture, String> {
         unsafe {
             let texture = self.gl.create_texture()?;
@@ -497,14 +490,14 @@ impl Gl {
                 (glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE),
             ] {
                 self.gl
-                    .tex_parameter_i32(glow::TEXTURE_2D, name, value as i32);
+                    .tex_parameter_i32(glow::TEXTURE_2D, name, gl_i32(value));
             }
             self.gl.tex_storage_2d(
                 glow::TEXTURE_2D,
                 1,
                 glow::RGBA8,
-                width as i32,
-                height as i32,
+                gl_i32(width),
+                gl_i32(height),
             );
             self.gl.bind_texture(glow::TEXTURE_2D, None);
             Ok(Texture {
@@ -516,10 +509,6 @@ impl Gl {
     }
 
     /// Fills a canvas with pixels of its own size.
-    #[expect(
-        clippy::cast_possible_wrap,
-        reason = "GL takes sizes and places as i32 and f32; a texture or window is a few thousand pixels at most"
-    )]
     pub fn paint(&self, texture: &Texture, pixels: &[u8]) {
         unsafe {
             self.gl.bind_texture(glow::TEXTURE_2D, Some(texture.handle));
@@ -528,8 +517,8 @@ impl Gl {
                 0,
                 0,
                 0,
-                texture.width as i32,
-                texture.height as i32,
+                gl_i32(texture.width),
+                gl_i32(texture.height),
                 glow::RGBA,
                 glow::UNSIGNED_BYTE,
                 glow::PixelUnpackData::Slice(Some(pixels)),
@@ -539,13 +528,8 @@ impl Gl {
     }
 
     /// A texture of one pixel: a blend's source, drawn stretched.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "GL takes sizes and places as i32 and f32; a texture or window is a few thousand pixels at most"
-    )]
     pub fn swatch(&self, colour: [f32; 3]) -> Result<Texture, String> {
-        let [r, g, b] = colour.map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8);
+        let [r, g, b] = colour.map(byte_of);
         let texture = self.canvas(1, 1)?;
         self.paint(&texture, &[r, g, b, 255]);
         Ok(texture)
@@ -668,12 +652,8 @@ impl Gl {
 
     /// Draws a texture into a rectangle given in device pixels, from the
     /// buffer's top left.
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "GL takes sizes and places as i32 and f32; a texture or window is a few thousand pixels at most"
-    )]
     pub fn draw(&self, texture: &Texture, x: f32, y: f32, width: f32, height: f32) {
-        let (w, h) = (self.width as f32, self.height as f32);
+        let (w, h) = (f32_of_whole(self.width), f32_of_whole(self.height));
         let left = -1.0 + 2.0 * x / w;
         let right = -1.0 + 2.0 * (x + width) / w;
         let top = 1.0 - 2.0 * y / h;
@@ -690,10 +670,6 @@ impl Gl {
     /// Draws a texture as `draw` does, showing only what falls inside
     /// `room`, a rectangle of left, top, width and height in device pixels
     /// from the buffer's top left, as words slide inside their row.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "a room is a few thousand pixels at most, rounded to whole ones"
-    )]
     pub fn draw_within(
         &self,
         texture: &Texture,
@@ -702,8 +678,9 @@ impl Gl {
     ) {
         // GL counts rows from the bottom, and the window shows the top.
         let bottom = self.held.1 - self.height;
-        let (left, top) = (left.round() as i32, top.round() as i32);
-        let (wide, high) = (wide.round() as i32, high.round() as i32);
+        let whole = |x: f32| i32_of(f64::from(x).round());
+        let (left, top) = (whole(left), whole(top));
+        let (wide, high) = (whole(wide), whole(high));
         unsafe {
             self.gl
                 .scissor(left, bottom + self.height - top - high, wide, high);

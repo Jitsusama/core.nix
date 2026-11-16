@@ -6,7 +6,7 @@ use std::fmt::Write;
 use markup5ever_rcdom::Handle;
 
 use super::{Walker, attr, caption_of, literal, picture_kind, tag};
-use crate::painter::numbers::f64_of;
+use crate::numbers::f64_of;
 
 impl Walker<'_> {
     /// A picture: a file beside the page is put in the world and set at its
