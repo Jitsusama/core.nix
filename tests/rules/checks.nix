@@ -289,6 +289,7 @@
         pi-clipboard-shim = clipboardDoor;
         pi-fence-display = pkgs.callPackage ../../modules/pi/fence-display/package.nix { };
         pi-github-door = pkgs.callPackage ../../modules/pi/github-door/package.nix { };
+        pi-keys = pkgs.callPackage ../../modules/pi-keys/package.nix { };
         pi-packages = pkgs.callPackage ../../modules/pi-packages/package.nix { };
         pi-spawner = pkgs.callPackage ../../modules/pi/spawner/package.nix { };
         inherit pineapple;
