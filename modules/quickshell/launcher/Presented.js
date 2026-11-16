@@ -90,6 +90,25 @@ function partsSwapped(times, parts) {
     return `${said} (${toSwap} to its swap and ${after} after it)`;
 }
 
+// How many of niri's frames of `refresh` ms (frame-presentation.patch's
+// timesOf) passed from an opening's swap until `at`, the vblank niri showed
+// it at, counted back along the vblanks from it. Joel's openings had their
+// GPU work done a median 1 ms after their swap, then waited a median 6
+// frames at 120 Hz for niri (2026-11-15), so the count is what a fix in
+// niri moves. "" where niri gave no refresh or the swap wasn't timed.
+function shownSaid(times, at) {
+    const refresh = times.refresh ?? 0;
+    if (!(refresh > 0) || !(times.swapped > 0)) {
+        return "";
+    }
+    const hz = Math.round(1000 / refresh);
+    // A hundredth of a frame's slack, for a time read a little apart from
+    // the vblank it lies on.
+    const count = Math.max(1, Math.ceil((at - times.swapped) / refresh - 0.01));
+    const frames = `${count} ${count === 1 ? "frame" : "frames"} at ${hz} Hz`;
+    return `; ${frames} from its swap to the screen`;
+}
+
 // Each part's median, `[from, to, words]`, over those stamped with every
 // part's ends, or "" where none was, said as ": a median A ms <words>, B
 // <words> and C <words>".
