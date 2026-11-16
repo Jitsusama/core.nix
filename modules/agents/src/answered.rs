@@ -32,6 +32,7 @@ use serde_json::{Value, json};
 
 use crate::clock;
 use crate::said::Said;
+use crate::talks;
 
 /// What the machine sends a session on its own, rather than Joel, as the
 /// harness starts each of its own messages.
@@ -118,7 +119,7 @@ fn delivered(lines: &[Value]) -> Option<&Value> {
 }
 
 fn asked_of(lines: &[Value]) -> Option<&str> {
-    delivered(lines)?["text"].as_str()
+    delivered(lines)?["text"].as_str().map(talks::said_alone)
 }
 
 /// The talk, if it's Joel's and on its way to an answer: delivered and
@@ -136,7 +137,7 @@ fn waiting_of(talk: &Value) -> Option<Waiting> {
     Some(Waiting {
         address: talk["address"].as_str()?.to_owned(),
         talk: talk["id"].as_str()?.to_owned(),
-        asked: delivered["text"].as_str()?.to_owned(),
+        asked: talks::said_alone(delivered["text"].as_str()?).to_owned(),
         stage: stage.to_owned(),
         at: clock::ms_of(&delivered["at"]),
     })

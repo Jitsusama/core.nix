@@ -47,7 +47,7 @@ pub fn folded(record: &Value) -> Talk {
                 if line["at"].is_string() {
                     talk.at = text(&line["at"]);
                 }
-                talk.words = text(&line["text"]);
+                talk.words = said_alone(line["text"].as_str().unwrap_or("")).to_owned();
             }
             "reading" => talk.after = text(&line["after"]),
             "replying" | "replied" => {
@@ -144,6 +144,21 @@ pub fn rows(talks: &[Talk], parent: &str, place: &str, depth: usize, words: &Wor
         }
     }
     rows
+}
+
+/// The heading Super+S's line puts what goes with Joel's words under, after
+/// a blank line (TalkLine.js's ATTACHED): a word of the protocol between the
+/// line and the void, so it's matched as written.
+const ATTACHED: &str = "\n\nAttached:";
+
+/// What Joel said in a delivered line, without what the line attached to
+/// it: the window, tab or copy it went with is the void's to read, never
+/// his words, which a talk's name, You Said and You Asked show.
+pub fn said_alone(delivered: &str) -> &str {
+    delivered
+        .split_once(ATTACHED)
+        .map_or(delivered, |(said, _)| said)
+        .trim_end()
 }
 
 fn text(value: &Value) -> String {
