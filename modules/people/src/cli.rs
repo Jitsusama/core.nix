@@ -3,7 +3,12 @@
 
 use std::path::PathBuf;
 
-use terminal_kit::{Exit, Failure, Help};
+use terminal_kit::{Exit, Failure, Help, flags};
+
+/// The flags it takes, all of them the kit's own, which the kit takes
+/// before these words reach it: a flag left here was mistyped, and the
+/// nearest of these is what was meant.
+const FLAGS: [&str; 5] = ["--help", "--version", "--json", "--format", "--color"];
 
 /// What `people --help` says: how its unit runs it, and how it ends.
 pub fn help() -> Help {
@@ -37,7 +42,7 @@ pub struct Asked<'a> {
 pub fn asked(args: &[String]) -> Result<Asked<'_>, Failure> {
     let wrongly = |what: String| Failure::new(Exit::Usage, what).try_this("people --help");
     if let Some(flag) = args.iter().find(|arg| arg.starts_with('-')) {
-        return Err(wrongly(format!("{flag} isn't a flag it takes")));
+        return Err(flags::unknown("option", flag, &FLAGS).try_this("people --help"));
     }
     match args {
         [socket, sources, words @ ..] if words.len() < 2 => Ok(Asked {
