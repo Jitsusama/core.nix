@@ -378,7 +378,7 @@
       networks: (s.groups || []).filter((g) => counted.has(g)),
       leads: now.teams.filter((t) => t.lead === s.id).map((t) => lower(t.key)),
     }));
-    return { at: now.at, networks: [...teams, ...shared], cells, machines: now.machines, messages: now.messages, waits: now.waits, balance: now.balance };
+    return { at: now.at, networks: [...teams, ...shared], cells, machines: now.machines, messages: now.messages, waits: now.waits, balance: now.balance, ties: now.ties };
   };
 
   const model = (raw) => {
@@ -489,7 +489,7 @@
       .map((n) => ({ key: n.name, shape: n.shape, short: n.short || n.name, title: n.title, cells: n.cells.map((a) => byAddress.get(a)).filter(Boolean) }))
       .filter((n) => n.cells.length >= 2);
     const repositories = new Set(cells.map((s) => s.repo).filter(Boolean)).size || shared.filter((n) => n.shape === "repository").length;
-    return { at: now.at, hubs, cells, byAddress, byId, shared, machines: now.machines, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, shared, machines: now.machines, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, repositories };
   };
 
   // ---- Places that never move. ----
@@ -3057,7 +3057,7 @@
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><g class="hub quiet"><circle class="m-hub" r="12"/><path class="m-hub-shape" d="${SHAPES.square(6)}"/></g></svg></dt><dd>A quiet network: none of its cells at work, so drawn lighter</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cord" d="M-13,0H13" style="--w:4px"/></svg></dt><dd>A cord: machine to hub, or hub to branch; thicker carries more</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-hypha" d="M-13,4Q0,-8 13,4"/></svg></dt><dd>Hyphae: a hub's cells, branching out from it</dd></div>` +
-      (WARMS ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-talk warm3" d="M-12,6Q0,-12 12,6"/></svg></dt><dd>Talk: an arc between two that messaged in the last ten minutes, thicker the more they said</dd></div>` : "") +
+      (WARMS ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-talk warm3" d="M-12,6Q0,-12 12,6"/></svg></dt><dd>${current?.ties ? "Talk: an arc between two cells that messaged each other today, thicker the more they said lately, and thinner the longer they have been quiet" : "Talk: an arc between two that messaged in the last ten minutes, thicker the more they said"}</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cross m-repository" d="M-13,4Q0,-8 13,4"/></svg></dt><dd>Dotted cross-hyphae: cells sharing a repository, group or quest</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-changed" r="13"/><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>A faint outer ring: changed since you last looked</dd></div>` +
       (PULSES
@@ -3186,7 +3186,7 @@
   const talkWords = (id) => `talk between ${id.split("|").map(endName).join(" and ")}`;
   // What a click or a key opened, in the words #where says it in.
   const openedWords = (c) => {
-    if (c.kind === "talk") return `${talkWords(c.id)}: ${plural((talkSaid.get(c.id) || []).length, "message")} in ten minutes`;
+    if (c.kind === "talk") return tieOf.has(c.id) ? `${talkWords(c.id)}: ${plural(tieSum(tieOf.get(c.id).today), "message")} today` : `${talkWords(c.id)}: ${plural((talkSaid.get(c.id) || []).length, "message")} in ten minutes`;
     const key = keyOf(c);
     return key ? describe(key) : placeless(c);
   };
@@ -3195,9 +3195,24 @@
     const s = current.byAddress.get(end.slice(2));
     return s ? cellRow(s) : "";
   };
+  // How much a tie's two ends said, as the node counts each end's own.
+  const tieSum = (pair) => (Array.isArray(pair) ? pair.reduce((sum, n) => sum + (Number(n) || 0), 0) : 0);
+  // A tie said in words: how much passed today and in the last hour, who
+  // sent how much, and of what kinds, as the mesh names them.
+  const tieWords = (t) => {
+    const today = tieSum(t.today);
+    const hour = tieSum(t.hour);
+    const kinds = (Array.isArray(t.intents) ? t.intents : []).map(String);
+    const each = Array.isArray(t.today) ? t.ends.map((end, i) => `${endName(`c:${end}`)} sent ${Number(t.today[i]) || 0}`).join(", ") : "";
+    return (
+      `<p class="counts mono">${esc(`${plural(today, "message")} today\u00a0\u00b7 ${hour} in the last hour`)}</p>` +
+      `<p>${esc(`${each ? `${each}. ` : ""}${kinds.length ? `Of the kinds ${kinds.join(", ")}. ` : ""}Last at ${clock(t.at, false)}.`)}</p>`
+    );
+  };
   const talkPanel = (id) => {
     const ends = id.split("|");
     const said = talkSaid.get(id) || [];
+    const tied = tieOf.get(id);
     const asked = said.filter(({ msg }) => SIGNAL.has(msg.intent)).length;
     const rows = [...said]
       .reverse()
@@ -3211,11 +3226,13 @@
     return (
       backButton(from ? cut(endName(`c:${from.id}`), 32) : "Now") +
       `<h2 id="panel-title" class="ends"><span>${esc(endName(ends[0]))}</span><span class="and">and</span><span>${esc(endName(ends[1]))}</span></h2>` +
-      `<p class="carries">Talk on the mesh in the last ten minutes: who said what kind of thing to whom, never the words.</p>` +
-      `<p class="counts mono">${esc(`${plural(said.length, "message")}\u00a0\u00b7 ${asked} asked or found something`)}</p>` +
+      (tied
+        ? `<p class="carries">Talk on the mesh today, as the node ties the two: how much each said and of what kinds, never the words.</p>` + tieWords(tied)
+        : `<p class="carries">Talk on the mesh in the last ten minutes: who said what kind of thing to whom, never the words.</p>` +
+          `<p class="counts mono">${esc(`${plural(said.length, "message")}\u00a0\u00b7 ${asked} asked or found something`)}</p>`) +
       `<h3>Between Them</h3><ul class="rows">${ends.map(endRow).join("")}</ul>` +
       `<h3>What Passed</h3>` +
-      (rows.length ? `<ul class="lately">${rows.join("")}</ul>` : `<p class="hint">Nothing has passed between them lately: the page keeps ten minutes of what it heard, from the latest messages the node keeps.</p>`)
+      (rows.length ? `<ul class="lately">${rows.join("")}</ul>` : `<p class="hint">Nothing has passed between them in the last ten minutes: the page lists ten minutes of what it heard, from the latest messages the node keeps.</p>`)
     );
   };
   // What has no place of its own on the map, named in words.
@@ -3768,6 +3785,11 @@
   const MAX_FANOUT = 6; // receivers drawn for a message to a shared network
   const MAX_FLIGHTS = 48;
   const WARM_AT = [1, 3, 8]; // messages over a link for each step warmer
+  // A tie's strength is a message's worth for each one sent, halving every
+  // two hours, so one message just now is 1, and one four hours ago a
+  // quarter: below that a tie is too faint to draw.
+  const TIE_WARM_AT = [0.25, 2, 6];
+  const MAX_TIES = 400; // the strongest drawn, so a busy day stays a map
   const WARMS = true;
   const PULSES = true;
   const ARC_BOW = 0.24; // how far an arc bows off the straight, over its length
@@ -3813,7 +3835,10 @@
   };
 
   const heard = new Map(); // a message's key: when it was sent, in ms
-  let talk = new Map(); // a pair's key: how many messages between them lately
+  // A pair's key: how much they talked, as a strength where the node ties
+  // its cells, and otherwise as the page's count of ten minutes' messages.
+  let talk = new Map();
+  let tieOf = new Map(); // a pair's key: the node's tie between them, where it ties
   let talkSaid = new Map(); // a pair's key: those messages, oldest first
   const msgKey = (msg) => `${msg.at}|${msg.from}|${(msg.groups || []).join(",")}`;
 
@@ -3840,6 +3865,21 @@
         talkSaid.get(e).push({ msg, to });
       }
     }
+    // The node's ties, where it serves them, say a day's talk between
+    // cells in place of the page's ten minutes, so two that talked this
+    // morning are still joined, fainter as they fall quiet.
+    tieOf = new Map();
+    if (current.ties) {
+      talk = new Map();
+      for (const t of current.ties) {
+        if (tieOf.size >= MAX_TIES || t.strength < TIE_WARM_AT[0]) break;
+        const [a, b] = t.ends.map((end) => `c:${end}`);
+        if (!spots.has(a) || !spots.has(b)) continue;
+        const e = pairKey(a, b);
+        tieOf.set(e, t);
+        talk.set(e, t.strength);
+      }
+    }
     paintTalk();
     for (const { at, msg } of arrived.sort((a, b) => a.at - b.at)) {
       const delay = Math.min(Math.max(at - (now - EVERY_MS), 0), EVERY_MS);
@@ -3847,7 +3887,7 @@
     }
   };
 
-  const warmLevel = (n) => WARM_AT.filter((t) => n >= t).length;
+  const warmLevel = (n) => (current.ties ? TIE_WARM_AT : WARM_AT).filter((t) => n >= t).length;
   // A redraw that frames the map straight after builds the layer and
   // leaves the painting to its frame, which would only paint it again.
   const paintTalk = ({ paint = true } = {}) => {
@@ -4127,6 +4167,9 @@
         first = false;
         apply(false);
         hear(false);
+        // A talk opened from the address was written before the ties were
+        // heard, so it is written again now that they are.
+        if (tieOf.size) panel();
       } else {
         if (chosen && !knows(chosen)) chosen = null;
         const was = spots;
