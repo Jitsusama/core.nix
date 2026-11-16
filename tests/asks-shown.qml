@@ -73,8 +73,8 @@ QtObject {
 
     function outside() {
         const seen = Shown.noted({}, key, "d1", 1200);
-        Expect.same("a yes while the launcher is walked from outside says no time",
-            Shown.stamped(yes("d1"), seen, key, at(9000, true)).shown, undefined);
+        Expect.same("a yes while the launcher is walked from outside isn't sent at all",
+            Shown.stamped(yes("d1"), seen, key, at(9000, true)), null);
     }
 
     function refused() {
