@@ -85,7 +85,8 @@ impl Served {
     }
 
     /// Serves the uplink's newest record, or none once nothing watches it,
-    /// keeping the network as it stands.
+    /// keeping the network as it stands. Only Linux reads the uplink.
+    #[cfg(target_os = "linux")]
     pub fn uplink(&self, record: Option<Value>) {
         let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
         held.uplink = record;
@@ -93,6 +94,7 @@ impl Served {
     }
 
     /// Whether a watch asks for the uplink, by its kind or its key.
+    #[cfg(target_os = "linux")]
     pub fn uplink_watched(&self) -> bool {
         self.shared.watches("uplink", "") || self.shared.keys_watched().contains("uplink")
     }
