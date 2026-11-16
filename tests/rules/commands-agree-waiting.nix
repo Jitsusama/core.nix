@@ -7,7 +7,6 @@
     "inks"
     "helps"
   ];
-  changed-checks = [ "tables" ];
   eero = [ "inks" ];
   guide = [
     "exits"

@@ -118,7 +118,7 @@ fn a_gate_evaluates_each_check_whose_read_file_its_change_moved() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "changed  a\n",
+        "KIND     CHECK\nchanged  a\n",
         "only a read a.nix, so only a was evaluated again"
     );
     assert!(
@@ -144,7 +144,7 @@ fn a_gate_on_a_base_with_no_record_of_each_checks_reads_evaluates_them_all() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "changed  a\nchanged  b\nchanged  gone\n",
+        "KIND     CHECK\nchanged  a\nchanged  b\nchanged  gone\n",
         "with no record, a check kept the base's derivation"
     );
     let run = stand_in.runs().pop().expect("the gate's run");
@@ -160,7 +160,7 @@ fn a_gate_on_a_base_past_a_recorded_head_evaluates_there_only_what_main_reached(
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "changed  a\n",
+        "KIND     CHECK\nchanged  a\n",
         "a check neither main nor the change reached was evaluated again"
     );
     assert!(
@@ -324,7 +324,7 @@ fn a_keep_carrying_past_a_vm_test_main_reached_keeps_none_of_its_old_reads() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "changed  vm-y\n",
+        "KIND     CHECK\nchanged  vm-y\n",
         "a gate at a base without the joint trace evaluated a VM test it didn't reach"
     );
     assert!(
@@ -396,7 +396,7 @@ fn a_gate_reaching_the_vm_tests_but_nothing_one_read_alone_keeps_its_derivation(
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "changed  vm-y\n",
+        "KIND     CHECK\nchanged  vm-y\n",
         "only vm-y read what the change touched, yet vm-x was evaluated too"
     );
     assert!(
@@ -435,7 +435,7 @@ fn asked_only_to_name_them_it_judges_each_check_by_what_it_read_as_a_gate_does()
     );
     assert_eq!(
         text(&ran_vm.stdout),
-        "changed  vm-y\n",
+        "KIND     CHECK\nchanged  vm-y\n",
         "only vm-y read what the change touched, yet naming them named more"
     );
     assert!(
@@ -452,19 +452,19 @@ fn a_gate_evaluates_each_vm_test_its_change_reaches_or_the_record_lacks() {
             "vm-alone-reached",
             "M\tvm-x.nix\n",
             false,
-            "changed  vm-x\n",
+            "KIND     CHECK\nchanged  vm-x\n",
         ),
         (
             "vm-alone-all-read",
             "M\tflake.nix\n",
             false,
-            "changed  vm-x\nchanged  vm-y\n",
+            "KIND     CHECK\nchanged  vm-x\nchanged  vm-y\n",
         ),
         (
             "vm-alone-lacked",
             "M\ttests/x.nix\n",
             true,
-            "changed  vm-x\nchanged  vm-y\n",
+            "KIND     CHECK\nchanged  vm-x\nchanged  vm-y\n",
         ),
     ] {
         let stand_in = vm_alone(test, diff);
@@ -499,7 +499,7 @@ fn a_gate_on_a_base_past_a_head_whose_vm_test_main_reached_evaluates_it_at_the_b
     let ran = stand_in.run(&GATING);
 
     assert!(ran.status.success(), "{}", text(&ran.stderr));
-    assert_eq!(text(&ran.stdout), "changed  vm-x\n");
+    assert_eq!(text(&ran.stdout), "KIND     CHECK\nchanged  vm-x\n");
     assert!(
         text(&ran.stderr).contains(
             "evaluates 1 of x86_64-linux's 2 VM tests at the base 0123456789ab, since main \
@@ -519,7 +519,7 @@ fn a_gate_on_a_base_past_a_head_recorded_off_its_main_evaluates_them_all() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "changed  a\nchanged  b\nchanged  gone\n",
+        "KIND     CHECK\nchanged  a\nchanged  b\nchanged  gone\n",
         "a check took the derivation of a head the base didn't come from"
     );
 }
@@ -537,7 +537,7 @@ fn a_gate_whose_tree_adds_a_check_evaluates_it_and_judges_the_rest_by_their_read
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "added    new\n",
+        "KIND   CHECK\nadded  new\n",
         "a check whose reads the change reaches none of was evaluated again"
     );
     assert!(
@@ -557,7 +557,7 @@ fn a_gate_whose_tree_removes_a_check_judges_the_rest_by_their_reads() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "removed  gone\n",
+        "KIND     CHECK\nremoved  gone\n",
         "a check whose reads the change reaches none of was evaluated again"
     );
     assert!(

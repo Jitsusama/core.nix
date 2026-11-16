@@ -104,7 +104,8 @@ use checks::Derivations;
 use evaluating::{derivations, evaluated, names, pure};
 use quarantine::Held;
 use runs::Run;
-use terminal_kit::{Exit, Failure, flags};
+use terminal_kit::layout::{self, Align, Room};
+use terminal_kit::{Exit, Failure, Pen, flags};
 
 /// Where `keep-main` follows main unless `CHANGED_CHECKS_REPOSITORY` names
 /// another.
@@ -239,7 +240,7 @@ fn main() -> ExitCode {
         }
         let options = Options::parse(arguments.iter().cloned())
             .map_err(|failure| failure.try_this("changed-checks --help"))?;
-        changed(&options)
+        changed(&options, (&context.out, context.room))
     })
 }
 
@@ -249,7 +250,7 @@ fn broke(why: String) -> Failure {
 }
 
 /// Name the checks the working tree's change touches, and build them if asked.
-fn changed(options: &Options) -> Result<(), Failure> {
+fn changed(options: &Options, out: (&Pen, Room)) -> Result<(), Failure> {
     let root = run("git", &["rev-parse", "--show-toplevel"]).map_err(broke)?;
     let Ok(base) = run("git", &["-C", &root, "merge-base", "HEAD", &options.base]) else {
         return Err(Failure::new(
@@ -316,7 +317,7 @@ fn changed(options: &Options) -> Result<(), Failure> {
         };
     let held = quarantine::on_main(&root, ORIGIN_MAIN);
     let mut noted = Run::new(&base, &system);
-    let compared = compare(options, &root, &base, &system, &held, &mut noted);
+    let compared = compare(options, &root, &base, &system, &held, &mut noted, out);
     let log = state().join("changed-checks/runs.jsonl");
     if let Err(why) = noted.record(&log) {
         eprintln!("changed-checks: couldn't log the run: {why}");
@@ -504,6 +505,7 @@ fn compare(
     system: &str,
     held: &[Held],
     noted: &mut Run,
+    out: (&Pen, Room),
 ) -> Result<Compared, String> {
     let flake = &format!("git+file://{root}");
     let short = base.get(..12).unwrap_or(base);
@@ -587,7 +589,7 @@ fn compare(
     });
     let after = after?;
     let comparison = checks::compare(&before, &after);
-    noted.named(named(&comparison));
+    noted.named(named(&comparison, out));
     let whole = comparison.broken.is_empty();
     let build = match building {
         Some(began) => began.transpose()?,
@@ -706,16 +708,29 @@ fn unread(
     })
 }
 
-/// Name each check a comparison moved, a line each, and say how many.
-fn named(comparison: &checks::Comparison) -> usize {
-    let mut named = 0;
-    for (kind, names) in comparison.kinds() {
-        for name in names {
-            println!("{kind:<8} {name}");
-            named += 1;
+/// The columns checks are named in: what befell each, and its name.
+const NAMED: [(&str, Align); 2] = [("kind", Align::Left), ("check", Align::Left)];
+
+/// Name each check a comparison moved, a row each of the kit's table, and
+/// say how many; naming none prints nothing. Its readers (nix-offload's
+/// `--changed`, merge-net) take the lines whose first word is a kind, so
+/// the label line is passed over.
+fn named(comparison: &checks::Comparison, (pen, room): (&Pen, Room)) -> usize {
+    let rows: Vec<Vec<String>> = comparison
+        .kinds()
+        .into_iter()
+        .flat_map(|(kind, names)| {
+            names
+                .iter()
+                .map(move |name| vec![kind.to_owned(), name.clone()])
+        })
+        .collect();
+    if !rows.is_empty() {
+        for line in layout::table_in(&NAMED, &rows, pen, room, &[]) {
+            println!("{line}");
         }
     }
-    named
+    rows.len()
 }
 
 /// Where nix-offload says the machine's builders: `NIX_OFFLOAD_DIR`, or
