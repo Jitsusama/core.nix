@@ -95,11 +95,14 @@ pub fn owner(landings: &str, pr: u64) -> Option<String> {
 }
 
 /// The merges already told, by the PR that ended each and its owner's, and
-/// when.
+/// when; and the merges told that no Mac took their checks (unrun.rs), by
+/// commit.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Told {
     #[serde(default)]
     pub reverts: BTreeMap<String, i64>,
+    #[serde(default)]
+    pub unrun: BTreeMap<String, i64>,
 }
 
 /// A line to send: to the owner's session, or to the watcher when no

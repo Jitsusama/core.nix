@@ -15,18 +15,6 @@
     "test": "vm-desktop-launcher-goes-places"
   },
   {
-    "at": 1794560189,
-    "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
-    "due": "2026-11-15",
-    "owner_pr": 3946,
-    "owner_session": "FEH1HE",
-    "reason": "failed, then passed, at aefa56b98e80",
-    "subtests": [
-      "test_a_programs_media_and_sound_work_its_real_player_and_its_stream"
-    ],
-    "test": "vm-desktop-opens-and-sets"
-  },
-  {
     "at": 1794409299,
     "commit": "6e396fae765b7bee38c3af3a418e0ff73ad7d294",
     "due": "2026-11-16",
@@ -56,22 +44,6 @@
       "test_the_time_here_says_how_the_clock_is_kept"
     ],
     "test": "vm-desktop-launcher-answers"
-  },
-  {
-    "at": 1794437795,
-    "commit": "461743399d56dac959e8e102cd6c137100886045",
-    "due": "2026-11-16",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
-    "owner_pr": 3795,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at 461743399d56",
-    "subtests": [
-      "test_a_charge_told_in_batterys_step_is_said_there",
-      "test_a_row_holding_only_a_copy_copies_on_return",
-      "test_no_answer_raised_an_error_and_quickshell_warned_of_nothing",
-      "test_the_shut_shell_sleeps_as_a_window_is_resized"
-    ],
-    "test": "the-launcher-answers-whats-typed-on-niri"
   },
   {
     "at": 1794515309,
@@ -120,15 +92,6 @@
     "owner_session": "80ECO2",
     "reason": "failed, then passed, at b2be6ae26c8f",
     "test": "vm-joel-comes-first"
-  },
-  {
-    "at": 1794580528,
-    "commit": "b7a81d60bf2144b8873172e83bd4aa19fb38414d",
-    "due": "2026-11-15",
-    "owner_pr": 4014,
-    "owner_session": "XY9H5C",
-    "reason": "failed, then passed, at b7a81d60bf21",
-    "test": "vm-guide-installs"
   },
   {
     "at": 1794614356,
@@ -281,18 +244,6 @@
       "test_sessions_reopened_while_their_screen_is_gone_go_to_it_once_its_back"
     ],
     "test": "vm-screens-keep-places"
-  },
-  {
-    "at": 1794778737,
-    "commit": "ad0c40d729464a572cf020fd38e3594708a626dc",
-    "due": "2026-11-17",
-    "owner_pr": 4839,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at ad0c40d72946",
-    "subtests": [
-      "test_a_closed_launcher_makes_nothing_of_the_machine_queue"
-    ],
-    "test": "vm-desktop-launcher-draws-still"
   },
   {
     "at": 1794778984,
