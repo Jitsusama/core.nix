@@ -376,7 +376,7 @@ Each is a verdict on a real site; the rule it gave is above.
 - Scroll animations that finish off screen, rush past, or snap past the text.
 - Counting numbers, and a freshness time that measures publishing, not facts.
 - A shared host full of sites only he reads, each one apart from the rest:
-  "i need to not have 1,000 quick sites disconnected" (2026-11-11).
+  "i need to not have 1,000 [shared] sites disconnected" (2026-11-11).
 - A generic app shell, "too corporate and the UX is weeak. And totally not
   enough design or typography magic" (2026-11-02).
 - Navigation at the bottom, places in a menu, hover cards over content, help

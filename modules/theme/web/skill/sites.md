@@ -12,7 +12,7 @@ so it never retypes a value, and the site still makes its own world on top
 A site lives where its readers are. One shared with other people goes on
 the host they reach. Anything just for Joel (a mock, a tour, a record, a
 page written for him) lives on his own machine, under one local home, never
-on a shared host: "we need to not creeeeeate quick sites for stuff like
+on a shared host: "we need to not creeeeeate [shared] sites for stuff like
 luancher shapes ... we can run them locally though as just standard sites,
 that is awesome" (2026-11-11).
 
