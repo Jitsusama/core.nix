@@ -385,6 +385,47 @@ fn steps_for_the_phone_are_a_line_each_their_words_after_their_number() {
     assert_eq!(shown.last().unwrap(), "  Return show it    Ctrl+C leave");
 }
 
+/// The escape a terminal reads, as a char, which commands-agree reads as
+/// no escape of the guide's own: the pen spells them.
+const ESC: char = '\u{1b}';
+
+#[test]
+fn a_span_is_drawn_in_its_roles_code_and_a_role_not_given_plainly() {
+    let theme = Theme::from("strong=97 text=39", "", false);
+    assert_eq!(
+        [
+            theme.drawn(&span(Role::Strong, "a")),
+            theme.drawn(&span(Role::Alert, "b")),
+            theme.drawn(&span(Role::Text, "")),
+        ],
+        [format!("{ESC}[97ma{ESC}[0m"), "b".into(), String::new()],
+        "a span isn't drawn in its role's code, or one with no code or no words is inked"
+    );
+}
+
+#[test]
+fn a_theme_in_plain_ink_draws_no_colour_as_no_color_asks() {
+    let theme = Theme::inked("strong=97", "", terminal_kit::ink::Ink::plain());
+    assert_eq!(
+        theme.drawn(&span(Role::Strong, "a")),
+        "a",
+        "the screen inked where the kit decided on no colour"
+    );
+}
+
+#[test]
+fn a_role_given_twice_is_drawn_as_it_is_checked() {
+    let theme = Theme::from("strong=97 strong=1", "", false);
+    assert_eq!(
+        (
+            theme.sgr(Role::Strong),
+            theme.drawn(&span(Role::Strong, "a"))
+        ),
+        (Some("97"), format!("{ESC}[97ma{ESC}[0m")),
+        "what guide tools checks and what the screen draws disagree"
+    );
+}
+
 #[test]
 fn words_wrap_between_themselves() {
     assert_eq!(wrap("one two three four", 9), ["one two", "three", "four"]);
