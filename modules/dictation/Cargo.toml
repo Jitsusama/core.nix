@@ -11,6 +11,9 @@ publish = false
 # What counts as a call, and when one starts and ends, kept in one place
 # for everything that follows calls; call-transcripts is one.
 calls = { path = "../calls" }
+# The calls receptor counts the calls since local midnight, the day as
+# Joel's clock has it, as google's daemon reads its meetings.
+jiff = "0.2"
 # The noise-cancelled microphone is a PipeWire client of its own, so
 # nothing slow runs on PipeWire's real-time thread. Asking for 1.2's
 # interface gives it what a stream asks for each cycle and target.object;
