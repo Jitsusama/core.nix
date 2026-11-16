@@ -24,6 +24,7 @@ fail() {
   exit 1
 }
 
+# niri names its X11 display as it starts: up to 10 s, in tenths.
 for _ in $(seq 100); do
   display=$(grep -ao 'listening on X11 socket: :[0-9]*' "$log" | grep -o ':[0-9]*$' || true)
   [ -n "$display" ] && break
@@ -31,12 +32,34 @@ for _ in $(seq 100); do
 done
 [ -n "$display" ] || fail "niri opened no X11 display"
 
+# The satellite is offered niri's clipboard only while one of its windows
+# holds the keyboard, as any Wayland client is, and then holds it for every
+# X11 client, focused or not. So an X11 window of Joel's is open and
+# focused, as it is whenever he works in one. The first client starts the
+# satellite and Xwayland behind it, so it may wait for them: up to a
+# minute, in tenths.
+xlogo -display "$display" &
+logo=$!
+trap 'kill "$logo" 2> /dev/null || true' EXIT
+for _ in $(seq 600); do
+  focused=$(niri msg focused-window 2> /dev/null || true)
+  case $focused in
+  *"App ID"*) break ;;
+  *) ;;
+  esac
+  sleep 0.1
+done
+case $focused in
+*"App ID"*) ;;
+*) fail "niri focused no X11 window: $focused" ;;
+esac
+
 secret="secret-$RANDOM-$RANDOM"
 wl-copy --sensitive "$secret"
 
 # Joel's own X11 client, holding the cookie, reads his copy through the
-# satellite. The first client starts the satellite and Xwayland behind it,
-# so it may wait for them: up to a minute, in tenths.
+# satellite, once the satellite has been offered it: up to a minute, in
+# tenths.
 read=
 for _ in $(seq 600); do
   read=$(timeout 10 xclip -o -selection clipboard -display "$display" 2> /dev/null) || read=

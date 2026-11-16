@@ -145,6 +145,7 @@ onLinux {
           pkgs.sway-unwrapped
           pkgs.wl-clipboard
           pkgs.xclip
+          pkgs.xlogo
           pkgs.xwayland
         ];
         # niri draws in software, as the desktop's machine does.
