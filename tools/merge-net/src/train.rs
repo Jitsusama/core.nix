@@ -676,7 +676,6 @@ mod tests {
         );
     }
 
-    #[test]
     /// Git in `repo` with no user's or system's config, as the other
     /// modules' tests run it, giving what it printed or why it failed.
     fn git_in(repo: &Path, arguments: &[&str]) -> Result<String, String> {
@@ -731,10 +730,10 @@ mod tests {
         let place = root("land");
         let (origin, checkout) = (place.join("origin.git"), place.join("checkout"));
         let base = based(&checkout);
-        let bare = origin.display().to_string();
-        git_in(&place, &["init", "--quiet", "--bare", "-b", "main", &bare]).unwrap();
+        let url = origin.display().to_string();
+        git_in(&place, &["init", "--quiet", "--bare", "-b", "main", &url]).unwrap();
         let git = |arguments: &[&str]| git_in(&checkout, arguments);
-        git(&["remote", "add", "origin", &bare]).unwrap();
+        git(&["remote", "add", "origin", &url]).unwrap();
         git(&["push", "--quiet", "origin", "main"]).unwrap();
         git(&["fetch", "--quiet", "origin", "main"]).unwrap();
         let head = change(&checkout, &base, "apart", "one\n");
