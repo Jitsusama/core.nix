@@ -1,8 +1,8 @@
 // mycelium's cells and machines, watched live from the machine's mycelium
-// node through the sites' feed, as mycelium's own map watches them
-// (modules/mycelium/site). They're mycelium's, not net's, so a machine in
-// no realm has no node to watch: its watches never go live, and a
-// machine's panel says nothing of mycelium.
+// node through the sites' feed. They're mycelium's, not net's, so a
+// machine in no realm has no node to watch, and a feed that doesn't offer
+// them refuses the watch, as one holding only forage does: either way the
+// watches never go live, and a machine's panel says nothing of mycelium.
 
 import { follow } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
