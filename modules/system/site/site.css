@@ -1,301 +1,368 @@
-/* Your system, now: the four parts of the system as a list, each with how it
-   stands and what it says, and beside it the part the cursor is on, with
-   its machines and the ways deeper. An interface to keep open, so its words
-   sit at the interface size, set as the code, network and mycelium sites
-   set theirs, since every part here leads to one of them. */
+/* Your system, now: one column on one edge, "the main line", where the
+   headline, each part's name and every row start, with each health's mark
+   hung in a gutter before it. Two faces, each with one job: Fraunces names
+   and is read, Monaspace counts and is typed. The accent is only where the
+   keys are, and a health is told by its mark's shape, never by hue alone.
+   An interface to keep open, so it sits at the interface size, as the
+   code, network and mycelium sites do, since every part leads to one. */
 
 :root {
   /* Rose marks the site's emphasis: the machine hue, since the system is
      first the machines it runs on. */
   --tint: var(--machine);
-  --list: min(44rem, 52vw);
-}
-
-body {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  min-block-size: 100dvh;
-}
-
-@media (min-width: 60rem) and (min-height: 34rem) {
-  html,
-  body {
-    block-size: 100dvh;
-    overflow: hidden;
-  }
+  /* The marks hang in this, so every name starts on the main line. */
+  --gutter: 2.75rem;
+  --column: 60rem;
 }
 
 .stage code {
   font-size: inherit;
 }
 
-/* ---- The head. ---- */
+/* ---- The masthead: the top of the page, not a bar laid over it. ---- */
 
-.head {
+.mast {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--mark) var(--groups);
-  padding: var(--mark) var(--inset);
-  border-block-end: 1px solid var(--rule);
+  gap: var(--mark);
+  max-inline-size: calc(var(--column) + 2 * var(--screen));
+  margin-inline: auto;
+  padding: var(--mark) var(--screen);
 }
 
-.mark {
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: var(--apart);
+  margin: 0 auto 0 0;
+  color: var(--strong);
+  font: var(--title-weight) var(--step-large) / 1.2 var(--serif);
+  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
+}
+
+.wordmark .mark {
   color: var(--tint);
   flex: none;
 }
 
-.head h1 {
-  font-size: var(--step-large);
-  line-height: 1.2;
-}
-
-/* Every word on the page clears 7:1, so the title's tint is deepened
-   toward the strong ink, as the other sites' are. */
-.head h1 em {
+/* Every word on the page clears 7:1, so the tint is deepened toward the
+   strong ink, as the other sites' are. */
+.wordmark em {
   color: color-mix(in oklab, var(--tint) 60%, var(--strong));
 }
 
-.head .keys {
-  margin-inline-start: auto;
-  color: var(--text);
-  font-size: var(--step-small);
-  visibility: hidden;
-}
-
-.js .head .keys {
-  visibility: visible;
-}
-
-.head .keys kbd {
+.help {
+  inline-size: 44px;
+  block-size: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--muted);
   cursor: pointer;
 }
 
-/* ---- The stage: the parts and the one open. ---- */
+.help:hover {
+  border-color: var(--edge);
+  color: var(--strong);
+}
+
+/* ---- The stage. ---- */
 
 .stage {
-  display: grid;
-  grid-template-columns: var(--list) minmax(0, 1fr);
-  min-block-size: 0;
+  max-inline-size: calc(var(--column) + 2 * var(--screen));
+  margin-inline: auto;
+  padding: var(--groups) var(--screen) var(--huge);
 }
 
 .stage:focus {
   outline: none;
 }
 
-.whole {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  min-block-size: 0;
-  border-inline-end: 1px solid var(--rule);
+/* The quiet first line: where it was read, when, and whether it's live. */
+.standing,
+.note,
+.legend {
+  padding-inline-start: var(--gutter);
+  color: var(--muted);
+  font: 400 var(--step-small) / 1.5 var(--mono);
+  font-feature-settings: var(--mono-features);
 }
 
-/* The one focal point: the whole system in a sentence, set large. */
-.lede {
-  padding: var(--groups) var(--inset) var(--items);
-}
-
-.verdict {
-  max-inline-size: var(--measure);
+.standing[data-state="stale"],
+.standing[data-state="broken"] {
   color: var(--strong);
-  font-size: var(--step-section);
-  font-weight: var(--title-weight);
-  font-variation-settings: "SOFT" 100, "WONK" 1;
-  line-height: 1.2;
 }
 
-/* What a browser hasn't taken up everywhere yet is asked for only where it
-   says it can, as the kit asks. */
+/* The one focal point: the whole in a sentence whose counts lead to what
+   they count. */
+.headline {
+  margin: var(--items) 0 var(--apart);
+  padding-inline-start: var(--gutter);
+  color: var(--strong);
+  font: var(--title-weight) var(--step-title) / 1.1 var(--serif);
+  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
+}
+
+.headline a {
+  color: inherit;
+  text-decoration: underline 1px var(--rule);
+  text-underline-offset: 0.14em;
+}
+
+.headline a:hover {
+  text-decoration-color: currentColor;
+}
+
+.headline em {
+  color: var(--warning);
+  font-style: italic;
+}
+
+/* Under it, the one thing that most wants a look, in the reading voice. */
+.lede {
+  max-inline-size: var(--measure);
+  margin: 0;
+  padding-inline-start: var(--gutter);
+  color: var(--text);
+  font: var(--voice-weight) var(--step-body) / 1.5 var(--serif);
+  font-style: var(--voice-style);
+}
+
 @supports (text-wrap: balance) {
-  .verdict {
+  .headline {
     text-wrap: balance;
   }
 }
 
 @supports (text-wrap: pretty) {
-  .parts .says {
+  .lede,
+  .items .line {
     text-wrap: pretty;
   }
 }
 
-@supports (scrollbar-gutter: stable) {
-  .parts {
-    scrollbar-gutter: stable;
-  }
+/* ---- The parts: each a name and what it holds on one line, what is
+   worth a look under it, and the ways deeper last. ---- */
 
-  /* On a small screen the page scrolls, not the list. */
-  @media (max-width: 60rem), (max-height: 34rem) {
-    .parts {
-      scrollbar-gutter: auto;
-    }
-  }
-}
-
-/* ---- States: a mark in its state's hue, and the word beside it, so
-   nothing is told by colour alone. ---- */
-
-.state {
-  --state-ink: var(--muted);
-  inline-size: 1.1em;
-  block-size: 1.1em;
-  align-self: center;
-  color: var(--state-ink);
-  flex: none;
-}
-
-.state.good {
-  --state-ink: var(--success);
-}
-
-.state.watch {
-  --state-ink: var(--warning);
-}
-
-.state.bad {
-  --state-ink: var(--alert);
-}
-
-.word {
-  color: var(--text);
-  font: 400 var(--step-small) / 1.4 var(--mono);
-  font-feature-settings: var(--mono-features);
-  letter-spacing: var(--label-tracking);
-}
-
-.word.bad,
-.word.watch {
-  color: var(--strong);
-}
-
-.foot {
-  padding: var(--tie) var(--inset);
-  border-block-start: 1px solid var(--rule);
-}
-
-.asof {
-  color: var(--text);
-  font: 400 var(--step-small) / 1.4 var(--mono);
-  font-feature-settings: var(--mono-features);
-  min-block-size: 44px;
-  display: flex;
-  align-items: center;
-}
-
-.hint {
-  padding: var(--items) var(--inset);
-  color: var(--text);
-}
-
-/* A part's row: its mark in a column of its own, its name and how it
-   stands on one line, and what it says under them, so every name starts on
-   one edge and every sentence on another. */
 .parts {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  min-block-size: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  border-block-start: 1px solid var(--rule);
+  margin-block: var(--frames) var(--groups);
 }
 
-.parts:focus {
-  outline: none;
-}
-
-.parts [role="option"] {
+.part {
   display: grid;
-  grid-template-columns: 1.1em minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
-    "mark name word"
-    ". says says";
-  gap: var(--tie) var(--mark);
-  align-items: baseline;
-  min-block-size: 44px;
-  padding: var(--items) var(--inset);
-  color: var(--text);
-  cursor: pointer;
-}
-
-.parts [role="option"] + [role="option"] {
+    "name holds"
+    "items items"
+    "deeper deeper";
+  align-items: center;
+  column-gap: var(--items);
+  padding-block: var(--mark) var(--items);
   border-block-start: 1px solid var(--edge);
 }
 
-.parts [role="option"]:hover {
+.part .name {
+  grid-area: name;
+  margin: 0;
+}
+
+.part .holds {
+  grid-area: holds;
+  margin: 0;
+  color: var(--muted);
+  font: 400 var(--step-small) / 1.4 var(--mono);
+  font-feature-settings: var(--mono-features);
+  text-align: end;
+}
+
+/* A part not read says why where its holding would be, in the voice. */
+.part .holds.unread {
+  font: var(--voice-weight) var(--step-body) / 1.4 var(--serif);
+  font-style: var(--voice-style);
+  text-align: start;
+}
+
+.items {
+  grid-area: items;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.deeper {
+  grid-area: deeper;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--mark);
+  margin: var(--tie) 0 0;
+  padding-inline-start: var(--gutter);
+  color: var(--muted);
+  font: 400 var(--step-small) / 1.4 var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.deeper code {
+  color: var(--text);
+}
+
+.deeper .launcher::before {
+  content: "·";
+  margin-inline-end: var(--mark);
+  color: var(--muted);
+}
+
+.copy {
+  min-block-size: 44px;
+  min-inline-size: 44px;
+  padding: 0 var(--mark);
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.copy:hover {
+  color: var(--strong);
+}
+
+/* ---- A row: its mark in the gutter, its words on the main line. ---- */
+
+.row {
+  display: grid;
+  grid-template-columns: var(--gutter) minmax(0, 1fr);
+  align-items: baseline;
+  min-block-size: 44px;
+  padding-block: var(--tie);
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.row:hover {
   background: var(--sunken);
 }
 
-.parts .state {
-  grid-area: mark;
+.row .gut {
+  display: flex;
+  align-self: center;
 }
 
-.parts .name {
-  grid-area: name;
+.name .row .line {
   color: var(--strong);
-  font-size: var(--step-body);
-  font-weight: var(--title-weight);
+  font: var(--title-weight) var(--step-section) / 1.2 var(--serif);
+  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
 }
 
-.parts .word {
-  grid-area: word;
+.items .row .line {
+  font: var(--words-weight) var(--step-body) / 1.45 var(--serif);
+  font-variation-settings: "SOFT" var(--words-soft), "WONK" var(--words-wonk);
 }
 
-.parts .says {
-  grid-area: says;
-  max-inline-size: var(--measure);
+.items .own {
+  margin-inline-end: 0.35em;
+  color: var(--strong);
+  font: 500 var(--step-small) / 1 var(--mono);
+  font-feature-settings: var(--mono-features);
 }
 
-/* ---- The cursor, after every row's own look, which it marks. ---- */
+/* The cursor: focus itself, ringed in the one accent. */
+.row:focus {
+  outline: none;
+}
 
-.parts [aria-selected="true"],
-.tl [aria-current="true"] {
+.row:focus-visible {
   background: var(--selection);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.parts [aria-selected="true"] *,
-.tl [aria-current="true"] * {
+.row:focus-visible .line,
+.row:focus-visible .own {
   color: var(--strong);
 }
 
-/* The mark keeps its state's ink on the selection too. */
-.parts [aria-selected="true"] .state,
-.tl [aria-current="true"] .state {
-  color: var(--state-ink);
+/* ---- Marks: each health its own shape, in its state's hue. ---- */
+
+.state {
+  inline-size: 1.1em;
+  block-size: 1.1em;
+  color: var(--muted);
+  flex: none;
 }
 
-/* Focus on the list rings the part it's on, and a bar down the list's
-   edge says the list itself holds the keys. */
-.parts:focus-visible {
-  box-shadow: inset 3px 0 0 var(--accent);
+.name .state {
+  inline-size: 1.35em;
+  block-size: 1.35em;
 }
 
-.parts:focus-visible [aria-selected="true"],
-.tl a.row:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: -3px;
+.state.good {
+  color: var(--success);
 }
 
-/* Facts as a label and its value on one line, the labels in a column. */
-/* ---- Small screens: the parts over the part open. ---- */
+.state.watch {
+  color: var(--warning);
+}
 
-@media (max-width: 60rem), (max-height: 34rem) {
-  .stage {
+.state.bad {
+  color: var(--alert);
+}
+
+/* ---- The foot: what each mark says, once. ---- */
+
+.note:empty {
+  display: none;
+}
+
+.foot {
+  margin-block-start: var(--frames);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tie) var(--groups);
+}
+
+.legend .key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mark);
+}
+
+/* ---- A phone: a narrower gutter, and what a part holds under its name. ---- */
+
+@media (max-width: 40rem) {
+  :root {
+    --gutter: 2rem;
+  }
+
+  .headline {
+    font-size: var(--step-section);
+  }
+
+  .part {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "name"
+      "holds"
+      "items"
+      "deeper";
   }
 
-  .whole {
-    border-inline-end: 0;
-    border-block-end: 1px solid var(--rule);
-  }
-
-  .panel-body {
-    overflow: visible;
+  .part .holds {
+    padding-inline-start: var(--gutter);
+    text-align: start;
   }
 }
 
 @media (forced-colors: active) {
-  .parts [aria-selected="true"],
-  .tl [aria-current="true"] {
+  .row:focus-visible {
     outline: 2px solid Highlight;
   }
 }

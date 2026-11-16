@@ -26,11 +26,15 @@ interface Deeper {
   readonly launcher: string;
 }
 
-/** One part of the system, as the page draws its row and its panel. */
+/** One part of the system, as the page draws it. */
 interface Part {
   readonly part: string;
   readonly health: Health;
   readonly says: string;
+  /** What in it is worth a look, an item each, the last maybe "and N more". */
+  readonly side: readonly string[];
+  /** What it holds, counted in a few words; none when it wasn't read. */
+  readonly holds: string | undefined;
   readonly things: readonly Thing[];
   readonly deeper: Deeper;
 }
@@ -60,13 +64,22 @@ const NAMES: { readonly [part: string]: string } = {
   code: "Code",
 };
 
-/** How each health is said beside its mark. */
+/** How each health is said, once in the legend and to a screen reader. */
 const WORDS: { readonly [health in Health]: string } = {
   good: "Good",
   watch: "Worth a look",
   bad: "Bad",
   unread: "Not read",
 };
+
+/** The numbers a headline says in words, as a sentence would. */
+const NUMBERS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+
+/** How the daemon closes a side that had more than it says (parts.rs's side_of). */
+const MORE = /^and (\d+) more worth a look$/u;
+
+/** Healths from worst to best, as a lede picks the worst. */
+const WORST: readonly Health[] = ["bad", "watch"];
 
 /** The health the daemon's word `value` says, or unread when it says none. */
 function healthOf(value: string | undefined): Health {
@@ -76,6 +89,75 @@ function healthOf(value: string | undefined): Health {
 /** The part's name as the page says it. */
 function named(part: string): string {
   return NAMES[part] ?? part;
+}
+
+/** `count` as a sentence says it: in words to ten, then in figures. */
+function numbered(count: number): string {
+  return NUMBERS[count] ?? String(count);
+}
+
+/** `said` with its first letter a capital, as a sentence starts. */
+function capital(said: string): string {
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
+}
+
+/**
+ * How many things in `part` are worth a look: its side's items, with the
+ * last counted for as many as it says when it says "and N more". A part
+ * not read has none, since what it says is why it wasn't.
+ */
+function looksIn(part: Part): number {
+  if (part.health === "unread") {
+    return 0;
+  }
+  return part.side.reduce((sum, item) => sum + Number(MORE.exec(item)?.[1] ?? 1), 0);
+}
+
+/** The whole's headline, in its three clauses, the last two only when they count. */
+interface Headline {
+  /** How many parts: "Four parts". */
+  readonly parts: string;
+  /** How many things are worth a look, when any: "six worth a look". */
+  readonly looks: string | undefined;
+  /** How many parts couldn't be read, when any: "one not read". */
+  readonly unread: string | undefined;
+}
+
+/** The whole counted as its headline says it. */
+function headline(system: System): Headline {
+  const looks = system.parts.reduce((sum, part) => sum + looksIn(part), 0);
+  const unread = system.parts.filter((part) => part.health === "unread").length;
+  const { length } = system.parts;
+  return {
+    parts: capital(`${numbered(length)} ${length === 1 ? "part" : "parts"}`),
+    looks: looks === 0 ? undefined : `${numbered(looks)} worth a look`,
+    unread: unread === 0 ? undefined : `${numbered(unread)} not read`,
+  };
+}
+
+/** The headline as one plain sentence, for the title and the text twin. */
+function sentence(said: Headline): string {
+  const clauses = [said.looks, said.unread].filter((clause) => clause !== undefined);
+  return `${said.parts}, ${clauses.length === 0 ? "all good" : and(clauses)}.`;
+}
+
+/**
+ * The one thing the whole most wants a look at, as a sentence: the first
+ * item of the worst part, led by the part's name, since an item may start
+ * with a name a capital would change, a machine's; or why the first part
+ * not read wasn't. None when every part is good.
+ */
+function lede(system: System): string | undefined {
+  for (const health of WORST) {
+    const worst = system.parts.find((part) => part.health === health && part.side.length > 0);
+    if (worst !== undefined) {
+      return `${named(worst.part)}: ${worst.side[0] ?? ""}.`;
+    }
+  }
+  const unread = system.parts.find((part) => part.health === "unread");
+  return unread === undefined
+    ? undefined
+    : `${named(unread.part)} couldn't be read: ${unread.says}.`;
 }
 
 /** `words` joined as a sentence lists them: a, b and c. */
@@ -125,6 +207,8 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
     part: name,
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
+    side: texts(record, "side") ?? [],
+    holds: text(record, "holds"),
     things: (texts(record, "things") ?? [])
       .map((key) => thingOf(things, key, unread))
       .filter((thing) => thing !== undefined),
@@ -154,30 +238,5 @@ function systemOf(summaries: Held, parts: Held, things: Held): System | undefine
   };
 }
 
-/** The whole in one sentence, worst first: bad, then worth a look, then unread. */
-function judged(system: System): string {
-  const by = (health: Health): string[] =>
-    system.parts.filter((part) => part.health === health).map((part) => named(part.part));
-  const said: string[] = [];
-  const bad = by("bad");
-  const watch = by("watch");
-  const unread = by("unread");
-  const verb = (many: readonly string[]): string => (many.length === 1 ? "is" : "are");
-  if (bad.length > 0) {
-    said.push(`${and(bad)} ${verb(bad)} bad`);
-  }
-  if (watch.length > 0) {
-    said.push(`${and(watch)} ${verb(watch)} worth a look`);
-  }
-  if (unread.length > 0) {
-    said.push(`${and(unread)} couldn't be read`);
-  }
-  if (said.length === 0) {
-    return "Every part is good.";
-  }
-  const sentence = and(said);
-  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`;
-}
-
-export type { Deeper, Health, Part, System, Thing };
-export { judged, named, systemOf, WORDS };
+export type { Deeper, Headline, Health, Part, System, Thing };
+export { headline, lede, looksIn, named, sentence, systemOf, WORDS };
