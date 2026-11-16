@@ -34,8 +34,9 @@ impl Told {
 
     /// A line for each of systemd-run's services under `under` not said of
     /// yet, reading its first process's command from `proc`. One with no
-    /// process yet waits for a later look, and one gone is forgotten, so a
-    /// name used again is said of again.
+    /// process yet, or whose process is still systemd's executor setting it
+    /// up, waits for a later look, and one gone is forgotten, so a name used
+    /// again is said of again.
     pub fn look(&mut self, under: &[PathBuf], proc: &Path) -> Vec<String> {
         let found: Vec<PathBuf> = under.iter().flat_map(|slice| made_by_run(slice)).collect();
         self.units.retain(|unit| found.contains(unit));
@@ -48,6 +49,9 @@ impl Told {
                 continue;
             };
             let command = fs::read(proc.join(pid.to_string()).join("cmdline")).unwrap_or_default();
+            if starting(&command) {
+                continue;
+            }
             says.push(line(&unit, &command));
             self.units.insert(unit);
         }
@@ -70,6 +74,16 @@ fn made_by_run(slice: &Path) -> Vec<PathBuf> {
                 .is_some_and(|name| name.starts_with("run-") && name.ends_with(".service"))
         })
         .collect()
+}
+
+/// Whether a command is still systemd's executor, which runs in a new
+/// service's process until it hands over to the service's own command, so
+/// a look between the two would name the executor rather than the command.
+fn starting(command: &[u8]) -> bool {
+    let program = command.split(|byte| *byte == 0).next().unwrap_or_default();
+    Path::new(&*String::from_utf8_lossy(program))
+        .file_name()
+        .is_some_and(|name| name == "systemd-executor")
 }
 
 /// A cgroup's first process, if it has one.
@@ -154,6 +168,38 @@ mod tests {
         assert_eq!(told.look(&under, &proc), Vec::<String>::new());
         unit(&dir, "run-u7.service", "42\n");
         assert_eq!(told.look(&under, &proc).len(), 1);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_service_still_starting_is_said_of_once_it_runs_its_command() {
+        let dir = std::env::temp_dir().join(format!("strays-starting-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        unit(&dir, "run-u3.service", "46\n");
+        fs::create_dir_all(dir.join("proc/46")).unwrap();
+        fs::write(
+            dir.join("proc/46/cmdline"),
+            b"systemd-executor\x00--deserialize\x0075\x00",
+        )
+        .unwrap();
+        let under = [dir.join("app.slice")];
+        let proc = dir.join("proc");
+        let mut told = Told::default();
+
+        assert_eq!(
+            told.look(&under, &proc),
+            Vec::<String>::new(),
+            "systemd's executor hasn't started the command yet, so it waits for a later look"
+        );
+        fs::write(dir.join("proc/46/cmdline"), b"sleep\x001008\x00").unwrap();
+        assert_eq!(
+            told.look(&under, &proc),
+            [
+                "Stray service run-u3.service in app.slice runs sleep 1008; nothing named its \
+              slice, so systemd-run put it there."
+            ],
+            "once the command runs, it's said of by its own words"
+        );
         fs::remove_dir_all(&dir).unwrap();
     }
 
