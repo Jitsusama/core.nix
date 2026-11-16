@@ -1846,7 +1846,7 @@ fn run(settings: &Settings) -> Result<(), String> {
             rank_for_memory(&looking, &mut ranks, &mut warned);
         }
         watch_door(&mut doorway, &root, settings.door.as_deref(), now);
-        brake_for_calls(&mut doorway);
+        brake_for_calls(&mut doorway, &root);
         pass = pass.wrapping_add(1);
         sorter.finish(&alive, now);
     }
@@ -1873,10 +1873,22 @@ impl Doorway {
 
 /// Holds builds and jobs to a quarter of the processors while a call is
 /// on, and lets them go once it ends, as src/brake.rs says. A slice that
-/// couldn't be set is tried again once it has waited.
-fn brake_for_calls(doorway: &mut Doorway) {
+/// couldn't be set is tried again once it has waited, and one found let go
+/// mid-call is set again; `manager` is the account's manager's cgroup.
+fn brake_for_calls(doorway: &mut Doorway, manager: &Path) {
     let now = std::time::Instant::now();
     let calling = doorway.calls.as_mut().is_some_and(|calls| calls.on(now));
+    if calling {
+        let cgroups = Path::new(CGROUPS);
+        let read =
+            |place| fs::read_to_string(brake::cgroup(place, cgroups, manager).join("cpu.max")).ok();
+        for place in doorway.brake.check(read) {
+            eprintln!(
+                "Found {} let go mid-call, so braked it again.",
+                brake::BRAKED[place].1
+            );
+        }
+    }
     let due = doorway.brake.due(calling, now);
     if due.is_empty() {
         return;

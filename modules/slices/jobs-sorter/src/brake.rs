@@ -18,7 +18,13 @@
 //! fails, and starts unknown: a sorter that stopped mid-call may have left
 //! a brake on, so a new one with no call lets both go. The unit lets them
 //! go as it stops, too.
+//!
+//! Through a call each braked slice's cpu.max is read on every look, and
+//! one found without its quota is set again: on 16 November both slices
+//! read max by 16:19 of a call braked at 15:58, nothing having said it
+//! let them go, and a brake set only as a call began never came back.
 
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 /// The slices braked through a call: which manager each is on, `--user`
@@ -40,6 +46,25 @@ pub fn quota(processors: usize) -> u64 {
         .unwrap_or(u64::MAX)
         .max(1);
     quarter.saturating_mul(1_000_000)
+}
+
+/// The cgroup folder of the slice at `place` in [`BRAKED`]: the system's
+/// under `cgroups`, the account's under its manager's folder, `manager`.
+pub fn cgroup(place: usize, cgroups: &Path, manager: &Path) -> PathBuf {
+    let (on, slice) = BRAKED[place];
+    if on == "--user" {
+        manager.join(slice)
+    } else {
+        cgroups.join(slice)
+    }
+}
+
+/// Whether a slice's `cpu.max`, as read, holds a quota rather than none.
+pub fn holds(cpu_max: &str) -> bool {
+    cpu_max
+        .split_whitespace()
+        .next()
+        .is_some_and(|quota| quota != "max")
 }
 
 /// The quota a slice is given while `calling` or not.
@@ -84,6 +109,21 @@ impl Brake {
         self.failed[slice] = Some(now);
     }
 
+    /// The places of the slices the brake set that `read` finds without
+    /// their quota, each of which is set again on this look. One whose
+    /// cpu.max can't be read is taken to hold.
+    pub fn check(&mut self, read: impl Fn(usize) -> Option<String>) -> Vec<usize> {
+        let lost: Vec<usize> = (0..BRAKED.len())
+            .filter(|&place| self.stands[place] == Some(true))
+            .filter(|&place| read(place).is_some_and(|cpu_max| !holds(&cpu_max)))
+            .collect();
+        for &place in &lost {
+            self.stands[place] = None;
+            self.failed[place] = None;
+        }
+        lost
+    }
+
     /// Whether every slice stands as `calling` asks.
     pub fn stands(&self, calling: bool) -> bool {
         self.stands.iter().all(|stands| *stands == Some(calling))
@@ -91,14 +131,15 @@ impl Brake {
 }
 
 /// What busctl is given to set `slice`'s quota on `manager` to `quota`, as
-/// a runtime property, refused rather than asking for a password, since
-/// the sorter's loop would wait on one.
+/// a runtime property, refused rather than asking for a password and
+/// given up after 5 s, since the sorter's loop would wait on either.
 pub fn quota_call(manager: &str, slice: &str, quota: u64) -> Vec<String> {
     let quota = quota.to_string();
     [
         manager,
         "--quiet",
         "--allow-interactive-authorization=no",
+        "--timeout=5",
         "call",
         "org.freedesktop.systemd1",
         "/org/freedesktop/systemd1",
@@ -186,6 +227,55 @@ mod tests {
         assert!(!brake.stands(true), "a half-set brake stood as braked");
     }
 
+    // On 16 November both slices read max mid-call, and nothing set them
+    // again.
+    #[test]
+    fn a_brake_cleared_mid_call_is_set_again_from_what_cpu_max_reads() {
+        let folder = std::env::temp_dir().join(format!("brake-{}", std::process::id()));
+        let manager = folder.join("user@1000.service");
+        for place in 0..BRAKED.len() {
+            std::fs::create_dir_all(cgroup(place, &folder, &manager)).unwrap();
+        }
+        let write = |place: usize, said: &str| {
+            std::fs::write(cgroup(place, &folder, &manager).join("cpu.max"), said).unwrap();
+        };
+        let read = |place: usize| {
+            std::fs::read_to_string(cgroup(place, &folder, &manager).join("cpu.max")).ok()
+        };
+        let now = Instant::now();
+        let mut brake = Brake::default();
+        brake.set(0, true);
+        brake.set(1, true);
+        write(0, "400000 100000\n");
+        write(1, "400000 100000\n");
+        assert!(
+            brake.check(read).is_empty(),
+            "a held brake was taken as lost"
+        );
+        assert!(
+            brake.due(true, now).is_empty(),
+            "a held brake was set again"
+        );
+        write(1, "max 100000\n");
+        assert_eq!(brake.check(read), [1], "build.slice read max, unseen");
+        assert_eq!(
+            brake.due(true, now),
+            [1],
+            "a cleared brake wasn't set again"
+        );
+        std::fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(
+            cgroup(0, Path::new("/c"), Path::new("/c/u")),
+            Path::new("/c/u/jobs.slice"),
+            "jobs.slice wasn't looked for under the account's manager"
+        );
+        assert_eq!(
+            cgroup(1, Path::new("/c"), Path::new("/c/u")),
+            Path::new("/c/build.slice"),
+            "build.slice wasn't looked for under the system's"
+        );
+    }
+
     #[test]
     fn a_small_machine_keeps_one_processor_for_its_builds() {
         assert_eq!(quota(2), 1_000_000, "two processors left builds none");
@@ -209,6 +299,7 @@ mod tests {
                 "--system",
                 "--quiet",
                 "--allow-interactive-authorization=no",
+                "--timeout=5",
                 "call",
                 "org.freedesktop.systemd1",
                 "/org/freedesktop/systemd1",
