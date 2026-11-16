@@ -41,6 +41,7 @@ in
         nix = lib.getExe' config.nix.package "nix";
         nix_env = lib.getExe' config.nix.package "nix-env";
         pmset = null;
+        journalctl = lib.getExe' config.systemd.package "journalctl";
       };
     };
 
