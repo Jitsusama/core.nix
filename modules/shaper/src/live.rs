@@ -6,6 +6,7 @@
 //! What each network's directions learned is kept, on disk too, so a
 //! network met again, after a restart or a rejoin, starts from it.
 
+use crate::networks::Anchors;
 use crate::oneway::{self, Learned, Ours, Tuning};
 use crate::record::day_file;
 use crate::replay::{Controller as _, Rates, Reading, Sample, parse};
@@ -59,6 +60,9 @@ pub struct Heard {
     /// controller heard.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub up_tins_kbit: Option<crate::qdisc::Tins>,
+    /// Why the upload holds where it does, in one sentence (src/why.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
 }
 
 /// What a link joining `network` starts its upload at, in kbit/s: the
@@ -108,6 +112,8 @@ pub struct Follow {
     from_ms: u64,
     /// The trial the upload is tuned by, which outlasts a stay.
     trial: Option<Tuning>,
+    /// Each network's anchor, which a stay on it is guarded by.
+    anchors: Anchors,
 }
 
 impl Follow {
@@ -125,7 +131,14 @@ impl Follow {
             known,
             from_ms: 0,
             trial: None,
+            anchors: Anchors::new(),
         }
+    }
+
+    /// Guards each network's upload by its anchor, the stay's from now.
+    pub fn anchor(&mut self, anchors: Anchors) {
+        self.controller.anchor(anchors.get(&self.network).copied());
+        self.anchors = anchors;
     }
 
     /// Tunes the upload by a trial from now on, or by none, and in every
@@ -172,6 +185,7 @@ impl Follow {
                 let (up, down) = self.known.get(network).copied().unwrap_or_default();
                 self.controller = oneway::Controller::from_learned(up, down);
                 self.controller.up.tune(self.trial.unwrap_or_default());
+                self.controller.anchor(self.anchors.get(network).copied());
                 self.network.clone_from(network);
                 self.rates = Rates::default();
                 return;
@@ -193,7 +207,16 @@ impl Follow {
         for mut second in self.reading.drain() {
             second.up_ours = ours;
             second.vpn_ms = self.vpn_ms;
+            let guarded = self.controller.guarded;
             self.rates = self.controller.second(&second);
+            if self.controller.guarded > guarded {
+                eprintln!(
+                    "the upload was held under {:.0}% of {}'s anchor for a minute with no cut \
+                     that drained a queue, so it's back to the anchor's hold",
+                    oneway::ANCHOR_LOW * 100.0,
+                    self.network
+                );
+            }
             self.last = Some(second);
         }
     }
@@ -216,6 +239,7 @@ impl Follow {
             plateau: self.controller.up.learned().plateau,
             trial: self.trial,
             up_tins_kbit: None,
+            why: Some(self.controller.why()),
         };
         Some((link, heard))
     }
@@ -300,6 +324,11 @@ impl Live {
     /// Tunes the upload by a trial, or by none.
     pub fn tune(&mut self, trial: Option<Tuning>) {
         self.follow.tune(trial);
+    }
+
+    /// Guards each network's upload by its anchor.
+    pub fn anchor(&mut self, anchors: Anchors) {
+        self.follow.anchor(anchors);
     }
 
     /// The link the controller holds, and what it last heard of it.
