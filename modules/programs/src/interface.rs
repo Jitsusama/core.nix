@@ -241,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn a_repositorys_terminal_names_the_folder_it_opens_in() {
+    fn a_repositorys_terminal_and_editor_name_the_folder_they_open_in() {
         assert_eq!(
             own_of(&json!({"ask": "code:terminal", "path": "/home/j/src/core.nix"})),
             Some(Own::Terminal("/home/j/src/core.nix".into()))
@@ -259,6 +259,11 @@ mod tests {
         assert_eq!(
             own_of(&json!({"ask": "code:edit", "path": "/home/j/src/core.nix"})),
             Some(Own::Edit("/home/j/src/core.nix".into()))
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "code:edit"})),
+            None,
+            "an editor naming no folder was taken"
         );
         assert_eq!(
             own_of(&json!({"ask": "code:edit", "path": "src/core.nix"})),

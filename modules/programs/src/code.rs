@@ -224,10 +224,29 @@ pub fn ahead(shared: &Shared, watched: &[String]) {
 /// checkout, rather than this daemon, so the terminal is no child of a
 /// service a switch restarts, and niri, which spawned it, gives its window
 /// the keys. Answered at once and asked on a thread of its own, as a
-/// kitty tab's acts are (tabs.rs), so no other ask waits on niri. Edit
-/// Here is the same kitty running `program`, Neovim on the checkout,
-/// which leaves kitty when it ends, as an editor's window does.
-pub fn terminal(id: &Value, folder: &str, program: &[&str]) -> Value {
+/// kitty tab's acts are (tabs.rs), so no other ask waits on niri.
+pub fn terminal(id: &Value, folder: &str) -> Value {
+    kitty(id, folder, &[], "terminal")
+}
+
+/// What Edit Here runs in its kitty: Neovim on the checkout, with its
+/// `.envrc` loaded first as a shell in it would load it, so the editor
+/// finds the language servers its development shell gives. A blocked
+/// `.envrc`, or none, or no direnv at all, still opens Neovim, as a
+/// terminal's prompt still comes; a checkout gone since it was read opens
+/// nothing, rather than Neovim on whatever folder kitty fell back to.
+const EDIT: &str = r#"cd -- "$0" && { eval "$(direnv export bash)"; exec nvim .; }"#;
+
+/// Edit Here on a repository's row: the kitty New Terminal Here starts,
+/// running Neovim in it, so kitty goes when Neovim ends, as an editor's
+/// window does.
+pub fn edit(id: &Value, folder: &str) -> Value {
+    kitty(id, folder, &["bash", "-c", EDIT, folder], "editor")
+}
+
+/// Has niri start kitty in `folder`, running `program` there if any, and
+/// answers that `what` was asked for.
+fn kitty(id: &Value, folder: &str, program: &[&str], what: &'static str) -> Value {
     let niri = std::env::var("PROGRAMS_NIRI").unwrap_or_else(|_| "niri".to_owned());
     let argv: Vec<String> = [
         niri.as_str(),
@@ -245,10 +264,10 @@ pub fn terminal(id: &Value, folder: &str, program: &[&str]) -> Value {
     .collect();
     std::thread::spawn(move || {
         if let Err(why) = command::run(&argv) {
-            eprintln!("a terminal wasn't started: {why}");
+            eprintln!("no {what} was started: {why}");
         }
     });
-    serde_json::json!({"id": id, "asked": "terminal"})
+    serde_json::json!({"id": id, "asked": what})
 }
 
 /// Pull on a repository's row, answered on a thread of its own (main.rs
