@@ -196,6 +196,20 @@ in
         '';
       };
 
+  # The margin cat's layer surface, named "cat" (../margin-cat), is drawn
+  # once on its screen rather than once on every workspace, so a switch
+  # shows no second cat riding in on the next workspace before the shell
+  # has heard of it (fixed-to-output.patch). Asked through the
+  # environment, as full range is.
+  config.xdg.configFile."systemd/user/niri.service.d/fixed-to-output.conf" =
+    lib.mkIf pkgs.stdenv.hostPlatform.isLinux
+      {
+        text = ''
+          [Service]
+          Environment=NIRI_FIXED_TO_OUTPUT=cat
+        '';
+      };
+
   # Where the cookie Xwayland asks for is kept (xwayland-satellite.sh), for
   # every program the user manager starts, niri and the launcher's
   # included, so an X11 program they start finds it. The user manager

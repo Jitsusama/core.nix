@@ -341,6 +341,52 @@ onLinux {
         touch $out
       '';
 
+  # A bottom layer surface the unit's NIRI_FIXED_TO_OUTPUT names is drawn
+  # once on its screen, where it is, through a workspace switch, rather than
+  # once on every workspace moving with it (fixed-to-output.patch): the
+  # margin cat is one, so no second cat rides in on the next workspace. The
+  # account's niri, with its animations slowed tenfold so the switch is
+  # caught partway, nests in the sandbox and gets a stand-in window and
+  # surface (tests/draws-a-fixed-surface-once.py).
+  niri-draws-a-fixed-surface-once =
+    let
+      slowed = account (
+        graphical.extendModules {
+          modules = [ { home-manager.users.someone.jitsusama.theme.motion.slowdown = "10"; } ];
+        }
+      );
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) slowed.xdg.configFile;
+      unit = slowed.xdg.configFile."systemd/user/niri.service.d/fixed-to-output.conf".text;
+      asked = "Environment=NIRI_FIXED_TO_OUTPUT=";
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "niri-draws-a-fixed-surface-once"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          pkgs.dbus
+          (pkgs.python3.withPackages (python: [ python.pillow ]))
+          pkgs.sway-unwrapped
+        ];
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+        # What the session's unit gives niri, read from the unit itself.
+        NIRI_FIXED_TO_OUTPUT = lib.removePrefix asked (
+          lib.findFirst (lib.hasPrefix asked) "" (lib.splitString "\n" unit)
+        );
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+          python3 ${./tests}/draws-a-fixed-surface-once.py shots
+        touch $out
+      '';
+
   # A sandbox's window, one opened through pi-fence-display's
   # wp-security-context-v1 socket as a fenced command's would be, opens on
   # a workspace no screen shows and never takes the focus, whether it opens,

@@ -1904,6 +1904,10 @@
   niri-cursor-has-its-shapes = ''
     the cursor theme niri names has the shapes programs ask for
   '';
+  niri-draws-a-fixed-surface-once = ''
+    the session's niri, nested in the sandbox, draws a bottom layer surface its unit names once on
+    its screen, where it is, all through a workspace switch caught partway
+  '';
   niri-hears-the-copilot-key = ''
     the Copilot key types, in the keymap niri builds, the key its dictation bind names
   '';
