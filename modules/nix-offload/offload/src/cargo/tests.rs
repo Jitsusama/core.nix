@@ -27,6 +27,32 @@ fn a_whole_suite_or_clippy_goes_there() {
 }
 
 #[test]
+fn a_lent_builder_fetches_the_crates_an_offline_run_would_read_here() {
+    // At 17:45 on 16 November an agent's cargo test --offline went to a lent
+    // builder, which has no crates but what it fetches, and failed finding
+    // one.
+    for (line, sent) in [
+        ("test --offline", "test"),
+        ("--offline test -p disk-guard", "test -p disk-guard"),
+        (
+            "clippy --frozen --all-targets",
+            "clippy --locked --all-targets",
+        ),
+        (
+            "test --offline -- --nocapture --offline",
+            "test -- --nocapture --offline",
+        ),
+        ("test --locked", "test --locked"),
+    ] {
+        assert_eq!(
+            for_a_lender(&words(line)),
+            words(sent),
+            "cargo {line} wasn't sent as cargo {sent}"
+        );
+    }
+}
+
+#[test]
 fn a_named_test_runs_here_at_once() {
     for line in [
         "test --manifest-path m/Cargo.toml --test guard -- survey:: quest_temp::",
