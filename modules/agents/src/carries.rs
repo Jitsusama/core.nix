@@ -126,7 +126,7 @@ fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &W
         "place": PLACE, "parent": parent, "kind": "carry", "name": name, "glyph": "agent",
         "hue": "program", "depth": 1, "side": side, "note": note, "acts": back(record),
         "held": {"address": text(record, "address"), "state": text(record, "state"),
-            "from": text(record, "from"), "to": to},
+            "from": text(record, "from"), "to": to, "quest": text(record, "quest")},
     })
 }
 
@@ -137,8 +137,11 @@ fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &W
 /// daemon, which would ask in its own name. One still on its way, refused
 /// or back offers nothing.
 fn back(record: &Value) -> Value {
-    let _ = record;
-    json!([])
+    let (quest, from) = (text(record, "quest"), text(record, "from"));
+    if record["state"] != "arrived" || quest.is_empty() || from.is_empty() {
+        return json!([]);
+    }
+    json!([{"key": "verb:carry:back", "ask": {"ask": "carry", "quest": quest, "to": from}}])
 }
 
 /// Every row of the Carried row, it first, from the node's `carry`
