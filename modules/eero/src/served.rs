@@ -30,12 +30,14 @@ pub type Made = BTreeMap<String, Value>;
 /// Where a vocabulary's words and number settings are read from.
 pub type Said = (PathBuf, Option<PathBuf>);
 
-/// The rows made in one vocabulary.
+/// The rows made in one vocabulary, and the worst of net's they were
+/// made with, so each is known to be behind net on its own.
 struct Vocabulary {
     words: Words,
     numbers: Numbers,
     kept: Kept,
     made: Made,
+    made_with: Option<String>,
 }
 
 impl Vocabulary {
@@ -58,6 +60,7 @@ impl Vocabulary {
             .all()
             .filter_map(|record| Some((record["key"].as_str()?.to_owned(), record.clone())))
             .collect();
+        self.made_with = map.and_then(|map| map.worst).map(str::to_owned);
     }
 }
 
@@ -77,13 +80,11 @@ struct Heard {
 }
 
 /// Every vocabulary asked for, where they may be read from, the map of
-/// the network if there's one to open, what net last said of it, and the
-/// worst the rows held were all made with, once they were.
+/// the network if there's one to open, and what net last said of it.
 pub struct Vocabularies {
     store: PathBuf,
     map: Option<Mapped>,
     heard: Option<Heard>,
-    made_with: Option<Option<String>>,
     held: HashMap<Said, Vocabulary>,
 }
 
@@ -101,7 +102,6 @@ impl Vocabularies {
             store,
             map: None,
             heard: None,
-            made_with: None,
             held: HashMap::new(),
         }
     }
@@ -136,15 +136,10 @@ impl Vocabularies {
             numbers,
             kept: Kept::default(),
             made: Made::new(),
+            made_with: None,
         };
         self.hear();
         vocabulary.make(network, self.map_now().as_ref());
-        // Only the first vocabulary sets what the rows were made with:
-        // one asked for later may hear a newer worst than those before
-        // it, and they're still to be made again with it.
-        if self.held.is_empty() {
-            self.made_with = Some(self.worst_heard());
-        }
         self.held.insert(said.clone(), vocabulary);
         Ok(said)
     }
@@ -159,7 +154,6 @@ impl Vocabularies {
     pub fn make(&mut self, network: &HomeNetwork) -> HashMap<Said, Made> {
         self.hear();
         // Heard once for every vocabulary, so each says the same.
-        self.made_with = Some(self.worst_heard());
         let map = self.map.as_ref().map(|map| rows::Map {
             page: &map.page,
             worst: self.heard.as_ref().and_then(|heard| heard.worst.as_deref()),
@@ -193,23 +187,20 @@ impl Vocabularies {
 }
 
 impl Vocabularies {
-    /// Whether net's record says a different worst than the rows were
-    /// last made with, as `make` would read it now. net writes its record
+    /// Whether net's record says a different worst than any vocabulary's
+    /// rows were last made with, as `make` would read it now. net writes its record
     /// each minute, and it's read again only once it's written anew, a
     /// look at its time costing far less than reading it whole. It's
-    /// held against what the rows were made with rather than what was
-    /// last heard, since a vocabulary asked for between looks hears too.
+    /// held against what each vocabulary was made with rather than what
+    /// was last heard, since a vocabulary asked for between looks hears
+    /// too, and may hear a worst net has since dropped. With no map
+    /// nothing is heard and every vocabulary was made with none.
     pub fn net_moved(&mut self) -> bool {
-        if self.map.is_none() {
-            return false;
-        }
         self.hear();
-        self.made_with != Some(self.worst_heard())
-    }
-
-    /// The worst net was last heard to find, if it was heard.
-    fn worst_heard(&self) -> Option<String> {
-        self.heard.as_ref().and_then(|heard| heard.worst.clone())
+        let now = self.heard.as_ref().and_then(|heard| heard.worst.as_deref());
+        self.held
+            .values()
+            .any(|vocabulary| vocabulary.made_with.as_deref() != now)
     }
 
     /// Hears net's record again, if it's been written since it was last
