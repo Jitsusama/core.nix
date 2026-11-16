@@ -315,6 +315,22 @@ mod tests {
     }
 
     #[test]
+    fn a_carry_joel_made_himself_says_he_carried_it() {
+        let mut his = record("HARBOR", "2026-11-16T01:00:00Z", "ordered");
+        his["by"] = json!("person");
+        his["why"] = json!(null);
+        let made = rows(&[&his], &top(), &words());
+        assert_eq!(
+            made[1]["note"], "carried to tern by you",
+            "by him, as the node judged who asked, and with no why"
+        );
+        assert_eq!(
+            made[1]["held"]["by"], "person",
+            "which For You reads to leave his own carry out"
+        );
+    }
+
+    #[test]
     fn a_state_the_launcher_does_not_know_yet_still_shows_the_carry() {
         let later = record("HARBOR", "2026-11-16T01:00:00Z", "paused");
         let made = rows(&[&later], &top(), &words());
