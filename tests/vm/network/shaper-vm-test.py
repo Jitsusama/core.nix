@@ -750,9 +750,8 @@ def restart_keeps_the_queues(on_eth2: Connection) -> None:
     said = client.succeed(f"journalctl -u shaper.service --since @{since} --no-pager")
     assert "is restarting, so its queues stay" in said, said
     client.wait_until_fails("ip link show shaperfff", timeout=SHAPING)
-    assert "RTNETLINK" not in said and "Error:" not in said, (
-        f"taking the queues back failed: {said}"
-    )
+    assert "RTNETLINK" not in said, f"taking the queues back failed: {said}"
+    assert "Error:" not in said, f"taking the queues back failed: {said}"
 
 
 @pytest.mark.usefixtures("tunnel")

@@ -586,21 +586,27 @@ fn start(
 /// Puts a link's queues on, its upload at `up` split as `split`, turning
 /// what it receives through its IFB unless it goes `straight` in. Lanes
 /// and an IFB already there, as a restart leaves them, are taken back at
-/// these rates, so the link is never unshaped and nothing queued is lost.
-/// Otherwise what was there goes first, since HTB can't change where it
-/// sends what nothing claims: a link's own queue from the kernel can't be
-/// taken away, and says so, which is nothing to tell.
+/// these rates, so the link is never unshaped and nothing queued is lost;
+/// a turn already there stays, since matchall refuses to replace its one
+/// filter. Otherwise what was there goes first, since HTB can't change
+/// where it sends what nothing claims: a link's own queue from the kernel
+/// can't be taken away, and says so, which is nothing to tell.
 fn install(link: &str, ifb: &str, (up, split): (u64, &lanes::Split), down: u64, straight: bool) {
     let held = sh(&words(&format!("tc -j qdisc show dev {link}"))).unwrap_or_default();
     let back = sh(&words(&format!("tc -j qdisc show dev {ifb}"))).unwrap_or_default();
-    if lanes::laned(&held) && qdisc::ours(&back) {
+    let turned = if lanes::laned(&held) && qdisc::ours(&back) {
         run_all(lanes::adopt(link, ifb, (up, split), down));
+        qdisc::turned(&held)
     } else {
         let _ = sh(&words(&format!("tc qdisc del dev {link} root")));
+        let _ = sh(&qdisc::unturn(link));
         run_all(qdisc::install(link, ifb, (up, split), down));
-    }
-    if !straight {
+        false
+    };
+    if !straight && !turned {
         run_all(qdisc::turn(link, ifb));
+    } else if straight && turned {
+        let _ = sh(&qdisc::unturn(link));
     }
 }
 
