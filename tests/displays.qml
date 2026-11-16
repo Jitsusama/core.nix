@@ -153,10 +153,14 @@ ShellRoot {
     // and the place's :set line as screens/line.rs serves it there: the
     // Brightness at `share`, its row saying `said`, the Night Light off and
     // Follow the Room on, which no row here serves, so only what's served
-    // on the line offers it.
+    // on the line offers it; and the panel holding the light, as
+    // screens.rs's light serves it there, its Room Light's note worded
+    // unlike its row's, so what the light says is the served.
     function summaryAt(share, said = `${share}%`) {
         return { key: "summary:displays", kind: "summary",
             summary: { place: "displays", count: 2, on: 2, said: "both screens" },
+            light: { row: "row:displays:display:eDP-1",
+                said: [[said, ""], ["312 lx", "around the screen"]] },
             line: {
                 screens: { kind: "switch", now: true,
                     ways: { off: { row: "row:displays:sleep", act: "displays:sleep" } } },
@@ -337,17 +341,17 @@ ShellRoot {
             JSON.stringify(acted.map(ask => [ask.do, ask.output])) === '[["on","DP-1"]]',
             JSON.stringify(acted));
         Expect.expect("and niri nothing", Niri.asked.length === 0, JSON.stringify(Niri.asked));
-        // The panel's row says it holds the Brightness, which the daemon
-        // serves inside it at the share it read.
-        Expect.expect("the panel's row says it holds the Brightness, served at its share",
+        // The summary says the panel's row holds the Brightness, which the
+        // daemon serves inside it at the share it read.
+        Expect.expect("the summary says the panel holds the Brightness, served at its share",
             displays.backlitKey === "row:displays:display:eDP-1"
                 && displays.servedBrightness?.share === 50,
             JSON.stringify([displays.backlitKey, displays.servedBrightness]));
         Expect.expect("its drawer's Brightness is found by its part, whatever it's worded",
             displays.brightnessServed(displays.backlitKey) === "50%",
             JSON.stringify(displays.brightnessServed(displays.backlitKey)));
-        Expect.expect("what the light says is its Brightness's and its Room Light's",
-            displays.lightSaid === JSON.stringify([["50%", ""], ["312 lx", ""]]),
+        Expect.expect("what the light says is what the summary serves",
+            displays.lightSaid === JSON.stringify([["50%", ""], ["312 lx", "around the screen"]]),
             displays.lightSaid);
         waiting = "the share unread";
         tell([summaryAt(null, "not read yet")]);

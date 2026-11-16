@@ -246,20 +246,14 @@ Provider {
         && (launcher.held ?? []).length === 0 && launcher.answer?.live === provider
 
     // What the light's rows inside the screen holding it say, the
-    // Brightness and the Room Light, which moves as the light does, so a
-    // light's answer showing is asked again as it moves. Asked as the turn
+    // Brightness and the Room Light, as the windows daemon serves it on
+    // its summary (screens.rs's light), which moves as the light does, so
+    // a light's answer showing is asked again as it moves. Asked as the turn
     // ends, never at once: the rows move as lightsSeen changes, inside
     // its own binding, and an answer asked there makes the rows
     // lightsSeen reads again, a binding loop (the answers VM test,
     // 2026-11-10).
-    readonly property string lightSaid: {
-        void ready.placings;
-        const output = ready.served(backlitKey)?.held?.output ?? "";
-        const parts = [`displays:${output}:brightness`, `displays:${output}:room`];
-        return JSON.stringify(ready.inside(backlitKey)
-            .filter(row => parts.includes(row.key))
-            .map(row => [row.side, row.note]));
-    }
+    readonly property string lightSaid: JSON.stringify(servedLight?.said ?? [])
     onLightSaidChanged: Qt.callLater(Hearing.putOff(provider.lightTold))
 
     // Timed from the line that told the light (Hearing.js).
@@ -282,14 +276,17 @@ Provider {
     stillReading: terminalLooks && !(launcher?.open ?? false) && ready.state !== "not answering"
         && servedBrightness !== null && brightnessServed(backlitKey) === ""
 
-    // The row's key of the screen whose place holds the Brightness, read
-    // or not, as the windows daemon says on its row (screens.rs's
-    // backlit), or "". Only one holds it, since every screen shows the
-    // same level.
-    readonly property string backlitKey: {
+    // Which screen's row holds the Brightness, read or not, and what its
+    // light's rows say, as the windows daemon serves it on its summary
+    // (screens.rs's light), or null while none holds it. Only one holds
+    // it, since every screen shows the same level.
+    readonly property var servedLight: {
         void ready.placings;
-        return ready.keys.find(key => ready.served(key)?.held?.lights === true) ?? "";
+        return ready.held["summary:displays"]?.light ?? null;
     }
+
+    // The row's key of the screen whose place holds the Brightness, or "".
+    readonly property string backlitKey: servedLight?.row ?? ""
 
     // What the drawer the daemon serves on the row of `key` says of the
     // Brightness, found by the part it says it is (light.rs's facts), ""

@@ -552,8 +552,9 @@ fn warmth_rows(shown: &[(&String, &Value)], seen: &Seen, words: &Words) -> Vec<V
 
 /// How many screens there are, and how many are on, as the place's row
 /// says beside its name: "2 screens" with every one on, else "1 of 2
-/// on", a screen dark by name not among them; and the : line's :set
-/// options for the place, from the `rows` served (line.rs's `place`).
+/// on", a screen dark by name not among them; the : line's :set
+/// options for the place, from the `rows` served (line.rs's `place`);
+/// and which screen holds the light and what its rows say (`light`).
 pub fn summary(outputs: &BTreeMap<String, Value>, rows: &[Value], words: &Words) -> Value {
     let count = outputs.len();
     let on = outputs
@@ -573,7 +574,43 @@ pub fn summary(outputs: &BTreeMap<String, Value>, rows: &[Value], words: &Words)
         "summary": {"place": PLACE, "count": count, "on": on,
             "said": said.replace("{count}", &count.to_string())},
         "line": line::place(rows),
+        "light": light(rows),
     })
+}
+
+/// Which screen's row holds the Brightness, read or not, by its key, and
+/// what the light's rows inside it say, each its side and its note: the
+/// Brightness's, then, where it's in the room, the Room Light's. The shell
+/// watches that row ahead and asks a light's answer showing again as what
+/// they say moves, as Displays.qml found both in the rows until 15
+/// November 2026. Null while no screen holds it.
+fn light(rows: &[Value]) -> Value {
+    let Some(screen) = rows
+        .iter()
+        .find(|row| row["kind"] == "screen" && row["held"]["lights"] == true)
+    else {
+        return Value::Null;
+    };
+    let output = screen["held"]["output"].as_str().unwrap_or_default();
+    let parts = [
+        format!("{PLACE}:{output}:brightness"),
+        format!("{PLACE}:{output}:room"),
+    ];
+    let said: Vec<Value> = rows
+        .iter()
+        .filter(|row| row["parent"] == screen["key"])
+        .filter(|row| parts.iter().any(|part| row["thing"] == part.as_str()))
+        .map(|row| {
+            let side: Vec<&str> = row["side"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|each| each["said"].as_str())
+                .collect();
+            json!([side.join(" "), row["note"].as_str().unwrap_or_default()])
+        })
+        .collect();
+    json!({"row": screen["key"], "said": said})
 }
 
 /// A row's key in the place.
@@ -670,7 +707,8 @@ pub fn rows(
                 "drawer": drawer(name, output, desk.get(name.as_str()).unwrap_or(&Value::Null),
                     lit_by(name), words),
                 // Whether its place holds the Brightness, read or not, so
-                // the shell watches it ahead and sets the light there.
+                // the summary says which (`light`) and the shell watches it
+                // ahead.
                 "held": {"output": name, "standing": stands, "line": line,
                     "lights": holds == Some(name.as_str())},
                 "acts": acts,
