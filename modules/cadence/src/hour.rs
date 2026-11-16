@@ -264,11 +264,15 @@ pub fn compose(at: &str, measures: &[Measure], kept: &Kept, due: &str) -> (Strin
             let _ = writeln!(card, "  - {miss}");
         }
     }
-    for closed in kept.open.iter().filter(|miss| !open.contains(miss)) {
-        // Only the owner follows the last mark; a miss's words may hold one.
-        let what = closed
-            .rsplit_once(" · ")
-            .map_or(closed.as_str(), |(what, _)| what);
+    // A miss is its words: one handed to a new owner, or noted as unread,
+    // is still open, so only words gone from the open misses are fixed.
+    let still: Vec<&str> = open.iter().map(|miss| miss_words(miss)).collect();
+    for what in kept
+        .open
+        .iter()
+        .map(|miss| miss_words(miss))
+        .filter(|what| !still.contains(what))
+    {
         let _ = writeln!(card, "For Joel: fixed, and a check now catches it: {what}.");
     }
     let next = Kept {
@@ -444,6 +448,12 @@ fn by_owner(m: &Measure) -> BTreeMap<String, Vec<String>> {
         }
     }
     owners
+}
+
+/// A miss's own words, as its card line holds them: only its owner, and a
+/// note after it, follow the last mark, since a miss's words may hold one.
+fn miss_words(line: &str) -> &str {
+    line.rsplit_once(" · ").map_or(line, |(what, _)| what)
 }
 
 /// Whether the drag filed as `key` is back in: its miss no longer open,
@@ -659,6 +669,29 @@ mod tests {
             next.open,
             ["the map had no network · KNURBN"],
             "only the open one is kept"
+        );
+    }
+
+    #[test]
+    fn a_miss_still_open_under_new_words_after_its_owner_is_not_said_fixed() {
+        let mut open = measure("misses", Class::Miss, 2.0, Some(0.0));
+        open.behind = vec![
+            "the map had no network · PN2VZC".to_owned(),
+            "the notice stayed up · 88LQC0, though cadence couldn't read world's main to see \
+             its check"
+                .to_owned(),
+        ];
+        let kept = Kept {
+            drag: None,
+            open: vec![
+                "the map had no network · KNURBN".to_owned(),
+                "the notice stayed up · 88LQC0".to_owned(),
+            ],
+        };
+        let (card, _) = compose("12:10", &[open], &kept, "");
+        assert!(
+            !card.contains("For Joel"),
+            "a miss handed to a new owner, or noted as unread, was told fixed: {card}"
         );
     }
 
