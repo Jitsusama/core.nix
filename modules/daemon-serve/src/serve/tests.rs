@@ -69,6 +69,39 @@ fn a_watch_is_answered_whole_then_told_only_what_moved() {
 }
 
 #[test]
+fn a_mend_tells_only_what_moved_and_holds_the_rest_as_it_was() {
+    let (shared, mut client, _folder) = served("mend", Box::new(|_| None));
+    shared.mend(
+        vec![row("agents", "P", "reef"), row("agents", "O", "kelp")],
+        &[],
+        json!({}),
+    );
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row"}));
+    shared.mend(
+        vec![row("agents", "O", "kelp"), row("agents", "Q", "tide")],
+        &["row:agents:P".to_owned(), "row:agents:Z".to_owned()],
+        json!({}),
+    );
+    let told = client.heard();
+    assert_eq!(
+        told["changed"],
+        json!([row("agents", "Q", "tide")]),
+        "the new row alone, not the one given as it was"
+    );
+    assert_eq!(
+        told["gone"],
+        json!(["row:agents:P"]),
+        "the key that went, not one never held"
+    );
+    let whole = client.ask(&json!({"id": 2, "ask": "list", "kind": "row"}));
+    assert_eq!(
+        whole["records"],
+        json!([row("agents", "O", "kelp"), row("agents", "Q", "tide")]),
+        "what's held after, in its keys' order"
+    );
+}
+
+#[test]
 fn a_watch_of_some_fields_hears_them_alone_and_only_as_they_move() {
     let (shared, mut client, _folder) = served("fields", Box::new(|_| None));
     let kelp = |name: &str, order: u64| json!({"key": "row:agents:O", "row": {"name": name}, "order": order});

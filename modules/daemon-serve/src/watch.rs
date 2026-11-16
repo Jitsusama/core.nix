@@ -21,6 +21,9 @@ use serde_json::{Map, Value, json};
 #[derive(Debug, Default)]
 pub struct Held {
     records: BTreeMap<String, Value>,
+    /// How many answers moved what's held, so a daemon making something
+    /// of it knows by one number whether it's to be made again.
+    taken: u64,
 }
 
 /// What one answer moved: the keys it made or changed, and those gone.
@@ -47,6 +50,12 @@ impl Held {
         self.records
             .iter()
             .map(|(key, record)| (key.as_str(), record))
+    }
+
+    /// How many answers have moved what's held: the same while every
+    /// record reads as it did, and more once one moved.
+    pub fn taken(&self) -> u64 {
+        self.taken
     }
 
     /// Takes one answer to a watch: its records whole, which stand for
@@ -100,6 +109,9 @@ impl Held {
             {
                 moved.gone.push(key.to_owned());
             }
+        }
+        if !moved.is_empty() {
+            self.taken += 1;
         }
         moved
     }
@@ -282,6 +294,17 @@ mod tests {
                 .is_empty(),
             "a hello's answer moved something"
         );
+    }
+
+    #[test]
+    fn it_counts_the_answers_that_moved_what_it_holds() {
+        let mut held = Held::default();
+        held.took(&json!({"records": [{"key": "a", "step": 1}]}));
+        held.took(&json!({"id": 1, "version": 1, "domain": "node"}));
+        held.took(&json!({"gone": ["b"]}));
+        assert_eq!(held.taken(), 1, "only the records moved it");
+        held.took(&json!({"changed": [{"key": "a", "step": 2}]}));
+        assert_eq!(held.taken(), 2, "a change moved it again");
     }
 
     #[test]

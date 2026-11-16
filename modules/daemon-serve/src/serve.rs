@@ -155,6 +155,14 @@ struct Held {
 }
 
 impl Held {
+    /// Takes how the sources stand, answering it in the interface's
+    /// words where that changed.
+    fn stand(&mut self, sources: Value) -> Option<Value> {
+        let standing = (words(&self.sources) != words(&sources)).then(|| words(&sources));
+        self.sources = sources;
+        standing
+    }
+
     /// Hangs up on these connections, which stopped reading, and drops
     /// their watches, answering whether any went.
     fn hang_up(&mut self, stuck: &[u64]) -> bool {
@@ -313,8 +321,7 @@ impl Shared {
     pub fn change(&self, records: Vec<Value>, sources: Value) {
         let mut guard = lock(self);
         let held: &mut Held = &mut guard;
-        let standing = (words(&held.sources) != words(&sources)).then(|| words(&sources));
-        held.sources = sources;
+        let standing = held.stand(sources);
         let mut now = BTreeMap::new();
         let mut given = Vec::with_capacity(records.len());
         for record in records {
@@ -337,31 +344,116 @@ impl Shared {
         if changed.is_empty() && gone.is_empty() && standing.is_none() {
             return;
         }
+        let (stuck, pacing) = Self::tell(
+            &self.domain,
+            &mut held.watches,
+            &changed,
+            &gone,
+            &|key| held.records.get(key),
+            &now,
+            standing.as_ref(),
+        );
+        held.records = now;
+        held.given = given;
+        self.heeded(held.hang_up(&stuck));
+        if pacing {
+            self.paced.notify_all();
+        }
+    }
+
+    /// Tells each watch these records, which changed, and these keys,
+    /// which went, as `change` does, holding every other record as it
+    /// was: for a daemon that knows what moved and holds too many to
+    /// give them all again, as the agents daemon's 6,000 were, 2.9 MB of
+    /// them landings cloned and read against themselves at every move
+    /// (perf, 2026-11-16). Its records keep their keys' order.
+    pub fn mend(&self, changed: Vec<Value>, gone: &[String], sources: Value) {
+        let mut guard = lock(self);
+        let held: &mut Held = &mut guard;
+        let standing = held.stand(sources);
+        let mut before: BTreeMap<String, Option<Value>> = BTreeMap::new();
+        for record in changed {
+            if let Some(key) = record["key"].as_str().map(str::to_owned) {
+                let was = held.records.insert(key.clone(), record);
+                before.entry(key).or_insert(was);
+            }
+        }
+        let gone: Vec<String> = gone
+            .iter()
+            .filter(|key| held.records.remove(*key).is_some())
+            .cloned()
+            .collect();
+        if !gone.is_empty() || before.values().any(Option::is_none) {
+            held.given = held.records.keys().cloned().collect();
+        }
+        let changed: Vec<&Value> = before
+            .iter()
+            .filter_map(|(key, was)| {
+                held.records
+                    .get(key)
+                    .filter(|now| was.as_ref() != Some(*now))
+            })
+            .collect();
+        if changed.is_empty() && gone.is_empty() && standing.is_none() {
+            return;
+        }
+        let (stuck, pacing) = Self::tell(
+            &self.domain,
+            &mut held.watches,
+            &changed,
+            &gone,
+            &|key| {
+                before
+                    .get(key)
+                    .map_or_else(|| held.records.get(key), Option::as_ref)
+            },
+            &held.records,
+            standing.as_ref(),
+        );
+        self.heeded(held.hang_up(&stuck));
+        if pacing {
+            self.paced.notify_all();
+        }
+    }
+
+    /// Tells each watch what it wants of the records that changed and the
+    /// keys that went, each record against how it read `before`, and how
+    /// the sources stand where that changed, all of them held `now`.
+    /// Answers the connections that stopped reading, and whether a paced
+    /// watch has something due.
+    fn tell<'a>(
+        domain: &Domain,
+        watches: &mut [Watch],
+        changed: &[&'a Value],
+        gone: &[String],
+        before: &dyn Fn(&str) -> Option<&'a Value>,
+        now: &BTreeMap<String, Value>,
+        standing: Option<&Value>,
+    ) -> (Vec<u64>, bool) {
         let mut stuck = Vec::new();
         let mut pacing = false;
-        for watch in &mut held.watches {
+        for watch in watches {
             let fields = watch.fields.as_deref();
             let records: Vec<&Value> = changed
                 .iter()
                 .copied()
                 .filter(|record| {
                     record["key"].as_str().is_some_and(|key| {
-                        watch.wants(&self.domain, key)
-                            && tells(held.records.get(key), record, fields)
+                        watch.wants(domain, key) && tells(before(key), record, fields)
                     })
                 })
                 .collect();
             let went: Vec<&str> = gone
                 .iter()
                 .map(String::as_str)
-                .filter(|key| watch.wants(&self.domain, key))
+                .filter(|key| watch.wants(domain, key))
                 .collect();
             // The records first, so a watch told how the sources stand
             // already holds what the same reading changed.
             let mut lines = Vec::new();
             if let Some(every) = watch.every {
                 let keys = records.iter().filter_map(|record| record["key"].as_str());
-                let arrived = keys.clone().any(|key| !held.records.contains_key(key));
+                let arrived = keys.clone().any(|key| before(key).is_none());
                 watch
                     .moved
                     .extend(keys.chain(went.iter().copied()).map(str::to_owned));
@@ -371,7 +463,7 @@ impl Shared {
                 // heard after the opening's first frame, the launcher keeps
                 // what it shows still and puts it last (finds-sessions,
                 // 2026-11-13). Only what moves waits for the pace.
-                if arrived && let Some(line) = watch.held_back(&now) {
+                if arrived && let Some(line) = watch.held_back(now) {
                     lines.push(line);
                 } else if !watch.moved.is_empty() && watch.due.is_none() {
                     watch.due = Some(Instant::now() + every);
@@ -384,7 +476,7 @@ impl Shared {
                     .collect();
                 lines.push(moved(&watch.id, &told, &went));
             }
-            if let Some(sources) = &standing {
+            if let Some(sources) = standing {
                 lines.push(json!({"id": watch.id, "sources": sources}));
             }
             if lines
@@ -394,12 +486,7 @@ impl Shared {
                 stuck.push(watch.connection);
             }
         }
-        held.records = now;
-        held.given = given;
-        self.heeded(held.hang_up(&stuck));
-        if pacing {
-            self.paced.notify_all();
-        }
+        (stuck, pacing)
     }
 
     /// Tells each paced watch what it held back once its pace is up, for
