@@ -4,7 +4,7 @@
 // answers with what the page lacks or gets wrong, each in a line saying what
 // to do. An empty answer passes this step; anything else and the page isn't
 // published. It finds the parts every page has, the switch and keys of its
-// head, and the faults a guard on the writing catches. SKILL.md says why
+// head, and the faults a guard on the writing catches. gates.md says why
 // each is there; this file only finds them, so a page built by any model,
 // from any first draft, is held to the same bar. It ends without a
 // semicolon, since an eval asked for one expression answers nothing for a

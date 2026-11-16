@@ -112,7 +112,9 @@
   # machine repository or an employer, so the repositories that use core name
   # it and never the other way round. Every file is read but the checks.nix
   # files, as this one has to name the words, and the lock file, which only
-  # names pins.
+  # names pins. The work's own projects, people and places are on the list
+  # too, so a study of a site Joel is proud of keeps to its design lessons
+  # here and leaves its subject where it was built.
   stands-alone =
     let
       outside = [
@@ -135,6 +137,14 @@
         "penelope"
         "methuselah"
         "equilibrius"
+        "tobi"
+        "worldtree"
+        "part deux"
+        "world-in-a-bottle"
+        "the-one-log"
+        "omni-refs-4tw"
+        "developer & ai"
+        "#inv-"
       ];
     in
     pkgs.runCommandLocal "stands-alone" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
