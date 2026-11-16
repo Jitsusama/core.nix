@@ -477,6 +477,7 @@ fn gate(checkout: &Path, log: &Path) -> bool {
 }
 
 /// How a passed candidate's push to main went.
+#[derive(Debug, PartialEq, Eq)]
 enum Landing {
     /// It landed as this commit.
     Landed(String),
@@ -676,48 +677,103 @@ mod tests {
     }
 
     #[test]
-    fn a_candidate_merges_each_rider_and_leaves_out_one_that_conflicts() {
-        let repo = root("cut");
-        fs::create_dir_all(&repo).unwrap();
-        let git = |arguments: &[&str]| {
-            let ran = Command::new("git")
-                .arg("-C")
-                .arg(&repo)
-                .args(arguments)
-                .env("GIT_CONFIG_GLOBAL", "/dev/null")
-                .env("GIT_CONFIG_NOSYSTEM", "1")
-                .env("GIT_AUTHOR_NAME", "t")
-                .env("GIT_AUTHOR_EMAIL", "t@t")
-                .env("GIT_COMMITTER_NAME", "t")
-                .env("GIT_COMMITTER_EMAIL", "t@t")
-                .output()
-                .map_err(|error| error.to_string())?;
-            if ran.status.success() {
-                Ok(String::from_utf8_lossy(&ran.stdout).trim().to_owned())
-            } else {
-                Err(String::from_utf8_lossy(&ran.stderr).into_owned())
-            }
-        };
-        let change = |from: &str, file: &str, words: &str| {
-            git(&["checkout", "--quiet", "--detach", from]).unwrap();
-            fs::write(repo.join(file), words).unwrap();
-            git(&["add", file]).unwrap();
-            git(&["commit", "--quiet", "-m", file]).unwrap();
-            git(&["rev-parse", "HEAD"]).unwrap()
-        };
-        git(&["init", "--quiet", "-b", "main"]).unwrap();
+    /// Git in `repo` with no user's or system's config, as the other
+    /// modules' tests run it, giving what it printed or why it failed.
+    fn git_in(repo: &Path, arguments: &[&str]) -> Result<String, String> {
+        let ran = Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(arguments)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .output()
+            .map_err(|error| error.to_string())?;
+        if ran.status.success() {
+            Ok(String::from_utf8_lossy(&ran.stdout).trim().to_owned())
+        } else {
+            Err(String::from_utf8_lossy(&ran.stderr).into_owned())
+        }
+    }
+
+    /// A repository at `repo` holding one commit on main, which it gives.
+    fn based(repo: &Path) -> String {
+        fs::create_dir_all(repo).unwrap();
+        git_in(repo, &["init", "--quiet", "-b", "main"]).unwrap();
         fs::write(repo.join("shared"), "main\n").unwrap();
-        git(&["add", "shared"]).unwrap();
-        git(&["commit", "--quiet", "-m", "base"]).unwrap();
-        let base = git(&["rev-parse", "HEAD"]).unwrap();
-        let apart = change(&base, "apart", "one\n");
-        let clashes = change(&base, "shared", "theirs\n");
-        let main = change(&base, "shared", "mains\n");
-        let merging = |head: &str, number: u64| Merging {
+        git_in(repo, &["add", "shared"]).unwrap();
+        git_in(repo, &["commit", "--quiet", "-m", "base"]).unwrap();
+        git_in(repo, &["rev-parse", "HEAD"]).unwrap()
+    }
+
+    /// Commit `words` as `file` in `repo` on `from`, giving the commit.
+    fn change(repo: &Path, from: &str, file: &str, words: &str) -> String {
+        git_in(repo, &["checkout", "--quiet", "--detach", from]).unwrap();
+        fs::write(repo.join(file), words).unwrap();
+        git_in(repo, &["add", file]).unwrap();
+        git_in(repo, &["commit", "--quiet", "-m", file]).unwrap();
+        git_in(repo, &["rev-parse", "HEAD"]).unwrap()
+    }
+
+    fn merging(head: &str, number: u64) -> Merging {
+        Merging {
             head: head.to_owned(),
             subject: subject(number, "o", head),
             title: format!("change {number}"),
-        };
+        }
+    }
+
+    #[test]
+    fn a_passed_candidate_lands_on_main_only_as_a_fast_forward() {
+        let place = root("land");
+        let (origin, checkout) = (place.join("origin.git"), place.join("checkout"));
+        let base = based(&checkout);
+        let bare = origin.display().to_string();
+        git_in(&place, &["init", "--quiet", "--bare", "-b", "main", &bare]).unwrap();
+        let git = |arguments: &[&str]| git_in(&checkout, arguments);
+        git(&["remote", "add", "origin", &bare]).unwrap();
+        git(&["push", "--quiet", "origin", "main"]).unwrap();
+        git(&["fetch", "--quiet", "origin", "main"]).unwrap();
+        let head = change(&checkout, &base, "apart", "one\n");
+        let riding = [merging(&head, 1)];
+        let done = cut(&git, &base, &riding).unwrap();
+        let candidate = git(&["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(
+            land(&checkout, &git, &candidate, &riding, &done.merged),
+            Landing::Landed(candidate.clone()),
+            "a passed candidate on a main that stood still didn't land"
+        );
+        assert_eq!(
+            git_in(&origin, &["rev-parse", "main"]).unwrap(),
+            candidate,
+            "origin's main isn't the candidate that landed"
+        );
+        git(&["remote", "set-url", "origin", "/nowhere"]).unwrap();
+        let next = change(&checkout, &candidate, "next", "two\n");
+        let more = [merging(&next, 2)];
+        let again = cut(&git, &candidate, &more).unwrap();
+        let refused = git(&["rev-parse", "HEAD"]).unwrap();
+        assert!(
+            matches!(
+                land(&checkout, &git, &refused, &more, &again.merged),
+                Landing::Refused(_)
+            ),
+            "a push refused while main stood still didn't fall back"
+        );
+        fs::remove_dir_all(&place).unwrap();
+    }
+
+    #[test]
+    fn a_candidate_merges_each_rider_and_leaves_out_one_that_conflicts() {
+        let repo = root("cut");
+        let base = based(&repo);
+        let git = |arguments: &[&str]| git_in(&repo, arguments);
+        let apart = change(&repo, &base, "apart", "one\n");
+        let clashes = change(&repo, &base, "shared", "theirs\n");
+        let main = change(&repo, &base, "shared", "mains\n");
         let done = cut(&git, &main, &[merging(&apart, 1), merging(&clashes, 2)]).unwrap();
         assert_eq!(
             done,
