@@ -160,7 +160,7 @@ onLinux {
         && on.xdg.configFile ? "quickshell/launcher/Shown.js"
         && !lib.any (lib.hasInfix "jitsusama.passwords.releases") on.warnings
       );
-  # With `off = true` put back, the revert home.nix names, the shell's own
+  # With `off = true` set, as a machine may still set it, the shell's own
   # config names no passwords daemon, so an unfenced process that rewrites
   # the off setting finds nothing for the shell to run, and turning the
   # place off takes the daemon out of the session altogether.

@@ -250,7 +250,9 @@ in
       order = 48;
       source = ./Passwords.qml;
       # On, now that agents are fenced off Joel's runtime folder and
-      # Wayland; `off = true` here takes it back off, reaching no daemon.
+      # Wayland. A machine's `off = true` takes it back off there, reaching
+      # no daemon. Taking it off everywhere reverts the change that turned
+      # it on, since passwords-runs-each-password-manager holds it on here.
       # Copies go through wl-copy, by its full path, as a sensitive offer
       # niri hands no fenced agent.
       copier = lib.getExe' pkgs.wl-clipboard "wl-copy";
