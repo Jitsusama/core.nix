@@ -607,8 +607,9 @@ struct Ranks {
     /// looked for and not found.
     found: HashMap<u64, Result<PathBuf, std::time::Instant>>,
     /// The scope of each held or kept window's pi, by niri's id for it,
-    /// with when it was last looked for ([`pi_of`]).
-    pis: HashMap<u64, (Option<PathBuf>, std::time::Instant)>,
+    /// with when it was last looked for and how many looks in a row found
+    /// none ([`pi_of`]).
+    pis: HashMap<u64, (Option<PathBuf>, std::time::Instant, u8)>,
     /// The window with the focus whose memory was last asked back, so
     /// it's asked once each time the focus comes to it ([`swap_in`]).
     reading: Option<u64>,
@@ -772,7 +773,7 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
                 Some(Ok(scope)) => Some(scope),
                 _ => None,
             };
-            let pi = ranks.pis.get(&window.id).and_then(|(pi, _)| pi.as_ref());
+            let pi = ranks.pis.get(&window.id).and_then(|(pi, _, _)| pi.as_ref());
             own.into_iter().chain(pi)
         })
         .filter_map(|scope| unit_of(scope).map(str::to_owned))
@@ -787,13 +788,13 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
 
 /// The scope of the pi of `window`, whose own scope is `own`, as last
 /// found while it stands ([`focus::stands`]), or looked for again. A
-/// session's window with none is said once a time it's looked for, as a
+/// session's window with none is said once ([`focus::says_alone`]), as a
 /// mycelium spelling its command lines anew would leave every pi unheld.
 fn pi_of(
     window: &focus::Window,
     own: Option<&Path>,
     windows: &Windows,
-    found: &mut HashMap<u64, (Option<PathBuf>, std::time::Instant)>,
+    found: &mut HashMap<u64, (Option<PathBuf>, std::time::Instant, u8)>,
     now: std::time::Instant,
 ) -> Option<PathBuf> {
     let Some(own) = own else {
@@ -801,19 +802,21 @@ fn pi_of(
         return None;
     };
     let last = found.get(&window.id);
-    if let Some((pi, when)) = last
+    if let Some((pi, when, _)) = last
         && focus::stands(pi.as_deref(), *when, now, Path::exists)
     {
         return pi.clone();
     }
+    let before = last.map_or(0, |(_, _, misses)| *misses);
     let pi = beside(own, window.pid, windows);
-    if pi.is_none() && window.session() && last.is_none_or(|(pi, _)| pi.is_some()) {
+    let misses = focus::misses(pi.is_some(), before);
+    if window.session() && focus::says_alone(misses) {
         eprintln!(
             "Holding {} alone: no pi found beside it.",
             unit_of(own).unwrap_or_default()
         );
     }
-    found.insert(window.id, (pi.clone(), now));
+    found.insert(window.id, (pi.clone(), now, misses));
     pi
 }
 
@@ -830,7 +833,13 @@ fn beside(own: &Path, kitty: u32, windows: &Windows) -> Option<PathBuf> {
         .into_iter()
         .filter_map(|pid| {
             let cmdline = fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+            // Only mycelium's own child is its holder: a pi run straight in
+            // the window starts its agents' commands, which may say anything.
+            let mycelium = named
+                .iter()
+                .any(|&(each, _, comm)| each == pid && comm == "mycelium");
             focus::attached_to(&cmdline).or_else(|| {
+                mycelium.then_some(())?;
                 children(pid)
                     .filter_map(|child| fs::read(format!("/proc/{child}/cmdline")).ok())
                     .find_map(|cmdline| focus::holding(&cmdline))
@@ -963,7 +972,7 @@ fn read_back(at: Option<focus::Window>, ranks: &mut Ranks) {
     let pi = ranks
         .pis
         .get(&window.id)
-        .and_then(|(pi, _)| pi.as_deref())
+        .and_then(|(pi, _, _)| pi.as_deref())
         .and_then(|pi| started_by(pi, &window.app_id));
     for pid in pi.into_iter().chain(first) {
         start_reading_back(&pid);
@@ -1760,13 +1769,21 @@ fn return_sessions(root: &Path, settings: &Settings, warned: &mut bool) {
     let cmdline = |pid: u32| fs::read(format!("/proc/{pid}/cmdline")).ok();
     for (id, pids) in sessions::found(&procs, &settings.keep, cmdline) {
         let name = format!("{prefix}{id}.scope");
+        let scope = root.join(slice).join(&name);
+        // A holder in jobs naming a session whose scope holds its holder
+        // already is an agent's, which would be held as Joel's pi is.
+        let there = samples(&scope)
+            .into_iter()
+            .filter_map(|proc| cmdline(proc.pid));
+        if sessions::held_already(there, &id) {
+            continue;
+        }
         let made = Command::new("busctl")
             .args(sessions::scope_call(&name, slice, &pids))
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
             .is_ok_and(|status| status.success());
-        let scope = root.join(slice).join(&name);
         if !made && scope.join("cgroup.procs").exists() {
             send(&scope, &pids, warned);
         } else if !made {

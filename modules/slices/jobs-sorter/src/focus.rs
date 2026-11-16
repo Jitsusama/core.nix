@@ -503,6 +503,19 @@ pub fn stands(
 /// looked for again.
 pub const PI_AGAIN: Duration = Duration::from_secs(5);
 
+/// How many looks in a row have found a session window no pi, from the
+/// `before` the last look left and whether this one `found` one.
+pub fn misses(found: bool, before: u8) -> u8 {
+    if found { 0 } else { before.saturating_add(1) }
+}
+
+/// Whether a session window is said to be held alone once its looks have
+/// found it no pi `misses` times in a row: at the second, since a new
+/// window's pi may not have its scope at the first, and only once.
+pub fn says_alone(misses: u8) -> bool {
+    misses == 2
+}
+
 /// Whether `unit` is a session's pi's scope, as one of `pis` begins it.
 pub fn runs_a_pi(unit: &str, pis: &[String]) -> bool {
     pis.iter().any(|prefix| unit.starts_with(prefix.as_str()))
@@ -932,7 +945,12 @@ mod tests {
 
     #[test]
     fn a_windows_pi_is_found_by_the_held_session_its_attach_names() {
-        let line = |words: &[&str]| words.join("\0").into_bytes();
+        // /proc ends each word of a command line with a NUL, its last too.
+        let line = |words: &[&str]| {
+            let mut line = words.join("\0").into_bytes();
+            line.push(0);
+            line
+        };
         for (words, id) in [
             (
                 &["mycelium", "--realm", "work", "attach", "67c3ecff"][..],
@@ -1011,6 +1029,23 @@ mod tests {
                 "{what} was read as a held session"
             );
         }
+    }
+
+    #[test]
+    fn a_window_held_alone_is_said_once_at_its_second_look_without_a_pi() {
+        let said: Vec<bool> = [false, false, false, true, false, false]
+            .iter()
+            .scan(0, |before, &found| {
+                *before = misses(found, *before);
+                Some(says_alone(*before))
+            })
+            .collect();
+        assert_eq!(
+            said,
+            [false, true, false, false, false, true],
+            "said at the second miss, not the first or third, and again after a pi was found"
+        );
+        assert_eq!(misses(false, u8::MAX), u8::MAX, "misses stop counting");
     }
 
     #[test]
