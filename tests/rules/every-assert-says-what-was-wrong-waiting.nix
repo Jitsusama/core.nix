@@ -331,7 +331,6 @@
   "tools/changed-checks/tests/changed_checks/building.rs" = 4;
   "tools/changed-checks/tests/changed_checks/command.rs" = 1;
   "tools/changed-checks/tests/changed_checks/evaluating.rs" = 4;
-  "tools/changed-checks/tests/changed_checks/keeping.rs" = 2;
   "tools/merge-net/src/ready.rs" = 4;
   "tools/merge-net/src/rules.rs" = 17;
   "tools/merge-net/src/state.rs" = 1;
