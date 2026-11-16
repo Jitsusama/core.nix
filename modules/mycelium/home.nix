@@ -462,7 +462,8 @@ let
     };
   servesFile = realm: "${config.xdg.configHome}/mycelium/serves-${realm}.json";
   realms = lib.optional serving cfg.realm ++ lib.attrNames cfg.alsoJoins;
-  node = nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ];
+  builders = import ./builders.nix;
+  node = nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ] ++ lib.optionals isLinux builders;
   # Where the harness and mycelium keep a realm that isn't the home one.
   apartIn = realm: [
     "--state"
