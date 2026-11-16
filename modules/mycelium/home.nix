@@ -384,6 +384,10 @@ let
     ++ [
       "--serves"
       (servesFile realm)
+    ]
+    ++ lib.optionals (cfg.healthSocket != null) [
+      "--health-socket"
+      cfg.healthSocket
     ];
   # The harness's files a realm's node serves whoever reads it, the
   # launcher first, each as a kind of records: the realm's open quests and
@@ -632,6 +636,18 @@ in
         What this machine says of itself that its node can't measure, for
         work to be placed by, or null to declare nothing, which mycelium
         reads as unknown.
+      '';
+    };
+    healthSocket = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = if isLinux then "%t/daemons/system.sock" else null;
+      defaultText = lib.literalExpression ''"%t/daemons/system.sock" on Linux, else null'';
+      description = ''
+        The socket of the daemon that says how this machine stands, whose
+        words each node carries in the machine record it shares, so every
+        machine of the realm sees them; or null to carry none. The system
+        daemon's on Linux, where `%t` is the user's runtime folder. A socket
+        nobody answers reads as health unknown.
       '';
     };
     agents = lib.mkOption {
