@@ -221,13 +221,11 @@ fn shell() -> PathBuf {
 
 /// A stand-in for a program this daemon runs, as niri and kitten for a
 /// kitty tab's acts, writing what it was asked a line a run beside itself
-/// (`.asked`), and, for a case whose words hold spaces, each word on a
-/// line of its own, a blank line ending the run (`.argv`), written first.
+/// (`.asked`), and first, for a case whose words hold spaces, each word on
+/// a line, a blank one ending the run (`.argv`).
 fn recorder(path: &Path) {
-    let script = format!(
-        "#!{}\nprintf '%s\\n' \"$@\" '' >> \"$0.argv\"\necho \"$@\" >> \"$0.asked\"\n",
-        shell().display()
-    );
+    let records = r#"printf '%s\n' "$@" '' >> "$0.argv"; echo "$@" >> "$0.asked""#;
+    let script = format!("#!{}\n{records}\n", shell().display());
     std::fs::write(path, script).unwrap();
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
