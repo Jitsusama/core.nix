@@ -633,6 +633,15 @@
   console-font-passes-clippy = ''
     clippy finds nothing in the console's font tool or its tests
   '';
+  crate-reach-finds-what-reads-what = ''
+    what main moved in a crate a change's crate reads, or one reading it, however far, is
+    beside the change, another file of its own crate is too, and crates that only read the same
+    third one stay apart
+  '';
+  crate-reach-passes-clippy = ''
+    clippy finds nothing in crate-reach, which merge-net and a gate's replay read to judge what
+    main moved beside a change
+  '';
   daemon-client-passes-clippy = ''
     clippy finds nothing in daemon-client, the daemon and client the daemons' tests share
   '';

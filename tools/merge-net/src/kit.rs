@@ -28,7 +28,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::reach::Crates;
+use crate_reach::Crates;
 use crate::turn::Gate;
 
 /// Where the kit's files are, from the top of the repository.

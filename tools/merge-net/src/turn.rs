@@ -20,7 +20,7 @@
 //! pytest file they gave cases apart (`apart.rs`), which `ready` will
 //! judge apart once it's rebased. A change in a crate the gate's crates
 //! are in, read or are read by shares with it too, as `ready` counts
-//! (`reach.rs`, `shares`). A
+//! (modules/crate-reach, `shares`). A
 //! gate counts as having started when its tree's first gate did
 //! (`places.rs`), so a change that runs again after a merge left its pass
 //! stale keeps its place rather than going behind every gate since.
@@ -43,7 +43,7 @@ use std::process::{Command, ExitCode};
 
 use crate::kit;
 use crate::places::Places;
-use crate::reach::Crates;
+use crate_reach::Crates;
 use crate::waited::Waited;
 
 /// The longest a gate is waited on. Gates have run past an hour on
@@ -282,7 +282,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
         ours,
     };
     let place = |gate: &Gate| places.start(&gate.folder, gate.started, now);
-    let crates = Crates::at(commit);
+    let crates = Crates::at(Path::new("."), commit);
     let mut gates = gates;
     gates.extend(finished(&heads(&places), now, &passed_at, &on_main));
     let queue = Queue::of(&here, patch.as_deref(), ours, &gates, &crates, now);
@@ -451,7 +451,7 @@ pub fn waits_to_run(commit: &str) -> Option<String> {
         &["diff", "--name-only", base.trim(), commit],
     )?;
     let ours: Vec<String> = listed.lines().map(str::to_owned).collect();
-    let crates = Crates::at(commit);
+    let crates = Crates::at(Path::new("."), commit);
     let now = crate::state::now();
     let mut gates = gates(&folder()?);
     let places = crate::places::Places::read(&crate::places::file());

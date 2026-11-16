@@ -15,6 +15,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
+name = "crate-reach"
+version = "0.1.0"
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -69,6 +73,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 name = "nix-offload"
 version = "0.1.0"
 dependencies = [
+ "crate-reach",
  "libc",
  "serde_json",
  "tempfile",

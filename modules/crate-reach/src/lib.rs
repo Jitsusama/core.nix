@@ -9,10 +9,17 @@
 //! after its gate ran, while main moved daemon-serve, which slack reads.
 //! Both merged with no run of their own, as main had moved none of their
 //! files, and main stopped compiling.
+//!
+//! It's a library both `merge-net ready` and `nix-offload there
+//! --changed`'s replay read, so a change is replayed onto an older main
+//! only where ready would take its pass. On 16 November the replay judged
+//! by folder alone: it put a change to modules/programs, which reads
+//! modules/repos, back onto a main before 17 repos files moved, and ready
+//! refused each pass, about 12 minutes a run, until a kept main held them.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// Each crate, by its folder, and the crates it reads.
 #[derive(Debug, Default)]
@@ -25,13 +32,18 @@ pub struct Crates {
 const ASKED: [&str; 4] = ["-e", r"^\[package\]", "-e", r#"path *= *""#];
 
 impl Crates {
-    /// The crates at `commit`, or none when git can't say.
+    /// The crates at `commit` of the git tree `top`, or none when git
+    /// can't say.
     #[must_use]
-    pub fn at(commit: &str) -> Self {
+    pub fn at(top: &Path, commit: &str) -> Self {
         let grep = Command::new("git")
+            .arg("-C")
+            .arg(top)
             .args(["grep", "-n"])
             .args(ASKED)
             .args([commit, "--", "*Cargo.toml"])
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
             .output()
             .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
             .unwrap_or_default();
