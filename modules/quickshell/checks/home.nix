@@ -90,7 +90,8 @@
 
   # A look Joel acts on shows so at once; one the to-do daemon refuses to
   # settle is put back as it read and said in the journal, and one it
-  # settles stays as its stream then tells it, the daemon stood in on its
+  # settles stays as its stream then tells it, the same look in the
+  # daemon's own words leaving the act's text, the daemon stood in on its
   # socket by the case itself (tests/now-look-unwritten.qml).
   the-launcher-puts-back-a-look-it-couldnt-write = nowShown {
     name = "the-launcher-puts-back-a-look-it-couldnt-write";

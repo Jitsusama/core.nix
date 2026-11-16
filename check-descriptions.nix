@@ -3163,7 +3163,9 @@
     its record says over the folder it works in; a paused one's glyph is never drawn in a
     listening one's colour; and an orchestration's waiting sessions fold into one row after its
     own, which Return steps into and typing still finds each in; and a look's choice in For You
-    steers its answer to the session that left it and, once taken, moves to History saying it
+    steers its answer to the session that left it and, once taken, moves to History saying it;
+    and a session's work turning just after Return into For You, moving none of it, is drawn
+    as no act of Return's
   '';
   the-launcher-answers-whats-typed-on-niri = ''
     on the account's whole shell on niri, typed into, the launcher answers units, zones and
@@ -3545,7 +3547,8 @@
   the-launcher-puts-back-a-look-it-couldnt-write = ''
     a look cleared in For You shows cleared in the act's own frame, and when its file can't be
     written is put back as it read, its failure said in the journal, the shut launcher keeping
-    the looks it read
+    the looks it read, and the daemon's word on one it settled, the same look written its own
+    way, leaves the text the act showed
   '';
   the-launcher-reads-spec-from-its-daemon = ''
     the launcher's Spec reads what the cadence-spec daemon serves: the head as the daemon says it,
@@ -3607,7 +3610,8 @@
     piece of what's on that moved is the only one whose row and acts are made again, a kept one
     running its piece's act as it is now; and For You's Desktop holds the notices unread as the
     notices' own rows, and its History those read, stepping in again after one is read making
-    only that one's row again
+    only that one's row again; and Now, stepped into For You since it last said what it shows,
+    says it changed only where For You's rows differ from those the launcher shows
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a

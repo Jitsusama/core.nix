@@ -1320,6 +1320,26 @@ ShellRoot {
     function heldHears() {
         expect("and For You held hears it once the change is done", root.nowChanged === 1,
             root.nowChanged);
+        // Said last with nothing held, Now stepped into For You since
+        // compares what For You shows, as the launcher made it stepping
+        // in: Joel's journal timed For You drawn again as Return's act
+        // after 73 of 81 steps into it (2026-11-15).
+        const into = rows => [{ row: { from: now, key: "on" } },
+            { row: { key: "on:waitingOnYou" }, rows: rows }];
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        theLauncher.held = into(now.waiting.verbs());
+        now.changedTo(now.everything());
+        expect("stepped into For You, a change that moves none of its rows says nothing",
+            root.nowChanged === 0, root.nowChanged);
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        theLauncher.held = into([]);
+        now.changedTo(now.everything());
+        expect("and one whose rows differ from what For You shows says so",
+            root.nowChanged === 1, root.nowChanged);
         theLauncher.held = [];
         Facts.all = [];
         Notices.history = [];
