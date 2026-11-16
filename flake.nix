@@ -682,6 +682,9 @@
             (pkgs.callPackage ./modules/wifid/sign-in/package.nix { })
           ];
           packages = [
+            # Ahead of cargo itself, so an agent's whole suite goes to a lent
+            # builder (modules/nix-offload/cargo.sh).
+            (pkgs.callPackage ./modules/nix-offload/cargo.nix { })
             pkgs.cargo
             pkgs.clippy
             # code-health's tests run these three over Terraform, tflint

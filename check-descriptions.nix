@@ -248,6 +248,11 @@
     a YubiKey's keyboard interface is refused in the running system and in the initrd, so a touch
     types no one-time password at the disk prompt, and udev reads the rule without a complaint
   '';
+  agents-cargo-goes-through-nix-offload = ''
+    the dev shell's cargo sends an agent's words, each kept whole, through nix-offload cargo naming
+    cargo itself, and runs cargo itself for a person, on a lent builder, without nix-offload, or
+    beside one too old to know cargo
+  '';
   agents-makes-the-launchers-rows = ''
     the agents daemon says how each pi session stands, its acts and what Return does, lays
     sessions under their orchestrators with the waiting folded, and words each row's side, each
