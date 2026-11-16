@@ -412,5 +412,17 @@
       "test_a_service_nothing_named_a_slice_for_is_said_of_and_left"
     ],
     "test": "vm-apps-come-first"
+  },
+  {
+    "at": 1794794571,
+    "commit": "2065994cec0d46523499d9bec8c170791466e1ef",
+    "due": "2026-11-18",
+    "owner_pr": 4874,
+    "reason": "failed, then passed, at 2065994cec0d",
+    "subtests": [
+      "test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it",
+      "test_the_camera_takes_a_picture_and_a_video_by_the_keys"
+    ],
+    "test": "vm-desktop-captures"
   }
 ]
