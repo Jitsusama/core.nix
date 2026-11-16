@@ -89,7 +89,7 @@ let
   linking = cfg.links != [ ] || cfg.vias != [ ] || cfg.providers != [ ];
   serving = cfg.realm != null;
   agentsKey = config.systemd.user.sockets ? agent-signing;
-  declaration = import ./declared.nix { inherit lib isLinux; } cfg;
+  declaration = import ./declaration.nix { inherit lib isLinux; } cfg;
   # The node reads the declaration from the store, where only root writes,
   # never from the account's config folder: anything running as the account
   # could repoint that link and widen how agents' commands run.
@@ -571,9 +571,10 @@ in
       };
     })
     (lib.mkIf (cfg.declares != null) {
-      # Where a command and an end of a link another machine dials read
-      # it: XDG_CONFIG_HOME's, or ~/.config's. The node reads its own copy
-      # in the store (declaredArgs).
+      # Where the account's commands read it: XDG_CONFIG_HOME's, or
+      # ~/.config's. The node reads its own copy in the store
+      # (declaredArgs), and an end of a link another machine dials asks
+      # the node.
       xdg.configFile."mycelium/declared.json".text = declaration;
     })
     (lib.mkIf serving {

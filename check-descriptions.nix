@@ -1640,8 +1640,9 @@
   '';
   mycelium-node-reads-its-declaration-from-the-store = ''
     each realm's mycelium node, on NixOS and nix-darwin, is given what its machine declares as a
-    file in the Nix store, which only root writes, so a link in the account's config folder can't
-    widen how its agents' commands run; a machine declaring nothing names no file
+    file in the Nix store, which only root writes, holding the same words as the account's config
+    folder, so a link there can't widen how its agents' commands run; a machine declaring nothing
+    names no file
   '';
   needs-you-is-true = ''
     over the agents' own files as the node serves them, For You's to-dos hold now only what Joel

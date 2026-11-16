@@ -1,7 +1,8 @@
 # An agent's `mycelium run` starts through the launcher its fence declares
 # (modules/mycelium), and this runs commands through it as the account's
-# declared.json says, as the node would: in the run's folder, with the
-# account's runtime folder, bus, agents and sockets all live beside it.
+# declared.json says, the same words the node reads from its copy in the
+# store: in the run's folder, with the account's runtime folder, bus,
+# agents and sockets all live beside it.
 # Nothing the fence keeps out is reachable from inside, and the folder
 # still is. Only a running system has a user bus, a runtime folder, user
 # namespaces for bubblewrap and the kernel's Landlock, which is why this is

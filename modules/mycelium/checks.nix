@@ -656,17 +656,23 @@ in
 
   # Each realm's node on either system reads what its machine declares from
   # the store, where only root writes, never from the account's config
-  # folder, whose link anything running as the account could repoint; a
-  # machine declaring nothing names no file.
+  # folder, whose link anything running as the account could repoint; it
+  # holds the very words the account's commands read there. A machine
+  # declaring nothing names no file.
   mycelium-node-reads-its-declaration-from-the-store =
     holds "mycelium-node-reads-its-declaration-from-the-store"
-      "A node of a machine that declares itself, on NixOS or nix-darwin and in each realm it joins, isn't given its declaration as a file in the Nix store, or one declaring nothing is given a file."
+      "A node of a machine that declares itself, on NixOS or nix-darwin and in each realm it joins, isn't given the store file holding what its config folder's declared.json says, or one declaring nothing is given a file."
       (
         let
           declaringLinks = both // {
             declares = declaring;
           };
-          onLinux = (linux declaringLinks).systemd.user.services;
+          home = {
+            linux = linux declaringLinks;
+            mac = mac declaringLinks;
+          };
+          onLinux = home.linux.systemd.user.services;
+          onMac = home.mac.launchd.agents;
           # The word after --declared, as the unit has it.
           given =
             words:
@@ -675,17 +681,24 @@ in
             in
             if at == null then null else builtins.elemAt words (at + 1);
           linuxWords = service: lib.splitString " " (toString service.Service.ExecStart);
-          inStore =
-            file:
-            file != null
-            && lib.hasPrefix "${builtins.storeDir}/" file
-            && lib.hasSuffix "-mycelium-declared.json" file;
+          # The store file, built as the machine's own, holding what its
+          # account's config folder says.
+          holding =
+            user:
+            let
+              inherit (user._module.args) pkgs;
+              words = user.xdg.configFile."mycelium/declared.json".text;
+            in
+            "${pkgs.writeText "mycelium-declared.json" words}";
         in
-        inStore (given (linuxWords onLinux.mycelium))
-        && inStore (given (linuxWords onLinux.mycelium-other))
-        && inStore (given (mac declaringLinks).launchd.agents.mycelium.config.ProgramArguments)
-        && given (linuxWords (linux links).systemd.user.services.mycelium) == null
+        given (linuxWords onLinux.mycelium) == holding home.linux
+        && given (linuxWords onLinux.mycelium-other) == holding home.linux
+        && given onMac.mycelium.config.ProgramArguments == holding home.mac
+        && given onMac.mycelium-other.config.ProgramArguments == holding home.mac
+        && given (linuxWords bothLinux.mycelium) == null
+        && given (linuxWords bothLinux.mycelium-other) == null
         && given macNode == null
+        && given (mac both).launchd.agents.mycelium-other.config.ProgramArguments == null
       );
 
   # A machine's system pins each key that links to it, on either system, to
