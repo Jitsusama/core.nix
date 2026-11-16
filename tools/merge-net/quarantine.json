@@ -135,18 +135,6 @@
     "test": "vm-desktop-looks"
   },
   {
-    "at": 1794568169,
-    "commit": "fe9f6ae1bd4ddc562eab03e03021937e076d7e19",
-    "due": "2026-11-15",
-    "owner_pr": 3956,
-    "owner_session": "FEH1HE",
-    "reason": "failed twice at aefa56b98e80, and at fe9f6ae1bd4d after it",
-    "subtests": [
-      "test_an_unplugged_ergodox_is_shown_nowhere_until_its_back"
-    ],
-    "test": "vm-desktop-looks"
-  },
-  {
     "at": 1794582283,
     "commit": "b7a81d60bf2144b8873172e83bd4aa19fb38414d",
     "due": "2026-11-15",

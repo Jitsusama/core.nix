@@ -59,6 +59,48 @@ fn captures_rows_are_served_as_things_are_taken_and_whole_once_ahead() {
     );
 }
 
+// A shot's drawer is whole in the answer to a watch ahead of it once its
+// preview is held, as it was on a builder at 12:07 on 15 November: the
+// rows were made again with nothing ahead, and the next watch ahead found
+// its preview current, so the rows were made before it was counted and
+// stayed without Dimensions.
+#[test]
+fn a_shot_watched_ahead_again_is_answered_whole_from_its_preview_held() {
+    let running = Running::new("taken-again");
+    let mut client = running.client();
+    let shots = running.path("shots").to_string_lossy().into_owned();
+    let first = format!("row:taken:{shots}/2026-11-10 09-00-00.png");
+    let dimensions = json!({"name": "Dimensions", "said": "4\u{a0}\u{d7}\u{a0}3"});
+    client.ask(&json!({"id": "settings", "ask": "settings", "folders": [shots]}));
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "taken"}));
+    client.changed(&first);
+    let mut ahead = running.client();
+    ahead.send(&json!({"id": "ahead", "ask": "watch", "kind": ["row"], "keys": [first]}));
+    while ahead.changed(&first)["row"]["drawer"]["facts"][2] != dimensions {}
+    drop(ahead);
+    // A new shot makes the rows again with nothing ahead, so the first's
+    // drawer says only what the list does.
+    std::fs::write(running.path("shots/2026-11-11 01-00-00.png"), "shot").unwrap();
+    while client.changed(&first)["row"]["drawer"]["facts"]
+        .as_array()
+        .map(Vec::len)
+        != Some(2)
+    {}
+    let again = running
+        .client()
+        .ask(&json!({"id": "again", "ask": "watch", "kind": ["row"], "keys": [first]}));
+    let row = again["records"].as_array().and_then(|records| {
+        records
+            .iter()
+            .find(|record| record["key"] == first.as_str())
+    });
+    assert_eq!(
+        row.map(|row| &row["row"]["drawer"]["facts"][2]),
+        Some(&dimensions),
+        "watched ahead again, its drawer isn't whole from the preview held: {again}"
+    );
+}
+
 #[test]
 fn what_was_taken_is_searched_newest_first_past_recents_nine() {
     let running = Running::new("taken-search");

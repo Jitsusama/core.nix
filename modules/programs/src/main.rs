@@ -729,6 +729,9 @@ fn read_for(shared: &Arc<Shared>, wanted: &Wanted<'_>) {
                 _ => rows::make(shared, &mut daemon),
             }
         }
+        if let Some(keys) = keys {
+            taken::make_ahead(shared, &mut daemon, keys);
+        }
     }
     let (shared, kinds) = (Arc::clone(shared), kinds.to_vec());
     let keys = keys.map(<[String]>::to_vec);
