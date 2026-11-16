@@ -488,6 +488,19 @@ let
     };
   };
   describe = realm: "Carries the harness mesh between the machines of the ${realm} realm";
+  # Each machine reads, each minute, how evenly the home realm's machines
+  # carry its work, and keeps each reading a file a day in mycelium's state,
+  # so placement can be judged and its weights tuned from what it did. Each
+  # node holds the whole realm's facts, so every machine keeps the same
+  # record and none is central. Its stdout repeats what it keeps, so it goes
+  # nowhere; what it can't read, it says on stderr.
+  balance = [
+    (lib.getExe package)
+    "--realm"
+    cfg.realm
+    "balance"
+    "--follow"
+  ];
 in
 {
   imports = [ ../signing/home.nix ];
@@ -620,6 +633,10 @@ in
           message = "jitsusama.mycelium.flows has a flow from a realm into itself, or between two realms this machine joins neither of.";
         }
         {
+          assertion = !(cfg.alsoJoins ? balance);
+          message = "jitsusama.mycelium.alsoJoins names a realm balance, whose node's unit would be the one that reads the home realm's balance.";
+        }
+        {
           assertion = lib.all (lib.types.strMatching "[a-z0-9-]+").check (lib.attrNames cfg.alsoJoins);
           message = "jitsusama.mycelium.alsoJoins names a realm in other than lowercase letters, digits and dashes.";
         }
@@ -667,6 +684,22 @@ in
     (lib.mkIf (isLinux && serving) {
       systemd.user.services = {
         mycelium = linuxNode (describe cfg.realm) node cfg.signsInWith cfg.realm;
+        mycelium-balance = {
+          Unit = {
+            Description = "Reads how evenly the ${cfg.realm} realm's machines carry its work";
+            After = [ "mycelium.service" ];
+          };
+          Service = {
+            ExecStart = lib.escapeShellArgs balance;
+            StandardOutput = "null";
+            # It reads again whatever ends it, as its node does, but no
+            # faster than its node comes back.
+            Restart = "always";
+            RestartSec = "30s";
+            Slice = "agents.slice";
+          };
+          Install.WantedBy = [ "default.target" ];
+        };
       }
       // lib.mapAttrs' (
         realm: words:
@@ -678,6 +711,16 @@ in
     (lib.mkIf (isDarwin && serving) {
       launchd.agents = {
         mycelium = macNode node "mycelium";
+        mycelium-balance = {
+          enable = true;
+          config = {
+            ProgramArguments = balance;
+            RunAtLoad = true;
+            KeepAlive = true;
+            ThrottleInterval = 30;
+            StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/mycelium-balance.log";
+          };
+        };
       }
       // lib.mapAttrs' (
         realm: words: lib.nameValuePair "mycelium-${realm}" (macNode words "mycelium-${realm}")
