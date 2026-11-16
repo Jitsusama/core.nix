@@ -1255,6 +1255,26 @@ in
       "#######."
     ];
   };
+  # Held up by the scruff in Joel's hand, facing him as sitting does: its
+  # head at the top, the body hanging loose and a little wider below it,
+  # forelegs out, hind legs and tail straight down. Still the whole time
+  # it's held, since a hand-held cat hangs rather than sways (VKCF3Z,
+  # 9ead6710).
+  scruffed = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      ".#...#.."
+      ".#####.."
+      ".#.#.#.."
+      ".#####.."
+      "..###..."
+      "#######."
+      "##.#.##."
+      ".#.#.#.."
+    ];
+  };
   # Crouched to pounce: ears up and eye forward, paws flat, rump raised
   # behind, unlike stretching, whose head is down. Its tail lies low out of
   # sight: perched on a mark, under the mark's ink, a tip drawn behind the
