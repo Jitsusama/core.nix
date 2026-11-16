@@ -326,10 +326,16 @@ mod tests {
         assert_eq!(labels(3), ["a", "s", "d"]);
         let many = labels(30);
         assert_eq!(many.len(), 30);
-        assert!(many.iter().all(|label| label.len() == 2));
+        assert!(
+            many.iter().all(|label| label.len() == 2),
+            "thirty labels weren't all two letters: {many:?}"
+        );
         for (i, a) in many.iter().enumerate() {
             for b in &many[i + 1..] {
-                assert!(!b.starts_with(a.as_str()) && !a.starts_with(b.as_str()));
+                assert!(
+                    !b.starts_with(a.as_str()) && !a.starts_with(b.as_str()),
+                    "{a} and {b} begin one another"
+                );
             }
         }
     }

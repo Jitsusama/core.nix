@@ -91,36 +91,72 @@ mod tests {
     #[test]
     fn a_view_on_its_way_to_the_end_is_at_it() {
         let down = Jump::new(0.0, 1000.0, 1800.0, Instant::now());
-        assert!(at_end(300.0, Some(&down), 1000.0));
+        assert!(
+            at_end(300.0, Some(&down), 1000.0),
+            "a view sliding down to the end wasn't at it"
+        );
         let up = Jump::new(1000.0, 0.0, 1800.0, Instant::now());
-        assert!(!at_end(1000.0, Some(&up), 1000.0));
-        assert!(at_end(1000.0, None, 1000.0));
-        assert!(!at_end(0.0, None, 0.0));
+        assert!(
+            !at_end(1000.0, Some(&up), 1000.0),
+            "a view sliding up from the end was still at it"
+        );
+        assert!(
+            at_end(1000.0, None, 1000.0),
+            "a view resting at the end wasn't at it"
+        );
+        assert!(
+            !at_end(0.0, None, 0.0),
+            "a page with nothing to scroll was at its end"
+        );
     }
 
     #[test]
     fn the_curve_starts_and_ends_where_it_should() {
-        assert!(eased(0.0).abs() < 1e-9);
-        assert!((eased(1.0) - 1.0).abs() < 1e-9);
+        assert!(
+            eased(0.0).abs() < 1e-9,
+            "the curve didn't start at 0: {}",
+            eased(0.0)
+        );
+        assert!(
+            (eased(1.0) - 1.0).abs() < 1e-9,
+            "the curve didn't end at 1: {}",
+            eased(1.0)
+        );
     }
 
     #[test]
     fn the_curve_is_mostly_there_at_once() {
         assert!(eased(0.25) > 0.75, "{}", eased(0.25));
-        assert!(eased(0.5) < 1.0);
+        assert!(
+            eased(0.5) < 1.0,
+            "the curve was all the way there at half time: {}",
+            eased(0.5)
+        );
     }
 
     #[test]
     fn a_far_jump_moves_its_last_screen() {
         let jump = Jump::new(0.0, 100_000.0, 1800.0, Instant::now());
-        assert!((jump.from - 98_200.0).abs() < 1e-9);
+        assert!(
+            (jump.from - 98_200.0).abs() < 1e-9,
+            "a far jump down didn't start a screen before its end: {}",
+            jump.from
+        );
         let back = Jump::new(100_000.0, 0.0, 1800.0, Instant::now());
-        assert!((back.from - 1800.0).abs() < 1e-9);
+        assert!(
+            (back.from - 1800.0).abs() < 1e-9,
+            "a far jump back didn't start a screen below the top: {}",
+            back.from
+        );
     }
 
     #[test]
     fn a_near_jump_moves_all_the_way() {
         let jump = Jump::new(1000.0, 2800.0, 1800.0, Instant::now());
-        assert!((jump.from - 1000.0).abs() < 1e-9);
+        assert!(
+            (jump.from - 1000.0).abs() < 1e-9,
+            "a near jump didn't start where the view was: {}",
+            jump.from
+        );
     }
 }

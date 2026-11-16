@@ -424,6 +424,9 @@ mod tests {
         }
         assert_eq!((menu.chosen, menu.first), (Some(11), 2));
         assert_eq!(menu.shown().count(), SHOWN);
-        assert!(menu.shown().last().is_some_and(|(_, chosen)| chosen));
+        assert!(
+            menu.shown().last().is_some_and(|(_, chosen)| chosen),
+            "the row chosen wasn't the last one shown"
+        );
     }
 }

@@ -245,7 +245,12 @@ fn a_labels_letters_stand_on_its_links_baseline_within_a_pixel() {
             for offset in [0.0, 0.25, 0.5, 0.75, 13.37] {
                 for (link, label) in found.iter().zip(document.pages()) {
                     let label = rendered(label, px);
-                    assert!(label.baseline_px > 0.0 && label.baseline_px < f64::from(label.height));
+                    assert!(
+                        label.baseline_px > 0.0 && label.baseline_px < f64::from(label.height),
+                        "a label's baseline at {} px fell outside its {} px",
+                        label.baseline_px,
+                        label.height
+                    );
                     let top =
                         f64::from(crate::links::label_top(link, label.baseline_px, px, offset));
                     let words = link.baseline_pt * px - offset;
@@ -365,9 +370,18 @@ fn the_prompt_says_when_nothing_matches_only_once_something_is_typed() {
         px_per_pt: 2.0,
         page: crate::page::Width::WHOLE,
     };
-    assert!(source(&ask("cat", Some((0, 0)))).contains("Nothing matches."));
-    assert!(!source(&ask("", Some((0, 0)))).contains("Nothing matches."));
-    assert!(source(&ask("cat", Some((2, 5)))).contains("2 of 5"));
+    assert!(
+        source(&ask("cat", Some((0, 0)))).contains("Nothing matches."),
+        "the prompt didn't say nothing matches what was typed"
+    );
+    assert!(
+        !source(&ask("", Some((0, 0)))).contains("Nothing matches."),
+        "the prompt said nothing matches before anything was typed"
+    );
+    assert!(
+        source(&ask("cat", Some((2, 5)))).contains("2 of 5"),
+        "the prompt didn't say it was on the second of five matches"
+    );
 }
 
 /// Where each run of text stands on a set page, in points from its
@@ -547,7 +561,11 @@ fn a_chosen_row_too_long_for_the_outline_sets_its_words_whole_where_its_room_is(
         pages[1].frame.size().x.to_pt() > room.width_pt,
         "its words run past it"
     );
-    assert!((pages[1].frame.size().y.to_pt() - row_pt()).abs() < 0.01);
+    assert!(
+        (pages[1].frame.size().y.to_pt() - row_pt()).abs() < 0.01,
+        "the chosen row wasn't one row tall: {} pt",
+        pages[1].frame.size().y.to_pt()
+    );
     let figure = pages[2].frame.size().x.to_pt();
     assert!(figure > 2.0 && figure < 12.0, "a figure is {figure} pt");
     let mut texts = Vec::new();
@@ -614,7 +632,10 @@ fn the_menu_sets_each_line_and_the_row_says_how_to_choose() {
         px_per_pt: 2.0,
         page: crate::page::Width::WHOLE,
     };
-    assert!(source(&ask).contains("\"Tab choose\""));
+    assert!(
+        source(&ask).contains("\"Tab choose\""),
+        "the row didn't say Tab chooses"
+    );
     let menu = Menu {
         lines: vec![
             ("bn[ext]".into(), "Next File".into(), "]b".into(), true),
@@ -628,7 +649,10 @@ fn the_menu_sets_each_line_and_the_row_says_how_to_choose() {
         all: vec!["bn[ext]".into()],
     };
     let set = menu_source(&ask, &menu);
-    assert!(set.contains("\"bn[ext]\"") && set.contains("\"Previous File\""));
+    assert!(
+        set.contains("\"bn[ext]\"") && set.contains("\"Previous File\""),
+        "the menu didn't set its command and its name on each line"
+    );
     assert_eq!(
         set.matches("ink.selection").count(),
         1,
