@@ -1,12 +1,13 @@
 # shellcheck shell=bash
-# Starts the shell's notices (notices.qml, in the account's shell folder) on
-# the headless sway nested-niri.sh runs niri in, rather than on niri, since
+# Starts the account's whole shell (its shell folder's shell.qml) on the
+# headless sway nested-niri.sh runs niri in, rather than on niri, since
 # nested niri's one output never goes while sway's can be unplugged and made
 # again. With a notice up, the only screen goes, a second notice comes while
-# there's none, and a screen comes back; Quickshell must warn of nothing all
-# along, where on the net's vm-screens-keep-the-launcher it warned of a
-# dangling screen object each time the last screen went.
-# usage: notices-lose-their-screen.sh <shell folder> <logs> <shell-says.sh>
+# there's none, and a screen comes back; Quickshell must never warn of a
+# dangling screen object, as it did on the net's vm-screens-keep-the-launcher
+# as the last screen went. The shell's notices alone (notices.qml) warned of
+# none on sway, so it's the whole shell that's run.
+# usage: shell-loses-its-screen.sh <shell folder> <logs> <shell-says.sh>
 set -euo pipefail
 
 shell=$1
@@ -35,12 +36,14 @@ swaymsg output HEADLESS-1 unplug
 says "report[gone notifications]"
 notify-send --urgency=critical --app-name=Check "A second notice" "Sent with no screen."
 says "report[shows card A second notice]"
-qs -p "$shell" ipc call notices front
+# Asked where the line is with no screen to stand on, which may fail: only
+# what Quickshell warns of while it's asked is checked.
+qs -p "$shell" ipc call notices front || true
 sleep 1
 
-swaymsg create_output
 # The line is drawn again once there's a screen to stand on.
 before=$(grep -c -F "report[drawn notifications]" "$said")
+swaymsg create_output
 for _ in $(seq "$saying"); do
   drawn=$(grep -c -F "report[drawn notifications]" "$said")
   [[ $drawn -gt $before ]] && break
@@ -48,8 +51,11 @@ for _ in $(seq "$saying"); do
 done
 qs -p "$shell" ipc call notices front
 
-if grep -a -F -e WARN -e dangling "$said"; then
-  echo "Quickshell warned as its screen went and came." >&2
+# Only the dangling screen is looked for: on sway the shell also warns of
+# what this setup lacks (niri's background effect, the windows daemon and
+# the sockets of daemons nothing starts here).
+if grep -a -F dangling "$said"; then
+  echo "Quickshell warned of a dangling screen as its screen went and came." >&2
   cat "$said" >&2
   exit 1
 fi

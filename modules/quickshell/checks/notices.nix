@@ -37,15 +37,6 @@
     script = ../../../tests/notices-wait-while-away.sh;
   };
 
-  # With a notice up, the arrival line's only screen goes and comes back,
-  # and Quickshell warns of nothing, on sway, whose outputs can go
-  # (tests/notices-lose-their-screen.sh).
-  the-notice-line-warns-of-nothing-as-its-screen-goes = noticesOnNiri {
-    name = "the-notice-line-warns-of-nothing-as-its-screen-goes";
-    away = 3600;
-    script = ../../../tests/notices-lose-their-screen.sh;
-  };
-
   # Do not disturb holds notices while the screen is shared and lets them go
   # after, as tests/quiet.qml drives it through Quickshell itself, with
   # niri's casts, the notices, the recorder and the shell's options stood in
