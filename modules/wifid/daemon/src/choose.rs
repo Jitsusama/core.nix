@@ -810,6 +810,28 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_card_on_2_4_ghz_carrying_well_keeps_off_5_ghz_heard_30_db_fainter() {
+        let mut chooser = Chooser::default();
+        let well = carried(11, 0.0);
+
+        let on = (NEAR, &well, -36, CH6);
+        let choice = chooser.choose(Instant::now(), on, &[far_at(-66, None)], false);
+
+        assert_eq!(choice, Choice::Stay, "there it carried worse");
+    }
+
+    #[test]
+    fn one_on_2_4_ghz_carrying_badly_keeps_off_5_ghz_heard_30_db_fainter() {
+        let mut chooser = after_a_bad_minute(NEAR);
+        let badly = carried(119, 0.0);
+
+        let on = (NEAR, &badly, -36, CH6);
+        let choice = chooser.choose(Instant::now(), on, &[far_at(-66, None)], false);
+
+        assert_eq!(choice, Choice::Stay, "30 dB fainter is another room");
+    }
+
+    #[test]
     fn one_on_2_4_ghz_carrying_badly_moves_to_5_ghz_known_quicker_though_fainter() {
         let mut chooser = after_a_bad_minute(NEAR);
         let badly = carried(119, 0.0);
