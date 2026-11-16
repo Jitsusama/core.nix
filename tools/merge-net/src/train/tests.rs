@@ -50,6 +50,23 @@ fn a_head_aboard_is_found_riding_and_no_other_is() {
 }
 
 #[test]
+fn a_rider_asked_of_again_is_told_it_waits_not_that_it_boarded() {
+    let root = root("waits");
+    board(&root, &rider("a1", 10)).unwrap();
+    board(&root, &rider("b2", 20)).unwrap();
+    let said = rides_said(&root);
+    assert!(
+        said.starts_with("it waits with 1 others"),
+        "a rider asked of again wasn't told it waits with the others: {said}"
+    );
+    assert!(
+        !said.contains("put") && !said.contains("started"),
+        "a rider asked of again was told it was just put on the train: {said}"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
 fn a_rider_that_fell_rides_no_more_and_runs_again_alone() {
     let root = root("fell");
     board(&root, &rider("a1", 10)).unwrap();
@@ -117,15 +134,27 @@ fn a_red_train_splits_until_the_rider_that_breaks_it_falls_alone() {
 #[test]
 fn two_riders_that_break_the_train_each_fall_and_the_rest_land() {
     let (landed, fell, _) = split_out(5, &|riding| riding.contains(&1) || riding.contains(&3));
-    assert_eq!(fell, vec![1, 3], "the two riders that broke the train didn't both fall");
-    assert_eq!(landed, vec![0, 2, 4], "the riders that broke nothing didn't land");
+    assert_eq!(
+        fell,
+        vec![1, 3],
+        "the two riders that broke the train didn't both fall"
+    );
+    assert_eq!(
+        landed,
+        vec![0, 2, 4],
+        "the riders that broke nothing didn't land"
+    );
 }
 
 #[test]
 fn a_train_red_for_every_rider_gives_up_rather_than_halving_through_them_all() {
     let (landed, fell, runs) = split_out(5, &|_| true);
     assert!(landed.is_empty(), "a rider landed on a train red for all");
-    assert_eq!(fell, vec![0, 1, 2, 3, 4], "not every rider of a red train fell");
+    assert_eq!(
+        fell,
+        vec![0, 1, 2, 3, 4],
+        "not every rider of a red train fell"
+    );
     assert!(
         runs <= 6,
         "a train red for every rider took {runs} runs to give up, where running each \

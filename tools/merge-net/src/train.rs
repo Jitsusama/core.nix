@@ -21,7 +21,9 @@
 //!
 //! A candidate that fails splits: the train takes the first half of its
 //! riders to board, and halves again while they fail, so the riders that
-//! broke nothing land together and the one that breaks it is found alone.
+//! broke nothing land together and the one that breaks it is found alone,
+//! five riders in five runs at most (`Splitting`). A train red for more
+//! than its riders gives up, and every rider runs again alone.
 //! A rider that conflicts, or that rode a failed candidate alone, falls:
 //! `train/fell/<head>` says why, and `ready` runs that head again alone, as
 //! before the train. A rider whose pull request moved on, or closed, steps
@@ -258,8 +260,24 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
 #[must_use]
 pub fn riding(head: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
-    let rider = rider_at(&root, head)?;
-    offer(head, &rider.branch)
+    rider_at(&root, head)?;
+    if !going() && !start(&root) {
+        alight(&root, head);
+        return None;
+    }
+    Some(rides_said(&root))
+}
+
+/// What `ready` says of a rider asked of again, among the riders under
+/// `root`: that it waits, not that it was just put on the train.
+fn rides_said(root: &Path) -> String {
+    let others = riders(root).len().saturating_sub(1);
+    format!(
+        "it waits with {others} others for one run of changed-checks over them all to \
+         pass, its words going to {}; push nothing to this branch until it lands, and once \
+         it has, the pull request reads merged",
+        folder(root).display()
+    )
 }
 
 /// Why the change at `head` fell off the train, as `ready` says it beside
@@ -343,12 +361,22 @@ enum After {
 }
 
 /// What the train knows of its riders from the candidates it ran, so it
-/// finds the rider that breaks a candidate by halves.
+/// finds the rider that breaks a candidate by halves. A front half that
+/// lands leaves the break among the riders after it, so the next takes
+/// half of those rather than all of them again: forgetting that took
+/// seven runs to find the fourth or fifth of five riders. A second rider
+/// falling alone with nothing landed between says the train is red for
+/// more than its riders, as for a main that broke or a gate that failed
+/// to run, so every rider falls back to running again alone rather than
+/// the train halving through each of them: about twice their number in
+/// runs, where falling costs one each.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Splitting {
     /// How many riders, the first to board, a red candidate is known to
     /// lie among; none while no red is being searched.
     suspects: usize,
+    /// Whether a rider fell riding alone since the train last landed.
+    fell_alone: bool,
 }
 
 impl Splitting {
@@ -366,13 +394,18 @@ impl Splitting {
             self.suspects = riding;
             return After::Narrows;
         }
-        *self = Self::default();
-        After::Falls
+        let twice = self.fell_alone;
+        *self = Self {
+            suspects: 0,
+            fell_alone: !twice,
+        };
+        if twice { After::AllFall } else { After::Falls }
     }
 
     /// A candidate of `riding` riders landed.
-    fn landed(&mut self, _riding: usize) {
-        *self = Self::default();
+    fn landed(&mut self, riding: usize) {
+        self.suspects = self.suspects.saturating_sub(riding);
+        self.fell_alone = false;
     }
 }
 
