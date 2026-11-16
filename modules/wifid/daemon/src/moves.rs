@@ -138,7 +138,7 @@ fn chosen(
         Choice::LookWider => {
             println!(
                 "<6>{} looks for an access point on 5 GHz, as {} carried {} at p95 on {} MHz, \
-                 and it hears none of its network there",
+                 and it hears none of its network there within reach",
                 on.card,
                 on.point,
                 measure::ms(measured.p95),

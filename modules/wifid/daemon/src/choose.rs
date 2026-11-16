@@ -67,15 +67,17 @@ const BUSIEST: u8 = 40;
 const WIDE: u32 = 5000;
 
 /// How faint a radio on a wider band may be heard and still be tried for
-/// it: the same access point is heard about 10 dB fainter on 5 GHz than
-/// on 2.4, so the margin of `FAINTER` would never let one be tried.
+/// it: the same access point is heard up to about 9 dB fainter on 5 GHz
+/// than on 2.4, so the margin of `FAINTER` alone would rarely let one be
+/// tried.
 const FAINTEST: i16 = -67;
 
 /// How much fainter than `FAINTER` a radio on a wider band may be heard
 /// and still be tried for it: the same access point's 5 GHz radio was 2 to
-/// 8 dB fainter than its 2.4 GHz one on 15 and 16 Nov 2026, but at 04:54
-/// on the 16th a card heard at -36 dBm on 2.4 GHz moved to another's at
-/// -66, linked at 432 Mbit/s and carried worse.
+/// 9 dB fainter than its 2.4 GHz one, hour by hour, on 15 and 16 Nov 2026.
+/// At 04:54 on the 16th a card heard at -36 dBm on 2.4 GHz moved to
+/// another access point's 5 GHz radio at -66, linked at 432 Mbit/s and
+/// carried worse, while its own 5 GHz radio was heard at -45.
 const ACROSS: i16 = 10;
 
 /// How much quicker one measured lately must have been to be moved to:
@@ -113,7 +115,7 @@ pub enum Choice {
     /// Look for another access point of the network, none being heard.
     Look,
     /// Look for an access point of the network on a wider band, none being
-    /// heard there.
+    /// heard there within reach.
     LookWider,
 }
 
@@ -217,7 +219,11 @@ impl Chooser {
         });
         let Some(chosen) = chosen else {
             let alone = bad && others.iter().all(|other| other.point == point);
-            let unbanded = narrow && !bad && !others.iter().any(|other| wide(other.frequency));
+            let unbanded = narrow
+                && !bad
+                && !others
+                    .iter()
+                    .any(|other| in_band_reach(other, signal, frequency));
             let look = if alone {
                 Some(Choice::Look)
             } else {
@@ -261,8 +267,7 @@ fn for_the_band<'a>(
     untried: impl Iterator<Item = &'a Other> + Clone,
     (signal, frequency): (i16, u32),
 ) -> Option<&'a Other> {
-    let on_it =
-        untried.filter(|other| wide(other.frequency) && within_reach(other, signal, frequency));
+    let on_it = untried.filter(|other| in_band_reach(other, signal, frequency));
     let known = on_it.clone().filter_map(|other| {
         let theirs = other.measured.as_ref()?;
         (!badly(theirs)).then_some((slowness(theirs), other))
@@ -279,6 +284,14 @@ fn for_the_band<'a>(
 /// loud on this channel, to be tried: within `FAINTER`, or on a wider band
 /// within `ACROSS` more and no fainter than `FAINTEST`, since the same
 /// access point is heard fainter there.
+/// Whether another access point is on a wider band and heard loud enough,
+/// from one heard this loud on this channel, to be tried for the band:
+/// within reach and no fainter than `FAINTEST`, however faint the card's
+/// own point, since a band heard that faintly carries no more.
+fn in_band_reach(other: &Other, signal: i16, frequency: u32) -> bool {
+    wide(other.frequency) && other.signal >= FAINTEST && within_reach(other, signal, frequency)
+}
+
 fn within_reach(other: &Other, signal: i16, frequency: u32) -> bool {
     other.signal >= signal - FAINTER
         || (wider(other.frequency, frequency)
@@ -685,14 +698,49 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_card_on_2_4_ghz_keeps_off_5_ghz_heard_too_faintly() {
+    fn a_card_on_2_4_ghz_keeps_off_5_ghz_heard_too_faintly_and_looks_for_nearer() {
         let mut chooser = Chooser::default();
         let well = carried(9, 0.0);
 
         let on = (NEAR, &well, -34, CH6);
         let choice = chooser.choose(Instant::now(), on, &[desk_at(-75, None)], false);
 
-        assert_eq!(choice, Choice::Stay, "at -75 dBm 5 GHz would carry worse");
+        assert_eq!(choice, Choice::LookWider, "at -75 dBm it would carry worse");
+    }
+
+    #[test]
+    fn a_faint_card_on_2_4_ghz_keeps_off_5_ghz_fainter_than_the_band_carries() {
+        let mut chooser = Chooser::default();
+        let well = carried(9, 0.0);
+
+        let on = (NEAR, &well, -72, CH6);
+        let choice = chooser.choose(Instant::now(), on, &[desk_at(-77, None)], false);
+
+        assert_eq!(choice, Choice::LookWider, "-77 dBm is past FAINTEST");
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_carrying_well_tries_5_ghz_16_db_fainter_not_17() {
+        let well = carried(11, 0.0);
+        let on = (NEAR, &well, -36, CH6);
+
+        let within = Chooser::default().choose(Instant::now(), on, &[desk_at(-52, None)], false);
+        let past = Chooser::default().choose(Instant::now(), on, &[desk_at(-53, None)], false);
+
+        assert_eq!(within, Choice::Try(DESK.into()), "16 dB is within reach");
+        assert_eq!(past, Choice::LookWider, "17 dB is past them");
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_carrying_well_keeps_off_5_ghz_known_quicker_30_db_fainter() {
+        let mut chooser = Chooser::default();
+        let well = carried(11, 0.0);
+        let known = far_at(-66, Some(carried(9, 0.0)));
+
+        let on = (NEAR, &well, -36, CH6);
+        let choice = chooser.choose(Instant::now(), on, &[known], false);
+
+        assert_eq!(choice, Choice::LookWider, "that's another room");
     }
 
     #[test]
@@ -826,7 +874,7 @@ pub(crate) mod tests {
         let on = (NEAR, &well, -36, CH6);
         let choice = chooser.choose(Instant::now(), on, &[far_at(-66, None)], false);
 
-        assert_eq!(choice, Choice::Stay, "there it carried worse");
+        assert_eq!(choice, Choice::LookWider, "there it carried worse");
     }
 
     #[test]
