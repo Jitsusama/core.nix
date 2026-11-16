@@ -1,7 +1,7 @@
 //! A page drawn over the last one, for a command that watches something
-//! and says it afresh as it changes (docs/commands.md). Only the kit
-//! spells the terminal's escapes, so a watching command asks it here
-//! rather than writing them itself.
+//! and says it afresh as it changes. Only the kit spells the terminal's
+//! escapes (docs/commands.md, Inks, and commands-agree's inks point), so
+//! a watching command asks it here rather than writing them itself.
 
 /// Where the terminal's cursor goes home, opening each page.
 const HOME: &str = "\u{1b}[H";
@@ -28,7 +28,9 @@ pub fn over(page: &str) -> String {
 }
 
 /// The pages a run of [`over`] drew, as they read, for a test of a
-/// watching command to read what it drew.
+/// watching command to read what it drew. Each line reads back ending in
+/// a newline, as `over` draws it, whether or not the page's last did,
+/// and anything written before the first page isn't a page.
 pub fn pages(drawn: &str) -> Vec<String> {
     drawn
         .split(HOME)
@@ -62,6 +64,15 @@ mod tests {
             pages(&drawn),
             ["one\ntwo\n", "three\n"],
             "the pages don't read as given"
+        );
+    }
+
+    #[test]
+    fn a_page_reads_back_with_its_last_line_ended() {
+        assert_eq!(
+            pages(&(String::from("waiting\n") + &over("one"))),
+            ["one\n"],
+            "a page's last line didn't read back ended, or words before it read as a page"
         );
     }
 }

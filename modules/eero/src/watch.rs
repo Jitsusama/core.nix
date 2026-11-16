@@ -341,12 +341,9 @@ mod tests {
 
         draw(Room::Cells(80), &mut out, "one\ntwo\n").unwrap();
 
+        // The kit's own tests say what drawing over the last is; this one
+        // says a terminal's page is drawn that way and no other.
         let out = String::from_utf8(out).expect("a page is words");
-        assert_eq!(
-            terminal_kit::screen::pages(&out),
-            ["one\ntwo\n"],
-            "the page wasn't drawn over the last, whole"
-        );
         assert_eq!(
             out,
             terminal_kit::screen::over("one\ntwo\n"),

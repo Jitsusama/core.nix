@@ -927,6 +927,46 @@ mod tests {
         );
     }
 
+    #[test]
+    fn each_role_is_drawn_in_its_own_colour_and_the_track_faint_in_the_rules() {
+        // A theme whose roles are all apart, so a run drawn in the wrong
+        // one reads differently.
+        let theme = serde_json::json!({"colours": {
+            "text": "#101010", "strong": "#202020", "muted": "#303030",
+            "rule": "#404040", "alert": "#505050", "warning": "#606060",
+        }});
+        let truecolour = terminal_kit::ink::Ink {
+            colours: terminal_kit::ink::Colours::Truecolour,
+            console: false,
+        };
+        let pen = Pen::new(truecolour, Some(&theme));
+        let roles = [
+            (Role::Text, pen.role("text", "t")),
+            (Role::Strong, pen.title("t")),
+            (Role::Muted, pen.role("muted", "t")),
+            (Role::Track, pen.faint("rule", "t")),
+            (Role::Alert, pen.role("alert", "t")),
+            (Role::Warning, pen.role("warning", "t")),
+        ];
+        for (role, drawn) in &roles {
+            let mut page = Page::default();
+            page.line(vec![run("t", *role)]);
+            assert_eq!(
+                Ink::new(pen.clone()).page(page, Room::Unbounded),
+                format!("{drawn}\n"),
+                "{role:?} isn't drawn in its role"
+            );
+        }
+        let apart: std::collections::HashSet<&String> =
+            roles.iter().map(|(_, drawn)| drawn).collect();
+        assert_eq!(apart.len(), roles.len(), "two roles are drawn alike");
+        assert!(
+            roles[3].1.starts_with("\u{1b}[2;38;2;64;64;64m"),
+            "the track isn't the rule's colour, faint: {:?}",
+            roles[3].1
+        );
+    }
+
     fn address_facts() -> Page {
         let mut page = Page::default();
         page.facts(

@@ -131,13 +131,14 @@ const AGREED: [(&str, &str); 6] = [
 /// terminal with no theme to read them from: modules/theme/glyphs.nix's,
 /// but for caution, whose own mark only the theme's font holds, so a
 /// terminal without the theme draws its stand-in.
-const MARKS: [(&str, &str, &str); 12] = [
+const MARKS: [(&str, &str, &str); 13] = [
     ("done", "\u{2713}", "v"),
     ("failed", "\u{2715}", "x"),
     ("running", "\u{2192}", ">"),
     ("active", "\u{25c8}", "@"),
     ("pending", "\u{25c7}", "o"),
     ("queued", "\u{25e6}", "o"),
+    ("on", "\u{25cf}", "*"),
     ("stopped", "\u{25a0}", "#"),
     ("cancelled", "\u{2212}", "-"),
     ("caution", "!", "!"),
