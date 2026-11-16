@@ -79,13 +79,30 @@ pub fn board(root: &Path, rider: &Rider) -> io::Result<()> {
     let riders = riders_folder(root);
     fs::create_dir_all(&riders)?;
     let said = json!({"head": rider.head, "branch": rider.branch, "at": rider.at});
-    fs::write(riders.join(format!("{}.json", rider.head)), format!("{said}\n"))
+    fs::write(
+        riders.join(format!("{}.json", rider.head)),
+        format!("{said}\n"),
+    )
 }
 
 /// Every rider, in the order they boarded.
 #[must_use]
-pub fn riders(_root: &Path) -> Vec<Rider> {
-    Vec::new()
+pub fn riders(root: &Path) -> Vec<Rider> {
+    let mut riders: Vec<Rider> = fs::read_dir(riders_folder(root))
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let said: Value = serde_json::from_str(&fs::read_to_string(entry.path()).ok()?).ok()?;
+            Some(Rider {
+                head: said["head"].as_str()?.to_owned(),
+                branch: said["branch"].as_str()?.to_owned(),
+                at: said["at"].as_u64()?,
+            })
+        })
+        .collect();
+    riders.sort_by(|one, other| (one.at, &one.head).cmp(&(other.at, &other.head)));
+    riders
 }
 
 /// Why the rider at `head` fell off, if it did.
@@ -118,16 +135,20 @@ pub fn fall(root: &Path, head: &str, why: &str) -> io::Result<()> {
 /// What `ready` does with the change at `head`, by whether it rides and
 /// why it fell, if it did.
 #[must_use]
-pub fn seat(_rides: bool, _fell: Option<String>) -> Seat {
-    Seat::Board
+pub fn seat(rides: bool, fell: Option<String>) -> Seat {
+    match (fell, rides) {
+        (Some(why), _) => Seat::Fell(why),
+        (None, true) => Seat::Rides,
+        (None, false) => Seat::Board,
+    }
 }
 
 /// The subject GitHub's merge button gives the merge of pull request
 /// `number` from `owner`'s `branch`, which the net's searches read a pull
 /// request's number from.
 #[must_use]
-pub fn subject(_number: u64, _owner: &str, _branch: &str) -> String {
-    String::new()
+pub fn subject(number: u64, owner: &str, branch: &str) -> String {
+    format!("Merge pull request #{number} from {owner}/{branch}")
 }
 
 /// A rider as the candidate merges it: its head, the merge's subject and
@@ -158,8 +179,27 @@ pub fn cut(
     riders: &[Merging],
 ) -> Result<Cut, String> {
     git(&["checkout", "--quiet", "--force", "-B", "train", base])?;
-    let _ = riders;
-    Ok(Cut::default())
+    let mut done = Cut::default();
+    for rider in riders {
+        let merged = git(&[
+            "merge",
+            "--quiet",
+            "--no-ff",
+            "--no-edit",
+            "-m",
+            &rider.subject,
+            "-m",
+            &rider.title,
+            &rider.head,
+        ]);
+        if merged.is_ok() {
+            done.merged.push(rider.head.clone());
+        } else {
+            git(&["merge", "--abort"])?;
+            done.conflicted.push(rider.head.clone());
+        }
+    }
+    Ok(done)
 }
 
 /// The unit the train goes as: one, so a second boarding finds it.
@@ -213,7 +253,10 @@ pub fn fell_said(head: &str) -> Option<String> {
 /// Whether the train's unit goes.
 fn going() -> bool {
     let shown = systemctl(&["show", UNIT, "--property=ActiveState"]);
-    let state = shown.trim().strip_prefix("ActiveState=").unwrap_or_default();
+    let state = shown
+        .trim()
+        .strip_prefix("ActiveState=")
+        .unwrap_or_default();
     state == "active" || state == "activating"
 }
 
@@ -300,7 +343,11 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
         let base = git(&["rev-parse", "refs/remotes/origin/main"])?;
         let done = cut(&git, &base, &mergings)?;
         for head in &done.conflicted {
-            let _ = fall(&root, head, &format!("it conflicts with main at {}", short(&base)));
+            let _ = fall(
+                &root,
+                head,
+                &format!("it conflicts with main at {}", short(&base)),
+            );
         }
         if done.merged.is_empty() {
             continue;
@@ -311,7 +358,11 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
         println!(
             "merge-net: the train runs changed-checks at {} over {}",
             short(&candidate),
-            done.merged.iter().map(|head| short(head)).collect::<Vec<_>>().join(", ")
+            done.merged
+                .iter()
+                .map(|head| short(head))
+                .collect::<Vec<_>>()
+                .join(", ")
         );
         if !gate(&checkout, &log) {
             for head in &done.merged {
@@ -324,12 +375,24 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
             }
             continue;
         }
-        if let Some(landed) = land(&checkout, &git, &candidate, &mergings, &done.merged) {
-            for head in &done.merged {
-                alight(&root, head);
+        match land(&checkout, &git, &candidate, &mergings, &done.merged) {
+            Landing::Landed(landed) => {
+                for head in &done.merged {
+                    alight(&root, head);
+                }
+                keep_landed(&root, &landed, &done.merged, crate::state::now() - began);
+                println!("merge-net: the train landed {} on main", short(&landed));
             }
-            keep_landed(&root, &landed, &done.merged, crate::state::now() - began);
-            println!("merge-net: the train landed {} on main", short(&landed));
+            Landing::Moved => {}
+            Landing::Refused(why) => {
+                for head in &done.merged {
+                    let _ = fall(
+                        &root,
+                        head,
+                        &format!("the train couldn't reach main: {why}"),
+                    );
+                }
+            }
         }
     }
 }
@@ -413,23 +476,47 @@ fn gate(checkout: &Path, log: &Path) -> bool {
         .is_ok_and(|status| status.success())
 }
 
-/// Push the passed `candidate` to main as a fast forward, cutting it again
-/// on a main that moved while its pass still speaks for it: the commit
-/// that landed, or nothing when it runs again.
+/// How a passed candidate's push to main went.
+enum Landing {
+    /// It landed as this commit.
+    Landed(String),
+    /// Main moved beside it, so its riders ride the next run.
+    Moved,
+    /// Main refused it for this reason, though main stood still.
+    Refused(String),
+}
+
+/// Push the passed `candidate` to main as a fast forward, never forced,
+/// cutting it again on a main that moved while its pass still speaks for
+/// it, as many as `RECUTS` times.
 fn land(
     checkout: &Path,
     git: &dyn Fn(&[&str]) -> Result<String, String>,
     candidate: &str,
     mergings: &[Merging],
     merged: &[String],
-) -> Option<String> {
+) -> Landing {
     let mut going = candidate.to_owned();
     for _ in 0..RECUTS {
-        if git(&["push", "--quiet", "origin", &format!("{going}:refs/heads/main")]).is_ok() {
-            return Some(going);
+        let before = git(&["rev-parse", "refs/remotes/origin/main"]).unwrap_or_default();
+        let pushed = git(&[
+            "push",
+            "--quiet",
+            "origin",
+            &format!("{going}:refs/heads/main"),
+        ]);
+        let Err(why) = pushed else {
+            return Landing::Landed(going);
+        };
+        if git(&["fetch", "--quiet", "origin", "main"]).is_err() {
+            return Landing::Refused(why);
         }
-        git(&["fetch", "--quiet", "origin", "main"]).ok()?;
-        let main = git(&["rev-parse", "refs/remotes/origin/main"]).ok()?;
+        let Ok(main) = git(&["rev-parse", "refs/remotes/origin/main"]) else {
+            return Landing::Refused(why);
+        };
+        if main == before {
+            return Landing::Refused(why);
+        }
         let riding: Vec<Merging> = mergings
             .iter()
             .filter(|merging| merged.contains(&merging.head))
@@ -439,20 +526,20 @@ fn land(
                 title: merging.title.clone(),
             })
             .collect();
-        let again = cut(git, &main, &riding).ok()?;
-        if again.merged.len() != merged.len() {
-            return None;
-        }
-        going = git(&["rev-parse", "HEAD"]).ok()?;
-        if !still_passes(checkout, &going, &main) {
+        let whole = cut(git, &main, &riding).is_ok_and(|again| again.merged.len() == merged.len());
+        let Ok(head) = git(&["rev-parse", "HEAD"]) else {
+            return Landing::Moved;
+        };
+        going = head;
+        if !whole || !still_passes(checkout, &going, &main) {
             println!(
                 "merge-net: main moved beside the train at {}, so it runs again",
                 short(&main)
             );
-            return None;
+            return Landing::Moved;
         }
     }
-    None
+    Landing::Moved
 }
 
 /// Whether the pass of an earlier candidate of the same changes speaks for
@@ -536,7 +623,8 @@ mod tests {
 
     /// A state folder of the test's own.
     fn root(name: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("merge-net-train-{name}-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("merge-net-train-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         root
     }

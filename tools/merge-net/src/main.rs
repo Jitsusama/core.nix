@@ -32,8 +32,11 @@
 //! It waits, too, for a gate that started before the head's own and shares
 //! its files, so changes merge in the order their gates started (`turn.rs`),
 //! a change run again after a merge left its pass stale keeping the place
-//! its tree's first gate had (`places.rs`). That run again it starts
-//! itself, in the asking tree, where nothing else goes there (`rerun.rs`).
+//! its tree's first gate had (`places.rs`). A change that passed, and that
+//! main then moved beside, boards the merge train, `merge-net ride`, which
+//! merges every change aboard to main together on one run (`train.rs`).
+//! Where it can't, or one fell off, `ready` starts its run again itself,
+//! in the asking tree, where nothing else goes there (`rerun.rs`).
 //!
 //! `merge-net status` says where the net is.
 //!
@@ -120,9 +123,9 @@ fn main() -> ExitCode {
         Asked::Ready { commit } => ready(&commit),
         Asked::Status => Ok(status()),
         Asked::RunAgain { commit } => rerun::again(&commit),
-        Asked::Ride => train::ride(
-            &env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned()),
-        ),
+        Asked::Ride => {
+            train::ride(&env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned()))
+        }
     };
     done.unwrap_or_else(|why| {
         eprintln!("merge-net: {why}");
@@ -401,6 +404,29 @@ fn run_again(commit: &str) -> String {
         })
 }
 
+/// What to do about `commit`, whose pass at `checked` main moved beside:
+/// board the merge train, which merges it with the others on one run
+/// (`train.rs`), or, where it can't, run it again alone. A change whose
+/// needs no one heard, asked from no branch, or that fell off the train at
+/// this head runs again alone, as a reader of the kit owed its turn first
+/// still has it go first.
+fn ride_or_run_again(commit: &str, main: &str, checked: &str, files: &[String]) -> String {
+    if turn::waits_to_run(commit).is_none() && needs_heard(commit, main, &[checked], files) {
+        let branch = git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default();
+        if let Some(said) = (!branch.is_empty())
+            .then(|| train::offer(commit, &branch))
+            .flatten()
+        {
+            return said;
+        }
+    }
+    let again = run_again(commit);
+    match train::fell_said(commit) {
+        Some(fell) => format!("{fell}; {again}"),
+        None => again,
+    }
+}
+
 /// The newest commit on `main` to change the rules for which VM tests run
 /// before a merge, or nothing when git can't say.
 fn newest_rules(main: &str) -> String {
@@ -498,7 +524,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
                 "merge-net: the same change passed at {}, but main has since moved {}; {}",
                 short(&checked),
                 shared.join(", "),
-                run_again(commit)
+                ride_or_run_again(commit, main, &checked, &files)
             );
         }
         ready::Before::Unchecked => eprintln!(

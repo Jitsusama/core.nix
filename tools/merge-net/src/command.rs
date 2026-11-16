@@ -145,7 +145,10 @@ fn ride() -> Help {
         "ride",
         "merges the changes waiting on the train to main on one run, as ready starts it",
     )
-    .example("merge-net ride", "what ready starts when main moved beside a pass")
+    .example(
+        "merge-net ride",
+        "what ready starts when main moved beside a pass",
+    )
     .exit(Exit::Failed, "its checkout couldn't be made or moved")
 }
 
