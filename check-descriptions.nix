@@ -3361,6 +3361,12 @@
     next opening and still unfilled a second after it, home's rows stand in their order by their
     names, each saying how it stands as being read, its note as it was
   '';
+  a-place-stands-by-its-part = ''
+    a place tied to a part of the system says nothing more while the part is good or the system
+    daemon isn't answering; a part it couldn't read says so in a muted word, never blank, its mark
+    its own; a part worth a look says the daemon's own side, the first item kept longest, its mark
+    and side in the warning's role, or the alert's when bad, and its foot the whole sentence
+  '';
   the-launcher-opens-on-what-it-kept-on-niri = ''
     on niri, an opening draws home as the closed launcher left it, each row saying what it said and
     no row made before its frame; a viewer's command line opens with no source's rows made at
