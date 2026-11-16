@@ -331,7 +331,6 @@
   "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
   "tools/changed-checks/src/checks.rs" = 4;
   "tools/changed-checks/src/first.rs" = 3;
-  "tools/changed-checks/src/keep.rs" = 1;
   "tools/changed-checks/src/pressure.rs" = 7;
   "tools/changed-checks/src/quarantine.rs" = 6;
   "tools/changed-checks/src/scratch.rs" = 3;

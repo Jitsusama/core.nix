@@ -340,17 +340,36 @@ mod tests {
         })
     }
 
-    /// Whether `pid` runs: a zombie only waits to be reaped. A Mac has no
-    /// /proc, so its own ps says, by the path macOS keeps it at.
+    /// Whether `pid` is still there, zombie or not. A Mac has no /proc,
+    /// and its build may not run ps, which macOS installs setuid, so this
+    /// asks kill for signal 0, which only says whether the pid exists.
     #[cfg(not(target_os = "linux"))]
     fn runs(pid: &str) -> bool {
-        Command::new("/bin/ps")
-            .args(["-o", "stat=", "-p", pid])
-            .output()
-            .is_ok_and(|told| {
-                let stat = String::from_utf8_lossy(&told.stdout);
-                told.status.success() && !stat.trim_start().starts_with('Z')
-            })
+        Command::new("kill")
+            .args(["-0", pid])
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|told| told.success())
+    }
+
+    /// Whether `pid` has ended. Linux tells a zombie apart at once.
+    #[cfg(target_os = "linux")]
+    fn ended(pid: &str) -> bool {
+        !runs(pid)
+    }
+
+    /// Whether `pid` has ended. kill can't tell a zombie from a live
+    /// process, so launchd is given 5 s to reap what the aside left.
+    #[cfg(not(target_os = "linux"))]
+    fn ended(pid: &str) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while runs(pid) {
+            if Instant::now() > deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        true
     }
 
     /// What `file` holds once something has written it, within 10 s.
@@ -402,12 +421,15 @@ mod tests {
         keep_beside(&mut aside, || Ok(true), || shell(&script)).unwrap();
         let held = written(&pids);
         let (leader, started) = held.trim().split_once(' ').unwrap();
-        assert!(runs(leader) && runs(started));
+        assert!(
+            runs(leader) && runs(started),
+            "the aside and what it started run until the next keep"
+        );
         let kept = keep_beside(
             &mut aside,
             || {
                 assert!(
-                    !runs(leader) && !runs(started),
+                    ended(leader) && ended(started),
                     "the keep and the aside would share the one clone"
                 );
                 Ok(false)
