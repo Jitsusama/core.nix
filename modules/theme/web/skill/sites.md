@@ -1,0 +1,187 @@
+# Where Sites Live, and the Kit
+
+The operational side of a site: where it is served, the record that lists
+it, how one site links to another's things, and the kit of theme CSS and
+fonts. Load this when making, moving or publishing a site, or wiring its
+links home. None of it is design: the kit gives a site its roles and faces
+so it never retypes a value, and the site still makes its own world on top
+(`language.md`, A World of Its Own).
+
+## Where a Site Lives
+
+A site lives where its readers are. One shared with other people goes on
+the host they reach. Anything just for Joel (a mock, a tour, a record, a
+page written for him) lives on his own machine, under one local home, never
+on a shared host: "we need to not creeeeeate quick sites for stuff like
+luancher shapes ... we can run them locally though as just standard sites,
+that is awesome" (2026-11-11).
+
+- **One home ties them together.** Each site is a folder under
+  `~/.local/share/jitsusama/sites/`, reached at
+  `http://sites.localhost:8484/<site>/`, and the home page at its root lists
+  every site, newest first, each saying what it is and what it asks of him.
+  A site with no value left is removed, row and folder.
+- **One record, never the home by hand.** The home and its `llms.txt` are
+  built from `sites.json` at the root, a row per site: its path, name, what
+  it is in a sentence, what it asks of him (or nothing), its date, its kind
+  (mock, record, explainer, test or app), its status (growing, settled or
+  withdrawn), the quest it came from, and the kinds of thing it's home to,
+  if any (One Home for Every Thing, below). A new site adds its row there and
+  rebuilds the home with the builder beside it; a turned-down or settled
+  one moves to the home's Kept for Reference, below the rest.
+- **Every page has a way home.** Each page opens with one quiet strip,
+  `<nav class="sites-strip">` from `base.css`: All your sites, linking the
+  home, then the page's kind, as of when, and what it asks of him. Built
+  from the same row, so it never disagrees with the home. "if i can't
+  access something, i don't use it" (2026-11-11).
+- **Nothing is a one-off.** A site for him is never put anywhere else, and a
+  shared one that's done with is taken down rather than left to drift.
+- **An app's source lives in a repository.** The home's folder is what's
+  served, not where code is kept. An app he relies on (a live map, a page
+  that reads a program's record) keeps its source beside the program that
+  feeds it, in that program's repository, with its probes as its gate, and
+  is installed into its folder from there. A dated record or a mock is
+  written once and stays in the folder as it was written.
+
+## One Home for Every Thing
+
+The sites are one place, not a shelf of separate ones. Every thing they
+show has one home: one view, on one site, at one address, that is about it.
+Every other mention of it, on any site, links to that home, and every home
+links down to what the thing holds. So Joel can start anywhere and follow a
+thing to what it's made of and what it touches. He asked for it twice on 15
+Nov: Code reaching the mycelium, a machine reaching its cells and what it's
+using, a repository reaching the cells at work in it, and the network
+reaching its machines. Without one convention, each site would invent its
+own links, and none would meet.
+
+- **One site is home to each kind.** A new kind gets its row here before any
+  site shows it, and moving a kind's home is a change to this table:
+
+  | Kind       | Home        | Its address, for example           |
+  | ---------- | ----------- | ---------------------------------- |
+  | machine    | `mycelium/` | `mycelium/#machine=studio`         |
+  | cell       | `mycelium/` | `mycelium/#cell=E2ZIAQ`            |
+  | network    | `mycelium/` | `mycelium/#net=repo.world`         |
+  | repository | `code/`     | `code/#repo=Jitsusama%2Fcore.nix`  |
+  | tree       | `code/`     | `code/#tree=<its path, encoded>`   |
+  | device     | `network/`  | `network/#device=kitchen-printer`  |
+
+- **An address is `<site>/#<kind>=<key>`**, the key URI-encoded. It's a
+  fragment rather than a query, since the server is static and a fragment
+  lands without a reload. The key is the thing's steady name: a node's
+  name, a cell's address, a repository's owner and name, a tree's path, a
+  device's slug. An id may sit in an address, and never on the page.
+  Landing on one puts focus and the ring on the thing and opens its view,
+  as stepping into it would, and Back returns to where he was. An address
+  that was once a home keeps landing, so an old link never breaks.
+- **A home site says what it holds.** It writes `homes.json` beside its
+  index, every thing it's home to as `{"kind", "key", "name", "names",
+  "address"}`, where `names` holds any other name a page may call it by
+  (a repository's short name, a device's) and `address` is from the
+  sites' root. A live site writes it with its data, so it's never stale.
+  Its row in `sites.json` names its kinds, `"homes": ["machine", "cell",
+  "network"]`. A kind two rows claim is a fault in both.
+- **A mention links home.** Wherever a page names a thing that has a home,
+  its first mention in each row, item, paragraph and heading is a link to
+  that home, its address taken from `homes.json`, never built by hand.
+  The link is the kit's link, with the name in its own face (a cell's
+  address and a machine's name in Monaspace). On its own home, the thing's
+  name needn't link: the view that is its home says so with `data-home`,
+  its address as `homes.json` gives it. A name drawn on a walked map is the map's mark,
+  reached by its keys, and the drawer it opens is where the links are. A
+  link out (GitHub, eero's app) is a second act beside the home's link,
+  never instead of it.
+- **Each home drills one level down.** A home lists what the thing holds,
+  each a mention linked to its own home:
+  - a machine, its cells, its networks and what it's using;
+  - a network, its cells;
+  - a repository, its checkouts and trees, and each tree the cells at work
+    in it;
+  - a device, the machine it is, when it is one.
+
+  A thing that is two kinds (a laptop is a machine and, on the home
+  network, a device) links once from each home to the other. Up is the
+  trail at the top, every crumb a link. `homes.js`, beside this file, is
+  the probe that finds each mention left unlinked and each twin left
+  apart (`checks.md`).
+
+## The Kit
+
+The theme module writes the theme for the web on every machine, at
+`~/.local/share/jitsusama/web/`. Copy the folder whole into the site (as
+`kit/`), and load it before the site's own CSS:
+
+```html
+<link rel="stylesheet" href="kit/theme.css">
+<link rel="stylesheet" href="kit/base.css">
+<link rel="stylesheet" href="site.css">
+<link rel="preload" href="kit/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="kit/fonts/fraunces-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="kit/fonts/monaspace.woff2" as="font" type="font/woff2" crossorigin>
+```
+
+Preload the faces the first screen draws: the heading's italic turn and a
+label put all three on most of them.
+
+- `theme.css` is written from the theme, so it's never edited: every colour
+  role (`--background`, `--text`, `--muted`, `--strong`, `--accent`, the glyph
+  hues `--action`, `--program`, `--machine`, `--person`, `--voice`, the
+  states) for both looks, dark and light; the faces (`--serif`, `--mono`,
+  `--mono-features`) with stand-ins metric-matched so nothing moves when the
+  fonts arrive; the fluid type steps (`--step-small` to `--step-hero`); each
+  level's settings (`--title-weight`, `--words-soft`, `--label-tracking`);
+  the space ladder's rungs (`--tie`, `--mark`, `--apart`, `--items`,
+  `--groups`, `--inset`, `--frames`, a fluid `--screen`); the radius and
+  border; and the motion (`--ease`, `--leave`, `--arrive`, `--large`).
+- `base.css` sets the type as a typesetter would, one focus ring, one
+  selection, links, code, tables, disclosures, fields, and what the reader's
+  system asks for. It's a sensible floor, not the design: a site overrides
+  it wherever its world says so (its own scale, its own masthead, its own
+  rows), and keeps its focus ring, skip link and reduced-motion rules.
+- `fonts/` holds Fraunces upright and italic and the theme's Monaspace, cut to
+  what a page in English uses: about 125, 150 and 60 KB.
+
+A site names properties, never a value. Where it needs one the kit lacks,
+derive it from the roles (`color-mix()` of two roles) and say why in a
+comment; if every site would need it, it belongs in the kit, in core.nix's
+`modules/theme/web/`.
+
+**A site's own tint.** Each site has its own feel, as every one of his
+favourites did (`language.md`, Colour). Two properties turn the kit's
+palette, and a site may go further and name its own pigments, each with
+one job, as Slack Water does (`examples/tracker.md`):
+
+- `--turn` turns the grounds, the text and the accent round the hue wheel, in
+  degrees, keeping their lightness, so contrast holds: `:root { --turn: 85 }`
+  gives a harbour blue in place of the forest green ("with a blue tint instead
+  of green", 2026-11-03).
+- `--tint` is the hue the site marks its emphasis in: the italic turn of a
+  heading, eyebrows, drop caps, ornaments, a link's underline on hover. It's
+  gold (`--action`) unless the site takes another glyph hue as its own:
+  `:root { --tint: var(--program) }` for sea glass. Gold then keeps its own
+  meaning, something running or partly so.
+
+**Dark and light.** Both looks are in `theme.css`, chosen by the reader's
+system, dark when it says nothing. Give every site the three-way switch he
+asked for, "a 3way with icons toggle, auto/dark/light, and make sure it looks
+spiffy" (2026-10-02): Light, Match System and Dark, small and set into
+the page's composition (the Crossing's sits centred under its key line), applied
+before the first paint so nothing flashes (`craft.md` has it). A site
+that is dark only sets `data-theme="dark"` on `<html>`.
+
+**The keys and the switch, as omni-ref had them**: "i like how [it] updated
+itself with different light styles and the ? help, i think that should be
+good general guidance for any page we create" (2026-11-08). He liked what
+they do, not a place for them: set them into the page's own composition,
+never as a strip of chrome across the top (`examples/what-went-wrong.md`).
+Every page, either kind, has:
+
+- **One quiet line saying how to move**: "j and k step from part to part,
+  and ? lists every key", small and muted, the keys drawn as keycaps, under
+  the contents on a page to read, in the head's quiet row on an interface.
+- **? opens a Keys list** and closes it again: j next part, k previous, g
+  first, G last, ? this list, Escape closing it too. An interface's list adds
+  its own keys after these.
+- **The three-way switch, under that line**, Match System chosen until the
+  reader picks, and remembered across visits.

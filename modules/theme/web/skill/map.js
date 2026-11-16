@@ -1,7 +1,7 @@
 // The gate's probe for a walked map or graph (checks.md), beside gate.js and
 // layout.js and run the same way: whole, as one expression in the page as
 // published, at each width and in each look. It answers with where the map
-// doesn't walk or read the way SKILL.md's "A picture is walked" says, each
+// doesn't walk or read the way interface.md's "A picture is walked" says, each
 // in a line saying what to do, and an empty answer passes. It presses keys
 // on the map, so run it on a page nobody is reading. It ends without a
 // semicolon, since an eval asked for one expression answers nothing for a
