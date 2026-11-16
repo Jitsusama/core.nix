@@ -105,7 +105,6 @@
   "tests/graphs.qml" = 1;
   "tests/keyboard.qml" = 1;
   "tests/key-map.qml" = 1;
-  "tests/lately.qml" = 1;
   "tests/launcher_on_niri.py" = 2;
   "tests/launcher-on-niri-test.py" = 3;
   "tests/vm/keys/linux-id-vm-test.py" = 1;
