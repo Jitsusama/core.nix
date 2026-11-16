@@ -2,8 +2,9 @@
 //! machine (docs/glossary.md's Code words), each listed once however many
 //! checkouts of it lie on the disk, as `repos` reads them
 //! (modules/repos). The one written to last comes first, said beside it
-//! by how many changes are open on its remote, how many trees are cut
-//! from it and when git last wrote in it; it's found by its name, its
+//! by how many changes are open on its remote, how far the checkout
+//! written to last is behind the branch it follows (as repos' timer last
+//! counted), how many trees are cut from it and when git last wrote in it; it's found by its name, its
 //! owner and its key. Return opens its page where a remote keeps it on
 //! GitHub or GitLab, else copies its checkout's path; inside are Open Its
 //! Page, Open Its Open Changes (while any are), Copy Its Path and New
@@ -15,7 +16,7 @@
 //! in and opened by Return in its default program; its drawer names its
 //! key, its trunk and the checkout written to last, at its branch.
 
-use repos::model::{Checkout, Record, Repository};
+use repos::model::{COUNTED_TO, Checkout, Head, Record, Repository};
 use repos::read::shown;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -39,6 +40,9 @@ pub struct Words {
     /// `{count} changes`.
     change: String,
     changes: String,
+    /// How far its checkout's branch has fallen behind the branch it
+    /// follows: `{count} behind`.
+    behind: String,
     /// The labels of its drawer's facts.
     key: String,
     trunk: String,
@@ -88,6 +92,7 @@ impl Words {
             local: said("local"),
             change: said("change"),
             changes: said("changes"),
+            behind: said("behind"),
             key: name("code:key"),
             trunk: name("code:trunk"),
             checkout: name("code:checkout"),
@@ -105,6 +110,19 @@ impl Words {
 
     fn changes_open(&self, count: usize) -> String {
         Words::count(&self.change, &self.changes, count)
+    }
+
+    /// How far a head is behind the branch it follows, where it's been
+    /// counted and is: `100+` past the count's end; none when it's even
+    /// or only ahead.
+    fn behind(&self, head: &Head) -> Option<String> {
+        let count = head.upstream.as_ref()?.count?.behind;
+        let far = match count {
+            0 => return None,
+            COUNTED_TO.. => format!("{COUNTED_TO}+"),
+            count => count.to_string(),
+        };
+        Some(self.behind.replace("{count}", &far))
     }
 
     fn count(one: &str, many: &str, count: usize) -> String {
@@ -240,6 +258,13 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
     if !repository.changes.is_empty() {
         side.push(json!({"said": words.changes_open(repository.changes.len())}));
     }
+    let checkout = worked_in(repository);
+    if let Some(behind) = checkout
+        .and_then(|checkout| checkout.head.as_ref())
+        .and_then(|head| words.behind(head))
+    {
+        side.push(json!({"said": behind}));
+    }
     if trees > 0 {
         side.push(json!({"said": words.counted(trees)}));
     }
@@ -247,7 +272,6 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
         let ms = i64::try_from(written.saturating_mul(1000)).unwrap_or(i64::MAX);
         side.push(json!({"at": ms, "as": "came", "keep": 1}));
     }
-    let checkout = worked_in(repository);
     let path = checkout.map(|checkout| checkout.path.clone());
     let paths: Vec<String> = repository
         .checkouts
@@ -337,13 +361,16 @@ fn drawer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use repos::model::{Change, Checks, ChecksState, Head, Remote, Review, SCHEMA, Tree, TreeKind};
+    use repos::model::{
+        Change, Checks, ChecksState, Count, Remote, Review, SCHEMA, Tree, TreeKind, Upstream,
+    };
 
     fn words() -> Words {
         Words::read(&json!({"things": [
             {"id": "code:repository", "said": {
                 "kind": "repository", "tree": "1 tree", "trees": "{count} trees",
                 "local": "no remote", "change": "1 change", "changes": "{count} changes",
+                "behind": "{count} behind",
             }},
             {"id": "code:key", "name": "Key"},
             {"id": "code:trunk", "name": "Trunk"},
@@ -488,6 +515,65 @@ mod tests {
                 "open": "https://github.com/Jitsusama/core.nix/pulls",
             }),
             "its open changes weren't offered after its page"
+        );
+    }
+
+    /// Core with the checkout written to last this far from its branch,
+    /// where it's been counted.
+    fn apart(count: Option<Count>) -> Repository {
+        let mut repository = core();
+        if let Some(head) = repository.checkouts[0].head.as_mut() {
+            head.commit = Some("a".repeat(40));
+            head.upstream = Some(Upstream {
+                branch: "origin/main".to_owned(),
+                commit: Some("b".repeat(40)),
+                count,
+            });
+        }
+        repository
+    }
+
+    #[test]
+    fn a_checkout_behind_its_branch_says_how_far_after_its_open_changes() {
+        let mut repository = apart(Some(Count {
+            behind: 3,
+            ahead: 1,
+        }));
+        repository.changes = vec![change("one")];
+        let rows = rows(&record(vec![repository]), None, &words());
+        assert_eq!(
+            rows[0]["side"],
+            json!([
+                {"said": "1 change"},
+                {"said": "3 behind"},
+                {"said": "3 trees"},
+                {"at": 1_700_000_000_000_i64, "as": "came", "keep": 1},
+            ]),
+            "how far its checkout is behind wasn't said after its open changes"
+        );
+    }
+
+    #[test]
+    fn past_the_counts_end_it_says_as_much_and_even_or_uncounted_says_nothing() {
+        let far = apart(Some(Count {
+            behind: COUNTED_TO,
+            ahead: 0,
+        }));
+        let ahead = apart(Some(Count {
+            behind: 0,
+            ahead: 2,
+        }));
+        let rows = rows(&record(vec![far, ahead, apart(None)]), None, &words());
+        assert_eq!(rows[0]["side"][0], json!({"said": "100+ behind"}));
+        assert_eq!(
+            rows[1]["side"][0],
+            json!({"said": "3 trees"}),
+            "a checkout only ahead said it was behind"
+        );
+        assert_eq!(
+            rows[2]["side"][0],
+            json!({"said": "3 trees"}),
+            "a checkout not yet counted said how far it was"
         );
     }
 

@@ -25,8 +25,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 
 use programs::{code_rows, command, repositories};
-use repos::github;
 use repos::read::{Reading, read};
+use repos::{github, upstreams};
 use serde_json::Value;
 
 use super::{Daemon, Shared, keep, keys_watched, lock};
@@ -104,6 +104,9 @@ impl Code {
         });
         if let Some(kept) = github::seen_file(self.home.as_deref()) {
             github::merge_kept(&mut record, &kept);
+        }
+        if let Some(kept) = upstreams::counted_file(self.home.as_deref()) {
+            upstreams::merge_kept(&mut record, &kept);
         }
         let mut rows = code_rows::rows(&record, self.home.as_deref(), &self.words);
         rows.extend(code_rows::inside(&record, &self.words));

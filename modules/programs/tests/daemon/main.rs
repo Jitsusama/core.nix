@@ -178,7 +178,8 @@ const WORDS: &str = r#"{"things": [
   {"id": "capture:dimensions", "name": "Dimensions"},
   {"id": "capture:length", "name": "Length"},
   {"id": "file-chooser:size", "name": "Size"},
-  {"id": "code:repository", "said": {"change": "1 change", "changes": "{count} changes"}},
+  {"id": "code:repository", "said": {"change": "1 change", "changes": "{count} changes",
+    "behind": "{count} behind"}},
   {"id": "verb:code:find", "name": "Open a File by Name", "glyph": "folder"},
   {"id": "code:file", "glyph": "path"},
   {"id": "path:file", "glyph": "file"}
