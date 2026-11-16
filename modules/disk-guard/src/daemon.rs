@@ -1758,7 +1758,9 @@ impl Guard {
             |dead| {
                 !held.contains(dead.path.as_str())
                     && !self.refused.contains(&dead.path)
-                    && Path::new(&dead.path).symlink_metadata().is_ok()
+                    && Path::new(&dead.path)
+                        .symlink_metadata()
+                        .is_ok_and(|meta| !written_since(&meta, listing.listed_at))
             },
             now,
             keep,
@@ -2892,6 +2894,17 @@ fn mounted(path: &Path, device: u64) -> PathBuf {
         top = above.to_owned();
     }
     top
+}
+
+/// Whether a store path was written since `listed_at`, and so isn't the
+/// path the listing dated. The listing keeps what was deleted, so on 15
+/// November a derivation deleted as two hours old, written again by the
+/// next evaluation, went again within a minute of that evaluation ending,
+/// by its first date: the guard broke Nix's evaluate-then-build. Its ctime
+/// is when it landed, as Nix stamps every path's mtime with the epoch.
+fn written_since(meta: &fs::Metadata, listed_at: f64) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    crate::units::wall(meta.ctime(), meta.ctime_nsec()) > listed_at
 }
 
 /// Whether a delete failed for garbage that came alive since the listing.

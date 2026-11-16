@@ -649,6 +649,32 @@ fn a_pass_offers_nix_no_batch_after_one_is_found_stale() {
     );
 }
 
+#[test]
+fn a_path_written_again_since_the_listing_is_left_for_the_next() {
+    // On 15 November an evaluation's derivations went within a minute of
+    // being written. The guard had deleted them as two hours old, the next
+    // evaluation wrote them again, and once its process ended the listing,
+    // still naming them dead by their first date, offered them again.
+    let store = Store::new();
+    let drv = store.dead("aaa-check.drv", 2.0 * 3600.0, 4096);
+    let mut guard = store.guard(store.config_as_given("0%", "0%"));
+    store.step_until(&mut guard, |_| !drv.exists());
+    let drv = store.dead("aaa-check.drv", 0.0, 4096);
+    let evaluation = store.root.join("temproots/4242");
+    fs::write(&evaluation, format!("{}\0", drv.display())).unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    fs::remove_file(&evaluation).unwrap();
+    for _ in 0..20 {
+        guard.step(&tick(), &CALM).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        drv.exists(),
+        "written again since the listing, it went by its old date: {:?}",
+        store.log()
+    );
+}
+
 /// The deletes that began a batch, naming all five of its paths: each try
 /// after a refusal leaves the refused path out.
 fn batches_begun(store: &Store) -> usize {
