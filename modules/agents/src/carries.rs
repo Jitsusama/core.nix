@@ -134,8 +134,25 @@ fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &W
 /// records, newest first, each session named as the tree served it in
 /// `top`; none while the node keeps no carry.
 pub fn rows(records: &[&Value], top: &[Value], words: &Words) -> Vec<Value> {
-    let _ = (records, top, words);
-    Vec::new()
+    if records.is_empty() {
+        return Vec::new();
+    }
+    let mut newest: Vec<&Value> = records.to_vec();
+    newest.sort_by_key(|record| Reverse(text(record, "at")));
+    let parent = key_of("carried");
+    let sessions = networks::sessions(top);
+    let mut all = vec![json!({
+        "key": parent, "place": PLACE, "kind": "carried",
+        "name": words.names.word("carried"), "glyph": "elsewhere", "hue": "program",
+        "depth": 0, "side": group_side(&newest, words), "note": "",
+        "acts": [{"key": "verb:more", "step": "rows"}],
+    })];
+    all.extend(
+        newest
+            .iter()
+            .map(|record| carry(record, &parent, &sessions, words)),
+    );
+    all
 }
 
 #[cfg(test)]
@@ -199,8 +216,8 @@ mod tests {
         assert_eq!(
             keys,
             [
-                "row:agents:carried",
-                "row:agents:carried:s-harbor:2026-11-16T01:00:00Z"
+                "row:agents-top:carried",
+                "row:agents-top:carried:s-harbor:2026-11-16T01:00:00Z"
             ],
             "the group, then the carry under it"
         );
@@ -208,7 +225,7 @@ mod tests {
         assert_eq!(made[0]["depth"], 0);
         assert_eq!(said(&made[0]), ["1 arrived"]);
         let carry = &made[1];
-        assert_eq!(carry["parent"], "row:agents:carried");
+        assert_eq!(carry["parent"], "row:agents-top:carried");
         assert_eq!(
             carry["name"], "Chart the Harbour",
             "its session's title, never its id"
