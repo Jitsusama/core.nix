@@ -288,8 +288,7 @@ mod tests {
             .map(|at| said[at].to_str().unwrap())
             .collect();
         assert_eq!(
-            counts,
-            ["4294967295"; 3],
+            counts, ["4294967295"; 3],
             "a count past u32, which mycelium refuses, wasn't held to it"
         );
     }
