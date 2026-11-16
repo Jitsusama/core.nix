@@ -19,6 +19,7 @@ use serde_json::Value;
 use crate::answered::{self, Answer, Waiting};
 use crate::arrangement::{self, Arrangement, Desk};
 use crate::carried::Carried;
+use crate::carries;
 use crate::clock;
 use crate::closed;
 use crate::drawer;
@@ -63,6 +64,9 @@ pub struct Inputs {
     /// The node's `network` records, the mycelium's networks as
     /// `mycelium networks` draws them.
     pub networks: Held,
+    /// The node's `carry` records, each carry an orchestrator ordered
+    /// over the last day, as it stands.
+    pub carries: Held,
     /// The to-do daemon's `to-do` records.
     pub to_dos: Held,
     /// The windows daemon's `window` records.
@@ -629,7 +633,10 @@ impl Inputs {
         let mut made = top::rows(rows, &known, &self.words);
         let networks: Vec<&Value> = self.networks.records().map(|(_, one)| one).collect();
         let after = networks::rows(&networks, &made, &self.words);
+        let kept: Vec<&Value> = self.carries.records().map(|(_, one)| one).collect();
+        let carried = carries::rows(&kept, &made, &self.words);
         made.extend(after);
+        made.extend(carried);
         made
     }
 }
@@ -1088,6 +1095,30 @@ mod tests {
             summary_of(&shown),
             "1 needs you \u{b7} 1 working \u{b7} $214 today"
         );
+    }
+
+    #[test]
+    fn a_carry_the_node_kept_is_served_under_carried_named_as_its_session() {
+        let mut inputs = inputs();
+        assert!(
+            served(&inputs).get("row:agents-top:carried").is_none(),
+            "no Carried row while the node keeps no carry"
+        );
+        inputs.carries.took(&json!({"records": [
+            {"key": "carry:s-p:2026-11-16T01:00:00Z", "kind": "carry",
+             "at": "2026-11-16T01:00:00Z", "by": "O", "session": "s-p", "address": "P",
+             "quest": "QEST-P", "from": "skiff", "to": "tern", "why": "it needs the camera",
+             "state": "carrying"}]}));
+        let shown = served(&inputs);
+        let row = |key: &str| shown.get(key).expect("its row")["row"].clone();
+        let carry = row("row:agents-top:carried:s-p:2026-11-16T01:00:00Z");
+        assert_eq!(carry["parent"], "row:agents-top:carried");
+        assert_eq!(
+            carry["name"],
+            row("row:agents-top:P")["name"],
+            "named as its session's row is"
+        );
+        assert_eq!(row("row:agents-top:carried")["name"], "Carried");
     }
 
     #[test]

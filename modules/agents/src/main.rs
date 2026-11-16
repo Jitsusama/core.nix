@@ -399,6 +399,7 @@ fn serve(args: Args) -> Result<(), Failure> {
         sources::follow(node.clone(), "talk", Heard::Talks, to.clone());
         sources::follow(node.clone(), "team", Heard::Teams, to.clone());
         sources::follow(node.clone(), "network", Heard::Networks, to.clone());
+        sources::follow(node.clone(), "carry", Heard::Carries, to.clone());
         sources::follow(node, "landing", Heard::Landings, to.clone());
     }
     sources::follow(args.to_do, "to-do", Heard::ToDos, to.clone());
