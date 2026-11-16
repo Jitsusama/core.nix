@@ -163,6 +163,7 @@ mod tests {
                         name: "laptop".to_owned(),
                         health: Health::Watch,
                         says: "is short of memory, runs 3 busy sessions".to_owned(),
+                        side: Vec::new(),
                         address: Some("mycelium/#machine=laptop".to_owned()),
                     }],
                     deeper: deeper(

@@ -45,10 +45,12 @@ station on one horizon, and how it stands is its sky.
   lines), not read. A screen reader hears the meaning after each name.
 - **How each part is judged:**
   - Machines: one out of reach or with a nearly or critically full disk
-    is bad; one short of room, with a filling disk, or on battery at 20%
-    or less is worth a look.
-  - Mycelium: a link that isn't up is bad; presences left behind by
-    sessions that ended are worth a look.
+    is bad; one with a filling disk, or on battery at 20% or less, is
+    worth a look. Being short of memory, processor or disk time is said
+    but never judged, since agents' builds hold the processor nearly all
+    day.
+  - Mycelium: a link that isn't up is bad. Presences left behind by
+    sessions that ended are agents' leftovers, said in what it holds.
   - Network: a source that isn't answering is bad; anything else the
     network names as a concern, other than its ceiling, is worth a look.
   - Code: good whenever its owner answers. Trees git still lists whose

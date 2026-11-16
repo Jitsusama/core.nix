@@ -51,6 +51,10 @@ pub struct Thing {
     pub health: Health,
     /// How it stands, in a short sentence's words.
     pub says: String,
+    /// What in it is worth a look, worded for a row's side as a part's
+    /// side is but without its name or a leading "is" or "has": its
+    /// worst first, and none when nothing is.
+    pub side: Vec<String>,
     /// Its home on the local sites, from their root, as the site that is
     /// home to it says (homes.rs); none when no site is.
     pub address: Option<String>,
@@ -150,6 +154,7 @@ impl System {
                     "part": part.name,
                     "health": thing.health.word(),
                     "says": thing.says,
+                    "side": thing.side,
                     "address": thing.address,
                 })
             })
@@ -179,6 +184,7 @@ fn part_json(part: &Part) -> Value {
             "name": thing.name,
             "health": thing.health.word(),
             "says": thing.says,
+            "side": thing.side,
             "address": thing.address,
         })).collect::<Vec<_>>(),
         "deeper": {
@@ -223,8 +229,25 @@ mod tests {
             name: name.to_owned(),
             health,
             says: format!("{name} says so"),
+            side: Vec::new(),
             address: None,
         }
+    }
+
+    #[test]
+    fn a_machine_record_carries_its_side() {
+        let mut machines = part("machines", Health::Watch);
+        let mut studio = machine("studio", Health::Watch);
+        studio.side = vec!["filling disk, 40 GB free".to_owned()];
+        machines.things = vec![studio, machine("laptop", Health::Good)];
+        let system = system(vec![machines]);
+        let records = system.records();
+        assert_eq!(records[2]["side"], json!(["filling disk, 40 GB free"]));
+        assert_eq!(records[3]["side"], json!([]), "a ready machine's is empty");
+        assert_eq!(
+            system.json()["parts"][0]["things"][0]["side"],
+            json!(["filling disk, 40 GB free"])
+        );
     }
 
     #[test]

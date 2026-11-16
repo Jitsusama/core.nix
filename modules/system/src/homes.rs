@@ -268,6 +268,7 @@ mod tests {
             name: name.to_owned(),
             health: Health::Good,
             says: String::new(),
+            side: Vec::new(),
             address: Some("stale/".to_owned()),
         };
         let mut system = System {

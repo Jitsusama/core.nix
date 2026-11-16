@@ -7,212 +7,26 @@
 
 use serde_json::Value;
 
-use crate::record::{Deeper, Health, Part, Thing};
+use crate::record::{Deeper, Health, Part};
+
+mod machines;
+
+pub use machines::machines;
 
 /// An owner's answer: its record, or why it couldn't be had.
 pub type Answer = Result<Value, String>;
-
-/// A gigabyte, as a disk's free room is said.
-const GIGABYTE: f64 = 1e9;
-/// A battery at or under this, off the charger, is worth a look.
-const LOW_CHARGE: u64 = 20;
-
-/// The parts of another machine's own health this takes in: those only
-/// that machine reads. Its machines, mycelium and network are the same
-/// whole read from every machine, each already a part here, and taking
-/// them in would spread one machine's trouble to all. The first two would
-/// also latch, as each machine's word fed the other's.
-const ITS_OWN: [&str; 1] = ["code"];
 
 /// The most items a side says of a part, so thousands of machines worth a
 /// look still make a short list: past it, the last says how many more.
 const SIDE_ITEMS: usize = 3;
 
-/// The machines of the realm, from `mycelium machines`, each with its
-/// sessions from `mycelium health` where that was read.
-pub fn machines(machines: &Answer, health: &Answer) -> Part {
-    let deeper = Deeper {
-        command: "mycelium machines",
-        site: "mycelium/",
-        launcher: "Agents › Networks › Machines",
-    };
-    let list = match machines {
-        Ok(said) => said
-            .pointer("/Ok/Machines")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default(),
-        Err(why) => return unread("machines", why, deeper),
-    };
-    if list.is_empty() {
-        return unread("machines", "the node knows of no machine", deeper);
-    }
-    let sessions = health.as_ref().ok().and_then(|said| said.get("sessions"));
-    // The node says this machine first, whose own parts are parts here.
-    let mut read: Vec<(Thing, Vec<String>)> = list
-        .iter()
-        .enumerate()
-        .map(|(at, said)| {
-            let others = (at > 0).then(|| said.get("health")).flatten();
-            machine(
-                said,
-                sessions.and_then(|all| all.get(name_of(said))),
-                others,
-            )
-        })
-        .collect();
-    // The worst first, then by name, so the line a look wants leads.
-    read.sort_by(|(a, _), (b, _)| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
-    let side = side_of(
-        read.iter()
-            .filter(|(thing, _)| thing.health > Health::Good)
-            .map(|(thing, looks)| format!("{} {}", thing.name, looks.join(", ")))
-            .collect(),
-    );
-    let things: Vec<Thing> = read.into_iter().map(|(thing, _)| thing).collect();
-    let health = things
-        .iter()
-        .map(|thing| thing.health)
-        .max()
-        .unwrap_or(Health::Good);
-    let says = match things
-        .iter()
-        .filter(|thing| thing.health > Health::Good)
-        .count()
-    {
-        0 => format!(
-            "{} ready",
-            count(things.len() as u64, "machine", "machines")
-        ),
-        _ => things
-            .iter()
-            .filter(|thing| thing.health > Health::Good)
-            .map(|thing| format!("{} {}", thing.name, thing.says))
-            .collect::<Vec<_>>()
-            .join("; "),
-    };
-    let holds = count(things.len() as u64, "machine", "machines");
-    Part {
-        name: "machines",
-        health,
-        says,
-        side,
-        holds: Some(holds),
-        things,
-        deeper,
-    }
-}
-
-fn name_of(said: &Value) -> &str {
-    said.get("name").and_then(Value::as_str).unwrap_or("")
-}
-
-/// One machine: whether a link reaches it, what it's short of, its disk,
-/// its battery, what its own health says of its own parts and its
-/// sessions, each said only when it's worth saying, with the words of
-/// what is worth a look in it.
-fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thing, Vec<String>) {
-    let mut health = Health::Good;
-    let mut words = Vec::new();
-    if said.get("state").and_then(Value::as_str) == Some("unreachable") {
-        health = Health::Bad;
-        words.push("is out of reach".to_owned());
-    }
-    let over: Vec<&str> = said
-        .pointer("/room/over")
-        .and_then(Value::as_array)
-        .map(|over| {
-            over.iter()
-                .filter_map(Value::as_str)
-                .map(resource)
-                .collect()
-        })
-        .unwrap_or_default();
-    if !over.is_empty() {
-        health = health.max(Health::Watch);
-        words.push(format!("is short of {}", and(&over)));
-    }
-    let free = said
-        .get("disk_free")
-        .and_then(Value::as_f64)
-        .map(|bytes| format!("{:.0} GB free", bytes / GIGABYTE));
-    match said.get("disk_band").and_then(Value::as_str) {
-        Some("filling") => {
-            health = health.max(Health::Watch);
-            words.push(free.map_or("has a filling disk".to_owned(), |free| {
-                format!("has a filling disk, {free}")
-            }));
-        }
-        Some("nearly-full" | "critically-full") => {
-            health = Health::Bad;
-            words.push(free.map_or("has a nearly full disk".to_owned(), |free| {
-                format!("has a nearly full disk, {free}")
-            }));
-        }
-        _ => {}
-    }
-    let on_battery = said.pointer("/power/on_battery").and_then(Value::as_bool) == Some(true);
-    if let Some(charge) = said.pointer("/power/charge").and_then(Value::as_u64)
-        && on_battery
-        && charge <= LOW_CHARGE
-    {
-        health = health.max(Health::Watch);
-        words.push(format!("is on battery at {charge}%"));
-    }
-    for part in ITS_OWN {
-        match own.and_then(|own| own.pointer(&format!("/parts/{part}"))?.as_str()) {
-            Some("watch") => {
-                health = health.max(Health::Watch);
-                words.push(format!("says its {part} wants a look"));
-            }
-            Some("bad") => {
-                health = Health::Bad;
-                words.push(format!("says its {part} is failing"));
-            }
-            _ => {}
-        }
-    }
-    let looks = words.clone();
-    if words.is_empty() {
-        words.push("is ready".to_owned());
-    }
-    if let Some(sessions) = sessions {
-        words.push(format!("runs {}", sessions_said(sessions)));
-    }
-    let thing = Thing {
-        kind: "machine",
-        name: name_of(said).to_owned(),
-        health,
-        says: words.join(", "),
-        address: None,
-    };
-    (thing, looks)
-}
-
-/// A resource a node says a machine is short of, in Joel's words for it.
-fn resource(said: &str) -> &str {
-    match said {
-        "cpu" => "processor",
-        "io" => "disk time",
-        other => other,
-    }
-}
-
-/// A machine's sessions by how they stand: the busy and the idle, since
-/// the ended ones are history.
-fn sessions_said(sessions: &Value) -> String {
-    let of = |key: &str| sessions.get(key).and_then(Value::as_u64).unwrap_or(0);
-    let (busy, idle) = (of("busy"), of("idle"));
-    match (busy, idle) {
-        (0, 0) => "no session".to_owned(),
-        (busy, 0) => format!("{} busy", count(busy, "session", "sessions")),
-        (0, idle) => format!("{} idle", count(idle, "session", "sessions")),
-        (busy, idle) => format!("{busy} busy and {idle} idle sessions"),
-    }
-}
+/// The most machines a side names in its links down; past it, it counts
+/// them, so no name is ever cut.
+const LINKS_NAMED: usize = 2;
 
 /// The mycelium, from `mycelium health`: its links, its sessions, and the
-/// presences left behind by sessions whose process has gone.
+/// presences left behind by sessions whose process has gone, which it
+/// holds rather than judges.
 pub fn mycelium(health: &Answer) -> Part {
     let deeper = Deeper {
         command: "mycelium networks",
@@ -225,6 +39,7 @@ pub fn mycelium(health: &Answer) -> Part {
     };
     let mut worst = Health::Good;
     let mut words = Vec::new();
+    let mut side = Vec::new();
     let links = said
         .get("links")
         .and_then(Value::as_array)
@@ -238,21 +53,17 @@ pub fn mycelium(health: &Answer) -> Part {
     if !down.is_empty() {
         worst = Health::Bad;
         words.push(format!("the link to {} is down", and(&down)));
+        side.push(match down.len() {
+            1 => format!("link to {} down", down[0]),
+            named if named <= LINKS_NAMED => format!("links to {} down", and(&down)),
+            many => format!("{many} links down"),
+        });
     }
     let dead = said
         .get("deadPresences")
         .and_then(Value::as_u64)
         .unwrap_or(0);
-    if dead > 0 {
-        worst = worst.max(Health::Watch);
-        words.push(count(
-            dead,
-            "session says it runs with its process gone",
-            "sessions say they run with their processes gone",
-        ));
-    }
     // What it holds, its sessions and links, is for the drawer.
-    let side = words.clone();
     let machines = said.get("sessions").and_then(Value::as_object);
     let of = |key: &str| {
         machines.map_or(0, |machines| {
@@ -268,6 +79,12 @@ pub fn mycelium(health: &Answer) -> Part {
         "{busy} busy and {idle} idle sessions on {}",
         count(across as u64, "machine", "machines")
     )];
+    // A session whose process has gone is an agent's leftover, as a gone
+    // tree is, which Joel can't act on from Agents: it's held, never a
+    // look.
+    if dead > 0 {
+        held.push(count(dead, "session gone", "sessions gone"));
+    }
     if down.is_empty() && !links.is_empty() {
         held.push(format!("{} up", count(links.len() as u64, "link", "links")));
     }
@@ -470,155 +287,14 @@ mod tests {
     use super::*;
 
     /// A side with nothing worth a look on it.
-    const NO_LOOK: [&str; 0] = [];
-
-    fn laptop(over: &[&str], band: &str) -> Value {
-        json!({"name": "laptop", "state": "ready", "disk_free": 278_819_094_528_u64,
-               "disk_band": band, "room": {"over": over},
-               "power": {"on_battery": false, "charge": 76}})
-    }
-
-    /// What `mycelium machines` answers for these machines.
-    fn realm(machines: &[Value]) -> Value {
-        json!({"Ok": {"Machines": machines}})
-    }
+    pub(super) const NO_LOOK: [&str; 0] = [];
 
     /// What `mycelium health` answers for a laptop linked to a studio.
-    fn said_health() -> Value {
+    pub(super) fn said_health() -> Value {
         json!({"links": [{"machine": "studio", "state": "up"}],
                "sessions": {"laptop": {"busy": 55, "idle": 33, "ended": 27},
                             "studio": {"busy": 2, "idle": 1, "ended": 0}},
                "deadPresences": 0})
-    }
-
-    #[test]
-    fn a_machine_short_of_room_leads_with_what_it_lacks() {
-        let studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy",
-                            "room": {"over": []}});
-        let part = machines(
-            &Ok(realm(&[studio, laptop(&["memory", "cpu"], "filling")])),
-            &Ok(said_health()),
-        );
-        assert_eq!(part.health, Health::Watch);
-        assert_eq!(
-            part.things[0].name, "laptop",
-            "the worst machine comes first"
-        );
-        assert_eq!(
-            part.things[0].says,
-            "is short of memory and processor, has a filling disk, 279 GB free, \
-             runs 55 busy and 33 idle sessions"
-        );
-        assert_eq!(
-            part.things[1].says,
-            "is ready, runs 2 busy and 1 idle sessions"
-        );
-        assert!(
-            part.says.starts_with("laptop is short of memory"),
-            "the part says only the machines worth a look: {}",
-            part.says
-        );
-        assert_eq!(
-            part.side,
-            ["laptop is short of memory and processor, has a filling disk, 279 GB free"],
-            "a side leaves out what the machine runs"
-        );
-    }
-
-    #[test]
-    fn a_side_of_many_machines_says_how_many_more() {
-        let away = |name: &str| json!({"name": name, "state": "unreachable"});
-        let many: Vec<Value> = ["a", "b", "c", "d", "e"].into_iter().map(away).collect();
-        let part = machines(&Ok(realm(&many)), &Err(String::new()));
-        assert_eq!(
-            part.side,
-            [
-                "a is out of reach",
-                "b is out of reach",
-                "and 3 more worth a look"
-            ]
-        );
-    }
-
-    #[test]
-    fn machines_all_well_are_counted() {
-        let part = machines(
-            &Ok(realm(&[laptop(&[], "healthy")])),
-            &Err("no node".into()),
-        );
-        assert_eq!(part.health, Health::Good);
-        assert_eq!(part.says, "1 machine ready");
-        assert_eq!(part.holds.as_deref(), Some("1 machine"));
-        assert_eq!(part.side, NO_LOOK, "nothing is worth a look");
-        assert_eq!(
-            part.things[0].says, "is ready",
-            "with no health, sessions go unsaid"
-        );
-    }
-
-    #[test]
-    fn a_machine_out_of_reach_or_nearly_full_is_bad() {
-        let away = json!({"name": "spare", "state": "unreachable"});
-        let part = machines(
-            &Ok(realm(&[away, laptop(&[], "nearly-full")])),
-            &Ok(said_health()),
-        );
-        assert_eq!(part.health, Health::Bad);
-        assert_eq!(part.things[0].name, "laptop", "two bad machines go by name");
-        assert!(
-            part.things[0].says.starts_with("has a nearly full disk"),
-            "the disk leads what the laptop says: {}",
-            part.things[0].says
-        );
-        assert_eq!(part.things[1].says, "is out of reach");
-    }
-
-    #[test]
-    fn a_low_battery_counts_only_off_the_charger() {
-        let mut low = laptop(&[], "healthy");
-        low["power"] = json!({"on_battery": true, "charge": 12});
-        let part = machines(&Ok(realm(std::slice::from_ref(&low))), &Err(String::new()));
-        assert_eq!(part.things[0].says, "is on battery at 12%");
-        low["power"]["on_battery"] = json!(false);
-        let charging = machines(&Ok(realm(&[low])), &Err(String::new()));
-        assert_eq!(charging.health, Health::Good);
-    }
-
-    #[test]
-    fn another_machine_says_what_its_own_code_is() {
-        let mut studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy"});
-        studio["health"] = json!({"health": "bad", "parts": {"code": "watch", "network": "good"}});
-        let part = machines(
-            &Ok(realm(&[laptop(&[], "healthy"), studio.clone()])),
-            &Err(String::new()),
-        );
-        assert_eq!(part.health, Health::Watch, "its code is worth a look");
-        assert_eq!(part.things[0].name, "studio");
-        assert_eq!(part.things[0].says, "says its code wants a look");
-        studio["health"]["parts"]["code"] = json!("bad");
-        let part = machines(
-            &Ok(realm(&[laptop(&[], "healthy"), studio])),
-            &Err(String::new()),
-        );
-        assert_eq!(part.health, Health::Bad);
-        assert_eq!(part.things[0].says, "says its code is failing");
-    }
-
-    #[test]
-    fn the_realms_own_parts_and_this_machines_health_are_never_taken_in() {
-        let mut here = laptop(&[], "healthy");
-        here["health"] = json!({"health": "bad", "parts": {"code": "bad"}});
-        let mut studio = json!({"name": "studio", "state": "ready"});
-        studio["health"] = json!({"health": "bad", "parts": {
-            "machines": "bad", "mycelium": "bad", "network": "bad", "code": "good"}});
-        let part = machines(&Ok(realm(&[here, studio])), &Err(String::new()));
-        assert_eq!(
-            part.health,
-            Health::Good,
-            "this machine's code is its own part, and the rest are the same whole \
-             read from every machine: {}",
-            part.says
-        );
     }
 
     #[test]
@@ -656,25 +332,52 @@ mod tests {
     }
 
     #[test]
-    fn a_link_down_is_bad_and_a_dead_presence_worth_a_look() {
+    fn a_link_down_is_bad_and_a_dead_session_only_held() {
         let mut said = said_health();
         said["deadPresences"] = json!(7);
-        assert_eq!(mycelium(&Ok(said.clone())).health, Health::Watch);
+        let held = mycelium(&Ok(said.clone()));
+        assert_eq!(
+            held.health,
+            Health::Good,
+            "a dead session is an agent's leftover, which Joel can't act on from Agents"
+        );
+        assert_eq!(held.side, NO_LOOK);
+        assert_eq!(
+            held.holds.as_deref(),
+            Some("57 busy and 34 idle sessions on 2 machines; 7 sessions gone; 1 link up")
+        );
         said["links"][0]["state"] = json!("unreachable");
         let part = mycelium(&Ok(said));
         assert_eq!(part.health, Health::Bad);
         assert!(
-            part.says
-                .starts_with("the link to studio is down; 7 sessions say"),
+            part.says.starts_with("the link to studio is down; 57 busy"),
             "{}",
             part.says
         );
         assert_eq!(
             part.side,
-            [
-                "the link to studio is down",
-                "7 sessions say they run with their processes gone"
-            ]
+            ["link to studio down"],
+            "a side is worded for a row, its verb dropped"
+        );
+    }
+
+    #[test]
+    fn links_down_are_named_up_to_two_and_counted_past_them() {
+        let down = |machines: &[&str]| {
+            let links: Vec<Value> = machines
+                .iter()
+                .map(|machine| json!({"machine": machine, "state": "unreachable"}))
+                .collect();
+            mycelium(&Ok(json!({"links": links}))).side
+        };
+        assert_eq!(
+            down(&["studio", "skiff"]),
+            ["links to studio and skiff down"]
+        );
+        assert_eq!(
+            down(&["studio", "skiff", "spare"]),
+            ["3 links down"],
+            "no name is ever cut"
         );
     }
 
