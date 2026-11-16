@@ -2930,6 +2930,13 @@
     parts in the summary's order with their machines, a part or machine not told said rather than
     drawn, the whole said worst first, and a record's words reaching the page as text only
   '';
+  system-site-reads-live = ''
+    the system page, served by the local sites' server beside a stand-in system daemon, reads live
+    in headless Chromium: every part drawn and the whole counted, a part turning and a machine
+    going, broken while the daemon is away and live once it's back, stale once the server goes,
+    the web-design skill's page checks passing at a phone's width and a desk's in both looks, and
+    nothing logged
+  '';
   forage-site-holds = ''
     the forage page typechecks on the kit at its strictest and builds, its tests passing: each
     cell's forage under the cell that started it, even in a ring, plans first with their steps

@@ -131,6 +131,8 @@ in
       python.numpy
       # The desktop test reads its shots with Pillow.
       python.pillow
+      # The local sites' page tests drive Chromium with it.
+      python.playwright
       # The desktop test's window named as Tuple's.
       python.xlib
     ]

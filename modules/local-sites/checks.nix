@@ -1,10 +1,12 @@
 # The checks of local-sites, which checks.nix gathers with every other
 # folder's; its opening comment says what each kind of check proves.
 {
+  account,
   lib,
   onLinux,
   passesClippy,
   pkgs,
+  workstation,
   ...
 }:
 let
@@ -148,6 +150,44 @@ in
   # what the feed shows, an act refused before it reaches the daemon, and a
   # daemon that isn't there said broken with why.
   local-sites-serves-its-sites = pkgs.callPackage ./package.nix { };
+  # The system page, built on the theme's own web kit as a machine builds
+  # it, read in headless Chromium through the server beside a stand-in
+  # system daemon (modules/system/site/tests/reads-live-test.py): live with
+  # every part drawn and the whole counted, a part turning and a machine
+  # going, broken while the daemon is away and live once it's back, stale
+  # once the server goes, the web-design skill's page checks passing at two
+  # widths in both looks, and nothing logged. Chromium builds only on Linux.
+  system-site-reads-live =
+    let
+      python = pkgs.python3.withPackages (python: [
+        python.playwright
+        python.pytest
+      ]);
+      page = sites.localSite {
+        name = "system";
+        src = ../system/site;
+        webKit = (account workstation).xdg.dataFile."jitsusama/web".source;
+        tint = "action";
+      };
+    in
+    pkgs.runCommandLocal "system-site-reads-live"
+      {
+        env = {
+          LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
+          SYSTEM_SITE = "${page}";
+          LOCAL_SITES_KIT = "${sites.kit}";
+          STRIP = "${./home/strip.css}";
+          WEB_SKILL = "${../theme/web/skill}";
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+          PYTHONPATH = "${./tests}";
+          PYTHONDONTWRITEBYTECODE = "1";
+        };
+      }
+      ''
+        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p live_page \
+          --import-mode=importlib --basetemp="$TMPDIR/pytest" ${../system/site/tests}/reads-live-test.py
+        touch $out
+      '';
   # clippy finds nothing in the server, its tests included.
   local-sites-passes-clippy = passesClippy "local-sites-passes-clippy" (
     pkgs.callPackage ./package.nix { }
