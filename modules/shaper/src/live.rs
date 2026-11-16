@@ -102,8 +102,10 @@ pub struct Follow {
     ours: BTreeMap<String, Ours>,
     /// A call's round trip through the VPN riding the link, as last heard.
     vpn_ms: Option<f64>,
-    /// The last second the controller stepped on.
+    /// The last second the controller stepped on, and when it began, in
+    /// seconds since 1970, for the trace (src/trace.rs).
     last: Option<crate::replay::Second>,
+    last_at: Option<u64>,
     /// The network of the stay, and what each network met learned.
     network: String,
     known: Known,
@@ -127,6 +129,7 @@ impl Follow {
             ours: BTreeMap::new(),
             vpn_ms: None,
             last: None,
+            last_at: None,
             network: UNKNOWN.into(),
             known,
             from_ms: 0,
@@ -217,6 +220,10 @@ impl Follow {
                     self.network
                 );
             }
+            self.last_at = self
+                .reading
+                .began_s()
+                .map(|began| began + crate::rate::whole(second.t_s));
             self.last = Some(second);
         }
     }
@@ -334,6 +341,13 @@ impl Live {
     /// The link the controller holds, and what it last heard of it.
     pub fn heard(&self) -> Option<(&str, Heard)> {
         self.follow.heard()
+    }
+
+    /// The line for the trace of the recorded second the controller last
+    /// stepped on, once it has stepped on one.
+    pub fn traced(&self) -> Option<crate::trace::Line> {
+        let (link, heard) = self.follow.heard()?;
+        Some(crate::trace::Line::of(self.follow.last_at?, link, &heard))
     }
 
     /// Probes through the VPN riding the link, or none, and takes what it

@@ -84,9 +84,17 @@ fn replay() -> Help {
             "shaper replay --controller none --json day.jsonl",
             "unshaped, as JSON",
         )
+        .example(
+            "shaper replay --controller held --heard /var/lib/shaper/heard \
+             --anchor 6c:ae:f6:c2:d6:b2=12000 *.jsonl",
+            "what the shaper held, against the line",
+        )
         .argument("<files>...", "the recorded days")
         .option("--base UP,DOWN", "the rates it starts from, in kbit/s")
-        .option("--controller CONTROLLER", "one-way, or none")
+        .option("--controller CONTROLLER", "one-way, none, or held")
+        .option("--heard DIR", "the live shaper's trace, put back in")
+        .option("--anchor NETWORK=UP", "the line a network carries up, in kbit/s")
+        .option("--windows FILE", "NAME FROM TO lines, judged apart")
         .exit(Exit::Usage, WRONGLY)
         .exit(Exit::Failed, "a file couldn't be read")
 }

@@ -18,6 +18,7 @@
 //! `shaper --help`, and each command's, say what each takes
 //! (src/commands.rs); `SHAPER_HOSTS` stands for `--hosts`.
 
+mod bars;
 mod call;
 mod classes;
 mod commands;
@@ -41,6 +42,7 @@ mod room;
 mod sim;
 mod stamp;
 mod status;
+mod trace;
 mod vpndelay;
 mod waiting;
 mod why;
@@ -660,6 +662,9 @@ fn run(options: &Options) -> Result<(), Failure> {
         );
         live
     });
+    // What the controller heard and held each second, which the
+    // recorder's lines can't say, kept for a replay (src/trace.rs).
+    let mut traces = trace::Writer::new(&options.state.join("heard"));
     loop {
         let now = Instant::now();
         let t = (now - began).as_secs_f64();
@@ -731,6 +736,9 @@ fn run(options: &Options) -> Result<(), Failure> {
                 (link, h)
             });
         write_status(&options.runtime, &shaped, heard.as_ref());
+        if let Some(line) = live.as_ref().and_then(live::Live::traced) {
+            traces.write(&line);
+        }
         thread::sleep(STEP);
     }
 }
