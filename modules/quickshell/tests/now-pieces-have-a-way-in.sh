@@ -21,8 +21,9 @@ for file in "$1"/[A-Z]*.qml; do
   [ "$name" = Piece.qml ] && continue
   # A piece that never says active shows no line in Now.
   grep -qE '^\s*active\s*:' "$file" || continue
-  if grep -qE '^\s*(actions|every|drawer|drawnBy|opens|rows|place|heldNames)\s*:|function (drawer|rows)\(' \
-    "$file"; then
+  # An empty list of actions offers nothing, so it isn't a way in.
+  if grep -E '^\s*(actions|every|drawer|drawnBy|opens|rows|place|heldNames)\s*:|function (drawer|rows)\(' \
+    "$file" | grep -qvE '^\s*actions\s*:\s*\[\s*\]'; then
     continue
   fi
   [ -n "${excused[$name]:-}" ] && continue
