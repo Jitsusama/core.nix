@@ -157,12 +157,10 @@ fn the_repositories_watched_are_said_again_as_one_is_cloned_or_its_git_writes() 
             "git@github.com:someone/renamed.git",
         ],
     );
-    let written = watching.changed(&key);
-    assert_eq!(
-        page_of(&written, &alpha)["name"],
-        "someone/renamed",
-        "a remote changed while watched wasn't heard: {written}"
-    );
+    // git writes config.lock in .git before moving it over config, and a
+    // read between the two says the old page with .git's new time, so it's
+    // told until it says the new page, or the client's patience runs out.
+    while page_of(&watching.changed(&key), &alpha)["name"] != "someone/renamed" {}
 }
 
 #[test]
