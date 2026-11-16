@@ -1370,6 +1370,18 @@ QtObject {
         holds("a drawer's acts: kitty's 34 laid as evenly as before", kittyLaid,
             [2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4]);
         holds("a drawer's acts: kitty's 34 laid within 50 ms", kittyMs < 50, true);
+        // As many as a drawer could ever hold, narrow, so many share each
+        // line: trying every count of lines still to lay from each act took
+        // 12.8 s for 120 such, where only a line or two of them can be
+        // laid (2026-11-16). Tried until one is in time, at most three.
+        const many = Array.from({ length: 120 }, (_, at) => 20 + at * 37 % 120);
+        let manyMs = Infinity;
+        for (let at = 0; at < 3 && manyMs >= 50; at++) {
+            const began = Date.now();
+            Value.actLines(many, 304, 12);
+            manyMs = Date.now() - began;
+        }
+        holds("a drawer's acts: 120 narrow ones laid within 50 ms", manyMs < 50, true);
         // A title breaks at its spaces, and inside a word only where the word
         // is too wide for a line alone: "10.12.03.svg" stood split at a dot
         // beside a space at 2 (RTOIMQ, 2026-11-09).
