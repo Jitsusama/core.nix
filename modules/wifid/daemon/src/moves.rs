@@ -112,7 +112,14 @@ fn chosen(
     let card = (&*on.point, measured, here.signal, here.frequency);
     let busy = here.radio.load.map(|load| load.busy);
     let from = (measured, here.frequency, busy);
-    match chooser.choose(now, card, &others, call) {
+    let choice = chooser.choose(now, card, &others, call);
+    if let Some(unreached) = chooser.unreached() {
+        println!(
+            "<6>{} keeps off {unreached} for an hour, as its move there never reached it",
+            on.card
+        );
+    }
+    match choice {
         Choice::Stay => None,
         Choice::Try(to) => {
             let at = others.iter().position(|other| other.point == to)?;
