@@ -121,6 +121,20 @@ const VPN_MARGIN_MS: f64 = 5.0;
 /// minutes, and counted none of it; a path that moved is learned within
 /// this, or at once when the guard lets go.
 const VPN_LEAST_S: f64 = 300.0;
+/// How many cuts of a run for a queue only the VPN's round trip meets
+/// must find it back where the run's first found it, less the round
+/// trip's own jitter, before it's taken to be the VPN's far path. A queue
+/// the router buffers for the VPN's flow drains under a cut, cut deeper
+/// the longer it is, and stays down: in `behind_a_buffering_router_beside`
+/// from 119 ms to 15 in one, then held there by cuts that each find it
+/// no lower. The far path's delay is no lower for a cut, and its jitter
+/// keeps coming back to where it was.
+const FAR_CUTS: u32 = 3;
+/// How long the far path's delay then goes unheeded, at first and at
+/// most: it doubles each time it's found again, and a cut that drains a
+/// queue brings it back to the first.
+const FAR_S: f64 = VPN_LEAST_S;
+const FAR_MOST_S: f64 = 1_800.0;
 /// A direction carrying under this share of its rate is idle, and its
 /// delay measures the path.
 const IDLE: f64 = 0.1;
@@ -691,6 +705,21 @@ impl Way {
         }
     }
 
+    /// Takes back what cuts for a delay they didn't drain did: the plateau
+    /// goes back to where it stood before the first of them, and the rate
+    /// to its hold, as a probe finds next.
+    fn restore(&mut self, at: f64, plateau: Option<f64>) {
+        if let Some(before) = plateau {
+            let plateau = self.plateau.map_or(before, |now| now.max(before));
+            self.plateau = Some(plateau);
+            self.rate = self.rate.max(plateau * self.tuning.hold);
+        }
+        self.ceiling = None;
+        self.late_since = None;
+        self.probing_until = None;
+        self.next_probe = at + PROBE_EVERY_S;
+    }
+
     pub fn limit(&self) -> Option<u64> {
         self.rate.is_finite().then(|| {
             // A rate is a few hundred thousand kbit/s at most.
@@ -1021,12 +1050,88 @@ impl Air {
     }
 }
 
+/// What the cuts made for a queue only the VPN's round trip meets did to
+/// it. That round trip goes to a resolver a whole path away, through the
+/// VPN's far end, and waits in whatever queues there too: on the evening
+/// of 15 November it took 40 to 490 ms, matching none of what the VPN
+/// sent, while the link carried 11 to 13 Mbit/s with the reflectors'
+/// delay unmoved, and cuts for it held the upload at a third of the line
+/// for two hours. A queue that is ours drains under a cut; one that
+/// several cuts in a row leave where it was is the far path's, and goes
+/// unheeded a while.
+#[derive(Clone, Debug, Default)]
+struct Far {
+    /// The delay heard over the last `UNSEEN_DRAIN_S`, and when.
+    heard: VecDeque<(f64, f64)>,
+    /// The first cut of a run that drained none of it: the delay it met,
+    /// and the plateau before it.
+    first: Option<(f64, Option<f64>)>,
+    futile: u32,
+    last_cut: f64,
+    unheeded_until: f64,
+    unheeded_for: f64,
+}
+
+impl Far {
+    /// Take in the delay only the VPN's round trip meets, and give it, or
+    /// none while it goes unheeded.
+    fn heed(&mut self, at: f64, hidden: f64) -> Option<f64> {
+        self.heard.push_back((at, hidden));
+        while self
+            .heard
+            .front()
+            .is_some_and(|&(t, _)| at - t > UNSEEN_DRAIN_S)
+        {
+            self.heard.pop_front();
+        }
+        if at - self.last_cut > FUTILE_S {
+            self.first = None;
+            self.futile = 0;
+        }
+        (at >= self.unheeded_until).then_some(hidden)
+    }
+
+    /// Take in a cut for it, made with the plateau at `plateau` before:
+    /// once enough cuts of the run found it where it was, it's let go.
+    fn cut(&mut self, at: f64, plateau: Option<f64>) -> Option<Released> {
+        self.last_cut = at;
+        #[expect(clippy::cast_precision_loss, reason = "a few seconds of round trips")]
+        let met =
+            self.heard.iter().map(|&(_, ms)| ms).sum::<f64>() / self.heard.len().max(1) as f64;
+        let Some((first, before)) = self.first else {
+            self.first = Some((met, plateau));
+            return None;
+        };
+        if met < first - VPN_MARGIN_MS {
+            // Lower than the run's first found it: drained, by this cut
+            // or the ones before.
+            return None;
+        }
+        self.futile += 1;
+        if self.futile < FAR_CUTS {
+            return None;
+        }
+        self.unheeded_for = (self.unheeded_for * 2.0).clamp(FAR_S, FAR_MOST_S);
+        self.unheeded_until = at + self.unheeded_for;
+        self.first = None;
+        self.futile = 0;
+        self.heard.clear();
+        Some(Released { plateau: before })
+    }
+}
+
+/// A far path's delay let go, and the plateau before the cuts for it.
+struct Released {
+    plateau: Option<f64>,
+}
+
 /// Both directions on one network, and what stands over them.
 #[derive(Clone, Debug)]
 pub struct Controller {
     pub up: Way,
     pub down: Way,
     air: Air,
+    far: Far,
     vpn_base: Option<f64>,
     /// Each round trip through the VPN heard over the last `VPN_LEAST_S`,
     /// and when.
@@ -1049,6 +1154,7 @@ impl Controller {
                 ..Way::new(down)
             },
             air: Air::default(),
+            far: Far::default(),
             vpn_base: None,
             vpn_heard: VecDeque::new(),
             last_at: None,
@@ -1119,6 +1225,19 @@ impl Controller {
         (vpn - base - probes - link - VPN_MARGIN_MS).max(0.0)
     }
 
+    /// Take in a cut for a queue only the VPN's round trip met, made with
+    /// the upload's plateau at `plateau` before, and take back what the
+    /// cuts for it did once they show it's the far path's.
+    fn cut_for_the_vpn(&mut self, at: f64, plateau: Option<f64>) {
+        if let Some(released) = self.far.cut(at, plateau) {
+            self.up.restore(at, released.plateau);
+            // A delay no cut drains may be a path that moved too, as the
+            // guard takes it, so its least is learned again.
+            self.vpn_base = None;
+            self.vpn_heard.clear();
+        }
+    }
+
     /// Take in a moment, and give what each direction is held to.
     pub fn step(&mut self, seen: &Seen) -> Limits {
         let at = seen.at_s;
@@ -1153,6 +1272,8 @@ impl Controller {
             };
         }
         let hidden = self.hidden(seen);
+        let heeded = self.far.heed(at, hidden);
+        let hidden = heeded.unwrap_or(0.0);
         let up = seen.up_delay_ms.map(|d| (d - air).max(0.0));
         let down = seen.down_delay_ms.map(|d| (d - air).max(0.0));
         let idle_up = self.up.idle(seen.up_kbit);
@@ -1162,7 +1283,7 @@ impl Controller {
             let seen_delay = (delay - beside).max(0.0);
             let tunnel = if hidden > seen_delay {
                 Tunnel::Past
-            } else if hidden <= 0.0
+            } else if heeded.is_some_and(|hidden| hidden <= 0.0)
                 && seen.vpn_ms.is_some()
                 && seen
                     .up_ours
@@ -1172,6 +1293,7 @@ impl Controller {
             } else {
                 Tunnel::Unheard
             };
+            let (cuts, plateau) = (self.up.last_cut, self.up.plateau);
             self.up.step(
                 at,
                 seen_delay.max(hidden),
@@ -1179,6 +1301,9 @@ impl Controller {
                 seen.up_ours,
                 tunnel,
             );
+            if tunnel == Tunnel::Past && self.up.last_cut > cuts {
+                self.cut_for_the_vpn(at, plateau);
+            }
         }
         if let Some(delay) = down {
             let beside = if idle_up { up.unwrap_or(0.0) } else { 0.0 };
@@ -2398,6 +2523,71 @@ mod tests {
         assert!(
             vpn >= 9_000.0,
             "the VPN sent at {vpn} on a 12000 line busy a tenth of the time"
+        );
+    }
+
+    /// Steps a controller as `behind_a_vpn` does, on a 12000 line with no
+    /// queue past our CAKE, while the VPN's round trip waits on its far
+    /// path from a minute in: 40 to 135 ms, whatever the VPN sends, as on
+    /// the evening of 15 November, when the link carried 11 to 13 Mbit/s
+    /// with the reflectors' delay unmoved and the round trip matched none
+    /// of what the VPN sent. Answers the VPN's median rate over the last
+    /// minute.
+    fn behind_a_far_path(c: &mut Controller, to: f64) -> f64 {
+        const LINE: f64 = 12_000.0;
+        let mut sent = Vec::new();
+        let mut at = 0.0;
+        let mut noise: u64 = 0x9e37_79b9;
+        let mut far = 0.0;
+        let mut second = -1.0;
+        while at < to {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let vpn = rate * crate::qdisc::VPN_SHARE;
+            if at >= to - 60.0 {
+                sent.push(vpn);
+            }
+            // The round trip is heard once a second, as live.
+            if at.floor() > second {
+                second = at.floor();
+                noise = noise
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1);
+                far = crate::rate::float((noise >> 33) % 1_000) / 1_000.0;
+            }
+            let queued = vpn < LINE;
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: vpn.min(LINE),
+                up_ours: Some(Ours {
+                    queued,
+                    in_vpn: queued,
+                    vpn_queued: queued,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                vpn_ms: Some(if at < 60.0 { 27.0 } else { 40.0 + 95.0 * far }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        replay::median(sent.into_iter()).unwrap_or(0.0)
+    }
+
+    // A delay on the VPN's far path is no queue of ours: cuts drain none
+    // of it, and on 15 November they held the upload at a third of a
+    // clear line for two hours. Cuts that leave it where it was let it
+    // go, and the upload climbs back to the line.
+    #[test]
+    fn a_delay_on_the_vpn_s_far_path_that_cuts_don_t_drain_is_let_go() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(11_843.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let vpn = behind_a_far_path(&mut c, 600.0);
+        assert!(
+            vpn >= 9_000.0,
+            "the VPN sent at {vpn} on a clear 12000 line"
         );
     }
 
