@@ -4742,6 +4742,10 @@
     launcher goes, its foot saying 1Password offers to fill it, and a walk from outside the
     launcher finding no entry and asking nothing, with a stand-in for 1Password's manager
   '';
+  the-passwords-place-off-gives-the-shell-no-daemon = ''
+    with the launcher's Passwords place turned off, the shell's own config names no passwords
+    daemon command, so rewriting the off setting gives the shell nothing to run
+  '';
   the-passwords-place-off-goes-into-its-drawer-on-niri = ''
     on a nested niri, the Passwords place off with no password manager set up holds its one row,
     whose Return, with nothing to open, puts the keys in its drawer, which says why

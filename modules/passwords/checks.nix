@@ -160,6 +160,22 @@ onLinux {
         && on.xdg.configFile ? "quickshell/launcher/Shown.js"
         && !lib.any (lib.hasInfix "jitsusama.passwords.releases") on.warnings
       );
+  # With `off = true` put back, the revert home.nix names, the shell's own
+  # config names no passwords daemon, so an unfenced process that rewrites
+  # the off setting finds nothing for the shell to run, and turning the
+  # place off takes the daemon out of the session altogether.
+  the-passwords-place-off-gives-the-shell-no-daemon =
+    let
+      turnedOff = graphical.extendModules {
+        modules = [
+          { home-manager.users.someone.jitsusama.quickshell.launcher.providers.passwords.off = true; }
+        ];
+      };
+      shellConfig = (account turnedOff).xdg.configFile."quickshell/Providers.qml".text;
+    in
+    holds "the-passwords-place-off-gives-the-shell-no-daemon"
+      "The shell's config names the passwords daemon while the Passwords place is off."
+      (!lib.hasInfix "/bin/passwords" shellConfig);
   # Nothing of the Passwords place, nor the daemon interface it asks its
   # daemon through, answers the shell's IPC, so no `qs ipc call` another
   # process makes reaches a secret or lets a manager in, now or once
