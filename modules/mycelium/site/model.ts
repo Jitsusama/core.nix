@@ -75,23 +75,23 @@ function machineOf(record: Fields): Fields {
   const room = within(record, "room");
   const declared = within(record, "declared");
   return {
-    name: record.name,
-    state: record.state,
-    model_name: record.model_name,
-    os: record.os,
-    system: record.system,
-    cores: within(record, "cpu").cores,
-    memory: record.memory,
-    disk: record.disk,
-    disk_free: record.disk_free,
-    disk_band: record.disk_band,
-    power: record.power,
-    available: room.memory_available ?? null,
-    pressure: room.pressure ?? null,
-    over: room.over ?? [],
-    reach: declared.reach ?? [],
-    leaves_at: declared.leaves_at ?? null,
-    measured_at: record.measured_at,
+    name: record["name"],
+    state: record["state"],
+    model_name: record["model_name"],
+    os: record["os"],
+    system: record["system"],
+    cores: within(record, "cpu")["cores"],
+    memory: record["memory"],
+    disk: record["disk"],
+    disk_free: record["disk_free"],
+    disk_band: record["disk_band"],
+    power: record["power"],
+    available: room["memory_available"] ?? null,
+    pressure: room["pressure"] ?? null,
+    over: room["over"] ?? [],
+    reach: declared["reach"] ?? [],
+    leaves_at: declared["leaves_at"] ?? null,
+    measured_at: record["measured_at"],
   };
 }
 
@@ -101,7 +101,12 @@ function messagesOf(held: Held): Message[] {
   for (const record of held.all()) {
     const at = text(record, "at");
     if (at !== undefined) {
-      told.push({ at, from: record.from, intent: record.intent, groups: record.groups });
+      told.push({
+        at,
+        from: record["from"],
+        intent: record["intent"],
+        groups: record["groups"],
+      });
     }
   }
   told.sort((one, other) => one.at.localeCompare(other.at));
@@ -110,7 +115,7 @@ function messagesOf(held: Held): Message[] {
 
 /** Whether a cell is drawn as one: a session or a receptor, not a machine. */
 function drawn(cell: Fields): boolean {
-  return cell.type === "session" || cell.type === "receptor";
+  return cell["type"] === "session" || cell["type"] === "receptor";
 }
 
 /** What the map draws from `heard`, read at `at` (milliseconds since the epoch). */

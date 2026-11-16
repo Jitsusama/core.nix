@@ -39,7 +39,7 @@ function isObject(value: unknown): value is Fields {
 
 /** Whether `value` is a record: an object with a string key. */
 function isRecord(value: unknown): value is Record {
-  return isObject(value) && typeof value.key === "string";
+  return isObject(value) && typeof value["key"] === "string";
 }
 
 /** The field `field` of `record` when it is a string. */
@@ -126,11 +126,12 @@ class Held {
     const changed: string[] = [];
     const gone: string[] = [];
     let skipped = 0;
-    if (Array.isArray(answer.records)) {
-      skipped += this.#whole(answer.records, changed, gone);
+    const records = answer["records"];
+    if (Array.isArray(records)) {
+      skipped += this.#whole(records, changed, gone);
     }
-    skipped += this.#mend(listed(answer.changed), changed);
-    for (const key of listed(answer.gone)) {
+    skipped += this.#mend(listed(answer["changed"]), changed);
+    for (const key of listed(answer["gone"])) {
       if (typeof key === "string" && this.#records.delete(key)) {
         gone.push(key);
       }
