@@ -285,7 +285,9 @@ pub fn windows(text: &str) -> Result<Vec<Window>, String> {
                 return Err(format!("a window is NAME FROM TO, not {line:?}"));
             };
             let (Some(from_s), Some(to_s)) = (moment(from), moment(to)) else {
-                return Err(format!("a window's times are as 2026-11-16T00:30Z: {line:?}"));
+                return Err(format!(
+                    "a window's times are as 2026-11-16T00:30Z: {line:?}"
+                ));
             };
             if to_s <= from_s {
                 return Err(format!("a window ends after it starts: {line:?}"));
@@ -377,12 +379,19 @@ mod tests {
         let rates = held(|t| Some(if t < 10 { 10_800 } else { 5_000 }), 100);
         let bar = at_home(&s, &rates, 12_000);
         assert_eq!(bar.earned, 1, "the cut met 40 ms: {bar:?}");
-        assert_eq!(bar.breached_s, 0, "excused for its minute, then 29 s: {bar:?}");
+        assert_eq!(
+            bar.breached_s, 0,
+            "excused for its minute, then 29 s: {bar:?}"
+        );
         let s = stay(200, 5_000.0, |t| if t == 10 { 40.0 } else { 2.0 });
         let rates = held(|t| Some(if t < 10 { 10_800 } else { 5_000 }), 200);
         let bar = at_home(&s, &rates, 12_000);
         assert_eq!(bar.breaches.len(), 1, "once its minute is out: {bar:?}");
-        assert_eq!(bar.breaches[0].from_s, NOV16 + 70, "from when the excuse ran out: {bar:?}");
+        assert_eq!(
+            bar.breaches[0].from_s,
+            NOV16 + 70,
+            "from when the excuse ran out: {bar:?}"
+        );
     }
 
     #[test]
@@ -396,7 +405,10 @@ mod tests {
             second.t_s = float(i as u64) + 600.0;
         }
         let bar = at_home(&s, &held(|_| Some(4_000), 100), 12_000);
-        assert_eq!(bar.breached_s, 0, "two spells of 50 s, the sleep between: {bar:?}");
+        assert_eq!(
+            bar.breached_s, 0,
+            "two spells of 50 s, the sleep between: {bar:?}"
+        );
     }
 
     #[test]
@@ -421,7 +433,11 @@ mod tests {
     #[test]
     fn windows_and_anchors_are_read_as_written_or_refused() {
         assert_eq!(moment("2026-11-16T00:00Z"), Some(NOV16), "midnight");
-        assert_eq!(moment("2026-11-16T00:30Z"), Some(NOV16 + 1_800), "half past");
+        assert_eq!(
+            moment("2026-11-16T00:30Z"),
+            Some(NOV16 + 1_800),
+            "half past"
+        );
         let leap = moment("2028-02-29T00:00Z").expect("a leap day") / 86_400;
         assert_eq!(
             crate::record::civil(i64::try_from(leap).expect("a day count")),
@@ -441,7 +457,10 @@ mod tests {
             }]),
             "one window, the note passed over"
         );
-        assert!(windows("evening 2026-11-16T05:00Z 2026-11-16T00:30Z").is_err(), "backwards");
+        assert!(
+            windows("evening 2026-11-16T05:00Z 2026-11-16T00:30Z").is_err(),
+            "backwards"
+        );
         assert!(windows("evening 2026-11-16T05:00Z").is_err(), "no end");
         assert_eq!(
             anchor("6C:AE:F6:C2:D6:B2=12000"),

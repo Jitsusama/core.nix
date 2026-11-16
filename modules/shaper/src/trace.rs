@@ -211,10 +211,26 @@ mod tests {
         writer.write(&line(NOV16 + 6, None, None));
         let read = read(&folder).expect("the folder reads");
         let _ = fs::remove_dir_all(&folder);
-        assert_eq!(read.len(), 2, "a second written twice is kept once: {read:?}");
-        assert_eq!(read[&(NOV16 + 5)].up, Some(10_800), "the first write stands: {read:?}");
-        assert_eq!(read[&(NOV16 + 5)].vpn_ms, Some(87.0), "with the VPN's: {read:?}");
-        assert_eq!(read[&(NOV16 + 6)].up, None, "no limit reads back as none: {read:?}");
+        assert_eq!(
+            read.len(),
+            2,
+            "a second written twice is kept once: {read:?}"
+        );
+        assert_eq!(
+            read[&(NOV16 + 5)].up,
+            Some(10_800),
+            "the first write stands: {read:?}"
+        );
+        assert_eq!(
+            read[&(NOV16 + 5)].vpn_ms,
+            Some(87.0),
+            "with the VPN's: {read:?}"
+        );
+        assert_eq!(
+            read[&(NOV16 + 6)].up,
+            None,
+            "no limit reads back as none: {read:?}"
+        );
     }
 
     #[test]
@@ -236,7 +252,15 @@ mod tests {
         assert_eq!(ups, want, "held, then standing 5 s past the last line");
         let s = &stays[0].seconds;
         assert_eq!(s[1].vpn_ms, Some(120.0), "the VPN's round trip: {:?}", s[1]);
-        assert!(s[2].up_ours.is_some_and(|o| o.queued), "our queue: {:?}", s[2]);
-        assert_eq!(s[3].up_ours, None, "nothing heard, nothing put in: {:?}", s[3]);
+        assert!(
+            s[2].up_ours.is_some_and(|o| o.queued),
+            "our queue: {:?}",
+            s[2]
+        );
+        assert_eq!(
+            s[3].up_ours, None,
+            "nothing heard, nothing put in: {:?}",
+            s[3]
+        );
     }
 }

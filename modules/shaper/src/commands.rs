@@ -93,7 +93,10 @@ fn replay() -> Help {
         .option("--base UP,DOWN", "the rates it starts from, in kbit/s")
         .option("--controller CONTROLLER", "one-way, none, or held")
         .option("--heard DIR", "the live shaper's trace, put back in")
-        .option("--anchor NETWORK=UP", "the line a network carries up, in kbit/s")
+        .option(
+            "--anchor NETWORK=UP",
+            "the line a network carries up, in kbit/s",
+        )
         .option("--windows FILE", "NAME FROM TO lines, judged apart")
         .exit(Exit::Usage, WRONGLY)
         .exit(Exit::Failed, "a file couldn't be read")

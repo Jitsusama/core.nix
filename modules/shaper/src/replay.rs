@@ -965,8 +965,11 @@ pub fn command(args: &[String], json: bool) -> Result<(), Failure> {
         Played(each.next().unwrap_or_default().into_iter())
     });
     if !asked.anchors.is_empty() {
-        let pairs: Vec<(&Stay, &[Rates])> =
-            stays.iter().zip(&rates).map(|(s, r)| (s, r.as_slice())).collect();
+        let pairs: Vec<(&Stay, &[Rates])> = stays
+            .iter()
+            .zip(&rates)
+            .map(|(s, r)| (s, r.as_slice()))
+            .collect();
         report.bars = Some(bars::judge(&pairs, &asked.anchors, &windows));
     }
     let text = if json {
