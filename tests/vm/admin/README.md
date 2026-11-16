@@ -5,11 +5,17 @@ on machines booted in QEMU: switching and updating its system, tuning its
 memory and its slices, asking before firmware is written, tracing niri,
 stopping libvirt at once, putting a check's VM ahead of the builds beside
 it, giving root only the builders it trusts, and restarting a wedged pi
-host. Each test's opening comment says what it proves and what stands in
-for what a VM lacks.
+host, and keeping an agent's run inside its fence. Each test's opening
+comment says what it proves and what stands in for what a VM lacks.
+
+Many entries because each test is a `.nix` with its `-vm-test.py` beside
+it, found by the test's name, so every test is two entries and a folder of
+their own would hold only that pair; tests with stand-ins of their own get
+a folder.
 
 | File                                             | Holds                                                            |
 | ------------------------------------------------ | ---------------------------------------------------------------- |
+| `fenced-runs.nix`, `-vm-test.py`                 | an agent's run reaching no socket, secret or home past its fence |
 | `firmware-asks.nix`, `-vm-test.py`               | writing firmware asking an administrator, even at the seat       |
 | `libvirt.nix`, `-vm-test.py`                     | libvirt's daemon stopping at once while its udev thread waits    |
 | `memory-tune.nix`, `-vm-test.py`                 | four memory settings an administrator sets with no password      |
