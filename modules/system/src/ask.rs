@@ -80,5 +80,41 @@ fn one(words: &[String]) -> Answer {
             None => format!("{said} was stopped"),
         });
     }
-    serde_json::from_slice::<Value>(&bytes).map_err(|_| format!("{said} said something not JSON"))
+    first(&said, &bytes)
+}
+
+/// The document an owner's answer opens with. An owner may say more on
+/// the lines after it, as `mycelium machines` says the builders it sends
+/// to, and none of that is what its part is judged by.
+fn first(said: &str, bytes: &[u8]) -> Answer {
+    serde_json::Deserializer::from_slice(bytes)
+        .into_iter::<Value>()
+        .next()
+        .and_then(Result::ok)
+        .ok_or_else(|| format!("{said} said something not JSON"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::first;
+    use serde_json::json;
+
+    #[test]
+    fn an_answer_followed_by_another_line_is_read_as_its_first() {
+        let said = b"{\"Ok\":{\"Machines\":[]}}\n{\"Ok\":{\"Builders\":[]}}\n";
+        assert_eq!(
+            first("mycelium machines", said),
+            Ok(json!({ "Ok": { "Machines": [] } })),
+            "mycelium machines writes its builders on a line after its machines"
+        );
+    }
+
+    #[test]
+    fn an_answer_that_opens_with_no_document_is_not_json() {
+        assert_eq!(
+            first("net --json", b"warning: stale\n{}"),
+            Err("net --json said something not JSON".to_owned()),
+            "words before the document aren't read past"
+        );
+    }
 }

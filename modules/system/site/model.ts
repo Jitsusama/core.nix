@@ -183,13 +183,18 @@ function lede(system: System): string | undefined {
   for (const health of WORST) {
     const worst = system.parts.find((part) => part.health === health && part.side.length > 0);
     if (worst !== undefined) {
-      return `${named(worst.part)}: ${worst.side[0] ?? ""}.`;
+      return stopped(`${named(worst.part)}: ${worst.side[0] ?? ""}`);
     }
   }
   const unread = system.parts.find((part) => part.health === "unread");
   return unread === undefined
     ? undefined
-    : `${named(unread.part)} couldn't be read: ${unread.says}.`;
+    : stopped(`${named(unread.part)} couldn't be read: ${unread.says}`);
+}
+
+/** `words` ended as a sentence, once: an owner's words may end their own. */
+function stopped(words: string): string {
+  return /[.?!]$/.test(words) ? words : `${words}.`;
 }
 
 /** `words` joined as a sentence lists them: a, b and c. */
