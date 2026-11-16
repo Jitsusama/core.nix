@@ -136,7 +136,7 @@ const PORTS: [(&str, Align); 5] = [
     ("port", Align::Left),
     ("kind", Align::Left),
     ("link", Align::Left),
-    ("speed mbit/s", Align::Right),
+    ("speed Mbit/s", Align::Right),
     ("duplex", Align::Left),
 ];
 
@@ -194,9 +194,9 @@ const RADIOS: [(&str, Align); 6] = [
     ("radio", Align::Left),
     ("band", Align::Left),
     ("channel", Align::Right),
-    ("width mhz", Align::Right),
+    ("width MHz", Align::Right),
     ("busy %", Align::Right),
-    ("power dbm", Align::Right),
+    ("power dBm", Align::Right),
 ];
 
 fn radios(device: &Device, pen: &Pen, room: Room) -> Vec<String> {
@@ -248,7 +248,7 @@ const LINKS: [(&str, Align); 7] = [
     ("here", Align::Left),
     ("there", Align::Left),
     ("mbit/s", Align::Right),
-    ("signal dbm", Align::Right),
+    ("signal dBm", Align::Right),
 ];
 const LINKS_GIVE_WAY: [usize; 3] = [4, 3, 2];
 
@@ -295,10 +295,10 @@ fn channels(way: &str, channels: &[Channel], active: &str, pen: &Pen, room: Room
         (way, Align::Right),
         ("kind", Align::Left),
         ("mhz", Align::Right),
-        ("width mhz", Align::Right),
+        ("width MHz", Align::Right),
         ("modulation", Align::Left),
-        ("power dbmv", Align::Right),
-        ("snr db", Align::Right),
+        ("power dBmV", Align::Right),
+        ("snr dB", Align::Right),
         ("corrected", Align::Right),
         ("uncorrectable", Align::Right),
         (active, Align::Left),
@@ -437,6 +437,25 @@ mod tests {
         );
         // Each radio is named by its band.
         assert!(!head("RADIO").contains("BAND"), "{text}");
+    }
+
+    #[test]
+    fn a_unit_in_a_label_keeps_its_own_case() {
+        let network = network();
+        let head = |name: &str, opening: &str| {
+            let found = find(&network, name).expect("the fixture holds it");
+            let text = device(&network, found, now(), &Pen::plain(), Room::Cells(200));
+            text.lines()
+                .find(|line| line.starts_with(opening))
+                .unwrap_or_else(|| panic!("no table opens with {opening}: {text}"))
+                .to_owned()
+        };
+        let down = head("Modem", "DOWN");
+        for label in ["POWER dBmV", "SNR dB"] {
+            assert!(down.contains(label), "{label} isn't in {down:?}");
+        }
+        let links = head("Study", "LINKED TO");
+        assert!(links.contains("SIGNAL dBm"), "{links:?}");
     }
 
     #[test]
