@@ -28,6 +28,26 @@ function inside(inner, outer) {
         && inner.y + inner.height <= outer.y + outer.height + SLACK;
 }
 
+// How far down a text's box its lines' letters start, and how tall they
+// stand, as `{ top, height }`. A text set at a fixed pitch has each line on
+// its baseline a pitch apart, and its letters reach from the first line's
+// ascent to the last one's descent: a pitch-tall box from its top would
+// count the pitch's spare room as ink, and a drawer sets every line on its
+// baseline whatever its face, so a name in a short face over a value in a
+// taller one would lie on it by the faces' difference, letters apart.
+// Otherwise its lines are its face's own, as tall as they lay. `lines` is
+// its line count; `pitch` its fixed line's height; `baseline` how far
+// down its first baseline is; `ascent` and `descent` its face's; `tall`
+// how tall its own lines lay.
+function inkedLines(text) {
+    if (!text.fixed || text.lines < 1) {
+        return { top: 0, height: text.tall };
+    }
+    const top = Math.max(0, text.baseline - text.ascent);
+    const foot = text.baseline + (text.lines - 1) * text.pitch + text.descent;
+    return { top, height: foot - top };
+}
+
 // Whether one drawn text holds the other, as a field holds its hint.
 function holds(one, other) {
     return other.within.includes(one.id) || one.within.includes(other.id);

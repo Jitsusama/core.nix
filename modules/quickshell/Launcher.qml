@@ -7859,19 +7859,24 @@ Scope {
         let holding = within;
         if (typeof item.text === "string" && typeof item.contentWidth === "number"
             && item.text !== "" && !(item.color !== undefined && item.color.a === 0)) {
-            // Lines set at a fixed pitch stand on it, a face's descent
-            // reaching into the next line's pitch as type set on a page does,
-            // so their lines are as tall as their pitch, not their faces.
-            const tall = item.lineHeightMode === Text.FixedHeight && item.lineCount > 0
-                ? item.lineCount * item.lineHeight : item.contentHeight;
+            // Lines set at a fixed pitch stand on their baselines, their
+            // letters from the first's ascent to the last's descent, which
+            // the baseline Qt gives already sets where its alignment puts it
+            // (Contained.inkedLines); others are as tall as they lay.
+            inkFace.font = item.font;
+            const fixed = item.lineHeightMode === Text.FixedHeight;
+            const lines = Contained.inkedLines({ fixed, lines: item.lineCount,
+                pitch: item.lineHeight, baseline: item.baselineOffset,
+                ascent: inkFace.ascent, descent: inkFace.descent, tall: item.contentHeight });
             const across = item.width - item.contentWidth;
-            const down = item.height - tall;
+            const down = item.height - item.contentHeight;
+            const aligned = item.verticalAlignment === Qt.AlignBottom ? down
+                : item.verticalAlignment === Qt.AlignVCenter ? down / 2 : 0;
             const inked = {
                 x: at.x + (item.horizontalAlignment === Qt.AlignRight ? across
                     : item.horizontalAlignment === Qt.AlignHCenter ? across / 2 : 0),
-                y: at.y + (item.verticalAlignment === Qt.AlignBottom ? down
-                    : item.verticalAlignment === Qt.AlignVCenter ? down / 2 : 0),
-                width: item.contentWidth, height: tall
+                y: at.y + (fixed && item.lineCount > 0 ? lines.top : aligned),
+                width: item.contentWidth, height: lines.height
             };
             const ink = shows === null ? inked : Contained.shared(inked, shows);
             if (ink !== null) {
@@ -7888,6 +7893,10 @@ Scope {
 
     // Every text drawn on the card and its drawer, as drawnTexts finds it,
     // for a check to say what drew the words that broke out.
+    // The face of the text drawnTexts is reading, for its ascent and
+    // descent, which a Text doesn't say.
+    readonly property FontMetrics inkFace: FontMetrics {}
+
     function drawnAll() {
         return [card, drawerCard].filter(each => each.visible && each.opacity !== 0)
             .map(each => drawnTexts(each, each, each.floor ?? null, null, [], [], ""));
