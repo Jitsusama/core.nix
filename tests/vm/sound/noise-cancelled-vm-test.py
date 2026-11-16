@@ -285,7 +285,9 @@ def test_a_pick_reveals_each_clip_and_chooses_its_microphone(
         assert picked["running"] == picked["picked"]["cleaner"]
 
 
-def test_a_pick_shows_every_clips_marks(joel: Joel, offered: dict[str, Any]) -> None:
+# Choose by Ear's trial started and recorded, as offered leaves it.
+@pytest.mark.usefixtures("offered")
+def test_a_pick_shows_every_clips_marks(joel: Joel) -> None:
     """Picked, every clip's marks follow, from the scorer in models.nix's folder."""
     # Picked here when run alone; run after the pick above, it keeps that one.
     if joel.trial()["stage"] == "ready":
