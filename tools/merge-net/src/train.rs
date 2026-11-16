@@ -19,7 +19,12 @@
 //! its pass still speaks for it as one for a rebased change would
 //! (`earlier.rs`); otherwise it runs again with whoever has boarded since.
 //!
-//! A rider that conflicts, or that rode a candidate that failed, falls:
+//! A candidate that fails splits: the train takes the first half of its
+//! riders to board, and halves again while they fail, so the riders that
+//! broke nothing land together and the one that breaks it is found alone,
+//! five riders in five runs at most (`Splitting`). A train red for more
+//! than its riders gives up, and every rider runs again alone.
+//! A rider that conflicts, or that rode a failed candidate alone, falls:
 //! `train/fell/<head>` says why, and `ready` runs that head again alone, as
 //! before the train. A rider whose pull request moved on, or closed, steps
 //! off. What landed is kept a line each in `train/landed.jsonl`, so a day's
@@ -103,6 +108,12 @@ pub fn riders(root: &Path) -> Vec<Rider> {
         .collect();
     riders.sort_by(|one, other| (one.at, &one.head).cmp(&(other.at, &other.head)));
     riders
+}
+
+/// The rider at `head`, if it rides.
+#[must_use]
+pub fn rider_at(root: &Path, head: &str) -> Option<Rider> {
+    riders(root).into_iter().find(|rider| rider.head == head)
 }
 
 /// Why the rider at `head` fell off, if it did.
@@ -214,7 +225,7 @@ const DESCRIBED: &str = "merge-net's train merges the changes that passed togeth
 #[must_use]
 pub fn offer(head: &str, branch: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
-    let boarded = riders(&root).iter().any(|waiting| waiting.head == head);
+    let boarded = rider_at(&root, head).is_some();
     match seat(boarded, fell(&root, head)) {
         Seat::Fell(_) => return None,
         Seat::Rides => {}
@@ -240,6 +251,33 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
         short(head),
         folder(&root).display()
     ))
+}
+
+/// What `ready` says of the change at `head` while it rides, the train
+/// started again if it stopped; nothing when it doesn't ride. Judged as if
+/// it didn't, a rider behind a main that moved its files would be told to
+/// rebase, and the push would take it off the train and to its back.
+#[must_use]
+pub fn riding(head: &str) -> Option<String> {
+    let root = crate::state::State::from_env().root;
+    rider_at(&root, head)?;
+    if !going() && !start(&root) {
+        alight(&root, head);
+        return None;
+    }
+    Some(rides_said(&root))
+}
+
+/// What `ready` says of a rider asked of again, among the riders under
+/// `root`: that it waits, not that it was just put on the train.
+fn rides_said(root: &Path) -> String {
+    format!(
+        "it waits on the train, {} riders in all, for one run of changed-checks over them to \
+         pass, its words going to {}; push nothing to this branch until it lands, and once \
+         it has, the pull request reads merged",
+        riders(root).len(),
+        folder(root).display()
+    )
 }
 
 /// Why the change at `head` fell off the train, as `ready` says it beside
@@ -311,6 +349,69 @@ fn systemctl(arguments: &[&str]) -> String {
 /// before it goes back to run again.
 const RECUTS: usize = 5;
 
+/// What follows a red candidate.
+#[derive(Debug, PartialEq, Eq)]
+enum After {
+    /// The next candidate takes fewer riders.
+    Narrows,
+    /// The one rider that rode it alone falls.
+    Falls,
+    /// Every rider falls, since the train is red for more than one of them.
+    AllFall,
+}
+
+/// What the train knows of its riders from the candidates it ran, so it
+/// finds the rider that breaks a candidate by halves. A front half that
+/// lands leaves the break among the riders after it, so the next takes
+/// half of those rather than all of them again: forgetting that took
+/// seven runs to find the fourth or fifth of five riders. A second rider
+/// falling alone with nothing landed between says the train is red for
+/// more than its riders, as for a main that broke or a gate that failed
+/// to run, so every rider falls back to running again alone rather than
+/// the train halving through each of them: about twice their number in
+/// runs, where falling costs one each. Two riders that each break it,
+/// boarded one after the other, read the same, and the riders behind
+/// them fall back too: telling the two apart takes a run of main alone,
+/// and falling back costs only what each paid before the train.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Splitting {
+    /// How many riders, the first to board, a red candidate is known to
+    /// lie among; none while no red is being searched.
+    suspects: usize,
+    /// Whether a rider fell riding alone since the train last landed.
+    fell_alone: bool,
+}
+
+impl Splitting {
+    /// How many riders, the first to board, the next candidate takes.
+    fn take(&self) -> usize {
+        match self.suspects {
+            0 => usize::MAX,
+            suspects => (suspects / 2).max(1),
+        }
+    }
+
+    /// A candidate of `riding` riders failed.
+    fn red(&mut self, riding: usize) -> After {
+        if riding > 1 {
+            self.suspects = riding;
+            return After::Narrows;
+        }
+        let twice = self.fell_alone;
+        *self = Self {
+            suspects: 0,
+            fell_alone: !twice,
+        };
+        if twice { After::AllFall } else { After::Falls }
+    }
+
+    /// A candidate of `riding` riders landed.
+    fn landed(&mut self, riding: usize) {
+        self.suspects = self.suspects.saturating_sub(riding);
+        self.fell_alone = false;
+    }
+}
+
 /// Ride the train until no one waits on it: `merge-net ride`, as its unit
 /// runs it.
 ///
@@ -329,13 +430,15 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
     let slug = slug_of(url);
     let owner = slug.split('/').next().unwrap_or_default().to_owned();
     let git = |arguments: &[&str]| run_git(&checkout, arguments);
+    let mut splitting = Splitting::default();
     loop {
         let waiting = riders(&root);
         if waiting.is_empty() {
             println!("merge-net: no one waits on the train");
             return Ok(ExitCode::SUCCESS);
         }
-        let mergings = aboard(&root, &git, &slug, &owner, &waiting);
+        let mut mergings = aboard(&root, &git, &slug, &owner, &waiting);
+        mergings.truncate(splitting.take());
         if mergings.is_empty() {
             continue;
         }
@@ -365,18 +468,12 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
                 .join(", ")
         );
         if !gate(&checkout, &log) {
-            for head in &done.merged {
-                let why = format!(
-                    "the candidate it rode, {}, failed changed-checks; its words are in {}",
-                    short(&candidate),
-                    log.display()
-                );
-                let _ = fall(&root, head, &why);
-            }
+            red(&root, &candidate, &log, &done.merged, &mut splitting);
             continue;
         }
         match land(&checkout, &git, &candidate, &mergings, &done.merged) {
             Landing::Landed(landed) => {
+                splitting.landed(done.merged.len());
                 for head in &done.merged {
                     alight(&root, head);
                 }
@@ -385,6 +482,7 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
             }
             Landing::Moved => {}
             Landing::Refused(why) => {
+                splitting = Splitting::default();
                 for head in &done.merged {
                     let _ = fall(
                         &root,
@@ -394,6 +492,44 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
                 }
             }
         }
+    }
+}
+
+/// After the candidate `candidate` of `merged` riders failed, its words in
+/// `log`: the next takes fewer riders, or the rider that rode it alone
+/// falls, or every rider does, as `splitting` says.
+fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &mut Splitting) {
+    let (falling, why) = match splitting.red(merged.len()) {
+        After::Falls => (merged.to_vec(), "the candidate it rode alone"),
+        After::AllFall => (
+            riders(root).into_iter().map(|rider| rider.head).collect(),
+            "the train gave up, as the second rider in a row to ride a candidate alone \
+             failed too, so its red is not one rider's; the last",
+        ),
+        After::Narrows => {
+            println!(
+                "merge-net: the candidate {} failed changed-checks, so the train takes its \
+                 first {} of {} riders next",
+                short(candidate),
+                splitting.take(),
+                merged.len()
+            );
+            return;
+        }
+    };
+    println!(
+        "merge-net: the candidate {} failed changed-checks, so {} of the train's riders fall \
+         back to running again alone",
+        short(candidate),
+        falling.len()
+    );
+    for head in &falling {
+        let said = format!(
+            "{why}, {}, failed changed-checks; its words are in {}",
+            short(candidate),
+            log.display()
+        );
+        let _ = fall(root, head, &said);
     }
 }
 
@@ -619,178 +755,4 @@ fn run_git(folder: &Path, arguments: &[&str]) -> Result<String, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A state folder of the test's own.
-    fn root(name: &str) -> PathBuf {
-        let root =
-            std::env::temp_dir().join(format!("merge-net-train-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        root
-    }
-
-    fn rider(head: &str, at: u64) -> Rider {
-        Rider {
-            head: head.to_owned(),
-            branch: format!("jitsusama/{head}"),
-            at,
-        }
-    }
-
-    #[test]
-    fn riders_are_read_back_in_the_order_they_boarded() {
-        let root = root("order");
-        board(&root, &rider("b2", 20)).unwrap();
-        board(&root, &rider("a1", 10)).unwrap();
-        assert_eq!(
-            riders(&root),
-            vec![rider("a1", 10), rider("b2", 20)],
-            "the riders weren't read back first boarded first"
-        );
-        fs::remove_dir_all(&root).unwrap();
-    }
-
-    #[test]
-    fn a_rider_that_fell_rides_no_more_and_runs_again_alone() {
-        let root = root("fell");
-        board(&root, &rider("a1", 10)).unwrap();
-        fall(&root, "a1", "it conflicts with main").unwrap();
-        assert!(riders(&root).is_empty(), "a rider that fell still rode");
-        assert_eq!(
-            seat(false, fell(&root, "a1")),
-            Seat::Fell("it conflicts with main".to_owned()),
-            "a head that fell boarded again"
-        );
-        assert_eq!(seat(true, None), Seat::Rides, "a rider boarded twice");
-        assert_eq!(seat(false, None), Seat::Board, "a new head didn't board");
-        fs::remove_dir_all(&root).unwrap();
-    }
-
-    #[test]
-    fn a_merge_is_worded_as_githubs_merge_button_words_it() {
-        assert_eq!(
-            subject(5066, "Jitsusama", "jitsusama/quarantine-stands-apart"),
-            "Merge pull request #5066 from Jitsusama/jitsusama/quarantine-stands-apart",
-            "the net's searches read a merge's pull request from these words"
-        );
-    }
-
-    /// Git in `repo` with no user's or system's config, as the other
-    /// modules' tests run it, giving what it printed or why it failed.
-    fn git_in(repo: &Path, arguments: &[&str]) -> Result<String, String> {
-        let ran = Command::new("git")
-            .arg("-C")
-            .arg(repo)
-            .args(arguments)
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_AUTHOR_NAME", "t")
-            .env("GIT_AUTHOR_EMAIL", "t@t")
-            .env("GIT_COMMITTER_NAME", "t")
-            .env("GIT_COMMITTER_EMAIL", "t@t")
-            .output()
-            .map_err(|error| error.to_string())?;
-        if ran.status.success() {
-            Ok(String::from_utf8_lossy(&ran.stdout).trim().to_owned())
-        } else {
-            Err(String::from_utf8_lossy(&ran.stderr).into_owned())
-        }
-    }
-
-    /// A repository at `repo` holding one commit on main, which it gives.
-    fn based(repo: &Path) -> String {
-        fs::create_dir_all(repo).unwrap();
-        git_in(repo, &["init", "--quiet", "-b", "main"]).unwrap();
-        fs::write(repo.join("shared"), "main\n").unwrap();
-        git_in(repo, &["add", "shared"]).unwrap();
-        git_in(repo, &["commit", "--quiet", "-m", "base"]).unwrap();
-        git_in(repo, &["rev-parse", "HEAD"]).unwrap()
-    }
-
-    /// Commit `words` as `file` in `repo` on `from`, giving the commit.
-    fn change(repo: &Path, from: &str, file: &str, words: &str) -> String {
-        git_in(repo, &["checkout", "--quiet", "--detach", from]).unwrap();
-        fs::write(repo.join(file), words).unwrap();
-        git_in(repo, &["add", file]).unwrap();
-        git_in(repo, &["commit", "--quiet", "-m", file]).unwrap();
-        git_in(repo, &["rev-parse", "HEAD"]).unwrap()
-    }
-
-    fn merging(head: &str, number: u64) -> Merging {
-        Merging {
-            head: head.to_owned(),
-            subject: subject(number, "o", head),
-            title: format!("change {number}"),
-        }
-    }
-
-    #[test]
-    fn a_passed_candidate_lands_on_main_only_as_a_fast_forward() {
-        let place = root("land");
-        let (origin, checkout) = (place.join("origin.git"), place.join("checkout"));
-        let base = based(&checkout);
-        let url = origin.display().to_string();
-        git_in(&place, &["init", "--quiet", "--bare", "-b", "main", &url]).unwrap();
-        let git = |arguments: &[&str]| git_in(&checkout, arguments);
-        git(&["remote", "add", "origin", &url]).unwrap();
-        git(&["push", "--quiet", "origin", "main"]).unwrap();
-        git(&["fetch", "--quiet", "origin", "main"]).unwrap();
-        let head = change(&checkout, &base, "apart", "one\n");
-        let riding = [merging(&head, 1)];
-        let done = cut(&git, &base, &riding).unwrap();
-        let candidate = git(&["rev-parse", "HEAD"]).unwrap();
-        assert_eq!(
-            land(&checkout, &git, &candidate, &riding, &done.merged),
-            Landing::Landed(candidate.clone()),
-            "a passed candidate on a main that stood still didn't land"
-        );
-        assert_eq!(
-            git_in(&origin, &["rev-parse", "main"]).unwrap(),
-            candidate,
-            "origin's main isn't the candidate that landed"
-        );
-        git(&["remote", "set-url", "origin", "/nowhere"]).unwrap();
-        let next = change(&checkout, &candidate, "next", "two\n");
-        let more = [merging(&next, 2)];
-        let again = cut(&git, &candidate, &more).unwrap();
-        let refused = git(&["rev-parse", "HEAD"]).unwrap();
-        assert!(
-            matches!(
-                land(&checkout, &git, &refused, &more, &again.merged),
-                Landing::Refused(_)
-            ),
-            "a push refused while main stood still didn't fall back"
-        );
-        fs::remove_dir_all(&place).unwrap();
-    }
-
-    #[test]
-    fn a_candidate_merges_each_rider_and_leaves_out_one_that_conflicts() {
-        let repo = root("cut");
-        let base = based(&repo);
-        let git = |arguments: &[&str]| git_in(&repo, arguments);
-        let apart = change(&repo, &base, "apart", "one\n");
-        let clashes = change(&repo, &base, "shared", "theirs\n");
-        let main = change(&repo, &base, "shared", "mains\n");
-        let done = cut(&git, &main, &[merging(&apart, 1), merging(&clashes, 2)]).unwrap();
-        assert_eq!(
-            done,
-            Cut {
-                merged: vec![apart.clone()],
-                conflicted: vec![clashes],
-            },
-            "the candidate didn't merge the rider apart and leave out the one that clashed"
-        );
-        assert_eq!(
-            git(&["log", "-1", "--format=%P"]).unwrap(),
-            format!("{main} {apart}"),
-            "the candidate's merge doesn't sit on main with the rider beside it"
-        );
-        assert!(
-            git(&["status", "--porcelain"]).unwrap().is_empty(),
-            "the conflicted merge was left half done"
-        );
-        fs::remove_dir_all(&repo).unwrap();
-    }
-}
+mod tests;

@@ -262,6 +262,13 @@ fn candidates(commit: &str, main: &str, files: &[String]) -> Result<Vec<String>,
 /// changed-checks named there built.
 fn ready(commit: &str) -> Result<ExitCode, String> {
     let commit = git(&["rev-parse", "--verify", &format!("{commit}^{{commit}}")])?;
+    if let Some(said) = train::riding(&commit) {
+        eprintln!(
+            "merge-net: {} rides the merge train: {said}",
+            short(&commit)
+        );
+        return Ok(ExitCode::FAILURE);
+    }
     git(&["fetch", "--quiet", "origin", "main"])?;
     let main = git(&["rev-parse", "refs/remotes/origin/main"])?;
     let holds = |older: &str, newer: &str| {
