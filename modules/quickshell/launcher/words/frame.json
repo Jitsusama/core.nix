@@ -51,6 +51,7 @@
       "name": "Machine",
       "term": "Machine",
       "glyph": "computer",
+      "part": "machine",
       "holds": [
         "waits",
         "machine:cpu",
