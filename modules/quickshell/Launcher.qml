@@ -5040,8 +5040,11 @@ Scope {
         // timed in the opening's line: open is already true by then, so only
         // the ask held until its frame tells them apart. Timed again, each of
         // Joel's "→ On Screen" took its opening's frame, a median 110 ms,
-        // the slowest place in his journal (2026-11-14).
-        if (openAsked < 0)
+        // the slowest place in his journal (2026-11-14). The fill's walk
+        // into a kept place is its opening's too, though its frame is
+        // drawn and the ask let go by then: a kept Super+N timed its fill
+        // as "→ On Screen" (a gate, 2026-11-16).
+        if (openAsked < 0 && !fillingPlace)
             keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
         return went();
     }
@@ -9302,7 +9305,7 @@ Scope {
         if (held.length === 0)
             return;
         placesKept[name] = { held: held, matches: matches, depth: homeDepth,
-            under: keptUnder(name) };
+            under: keptUnder(name), led: ledPlaces.includes(name) };
     }
     // What a place's rows follow of the window the launcher opens over, as
     // its source says (keptOver): Shortcuts' the keys that work there. The
@@ -9325,8 +9328,11 @@ Scope {
         if (!kept || !homeHeld || parting !== "" || kept.under !== keptUnder(name))
             return false;
         const source = collections.find(one => one.settings.name === name) ?? null;
+        // One Super+N is led to is listed as it stands however it's asked
+        // for, since what it holds comes and goes, and one kept as the
+        // shell started (warmLed) holds no rows.
         const listed = source?.keptListed === true ? keptListing(source)
-            : listedNow === true ? ledListing(name) : kept.matches;
+            : listedNow === true || kept.led === true ? ledListing(name) : kept.matches;
         if (listed === null)
             return false;
         keeping = true;
@@ -10163,6 +10169,14 @@ Scope {
             warmingOn.start();
             return;
         }
+        const led = place - chordPlaces.length;
+        if (led < ledPlaces.length) {
+            warmLed(ledPlaces[led]);
+            warmedTook += KeyTimes.now() - began;
+            warmedTurnEnds(`${ledPlaces[led]} kept`);
+            warmingOn.start();
+            return;
+        }
         warmingOn.stop();
         // Home is found with no place held, as the last place kept left
         // its step held.
@@ -10196,6 +10210,35 @@ Scope {
             return !!source && typeof source.leading !== "function"
                 && leadingTo(name) === null;
         })
+
+    // The places a source leads to that Super+N opens (Notifications.qml's
+    // history), kept as the chords' are: only a chord's were, so each
+    // shell's first Super+N opened them whole, 99 ms to its frame after
+    // both of Joel's starts, while every later one drew from what was kept
+    // in 13 to 30 (2026-11-15 and 16).
+    readonly property var ledPlaces: ["onScreen", "notices"]
+
+    // Keeps a place a source leads to as its walk would leave it, each row
+    // it steps through held as a step, but stepping into none, since a
+    // step in tells its source it opened, and the notices on screen count
+    // as seen once stepped into (Now.qml's onScreenRow). No rows are kept,
+    // since they're listed as they stand as it opens (ledListing).
+    function warmLed(name) {
+        const led = leadingTo(name);
+        if (placesKept[name] || led === null)
+            return;
+        unhold(`warming was keeping ${name}`);
+        keeping = true;
+        try {
+            held = [placeStep(led.leading)].concat(led.rows.map(row =>
+                Object.assign(here(), { key: steadyId(row), row: row, rows: [] })));
+            homeDepth = held.length;
+            matches = [];
+            keepPlace(name);
+        } finally {
+            keeping = false;
+        }
+    }
 
     // Keeps a place as its chord would leave it, its rows listed whole,
     // while shut and without telling its source it opened, since a source
@@ -10365,6 +10408,9 @@ Scope {
         }
     }
     property bool fillPresented: false
+    // Whether the fill is opening a kept place whole, so its steps aren't
+    // timed as Joel's (enter).
+    property bool fillingPlace: false
     function presentedFill(by) {
         if (!fillPresented)
             return;
@@ -10416,7 +10462,12 @@ Scope {
         // A place a chord opened, opened whole now, as its chord would.
         const place = openInto;
         if (place !== "") {
-            into(place);
+            fillingPlace = true;
+            try {
+                into(place);
+            } finally {
+                fillingPlace = false;
+            }
             const lands = landsOnFill;
             landsOnFill = null;
             if (lands !== null)

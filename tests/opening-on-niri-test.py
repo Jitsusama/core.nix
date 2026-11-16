@@ -1434,6 +1434,49 @@ def test_super_n_draws_the_notices_on_screen_from_what_was_kept(shell: Shell) ->
     shell.notices_gone()
 
 
+def test_super_n_first_after_a_restart_draws_the_notices_on_screen_from_what_was_kept(
+    shell: Shell,
+) -> None:
+    """Each first Super+N after a restart draws the notices as the shell kept them, as it started.
+
+    Only the places a chord opens were kept as the shell started, so each shell's first Super+N
+    opened them whole: Joel's took 99 ms to the frame after two starts, 121 ms presented from the
+    ask, while every later one drew from what was kept in 13 to 30 (2026-11-15 and 16). With
+    none on screen it opens the notices, and with some those on screen, each kept apart.
+    """
+    shell.restart()
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    launcher_on_niri.warmed(shell)
+    timed = latest(openings(shell))
+    shell.take_notices()
+    opening = presented_after(shell, timed + 1)
+    assert opening["into"] == "notices", f"the opening wasn't into the notices: {opening}"
+    assert opening.get("kept"), f"the first Super+N since the start was made whole: {opening}"
+    shell.launcher_ready()
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    # Asked for by name, as a chord is, it's listed as it stands too, never drawn as kept.
+    shell.as_account(shell.ipc("collection", "notices"))
+    opening = presented_after(shell, timed + 2)
+    assert opening.get("kept"), f"the notices asked for by name were made whole: {opening}"
+    shell.launcher_ready()
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    for summary in ["Dunlin", "Sanderling"]:
+        with shell.told(f"shows card {summary}"):
+            shell.as_account(f"notify-send --expire-time=60000 '{summary}' 'on screen'")
+    timed = latest(openings(shell))
+    shell.take_notices()
+    opening = presented_after(shell, timed + 1)
+    assert opening["into"] == "onScreen", f"the opening wasn't into those on screen: {opening}"
+    assert opening.get("kept"), f"the first on screen since the start was made whole: {opening}"
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["rows"] == ["Dunlin", "Sanderling"])
+    shell.close_launcher()
+    shell.as_account("qs ipc call notices putAway")
+    shell.notices_gone()
+
+
 def test_a_kept_opening_wakes_its_sources_a_frame_apart(shell: Shell) -> None:
     """A kept opening's sources wake a few a frame once it's filled in, home's first row's first.
 
