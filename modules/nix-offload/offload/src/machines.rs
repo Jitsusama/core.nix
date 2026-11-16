@@ -146,6 +146,9 @@ pub enum Named {
     /// One lent here that doesn't answer, or none since one was left out,
     /// with nothing to stand in.
     Unanswered,
+    /// The one lent, whose way up stalled as every other lender's did at
+    /// once, so the stall is this machine's own and it stays named.
+    Stalled,
     /// None is lent, and nothing stands in.
     Nothing,
 }
@@ -160,7 +163,7 @@ pub enum Named {
 /// no builder, but any with room comes first.
 pub fn for_anything(
     lent: Option<&str>,
-    state: State,
+    (state, shared_stall): (State, bool),
     second: &[String],
     vm: &[String],
 ) -> (String, Named) {
@@ -174,6 +177,8 @@ pub fn for_anything(
         (vm, Named::Vm(vm.len()))
     } else if full {
         (&[], Named::Lent)
+    } else if lent.is_some() && shared_stall {
+        (&[], Named::Stalled)
     } else if lent.is_some() || state == State::Dropped {
         (&[], Named::Unanswered)
     } else {
@@ -186,7 +191,10 @@ pub fn for_anything(
 
 /// Say who the file for any work names, once it changes from `was`.
 fn say_named(was: Named, named: Named) {
-    let stood_in = matches!(was, Named::Second | Named::Vm(_) | Named::Unanswered);
+    let stood_in = matches!(
+        was,
+        Named::Second | Named::Vm(_) | Named::Unanswered | Named::Stalled
+    );
     let said = match named {
         _ if named == was => return,
         Named::Lent if stood_in => {
@@ -198,6 +206,9 @@ fn say_named(was: Named, named: Named) {
         Named::Vm(1) => "no lent builder answers; 1 VM builder stands in".to_owned(),
         Named::Vm(count) => format!("no lent builder answers; {count} VM builders stand in"),
         Named::Unanswered => "no builder answers at all".to_owned(),
+        Named::Stalled => "every lender's way up stalled at once, so the stall is this \
+                           machine's own, and the lent builder stays named for any work"
+            .to_owned(),
         Named::Nothing if stood_in => "nothing stands in any more, and none is lent".to_owned(),
         Named::Lent | Named::Nothing => return,
     };
@@ -211,6 +222,10 @@ fn told(was: Named, named: Named) -> Option<(&'static str, String)> {
     let back = |who: &str| Some(("back", format!("a builder answers again: {who}")));
     match (was, named) {
         (Named::Unanswered, Named::Unanswered) => None,
+        (Named::Unanswered, Named::Stalled) => back(
+            "every lender's way up stalled at once, so the stall is this machine's own, and \
+             the lent one stays named",
+        ),
         (_, Named::Unanswered) => Some((
             "none",
             format!(
@@ -270,6 +285,16 @@ fn stand_ins(second: &Path, vm: &[PathBuf], at: u64) -> (Vec<String>, Vec<String
         .flat_map(|dir| lines(dir))
         .collect();
     (second, vm)
+}
+
+/// Whether the lenders in `second` and `vm` stall as the one lent does:
+/// none passes its proofs and one at least built its last but couldn't
+/// carry its copy up, fresh at `at`. Then the way up from here is what
+/// fails, which no other builder would cure.
+fn stalled_alike(second: &Path, vm: &[PathBuf], at: u64) -> bool {
+    let lenders = || std::iter::once(second).chain(vm.iter().map(PathBuf::as_path));
+    !lenders().any(|dir| proof::passes_in(dir, at))
+        && lenders().any(|dir| proof::stalls_in(dir, at))
 }
 
 /// How the builder beside `line` names stands, keeping it in `kept`,
@@ -535,6 +560,9 @@ pub struct Machines {
     /// The line of the one lent as `proven` last said it, and how its
     /// proofs stood then.
     proven: (Option<String>, State),
+    /// Whether the one lent built its last proof but couldn't carry its
+    /// copy up, as `way_stalled` last said.
+    way_stalled: bool,
     /// The second lent builder's folder and the VM builders', whose
     /// builders stand in for the one lent here, once `stand_ins_from`
     /// gives them.
@@ -590,6 +618,7 @@ impl Machines {
             alone: None,
             anything: None,
             proven: (None, State::None),
+            way_stalled: false,
             stand_ins: None,
             named: Named::Nothing,
             telling: None,
@@ -681,6 +710,12 @@ impl Machines {
     /// of the last, once it's gone.
     pub fn proven(&mut self, line: Option<&str>, state: State) {
         self.proven = (line.map(str::to_owned), state);
+    }
+
+    /// Say whether the one lent built its last proof but couldn't carry
+    /// its copy up.
+    pub fn way_stalled(&mut self, stalled: bool) {
+        self.way_stalled = stalled;
     }
 
     /// How the builders beside stand, where there are builders beside.
@@ -808,7 +843,12 @@ impl Machines {
                 .as_ref()
                 .map(|(second, vm)| stand_ins(second, vm, seconds()))
                 .unwrap_or_default();
-            let (said, named) = for_anything(any.as_deref(), state, &second, &vm);
+            let shared = self.way_stalled
+                && self
+                    .stand_ins
+                    .as_ref()
+                    .is_some_and(|(second, vm)| stalled_alike(second, vm, seconds()));
+            let (said, named) = for_anything(any.as_deref(), (state, shared), &second, &vm);
             if self.stand_ins.is_some() {
                 say_named(self.named, named);
             }
@@ -1205,56 +1245,135 @@ mod tests {
     fn the_lent_builder_is_named_for_any_work_while_it_answers_else_a_stand_in() {
         let lines = |lines: &[&str]| lines.iter().map(|line| (*line).to_owned()).collect();
         let (second, vm): (Vec<String>, Vec<String>) = (lines(&["second"]), lines(&["vm", "vm-3"]));
+        let alone = |state: State| (state, false);
         for state in [State::None, State::Unproven, State::Passing] {
             assert_eq!(
-                for_anything(Some("lent"), state, &second, &vm),
+                for_anything(Some("lent"), alone(state), &second, &vm),
                 ("lent\n".to_owned(), Named::Lent),
                 "{state:?}"
             );
         }
         assert_eq!(
-            for_anything(Some("lent"), State::Failing, &second, &vm),
+            for_anything(Some("lent"), alone(State::Failing), &second, &vm),
             ("lent\nsecond\n".to_owned(), Named::Second),
             "one failing once is still named, the second first beside it"
         );
         assert_eq!(
-            for_anything(Some("lent"), State::Failing, &[], &vm),
+            for_anything(Some("lent"), alone(State::Failing), &[], &vm),
             ("lent\nvm\nvm-3\n".to_owned(), Named::Vm(2))
         );
         assert_eq!(
-            for_anything(None, State::Dropped, &[], &vm),
+            for_anything(None, alone(State::Dropped), &[], &vm),
             ("vm\nvm-3\n".to_owned(), Named::Vm(2))
         );
         assert_eq!(
-            for_anything(None, State::None, &[], &vm),
+            for_anything(None, alone(State::None), &[], &vm),
             ("vm\nvm-3\n".to_owned(), Named::Vm(2)),
             "none lent"
         );
         assert_eq!(
-            for_anything(Some("lent"), State::Failing, &[], &[]),
+            for_anything(Some("lent"), alone(State::Failing), &[], &[]),
             ("lent\n".to_owned(), Named::Unanswered)
         );
         assert_eq!(
-            for_anything(None, State::Dropped, &[], &[]),
+            for_anything(None, alone(State::Dropped), &[], &[]),
             (String::new(), Named::Unanswered)
         );
         assert_eq!(
-            for_anything(None, State::None, &[], &[]),
+            for_anything(None, alone(State::None), &[], &[]),
             (String::new(), Named::Nothing)
         );
         assert_eq!(
-            for_anything(Some("lent"), State::Full, &second, &vm),
+            for_anything(Some("lent"), alone(State::Full), &second, &vm),
             ("second\n".to_owned(), Named::Second),
             "one with room stands in for a full one"
         );
         assert_eq!(
-            for_anything(Some("lent"), State::Full, &[], &vm),
+            for_anything(Some("lent"), alone(State::Full), &[], &vm),
             ("vm\nvm-3\n".to_owned(), Named::Vm(2))
         );
         assert_eq!(
-            for_anything(Some("lent"), State::Full, &[], &[]),
+            for_anything(Some("lent"), alone(State::Full), &[], &[]),
             ("lent\n".to_owned(), Named::Lent),
             "a full one, collecting as it builds, beats none"
+        );
+    }
+
+    // From 14:40 on 15 November every lender's proof stalled together,
+    // dozens of times in ten minutes, while this machine's memory was
+    // full: each time no builder was said to answer, and switches were
+    // held, though every builder built and only the way up from here
+    // stalled.
+    #[test]
+    fn a_stall_every_lender_shares_keeps_the_lent_builder_named_and_tells_no_one() {
+        assert_eq!(
+            for_anything(Some("lent"), (State::Dropped, true), &[], &[]),
+            ("lent\n".to_owned(), Named::Stalled),
+            "a stall every lender shares is this machine's own"
+        );
+        assert_eq!(
+            for_anything(None, (State::Dropped, true), &[], &[]),
+            (String::new(), Named::Unanswered),
+            "with none lent there's nothing to keep named"
+        );
+        let second = vec!["second".to_owned()];
+        assert_eq!(
+            for_anything(Some("lent"), (State::Dropped, true), &second, &[]),
+            ("lent\nsecond\n".to_owned(), Named::Second),
+            "one that answers stands in as before"
+        );
+        assert_eq!(told(Named::Lent, Named::Stalled), None, "no one is told");
+        assert_eq!(told(Named::Stalled, Named::Lent), None);
+        assert_eq!(
+            told(Named::Stalled, Named::Unanswered).map(|(word, _)| word),
+            Some("none"),
+            "a stall that's no longer shared is told"
+        );
+        assert_eq!(
+            told(Named::Unanswered, Named::Stalled).map(|(word, _)| word),
+            Some("back"),
+            "once the stall is seen to be shared, builds go again"
+        );
+    }
+
+    #[test]
+    fn a_stall_is_shared_only_while_no_lender_passes_and_another_stalls() {
+        let root = tempfile::tempdir().unwrap();
+        let at = 10_000;
+        let health = |name: &str, state: &str, stalled: bool| {
+            let dir = root.path().join(name);
+            fs::create_dir_all(&dir).unwrap();
+            let said = serde_json::json!({
+                "state": state, "stalled": stalled,
+                "lastSuccess": at - 600, "lastFailure": at - 20,
+            });
+            fs::write(dir.join("health.json"), said.to_string()).unwrap();
+            dir
+        };
+        let second = health("more", "dropped", true);
+        let vm = vec![health("vm", "failing", true), root.path().join("vm-9")];
+        assert!(
+            stalled_alike(&second, &vm, at),
+            "every lender stalls at once"
+        );
+        assert!(
+            !stalled_alike(&second, &vm, at + 600),
+            "a stall said long ago isn't shared now"
+        );
+        let vm_passing = vec![health("vm-2", "passing", false)];
+        fs::write(
+            vm_passing[0].join("health.json"),
+            serde_json::json!({"state": "passing", "lastSuccess": at}).to_string(),
+        )
+        .unwrap();
+        assert!(
+            !stalled_alike(&second, &vm_passing, at),
+            "one carrying its copies shows the way up works"
+        );
+        let refused = health("refused", "dropped", false);
+        assert!(
+            !stalled_alike(&refused, &[], at),
+            "one that didn't build fails for its own reasons"
         );
     }
 

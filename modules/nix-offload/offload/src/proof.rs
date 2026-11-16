@@ -897,6 +897,20 @@ pub fn passes_in(dir: &Path, now: u64) -> bool {
             .is_some_and(|success| success + FRESH >= now)
 }
 
+/// Whether the builder whose health is in `dir` fails its proofs as
+/// stalled, building but unable to carry a copy up, as said within
+/// [`FRESH`] of `now`.
+pub fn stalls_in(dir: &Path, now: u64) -> bool {
+    let Ok(text) = fs::read_to_string(dir.join(HEALTH)) else {
+        return false;
+    };
+    let said: Value = serde_json::from_str(&text).unwrap_or_default();
+    said["stalled"] == true
+        && said["lastFailure"]
+            .as_u64()
+            .is_some_and(|failure| failure + FRESH >= now)
+}
+
 /// Whether the process `pid` ends within 5 s: once gone, or a zombie no
 /// one has reaped, as one orphaned in a build's sandbox can stay.
 #[cfg(test)]
