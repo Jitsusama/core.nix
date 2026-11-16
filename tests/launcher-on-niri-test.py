@@ -3316,27 +3316,27 @@ def test_network_says_how_warp_stands_before_its_link_is_read(shell: Shell) -> N
     The margin watches how WARP stands all the time (WarpState.qml), so the row waiting on
     the link's first read says it rather than an ellipsis: degraded here, and with no round
     trip beside it, since none is read yet. Opening and closing the launcher first forgets
-    what an earlier case's terminal ask kept (Warp.qml's onOpenChanged).
+    what an earlier case's terminal ask kept (Warp.qml's onOpenChanged). The margin's own
+    piece says nothing of a moment's degraded, since the warp daemon says an episode only
+    once it has held a minute (modules/warp/src/degraded.rs), so the row is asked until it
+    hears.
     """
     said = warp_said()
     try:
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
         shell.close_launcher()
-        mark = shell.mark()
         status = json.loads((said / "status.json").read_text())
         status["reason"] = "NetworkDegraded"
         (said / "status.json").write_text(json.dumps(status))
         deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-        while not any(
-            report.startswith("holds margin") and "tunnel" in report.split()
-            for report in shell.said_since(mark)[0]
-        ):
-            assert time.monotonic() < deadline, "the margin never heard WARP degraded"
+        while True:
+            network = shown_to_terminal(shell, "network")
+            work = next(row for row in network["rows"] if row["name"] == "Work Network")
+            if work["side"] == "degraded":
+                break
+            assert time.monotonic() < deadline, f"the row never said WARP degraded: {work}"
             time.sleep(ASKED_AGAIN)
-        network = shown_to_terminal(shell, "network")
-        work = next(row for row in network["rows"] if row["name"] == "Work Network")
-        assert work["side"] == "degraded", work
     finally:
         warp_forgotten(said)
 

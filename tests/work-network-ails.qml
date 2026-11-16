@@ -29,12 +29,15 @@ QtObject {
         evidenceNone: "WARP gives no figures for it",
         hour: "{minutes} of the last hour, in {times} spells",
         hourOnce: "{minutes} of the last hour, in one spell",
-        causeAgents: "Agents fill it: nothing for you to do.",
-        causeUpload: "Your upload is {full} full: nothing for you to do.",
-        causeBeyond: "It's past your home: nothing for you to do; it recovers by itself.",
         connecting: "connecting since {time}",
         notAnswering: "not answering",
         slow: "slow \u00b7 {waiting} waiting"
+    })
+    // What lies behind an episode, each a sentence of its own.
+    readonly property var tells: ({
+        agents: "Agents fill it: nothing for you to do.",
+        upload: "Your upload is {full} full: nothing for you to do.",
+        beyond: "It's past your home: nothing for you to do; it recovers by itself."
     })
 
     // 21:50, as a clock reads it, and the time the cases are read at.
@@ -77,7 +80,7 @@ QtObject {
         Expect.same("an episode the daemon judges held says for how long",
             WorkNetwork.ails(degraded, said, began, clock), ["degraded for 6 min"]);
         Expect.same("and says WARP's evidence, the hour, and that there's nothing to do",
-            WorkNetwork.context(degraded, said),
+            WorkNetwork.context(degraded, said, tells),
             "WARP measures 92 ms and 5.4% lost on the way to its edge; 6 min of the last hour, "
             + "in one spell. It's past your home: nothing for you to do; it recovers by itself.");
         const flapping = episode({ status: "Connected", reason: "NetworkHealthy" },
@@ -87,20 +90,20 @@ QtObject {
         Expect.same("one that flips is said on and off, through its healthy gaps",
             WorkNetwork.ails(flapping, said, began, clock), ["degraded on and off for 1 h 15 min"]);
         Expect.same("spells past one are counted",
-            WorkNetwork.context(flapping, said).includes("of the last hour, in 9 spells."), true);
+            WorkNetwork.context(flapping, said, tells).includes("of the last hour, in 9 spells."), true);
         Expect.same("agents filling the upload are named",
-            WorkNetwork.context(flapping, said).endsWith("Agents fill it: nothing for you to do."),
+            WorkNetwork.context(flapping, said, tells).endsWith("Agents fill it: nothing for you to do."),
             true);
         const full = episode({ status: "Connected", reason: "NetworkDegraded" },
             Object.assign({}, held, { rtt_ms: null, cause: "upload",
                 upload: { full_pct: 90, shares: null } }));
         Expect.same("a full upload says how full, and no figures says none",
-            WorkNetwork.context(full, said), "WARP gives no figures for it; 6 min of the last "
+            WorkNetwork.context(full, said, tells), "WARP gives no figures for it; 6 min of the last "
             + "hour, in one spell. Your upload is 90% full: nothing for you to do.");
         Expect.same("an episode is timed, since its minutes are said",
             WorkNetwork.timed(degraded), true);
         Expect.same("no episode has no context", WorkNetwork.context(state(
-            { status: "Connected", reason: "NetworkDegraded" }, null), said), "");
+            { status: "Connected", reason: "NetworkDegraded" }, null), said, tells), "");
         const slow = Object.assign(state({ status: "Connected", reason: "NetworkHealthy" },
             null), { slow: { waiting_ms: 120 } });
         Expect.same("a way the daemon judges slow says what waits",

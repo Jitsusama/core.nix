@@ -5,7 +5,7 @@
 # "degraded" he could do nothing with (2026-11-15: "if we are going to put
 # something in now, it has to give me more information, someway to engage,
 # link into more details"), so a line that says a state and stops fails.
-# usage: now-lines-have-a-way-in.sh <pieces folder>
+# usage: now-pieces-have-a-way-in.sh <pieces folder>
 set -euo pipefail
 
 # The pieces excused, each with why a way in would add nothing.

@@ -201,17 +201,18 @@
         "downSince": "down since {time}",
         "degraded": "degraded for {lasted}",
         "degradedOnAndOff": "degraded on and off for {lasted}",
-        "showIt": "Show the Work Network",
         "evidence": "WARP measures {rtt} and {loss} lost on the way to its edge",
         "evidenceNone": "WARP gives no figures for it",
         "hour": "{minutes} of the last hour, in {times} spells",
         "hourOnce": "{minutes} of the last hour, in one spell",
-        "causeAgents": "Agents' uploads fill your line, and the shaper keeps your calls and typing ahead of them: nothing for you to do.",
-        "causeUpload": "Your upload is {full} full, and eases as what's sending finishes: nothing for you to do.",
-        "causeBeyond": "Your line has room, so the trouble is past your home, on the way to WARP: nothing for you to do; it recovers by itself.",
         "connecting": "connecting since {time}",
         "notAnswering": "not answering",
         "slow": "slow \u00b7 {waiting} waiting"
+      },
+      "tells": {
+        "agents": "Agents' uploads fill the connection, and the shaper keeps your calls and typing ahead of them: nothing for you to do.",
+        "upload": "Your upload is {full} full, and eases as what's sending finishes: nothing for you to do.",
+        "beyond": "Your connection has room, so the trouble is past your home, on the way to WARP: nothing for you to do; it recovers by itself."
       }
     },
     {

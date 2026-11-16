@@ -86,8 +86,9 @@ function ails(state, said, now, clock) {
 // What more there is to know of an episode of degraded, as Now says it
 // beneath the line: WARP's own evidence, the hour, and what lies behind
 // it as the daemon judges, with what Joel can do, which is nothing in each
-// case today, said plainly. Empty with no episode.
-function context(state, said) {
+// case today, said plainly, as a sentence of its own from `tells`. Empty
+// with no episode.
+function context(state, said, tells) {
     const episode = state?.degraded;
     if (!episode || state?.said?.status !== "Connected") {
         return "";
@@ -98,8 +99,7 @@ function context(state, said) {
     const times = episode.hour?.times ?? 0;
     const hour = filled(times === 1 ? said.hourOnce : said.hour,
         { minutes: `${episode.hour?.minutes ?? 0} min`, times: `${times}` });
-    const causes = { agents: said.causeAgents, upload: said.causeUpload };
-    const cause = filled(causes[episode.cause] ?? said.causeBeyond,
+    const cause = filled(tells[episode.cause] ?? tells.beyond,
         { full: `${episode.upload?.full_pct ?? ""}%` });
     return `${evidence}; ${hour}. ${cause}`;
 }

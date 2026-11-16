@@ -150,10 +150,10 @@
     '';
 
   # Every piece that can show a line in Now has a way into more, as
-  # tests/now-lines-have-a-way-in.sh says, since a line saying a state with
+  # tests/now-pieces-have-a-way-in.sh says, since a piece saying a state with
   # nothing to engage is the miss Joel found on the Work Network.
-  every-now-line-has-a-way-in = pkgs.runCommandLocal "every-now-line-has-a-way-in" { } ''
-    ${lib.getExe pkgs.bash} ${../tests/now-lines-have-a-way-in.sh} ${../pieces}
+  every-piece-in-now-has-a-way-in = pkgs.runCommandLocal "every-piece-in-now-has-a-way-in" { } ''
+    ${lib.getExe pkgs.bash} ${../tests/now-pieces-have-a-way-in.sh} ${../pieces}
     touch $out
   '';
 

@@ -18,6 +18,7 @@ Piece {
     id: piece
 
     readonly property var said: Words.of("on:work-network").said ?? {}
+    readonly property var tells: Words.of("on:work-network").tells ?? {}
     // The time it's judged at, which moves only while how long it has
     // stood decides whether it ails, as connecting does.
     property real judgedAt: Date.now()
@@ -31,11 +32,11 @@ Piece {
     value: active ? ails[0] : said.well ?? ""
     // WARP's evidence, the hour and what lies behind a degraded link, with
     // what Joel can do, beneath Now's line (WorkNetwork.js).
-    context: active ? WorkNetwork.context(WarpState.state, said) : ""
+    context: active ? WorkNetwork.context(WarpState.state, said, tells) : ""
     title: Words.name("warp")
     actions: [{
         glyph: Words.glyph("warp"),
-        name: said.showIt ?? "",
+        name: Words.name("warp"),
         verb: "show",
         run: shell => shell.launcher.intoOn("network",
             row => row.asker?.settings?.name === "warp")

@@ -846,8 +846,8 @@
     every home, NixOS and nix-darwin module core offers is brought into an example machine by a
     role, a hardware model, the example or another module, so two that clash fail an example
   '';
-  every-now-line-has-a-way-in = ''
-    every piece that can show a line in Now has a way into more, an action Return runs, a drawer
+  every-piece-in-now-has-a-way-in = ''
+    every piece that can show in Now has a way into more, an action Return runs, a drawer
     or a place it opens, but those excused by name with a reason, and one with none fails
   '';
   every-network-row-has-a-drawer = ''
