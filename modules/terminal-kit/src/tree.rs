@@ -91,6 +91,28 @@ fn takes_value(root: &Help, word: &str) -> bool {
     })
 }
 
+/// Whether any level of the tree, or the flags every command shares,
+/// takes `word` as a flag.
+fn knows_flag(root: &Help, word: &str) -> bool {
+    let mut helps = vec![root];
+    let mut at = 0;
+    while let Some(help) = helps.get(at) {
+        helps.extend(&help.subs);
+        at += 1;
+    }
+    helps
+        .iter()
+        .flat_map(|help| help.every_option())
+        .any(|entry| flag_names(&entry.name).any(|name| name == word))
+}
+
+/// The flags an option's name gives, as `-h` and `--help` from
+/// `-h, --help`, or `--since` from `--since WHEN`.
+fn flag_names(name: &str) -> impl Iterator<Item = &str> {
+    name.split(", ")
+        .filter_map(|variant| variant.split(' ').next())
+}
+
 /// Whether a level takes another word as a name, having taken `filled`.
 /// A last argument takes any number when its name ends in `...`, inside
 /// its optional brackets or outside them (`[why...]` or `[why]...`).
@@ -162,7 +184,23 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
             break;
         }
         let path = walked.path();
-        let failure = if here.subs.is_empty() {
+        // A word left over after a flag no level knows is most likely that
+        // flag's value, so the flag is what was mistyped.
+        let before = at.checked_sub(1).and_then(|before| args.get(before));
+        let unknown = before.filter(|flag| {
+            flag.len() > 1
+                && flag.starts_with('-')
+                && !flag.contains('=')
+                && !knows_flag(root, flag)
+        });
+        let failure = if let Some(flag) = unknown {
+            let known = here.every_option();
+            let names: Vec<&str> = known
+                .iter()
+                .flat_map(|entry| flag_names(&entry.name))
+                .collect();
+            flags::unknown("option", flag, &names)
+        } else if here.subs.is_empty() {
             Failure::new(Exit::Usage, format!("{path} takes no more words"))
                 .because(format!("{word} is one too many"))
         } else {
@@ -324,6 +362,30 @@ mod tests {
             failure.then.as_deref(),
             Some("eero nodes \"Main Floor\" devices --help"),
             "the try-line lost the node's name, or didn't quote it"
+        );
+    }
+
+    #[test]
+    fn a_mistyped_flag_before_its_value_is_named_rather_than_the_value() {
+        // Without it, the value reads as one word too many, and the flag
+        // that was mistyped goes unsaid.
+        let help = eero();
+        let failure = walk(&help, &words("devices Pixel --sinse today"));
+        let failure = failure.expect_err("--sinse is no option");
+        assert_eq!(
+            failure.what, "no option called --sinse",
+            "the flag went unnamed"
+        );
+        assert_eq!(
+            failure.why.as_deref(),
+            Some("did you mean --since?"),
+            "no nearest"
+        );
+        let failure = walk(&help, &words("devices Pixel --version today"));
+        let failure = failure.expect_err("--version takes no value");
+        assert_eq!(
+            failure.what, "eero devices takes no more words",
+            "a flag it knows was called unknown"
         );
     }
 
