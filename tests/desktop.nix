@@ -349,8 +349,9 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-noise-cancelled.py);
 
-  # The areas that walk Passwords, looks-programs, which shoots it, and
-  # keeps-pace, which steps into it under load, whose 1Password's manager
+  # The areas that walk Passwords, looks-programs, which shoots it,
+  # keeps-pace, which steps into it under load, answers-secret-asks, and
+  # keeps-copies, which pastes what it copies and clears, whose 1Password's manager
   # asks a stand-in for 1Password's command, op, since no 1Password account
   # signs in here (desktop/op-stand-in.sh).
   walksPasswords = builtins.elem area [
@@ -358,6 +359,7 @@ let
     "looks-programs"
     "keeps-pace"
     "answers-secret-asks"
+    "keeps-copies"
   ];
   # The area whose passwords daemon answers agents' secret asks, listing
   # the one reference they may be given, the stand-in op's console
@@ -430,6 +432,25 @@ let
     ];
     text = builtins.readFile ../modules/pi/tests/pi-fence-keeps-x11-from-secrets.sh;
   };
+
+  # A command fenced as pi fences one, pasting through pi's clipboard door
+  # while Passwords holds a password it copied
+  # (../modules/passwords/tests/fence-reads-no-copy.sh).
+  fenceReadsNoCopy =
+    let
+      door = pkgs.callPackage ../modules/pi/clipboard-door/package.nix { };
+    in
+    pkgs.writeShellApplication {
+      name = "fence-reads-no-copy";
+      runtimeInputs = [
+        pkgs.bubblewrap
+        pkgs.wl-clipboard
+        door
+      ];
+      text = ''
+        exec bash ${../modules/passwords/tests/fence-reads-no-copy.sh} ${door}/share/pi-fence/bin "$@"
+      '';
+    };
 
   # A stand-in touchscreen, as wide as the screen, which swipes or taps as
   # it's told through /run/touchscreen (desktop/touchscreen.py).
@@ -1356,7 +1377,13 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # The fenced command keeps-copies tries Joel's secret copy through
       # X11 with, by name on the account's path rather than among the
       # values every area's test reads, so no other area moves with it.
-      ++ lib.optional (area == "keeps-copies") fenceKeepsX11;
+      ++ lib.optionals (area == "keeps-copies") [
+        fenceKeepsX11
+        # And the fenced paste it tries a password Passwords copied with,
+        # and a browser whose page it pastes one into.
+        fenceReadsNoCopy
+        pkgs.chromium
+      ];
 
       # Starting a system service is something only an admin may do, so systemd
       # asks polkit, and polkit asks the account through its agent.
