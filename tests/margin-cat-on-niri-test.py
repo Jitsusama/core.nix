@@ -138,7 +138,9 @@ def asleep(said: str) -> bool:
     return at is not None and bool(at.get("asleep"))
 
 
-def sits_over(shell: Shell, window: Json, since: int) -> None:
+def sits_over(
+    shell: Shell, window: Json, since: int, timeout: timedelta = launcher_on_niri.WAITING
+) -> None:
     """Wait until the cat says it sits on this window's column, over its middle.
 
     It sits a cell of air above the column's top, so its feet stand clear of the border. Each
@@ -157,13 +159,18 @@ def sits_over(shell: Shell, window: Json, since: int) -> None:
         middle = at["x"] + at["size"] / 2
         return bool(left <= middle <= left + width and at["y"] + at["size"] + at["air"] == top)
 
-    heard(shell, over, since)
+    heard(shell, over, since, timeout)
 
 
-def heard(shell: Shell, test: Callable[[str], bool], since: int) -> None:
+def heard(
+    shell: Shell,
+    test: Callable[[str], bool],
+    since: int,
+    timeout: timedelta = launcher_on_niri.WAITING,
+) -> None:
     """Wait for the cat to report what passes the test, or fail saying all it reported."""
     try:
-        shell.reported(SITS, test, since)
+        shell.reported(SITS, test, since, timeout)
     except AssertionError:
         said, _ = shell.said_since(0)
         told = (SITS, MOVES)
@@ -391,6 +398,24 @@ def inks(shell: Shell, at: Json, wanted: Callable[[int], bool]) -> int:
     return drawn
 
 
+def shows_whole(shell: Shell, since: int) -> tuple[int, int]:
+    """Wait until the cat's box holds all the ink its newest drawing has, and give both.
+
+    Each look is held to the report newest at the time, since a cat that has just sat can
+    settle into a drawing a pixel different from the one it sat down in (2026-11-16: 36 of
+    37 showed, the 37 read from a report before its pose changed).
+    """
+    scale = json.loads(shell.as_account("niri msg --json outputs"))["winit"]["logical"]["scale"]
+    deadline = time.monotonic() + LAYERED
+    while True:
+        at, _ = seated(shell, since)
+        whole = at["lit"] * at["cell"] ** 2
+        drawn = inked(boxed(shell, at, scale), at["hue"])
+        if drawn == whole or time.monotonic() >= deadline:
+            return drawn, whole
+        time.sleep(POLL)
+
+
 def test_windows_cover_it_but_a_floating_one_holds_it_over_them(shell: Shell) -> None:
     """Under the windows, one passing in front of it covers it, never wearing it on its face.
 
@@ -407,9 +432,8 @@ def test_windows_cover_it_but_a_floating_one_holds_it_over_them(shell: Shell) ->
     shell.as_account("niri msg action consume-or-expel-window-left")
     sits_over(shell, tiled, since)
     on_layer(shell, "Bottom")
-    at, column = seated(shell, since)
-    whole = at["lit"] * at["cell"] ** 2
-    shown = inks(shell, at, lambda drawn: drawn == whole)
+    _, column = seated(shell, since)
+    shown, whole = shows_whole(shell, since)
     assert shown == whole, f"in a gap under the windows, {shown} of its {whole} pixels show"
     since = shell.mark()
     floated = shell.opened("a floating window in front of a tiled one")
@@ -420,8 +444,8 @@ def test_windows_cover_it_but_a_floating_one_holds_it_over_them(shell: Shell) ->
     )
     sits_over(shell, floated, since)
     on_layer(shell, "Top")
-    on, floating = seated(shell, since)
-    shown = inks(shell, on, lambda drawn: drawn == whole)
+    _, floating = seated(shell, since)
+    shown, whole = shows_whole(shell, since)
     assert shown == whole, f"on a floating window over a tiled one, {shown} of {whole} show"
     # Where niri put it against where it was asked to, since a floating window's place is
     # the working area's, which the margin's layer may take some of.
@@ -1006,13 +1030,39 @@ def test_a_middle_row_closed_under_it_has_it_fall_onto_the_row_below(shell: Shel
     walked = steps(shell, since)
     way = walked[0]["walk"]["beats"]
     said, _ = shell.said_since(since)
-    told = [report[len(SITS) :][:400] for report in said if report.startswith(SITS)][:6]
+    told = told_briefly(said)
     assert way[:3] == ["rides", "lands", "shakes"], f"the cat's way off was {way}: {told}"
     # Onto the row below, never through its face to the floor and back up (the GPU rig,
     # 2026-11-15).
     assert "climbs" not in way, f"the cat fell past the row below, its way {way}: {told}"
+    # Drawn falling on every frame of the fall the shell reported; a loaded builder may stall
+    # over the whole short fall and report none of it (Y2YBTS's gates, 2026-11-16: "fell as
+    # set()"), which shows nothing wrong.
     falling = {step["walk"]["pose"] for step in walked if step["walk"]["beat"] == "rides"}
-    assert falling == {"falling"}, f"the cat fell as {falling}: {told}"
+    assert falling <= {"falling"}, f"the cat fell as {falling}: {told}"
+
+
+def told_briefly(said: list[str]) -> list[str]:
+    """Give each report briefly: where it sat, on what, over what, and its walk's beat and pose.
+
+    So a failure shows the order the shell heard niri's changes in, the windows' tops and the
+    walk each set going, rather than the first few reports cut short.
+    """
+    told: list[str] = []
+    for report in said:
+        at = placed(report[len(SITS) :]) if report.startswith(SITS) else None
+        if at is None:
+            continue
+        over = report[report.rindex(" over ") + len(" over ") :]
+        top = (json.loads(over) or {}).get("top")
+        walk = at.get("walk") or {}
+        line = (
+            f"y {at['y']:.0f} on {at.get('window')} seat {(at.get('seat') or {}).get('top')}"
+            f" over {top}: {walk.get('beat')} {walk.get('pose')} {walk.get('beats', [])[:4]}"
+        )
+        if not told or told[-1] != line:
+            told.append(line)
+    return told[:40]
 
 
 def point(shell: Shell, x: float, y: float) -> None:
@@ -1037,7 +1087,10 @@ def seat(shell: Shell, window: Json, since: int) -> Json:
     """Wait until the cat sits still on this window's column, and give where it sits.
 
     Still, its walk done, since it says it's over the middle from its walk's last beats on,
-    and a pointer it comes to under as it walks never pets it (a builder, 2026-11-15).
+    and a pointer it comes to under as it walks never pets it (a builder, 2026-11-15). Its
+    way there may climb from the floor to a top, which a builder drawing slowly took past
+    the shell's usual wait to finish (2026-11-16: it sat a moment after the wait gave up), so
+    both waits run as long as a cat is given to settle.
     """
 
     def still_on(said: str) -> bool:
@@ -1049,8 +1102,9 @@ def seat(shell: Shell, window: Json, since: int) -> Json:
             and at.get("move") is None
         )
 
-    sits_over(shell, window, since)
-    heard(shell, still_on, since)
+    settles = timedelta(seconds=SETTLES_BY)
+    sits_over(shell, window, since, settles)
+    heard(shell, still_on, since, settles)
     said, _ = shell.said_since(since)
     sat = next(report[len(SITS) :] for report in reversed(said) if report.startswith(SITS))
     assert still_on(sat), f"the cat sat still over its window and went on: {sat}"

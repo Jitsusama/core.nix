@@ -277,23 +277,41 @@ def test_away_it_hops_and_lands_where_it_sat(shell: Shell) -> None:
 
 
 def test_away_it_wanders_and_a_key_brings_it_back(shell: Shell) -> None:
-    """Gone from the keys, it wanders a few cells along the margin; a key walks it back."""
+    """Gone from the keys, it wanders a few cells along the margin; a key walks it back.
+
+    A play already under way when it asks plays out first, and a play's walk rests away from
+    the column too before it walks back, so it reads the wander by its own walk, one that is
+    no play's and goes somewhere other than the seat, and waits for the cat to sit where that
+    walk was going (2026-11-16: a yarn's rest, 7 cells off, was read as the wander's end).
+    """
     sat, seat = sitting_over(shell, "a column wandered from")
     ask(shell, "wander")
     since = shell.mark()
-    away: list[Json] = []
+    goes: list[float] = []
 
-    def wandered(said: str) -> bool:
+    def wanders(said: str) -> bool:
         at = placed(said)
-        if at is None or not at.get("strolling") or walking(at) or abs(at["x"] - seat["x"]) <= 1:
+        if at is None or not at.get("strolling") or not walking(at) or at["walk"].get("play"):
             return False
-        away.append(at)
+        if abs(at["walk"]["to"] - seat["x"]) <= 1:
+            return False
+        goes.append(at["walk"]["to"])
         return True
 
-    shell.reported(SITS, wandered, since, STROLLS)
-    cells = abs(away[-1]["x"] - seat["x"]) / seat["air"]
+    shell.reported(SITS, wanders, since, STROLLS)
+    cells = abs(goes[0] - seat["x"]) / seat["air"]
     fewest, most = WANDERS
-    assert fewest - 0.5 <= cells <= most + 0.5, f"it wandered {cells:.1f} cells"
+    assert fewest - 0.5 <= cells <= most + 0.5, f"it set off to wander {cells:.1f} cells"
+    shell.reported(
+        SITS,
+        lambda said: (
+            (at := placed(said)) is not None
+            and not walking(at)
+            and abs(at["x"] - goes[0]) <= 1
+        ),
+        since,
+        STROLLS,
+    )
     since = shell.mark()
     keyed = time.monotonic()
     shell.send_key("F24")
@@ -320,6 +338,38 @@ def behind_its_edge(yarn: Json, size: float) -> bool:
     return bool(yarn["x"] < yarn["within"]["left"] or yarn["x"] + size > yarn["within"]["right"])
 
 
+def rolled_behind(frames: list[Json], size: float, last: bool) -> Json | None:
+    """Give where the yarn was as it came (or, `last`, as it went), or None where it was behind.
+
+    The yarn rolls on the cat's clock, so a frame drawn late finds it a few pixels on: a loaded
+    builder's 50 ms frame showed it first 5 px out from its edge, though it rolled from behind
+    it (2026-11-16, at d6345e9). So where its first frame (or its last) isn't behind the edge,
+    it rolls the yarn back (or on) at its own pace to the frame before (or after) it, or to the
+    play's start where it shows from the play's first frame, and only a yarn that wasn't
+    behind the edge then either came, or went, in open space.
+    """
+    shown = [at for at, frame in enumerate(frames) if frame["walk"]["yarn"]]
+    edge, beside, along = (shown[-1], 1, -1) if last else (shown[0], -1, 1)
+    yarn = frames[edge]["walk"]["yarn"]
+    if behind_its_edge(yarn, size):
+        return None
+    near, after = edge + beside, edge + along
+    if not 0 <= after < len(frames) or after not in shown:
+        return yarn
+    if 0 <= near < len(frames):
+        then = frames[near]["walk"]["t"]
+    elif not last:
+        then = 0
+    else:
+        return yarn
+    now, later = frames[edge]["walk"]["t"], frames[after]["walk"]["t"]
+    if later == now:
+        return yarn
+    pace = (frames[after]["walk"]["yarn"]["x"] - yarn["x"]) / (later - now)
+    there = {**yarn, "x": yarn["x"] + pace * (then - now)}
+    return None if behind_its_edge(there, size) else yarn
+
+
 def test_away_it_bats_a_ball_of_yarn_off_and_walks_back(shell: Shell) -> None:
     """Away, a ball of yarn rolls in, is batted and pounced on, and goes; it walks back.
 
@@ -333,8 +383,10 @@ def test_away_it_bats_a_ball_of_yarn_off_and_walks_back(shell: Shell) -> None:
     seen = [at["walk"]["yarn"] for at in frames if at["walk"]["yarn"]]
     assert seen, f"the yarn was never shown: {frames}"
     size = frames[0]["size"]
-    assert behind_its_edge(seen[0], size), f"the yarn came from nowhere: {seen[0]}"
-    assert behind_its_edge(seen[-1], size), f"the yarn went in open space: {seen[-1]}"
+    came = rolled_behind(frames, size, last=False)
+    assert came is None, f"the yarn came from nowhere: {came}"
+    went = rolled_behind(frames, size, last=True)
+    assert went is None, f"the yarn went in open space: {went}"
     assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
 
 
