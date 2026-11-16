@@ -737,9 +737,10 @@ QtObject {
     }
 
     // A drawer comes in its key's own frame where its kind made in under
-    // 3 ms of late and no key is held, decided before it's made, never by
+    // 8 ms of late and no key is held, decided before it's made, never by
     // timing it in the frame; otherwise the frame after, so the highlight
-    // never waits on it (VKCF3Z, 2026-11-12, d4c660a6).
+    // never waits long on it (VKCF3Z, 2026-11-12, d4c660a6; Y2YBTS,
+    // 2026-11-16, from Joel's For You drawers made in 4 to 7 ms).
     function drawers(failures) {
         check(failures, "a kind not yet made comes the frame after",
             Pacing.drawerJoinsKey({}, "home", false), false);
@@ -752,6 +753,14 @@ QtObject {
             Pacing.drawerJoinsKey(made, "home", true), false);
         check(failures, "another kind is decided by its own makings",
             Pacing.drawerJoinsKey(made, "agents", false), false);
+        // For You's drawers made in 4 to 7 ms on Joel's machine, and 71 of
+        // his 74 drawers on 16 November came the frame after, a median of
+        // 72 ms from the key against his keys' 43.
+        let looks = {};
+        for (const making of [6, 5, 7, 4])
+            looks = Pacing.drawerMade(looks, "on look", making);
+        check(failures, "one made in 4 to 7 ms, as For You's are, comes in the key's frame",
+            Pacing.drawerJoinsKey(looks, "on look", false), true);
         // A place's rows are of many kinds: home's people and commands make
         // theirs in a millisecond, its programs' in 10 to 114, so one of
         // Slack's came in its key's frame after 49 ms making (2026-11-12).
@@ -774,9 +783,9 @@ QtObject {
             false);
         check(failures, "a row with no key is its place's",
             Pacing.drawerKind("home", {}), "home");
-        for (const making of [9, 13, 7])
+        for (const making of [9, 13, 9, 12])
             made = Pacing.drawerMade(made, "home", making);
-        check(failures, "one whose kind's median reaches 3 ms comes the frame after",
+        check(failures, "one whose kind's median reaches 8 ms comes the frame after",
             Pacing.drawerJoinsKey(made, "home", false), false);
         for (let at = 0; at < 8; at++)
             made = Pacing.drawerMade(made, "home", 1);

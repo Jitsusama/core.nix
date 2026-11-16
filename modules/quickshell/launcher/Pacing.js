@@ -157,14 +157,17 @@ function frameSwapped(acts) {
 // A drawer coming the frame after its key's waited one whole refresh for
 // its swap, niri's callback for the key's frame: 16 ms of every drawer's
 // median of 69 from the key, against Joel's 50 (2026-11-12), where its
-// making took a median of 2. So one whose kind made in under 3 ms of late
+// making took a median of 2. So one whose kind made in under 8 ms of late
 // comes in the key's own frame, decided from the makings kept before it's
 // made, never by timing it there; a kind not yet made, or dearer, comes
 // the frame after, as does any while a key is held, so the highlight never
-// waits on it (VKCF3Z, 2026-11-12, d4c660a6). `makings` holds each kind's
+// waits on it long (VKCF3Z, 2026-11-12, d4c660a6). It was 3 ms until For
+// You's drawers, made in 4 to 7, came the frame after in 71 of Joel's 74
+// that day, each a median of 72 ms from its key (Y2YBTS, 2026-11-16);
+// Slack's, made in over 20, still come after. `makings` holds each kind's
 // last eight, in ms, and is never changed.
 const drawerMakingsKept = 8;
-const drawerJoinsUnder = 3;
+const drawerJoinsUnder = 8;
 
 function drawerMade(makings, kind, making) {
     const kept = Object.assign({}, makings);
