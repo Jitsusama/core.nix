@@ -139,8 +139,12 @@ in
         })
         property int revision: 0
         property var current: null
-        // Workspace 5, where a sleeper's window was, Joel on another.
-        property var workspaces: ({ "5": { id: 5, is_focused: false } })
+        // Workspace 5, where a sleeper's window was, and 8, named for the
+        // orchestrator of a session elsewhere, Joel on another.
+        property var workspaces: ({
+          "5": { id: 5, is_focused: false },
+          "8": { id: 8, name: "FARLED", is_focused: false }
+        })
         property var acted: null
         property var spawned: []
         property var spawns: []
