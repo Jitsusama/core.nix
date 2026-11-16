@@ -47,6 +47,15 @@ let
           (linux (links // { vias = [ via ]; })).systemd.user.services.mycelium.Service.ExecStart;
     in
     builtins.deepSeq words words;
+  # The same for a machine naming one provider's program.
+  providerNode =
+    program:
+    let
+      words =
+        toString
+          (linux (links // { providers = [ program ]; })).systemd.user.services.mycelium.Service.ExecStart;
+    in
+    builtins.deepSeq words words;
   macNode = (mac links).launchd.agents.mycelium.config.ProgramArguments;
   # A Mac workstation signs its commits from the Secure Enclave, so its node
   # signs its links in with the same key, each option after its own flag.
@@ -190,7 +199,8 @@ in
 
   # A workstation in a realm runs the node in it, dialling each machine it
   # names, over SSH or through a provider's program named by its path, in
-  # its home realm and in each further one: a user service on Linux, an
+  # its home realm and in each further one, and asks each provider's
+  # program it names what it could make: a user service on Linux, an
   # agent on a Mac. A program named any other way, or a place it could take
   # for a flag or systemd would expand, doesn't evaluate. One that names
   # none runs it dialling nothing, since its node still holds its sessions
@@ -203,7 +213,7 @@ in
   # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, a via naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && lib.hasInfix "--ssh one --ssh two --via /bin/cell:cell-1 --serves" (viaNode "/bin/cell:cell-1")
@@ -216,7 +226,14 @@ in
           "/bin/cell:cell-%h"
           "/bin/cell:cell-$HOME"
         ]
-        && lib.hasInfix "--ssh two --via /bin/cell:cell-2 --serves" (
+        && lib.hasInfix "--ssh one --ssh two --provider /bin/cell --serves" (providerNode "/bin/cell")
+        && lib.all (wrong: !(builtins.tryEval (providerNode wrong)).success) [
+          "cell"
+          "/bin/my cell"
+          "/bin/cell:make"
+          "/bin/cell-%h"
+        ]
+        && lib.hasInfix "--ssh two --via /bin/cell:cell-2 --provider /bin/cell --serves" (
           toString
             (linux (
               both
@@ -224,6 +241,7 @@ in
                 alsoJoins.other = {
                   links = [ "two" ];
                   vias = [ "/bin/cell:cell-2" ];
+                  providers = [ "/bin/cell" ];
                 };
               }
             )).systemd.user.services.mycelium-other.Service.ExecStart
