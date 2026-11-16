@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    g { stroke: @light-tint@; fill: @light-tint@; }
+    @media (prefers-color-scheme: dark) { g { stroke: @dark-tint@; fill: @dark-tint@; } }
+  </style>
+  <g fill="none" stroke-width="2.2" stroke-linecap="round">
+    <path d="M16 16L7 8 M16 16L25 8 M16 16L8 25 M16 16L25 24"/>
+    <circle cx="7" cy="8" r="3.6"/>
+    <circle cx="25" cy="8" r="3.6"/>
+    <circle cx="8" cy="25" r="3.6"/>
+    <circle cx="25" cy="24" r="3.6"/>
+    <circle cx="16" cy="16" r="4.6" stroke="none" style="fill:inherit"/>
+  </g>
+</svg>

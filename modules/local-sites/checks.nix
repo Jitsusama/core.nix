@@ -100,6 +100,25 @@ in
     };
   };
 
+  # The mycelium map typechecks on the kit and builds, its tests passing
+  # (modules/mycelium/site/tests), on the same plain looks.
+  mycelium-site-holds = sites.localSite {
+    name = "mycelium";
+    src = ../mycelium/site;
+    webKit = pkgs.emptyDirectory;
+    tint = "program";
+    looks = {
+      dark = {
+        background = "black";
+        program = "white";
+      };
+      light = {
+        background = "white";
+        program = "black";
+      };
+    };
+  };
+
   # The home's builder lists each site from its row, settled ones apart,
   # strips each page that asks, and changes nothing on a second run
   # (tests/home-builds-from-its-rows.sh).
@@ -120,21 +139,6 @@ in
     ${lib.getExe pkgs.bash} ${./tests/code-site-keeps-its-last-record.sh} ${
       lib.escapeShellArgs [
         ./code-site.sh
-        "${pkgs.coreutils}/bin"
-      ]
-    }
-    touch $out
-  '';
-
-  # The mycelium site's writer keeps its last map while no node answers, and
-  # writes the live sessions alone, without a message's words, once one does
-  # (tests/mycelium-map-keeps-its-last-map.sh).
-  mycelium-map-keeps-its-last-map = pkgs.runCommandLocal "mycelium-map-keeps-its-last-map" { } ''
-    ${lib.getExe pkgs.bash} ${./tests/mycelium-map-keeps-its-last-map.sh} ${
-      lib.escapeShellArgs [
-        ./mycelium-map.sh
-        ./mycelium-map.jq
-        (lib.getExe pkgs.jq)
         "${pkgs.coreutils}/bin"
       ]
     }
