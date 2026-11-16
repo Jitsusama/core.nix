@@ -42,9 +42,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
-use std::os::fd::FromRawFd;
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -211,10 +209,7 @@ impl Daemon {
     /// left behind. An `act` is sent on `asks`, beside whatever else asks
     /// this program.
     pub fn listen(path: &Path, asks: Sender<String>, now: i64) -> std::io::Result<Daemon> {
-        let listener = match handed() {
-            Some(listener) => listener,
-            None => bound(path)?,
-        };
+        let listener = daemon_serve::serve::listen(path)?;
         let daemon = Daemon {
             held: Arc::new(Mutex::new(Held {
                 since: now,
@@ -532,34 +527,6 @@ fn strings(said: &Value, field: &str) -> Option<Vec<String>> {
 
 fn error(id: &Value, code: &str, message: &str) -> Value {
     json!({"id": id, "error": {"code": code, "message": message}})
-}
-
-/// Its own socket, when run by hand, in a folder only Joel reads,
-/// replacing one left behind.
-fn bound(path: &Path) -> std::io::Result<UnixListener> {
-    if let Some(folder) = path.parent() {
-        std::fs::create_dir_all(folder)?;
-        std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700))?;
-    }
-    let _ = std::fs::remove_file(path);
-    UnixListener::bind(path)
-}
-
-/// The listening socket systemd hands this process (google.socket), as
-/// the first descriptor after the standard three, when it says so
-/// (`sd_listen_fds`), so the shell never finds it missing while this
-/// program starts or starts again.
-fn handed() -> Option<UnixListener> {
-    let pid: u32 = std::env::var("LISTEN_PID").ok()?.parse().ok()?;
-    let count: u32 = std::env::var("LISTEN_FDS").ok()?.parse().ok()?;
-    if pid != std::process::id() || count < 1 {
-        return None;
-    }
-    // SAFETY: systemd hands descriptor 3 to this process alone, named by
-    // LISTEN_PID, and nothing here has opened or taken it before.
-    let given = unsafe { UnixListener::from_raw_fd(3) };
-    // A copy closed on exec, which the descriptor as handed over isn't.
-    given.try_clone().ok()
 }
 
 #[cfg(test)]
