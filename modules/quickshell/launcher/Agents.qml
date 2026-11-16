@@ -1985,9 +1985,54 @@ Provider {
         })).concat(tries.filter(tried => typeof tried.read === "number").map(tried => ({
             row: kept(tried.one, { key: `on:waiting:tried:${tried.one.key}`, hue: "muted" }),
             done: { how: String(said.read ?? ""), at: tried.read }
-        })));
+        }))).concat(carriesUnderWay());
         provider.keptOnly(forYouKeeping);
         return given;
+    }
+
+    // What For You holds of the carries Agents lists under Carried while
+    // they're under way (CarryBack.js's underWay): each a thing to read,
+    // in To Read, which rings no bell and adds to no count, gone once the
+    // daemon serves it arrived, refused or back. A carry is an
+    // orchestrator's, made in Joel's stead, so he sees it without being
+    // asked anything; only his own Carry Back refused rings (DCU5J4's
+    // third item). Return goes to its row in Agents › Carried, never a
+    // copy. Each row is kept while its carry row reads the same, among
+    // For You's own (forYouKeeping), so it's asked only as that's made.
+    function carriesUnderWay() {
+        const group = top.rowAt("row:agents-top:carried");
+        if (!group)
+            return [];
+        return top.rows("row:agents-top:carried").map(made => ({
+            made,
+            waits: CarryBack.underWay(top.served(top.madeOf[made.key]))
+        })).filter(one => one.waits !== null).map(one => ({
+            row: provider.keptOr(forYouKeeping, `on:carrying:${one.made.key}`,
+                JSON.stringify([one.made.name, one.made.side, one.made.note]),
+                () => carryUnderWay(group, one.made)),
+            thing: one.waits
+        }));
+    }
+    function carryUnderWay(group, made) {
+        const trail = () => ["collection:agents", provider.launcher?.steadyId(group),
+            provider.launcher?.steadyId(made)];
+        return thing({
+            thing: true,
+            key: `on:carrying:${made.key}`,
+            name: made.name,
+            side: made.side,
+            note: made.note,
+            glyph: made.glyph,
+            verb: "go to",
+            spot: "",
+            stays: true,
+            changes: false,
+            // Every one says go to, so the foot weighs one of a run.
+            keysAlike: "carry:for-you",
+            hue: "muted",
+            forYou: { kind: "read", source: "sessions" },
+            run: () => provider.launcher?.goTo({ trail: trail(), spot: "" })
+        });
     }
 
     // Agents' Recent: the sessions that closed this boot, newest first, as
