@@ -1701,7 +1701,13 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
         return OnAMac::Unasked;
     };
     let touched = mac::touched(folder, &base);
-    let Some(read) = touched.iter().find(|path| mac::reads(path)) else {
+    let kept = || {
+        let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
+        kept_listed([&dir, &more_dir()], &scratch())
+            .iter()
+            .any(|listed| !replay::kept_in(listed, mac::SYSTEM).is_empty())
+    };
+    let Some(read) = mac::read_among(folder, &touched, kept) else {
         return OnAMac::Unasked;
     };
     let skipped = |because: String| {
@@ -1813,6 +1819,33 @@ fn runs_again(replayed: Option<&str>, status: i32) -> bool {
     false
 }
 
+/// What each lent builder of `lenders` that answers lists of the checks
+/// it keeps evaluated (`replay::LISTING`), asked of them all at once.
+fn kept_listed(lenders: [&Path; 2], scratch: &Path) -> Vec<String> {
+    let lent: Vec<there::Builder> = lenders
+        .into_iter()
+        .filter_map(standing)
+        .filter_map(|store| there::builder(store.lines().next()?.trim()))
+        .collect();
+    let listing = there::Sending {
+        command: replay::LISTING.to_owned(),
+        bundle: None,
+    };
+    thread::scope(|scope| {
+        let asked: Vec<_> = lent
+            .iter()
+            .map(|builder| scope.spawn(|| there::printed_on(builder, &listing, scratch, "ssh")))
+            .collect();
+        asked
+            .into_iter()
+            .filter_map(|asked| match asked.join() {
+                Ok(Ok((ran, listed))) if ran.status == 0 => Some(listed),
+                _ => None,
+            })
+            .collect()
+    })
+}
+
 /// `source`, or, when no lent builder keeps its base's checks evaluated,
 /// the same change replayed onto the newest main one does (`replay.rs`),
 /// with what it was replayed as. Anything that keeps it from being
@@ -1831,28 +1864,7 @@ fn replay_kept(
     ) else {
         return (source, None);
     };
-    let lent: Vec<there::Builder> = lenders
-        .into_iter()
-        .filter_map(standing)
-        .filter_map(|store| there::builder(store.lines().next()?.trim()))
-        .collect();
-    let listing = there::Sending {
-        command: replay::LISTING.to_owned(),
-        bundle: None,
-    };
-    let listed: Vec<String> = thread::scope(|scope| {
-        let asked: Vec<_> = lent
-            .iter()
-            .map(|builder| scope.spawn(|| there::printed_on(builder, &listing, scratch, "ssh")))
-            .collect();
-        asked
-            .into_iter()
-            .filter_map(|asked| match asked.join() {
-                Ok(Ok((ran, listed))) if ran.status == 0 => Some(listed),
-                _ => None,
-            })
-            .collect()
-    });
+    let listed = kept_listed(lenders, scratch);
     // With no lent builder answering, the run finds its way as it would have.
     if listed.is_empty() {
         return (source, None);
@@ -2346,9 +2358,16 @@ impl Sent<'_> {
         else {
             return self.somewhere(arguments, lenders, vm, vm_apart);
         };
+        // A keep evaluates its base's checks whole there, so it says so
+        // rather than that only a change is named.
+        let there = if arguments.iter().any(|word| word == "--keep-base") {
+            "keeps its checks evaluated on the lent builder"
+        } else {
+            "only names what changed"
+        };
         eprintln!(
             "nix-offload: no lent builder builds for {system} and a machine nearby does, so \
-             changed-checks only names what changed, and that builds nearby"
+             changed-checks {there}, and what it names builds nearby"
         );
         let mut naming: Vec<String> = arguments
             .iter()

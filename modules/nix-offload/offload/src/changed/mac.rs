@@ -79,6 +79,33 @@ pub fn reads(path: &str) -> bool {
     READ_AT_THE_TOP.contains(&path) || READ_BY_NAME.contains(&name) || a_modules_own
 }
 
+/// The first of `touched`, files of the tree in `folder`, that a Mac's
+/// checks read, or none. By name alone, unless a lent builder keeps a
+/// Mac's checks evaluated (`kept`, asked only when a file is in a
+/// package's folder and none is read by name): then a file in a package's own
+/// folder, one holding a `package.nix`, counts too, since a Mac builds
+/// most packages from their sources there, and the lent builder names
+/// exactly which of its checks such a change reaches, at the cost of a
+/// trace. Without that record it would evaluate all of a Mac's checks
+/// for every change to any package's sources, so it's left out.
+pub fn read_among<'a>(
+    folder: &Path,
+    touched: &'a [String],
+    kept: impl FnOnce() -> bool,
+) -> Option<&'a String> {
+    let in_a_package = |path: &&String| {
+        Path::new(path.as_str())
+            .ancestors()
+            .skip(1)
+            .take_while(|above| !above.as_os_str().is_empty())
+            .any(|above| folder.join(above).join("package.nix").is_file())
+    };
+    touched
+        .iter()
+        .find(|path| reads(path))
+        .or_else(|| touched.iter().find(in_a_package).filter(|_| kept()))
+}
+
 /// The files the tree in `folder` changes from `base`, committed or not,
 /// or none when git can't say.
 pub fn touched(folder: &Path, base: &str) -> Vec<String> {
@@ -162,6 +189,63 @@ mod tests {
         ] {
             assert!(!reads(path), "{path} is taken as unread by a Mac's checks");
         }
+    }
+
+    /// A tree holding a package's folder, with its `package.nix` and a
+    /// source beside it, and a folder with no package.
+    fn packaged() -> tempfile::TempDir {
+        let tree = tempfile::tempdir().expect("no folder for a tree");
+        let crate_ = tree.path().join("modules/tool/program");
+        std::fs::create_dir_all(crate_.join("src")).expect("no package folder");
+        std::fs::write(crate_.join("package.nix"), "{ }\n").expect("no package.nix");
+        std::fs::create_dir_all(tree.path().join("docs")).expect("no docs folder");
+        tree
+    }
+
+    #[test]
+    fn a_packages_source_is_read_while_a_macs_checks_are_kept() {
+        let tree = packaged();
+        let touched = words("docs/testing.md modules/tool/program/src/main.rs");
+        assert_eq!(
+            read_among(tree.path(), &touched, || true).map(String::as_str),
+            Some("modules/tool/program/src/main.rs"),
+            "a package's source wasn't taken as read with a Mac's checks kept"
+        );
+    }
+
+    #[test]
+    fn a_packages_source_is_unread_while_no_macs_checks_are_kept() {
+        let tree = packaged();
+        let touched = words("modules/tool/program/src/main.rs");
+        assert_eq!(
+            read_among(tree.path(), &touched, || false),
+            None,
+            "a package's source was taken as read with no Mac's checks kept"
+        );
+    }
+
+    #[test]
+    fn a_file_in_no_packages_folder_is_unread_either_way() {
+        let tree = packaged();
+        let touched = words("docs/testing.md modules/tool/nixos.nix");
+        for kept in [true, false] {
+            assert_eq!(
+                read_among(tree.path(), &touched, || kept),
+                None,
+                "a file outside any package was taken as read (kept: {kept})"
+            );
+        }
+    }
+
+    #[test]
+    fn a_file_read_by_name_comes_first() {
+        let tree = packaged();
+        let touched = words("modules/tool/program/src/main.rs modules/tool/home.nix");
+        assert_eq!(
+            read_among(tree.path(), &touched, || true).map(String::as_str),
+            Some("modules/tool/home.nix"),
+            "a file read by name wasn't the one said"
+        );
     }
 
     #[test]
