@@ -8,7 +8,7 @@
 # (memory, disk, power) and the messages only their senders and groups,
 # never their words. A machine's reach and leaves_at pass from what it
 # declares, since a cloud sandbox is told from bare metal by that alone: it
-# reaches "aquifer" and says when it goes, and the map says how long it has.
+# says when it goes, and the map says how long it has.
 {
   at: (now | todate),
   networks: [$n[] | select(.kind == "network")],
