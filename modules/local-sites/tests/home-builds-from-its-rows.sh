@@ -6,8 +6,8 @@
 # and the twin list all three; each stripped page gets its strip after the
 # skip link, linking home from its depth; the home's own files are put
 # beside it; its theme-color takes each look's ground from the kit, and
-# names none without one; a second run changes no file; and a root with no
-# sites.json is left alone.
+# names none without one; a second run changes no file; a broken record
+# keeps the last build; and a root with no sites.json is left alone.
 # usage: home-builds-from-its-rows.sh <python> <sources>
 set -euo pipefail
 
@@ -107,3 +107,15 @@ rm "$root/kit/theme.css"
 if grep -q 'theme-color' "$index"; then
   fail "the home names a ground with no kit to take it from"
 fi
+
+# A record caught half written, or broken by a slip, keeps the last good
+# build and says why, rather than failing and leaving the home to it.
+cp "$index" "$work/last.html"
+head -c 200 "$root/sites.json" > "$work/cut.json"
+mv "$work/cut.json" "$root/sites.json"
+said=$("$python" "$sources/home.py" "$sources" "$root") || fail "a broken record failed the build"
+case $said in
+  "home: sites.json can't be read ("*"), so the last build stays") ;;
+  *) fail "a broken record said: $said" ;;
+esac
+cmp -s "$work/last.html" "$index" || fail "a broken record changed the home"

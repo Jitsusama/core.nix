@@ -189,9 +189,15 @@ def stripped(text: str, block: str) -> str:
 
 
 def write(path: Path, text: str) -> None:
-    """Write a file only when it changes, so a run with nothing new touches nothing."""
+    """Write a file only when it changes, so a run with nothing new touches nothing.
+
+    It writes a copy beside the file and renames it over, so the server never
+    sends a page half written.
+    """
     if not path.exists() or path.read_text(encoding="utf-8") != text:
-        path.write_text(text, encoding="utf-8")
+        fresh = path.with_name(f".{path.name}.new")
+        fresh.write_text(text, encoding="utf-8")
+        fresh.replace(path)
 
 
 def build(sources: Path, root: Path) -> str:
@@ -199,7 +205,13 @@ def build(sources: Path, root: Path) -> str:
     record = root / "sites.json"
     if not record.exists():
         return "home: no sites.json yet, so nothing to build"
-    sites = [Site.read(row) for row in json.loads(record.read_text(encoding="utf-8"))["sites"]]
+    # A record caught half written, or broken by a slip, leaves the last good
+    # build serving and says why, since the next change to it builds again.
+    try:
+        rows = json.loads(record.read_text(encoding="utf-8"))["sites"]
+        sites = [Site.read(row) for row in rows]
+    except (ValueError, KeyError, TypeError, AttributeError) as error:
+        return f"home: sites.json can't be read ({error}), so the last build stays"
     for name in FILES:
         write(root / name, (sources / name).read_text(encoding="utf-8"))
     shell = (sources / "index.html").read_text(encoding="utf-8")
