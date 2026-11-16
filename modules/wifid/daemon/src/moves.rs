@@ -110,11 +110,13 @@ fn chosen(
         })
         .unzip();
     let card = (&*on.point, measured, here.signal, here.frequency);
+    let busy = here.radio.load.map(|load| load.busy);
+    let from = (measured, here.frequency, busy);
     match chooser.choose(now, card, &others, call) {
         Choice::Stay => None,
         Choice::Try(to) => {
             let at = others.iter().position(|other| other.point == to)?;
-            let why = tried(on, (measured, here.frequency), &others[at], whence[at]);
+            let why = tried(on, from, &others[at], whence[at]);
             println!("<6>{why}");
             Some(Next::Move(to))
         }
@@ -170,10 +172,11 @@ async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String
 }
 
 /// Why a card tries another access point: what the one it's on carried,
-/// and what was known of the other, and from where.
+/// what was known of the other, and from where, and whether it's for a
+/// wider band or a quieter channel.
 fn tried(
     on: &Joined,
-    (measured, frequency): (&Measured, u32),
+    (measured, frequency, busy): (&Measured, u32, Option<u8>),
     to: &Other,
     whence: Option<Whence>,
 ) -> String {
@@ -190,13 +193,15 @@ fn tried(
         ),
         (None, _) => format!("is untried, heard at {} dBm", to.signal),
     };
-    let band = if choose::wider(to.frequency, frequency) {
-        ", on a wider band"
-    } else {
-        ""
+    let room = match (busy, to.busy) {
+        _ if choose::wider(to.frequency, frequency) => ", on a wider band".to_owned(),
+        (Some(busy), Some(theirs)) if busy > choose::BUSIEST && theirs <= choose::BUSIEST => {
+            format!(", on a channel {theirs}% busy rather than {busy}%")
+        }
+        _ => String::new(),
     };
     format!(
-        "{} tries {}, as {} carried {} at p95 with {:.1}% lost, and {} {known}{band}",
+        "{} tries {}, as {} carried {} at p95 with {:.1}% lost, and {} {known}{room}",
         on.card,
         to.point,
         on.point,
@@ -319,7 +324,7 @@ mod tests {
         assert_eq!(
             tried(
                 &on,
-                (&carried(30), 2437),
+                (&carried(30), 2437, None),
                 &other(HALL, quick.clone()),
                 Some(Whence::Learned)
             ),
@@ -329,7 +334,7 @@ mod tests {
         assert_eq!(
             tried(
                 &on,
-                (&carried(30), 2437),
+                (&carried(30), 2437, None),
                 &other(HALL, quick),
                 Some(Whence::Lately)
             ),
@@ -337,7 +342,7 @@ mod tests {
             "a move made on what was just measured says so"
         );
         assert_eq!(
-            tried(&on, (&carried(30), 2437), &other(HALL, None), None),
+            tried(&on, (&carried(30), 2437, None), &other(HALL, None), None),
             format!("{why} is untried, heard at -50 dBm"),
             "a move made on signal alone says so"
         );
@@ -351,11 +356,28 @@ mod tests {
             ..other(HALL, None)
         };
 
-        let why = tried(&on, (&carried(9), 2437), &wide, None);
+        let why = tried(&on, (&carried(9), 2437, None), &wide, None);
 
         assert!(
             why.ends_with("is untried, heard at -50 dBm, on a wider band"),
             "a move from 2.4 GHz to 5 GHz says it's for the band: {why}"
+        );
+    }
+
+    #[test]
+    fn a_move_to_a_quieter_channel_says_so() {
+        let on = joined(HALL);
+        let quieter = Other {
+            busy: Some(20),
+            frequency: 5260,
+            ..other(DESK, None)
+        };
+
+        let why = tried(&on, (&carried(38), 5745, Some(56)), &quieter, None);
+
+        assert!(
+            why.ends_with("heard at -50 dBm, on a channel 20% busy rather than 56%"),
+            "a move off a busy channel says it's for room: {why}"
         );
     }
 
