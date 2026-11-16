@@ -700,13 +700,28 @@ mod tests {
 
     #[test]
     fn a_program_or_a_script_runs_by_its_type_or_its_ending() {
-        assert!(runs("setup.exe", "application/octet-stream"));
-        assert!(runs("Install.SH", "application/octet-stream"));
-        assert!(runs("tool", "application/x-executable"));
-        assert!(runs("launch", " Application/X-Desktop "));
-        assert!(!runs("menu.pdf", "application/pdf"));
-        assert!(!runs("notes", "text/plain"));
-        assert!(!runs("archive.tar.gz", "application/gzip"));
+        assert!(
+            runs("setup.exe", "application/octet-stream"),
+            "a .exe didn't run"
+        );
+        assert!(
+            runs("Install.SH", "application/octet-stream"),
+            "a .SH in capitals didn't run"
+        );
+        assert!(
+            runs("tool", "application/x-executable"),
+            "an executable type didn't run"
+        );
+        assert!(
+            runs("launch", " Application/X-Desktop "),
+            "a padded desktop type didn't run"
+        );
+        assert!(!runs("menu.pdf", "application/pdf"), "a PDF ran");
+        assert!(!runs("notes", "text/plain"), "plain text ran");
+        assert!(
+            !runs("archive.tar.gz", "application/gzip"),
+            "an archive ran"
+        );
     }
 
     #[test]
@@ -739,7 +754,11 @@ mod tests {
         let answer = json!({"id": "m", "threadId": "t", "payload": {
             "mimeType": "text/plain", "body": {"data": encoded(&long)}}});
         let body = read(&answer).unwrap().body;
-        assert!(body.chars().count() <= BODY_MOST);
+        assert!(
+            body.chars().count() <= BODY_MOST,
+            "a body of {} characters passed the most",
+            body.chars().count()
+        );
         assert!(body.ends_with("word"), "{}", &body[body.len() - 10..]);
     }
 

@@ -203,7 +203,11 @@ fn each_kind_of_document_is_told_and_drive_asked_again_only_after_a_while() {
         "{}",
         first[0].line
     );
-    assert!(first[0].line.contains("pageSize=9"));
+    assert!(
+        first[0].line.contains("pageSize=9"),
+        "drive was asked {}",
+        first[0].line
+    );
     watch.look(&now());
     assert_eq!(
         searches(&stand_in).len(),
@@ -655,7 +659,7 @@ fn a_save_goes_up_once_as_a_new_file_then_a_new_version_never_a_second_file() {
         (Some("new1".into()), Some("https://x/new1".into()), None)
     );
     assert_eq!(saves::sent(&notes).as_deref(), Some("new1"));
-    assert!(!saves::waiting(&notes));
+    assert!(!saves::waiting(&notes), "a save sent up still waited");
     let heard = stand_in.heard();
     let lines: Vec<&str> = heard.iter().map(|heard| heard.line.as_str()).collect();
     assert!(
@@ -663,7 +667,9 @@ fn a_save_goes_up_once_as_a_new_file_then_a_new_version_never_a_second_file() {
         "{lines:?}"
     );
     assert!(
-        lines[0].contains("uploadType=resumable") && lines[0].contains("supportsAllDrives=true")
+        lines[0].contains("uploadType=resumable") && lines[0].contains("supportsAllDrives=true"),
+        "a new file went up as {}",
+        lines[0]
     );
     let about: serde_json::Value = serde_json::from_str(&heard[0].body).unwrap();
     assert_eq!(
@@ -686,7 +692,9 @@ fn a_save_goes_up_once_as_a_new_file_then_a_new_version_never_a_second_file() {
     assert!(
         heard[2]
             .line
-            .starts_with("PATCH /upload/drive/v3/files/new1?")
+            .starts_with("PATCH /upload/drive/v3/files/new1?"),
+        "a second save went up as {}, not a new version",
+        heard[2].line
     );
     assert_eq!(heard[3].body, "more notes");
     assert_eq!(heard.len(), 4, "{heard:?}");
@@ -703,11 +711,16 @@ fn a_save_goes_up_once_as_a_new_file_then_a_new_version_never_a_second_file() {
             .last()
             .unwrap()
             .line
-            .starts_with("PATCH /upload/drive/v3/files/pdf1?")
+            .starts_with("PATCH /upload/drive/v3/files/pdf1?"),
+        "a save of a known file went up as {}, not a new version",
+        heard.last().unwrap().line
     );
     // A folder gone from Drive is said so, its copy kept to save elsewhere.
     assert_eq!(save(&mut watch, "gone1/x.txt", "x").2, Some(Unsaved::Gone));
-    assert!(root.join("gone1/x.txt").exists());
+    assert!(
+        root.join("gone1/x.txt").exists(),
+        "a save to a folder drive lost was let go"
+    );
     // Every save is told, newest first.
     let told = watch.list("root", &now()).drive.uploads.clone();
     let names: Vec<&str> = told.iter().map(|told| told.name.as_str()).collect();

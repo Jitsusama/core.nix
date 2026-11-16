@@ -115,16 +115,6 @@
   "modules/git-engine/src/odb.rs" = 1;
   "modules/git-engine/src/pattern.rs" = 16;
   "modules/git-engine/src/wildmatch.rs" = 5;
-  "modules/google/src/account.rs" = 3;
-  "modules/google/src/files.rs" = 7;
-  "modules/google/src/mail.rs" = 8;
-  "modules/google/src/meet.rs" = 4;
-  "modules/google/src/saves.rs" = 10;
-  "modules/google/src/token.rs" = 1;
-  "modules/google/tests/daemon.rs" = 2;
-  "modules/google/tests/stand_in/calendar.rs" = 8;
-  "modules/google/tests/stand_in/drive.rs" = 6;
-  "modules/google/tests/stand_in/sign_in.rs" = 6;
   "modules/guide/src/install/memory.rs" = 4;
   "modules/guide/src/install/system.rs" = 1;
   "modules/guide/src/journal.rs" = 6;

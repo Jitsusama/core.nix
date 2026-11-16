@@ -102,10 +102,13 @@ mod tests {
 
     #[test]
     fn a_code_is_letters_and_dashes() {
-        assert!(is_code("abc-defg-hij"));
-        assert!(!is_code(""));
-        assert!(!is_code("abc\" OR end_time IS NULL"));
-        assert!(!is_code("-abc"));
+        assert!(is_code("abc-defg-hij"), "a meeting code wasn't taken");
+        assert!(!is_code(""), "nothing was taken as a code");
+        assert!(
+            !is_code("abc\" OR end_time IS NULL"),
+            "a filter was taken as a code"
+        );
+        assert!(!is_code("-abc"), "a code opening on a dash was taken");
     }
 
     #[test]

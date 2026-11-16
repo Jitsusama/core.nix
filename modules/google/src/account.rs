@@ -215,10 +215,19 @@ mod tests {
             r#""scope": "calendar https://www.googleapis.com/auth/meetings.space.created""#,
         );
         let account = parse(&file, None).unwrap();
-        assert!(account.grants("https://www.googleapis.com/auth/meetings.space.created"));
-        assert!(account.grants("calendar"));
+        assert!(
+            account.grants("https://www.googleapis.com/auth/meetings.space.created"),
+            "a scope signed in with, named in full, wasn't granted"
+        );
+        assert!(
+            account.grants("calendar"),
+            "a scope signed in with, named short, wasn't granted"
+        );
         assert!(!account.grants("meetings"), "a part of a scope was granted");
-        assert!(!parse(FILE, Some("home")).unwrap().grants("calendar"));
+        assert!(
+            !parse(FILE, Some("home")).unwrap().grants("calendar"),
+            "an account granted a scope it wasn't signed in with"
+        );
     }
 
     #[test]

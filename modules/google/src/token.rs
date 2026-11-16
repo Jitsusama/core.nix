@@ -161,7 +161,10 @@ mod tests {
         let mut keeper = Keeper::default();
         let old = account(0);
         let offline = keeper.token(&old, NOW, |_| Err(Refused::Unreachable("offline".into())));
-        assert!(matches!(offline, Err(Refused::Unreachable(_))));
+        assert!(
+            matches!(offline, Err(Refused::Unreachable(_))),
+            "an unreachable google gave {offline:?}"
+        );
         assert_eq!(keeper.token(&old, NOW, fresh("mine")).unwrap(), "mine");
     }
 

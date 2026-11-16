@@ -281,7 +281,10 @@ fn an_act_is_handed_to_the_programs_asks_and_one_it_doesnt_do_is_refused() {
     // An id Google couldn't have made goes nowhere near a request to it.
     let refused = client.ask(&json!({"id": 2, "ask": "act", "act": {"archive": {"id": "../x"}}}));
     assert_eq!(refused["error"]["code"], "unknown-ask");
-    assert!(asked.try_recv().is_err());
+    assert!(
+        asked.try_recv().is_err(),
+        "an act on an id google couldn't have made was handed on"
+    );
 }
 
 #[test]
@@ -446,6 +449,9 @@ fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
     let mut client = Client::to(&socket);
     let hello = client.ask(&json!({"id": "hello", "ask": "hello", "version": 1}));
     assert_eq!(hello["domain"], "google");
-    assert!(!folder.join("unhanded.sock").exists());
+    assert!(
+        !folder.join("unhanded.sock").exists(),
+        "it made a socket of its own beside the one systemd handed it"
+    );
     drop(running);
 }

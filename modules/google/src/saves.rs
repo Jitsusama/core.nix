@@ -332,7 +332,10 @@ mod tests {
                 name: "Notes.txt".into(),
             })
         );
-        assert!(staged(root, &root.join("1AbC-d_9/Plan.pdf")).is_some());
+        assert!(
+            staged(root, &root.join("1AbC-d_9/Plan.pdf")).is_some(),
+            "a file right in a folder drive can add to wasn't staged"
+        );
         for path in [
             "root/.Notes.txt.drive",
             "root/~lock",
@@ -352,10 +355,10 @@ mod tests {
         let root = folder("waits");
         let path = root.join("root/Notes.txt");
         fs::write(&path, "one").unwrap();
-        assert!(waiting(&path));
+        assert!(waiting(&path), "a file just written wasn't waiting");
         assert_eq!(pending(&root, &root.join("root")).len(), 1);
         keep(&path, "f1").unwrap();
-        assert!(!waiting(&path));
+        assert!(!waiting(&path), "a file whose mark is kept still waited");
         assert_eq!(sent(&path).as_deref(), Some("f1"));
         assert_eq!(
             pending(&root, &root.join("root")),
@@ -368,7 +371,10 @@ mod tests {
             .unwrap()
             .set_modified(later)
             .unwrap();
-        assert!(waiting(&path));
+        assert!(
+            waiting(&path),
+            "a file written since its mark wasn't waiting"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -382,13 +388,19 @@ mod tests {
         fs::write(root.join("root/.Old.txt.from"), "org.gnome.TextEditor").unwrap();
         keep(&sent_up, "f1").unwrap();
         prune(&root, SystemTime::now() + KEPT / 2);
-        assert!(sent_up.exists());
+        assert!(
+            sent_up.exists(),
+            "a copy sent up half a week ago was let go"
+        );
         assert_eq!(from(&sent_up).as_deref(), Some("org.gnome.TextEditor"));
         prune(&root, SystemTime::now() + KEPT + Duration::from_secs(60));
-        assert!(!sent_up.exists());
-        assert!(sent(&sent_up).is_none());
-        assert!(from(&sent_up).is_none());
-        assert!(never.exists());
+        assert!(!sent_up.exists(), "a copy sent up a week ago was kept");
+        assert!(sent(&sent_up).is_none(), "a copy let go kept its mark");
+        assert!(
+            from(&sent_up).is_none(),
+            "a copy let go kept what it came from"
+        );
+        assert!(never.exists(), "a file never sent up was let go");
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -418,7 +430,8 @@ mod tests {
             asked.recv_timeout(wait).unwrap(),
             asking(&staged(&root, &later).unwrap())
         );
-        assert!(asked.recv_timeout(SETTLES).is_err());
+        let again = asked.recv_timeout(SETTLES);
+        assert!(again.is_err(), "a file was asked for again: {again:?}");
         fs::remove_dir_all(root).unwrap();
     }
 
