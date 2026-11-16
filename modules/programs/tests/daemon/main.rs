@@ -14,14 +14,16 @@
 //! (rows.rs), their search and what programs tell (search.rs), Capture's
 //! (taken.rs), what Chrome has open (chrome.rs), kitty's open list
 //! without the agents' panes (agents.rs), every open tab in one place
-//! (tabs.rs), the tab in front of one of Chrome's windows (front.rs), and
-//! every repository's row (code.rs).
+//! (tabs.rs), the tab in front of one of Chrome's windows (front.rs),
+//! every repository's row (code.rs), and a page's list read again while
+//! it's refused (refused.rs).
 
 mod agents;
 mod chrome;
 mod code;
 mod front;
 mod kitty;
+mod refused;
 mod repositories;
 mod rows;
 mod search;
@@ -35,6 +37,10 @@ use std::time::{Duration, Instant};
 
 use daemon_client::{Client, Daemon};
 use serde_json::{Value, json};
+
+/// A page's list that prints its file, or refuses while it's gone, as
+/// open-now does while niri stalls, saying so in a file beside it.
+const STALLING: &str = r#"cat "$1" 2>/dev/null || { echo refused >> "$1-refused"; exit 1; }"#;
 
 const VIEWER: &str = "[Desktop Entry]
 Type=Application
@@ -146,6 +152,13 @@ fn fixture(folder: &Path) -> PathBuf {
         {"app": "chrome", "kind": "site", "session": {"profile": at("chrome"), "host": true}},
         // A list whose command fails, as one whose program isn't set up.
         {"app": "broken", "kind": "file", "list": ["false"]},
+        // A page's list refused while its file is gone, as in a stall.
+        {
+            "app": "stalling",
+            "name": "open",
+            "asked": true,
+            "list": ["sh", "-c", STALLING, "sh", at("lists/stalling")],
+        },
         {
             "app": "browser",
             "kind": "site",
