@@ -280,7 +280,9 @@ treefmt =
 
 Each linter reads core's own settings, so `nix fmt` there holds code to
 exactly what it holds core's to. Lua is read as the program that runs it does,
-which the repository says in a `.luacheckrc` of its own. A VM test's script,
+which the repository says in a `.luacheckrc` of its own. Every `.js` file is
+read as JavaScript QML imports; one a browser runs instead goes in the
+repository's `settings.formatter.qt-javascript-lint.excludes`. A VM test's script,
 kept in a `*-vm-test.py` file, imports the test driver's names from
 `driver_names` under `if TYPE_CHECKING:`, as [testing.md][3] says, and
 mypy reads them and the driver's own types from core.

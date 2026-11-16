@@ -83,6 +83,14 @@ in
       includes = [ "*.py" ];
     };
 
+    # biome reads each JavaScript file as the module QML means by its
+    # imports, held to core's biome.jsonc (qt-javascript-lint.sh). A
+    # repository's JavaScript a browser runs instead goes in its excludes.
+    settings.formatter.qt-javascript-lint = {
+      command = lib.getExe (pkgs.callPackage ./qt-javascript-lint.nix { });
+      includes = [ "*.js" ];
+    };
+
     # rumdl reads every Markdown file and fixes nothing.
     settings.formatter.rumdl = {
       command = lib.getExe pkgs.rumdl;

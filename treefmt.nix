@@ -138,11 +138,9 @@ in
     # `nix fmt` still evaluates (mypy.ini says how it's read without it).
     ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux python.evdev;
 
-  # biome reads the JavaScript QML imports as the modules it means
-  # (modules/treefmt/qt-javascript-lint.sh).
+  # The JavaScript QML imports is read as core's linters read every
+  # repository's (modules/treefmt/treefmt.nix), but for these.
   settings.formatter.qt-javascript-lint = {
-    command = pkgs.lib.getExe (pkgs.callPackage ./modules/treefmt/qt-javascript-lint.nix { });
-    includes = [ "*.js" ];
     # The launcher is being redesigned, its matcher with it, which comes
     # under biome as it's rewritten. Chrome's extension isn't QML's.
     excludes = [
