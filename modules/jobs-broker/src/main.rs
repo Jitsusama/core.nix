@@ -27,6 +27,7 @@
 //! unit's standing as `systemctl show` does.
 
 mod answer;
+mod cli;
 mod peer;
 mod place;
 mod systemd;
@@ -40,6 +41,7 @@ use std::process::ExitCode;
 use daemon_serve::asks::Domain;
 use daemon_serve::serve::{Shared, accept, listen};
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure, flags};
 
 /// The broker as its clients know it: a domain holding no records, only
 /// its own two asks.
@@ -54,35 +56,59 @@ const DOMAIN: Domain = Domain {
 const SOCKET: &str = "daemons/jobs-broker.sock";
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.first().map(String::as_str) {
-        Some("serve") => serve(&args[1..]),
-        Some("run") => run(&args[1..]),
-        Some("status") => status(&args[1..]),
-        _ => {
-            eprintln!("usage: jobs-broker run [--quest QUEST] -- COMMAND...");
-            eprintln!("       jobs-broker status UNIT...");
-            eprintln!("       jobs-broker serve [--socket PATH]");
-            ExitCode::from(2)
+    // The kit has walked the words to a command by now, so the first is
+    // always one of the three.
+    terminal_kit::main(
+        &cli::help(),
+        env!("CARGO_PKG_VERSION"),
+        |context| match context.args.split_first() {
+            Some((first, rest)) if first == "run" => run(rest),
+            Some((first, rest)) if first == "status" => status(rest),
+            Some((first, rest)) if first == "serve" => serve(rest),
+            _ => Err(cli::wrongly("jobs-broker", "jobs-broker needs a command")),
+        },
+    )
+}
+
+/// The flags before a command's words, each with its value, as `command`
+/// takes those in `known`.
+#[derive(Default)]
+struct Options {
+    quest: Option<String>,
+    socket: Option<PathBuf>,
+}
+
+fn options(command: &str, args: &[String], known: &[&str]) -> Result<Options, Failure> {
+    let mut options = Options::default();
+    let mut words = args.iter();
+    while let Some(flag) = words.next() {
+        if !known.contains(&flag.as_str()) {
+            return Err(flags::unknown("flag", flag, known).try_this(format!("{command} --help")));
+        }
+        let Some(value) = words.next() else {
+            return Err(cli::wrongly(command, format!("{flag} needs a value")));
+        };
+        if flag == "--quest" {
+            options.quest = Some(value.clone());
+        } else {
+            options.socket = Some(PathBuf::from(value));
         }
     }
+    Ok(options)
 }
 
 /// `--socket PATH` when given, else the runtime folder's.
-fn socket_in(args: &[String]) -> Option<PathBuf> {
-    args.iter()
-        .position(|arg| arg == "--socket")
-        .and_then(|at| args.get(at + 1))
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("XDG_RUNTIME_DIR").map(|runtime| PathBuf::from(runtime).join(SOCKET))
-        })
+fn socket_in(given: Option<PathBuf>) -> Option<PathBuf> {
+    given.or_else(|| {
+        std::env::var_os("XDG_RUNTIME_DIR").map(|runtime| PathBuf::from(runtime).join(SOCKET))
+    })
 }
 
-fn serve(args: &[String]) -> ExitCode {
-    let Some(socket) = socket_in(args) else {
-        eprintln!("jobs-broker: no --socket and no XDG_RUNTIME_DIR to listen in");
-        return ExitCode::FAILURE;
+fn serve(args: &[String]) -> Result<(), Failure> {
+    let given = options("jobs-broker serve", args, &cli::FLAGS[1..])?;
+    let Some(socket) = socket_in(given.socket) else {
+        return Err(Failure::new(Exit::Failed, "jobs-broker couldn't listen")
+            .because("there's no --socket, and no XDG_RUNTIME_DIR to listen in"));
     };
     let shared = Shared::new(
         DOMAIN,
@@ -98,8 +124,11 @@ fn serve(args: &[String]) -> ExitCode {
     let listener = match listen(&socket) {
         Ok(listener) => listener,
         Err(error) => {
-            eprintln!("jobs-broker: can't listen on {}: {error}", socket.display());
-            return ExitCode::FAILURE;
+            return Err(Failure::new(
+                Exit::Failed,
+                format!("jobs-broker couldn't listen on {}", socket.display()),
+            )
+            .because(error.to_string()));
         }
     };
     accept(shared, listener);
@@ -138,51 +167,47 @@ fn quest_of_session() -> Option<String> {
     place::is_quest(&quest).then_some(quest)
 }
 
-fn run(args: &[String]) -> ExitCode {
+fn run(args: &[String]) -> Result<(), Failure> {
+    const RUN: &str = "jobs-broker run";
     let Some(split) = args.iter().position(|arg| arg == "--") else {
-        eprintln!("usage: jobs-broker run [--quest QUEST] -- COMMAND...");
-        return ExitCode::from(2);
+        return Err(cli::wrongly(RUN, "run takes its command after --"));
     };
-    let (options, command) = (&args[..split], &args[split + 1..]);
+    let (flags, command) = (&args[..split], &args[split + 1..]);
     let Some((program, rest)) = command.split_first() else {
-        eprintln!("jobs-broker: run needs a command after --");
-        return ExitCode::from(2);
+        return Err(cli::wrongly(RUN, "run needs a COMMAND after --"));
     };
-    let quest = options
-        .iter()
-        .position(|arg| arg == "--quest")
-        .and_then(|at| options.get(at + 1).cloned())
-        .or_else(quest_of_session);
+    let given = options(RUN, flags, &cli::FLAGS)?;
+    let quest = given.quest.or_else(quest_of_session);
     if let Err(why) = ask(
-        socket_in(options),
+        socket_in(given.socket),
         &json!({"id": 1, "ask": "scope", "quest": quest}),
     ) {
         // Run nowhere else: a command asked for in a scope of its own is
         // never run outside one, as systemd-run doesn't.
-        eprintln!("jobs-broker: no scope for {program}: {why}");
-        return ExitCode::FAILURE;
+        return Err(Failure::new(Exit::Failed, format!("no scope for {program}")).because(why));
     }
     let error = std::process::Command::new(program).args(rest).exec();
-    eprintln!("jobs-broker: can't run {program}: {error}");
-    ExitCode::from(127)
+    Err(
+        Failure::passed(127, format!("jobs-broker couldn't run {program}"))
+            .because(error.to_string()),
+    )
 }
 
-fn status(units: &[String]) -> ExitCode {
+fn status(units: &[String]) -> Result<(), Failure> {
     if units.is_empty() {
-        eprintln!("usage: jobs-broker status UNIT...");
-        return ExitCode::from(2);
+        return Err(cli::wrongly(
+            "jobs-broker status",
+            "status needs a UNIT to say",
+        ));
     }
-    let answer = match ask(
-        socket_in(&[]),
+    let answer = ask(
+        socket_in(None),
         &json!({"id": 1, "ask": "status", "units": units}),
-    ) {
-        Ok(answer) => answer,
-        Err(why) => {
-            eprintln!("jobs-broker: {why}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let mut failed = false;
+    )
+    .map_err(|why| {
+        Failure::new(Exit::Failed, "jobs-broker couldn't ask the broker").because(why)
+    })?;
+    let mut unread = Vec::new();
     let mut said = String::new();
     let told = answer["units"].as_array().cloned().unwrap_or_default();
     for (at, unit) in told.iter().enumerate() {
@@ -191,8 +216,7 @@ fn status(units: &[String]) -> ExitCode {
         }
         let name = unit["unit"].as_str().unwrap_or("?");
         if let Some(why) = unit["error"].as_str() {
-            eprintln!("{name}: {why}");
-            failed = true;
+            unread.push(format!("{name}: {why}"));
             continue;
         }
         for (key, value) in unit["status"].as_object().into_iter().flatten() {
@@ -206,14 +230,18 @@ fn status(units: &[String]) -> ExitCode {
             said.push('\n');
         }
     }
-    if let Err(error) = write_out(&mut std::io::stdout().lock(), &said) {
-        eprintln!("jobs-broker: can't write the status: {error}");
-        return ExitCode::FAILURE;
-    }
-    if failed {
-        ExitCode::FAILURE
+    write_out(&mut std::io::stdout().lock(), &said).map_err(|error| {
+        Failure::new(Exit::Failed, "jobs-broker couldn't write the status")
+            .because(error.to_string())
+    })?;
+    if unread.is_empty() {
+        Ok(())
     } else {
-        ExitCode::SUCCESS
+        Err(Failure::new(
+            Exit::Failed,
+            format!("jobs-broker couldn't read {} of the units", unread.len()),
+        )
+        .because(unread.join("\n")))
     }
 }
 

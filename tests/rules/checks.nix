@@ -266,6 +266,7 @@
         guide = pkgs.callPackage ../../modules/guide/package.nix { };
         hibernate-unlock = pkgs.callPackage ../../modules/hibernate/unlock/package.nix { };
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
+        jobs-broker = pkgs.callPackage ../../modules/jobs-broker/package.nix { };
         key-counts = pkgs.callPackage ../../modules/key-counts/package.nix { };
         lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
         launcher = pkgs.callPackage ../../modules/quickshell/in-a-terminal/package.nix { };

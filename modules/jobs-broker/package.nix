@@ -1,8 +1,9 @@
 # The jobs broker, built from this directory, its tests run as it builds.
 # It serves with the serving side every daemon shares (../daemon-serve),
 # and its tests ask it with the client every daemon's tests share
-# (../daemon-client), so the source is cut from the modules folder holding
-# all three, and built from this one.
+# (../daemon-client). Its command line takes its shape from the terminal
+# kit (../terminal-kit), so the source is cut from the modules folder
+# holding all four, and built from this one.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage rec {
   pname = "jobs-broker";
@@ -18,6 +19,8 @@ rustPlatform.buildRustPackage rec {
       ../daemon-client/src
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/jobs-broker";
