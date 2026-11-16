@@ -9225,6 +9225,10 @@ Scope {
             askedToOpen();
         if (!open && !opening)
             openChord = name;
+        // Opened whole, a kept Super+N still to fill never is, so its
+        // landing goes with it rather than landing a later fill on this
+        // opening's rows (filled takes its own before it opens whole here).
+        landsOnFill = null;
         intoWhole(name);
         keepPlace(name);
         if (asked)
@@ -10462,14 +10466,13 @@ Scope {
         // A place a chord opened, opened whole now, as its chord would.
         const place = openInto;
         if (place !== "") {
+            const lands = landsOnFill;
             fillingPlace = true;
             try {
                 into(place);
             } finally {
                 fillingPlace = false;
             }
-            const lands = landsOnFill;
-            landsOnFill = null;
             if (lands !== null)
                 landingOn(lands.wanted, lands.normal);
         } else {
