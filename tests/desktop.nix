@@ -377,6 +377,20 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/window-storm.py);
 
+  # A command fenced as pi fences one, trying for Joel's secret copy
+  # through X11 (../modules/pi/tests/pi-fence-keeps-x11-from-secrets.sh).
+  fenceKeepsX11 = pkgs.writeShellApplication {
+    name = "pi-fence-keeps-x11-from-secrets";
+    runtimeInputs = [
+      pkgs.bubblewrap
+      pkgs.landrun
+      pkgs.wl-clipboard
+      pkgs.xclip
+      pkgs.xlogo
+    ];
+    text = builtins.readFile ../modules/pi/tests/pi-fence-keeps-x11-from-secrets.sh;
+  };
+
   # A stand-in touchscreen, as wide as the screen, which swipes or taps as
   # it's told through /run/touchscreen (desktop/touchscreen.py).
   touchscreen = pkgs.writers.writePython3 "touchscreen" {
@@ -579,6 +593,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         ""
         "${pkgs.coreutils}/bin/touch /run/suspended"
       ];
+      # keeps-copies fences a command with landrun, which needs a newer
+      # Landlock than the stock kernel's, as Joel's machines' kernel has. Only there, so no other area moves with it.
+      boot.kernelPackages = lib.mkIf (area == "keeps-copies") pkgs.linuxPackages_latest;
       boot.extraModulePackages = [
         (config.boot.kernelPackages.callPackage ./stand-in-backlight { })
         (config.boot.kernelPackages.callPackage ./stand-in-light { })
@@ -1267,7 +1284,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         (pkgs.callPackage ../modules/disk-guard/package.nix { })
         # A player that tells the desktop what it plays, as Spotify does.
         (pkgs.mpv.override { scripts = [ pkgs.mpvScripts.mpris ]; })
-      ];
+      ]
+      # The fenced command keeps-copies tries Joel's secret copy through
+      # X11 with, by name on the account's path rather than among the
+      # values every area's test reads, so no other area moves with it.
+      ++ lib.optional (area == "keeps-copies") fenceKeepsX11;
 
       # Starting a system service is something only an admin may do, so systemd
       # asks polkit, and polkit asks the account through its agent.
@@ -1287,7 +1308,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # The machine's niri, with its patches, rather than nixpkgs's, through
         # the wrapper its session starts it by.
         program = "${config.security.wrapperDir}/niri-compositor";
-        environment.WLR_RENDERER = "pixman";
+        environment = {
+          WLR_RENDERER = "pixman";
+        }
+        # Where the session keeps X11's cookie, which niri's unit has from
+        # the user manager on a machine and Cage doesn't, so the satellite
+        # lets in only a client holding it, as on a machine. Only where
+        # keeps-copies tries X11 for a secret, so no other area moves.
+        // lib.optionalAttrs (area == "keeps-copies") {
+          XAUTHORITY = "/run/user/1000/xwayland-auth";
+        };
       };
       # A switch starts tty1's getty, which Cage's unit conflicts with, so
       # it stops Cage and the session in it; greetd, which a machine runs,

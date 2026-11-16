@@ -4544,7 +4544,10 @@
   '';
   vm-desktop-keeps-copies = ''
     the desktop keeps what's copied, text and pictures, past the programs that copied it, Super+V
-    gives it back into the window it opened over, and the launcher forgets it all when asked
+    gives it back into the window it opened over, and the launcher forgets it all when asked; and a
+    copy marked secret reaches Joel's own X11 client but never a command fenced as pi fences one,
+    given the display: handed the cookie it reaches no socket, with the sockets open it holds no
+    cookie, and with both walls gone it reads it
   '';
   vm-desktop-keeps-pace = ''
     the launcher draws its keys, arrowed or typed, nearly as soon while every core is busy in

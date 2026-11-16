@@ -349,6 +349,20 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
     assert desktop.as_account("ls -A $XDG_RUNTIME_DIR/clipboard-history") == ""
 
 
+def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> None:
+    """A fenced command reads no secret copy through X11, where Joel's own client does."""
+    # niri imports its X11 display as a session does, run as its child so
+    # it holds what niri set; the session's start here imports only the rest.
+    desktop.as_account("niri msg action spawn -- systemctl --user import-environment DISPLAY")
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("systemctl --user show-environment | grep -q '^DISPLAY='")
+    )
+    # The script says each case it tried, and fails naming the one that
+    # let the secret through (modules/pi/tests); this area alone has it.
+    said = desktop.as_account("pi-fence-keeps-x11-from-secrets 2>&1; echo ended $?")
+    assert said.rstrip().endswith("ended 0"), f"the fence let X11 through: {said}"
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 
