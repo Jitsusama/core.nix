@@ -140,6 +140,7 @@ pub fn network(net: &Answer) -> Part {
                 .iter()
                 .filter(|concern| concern.get("kind").and_then(Value::as_str) != Some("ceiling"))
                 .filter_map(|concern| concern.get("says").and_then(Value::as_str))
+                .map(unstopped)
                 .collect()
         })
         .unwrap_or_default();
@@ -260,6 +261,12 @@ fn lowered(said: &str) -> String {
         Some(rest) => format!("the {rest}"),
         None => said.to_owned(),
     }
+}
+
+/// An owner's sentence without its one closing stop, so it joins others.
+/// Net words each look as a sentence, and the join supplies the stop.
+fn unstopped(said: &str) -> &str {
+    said.strip_suffix('.').unwrap_or(said)
 }
 
 /// A count and its noun, in the singular for one.
@@ -410,6 +417,29 @@ mod tests {
             part.side,
             ["Main Floor's radio is busy", "and 1 more worth a look"],
             "a name leading keeps its capital, and the devices are left out"
+        );
+    }
+
+    #[test]
+    fn a_look_nets_words_end_is_joined_without_its_stop() {
+        let part = network(&Ok(net(
+            &[("eero", "answering")],
+            &[
+                ("stale", "The eero last answered 20 hours ago."),
+                ("weak", "iphone has a weak signal."),
+            ],
+        )));
+        assert_eq!(
+            part.says, "The eero last answered 20 hours ago; and 1 more worth a look; 3 devices",
+            "net's sentence loses its stop where it joins the others"
+        );
+        assert_eq!(
+            part.side,
+            [
+                "the eero last answered 20 hours ago",
+                "and 1 more worth a look"
+            ],
+            "an item of a side carries no stop"
         );
     }
 
