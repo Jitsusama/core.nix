@@ -3947,7 +3947,12 @@
   // sentence is rewritten only when its words change, so a count he is on
   // keeps its focus. What is spoken is coarser, so the polite live region
   // speaks only when the network changes, never on each reading.
+  // How the network stands and who needs him are two spans of the one
+  // sentence, so #status-words holds the counts alone, as the page's test
+  // reads them.
   const statusWords = document.getElementById("status-words");
+  const asksWords = document.getElementById("asks-words");
+  const sentenceLine = statusWords.closest("h1");
   const statusSaid = document.getElementById("status-said");
   let statusShown = "";
   let sentenceShown = "";
@@ -3965,23 +3970,21 @@
     const clauses = [["cells", plural(all, "cell")]];
     if (n.moving) clauses.push(["", `${NUMBER.format(n.moving)} moving`]);
     if (n.stuck) clauses.push(["", `${NUMBER.format(n.stuck)} stuck`]);
-    if (asks) clauses.push(["asks", asks]);
-    if (clauses.length === 1) clauses.push(["", "all quiet"]);
-    const sentence = clauses
-      .map(([what, words], i) => {
-        // A clause is kept whole on its line: a count never parts from
-        // what it counts.
-        const shown = what ? `<button type="button" class="count" data-count="${what}" aria-controls="panel">${esc(words)}</button>` : `<span class="clause">${esc(words)}</span>`;
-        // The full stop stands outside, so #status-words holds the counts
-        // alone, as the page's test reads them.
-        return i === clauses.length - 1 ? `<em>${shown}</em>` : shown;
-      })
-      .join(", ");
-    if (sentence !== sentenceShown) {
-      const had = statusWords.contains(document.activeElement) ? document.activeElement.dataset.count : null;
-      sentenceShown = sentence;
-      statusWords.innerHTML = sentence;
-      if (had) (statusWords.querySelector(`[data-count="${had}"]`) || view).focus({ preventScroll: true });
+    if (clauses.length === 1 && !asks) clauses.push(["", "all quiet"]);
+    // A clause is kept whole on its line, so a count never parts from what
+    // it counts, and the last clause of the sentence takes its turn.
+    const clause = ([what, words], last) => {
+      const shown = what ? `<button type="button" class="count" data-count="${what}" aria-controls="panel">${esc(words)}</button>` : `<span class="clause">${esc(words)}</span>`;
+      return last ? `<em>${shown}</em>` : shown;
+    };
+    const counted = clauses.map((c, i) => clause(c, !asks && i === clauses.length - 1)).join(", ");
+    const asked = asks ? `, ${clause(["asks", asks], true)}` : "";
+    if (counted + asked !== sentenceShown) {
+      const had = sentenceLine.contains(document.activeElement) ? document.activeElement.dataset.count : null;
+      sentenceShown = counted + asked;
+      statusWords.innerHTML = counted;
+      asksWords.innerHTML = asked;
+      if (had) (sentenceLine.querySelector(`[data-count="${had}"]`) || view).focus({ preventScroll: true });
     }
     const said = `${atWork(n.moving, all)}${stuck}${asks ? `; ${asks}` : ""}`;
     if (said === statusShown) return;
@@ -3989,7 +3992,7 @@
     statusSaid.textContent = said;
   };
   // A count opens Now, with the keys on the first row of what it counts.
-  statusWords.addEventListener("click", (e) => {
+  sentenceLine.addEventListener("click", (e) => {
     const b = e.target.closest("[data-count]");
     if (!b) return;
     openNow();
