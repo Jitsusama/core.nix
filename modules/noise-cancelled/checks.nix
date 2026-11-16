@@ -38,12 +38,15 @@
     let
       services = (account graphical).systemd.user.services;
       words = service: pkgs.lib.splitString " " (toString service.Service.ExecStart);
+      served = builtins.elemAt (words services.noise-cancelled) 2;
     in
+    # The folder is named for models.nix, so a word moved out of place
+    # in both commands can't pass by matching some other word.
     holds "noise-cancelled-scores-with-the-trials-models"
       "noise-cancelled serve is given another models folder than the trial, so it can't score a call."
       (
-        builtins.elemAt (words services.noise-cancelled) 2
-        == builtins.elemAt (words services.noise-cancelled-trial) 3
+        pkgs.lib.hasSuffix "-noise-cancelled-models" served
+        && served == builtins.elemAt (words services.noise-cancelled-trial) 3
       );
 
   # Whatever else a machine refuses it for, Choose by Ear never records

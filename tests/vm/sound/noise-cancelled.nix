@@ -9,7 +9,8 @@
 # keeps, since a synthetic voice is taken down as if it were noise. Choose
 # by Ear then records the same microphone, offers it four ways blind, and a
 # pick makes its twin the microphone chosen and shows every clip's marks,
-# from the scorer in the folder the module gives. An offer of Choose by Ear
+# so models.nix's folder holds a scorer that loads; that the module gives
+# it to the service is noise-cancelled's own holds check. An offer of Choose by Ear
 # written beside the picks, as the service writes one after a call, the
 # trial hears and tells, until it's taken. Plugged in again after a
 # cleaned pick, the microphone's twin ranks one above it, and unranked

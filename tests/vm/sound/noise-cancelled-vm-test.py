@@ -285,15 +285,25 @@ def test_a_pick_reveals_each_clip_and_chooses_its_microphone(
         assert picked["running"] == picked["picked"]["cleaner"]
 
 
-def test_a_pick_shows_every_clips_marks(joel: Joel) -> None:
-    """Picked, every clip's marks follow, as the scorer in the module's folder gives them."""
+def test_a_pick_shows_every_clips_marks(joel: Joel, offered: dict[str, Any]) -> None:
+    """Picked, every clip's marks follow, from the scorer in models.nix's folder."""
+    # Picked here when run alone; run after the pick above, it keeps that one.
+    if joel.trial()["stage"] == "ready":
+        assert joel.ask({"id": 6, "ask": "act", "act": "pick", "clip": "A"}) == {
+            "id": 6,
+            "taken": True,
+        }
     get = shlex.quote(json.dumps({"id": 1, "ask": "get"}))
     scored = shlex.quote('"marks":{')
-    try:
-        joel.wait_for(f"printf '%s\\n' {get} | nc -N -U {TRIAL} | grep -qF {scored}", LOADS_WITHIN)
-    except Exception:
-        joel.explain()
-        raise
+    unloaded = shlex.quote("loading the scorer")
+    # A scorer that won't load says so at once, so that ends the wait as well as the marks do.
+    joel.wait_for(
+        f"printf '%s\\n' {get} | nc -N -U {TRIAL} | grep -qF {scored}"
+        f" || journalctl --user -u trial -o cat | grep -qF {unloaded}",
+        LOADS_WITHIN,
+    )
+    failed = joel.run(f"journalctl --user -u trial -o cat | grep -F {unloaded} || true").strip()
+    assert failed == "", f"the trial couldn't score its clips: {failed}"
     marks = joel.trial()["marks"]
     assert set(marks) == {"raw", "deepfilternet", "deepfilternet-gentle", "rnnoise"}, (
         f"the scorer marked {sorted(marks)}, not every clip"
