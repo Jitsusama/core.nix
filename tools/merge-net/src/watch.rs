@@ -2889,6 +2889,39 @@ mod tests {
     }
 
     #[test]
+    fn a_mac_comparison_no_mac_took_for_a_day_is_told_and_let_go() {
+        let state = state("mac-unrun");
+        let check = crate::macs::check("s");
+        state.set_heads("h", "h").unwrap();
+        state
+            .keep_settling(
+                &check,
+                &json!({"kind": "mac", "merge": "m1", "test": check, "since": 0}),
+            )
+            .unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[UNSENT; SENDS as usize]);
+        round(&world, &state, "s").unwrap();
+        let told: Vec<Value> = findings(&state)
+            .into_iter()
+            .filter(|finding| finding["kind"] == "mac-unrun")
+            .collect();
+        assert!(
+            told.iter().any(|finding| finding["commit"] == "m1"),
+            "a Mac's comparison no Mac took for a day wasn't told: {told:?}"
+        );
+        assert!(
+            state.settling().is_empty(),
+            "a Mac's comparison told as unrun was still kept to try again"
+        );
+    }
+
+    #[test]
     fn a_merge_whose_gate_compared_a_mac_is_not_compared_again() {
         let state = state("mac-compared");
         let world = Stand {
