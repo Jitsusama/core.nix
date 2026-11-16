@@ -178,13 +178,8 @@ PADS_NAMED = 3
 # Crates that draw colour their own way, around the kit's decision.
 COLOUR_CRATES = ("anstyle", "ansi_term", "colored", "console", "owo-colors", "termcolor", "yansi")
 
-# Where a Rust file's unit tests start, which hold what a test expects to see:
-# a test module with a body, under any attributes of its own. A test-only
-# item elsewhere, as `#[cfg(test)] mod tests;` naming a file of its own,
-# ends nothing, since the code after it is the command's own.
-TESTS = re.compile(
-    r"^#\[cfg\(test\)\]\n(?:#\[[^\n]*\]\n)*(?:pub(?:\([\w:]+\))? )?mod \w+ \{", re.MULTILINE
-)
+# Where a Rust file's unit tests start: a test module with a body, never `mod tests;`.
+TESTS = re.compile(r"^#\[cfg\(test\)\]\n(?:#\[.*\]\n)*(?:pub\S* )?mod \w+ \{", re.MULTILINE)
 
 # The two wrappers that make a script a command, and what they're told.
 APPLICATION = re.compile(r"\bwriteShellApplication\s*\{")
