@@ -190,14 +190,14 @@ impl Follower {
         if date_of(at, &self.zone) != self.day.date {
             return;
         }
-        let gone = match &self.proc {
+        let looked = match &self.proc {
             Some(proc) => agents::look(presences, proc),
             None => agents::asked(presences, at),
         };
         let (zone, date) = (&self.zone, &self.day.date);
         self.day
             .agents
-            .saw(at, gone, |died| date_of(died, zone) == *date);
+            .saw(at, looked, |died| date_of(died, zone) == *date);
         self.changed = true;
     }
 
