@@ -166,6 +166,24 @@ fn tree_name(path: &str) -> String {
     )
 }
 
+/// A row's side: when it was asked, after what came of it once answered,
+/// since a row away from the cursor says its side alone (VKCF3Z, 15
+/// November).
+fn side(held: &Held, words: &Words) -> Value {
+    let came = time::at(held.ask.asked_ms, Form::Came);
+    let stands = match held.state {
+        State::Waiting => return json!([came]),
+        State::Releasing => "side:releasing",
+        State::Ran { .. } => "side:released",
+        State::Failed { .. } => "side:failed",
+        State::Refused => "side:refused",
+        State::Ended => "side:ended",
+    };
+    // Where the row hasn't room for both, when the ask came gives way
+    // first, since how it stands is what the row is read for.
+    json!([{"said": words.fill(stands, &[]), "keep": 2}, {"at": came, "keep": 1}])
+}
+
 /// The fact saying what came of an answered ask, or none while it waits.
 fn outcome(held: &Held, words: &Words) -> Option<Value> {
     let name = words.fill("fact:outcome", &[]);
@@ -231,13 +249,28 @@ pub fn row_lasting(
             "identifies": true,
         }),
         json!({"name": words.fill("fact:in", &[]), "said": place, "identifies": true}),
-        // A yes is for the command in its tree, so the tree's own code
-        // runs with the secret too (ISXEG8, 14 November), and he's told.
-        json!({
-            "name": words.fill("fact:trusts", &[]),
-            "said": words.fill("trusts", &[("tree", &tree_name(&ask.tree))]),
-        }),
     ];
+    // What a yes lasts for decides the press, so it comes before the rest,
+    // above the fold at 1440x900 without going in (VKCF3Z, 15 November).
+    if let Some(repository) = lasts {
+        facts.push(json!({
+            "name": words.fill("fact:lasts", &[]),
+            "said": words.fill("lasts", &[("repository", repository)]),
+        }));
+    }
+    // A standing yes waits on code off main, and he's told why it asks.
+    if held.tree.landed == Some(false) {
+        facts.push(json!({
+            "name": words.fill("fact:standing", &[]),
+            "said": words.fill("unlanded", &[]),
+        }));
+    }
+    // A yes is for the command in its tree, so the tree's own code
+    // runs with the secret too (ISXEG8, 14 November), and he's told.
+    facts.push(json!({
+        "name": words.fill("fact:trusts", &[]),
+        "said": words.fill("trusts", &[("tree", &tree_name(&ask.tree))]),
+    }));
     if let Some(kept) = uncommitting(&held.tree.checkout).filter(|_| says_commits) {
         facts.push(json!({"name": words.fill("fact:commits", &[]), "said": words.fill(kept, &[])}));
     }
@@ -255,22 +288,11 @@ pub fn row_lasting(
         "name": words.fill("fact:given", &[]),
         "said": words.fill("given", &[("name", &ask.given), ("minutes", &minutes)]),
     }));
-    if let Some(repository) = lasts {
-        facts.push(json!({
-            "name": words.fill("fact:lasts", &[]),
-            "said": words.fill("lasts", &[("repository", repository)]),
-        }));
-    }
-    // A standing yes waits on code off main, and he's told why it asks.
-    if held.tree.landed == Some(false) {
-        facts.push(json!({
-            "name": words.fill("fact:standing", &[]),
-            "said": words.fill("unlanded", &[]),
-        }));
-    }
+    // How long the ask waits, named apart from a grant's Ends, so it
+    // never reads as when a yes ends (VKCF3Z, 15 November).
     if held.state == State::Waiting {
         facts.push(json!({
-            "name": words.fill("fact:ends", &[]),
+            "name": words.fill("fact:waits", &[]),
             "at": ask.ends_ms(), "as": Form::Moment.name(),
         }));
     }
@@ -289,12 +311,14 @@ pub fn row_lasting(
         "thing": thing,
         "place": PLACE,
         "kind": "ask",
-        "state": held.state.name(),
+        // Only a waiting ask says its state, which the cursor's row says
+        // beside its side; an answered one says it in its side.
+        "state": (held.state == State::Waiting).then(|| held.state.name()),
         "name": ask.item,
         "glyph": "passwords",
         "hue": if held.state == State::Waiting { "action" } else { "machine" },
         "note": eyebrow,
-        "side": [time::at(ask.asked_ms, Form::Came)],
+        "side": side(held, words),
         "attention": (held.state == State::Waiting).then_some(ask.asked_ms),
         "digest": digest,
         "acts": acts,
@@ -366,7 +390,103 @@ mod tests {
             ("fact:commits", "Commits"),
             ("tagsOnly", "can't from here, only tags"),
             ("noHistory", "can't from here, nor tags"),
+            ("fact:lasts", "Yes Lasts"),
+            ("lasts", "a week, from any tree of {repository} on main"),
+            ("fact:waits", "Waits Until"),
+            ("fact:ends", "Ends"),
+            ("side:released", "released"),
+            ("side:refused", "refused"),
         ])
+    }
+
+    /// The names of a row's drawer's facts, in order.
+    fn named(row: &Value) -> Vec<String> {
+        let facts = row["drawer"]["facts"].as_array().expect("facts");
+        facts
+            .iter()
+            .map(|fact| fact["name"].as_str().unwrap_or("").to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn a_waiting_ask_says_what_a_yes_lasts_before_what_else_runs() {
+        let held = held(State::Waiting, Some(0));
+        let row = row_lasting(&held, "", &words(), true, Some("core.nix"));
+        // Yes Lasts decides the press, so it shows above the fold at
+        // 1440x900 without going in (VKCF3Z, 15 November).
+        assert_eq!(
+            named(&row),
+            [
+                "Runs",
+                "In",
+                "Yes Lasts",
+                "Also Runs",
+                "Given As",
+                "Waits Until"
+            ],
+            "the facts' order"
+        );
+    }
+
+    #[test]
+    fn an_asks_own_end_is_said_as_how_long_it_waits() {
+        let row = row(&held(State::Waiting, Some(0)), "", &words(), true);
+        // Ends is the grant's alone, so an ask's minute never reads as
+        // when a yes ends (VKCF3Z, 15 November).
+        assert!(
+            !named(&row).contains(&"Ends".to_owned()),
+            "the ask's end is named as a grant's: {:?}",
+            named(&row)
+        );
+        assert_eq!(named(&row).last().map(String::as_str), Some("Waits Until"));
+    }
+
+    #[test]
+    fn an_answered_asks_row_says_how_it_stands_beside_when() {
+        let said = |state: State| {
+            let row = row(&held(state, Some(0)), "", &words(), true);
+            let side = row["side"].as_array().expect("a side").clone();
+            (
+                side.first().map(|one| one["said"].clone()),
+                side.len(),
+                row["state"].clone(),
+            )
+        };
+        // A row away from the cursor says only its side, so an answered
+        // ask's says what came of it there (VKCF3Z, 15 November), and
+        // serves no state the cursor's row would say beside it again.
+        let (word, items, state) = said(State::Ran { exit: Some(0) });
+        assert_eq!(
+            (word, items),
+            (Some(json!("released")), 2),
+            "a ran ask's side"
+        );
+        assert_eq!(state, Value::Null, "a ran ask says its state twice");
+        // Where the row hasn't room for both, the launcher gives way the
+        // item kept least, and how the ask stands is what it's for.
+        let side = row(
+            &held(State::Ran { exit: Some(0) }, Some(0)),
+            "",
+            &words(),
+            true,
+        )["side"]
+            .clone();
+        assert!(
+            side[0]["keep"].as_u64() > side[1]["keep"].as_u64(),
+            "how an answered ask stands gives way before when it came: {side}"
+        );
+        let (word, items, _) = said(State::Refused);
+        assert_eq!(
+            (word, items),
+            (Some(json!("refused")), 2),
+            "a refused ask's side"
+        );
+        let (_, items, state) = said(State::Waiting);
+        assert_eq!(
+            (items, state),
+            (1, json!("waiting")),
+            "a waiting ask's side"
+        );
     }
 
     /// An ask whose tree's history is kept as `checkout` says.

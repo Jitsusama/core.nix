@@ -14,7 +14,7 @@
 // gathers with every source's), so home's On row leads with it and the
 // tray counts it. A standing yes, which lets the same ask run for a week
 // (src/grant.rs), is a row too, never waiting, so it neither arms nor
-// counts in For You, and its Return does its one act, Revoke It.
+// counts in For You, and its Return does its one act, Forget It.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell

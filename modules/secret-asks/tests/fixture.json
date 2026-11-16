@@ -62,7 +62,7 @@
             {
               "as": "moment",
               "at": 1794459600000,
-              "name": "Ends"
+              "name": "Waits Until"
             }
           ],
           "title": "op://Private/Release Test/password"
@@ -131,11 +131,18 @@
         "place": "asks",
         "side": [
           {
-            "as": "came",
-            "at": 1794458400000
+            "keep": 2,
+            "said": "released"
+          },
+          {
+            "at": {
+              "as": "came",
+              "at": 1794458400000
+            },
+            "keep": 1
           }
         ],
-        "state": "ran",
+        "state": null,
         "thing": "ask:9b1e4d7c2a5f48e3b6d0c9a8f7e6d5c4"
       }
     },

@@ -120,6 +120,21 @@ pub fn stored_folder(name: &str) -> PathBuf {
         .unwrap_or_else(|| panic!("no {name} in the store on PATH"))
 }
 
+/// Runs the git the daemon is handed in `tree`, as the test's own, with
+/// no settings of Joel's, so its commits are made unsigned and what it
+/// makes is what the daemon's git reads.
+pub fn git_in(tree: &std::path::Path, args: &[&str]) {
+    let ran = Command::new(stored_folder("git").join("git"))
+        .arg("-C")
+        .arg(tree)
+        .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+        .args(args)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .output()
+        .expect("git runs");
+    assert!(ran.status.success(), "git {args:?} failed: {ran:?}");
+}
+
 /// A stand-in for wl-copy in the foreground: what it's given goes to its
 /// file, and it holds on until it's ended, as wl-copy holds the clipboard.
 const COPIER: &str = r#"
@@ -199,7 +214,9 @@ impl Running {
         let home = folder.join("home");
         let also = json!({
             "releases": releases,
-            "git": "git",
+            // The daemon runs git with no PATH of its own, as a machine
+            // hands it git's whole path, so a bare name would read no tree.
+            "git": stored_folder("git").join("git"),
             "bwrap": bwrap,
             "references": {"1password": "op://"},
             "profiles": [stored_folder("bash"), folder.join("home/.nix-profile/bin")],

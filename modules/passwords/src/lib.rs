@@ -174,6 +174,12 @@ pub enum Ask {
         id: Value,
         said: Value,
     },
+    /// Asks' Forget It on a standing yes, which the daemon's wire calls
+    /// a revoke.
+    Revoke {
+        id: Value,
+        said: Value,
+    },
     /// A kind this daemon doesn't keep.
     UnknownKind {
         id: Value,
@@ -277,6 +283,7 @@ pub fn ask(line: &str) -> Ask {
         },
         "release" => Ask::Release { id, said },
         "refuse" => Ask::Refuse { id, said },
+        "revoke" => Ask::Revoke { id, said },
         other => Ask::Unknown {
             id,
             ask: other.to_owned(),
