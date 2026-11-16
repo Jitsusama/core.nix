@@ -72,9 +72,9 @@ pub fn shown_lines(class: Class, of_class: &[&Measure]) -> Vec<String> {
     let mut rest = Vec::new();
     if within > 0 {
         rest.push(if lines.is_empty() {
-            format!("all {within} in")
+            format!("all {within} within target")
         } else {
-            format!("{within} more in")
+            format!("{within} more within target")
         });
     }
     if unjudged > 0 {
