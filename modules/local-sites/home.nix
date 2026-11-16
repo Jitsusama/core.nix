@@ -27,15 +27,16 @@
 # rather than in the system module, so a machine with the system daemon
 # and no local sites still evaluates.
 #
-# Two sites still read files written beside them. mycelium/ maps the realm as it stands, from a
-# now.json beside it that a timer rewrites every 20 seconds from what the
-# machine's node says (mycelium-map.sh, shaped by mycelium-map.jq). A
-# machine in no realm has no node to read, so it runs no timer. network/
-# maps the home network from net's record (modules/net), copied in each
-# time net rewrites it, since the server serves nothing outside its root
-# and won't follow a link out of it; on a machine that runs no net, the
-# record never appears and nothing is copied.
-{ mycelium }:
+# mycelium/ and forage/ are watched live from the machine's mycelium
+# node: the realm's map (modules/mycelium/site) and what each cell is for
+# (modules/mycelium/forage). A machine in no realm has no node to read, so
+# it has neither.
+#
+# One site still reads a file written beside it. network/ maps the home
+# network from net's record (modules/net), copied in each time net
+# rewrites it, since the server serves nothing outside its root and won't
+# follow a link out of it; on a machine that runs no net, the record never
+# appears and nothing is copied.
 {
   config,
   lib,
@@ -153,10 +154,18 @@ in
         inherit webKit;
         tint = "program";
       };
+      # The realm drawn as a map, live from its node (modules/mycelium/site).
+      mycelium = sites.localSite {
+        name = "mycelium";
+        src = ../mycelium/site;
+        inherit webKit;
+        # Its mark, in the hue the theme gives what programs are.
+        tint = "program";
+      };
     };
-    # The system daemon's summary, its parts and their things
-    # (modules/system), each told whole: a page shows all of each.
     feeds = {
+      # The system daemon's summary, its parts and their things
+      # (modules/system), each told whole: a page shows all of each.
       system = {
         socket = "daemons/system.sock";
         kinds = {
@@ -167,20 +176,48 @@ in
       };
     }
     // lib.optionalAttrs (realm != null) {
-      # The realm's node on this machine, of which a page reads only each
-      # cell's forage: its purpose, standing, documents and lineage, and
-      # never what passes between cells.
+      # The realm's node on this machine. The forage page reads only each
+      # cell's purpose, standing, documents and lineage. The map reads its
+      # networks and cells whole, as `mycelium networks` draws them; of
+      # each machine only what the map draws; and of each message only who
+      # sent it, how and where, never its words.
       node = {
         socket = "mycelium/${realm}.sock";
-        kinds.forage.fields = [
-          "cell"
-          "machine"
-          "quest"
-          "purpose"
-          "status"
-          "documents"
-          "lineage"
-        ];
+        kinds = {
+          forage.fields = [
+            "cell"
+            "machine"
+            "quest"
+            "purpose"
+            "status"
+            "documents"
+            "lineage"
+          ];
+          network = { };
+          cell = { };
+          machine.fields = [
+            "name"
+            "state"
+            "model_name"
+            "os"
+            "system"
+            "cpu"
+            "memory"
+            "disk"
+            "disk_free"
+            "disk_band"
+            "power"
+            "room"
+            "declared"
+            "measured_at"
+          ];
+          message.fields = [
+            "at"
+            "from"
+            "intent"
+            "groups"
+          ];
+        };
       };
     };
   };
@@ -244,45 +281,6 @@ in
         RestartSec = "5s";
       };
       Install.WantedBy = [ "default.target" ];
-    };
-  }
-  // lib.optionalAttrs (realm != null) {
-    mycelium-map = {
-      Unit.Description = "Writes the mycelium site's map from what the node says now";
-      Service = {
-        Type = "oneshot";
-        Environment = [
-          "MYCELIUM_REALM=${realm}"
-          "PATH=${
-            lib.makeBinPath [
-              mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default
-              pkgs.coreutils
-              pkgs.jq
-            ]
-          }"
-        ];
-        ExecStart = lib.escapeShellArgs [
-          (lib.getExe pkgs.bash)
-          "${./mycelium-map.sh}"
-          "${./mycelium-map.jq}"
-          "${config.xdg.dataHome}/jitsusama/sites/mycelium"
-        ];
-        Slice = "background.slice";
-      };
-    };
-  };
-
-  # Every 20 seconds, as the page reads it; a run takes about a tenth of a
-  # second.
-  config.systemd.user.timers = lib.optionalAttrs (realm != null) {
-    mycelium-map = {
-      Unit.Description = "Rewrites the mycelium site's map every 20 seconds";
-      Timer = {
-        OnActiveSec = "1s";
-        OnUnitActiveSec = "20s";
-        AccuracySec = "1s";
-      };
-      Install.WantedBy = [ "timers.target" ];
     };
   };
 }

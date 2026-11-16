@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en-CA" data-kind="interface">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your mycelium, now.</title>
+<meta name="description" content="Every session and machine at work for you this minute, drawn as the network it is: who hangs from what, and who shares what with whom.">
+<meta property="og:title" content="Your mycelium, now.">
+<meta property="og:description" content="Every session and machine at work for you this minute, drawn as the network it is: who hangs from what, and who shares what with whom.">
+<meta property="og:type" content="website">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="@dark-ground@">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="@light-ground@">
+<script>
+  try {
+    const t = localStorage.getItem("theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="kit/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="kit/fonts/fraunces-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="kit/fonts/monaspace.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="kit/theme.css">
+<link rel="stylesheet" href="kit/base.css">
+<link rel="stylesheet" href="site.css">
+<link rel="alternate" type="text/markdown" href="index.md">
+<link rel="describedby" type="text/plain" href="llms.txt">
+</head>
+<body>
+
+<a class="skip" href="#map-view">Skip to the map</a>
+
+<link rel="stylesheet" href="../strip.css">
+<nav class="sites-strip" aria-label="Your sites"><a href="../">All your sites</a> <span>App</span> <span>live</span></nav>
+
+<header class="head">
+  <svg class="mark" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <path d="M16 16L6 7 M16 16L27 9 M16 16L9 27 M16 16L26 25 M6 7L3 13 M27 9L30 15"/>
+      <circle cx="6" cy="7" r="3.2"/><circle cx="27" cy="9" r="3.2"/><circle cx="9" cy="27" r="3.2" stroke-dasharray="2 1.6"/><circle cx="26" cy="25" r="3.2"/>
+    </g>
+    <circle cx="16" cy="16" r="4" fill="currentColor"/>
+  </svg>
+  <h1>Your Mycelium, <em>Now</em></h1>
+  <p class="keys">Arrows walk the map, <kbd>/</kbd> finds a cell, <kbd>.</kbd> opens Now, and <kbd>?</kbd> lists every key</p>
+  <div class="switch" role="radiogroup" aria-label="Theme">
+    <button type="button" role="radio" aria-checked="false" tabindex="-1" data-choice="light" aria-label="Light" title="Light">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <button type="button" role="radio" aria-checked="true" tabindex="0" data-choice="system" aria-label="Match System" title="Match System">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor"/></svg>
+    </button>
+    <button type="button" role="radio" aria-checked="false" tabindex="-1" data-choice="dark" aria-label="Dark" title="Dark">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="main" class="stage">
+  <div class="headline">
+    <nav class="trail" id="trail" aria-label="Where the keys are"><ol id="trail-steps"><li><span class="step" aria-current="location"><span>The whole map</span></span></li></ol></nav>
+    <search class="find" id="find-line" hidden>
+      <label for="find" class="sr">Find a cell or network</label>
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5L17 17"/></svg>
+      <input id="find" type="search" placeholder="Find a cell or network" autocomplete="off" spellcheck="false" aria-describedby="find-count">
+      <span class="find-count" id="find-count" aria-live="polite"></span>
+    </search>
+    <p class="status" id="status"><span class="sr" id="status-said" aria-live="polite"></span><span id="status-words"></span><span class="sr">; </span><button type="button" class="needs" id="needs" aria-controls="panel" hidden></button></p>
+    <p id="asof" class="asof">reading</p>
+    <div class="zoom" role="group" aria-label="The map's controls">
+      <button type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button>
+      <button type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (o)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12"/></svg></button>
+      <button type="button" data-zoom="fit" aria-label="Show the whole map" title="Whole map (0)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
+      <button type="button" data-zoom="now" id="now-control" aria-label="Now" title="Now (.)" aria-expanded="false" aria-controls="panel"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v12H3zM12 4v12M14 8h1M14 11h1"/></svg></button>
+    </div>
+  </div>
+  <figure class="map" id="map" aria-labelledby="map-title">
+    <h2 id="map-title" class="sr">The Map</h2>
+    <p id="where" class="sr" role="status"></p>
+    <div class="map-view" id="map-view" data-map role="region" tabindex="0" aria-roledescription="map" aria-label="The network, drawn" aria-describedby="map-help">
+      <p id="map-help" class="sr">Arrow keys or h, j, k and l walk one level at a time: on the whole map, the machines and networks; inside a network, only its cells. Return opens what you are on, and opening a network goes in to its cells; zooming in far enough goes in too; minus steps back out to the level above; shift with an arrow moves the map; i and o zoom in and out; 0 shows it whole; full stop opens Now, with the same network as a tree.</p>
+      <canvas class="map-ground" id="map-ground" aria-hidden="true"></canvas>
+      <canvas class="map-ground" id="map-air" aria-hidden="true"></canvas>
+      <svg class="map-draw" id="map-draw" aria-hidden="true">
+        <g class="world" id="world"></g>
+        <g class="labels" id="labels"></g>
+        <g class="ink-probe" id="ink-probe" visibility="hidden"></g>
+      </svg>
+      <div class="peek" id="peek" aria-hidden="true" hidden></div>
+    </div>
+    <noscript><p class="noscript">The map is drawn in the browser from what the machine's mycelium node says as it changes; without scripts, type <code>mycelium networks</code> in a terminal, or read <a href="index.md">the page as text</a>.</p></noscript>
+  </figure>
+
+  <aside class="panel" id="panel" aria-labelledby="panel-title">
+    <div class="panel-body" id="panel-body"></div>
+    <section class="network" aria-labelledby="tree-title">
+      <h2 id="tree-title" class="tree-title">The Mycelium</h2>
+      <ul class="tree" id="tree" role="tree" aria-labelledby="tree-title"></ul>
+    </section>
+  </aside>
+</main>
+
+<dialog class="keypanel" id="keys" aria-labelledby="keys-title">
+  <h2 id="keys-title">Keys</h2>
+  <dl>
+    <div><dt>Arrows, <kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd></dt><dd>On the map, walk to the nearest thing that way on the same level: the machines and networks, or one network's cells</dd></div>
+    <div><dt><kbd>Return</kbd></dt><dd>Open what you're on: centre it and show it in the drawer; on a network, go in to its cells</dd></div>
+    <div><dt>The two rings</dt><dd>The coloured ring with a halo is where the keys are; the heavy dark ring is what's open</dd></div>
+    <div><dt><kbd>-</kbd></dt><dd>Step back out of what's open, or up a level to what it hangs from</dd></div>
+    <div><dt><kbd>Esc</kbd></dt><dd>Let go: close the drawer and clear what's open, with the map left where it is; a click on empty map does the same</dd></div>
+    <div><dt><kbd>.</kbd></dt><dd>Open Now in the drawer: how the whole network stands, who needs you, what it spent today, how to read the map, and the network as a tree; again to close it. The last control over the map does the same</dd></div>
+    <div><dt><kbd>Shift</kbd> and arrows</dt><dd>Move the map</dd></div>
+    <div><dt><kbd>i</kbd> <kbd>o</kbd></dt><dd>Zoom in or out; <kbd>+</kbd> zooms in too. Zoom in on a network and the arrows walk its cells; zoom back out and they walk the networks</dd></div>
+    <div><dt><kbd>0</kbd></dt><dd>Show the whole map</dd></div>
+    <div><dt><kbd>/</kbd></dt><dd>Find a cell or network by name: what doesn't match fades back; <kbd>Return</kbd> opens the first match, and <kbd>n</kbd> and <kbd>N</kbd> step to the next and the one before. <kbd>Esc</kbd> closes the find</dd></div>
+    <div><dt>The line over the map</dt><dd>Where the keys are, from the machine down; any step takes you back to it</dd></div>
+    <div><dt><kbd>Tab</kbd></dt><dd>Where the keys are, who needs you, the map's controls, the map, then the drawer while it's open, with the network as a tree at its end</dd></div>
+    <div><dt>In the tree</dt><dd><kbd>j</kbd> and <kbd>k</kbd> step, <kbd>l</kbd> opens a branch, <kbd>h</kbd> closes it or climbs, <kbd>g</kbd> and <kbd>G</kbd> go to the first and last</dd></div>
+    <div><dt><kbd>?</kbd> <kbd>F1</kbd></dt><dd>This list, and again to close it; <kbd>Esc</kbd> closes it too</dd></div>
+  </dl>
+  <form method="dialog"><button type="submit" class="close">Close</button></form>
+</dialog>
+
+<script src="view.js"></script>
+<script type="module" src="site.js"></script>
+</body>
+</html>

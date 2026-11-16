@@ -1,0 +1,14 @@
+# mycelium
+
+> A live, read-only map of Joel's mycelium as it stands: the machines at
+> the root, each orchestration's hub on a cord from them, and every
+> session as a cell round its hub, redrawn as the node says it changes.
+
+- [The page](index.html): the map, walked by keyboard or pointer, with
+  each thing's details and the whole network as a tree beside it.
+- [The page as text](index.md): how to read the map, its keys, and what
+  the data holds.
+- The data: the machine's mycelium node, watched live through the sites'
+  server from core.nix's local-sites module; `mycelium networks -o json`
+  prints the same records in a terminal.
+- [All his sites](../llms.txt): the home this page sits in.
