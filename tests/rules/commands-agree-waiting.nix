@@ -18,7 +18,6 @@
     "helps"
   ];
   merge-net = [ "exits" ];
-  mypy = [ "helps" ];
   nix-offload = [
     "kit"
     "exits"
@@ -37,7 +36,6 @@
   ];
   switch-system-as-root = [ "helps" ];
   switch-system-known = [ "helps" ];
-  systemd-run = [ "helps" ];
   wifid-sign-in = [
     "kit"
     "helps"
