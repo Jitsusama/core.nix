@@ -778,6 +778,11 @@
     lists things sorts by its kind's order with no A to Z made by hand, through Order.sorted, which
     keeps rows alike in the order they came where Qt's own sort shuffles them
   '';
+  each-live-page-opens-with-the-strip = ''
+    every live page opens with the strip localSite writes, once, straight after its skip link,
+    linking home one folder up and saying only that it's an app; and a page carrying a strip of
+    its own fails its build, saying which page
+  '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM, one with no TPM with Joel's key on his YubiKey and
     the agents' key in a file served where the TPM's would be, and a Mac through its Secure
