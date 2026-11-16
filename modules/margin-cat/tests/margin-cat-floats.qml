@@ -106,10 +106,12 @@ QtObject {
         const high = float(300, 170, 200, 100);
         const leapsOn = Paths.walk({ x: 100, y: 191 }, { x: 396, y: 161 },
             world({ cols: Paths.columns(under, 0), floats: [high] }));
-        expect("onto one a leap above, it crouches beside its edge and leaps on",
+        expect("onto one a leap above, it crouches beside its edge, leaps up it and over",
             [names(leapsOn).slice(names(leapsOn).indexOf("leaps") - 1,
-                names(leapsOn).indexOf("leaps") + 2), ends(named(leapsOn, "leaps"))],
-            [["crouches", "leaps", "lands"], [292, 191, 300, 161]]);
+                names(leapsOn).indexOf("leaps") + 3), ends(named(leapsOn, "leaps")),
+                ends(named(leapsOn, "over"))],
+            [["crouches", "leaps", "over", "lands"], [292, 191, 292, 162],
+                [292, 162, 300, 161]]);
         expect("then walks its top to its seat",
             ends(last(leapsOn, "goes")), [300, 161, 396, 161]);
 
@@ -142,6 +144,28 @@ QtObject {
                 fromFloor.beats[fromFloor.beats.length - 1].to.y], [646, 411]);
         expect("never passing through its face",
             fromFloor.beats.filter(through).map(beat => beat.name), []);
+
+        // Never drawn over a floating window's own face, in any frame of
+        // a way on or off it (VKCF3Z 4125043c), since it's drawn over the
+        // tiled windows there: a leap on from beside its edge that moves
+        // across as it rises cut its corner for 230 ms (2026-11-16). Each
+        // way's frames every 4 ms, as where its box lies over the face; a
+        // closed one has none.
+        const overFace = (way, it) => {
+            const hits = [];
+            for (let t = 0; t <= way.ends; t += 4) {
+                const at = Paths.frame(way, t);
+                if (at.x + 8 > it.left + 0.5 && at.x < it.right - 0.5
+                    && at.y + 8 > it.top + 0.5 && at.y < it.bottom - 0.5)
+                    hits.push(`${Math.round(t)} ms at ${at.x.toFixed(1)},${at.y.toFixed(1)}`);
+            }
+            return hits.slice(0, 3);
+        };
+        expect("never over its face, on or off it",
+            [[onto, low], [leapsOff, gapped], [dropsOff, deep], [along, low],
+                [leapsOn, high], [climbsOn, higher], [fromFloor, bridging]]
+                .map(([way, it]) => overFace(way, it)),
+            [[], [], [], [], [], [], []]);
 
         // Over open floor, with no window over it nor under its sides:
         // up its own side from the floor and over.
