@@ -141,6 +141,7 @@ impl Follow {
     /// Guards each network's upload by its anchor, the stay's from now.
     pub fn anchor(&mut self, anchors: Anchors) {
         self.controller.anchor(anchors.get(&self.network).copied());
+        self.controller.start_at_the_anchor();
         self.anchors = anchors;
     }
 
@@ -189,6 +190,7 @@ impl Follow {
                 self.controller = oneway::Controller::from_learned(up, down);
                 self.controller.up.tune(self.trial.unwrap_or_default());
                 self.controller.anchor(self.anchors.get(network).copied());
+                self.controller.start_at_the_anchor();
                 self.network.clone_from(network);
                 self.rates = Rates::default();
                 return;
