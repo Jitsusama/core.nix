@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -68,6 +69,14 @@ HOLDING = dt.timedelta(seconds=10)
 COMING_UP = dt.timedelta(seconds=30)
 # How long a device's queue may take to go still after a transfer.
 STILLING = dt.timedelta(seconds=30)
+# The least share of the connection agents' bulk beside a tunnel gets while bulk inside it
+# runs too: half of agents' share by their flows, held under a quarter for the tunnel's
+# framing, which its lane counts and the bulk beside it doesn't. CAKE's bulk tin gave it a
+# sixteenth.
+BESIDE_LEAST = 0.2
+# How long the lanes may take to settle on a new split, and the window a share is read over.
+SPLITTING = dt.timedelta(seconds=30)
+WINDOW_S = 3
 
 
 def address(node_ip: str) -> str:
@@ -104,9 +113,21 @@ class Connection:
         return queues
 
     def counts(self, dev: str, what: str = "sent_bytes") -> list[int]:
-        """Give what CAKE on a device sent from each tin."""
-        cake = next(q for q in self.qdiscs(dev) if q["kind"] == "cake")
-        return [int(tin[what]) for tin in cake["tins"]]
+        """Give what CAKE on a device sent from each tin.
+
+        On a link that's Joel's CAKE, handle 2:, with agents' own CAKE's one tin as its bulk.
+        """
+        cakes = [q for q in self.qdiscs(dev) if q["kind"] == "cake"]
+        main = next((q for q in cakes if q["handle"] == "2:"), cakes[0])
+        counts = [int(tin[what]) for tin in main["tins"]]
+        for other in cakes:
+            if other is not main:
+                counts[0] += int(other["tins"][0][what])
+        return counts
+
+    def tunnel_lane(self, dev: str) -> int:
+        """Give the bytes a link's lane for a tunnel's own packets has sent."""
+        return int(next(q for q in self.qdiscs(dev) if q.get("parent") == "1:4")["bytes"])
 
     def ifb(self, link: str) -> str:
         """Give the name of the IFB that carries a link's downloads."""
@@ -114,9 +135,10 @@ class Connection:
         return f"shaper{index:x}"
 
     def shaped(self, link: str) -> bool:
-        """Say whether a link carries the shaper's HTB with CAKE beneath it."""
+        """Say whether a link carries the shaper's HTB with its lanes beneath it."""
         kinds = {(q["kind"], q.get("parent", "root")) for q in self.qdiscs(link)}
-        return ("htb", "root") in kinds and ("cake", "1:2") in kinds
+        lanes = {("cake", "1:3"), ("fq_codel", "1:4"), ("cake", "1:5")}
+        return ("htb", "root") in kinds and lanes <= kinds
 
     def hold(self, slice_name: str, *, system: bool = False) -> None:
         """Keep a slice open, as something always runs in one on a machine in use."""
@@ -581,18 +603,27 @@ def test_tunnel(tunnel: Connection) -> None:
     tunnel.lands("best effort", "app.slice", inner_down, dev=back)
 
 
-def test_tunnel_goes_as_best_effort(tunnel: Connection) -> None:
-    """A tunnel's own packets go as best effort on the connection, even carrying only bulk.
+def test_tunnel_has_a_lane_of_its_own(tunnel: Connection) -> None:
+    """A tunnel's own packets go in a lane of their own on the connection, even carrying bulk.
 
     The connection's queue sees a tunnel as one flow, so whatever comes next inside it waits
     behind what that flow holds: sent as bulk, an app's first packets inside waited in the
     connection's bulk queue, and were dropped there, before anything could move the tunnel
-    out of it. The tunnel's own queue sorts what it carries instead, and while bulk beside
-    the tunnel waits behind it, the tunnel gives up some of its rate, so the two share.
+    out of it. The tunnel's own queue sorts what it carries instead, and agents' bulk beside
+    the tunnel shares agents' part of the connection with the bulk inside it, by their flows,
+    where CAKE's bulk tin held it to a sixteenth.
     """
     client = tunnel.client
     inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
-    tunnel.lands("best effort", "jobs.slice", inner, dev="eth1")
+    tunnel.still("eth1")
+    before, lane = tunnel.counts("eth1"), tunnel.tunnel_lane("eth1")
+    tunnel.run("jobs.slice", inner)
+    retry(
+        lambda _last_try: tunnel.tunnel_lane("eth1") - lane >= LEAST_TRANSFER, timeout=STILLING
+    )
+    moved = [a - b for a, b in zip(tunnel.counts("eth1"), before, strict=True)][:VOICE]
+    sent = tunnel.tunnel_lane("eth1") - lane
+    assert all(tin < sent // STRAY_SHARE for tin in moved), f"lane {sent}, CAKE {moved}"
     # The connection counts the tunnel's own packets, a megabyte's worth and more, so its
     # queue can give up what they cost past what it counted.
     client.succeed("nft list counter inet shaper vpnout | grep -Eq 'bytes [0-9]{7,}'")
@@ -605,10 +636,19 @@ def test_tunnel_goes_as_best_effort(tunnel: Connection) -> None:
             f"systemd-run -M alice@ --user --slice=jobs.slice --unit={unit}"
             f" {BIN}/bash -c '{script}'"
         )
+    shares: list[float] = []
+
+    def beside_has_its_share(_last_try: bool) -> bool:
+        was = (tunnel.counts("eth1")[0], tunnel.tunnel_lane("eth1"))
+        time.sleep(WINDOW_S)
+        beside = tunnel.counts("eth1")[0] - was[0]
+        inside = tunnel.tunnel_lane("eth1") - was[1]
+        shares.append(beside / max(beside + inside, 1))
+        return shares[-1] >= BESIDE_LEAST
+
     try:
-        client.wait_until_succeeds(
-            "journalctl -u shaper | grep -q 'the VPNs make room'", timeout=SHAPING
-        )
+        retry(beside_has_its_share, timeout=SPLITTING)
+        print(f"bulk beside the tunnel's share, each {WINDOW_S} s: {shares}")
     finally:
         client.succeed(f"systemctl -M alice@ --user stop {' '.join(loads)}")
 

@@ -1,13 +1,13 @@
 //! The queues the shaper puts on an uplink, as tc and ip commands.
 //!
 //! Each uplink's root is an HTB with two classes that never limit each
-//! other, at a rate no link reaches, so HTB only takes turns between them:
-//! 1:1 for what the link reaches without the router, under `fq_codel` and
-//! never slowed, and 1:2, the default, for everything else, under CAKE at
-//! the rate the controller finds. HTB puts a packet whose priority names
-//! one of its classes there, so nftables sends local traffic to 1:1 by
-//! priority, and leaves every other packet's priority naming CAKE's handle
-//! and a tin, which HTB doesn't know and passes to its default.
+//! other: 1:1 for what the link reaches without the router, under
+//! `fq_codel` at a rate no link reaches, and 1:2 for everything else, at
+//! the rate the controller finds, with the lanes beneath it (lanes.rs).
+//! HTB puts a packet whose priority names one of its classes there, so
+//! nftables sends local traffic to 1:1 by priority, and leaves every other
+//! packet's priority naming CAKE's handle and a tin, which HTB doesn't know
+//! and passes to its filters, then to its default, Joel's lane.
 //!
 //! What arrives is turned round through an IFB, a device of the shaper's
 //! own, so a second HTB and CAKE can queue it as if it were leaving. Before
@@ -43,29 +43,20 @@ fn cmd(words: &str) -> Vec<String> {
     words.split_whitespace().map(str::to_string).collect()
 }
 
-fn htb(dev: &str) -> Vec<Vec<String>> {
+/// The root HTB, sending what nothing else claims to `default`, and its
+/// class for local traffic.
+fn htb(dev: &str, default: u32) -> Vec<Vec<String>> {
     vec![
         cmd(&format!(
-            "tc qdisc replace dev {dev} root handle 1: htb default 2"
+            "tc qdisc replace dev {dev} root handle 1: htb default {default}"
         )),
         cmd(&format!(
             "tc class replace dev {dev} parent 1: classid 1:1 htb rate {UNLIMITED} quantum 60000"
         )),
         cmd(&format!(
-            "tc class replace dev {dev} parent 1: classid 1:2 htb rate {UNLIMITED} quantum 60000"
-        )),
-        cmd(&format!(
             "tc qdisc replace dev {dev} parent 1:1 handle 10: fq_codel"
         )),
     ]
-}
-
-fn egress_cake(kbit: u64) -> String {
-    // ack-filter thins a download's ACKs while they queue, so a full upload
-    // doesn't hold a download back to the pace of its ACKs. nat has CAKE
-    // read conntrack's addresses from before this machine's NAT, so each
-    // virtual machine is a host of its own when CAKE shares between hosts.
-    format!("cake bandwidth {kbit}kbit diffserv4 nat ack-filter")
 }
 
 fn ingress_cake(kbit: u64) -> String {
@@ -74,16 +65,24 @@ fn ingress_cake(kbit: u64) -> String {
 
 /// Everything an uplink needs, from nothing or from a half-made set, but
 /// the turn of what arrives to the IFB, which `turn` adds: every command
-/// replaces rather than adds, so it can be run again.
-pub fn install(link: &str, ifb: &str, up: u64, down: u64) -> Vec<Vec<String>> {
-    let mut all = htb(link);
-    all.push(cmd(&format!(
-        "tc qdisc replace dev {link} parent 1:2 handle 2: {}",
-        egress_cake(up)
-    )));
+/// replaces rather than adds, so it can be run again. The upload's rate is
+/// `up`, split between its lanes as `lanes` says. HTB can't change the
+/// class it sends what nothing claims to, so a root HTB from before the
+/// lanes is taken away first, by whoever calls this.
+pub fn install(
+    link: &str,
+    ifb: &str,
+    (up, lanes): (u64, &crate::lanes::Split),
+    down: u64,
+) -> Vec<Vec<String>> {
+    let mut all = htb(link, 3);
+    all.extend(crate::lanes::tree(link, up, lanes));
     all.push(cmd(&format!("ip link add {ifb} type ifb")));
     all.push(cmd(&format!("ip link set {ifb} up")));
-    all.extend(htb(ifb));
+    all.extend(htb(ifb, 2));
+    all.push(cmd(&format!(
+        "tc class replace dev {ifb} parent 1: classid 1:2 htb rate {UNLIMITED} quantum 60000"
+    )));
     all.push(cmd(&format!(
         "tc filter replace dev {ifb} parent 1: protocol all prio 1 \
          handle {LOCAL_BIT:#x}/{LOCAL_BIT:#x} fw classid 1:1"
@@ -192,15 +191,12 @@ pub fn vpn_ours(json: &str) -> bool {
         .any(|q| q["kind"] == "cake" && q["root"] == true && q["handle"] == "2:")
 }
 
-/// A new rate for one direction's CAKE.
-pub fn change(dev: &str, kbit: u64, ingress: bool) -> Vec<String> {
-    let cake = if ingress {
-        ingress_cake(kbit)
-    } else {
-        egress_cake(kbit)
-    };
+/// A new rate for the download's CAKE, on the IFB; lanes.rs changes the
+/// upload's.
+pub fn change_down(ifb: &str, kbit: u64) -> Vec<String> {
     cmd(&format!(
-        "tc qdisc change dev {dev} parent 1:2 handle 2: {cake}"
+        "tc qdisc change dev {ifb} parent 1:2 handle 2: {}",
+        ingress_cake(kbit)
     ))
 }
 
@@ -213,8 +209,9 @@ pub fn remove(link: &str, ifb: &str) -> Vec<Vec<String>> {
     ]
 }
 
-/// Whether a device's queues, from `tc -j qdisc show dev`, are the
-/// shaper's: its HTB at the root with CAKE under 1:2.
+/// Whether an IFB's queues, from `tc -j qdisc show dev`, are the
+/// shaper's: its HTB at the root with CAKE under 1:2. A link's are its
+/// lanes (`lanes::laned`).
 pub fn ours(json: &str) -> bool {
     let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
         return false;
@@ -245,16 +242,25 @@ pub struct Tin {
     pub marks: u64,
     pub average_us: u64,
     pub peak_us: u64,
+    /// Flows with something held.
+    pub flows: u32,
 }
 
-/// The tins of the CAKE in `tc -s -j qdisc show dev`, in its order.
-pub fn tins(json: &str) -> Vec<Tin> {
-    let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
-        return Vec::new();
-    };
-    let Some(cake) = all.iter().find(|q| q["kind"] == "cake") else {
-        return Vec::new();
-    };
+impl Tin {
+    /// Takes another CAKE's tin in: agents' bulk, beside Joel's.
+    fn add(&mut self, other: &Self) {
+        self.packets += other.packets;
+        self.bytes += other.bytes;
+        self.backlog += other.backlog;
+        self.drops += other.drops;
+        self.marks += other.marks;
+        self.average_us = self.average_us.max(other.average_us);
+        self.peak_us = self.peak_us.max(other.peak_us);
+        self.flows += other.flows;
+    }
+}
+
+fn tins_of(cake: &Value) -> Vec<Tin> {
     let n = |t: &Value, key: &str| t[key].as_u64().unwrap_or(0);
     cake["tins"]
         .as_array()
@@ -268,10 +274,35 @@ pub fn tins(json: &str) -> Vec<Tin> {
                     marks: n(t, "ecn_mark"),
                     average_us: n(t, "avg_delay_us"),
                     peak_us: n(t, "peak_delay_us"),
+                    flows: u32::try_from(n(t, "sparse_flows") + n(t, "bulk_flows"))
+                        .unwrap_or(u32::MAX),
                 })
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// The tins of the CAKE in `tc -s -j qdisc show dev`, in its order: on a
+/// link, Joel's, handle 2:, with agents' one tin taken into its bulk.
+pub fn tins(json: &str) -> Vec<Tin> {
+    let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
+        return Vec::new();
+    };
+    let cakes: Vec<&Value> = all.iter().filter(|q| q["kind"] == "cake").collect();
+    let Some(main) = cakes
+        .iter()
+        .position(|q| q["handle"] == "2:")
+        .or((!cakes.is_empty()).then_some(0))
+    else {
+        return Vec::new();
+    };
+    let mut tins = tins_of(cakes[main]);
+    for (_, other) in cakes.iter().enumerate().filter(|(i, _)| *i != main) {
+        if let (Some(bulk), Some(theirs)) = (tins.first_mut(), tins_of(other).first()) {
+            bulk.add(theirs);
+        }
+    }
+    tins
 }
 
 /// Where real-time traffic goes: an app's calls and everything Tuple's
@@ -337,22 +368,26 @@ impl TinRates {
 pub fn bulk(json: &str) -> Option<Tin> {
     tins(json).into_iter().next()
 }
-/// Packets a second in the video tins, both ways together, that say a call
-/// or a screen share runs: a call's audio alone is about 50 a second each
-/// way, where nothing else is classed there.
-const LIVE_PACKETS: f64 = 20.0;
-/// How long after its last such second real-time traffic still counts as
-/// flowing, so a pause in talk doesn't put the floor back mid-call.
-const LIVE_HOLD_S: f64 = 30.0;
 
-/// The bytes the CAKE in `tc -s -j qdisc show dev` has sent, which is what
-/// the connection carried: traffic to this network's own machines goes
-/// to a class of its own and never reaches it.
-pub fn shaped_bytes(json: &str) -> Option<u64> {
+/// The queues in `tc -s -j qdisc show dev` that hold what's shaped: each
+/// CAKE, and the VPN's lane's `fq_codel`, but not the local class's, or
+/// none without a CAKE.
+fn shaping(json: &str) -> Option<Vec<Value>> {
     let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
         return None;
     };
-    all.iter().find(|q| q["kind"] == "cake")?["bytes"].as_u64()
+    all.iter().any(|q| q["kind"] == "cake").then(|| {
+        all.into_iter()
+            .filter(|q| q["kind"] == "cake" || (q["kind"] == "fq_codel" && q["parent"] != "1:1"))
+            .collect()
+    })
+}
+
+/// The bytes the shaped queues in `tc -s -j qdisc show dev` have sent,
+/// which is what the connection carried: traffic to this network's own
+/// machines goes to a class of its own and never reaches them.
+pub fn shaped_bytes(json: &str) -> Option<u64> {
+    shaping(json).map(|all| all.iter().filter_map(|q| q["bytes"].as_u64()).sum())
 }
 
 /// What a VPN's CAKE, in `tc -s -j qdisc show dev`, has counted sending:
@@ -365,29 +400,31 @@ pub fn counted_bytes(json: &str) -> Option<u64> {
     Some(cake["bytes"].as_u64()? + u64::from(VPN_OVERHEAD) * cake["packets"].as_u64()?)
 }
 
-/// What the CAKE in `tc -s -j qdisc show dev` holds now, in bytes, and the
-/// packets it has dropped or marked, every tin together, or none without a
-/// CAKE.
+/// What the shaped queues in `tc -s -j qdisc show dev` hold now, in bytes,
+/// and the packets they have dropped or marked, every tin together, or
+/// none without a CAKE.
 pub fn holding(json: &str) -> Option<(u64, u64)> {
-    let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
-        return None;
+    let all = shaping(json)?;
+    let n = |q: &Value, key: &str| q[key].as_u64().unwrap_or(0);
+    let marks = |q: &Value| {
+        q["tins"].as_array().map_or_else(
+            || n(q, "ecn_mark"),
+            |tins| tins.iter().map(|t| n(t, "ecn_mark")).sum(),
+        )
     };
-    let cake = all.iter().find(|q| q["kind"] == "cake")?;
-    let backlog = cake["backlog"].as_u64().unwrap_or(0);
-    let marks: u64 = tins(json).iter().map(|t| t.marks).sum();
-    Some((backlog, dropped(cake) + marks))
+    Some(all.iter().fold((0, 0), |(held, lost), q| {
+        (held + n(q, "backlog"), lost + dropped(q) + marks(q))
+    }))
 }
 
-/// The packets the CAKE in `tc -s -j qdisc show dev` has dropped, marks
-/// aside: what TCP sends again of these never crossed the link.
+/// The packets the shaped queues in `tc -s -j qdisc show dev` have
+/// dropped, marks aside: what TCP sends again of these never crossed the
+/// link.
 pub fn drops(json: &str) -> Option<u64> {
-    let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
-        return None;
-    };
-    all.iter().find(|q| q["kind"] == "cake").map(dropped)
+    shaping(json).map(|all| all.iter().map(dropped).sum())
 }
 
-/// What a CAKE dropped of its flows. Its count takes in the ACKs its
+/// What a queue dropped of its flows. CAKE's count takes in the ACKs its
 /// ack-filter thinned, which nothing sends again and which say nothing
 /// of a queue: beside a download on 11 November they were six in every
 /// seven, so the link's CAKE read as queued nearly every second and hid
@@ -427,31 +464,6 @@ pub fn queued(before: Option<(u64, u64)>, now: (u64, u64)) -> bool {
 /// sent.
 pub fn video_packets(json: &str) -> u64 {
     tins(json).get(VIDEO).map_or(0, |tin| tin.packets)
-}
-
-/// Whether real-time traffic crosses a link, from its video tins' counts.
-#[derive(Clone, Debug, Default)]
-pub struct RealTime {
-    /// The packets counted last, and when, in seconds.
-    seen: Option<(u64, f64)>,
-    /// Until when it counts as flowing.
-    until: f64,
-}
-
-impl RealTime {
-    /// Takes the video tins' packets, sent and received together, at `now`
-    /// seconds, and gives whether real-time traffic flows. A count that
-    /// starts over, as a link's queues made again do, reads as none.
-    pub fn count(&mut self, packets: u64, now: f64) -> bool {
-        if let Some((before, at)) = self.seen {
-            let seconds = (now - at).max(0.001);
-            if float(packets.saturating_sub(before)) / seconds >= LIVE_PACKETS {
-                self.until = now + LIVE_HOLD_S;
-            }
-        }
-        self.seen = Some((packets, now));
-        now < self.until
-    }
 }
 
 #[cfg(test)]
@@ -512,25 +524,6 @@ mod tests {
             vpn * 100 >= link * 85,
             "a VPN at {vpn} of {link} leaves too much unused"
         );
-    }
-
-    #[test]
-    fn a_call_s_packets_count_as_real_time_and_last_through_a_pause() {
-        let mut live = RealTime::default();
-        assert!(!live.count(0, 0.0));
-        // A call's audio, 50 packets a second each way.
-        assert!(live.count(100, 1.0));
-        // Silence for a while keeps it, as talk pauses.
-        assert!(live.count(100, 20.0));
-        assert!(!live.count(100, 32.0));
-    }
-
-    #[test]
-    fn a_trickle_isn_t_real_time_and_a_count_started_over_isn_t_a_burst() {
-        let mut live = RealTime::default();
-        live.count(1_000, 0.0);
-        assert!(!live.count(1_010, 1.0));
-        assert!(!live.count(3, 2.0));
     }
 
     #[test]
@@ -621,13 +614,18 @@ mod tests {
     }
 
     #[test]
-    fn installing_puts_cake_under_the_default_class_both_ways() {
-        let all: Vec<String> = install("enp1", "shaper3", 9_000, 80_000)
+    fn installing_puts_the_lanes_up_and_cake_under_the_default_class_down() {
+        let split = crate::lanes::Split::default();
+        let all: Vec<String> = install("enp1", "shaper3", (9_000, &split), 80_000)
             .iter()
             .map(|c| c.join(" "))
             .collect();
-        let out = "tc qdisc replace dev enp1 parent 1:2 handle 2: \
-                   cake bandwidth 9000kbit diffserv4 nat ack-filter";
+        let out = "tc class replace dev enp1 parent 1: classid 1:2 htb \
+                   rate 9000kbit ceil 9000kbit prio 0 quantum 1514";
+        assert!(
+            all.contains(&"tc qdisc replace dev enp1 root handle 1: htb default 3".to_string()),
+            "what nothing claims doesn't go to Joel's lane in {all:?}"
+        );
         let back = "tc qdisc replace dev shaper3 parent 1:2 handle 2: \
                     cake bandwidth 80000kbit diffserv4 nat ingress fwmark 0x7000000";
         assert!(all.contains(&out.to_string()), "no upload CAKE in {all:?}");
@@ -673,17 +671,50 @@ mod tests {
     }
 
     #[test]
-    fn a_change_keeps_each_directions_options() {
+    fn a_change_down_keeps_the_ifb_s_options() {
         assert_eq!(
-            change("enp1", 8_000, false).join(" "),
-            "tc qdisc change dev enp1 parent 1:2 handle 2: \
-             cake bandwidth 8000kbit diffserv4 nat ack-filter"
+            change_down("shaper3", 8_000).join(" "),
+            "tc qdisc change dev shaper3 parent 1:2 handle 2: \
+             cake bandwidth 8000kbit diffserv4 nat ingress fwmark 0x7000000"
         );
-        assert!(
-            change("shaper3", 8_000, true)
-                .join(" ")
-                .ends_with("ingress fwmark 0x7000000")
+    }
+
+    const LANES: &str = r#"[{"kind":"htb","handle":"1:","root":true,"bytes":99,"backlog":99},
+        {"kind":"cake","handle":"2:","parent":"1:3","bytes":6000,"backlog":100,"drops":1,
+         "tins":[{"sent_packets":0,"sent_bytes":0},{"sent_packets":4,"sent_bytes":6000,
+         "ecn_mark":1},{},{}]},
+        {"kind":"fq_codel","handle":"4:","parent":"1:4","bytes":8000,"backlog":3000,
+         "drops":2,"ecn_mark":3},
+        {"kind":"fq_codel","handle":"10:","parent":"1:1","bytes":5000,"backlog":7000,"drops":9},
+        {"kind":"cake","handle":"5:","parent":"1:5","bytes":2000,"backlog":4000,"drops":4,
+         "tins":[{"sent_packets":2,"sent_bytes":2000,"backlog_bytes":4000,"drops":4,
+         "sparse_flows":1,"bulk_flows":6,"avg_delay_us":9000}]}]"#;
+
+    #[test]
+    fn the_lanes_together_are_what_the_connection_carried_and_held() {
+        assert_eq!(
+            shaped_bytes(LANES),
+            Some(16_000),
+            "all three lanes, not the local class"
         );
+        assert_eq!(
+            holding(LANES),
+            Some((7_100, 11)),
+            "every lane's backlog, drops and marks"
+        );
+        assert_eq!(drops(LANES), Some(7), "every lane's drops");
+    }
+
+    #[test]
+    fn joel_s_tins_take_in_agents_bulk() {
+        let t = tins(LANES);
+        assert_eq!(t.len(), 4, "Joel's CAKE's four tins");
+        assert_eq!(
+            (t[0].bytes, t[0].backlog, t[0].flows, t[0].average_us),
+            (2_000, 4_000, 7, 9_000),
+            "agents' bulk"
+        );
+        assert_eq!(t[1].bytes, 6_000, "Joel's best effort");
     }
 
     #[test]

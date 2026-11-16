@@ -109,9 +109,9 @@ class Rig:
         return int(next(q for q in queues if q["kind"] == "tbf")["backlog"])
 
     def sent(self) -> dict[str, int]:
-        """Give the bytes CAKE on eth1 has sent from each tin."""
+        """Give the bytes Joel's CAKE on eth1, handle 2:, has sent from each tin."""
         queues: list[Json] = json.loads(self.client.succeed("tc -s -j qdisc show dev eth1"))
-        cake = next(q for q in queues if q["kind"] == "cake")
+        cake = next(q for q in queues if q["kind"] == "cake" and q["handle"] == "2:")
         return dict(zip(TINS, (int(tin["sent_bytes"]) for tin in cake["tins"]), strict=True))
 
     def sent_by(self, link: str) -> int:

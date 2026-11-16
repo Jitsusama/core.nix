@@ -229,6 +229,7 @@ mod tests {
             marks,
             average_us,
             peak_us,
+            flows: 0,
         };
         vec![
             tin(4_812_007, 1_204, 0, 12_400, 48_900),
