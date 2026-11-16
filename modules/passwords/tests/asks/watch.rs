@@ -24,16 +24,21 @@ fn one_watch_hears_the_entries_and_the_asks_but_not_the_entries_rows() {
     );
     // Another watch of rows, as the launcher's other places keep, so the
     // entries' own rows are made and held before the asks' watch opens,
-    // and it would hear them were they not kept from it.
-    let mut rows = running.client();
-    rows.say(&json!({"id": "rows", "ask": "watch", "kind": "row"}));
-    let listed = rows.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    // and it would hear them were they not kept from it. Both watches
+    // are told over the daemon's one channel, so each reads only the
+    // lines bearing its own id.
+    let mut client = running.client();
+    client.say(&json!({"id": "rows", "ask": "watch", "kind": "row"}));
+    let listed = client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
     assert!(
         listed.get("error").is_none(),
         "the list was refused: {listed}"
     );
     loop {
-        let heard = rows.hear();
+        let heard = client.hear();
+        if heard["id"] != "rows" {
+            continue;
+        }
         let records = heard["records"].as_array().or(heard["changed"].as_array());
         if records.into_iter().flatten().any(|record| {
             record["key"]
@@ -43,9 +48,11 @@ fn one_watch_hears_the_entries_and_the_asks_but_not_the_entries_rows() {
             break;
         }
     }
-    let mut client = running.client();
     client.say(&json!({"id": "all", "ask": "watch", "kind": ["entry", "row"], "place": "asks"}));
-    let first = client.hear();
+    let mut first = client.hear();
+    while first["id"] == "rows" {
+        first = client.hear();
+    }
     assert_eq!(
         first["id"], "all",
         "the watch wasn't answered first: {first}"
@@ -82,6 +89,9 @@ fn one_watch_hears_the_entries_and_the_asks_but_not_the_entries_rows() {
             break;
         }
         heard = client.hear();
+        while heard["id"] == "rows" {
+            heard = client.hear();
+        }
     }
     assert!(
         !keys.iter().any(|key| key.starts_with("row:passwords:")),

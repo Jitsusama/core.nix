@@ -137,7 +137,8 @@ onLinux {
           self.nixosModules.graphical
           {
             home-manager.sharedModules = [
-              ({ jitsusama.passwords.releases = [ "op://Private/Kiln/password" ]; } // place)
+              { jitsusama.passwords.releases = [ "op://Private/Kiln/password" ]; }
+              place
             ];
           }
         ]);
