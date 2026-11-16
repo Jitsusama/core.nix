@@ -1,0 +1,4 @@
+{
+  "extends": "../../local-sites/kit/tsconfig.json",
+  "include": ["*.ts"]
+}

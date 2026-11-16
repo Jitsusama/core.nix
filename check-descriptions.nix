@@ -2977,6 +2977,11 @@
     cell's forage under the cell that started it, even in a ring, plans first with their steps
     added up, how many cells have no purpose written, and a record it can't read said, not dropped
   '';
+  murmurs-site-holds = ''
+    the murmurs page typechecks on the kit at its strictest and builds, its tests passing: murmurs
+    newest first under their quests' titles, ties without the writer's own, how one settled, the
+    sentence's turns, the quote cut on a word, and a record it can't read said, not dropped
+  '';
   carry-back-asks-the-node-only-a-carry = ''
     Carry Back asks the realm's node only a carry of a quest's id to a machine's name, rebuilt from
     the act's parts so nothing else it holds is sent, and says it done once the carry ended

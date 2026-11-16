@@ -1,0 +1,15 @@
+# What Your Sessions Murmur
+
+> A live, read-only view of what this machine's cells murmured into the
+> quests' webs over the last day: each murmur's words, the cell that said
+> it, the quests it is tied to, and how it was settled.
+
+- [The page](index.html): the murmurs drawn as a flock at dusk over a
+  wire, then listed newest first, walked by keyboard or pointer.
+- [The page as text](index.md): how to read it, the keys, and what the
+  data holds.
+- The data: the mycelium node's `murmur` records, which the page watches
+  live over the sites' server at /feed/node. An agent on the machine runs
+  `mycelium web <quest>` itself, to say, tie, settle or fold.
+- [The map](../mycelium/): every cell and the networks they share.
+- [All his sites](../llms.txt): the home this page sits in.

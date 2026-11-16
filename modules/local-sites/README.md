@@ -23,7 +23,9 @@ source sits at `modules/<name>/site/`, served at `/<name>/`, and
 ([`modules/system/site`][system]) is the first, and the mycelium map
 ([`modules/mycelium/site`][map]) is fed live by the node. The forage page
 ([`modules/mycelium/forage`][forage]), served at `/forage/`, sits
-beside the mycelium module it reads, since `/mycelium/` is the map's.
+beside the mycelium module it reads, since `/mycelium/` is the map's, and
+so does the murmurs page ([`modules/mycelium/murmurs`][murmurs]), served at
+`/web/`, where the home has always listed it.
 
 The build also writes the strip every one of Joel's sites opens with,
 straight after the page's skip link: the way home and that the page is an
@@ -53,6 +55,7 @@ map's `mycelium-site-reads-live`.
 [daemons]: ../../docs/daemons.md
 [forage]: ../mycelium/forage
 [map]: ../mycelium/site
+[murmurs]: ../mycelium/murmurs
 [home]: ./home
 [kit]: ./kit
 [main]: ./src/main.rs

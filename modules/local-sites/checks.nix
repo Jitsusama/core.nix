@@ -81,6 +81,25 @@ in
     };
   };
 
+  # The murmurs page typechecks on the kit and builds, its tests passing
+  # (modules/mycelium/murmurs/tests), on the same plain looks.
+  murmurs-site-holds = sites.localSite {
+    name = "web";
+    src = ../mycelium/murmurs;
+    webKit = pkgs.emptyDirectory;
+    tint = "program";
+    looks = {
+      dark = {
+        background = "black";
+        program = "white";
+      };
+      light = {
+        background = "white";
+        program = "black";
+      };
+    };
+  };
+
   # The network page typechecks on the kit and builds, its tests passing
   # (modules/net/site/tests), on the same plain theme as the system page's.
   network-site-holds = sites.localSite {

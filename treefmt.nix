@@ -188,6 +188,7 @@ in
     includes = [
       "modules/*/site/*.html"
       "modules/mycelium/forage/*.html"
+      "modules/mycelium/murmurs/*.html"
     ];
   };
 
