@@ -100,7 +100,10 @@ impl Receptor {
 
     /// The receptor the service's environment names.
     pub fn from_env() -> Option<Self> {
-        Speaker::from_env().map(|speaker| Self { speaker })
+        Self::named(
+            std::env::var_os("MYCELIUM"),
+            std::env::var_os("MYCELIUM_REALM"),
+        )
     }
 
     /// What the calls say: how they stand and their counts, every call
@@ -116,7 +119,9 @@ impl Receptor {
     }
 
     /// What mycelium is given: fixed words, the realm the service named,
-    /// and integers, each count held to the most mycelium takes.
+    /// and integers, each count held to the most mycelium takes. `say`
+    /// hands the speaker the same, so only the tests read it here.
+    #[cfg(test)]
     pub fn arguments(&self, state: State, counts: Counts, pid: u32) -> Vec<OsString> {
         self.speaker
             .arguments(Self::told(state, counts), EVERY, pid)
