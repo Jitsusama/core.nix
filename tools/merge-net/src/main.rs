@@ -73,6 +73,7 @@ mod sharing;
 mod stall;
 mod state;
 mod subtests;
+mod train;
 mod turn;
 mod waited;
 mod watch;
@@ -119,6 +120,9 @@ fn main() -> ExitCode {
         Asked::Ready { commit } => ready(&commit),
         Asked::Status => Ok(status()),
         Asked::RunAgain { commit } => rerun::again(&commit),
+        Asked::Ride => train::ride(
+            &env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned()),
+        ),
     };
     done.unwrap_or_else(|why| {
         eprintln!("merge-net: {why}");

@@ -32,6 +32,8 @@ pub enum Asked {
     Status,
     /// Run changed-checks again at a commit, as `ready` starts it.
     RunAgain { commit: String },
+    /// Merge the changes waiting on the train, as `ready` starts it.
+    Ride,
 }
 
 /// merge-net's help, with each subcommand's under it.
@@ -58,6 +60,7 @@ pub fn help() -> Help {
     .subcommand(ready())
     .subcommand(status())
     .subcommand(run_again())
+    .subcommand(ride())
 }
 
 fn watch() -> Help {
@@ -137,6 +140,15 @@ fn run_again() -> Help {
     .exit(Exit::Failed, "changed-checks failed at COMMIT")
 }
 
+fn ride() -> Help {
+    Help::new(
+        "ride",
+        "merges the changes waiting on the train to main on one run, as ready starts it",
+    )
+    .example("merge-net ride", "what ready starts when main moved beside a pass")
+    .exit(Exit::Failed, "its checkout couldn't be made or moved")
+}
+
 /// What the words, past the kit's own flags, ask it to do.
 ///
 /// # Errors
@@ -146,7 +158,7 @@ fn run_again() -> Help {
 pub fn asked(words: &[String]) -> Result<Asked, Failure> {
     let Some((first, rest)) = words.split_first() else {
         return Err(Failure::new(Exit::Usage, "merge-net needs a subcommand")
-            .because("watch, needs, ready, status or run-again")
+            .because("watch, needs, ready, status, run-again or ride")
             .try_this("merge-net --help"));
     };
     let rest: Vec<&str> = rest.iter().map(String::as_str).collect();
@@ -169,6 +181,10 @@ pub fn asked(words: &[String]) -> Result<Asked, Failure> {
         "status" => match rest.as_slice() {
             [] => Ok(Asked::Status),
             [word, ..] => Err(unknown(word, &SHARED, "status")),
+        },
+        "ride" => match rest.as_slice() {
+            [] => Ok(Asked::Ride),
+            [word, ..] => Err(unknown(word, &SHARED, "ride")),
         },
         // The kit refuses a word no subcommand answers to before this.
         other => {
@@ -275,6 +291,10 @@ mod tests {
         assert!(
             matches!(asking(&["status"]), Asked::Status),
             "status wasn't taken"
+        );
+        assert!(
+            matches!(asking(&["ride"]), Asked::Ride),
+            "ride, as ready starts the train, wasn't taken"
         );
     }
 }
