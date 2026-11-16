@@ -5,16 +5,17 @@
 // one's top past the tiled windows' faces, which are behind it, and leaps
 // up off it onto theirs, never higher than a cat leaps: past that it
 // climbs the floating window's side, or drops off its end and walks on
-// (VKCF3Z 26038726). MarginCatPaths.js's walk asks it the way on and off.
+// (VKCF3Z 26038726). MarginCatPaths.js's walk asks it the way on and off,
+// and the legs of a route over one on its way (follows()).
 .pragma library
 .import "MarginCat.js" as MarginCat
 .import "MarginCatRoutes.js" as Routes
 .import "MarginCatWays.js" as Ways
 .import "MarginCatFalls.js" as Falls
+.import "MarginCatLedges.js" as Ledges
 
-// The highest it leaps up, in its heights: a cat jumps about five times
-// its height, and a longer leap reads as flying.
-const LEAPS_UP = 4;
+// The highest it leaps up, in its heights, as its routes do.
+const LEAPS_UP = Ledges.LEAPS_UP;
 // How much longer it crouches, landing from a drop of more than LEAPS_UP
 // of its heights, than from a leap: a beat longer.
 const LANDS_HARD = 2;
@@ -247,4 +248,46 @@ function lands(way, plan) {
     // Over the tiled windows the whole way on, in front of them
     // (MarginCat.above).
     aboard(way, began);
+}
+
+// A route's move to `stop` onto, along or off a floating
+// window on its way (MarginCatRoutes.js's ontoFloats() and fromFloat()),
+// over `now`'s columns (WCJQSG ade5ce02: "it climbs onto, jumps off and
+// walks along floats as it does tiled ones"). It's over the tiled windows
+// from the move's first leap or step to its landing, and back under them
+// on a tiled window's top, as it is getting onto a seat on one (lands(),
+// VKCF3Z 4125043c).
+function follows(way, stop, now) {
+    const at = way.at;
+    const began = way.legs.length;
+    const landing = { x: stop.x, y: stop.y };
+    way.turn = 0;
+    if (stop.how === "goes") {
+        way.facing = Math.sign(stop.x - way.x) || way.facing;
+        Ways.goes(way, stop.x, stop.y);
+    } else if (stop.how === "leapsOn") {
+        // Straight up beside its edge till its paws are level with its
+        // top, and over, as lands() leaps on.
+        way.facing = -stop.side;
+        Ways.holds(way, "crouches", MarginCat.CROUCHES);
+        Ways.leap(way, stop.via, RISES);
+        Ways.leap(way, landing, RISES / 2, "over");
+        Ways.holds(way, "lands", MarginCat.LANDS);
+    } else if (stop.how === "hopsOff") {
+        // Off its end clear of its face, and straight down.
+        way.facing = Math.sign(stop.via.x - way.x) || way.facing;
+        Ways.holds(way, "crouches", MarginCat.CROUCHES);
+        Ways.leap(way, stop.via, RISES / 2, "hops");
+        Ways.falls(way, landing);
+        Ways.holds(way, "lands", MarginCat.LANDS);
+    } else {
+        // Across a gap from its end onto a column's ledge.
+        way.facing = Math.sign(stop.x - way.x) || way.facing;
+        Ways.holds(way, "crouches", MarginCat.CROUCHES);
+        Ways.across(way, landing, "leaps", Ledges.ceiling(now, way, landing, at.wide));
+        Ways.holds(way, "lands", MarginCat.LANDS);
+    }
+    // Its crouch on a tiled window before it leaps on, and its landing
+    // back on one, are under them.
+    Ways.aboard(way, began, stop.kind === "float" ? ["crouches"] : ["lands"]);
 }

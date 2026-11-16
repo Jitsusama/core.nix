@@ -18,6 +18,7 @@
 .import "MarginCatWays.js" as Ways
 .import "MarginCatFalls.js" as Falls
 .import "MarginCatFloats.js" as Floats
+.import "MarginCatLedges.js" as Ledges
 
 // How far above the higher end a leap rises, in its cells, but one across
 // a gap between columns (Ways.across).
@@ -126,26 +127,6 @@ function perches(way, dir, onto, from) {
     }
 }
 
-// The bottom of the lowest window of `cols` over a leap from `from` to
-// `to`, `wide` across, which its arc mustn't rise into; or none.
-function ceiling(cols, from, to, wide) {
-    const low = Math.min(from.x, to.x);
-    const high = Math.max(from.x, to.x) + wide;
-    const under = Math.min(from.y, to.y);
-    let bottom = -Infinity;
-    for (const column of cols ?? []) {
-        if (column.right <= low || column.left >= high) {
-            continue;
-        }
-        for (const row of column.rows) {
-            if (row.bottom <= under + 1e-6) {
-                bottom = Math.max(bottom, row.bottom);
-            }
-        }
-    }
-    return bottom;
-}
-
 // Along the tops of `cols` from where it is to `x`: each gap between two
 // columns it passes is leapt, a crouch before and after, and the `lit`
 // marks (marks()) are hopped across (perches()).
@@ -201,7 +182,7 @@ function along(way, x, cols, lit) {
         Ways.goes(way, stop.at, ground(stop.at));
         if (stop.kind === "leaps") {
             holds(way, "crouches", MarginCat.CROUCHES);
-            Ways.across(way, stop.to, undefined, ceiling(cols, way, stop.to, at.wide));
+            Ways.across(way, stop.to, undefined, Ledges.ceiling(cols, way, stop.to, at.wide));
             holds(way, "lands", MarginCat.LANDS);
         } else {
             perches(way, dir, past => ({ x: past, y: ground(past) }));
@@ -231,7 +212,9 @@ function follows(way, stops, now, lit) {
             // where it climbs on to, in one climb, its gaps leapt.
             continue;
         }
-        if (stop.how === "climbs") {
+        if (stop.kind === "float" || was.kind === "float") {
+            Floats.follows(way, stop, now);
+        } else if (stop.how === "climbs") {
             Ways.clings(way, stop.side, dir);
             Ways.climb(way, now[was.c], stop.y, RISES / 2);
         } else if (stop.how === "goes") {
@@ -277,7 +260,7 @@ function follows(way, stops, now, lit) {
             }
             way.turn = 0;
             if (stop.how === "leaps") {
-                Ways.across(way, onto, stop.how, ceiling(now, way, onto, way.at.wide));
+                Ways.across(way, onto, stop.how, Ledges.ceiling(now, way, onto, way.at.wide));
             } else {
                 Ways.leap(way, onto, RISES / (stop.how === "hops" ? 2 : 1), stop.how);
             }
@@ -375,7 +358,6 @@ function onward(way, to, at) {
     const stays = aboard !== null && aboard === Floats.on(at.floats, to, at);
     const plan = stays ? null : Floats.onto(from, to, cols, at);
     const goal = plan?.via ?? to;
-    const level = place => (Routes.standing(cols, place, at)?.row ?? 0) === 0;
     const legs = way.legs.length;
     // Off the tops, to or from a window stacked under another, it finds
     // its way there, setting off the way its route first goes.
@@ -390,7 +372,7 @@ function onward(way, to, at) {
             start.mark);
         start = Falls.settle(way, cols, at);
     }
-    const tops = stays || (start.kind === "ledge" && start.row === 0 && level(goal));
+    const tops = stays || Routes.alongTops(start, goal, cols, at);
     let stops = tops || start.kind === "below" ? null : Routes.route(start, goal, cols, at);
     if (start.kind === "below") {
         stops = Routes.up({ x: way.x, y: at.height }, goal, cols, at);

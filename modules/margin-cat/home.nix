@@ -64,6 +64,7 @@
     '';
     xdg.configFile."quickshell/surfaces/MarginCat.js".source = ./MarginCat.js;
     xdg.configFile."quickshell/surfaces/MarginCatGames.js".source = ./MarginCatGames.js;
+    xdg.configFile."quickshell/surfaces/MarginCatLedges.js".source = ./MarginCatLedges.js;
     xdg.configFile."quickshell/surfaces/MarginCatPaths.js".source = ./MarginCatPaths.js;
     xdg.configFile."quickshell/surfaces/MarginCatPlays.js".source = ./MarginCatPlays.js;
     xdg.configFile."quickshell/surfaces/MarginCatRoutes.js".source = ./MarginCatRoutes.js;
