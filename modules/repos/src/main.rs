@@ -8,6 +8,7 @@
 //! repos NAME trees          every tree cut from it, the newest first
 //! repos refresh             asks GitHub after each one's open changes
 //! repos count               counts how far each head is from its branch
+//! repos serve               the record held ready on its socket (serve.rs)
 //! ```
 //!
 //! It takes the shape every command of ours does (docs/commands.md),
@@ -23,6 +24,13 @@
 //! (the crate's upstreams.rs).
 
 mod commands;
+// The daemon hears the disk through inotify, so it's Linux's alone.
+#[cfg(target_os = "linux")]
+mod feed;
+#[cfg(target_os = "linux")]
+mod heard;
+#[cfg(target_os = "linux")]
+mod serve;
 mod views;
 
 use std::collections::BTreeSet;
@@ -59,6 +67,7 @@ fn run(context: &Context) -> Result<(), Failure> {
                 views::seen(&seen, &context.out)
             })
         }
+        ["serve"] => serve(home),
         ["count"] => {
             let counted = count(home, now)?;
             show(context, &views::counting_json(&counted), || {
@@ -108,6 +117,19 @@ fn run(context: &Context) -> Result<(), Failure> {
                 .try_this("repos --help"))
         }
     }
+}
+
+/// The daemon, for as long as it runs (serve.rs).
+#[cfg(target_os = "linux")]
+fn serve(home: Option<&Path>) -> Result<(), Failure> {
+    serve::run(home)
+}
+
+/// The daemon, which hears the disk through inotify, so isn't served
+/// here.
+#[cfg(not(target_os = "linux"))]
+fn serve(_home: Option<&Path>) -> Result<(), Failure> {
+    Err(Failure::new(Exit::Usage, "repos serve runs on Linux alone").try_this("repos"))
 }
 
 /// The answer as JSON when asked for, and otherwise the view laid out.

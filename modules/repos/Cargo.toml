@@ -17,13 +17,22 @@ ureq = { version = "3", optional = true }
 # The shape every command of ours takes: help, the answer's form, the
 # terminal's colours and the shared exits (../terminal-kit).
 terminal-kit = { path = "../terminal-kit" }
+# The serving side every daemon of the shell shares, so `repos serve`
+# speaks the one daemon interface (../daemon-serve): the command's alone.
+daemon-serve = { path = "../daemon-serve", optional = true }
+
+# inotify, which says when a git folder's HEAD or refs change, so the
+# daemon reads the disk again only then: Linux's alone, as the daemon is,
+# and the command's alone.
+[target.'cfg(target_os = "linux")'.dependencies]
+inotify = { version = "0.11", default-features = false, optional = true }
 
 [features]
 default = ["github"]
-# Asking GitHub, which only the command does. A crate reading repositories
-# through the library leaves it out with `default-features = false`, so it
-# carries no HTTP or TLS.
-github = ["dep:ureq"]
+# Asking GitHub and serving the daemon, which only the command does. A
+# crate reading repositories through the library leaves it out with
+# `default-features = false`, so it carries no HTTP, TLS or socket.
+github = ["dep:ureq", "dep:daemon-serve", "dep:inotify"]
 
 [[bin]]
 name = "repos"

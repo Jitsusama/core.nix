@@ -47,7 +47,7 @@ pub(super) fn tree_census(trees: &[&Tree]) -> String {
 }
 
 /// The change whose branch a tree is checked out at, if any.
-pub(super) fn change_at<'a>(repository: &'a Repository, tree: &Tree) -> Option<&'a Change> {
+pub(crate) fn change_at<'a>(repository: &'a Repository, tree: &Tree) -> Option<&'a Change> {
     let branch = tree.head.branch.as_deref()?;
     repository
         .changes

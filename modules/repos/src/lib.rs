@@ -7,8 +7,10 @@
 //! at a branch or a snapshot at a commit. Under each root, `read` finds
 //! every checkout and, through each, every tree, wherever it lies, and
 //! makes one record of them, `repos.repositories/1` (model.rs), which
-//! every view reads: the command's screens here, and the launcher's Code
-//! place through the programs daemon.
+//! every view reads: the command's screens here, the launcher's Code
+//! place through the programs daemon, and the local sites' Code page
+//! through the command's own daemon, `repos serve`, which holds it split by
+//! kind and reads it again as git writes.
 //!
 //! Git's own files are read each time. GitHub, read for each repository's
 //! open changes and their checks, is a source beside them, asked by a

@@ -20,11 +20,13 @@ pub fn help() -> Help {
     )
     .argument("[trees]", "after a name: every tree cut from it")
     // The word after repos is always a name (docs/commands.md), so no
-    // listed subcommand stands there. The timers' refresh and count are
-    // unlisted, which the kit matches before a name, and taught by their
-    // examples. A repository named either is still reached by its key.
+    // listed subcommand stands there. The timers' refresh and count, and
+    // the daemon's serve, are unlisted, which the kit matches before a
+    // name, and taught by their examples. A repository named any of them
+    // is still reached by its key.
     .subcommand(refresh().unlisted())
     .subcommand(count().unlisted())
+    .subcommand(serve().unlisted())
     .example(
         "repos",
         "each repository as a line: its changes, trees and checkouts",
@@ -41,6 +43,10 @@ pub fn help() -> Help {
         "GitHub's part now, rather than at the timer's next",
     )
     .example("repos count", "how far each head is from its branch, now")
+    .example(
+        "repos serve",
+        "the record held ready for the views, as the repos service does",
+    )
     .exit(
         Exit::Usage,
         "two repositories go by that name, or the words are unknown",
@@ -72,6 +78,24 @@ fn refresh() -> Help {
         "neither the GitHub broker nor GitHub answered",
     )
     .exit(Exit::Config, "there's nowhere to keep GitHub's part")
+}
+
+/// The daemon: what `repos.service` runs, holding the record ready on
+/// its socket for the views, read again as git writes.
+fn serve() -> Help {
+    Help::new(
+        "serve",
+        "hold the record ready on its socket, split by kind, read again as git writes",
+    )
+    .example(
+        "repos serve",
+        "serves at $XDG_RUNTIME_DIR/daemons/repos.sock, or the socket systemd hands it",
+    )
+    .exit(Exit::Config, "there's nowhere to look, or to serve")
+    .exit(
+        Exit::Failed,
+        "it couldn't listen, or stopped hearing the disk",
+    )
 }
 
 /// The counting: what `repos-count.service` runs on its timer, and what
