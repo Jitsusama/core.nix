@@ -87,9 +87,12 @@ fenced_read() {
     fence+=(--tmpfs /tmp/.X11-unix)
     landlock=(landrun --rwx / --unrestricted-network --ignore-missing --env PATH --)
   fi
+  # env by its full path: landrun 0.1.17, given --env, finds no bare
+  # command named env, and the read would fail without reaching X.
   timeout 10 "${fence[@]}" -- "${landlock[@]}" \
-    env DISPLAY="$display" XAUTHORITY="$auth" xclip -o -selection clipboard
+    "$env" DISPLAY="$display" XAUTHORITY="$auth" xclip -o -selection clipboard
 }
+env=$(command -v env)
 
 # Whether a fenced read is refused, saying what it read when it isn't.
 refused() {
@@ -98,6 +101,11 @@ refused() {
     echo "the fenced command read: $said" >&2
     return 1
   fi
+  # Only X refusing the connection counts, never a reader that didn't run.
+  case $said in
+  *"Can't open display"*) ;;
+  *) fail "the fenced read failed before it reached X ($1, $2 cookie): $said" ;;
+  esac
   echo "refused ($1, $2 cookie): $said" >&2
 }
 
