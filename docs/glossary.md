@@ -127,6 +127,10 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | link | two machines' nodes joined, carrying the mesh's messages and sessions between them | | `mycelium link`, `jitsusama.mycelium.links` |
 | realm | a set of machines whose nodes link, such as Joel's work or personal ones, with nothing crossing between realms | | `jitsusama.mycelium.realm` |
 | link key | the key a realm's node signs in to the realm's other machines with, held apart from every other realm's | | `jitsusama.linkKeys`, `<realm>-link` |
+| mycelium | every cell on Joel's machines and the networks they share, seen and steered as one living thing | | `mycelium`, `jitsusama.mycelium` |
+| cell | one living thing in the mycelium, such as a session or a receptor, with its own identity and purpose | | `mycelium cells`, a cell's `kind` |
+| network | a channel cells that engage with each other share: messages passed between them, a shared file surface or a worktree on a repository | | `mycelium networks` |
+| receptor | a cell that takes in what comes from outside the mycelium, such as Slack, mail or a call, onto a network of its own | | cell type `receptor`, `outside.<source>` networks |
 | address | a peer's own group on the mesh, six letters | | |
 | group | a set of peers a mesh message goes to, such as an orchestration's | | `#quest/<id>` |
 | question | a mesh message asking peers for an answer | mesh question | `intent: question` |
@@ -654,6 +658,27 @@ says which module broke.
 ## Still to Settle
 
 Words that wait on one choice, and move into a table above once it's made.
-None waits now: Joel chose VM and VPN (2026-10-26).
+Joel chose VM and VPN (2026-10-26). The mycelium's new words wait on the
+design of what a cell is (Joel, 2026-11-15: "we need to build the correct
+mental model of what cells are, what their identity and purpose are"), and
+each keeps to fungal biology or plain words:
+
+- **forage**: a cell's own purpose, with its research, plans and audits,
+  which travels with the cell (Joel, 2026-11-15: "each cell should have a
+  forage"). It waits on whether it replaces quest, which would then join
+  quest's Not.
+- **split** and **delegate**: what a cell does when its purpose outgrows it,
+  dividing the purpose into cells that each own a part, or keeping it and
+  handing out needs. They wait on what each does to a cell's identity.
+- **The tie between two cells**: link already means two machines' nodes
+  joined, so it needs another word.
+- **What a cell lives on**: host already names a machine, which is its word,
+  and a pi host is the harness's process; the choice is whether machine
+  stays the word.
+- **An audit of a forage**: audit already means Security's record of what
+  was done, so judging a forage's outcome and a cell's fitness to its
+  purpose may need its own word.
+- **fruiting body**: what a forage puts out when it's done, such as a merged
+  change, waiting on whether it's a landing.
 
 [design]: design.md
