@@ -9,7 +9,6 @@ use crate::github::SCHEMA;
 use crate::model::{Change, Checks, ChecksState, Review};
 
 const NOW: u64 = 1_800_000_000;
-const MIDNIGHT: u64 = NOW - 10 * HOUR;
 
 /// The machine's declared owners: kestrel-co for work, jsama for the
 /// personal realm, and shared listed for both, as one word, since systemd
@@ -111,15 +110,15 @@ fn owners_with_whitespace_among_them_count_nowhere() {
 }
 
 #[test]
-fn the_changes_asking_the_declared_login_are_counted_by_hour_and_day() {
+fn the_open_changes_read_are_counted_and_those_asking_the_login_however_long_ago() {
     let seen = seen(
         &[
             (
                 "github:kestrel-co/tool",
                 vec![
-                    change("within the hour", NOW - 60, &["jsama"]),
-                    change("this morning", NOW - 2 * HOUR, &["osprey", "JSAMA"]),
-                    change("yesterday", MIDNIGHT - HOUR, &["jsama"]),
+                    change("within the hour", NOW - HOUR + 1, &["jsama"]),
+                    change("an hour ago", NOW - HOUR, &["osprey", "JSAMA"]),
+                    change("last week", NOW - 7 * 24 * HOUR, &["jsama"]),
                     change("someone else's", NOW - 60, &["osprey"]),
                     change("a team's", NOW - 60, &[]),
                 ],
@@ -131,13 +130,9 @@ fn the_changes_asking_the_declared_login_are_counted_by_hour_and_day() {
         ],
         &[],
     );
-    let told = told(
-        &seen,
-        &Owners::of(DECLARED, "work"),
-        &login(),
-        NOW,
-        MIDNIGHT,
-    );
+    let told = told(&seen, &Owners::of(DECLARED, "work"), &login(), NOW);
+    // Mycelium refuses a record whose hour or addressed passes its today,
+    // so every review asked of the login is one of the changes read.
     assert_eq!(
         (
             told.source,
@@ -146,7 +141,9 @@ fn the_changes_asking_the_declared_login_are_counted_by_hour_and_day() {
             told.today,
             told.addressed
         ),
-        (Source::GitHub, State::Reading, 1, 2, 3)
+        (Source::GitHub, State::Reading, 3, 5, 3),
+        "the realm's open changes, those updated within the hour, or those \
+         asking the login were miscounted"
     );
 }
 
@@ -156,9 +153,13 @@ fn it_reads_quiet_at_none_and_failing_while_a_realms_repository_went_unread() {
     let quiet = seen(&[("github:kestrel-co/tool", Vec::new())], &[]);
     let others_unread = seen(&[], &["github:osprey/elsewhere: not readable here"]);
     let own_unread = seen(&[], &["github:kestrel-co/tool: not readable here"]);
-    let states = [quiet, others_unread, own_unread]
-        .map(|seen| told(&seen, &owners, &login(), NOW, MIDNIGHT).state);
-    assert_eq!(states, [State::Quiet, State::Quiet, State::Failing]);
+    let states =
+        [quiet, others_unread, own_unread].map(|seen| told(&seen, &owners, &login(), NOW).state);
+    assert_eq!(
+        states,
+        [State::Quiet, State::Quiet, State::Failing],
+        "a realm's repository unread, or another realm's, was judged wrong"
+    );
 }
 
 #[test]
@@ -180,6 +181,12 @@ fn no_receptor_is_said_without_all_the_machine_declares() {
             declared(),
         ),
         (program(), Some("work".into()), Some("jsama".into()), None),
+        (
+            program(),
+            Some("work".into()),
+            Some("jsama".into()),
+            Some("personal=jsama".into()),
+        ),
         (program(), None, Some("jsama".into()), declared()),
         (
             Some("mycelium".into()),
@@ -193,8 +200,8 @@ fn no_receptor_is_said_without_all_the_machine_declares() {
     });
     assert_eq!(
         taken,
-        [true, false, false, false, false, false],
-        "a receptor was taken with part of it undeclared"
+        [true, false, false, false, false, false, false],
+        "a receptor was taken with part of it undeclared, or no owner for its realm"
     );
 }
 
@@ -246,17 +253,6 @@ fn mycelium_is_given_fixed_words_and_counts_never_what_a_change_says() {
         assert!(
             !said.iter().any(|said| said.contains(word)),
             "{word} reached mycelium: {said:?}"
-        );
-    }
-}
-
-#[test]
-fn the_day_begins_at_a_minute_on_or_before_now_within_a_day() {
-    for now in [NOW, NOW + 59, NOW + 12 * HOUR + 1] {
-        let began = midnight(now);
-        assert!(
-            began <= now && now - began < 24 * HOUR && began.is_multiple_of(60),
-            "the day of {now} began at {began}"
         );
     }
 }

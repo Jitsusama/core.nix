@@ -22,7 +22,7 @@ use std::ffi::OsString;
 use receptor_say::{Declared, Source, Speaker, State, Told};
 
 use crate::github::Seen;
-use crate::when;
+use crate::model::Change;
 
 /// How often the receptor is said, the refresh's own timer (home.nix),
 /// which is also how late the node lets it be before reading it failing.
@@ -78,26 +78,30 @@ impl Owners {
     }
 }
 
-/// What the receptor says of what a refresh saw at `now`, the day having
-/// begun at `midnight`, both in seconds: the open changes in the owners'
-/// repositories asking `login`'s review, those updated within the hour,
-/// and today. It's failing while any of the owners' repositories went
-/// unread, its counts then of those read.
-pub fn told(seen: &Seen, owners: &Owners, login: &Declared, now: u64, midnight: u64) -> Told {
-    let asking: Vec<u64> = seen
+/// What the receptor says of what a refresh saw at `now`, in seconds: as
+/// `today`, the open changes it read in the owners' repositories, every one
+/// read today; as `hour`, those updated within the hour; and as
+/// `addressed`, those asking `login`'s review, however long ago it was
+/// asked, since a review waits on Joel until he gives it. Mycelium refuses
+/// an `addressed` past `today`, so the two count from the same changes.
+/// It's failing while any of the owners' repositories went unread, its
+/// counts then of those read.
+pub fn told(seen: &Seen, owners: &Owners, login: &Declared, now: u64) -> Told {
+    let read: Vec<&Change> = seen
         .changes
         .iter()
         .filter(|(key, _)| owners.hold(key))
         .flat_map(|(_, changes)| changes)
-        .filter(|change| change.review_asked_of.iter().any(|one| login.is(one)))
-        .map(|change| change.updated_at)
         .collect();
-    let since = |from: u64| count(asking.iter().filter(|&&at| (from..=now).contains(&at)));
+    let within_the_hour = (now.saturating_sub(HOUR) + 1)..=now;
     let unread = seen.unread.iter().any(|why| {
         why.split_once(": ")
             .is_some_and(|(key, _)| owners.hold(key))
     });
-    let addressed = count(asking.iter());
+    let addressed = count(
+        read.iter()
+            .filter(|change| change.review_asked_of.iter().any(|one| login.is(one))),
+    );
     let state = if unread {
         State::Failing
     } else if addressed > 0 {
@@ -108,8 +112,11 @@ pub fn told(seen: &Seen, owners: &Owners, login: &Declared, now: u64, midnight: 
     Told {
         source: Source::GitHub,
         state,
-        hour: since(now.saturating_sub(HOUR) + 1),
-        today: since(midnight),
+        hour: count(
+            read.iter()
+                .filter(|change| within_the_hour.contains(&change.updated_at)),
+        ),
+        today: count(read.iter()),
         addressed,
     }
 }
@@ -117,13 +124,6 @@ pub fn told(seen: &Seen, owners: &Owners, login: &Declared, now: u64, midnight: 
 /// How many there are, as mycelium counts.
 fn count<T>(items: impl Iterator<Item = T>) -> u64 {
     u64::try_from(items.count()).unwrap_or(u64::MAX)
-}
-
-/// When `now`'s day began where the machine is, in seconds.
-pub fn midnight(now: u64) -> u64 {
-    let here = when::local(now);
-    let into = u64::try_from(here.hour * 3_600 + here.minute * 60).unwrap_or(0);
-    now - now % 60 - into.min(now - now % 60)
 }
 
 /// Where the GitHub receptor is said, for whom, and for which owners.
@@ -137,7 +137,8 @@ pub struct Receptor {
 impl Receptor {
     /// The receptor the machine declares, if it declares one whole: an
     /// absolute mycelium, a realm of its letters, a GitHub login, and the
-    /// owners listed for that realm.
+    /// owners listed for that realm, at least one of them, since a realm
+    /// with none would read quiet for good rather than as undeclared.
     pub fn named(
         program: Option<OsString>,
         realm: Option<OsString>,
@@ -146,6 +147,9 @@ impl Receptor {
     ) -> Option<Self> {
         let realm = realm?.into_string().ok()?;
         let owners = Owners::of(&owners?.into_string().ok()?, &realm);
+        if owners.0.is_empty() {
+            return None;
+        }
         Some(Self {
             speaker: Speaker::named(program, Some(realm.into()))?,
             login: Declared::login(login)?,
@@ -166,7 +170,7 @@ impl Receptor {
     /// What mycelium is given for what a refresh saw at `now`, said for
     /// the process `pid`, which owns the refresh's timer.
     pub fn arguments(&self, seen: &Seen, now: u64, pid: u32) -> Vec<OsString> {
-        let told = told(seen, &self.owners, &self.login, now, midnight(now));
+        let told = told(seen, &self.owners, &self.login, now);
         self.speaker.arguments(told, EVERY, pid)
     }
 
@@ -176,7 +180,7 @@ impl Receptor {
     ///
     /// When mycelium can't be run, or refuses what it's told.
     pub fn say(&self, seen: &Seen, now: u64, pid: u32) -> Result<(), String> {
-        let told = told(seen, &self.owners, &self.login, now, midnight(now));
+        let told = told(seen, &self.owners, &self.login, now);
         self.speaker.say(&[told], EVERY, pid)
     }
 }
