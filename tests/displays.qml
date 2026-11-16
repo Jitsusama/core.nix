@@ -166,15 +166,16 @@ ShellRoot {
     // How many screens there are, as screens.rs's summary serves it beside
     // the rows, worded unlike the shell would, so what's said is the served,
     // and the place's :set line as screens/line.rs serves it there: the
-    // Brightness at `share`, the Night Light off and Follow the Room on,
-    // which no row here serves, so only what's served on the line offers it.
-    function summaryAt(share) {
+    // Brightness at `share`, its row saying `said`, the Night Light off and
+    // Follow the Room on, which no row here serves, so only what's served
+    // on the line offers it.
+    function summaryAt(share, said = `${share}%`) {
         return { key: "summary:displays", kind: "summary",
             summary: { place: "displays", count: 2, on: 2, said: "both screens" },
             line: {
                 screens: { kind: "switch", now: true,
                     ways: { off: { row: "row:displays:sleep", act: "displays:sleep" } } },
-                brightness: { kind: "number", least: 0, most: 100, now: share,
+                brightness: { kind: "number", least: 0, most: 100, now: share, said: said,
                     ask: { ask: "light", do: "brightness" } },
                 nightlight: { kind: "switch", now: false,
                     ways: { on: { ask: { ask: "light", do: "night-light", on: true } } } },
@@ -275,6 +276,9 @@ ShellRoot {
             changedHere();
         else if (waiting === "the act" && acted.length === 1)
             done();
+        else if (waiting === "the share unread"
+            && displays.servedBrightness?.said === "not read yet")
+            unread();
         else if (waiting === "the share moved" && displays.servedBrightness?.share === 80)
             shareMoved();
         else if (waiting === "the monitor lit again" && displays.spotsStamp !== made)
@@ -355,8 +359,22 @@ ShellRoot {
         Expect.expect("what the light says is its Brightness's and its Room Light's",
             displays.lightSaid === JSON.stringify([["50%", ""], ["312 lx", ""]]),
             displays.lightSaid);
+        waiting = "the share unread";
+        tell([summaryAt(null, "not read yet")]);
+    }
+
+    // While the line says the share isn't read, "brightness 40" says so
+    // and :set brightness no share; then only the line moves, so the share
+    // said is the line's, not the Brightness row's.
+    function unread() {
+        Expect.expect("while it isn't read, the Brightness served says no share",
+            displays.servedBrightness?.share === null,
+            JSON.stringify(displays.servedBrightness));
+        Expect.expect("and \"brightness 40\" says it isn't read yet, as the line does",
+            displays.setTo(40)?.note === "not read yet",
+            JSON.stringify(displays.setTo(40)?.note));
         waiting = "the share moved";
-        tell([brightness(80), summaryAt(80)]);
+        tell([summaryAt(80)]);
     }
 
     // The share it moves to is what :set brightness and "brightness 40"

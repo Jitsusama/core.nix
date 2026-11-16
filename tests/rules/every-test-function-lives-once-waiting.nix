@@ -105,7 +105,6 @@
   "tests/graphs.qml" = 1;
   "tests/keyboard.qml" = 1;
   "tests/key-map.qml" = 1;
-  "tests/lately.qml" = 1;
   "tests/launcher_on_niri.py" = 2;
   "tests/launcher-on-niri-test.py" = 3;
   "tests/vm/keys/linux-id-vm-test.py" = 1;
@@ -133,7 +132,6 @@
   "tests/repository/every-folder-says-what-it-holds.sh" = 1;
   "tests/rows.qml" = 1;
   "tests/runs.qml" = 2;
-  "tests/screens.qml" = 1;
   "tests/sessions-behind-the-lock.qml" = 3;
   "tests/sessions.qml" = 3;
   "tests/vm/sound/shure-mv7-voice-vm-test.py" = 1;

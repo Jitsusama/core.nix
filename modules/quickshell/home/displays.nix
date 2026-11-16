@@ -4,5 +4,4 @@
   "Lights.qml"
   "DeskLight.qml"
   "launcher/Plate.js"
-  "launcher/Screens.js"
 ]

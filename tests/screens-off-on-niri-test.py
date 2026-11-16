@@ -13,8 +13,8 @@ proxy on niri's socket that the shell and the windows daemon, which turns every 
 The shell is started as on a niri that powers one output off by name
 (modules/niri/powers-off-each-output.patch), so a screen's own Turn It Off asks for that one by
 its name (Joel, 2026-11-07: "i want to be able to control the screen that gets shut off, one,
-the other, all"). What each screen offers is held in Qt's engine (tests/screens.qml); here, only
-that the act reaches niri.
+the other, all"). What each screen offers is the windows daemon's, held in its own tests
+(modules/windows/src/screens); here, only that the act reaches niri.
 
 A change to a screen niri refuses says so on the : line, in niri's own words for why, where
 Return otherwise looked done and only the shell's log said otherwise. niri refuses a screen's

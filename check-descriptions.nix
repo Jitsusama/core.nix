@@ -3109,10 +3109,6 @@
     the Ask row says why pi-ask can't start before it's asked and within 3 s of Return, which
     asks again rather than closing, and each question is answered by a pi of its own
   '';
-  the-launcher-asks-the-served-light = ''
-    the Brightness served says its screen and share, none while it's read, and nothing while only
-    its levels are served
-  '';
   every-command-row-has-a-drawer = ''
     every command the launcher offers says in its drawer, under the place that lists it or
     anywhere, what it answers and one or two worked examples, naming only documentation addresses
@@ -3485,7 +3481,8 @@
   '';
   the-launcher-remakes-only-the-screens-that-changed = ''
     the launcher's Screens draws each screen's row as the windows daemon serves it, makes again
-    only the row a change names, and asks the daemon to look again once it's changed a screen
+    only the row a change names, asks the daemon to look again once it's changed a screen, and
+    says the Brightness's share, or that it isn't read yet, as the place's line serves it
   '';
   the-launcher-remakes-only-the-windows-that-changed = ''
     the launcher's windows, as the windows daemon tells of them, list This Window, then the rest

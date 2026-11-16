@@ -5,7 +5,7 @@
 // (tests/answers.qml). Every word comes from the vocabulary, passed in as
 // `said`, and every measured figure keeps three significant digits, its
 // trailing zeros too, in the settings' decimal mark, `point` (VKCF3Z,
-// 2026-11-07, as Machine.js and Screens.js keep them).
+// 2026-11-07, as Machine.js keeps them).
 .pragma library
 .import "Numbers.js" as Numbers
 
