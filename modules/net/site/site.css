@@ -91,7 +91,10 @@ body {
 
 /* ---- The stage: the map and its panel. ---- */
 
+/* The stage keeps the last row, the one taking what's left, whether or not
+   the builder wrote the strip above the head. */
 .stage {
+  grid-row: -2;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--panel);
   min-block-size: 0;
