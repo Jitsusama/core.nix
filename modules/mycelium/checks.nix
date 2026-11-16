@@ -255,6 +255,31 @@ in
         && lib.any (package: (package.pname or "") == "mycelium") apart.home.packages
       );
 
+  # A machine in a realm reads each minute how evenly the home realm's
+  # machines carry its work, on Linux in the agents' slice, on a Mac as an
+  # agent; only the home realm is read, and a machine in none reads nothing.
+  mycelium-watches-its-balance =
+    holds "mycelium-watches-its-balance"
+      "A machine in a realm doesn't read its home realm's balance each minute, reads it outside the agents' slice on Linux, reads a further realm's, or one in no realm reads one."
+      (
+        let
+          linuxBalance = bothLinux.mycelium-balance.Service;
+          macBalance = (mac both).launchd.agents.mycelium-balance;
+        in
+        lib.hasSuffix "/bin/mycelium --realm home balance --follow" (toString linuxBalance.ExecStart)
+        && linuxBalance.Slice == "agents.slice"
+        && macBalance.enable
+        &&
+          lib.drop 1 macBalance.config.ProgramArguments == [
+            "--realm"
+            "home"
+            "balance"
+            "--follow"
+          ]
+        && !(bothLinux ? mycelium-other-balance)
+        && !(apart.systemd.user.services ? mycelium-balance)
+      );
+
   # A Mac's node signs its links in with the agents' key from the Secure
   # Enclave, through that key's own library and no agent, since the login
   # session's one may ask for an approval nobody is there to give; one
