@@ -28,29 +28,6 @@ const LOOKING: Duration = Duration::from_secs(5);
 const USED: &str = "Usage: nix-offload ask --quest QUEST [--session ADDRESS] [--on MACHINE] \
                     [--longest SECONDS]";
 
-const HELP: &str = "nix-offload ask: have the machine that gates run `nix-offload there \
---changed` for this tree's commit, and say what it found.
-
-Run it in a tree whose commits are all committed, on a quest shared through mycelium. It \
-leaves the commits since origin's main and the request in the quest's handover/gates/COMMIT, \
-has mycelium start `nix-offload answer` there, and waits for its result.json.
-
-result.json is a convenience, never proof: a merge reads the pass the build keeper kept on \
-the machine that gated.
-
-Options:
-  --quest QUEST       the quest whose scratch carries the gate
-  --session ADDRESS   the asking session's mesh address, for the gate's journal
-  --on MACHINE        the machine that gates, else nix-offload/gates-on in XDG's config
-  --longest SECONDS   how long to wait for the result, else 7200
-
-Exits as the gate did; 65 when what it was asked can't be gated, 75 when no result came in \
-time.
-
-Examples:
-  nix-offload ask --quest QEST-20261115-ABC123
-  nix-offload ask --quest QEST-20261115-ABC123 --session SK1FF0 --on kestrel";
-
 /// What `ask` was told.
 #[derive(Debug, PartialEq, Eq)]
 struct Asked {
@@ -187,13 +164,6 @@ fn waited(gate: &Path, commit: &str, longest: Duration) -> Option<Found> {
 
 /// `ask`: the gate of this tree's commit, asked of the machine that gates.
 pub fn ask(arguments: &[String]) -> ExitCode {
-    if arguments
-        .first()
-        .is_some_and(|word| word == "--help" || word == "-h")
-    {
-        println!("{HELP}");
-        return ExitCode::SUCCESS;
-    }
     let asked = match asked(arguments) {
         Ok(asked) => asked,
         Err(why) => return failed(64, "ask can't read that", &why, USED),
