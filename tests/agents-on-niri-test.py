@@ -3040,8 +3040,10 @@ def test_a_landing_read_finds_each_landings_session_in_one_look(shell: Shell) ->
         assert time.monotonic() < deadline, "reading a landing kept no landing again"
         time.sleep(0.1)
     launcher_on_niri.weighed_held_still(shell)
-    # Each keeping looks at every landing and, once, through every session: fewer than the
-    # landings, where looking for each landing's own looked through them all again.
+    # Each keeping looks at every landing and through the sessions once, where looking for
+    # each landing's own looked through them all again; the row selected looks its own up
+    # live a few times besides, as its verbs are read.
     looked = landings_looked(shell) - looked
     sought = sessions_sought(shell) - sought
-    assert sought < looked, f"keeping {looked} landings again looked through {sought} sessions"
+    times = sought / len(held_by_node())
+    assert times < looked / 2, f"keeping {looked} landings looked through the sessions {times}x"
