@@ -410,5 +410,17 @@
       "test_what_is_picked_inside_a_programs_page_is_learned_there"
     ],
     "test": "vm-desktop-launcher-moves-windows"
+  },
+  {
+    "at": 1794829411,
+    "commit": "49515264519f14ad238c8ad618f534f0b81f82e6",
+    "due": "2026-11-18",
+    "owner_pr": 4940,
+    "reason": "failed, then passed, at 49515264519f",
+    "subtests": [
+      "test_lock_screen_returns_once_the_lock_is_drawn",
+      "test_the_lock_screen_takes_only_the_right_password"
+    ],
+    "test": "vm-desktop-locks-and-asks"
   }
 ]
