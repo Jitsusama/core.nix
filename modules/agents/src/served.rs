@@ -28,13 +28,33 @@ pub const SPACING: i64 = 1024;
 /// included.
 pub const SUMMARY: &str = "summary:agents";
 
+/// What moved from `was` to `now`: the records that read differently,
+/// whole, and the keys gone.
+fn between(was: &BTreeMap<String, Value>, now: &BTreeMap<String, Value>) -> Moved {
+    Moved {
+        changed: now
+            .iter()
+            .filter(|(key, record)| was.get(*key) != Some(record))
+            .map(|(_, record)| record.clone())
+            .collect(),
+        gone: was
+            .keys()
+            .filter(|key| !now.contains_key(*key))
+            .cloned()
+            .collect(),
+    }
+}
+
 /// The records as last served, by key.
 #[derive(Debug, Default)]
 pub struct Served {
+    /// Every record but Landed's.
     records: BTreeMap<String, Value>,
     /// Landed's records as last taken, which a making serving the same
     /// again leaves served without reading them (`take`).
     landed: Rc<Vec<Value>>,
+    /// The same, by key.
+    landed_records: BTreeMap<String, Value>,
 }
 
 /// What a making moved: the records that read differently, whole, and
@@ -290,12 +310,14 @@ fn rising(was: &[Option<i64>]) -> Vec<usize> {
 impl Served {
     /// A record as last served.
     pub fn get(&self, key: &str) -> Option<&Value> {
-        self.records.get(key)
+        self.records
+            .get(key)
+            .or_else(|| self.landed_records.get(key))
     }
 
-    /// Every record as last served, in the order of their keys.
+    /// Every record as last served, Landed's last.
     pub fn all(&self) -> impl Iterator<Item = &Value> {
-        self.records.values()
+        self.records.values().chain(self.landed_records.values())
     }
 
     /// Landed's records as last served.
@@ -305,11 +327,11 @@ impl Served {
 
     /// Takes a making in place of the last, each row given its `order`
     /// against what it had before, answering what moved. Landed's records
-    /// the last making served too stay as they are, unread: there were
-    /// 4,997 of them on Joel's laptop, 2.9 MB, and reading each against
-    /// itself about once a second, as sessions moved, was a quarter of
-    /// the daemon's work while it kept 49% of a core busy (perf,
-    /// 2026-11-16).
+    /// the last making served too stay as they are, unread and unmoved:
+    /// there were 4,997 of them on Joel's laptop, 2.9 MB, and reading each
+    /// against itself about once a second, as sessions moved, was a
+    /// quarter of the daemon's work while it kept 49% of a core busy
+    /// (perf, 2026-11-16).
     pub fn take(&mut self, made: Made) -> Moved {
         let was: Vec<Option<i64>> = made
             .rows
@@ -345,35 +367,21 @@ impl Served {
                 records.insert(key.to_owned(), whole);
             }
         }
-        let mut kept = Vec::new();
-        if Rc::ptr_eq(&made.landed, &self.landed) {
-            for key in made.landed.iter().filter_map(|whole| whole["key"].as_str()) {
-                if let Some(whole) = self.records.remove(key) {
-                    kept.push((key.to_owned(), whole));
-                }
-            }
-        } else {
-            for whole in made.landed.iter() {
-                if let Some(key) = whole["key"].as_str() {
-                    records.insert(key.to_owned(), whole.clone());
-                }
-            }
+        let mut moved = between(&self.records, &records);
+        self.records = records;
+        if !Rc::ptr_eq(&made.landed, &self.landed) {
+            let landed: BTreeMap<String, Value> = made
+                .landed
+                .iter()
+                .filter_map(|whole| Some((whole["key"].as_str()?.to_owned(), whole.clone())))
+                .collect();
+            let more = between(&self.landed_records, &landed);
+            moved.changed.extend(more.changed);
+            moved.gone.extend(more.gone);
+            self.landed_records = landed;
             self.landed = made.landed;
         }
-        let gone = self
-            .records
-            .keys()
-            .filter(|key| !records.contains_key(*key))
-            .cloned()
-            .collect();
-        let changed = records
-            .iter()
-            .filter(|(key, record)| self.records.get(*key) != Some(record))
-            .map(|(_, record)| record.clone())
-            .collect();
-        records.extend(kept);
-        self.records = records;
-        Moved { changed, gone }
+        moved
     }
 }
 
