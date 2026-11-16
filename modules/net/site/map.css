@@ -1,0 +1,176 @@
+/* The map's drawing, in the theme's roles only, so it follows the look.
+   Every ink is a role, and gold says look here, never alone. */
+
+/* A floor is a band under a hairline, named at its left. */
+.n-floor {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.n-floor-name {
+  fill: var(--strong);
+  font: 500 22px / 1 var(--serif);
+  font-variation-settings: "SOFT" 100, "WONK" 1;
+}
+
+/* A box is a device that carries others: an eero, the switch, the modem.
+   It is raised off the map, as the draw that was passed had them. */
+.n-box {
+  fill: var(--raised);
+  stroke: transparent;
+  stroke-width: 1.5;
+}
+
+.n-title {
+  fill: var(--strong);
+  font: 500 18px / 1 var(--serif);
+}
+
+.n-name {
+  fill: var(--text);
+  font: 400 14px / 1 var(--serif);
+}
+
+.n-fact,
+.n-figure {
+  fill: var(--text);
+  font: 400 13px / 1 var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.n-small {
+  font-size: 13px;
+}
+
+/* Gold says look here, and never alone: the figure it marks is set heavier
+   and carries a mark, and the panel says it in words. */
+.n-look {
+  fill: var(--look);
+  font-weight: 700;
+}
+
+.n-look-mark {
+  fill: var(--look);
+}
+
+/* Gold text on a box's raised fill reads under 4.5:1 in the light look, so
+   a figure there is set in the strongest ink and its gold diamond carries
+   the look; on the map's own ground gold text holds. */
+.n-look.on-box {
+  fill: var(--strong);
+}
+
+/* Every link is one quiet ink; a cable is solid and a Wi-Fi link dashed,
+   since colour is a role here, never a medium. */
+.n-link {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.n-link.wifi {
+  stroke-dasharray: 6 6;
+}
+
+/* Heavier the more devices' routes cross a link: every device's, or at
+   least half; gold where net names its radio busy, with a diamond on it,
+   so gold is never alone. */
+.n-link.many {
+  stroke-width: 2.5;
+}
+
+.n-link.all {
+  stroke-width: 3.5;
+}
+
+.n-link.busy {
+  stroke: var(--look);
+}
+
+.n-link.lit {
+  stroke: var(--strong);
+  stroke-width: 3;
+}
+
+/* A port's square: linked in the text's ink, empty in the rule's. */
+/* A port's edge holds 3:1 on its box in both looks; whether it's linked
+   is told by its lamp, a shape, never by the edge's ink. */
+.n-port {
+  fill: var(--raised);
+  stroke: var(--muted);
+  stroke-width: 1.25;
+}
+
+.n-lamp {
+  fill: var(--text);
+}
+
+.n-port-name {
+  fill: var(--text);
+  font: 400 13px / 1 var(--mono);
+  font-feature-settings: var(--mono-features);
+  text-anchor: middle;
+}
+
+/* A device's row under its eero: a whole target, lit on hover. */
+.n-row-ground {
+  fill: transparent;
+}
+
+.n-item {
+  cursor: pointer;
+}
+
+.n-item:hover .n-row-ground,
+.n-item:hover .n-box {
+  stroke: var(--rule);
+}
+
+.n-item:hover .n-row-ground {
+  fill: var(--raised);
+}
+
+/* What's open is drawn in the strongest ink, and every device on its way
+   out stays strong while the rest steps back, so nothing has to move. */
+.n-item.opened .n-box,
+.n-item.opened .n-row-ground {
+  stroke: var(--strong);
+  stroke-width: 2.5;
+}
+
+.n-item.on-way .n-box {
+  stroke: var(--strong);
+  stroke-width: 1.5;
+}
+
+/* With a device open, the rest steps back to the muted ink rather than
+   fading, since faded words fall under 3:1 in the light look; its gold
+   figures stay, as they're still worth a look. */
+.focused .n-item:not(.opened, .on-way) text:not(.n-look) {
+  fill: var(--muted);
+}
+
+/* Lines step back only as far as 3:1 against the ground in both looks. */
+.focused .n-link:not(.lit) {
+  opacity: 0.7;
+}
+
+/* Where the keys have walked to: a ring in the accent with a halo of the
+   map's ground, so it reads over rows and boxes alike. */
+.p-halo,
+.p-ring {
+  fill: none;
+  pointer-events: none;
+}
+
+.p-halo {
+  stroke: var(--sunken);
+  stroke-width: 7;
+}
+
+.p-ring {
+  stroke: var(--accent);
+  stroke-width: 3;
+}

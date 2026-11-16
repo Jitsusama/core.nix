@@ -1690,6 +1690,12 @@
     device with the router and access point roles and its cable to the modem, and a source that
     doesn't answer is said so while the others' devices are kept
   '';
+  network-site-holds = ''
+    the network page typechecks on the kit at its strictest and builds, its tests passing: nothing
+    drawn until every kind of net's records is told, concerns worst first by net's rank rather
+    than the order a watch hears them, a record it can't read named rather than drawn, and the
+    floors laid out top first with each device on its own eero
+  '';
   network-revive-looks-once-the-network-settles = ''
     network-revive looks at the network once a burst of changes goes quiet, or anyway if it never
     does, and reads each unit's check and whether it reloads, refusing a setting it doesn't know

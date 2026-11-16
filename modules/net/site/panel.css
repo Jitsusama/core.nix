@@ -1,0 +1,402 @@
+/* The panel beside the map: finding, what's open, and every device as a
+   tree, in the page's interface size. */
+
+/* Finding on top, then what's open, then every device as a tree, in one
+   column that scrolls whole: two scrollers cut a section at the line
+   where the second began. */
+.panel {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-inline-start: 1px solid var(--rule);
+  background: var(--background);
+}
+
+.panel-body {
+  display: grid;
+  align-content: start;
+  gap: var(--apart);
+  padding: var(--items) var(--inset) var(--groups);
+}
+
+.panel-body:focus {
+  outline: none;
+}
+
+.network {
+  display: grid;
+  grid-template-rows: auto auto;
+  border-block-start: 1px solid var(--rule);
+}
+
+.tree-title {
+  padding: var(--items) var(--inset) var(--tie);
+  font-size: var(--step-body);
+}
+
+@media (max-width: 60rem), (max-height: 34rem) {
+  .panel {
+    overflow: visible;
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--rule);
+  }
+}
+
+.find {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--mark);
+  padding: var(--items) var(--inset);
+  background: var(--background);
+  border-block-end: 1px solid var(--rule);
+}
+
+.find svg {
+  inline-size: 18px;
+  block-size: 18px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.find input {
+  inline-size: 100%;
+  min-block-size: 44px;
+}
+
+.panel-body h2 {
+  font-size: var(--step-large);
+  line-height: 1.2;
+}
+
+.panel-body h3 {
+  margin-block-start: var(--groups);
+  font-size: var(--step-body);
+}
+
+.panel-body .what-it-is {
+  color: var(--text);
+}
+
+.panel-body .mono,
+.panel-body dt,
+.figures {
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.hint {
+  color: var(--text);
+}
+
+/* Facts as a label and its value on one line, the labels in a column. */
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--tie) var(--items);
+  margin: 0;
+}
+
+/* A fact's label and value share the list's columns where the browser
+   can, and otherwise sit side by side. */
+.facts div {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--items);
+}
+
+@supports (grid-template-columns: subgrid) {
+  .facts div {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+}
+
+.facts dt {
+  color: var(--text);
+  font-size: var(--step-small);
+  padding-block-start: 0.15em;
+}
+
+.facts dd {
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.facts dd.mono {
+  font-size: var(--step-small);
+  padding-block-start: 0.15em;
+}
+
+/* A figure-table: radios, ports, channels. Mono, one line a row, so the
+   figures line up down each column. */
+.figures {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--step-small);
+}
+
+.figures th {
+  color: var(--text);
+  font-weight: 400;
+  text-align: start;
+  padding: 0 var(--mark) var(--tie) 0;
+  border-block-end: 1px solid var(--rule);
+}
+
+.figures td {
+  padding: var(--tie) var(--mark) var(--tie) 0;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.figures .num {
+  text-align: end;
+}
+
+.figures .look {
+  color: var(--look);
+  font-weight: 700;
+}
+
+/* The way out, hop by hop: a short list, the narrowest hop marked. */
+.way {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--tie);
+}
+
+.way li {
+  display: grid;
+  grid-template-columns: 1.4rem minmax(0, 1fr);
+  gap: var(--mark);
+  color: var(--text);
+}
+
+.way .step {
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.way .narrowest {
+  color: var(--strong);
+}
+
+/* A list to choose from: each row a whole button, its mark in a column of
+   its own so the words start on one edge. */
+.rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+}
+
+.rows li + li {
+  border-block-start: 1px solid var(--edge);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1.1rem minmax(0, 1fr);
+  gap: var(--mark);
+  align-items: start;
+  inline-size: 100%;
+  min-block-size: 44px;
+  padding: var(--mark) var(--tie);
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--sunken);
+}
+
+.row .glyph {
+  inline-size: 0.8rem;
+  block-size: 0.8rem;
+  margin-block-start: 0.35em;
+  overflow: visible;
+}
+
+.row .glyph.look {
+  fill: var(--look);
+}
+
+/* In the tree, the diamond sits before a floor's count when something on
+   it is worth a look, so the gold count is never told by colour alone. */
+.ti .fact .glyph {
+  display: inline-block;
+  inline-size: 0.6rem;
+  block-size: 0.6rem;
+  margin-inline-end: var(--tie);
+  vertical-align: baseline;
+  fill: var(--look);
+}
+
+.row .glyph.calm {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.row .what {
+  display: grid;
+  gap: 2px;
+}
+
+.row .name {
+  color: var(--strong);
+}
+
+.row .fact {
+  color: var(--text);
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+  font-size: var(--step-small);
+  overflow-wrap: anywhere;
+}
+
+.back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mark);
+  min-block-size: 44px;
+  padding: 0 var(--tie);
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.back svg {
+  inline-size: 12px;
+  block-size: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.inline {
+  display: inline;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--strong);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+/* ---- The tree. ---- */
+
+.tree {
+  margin: 0;
+  padding: 0 var(--inset) var(--groups);
+}
+
+.tree [role="treeitem"] {
+  outline: none;
+}
+
+/* A row of the tree: its turn and its words, stepped in by its depth.
+   Focus rings the row alone, never the branch under it. */
+.ti {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  gap: var(--mark);
+  align-items: start;
+  min-block-size: 44px;
+  padding: var(--mark) var(--tie) var(--mark) calc(var(--tie) + var(--level) * 1.25rem);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ti:hover {
+  background: var(--sunken);
+}
+
+.ti.opened {
+  background: var(--sunken);
+  box-shadow: inset 3px 0 0 var(--strong);
+}
+
+.tree [role="treeitem"]:focus-visible > .ti {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.ti .twisty {
+  inline-size: 10px;
+  block-size: 10px;
+  margin-block-start: 0.45em;
+  fill: none;
+  stroke: var(--strong);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: rotate var(--arrive) var(--ease);
+}
+
+[aria-expanded="true"] > .ti .twisty {
+  rotate: 90deg;
+}
+
+.ti .what {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 var(--apart);
+}
+
+.ti .name {
+  color: var(--strong);
+}
+
+.ti .fact {
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+  font-size: var(--step-small);
+  padding-block-start: 0.15em;
+}
+
+.ti .fact.look {
+  color: var(--look);
+  font-weight: 700;
+}
+
+/* A fact worth a look, such as what a machine is short of: gold, after the
+   same diamond as the tree's, so it's never told by colour alone. */
+.facts .look {
+  color: var(--look);
+  font-weight: 700;
+}
+
+.facts .look .glyph {
+  display: inline-block;
+  inline-size: 0.6rem;
+  block-size: 0.6rem;
+  margin-inline-end: var(--tie);
+  fill: var(--look);
+}

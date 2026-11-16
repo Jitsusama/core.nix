@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en-CA" data-kind="interface">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your home network, now.</title>
+<meta name="description" content="Every device on your home network, floor by floor, with how busy each radio is, each device's route to the internet, and what's worth a look.">
+<meta property="og:title" content="Your home network, now.">
+<meta property="og:description" content="Every device on your home network, floor by floor, with how busy each radio is, each device's route to the internet, and what's worth a look.">
+<meta property="og:type" content="website">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="@dark-ground@">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="@light-ground@">
+<script>"use strict";
+  document.documentElement.classList.add("js");
+  try {
+    const t = localStorage.getItem("theme");
+    if (t === "light" || t === "dark") {
+      document.documentElement.dataset.theme = t;
+    }
+  } catch (_error) {
+    // A browser that keeps nothing shows the system's theme, as it should.
+  }
+</script>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="kit/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="kit/fonts/fraunces-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="kit/fonts/monaspace.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="kit/theme.css">
+<link rel="stylesheet" href="kit/base.css">
+<link rel="stylesheet" href="../local-sites/kit/switch.css">
+<link rel="stylesheet" href="site.css">
+<link rel="stylesheet" href="map.css">
+<link rel="stylesheet" href="panel.css">
+<link rel="alternate" type="text/markdown" href="index.md">
+<link rel="describedby" type="text/plain" href="llms.txt">
+</head>
+<body>
+
+<a class="skip" href="#map-view">Skip to the map</a>
+
+<link rel="stylesheet" href="../strip.css">
+<nav class="sites-strip" aria-label="Your sites"><a href="../">All your sites</a> <span>App</span> <span>live</span></nav>
+
+<header class="head">
+  <svg class="mark" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.5 14.5L16 4l12.5 10.5"/>
+      <path d="M7 12v15.5h18V12"/>
+      <path d="M12 19.2a5.6 5.6 0 0 1 8 0"/>
+      <path d="M9.4 16.4a9.4 9.4 0 0 1 13.2 0"/>
+      <circle cx="16" cy="23" r="1.6"/>
+    </g>
+  </svg>
+  <h1>Your Home Network, <em>Now</em></h1>
+  <p class="keys">Press <kbd data-key="?">?</kbd> for the keys.</p>
+  <div class="switch" role="radiogroup" aria-label="Theme">
+    <label title="Light"><input type="radio" name="theme" value="light"><span class="sr">Light</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </label>
+    <label title="Match System"><input type="radio" name="theme" value="system" checked><span class="sr">Match System</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor"/></svg>
+    </label>
+    <label title="Dark"><input type="radio" name="theme" value="dark"><span class="sr">Dark</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+    </label>
+  </div>
+</header>
+
+<main id="main" class="stage">
+  <figure class="map" id="map" aria-labelledby="map-title">
+    <h2 id="map-title" class="sr">The Map</h2>
+    <section class="map-view" id="map-view" data-map data-level="device" aria-roledescription="map" aria-label="The home network, floor by floor" aria-describedby="map-help">
+      <p id="map-help" class="sr">Arrow keys, or h, j, k and l, walk to the nearest device that way. Return opens it in the panel, with its route to the internet. Minus steps one device toward the internet. Escape lets go. i and o zoom, and 0 fits the map. Shift with an arrow moves it. The panel holds the same devices as a tree.</p>
+      <svg class="map-draw" id="map-draw" aria-hidden="true"></svg>
+    </section>
+    <figcaption class="map-foot">
+      <div class="foot-words">
+        <p id="where" class="where" role="status"></p>
+        <p id="asof" class="asof" data-state="connecting">Reaching net.</p>
+      </div>
+      <fieldset class="zoom">
+        <legend class="sr">Zoom</legend>
+        <button type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (i)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button>
+        <button type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (o)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12"/></svg></button>
+        <button type="button" data-zoom="fit" aria-label="Fit the map" title="Fit the map (0)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
+      </fieldset>
+      <noscript><p>The map is drawn in the browser, live from net; without scripts, read <a href="index.md">the page as text</a>, or type <code>net</code> in a terminal.</p></noscript>
+    </figcaption>
+  </figure>
+
+  <aside class="panel" id="panel" aria-labelledby="panel-title">
+    <h2 id="panel-title" class="sr">Details</h2>
+    <search class="find">
+      <label for="find" class="sr">Find a device by name or address</label>
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5L17 17"/></svg>
+      <input id="find" type="search" placeholder="Find a device by name or address" autocomplete="off" spellcheck="false">
+    </search>
+    <div class="panel-body" id="panel-body" tabindex="-1"></div>
+    <section class="network" aria-labelledby="tree-title">
+      <h2 id="tree-title" class="tree-title">Every Device</h2>
+      <div class="tree" id="tree" role="tree" aria-labelledby="tree-title"></div>
+    </section>
+  </aside>
+</main>
+
+<dialog class="keypanel" id="keys" aria-labelledby="keys-title">
+  <h2 id="keys-title">Keys</h2>
+  <dl>
+    <div><dt>Arrows, <kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd></dt><dd>On the map, walk to the nearest device that way</dd></div>
+    <div><dt><kbd>Return</kbd></dt><dd>Open the device you're on: its details, and its route to the internet drawn on the map</dd></div>
+    <div><dt><kbd>-</kbd></dt><dd>Step one device toward the internet: from a laptop to its eero, from an eero to the one wired to the modem, then the modem</dd></div>
+    <div><dt><kbd>Esc</kbd></dt><dd>Close the details and show how the network stands</dd></div>
+    <div><dt><kbd>Shift</kbd> and arrows</dt><dd>Move the map</dd></div>
+    <div><dt><kbd>i</kbd> <kbd>o</kbd></dt><dd>Zoom in or out; <kbd>+</kbd> zooms in too</dd></div>
+    <div><dt><kbd>0</kbd></dt><dd>Fit the map to the room it has</dd></div>
+    <div><dt><kbd>/</kbd></dt><dd>Find a device by its name or an address</dd></div>
+    <div><dt><kbd>Tab</kbd></dt><dd>Move through the map, zoom, find and the panel, then the list of every device</dd></div>
+    <div><dt>In the tree</dt><dd><kbd>j</kbd> and <kbd>k</kbd> step, <kbd>l</kbd> opens a branch, <kbd>h</kbd> closes it or climbs, <kbd>g</kbd> and <kbd>G</kbd> go to the first and last, <kbd>Return</kbd> opens the device</dd></div>
+    <div><dt><kbd>?</kbd> <kbd>F1</kbd></dt><dd>This list, and again to close it; <kbd>Esc</kbd> closes it too</dd></div>
+  </dl>
+  <p class="hint">On the map, a coloured ring drawn a little outside a box marks the device the arrows are on. A heavy outline marks the one you opened, and a lighter one each device on its route.</p>
+  <form method="dialog"><button type="submit" class="close">Close</button></form>
+</dialog>
+
+<script type="module" src="site.js"></script>
+</body>
+</html>

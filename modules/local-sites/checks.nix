@@ -79,6 +79,25 @@ in
     };
   };
 
+  # The network page typechecks on the kit and builds, its tests passing
+  # (modules/net/site/tests), on the same plain theme as the system page's.
+  network-site-holds = sites.localSite {
+    name = "network";
+    src = ../net/site;
+    webKit = pkgs.emptyDirectory;
+    tint = "machine";
+    looks = {
+      dark = {
+        background = "black";
+        machine = "white";
+      };
+      light = {
+        background = "white";
+        machine = "black";
+      };
+    };
+  };
+
   # The home's builder lists each site from its row, settled ones apart,
   # strips each page that asks, and changes nothing on a second run
   # (tests/home-builds-from-its-rows.sh).

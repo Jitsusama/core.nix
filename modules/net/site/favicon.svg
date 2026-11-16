@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    g { stroke: #942822; fill: #942822; }
+    @media (prefers-color-scheme: dark) { g { stroke: #db9f9c; fill: #db9f9c; } }
+  </style>
+  <g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 15L16 4l13 11"/>
+    <path d="M7 12v16h18V12"/>
+    <path d="M11.5 19.5a6.5 6.5 0 0 1 9 0"/>
+    <path d="M13.8 22.2a3.2 3.2 0 0 1 4.4 0"/>
+    <circle cx="16" cy="24.6" r="1.4" stroke="none" style="fill:inherit"/>
+  </g>
+</svg>
