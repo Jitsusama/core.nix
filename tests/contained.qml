@@ -56,5 +56,39 @@ QtObject {
                 text(3, "below", box(20, 29, 80, 20))], card), []);
         Expect.same("a bearing's pixel past its room or the card is no fault",
             Contained.faults([text(1, "W", box(-1, 0, 22, 20), box(0, 0, 20, 20))], card), []);
+        lines();
+    }
+
+    // A text set at a fixed pitch, in a face of the given ascent and
+    // descent, its first baseline where Qt puts it: at the face's ascent,
+    // the pitch's spare room under its letters.
+    function setIn(lines, ascent, descent) {
+        return { fixed: true, lines, pitch: 24, baseline: ascent, ascent, descent, tall: 0 };
+    }
+
+    // How tall the letters of a text's lines stand, and from how far down
+    // its box (Contained.inkedLines).
+    function lines() {
+        // A drawer's You Asked in the Note face over its prose in the words
+        // face, each line set on its baseline a pitch apart: the prose's
+        // box starts 3.7 px inside the name's pitch, yet its letters stand
+        // clear of the name's (the session's drawer, 2026-11-16).
+        const name = Contained.inkedLines(setIn(1, 14, 3.5));
+        const prose = Contained.inkedLines(setIn(12, 17.75, 4.5));
+        Expect.same("a line's letters stand from its top to its descent", name,
+            { top: 0, height: 17.5 });
+        Expect.same("many lines' letters end at the last one's descent", prose,
+            { top: 0, height: 11 * 24 + 17.75 + 4.5 });
+        const under = 24 + 14 - 17.75;
+        Expect.same("a value set a pitch under its name, in a taller face, isn't over it",
+            Contained.faults([text(1, "You Asked", box(25, 94.5, 81, name.height)),
+                text(2, "why did", box(25, 94.5 + under, 237, prose.height))], card), []);
+        Expect.same("a value set on its name's own baseline is over it",
+            Contained.faults([text(1, "You Asked", box(25, 94.5, 81, name.height)),
+                text(2, "why did", box(25, 94.5 + 14 - 17.75, 237, prose.height))], card),
+            [{ said: "You Asked", fault: "over", with: "why did" }]);
+        Expect.same("a text set in its face's own lines is as tall as they are",
+            Contained.inkedLines({ fixed: false, lines: 2, pitch: 0, baseline: 14, ascent: 14,
+                descent: 4, tall: 36 }), { top: 0, height: 36 });
     }
 }
