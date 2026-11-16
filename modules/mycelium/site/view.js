@@ -3017,6 +3017,16 @@
     );
   };
 
+  // Where Joel says something himself: a link the desktop hands the
+  // launcher (modules/quickshell/mycelium-link), opening Agents' Talk to a
+  // cell or Networks on a network, so the page still writes nothing. The
+  // link names it and nothing more, in the letters mycelium-link lets
+  // through, so a name it would refuse is never offered as a link that
+  // does nothing.
+  const LINK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+  const launcherLink = (kind, name, words) =>
+    LINK_NAME.test(name || "") ? `<p class="led"><a class="inline" href="mycelium:${kind}/${name}">${esc(words)}</a></p>` : "";
+
   const backButton = (label) =>
     `<button type="button" class="back" data-back><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M7 1.5L3 5L7 8.5"/></svg>${esc(label)}</button>`;
 
@@ -3066,6 +3076,7 @@
       `<h2 id="panel-title">${esc(s.short)}</h2>` +
       `<p class="carries">${esc(`A cell ${home}.`)}</p>` +
       glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(cellDoing(s))}</span></span>`, cellHealth(s)) +
+      launcherLink("cell", s.address, "Talk to it in the launcher") +
       factList(facts) +
       `<h3>Its Networks</h3><ul class="rows">${networks.join("")}</ul>` +
       `<h3>Lately</h3>` +
@@ -3162,6 +3173,7 @@
         `<p class="carries">${esc(networkWords(h))}</p>` +
         glance(esc(networkPurpose(h)), esc(groupDoing(allCells(h))), networkHealth(h)) +
         (h.lead ? `<p class="led">Led by <button type="button" class="inline" data-go="cell=${esc(h.lead.address)}">${esc(h.lead.short)}</button></p>` : "") +
+        (h.alone ? "" : launcherLink("network", h.key, `${h.name} in the launcher`)) +
         heldUp(h.cells) +
         talkLine(touching(h.cells, h.key), true) +
         spendBlock(allCells(h), [["branch", ownSpendRow(h).concat(hubSpendRows(h.children))]]) +
