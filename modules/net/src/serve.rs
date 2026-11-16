@@ -17,10 +17,19 @@
 //! The record's `collected_at` isn't served: each record carries its own
 //! time where it has one, a device's and a source's `read_at` and the
 //! internet's `measured_at`.
+//!
+//! The uplink, who fills this machine's own upload (src/uplink), is one
+//! record more, read every few seconds and only while it's watched, since
+//! reading every socket's owner costs more than a page nobody looks at is
+//! worth. `Served` holds the network's records and the uplink's together,
+//! since daemon-serve is handed every record at once and drops any left
+//! out.
 
 use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use daemon_serve::asks::Domain;
+use daemon_serve::serve::Shared;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
@@ -29,10 +38,65 @@ use crate::model::{Network, SourceState};
 /// The daemon as its clients know it.
 pub const DOMAIN: Domain = Domain {
     name: "net",
-    kinds: &["device", "link", "source", "internet", "concern"],
-    sole: &["internet"],
+    kinds: &["device", "link", "source", "internet", "concern", "uplink"],
+    sole: &["internet", "uplink"],
     named_only: &[],
 };
+
+/// What the daemon serves, held whole: the network's records from each
+/// minute's round, and the uplink's from its own loop while it's watched.
+pub struct Served {
+    shared: Arc<Shared>,
+    held: Mutex<Held>,
+}
+
+#[derive(Default)]
+struct Held {
+    network: Vec<Value>,
+    sources: Value,
+    uplink: Option<Value>,
+}
+
+impl Held {
+    /// Every record there is now, the uplink's last.
+    fn whole(&self) -> Vec<Value> {
+        self.network.iter().chain(&self.uplink).cloned().collect()
+    }
+}
+
+impl Served {
+    pub fn new(shared: Arc<Shared>) -> Arc<Self> {
+        let held = Held {
+            sources: json!({}),
+            ..Held::default()
+        };
+        Arc::new(Self {
+            shared,
+            held: Mutex::new(held),
+        })
+    }
+
+    /// Serves this round's network, keeping the uplink as it stands.
+    pub fn network(&self, network: &Network) {
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        held.network = records(network);
+        held.sources = sources(network);
+        self.shared.change(held.whole(), held.sources.clone());
+    }
+
+    /// Serves the uplink's newest record, or none once nothing watches it,
+    /// keeping the network as it stands.
+    pub fn uplink(&self, record: Option<Value>) {
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        held.uplink = record;
+        self.shared.change(held.whole(), held.sources.clone());
+    }
+
+    /// Whether a watch asks for the uplink, by its kind or its key.
+    pub fn uplink_watched(&self) -> bool {
+        self.shared.watches("uplink", "") || self.shared.keys_watched().contains("uplink")
+    }
+}
 
 /// Every record the network holds, by kind.
 pub fn records(network: &Network) -> Vec<Value> {
@@ -117,6 +181,61 @@ fn crossings(network: &Network) -> BTreeMap<(String, String), u32> {
         }
     }
     crossed
+}
+
+/// The uplink's report as its one record.
+#[cfg(target_os = "linux")]
+pub fn uplink_record(report: &crate::uplink::Report) -> Value {
+    record("uplink", "uplink", report)
+}
+
+/// How often the uplink is read while it's watched: `net uplink`'s own
+/// window, long enough for a model request or two to land in it.
+#[cfg(target_os = "linux")]
+const UPLINK_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Reads the uplink every `UPLINK_EVERY` while a watch asks for it,
+/// reporting each sample against the one before, and sleeps until a watch
+/// begins or ends otherwise, letting the record go, so a later watch
+/// never hears an old one. `woken` hears each watch begin or end, and the
+/// loop ends with it. One `Owners` is kept throughout, so a socket's
+/// owner is looked for once.
+#[cfg(target_os = "linux")]
+pub fn watch_uplink(served: &Served, woken: &std::sync::mpsc::Receiver<()>) {
+    use std::sync::mpsc::RecvTimeoutError;
+
+    use crate::uplink::{self, Owners, Sample};
+
+    let mut owners = Owners::default();
+    let mut earlier: Option<Sample> = None;
+    loop {
+        if !served.uplink_watched() {
+            if earlier.take().is_some() {
+                served.uplink(None);
+            }
+            if woken.recv().is_err() {
+                return;
+            }
+            continue;
+        }
+        match uplink::sample() {
+            Ok(later) => {
+                if let Some(earlier) = &earlier {
+                    let report = uplink::report(earlier, &later, &mut owners);
+                    served.uplink(Some(uplink_record(&report)));
+                }
+                earlier = Some(later);
+            }
+            Err(error) => {
+                eprintln!("net: the kernel's socket list can't be read: {error}");
+                earlier = None;
+                served.uplink(None);
+            }
+        }
+        if let Err(RecvTimeoutError::Disconnected) = woken.recv_timeout(UPLINK_EVERY) {
+            return;
+        }
+    }
 }
 
 fn sorted(a: &str, b: &str) -> (String, String) {
@@ -223,6 +342,56 @@ mod tests {
                 "{key} names its kind"
             );
         }
+    }
+
+    #[test]
+    fn the_uplink_is_served_beside_the_network_and_leaves_alone() {
+        let mut held = Held {
+            network: records(&network()),
+            ..Held::default()
+        };
+        let alone = held.whole().len();
+        assert_eq!(
+            alone,
+            held.network.len(),
+            "the network's records, with no uplink"
+        );
+        held.uplink = Some(json!({"key": "uplink", "kind": "uplink"}));
+        let whole = held.whole();
+        assert_eq!(
+            whole.len(),
+            alone + 1,
+            "the uplink joins the network's records"
+        );
+        assert_eq!(whole[alone]["key"], "uplink", "the uplink's comes last");
+        held.uplink = None;
+        assert_eq!(
+            held.whole().len(),
+            alone,
+            "unwatched, the uplink leaves alone"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_uplink_is_one_record_holding_its_report() {
+        use crate::uplink::{self, Owners, Sample};
+        let at = |at| Sample {
+            at,
+            sockets: Vec::new(),
+            sent: BTreeMap::new(),
+            uplink: Some("wlan0".to_owned()),
+        };
+        let report = uplink::report(&at(0.0), &at(5.0), &mut Owners::default());
+        let said = uplink_record(&report);
+        assert_eq!(said["key"], "uplink", "{said}");
+        assert_eq!(DOMAIN.kind_of("uplink"), Some("uplink"), "a sole kind");
+        assert_eq!(said["kind"], "uplink", "{said}");
+        assert_eq!(
+            said["uplink"], "wlan0",
+            "the report's own fields stay: {said}"
+        );
+        assert!(said["joel_pct"].is_number(), "{said}");
     }
 
     #[test]

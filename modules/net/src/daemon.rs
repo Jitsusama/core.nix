@@ -62,6 +62,18 @@ pub fn run() -> Result<(), String> {
     let day = state.join("day.jsonl");
     let socket = runtime.join("daemons/net.sock");
     let shared = Shared::new(served::DOMAIN, Box::new(|_| None));
+    let held = served::Served::new(Arc::clone(&shared));
+    // The uplink is read on a thread of its own, only while it's watched,
+    // and only on Linux, whose sock_diag says who owns each socket.
+    #[cfg(target_os = "linux")]
+    {
+        let (heard, woken) = std::sync::mpsc::channel();
+        shared.on_watches(Box::new(move || {
+            let _ = heard.send(());
+        }));
+        let held = Arc::clone(&held);
+        thread::spawn(move || served::watch_uplink(&held, &woken));
+    }
     let listener = serve::listen(&socket)
         .map_err(|error| format!("can't listen on {}: {error}", socket.display()))?;
     serve::accept(Arc::clone(&shared), listener);
@@ -122,7 +134,7 @@ pub fn run() -> Result<(), String> {
         let written = serde_json::to_string_pretty(&network).map_err(|error| error.to_string())?;
         write(&record, &(written + "\n"))
             .map_err(|error| format!("can't write the record: {error}"))?;
-        shared.change(served::records(&network), served::sources(&network));
+        held.network(&network);
         thread::sleep(EVERY);
     }
 }

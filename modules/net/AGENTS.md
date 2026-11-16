@@ -88,6 +88,8 @@ watch is told only what moved:
 - `internet`: the one record of the internet beyond the modem.
 - `concern:<concern>:<device>[:<on>][:<other>]`: what's worth a look, its
   own kind as `concern`, since `kind` is the record's.
+- `uplink`: who fills this machine's own upload, served only while it's
+  watched, and only on Linux ([The Uplink](#the-uplink)).
 
 The record's `collected_at` isn't served: a device and a source carry
 their own `read_at`, and the internet its `measured_at`. Health says each
@@ -237,6 +239,15 @@ rather than spread over the rest, and another user's sockets, root's
 included, have no owner to read and say so. `--json` answers
 `net.uplink/1`, with Joel's share and the agents' to the nearest 5% for
 a glance to show.
+
+The daemon serves the same report on net.sock as the sole `uplink`
+record, on Linux only. It's read every 5 s on a thread of its own, and
+only while a watch asks for the uplink, by its kind or its key, since
+reading every socket's owner costs more than a record nobody shows is
+worth. When the last such watch ends, the record goes, so the next
+watch never hears an old one. `Served` in `src/serve.rs` holds the
+network's records and the uplink's together, since daemon-serve is
+handed every record at once and drops any left out.
 
 ## Changing It
 
