@@ -3251,18 +3251,20 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     ), arrived
     assert arrived["told"][:1] == ["\u21b5 carry back"], arrived
     # Carry Back changes where a session runs, so Return from the find only lands on it
-    # (Launcher.qml's lands) and normal's Return asks the node, the row saying so in place
-    # while it's asked; how the node's answer ends it is tests/carry-back.qml's, since tern
-    # is no machine here.
+    # (Launcher.qml's lands) and normal's Return asks the node, the row becoming "carrying
+    # back" while it's asked. The node here answers tern, no machine of its, at once, and the
+    # row reads as it did again before a poll may see it (the whole run, 2026-11-16), so the
+    # shell's own report of the row becoming says it was; how the node's answer ends it is
+    # tests/carry-back.qml's.
     shell.normal()
     # An act's Return is no key the launcher times to its frame (Launcher.qml's keyTimed), so
-    # this is the most it took: when the case saw it, its polls and asks of the shell in.
+    # this is the most it took: when the case read the report, its polls of the log in.
+    since = shell.mark()
     began = time.monotonic()
     shell.send_key("ret")
-    shell.launcher_until(lambda shown: shown["selected"]["side"] == "carrying back")
+    shell.reported(f"becoming {arrived['is']}", lambda rest: rest == "", since)
     took = round((time.monotonic() - began) * 1000)
-    logging.getLogger(__name__).info("LAB Carry Back was seen in place %s ms on", took)
-    shoot("agents-carrying-back")
+    logging.getLogger(__name__).info("LAB Carry Back was reported becoming %s ms on", took)
 
 
 def in_to_read(shell: Shell) -> None:
