@@ -22,9 +22,17 @@ fn asked_to_keep_the_base_it_keeps_it_and_evaluates_nothing_else() {
 
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(text(&ran.stdout), "");
-    assert!(text(&ran.stderr).contains("kept x86_64-linux's checks at 0123456789ab"));
+    assert!(
+        text(&ran.stderr).contains("kept x86_64-linux's checks at 0123456789ab"),
+        "the keep didn't say which checks it kept: {}",
+        text(&ran.stderr)
+    );
     let kept = Path::new("cache/changed-checks/0123456789abcdef0123-x86_64-linux.json");
-    assert!(stand_in.folder.join(kept).exists());
+    assert!(
+        stand_in.folder.join(kept).exists(),
+        "the kept checks weren't written to {}",
+        kept.display()
+    );
     assert!(
         stand_in.path(READS).exists(),
         "a keep records what the VM tests read as it evaluates them, so every kept base has \
