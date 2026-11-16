@@ -8,6 +8,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The socket systemd hands every daemon of the shell, taken as each takes
+# it (../daemon-serve).
+daemon-serve = { path = "../daemon-serve" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"
 # The shape every command of ours takes: its flags, help, errors and exits.
