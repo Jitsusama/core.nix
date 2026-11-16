@@ -63,7 +63,15 @@ fn status() -> Help {
 
 fn stop() -> Help {
     Help::new("stop", "takes every queue the shaper made away")
-        .example("shaper stop", "as its unit does once the shaper ends")
+        .example("shaper stop", "takes them away now")
+        .example(
+            "shaper stop --unless-restarting shaper.service",
+            "as its unit does once the shaper ends",
+        )
+        .option(
+            "--unless-restarting UNIT",
+            "leaves them while systemd restarts UNIT, for the shaper it starts",
+        )
         .exit(Exit::Usage, "it takes no words")
 }
 
@@ -177,7 +185,7 @@ mod tests {
             "--networks",
             "/etc/shaper-networks.json",
         ],
-        &["stop"],
+        &["stop", "--unless-restarting", "shaper.service"],
         &["record", "--state", "/var/lib/shaper-record"],
         &["day"],
     ];

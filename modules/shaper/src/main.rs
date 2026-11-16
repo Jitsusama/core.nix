@@ -39,6 +39,7 @@ mod rate;
 mod realtime;
 mod record;
 mod replay;
+mod restart;
 #[cfg(test)]
 mod sim;
 mod stamp;
@@ -182,8 +183,16 @@ fn asked(context: &Context) -> Result<(), Failure> {
         "status" => status::status(&options("status", rest)?.runtime, context),
         "stop" => {
             // The kit refuses a stray word; a stray flag is refused here.
-            if let Some(flag) = rest.first() {
-                return Err(wrongly("stop", format!("{flag} isn't a flag it takes")));
+            let unit = match rest {
+                [] => None,
+                [flag, unit] if flag == "--unless-restarting" => Some(unit),
+                [flag, ..] => {
+                    return Err(wrongly("stop", format!("{flag} isn't a flag it takes")));
+                }
+            };
+            if let Some(unit) = unit.filter(|unit| restarting(unit)) {
+                eprintln!("{unit} is restarting, so its queues stay for it to take back");
+                return Ok(());
             }
             stop();
             Ok(())
@@ -572,13 +581,21 @@ fn start(
 }
 
 /// Puts a link's queues on, its upload at `up` split as `split`, turning
-/// what it receives through its IFB unless it goes `straight` in. What was
-/// there goes first, since HTB can't change where it sends what nothing
-/// claims: a link's own queue from the kernel can't be taken away, and
-/// says so, which is nothing to tell.
+/// what it receives through its IFB unless it goes `straight` in. Lanes
+/// and an IFB already there, as a restart leaves them, are taken back at
+/// these rates, so the link is never unshaped and nothing queued is lost.
+/// Otherwise what was there goes first, since HTB can't change where it
+/// sends what nothing claims: a link's own queue from the kernel can't be
+/// taken away, and says so, which is nothing to tell.
 fn install(link: &str, ifb: &str, (up, split): (u64, &lanes::Split), down: u64, straight: bool) {
-    let _ = sh(&words(&format!("tc qdisc del dev {link} root")));
-    run_all(qdisc::install(link, ifb, (up, split), down));
+    let held = sh(&words(&format!("tc -j qdisc show dev {link}"))).unwrap_or_default();
+    let back = sh(&words(&format!("tc -j qdisc show dev {ifb}"))).unwrap_or_default();
+    if lanes::laned(&held) && qdisc::ours(&back) {
+        run_all(qdisc::adopt(link, ifb, (up, split), down));
+    } else {
+        let _ = sh(&words(&format!("tc qdisc del dev {link} root")));
+        run_all(qdisc::install(link, ifb, (up, split), down));
+    }
     if !straight {
         run_all(qdisc::turn(link, ifb));
     }
@@ -1487,6 +1504,15 @@ fn bytes_kbit(bytes: u64, seconds: f64) -> u64 {
 
 fn mbit(kbit: u64) -> String {
     format!("{:.1} Mbit/s", float(kbit) / 1000.0)
+}
+
+/// Whether systemd is restarting `unit`. When it can't say, it isn't, so
+/// the queues go as on any stop.
+fn restarting(unit: &str) -> bool {
+    sh(&words(&format!(
+        "systemctl list-jobs --no-legend --plain --full {unit}"
+    )))
+    .is_ok_and(|jobs| restart::pending(&jobs, unit))
 }
 
 /// Takes every queue the shaper made away, for when it stops.

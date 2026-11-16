@@ -716,6 +716,35 @@ def test_replug(replugged: Replugged) -> None:
 
 
 @pytest.mark.usefixtures("tunnel")
+def test_a_restart_keeps_the_queues(on_eth2: Connection) -> None:
+    """A restart, as a switch makes, leaves the link shaped throughout and its queues kept.
+
+    The new shaper takes back the queues the old one left, so nothing they held or counted
+    is lost, and the modem's queue never fills while none are there.
+    """
+    client = on_eth2.client
+    client.succeed(on_eth2.upload)
+
+    def sent() -> int:
+        """Give the bytes eth2's root HTB has sent."""
+        return int(next(q for q in on_eth2.qdiscs("eth2") if q["kind"] == "htb")["bytes"])
+
+    before = sent()
+    watch = (
+        "for _ in $(seq 100); do"
+        ' tc -j qdisc show dev eth2 | grep -q \'"kind":"htb"\' || echo bare;'
+        " tc -j qdisc show dev wg0 | grep -q cake || echo bare; sleep 0.05; done"
+    )
+    bare = client.succeed(
+        f"({watch}) > /tmp/watched & systemctl restart shaper.service; wait; cat /tmp/watched"
+    )
+    client.succeed("systemctl is-active shaper.service")
+    assert "bare" not in bare, "a restart left a link unshaped while it ran"
+    assert on_eth2.shaped("eth2")
+    assert sent() >= before, "a restart made the queues afresh rather than keeping them"
+
+
+@pytest.mark.usefixtures("tunnel")
 def test_stopping(on_eth2: Connection) -> None:
     """An administrator stops it with no password, and that leaves the links as they were.
 
