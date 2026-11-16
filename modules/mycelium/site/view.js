@@ -944,9 +944,12 @@
   };
   // A cell is painted on the ground layer. The SVG keeps one invisible
   // mark for it, to be clicked, hovered, found and walked by its data-key.
+  // The mark says only whether it is chosen: it is never seen, so whether
+  // it is far is the paint's to say, and a new choice leaves it alone.
+  const cellMarkClass = (s) => (chosen?.kind === "cell" && chosen.id === s.address ? "cell chosen m-hit" : "cell m-hit");
   const cellMarkup = (s, [x, y]) => {
     const net = esc(s.hub?.key || "");
-    return `<circle class="${cellClasses(s)} m-hit" data-key="c:${esc(s.address)}" data-level="${net || LOOSE_LEVEL}" data-within="${net}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R + 4}"/>`;
+    return `<circle class="${cellMarkClass(s)}" data-key="c:${esc(s.address)}" data-level="${net || LOOSE_LEVEL}" data-within="${net}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R + 4}"/>`;
   };
   // What a cell paints, innermost last: what changed, what waits on it,
   // its membrane and what it is doing.
@@ -977,23 +980,26 @@
   const isLive = (h) => h.cells.some((s) => LIVE.has(s.standing));
   const quiet = (h) => (isLive(h) ? "" : " quiet");
 
-  const hubMarkup = (h, [x, y]) => {
+  const hubClass = (h) => {
     const cls = ["hub"];
     if (chosen?.kind === "net" && chosen.id === h.key) cls.push("chosen");
     if (near && !near.hubs.has(h.key)) cls.push("far");
     if (!isLive(h)) cls.push("quiet");
+    return cls.join(" ");
+  };
+  const hubMarkup = (h, [x, y]) => {
     return (
-      `<g class="${cls.join(" ")}" data-key="h:${esc(h.key)}" data-level="${TOP_LEVEL}" data-within=""${h.within ? ` data-branch-of="${esc(h.within)}"` : ""} transform="translate(${x.toFixed(1)},${y.toFixed(1)})">` +
+      `<g class="${hubClass(h)}" data-key="h:${esc(h.key)}" data-level="${TOP_LEVEL}" data-within=""${h.within ? ` data-branch-of="${esc(h.within)}"` : ""} transform="translate(${x.toFixed(1)},${y.toFixed(1)})">` +
       `<circle class="m-hit" r="${HUB_R + 6}"/><circle class="m-hub" r="${HUB_R}"/>` +
       `<path class="m-hub-shape" d="${SHAPES[h.shape](HUB_R * 0.5)}"/></g>`
     );
   };
 
+  const machineClass = (x) => (near && !near.machines.has(x.name) ? "machine far" : "machine");
   const machineMarkup = (x, [mx, my], count) => {
     const off = x.state !== "ready";
-    const cls = near && !near.machines.has(x.name) ? "machine far" : "machine";
     return (
-      `<g class="${cls}" data-key="m:${esc(x.name)}" data-level="${TOP_LEVEL}" data-within="" transform="translate(${mx},${my})">` +
+      `<g class="${machineClass(x)}" data-key="m:${esc(x.name)}" data-level="${TOP_LEVEL}" data-within="" transform="translate(${mx},${my})">` +
       (off ? `<circle class="m-dormant m-off" r="${MACHINE_R}"/>` : `<circle class="m-membrane" r="${MACHINE_R}"/><circle class="m-machine" r="${count ? 11 : 7}"/>`) +
       `</g>`
     );
@@ -1008,6 +1014,80 @@
     performance.measure(name, { start: started });
   };
 
+  // A ground shape keeps what its ink is made of: its own classes, and a
+  // test of whether the choice touches it, asked again on every draw. What
+  // the choice leaves untouched steps back; a hypha or cross-hypha it
+  // touches is also drawn strong.
+  const inked = (base, on, tail = "", strong = false) => ({ base, on, tail, strong });
+  const inkOfShape = (s) => `${s.base}${near ? (s.on() ? (s.strong ? " lit" : "") : " far") : ""}${s.tail}`;
+  // What is far is painted first, so what the choice touches lies on top.
+  const farFirst = (a, b) => (b.cls.includes(" far") ? 1 : 0) - (a.cls.includes(" far") ? 1 : 0);
+  const inkGround = () => {
+    for (const layer of groundLayers) {
+      for (const s of layer) s.cls = inkOfShape(s);
+      layer.sort(farFirst);
+    }
+  };
+  const paintCells = () => {
+    cellLayer = [];
+    for (const s of current.cells) if (pos.has(s.id) && !isFolded(s)) cellLayer.push(...cellShapes(s, pos.get(s.id)));
+  };
+  const sameSet = (a, b) => a.size === b.size && [...a].every((key) => b.has(key));
+  // The trees hyphae grow, kept for the reading and layout they grew in:
+  // which cells a tree joins says the rest, so a new choice or fold
+  // reuses them rather than growing every tree again.
+  let treesFor = null;
+  const treeOf = (key, points) => {
+    if (treesFor?.m !== current || treesFor.L !== L) treesFor = { m: current, L, trees: new Map() };
+    let tree = treesFor.trees.get(key);
+    if (!tree) {
+      tree = shortestTree(points);
+      treesFor.trees.set(key, tree);
+    }
+    return tree;
+  };
+
+  // A new choice on the map as drawn keeps every mark where it is and inks
+  // again only what the choice changes, so a Return at thousands of cells
+  // costs classes rather than a fresh map of them. A new reading, layout
+  // or fold draws the whole map.
+  let drawnFor = null;
+  const restyleMarks = () => {
+    const setClass = (el, cls) => {
+      if (el.getAttribute("class") !== cls) el.setAttribute("class", cls);
+    };
+    for (const el of world.querySelectorAll("g.hub")) setClass(el, hubClass(current.hubs.get(el.dataset.key.slice(2))));
+    const machines = new Map(current.machines.map((x) => [x.name, x]));
+    for (const el of world.querySelectorAll("g.machine")) setClass(el, machineClass(machines.get(el.dataset.key.slice(2))));
+    for (const el of world.querySelectorAll(".cell.chosen")) setClass(el, "cell m-hit");
+    if (chosen?.kind === "cell") world.querySelector(`[data-key="c:${CSS.escape(chosen.id)}"]`)?.setAttribute("class", "cell chosen m-hit");
+  };
+  const restyle = () => {
+    inkGround();
+    paintCells();
+    restyleMarks();
+  };
+  // The same map folded another way keeps its marks too: a network that
+  // folded takes its cells' marks away, one that unfolded adds them.
+  const refoldMarks = (marks, was) => {
+    restyleMarks();
+    for (const key of folded) if (!was.has(key)) for (const el of marks.querySelectorAll(`circle.cell[data-within="${CSS.escape(key)}"]`)) el.remove();
+    const opened = new Set([...was].filter((key) => !folded.has(key)));
+    if (!opened.size) return;
+    const added = current.cells.filter((s) => opened.has(homeOf(s)) && pos.has(s.id)).map((s) => cellMarkup(s, pos.get(s.id)));
+    marks.insertAdjacentHTML("beforeend", added.join(""));
+  };
+  // What every draw ends with, whole or a restyle.
+  const drawnAgain = () => {
+    svg.classList.toggle("focused", !!near);
+    if (pointed && !spots.has(pointed)) pointed = null;
+    paintTalk({ paint: false });
+    placePointer();
+    labelsFor();
+    if (auto) fit(false);
+    else frame();
+  };
+
   const draw = () => timed("mycelium-draw", drawMap);
   const drawMap = () => {
     if (!current) return;
@@ -1015,6 +1095,15 @@
     L = lay(m);
     pos = placed(m, L);
     near = chosen ? nearOf(chosen) : null;
+    const folds = foldsNow();
+    if (drawnFor?.m === m && drawnFor.L === L && sameSet(folds, folded)) {
+      restyle();
+      drawnAgain();
+      return;
+    }
+    const marks = drawnFor?.m === m && drawnFor.L === L ? world.querySelector("g.nodes") : null;
+    const was = folded;
+    drawnFor = { m, L };
     const cords = [];
     const hyphae = [];
     const cross = [];
@@ -1035,14 +1124,13 @@
       spots.set(`h:${h.key}`, L.at.get(h.key));
       sizes.set(`h:${h.key}`, HUB_R);
     }
-    folded = foldsNow();
+    folded = folds;
     for (const s of m.cells) {
       if (!pos.has(s.id) || isFolded(s)) continue;
       spots.set(`c:${s.address}`, pos.get(s.id));
       sizes.set(`c:${s.address}`, R);
     }
     const cellKey = (id) => `c:${m.byId.get(id).address}`;
-    const far = (on) => (near && !on ? " far" : "");
     // Cords: machine to each top hub, and each hub to its branches; a cord
     // thickens with the cells it carries.
     // Each hub's ground, a faint disc its cells are sown in, so whose cell
@@ -1053,11 +1141,11 @@
       const at = L.at.get(h.key);
       const r = colonyRadius(h) + COLONY_PAD;
       groundsAt.push([h.key, at[0], at[1], r]);
-      colonies.push({ tag: "circle", cls: `m-colony${far(near?.hubs.has(h.key))}${quiet(h)}${folded.has(h.key) ? " folded" : ""}`, at, r });
+      colonies.push({ tag: "circle", ...inked("m-colony", () => near.hubs.has(h.key), `${quiet(h)}${folded.has(h.key) ? " folded" : ""}`), at, r });
       // A network holding others up is ringed round its whole ground, so it
       // reads from the whole map, where a cell's own ring is too small.
       const grow = swell(h.owes);
-      if (grow) colonies.push({ tag: "circle", cls: `m-waits m-held${far(near?.hubs.has(h.key))}`, at, r: r + WAIT_GAP + grow });
+      if (grow) colonies.push({ tag: "circle", ...inked("m-waits m-held", () => near.hubs.has(h.key)), at, r: r + WAIT_GAP + grow });
     }
     // A machine carrying more than CORD_BUNDLE_OVER networks bundles its
     // cords as a mycelium does: one trunk out each way, splitting into a
@@ -1071,7 +1159,7 @@
       const weight = cordWeight(h.cells.length);
       if (h.within) {
         link(treeAdj, `h:${h.within}`, `h:${h.key}`);
-        cords.push({ tag: "path", cls: `m-cord${far(near?.hubs.has(h.key) && near?.hubs.has(h.within))}${quiet(h)}`, w: weight, line: opens(curve(L.at.get(h.within), at, 0.08), "net", h.key) });
+        cords.push({ tag: "path", ...inked("m-cord", () => near.hubs.has(h.key) && near.hubs.has(h.within), quiet(h)), w: weight, line: opens(curve(L.at.get(h.within), at, 0.08), "net", h.key) });
       } else if ((tops.get(h.machine) || 0) > CORD_BUNDLE_OVER) {
         link(treeAdj, `m:${h.machine}`, `h:${h.key}`);
         const turn = (((L.angle.get(h.key) + Math.PI / 2) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
@@ -1081,7 +1169,7 @@
       } else {
         const root = L.machines.get(h.machine) || [0, 0];
         if (h.machine) link(treeAdj, `m:${h.machine}`, `h:${h.key}`);
-        cords.push({ tag: "path", cls: `m-cord${far(near?.hubs.has(h.key) && near?.root && near.machines.has(h.machine))}${quiet(h)}`, w: weight, line: opens(curve(root, at, 0.06), "net", h.key) });
+        cords.push({ tag: "path", ...inked("m-cord", () => near.hubs.has(h.key) && near.root && near.machines.has(h.machine), quiet(h)), w: weight, line: opens(curve(root, at, 0.06), "net", h.key) });
       }
     }
     // A machine feeding a network it isn't the root of draws its own cord
@@ -1091,8 +1179,7 @@
       for (const [machine, count] of h.feeds) {
         if (machine === h.machine || !L.machines.has(machine)) continue;
         link(crossAdj, `m:${machine}`, `h:${h.key}`);
-        const lit = near && near.hubs.has(h.key) && near.machines.has(machine);
-        cords.push({ tag: "path", cls: `m-cord m-feed${far(lit)}${quiet(h)}`, w: cordWeight(count), line: opens(curve(L.machines.get(machine), L.at.get(h.key), -0.06), "net", h.key) });
+        cords.push({ tag: "path", ...inked("m-cord m-feed", () => near.hubs.has(h.key) && near.machines.has(machine), quiet(h)), w: cordWeight(count), line: opens(curve(L.machines.get(machine), L.at.get(h.key), -0.06), "net", h.key) });
       }
     }
     for (const { machine, hubs } of trunks.values()) {
@@ -1101,23 +1188,22 @@
       const [cx, cy] = hubs.reduce(([x, y], h) => [x + Math.cos(L.angle.get(h.key)), y + Math.sin(L.angle.get(h.key))], [0, 0]);
       const a = Math.atan2(cy, cx);
       const fork = [Math.cos(a) * L.ring * BUNDLE_REACH, Math.sin(a) * L.ring * BUNDLE_REACH];
-      const lit = near?.root && near.machines.has(machine) && hubs.some((h) => near.hubs.has(h.key));
+      const lit = () => near.root && near.machines.has(machine) && hubs.some((h) => near.hubs.has(h.key));
       const live = hubs.some(isLive) ? "" : " quiet";
-      cords.push({ tag: "path", cls: `m-cord${far(lit)}${live}`, w: cordWeight(hubs.reduce((n, h) => n + h.cells.length, 0)), line: opens(curve(root, fork, 0.04), "machine", machine) });
-      for (const h of hubs) cords.push({ tag: "path", cls: `m-cord m-twig${far(lit && near.hubs.has(h.key))}${quiet(h)}`, w: 1, line: opens(curve(fork, L.at.get(h.key), 0.04), "net", h.key) });
+      cords.push({ tag: "path", ...inked("m-cord", lit, live), w: cordWeight(hubs.reduce((n, h) => n + h.cells.length, 0)), line: opens(curve(root, fork, 0.04), "machine", machine) });
+      for (const h of hubs) cords.push({ tag: "path", ...inked("m-cord m-twig", () => lit() && near.hubs.has(h.key), quiet(h)), w: 1, line: opens(curve(fork, L.at.get(h.key), 0.04), "net", h.key) });
     }
     for (const h of m.hubs.values()) {
       const at = L.at.get(h.key);
       // Hyphae branching from the hub out to each of its cells.
       const list = folded.has(h.key) ? [] : (seeds.get(h.key) || []).filter((id) => id && pos.has(id));
       const points = [at, ...list.map((id) => pos.get(id))];
-      for (const [a, b] of shortestTree(points)) {
+      for (const [a, b] of treeOf(`h|${h.key}|${list.length}`, points)) {
         const ida = a === 0 ? null : list[a - 1];
         const idb = list[b - 1];
         const ka = ida ? cellKey(ida) : `h:${h.key}`;
         link(treeAdj, ka, cellKey(idb));
-        const lit = near && (near.ids.has(idb) || (ida && near.ids.has(ida))) && near.hyphae.has(idb);
-        hyphae.push({ tag: "path", cls: `m-hypha${near ? (lit ? " lit" : " far") : ""}`, line: opens(curve(points[a], points[b], 0.1), "cell", cellKey(idb).slice(2), true) });
+        hyphae.push({ tag: "path", ...inked("m-hypha", () => (near.ids.has(idb) || (ida && near.ids.has(ida))) && near.hyphae.has(idb), "", true), line: opens(curve(points[a], points[b], 0.1), "cell", cellKey(idb).slice(2), true) });
       }
     }
     // Cross-hyphae: the cells of each shared network, joined by the
@@ -1125,18 +1211,16 @@
     for (const n of m.shared) {
       const on = n.cells.filter((s) => pos.has(s.id) && !isFolded(s));
       const points = on.map((s) => pos.get(s.id));
-      const lit = near?.shared.has(n.key);
-      for (const [a, b] of shortestTree(points)) {
+      for (const [a, b] of treeOf(`s|${n.key}|${on.map((s) => s.id).join(",")}`, points)) {
         link(crossAdj, `c:${on[a].address}`, `c:${on[b].address}`);
-        cross.push({ tag: "path", cls: `m-cross m-${n.shape}${near ? (lit ? " lit" : " far") : ""}`, line: opens(curve(points[a], points[b], 0.18), "net", n.key) });
+        cross.push({ tag: "path", ...inked(`m-cross m-${n.shape}`, () => near.shared.has(n.key), "", true), line: opens(curve(points[a], points[b], 0.18), "net", n.key) });
       }
     }
     for (const s of m.cells) {
       if (!pos.has(s.id) || isFolded(s)) continue;
       for (const h of s.also) {
-        const lit = near?.ids.has(s.id) && near.hubs.has(h.key);
         link(crossAdj, `c:${s.address}`, `h:${h.key}`);
-        cross.push({ tag: "path", cls: `m-cross m-bridge${near ? (lit ? " lit" : " far") : ""}`, line: opens(curve(pos.get(s.id), L.at.get(h.key), 0.14), "net", h.key) });
+        cross.push({ tag: "path", ...inked("m-cross m-bridge", () => near.ids.has(s.id) && near.hubs.has(h.key), "", true), line: opens(curve(pos.get(s.id), L.at.get(h.key), 0.14), "net", h.key) });
       }
     }
     // Machines joined to each other: the link that keeps a realm one.
@@ -1147,31 +1231,24 @@
       const [p, q] = [machinesAt[i - 1], machinesAt[i]];
       const line = [p, [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], q];
       lineShapes.push(line);
-      cords.push({ tag: "path", cls: `m-link${far(false)}`, line });
+      cords.push({ tag: "path", ...inked("m-link", () => false), line });
     }
     const counts = new Map();
     for (const s of m.cells) counts.set(s.machine, (counts.get(s.machine) || 0) + 1);
-    m.machines.forEach((x) => nodes.push(machineMarkup(x, L.machines.get(x.name), counts.get(x.name) || 0)));
-    for (const h of m.hubs.values()) nodes.push(hubMarkup(h, L.at.get(h.key)));
-    cellLayer = [];
-    for (const s of m.cells) {
-      if (!pos.has(s.id) || isFolded(s)) continue;
-      nodes.push(cellMarkup(s, pos.get(s.id)));
-      cellLayer.push(...cellShapes(s, pos.get(s.id)));
+    if (!marks) {
+      m.machines.forEach((x) => nodes.push(machineMarkup(x, L.machines.get(x.name), counts.get(x.name) || 0)));
+      for (const h of m.hubs.values()) nodes.push(hubMarkup(h, L.at.get(h.key)));
+      for (const s of m.cells) if (pos.has(s.id) && !isFolded(s)) nodes.push(cellMarkup(s, pos.get(s.id)));
     }
-    // What is far is painted first, so what the choice touches lies on top.
-    const nearFirst = (list) => list.sort((a, b) => (b.cls.includes(" far") ? 1 : 0) - (a.cls.includes(" far") ? 1 : 0));
-    groundLayers = [nearFirst(colonies), nearFirst(cross), nearFirst(cords), nearFirst(hyphae)];
-    world.innerHTML =
-      `<g class="nodes">${nodes.join("")}</g>` +
-      `<g id="pointer" class="pointer" visibility="hidden"><circle class="p-halo"/><circle class="p-ring"/></g>`;
-    svg.classList.toggle("focused", !!near);
-    if (pointed && !spots.has(pointed)) pointed = null;
-    paintTalk({ paint: false });
-    placePointer();
-    labelsFor();
-    if (auto) fit(false);
-    else frame();
+    paintCells();
+    groundLayers = [colonies, cross, cords, hyphae];
+    inkGround();
+    if (marks) refoldMarks(marks, was);
+    else
+      world.innerHTML =
+        `<g class="nodes">${nodes.join("")}</g>` +
+        `<g id="pointer" class="pointer" visibility="hidden"><circle class="p-halo"/><circle class="p-ring"/></g>`;
+    drawnAgain();
   };
 
   // ---- Words on the map, kept at reading size whatever the zoom. ----
@@ -2249,7 +2326,7 @@
         const list = (seeds.get(home.key) || []).filter((id) => id && pos.has(id));
         const points = [L.at.get(home.key), ...list.map((id) => pos.get(id))];
         const parent = new Map();
-        for (const [a, b] of shortestTree(points)) parent.set(b, a);
+        for (const [a, b] of treeOf(`h|${home.key}|${list.length}`, points)) parent.set(b, a);
         let i = list.indexOf(s.id) + 1;
         while (i > 0) {
           hyphae.add(list[i - 1]);
