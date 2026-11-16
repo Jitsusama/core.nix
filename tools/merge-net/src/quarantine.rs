@@ -70,7 +70,8 @@ pub fn covers(list: &Value, test: &str, failing: &BTreeSet<String>) -> bool {
 /// held yet, leaving every other owner's entry as it was; one listed whole
 /// stays whole, and one listed by its subtests isn't listed whole. An
 /// entry is `due` off the list two days after its `at`, unless `fields`
-/// name a date. Gives whether the list changed.
+/// name a date, and is [`UNOWNED`] unless they name the session that owns
+/// it. Gives whether the list changed.
 pub fn list(
     entries: &mut Vec<Value>,
     test: &str,
@@ -99,6 +100,9 @@ pub fn list(
     {
         entry["due"] = json!(date(at + DUE_AFTER));
     }
+    if entry.get("owner_session").is_none() {
+        entry["owner_session"] = json!(UNOWNED);
+    }
     entry["test"] = json!(test);
     if !fresh.is_empty() {
         entry["subtests"] = json!(fresh);
@@ -106,6 +110,13 @@ pub fn list(
     entries.push(entry);
     true
 }
+
+/// Who owns an entry no session has taken yet: the orchestrator, which
+/// gives it to the session whose area it's in. The net knows only the PR
+/// that met the failure, and that PR's session has often ended: on 16
+/// November 11 entries fell due naming merged PRs with no session behind
+/// any.
+pub const UNOWNED: &str = "orchestrator";
 
 /// How long after it's listed an entry is due off the list, for its owner
 /// to fix it forward: past it, the hourly loop counts the entry as a slip.
@@ -254,7 +265,10 @@ mod tests {
         );
         assert_eq!(
             entries[2],
-            json!({"test": "vm-c", "owner_pr": 3, "subtests": ["test_q"]})
+            json!({
+                "test": "vm-c", "owner_pr": 3, "owner_session": UNOWNED, "subtests": ["test_q"]
+            }),
+            "a new entry wasn't listed whole, owned by the orchestrator"
         );
         assert!(
             list(
@@ -267,7 +281,9 @@ mod tests {
         );
         assert_eq!(
             entries.get(3),
-            Some(&json!({"test": "vm-b", "owner_pr": 4, "subtests": ["test_z"]})),
+            Some(&json!({
+                "test": "vm-b", "owner_pr": 4, "owner_session": UNOWNED, "subtests": ["test_z"]
+            })),
             "a new subtest wasn't listed under its own owner, alone"
         );
         assert_eq!(
@@ -299,6 +315,30 @@ mod tests {
             entries.len(),
             5,
             "a listing that changed nothing added an entry"
+        );
+    }
+
+    #[test]
+    fn a_listing_no_session_owns_goes_to_the_orchestrator() {
+        // On 16 November 11 entries fell due naming only merged PRs, with
+        // no session behind any, so the orchestrator had to share them out.
+        let mut entries = Vec::new();
+        assert!(
+            list(&mut entries, "vm-c", &set("test_q"), json!({"owner_pr": 3})),
+            "vm-c wasn't listed"
+        );
+        assert_eq!(
+            entries[0]["owner_session"], "orchestrator",
+            "an entry no session owns wasn't the orchestrator's to share out"
+        );
+        let owned = json!({"owner_pr": 4, "owner_session": "S"});
+        assert!(
+            list(&mut entries, "vm-d", &set(""), owned),
+            "vm-d wasn't listed"
+        );
+        assert_eq!(
+            entries[1]["owner_session"], "S",
+            "a session that owns an entry was replaced"
         );
     }
 
