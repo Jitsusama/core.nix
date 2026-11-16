@@ -19,7 +19,10 @@
 //! its pass still speaks for it as one for a rebased change would
 //! (`earlier.rs`); otherwise it runs again with whoever has boarded since.
 //!
-//! A rider that conflicts, or that rode a candidate that failed, falls:
+//! A candidate that fails splits: the train takes the first half of its
+//! riders to board, and halves again while they fail, so the riders that
+//! broke nothing land together and the one that breaks it is found alone.
+//! A rider that conflicts, or that rode a failed candidate alone, falls:
 //! `train/fell/<head>` says why, and `ready` runs that head again alone, as
 //! before the train. A rider whose pull request moved on, or closed, steps
 //! off. What landed is kept a line each in `train/landed.jsonl`, so a day's
@@ -323,10 +326,17 @@ enum Split {
 }
 
 /// Whom the train takes after a candidate of `riding` riders that `passed`
-/// or not.
+/// or not. A red one splits in half, the first to board riding first, so
+/// the riders that broke nothing still land together and only the one that
+/// breaks the candidate, found alone, falls back to running again alone:
+/// among five riders, five runs at most, against five runs again each
+/// alone had the whole train fallen.
 fn split(riding: usize, passed: bool) -> Split {
-    let _ = (riding, passed);
-    Split::Falls
+    match riding {
+        _ if passed => Split::All,
+        0 | 1 => Split::Falls,
+        _ => Split::Front(riding / 2),
+    }
 }
 
 /// Ride the train until no one waits on it: `merge-net ride`, as its unit
@@ -347,13 +357,15 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
     let slug = slug_of(url);
     let owner = slug.split('/').next().unwrap_or_default().to_owned();
     let git = |arguments: &[&str]| run_git(&checkout, arguments);
+    let mut take = usize::MAX;
     loop {
         let waiting = riders(&root);
         if waiting.is_empty() {
             println!("merge-net: no one waits on the train");
             return Ok(ExitCode::SUCCESS);
         }
-        let mergings = aboard(&root, &git, &slug, &owner, &waiting);
+        let mut mergings = aboard(&root, &git, &slug, &owner, &waiting);
+        mergings.truncate(take);
         if mergings.is_empty() {
             continue;
         }
@@ -383,18 +395,12 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
                 .join(", ")
         );
         if !gate(&checkout, &log) {
-            for head in &done.merged {
-                let why = format!(
-                    "the candidate it rode, {}, failed changed-checks; its words are in {}",
-                    short(&candidate),
-                    log.display()
-                );
-                let _ = fall(&root, head, &why);
-            }
+            take = red(&root, &candidate, &log, &done.merged);
             continue;
         }
         match land(&checkout, &git, &candidate, &mergings, &done.merged) {
             Landing::Landed(landed) => {
+                take = usize::MAX;
                 for head in &done.merged {
                     alight(&root, head);
                 }
@@ -403,6 +409,7 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
             }
             Landing::Moved => {}
             Landing::Refused(why) => {
+                take = usize::MAX;
                 for head in &done.merged {
                     let _ = fall(
                         &root,
@@ -411,6 +418,34 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
                     );
                 }
             }
+        }
+    }
+}
+
+/// After the candidate `candidate` of `merged` riders failed, its words in
+/// `log`: how many riders the next takes, split as `split` says, the one
+/// rider that rode it alone falling.
+fn red(root: &Path, candidate: &str, log: &Path, merged: &[String]) -> usize {
+    match split(merged.len(), false) {
+        Split::Front(front) => {
+            println!(
+                "merge-net: the candidate {} failed changed-checks, so the train takes its \
+                 first {front} of {} riders next",
+                short(candidate),
+                merged.len()
+            );
+            front
+        }
+        Split::All | Split::Falls => {
+            for head in merged {
+                let why = format!(
+                    "the candidate it rode alone, {}, failed changed-checks; its words are in {}",
+                    short(candidate),
+                    log.display()
+                );
+                let _ = fall(root, head, &why);
+            }
+            usize::MAX
         }
     }
 }
@@ -705,9 +740,20 @@ mod tests {
             aboard.retain(|rider| !riding.contains(rider));
             take = aboard.len();
         }
-        assert_eq!(fell, vec![breaks], "not only the rider that broke the train fell");
-        assert_eq!(landed, vec![0, 1, 3, 4], "the riders that broke nothing didn't land");
-        assert!(runs <= 6, "the split took {runs} runs to find one rider in five");
+        assert_eq!(
+            fell,
+            vec![breaks],
+            "not only the rider that broke the train fell"
+        );
+        assert_eq!(
+            landed,
+            vec![0, 1, 3, 4],
+            "the riders that broke nothing didn't land"
+        );
+        assert!(
+            runs <= 5,
+            "the split took {runs} runs to find one rider in five"
+        );
     }
 
     #[test]
