@@ -100,7 +100,12 @@ fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &W
     let id = text(record, "key").trim_start_matches("carry:");
     let name =
         named(rows, text(record, "address")).unwrap_or_else(|| said.word("ended").to_owned());
-    let by = named(rows, text(record, "by")).unwrap_or_else(|| said.word("someone").to_owned());
+    // A carry Joel asked himself says so, as the node judged who asked.
+    let by = if text(record, "by") == "person" {
+        said.word("you").to_owned()
+    } else {
+        named(rows, text(record, "by")).unwrap_or_else(|| said.word("someone").to_owned())
+    };
     let to = text(record, "to");
     let side = state_of(record)
         .map(|(_, word, _, keep, hue)| vec![item(said.word(word), *keep, hue)])
@@ -127,7 +132,7 @@ fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &W
         "hue": "program", "depth": 1, "side": side, "note": note, "acts": back(record),
         "held": {"address": text(record, "address"), "state": text(record, "state"),
             "from": text(record, "from"), "to": to, "quest": text(record, "quest"),
-            "at": text(record, "at")},
+            "at": text(record, "at"), "by": text(record, "by")},
     })
 }
 

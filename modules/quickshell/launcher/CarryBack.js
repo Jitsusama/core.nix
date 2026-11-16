@@ -34,10 +34,11 @@ const UNDER_WAY = ["ordered", "carrying"];
 // it was made, which asks nothing of Joel, rings no bell and adds to no
 // count (ForYou.js's NEVER_LIFTED), and goes as it arrives, is refused or
 // comes back. Null for any other row (DCU5J4's third item: a carry Joel
-// didn't make is seen, never pressed on him).
+// didn't make is seen, never pressed on him), and for one he made himself,
+// by `person` as the node judged who asked, since he knows it's on its way.
 function underWay(served) {
     const held = served?.held;
-    if (served?.kind !== "carry" || !UNDER_WAY.includes(held?.state)) {
+    if (served?.kind !== "carry" || !UNDER_WAY.includes(held?.state) || held.by === "person") {
         return null;
     }
     return { kind: "read", since: typeof held.at === "string" ? held.at : null };
