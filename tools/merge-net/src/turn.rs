@@ -396,7 +396,7 @@ impl Queue {
         crates: &Crates,
         now: u64,
     ) -> Option<(String, Vec<String>)> {
-        let held = kit::behind(self.ours, &self.going, &|gate| self.role_of(gate))?;
+        let held = kit::behind(self.ours, &self.going, &|gate| self.role_of(gate), 0)?;
         let kit_files = [format!("{}Cargo.toml", kit::KIT)];
         let shared = if self.ours == kit::Role::Kit {
             ours.iter()

@@ -73,7 +73,7 @@ fn a_reader_waits_for_a_kit_gate_started_after_its_own() {
     // a change to the kit, ran again, sending it round a third time.
     let going = [gate(4, 50), gate(2, 100), gate(1, 300)];
     assert_eq!(
-        behind(READER, &going, &roles).map(|held| held.pid),
+        behind(READER, &going, &roles, 0).map(|held| held.pid),
         Some(1),
         "a reader went ahead of a change to the kit that started after it"
     );
@@ -87,7 +87,7 @@ fn a_reader_waits_for_a_kit_gate_started_after_its_own() {
 fn changes_to_the_kit_go_first_come_first_served_among_themselves() {
     let going = [gate(1, 100), gate(2, 50)];
     assert_eq!(
-        behind(KIT_CHANGE, &going, &roles),
+        behind(KIT_CHANGE, &going, &roles, 0),
         None,
         "a change to the kit waited for another or a reader not owed"
     );
@@ -126,14 +126,38 @@ fn a_reader_waits_for_at_most_one_change_to_the_kit() {
     );
     let going = [gate(1, 50), gate(3, 100)];
     assert_eq!(
-        behind(OWED, &going, &roles),
+        behind(OWED, &going, &roles, 0),
         None,
         "an owed reader waited for the next change to the kit"
     );
     assert_eq!(
-        behind(KIT_CHANGE, &going, &roles).map(|held| held.pid),
+        behind(KIT_CHANGE, &going, &roles, 0).map(|held| held.pid),
         Some(3),
         "the next change to the kit went ahead of a reader owed its turn"
+    );
+}
+
+#[test]
+fn a_change_waits_in_the_kits_queue_only_so_long() {
+    // At 00:30 on 16 November a reader that had passed its gate was held
+    // about 70 minutes behind a change to the kit not yet proposed, though
+    // a hold may last 20 minutes at most.
+    let patience = crate::turn::PATIENCE;
+    let going = [gate(1, 50), gate(2, 100), gate(3, 150)];
+    assert_eq!(
+        behind(READER, &going, &roles, patience - 1).map(|held| held.pid),
+        Some(1),
+        "a reader stopped waiting for a change to the kit before its patience ran out"
+    );
+    assert_eq!(
+        behind(READER, &going, &roles, patience),
+        None,
+        "a reader still waited for a change to the kit once its patience ran out"
+    );
+    assert_eq!(
+        behind(KIT_CHANGE, &going, &roles, patience),
+        None,
+        "a change to the kit still waited for an owed reader once its patience ran out"
     );
 }
 

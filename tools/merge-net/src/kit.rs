@@ -72,6 +72,7 @@ pub fn behind<'a>(
     asking: Role,
     going: &'a [Gate],
     role_of: &dyn Fn(&Gate) -> Role,
+    _waited: u64,
 ) -> Option<&'a Gate> {
     let waits_for = match asking {
         Role::Reader { owed: false } => Role::Kit,
