@@ -114,7 +114,9 @@ fn folder(file: &str) -> &str {
 
 /// `commit`'s change from `base` replayed onto the newest commit of
 /// `theirs` whose checks `kept` holds, in the git tree `top`; none when
-/// `base` is kept itself; why not when it can't be. Each commit keeps its
+/// `base` is kept itself, or is `commit`, as a run keeping main's head
+/// asks, since an empty change replayed is only the older head, which
+/// would be kept in its place; why not when it can't be. Each commit keeps its
 /// author, committer and message, so the same change onto the same base
 /// is the same commit each time, and keeps the subjects `ready` finds an
 /// earlier pass of it by.
@@ -126,7 +128,7 @@ pub fn replayed(
     kept: &HashSet<String>,
     scratch: &Path,
 ) -> Result<Option<Replayed>, String> {
-    if kept.contains(base) {
+    if kept.contains(base) || base == commit {
         return Ok(None);
     }
     let git = |arguments: &[&str]| there::git_with(top, arguments, None, &[]);
