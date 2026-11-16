@@ -103,6 +103,9 @@ pub struct Concern {
     /// The device at a link's other end, when it's about a link.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub other: Option<String>,
+    /// What it is, as one whole sentence, its stop included, since net's
+    /// view, the network page and the launcher's Map row each say it
+    /// whole; a reader joining it into a phrase trims the stop.
     pub says: String,
 }
 
