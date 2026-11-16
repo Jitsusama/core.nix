@@ -13,3 +13,5 @@ publish = false
 # what main moved beside a change alike.
 crate-reach = { path = "../../modules/crate-reach" }
 serde_json = "1"
+# Its help and refusals, as every command's (docs/commands.md).
+terminal-kit = { path = "../../modules/terminal-kit" }

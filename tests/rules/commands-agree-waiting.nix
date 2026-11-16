@@ -17,11 +17,7 @@
     "exits"
     "helps"
   ];
-  merge-net = [
-    "kit"
-    "exits"
-    "helps"
-  ];
+  merge-net = [ "exits" ];
   mypy = [ "helps" ];
   nix-offload = [
     "kit"

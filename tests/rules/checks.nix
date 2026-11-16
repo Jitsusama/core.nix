@@ -282,6 +282,7 @@
         loopback-holders = pkgs.callPackage ../../modules/v4l2loopback/holders/package.nix { };
         machine = pkgs.callPackage ../../modules/machine/package.nix { };
         meaning = dictation;
+        merge-net = pkgs.callPackage ../../tools/merge-net/package.nix { };
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
         mycelium-link = pkgs.callPackage ../../modules/quickshell/mycelium-link/package.nix { };
         net = pkgs.callPackage ../../modules/net/package.nix { };
