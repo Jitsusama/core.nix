@@ -43,6 +43,8 @@ pub struct Said {
     pub tools: Vec<String>,
     /// Those of them whose results were errors.
     pub failed: Vec<String>,
+    /// His last few messages in the session before it, oldest first.
+    pub before: Vec<(i64, String)>,
 }
 
 /// What a session's reading carries from one run to the next: the tools
@@ -166,6 +168,7 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
                 looking_at,
                 tools: std::mem::take(&mut carried.tools),
                 failed: std::mem::take(&mut carried.failed),
+                before: carried.earlier.clone(),
             };
             carried.earlier.push((at, words));
             keep_last(&mut carried.earlier, EARLIER_KEPT);
@@ -191,8 +194,10 @@ mod tests {
     fn called(names: &[&str]) -> String {
         let calls: Vec<Value> = names
             .iter()
-            .map(|n| serde_json::json!({"type": "toolCall", "id": "c", "name": n,
-                                         "arguments": {}}))
+            .map(|n| {
+                serde_json::json!({"type": "toolCall", "id": "c", "name": n,
+                                         "arguments": {}})
+            })
             .collect();
         serde_json::json!({
             "type": "message", "id": "a", "parentId": "p",
@@ -215,7 +220,10 @@ mod tests {
 
     #[test]
     fn what_he_typed_is_his_and_what_the_harness_sent_is_not() {
-        assert_eq!(his("why is this so slow"), Some(("why is this so slow".into(), None)));
+        assert_eq!(
+            his("why is this so slow"),
+            Some(("why is this so slow".into(), None))
+        );
         assert_eq!(his("[Automated message, no human input: carry on]"), None);
         assert_eq!(his("Mesh message [a] (fyi) from X"), None);
         assert_eq!(
@@ -271,7 +279,11 @@ mod tests {
         assert_eq!(carried.tools, vec!["c", "d", "e", "f"]);
         for n in 0..6 {
             line(
-                &user(&format!("e{n}"), "2026-11-16T18:00:05.000Z", &format!("ask {n}")),
+                &user(
+                    &format!("e{n}"),
+                    "2026-11-16T18:00:05.000Z",
+                    &format!("ask {n}"),
+                ),
                 &mut carried,
             );
         }
@@ -284,7 +296,10 @@ mod tests {
         let mut carried = Carried::default();
         assert_eq!(line("not json", &mut carried), None);
         assert_eq!(
-            line(r#"{"type":"custom_message","content":"Mesh message"}"#, &mut carried),
+            line(
+                r#"{"type":"custom_message","content":"Mesh message"}"#,
+                &mut carried
+            ),
             None
         );
         assert_eq!(carried, Carried::default());

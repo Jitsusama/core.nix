@@ -25,6 +25,9 @@ pub struct Heard {
     pub session: String,
     pub entry: String,
     pub at: i64,
+    /// Whether he said it to the void.
+    #[serde(default)]
+    pub void: bool,
     pub words: String,
     pub kinds: Vec<String>,
     #[serde(default)]
@@ -48,21 +51,39 @@ pub struct Heard {
 /// The words of each line of a ledger, and whether that line says its ask
 /// landed or its miss has a check.
 pub fn ledger(text: &str) -> Vec<(String, bool)> {
-    let _ = text;
-    Vec::new()
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter_map(|line| {
+            let words = line.get("words")?.as_str()?.to_string();
+            let closed = ["landed", "check"]
+                .iter()
+                .any(|key| line.get(key).is_some_and(|v| !v.is_null()));
+            Some((words, closed))
+        })
+        .collect()
 }
 
 /// Whether a ledger line's words are these words: alike, or quoted
 /// inside them, a part at a time where the ledger cut him with "...".
 pub fn carried(words: &str, ledgers: &[(String, bool)]) -> bool {
-    let _ = (words, ledgers, alike, QUOTED_LEAST);
-    false
+    let low = words.to_lowercase();
+    ledgers.iter().any(|(said, _)| {
+        alike(said, words) > SAME
+            || said
+                .to_lowercase()
+                .split("...")
+                .map(str::trim)
+                .filter(|part| part.len() >= QUOTED_LEAST)
+                .any(|part| low.contains(part))
+    })
 }
 
 /// How many of `kept` say the same as `words`, counting this one.
 pub fn hits(words: &str, kept: &[Heard]) -> usize {
-    let _ = (words, kept);
-    0
+    1 + kept
+        .iter()
+        .filter(|heard| alike(&heard.words, words) > SAME)
+        .count()
 }
 
 #[cfg(test)]
@@ -75,6 +96,7 @@ mod tests {
             session: "s".into(),
             entry: key.into(),
             at: 0,
+            void: false,
             words: words.into(),
             kinds: vec!["corrected".into()],
             looking_at: None,
@@ -119,7 +141,10 @@ mod tests {
              me nothing at all",
             &ledgers
         ));
-        assert!(carried("I had sent a number of things to the void", &ledgers), "a part");
+        assert!(
+            carried("I had sent a number of things to the void", &ledgers),
+            "a part"
+        );
         assert!(!carried("the launcher is slow to open", &ledgers));
         let short = vec![("no".to_string(), false)];
         assert!(!carried("no, the other one", &short), "too short to find");

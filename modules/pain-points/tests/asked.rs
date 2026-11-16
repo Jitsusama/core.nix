@@ -128,3 +128,81 @@ fn a_flag_with_no_value_is_refused_as_asked_wrongly() {
         "the refusal never named the flag: {why}"
     );
 }
+
+#[test]
+fn hears_help_names_what_its_unit_hands_it() {
+    let output = ran(&["hear", "--help"]);
+    let help = said(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "help ended {:?}",
+        output.status
+    );
+    assert!(help.starts_with("pain-points hear"), "help opened {help:?}");
+    for flag in [
+        "--sessions",
+        "--ledgers",
+        "--void",
+        "--mycelium",
+        "--date",
+        "--at",
+    ] {
+        assert!(help.contains(flag), "help never named {flag}: {help}");
+    }
+}
+
+#[test]
+fn hear_refuses_a_flag_it_doesnt_know_with_the_nearest() {
+    let output = ran(&["hear", "--sesions", "x"]);
+    let why = said(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(64),
+        "a wrong flag ended {:?}",
+        output.status
+    );
+    assert!(
+        why.contains("--sessions"),
+        "the refusal never named the nearest: {why}"
+    );
+    assert!(
+        why.contains("pain-points hear --help"),
+        "the refusal never said where: {why}"
+    );
+}
+
+#[test]
+fn hear_over_nothing_hears_nothing_and_says_the_hour() {
+    let home = std::env::temp_dir().join(format!("pain-points-hear-{}", std::process::id()));
+    let output = Command::new(env!("CARGO_BIN_EXE_pain-points"))
+        .args([
+            "hear",
+            "--mycelium",
+            "/nowhere/mycelium",
+            "--at",
+            "1794859200000",
+        ])
+        .env("HOME", &home)
+        .env("XDG_STATE_HOME", home.join("state"))
+        .env_remove("JOURNAL_STREAM")
+        .stdin(Stdio::null())
+        .output()
+        .expect("pain-points ran");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "a quiet hear ended {:?}: {}",
+        output.status,
+        said(&output.stderr)
+    );
+    assert!(
+        said(&output.stdout).contains("0 pains heard"),
+        "it never said the hour: {}",
+        said(&output.stdout)
+    );
+    assert!(
+        home.join("state/pain-points/hour.json").is_file(),
+        "no hour.json for cadence"
+    );
+}

@@ -102,9 +102,13 @@ fn a_day(place: &Place) -> PathBuf {
         r#"{"at":"x","words":"the launcher is way too tight ... on the right","owner":"Y"}"#,
     )
     .expect("a ledger");
-    let mut live = tool("bash");
+    let mut live = vec![user(
+        "old",
+        "2026-11-15T10:00:00.000Z",
+        "this fucking thing",
+    )];
+    live.extend(tool("bash"));
     live.extend([
-        user("old", "2026-11-15T10:00:00.000Z", "this fucking thing"),
         user("e1", "2026-11-16T19:30:00.000Z", "no, that's broken again"),
         user("e2", "2026-11-16T19:31:00.000Z", "I love this page!"),
         user("e3", "2026-11-16T19:40:00.000Z", "status update"),
@@ -147,19 +151,42 @@ fn a_first_run_sends_each_new_pain_to_its_owner_once() {
     })
     .expect("a run");
     let to: Vec<&str> = sent.iter().map(|(to, _)| to.as_str()).collect();
-    assert_eq!(to.iter().filter(|t| **t == "ABC123").count(), 1, "one finding: {sent:?}");
-    assert_eq!(to.iter().filter(|t| **t == "ORCH01").count(), 2, "void and ledgers: {sent:?}");
+    assert_eq!(
+        to.iter().filter(|t| **t == "ABC123").count(),
+        1,
+        "one finding: {sent:?}"
+    );
+    assert_eq!(
+        to.iter().filter(|t| **t == "ORCH01").count(),
+        2,
+        "void and ledgers: {sent:?}"
+    );
     assert!(!to.contains(&"VOID01"), "nothing goes to the void");
     let live = &sent.iter().find(|(to, _)| to == "ABC123").expect("sent").1;
-    assert!(live.contains("broken again") && live.contains("status update"), "{live}");
-    assert!(live.contains("bash failed"), "the tool that failed before it: {live}");
+    assert!(
+        live.contains("broken again") && live.contains("status update"),
+        "{live}"
+    );
+    assert!(
+        live.contains("bash failed"),
+        "the tool that failed before it: {live}"
+    );
     assert!(!live.contains("love"), "praise isn't pain: {live}");
-    assert!(!live.contains("fucking"), "older than a day isn't heard: {live}");
-    assert!(!live.contains("tight"), "what the ledgers carry goes to no one: {live}");
+    assert!(
+        !live.contains("fucking"),
+        "older than a day isn't heard: {live}"
+    );
+    assert!(
+        !live.contains("tight"),
+        "what the ledgers carry goes to no one: {live}"
+    );
     let heard = place.heard();
     assert_eq!(heard.len(), 4, "{heard:?}");
     assert!(heard.iter().any(|h| h.carried && h.entry == "e4"));
-    assert!(!heard.iter().any(|h| h.entry == "l1"), "a lab's words aren't his");
+    assert!(
+        !heard.iter().any(|h| h.entry == "l1"),
+        "a lab's words aren't his"
+    );
     assert_eq!(hour.heard, 4);
     assert_eq!(hour.routed, 3);
     assert_eq!(hour.open, 3);
@@ -193,13 +220,22 @@ fn a_later_run_sends_only_what_is_new() {
         .append(true)
         .open(&live)
         .expect("the log");
-    writeln!(file, "{}", user("e5", "2026-11-16T19:58:00.000Z", "hold up, not that")).expect("a line");
+    writeln!(
+        file,
+        "{}",
+        user("e5", "2026-11-16T19:58:00.000Z", "hold up, not that")
+    )
+    .expect("a line");
     hear(&place.ears(), CELLS, &mut |to, text| {
         sent.push((to.into(), text.into()));
         true
     })
     .expect("a run");
-    assert_eq!(sent.len(), 2, "the new pain and the ledgers' note: {sent:?}");
+    assert_eq!(
+        sent.len(),
+        2,
+        "the new pain and the ledgers' note: {sent:?}"
+    );
     assert!(sent[0].1.contains("hold up") && sent[1].1.contains("hold up"));
     assert_eq!(place.heard().len(), 5);
 }
@@ -232,6 +268,58 @@ fn with_no_routes_nothing_is_sent_and_every_pain_waits() {
 }
 
 #[test]
+fn a_pain_hours_old_when_first_heard_goes_to_the_ledgers_keeper_alone() {
+    let place = Place::new("stale");
+    place.routes();
+    place.log(
+        "src",
+        "s-live",
+        Path::new("/home/j/src"),
+        &[
+            user("old", "2026-11-16T15:00:00.000Z", "status update please"),
+            user("new", "2026-11-16T19:50:00.000Z", "no, that's broken"),
+        ],
+    );
+    let mut sent: Vec<(String, String)> = Vec::new();
+    hear(&place.ears(), CELLS, &mut |to, text| {
+        sent.push((to.into(), text.into()));
+        true
+    })
+    .expect("a run");
+    let live = &sent.iter().find(|(to, _)| to == "ABC123").expect("sent").1;
+    assert!(
+        live.contains("broken") && !live.contains("status"),
+        "{live}"
+    );
+    let note = &sent.iter().find(|(to, _)| to == "ORCH01").expect("noted").1;
+    assert!(
+        note.contains("status update please") && note.contains("broken"),
+        "{note}"
+    );
+    assert!(
+        place.heard().iter().all(|h| h.routed_at.is_some()),
+        "the old one went to the keeper: {:?}",
+        place.heard()
+    );
+}
+
+#[test]
+fn a_short_reply_said_twice_is_no_pain() {
+    let place = Place::new("short");
+    place.log(
+        "src",
+        "s-live",
+        Path::new("/home/j/src"),
+        &[
+            user("a", "2026-11-16T19:10:00.000Z", "i sent the message"),
+            user("b", "2026-11-16T19:20:00.000Z", "sent the messages"),
+        ],
+    );
+    let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
+    assert_eq!(hour.heard, 0, "{:?}", place.heard());
+}
+
+#[test]
 fn what_he_hits_most_leads_the_hour() {
     let place = Place::new("worst");
     place.routes();
@@ -240,13 +328,26 @@ fn what_he_hits_most_leads_the_hour() {
         "s-live",
         Path::new("/home/j/src"),
         &[
-            user("a", "2026-11-16T19:10:00.000Z", "the launcher is so slow to open"),
+            user(
+                "a",
+                "2026-11-16T19:10:00.000Z",
+                "the launcher is so slow to open",
+            ),
             user("b", "2026-11-16T19:20:00.000Z", "make the bar green"),
-            user("c", "2026-11-16T19:50:00.000Z", "why is the launcher still slow to open"),
+            user(
+                "c",
+                "2026-11-16T19:50:00.000Z",
+                "why is the launcher still slow to open",
+            ),
             user("d", "2026-11-16T19:55:00.000Z", "status update"),
         ],
     );
     let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
     assert_eq!(hour.worst_hits, 2, "{hour:?}");
-    assert!(hour.worst.as_deref().is_some_and(|w| w.contains("slow to open")), "{hour:?}");
+    assert!(
+        hour.worst
+            .as_deref()
+            .is_some_and(|w| w.contains("slow to open")),
+        "{hour:?}"
+    );
 }
