@@ -1,8 +1,9 @@
 // Your mycelium, now, heard live: watches the node's networks, cells,
 // machines and messages over the sites' server, makes of them what the map
 // draws (model.ts), and hands that to the drawing (view.js) as a
-// `mycelium:now` event, so the map moves the moment the realm does. The line
-// over the map says whether what it shows is live and since when.
+// `mycelium:now` event, so the map moves the moment the realm does. The
+// standing line under the head's sentence says whether what it shows is live,
+// from whose node, and since when.
 //
 // A reading is handed over at most every FLOOR_MS, however fast the node
 // moves, since a whole map redraws for each, and none while the tab is
@@ -15,7 +16,7 @@
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
-import { said } from "../../local-sites/kit/status.ts";
+import { clockTime, said } from "../../local-sites/kit/status.ts";
 import { BALANCE_FRESH_MS, type Heard, nowOf } from "./model.ts";
 
 /** The least time between two readings handed to the drawing. */
@@ -51,12 +52,33 @@ function standing(): Standing | undefined {
   )[0];
 }
 
+/**
+ * Whose node the map is read from: the machine's, by name once the page
+ * is told it (as `data-home` on the page), and "this machine's" until
+ * then, so the line never reads with a gap in it.
+ */
+function nodeOf(): string {
+  const home = document.documentElement.dataset["home"];
+  return home ? `${home}'s node` : "this machine's node";
+}
+
+/** How the map stands, in a sentence: whose node it is live from, and since when. */
+function sayStanding(now: Standing | undefined): string {
+  if (now === undefined || now.state === "connecting") {
+    return `Reaching ${nodeOf()}.`;
+  }
+  if (now.state === "live") {
+    return `Live from ${nodeOf()} since ${clockTime(now.since)}.`;
+  }
+  return said(now);
+}
+
 /** Says how the map stands, and what it couldn't read. */
 function sayHow(): void {
   const now = standing();
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  asof.textContent = `${now === undefined ? "Reaching the node." : said(now)}${trouble}`;
+  asof.textContent = `${sayStanding(now)}${trouble}`;
   asof.dataset["state"] = now?.state ?? "connecting";
   // The drawing's own look for a map that isn't now.
   asof.classList.toggle("stale", now?.state === "stale" || now?.state === "broken");

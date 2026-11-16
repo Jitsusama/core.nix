@@ -32,25 +32,28 @@
 <a class="skip" href="#map-view">Skip to the map</a>
 
 <header class="head">
-  <svg class="mark" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
-    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-      <path d="M16 16L6 7 M16 16L27 9 M16 16L9 27 M16 16L26 25 M6 7L3 13 M27 9L30 15"/>
-      <circle cx="6" cy="7" r="3.2"/><circle cx="27" cy="9" r="3.2"/><circle cx="9" cy="27" r="3.2" stroke-dasharray="2 1.6"/><circle cx="26" cy="25" r="3.2"/>
-    </g>
-    <circle cx="16" cy="16" r="4" fill="currentColor"/>
-  </svg>
-  <h1>Your Mycelium, <em>Now</em></h1>
-  <p class="keys">Arrows walk the map, <kbd>/</kbd> finds a cell, <kbd>.</kbd> opens Now, and <kbd>?</kbd> lists every key</p>
-  <div class="switch" role="radiogroup" aria-label="Theme">
-    <button type="button" role="radio" aria-checked="false" tabindex="-1" data-choice="light" aria-label="Light" title="Light">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-    </button>
-    <button type="button" role="radio" aria-checked="true" tabindex="0" data-choice="system" aria-label="Match System" title="Match System">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor"/></svg>
-    </button>
-    <button type="button" role="radio" aria-checked="false" tabindex="-1" data-choice="dark" aria-label="Dark" title="Dark">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-    </button>
+  <h1 class="sentence"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M16 16L6 7 M16 16L27 9 M16 16L9 27 M16 16L26 25 M6 7L3 13 M27 9L30 15"/>
+        <circle cx="6" cy="7" r="3.2"/><circle cx="27" cy="9" r="3.2"/><circle cx="9" cy="27" r="3.2" stroke-dasharray="2 1.6"/><circle cx="26" cy="25" r="3.2"/>
+      </g>
+      <circle cx="16" cy="16" r="4" fill="currentColor"/>
+    </svg><span class="sr">Your mycelium, now: </span><span id="status-words">Reading the node.</span></h1>
+  <p class="sr" id="status-said" aria-live="polite"></p>
+  <div class="under">
+    <p class="keys">Arrows walk the map, <kbd>/</kbd> finds a cell, <kbd>.</kbd> opens Now, and <kbd>?</kbd> lists every key.</p>
+    <div class="switch" role="radiogroup" aria-label="Theme">
+      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-choice="light" aria-label="Light" title="Light">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" role="radio" aria-checked="true" tabindex="0" data-choice="system" aria-label="Match System" title="Match System">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor"/></svg>
+      </button>
+      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-choice="dark" aria-label="Dark" title="Dark">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <p id="asof" class="asof" data-state="connecting">Reaching this machine's node.</p>
   </div>
 </header>
 
@@ -63,13 +66,11 @@
       <input id="find" type="search" placeholder="Find a cell or network" autocomplete="off" spellcheck="false" aria-describedby="find-count">
       <span class="find-count" id="find-count" aria-live="polite"></span>
     </search>
-    <p class="status" id="status"><span class="sr" id="status-said" aria-live="polite"></span><span id="status-words"></span><span class="sr">; </span><button type="button" class="needs" id="needs" aria-controls="panel" hidden></button></p>
-    <p id="asof" class="asof">reading</p>
     <div class="zoom" role="group" aria-label="The map's controls">
-      <button type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button>
-      <button type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (o)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12"/></svg></button>
-      <button type="button" data-zoom="fit" aria-label="Show the whole map" title="Whole map (0)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
-      <button type="button" data-zoom="now" id="now-control" aria-label="Now" title="Now (.)" aria-expanded="false" aria-controls="panel"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v12H3zM12 4v12M14 8h1M14 11h1"/></svg></button>
+      <button type="button" data-zoom="in" title="Zoom in (+)">Zoom in</button>
+      <button type="button" data-zoom="out" title="Zoom out (o)">Zoom out</button>
+      <button type="button" data-zoom="fit" title="The whole map (0)">Whole map</button>
+      <button type="button" data-zoom="now" id="now-control" title="Now (.)" aria-expanded="false" aria-controls="panel">Now</button>
     </div>
   </div>
   <figure class="map" id="map" aria-labelledby="map-title">
@@ -112,7 +113,8 @@
     <div><dt><kbd>0</kbd></dt><dd>Show the whole map</dd></div>
     <div><dt><kbd>/</kbd></dt><dd>Find a cell or network by name: what doesn't match fades back; <kbd>Return</kbd> opens the first match, and <kbd>n</kbd> and <kbd>N</kbd> step to the next and the one before. <kbd>Esc</kbd> closes the find</dd></div>
     <div><dt>The line over the map</dt><dd>Where the keys are, from the machine down; any step takes you back to it</dd></div>
-    <div><dt><kbd>Tab</kbd></dt><dd>Where the keys are, who needs you, the map's controls, the map, then the drawer while it's open, with the network as a tree at its end</dd></div>
+    <div><dt>The words at the top</dt><dd>How the network stands; each count opens Now, where what it counts is listed</dd></div>
+    <div><dt><kbd>Tab</kbd></dt><dd>The counts at the top, the keys and the look, where the keys are, the map's controls, the map, then the drawer while it's open, with the network as a tree at its end</dd></div>
     <div><dt>In the tree</dt><dd><kbd>j</kbd> and <kbd>k</kbd> step, <kbd>l</kbd> opens a branch, <kbd>h</kbd> closes it or climbs, <kbd>g</kbd> and <kbd>G</kbd> go to the first and last</dd></div>
     <div><dt><kbd>?</kbd> <kbd>F1</kbd></dt><dd>This list, and again to close it; <kbd>Esc</kbd> closes it too</dd></div>
   </dl>
