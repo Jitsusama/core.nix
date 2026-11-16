@@ -20,6 +20,13 @@
 // as an account locked after too many tries, is said under it, in PAM's own
 // words, since "try again" would be wrong.
 //
+// A check that says nothing for a while is hung rather than slow, and is
+// killed and tried again with the same password, so the lock never stops
+// taking one. Quickshell checks in a fork of the shell that runs PAM
+// without starting afresh, which can wait forever on a lock another of the
+// shell's threads held as it forked (quickshell#964): in the desktop test
+// on 16 Nov, three wrong passwords in thirty runs were never refused.
+//
 // Once niri says every screen shows the lock, the lock writes "locked" to
 // $XDG_RUNTIME_DIR/quickshell-locked, and "unlocked" once it's let go, so
 // what locks before the machine sleeps can wait until nothing else is on
@@ -50,6 +57,11 @@ Scope {
     property bool answerShows: false
     // What PAM said that wasn't a question.
     property string said
+    // The password being checked, kept until PAM answers, so a hung check
+    // can be tried again without asking for it again, and how many times
+    // it has been tried.
+    property string checking
+    property int tries: 0
 
     // Whether the lock is asked for or up: from the moment it's asked for,
     // since niri refuses moves while it's locking too, until it's let go.
@@ -70,7 +82,9 @@ Scope {
             return;
         if (pam.active)
             pam.abort();
+        hung.stop();
         password = "";
+        checking = "";
         question = "";
         said = "";
         failed = false;
@@ -82,16 +96,51 @@ Scope {
             if (pam.responseRequired && question !== "") {
                 question = "";
                 pam.respond(text);
+                hung.restart();
             }
             return;
         }
-        password = text;
+        checking = text;
+        tries = 0;
         said = "";
         // Said for the desktop test, which sees only dots: the right
         // password was refused twice running in three runs on 15 Nov, and
         // nothing said whether letters were lost, doubled or capitals.
         Report.say(`checking lock ${text.length} letters caps ${Lights.caps ? "on" : "off"}`);
+        check();
+    }
+
+    function check() {
+        password = checking;
+        tries += 1;
         pam.start();
+        hung.restart();
+    }
+
+    // PAM refuses a wrong password within its two seconds' delay, and takes
+    // the right one sooner, so ten seconds without a word is a hung check
+    // even on a busy machine. Three goes, then the field says it couldn't.
+    Timer {
+        id: hung
+        interval: 10000
+        onTriggered: {
+            if (!pam.active)
+                return;
+            pam.abort();
+            console.warn(`lock: the password check said nothing for ${interval / 1000} s`
+                + ` on try ${root.tries}, so it was killed`);
+            if (root.tries < 3) {
+                Report.say("retried lock");
+                root.check();
+                return;
+            }
+            root.checking = "";
+            root.password = "";
+            root.question = "";
+            root.failed = true;
+            root.said = "The password couldn't be checked.";
+            Report.say("refused lock");
+        }
     }
 
     FileView {
@@ -206,8 +255,12 @@ Scope {
     PamContext {
         id: pam
         config: "quickshell"
+        // A word from PAM says the check still moves, so it has as long
+        // again; a question for the person waits on them, as long as they
+        // take.
         onPamMessage: {
             const words = message.trim();
+            hung.restart();
             if (!responseRequired) {
                 if (words !== "")
                     root.said = words;
@@ -215,11 +268,18 @@ Scope {
                 respond(root.password);
                 root.password = "";
             } else {
+                hung.stop();
                 root.question = words.replace(/:$/, "");
                 root.answerShows = responseVisible;
             }
         }
+        // An error comes with a result of Error after it, which onError
+        // has already said.
         onCompleted: result => {
+            hung.stop();
+            root.checking = "";
+            if (result === PamResult.Error)
+                return;
             root.password = "";
             root.question = "";
             root.failed = result !== PamResult.Success;
@@ -231,6 +291,8 @@ Scope {
             }
         }
         onError: {
+            hung.stop();
+            root.checking = "";
             root.password = "";
             root.question = "";
             root.failed = true;

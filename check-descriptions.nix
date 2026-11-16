@@ -4646,8 +4646,8 @@
     session from the shell's start and hold still as one changes, and pi's runs are found
   '';
   vm-desktop-locks-and-asks = ''
-    the lock screen takes only the right password, lets go when released or told to by logind,
-    and holds through a shell's restart; polkit's prompt and the askpass answer and hold
+    the lock screen takes only the right password, kills a hung check and tries it again, lets go
+    when released or told to by logind, and holds through a shell's restart; polkit's prompt and the askpass answer and hold
   '';
   vm-desktop-looks = ''
     on the laptop's screen at 1.5 and at 2, a session sits a step in under its orchestrator, a
