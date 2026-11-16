@@ -451,7 +451,7 @@ def test_an_opening_is_traced_and_sent_to_the_collector_as_it_closes(desktop: De
         desktop.launcher_until(lambda shown: shown["held"] == [])
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-        spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
+        spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher tracedLatest"))
         opening = [span for span in spans if span["name"] == "open"][-1]
         mine = [span for span in spans if span["trace"] == opening["trace"]]
         assert opening["end"] is not None, opening
@@ -499,24 +499,22 @@ def refresh_is_traced(desktop: Desktop) -> None:
     desktop.launcher_ready()
     desktop.as_account("systemctl --user start keep-awake.service")
 
-    # The opening under way is kept only as it closes, so its refreshes are those of a trace
-    # no opening kept yet holds.
+    # While the launcher is open, the latest opening's spans are those of the opening under way.
     def refreshes() -> list[Json]:
-        spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
-        closed = {span["trace"] for span in spans if span["name"] == "open"}
+        spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher tracedLatest"))
         return [
             span
             for span in spans
             if span["name"] == "refresh"
             and span["about"]["source"] == "session"
-            and span["trace"] not in closed
+            and span["end"] is not None
         ]
 
     retry(lambda _: refreshes() != [], timeout=dt.timedelta(seconds=10))
     refresh = refreshes()[0]
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
+    spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher tracedLatest"))
     opening = next(
         span for span in spans if span["trace"] == refresh["trace"] and span["name"] == "open"
     )

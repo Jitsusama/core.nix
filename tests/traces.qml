@@ -98,6 +98,20 @@ QtObject {
             JSON.stringify(notices));
         expect("a fraction", Traces.attribute("f", 1.5).value.doubleValue === 1.5, "not one");
 
+        // A reader asks for one opening's spans, not every one kept, whose
+        // JSON ran past 350 KB and came back cut (Y2YBTS, 2026-11-16): the
+        // opening under way's, or with none, the newest kept's.
+        const earlier = Traces.ended(Traces.begun("open", 0, null, {}), 10, {});
+        const keptSpans = [earlier, settled, refresh, closed];
+        const names = picked => picked.map(span => span.name).join(" ");
+        expect("the newest opening's alone",
+            names(Traces.latest(keptSpans, null)) === "step refresh open",
+            names(Traces.latest(keptSpans, null)));
+        expect("the opening under way's",
+            names(Traces.latest(keptSpans, earlier.trace)) === "open",
+            names(Traces.latest(keptSpans, earlier.trace)));
+        expect("none kept", Traces.latest([], null).length === 0, "some");
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(`FAIL ${failure}`);

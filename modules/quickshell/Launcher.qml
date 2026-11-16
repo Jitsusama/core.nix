@@ -7771,6 +7771,13 @@ Scope {
         function traced(): string {
             return traces.traced();
         }
+
+        // One opening's spans alone, as JSON: the one under way, or with
+        // none, the last to close. Every span kept runs past 350 KB, which
+        // came back cut short.
+        function tracedLatest(): string {
+            return traces.tracedLatest();
+        }
     }
 
     // Frames drawn, counted only once a check asks, so a launcher in use
