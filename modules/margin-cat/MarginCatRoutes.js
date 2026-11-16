@@ -225,9 +225,11 @@ function fromLedge(stop, cols, at, add) {
 // `at.floats`' faces, which are as solid as a tiled window's top: nothing
 // goes through a floating window (VKCF3Z 26038726). Without it the cat
 // climbed the gap between two columns behind one (the GPU rig,
-// 2026-11-14).
-function throughFloats(one, other, at) {
-    return (at.floats ?? []).some(it => Math.max(one.x, other.x) + at.wide > it.left + 0.5
+// 2026-11-14). The one it leaps away from, `own` (an index, or -1), is
+// never in its way, as its corner would refuse every leap down off it.
+function throughFloats(one, other, at, own) {
+    return (at.floats ?? []).some((it, f) => f !== own
+        && Math.max(one.x, other.x) + at.wide > it.left + 0.5
         && Math.min(one.x, other.x) < it.right - 0.5
         && Math.max(one.y, other.y) + at.tall > it.top + 0.5
         && Math.min(one.y, other.y) < it.bottom - 0.5);
@@ -239,9 +241,9 @@ function floatEnds(it, at) {
     return [Math.max(it.left, 0), Math.min(it.right, at.across) - at.wide];
 }
 
-// What it lands on, dropping from `y` at `x`: the nearest ledge of `cols`
-// or floating window's top under it, all of its box on it, or the screen's
-// bottom: { kind, c, y, row }, or null where the screen has no bottom.
+// What it lands on, dropping from `y` at `x`: the nearest ledge under any
+// of its box, as Falls.under() lands, or float's top under all of it, or
+// the bottom: { kind, c, y, row }, or null where the screen has none.
 function landsOn(x, y, cols, at) {
     let found = null;
     const take = (kind, c, under, row) => {
@@ -250,7 +252,7 @@ function landsOn(x, y, cols, at) {
         }
     };
     for (const [c, column] of cols.entries()) {
-        if (x >= column.left - 0.5 && x + at.wide <= column.right + 0.5) {
+        if (x < column.right && x + at.wide > column.left) {
             for (const ledge of ledges(column, at)) {
                 take("ledge", c, ledge.y, ledge.row);
             }
@@ -269,9 +271,10 @@ function landsOn(x, y, cols, at) {
 // window as onto a ledge of a column (WCJQSG ade5ce02: "it climbs onto,
 // jumps off and walks along floats as it does tiled ones"): along to
 // beside its edges, which its face may hide the rest of the ledge past;
-// and from beside an edge, a leap up it within LEAPS_UP of its heights
-// and over, never across its face as it rises. Down onto one from over
-// it on the way is owed.
+// and from beside an edge on the tops (from a gap's it would rise into
+// the window over), a leap up within LEAPS_UP of its heights and over.
+// Only one whose face crosses the ledge or whose top is a leap up adds
+// stops, so the search grows with the floats near it alone.
 function ontoFloats(stop, reach, at, add) {
     const [lowest, highest] = reach;
     const walk = x => (Math.abs(x - stop.x) / at.cell / WALKS) * 1000;
@@ -279,12 +282,14 @@ function ontoFloats(stop, reach, at, add) {
     for (const [f, it] of (at.floats ?? []).entries()) {
         const y = stands(it.top, at);
         const [left, right] = floatEnds(it, at);
-        for (const x of [it.left - at.wide, it.right].filter(along)) {
+        const hides = it.top < stop.y + at.tall && it.bottom > stop.y;
+        const reaches = y <= stop.y + 1e-6 && stop.y - y <= LEAPS_UP * at.tall;
+        const beside = hides || reaches ? [it.left - at.wide, it.right] : [];
+        for (const x of beside.filter(along)) {
             add("ledge", stop.c, { x, y: stop.y, row: stop.row, how: "goes" }, walk(x));
         }
         const side = near(stop.x, it.left - at.wide) ? -1 : near(stop.x, it.right) ? 1 : 0;
-        if (side !== 0 && y <= stop.y + 1e-6 && stop.y - y <= LEAPS_UP * at.tall
-            && right >= left) {
+        if (side !== 0 && reaches && stop.row === 0 && right >= left) {
             add("float", f, { x: side < 0 ? left : right, y, row: 0, side, how: "leapsOn",
                 via: { x: stop.x, y: it.top - at.tall } }, LEAPS + MANTLES);
         }
@@ -362,8 +367,9 @@ function next(stop, cols, at) {
         const along = (more.how === "goes" && more.row === 0) || !!more.perches;
         // A move by way of a point, up beside an edge or clear of one, is
         // through no face where neither of its two legs is.
-        const through = more.via ? throughFloats(stop, more.via, at)
-            || throughFloats(more.via, more, at) : throughFloats(stop, more, at);
+        const own = stop.kind === "float" ? stop.c : -1;
+        const through = more.via ? throughFloats(stop, more.via, at, own)
+            || throughFloats(more.via, more, at, own) : throughFloats(stop, more, at, own);
         if (!inMarks(more.x, more.y, at) && (!past || along) && !through) {
             found.push({ stop: Object.assign({ kind, c }, more), ms: ms + (past ? CROSSES : 0) });
         }

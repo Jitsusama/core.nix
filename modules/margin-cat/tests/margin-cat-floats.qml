@@ -6,6 +6,7 @@
 import QtQuick
 import "MarginCat.js" as MarginCat
 import "MarginCatPaths.js" as Paths
+import "MarginCatRoutes.js" as Routes
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -280,11 +281,51 @@ QtObject {
                 && Paths.frame(upIt, (leapsUp.begins + leapsUp.ends) / 2).aboard === true],
             [[412, 661, 432, 631], true]);
 
-        // One off its way changes nothing.
+        // The same way back, right to left: up its right edge, along,
+        // and off its left end down onto the tops.
+        const backOver = Paths.walk({ x: 900, y: 7 }, { x: 100, y: 7 },
+            world({ floats: [straddles] }));
+        expect("right to left, up its right edge and off its left end",
+            [ends(named(backOver, "over")), ends(named(backOver, "hops")),
+                ends(named(backOver, "falls")), endsAt(backOver), overFace(backOver, straddles)],
+            [[750, 2, 742, 1], [500, 1, 492, 1], [492, 1, 492, 7], [100, 7], []]);
+
+        // A step down: from its end across the gap onto a lower top, as
+        // a leap onto a ledge, its own floating window behind it.
+        const level = [
+            { left: 16, top: 700, width: 400, height: 84, column: 0 },
+            { left: 432, top: 700, width: 800, height: 84, column: 1 }
+        ];
+        const downIt = Routes.next({ kind: "float", c: 0, x: 412, y: 661, row: 0 },
+            Paths.columns(level, 0), world({ floats: [stone] }));
+        expect("from its end down across the gap onto the lower top",
+            downIt.filter(one => one.stop.how === "leaps")
+                .map(one => [one.stop.x, one.stop.y]), [[432, 691]]);
+
+        // Off its end beside a column's edge, onto that column's top as a
+        // fall does anywhere, not past its top to the floor.
+        const nearEdge = float(500, 10, 128, 200);
+        const offNear = Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 },
+            world({ floats: [nearEdge] }));
+        expect("off its end part over a column, onto that column's top",
+            [offNear.beats.some(beat => beat.to.y > 7), endsAt(offNear)], [false, [900, 7]]);
+
+        // Never a leap up onto one from a gap's ledge beside its edge,
+        // which would rise into the window over the gap.
+        const inGap = float(700, 380, 200, 200);
+        const fromGap = Routes.next({ kind: "ledge", c: 1, x: 692, y: 399, row: 1 },
+            Paths.columns(tiles, 0), world({ floats: [inGap] }));
+        expect("from a gap's ledge, never a leap up into the window over it",
+            fromGap.filter(one => one.stop.how === "leapsOn").length, 0);
+
+        // One off its way changes nothing, along the tops nor by a route.
         const aside = float(300, 600, 100, 100);
         expect("a floating window off its way changes nothing",
             names(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 }, world({ floats: [aside] }))),
             names(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 }, world())));
+        expect("nor on a way that takes a route",
+            names(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 399 }, world({ floats: [aside] }))),
+            names(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 399 }, world())));
 
         for (const failure of failures)
             console.warn(failure);
