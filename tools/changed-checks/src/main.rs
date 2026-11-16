@@ -240,7 +240,7 @@ fn main() -> ExitCode {
         }
         let options = Options::parse(arguments.iter().cloned())
             .map_err(|failure| failure.try_this("changed-checks --help"))?;
-        changed(&options, (&context.out, context.room))
+        changed(&options, &context.out)
     })
 }
 
@@ -250,7 +250,7 @@ fn broke(why: String) -> Failure {
 }
 
 /// Name the checks the working tree's change touches, and build them if asked.
-fn changed(options: &Options, out: (&Pen, Room)) -> Result<(), Failure> {
+fn changed(options: &Options, out: &Pen) -> Result<(), Failure> {
     let root = run("git", &["rev-parse", "--show-toplevel"]).map_err(broke)?;
     let Ok(base) = run("git", &["-C", &root, "merge-base", "HEAD", &options.base]) else {
         return Err(Failure::new(
@@ -505,7 +505,7 @@ fn compare(
     system: &str,
     held: &[Held],
     noted: &mut Run,
-    out: (&Pen, Room),
+    out: &Pen,
 ) -> Result<Compared, String> {
     let flake = &format!("git+file://{root}");
     let short = base.get(..12).unwrap_or(base);
@@ -714,8 +714,10 @@ const NAMED: [(&str, Align); 2] = [("kind", Align::Left), ("check", Align::Left)
 /// Name each check a comparison moved, a row each of the kit's table, and
 /// say how many; naming none prints nothing. Its readers (nix-offload's
 /// `--changed`, merge-net) take the lines whose first word is a kind, so
-/// the label line is passed over.
-fn named(comparison: &checks::Comparison, (pen, room): (&Pen, Room)) -> usize {
+/// the label line is passed over. The room is never fitted, even on a
+/// terminal: a check's name is read whole, by those readers and by people
+/// copying it to build, and a long VM test's name cut to fit names none.
+fn named(comparison: &checks::Comparison, pen: &Pen) -> usize {
     let rows: Vec<Vec<String>> = comparison
         .kinds()
         .into_iter()
@@ -726,7 +728,7 @@ fn named(comparison: &checks::Comparison, (pen, room): (&Pen, Room)) -> usize {
         })
         .collect();
     if !rows.is_empty() {
-        for line in layout::table_in(&NAMED, &rows, pen, room, &[]) {
+        for line in layout::table_in(&NAMED, &rows, pen, Room::Unbounded, &[]) {
             println!("{line}");
         }
     }
