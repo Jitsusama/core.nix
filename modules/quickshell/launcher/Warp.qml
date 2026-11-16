@@ -163,7 +163,7 @@ Provider {
         const slow = WarpWaiting.slowed(WarpState.state, settings, words);
         const headline = slow ?? linked.headline;
         const parts = WarpSeen.drawn(
-            WarpWaiting.among(linked.parts, said.waiting, settings, words), seen, settings, words);
+            WarpWaiting.among(linked.parts, said, settings, words), seen, settings, words);
         const drawn = WarpDrawer.drawer({
             parts,
             record: said,

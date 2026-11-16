@@ -78,6 +78,32 @@ pub fn upload(status: &Path) -> Value {
     })
 }
 
+/// What the shaper limits the upload to and why, for the Work Network's
+/// Upload: `{ kbit, why }`, `kbit` null where it sets no limit, and `why`
+/// its reason in its own words (modules/shaper/src/why.rs), less the
+/// "Upload <rate>:" each opens with, which `kbit` says, and the stop, since
+/// the launcher sets it within a sentence of its own. `why` is null where
+/// the shaper gave none, or none in that shape, so the rate is still said.
+/// Null with no shaper or nothing heard.
+pub fn limit(status: &Path) -> Value {
+    let Ok(text) = std::fs::read_to_string(status) else {
+        return Value::Null;
+    };
+    let links: Vec<Value> = serde_json::from_str(&text).unwrap_or_default();
+    let Some(heard) = links
+        .iter()
+        .map(|link| &link["heard"])
+        .find(|heard| !heard.is_null())
+    else {
+        return Value::Null;
+    };
+    let why = heard["why"]
+        .as_str()
+        .and_then(|why| why.split_once(": "))
+        .map(|(_, why)| why.trim_end().trim_end_matches('.'));
+    json!({ "kbit": heard["up_limit"].as_u64(), "why": why })
+}
+
 /// A share as a percentage to the nearest 5.
 fn fives(share: f64) -> u64 {
     #[expect(
@@ -110,6 +136,63 @@ mod tests {
             upload(&status),
             json!({ "full_pct": 100, "shares": {"bulk": 75, "best": 25, "video": 0, "voice": 0} }),
             "each class's share went unsaid"
+        );
+    }
+
+    #[test]
+    fn the_upload_says_what_limits_it_in_the_shapers_words() {
+        let status = Path::new(CONTRACT).join("shaper-status.json");
+        assert_eq!(
+            limit(&status),
+            json!({
+                "kbit": 7416,
+                "why": "the VPN waited 75 ms inside its tunnel, so its own queue is held to 87% \
+                        of its lane; held so for 2 min",
+            }),
+            "the rate it opened with went unsaid, or its stop stayed"
+        );
+        let clear = written(
+            "clear",
+            r#"[{"heard": {"up_limit": 10800,
+               "why": "Upload 10.8 Mbit/s of 12.0 Mbit/s, the line's rate: clear for 3 min."}}]"#,
+        );
+        assert_eq!(
+            limit(&clear),
+            json!({ "kbit": 10800, "why": "clear for 3 min" }),
+            "a reason whose rate says more than one figure kept it"
+        );
+        let unlimited = written(
+            "unlimited",
+            r#"[{"heard": null}, {"heard": {"up_limit": null,
+               "why": "Upload unlimited: no queue has stood on this network yet."}}]"#,
+        );
+        assert_eq!(
+            limit(&unlimited),
+            json!({ "kbit": null, "why": "no queue has stood on this network yet" }),
+            "no limit was said as one, or the link that heard was missed"
+        );
+    }
+
+    #[test]
+    fn a_limit_given_no_reason_is_still_said_and_none_heard_is_not() {
+        let none = Path::new(CONTRACT).join("no-such-status.json");
+        assert_eq!(limit(&none), Value::Null, "no file said something");
+        let quiet = written("quiet", r#"[{"heard": null}]"#);
+        assert_eq!(limit(&quiet), Value::Null, "nothing heard said something");
+        let older = written("older", r#"[{"heard": {"up_limit": 4069}}]"#);
+        assert_eq!(
+            limit(&older),
+            json!({ "kbit": 4069, "why": null }),
+            "a shaper giving no reason hid its limit, or was given one"
+        );
+        let unshaped = written(
+            "unshaped",
+            r#"[{"heard": {"up_limit": 4069, "why": "Held by hand."}}]"#,
+        );
+        assert_eq!(
+            limit(&unshaped),
+            json!({ "kbit": 4069, "why": null }),
+            "a reason not opening with its rate was cut somewhere it didn't mean"
         );
     }
 

@@ -427,6 +427,7 @@
         "through": "WARP",
         "waiting": "{through} through it \u00b7 {rest} at rest",
         "nothingWaiting": "none",
+        "unlimited": "unlimited",
         "unknown": "unknown",
         "shaperOff": "the shaper isn't running",
         "unheard": "its last question went unanswered",
@@ -439,7 +440,9 @@
         "degraded": "Connected to work, degraded{lasted}{trip}.",
         "slow": "Connected to work, slow{lasted}{waits}.",
         "connecting": "Connecting to work{lasted}.",
-        "disconnected": "Disconnected from work{lasted}."
+        "disconnected": "Disconnected from work{lasted}.",
+        "upload": "The upload is held to {rate}: {why}.",
+        "uploadUnlimited": "The upload is unlimited: {why}."
       }
     },
     {

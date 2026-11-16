@@ -3380,11 +3380,12 @@ def test_the_work_networks_row_has_a_drawer_saying_how_work_stands(shell: Shell)
 def test_the_work_network_says_whats_waiting_on_the_way_as_the_shaper_hears_it(
     shell: Shell,
 ) -> None:
-    """The Work Network's Waiting says what the shaper heard, and unknown once it stops.
+    """The Work Network's Waiting and Upload say what the shaper heard, until it stops.
 
     warp reads the shaper's status.json with each read of the link (its waiting.rs), and the
     place says how long past the way at rest a question through the VPN took, after the
-    Round Trip. The shaper's file goes as it stops, which is unknown, never none. A
+    Round Trip, then the rate the shaper holds the upload to, noted why in its words. The
+    shaper's file goes as it stops: Waiting is unknown, never none, and Upload goes. A
     terminal's ask is answered from what was read last, an earlier case's maybe, so each
     reading is waited for.
     """
@@ -3405,6 +3406,11 @@ def test_the_work_network_says_whats_waiting_on_the_way_as_the_shaper_hears_it(
         waiting = named_row(warp, "Waiting")
         assert waiting is not None, names
         assert waiting["note"] == "103 ms through it \u00b7 28 ms at rest", str(waiting)
+        assert names[names.index("Waiting") + 1] == "Upload", names
+        upload = named_row(warp, "Upload")
+        assert upload is not None, names
+        assert upload["side"] == "7.42 Mb/s", str(upload)
+        assert upload["note"].startswith("the VPN waited 75 ms inside its tunnel"), str(upload)
         status.unlink()
         stopped = terminal_shown_until(
             shell,
@@ -3415,6 +3421,7 @@ def test_the_work_network_says_whats_waiting_on_the_way_as_the_shaper_hears_it(
         waiting = named_row(stopped, "Waiting")
         assert waiting is not None, stopped
         assert waiting["note"] == "the shaper isn't running", str(waiting)
+        assert named_row(stopped, "Upload") is None, str(stopped["rows"])
     finally:
         shutil.rmtree(shaper, ignore_errors=True)
         warp_forgotten(said)

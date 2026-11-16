@@ -414,6 +414,11 @@ fn a_get_reads_afresh_what_isnt_held_fresh() {
         None,
         "with no shaper named, nothing's said of waiting"
     );
+    assert_eq!(
+        got["records"][0]["said"].get("limit"),
+        None,
+        "with no shaper named, nothing's said of the upload's limit"
+    );
 }
 
 #[test]
@@ -426,6 +431,16 @@ fn the_link_says_what_waits_through_it_as_the_shaper_heard() {
     assert_eq!(
         said["waiting"],
         json!({"running": true, "through_ms": 103.121_740_000_000_02, "at_rest_ms": 27.667_19})
+    );
+    assert_eq!(
+        said["limit"]["kbit"], 7416,
+        "the link didn't say its upload's limit"
+    );
+    assert!(
+        said["limit"]["why"]
+            .as_str()
+            .is_some_and(|why| why.starts_with("the VPN waited 75 ms")),
+        "the link didn't say why its upload is limited: {said}"
     );
 }
 

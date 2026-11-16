@@ -12,8 +12,8 @@
 
 // The parts the drawer says, in this order, by the ids Warp.js gives
 // them: how it stands, how long a round trip takes and what waits on
-// it, and what carries it.
-const FACTS = ["state", "latency", "waiting", "through"];
+// it, what the upload is held to, and what carries it.
+const FACTS = ["state", "latency", "waiting", "upload", "through"];
 
 // The parts that are warp-cli's own words, set in the nerdy bits: how
 // it's set and who for. WARP's reason joins them from its record; its
@@ -81,6 +81,20 @@ function sentence(status, reason) {
     return status === "Disconnected" ? "disconnected" : "";
 }
 
+// Why the upload is limited, a sentence after the lead, since a fact is
+// only a figure: "The upload is held to 7.42 Mb/s: the VPN waited 75 ms
+// inside its tunnel, so its own queue is held to 87% of its lane; held so
+// for 2 min." The rate is Upload's, as its fact says it, and the reason
+// the shaper's (WarpWaiting.js). Nothing where it gave no reason.
+function limited(parts, limit, words) {
+    const upload = found(parts, "upload");
+    if (upload === null || typeof limit?.why !== "string" || limit.why === "") {
+        return "";
+    }
+    const key = Number.isFinite(limit.kbit) ? "upload" : "uploadUnlimited";
+    return Warp.worded(words.tells, key, { rate: upload.side, why: limit.why });
+}
+
 // The drawer, from what was read: the parts Warp.js told, the record it
 // told them from and the daemon's held state, at `now`, in warp's `said`
 // and `tells`. It's `{ eyebrow, body, facts, nerd }`, each fact and bit
@@ -90,9 +104,11 @@ function drawer(read, words) {
     const reason = record?.status?.reason;
     const raw = typeof reason === "string" && reason !== ""
         ? [{ id: "reason", value: reason }] : [];
+    const body = [lead(stood, found(parts, "latency"), now, words),
+        limited(parts, record?.limit, words)].filter((each) => each !== "");
     return {
         eyebrow: Warp.worded(words.said, "eyebrow"),
-        body: lead(stood, found(parts, "latency"), now, words),
+        body: body.join(" "),
         facts: told(parts, FACTS),
         nerd: told(parts, NERD).concat(raw),
     };

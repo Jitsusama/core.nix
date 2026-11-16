@@ -179,6 +179,11 @@
       "name": "Waiting"
     },
     {
+      "id": "warp:upload",
+      "in": "warp",
+      "name": "Upload"
+    },
+    {
       "id": "warp:loss",
       "in": "warp",
       "name": "Loss"
