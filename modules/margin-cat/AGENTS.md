@@ -75,12 +75,24 @@ path if they were all on one screen. so the top of the left would have to
 walk to the right, climb down the right side, drop down and grab with its
 claws on the top of the window below, climb up, and then walk over."
 
+Joel, 2026-11-15 21:20: "when transitioning screens it should be able to
+poke its head up and then come in." And at 23:34: "the whole kitty should
+not have to be rendered when you are seeing it come on to your screen."
+It comes in head first, three rows over the screen's edge, its paws
+moving; it peers and looks about, then comes on. Only the screen's edge
+cuts it.
+
 - Held by `margin-cat.qml`: "down a workspace to a window under another, never gliding"
 - Held by `margin-cat-one-screen.qml`: "the drop ends in a grab at a top's corner in its reach"
 - Held by `margin-cat-one-screen.qml`: "with no corner in its reach, the drop lands on the top
   under it, never the floor"
-- Held by `margin-cat-one-screen.qml`: "it comes in at the top over the gap, mid-drop"
-- Held by `margin-cat-one-screen.qml`: "it comes in at the bottom beside a side, mid-leap"
+- Held by `margin-cat-one-screen.qml`: "it comes in at the top over the gap, head first"
+- Held by `margin-cat-one-screen.qml`: "it comes in at the bottom beside a side, head first"
+- Held by `margin-cat-one-screen.qml`: "no more of it than its head over the edge till it has
+  looked"
+- Held by `margin-cat-one-screen.qml`: "its head over the edge, it looks about for 400 ms"
+- Held by `margin-cat-one-screen.qml`: "its head comes over the edge with its paws moving"
+- Held by `margin-cat-one-screen.qml`: "then it comes on with a drop or a leap up"
 - Held by `margin-cat-one-screen.qml`: "the leap up ends hanging on a side's foot, never its
   underside"
 - Held by `margin-cat-one-screen.qml`: "up from a top under the crack above, it leaps from there

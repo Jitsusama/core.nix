@@ -101,14 +101,35 @@ QtObject {
             const back = all.findIndex((one, i) => i > gone && seen(one));
             const comes = all[back] ?? { t: Infinity };
             const beside = comes.x >= 616 && comes.x <= 624;
+            // Joel, Sun 15 21:20: "when transitioning screens it should be
+            // able to poke its head up and then come in"; 23:34: "the whole
+            // kitty should not have to be rendered when you are seeing it
+            // come on to your screen".
             if (way > 0)
-                expect(`${name}, it comes in at the top over the gap, mid-drop`,
-                    [beside, comes.y < 0, comes.pose, comes.beat],
-                    [true, true, "falling", "drops"]);
+                expect(`${name}, it comes in at the top over the gap, head first`,
+                    [beside, comes.y < 0, comes.beat], [true, true, "peeks"]);
             else
-                expect(`${name}, it comes in at the bottom beside a side, mid-leap`,
-                    [beside, comes.y >= 776, comes.pose, comes.beat],
-                    [true, true, "leaping", "springs"]);
+                expect(`${name}, it comes in at the bottom beside a side, head first`,
+                    [beside, comes.y > 792, comes.beat], [true, true, "peeks"]);
+            const rows = one => way > 0 ? one.y + 8 : 800 - one.y;
+            const peeking = all.filter((one, i) => i >= back
+                && ["peeks", "peers", "looks"].includes(one.beat));
+            expect(`${name}, no more of it than its head over the edge till it has looked`,
+                [Math.max(...peeking.map(rows)), peeking.filter(one => rows(one) > 3).length],
+                [3, 0]);
+            const looking = peeking.filter(one => one.beat !== "peeks");
+            expect(`${name}, its head over the edge, it looks about for 400 ms`,
+                [looking.length > 0 && looking[looking.length - 1].t - looking[0].t >= 390,
+                    [...new Set(looking.map(one => one.pose))]],
+                [true, ["nothingHere", "earFlick"]]);
+            expect(`${name}, its head comes over the edge with its paws moving`,
+                peeking.filter(one => one.beat === "peeks" && !walks.includes(one.pose))
+                    .map(one => [Math.round(one.t), one.pose]), []);
+            expect(`${name}, peeking down from the gap its head is down, up it's upright`,
+                [...new Set(peeking.map(one => one.turn !== 0))], [way > 0]);
+            const on = move.beats[move.beats.findIndex(beat => beat.name === "looks") + 1];
+            expect(`${name}, then it comes on with a drop or a leap up`,
+                [on?.name, on?.turn], [way > 0 ? "drops" : "springs", 0]);
             expect(`${name}, out of sight no more than about two thirds of a second`,
                 comes.t - (all[gone]?.t ?? 0) <= 700, true);
             const names = move.beats.map(beat => beat.name);
@@ -143,11 +164,13 @@ QtObject {
             // its frame at `t` shows as niri's slide is `ahead` ms further
             // on, and the old top it stands on is where that slide has it.
             // A frame ahead of it at 120 Hz, going up, it showed 90 px into
-            // its window's face (2026-11-15, take uw3).
+            // its window's face (2026-11-15, take uw3). Once it peeks in
+            // it's on the new workspace, which the face case holds.
             const told = Stacked.moves({ x: from, y: 7 }, { x: to, y: 7 },
                 world({ way, ahead: 33, frame: 1000 / 120 }));
             expect(`${name}, told late, never ahead of niri's slide into its window`,
                 frames(told, 1000 / 120).filter(one => one.t < slides && seen(one)
+                    && one.t + told.ahead < told.drops
                     && one.y + 8 > 16 - lift * MarginCat.slid(one.t + 33, at.spring) + 0.5)
                     .map(one => [Math.round(one.t), one.beat]), []);
             // Each pose it shows held two frames at 60 Hz, as it goes off
@@ -185,8 +208,8 @@ QtObject {
         // Its seat said again while it's out of sight, it finds its way
         // from where it set off, never walking on from above the screen.
         const again = Stacked.moves({ x: 100, y: 7 }, { x: 900, y: 7 }, at);
-        const drops = again.beats.find(beat => beat.name === "drops").begins;
-        expect("its seat moved as it's out of sight, it finds its way again, till it drops in",
+        const drops = again.beats.find(beat => beat.name === "peeks").begins;
+        expect("its seat moved as it's out of sight, it finds its way again, till it peeks in",
             [Paths.replans(again, drops - 10, true), Paths.replans(again, drops + 10, true)],
             [true, false]);
 
@@ -228,13 +251,13 @@ QtObject {
                 Math.round(Paths.frame(rides, rides.ends).y)],
             [["rides"], 100, Math.round((7 + 880 * MarginCat.slid(slides / 2, at.spring)) * 100),
                 887]);
-        // Ridden off the bottom over an empty workspace, it springs in at
-        // the bottom edge onto the floor and lands, three heights at most.
+        // Ridden off the bottom over an empty workspace, it peeks in at
+        // the bottom edge, springs onto the floor and lands.
         const floor = Stacked.risesOnto(Stacked.risesFrom({ x: 100, y: 887 }, at), at);
-        expect("off the bottom with nowhere to sit, it springs in at the bottom onto the floor",
+        expect("off the bottom with nowhere to sit, it peeks in at the bottom onto the floor",
             [floor.beats.map(beat => beat.name), floor.from.y, floor.to.y,
                 Paths.frame(floor, floor.ends).beat],
-            [["springs", "lands"], 816, 792, "sits"]);
+            [["peeks", "peers", "looks", "springs", "lands"], 800, 792, "sits"]);
         const late = Stacked.moves({ x: 100, y: 7 }, { x: 900, y: 7 }, world({ ahead: 50 }));
         expect("told of the slide 50 ms late, it's as far up as niri's slide has gone",
             Math.round(Paths.frame(late, 0).y * 100),

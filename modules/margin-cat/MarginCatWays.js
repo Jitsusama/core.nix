@@ -50,11 +50,12 @@ const STRIDING = { goes: WALKS, climbs: WALKS };
 // as it sends it off; its ears up as it notices, its tail going as it
 // eyes it, crouched as it wiggles, a paw on the yarn, and its ears again
 // as it looks about, or as it follows the yarn a click sent rolling.
+// Peeking in over the screen's edge, it peers, then looks about.
 const HOLDS = { turns: "walkingB", thinks: "walkingB", settles: "walkingB", grabs: "walkingB",
     crouches: "pouncing", lands: "pouncing", perches: "pouncing", shoved: "pouncing",
     bats: "batting", shakes: "grooming", waits: "nothingHere", watches: "nothingHere",
     sends: "nothingHere", notices: "earFlick", eyes: "tailSwish", wiggles: "pouncing",
-    pins: "batting", looks: "earFlick", follows: "earFlick" };
+    pins: "batting", looks: "earFlick", follows: "earFlick", peers: "nothingHere" };
 
 // A way begun at `from`, the legs it takes added as it goes, each from
 // where the last left it.
@@ -229,9 +230,10 @@ function clings(way, side, dir) {
 }
 
 // How long a leg lasts at `pace`, its cells a second, before the theme's
-// slowdown: a leap as long as falling its height takes.
+// slowdown: a leap as long as falling its height takes; a leg given its
+// own `ms`, as a hold or a peek's climb, that long.
 function lasts(one, pace, at) {
-    if (one.kind === "holds") {
+    if (one.kind === "holds" || (one.kind === "climbs" && one.ms !== undefined)) {
         return one.ms;
     }
     const ground = Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y);
@@ -318,7 +320,7 @@ function timed(way) {
             beats.push(Object.assign({}, one, { name: one.name ?? one.kind, begins: ends,
                 ends: ends + ms, stride: STRIDING[one.kind] ? stride : 0, ramps: ramps[i],
                 bounds: one.kind === "climbs"
-                    ? Math.max(1, Math.round(ground / (BOUNDS * at.tall))) : 0 }));
+                    ? one.bounds ?? Math.max(1, Math.round(ground / (BOUNDS * at.tall))) : 0 }));
             ends += ms;
         }
     }
