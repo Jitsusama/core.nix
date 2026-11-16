@@ -273,7 +273,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     let patch = crate::waited::patch_of(commit);
     let file = crate::waited::file();
     let waited = Waited::read(&file);
-    let kept = kept_at(passes, &crate::ready::record);
+    let kept = kept_at(passes, &crate::ready::record, &written_at);
     let waits_from = waited.since(patch.as_deref(), &here, kept, now);
     let asking = Asking {
         started: places.start(&here, its_gate, now),
@@ -517,7 +517,7 @@ fn heads(places: &Places) -> Vec<(PathBuf, String)> {
 /// kept, from nix-offload's record of it.
 fn passed_at(commit: &str) -> Option<(u64, u64)> {
     let started = started(&crate::ready::record(commit))?;
-    Some((started, kept_at(&[commit], &crate::ready::record)?))
+    Some((started, kept_at(&[commit], &crate::ready::record, &written_at)?))
 }
 
 /// Whether `gate`'s change and the one at `head` gave `file`, one of the
@@ -581,7 +581,11 @@ pub fn passed(head: &str, passes: &[&str], files: &[String], ready: &str) -> Exi
 /// and its branch, with no pull request, held readers of the kit behind
 /// it for ten minutes more. A record from before ends were kept is read
 /// by when it was last written.
-fn kept_at(passes: &[&str], record: &dyn Fn(&str) -> String) -> Option<u64> {
+fn kept_at(
+    passes: &[&str],
+    record: &dyn Fn(&str) -> String,
+    written: &dyn Fn(&str) -> Option<u64>,
+) -> Option<u64> {
     let commit = passes
         .iter()
         .find(|commit| started(&record(commit)).is_some())?;
@@ -594,6 +598,12 @@ fn kept_at(passes: &[&str], record: &dyn Fn(&str) -> String) -> Option<u64> {
     if ended.is_some() {
         return ended;
     }
+    written(commit)
+}
+
+/// When nix-offload's record of the run at `commit` was last written, in
+/// seconds since the epoch.
+fn written_at(commit: &str) -> Option<u64> {
     let written = fs::metadata(crate::ready::record_of(commit)?)
         .ok()?
         .modified()
