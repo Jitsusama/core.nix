@@ -315,5 +315,17 @@
       "test_a_session_its_host_releases_carries_on_as_plain_pi_in_its_window"
     ],
     "test": "vm-desktop-moves-keep-their-window"
+  },
+  {
+    "at": 1794855899,
+    "commit": "ae64e1cb0afab0edef976c2886b759858fdf29d0",
+    "due": "2026-11-18",
+    "owner_pr": 4952,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at ae64e1cb0afa",
+    "subtests": [
+      "test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they_sat"
+    ],
+    "test": "vm-screens-keep-places"
   }
 ]
