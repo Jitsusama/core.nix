@@ -7,8 +7,9 @@
 //!
 //! Each row carries its drawer, what niri says of the screen past its
 //! row and what desk-facts reads of its EDID (`drawer`), and holds what
-//! the shell's own acts need of it (`held`: its connector, how it stands,
-//! what the : line takes and whether its brightness follows the panel's),
+//! the shell's acts and the agents daemon need of it (`held`: its
+//! connector, what the screen is, how it stands, what the : line takes
+//! and whether its brightness follows the panel's),
 //! never niri's whole record of it, so a change niri says that moves
 //! nothing a row says makes no row again. Inside it are what a step in offers:
 //! a lit one's settings (settings.rs), the ways it turns off or on, and
@@ -273,6 +274,18 @@ fn named(name: &str, output: &Value, words: &Words) -> String {
     } else {
         said.to_owned()
     }
+}
+
+/// What the screen is, its maker, model and serial as niri says them and
+/// its config names one: what the agents daemon keeps a session's place
+/// by (modules/agents, arrangement.rs), since a dock can give the same
+/// screen another connector.
+fn identity(output: &Value) -> String {
+    ["make", "model", "serial"]
+        .iter()
+        .filter_map(|part| output[part].as_str().filter(|said| !said.is_empty()))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A refresh rate in millihertz, as hertz with every digit niri gives:
@@ -709,8 +722,8 @@ pub fn rows(
                 // Whether its place holds the Brightness, read or not, so
                 // the summary says which (`light`) and the shell watches it
                 // ahead.
-                "held": {"output": name, "standing": stands, "line": line,
-                    "lights": holds == Some(name.as_str())},
+                "held": {"output": name, "screen": identity(output), "standing": stands,
+                    "line": line, "lights": holds == Some(name.as_str())},
                 "acts": acts,
             })
         })

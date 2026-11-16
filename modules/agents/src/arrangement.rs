@@ -8,7 +8,8 @@
 //! launcher").
 //!
 //! Each place is kept by the session's own id, which pi keeps as a session
-//! is reopened: the screen, by what it is (Places.js's described) and by
+//! is reopened: the screen, by what it is (the windows daemon's Screens
+//! rows, as Places.js's described says it) and by
 //! its connector, the workspace as niri numbers it there, then its column
 //! and its tile in that column, and whether it `leads`, orchestrating one
 //! of the others, so it begins first. One's kept after it ends, since a
@@ -39,30 +40,21 @@ pub const KIND: &str = "arrangement";
 pub const STILL: Duration = Duration::from_secs(2);
 
 /// Each lit screen's connector and what the screen is, from the windows
-/// daemon's Screens rows, each sent whole under `row` and holding niri's
-/// record of its output. One
-/// that's off, as the laptop's is while its lid is shut on the dock, has
-/// no place in the layout, so it's as gone as one unplugged.
+/// daemon's Screens rows, each sent whole under `row` and holding what
+/// its screen is and how it stands (modules/windows, screens.rs); rows
+/// inside a screen's hold neither. One that's off, as the laptop's is
+/// while its lid is shut on the dock, has no place in the layout, so
+/// it's as gone as one unplugged.
 pub fn screens(rows: &Held) -> HashMap<String, String> {
     rows.records()
         .filter_map(|(_, row)| {
             let held = &row["row"]["held"];
-            let niri = &held["niri"];
             let output = held["output"].as_str()?;
-            (niri.is_object() && !niri["logical"].is_null())
-                .then(|| (output.to_owned(), described(niri)))
+            let screen = held["screen"].as_str()?;
+            let standing = held["standing"].as_str()?;
+            (standing != "off").then(|| (output.to_owned(), screen.to_owned()))
         })
         .collect()
-}
-
-/// A screen as niri describes it, as its config names one: "HP Inc. HP
-/// Z27k G3 CN41282GC1".
-fn described(output: &Value) -> String {
-    ["make", "model", "serial"]
-        .iter()
-        .filter_map(|part| output[part].as_str().filter(|said| !said.is_empty()))
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 /// What niri says of the desk: its windows, workspaces and lit screens.
@@ -348,13 +340,13 @@ mod tests {
         // Each as the windows daemon sends it: the row whole, under `row`.
         let screens = screens(&held(&json!([
             {"key": "row:displays:display:DP-4", "kind": "row", "row": {"held": {
-             "output": "DP-4",
-             "niri": {"make": "HP Inc.", "model": "HP Z27k G3", "serial": "CN41", "logical": {}}}}},
+             "output": "DP-4", "screen": "HP Inc. HP Z27k G3 CN41", "standing": "lit"}}},
             {"key": "row:displays:display:eDP-1", "kind": "row", "row": {"held": {
-             "output": "eDP-1",
-             "niri": {"make": "LG Display", "model": "0x07C6", "serial": null, "logical": {}}}}},
+             "output": "eDP-1", "screen": "LG Display 0x07C6", "standing": "dark"}}},
             {"key": "row:displays:display:HDMI-1", "kind": "row", "row": {"held": {
-             "output": "HDMI-1", "niri": {"make": "Dell", "model": "U2720", "logical": null}}}},
+             "output": "HDMI-1", "screen": "Dell U2720", "standing": "off"}}},
+            {"key": "row:displays:answer:scale:DP-4", "kind": "row", "row": {"held": {
+             "output": "DP-4", "part": "scale"}}},
             {"key": "row:displays:off", "kind": "row", "row": {"held": {}}}
         ])));
         (windows, workspaces, screens)

@@ -74,9 +74,13 @@ fn the_built_in_screen_leads_then_each_by_its_connector_then_turning_them_off() 
         rows[0]["held"]["standing"], "lit",
         "the shell can't tell a lit screen from its row"
     );
+    assert_eq!(
+        rows[2]["held"]["screen"], "Dell Inc. U2723QE",
+        "the agents daemon can't tell which screen a session sat on"
+    );
     assert!(
         rows[0]["held"].get("niri").is_none(),
-        "a screen's row carries niri's whole record, which nothing reads: {}",
+        "a screen's row carries niri's whole record, past what it is: {}",
         rows[0]["held"]
     );
     assert_eq!(rows[3]["key"], "row:displays:sleep");
