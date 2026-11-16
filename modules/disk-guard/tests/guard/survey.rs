@@ -700,6 +700,14 @@ fn a_quests_old_scratch_is_sized_again_only_once_written_again() {
         "a run known unwritten since changed its size"
     );
     file(&run.join("more"), &"y".repeat(20_000));
+    // Dated a minute on, since a build's clock may not tick between the
+    // two writes.
+    fs::File::options()
+        .write(true)
+        .open(run.join("more"))
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() + Duration::from_secs(60))
+        .unwrap();
     let (found, _, sizes) = surveyed_after(&config, &earlier, later + 120.0, sizes);
     assert_eq!(sizes.walked, 2, "a run written since wasn't sized again");
     assert!(
