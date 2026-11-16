@@ -288,6 +288,14 @@ Rectangle {
     // Where its name has its baseline, down from its top, which the
     // launcher's drawer sets its title on.
     readonly property real nameBaseline: nameBox.y + nameBox.baselineOffset
+    // Where what it draws, unselected, starts and ends, down from its top:
+    // a heading's line, or the line its name, mark and words share, which
+    // the launcher needs whole to draw it (VKCF3Z, 2026-11-15 [889f9a7d]).
+    // Selected, it draws its whole ground, which is the row's height.
+    readonly property real drawnFrom: row.heading ? headingText.y
+        : Math.min(nameBox.y, monoLine.y)
+    readonly property real drawnTo: row.heading ? headingText.y + headingText.height
+        : Math.max(nameBox.y + nameBox.height, monoLine.y + monoLine.height)
     // Where its words have theirs, which is the name's.
     readonly property real detailBaseline: countText.y + countText.baselineOffset
     // How far its words stand from its name.

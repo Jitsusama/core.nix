@@ -576,15 +576,23 @@ QtObject {
         holds("a view rests on the top of the row it cut", Headings.rested(142, view), 160);
         holds("and stays where a row's top already is", Headings.rested(160, view), 160);
         holds("past the last row's top it stays", Headings.rested(340, view), 340);
-        const drawn = (each, from, under = talls[each + 1] ?? null) => Headings.drawn({
-            top: tops[each], tall: talls[each], under, heading: at.includes(each) },
-            { from, height: 150 });
+        const span = (each, inset = 0) => each >= tops.length ? null
+            : { from: tops[each] + inset, to: tops[each] + talls[each] - inset };
+        const drawn = (each, from, inset = 0) => Headings.drawn({
+            from: span(each, inset).from, to: span(each, inset).to,
+            heading: at.includes(each), under: span(each + 1, inset) }, { from, height: 150 });
         holds("a row wholly in view is drawn", drawn(5, 160), true);
         holds("one cut at the foot isn't", drawn(7, 160), false);
         holds("nor one cut at the top", drawn(3, 142), false);
         holds("a heading whose first row is cut isn't drawn alone", drawn(4, 60), false);
         holds("but one with its first row whole is", drawn(4, 100), true);
-        holds("and a heading last in the list is, whole", drawn(7, 200, null), true);
+        holds("and a heading last in the list is, whole", Headings.drawn({ from: 292, to: 328,
+            heading: true, under: null }, { from: 200, height: 150 }), true);
+        // What a row draws is what must fit: its line, unselected, inside
+        // a ground that would cross the edge (VKCF3Z [889f9a7d]).
+        holds("a row whose ground would cross the foot isn't drawn by it", drawn(5, 90), false);
+        holds("but is by its line, which fits", drawn(5, 90, 14), true);
+        holds("as is a heading whose first row's line fits", drawn(4, 85, 14), true);
     }
 
     // A paragraph of rows, as Vim's of lines (VKCF3Z, 2026-11-05): a run of
