@@ -13,7 +13,9 @@ let
   patched = lib.any (
     patch: baseNameOf (toString patch) == "sd-switch-reads-as-it-sends.patch"
   ) sd-switch.patches;
-  activation = (account machine).home.activation.reloadSystemd.data;
+  # Read as plain text, since a search may not carry the store paths it names.
+  plain = builtins.unsafeDiscardStringContext;
+  activation = plain (account machine).home.activation.reloadSystemd.data;
 in
 {
   # Every NixOS account switches its units with the sd-switch that reads each
@@ -21,7 +23,7 @@ in
   an-account-switch-hears-each-job-end =
     holds "an-account-switch-hears-each-job-end"
       "An account's units switch with an sd-switch that reads no job's end until it has sent every job."
-      (patched && lib.hasInfix (toString sd-switch) activation);
+      (patched && lib.hasInfix (plain (lib.getExe sd-switch)) activation);
   # The patched sd-switch builds and passes its own tests, which run as it builds.
   sd-switch-passes-its-tests = sd-switch;
 }
