@@ -99,7 +99,7 @@ it("documents come plans first, and their steps add up", () => {
 
 it("a forage with no documents says so", () => {
   const { forages } = foragesOf(told([forage("KESTRL", { documents: [] })]));
-  assert.equal(forages[0] && keeps(forages[0]), "No documents yet");
+  assert.equal(forages[0] && keeps(forages[0]), "Keeps nothing yet");
 });
 
 it("what can't be read is said, and the rest still drawn", () => {

@@ -56,6 +56,9 @@ function command(forage: Forage): string {
   return `mycelium forage ${forage.cell}`;
 }
 
+/** Where the `mycelium` program's repository is at home, on the Code site. */
+const MYCELIUM_HOME = "../code/#repo=Jitsusama%2Fmycelium";
+
 /** Where the map opens on `forage`'s cell. */
 function onMap(forage: Forage): string {
   return `../mycelium/#cell=${encodeURIComponent(forage.cell)}`;
@@ -232,7 +235,7 @@ ${documentsOf(forage)}
     <div><dt>Split from</dt><dd>${splitFrom(forage, here)}</dd></div>
     <div><dt>Under the quest</dt><dd>${forage.parent === undefined ? "None" : `<code>${escaped(forage.parent)}</code>`}</dd></div>
     <div><dt>Stands on</dt><dd>${escaped(forage.machine)}</dd></div>
-    <div><dt>In a terminal</dt><dd><code>${said}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>
+    <div><dt>In a terminal</dt><dd><code><a href="${MYCELIUM_HOME}">mycelium</a> forage ${escaped(forage.cell)}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>
   </dl>
 </section>
 <p class="act">Press <kbd>Return</kbd> to open <code>${escaped(forage.cell)}</code> on the map.</p>`;

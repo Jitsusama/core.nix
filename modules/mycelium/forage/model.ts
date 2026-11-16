@@ -168,14 +168,14 @@ function counted(count: number, kind: string): string {
   return count === 1 ? `one ${one}` : `${count} ${many}`;
 }
 
-/** What `forage` keeps, said short: "2 plans and one report", or "No documents yet". */
+/** What `forage` keeps, said short: "2 plans and one report", or "Keeps nothing yet". */
 function keeps(forage: Forage): string {
   const kinds = [...new Set(forage.documents.map((each) => each.kind))];
   const said = kinds.map((kind) =>
     counted(forage.documents.filter((each) => each.kind === kind).length, kind),
   );
   if (said.length === 0) {
-    return "No documents yet";
+    return "Keeps nothing yet";
   }
   const sentence = and(said);
   return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}`;
