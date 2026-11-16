@@ -269,14 +269,22 @@ mod tests {
     #[test]
     fn only_an_absolute_program_and_a_realm_of_mycelium_s_letters_are_taken() {
         let program = || Some(OsString::from("/nix/store/x-mycelium/bin/mycelium"));
-        assert!(Receptor::named(program(), Some("work".into())).is_some());
-        assert!(Receptor::named(program(), Some("personal-2".into())).is_some());
-        assert!(Receptor::named(Some("mycelium".into()), Some("work".into())).is_none());
-        assert!(Receptor::named(program(), Some("work; rm".into())).is_none());
-        assert!(Receptor::named(program(), Some("--realm".into())).is_none());
-        assert!(Receptor::named(program(), Some(String::new().into())).is_none());
-        assert!(Receptor::named(program(), None).is_none());
-        assert!(Receptor::named(None, Some("work".into())).is_none());
+        let taken = [
+            Receptor::named(program(), Some("work".into())),
+            Receptor::named(program(), Some("personal-2".into())),
+            Receptor::named(Some("mycelium".into()), Some("work".into())),
+            Receptor::named(program(), Some("work; rm".into())),
+            Receptor::named(program(), Some("--realm".into())),
+            Receptor::named(program(), Some(String::new().into())),
+            Receptor::named(program(), None),
+            Receptor::named(None, Some("work".into())),
+        ]
+        .map(|named| named.is_some());
+        assert_eq!(
+            taken,
+            [true, true, false, false, false, false, false, false],
+            "only an absolute program and a realm of mycelium's letters are taken"
+        );
     }
 
     /// A stand-in for mycelium that writes down each argument it's given,
@@ -349,12 +357,14 @@ mod tests {
         assert!(
             receptor(program)
                 .say(State::Quiet, Counts::default(), 1)
-                .is_err()
+                .is_err(),
+            "a mycelium that refused wasn't a failure"
         );
         assert!(
             receptor(folder.path().join("missing"))
                 .say(State::Quiet, Counts::default(), 1)
-                .is_err()
+                .is_err(),
+            "a missing mycelium wasn't a failure"
         );
     }
 }
