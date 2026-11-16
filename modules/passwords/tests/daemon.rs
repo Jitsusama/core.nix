@@ -225,6 +225,38 @@ fn a_copy_is_marked_sensitive_and_cleared_when_its_time_is_up() {
     until("the copy is cleared", || !copier_runs(&running.copied()));
 }
 
+#[test]
+fn a_copy_clears_in_thirty_seconds_unless_told_otherwise() {
+    // An empty PASSWORDS_CLEARS_MS reads as none, so the daemon keeps its
+    // own time, which the answer's clear time shows without waiting it out.
+    let running = Running::with_env(
+        "copy-clears",
+        &[("keeping", KEEPING)],
+        &[("PASSWORDS_CLEARS_MS", "")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let asked = since_the_epoch();
+    let copied = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
+    let answered = since_the_epoch();
+    let clears = copied["clears"]
+        .as_u64()
+        .expect("the copy's answer says when it clears");
+    assert!(
+        (asked + 30_000..=answered + 30_000).contains(&clears),
+        "the copy clears {} ms after it was asked, not 30 s: {copied}",
+        i128::from(clears) - i128::from(asked)
+    );
+}
+
+/// Milliseconds since the epoch, as the daemon tells a clear time.
+fn since_the_epoch() -> u64 {
+    let since = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("the clock is past the epoch");
+    u64::try_from(since.as_millis()).expect("the time fits in 64 bits")
+}
+
 /// Whether the stand-in copier still holds the clipboard.
 fn copier_runs(copied: &Path) -> bool {
     let wanted = copied.to_string_lossy().into_owned();
