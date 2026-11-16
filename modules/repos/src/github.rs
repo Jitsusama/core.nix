@@ -600,12 +600,32 @@ pub fn merge(record: &mut Record, seen: &Seen) {
 
 /// Where a refresh keeps what it saw: `$XDG_STATE_HOME/repos/github.json`,
 /// else under `home`'s ~/.local/state; none when neither is set.
-pub fn seen_file(_home: Option<&Path>) -> Option<PathBuf> {
-    None
+pub fn seen_file(home: Option<&Path>) -> Option<PathBuf> {
+    std::env::var_os("XDG_STATE_HOME")
+        .filter(|state| !state.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| home.map(|home| home.join(".local/state")))
+        .map(|state| state.join("repos/github.json"))
 }
 
-/// The record with what a refresh kept at `file` merged in (`merge`).
-pub fn merge_kept(_record: &mut Record, _file: &Path) {}
+/// The record with what a refresh kept at `file` merged in (`merge`), as
+/// every reader of the record takes it. No file means no refresh has run
+/// here, as on a machine with no GitHub broker, and the record is the
+/// disk's alone; a file no refresh wrote is said unread.
+pub fn merge_kept(record: &mut Record, file: &Path) {
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return;
+    };
+    match serde_json::from_str::<Seen>(&text) {
+        Ok(seen) if seen.schema == SCHEMA => merge(record, &seen),
+        _ => record.sources.push(Source {
+            name: "github".to_owned(),
+            what: "each repository's open changes and their checks".to_owned(),
+            read_at: None,
+            unread: vec![format!("{} isn't a refresh's record", file.display())],
+        }),
+    }
+}
 
 #[cfg(test)]
 mod gh_tests;
