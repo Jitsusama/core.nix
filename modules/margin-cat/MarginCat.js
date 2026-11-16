@@ -182,16 +182,21 @@ function behind(frame, kind) {
     return Math.round(HEARS + frame + (kind === "resize" ? RESIZES : 0));
 }
 
-// Whether it's drawn over the windows rather than under them: only while
-// its `seat`, the column it sits on, is a floating window's, which sits in
-// front of the tiled windows, so the one behind would hide it (Joel,
-// 2026-11-13 18:59), and not once it's `leaving` that seat. Anywhere else
+// Whether it's drawn over the windows rather than under them: on a leg
+// of a walk `aboard` a floating window, onto it, along it or off it
+// (MarginCatFloats.js), in front of the tiled window behind, which would
+// hide it and have it pop on (Joel, 2026-11-15 23:34: "the whole kitty
+// should not have to be rendered when you are seeing it come on to your
+// screen"); or at rest while its `seat`, the column it sits on, is a
+// floating window's, which sits in front of the tiled windows, so the one
+// behind would hide it (Joel, 2026-11-13 18:59), and not once it's
+// `leaving` that seat on any other leg. Anywhere else
 // it's under them, so a window passing in front of it covers it rather
 // than wearing it on its face, however late the shell hears niri: on top,
 // a loaded machine showed it on a sliding window's face for two to four
 // frames (VKCF3Z, 3fe38ef5).
-function above(seat, leaving) {
-    return seat?.floats === true && !leaving;
+function above(seat, leaving, aboard) {
+    return aboard === true || (seat?.floats === true && !leaving);
 }
 
 // How far into a resize niri says began `began` ms before it told of it

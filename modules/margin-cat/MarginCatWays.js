@@ -74,6 +74,17 @@ function leg(way, kind, to, more) {
     way.y = to.y;
 }
 
+// Every leg of `way` from its `from`th on, but those named in `but`,
+// taken aboard a floating window, where it's drawn over the tiled ones
+// (MarginCat.above).
+function aboard(way, from, but) {
+    for (const one of way.legs.slice(from)) {
+        if (!(but ?? []).includes(one.name)) {
+            one.aboard = true;
+        }
+    }
+}
+
 // A beat held `ms`, moving it to `to` on the theme's ease-out if it's
 // given, as a crouch draws back.
 function holds(way, name, ms, to) {
@@ -409,7 +420,8 @@ function onCells(v, a, b, cell) {
 // Where a way has it `t` ms in: its `x` and `y`, the top left of its box;
 // its `pose` by the theme's name, or null for its own as it rides; its
 // `turn`, a quarter turn clockwise (1) or back (-1) as it climbs; the way
-// it's `facing`; the `beat` it's on; and at its end, `done`, on its seat.
+// it's `facing`; the `beat` it's on, and whether it's `aboard` a floating
+// window there; and at its end, `done`, on its seat.
 function frame(route, t) {
     const beat = route.beats.find(one => t < one.ends);
     if (!beat) {
@@ -427,7 +439,7 @@ function frame(route, t) {
         ? beat.held ?? strides[strode(beat, t < last ? spot : placed(route, beat, last)) % strides.length]
         : spot.leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
     return { x: spot.x, y: spot.y, pose, turn: beat.turn, facing: beat.facing,
-        beat: beat.name, done: false };
+        beat: beat.name, aboard: beat.aboard === true, done: false };
 }
 
 // How many strides of `beat` it's taken at `spot`, by the ground drawn,

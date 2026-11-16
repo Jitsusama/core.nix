@@ -101,6 +101,13 @@ function off(way, cols, to, at) {
     if (from === null || (stays && on(floats, to, at) === stays)) {
         return false;
     }
+    // Over the tiled windows until it's down off it, in front of them
+    // (MarginCat.above), and under them as it lands.
+    const began = way.legs.length;
+    const done = () => {
+        Ways.aboard(way, began, ["lands", "shakes"]);
+        return true;
+    };
     const reach = { wide: at.wide, at, up: LEAPS_UP * at.tall };
     const xs = closed ? [way.x] : tops(cols, at).concat([way.x])
         .map(x => Math.min(Math.max(x, from.left), from.right - at.wide));
@@ -118,11 +125,11 @@ function off(way, cols, to, at) {
         Ways.holds(way, "crouches", MarginCat.CROUCHES);
         Ways.leap(way, up, RISES);
         Ways.holds(way, "lands", MarginCat.LANDS);
-        return true;
+        return done();
     }
     if (closed) {
         drops(way, cols, at);
-        return true;
+        return done();
     }
     // Off its end toward its seat, or the other where that's off the
     // screen, a hop clear of it, and a fall onto what's below.
@@ -138,7 +145,7 @@ function off(way, cols, to, at) {
     Ways.goes(way, end.dir > 0 ? from.right - at.wide : from.left, way.y);
     Ways.leap(way, { x: end.x, y: way.y }, RISES, "hops");
     drops(way, cols, at);
-    return true;
+    return done();
 }
 
 // Straight down onto what's under it (MarginCatFalls.js), shaking it off
@@ -195,6 +202,7 @@ function onto(from, to, cols, at) {
 function lands(way, plan) {
     const at = way.at;
     const it = plan.float;
+    const began = way.legs.length;
     const y = Routes.stands(it.top, at);
     way.turn = 0;
     if (plan.how === "drops") {
@@ -221,4 +229,7 @@ function lands(way, plan) {
         Ways.goes(way, plan.to.x, y);
         Ways.holds(way, "settles", MarginCat.SETTLES);
     }
+    // Over the tiled windows the whole way on, in front of them
+    // (MarginCat.above).
+    Ways.aboard(way, began);
 }
