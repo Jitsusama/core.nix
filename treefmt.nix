@@ -176,7 +176,10 @@ in
       "--max-diagnostics=none"
       "--config-path=biome.jsonc"
     ];
-    includes = [ "modules/*/site/*.html" ];
+    includes = [
+      "modules/*/site/*.html"
+      "modules/mycelium/forage/*.html"
+    ];
   };
 
   # The web kit's CSS, read by biome as a browser reads it.

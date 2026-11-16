@@ -20,7 +20,9 @@ typechecks it at its strictest, runs its tests and compiles it beside its
 page, so a site that doesn't hold never reaches the server. A site's
 source sits at `modules/<name>/site/`, served at `/<name>/`, and
 [`home.nix`][module] mounts it with the feed it watches. The system page
-([`modules/system/site`][system]) is the first.
+([`modules/system/site`][system]) is the first. The forage page
+([`modules/mycelium/forage`][forage]), served at `/forage/`, sits
+beside the mycelium module it reads, since `/mycelium/` is the map's.
 
 | Path                     | What it holds                                           |
 | ------------------------ | ------------------------------------------------------- |
@@ -36,6 +38,7 @@ The mycelium map's timer (`mycelium-map.sh`, `mycelium-map.jq`) and the
 network site's copy of net's record stay until each site reads its feed.
 
 [daemons]: ../../docs/daemons.md
+[forage]: ../mycelium/forage
 [home]: ./home
 [kit]: ./kit
 [main]: ./src/main.rs

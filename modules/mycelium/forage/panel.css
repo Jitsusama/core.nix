@@ -1,0 +1,246 @@
+/* The cell the cursor is on, opened beside the list: its name, its
+   purpose, the documents it keeps and how far each has come, where it
+   sits, and the keys dialog. Set as the system page's panel is. */
+
+/* ---- The part open. ---- */
+
+.panel {
+  display: grid;
+  min-block-size: 0;
+}
+
+.panel-body {
+  display: grid;
+  align-content: start;
+  gap: var(--groups);
+  padding: var(--groups) var(--inset);
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.panel-body:focus {
+  outline: none;
+}
+
+.panel-body .title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--mark);
+}
+
+.panel-body h3 {
+  font-size: var(--step-section);
+  line-height: 1.15;
+}
+
+.panel-body .lead {
+  margin-block-start: calc(-1 * var(--items));
+  max-inline-size: var(--measure);
+  color: var(--strong);
+}
+
+.panel-body h4 {
+  font-size: var(--step-body);
+  margin-block-end: var(--mark);
+}
+
+.tl {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-block-start: 1px solid var(--rule);
+}
+
+/* A document's row: its kind and stage on one line, its title under
+   them, and how far it has come in words beside a bar saying the same. */
+.tl .doc {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "kind stage"
+    "named named"
+    "steps steps";
+  gap: var(--tie) var(--mark);
+  align-items: baseline;
+  padding: var(--mark) var(--tie);
+  color: var(--text);
+}
+
+.tl .doc + .doc {
+  border-block-start: 1px solid var(--edge);
+}
+
+.tl .kind {
+  grid-area: kind;
+  font-size: var(--step-small);
+  text-transform: capitalize;
+}
+
+.tl .stage {
+  grid-area: stage;
+  font-size: var(--step-small);
+}
+
+.tl .named {
+  grid-area: named;
+  color: var(--strong);
+  font-weight: 500;
+}
+
+.tl .steps {
+  grid-area: steps;
+  display: flex;
+  align-items: center;
+  gap: var(--mark);
+  font: 400 var(--step-small) / 1.4 var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+/* The bar says nothing the words beside it don't; it only lets a glance
+   down the list see which have come furthest. */
+.bar {
+  flex: none;
+  inline-size: 6rem;
+  block-size: 0.5rem;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.bar span {
+  display: block;
+  block-size: 100%;
+  background: var(--tint);
+}
+
+.panel-body .quiet {
+  font-style: italic;
+}
+
+.facts dd a code {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+@media (forced-colors: active) {
+  .bar span {
+    background: CanvasText;
+  }
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--mark) var(--items);
+  margin: 0;
+  padding-block-start: var(--mark);
+  border-block-start: 1px solid var(--rule);
+}
+
+/* A fact's label and value share the list's columns where the browser
+   can, and otherwise sit side by side. */
+.facts div {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--items);
+}
+
+@supports (grid-template-columns: subgrid) {
+  .facts div {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+}
+
+.facts dt {
+  color: var(--text);
+  font-size: var(--step-small);
+  padding-block-start: 0.15em;
+}
+
+.facts dd {
+  margin: 0;
+  color: var(--strong);
+  overflow-wrap: anywhere;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--tie) var(--mark);
+}
+
+.facts dd a {
+  min-block-size: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.copy {
+  min-block-size: 44px;
+  padding: 0 var(--mark);
+  background: none;
+  border: 1px solid var(--field);
+  border-radius: var(--radius);
+  color: var(--strong);
+  font: inherit;
+  font-size: var(--step-small);
+}
+
+.act {
+  color: var(--text);
+  font-size: var(--step-small);
+}
+
+/* ---- Keys. ---- */
+
+.keypanel {
+  max-inline-size: min(34rem, calc(100vw - 2 * var(--items)));
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--groups) var(--inset);
+}
+
+.keypanel::backdrop {
+  background: color-mix(in srgb, var(--shadow) 60%, transparent);
+}
+
+.keypanel h2 {
+  margin-block-end: var(--apart);
+}
+
+.keypanel dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--mark) var(--groups);
+}
+
+.keypanel dl div {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--groups);
+}
+
+@supports (grid-template-columns: subgrid) {
+  .keypanel dl div {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+}
+
+.keypanel dd {
+  margin: 0;
+}
+
+.keypanel .close {
+  margin-block-start: var(--groups);
+  min-block-size: 44px;
+  padding: var(--mark) var(--apart);
+  background: none;
+  border: 1px solid var(--field);
+  border-radius: var(--radius);
+  color: var(--strong);
+}
+
