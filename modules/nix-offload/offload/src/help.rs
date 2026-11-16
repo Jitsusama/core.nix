@@ -34,7 +34,7 @@ pub fn asked(arguments: &[String]) -> bool {
         .unwrap_or(arguments.len());
     // `help` as the first word asks for what follows it, as `nix-offload
     // help there`, a word no call of nix-offload's opens with.
-    arguments
+    arguments[..ours]
         .iter()
         .find(|word| !word.starts_with('-'))
         .is_some_and(|word| word == "help")
@@ -102,8 +102,8 @@ fn there() -> Help {
         "builds what changed-checks names for this change",
     )
     .example(
-        "nix-offload there --run --copy \"$(readlink -f result)\" -- result/bin/a",
-        "runs a command on a builder, the store path it needs sent first",
+        "nix-offload there --run --copy \"$(readlink -f result)\" -- \"$(readlink -f result)/bin/a\"",
+        "runs a program built here on a builder, its store path sent first",
     )
     .option(
         "--never-ask",
@@ -140,11 +140,13 @@ fn there() -> Help {
     )
     .option(
         "--changed",
-        "builds what changed-checks names; the words after are its",
+        "builds what changed-checks names; first, or after --never-ask, \
+         and the words after are changed-checks'",
     )
     .option(
         "--run",
-        "runs the command after -- in a checkout of this commit",
+        "runs the command after -- in a checkout of this commit; first, \
+         or after --never-ask",
     )
     .option(
         "--copy PATH",
@@ -152,14 +154,18 @@ fn there() -> Help {
     )
     .option("--longest SECONDS", "with --run, gives it SECONDS at most")
     .option("--takes", "names a word each for what this there takes")
+    .exit(Exit::Failed, "a build failed")
     .exit(
         Exit::Unavailable,
-        "with --changed, the checks were named but no builder took their build",
+        "part of it was left unbuilt, owed for when a machine that builds it \
+         answers, or with --changed no builder took the checks named",
     )
     .exit(
         Exit::TryAgain,
-        "no builder took it, so nothing was built; ask again once one is lent",
+        "no builder took it, so nothing was built: with --changed, \
+         changed-checks builds it here, and otherwise ask again once one is lent",
     )
+    .passes("with --run, the command's own code")
 }
 
 fn outside() -> Help {
@@ -187,6 +193,7 @@ fn outside() -> Help {
         "from 2026-11-28, when the exemption ends, it runs nothing",
     )
     .exit(Exit::Config, "HOME isn't set, so it can't run the call")
+    .passes("the there call's own code, once it runs")
 }
 
 fn ask() -> Help {
@@ -239,8 +246,16 @@ fn answer() -> Help {
         Exit::NotFound,
         "no gate was left there, or a link is on the way to it",
     )
-    .exit(Exit::Unavailable, "it couldn't fence its git")
+    .exit(
+        Exit::Unavailable,
+        "the forge or git didn't answer, or it couldn't fence its git",
+    )
     .exit(Exit::TryAgain, "the gate couldn't run now")
+    .exit(
+        Exit::Refused,
+        "its own state can't be trusted, holding a link it won't follow",
+    )
+    .passes("the gate's own code, once the gate ran")
 }
 
 fn passed() -> Help {
@@ -464,6 +479,43 @@ mod tests {
             assert!(!asked(&words(line)), "{line} is a call, not help");
         }
         assert!(asked(&words("--version")), "--version alone is the version");
+        assert!(
+            !asked(&words("-- help")),
+            "a help after -- is the command's"
+        );
+    }
+
+    #[test]
+    fn the_kit_answers_each_call_taken_for_help() {
+        let environment = terminal_kit::Environment::of([false; 3], &[]);
+        for line in [
+            "--help",
+            "-h",
+            "--version",
+            "there --help",
+            "there --never-ask . checks.x86_64-linux.a -h",
+            "there --run --copy /nix/store/a --longest 60 --help",
+            "ask --quest Q --on kestrel --help",
+            "answer Q 0123 --help",
+            "passed ran --help",
+            "passed ran COMMIT -h",
+            "outside --git-dir G --work-tree W --help",
+            "serve --helper P --rate 0.68 --help",
+            "help there",
+            "help passed ran",
+        ] {
+            assert!(asked(&words(line)), "{line} isn't taken for help");
+            let ending = terminal_kit::run(&help(), "0", &environment, words(line), |_| {
+                panic!("{line} reached the body, not the kit's help")
+            });
+            assert_eq!(
+                ending.code(),
+                0,
+                "{line} wasn't answered with help: {}",
+                ending.stderr
+            );
+            assert!(!ending.stdout.is_empty(), "{line} said nothing");
+        }
     }
 
     #[test]
