@@ -101,7 +101,12 @@ refused_as_a_secret() {
       echo "a fenced command read it: $said" >&2
       return 1
     fi
-    case $said in *password*) return 0 ;; esac
+    case $said in
+    *password*) return 0 ;;
+    # Refused for some other reason, as before niri has told the door of
+    # the copy, so it's asked again.
+    *) ;;
+    esac
     sleep 0.1
   done
   echo "its refusal said: $said" >&2
@@ -111,7 +116,10 @@ refused_as_a_secret() {
 # Whether a fenced paste reads $1, within two seconds, in tenths.
 reads_as() {
   for _ in $(seq 20); do
-    [ "$(fenced "wl-paste -n" 2> /dev/null)" = "$1" ] && return 0
+    # A paste refused, as before niri has told the door of the copy, is
+    # asked again.
+    read=$(fenced "wl-paste -n" 2> /dev/null) || read=
+    [ "$read" = "$1" ] && return 0
     sleep 0.1
   done
   return 1
