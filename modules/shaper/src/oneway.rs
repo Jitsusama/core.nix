@@ -881,22 +881,7 @@ impl Way {
                 && ours.is_some_and(|ours| ours.queued)
                 && let Some(plateau) = self.plateau
             {
-                // The line is under the plateau only if, over the seconds
-                // the queue built, it took less than the hold: the cut's
-                // own second is already slowed by a cut before it, and a
-                // burst at the hold says nothing of the line. Taken from
-                // that second, bursts on 11 November ratcheted the
-                // plateau from 11,371 to 5,992 in 130 s.
-                let most = self
-                    .carrying
-                    .iter()
-                    .map(|&(_, c)| c)
-                    .fold(carried, f64::max);
-                self.plateau = Some(
-                    plateau
-                        .min(most / self.tuning.hold)
-                        .max(self.reached(at) * UNSEEN_FLOOR),
-                );
+                self.plateau = Some(self.unseen_plateau(at, carried, plateau));
             }
             self.elsewhere = None;
             // Only the line sets what got through while something of ours
@@ -985,6 +970,32 @@ impl Way {
             self.anothers_until = at + ANOTHERS_S;
         }
         late && at < self.anothers_until
+    }
+
+    /// The plateau a cut for a queue only the VPN meets leaves, from
+    /// `plateau` before it, with the link carrying `carried`.
+    fn unseen_plateau(&self, at: f64, carried: f64, plateau: f64) -> f64 {
+        // The line is under the plateau only if, over the seconds the
+        // queue built, it took less than the hold: the cut's own second is
+        // already slowed by a cut before it, and a burst at the hold says
+        // nothing of the line. Taken from that second, bursts on 11
+        // November ratcheted the plateau from 11,371 to 5,992 in 130 s.
+        let most = self
+            .carrying
+            .iter()
+            .map(|&(_, c)| c)
+            .fold(carried, f64::max);
+        // A declared line carries at least its hold, so a wait under it is
+        // the tunnel's: the rate is still cut for it, but the plateau stays.
+        // On 16 November one such cut held the upload under the anchor's
+        // hold for an hour.
+        let declared = self
+            .anchor
+            .map_or(0.0, |anchor| anchor * ANCHOR_HOLD / self.tuning.hold);
+        plateau
+            .min(most / self.tuning.hold)
+            .max(self.reached(at) * UNSEEN_FLOOR)
+            .max(declared.min(plateau))
     }
 
     fn cut(&mut self, at: f64, delay_ms: f64, carried: f64, filled: bool) {
@@ -3102,6 +3113,49 @@ mod tests {
         }
         let plateau = c.up.plateau.expect("a plateau");
         assert!(plateau >= 9_900.0, "ratcheted to {plateau}");
+    }
+
+    // As at 09:35 on 16 November: at home, held at the anchor's hold, a
+    // wait of four seconds only the VPN's round trip met was cut for, as
+    // it may be near the line. The cut took the plateau from 11,368 to
+    // 10,428, and the hold stayed under the anchor's for an hour, though
+    // the VPN went on waiting 40 to 200 ms past its least with nothing of
+    // ours queued: the wait was the tunnel's, and said nothing of the line.
+    #[test]
+    fn a_wait_only_the_vpn_meets_keeps_an_anchored_plateau_at_the_anchor_s_hold() {
+        let mut c = anchored(12_000.0);
+        c.start_at_the_anchor();
+        let at_the_hold = c.up.plateau.expect("a plateau");
+        let mut at = 0.0;
+        while at < 120.0 {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            // Then the agents wanted less than the hold, and the tunnel
+            // kept its own wait, as a VPN's far edge does.
+            let (queued, vpn_ms, wanted) = match at {
+                t if t < 12.0 => (true, 62.0, 9_852.0),
+                t if t < 16.0 => (true, 150.0, 9_852.0),
+                t => (false, if t % 10.0 < 5.0 { 100.0 } else { 200.0 }, 6_000.0),
+            };
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: rate.min(wanted),
+                up_ours: Some(Ours {
+                    queued,
+                    in_vpn: queued,
+                    vpn_queued: queued,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                vpn_ms: Some(vpn_ms),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!(
+            plateau >= at_the_hold - 1.0,
+            "the plateau fell to {plateau} under the anchor's {at_the_hold}"
+        );
     }
 
     // As at 17:50 on 11 November: held over a router that buffers the
