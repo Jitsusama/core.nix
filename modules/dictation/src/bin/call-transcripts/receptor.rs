@@ -204,6 +204,10 @@ mod tests {
     const NOW: u64 = 1_800_000_000_000;
     const MIDNIGHT: u64 = NOW - 10 * HOUR;
 
+    /// How many times a stand-in another test's fork holds busy is run
+    /// again before the test fails.
+    const BUSY_TRIES: usize = 1000;
+
     fn receptor(program: PathBuf) -> Receptor {
         Receptor::named(Some(program.into()), Some("work".into())).unwrap()
     }
@@ -267,6 +271,27 @@ mod tests {
     }
 
     #[test]
+    fn a_count_past_what_mycelium_takes_is_said_as_the_most_it_takes() {
+        let said = receptor(PathBuf::from("/nix/store/x-mycelium/bin/mycelium")).arguments(
+            State::Reading,
+            Counts {
+                hour: u64::from(u32::MAX) + 1,
+                today: u64::MAX,
+            },
+            4242,
+        );
+        let counts: Vec<&str> = [8, 10, 12]
+            .into_iter()
+            .map(|at| said[at].to_str().unwrap())
+            .collect();
+        assert_eq!(
+            counts,
+            ["4294967295"; 3],
+            "a count past u32, which mycelium refuses, wasn't held to it"
+        );
+    }
+
+    #[test]
     fn only_an_absolute_program_and_a_realm_of_mycelium_s_letters_are_taken() {
         let program = || Some(OsString::from("/nix/store/x-mycelium/bin/mycelium"));
         let taken = [
@@ -320,9 +345,22 @@ mod tests {
         let held = book::Book::read(&calls);
         let counts = Counts::of(held.starts(), NOW, MIDNIGHT);
         let (program, given) = stand_in(folder.path());
-        receptor(program)
-            .say(State::of(counts, held.failing()), counts, 4242)
-            .unwrap();
+        let receptor = receptor(program);
+        let state = State::of(counts, held.failing());
+        // Another test's child, forked while the stand-in was still open
+        // for writing, holds it busy until that child execs, which is
+        // moments; so a busy stand-in is run again rather than failed.
+        let mut said = receptor.say(state, counts, 4242);
+        for _ in 0..BUSY_TRIES {
+            match &said {
+                Err(why) if why.contains("os error 26") => {
+                    std::thread::yield_now();
+                    said = receptor.say(state, counts, 4242);
+                }
+                _ => break,
+            }
+        }
+        said.unwrap();
         let said = std::fs::read_to_string(given).unwrap();
         for planted in [
             "personal", "ignore", "skiff", "example", "kestrel", "planted",
