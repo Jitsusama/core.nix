@@ -4514,6 +4514,47 @@ mod tests {
     }
 
     #[test]
+    fn a_net_leaving_says_it_waits_on_a_write_and_when_it_leaves() {
+        // 16 November: a watcher told at 08:28 that another build was
+        // installed hung until it was restarted at 08:33, and its log said
+        // nothing of whether a write held it or its own exit did.
+        let state = state("leaving-says");
+        let world = Stand::default();
+        let settler = Settler::new(&world, &state);
+        let log = || fs::read_to_string(state.root.join("logs/net.log")).unwrap_or_default();
+        let (held, holding) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let writer = &settler;
+        let said_while_held = std::thread::scope(|scope| {
+            scope.spawn(move || {
+                writer.write(|| {
+                    held.send(()).unwrap();
+                    let _ = released.recv();
+                });
+            });
+            holding.recv().unwrap();
+            let leaving = scope.spawn(|| settler.leave(|| ()));
+            let until = std::time::Instant::now() + Duration::from_secs(5);
+            while !log().contains("leaving waits") && std::time::Instant::now() < until {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let said = log();
+            release.send(()).unwrap();
+            leaving.join().unwrap();
+            said
+        });
+        assert!(
+            said_while_held.contains("leaving waits for a write to the hold"),
+            "the net didn't say a write held it as it left: {said_while_held}"
+        );
+        assert!(
+            log().contains("nothing writes the hold now, so this leaves"),
+            "the net didn't say it left once the write ended: {}",
+            log()
+        );
+    }
+
+    #[test]
     fn a_net_leaving_as_a_settle_ends_keeps_nothing_it_settled() {
         // 14 November: a watcher told at 02:55 that another build was
         // installed left the moment its settle listed shows-then-rests in
