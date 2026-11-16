@@ -146,7 +146,8 @@ let
           });
         };
       }).xdg.configFile."mycelium/declared.json".text;
-  # pi's own fence, strict, which an agent's run starts through on Linux.
+  # pi's own fence, strict, which an agent's run starts through on Linux;
+  # a Mac's is the same words with its own system's build of pi-fence.
   launcher = [
     (lib.getExe (pkgs.callPackage ../pi/fence-run/package.nix { }))
     "--kind"
@@ -726,12 +727,12 @@ in
   # A machine that declares what its node can't measure has it written where
   # mycelium reads it, in mycelium's words; Linux's held sessions outlive
   # their window, the node and a suspend, and a Mac claims none yet. A fenced
-  # or strict fence on Linux starts an agent's run through the fence's
-  # launcher; an unfenced one and a Mac's say none, so mycelium refuses it.
+  # or strict fence on Linux or a Mac starts an agent's run through the
+  # fence's launcher; an unfenced one says none, so mycelium refuses it.
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, a held session's outlives isn't each system's, a fence it doesn't say is written, an agent's run in a fenced or strict fence on Linux isn't said to start through the fence's launcher, an unfenced one or a Mac's is, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, a held session's outlives isn't each system's, a fence it doesn't say is written, an agent's run in a fenced or strict fence on Linux or a Mac isn't said to start through the fence's launcher, an unfenced one's is, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
@@ -762,7 +763,9 @@ in
         && (launching linux).fence.fence.runs or null == launcher
         && (launching linux).fence.strict.runs or null == launcher
         && !((launching linux).fence.none ? runs)
-        && !((launching mac).fence.strict ? runs)
+        && lib.drop 1 ((launching mac).fence.strict.runs or [ ]) == lib.drop 1 launcher
+        && lib.hasSuffix "/bin/pi-fence" (lib.head ((launching mac).fence.strict.runs or [ "" ]))
+        && !((launching mac).fence.none ? runs)
         && (
           inVm.within or null == {
             machine = "host-machine";

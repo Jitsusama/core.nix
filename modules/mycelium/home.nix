@@ -89,7 +89,7 @@ let
   linking = cfg.links != [ ] || cfg.vias != [ ] || cfg.providers != [ ];
   serving = cfg.realm != null;
   agentsKey = config.systemd.user.sockets ? agent-signing;
-  declaration = import ./declaration.nix { inherit lib isLinux; } cfg;
+  declaration = import ./declaration.nix { inherit lib; } cfg;
   # The node reads the declaration from the store, where only root writes,
   # never from the account's config folder: anything running as the account
   # could repoint that link and widen how agents' commands run.
@@ -510,24 +510,20 @@ in
     # never looser.
     fenceRuns = lib.mkOption {
       type = lib.types.nullOr (lib.types.listOf lib.types.str);
-      default =
-        if isLinux then
-          [
-            (lib.getExe (pkgs.callPackage ../pi/fence-run/package.nix { }))
-            "--kind"
-            "strict"
-            "--"
-          ]
-        else
-          null;
+      default = [
+        (lib.getExe (pkgs.callPackage ../pi/fence-run/package.nix { }))
+        "--kind"
+        "strict"
+        "--"
+      ];
       defaultText = lib.literalExpression ''[ "\''${pi-fence}/bin/pi-fence" "--kind" "strict" "--" ]'';
       internal = true;
       description = ''
         The words an agent's `mycelium run` is put after to run in its
         fence here, the first a program in the Nix store, as each fenced
         and strict fence the machine declares says them: pi's own fence,
-        strict, on Linux, and null on a Mac, where every agent's run is
-        refused.
+        strict, on Linux and on a Mac alike. Null says none, so every
+        agent's run is refused.
       '';
     };
   };
