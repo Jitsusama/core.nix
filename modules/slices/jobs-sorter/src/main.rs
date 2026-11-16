@@ -1530,6 +1530,20 @@ mod settings_tests {
             .under
     }
 
+    // The help's flags and the flags settings parses are two lists, so a
+    // flag added to the help alone would be offered and then refused.
+    #[test]
+    fn every_flag_its_help_names_is_one_it_takes() {
+        for flag in crate::cli::flags() {
+            if let Err(refused) = settings([flag.to_owned(), "1".to_owned()].into_iter()) {
+                assert!(
+                    !refused.what.starts_with("no flag called"),
+                    "jobs-sorter's help names {flag}, but it refuses it as unknown"
+                );
+            }
+        }
+    }
+
     #[test]
     fn the_apps_slice_is_watched_when_none_is_named() {
         assert_eq!(given(""), ["app.slice"]);
