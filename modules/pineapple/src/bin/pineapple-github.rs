@@ -17,7 +17,10 @@
 //! would let through on Slack is held, so only Joel hears. Joel's own
 //! "pineapple resume" said there ends only stops written in shadow, since
 //! his agents post as his GitHub account all day and one could forge it;
-//! his press in the launcher resumes the rest.
+//! his press in the launcher resumes the rest. Since any account may
+//! comment on GitHub, only a repository's owner, its organization's
+//! members and its collaborators stop him there; anyone else's words go
+//! in the log alone.
 //!
 //! A round spends Joel's rate limit, which gh and his agents share: two
 //! requests, and two to four more for each pull request or issue that
